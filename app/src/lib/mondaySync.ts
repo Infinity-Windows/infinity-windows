@@ -7,6 +7,25 @@ import { supabase } from "./supabase";
 import { isMissingTable } from "./schemaErrors";
 import { createProject, type CreateProjectInput } from "./api";
 
+/**
+ * One file Monday says is attached to a staged row.
+ *
+ * Never a URL. Monday's own `public_url` is valid for an hour, so the sync
+ * stores the asset id and the pull asks for a fresh link server-side at the
+ * moment somebody presses the button.
+ */
+export interface MondayFile {
+  asset_id: string;
+  name: string;
+  /** Monday returns ".pdf", with the dot. */
+  ext: string | null;
+  /** Bytes, or null when Monday did not say. */
+  size: number | null;
+  /** Which of the board's two file columns it came from. */
+  column_id: string;
+  uploaded_at: string | null;
+}
+
 export interface MondayJob {
   id: string;
   monday_item_id: string;
@@ -22,6 +41,17 @@ export interface MondayJob {
   synced_at: string;
   project_id: string | null;
   dismissed_at: string | null;
+  /**
+   * Optional because a phone can be running ahead of the migration: the column
+   * simply is not in the row yet, and every screen has to read that as "no
+   * files known" rather than crashing. Use `filesOnMonday` below.
+   */
+  files?: MondayFile[] | null;
+}
+
+/** The row's file list, however incomplete the row is. Never throws. */
+export function filesOnMonday(job: Pick<MondayJob, "files">): MondayFile[] {
+  return Array.isArray(job.files) ? job.files.filter((f) => f && f.asset_id) : [];
 }
 
 /** Staged Monday jobs awaiting review — newest sync first. */

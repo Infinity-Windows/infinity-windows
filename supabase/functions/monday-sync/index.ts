@@ -18,6 +18,13 @@
 // Auth: verify_jwt = true (signed-in callers only); writes use the service
 // role internally. Secrets from Deno.env: MONDAY_API_TOKEN, SUPABASE_URL,
 // SUPABASE_SERVICE_ROLE_KEY.
+//
+// THE BOARD BELONGS TO STG WINDOWS, NOT TO US. This app is a guest on somebody
+// else's board and every GraphQL operation it sends is a read — never a write
+// of any kind, never a file upload, never a column change. Downloading a file
+// through the one-hour public_url Monday hands out is a read and is allowed.
+// app/src/lib/mondayReadOnly.test.ts fails the build if the word for a GraphQL
+// write ever appears in this file, so the rule cannot be softened by accident.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders, jsonResponse } from "../_shared/openai.ts";
@@ -30,12 +37,68 @@ const BOARD_ID = "8185408239"; // Ops Gantt Chart ("STG Windows" workspace)
 const GROUP_IDS = ["group_mkwrzygn", "group_mkwrz2sm"]; // Ready to Schedule, Scheduled
 const THROTTLE_MS = 10 * 60 * 1000;
 
+// The board's two file columns, verified against the live board on 2026-09-04:
+// "Files" (files_1) is where the office puts a job's paperwork and carries 1-4
+// PDFs on every sampled row; "Measure files" (file_mm4wnjn8) is empty today but
+// is the column a site survey would land in, so it is read from the start
+// rather than discovered missing later. Asked for one column at a time under a
+// GraphQL alias, because asking for both column ids at once returns one flat
+// list that does not say which column each file came from.
+const FILES_COLUMN_ID = "files_1";
+const MEASURE_COLUMN_ID = "file_mm4wnjn8";
+
+interface MondayAsset {
+  id: string;
+  name: string;
+  file_extension: string | null;
+  file_size: number | null;
+  created_at: string | null;
+}
+
 interface MondayItem {
   id: string;
   name: string;
   group: { id: string; title: string };
   column_values: { id: string; text: string | null; value: string | null }[];
+  /** Aliased `assets(column_ids: ["files_1"])`. */
+  files?: MondayAsset[] | null;
+  /** Aliased `assets(column_ids: ["file_mm4wnjn8"])`. */
+  measure?: MondayAsset[] | null;
 }
+
+/** One entry in monday_jobs.files — see the migration for why no public_url. */
+interface StagedFile {
+  asset_id: string;
+  name: string;
+  ext: string | null;
+  size: number | null;
+  column_id: string;
+  uploaded_at: string | null;
+}
+
+/** Everything Monday says is attached to an item, in board order per column. */
+function filesOf(item: MondayItem): StagedFile[] {
+  const out: StagedFile[] = [];
+  const take = (assets: MondayAsset[] | null | undefined, columnId: string) => {
+    for (const a of assets ?? []) {
+      if (!a?.id) continue;
+      out.push({
+        asset_id: String(a.id),
+        name: a.name ?? "",
+        ext: a.file_extension ?? null,
+        size: typeof a.file_size === "number" ? a.file_size : null,
+        column_id: columnId,
+        uploaded_at: a.created_at ?? null,
+      });
+    }
+  };
+  take(item.files, FILES_COLUMN_ID);
+  take(item.measure, MEASURE_COLUMN_ID);
+  return out;
+}
+
+/** The asset fields both reads ask for. Never public_url — see the migration. */
+const ASSET_FIELDS = "id name file_extension file_size created_at";
 
 function col(item: MondayItem, id: string): { text: string | null; value: string | null } {
   return item.column_values.find((c) => c.id === id) ?? { text: null, value: null };
@@ -60,6 +123,28 @@ function dateCol(item: MondayItem, id: string): string | null {
   }
 }
 
+/**
+ * Send one READ to Monday. Every call in this file goes through here, so
+ * "this function only ever reads STG's board" is one place to check rather
+ * than four.
+ */
+// deno-lint-ignore no-explicit-any
+async function mondayRead(query: string, variables: Record<string, unknown>): Promise<any> {
+  const res = await fetch("https://api.monday.com/v2", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: MONDAY_API_TOKEN,
+      "API-Version": "2024-10",
+    },
+    body: JSON.stringify({ query, variables }),
+  });
+  if (!res.ok) throw new Error(`Monday API ${res.status}: ${await res.text()}`);
+  const json = await res.json();
+  if (json.errors?.length) throw new Error(`Monday API: ${JSON.stringify(json.errors)}`);
+  return json.data;
+}
+
 async function fetchBoardItems(): Promise<MondayItem[]> {
   const out: MondayItem[] = [];
   let cursor: string | null = null;
@@ -73,23 +158,14 @@ async function fetchBoardItems(): Promise<MondayItem[]> {
             name
             group { id title }
             column_values { id text value }
+            files: assets(column_ids: ["${FILES_COLUMN_ID}"]) { ${ASSET_FIELDS} }
+            measure: assets(column_ids: ["${MEASURE_COLUMN_ID}"]) { ${ASSET_FIELDS} }
           }
         }
       }
     }`;
-    const res = await fetch("https://api.monday.com/v2", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: MONDAY_API_TOKEN,
-        "API-Version": "2024-10",
-      },
-      body: JSON.stringify({ query, variables: { board: [BOARD_ID], cursor } }),
-    });
-    if (!res.ok) throw new Error(`Monday API ${res.status}: ${await res.text()}`);
-    const json = await res.json();
-    if (json.errors?.length) throw new Error(`Monday API: ${JSON.stringify(json.errors)}`);
-    const page = json.data?.boards?.[0]?.items_page;
+    const data = await mondayRead(query, { board: [BOARD_ID], cursor });
+    const page = data?.boards?.[0]?.items_page;
     // Monday used to accept a query_params rule on the pseudo-column
     // "__grouping__" to return only the two groups we sync. On 2026-09-04 it
     // answered "Column not found: __grouping__" (ResourceNotFoundException),
@@ -99,6 +175,37 @@ async function fetchBoardItems(): Promise<MondayItem[]> {
     cursor = page?.cursor ?? null;
   } while (cursor);
   return out;
+}
+
+/**
+ * The files on named items, whatever group they are in.
+ *
+ * A job the office built months ago has usually moved on to "Working on it" or
+ * "Completed", so the board walk above no longer returns it — and the office
+ * still adds files to it, which is exactly when "new on Monday" matters most.
+ * One extra read per sync, only for rows that are actually linked to a job and
+ * were not already seen, asked in pages of 100 (Monday's own item cap).
+ */
+async function fetchItemsByIds(ids: string[]): Promise<MondayItem[]> {
+  const out: MondayItem[] = [];
+  for (let i = 0; i < ids.length; i += 100) {
+    const query = `query ($ids: [ID!]) {
+      items(ids: $ids) {
+        id
+        name
+        files: assets(column_ids: ["${FILES_COLUMN_ID}"]) { ${ASSET_FIELDS} }
+        measure: assets(column_ids: ["${MEASURE_COLUMN_ID}"]) { ${ASSET_FIELDS} }
+      }
+    }`;
+    const data = await mondayRead(query, { ids: ids.slice(i, i + 100) });
+    out.push(...((data?.items ?? []) as MondayItem[]));
+  }
+  return out;
+}
+
+/** PostgREST / Postgres "that column isn't there yet". */
+function isMissingColumn(err: { code?: string | null } | null): boolean {
+  return err?.code === "PGRST204" || err?.code === "42703";
 }
 
 Deno.serve(async (req) => {
@@ -167,6 +274,7 @@ Deno.serve(async (req) => {
       budget: budgetText ? Number(budgetText) || null : null,
       flashing_note: col(item, "text_mknb4sbz").text,
       raw: { column_values: item.column_values },
+      files: filesOf(item),
       synced_at: now,
       left_groups_at: null,
     };
@@ -176,7 +284,20 @@ Deno.serve(async (req) => {
     const { error } = await db
       .from("monday_jobs")
       .upsert(rows, { onConflict: "monday_item_id" });
-    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    // A deploy that lands this function before its migration would otherwise
+    // stop the sync dead over a column nobody is reading yet. Drop the file
+    // list and save everything else — the Jobs page keeps working and the next
+    // sync after the migration fills the files in.
+    if (error && isMissingColumn(error)) {
+      const { error: retry } = await db
+        .from("monday_jobs")
+        .upsert(rows.map(({ files: _files, ...rest }) => rest), {
+          onConflict: "monday_item_id",
+        });
+      if (retry) return jsonResponse({ ok: false, error: retry.message }, 500);
+    } else if (error) {
+      return jsonResponse({ ok: false, error: error.message }, 500);
+    }
   }
 
   // Rows that vanished from the synced groups: mark them so the incoming
@@ -202,6 +323,31 @@ Deno.serve(async (req) => {
     .from("monday_jobs")
     .select("monday_item_id, project_id, start_date, end_date")
     .not("project_id", "is", null);
+
+  // Files on a job the board walk no longer returns. Best-effort on purpose:
+  // this is an extra courtesy on top of a sync that has already succeeded, so a
+  // Monday hiccup here logs and moves on rather than turning a good sync red.
+  let refreshedFiles = 0;
+  const staleIds = (linked ?? [])
+    .map((l) => l.monday_item_id as string)
+    .filter((id) => !seen.has(id));
+  if (staleIds.length > 0) {
+    try {
+      for (const item of await fetchItemsByIds(staleIds)) {
+        const { error } = await db
+          .from("monday_jobs")
+          .update({ files: filesOf(item) })
+          .eq("monday_item_id", item.id);
+        if (!error) refreshedFiles += 1;
+        else if (isMissingColumn(error)) break; // migration not deployed yet
+      }
+    } catch (err) {
+      console.error(
+        "monday-sync: could not refresh files on already-built jobs:",
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+  }
   // Wave D: this whole function writes on the service-role key, which
   // bypasses the RLS that would otherwise refuse an UPDATE on a trashed
   // project row — so Monday must never quietly keep steering the dates of a
@@ -235,5 +381,6 @@ Deno.serve(async (req) => {
     synced: rows.length,
     leftGroups: gone.length,
     updatedProjects,
+    refreshedFiles,
   });
 });
