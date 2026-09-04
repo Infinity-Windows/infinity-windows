@@ -321,8 +321,28 @@ function withoutStories(patch: DetailColumns): DetailColumns {
   return copy;
 }
 
+/**
+ * Two ways `stories` can be unusable, and from the form they look identical.
+ *
+ * The column may not exist yet — the migration has not deployed. Or it may
+ * exist and not be WRITABLE: table-level INSERT/UPDATE on `projects` is revoked
+ * and the writable columns are granted back by name (wave D's law,
+ * 20260959000000), and any wave that re-states those lists without `stories`
+ * takes the privilege away. Wave Z (20260978000000) re-states both lists, which
+ * is why 20260980000000's grant has to be the later statement — and why this
+ * retry must not depend on that having gone right. A refused privilege is a
+ * 42501, not a missing column, and without this the New-job form and the Job
+ * details save would simply stop working rather than dropping one number.
+ *
+ * The message has to name the column, so that a row-level-security refusal —
+ * also a 42501, and a real "no" — still reaches the person as an error instead
+ * of being quietly retried into the same refusal.
+ */
 function isMissingStoriesColumn(error: unknown): boolean {
-  return isMissingColumn(error, "stories");
+  if (isMissingColumn(error, "stories")) return true;
+  const e = error as { code?: unknown; message?: unknown };
+  const message = typeof e?.message === "string" ? e.message.toLowerCase() : "";
+  return e?.code === "42501" && message.includes("stories");
 }
 
 /**

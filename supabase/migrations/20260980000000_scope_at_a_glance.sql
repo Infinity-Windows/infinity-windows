@@ -30,8 +30,24 @@
 --
 -- IDEMPOTENT throughout: every object is if-not-exists or or-replace, and the
 -- check constraints are dropped before they are added. Safe to run twice.
--- MERGE ORDER: after 20260979000000. Numbers must land in order, one deploy at
--- a time.
+--
+-- MERGE ORDER: after 20260979000000 (wave J). Numbers must land in order, one
+-- deploy at a time.
+--
+-- AND IT MUST LAND AFTER 20260978000000 (wave Z), which is the dependency that
+-- actually bites. Wave Z revokes table-level INSERT/UPDATE on `projects` and
+-- re-states the whole column grant list — a list that does not contain
+-- `stories`, because `stories` did not exist when it was written. This file's
+-- `grant ... (stories)` at part 4 is ADDITIVE, so it only survives if it is the
+-- later statement. Its number is higher, so it is; do not renumber it below
+-- 20260978000000, and do not restate wave Z's lists here (Z drops bid_amount
+-- and target_margin_pct, so a list copied from master would grant columns that
+-- no longer exist and fail).
+--
+-- After each of Z and X deploys, check it rather than assuming: a zero-row
+-- PATCH naming `stories` as a non-owner login. 204 = the grant is there,
+-- 42501 = it was lost. The app degrades either way (api.ts drops the column and
+-- retries) but a person silently loses the field.
 
 -- ---------------------------------------------------------------------------
 -- 1. What kind of unit is this mark?
