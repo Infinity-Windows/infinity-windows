@@ -28,6 +28,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders, jsonResponse } from "../_shared/openai.ts";
+import { verifyCaller } from "../_shared/auth.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -97,7 +98,7 @@ function filesOf(item: MondayItem): StagedFile[] {
   return out;
 }
 
-/** The asset fields both reads ask for. Never public_url — see the migration. */
+/** The asset fields both board reads ask for. No download link, on purpose. */
 const ASSET_FIELDS = "id name file_extension file_size created_at";
 
 function col(item: MondayItem, id: string): { text: string | null; value: string | null } {
@@ -208,6 +209,393 @@ function isMissingColumn(err: { code?: string | null } | null): boolean {
   return err?.code === "PGRST204" || err?.code === "42703";
 }
 
+/** PostgREST / Postgres "that table isn't there yet". */
+function isMissingTable(err: { code?: string | null } | null): boolean {
+  return err?.code === "PGRST205" || err?.code === "42P01";
+}
+
+// ---------------------------------------------------------------------------
+// pull_files — bring a Monday item's files onto the job (Monday files, F4)
+// ---------------------------------------------------------------------------
+//
+// SERVER-SIDE FOR THREE REASONS, none of them optional:
+//   1. The download link Monday mints lasts an hour and is minted by a token
+//      that must never reach a browser.
+//   2. Only the server can check that the asset is really attached to the item
+//      the office tied to this job. Without that check this endpoint would
+//      happily fetch ANY asset in STG's account by id, which is somebody
+//      else's paperwork.
+//   3. The buckets take writes from the service role only, on purpose.
+//
+// NOTHING ABOUT THE CALLER COMES FROM THE REQUEST BODY. The user id comes from
+// a verified JWT and the rank is read from `profiles` on the service-role key —
+// the same rule manage-crew-access states at length. Assume a caller who posts
+// straight at this endpoint with an installer's session; greying out a button
+// is not a control.
+
+/** 80 MB. Also the job-documents bucket's own cap — one limit, said twice. */
+const MAX_PULL_BYTES = 80 * 1024 * 1024;
+
+interface PullResult {
+  asset_id: string;
+  name: string;
+  ok: boolean;
+  where: "plans" | "specs" | "documents" | null;
+  /** This exact Monday file was already on the job — a no-op, not a failure. */
+  already?: boolean;
+  error?: string | null;
+}
+
+/**
+ * Anyone above a plain installer, exactly as the Jobs page's own `canAdd`
+ * decides it (`isForemanPlus` -> `roleRank` >= 1, app/src/lib/install/types.ts).
+ * The legacy names are listed because the ladder in the app lists them and a
+ * server guard that disagreed with the button would be worse than no button.
+ */
+const CAN_ADD_A_JOB = new Set([
+  "foreman",
+  "lead",
+  "supervisor",
+  "admin",
+  "owner",
+  "big_boss",
+]);
+
+/**
+ * A file name that is safe as the tail of a storage path.
+ *
+ * The same sanitiser `uploadPlanset` uses, plus two things a hand upload never
+ * has to worry about: the name here comes from another company's board, so any
+ * path separator is dropped before the character class runs, and leading dots
+ * are replaced so a name of ".." cannot become a path segment that means
+ * something.
+ */
+function safeStorageName(name: string): string {
+  const base = (name || "file").split(/[\\/]/).pop() || "file";
+  const cleaned = base.replace(/[^\w.-]+/g, "_").replace(/^\.+/, "_");
+  return cleaned.slice(0, 120) || "file";
+}
+
+/** "pdf" from ".PDF" or from "HC24 - LP.pdf". */
+function extensionOf(name: string, ext: string | null | undefined): string {
+  const raw = (ext ?? "").trim() ||
+    (name.includes(".") ? name.slice(name.lastIndexOf(".")) : "");
+  return raw.replace(/^\./, "").toLowerCase();
+}
+
+function plansetFormatOf(name: string, ext: string | null | undefined): string | null {
+  const e = extensionOf(name, ext);
+  return e === "pdf" || e === "dwg" || e === "dxf" ? e : null;
+}
+
+/** "17 MB", for a sentence a person reads. */
+function mbLabel(bytes: number): string {
+  return `${Math.round(bytes / (1024 * 1024))} MB`;
+}
+
+// deno-lint-ignore no-explicit-any
+type ServiceClient = any;
+
+/**
+ * Fetch one file from Monday and put it where the office asked.
+ *
+ * Returns a result, never throws: one file that will not come across must not
+ * stop the others, and the caller has already built the job.
+ */
+async function pullOneFile(
+  db: ServiceClient,
+  projectId: string,
+  userId: string | null,
+  asset: { id: string; name: string; file_extension: string | null; file_size: number | null; public_url: string },
+  kind: "building" | "specs" | "document",
+): Promise<PullResult> {
+  const name = asset.name || `monday-${asset.id}`;
+  const base: PullResult = { asset_id: asset.id, name, ok: false, where: null };
+  const asPlanset = kind === "building" || kind === "specs";
+  const where = kind === "building" ? "plans" : kind === "specs" ? "specs" : "documents";
+
+  // Already here? The unique index below is the real guarantee; this is the
+  // cheap read that turns a second press of Get into a sentence rather than a
+  // wasted download of a 17 MB plan set.
+  const table = asPlanset ? "project_plansets" : "project_documents";
+  const { data: existing, error: existingErr } = await db
+    .from(table)
+    .select("id")
+    .eq("project_id", projectId)
+    .eq("source_asset_id", asset.id)
+    .maybeSingle();
+  if (existingErr && isMissingTable(existingErr)) {
+    return { ...base, error: "Job documents aren't switched on yet. They arrive with the next update." };
+  }
+  if (existingErr && isMissingColumn(existingErr)) {
+    return { ...base, error: "Getting files from Monday needs the next database update." };
+  }
+  if (existing) return { ...base, ok: true, where, already: true };
+
+  const stated = typeof asset.file_size === "number" ? asset.file_size : null;
+  if (stated !== null && stated > MAX_PULL_BYTES) {
+    return {
+      ...base,
+      error: `This file is ${mbLabel(stated)}. Anything over ${mbLabel(MAX_PULL_BYTES)} has to be added by hand.`,
+    };
+  }
+
+  let bytes: ArrayBuffer;
+  let contentType: string;
+  try {
+    const res = await fetch(asset.public_url);
+    if (!res.ok) {
+      return { ...base, error: `Monday would not hand this file over (${res.status}). Try again in a minute.` };
+    }
+    contentType = res.headers.get("content-type") ?? "application/octet-stream";
+    bytes = await res.arrayBuffer();
+  } catch (err) {
+    return {
+      ...base,
+      error: `Could not download this file from Monday — ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+
+  // Checked again against what actually arrived: Monday's stated size is
+  // metadata and a wrong one would put the whole file in memory anyway, but a
+  // file that is too big must never reach the bucket.
+  if (bytes.byteLength > MAX_PULL_BYTES) {
+    return {
+      ...base,
+      error: `This file is ${mbLabel(bytes.byteLength)}. Anything over ${mbLabel(MAX_PULL_BYTES)} has to be added by hand.`,
+    };
+  }
+
+  const bucket = asPlanset ? "plansets" : "job-documents";
+  const path = `${projectId}/${Date.now()}-${safeStorageName(name)}`;
+  const { error: upErr } = await db.storage
+    .from(bucket)
+    .upload(path, new Uint8Array(bytes), { contentType });
+  if (upErr) {
+    return { ...base, error: `Could not save this file — ${upErr.message}` };
+  }
+
+  // Exactly what uploadPlanset writes for a hand upload, so the Plans page,
+  // the map and the extractor cannot tell the two apart: PDFs are 'uploaded'
+  // and ready to be read, CAD files are 'converting' because nothing converts
+  // them yet.
+  const format = plansetFormatOf(name, asset.file_extension);
+  const row = asPlanset
+    ? {
+      project_id: projectId,
+      storage_path: path,
+      source_format: format ?? "pdf",
+      status: format === "pdf" ? "uploaded" : "converting",
+      kind,
+      source_asset_id: asset.id,
+    }
+    : {
+      project_id: projectId,
+      name,
+      storage_path: path,
+      size_bytes: bytes.byteLength,
+      content_type: contentType,
+      source: "monday",
+      source_asset_id: asset.id,
+      created_by: userId,
+    };
+
+  const { error: insErr } = await db.from(table).insert(row);
+  if (insErr) {
+    // Two callers pressing Get at the same moment: the unique index refuses the
+    // second one, which is the answer we wanted, not an error.
+    if (insErr.code === "23505") {
+      await db.storage.from(bucket).remove([path]);
+      return { ...base, ok: true, where, already: true };
+    }
+    // Anything else leaves bytes in a bucket with nothing pointing at them.
+    await db.storage.from(bucket).remove([path]);
+    if (isMissingTable(insErr) || isMissingColumn(insErr)) {
+      return { ...base, error: "Getting files from Monday needs the next database update." };
+    }
+    return { ...base, error: `Could not add this file to the job — ${insErr.message}` };
+  }
+
+  return { ...base, ok: true, where };
+}
+
+async function handlePullFiles(
+  req: Request,
+  db: ServiceClient,
+  // deno-lint-ignore no-explicit-any
+  body: any,
+): Promise<Response> {
+  const auth = await verifyCaller(req);
+  if (auth.status === "unauthorized") {
+    return jsonResponse({ ok: false, error: "You need to be signed in to do that." }, 401);
+  }
+  if (auth.status === "unconfigured") {
+    // Without the anon key this function cannot tell who is asking, and this
+    // endpoint writes to a job. Refusing is the only honest answer.
+    return jsonResponse(
+      { ok: false, error: "We could not check who you are. Try again in a minute." },
+      503,
+    );
+  }
+
+  const userId = auth.user.role === "service_role" ? null : auth.user.id;
+  if (userId) {
+    const { data: profile } = await db
+      .from("profiles")
+      .select("role, is_partner, is_test")
+      .eq("id", userId)
+      .maybeSingle();
+    const role = (profile?.role as string | undefined) ?? "";
+    if (profile?.is_partner === true || !CAN_ADD_A_JOB.has(role)) {
+      return jsonResponse(
+        { ok: false, error: "Only a foreman or above can bring files in from Monday." },
+        403,
+      );
+    }
+    // The test-login fence, restated here because this function writes on the
+    // service-role key and so runs past the trigger that enforces it
+    // (20260730220000). A test login may only touch its sandbox job.
+    if (profile?.is_test === true) {
+      const { data: sandbox } = await db
+        .from("sandbox_projects")
+        .select("project_id")
+        .eq("project_id", String(body?.project_id ?? ""))
+        .maybeSingle();
+      if (!sandbox) {
+        return jsonResponse(
+          { ok: false, error: "This is a test login. It can only work on the test job." },
+          403,
+        );
+      }
+    }
+  }
+
+  const mondayJobId = String(body?.monday_job_id ?? "").trim();
+  const projectId = String(body?.project_id ?? "").trim();
+  const asked = Array.isArray(body?.files) ? body.files : [];
+  if (!mondayJobId || !projectId) {
+    return jsonResponse(
+      { ok: false, error: "We need to know which Monday job and which app job." },
+      400,
+    );
+  }
+  if (asked.length === 0) return jsonResponse({ ok: true, results: [] });
+
+  const { data: staged, error: stagedErr } = await db
+    .from("monday_jobs")
+    .select("id, project_id, files")
+    .eq("id", mondayJobId)
+    .maybeSingle();
+  if (stagedErr && (isMissingTable(stagedErr) || isMissingColumn(stagedErr))) {
+    return jsonResponse(
+      { ok: false, error: "Getting files from Monday needs the next database update." },
+      503,
+    );
+  }
+  if (!staged) {
+    return jsonResponse({ ok: false, error: "That Monday job is not in the app." }, 404);
+  }
+  // THE OFFICE TIED THIS ROW TO THIS JOB, and nobody else gets to say
+  // otherwise. Without this a caller could name any project id and have another
+  // job's paperwork filed against it.
+  if (staged.project_id !== projectId) {
+    return jsonResponse(
+      { ok: false, error: "That Monday job is linked to a different job in the app." },
+      403,
+    );
+  }
+
+  // Only files Monday itself said were on this row. The asset ids are never
+  // taken on trust: this is what stops the endpoint being a way to fetch any
+  // document in STG's whole account by guessing an id.
+  const onTheRow = new Map<string, StagedFile>();
+  for (const f of (staged.files ?? []) as StagedFile[]) {
+    if (f?.asset_id) onTheRow.set(String(f.asset_id), f);
+  }
+
+  const results: PullResult[] = [];
+  const chosen: { asset_id: string; kind: "building" | "specs" | "document" }[] = [];
+  for (const raw of asked) {
+    const assetId = String(raw?.asset_id ?? "");
+    const known = onTheRow.get(assetId);
+    if (!known) {
+      results.push({
+        asset_id: assetId,
+        name: "",
+        ok: false,
+        where: null,
+        error: "That file is not on this Monday job any more. Sync and try again.",
+      });
+      continue;
+    }
+    const kind = raw?.kind === "building" || raw?.kind === "specs" ? raw.kind : "document";
+    chosen.push({ asset_id: assetId, kind });
+  }
+
+  if (chosen.length > 0) {
+    // Fresh links, asked for at the moment of the pull. Monday's public_url is
+    // good for an hour, which is why it is never stored.
+    let assets: Record<string, {
+      id: string;
+      name: string;
+      file_extension: string | null;
+      file_size: number | null;
+      public_url: string;
+    }> = {};
+    try {
+      const query = `query ($ids: [ID!]!) {
+        assets(ids: $ids) { id name file_extension file_size public_url }
+      }`;
+      const data = await mondayRead(query, { ids: chosen.map((c) => c.asset_id) });
+      for (const a of data?.assets ?? []) assets[String(a.id)] = a;
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      console.error("monday-sync: Monday refused the file links:", reason);
+      assets = {};
+      for (const c of chosen) {
+        results.push({
+          asset_id: c.asset_id,
+          name: onTheRow.get(c.asset_id)?.name ?? "",
+          ok: false,
+          where: null,
+          error: `Monday would not hand the files over — ${reason}`,
+        });
+      }
+    }
+
+    for (const c of chosen) {
+      const fresh = assets[c.asset_id];
+      if (!fresh) continue; // already reported above, or gone from Monday
+      results.push(
+        await pullOneFile(
+          db,
+          projectId,
+          userId,
+          { ...fresh, name: fresh.name || onTheRow.get(c.asset_id)?.name || "" },
+          c.kind,
+        ),
+      );
+    }
+
+    // An id Monday no longer knows at all.
+    for (const c of chosen) {
+      if (assets[c.asset_id] || results.some((r) => r.asset_id === c.asset_id)) continue;
+      results.push({
+        asset_id: c.asset_id,
+        name: onTheRow.get(c.asset_id)?.name ?? "",
+        ok: false,
+        where: null,
+        error: "Monday no longer has this file.",
+      });
+    }
+  }
+
+  // `ok` says the request was handled, not that every file came across — each
+  // file carries its own answer, and "2 of 3" is a sentence the Build form
+  // knows how to say.
+  return jsonResponse({ ok: true, results });
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -222,13 +610,30 @@ Deno.serve(async (req) => {
   }
 
   const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-  let force = false;
+  // deno-lint-ignore no-explicit-any
+  let body: any = null;
   try {
-    const body = await req.json();
-    force = Boolean(body?.force);
+    body = await req.json();
   } catch {
     // No body — normal throttled sync.
   }
+
+  // The office bringing a Monday item's files onto a job it has just built.
+  // Everything below this line is the ordinary board sync and is untouched.
+  if (body?.action === "pull_files") {
+    try {
+      return await handlePullFiles(req, db, body);
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      console.error("monday-sync: pull_files failed:", reason);
+      return jsonResponse(
+        { ok: false, error: `Could not get the files — ${reason}`, results: [] },
+        500,
+      );
+    }
+  }
+
+  const force = Boolean(body?.force);
 
   // Throttle: one real sync per window, whoever asks.
   if (!force) {

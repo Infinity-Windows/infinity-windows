@@ -68,10 +68,18 @@ describe("monday-sync only ever reads STG's board", () => {
 
   it("never stores Monday's one-hour download link", () => {
     // public_url expires in an hour, so a stored one is a list that 404s and a
-    // live unauthenticated link to another company's document sitting in our
-    // database. The connector keeps asset ids and asks for a fresh link at the
-    // moment somebody presses Pull.
-    expect(src).not.toMatch(/public_url\s*:/);
-    expect(src).not.toMatch(/["']public_url["']\s*,/);
+    // live unauthenticated link to another company's document sitting in a
+    // table a foreman can read. The sync keeps asset ids; the link is asked for
+    // fresh at the moment somebody presses Get.
+    const from = src.indexOf("interface StagedFile");
+    const to = src.indexOf("const ASSET_FIELDS");
+    expect(from).toBeGreaterThan(-1);
+    expect(to).toBeGreaterThan(from);
+    // The shape written into monday_jobs.files, and the function that fills it.
+    expect(src.slice(from, to)).not.toContain("public_url");
+    // And the board sync does not even ask Monday for it.
+    expect(src).toContain(
+      'const ASSET_FIELDS = "id name file_extension file_size created_at"',
+    );
   });
 });
