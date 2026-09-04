@@ -857,6 +857,29 @@ export const CATALOG = {
   },
   "deljob.checking": { en: "Checking…", es: "Comprobando…" },
   "deljob.delete": { en: "Delete…", es: "Eliminar…" },
+
+  // ---- Wave K: time honesty (transcripts program, 2026-09-03) -----------
+  // The far-from-job question (K1). It only ever appears when the app can
+  // actually see the phone is away from the job, and both answers are real
+  // ones — "I'm still here" holds the question for an hour and nothing about
+  // the clock changes. The distance is two keys rather than one so both
+  // languages get their own singular.
+  "farjob.title": { en: "Still at the job?", es: "¿Sigues en el trabajo?" },
+  "farjob.bodyMiles": {
+    en: "You're {miles} miles from {job}. Switch to Travel?",
+    es: "Estás a {miles} millas de {job}. ¿Cambiar a Viaje?",
+  },
+  "farjob.bodyOneMile": {
+    en: "You're {miles} mile from {job}. Switch to Travel?",
+    es: "Estás a {miles} milla de {job}. ¿Cambiar a Viaje?",
+  },
+  "farjob.switch": { en: "Switch to Travel", es: "Cambiar a Viaje" },
+  "farjob.stillHere": { en: "I'm still here", es: "Sigo aquí" },
+  "farjob.note": {
+    en: "Your clock keeps running either way — nothing changes unless you tap.",
+    es: "Tu reloj sigue corriendo de todos modos — nada cambia hasta que toques.",
+  },
+  "farjob.switched": { en: "Switched to Travel", es: "Cambiado a Viaje" },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */

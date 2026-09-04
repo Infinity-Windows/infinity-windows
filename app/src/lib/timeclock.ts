@@ -2,7 +2,8 @@ import { supabase } from "./supabase";
 import type { GeoFix } from "./geo";
 import type { JobMode } from "./types";
 import { sendPush } from "./permissions/pushServer";
-import { isMissingTable } from "./schemaErrors";
+import { isMissingFunction, isMissingTable } from "./schemaErrors";
+import { TRAVEL_COST_CODE } from "./farFromJob";
 import { isMissingClockInOverload, normalizeNote } from "./timeclockNote";
 import type { TimecardExportShift } from "./timecardExport";
 
@@ -62,6 +63,20 @@ export interface TimeShift {
   clock_in_lng?: number | null;
   clock_out_lat?: number | null;
   clock_out_lng?: number | null;
+  /**
+   * The work mode picked at clock-in on a both-mode job (20260970000000).
+   * Null on a single-mode job, and on every punch made before that migration.
+   */
+  job_mode?: JobMode | null;
+  /**
+   * Wave K, K3: when the app was last brought to the FOREGROUND while this
+   * shift was open, and where the phone was if it had already granted
+   * location. One point, overwritten each time — this app has no background
+   * location and must never grow one.
+   */
+  last_seen_at?: string | null;
+  last_seen_lat?: number | null;
+  last_seen_lng?: number | null;
   approved_by?: string | null;
   approved_at?: string | null;
   edited_by?: string | null;
@@ -125,6 +140,26 @@ export interface RecentJob {
 // "voided by <name>" (T3) lines.
 const SHIFT_SELECT =
   "*, projects(job_code, name), cost_codes(code, label), profiles!profile_id(display_name), editor:profiles!edited_by(display_name), voider:profiles!voided_by(display_name)";
+
+/**
+ * The Travel code itself (Wave K, K1). Read from the GLOBAL library rather than
+ * the job's pickable subset on purpose: a job that narrowed its subset to
+ * install codes must still be switchable to Travel — driving away from a job is
+ * something a person can always do, whatever that job's paperwork says.
+ * Returns null if a company ever deletes or deactivates it; the caller then
+ * simply never offers the switch.
+ */
+export async function getTravelCostCode(): Promise<CostCode | null> {
+  const { data, error } = await supabase
+    .from("cost_codes")
+    .select("id, code, label, active")
+    .eq("code", TRAVEL_COST_CODE)
+    .eq("active", true)
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as CostCode | null) ?? null;
+}
 
 export async function listCostCodes(): Promise<CostCode[]> {
   const { data, error } = await supabase
@@ -784,6 +819,38 @@ export async function getJobLastGeo(
   const row = data as { clock_in_lat: number | null; clock_in_lng: number | null } | null;
   if (!row || row.clock_in_lat == null || row.clock_in_lng == null) return null;
   return { lat: row.clock_in_lat, lng: row.clock_in_lng };
+}
+
+/**
+ * Stamp my own open shift with "the app was open, here, just now" (Wave K, K3).
+ *
+ * Called ONLY when the app comes to the foreground, and only while on the
+ * clock — there is no background location in this app and there must not be
+ * (see the migration's own header). Coordinates are optional: a foreground
+ * visit with location switched off still records the TIME, which is the half
+ * of "last seen" a supervisor mostly cares about.
+ *
+ * Never throws at the caller. This runs on every app open and it is a courtesy,
+ * not a duty: a database that has not applied the migration yet, or a phone
+ * with no signal, simply records nothing.
+ */
+export async function touchShiftLocation(
+  lat?: number | null,
+  lng?: number | null,
+): Promise<void> {
+  try {
+    const { error } = await supabase.rpc("touch_shift_location", {
+      p_lat: lat ?? null,
+      p_lng: lng ?? null,
+    });
+    if (error && !isMissingFunction(error)) {
+      // Still swallowed — logged nowhere on purpose, because there is no
+      // screen this could usefully interrupt.
+      return;
+    }
+  } catch {
+    /* offline, or the RPC isn't there yet: nothing to say to anybody */
+  }
 }
 
 export async function approveShift(shiftId: string): Promise<void> {

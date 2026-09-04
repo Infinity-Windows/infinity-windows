@@ -10,6 +10,17 @@ export interface GeoFix {
   accuracyM?: number;
 }
 
+/**
+ * A fix we actually have: coordinates present, not merely optional. Structurally
+ * the same shape as jobProximity's DeviceFix, so a granted fix can be handed
+ * straight to `farFromJob()` without a cast.
+ */
+export interface GrantedFix {
+  lat: number;
+  lng: number;
+  accuracyM?: number;
+}
+
 /** Outcome of a one-shot geolocation priming call. */
 export type GeoPrimeResult = "granted" | "denied" | "unavailable";
 
@@ -54,6 +65,35 @@ export async function primeGeolocation(
       done("unavailable");
     }
   });
+}
+
+/**
+ * A fix, but ONLY if this device has already granted location — never a
+ * prompt of its own.
+ *
+ * The difference from {@link captureGeoSoft} matters: that one is called from a
+ * tap the person just made (clocking in), where an OS prompt is expected and
+ * fair. This one is called by advisory features that run on their own — the
+ * "not near this job" note at clock-in, and the far-from-job question when the
+ * app comes to the foreground (Wave K, K1). A background feature that summons a
+ * permission dialog out of nowhere is how an app teaches people to tap Deny.
+ *
+ * Returns null when permission is not already granted, when the Permissions API
+ * is missing, or when no fix came back. Never throws.
+ */
+export async function captureGeoIfGranted(): Promise<GrantedFix | null> {
+  try {
+    const perms = (navigator as Navigator & { permissions?: Permissions })
+      .permissions;
+    if (!perms?.query) return null;
+    const status = await perms.query({ name: "geolocation" as PermissionName });
+    if (status.state !== "granted") return null;
+    const fix = await captureGeoSoft();
+    if (fix.lat == null || fix.lng == null) return null;
+    return { lat: fix.lat, lng: fix.lng, accuracyM: fix.accuracyM };
+  } catch {
+    return null;
+  }
 }
 
 export async function captureGeoSoft(timeoutMs = 12_000): Promise<GeoFix> {

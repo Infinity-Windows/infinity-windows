@@ -22,7 +22,7 @@ import { matchingTrackingJobs } from "../../lib/quickJobs";
 import { requestJobForClockIn } from "../../lib/needJob";
 import { getTodayTalk } from "../../lib/ops";
 import { myTodayCompletion } from "../../lib/toolbox";
-import { captureGeoSoft } from "../../lib/geo";
+import { captureGeoIfGranted, captureGeoSoft } from "../../lib/geo";
 import { farFromJob, type DeviceFix } from "../../lib/jobProximity";
 import { toastSuccess } from "../../lib/toast";
 import { openClockGlobally } from "../../lib/clockContext";
@@ -157,26 +157,15 @@ export function ClockInBlock() {
   // Capture the current fix ONCE, and only when geolocation is already granted —
   // the "not near this job" note must never trigger its own permission prompt.
   // Off the clock only. clock-in itself still stamps geo via captureGeoSoft.
+  // (The already-granted rule now lives in captureGeoIfGranted, shared with the
+  // far-from-job question — Wave K, K1 — so there is one copy of it.)
   useEffect(() => {
     if (geoTriedRef.current || openShift.data) return;
     geoTriedRef.current = true;
     let cancelled = false;
     void (async () => {
-      try {
-        const perms = (navigator as Navigator & { permissions?: Permissions })
-          .permissions;
-        if (!perms?.query) return;
-        const status = await perms.query({
-          name: "geolocation" as PermissionName,
-        });
-        if (status.state !== "granted") return;
-        const fix = await captureGeoSoft();
-        if (!cancelled && fix.lat != null && fix.lng != null) {
-          setMyGeo({ lat: fix.lat, lng: fix.lng, accuracyM: fix.accuracyM });
-        }
-      } catch {
-        /* no advisory without a fix — never blocks the clock-in */
-      }
+      const fix = await captureGeoIfGranted();
+      if (!cancelled && fix) setMyGeo(fix);
     })();
     return () => {
       cancelled = true;
