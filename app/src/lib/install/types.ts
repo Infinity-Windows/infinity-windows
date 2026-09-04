@@ -312,6 +312,13 @@ export interface InstallEvent extends MemoTopics {
   window_id: string | null;
   window_type_id: string | null;
   installer: string | null;
+  /**
+   * Who actually installed it, when that is not the person who filed it
+   * (wave Y). Null means installer_id — the filer did the work — and is the
+   * ordinary case. Optional so a read from a database without the column
+   * still types.
+   */
+  credited_to?: string | null;
   started_at: string | null;
   minutes: number | null;
   quality_grade: number | null;

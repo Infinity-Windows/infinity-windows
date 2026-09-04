@@ -124,6 +124,11 @@ const CASCADE_COVERED: Record<string, string> = {
   // revoking a link never deletes what the builder said, but project_id is
   // CASCADE: the conversation is about the job and dies with it.
   gc_messages: "ON DELETE CASCADE from projects, on the final delete from projects",
+  // Wave Y, 20260982000000. A unit's hand-over log dies with the unit: the row
+  // references project_openings ON DELETE CASCADE (and projects the same way,
+  // so the final delete would take it even if the openings went another road).
+  // Nothing else references it.
+  opening_assignment_events: "ON DELETE CASCADE from project_openings",
 };
 
 function purgeBody(): string {

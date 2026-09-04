@@ -398,19 +398,38 @@ async function actorId(): Promise<string | null> {
 
 // --- Foreman-push assignment ---
 
+/**
+ * Which screen a hand-over came from, for the assignment history row the
+ * database writes (wave Y, Y5). The database cannot work this out — it has no
+ * idea which button was tapped — so the caller says.
+ */
+export type AssignVia = "dispatch" | "map" | "auto";
+
 export async function assignOpeningToInstaller(
   openingId: string,
   profileId: string,
   sequence?: number | null,
+  via: AssignVia = "dispatch",
 ): Promise<ProjectOpening> {
-  const { data, error } = await supabase.rpc("assign_opening_to_installer", {
+  const args = {
     p_opening_id: openingId,
     p_profile_id: profileId,
     p_actor_id: await actorId(),
     p_sequence: sequence ?? null,
+  };
+  const { data, error } = await supabase.rpc("assign_opening_to_installer", {
+    ...args,
+    p_via: via,
   });
-  if (error) throw error;
-  return data as ProjectOpening;
+  if (!error) return data as ProjectOpening;
+  // A phone ahead of the migration: the five-argument form does not exist yet.
+  // Handing out work matters more than knowing which screen it came from, so
+  // fall back to the old call — the history row still lands, reading
+  // "dispatch", which is what the trigger assumes when nobody says otherwise.
+  if (!isMissingSchemaFunction(error)) throw refusalOrError(error);
+  const retry = await supabase.rpc("assign_opening_to_installer", args);
+  if (retry.error) throw refusalOrError(retry.error);
+  return retry.data as ProjectOpening;
 }
 
 /**
@@ -426,6 +445,7 @@ export async function assignOpeningsInOrder(
   openings: readonly Pick<ProjectOpening, "id" | "assigned_to" | "sequence">[],
   orderedIds: readonly string[],
   profileId: string | null,
+  via: AssignVia = "map",
 ): Promise<void> {
   if (!profileId) {
     for (const id of orderedIds) await unassignOpening(id);
@@ -434,7 +454,7 @@ export async function assignOpeningsInOrder(
   const startAfter = maxExistingSequence(openings, profileId, orderedIds);
   const plan = buildSequenceAssignments(orderedIds, startAfter);
   for (const { openingId, sequence } of plan) {
-    await assignOpeningToInstaller(openingId, profileId, sequence);
+    await assignOpeningToInstaller(openingId, profileId, sequence, via);
   }
 }
 
@@ -442,7 +462,9 @@ export async function unassignOpening(openingId: string): Promise<ProjectOpening
   const { data, error } = await supabase.rpc("unassign_opening", {
     p_opening_id: openingId,
   });
-  if (error) throw error;
+  // Wave Y put the foreman+ rank inside the RPC, so this can now refuse — and
+  // a refusal is a sentence for a person, not a PostgREST code.
+  if (error) throw refusalOrError(error);
   return data as ProjectOpening;
 }
 
@@ -746,22 +768,47 @@ export interface InstallerLeaderRow {
   fail_rate: number | null;
 }
 
-/** One person's filed installs in a window — the timecard's per-day units. */
+/** One person's installs in a window — the timecard's per-day units. */
 export interface ProfileInstallEvent {
   id: string;
   installer_id: string;
+  credited_to?: string | null;
   minutes: number | null;
   quality_grade: number | null;
   created_at: string;
   opening?: { opening_code: string; project_id: string } | null;
 }
 
+/**
+ * The units this person INSTALLED in a window — theirs when they filed it and
+ * nobody else was credited, plus everything anybody filed under their name
+ * (wave Y). A foreman filing three windows for Sam at the end of the day puts
+ * three units on Sam's card and none on his own, which is what happened.
+ *
+ * Degrades to the old installer_id-only read on a database without the column,
+ * so a phone ahead of the migration shows a timecard rather than an error.
+ */
 export async function listInstallEventsForProfile(
   profileId: string,
   startIso: string,
   endIso: string,
 ): Promise<ProfileInstallEvent[]> {
-  const { data, error } = await supabase
+  // Two literal selects rather than one built string: the client types the
+  // response off the select TEXT, and a computed one comes back as a parser
+  // error instead of a row.
+  const first = await supabase
+    .from("install_events")
+    .select(
+      "id, installer_id, credited_to, minutes, quality_grade, created_at, opening:project_opening_id(opening_code, project_id)",
+    )
+    .is("voided_at", null)
+    .gte("created_at", startIso)
+    .lt("created_at", endIso)
+    .or(`credited_to.eq.${profileId},and(credited_to.is.null,installer_id.eq.${profileId})`)
+    .order("created_at", { ascending: true });
+  if (!first.error) return (first.data ?? []) as unknown as ProfileInstallEvent[];
+  if (!isMissingColumn(first.error, "credited_to")) throw first.error;
+  const fallback = await supabase
     .from("install_events")
     .select(
       "id, installer_id, minutes, quality_grade, created_at, opening:project_opening_id(opening_code, project_id)",
@@ -771,19 +818,34 @@ export async function listInstallEventsForProfile(
     .gte("created_at", startIso)
     .lt("created_at", endIso)
     .order("created_at", { ascending: true });
-  if (error) throw error;
-  return (data ?? []) as unknown as ProfileInstallEvent[];
+  if (fallback.error) throw fallback.error;
+  return (fallback.data ?? []) as unknown as ProfileInstallEvent[];
 }
 
-/** Company analytics: per-installer install counts, speed, quality. */
+/**
+ * Company analytics: per-installer install counts, speed, quality.
+ *
+ * The person is who INSTALLED the unit — coalesce(credited_to, installer_id),
+ * wave Y — not who typed it in, so a lead filing the last three of the day
+ * does not quietly climb his own leaderboard.
+ */
 export async function getInstallerLeaderboard(): Promise<InstallerLeaderRow[]> {
-  const [profilesRes, eventsRes] = await Promise.all([
+  const [profilesRes, firstEvents] = await Promise.all([
     supabase.from("profiles").select("id, display_name"),
     supabase
       .from("install_events")
-      .select("installer_id, minutes, quality_grade")
+      .select("installer_id, credited_to, minutes, quality_grade")
       .not("installer_id", "is", null),
   ]);
+  const eventsRes: { data: unknown; error: unknown } = isMissingColumn(
+    firstEvents.error,
+    "credited_to",
+  )
+    ? await supabase
+        .from("install_events")
+        .select("installer_id, minutes, quality_grade")
+        .not("installer_id", "is", null)
+    : firstEvents;
   if (profilesRes.error) throw profilesRes.error;
   if (eventsRes.error) throw eventsRes.error;
 
@@ -794,12 +856,18 @@ export async function getInstallerLeaderboard(): Promise<InstallerLeaderRow[]> {
     string,
     { minutes: number[]; grades: number[] }
   >();
-  for (const e of eventsRes.data ?? []) {
-    if (!e.installer_id) continue;
-    const b = byInstaller.get(e.installer_id) ?? { minutes: [], grades: [] };
+  for (const e of ((eventsRes.data ?? []) as unknown) as {
+    installer_id: string | null;
+    credited_to?: string | null;
+    minutes: number | null;
+    quality_grade: number | null;
+  }[]) {
+    const who = e.credited_to ?? e.installer_id;
+    if (!who) continue;
+    const b = byInstaller.get(who) ?? { minutes: [], grades: [] };
     if (e.minutes != null) b.minutes.push(e.minutes);
     if (e.quality_grade != null) b.grades.push(e.quality_grade);
-    byInstaller.set(e.installer_id, b);
+    byInstaller.set(who, b);
   }
 
   const median = (xs: number[]): number | null => {
@@ -3433,6 +3501,12 @@ export interface SubmitInstallParams extends Partial<MemoTopics> {
   estimateMinutes?: number | null;
   /** The chain: the unit the clock hands off to at finish. */
   nextOpeningId?: string | null;
+  /**
+   * Who actually installed it, when that is not the person filing (wave Y).
+   * Null — the ordinary case — is left off the wire entirely, so an ordinary
+   * finish keeps making the exact call it always has.
+   */
+  creditedTo?: string | null;
 }
 
 /**
@@ -3441,10 +3515,16 @@ export interface SubmitInstallParams extends Partial<MemoTopics> {
  * session-derived server-side; the old client-sent figures are ignored by
  * design — the hand-typed era is over.
  */
+export const CREDIT_NOT_LIVE_YET =
+  "This phone is newer than the app's database, so an install cannot be filed " +
+  "under someone else's name yet. Let the person who installed it file it, or " +
+  "try again in a few minutes.";
+
 export async function submitInstallEvent(
   params: SubmitInstallParams,
 ): Promise<InstallEvent> {
-  const { data, error } = await supabase.rpc("finish_unit", {
+  const credited = params.creditedTo ?? null;
+  const args = {
     p_opening_id: params.openingId,
     p_next_opening_id: params.nextOpeningId ?? null,
     p_installer: await actor(),
@@ -3460,8 +3540,31 @@ export async function submitInstallEvent(
     p_safety_notes: params.safety_notes ?? null,
     p_do_again: params.do_again ?? null,
     p_transcript_raw: params.transcriptRaw ?? null,
-  });
-  if (error) throw error;
+  };
+  // `p_credited_to` rides ONLY when there is a credit to name. A finish of your
+  // own work therefore makes the same fifteen-argument call it always did, so a
+  // phone running ahead of the migration still finishes units — which is the
+  // rule for every feature here.
+  const { data, error } = await supabase.rpc(
+    "finish_unit",
+    credited ? { ...args, p_credited_to: credited } : args,
+  );
+  if (error) {
+    // A database without the wider form. We could file this under the person
+    // holding the phone and say nothing, but that is the exact wrong record —
+    // the one this whole wave exists to stop. Refuse, and say why in words.
+    //
+    // Marked permanent so the outbox treats it as a verdict rather than a bad
+    // signal: retrying every thirty seconds would put a "saved on this device"
+    // toast in front of somebody whose install is not going anywhere until the
+    // migration lands.
+    if (credited && isMissingSchemaFunction(error)) {
+      const refusal = new Error(CREDIT_NOT_LIVE_YET) as Error & { permanent?: boolean };
+      refusal.permanent = true;
+      throw refusal;
+    }
+    throw error;
+  }
   return data as InstallEvent;
 }
 
@@ -3914,7 +4017,15 @@ export async function applyPlacementSuggestions(
   return { saved: Number(data) || 0, unavailable: false };
 }
 
-/** Install events by this installer whose AI-filled memo still needs a glance. */
+/**
+ * Install events by this installer whose AI-filled memo still needs a glance.
+ *
+ * Deliberately NOT switched to coalesce(credited_to, installer_id) in wave Y:
+ * the memo is a recording of what the person who FILED it dictated, and the
+ * confirm step is "read back what the AI heard you say". Handing Sam somebody
+ * else's dictation to approve would be asking him to vouch for words he never
+ * spoke.
+ */
 export async function listMemosToConfirm(
   installerId: string,
 ): Promise<InstallEvent[]> {

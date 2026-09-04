@@ -160,7 +160,10 @@ class TestSchemaParsing(unittest.TestCase):
         # contractor, the six standing answers (Wave H, H1, 20260981000000).
         # +2: gc_links + gc_messages — the no-login link a GC opens and the
         # thread on it (Wave H, H2, 20260981000000). Four tables for the wave.
-        self.assertEqual(len(SCHEMA.tables), 126)
+        # +1: opening_assignment_events — one row per time a unit changed
+        # hands, written by a trigger on project_openings.assigned_to (Wave Y,
+        # Y5, 20260982000000).
+        self.assertEqual(len(SCHEMA.tables), 127)
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 
