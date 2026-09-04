@@ -5853,6 +5853,17 @@ insert into company_settings (id) values (1) on conflict (id) do nothing;
 
 alter table company_settings enable row level security;
 
+-- Revoke BEFORE granting, because this project's default privileges hand every
+-- new table in `public` the full set — insert, update, delete, trigger,
+-- references — to `authenticated`. 20260729230000 wrote down why "RLS is on and
+-- the only policy is a SELECT one" is not good enough: it makes RLS the single
+-- thing standing between a crew login and rewriting the company's settings, and
+-- one permissive policy added later, by anybody, turns it into a write hole.
+-- set_evening_nudge_time runs security definer, so the revoke does not touch it.
+revoke all on company_settings from anon, authenticated;
+grant select on company_settings to authenticated;
+grant all on company_settings to service_role;
+
 -- Readable by any signed-in crew member (the clock sheet may one day want to
 -- say when the nudge goes out), never by a partner login — the mechanical
 -- wall guard every crew table carries since 20260950000000. No insert/update/
