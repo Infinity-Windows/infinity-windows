@@ -130,6 +130,40 @@ function usePipelineFixtures(page: Page) {
   const state = { rows: [NOT_READY, FINE, LATE] as Record<string, unknown>[] };
   const calls: { fn: string; body: unknown }[] = [];
 
+  // Wave H (H1) gave "Needs a call" a FOURTH reason: nobody has talked to the
+  // job's GC in a fortnight. Pecan Valley is this file's "completely fine" job,
+  // and after wave H a job with no check-in on file is not fine — so it gets a
+  // fresh one, which is what being fine now means. Sand Hollow and Black Desert
+  // deliberately get none: each already has its own reason, and leaving them
+  // without one also proves the new reason does not double-count.
+  void page.route("**/rest/v1/project_gc_checkins**", (r) => {
+    // The real table is read two ways: filtered to one job (the Pipeline and GC
+    // cards) and unfiltered for the whole Jobs list. Honour the filter, or Sand
+    // Hollow inherits Pecan Valley's check-in and the card stops saying the
+    // true thing about it.
+    const wanted = /project_id=eq\.([^&]+)/.exec(r.request().url())?.[1] ?? null;
+    const rows = [
+      {
+        id: "checkin-fine",
+        project_id: FINE_ID,
+        contacted_at: `${day(-2)}T16:00:00Z`,
+        author_id: null,
+        contact_name: "Dave",
+        channel: "call",
+        expected_end_date: day(90),
+        roof_on_date: day(20),
+        framing_checked: true,
+        set_preference: "outset",
+        exterior_material: "Stucco",
+        interior_material: "Drywall",
+        notes: null,
+        source: "crew",
+        created_at: `${day(-2)}T16:00:00Z`,
+      },
+    ].filter((row) => !wanted || row.project_id === wanted);
+    return json(r, rows, rows.length);
+  });
+
   void page.route("**/rest/v1/rpc/set_projects_order", async (r) => {
     const body = r.request().postDataJSON() as { p_ids: string[] };
     calls.push({ fn: "set_projects_order", body });
@@ -217,8 +251,9 @@ test("a job card says it is not ready, when it starts, and when the windows land
     /Not ready · start ~.+ · windows ETA .+/,
   );
 
-  // A job that is ready with its windows in wears none of it — absence is the
-  // quiet state, so the card missing a sticker is never the one that matters.
+  // A job that is ready, with its windows in and its builder spoken to, wears
+  // none of it — absence is the quiet state, so the card missing a sticker is
+  // never the one that matters.
   const pecan = page.locator("a.project-card").filter({ hasText: "Pecan Valley" });
   await expect(pecan.locator(".job-ready-badge")).toHaveCount(0);
   await expect(pecan.locator(".job-needs-call")).toHaveCount(0);
@@ -239,6 +274,25 @@ test("Needs a call lands on the jobs with a reason and nowhere else", async ({ p
   await expect(
     page.locator("a.project-card").filter({ hasText: "Pecan Valley" }).locator(".job-needs-call"),
   ).toHaveCount(0);
+});
+
+test("a job nobody has called the builder about needs a call, whatever else is fine", async ({
+  page,
+}) => {
+  // Wave H (H1)'s fourth reason, on the real Jobs page. Pecan Valley is ready,
+  // its windows are in, and it starts in a week: before this wave it had
+  // nothing to say. Take away the one check-in on file and the chip lights —
+  // which on the first morning after wave H deploys is true of every job in the
+  // company, because nobody has ever been able to file one.
+  await useSupabaseFixtures(page, { role: "foreman" });
+  usePipelineFixtures(page);
+  // Registered last, so it wins: no check-ins anywhere.
+  await page.route("**/rest/v1/project_gc_checkins**", (r) => json(r, [], 0));
+  await page.goto("/projects");
+
+  await expect(
+    page.locator("a.project-card").filter({ hasText: "Pecan Valley" }).locator(".job-needs-call"),
+  ).toHaveCount(1);
 });
 
 test("the order a foreman puts the jobs in survives a reload", async ({ page }) => {
@@ -295,7 +349,9 @@ test("a foreman marks the windows arrived in one tap from the job's Overview", a
 
   const card = page.locator("section.detail-card").filter({ hasText: "Pipeline" }).first();
   await expect(card).toBeVisible();
-  // The wave H seam is on screen and honest about knowing nothing yet.
+  // Wave H filled the seam that used to read "None yet" for every job. Sand
+  // Hollow genuinely has no check-in, so it still says so — which is only true
+  // because the fixture honours the project filter above.
   await expect(card.getByText(/None yet/i)).toBeVisible();
 
   await card.getByRole("button", { name: /^Materials arrived$/i }).click();
