@@ -88,9 +88,17 @@ letters were read first. Where a style names two doors ("Sliding Door
 with ... French Door", #29), the FIRST is the unit: the supplier writes
 the unit and then its neighbours.
 
-Of the letter strings only OXXO is a door kind on its own - it is the
-four-panel two-track slider above, and the one letter string
-`inferHardware` turns into slider language without help from the style.
+An operation line that is nothing but X and O letters names a **slider**,
+whatever the count: X/O is slider panel notation (above) and is used for
+nothing else, so "XO" is a two-panel patio slider just as "OXXO" is the
+four-panel one. `openingUnitKind` already reads those letters that way on
+a door's type code.
+
+Careful with `inferHardware` here: it draws a non-OXXO letter string as a
+hinged leaf, and that is a DRAWING fallback - the fit view has no slide
+arrow for an odd panel count - not a statement that the door swings.
+`doorKind` counts the unit; `inferHardware` draws it. They read the same
+sheet in the same order, and only the drawing has that gap.
 
 ## Thresholds, tracks, sills (from the Strata sheets)
 

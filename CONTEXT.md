@@ -518,9 +518,9 @@ cite, never re-decide). How big a job is, answered before anybody opens it.
 `other`. Read off the supplier's own words by ONE function (`doorKind`,
 `app/src/lib/install/specKinds.mjs`) in the order `inferHardware` reads the same
 sheet in — the style line, then the operation line, then the operation letters,
-of which only OXXO names a kind on its own. A word always beats the letters,
-because reading the letters first is what once drew a run of French doors as
-sliders. The vocabulary is `docs/window-vendor-conventions.md`, and CLAUDE.md's
+which name a slider whatever the count, because X/O is slider panel notation and
+is written on nothing else. A word always beats the letters, because reading the
+letters first is what once drew a run of French doors as sliders. The vocabulary is `docs/window-vendor-conventions.md`, and CLAUDE.md's
 law is that the doc, `inferHardware` and the classifier change together. `other`
 is not a gap, it is an answer: the paperwork did not say which, and a foreman
 correcting the spec text moves the mark out of it. It is STORED, on

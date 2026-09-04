@@ -106,13 +106,17 @@ function firstDoorWord(text) {
  *  2. the operation line's door word, for the marks whose style says only
  *     "Commercial style door" and whose operation says "Swing door, single
  *     leaf" (Mad Moose, live pilot 2026-09-02);
- *  3. the operation LETTERS, read from outside, X = operating, O = fixed. Only
- *     "OXXO" is a door kind on its own — that is the four-panel two-track
- *     slider the vendor doc names, and the one letter string `inferHardware`
- *     turns into slider language (`bipart`) without help from the style. Every
- *     other letter string it draws as a hinged leaf, so a hinged leaf is what
- *     this calls it. Letters never override a word: Mad Moose's French doors
- *     drew as sliders once (units.ts) and that is the bug this ordering avoids.
+ *  3. the operation LETTERS — and every one of them means slider. X/O is
+ *     SLIDER PANEL NOTATION and nothing else: read from outside, X = a panel
+ *     that slides, O = a panel that does not
+ *     (docs/window-vendor-conventions.md, "Slider panel notation (OXXO)"). A
+ *     door whose operation line is "XO" is a two-panel patio slider, which is
+ *     also how `openingUnitKind` below already reads those letters on a door
+ *     code. `inferHardware` drawing a non-OXXO string as a hinged leaf is a
+ *     DRAWING fallback — the renderer has no slide arrow for an odd panel
+ *     count — not a claim that the unit swings, and it must not be read as one.
+ *     Letters never override a word: Mad Moose's French doors drew as sliders
+ *     once (units.ts) and that is the bug this ordering avoids.
  *  4. otherwise "other" — a door whose paperwork does not say which. Honest,
  *     and countable, which is the whole point of storing it.
  *
@@ -130,7 +134,7 @@ export function doorKind(style, operation) {
   if (fromOperation) return fromOperation;
 
   const letters = (operation ?? "").trim().toUpperCase();
-  if (/^[XO]{2,}$/.test(letters)) return letters === "OXXO" ? "slider" : "swing";
+  if (/^[XO]{2,}$/.test(letters)) return "slider";
 
   return "other";
 }

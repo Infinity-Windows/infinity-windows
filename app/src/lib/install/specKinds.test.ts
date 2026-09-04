@@ -67,13 +67,20 @@ describe("doorKind", () => {
     expect(doorKind(BD_FRENCH_DOOR, "XO")).toBe("french");
   });
 
-  it("reads OXXO as the slider the vendor doc says it is", () => {
-    // docs/window-vendor-conventions.md: OXXO is slider panel notation, and
-    // it is the one letter string inferHardware turns into slider language.
+  it("reads the operation letters as the slider notation they are", () => {
+    // docs/window-vendor-conventions.md, "Slider panel notation (OXXO)": X/O
+    // is what a sliding unit's panels are written as and is used for nothing
+    // else — X slides, O does not. So every letter string is a slider, not
+    // just the four-panel OXXO. All 98 real spec rows carrying XO/OX say
+    // "Sliding Door" on their style line, which is the same answer.
     expect(doorKind(null, "OXXO")).toBe("slider");
-    // Every other letter string inferHardware draws as a hinged leaf.
-    expect(doorKind(null, "XO")).toBe("swing");
-    expect(doorKind("", "OX")).toBe("swing");
+    expect(doorKind(null, "XO")).toBe("slider");
+    expect(doorKind("", "OX")).toBe("slider");
+    expect(doorKind(null, "OXO")).toBe("slider");
+    // inferHardware draws a non-OXXO string as a hinged leaf because the
+    // renderer has no slide arrow for an odd panel count. That is a drawing
+    // fallback, and reading it as "this door swings" is the bug this guards.
+    expect(doorKind(null, "XO")).not.toBe("swing");
   });
 
   it("reads a bifold when the sheet says bifold", () => {
