@@ -1470,11 +1470,18 @@ export async function openingsReferencedElsewhere(
  * cannot quietly change what a re-extract considers field work.
  */
 export const EXISTING_OPENING_COLS =
+  "id, opening_code, confirmed, status, pin_x, pin_y, page_number, planset_id, assigned_to, work_started_at, ro_width_in, ro_height_in, ro_quick_ok, condition, field_added";
+
+/**
+ * The same list as the database knew it before 20260977000000 added
+ * `field_added` — the first fallback for a phone running ahead of the server.
+ */
+export const EXISTING_OPENING_COLS_NO_FIELD_ADDED =
   "id, opening_code, confirmed, status, pin_x, pin_y, page_number, planset_id, assigned_to, work_started_at, ro_width_in, ro_height_in, ro_quick_ok, condition";
 
 /**
  * The same list as the database knew it before 20260966000000 added
- * `ro_quick_ok` — the fallback for a phone running ahead of the server.
+ * `ro_quick_ok` — the fallback for a phone running further ahead still.
  */
 export const EXISTING_OPENING_COLS_NO_QUICK_OK =
   "id, opening_code, confirmed, status, pin_x, pin_y, page_number, planset_id, assigned_to, work_started_at, ro_width_in, ro_height_in, condition";
@@ -1497,6 +1504,9 @@ interface ExistingOpeningRow {
   ro_height_in: number | string | null;
   ro_quick_ok?: boolean | null;
   condition: string | null;
+  /** Wave E. Optional for the same reason ro_quick_ok is: a database that has
+   *  never heard of it has no field-added rows to protect. */
+  field_added?: boolean | null;
 }
 
 /**
@@ -1539,15 +1549,34 @@ export async function saveDraftOpenings(
   // foreman taps "Load marks from plans" and no openings are saved at all.
   // Read the row without the quick check instead: on a server that has never
   // heard of the column, "nobody quick-checked anything" is exactly the truth.
+  //
+  // Two rungs now, newest column first, because the two migrations that added
+  // them can land separately: a server with ro_quick_ok but no field_added
+  // must not lose the quick check on the way down.
   let existing: ExistingOpeningRow[] | null = first.data;
   if (first.error) {
-    if (!isMissingColumn(first.error, "ro_quick_ok")) throw first.error;
-    const retry = await supabase
+    // Either name is a reason to peel back — PostgREST names whichever unknown
+    // column it hit first, and on a database missing both that is not
+    // necessarily the newest one.
+    const peelable =
+      isMissingColumn(first.error, "field_added") ||
+      isMissingColumn(first.error, "ro_quick_ok");
+    if (!peelable) throw first.error;
+    const noFieldAdded = await supabase
       .from("project_openings")
-      .select(EXISTING_OPENING_COLS_NO_QUICK_OK)
+      .select(EXISTING_OPENING_COLS_NO_FIELD_ADDED)
       .eq("project_id", projectId);
-    if (retry.error) throw retry.error;
-    existing = retry.data;
+    if (!noFieldAdded.error) {
+      existing = noFieldAdded.data;
+    } else {
+      if (!isMissingColumn(noFieldAdded.error, "ro_quick_ok")) throw noFieldAdded.error;
+      const retry = await supabase
+        .from("project_openings")
+        .select(EXISTING_OPENING_COLS_NO_QUICK_OK)
+        .eq("project_id", projectId);
+      if (retry.error) throw retry.error;
+      existing = retry.data;
+    }
   }
 
   const referenced = await openingsReferencedElsewhere(
@@ -1579,6 +1608,7 @@ export async function saveDraftOpenings(
     ro_height_in: o.ro_height_in == null ? null : Number(o.ro_height_in),
     ro_quick_ok: Boolean(o.ro_quick_ok),
     condition: o.condition ?? null,
+    field_added: Boolean(o.field_added),
     referenced: referenced.has(o.id),
   }));
 

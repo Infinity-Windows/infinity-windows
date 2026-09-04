@@ -19,6 +19,8 @@ import {
 import { listServiceCases } from "../lib/service";
 import { listQcStatusForOpenings } from "../lib/ops";
 import { formatApiError } from "../lib/errors";
+import { isMissingColumn } from "../lib/schemaErrors";
+import { useT } from "../lib/i18n";
 import {
   openingUnitKind,
   openingUnitKindResolver,
@@ -33,6 +35,9 @@ interface ProjectLite {
 interface OpeningLite {
   id: string;
   opening_code: string;
+  /** Wave E: added on site rather than read off a planset. Optional because
+   *  the column arrives with 20260977000000 — absent reads as "not one". */
+  field_added?: boolean | null;
   window_types: {
     category: string | null;
     type_code: string | null;
@@ -55,16 +60,21 @@ async function fetchIssueRefs(): Promise<{
   markSpecs: MarkSpecLite[];
   profiles: ProfileLite[];
 }> {
-  const [projRes, openRes, specRes, profRes] = await Promise.all([
+  const openingCols = (fieldAdded: boolean) =>
+    `id, opening_code, ${fieldAdded ? "field_added, " : ""}window_types(category, type_code, name)`;
+  const [projRes, openFirst, specRes, profRes] = await Promise.all([
     supabase.from("projects").select("id, job_code, name, status"),
-    supabase
-      .from("project_openings")
-      .select("id, opening_code, window_types(category, type_code, name)"),
+    supabase.from("project_openings").select(openingCols(true)),
     // The descriptions decide window vs door. A mark code only means anything
     // inside its own job, so the project id comes with it.
     supabase.from("project_mark_specs").select("project_id, mark_code, style"),
     supabase.from("profiles").select("id, display_name"),
   ]);
+  // A phone ahead of the migration still gets its issues list; it simply has
+  // no missed-unit badge to draw, which is the truth on that database.
+  const openRes = openFirst.error && isMissingColumn(openFirst.error, "field_added")
+    ? await supabase.from("project_openings").select(openingCols(false))
+    : openFirst;
   if (projRes.error) throw projRes.error;
   if (openRes.error) throw openRes.error;
   if (specRes.error) throw specRes.error;
@@ -84,6 +94,7 @@ function fmtWhen(iso: string | null): string {
 }
 
 export function Issues() {
+  const t = useT();
   const queryClient = useQueryClient();
   const [projectFilter, setProjectFilter] = useState<string>("all");
   const [kindFilter, setKindFilter] = useState<string>("all");
@@ -276,6 +287,12 @@ export function Issues() {
               >
                 {isDoor ? "▮" : "▯"} {opening.opening_code}
               </Link>
+            )}
+            {/* Wave E: a unit somebody found on site rather than one the plans
+                had. Says so here because Keep / Merge / Remove is a decision,
+                and the link above is where it gets made. */}
+            {opening?.field_added && (
+              <span className="issue-kind kind-flag">{t("missed.badge")}</span>
             )}
           </div>
           {noteParts.length > 1 ? (

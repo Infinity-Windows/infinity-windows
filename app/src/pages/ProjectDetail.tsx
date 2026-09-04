@@ -62,6 +62,7 @@ import { DailyLogsTab } from "../components/dailyLogs/DailyLogsTab";
 import { ClockInBlock } from "../components/clock/ClockInBlock";
 import { SpecsTab } from "../components/project/SpecsTab";
 import { CallForHandsPanel } from "../components/install/CallForHandsPanel";
+import { MissedUnitButton } from "../components/install/MissedUnitButton";
 import { JobCostCodesPanel } from "../components/project/JobCostCodesPanel";
 import { JobModeBadge } from "../components/JobModeBadge";
 import { useUnreadCounts } from "../lib/chat/useUnreadCounts";
@@ -712,6 +713,13 @@ function OverviewTab({
         <Link to={`/supplies?job=${projectId}`} className="action-btn">
           Supplies for this job
         </Link>
+        {/* Wave E: anyone on the job can record a window or door the plans
+            never had — the server checks they are clocked in here, which is
+            the permission that matters, so this is not role-gated. */}
+        <MissedUnitButton
+          projectId={projectId}
+          jobName={project?.job_code ?? project?.name ?? "this job"}
+        />
         <OfflineDownloadButton projectId={projectId} />
       </div>
 

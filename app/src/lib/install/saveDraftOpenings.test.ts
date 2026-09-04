@@ -13,6 +13,9 @@ const db = vi.hoisted(() => ({
   inserted: [] as Record<string, unknown>[],
   openings: [] as Record<string, unknown>[],
   quickOkColumnMissing: false,
+  /** The same case one migration later: the bundle knows `field_added`
+   *  (20260977000000, wave E) and the database does not yet. */
+  fieldAddedColumnMissing: false,
   /** Any other failure the openings read should return instead of rows. */
   openingsError: null as unknown,
 }));
@@ -23,6 +26,10 @@ vi.mock("../supabase", () => {
   const QUICK_OK_MISSING = {
     code: "42703",
     message: 'column project_openings.ro_quick_ok does not exist',
+  };
+  const FIELD_ADDED_MISSING = {
+    code: "42703",
+    message: 'column project_openings.field_added does not exist',
   };
 
   const make = (table: string) => {
@@ -54,6 +61,9 @@ vi.mock("../supabase", () => {
         return resolve({ data: [{ id: "ps-1", kind: "building" }], error: null });
       if (table !== "project_openings") return resolve({ data: [], error: null });
       if (db.openingsError) return resolve({ data: null, error: db.openingsError });
+      // Newest column first, the order PostgREST would notice them in.
+      if (columns.includes("field_added") && db.fieldAddedColumnMissing)
+        return resolve({ data: null, error: FIELD_ADDED_MISSING });
       if (columns.includes("ro_quick_ok") && db.quickOkColumnMissing)
         return resolve({ data: null, error: QUICK_OK_MISSING });
       return resolve({ data: db.openings, error: null });
@@ -69,6 +79,7 @@ vi.mock("../supabase", () => {
 
 import {
   EXISTING_OPENING_COLS,
+  EXISTING_OPENING_COLS_NO_FIELD_ADDED,
   EXISTING_OPENING_COLS_NO_QUICK_OK,
   saveDraftOpenings,
 } from "./api";
@@ -96,6 +107,7 @@ beforeEach(() => {
   db.deletedIds = [];
   db.inserted = [];
   db.quickOkColumnMissing = false;
+  db.fieldAddedColumnMissing = false;
   db.openingsError = null;
   db.openings = [
     {
@@ -133,17 +145,34 @@ describe("reading existing openings before a re-extract", () => {
     expect(result.inserted).toBe(1);
   });
 
-  it("still saves the draft when the column has not reached the server", async () => {
+  it("still saves the draft when neither new column has reached the server", async () => {
     db.quickOkColumnMissing = true;
+    db.fieldAddedColumnMissing = true;
 
     const result = await saveDraftOpenings("proj-1", "ps-1", [draft("7-1")]);
 
     expect(openingsSelects()).toEqual([
       `project_openings:${EXISTING_OPENING_COLS}`,
+      `project_openings:${EXISTING_OPENING_COLS_NO_FIELD_ADDED}`,
       `project_openings:${EXISTING_OPENING_COLS_NO_QUICK_OK}`,
     ]);
     expect(result.inserted).toBe(1);
     expect(db.inserted.map((r) => r.opening_code)).toEqual(["7-1"]);
+  });
+
+  // The rungs are separate for this exact case: the two migrations can land
+  // apart, and peeling straight back to the oldest list would throw away the
+  // quick check on a server that has it.
+  it("keeps the quick-check column when only field_added is missing", async () => {
+    db.fieldAddedColumnMissing = true;
+
+    const result = await saveDraftOpenings("proj-1", "ps-1", [draft("7-1")]);
+
+    expect(openingsSelects()).toEqual([
+      `project_openings:${EXISTING_OPENING_COLS}`,
+      `project_openings:${EXISTING_OPENING_COLS_NO_FIELD_ADDED}`,
+    ]);
+    expect(result.inserted).toBe(1);
   });
 
   it("keeps a quick-checked opening a re-extract would otherwise delete", async () => {
