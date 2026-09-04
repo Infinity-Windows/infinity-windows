@@ -1,5 +1,37 @@
-import { describe, expect, it } from "vitest";
-import { bidForMargin, computeLabor, HOURLY_RATE, toCsv, type JobCosting } from "./costing";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+// Every table this module reads, and which of them it actually asked for. The
+// second is the point of the Wave Z test at the bottom: a reader with no pay
+// grant must not even ask for pay_rates.
+const tables: Record<string, unknown[]> = {};
+const asked: string[] = [];
+
+vi.mock("./supabase", () => ({
+  supabase: {
+    from: (table: string) => {
+      asked.push(table);
+      const builder = {
+        select: () => builder,
+        order: () => builder,
+        eq: () => builder,
+        then: (
+          resolve: (v: { data: unknown[]; error: null }) => unknown,
+          reject?: (e: unknown) => unknown,
+        ) => Promise.resolve({ data: tables[table] ?? [], error: null }).then(resolve, reject),
+      };
+      return builder;
+    },
+  },
+}));
+
+import {
+  bidForMargin,
+  computeLabor,
+  getCompanyCosting,
+  HOURLY_RATE,
+  toCsv,
+  type JobCosting,
+} from "./costing";
 import { indexPayRates, type PayRate } from "./payRates";
 
 describe("computeLabor", () => {
@@ -153,5 +185,79 @@ describe("toCsv", () => {
     expect(csv.split("\n")).toHaveLength(2);
     expect(csv).toContain("SMITH");
     expect(csv).toContain('"Smith, Bob"');
+  });
+});
+
+// Wave Z review fix: "Sees costs" and "Sees pay rates" are separate grants on
+// purpose, so a bookkeeper who books job costs but may not read wages is the
+// ORDINARY case. RLS hands them no pay_rates rows, every line falls back to the
+// role table, and the screen used to tell them "estimated — no rate on file"
+// about people whose rate is very much on file. Two people with "Sees costs"
+// read two different margins; only one of them was told why.
+describe("getCompanyCosting and the pay grant", () => {
+  const SHIFT = {
+    project_id: "p1",
+    profile_id: "u1",
+    clock_in_at: "2026-03-02T15:00:00Z",
+    clock_out_at: "2026-03-02T23:00:00Z",
+    break_seconds: 0,
+    profiles: { role: "installer", display_name: "Dan" },
+  };
+
+  beforeEach(() => {
+    asked.length = 0;
+    for (const key of Object.keys(tables)) delete tables[key];
+    tables.projects = [{ id: "p1", job_code: "SMITH", name: "Smith" }];
+    tables.project_financials = [
+      { project_id: "p1", bid_amount: 10000, target_margin_pct: 20 },
+    ];
+    tables.job_costs = [];
+    tables.change_orders = [];
+    tables.time_shifts = [SHIFT];
+    // Dan earns $60/h, and it IS on file — the question is who may read it.
+    tables.pay_rates = [
+      {
+        id: "r1",
+        profile_id: "u1",
+        hourly_cents: 6000,
+        effective_from: "2026-01-01",
+        set_by: null,
+        created_at: "2026-01-01T00:00:00.000Z",
+      },
+    ];
+  });
+
+  it("prices off the real rate, and says nothing is estimated, for a reader with the pay grant", async () => {
+    const [row] = await getCompanyCosting({ canSeePay: true });
+    expect(asked).toContain("pay_rates");
+    expect(row.laborRatesVisible).toBe(true);
+    expect(row.laborEstimated).toBe(false);
+    expect(row.laborCost).toBe(8 * 60);
+    expect(row.laborPeople?.[0]?.estimated).toBe(false);
+  });
+
+  it("does not even ask for pay rates without the grant, and says the estimate is the READER's, not a missing rate", async () => {
+    const [row] = await getCompanyCosting({ canSeePay: false });
+    expect(asked).not.toContain("pay_rates");
+    // The flag the screen reads to pick its sentence. False means "you cannot
+    // see rates", which is a different sentence from "this person has none".
+    expect(row.laborRatesVisible).toBe(false);
+    expect(row.laborEstimated).toBe(true);
+    expect(row.laborCost).toBe(8 * HOURLY_RATE.installer);
+  });
+
+  it("still marks a genuinely rate-less person estimated for a reader who CAN see rates", async () => {
+    tables.pay_rates = [];
+    const [row] = await getCompanyCosting({ canSeePay: true });
+    expect(row.laborRatesVisible).toBe(true);
+    expect(row.laborEstimated).toBe(true);
+    expect(row.laborPeople?.[0]?.estimated).toBe(true);
+  });
+
+  it("defaults to reading rates when the caller says nothing, so no caller silently loses them", async () => {
+    const [row] = await getCompanyCosting();
+    expect(asked).toContain("pay_rates");
+    expect(row.laborRatesVisible).toBe(true);
+    expect(row.laborCost).toBe(8 * 60);
   });
 });

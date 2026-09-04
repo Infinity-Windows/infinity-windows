@@ -152,6 +152,19 @@ export interface JobCosting {
   laborEstimated?: boolean;
   /** Per-person labor, so the screen can name who is estimated. */
   laborPeople?: LaborPerson[];
+  /**
+   * Wave Z: whether the person READING this could see pay rates at all.
+   *
+   * False and every line is estimated for one reason — RLS handed this reader
+   * no `pay_rates` rows — which is a completely different sentence from "that
+   * person has no rate on file". The two grants are separate on purpose (a
+   * bookkeeper who books job costs has no business reading what the crew
+   * earns), so "Sees costs without Sees pay" is the ordinary everyday case,
+   * not a corner. Without this flag the screen tells a bookkeeper a rate is
+   * missing when it is not, and quietly shows them a different margin from
+   * the owner's with no explanation.
+   */
+  laborRatesVisible?: boolean;
 }
 
 export async function listJobCosts(projectId: string): Promise<JobCost[]> {
@@ -224,8 +237,18 @@ export async function setBid(
   if (error) throw error;
 }
 
-/** Company-wide costing rollup across active jobs. */
-export async function getCompanyCosting(): Promise<JobCosting[]> {
+/**
+ * Company-wide costing rollup across active jobs.
+ *
+ * `canSeePay` is what the CALLER knows about itself — owner, or granted "Sees
+ * pay rates". It is not a second lock (RLS already refuses the rows); it is how
+ * the screen tells "nobody has set this person's rate" apart from "you are not
+ * allowed to read it". Both produce the same fallback to the role table and the
+ * same estimate, and only one of them is the reader's problem to fix.
+ */
+export async function getCompanyCosting(
+  opts: { canSeePay?: boolean } = {},
+): Promise<JobCosting[]> {
   const [projRes, finRes, costRes, coRes, shiftRes] = await Promise.all([
     supabase.from("projects").select("id, job_code, name"),
     // Wave Z: the bid moved off `projects` into its own gated table. Degrades
@@ -271,7 +294,11 @@ export async function getCompanyCosting(): Promise<JobCosting[]> {
   // embedded) because pay_rates has its OWN grant — an owner sees rates, a
   // "Sees costs" bookkeeper does not, and RLS simply hands the second one no
   // rows, so their Costing screen falls back to the role table and says so.
-  const rates = indexPayRates(await listPayRates());
+  //
+  // Not asked for at all without the grant: the read would come back empty
+  // anyway, and skipping it keeps the screen from implying it tried.
+  const canSeePay = opts.canSeePay !== false;
+  const rates = canSeePay ? indexPayRates(await listPayRates()) : undefined;
 
   const labor = computeLabor(
     (shiftRes.data ?? []).map((s) => ({
@@ -311,6 +338,7 @@ export async function getCompanyCosting(): Promise<JobCosting[]> {
       targetMarginPct: fin?.target ?? null,
       laborEstimated: lab.estimated,
       laborPeople: lab.people,
+      laborRatesVisible: canSeePay,
     };
   });
 }
