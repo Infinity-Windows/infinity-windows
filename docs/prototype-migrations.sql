@@ -5762,6 +5762,15 @@ alter table time_shifts add column if not exists last_seen_at timestamptz;
 alter table time_shifts add column if not exists last_seen_lat double precision;
 alter table time_shifts add column if not exists last_seen_lng double precision;
 
+-- The fix's own accuracy radius, in metres, stored WITH the point it belongs to.
+-- Without it the supervisor line would be the one half of this feature that
+-- speaks when it is not sure: the prompt (K1) stays silent on a fix fuzzier than
+-- the far-from-job threshold, but a bare lat/lng read back later carries no
+-- uncertainty, so `farFromJob` skips that guard and a wifi-derived 3 km fix from
+-- inside a house prints "last seen 2 mi from where they clocked in" about
+-- somebody standing on site. Null means the phone did not report one.
+alter table time_shifts add column if not exists last_seen_accuracy_m double precision;
+
 -- The company-local DAY the evening nudge last went out for this shift — a
 -- date, not a timestamp, on purpose. A shift nobody closed for three days
 -- should be asked about again each evening (that is precisely the shift worth
@@ -5773,6 +5782,8 @@ comment on column time_shifts.last_seen_at is
   'When the app was last brought to the foreground while this shift was open. Foreground only — there is no background location in this app and there must not be (Wave K, K3).';
 comment on column time_shifts.last_seen_lng is
   'Longitude of the last foreground fix on this shift. One point, overwritten each time — never a track.';
+comment on column time_shifts.last_seen_accuracy_m is
+  'Reported accuracy radius (metres) of the last foreground fix, or null when the phone did not say. Read back together with the point so a fuzzy fix cannot be reported as a confident distance (Wave K, K3).';
 
 -- ---------------------------------------------------------------------------
 -- 2. K3 — touch_shift_location: the one door, and it only opens on yourself
@@ -5786,9 +5797,16 @@ comment on column time_shifts.last_seen_lng is
 -- A caller who is not on the clock gets `null` and no error. That is deliberate:
 -- this runs on every app open, and an app that threw an error at somebody for
 -- the crime of opening it off the clock would teach the crew to distrust it.
+-- An earlier draft of this migration took two arguments. Dropped rather than
+-- left as an overload: with defaults on both, a two-argument call would be
+-- ambiguous between the two, and PostgREST would pick by parameter names and
+-- quietly keep writing points with no accuracy beside them.
+drop function if exists public.touch_shift_location(double precision, double precision);
+
 create or replace function public.touch_shift_location(
   p_lat double precision default null,
-  p_lng double precision default null
+  p_lng double precision default null,
+  p_accuracy_m double precision default null
 )
 returns uuid
 language plpgsql
@@ -5809,7 +5827,16 @@ begin
          -- visit with location switched off still updates the TIME (they had
          -- the app open) and leaves the last known point alone.
          last_seen_lat = coalesce(p_lat, last_seen_lat),
-         last_seen_lng = coalesce(p_lng, last_seen_lng)
+         last_seen_lng = coalesce(p_lng, last_seen_lng),
+         -- The accuracy moves WITH the point, and only with it. Coalescing it
+         -- the way the coordinates are coalesced would pair a brand-new point
+         -- with the previous fix's radius, which is a worse lie than storing
+         -- nothing: a 3 km fix would inherit "accurate to 20 m" and the
+         -- supervisor line would state a distance it has no right to.
+         last_seen_accuracy_m = case
+           when p_lat is not null and p_lng is not null then p_accuracy_m
+           else last_seen_accuracy_m
+         end
    where profile_id = v_uid
      and status = 'open'
      and clock_out_at is null
@@ -5819,11 +5846,11 @@ begin
 end;
 $$;
 
-comment on function public.touch_shift_location(double precision, double precision) is
-  'Self-only: stamps the caller''s own OPEN shift with the moment the app came to the foreground and, when the phone already had permission, where it was. Returns the shift id, or null when the caller is not on the clock (never an error — this runs on every app open). Foreground only; this app has no background location (Wave K, K3).';
+comment on function public.touch_shift_location(double precision, double precision, double precision) is
+  'Self-only: stamps the caller''s own OPEN shift with the moment the app came to the foreground and, when the phone already had permission, where it was and how precisely. Returns the shift id, or null when the caller is not on the clock (never an error — this runs on every app open). Foreground only; this app has no background location (Wave K, K3).';
 
-revoke all on function public.touch_shift_location(double precision, double precision) from public, anon;
-grant execute on function public.touch_shift_location(double precision, double precision) to authenticated;
+revoke all on function public.touch_shift_location(double precision, double precision, double precision) from public, anon;
+grant execute on function public.touch_shift_location(double precision, double precision, double precision) to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- 3. K2 — the one company setting behind the evening nudge

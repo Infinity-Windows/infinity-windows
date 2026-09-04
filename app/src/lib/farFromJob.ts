@@ -120,6 +120,8 @@ export interface LastSeenShift {
   last_seen_at?: string | null;
   last_seen_lat?: number | null;
   last_seen_lng?: number | null;
+  /** The last fix's own accuracy radius in metres — see why below. */
+  last_seen_accuracy_m?: number | null;
   clock_in_lat?: number | null;
   clock_in_lng?: number | null;
 }
@@ -127,11 +129,16 @@ export interface LastSeenShift {
 /**
  * "Last seen away from the job", or null when there is nothing honest to say.
  *
- * The job's position here is where THIS punch was clocked in — the same
- * reference the far-from-job question uses, and the only one a single shift row
- * carries on its own. That makes the line mean something precise: they started
- * the shift here, and the last time they opened the app they were N miles from
- * that spot.
+ * The job's position here is where THIS punch was clocked in — the only one a
+ * single shift row carries on its own. That makes the line mean something
+ * precise: they started the shift here, and the last time they opened the app
+ * they were N miles from that spot.
+ *
+ * The accuracy radius rides along on purpose. `farFromJob` refuses to call a
+ * fix "far" when its own uncertainty is wider than the threshold, and dropping
+ * the radius on the way through the database would silently skip that guard —
+ * which is how a wifi-derived 3 km fix from inside a house ends up printed as a
+ * confident two miles.
  *
  * Null whenever any of it is unknown, and null when they are NOT far. A
  * supervisor list that said "last seen at the job" for everybody would be noise;
@@ -142,9 +149,13 @@ export function lastSeenAwayFromJob(
 ): { miles: string; atIso: string } | null {
   if (!shift?.last_seen_at) return null;
   const at = shift.last_seen_at;
-  const seen =
+  const seen: DeviceFix | null =
     shift.last_seen_lat != null && shift.last_seen_lng != null
-      ? { lat: shift.last_seen_lat, lng: shift.last_seen_lng }
+      ? {
+          lat: shift.last_seen_lat,
+          lng: shift.last_seen_lng,
+          accuracyM: shift.last_seen_accuracy_m ?? undefined,
+        }
       : null;
   const job =
     shift.clock_in_lat != null && shift.clock_in_lng != null

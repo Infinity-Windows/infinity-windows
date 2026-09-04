@@ -3,7 +3,8 @@
 // Three things this proves against the real page rather than a unit test:
 //   K3  a shift somebody left running shows where they were last seen, and
 //       only because the last foreground fix is miles from where they punched
-//       in — the row for a person still standing at the job says nothing.
+//       in AND precise enough to say so — the row for a person who has not
+//       moved says nothing, and neither does the row whose fix is 3 km fuzzy.
 //   K5  Team timecards steps between a week and a pay period, and the Gusto
 //       file is offered for a pay period and not for a week.
 //   K2  a foreman can see and move the hour the evening nudge goes out.
@@ -17,6 +18,7 @@ import { useSupabaseFixtures } from "./support/supabaseFixtures";
 
 const AWAY_ID = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
 const HERE_ID = "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb";
+const FUZZY_ID = "eeeeeeee-5555-4555-8555-eeeeeeeeeeee";
 const PROJECT_ID = "cccccccc-3333-4333-8333-cccccccccccc";
 
 // A job in Salt Lake, and a supply house ~14 miles north of it.
@@ -46,6 +48,7 @@ function shift(over: Record<string, unknown>) {
     last_seen_at: hoursAgo(1),
     last_seen_lat: AWAY.lat,
     last_seen_lng: AWAY.lng,
+    last_seen_accuracy_m: 20,
     projects: { job_code: "MADMOOSE", name: "Mad Moose" },
     cost_codes: { code: "100", label: "Install — windows" },
     profiles: { display_name: "Ana Ruiz" },
@@ -57,13 +60,21 @@ function shift(over: Record<string, unknown>) {
 
 const SHIFTS = [
   shift({}),
-  // Still standing at the job: last seen where the punch started.
+  // Still standing where the punch started: nothing to say.
   shift({
     id: "22222222-2222-4222-8222-222222222222",
     profile_id: HERE_ID,
     last_seen_lat: JOB.lat,
     last_seen_lng: JOB.lng,
     profiles: { display_name: "Ben Cole" },
+  }),
+  // Fourteen miles away on paper, but from a fix with a 3 km radius — the app
+  // cannot tell that from "inside the house", so it says nothing at all.
+  shift({
+    id: "33333333-3333-4333-8333-333333333333",
+    profile_id: FUZZY_ID,
+    last_seen_accuracy_m: 3_000,
+    profiles: { display_name: "Cara Diaz" },
   }),
 ];
 
@@ -114,9 +125,10 @@ test("a runaway punch says where the person was last seen, and only when that is
   await expect(runaways).toBeVisible();
   // 14 miles from where the punch started, at the hour the app was last opened.
   await expect(runaways.getByText(/last seen 14 mi from job ·/)).toHaveCount(1);
-  // Two people are on the list; only one of them moved.
+  // Three people are on the list; only one of them has a fix worth reporting.
   await expect(runaways.getByText("Ana Ruiz")).toHaveCount(1);
   await expect(runaways.getByText("Ben Cole")).toHaveCount(1);
+  await expect(runaways.getByText("Cara Diaz")).toHaveCount(1);
 });
 
 test("the team timecard steps to a pay period, and only a pay period offers the Gusto file", async ({

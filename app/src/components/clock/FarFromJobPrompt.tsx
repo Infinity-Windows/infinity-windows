@@ -105,8 +105,15 @@ export function FarFromJobPrompt({
       const fix = await captureGeoIfGranted();
       fixRef.current = fix;
       // The stamp goes in either way: "they had the app open at 4:12" is true
-      // and useful even when the phone would not say where.
-      await touchShiftLocation(fix?.lat ?? null, fix?.lng ?? null);
+      // and useful even when the phone would not say where. The accuracy goes
+      // WITH the point — a stored fix that has forgotten how unsure it was is
+      // one the supervisor list would report as a confident distance, which is
+      // exactly the silence this feature owes them (see lastSeenAwayFromJob).
+      await touchShiftLocation(
+        fix?.lat ?? null,
+        fix?.lng ?? null,
+        fix?.accuracyM ?? null,
+      );
       if (!fix) return;
 
       let jobGeo: { lat: number; lng: number } | null = null;

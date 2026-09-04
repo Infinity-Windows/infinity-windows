@@ -144,10 +144,44 @@ describe("lastSeenAwayFromJob", () => {
       last_seen_at: AT,
       last_seen_lat: FAR.lat,
       last_seen_lng: FAR.lng,
+      last_seen_accuracy_m: FAR.accuracyM,
       clock_in_lat: JOB.lat,
       clock_in_lng: JOB.lng,
     });
     expect(line).toEqual({ miles: "14", atIso: AT });
+  });
+
+  it("says nothing about a fix too fuzzy to tell near from far", () => {
+    // The half of this feature a supervisor reads must be as silent as the
+    // half an installer sees: a wifi-derived fix with a 3 km radius cannot
+    // tell "inside the house" from "two miles up the road", and the prompt
+    // stays quiet on exactly this input.
+    expect(
+      lastSeenAwayFromJob({
+        last_seen_at: AT,
+        last_seen_lat: FAR.lat,
+        last_seen_lng: FAR.lng,
+        last_seen_accuracy_m: 3_000,
+        clock_in_lat: JOB.lat,
+        clock_in_lng: JOB.lng,
+      }),
+    ).toBeNull();
+  });
+
+  it("still speaks when the phone reported no accuracy at all", () => {
+    // Null accuracy is "the phone didn't say", not "the phone was unsure" —
+    // treating it as unusable would blank the line on every device that omits
+    // the radius, and farFromJob has always taken that as no objection.
+    expect(
+      lastSeenAwayFromJob({
+        last_seen_at: AT,
+        last_seen_lat: FAR.lat,
+        last_seen_lng: FAR.lng,
+        last_seen_accuracy_m: null,
+        clock_in_lat: JOB.lat,
+        clock_in_lng: JOB.lng,
+      }),
+    ).toEqual({ miles: "14", atIso: AT });
   });
 
   it("says nothing when they are still at the job", () => {

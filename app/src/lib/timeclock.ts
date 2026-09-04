@@ -77,6 +77,13 @@ export interface TimeShift {
   last_seen_at?: string | null;
   last_seen_lat?: number | null;
   last_seen_lng?: number | null;
+  /**
+   * How precise that fix claimed to be, in metres. Stored beside the point so
+   * a reader can apply the same "too fuzzy to tell near from far" guard the
+   * prompt applies live — a point without its uncertainty would let the
+   * supervisor line state a distance the app itself would not act on.
+   */
+  last_seen_accuracy_m?: number | null;
   approved_by?: string | null;
   approved_at?: string | null;
   edited_by?: string | null;
@@ -865,6 +872,11 @@ export async function getJobLastGeo(
  * visit with location switched off still records the TIME, which is the half
  * of "last seen" a supervisor mostly cares about.
  *
+ * The fix's accuracy radius travels with the coordinates. Without it the point
+ * would be read back later as if it were exact, and the supervisor's "last
+ * seen N mi" line would confidently state a distance derived from a fix the
+ * app itself was too unsure of to ask a question about.
+ *
  * Never throws at the caller. This runs on every app open and it is a courtesy,
  * not a duty: a database that has not applied the migration yet, or a phone
  * with no signal, simply records nothing.
@@ -872,11 +884,13 @@ export async function getJobLastGeo(
 export async function touchShiftLocation(
   lat?: number | null,
   lng?: number | null,
+  accuracyM?: number | null,
 ): Promise<void> {
   try {
     const { error } = await supabase.rpc("touch_shift_location", {
       p_lat: lat ?? null,
       p_lng: lng ?? null,
+      p_accuracy_m: accuracyM ?? null,
     });
     if (error && !isMissingFunction(error)) {
       // Still swallowed — logged nowhere on purpose, because there is no
