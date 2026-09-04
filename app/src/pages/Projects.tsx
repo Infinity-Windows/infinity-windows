@@ -505,8 +505,11 @@ export function Projects() {
               }}
               onDragEnd={() => setDragIndex(null)}
             >
-              <div className="home-project-head">
-                {canOrder && (
+              {/* A grid, not a flex row: three declared columns, so the job
+                  name starts at the same x on every card and for every role.
+                  See the note over `.job-card-head` in index.css. */}
+              <div className="home-project-head job-card-head job-card-head-rail">
+                {canOrder ? (
                   <div
                     className="job-order-rail"
                     // Inside the Link, so every control here stops its own
@@ -547,10 +550,15 @@ export function Projects() {
                       <ChevronDown size={18} aria-hidden />
                     </button>
                   </div>
+                ) : (
+                  // An empty cell on purpose. Somebody who cannot reorder the
+                  // list still gets the rail's column reserved, so their job
+                  // names line up in exactly the same place a foreman's do.
+                  <div className="job-order-spacer" aria-hidden />
                 )}
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: 600, fontSize: 16, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
+                <div className="job-card-body">
+                  <div className="job-card-title">
+                    <span className="job-card-name">
                       {p.name || p.job_code}
                     </span>
                     <JobModeBadge allowed={p.allowed_modes} />
@@ -568,7 +576,7 @@ export function Projects() {
                       </span>
                     )}
                   </div>
-                  <div className="muted" style={{ fontSize: 12 }}>
+                  <div className="muted job-card-sub">
                     {p.job_code}
                     {p.address ? ` · ${p.address}` : ""}
                   </div>
@@ -576,18 +584,18 @@ export function Projects() {
                       prefers a traced model's own count, and reading one model
                       per listed job is the whole-table pull this wave removed.
                       See the note at the top of ScopeLine.tsx. */}
-                  <ScopeLine counts={c.row} stories={p.stories} trackingOnly={isTrackingOnly(p.allowed_modes)} />
+                  <ScopeLine
+                    counts={c.row}
+                    stories={p.stories}
+                    trackingOnly={isTrackingOnly(p.allowed_modes)}
+                    className="muted job-card-sub"
+                  />
                   {/* "Not ready · start ~Sep 22 · windows ETA Sep 15" */}
                   <PipelineLine job={p} />
                 </div>
                 <span
-                  style={{
-                    fontFamily: "var(--font-display)",
-                    fontWeight: 700,
-                    fontSize: 15,
-                    color: c.total > 0 ? pctColor : "var(--muted)",
-                    flex: "none",
-                  }}
+                  className="job-card-pct"
+                  style={{ color: c.total > 0 ? pctColor : "var(--muted)" }}
                 >
                   {c.total > 0 ? `${c.pct}%` : "—"}
                 </span>
@@ -600,10 +608,7 @@ export function Projects() {
                   />
                 </div>
               )}
-              <div
-                className="home-project-meta"
-                style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}
-              >
+              <div className="home-project-meta job-card-meta">
                 {/* The openings COUNT moved up into the scope line under the
                     job name (wave X); what is left here is the progress fact,
                     which the percentage and the bar above are about. */}

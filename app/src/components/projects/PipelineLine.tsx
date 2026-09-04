@@ -32,9 +32,8 @@ export function PipelineLine({ job }: { job: PipelineJob }) {
   }
 
   if (parts.length === 0) return null;
-  return (
-    <div className="muted job-pipeline-line" style={{ fontSize: 12 }}>
-      {parts.join(" · ")}
-    </div>
-  );
+  // The size lives in the card's stylesheet with the rest of its type scale
+  // (`.job-card-head .job-pipeline-line`), not inline here, so this line stays
+  // the same size as the scope line above it whoever changes one of them.
+  return <div className="muted job-pipeline-line">{parts.join(" · ")}</div>;
 }

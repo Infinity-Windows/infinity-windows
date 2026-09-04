@@ -11563,6 +11563,135 @@ button.stage-chip {
 }
 
 /* ---------------------------------------------------------------------------
+   The job card: one shape, whatever is on it and whoever is looking.
+
+   WHY THIS EXISTS. `.home-project-head` is a flex row with
+   `justify-content: space-between`, and the card's text block was a plain child
+   that never grew. With three children, space-between gives the leftover width
+   to the GAPS -- so a card with a lot to say (name, address, scope line,
+   pipeline line) stayed hard left, while a short one (a tracking job, two
+   lines) had its text shoved toward the middle of the card. Scrolling the jobs
+   list, the job names walked left and right, which is exactly what the owner
+   photographed on 2026-09-04. The reorder rail added a second offset on top,
+   because it only renders for foreman and up.
+
+   A grid fixes it at the root: columns are declared once, so they cannot be
+   argued into a different width by what a particular card happens to hold.
+   `.home-project-head` itself is left alone -- warehouse, storage, takeoffs and
+   the learn library all use it, and none of them wants a rail column.
+   --------------------------------------------------------------------------- */
+.job-card-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: var(--space-3);
+  /* Top, never centred: a two-line card and a four-line card must start their
+     names on the same line as each other. */
+  align-items: start;
+}
+
+/* The jobs list reserves the rail's column on EVERY card -- an empty spacer for
+   somebody who cannot reorder -- so the text edge is the same number for an
+   installer as for a foreman, and the first and last cards (whose up/down
+   button is disabled) do not drift either. 48px is the button, and the buttons
+   do not shrink: they are the glove size.
+   The min-height is what makes a short card and a tall one read as one family
+   down the list. A foreman's card is taller still, because the rail's two
+   48px buttons are, and that is the trade the buttons already bought. */
+.job-card-head-rail {
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+  /* Tighter than the no-rail variant, and hung into the card's own padding:
+     on a 390px phone the reserved column is a tenth of the screen, so every
+     pixel it can give back to the words is worth taking. */
+  column-gap: var(--space-2);
+  margin-left: -8px;
+  min-height: 92px;
+}
+
+/* The rail's negative margins were nudging it inside a flex row. In its own
+   grid track it just sits in it. */
+.job-card-head-rail .job-order-rail {
+  margin: 0;
+}
+
+/* Nothing in it, and that is the point -- it holds the column open. */
+.job-order-spacer {
+  min-height: 1px;
+}
+
+/* 4px of rhythm between the lines, and every one of them starts at the same
+   left edge as the line above it. */
+.job-card-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  text-align: left;
+}
+
+/* The name row. Type deliberately does NOT live here: DATA, NOT READY and
+   "Needs a call" are children of this row, and none of them names a font of its
+   own, so anything set here is a font they inherit. Putting the display face on
+   the row once made those three badges render in Barlow Condensed on this
+   screen and in Inter on the job header, the clock-in list and the pipeline
+   panel -- one badge, two typefaces, depending which screen you were on, and at
+   10px uppercase the condensed one is the harder of the two to read. So the row
+   only lays out; `.job-card-name` below carries the face and the size. */
+.job-card-title {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  width: 100%;
+}
+
+/* The job name at a size a person reads at arm's length, in the condensed
+   display face so a long name still fits a phone. Badges and chips sit inline
+   after it, on the same baseline, so the row reads as one line rather than a
+   stack of stickers. */
+.job-card-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--text-lg);
+  line-height: 1.1;
+}
+
+/* Job code, address, scope, pipeline: the supporting lines, all one size. */
+.job-card-sub {
+  font-size: var(--text-sm);
+  line-height: 1.35;
+}
+
+.job-card-head .job-pipeline-line {
+  font-size: var(--text-sm);
+  line-height: 1.35;
+}
+
+/* Sized to sit beside the name rather than under it. The colour still comes
+   from the card (green/amber/orange by how far along the job is) and the bar
+   below is untouched. */
+.job-card-pct {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--text-md);
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The card's four sizes are the ramp's four smallest, in order of how much the
+   line matters: name --text-lg, percent --text-md, the supporting lines
+   --text-sm, and this one --text-xs. Named rather than written as numbers so
+   the whole card moves together when the ramp does. */
+.job-card-meta {
+  justify-content: space-between;
+  align-items: center;
+  font-size: var(--text-xs);
+}
+
+/* ---------------------------------------------------------------------------
    Credentials (Wave O) — the cards a person holds, on a Roster row and on
    My Work. Four chip colours, and they are the only thing on the row that
    carries meaning by colour, so each one also says its own sentence: a card
