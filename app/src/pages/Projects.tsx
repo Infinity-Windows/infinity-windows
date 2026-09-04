@@ -117,7 +117,7 @@ export function Projects() {
   });
 
   const countFor = (projectId: string) => {
-    const row = counts.data?.get(projectId);
+    const row = counts.data?.[projectId];
     const total = row?.openings ?? 0;
     const installed = row?.installed ?? 0;
     const pct = total > 0 ? Math.round((installed / total) * 100) : 0;

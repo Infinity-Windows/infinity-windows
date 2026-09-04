@@ -86,7 +86,7 @@ function emptyScope(projectId: string): ScopeCounts {
 
 /**
  * How many openings, windows and doors every job has — counted in the database
- * (wave X, `project_scope_counts`), one grouped row per job.
+ * (wave X, `project_scope_counts`), one grouped row per job, keyed by job id.
  *
  * This REPLACES pulling every opening row on the company down to the phone and
  * counting them in JavaScript, which is what the jobs list used to do. The view
@@ -97,8 +97,18 @@ function emptyScope(projectId: string): ScopeCounts {
  * That fallback exists only for the gap between this shipping and the migration
  * deploying — once the view is live everywhere it can go, and nothing else
  * reads openings that way any more.
+ *
+ * A PLAIN OBJECT, not a Map, and that is not a style choice. `"scopeCounts"` is
+ * in queryClient's OFFLINE_KEYS, so this answer is dehydrated into localStorage
+ * through `JSON.stringify` and read back with `JSON.parse`. A Map stringifies to
+ * `{}` — the keys do not survive — so on the second and every later launch the
+ * restored value would be a truthy object with no `.get`, and the jobs list and
+ * the manager Home would throw through their only error boundary the moment
+ * they rendered, on every launch, because the bad value is restored again each
+ * time. Every other persisted query in this app answers with JSON-native data
+ * for exactly this reason. Keep it that way; `scope.test.ts` guards it.
  */
-export async function listScopeCounts(): Promise<Map<string, ScopeCounts>> {
+export async function listScopeCounts(): Promise<Record<string, ScopeCounts>> {
   const { data, error } = await supabase
     .from("project_scope_counts")
     .select(SCOPE_COUNT_COLS);
@@ -106,7 +116,7 @@ export async function listScopeCounts(): Promise<Map<string, ScopeCounts>> {
     if (isMissingTable(error, "project_scope_counts")) return legacyOpeningCounts();
     throw error;
   }
-  return new Map((data as ScopeCounts[]).map((row) => [row.project_id, row]));
+  return byProjectId(data as ScopeCounts[]);
 }
 
 /** One job's counts. Absent (a job with nothing on it) reads as all zeroes. */
@@ -118,11 +128,18 @@ export async function getScopeCounts(projectId: string): Promise<ScopeCounts> {
     .maybeSingle();
   if (error) {
     if (isMissingTable(error, "project_scope_counts")) {
-      return (await legacyOpeningCounts()).get(projectId) ?? emptyScope(projectId);
+      return (await legacyOpeningCounts())[projectId] ?? emptyScope(projectId);
     }
     throw error;
   }
   return (data as ScopeCounts | null) ?? emptyScope(projectId);
+}
+
+/** Rows in, one entry per job id out. Exported so a test can round-trip it. */
+export function byProjectId(rows: ScopeCounts[]): Record<string, ScopeCounts> {
+  const out: Record<string, ScopeCounts> = {};
+  for (const row of rows) out[row.project_id] = row;
+  return out;
 }
 
 /**
@@ -130,17 +147,17 @@ export async function getScopeCounts(projectId: string): Promise<ScopeCounts> {
  * path above — openings and installed, no kinds, which is exactly what the app
  * knew before the counts view existed.
  */
-async function legacyOpeningCounts(): Promise<Map<string, ScopeCounts>> {
+async function legacyOpeningCounts(): Promise<Record<string, ScopeCounts>> {
   const { data, error } = await supabase
     .from("project_openings")
     .select("project_id, status");
   if (error) throw error;
-  const byProject = new Map<string, ScopeCounts>();
+  const byProject: Record<string, ScopeCounts> = {};
   for (const row of (data ?? []) as { project_id: string; status: string }[]) {
-    const counts = byProject.get(row.project_id) ?? emptyScope(row.project_id);
+    const counts = byProject[row.project_id] ?? emptyScope(row.project_id);
     counts.openings += 1;
     if (row.status === "installed") counts.installed += 1;
-    byProject.set(row.project_id, counts);
+    byProject[row.project_id] = counts;
   }
   return byProject;
 }

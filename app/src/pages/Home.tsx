@@ -200,7 +200,7 @@ export function Home() {
   const crews = (todayCrews.data ?? []).filter((a) => a.status === "published");
 
   const projectCards = (projects.data ?? []).slice(0, 6).map((p) => {
-    const oc = openingCounts.data?.get(p.id);
+    const oc = openingCounts.data?.[p.id];
     const total = oc?.openings ?? 0;
     const installed = oc?.installed ?? 0;
     const pct = total > 0 ? Math.round((installed / total) * 100) : 0;
