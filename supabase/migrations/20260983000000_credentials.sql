@@ -238,6 +238,10 @@ create policy "credential docs replace own"
 --   * EDIT, VERIFY, UNVERIFY, VOID: supervisor+ only. An installer cannot
 --     correct their own typo, which is a deliberate cost: a row somebody can
 --     edit after it was verified is a row that means nothing.
+--   * VERIFY YOUR OWN CARD: nobody, at any rank. Both paths refuse it — the
+--     insert with `v_target <> v_me`, the update with its own check further
+--     down. "Checked" has to mean a second person looked at the paper, or it
+--     means nothing at all, and every supervisor and owner clears the rank bar.
 --
 -- PARTIAL BY DEFAULT, like updateProject learned to be in wave J: on an edit, a
 -- null argument means "leave that column alone", never "set it to null". A date
@@ -327,6 +331,23 @@ begin
     raise exception 'That card is not on file any more.';
   end if;
 
+  -- YOUR OWN CARD IS NEVER SELF-CHECKED, and this is the half that was missing.
+  -- The insert path above refuses it (`v_target <> v_me`), so an installer
+  -- adding their own card always lands unchecked — but every supervisor and
+  -- owner is rank 2+, and the rank check a few lines up was the ONLY gate on
+  -- this path. One tap on their own Roster row and the claim checked itself,
+  -- which is the one thing "checked" is supposed to mean it is not. Somebody
+  -- else has to look at the paper, whatever rank the holder happens to be.
+  --
+  -- UNchecking your own card stays allowed: taking a claim back is not the same
+  -- as making one, and a supervisor who realises their own card is out of date
+  -- should not have to find a colleague to say so. Everything else on this path
+  -- — a date, a kind, a void — is a correction, not a claim, and stays open.
+  if p_verified is true and v_row.profile_id = v_me then
+    raise exception 'Somebody else has to check your own card.'
+      using errcode = '42501';
+  end if;
+
   update certifications set
     kind = coalesce(p_kind, kind),
     other_label = case
@@ -373,7 +394,7 @@ end;
 $$;
 
 comment on function public.set_certification(uuid, uuid, text, text, date, date, text, boolean, boolean, boolean, boolean) is
-  'The one writer for certifications. Adding your OWN card needs no rank and always lands unverified; adding somebody else''s, and every edit, verification and void, is supervisor+. Partial: a null argument leaves that column alone, and a date is cleared through its own flag so verifying cannot wipe an expiry (Wave O, O1).';
+  'The one writer for certifications. Adding your OWN card needs no rank and always lands unverified; adding somebody else''s, and every edit, verification and void, is supervisor+. NOBODY checks their own card, whatever their rank — un-checking it is allowed, because taking a claim back is not making one. Partial: a null argument leaves that column alone, and a date is cleared through its own flag so verifying cannot wipe an expiry (Wave O, O1).';
 
 revoke all on function public.set_certification(uuid, uuid, text, text, date, date, text, boolean, boolean, boolean, boolean) from public, anon;
 grant execute on function public.set_certification(uuid, uuid, text, text, date, date, text, boolean, boolean, boolean, boolean) to authenticated;

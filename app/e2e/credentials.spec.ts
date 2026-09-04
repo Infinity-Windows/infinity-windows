@@ -297,6 +297,51 @@ test("the credential summary counts checked, unexpired cards and copies no names
   expect(copied).not.toMatch(/maria|dave|chris|sam/i);
 });
 
+test("a supervisor cannot check their OWN card, but can take the check back", async ({
+  page,
+}) => {
+  // The Roster hands every row the same supervisor powers, including the
+  // signed-in person's own — so without this rule one tap on your own row turns
+  // "I have an OSHA 30" into a checked fact about yourself, which is the one
+  // thing "checked" is supposed to mean it is not. set_certification refuses it
+  // in SQL; the screen does not offer it either.
+  await useSupabaseFixtures(page, { role: "supervisor" });
+  useCredentialFixtures(page, [
+    cert({
+      id: "00000000-0000-4000-8000-0000000000f1",
+      profile_id: TEST_USER.id,
+      kind: "osha30",
+      expires_on: day(300),
+      verified_at: null,
+      verified_by: null,
+    }),
+    cert({
+      id: "00000000-0000-4000-8000-0000000000f2",
+      profile_id: TEST_USER.id,
+      kind: "forklift",
+      expires_on: day(300),
+    }),
+    UNCHECKED,
+  ]);
+  await page.goto("/crew");
+
+  const mine = row(page, "E2E Fixture");
+  await expect(mine).toBeVisible();
+  // My unchecked card: no way to check it.
+  await expect(mine.getByRole("button", { name: /^Mark checked$/ })).toHaveCount(0);
+  // My already-checked card: taking a claim back is not making one.
+  await expect(mine.getByRole("button", { name: /^Undo checked$/ })).toHaveCount(1);
+  // And voiding my own row stays offered — "this was a mistake" removes a
+  // claim rather than making one.
+  await expect(mine.getByRole("button", { name: /^Void$/ })).toHaveCount(2);
+
+  // Somebody ELSE's unchecked card is still checkable, or the rule would have
+  // taken the whole feature out rather than the self-check.
+  await expect(row(page, "Chris").getByRole("button", { name: /^Mark checked$/ })).toHaveCount(
+    1,
+  );
+});
+
 test("a foreman reads every card and is offered no supervisor tap", async ({ page }) => {
   await useSupabaseFixtures(page, { role: "foreman" });
   useCredentialFixtures(page);

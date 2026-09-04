@@ -273,30 +273,37 @@ export function CredentialsSection({
               {cert.verifiedAt ? t("cred.verified") : t("cred.unverified")}
             </span>
             {cert.documentPath && <CardDocLink path={cert.documentPath} />}
+            {/* Nobody checks their own card, whatever their rank — so a
+                supervisor looking at their OWN row is not offered the tap.
+                Un-checking one they already hold IS offered, because taking a
+                claim back is not making one, and set_certification draws the
+                line in exactly the same place. */}
+            {canManage && (!isSelf || Boolean(cert.verifiedAt)) && (
+              <button
+                type="button"
+                className="button-like"
+                disabled={change.isPending}
+                onClick={() =>
+                  change.mutate({ id: cert.id, verified: !cert.verifiedAt })
+                }
+              >
+                {cert.verifiedAt ? t("cred.unverify") : t("cred.verify")}
+              </button>
+            )}
+            {/* Voiding your own card IS offered: "this row was a mistake" takes
+                a claim away rather than making one. */}
             {canManage && (
-              <>
-                <button
-                  type="button"
-                  className="button-like"
-                  disabled={change.isPending}
-                  onClick={() =>
-                    change.mutate({ id: cert.id, verified: !cert.verifiedAt })
-                  }
-                >
-                  {cert.verifiedAt ? t("cred.unverify") : t("cred.verify")}
-                </button>
-                <button
-                  type="button"
-                  className="button-like"
-                  disabled={change.isPending}
-                  onClick={() => {
-                    if (!window.confirm(t("cred.voidConfirm"))) return;
-                    change.mutate({ id: cert.id, voided: true });
-                  }}
-                >
-                  {t("cred.void")}
-                </button>
-              </>
+              <button
+                type="button"
+                className="button-like"
+                disabled={change.isPending}
+                onClick={() => {
+                  if (!window.confirm(t("cred.voidConfirm"))) return;
+                  change.mutate({ id: cert.id, voided: true });
+                }}
+              >
+                {t("cred.void")}
+              </button>
             )}
           </li>
         ))}
