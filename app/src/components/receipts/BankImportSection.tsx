@@ -36,6 +36,7 @@ import {
   parseDelimited,
   rememberMapping,
   toBankRows,
+  undatedRows,
   unreadableRows,
   type BankFieldMapping,
   type ParsedFile,
@@ -264,6 +265,19 @@ export function BankImportSection() {
               {unreadableRows(pending.parsed, mapping)} row(s) have no amount this
               app can read and will be skipped. If that is all of them, the
               Amount column is wrong.
+            </p>
+          )}
+          {/* A bad Date column is quieter than a bad Amount column and does more
+              damage: the rows still import, so nothing looks wrong, but every
+              charge lands dateless and auto-matching — which needs the date to
+              place a charge in the ±3-day window — proposes nothing at all,
+              with no reason given. Say it here, while the import can still be
+              cancelled. */}
+          {undatedRows(pending.parsed, mapping) > 0 && (
+            <p className="warn-text">
+              {undatedRows(pending.parsed, mapping)} row(s) have no date this app
+              can read. They will still import, but matching them to receipts
+              needs the date — so check the Date column before you go on.
             </p>
           )}
           <div className="row-gap">

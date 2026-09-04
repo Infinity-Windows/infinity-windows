@@ -166,20 +166,39 @@ export function parseAmountToCents(raw: string): number | null {
   return negative ? -cents : cents;
 }
 
+const MONTH_NAMES: Record<string, number> = {
+  jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
+  jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
+};
+
 /**
  * A date cell as "YYYY-MM-DD", or null.
  *
- * Handles the two spellings that actually turn up — ISO, and US M/D/YYYY — and
- * refuses everything else rather than handing `new Date()` an ambiguous string
- * and accepting whatever it decides. A statement imported with every date one
- * day out would quietly break the ±3-day match window.
+ * Every spelling here is UNAMBIGUOUS — there is exactly one thing it can mean —
+ * and everything else is refused rather than handed to `new Date()` to guess
+ * at. A statement imported with every date one day out would quietly break the
+ * ±3-day match window, which is worse than refusing to read the column.
+ *
+ * So "12.08.2026" stays refused, because nobody can tell 12 August from
+ * 8 December by looking, and so does a bare "08122026". What is accepted is
+ * ISO (with a dash, a slash or a dot between the parts), the compact "20260812"
+ * when the first four digits read as a year, US M/D/YYYY, and a spelled-out
+ * month either way round — because only one of two numbers can be "Aug".
  */
 export function normalizeDate(raw: string): string | null {
   const text = (raw ?? "").trim();
   if (!text) return null;
 
-  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(text);
+  const iso = /^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/.exec(text);
   if (iso) return pad(Number(iso[1]), Number(iso[2]), Number(iso[3]));
+
+  // "20260812". Only when the leading four digits are a plausible year: an
+  // eight-digit cell starting "0812" is somebody's M/D with the separators
+  // stripped, and guessing at that is the thing this function will not do.
+  const compact = /^((?:19|20)\d{2})(\d{2})(\d{2})$/.exec(text);
+  if (compact) {
+    return pad(Number(compact[1]), Number(compact[2]), Number(compact[3]));
+  }
 
   const us = /^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})/.exec(text);
   if (us) {
@@ -187,6 +206,23 @@ export function normalizeDate(raw: string): string | null {
     if (year < 100) year += 2000;
     return pad(year, Number(us[1]), Number(us[2]));
   }
+
+  // "Aug 12, 2026" / "August 12 2026" / "Aug-12-2026".
+  const monthFirst = /^([A-Za-z]{3,9})\.?[\s-]+(\d{1,2})(?:st|nd|rd|th)?,?[\s-]+(\d{4})$/.exec(text);
+  if (monthFirst) {
+    const month = MONTH_NAMES[monthFirst[1].slice(0, 3).toLowerCase()];
+    if (month) return pad(Number(monthFirst[3]), month, Number(monthFirst[2]));
+  }
+
+  // "12 Aug 2026" / "12-Aug-2026", the way a lot of exports outside the US
+  // spell it. Safe to read either way round: the month is a WORD, so there is
+  // nothing to confuse it with.
+  const dayFirst = /^(\d{1,2})(?:st|nd|rd|th)?[\s-]+([A-Za-z]{3,9})\.?,?[\s-]+(\d{4})$/.exec(text);
+  if (dayFirst) {
+    const month = MONTH_NAMES[dayFirst[2].slice(0, 3).toLowerCase()];
+    if (month) return pad(Number(dayFirst[3]), month, Number(dayFirst[1]));
+  }
+
   return null;
 }
 
@@ -245,6 +281,21 @@ export function toBankRows(parsed: ParsedFile, mapping: BankFieldMapping): BankR
  * import so a wrong Amount column is caught by a person, not by silence. */
 export function unreadableRows(parsed: ParsedFile, mapping: BankFieldMapping): number {
   return parsed.rows.length - toBankRows(parsed, mapping).length;
+}
+
+/**
+ * How many of the rows that WILL import carry a date this app cannot read.
+ *
+ * The mapping step used to check the Amount column and nothing else, so a Date
+ * column in a spelling normalizeDate refuses imported every charge with
+ * posted_on null — silently, since a dateless row is still a real charge and is
+ * kept. The damage is downstream and invisible: auto-match needs the date to
+ * place a charge in the ±3-day window, so a dateless import proposes nothing at
+ * all and the bookkeeper is given no reason. Undoing the import is the only
+ * way back. So the mapping step says it before anything is written.
+ */
+export function undatedRows(parsed: ParsedFile, mapping: BankFieldMapping): number {
+  return toBankRows(parsed, mapping).filter((r) => r.posted_on == null).length;
 }
 
 // ------------------------------------------------------------------ memory

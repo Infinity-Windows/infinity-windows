@@ -12,6 +12,7 @@ import {
   rememberMapping,
   rememberedMapping,
   toBankRows,
+  undatedRows,
   unreadableRows,
   vendorGuess,
   type BankFieldMapping,
@@ -123,11 +124,30 @@ describe("normalizeDate", () => {
     expect(normalizeDate("8/5/26")).toBe("2026-08-05");
   });
 
-  it("refuses anything else instead of letting Date guess", () => {
+  // Every one of these turned up as null before the review fix, so a file
+  // spelling its dates this way imported every charge with posted_on null —
+  // silently, because a dateless row is still a real charge and is kept.
+  it("reads the other unambiguous spellings real exports use", () => {
+    expect(normalizeDate("2026/08/25")).toBe("2026-08-25");
+    expect(normalizeDate("2026.08.25")).toBe("2026-08-25");
+    expect(normalizeDate("20260825")).toBe("2026-08-25");
+    expect(normalizeDate("Aug 25, 2026")).toBe("2026-08-25");
+    expect(normalizeDate("August 25 2026")).toBe("2026-08-25");
+    expect(normalizeDate("25 Aug 2026")).toBe("2026-08-25");
+    expect(normalizeDate("25-Aug-2026")).toBe("2026-08-25");
+  });
+
+  it("still refuses anything ambiguous instead of letting Date guess", () => {
     // A statement imported a day out would silently break the ±3-day window.
-    expect(normalizeDate("25 Aug 2026")).toBeNull();
     expect(normalizeDate("")).toBeNull();
     expect(normalizeDate("13/45/2026")).toBeNull();
+    // 12 August or 8 December? Nobody can tell, so neither will this.
+    expect(normalizeDate("12.08.2026")).toBeNull();
+    // Eight digits that do not start with a year are somebody's M/D/YYYY with
+    // the separators stripped — not a compact ISO date.
+    expect(normalizeDate("08252026")).toBeNull();
+    expect(normalizeDate("Smarch 25, 2026")).toBeNull();
+    expect(normalizeDate("last Tuesday")).toBeNull();
   });
 });
 
@@ -170,6 +190,21 @@ describe("toBankRows", () => {
   it("leaves a field blank when its column was mapped to nothing", () => {
     const noHolder: BankFieldMapping = { ...mapping, cardholder: null };
     expect(toBankRows(parsed, noHolder)[0].cardholder).toBeNull();
+  });
+
+  // The mapping step used to check the Amount column and nothing else, so a
+  // Date column pointed at the wrong header — or spelled in a way this app
+  // cannot read — imported every charge dateless and silently: the rows are
+  // kept, nothing looks wrong, and auto-match then proposes nothing forever.
+  it("counts the rows that will import with no date, so the mapping step can say so", () => {
+    expect(undatedRows(parsed, mapping)).toBe(0);
+    const wrongDateColumn: BankFieldMapping = { ...mapping, postedOn: "Merchant" };
+    expect(undatedRows(parsed, wrongDateColumn)).toBe(3);
+    // Still counted as importable — a dateless charge is a real charge, so it
+    // is kept, which is exactly why the warning has to exist.
+    expect(unreadableRows(parsed, wrongDateColumn)).toBe(1);
+    const noDateColumn: BankFieldMapping = { ...mapping, postedOn: null };
+    expect(undatedRows(parsed, noDateColumn)).toBe(3);
   });
 });
 
