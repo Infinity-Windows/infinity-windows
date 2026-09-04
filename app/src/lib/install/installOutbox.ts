@@ -4,11 +4,13 @@
 
 import { awardPoints, type PointEntry } from "../points";
 import {
+  computeBackoffMs,
   errorMessage,
   isNetworkError,
   isRetryableError,
   MAX_ATTEMPTS,
 } from "../offline/outbox-core";
+import { supabase } from "../supabase";
 import { submitInstallEvent, type SubmitInstallParams } from "./api";
 import { enqueueUpload, flushQueue, type QueuedUploadMeta } from "./queue";
 
@@ -64,6 +66,23 @@ export interface InstallOutboxRecord {
    * forever with nobody ever told.
    */
   attemptCount: number;
+  /**
+   * Earliest time (ms epoch) this record may be attempted again.
+   *
+   * Same field name and meaning as `nextAttemptAt` on the sibling outbox's
+   * entries (../offline/outbox-core), so the two queues can be read as one
+   * idea rather than two.
+   *
+   * WHY it exists (2026-09-04): this queue counted a failure and tried again
+   * on the very next pass, with no wait at all. The pass runs every thirty
+   * seconds AND on every "online" event, so eight failures — the cap — fit
+   * inside about four minutes of ordinary "bars but no data", and a FINISHED
+   * install dead-lettered on the phone of somebody standing in a house with
+   * one bar. Spacing the same eight attempts on the sibling's curve (10s, 20s,
+   * 40s, 80s, 160s, then the five-minute ceiling twice) buys about fifteen
+   * minutes of bad signal instead of four.
+   */
+  nextAttemptAt: number;
   /** Plain-language reason for the last failure, or null if it hasn't failed. */
   lastError: string | null;
   /**
@@ -128,6 +147,48 @@ export function stageToAttempt(
   }
 }
 
+/**
+ * Pure: may this record be attempted on this pass, or is it still inside the
+ * wait a failure bought it?
+ *
+ * A record that has given up is never due — it is waiting on a person, and
+ * the flush skips it for that reason rather than this one.
+ */
+export function isInstallDue(record: InstallOutboxRecord, now: number): boolean {
+  return record.status !== "failed" && record.nextAttemptAt <= now;
+}
+
+/**
+ * Pure: the record after one failed attempt.
+ *
+ * This is the install queue's own `applyFailure` (../offline/outbox-core has
+ * the sibling's). It cannot simply call that one — an install record carries a
+ * step, an event id and a payload that an outbox entry does not — but the
+ * POLICY is deliberately identical: the same cap, the same backoff curve, the
+ * same rule that a permanent refusal skips straight to failed instead of
+ * burning through eight tries first.
+ *
+ * A record that has given up keeps whatever next-attempt time it had. It is
+ * waiting on a person now, not on a clock, and Retry sets its own.
+ */
+export function applyInstallFailure(
+  record: InstallOutboxRecord,
+  err: unknown,
+  now: number,
+): InstallOutboxRecord {
+  const attemptCount = record.attemptCount + 1;
+  const givenUp = !isRetryableError(err) || attemptCount >= MAX_ATTEMPTS;
+  return {
+    ...record,
+    attemptCount,
+    lastError: errorMessage(err) || "Couldn't sync this install.",
+    status: givenUp ? "failed" : "pending",
+    nextAttemptAt: givenUp
+      ? record.nextAttemptAt
+      : now + computeBackoffMs(attemptCount),
+  };
+}
+
 export function serializeInstallOutbox(record: InstallOutboxRecord): string {
   return JSON.stringify({ v: CURRENT_VERSION, ...record });
 }
@@ -170,6 +231,11 @@ export function deserializeInstallOutbox(json: string): InstallOutboxRecord | nu
     // fields — default them to "never failed yet" rather than rejecting the
     // row (that would silently lose a real pending install).
     attemptCount: typeof r.attemptCount === "number" ? r.attemptCount : 0,
+    // Records written before the retry spacing existed carry no
+    // nextAttemptAt. 0 is the epoch — long past — so an install already
+    // sitting on somebody's phone is due on the very next pass instead of
+    // waiting forever for a time it was never given.
+    nextAttemptAt: typeof r.nextAttemptAt === "number" ? r.nextAttemptAt : 0,
     lastError: typeof r.lastError === "string" ? r.lastError : null,
     status: r.status === "failed" ? "failed" : "pending",
     payload: {
@@ -310,6 +376,9 @@ export async function enqueueInstall(
     step: "queued",
     installEventId: null,
     attemptCount: 0,
+    // Due immediately: the first attempt is the one the person tapping Submit
+    // is standing there waiting on.
+    nextAttemptAt: Date.now(),
     lastError: null,
     status: "pending",
     payload: {
@@ -418,11 +487,37 @@ export function flushInstallOutbox(): Promise<InstallFlushResult> {
   return run;
 }
 
+/**
+ * Ask the auth client for the session once, before a pass touches the network.
+ *
+ * A phone that has been out of signal for an hour comes back holding an access
+ * token the server will refuse. `getSession()` hands back the stored one and
+ * refreshes it only when it has actually expired, so this costs a healthy
+ * phone nothing and saves the one case that used to lose an install.
+ *
+ * Never throws, and never awaited more than once per pass: a refresh that
+ * fails is not a reason to skip the drain. The writes still get their attempt,
+ * and a token that genuinely will not work comes back as an ordinary retryable
+ * error on the next one.
+ */
+async function refreshSessionQuietly(): Promise<void> {
+  try {
+    await supabase.auth.getSession();
+  } catch {
+    // Deliberately silent — see above. Killing the pass would be worse than
+    // attempting it with the token we already have.
+  }
+}
+
 async function runFlushPass(): Promise<InstallFlushResult> {
   let synced = 0;
   const failedNow: InstallRefusal[] = [];
   try {
     const rows = await listRows();
+    // One clock reading for the whole pass, so two records that failed
+    // together are judged against the same instant.
+    const now = Date.now();
+    const due: Array<{ row: InstallStoreRow; record: InstallOutboxRecord }> = [];
     for (const row of rows) {
       const record = deserializeInstallOutbox(row.meta);
       if (!record) {
@@ -432,7 +527,17 @@ async function runFlushPass(): Promise<InstallFlushResult> {
       // Already given up on — needs a person to hit retry or discard, not
       // another silent automatic attempt every 30s.
       if (record.status === "failed") continue;
+      // Still inside the wait its last failure bought it. Skipping is the
+      // whole point of the wait: without it, eight tries fit inside four
+      // minutes of flaky signal and a finished install dead-letters.
+      if (!isInstallDue(record, now)) continue;
+      due.push({ row, record });
+    }
 
+    // Once, and only when there is something to send.
+    if (due.length > 0) await refreshSessionQuietly();
+
+    for (const { row, record } of due) {
       let current = record;
       const blobs = row.blobs ?? [];
       try {
@@ -496,16 +601,11 @@ async function runFlushPass(): Promise<InstallFlushResult> {
       } catch (err) {
         // A permanent error (bad data, a deleted window) will never succeed
         // no matter how many times we retry it, so it skips straight to
-        // failed instead of burning through MAX_ATTEMPTS first.
-        const attemptCount = current.attemptCount + 1;
+        // failed instead of burning through MAX_ATTEMPTS first. Anything else
+        // is re-queued with a wait in front of it — see applyInstallFailure,
+        // and the four-minute incident recorded on `nextAttemptAt` above.
         const permanent = !isRetryableError(err);
-        const givenUp = permanent || attemptCount >= MAX_ATTEMPTS;
-        current = {
-          ...current,
-          attemptCount,
-          lastError: errorMessage(err) || "Couldn't sync this install.",
-          status: givenUp ? "failed" : "pending",
-        };
+        current = applyInstallFailure(current, err, now);
         // Keep it either way — a failed row is never deleted, only marked,
         // so a person can see it and retry or discard it later. The step is
         // untouched, so a retry resumes instead of repeating a stage (like
@@ -515,7 +615,7 @@ async function runFlushPass(): Promise<InstallFlushResult> {
         // the error back so the sheet can print the actual sentence. A dead
         // zone is a different thing entirely and still gets the calm queued
         // toast — being offline is not a verdict on anybody's install.
-        if (permanent && attemptCount === 1 && !isNetworkError(err)) {
+        if (permanent && current.attemptCount === 1 && !isNetworkError(err)) {
           failedNow.push({ id: current.id, error: err });
           // Also parked where the submitter can collect it, because the pass
           // that finds a refusal is not always the pass they started.
@@ -554,6 +654,11 @@ export async function listFailedInstalls(): Promise<InstallOutboxRecord[]> {
  * Resets attemptCount/lastError but leaves `step` alone, so the retry resumes
  * from whatever stage it reached before it died instead of repeating a stage
  * (like the RPC that marks the window installed) that already landed.
+ *
+ * It also clears the automatic wait (`nextAttemptAt`), the same way the
+ * sibling queue's `retryEntry` does. A person tapped Retry and is watching:
+ * leaving a five-minute backoff in front of their tap would look like the
+ * button does nothing.
  */
 export async function retryFailedInstall(id: string): Promise<void> {
   const rows = await listRows();
@@ -565,6 +670,7 @@ export async function retryFailedInstall(id: string): Promise<void> {
     ...record,
     status: "pending",
     attemptCount: 0,
+    nextAttemptAt: Date.now(),
     lastError: null,
   };
   await putRecord(revived, row.blobs ?? []);

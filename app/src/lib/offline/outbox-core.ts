@@ -212,7 +212,21 @@ export function isRetryableError(err: unknown): boolean {
   if (isPermanentSqlState(errorCode(err))) return false;
   const msg = errorMessage(err).toLowerCase();
   // Postgres/PostgREST permanent-ish signals.
-  if (/duplicate key|already exists|violates|invalid input|permission denied|not authorized|forbidden|jwt|row-level security/.test(msg)) {
+  //
+  // `jwt` sat in this list until 2026-09-04 and had to come out. An expired
+  // access token is the most TEMPORARY failure there is — refreshing it fixes
+  // it — but the word made it permanent, so a phone coming back from a long
+  // dead zone with a stale token dead-lettered a FINISHED install on its very
+  // first attempt, and the sheet reported that one-second problem to the
+  // installer as a verdict on their work.
+  //
+  // Nothing is lost by dropping it: the SQLSTATE check above already catches
+  // every refusal that matters — a real permission failure arrives as 42501,
+  // one of our own rules as P0001 — and those are the codes an auth problem
+  // that is NOT about a stale token comes back with. The install drain now
+  // refreshes the session once before it starts (lib/install/installOutbox.ts),
+  // so the common case is fixed rather than retried.
+  if (/duplicate key|already exists|violates|invalid input|permission denied|not authorized|forbidden|row-level security/.test(msg)) {
     return false;
   }
   return true;
