@@ -13,9 +13,19 @@ import { useT } from "../../lib/i18n";
 import {
   buildProjectFromMonday,
   dismissMondayJob,
+  fileSizeLabel,
+  filesOnMonday,
+  guessMondayFileKind,
+  isExtractableFile,
   listIncomingMondayJobs,
+  pullCounts,
+  pullMondayFiles,
+  pullRequestFiles,
   triggerMondaySync,
+  type MondayFileChoice,
+  type MondayFileKind,
   type MondayJob,
+  type MondayPullResult,
 } from "../../lib/mondaySync";
 
 function fmtDate(iso: string | null): string {
@@ -48,6 +58,16 @@ export function IncomingMondayJobs() {
   const [jobCode, setJobCode] = useState("");
   const [name, setName] = useState("");
   const [syncNote, setSyncNote] = useState<string | null>(null);
+  // What the office decided about each of the row's files, keyed by asset id.
+  // Seeded from the guesser when the form opens; everything ticked, because
+  // taking the paperwork is the ordinary case and leaving it is the exception.
+  const [fileChoices, setFileChoices] = useState<Record<string, MondayFileChoice>>({});
+  // How the pull went, kept after the form closes: a job whose files half
+  // arrived is exactly the moment somebody needs to be told what to do next.
+  const [pullNote, setPullNote] = useState<string | null>(null);
+  const [pullResults, setPullResults] = useState<MondayPullResult[]>([]);
+
+  const buildingFiles = building ? filesOnMonday(building) : [];
 
   const incoming = useQuery({
     queryKey: ["mondayIncoming"],
@@ -77,8 +97,8 @@ export function IncomingMondayJobs() {
   });
 
   const build = useMutation({
-    mutationFn: (job: MondayJob) =>
-      buildProjectFromMonday(job, {
+    mutationFn: async (job: MondayJob) => {
+      const { projectId } = await buildProjectFromMonday(job, {
         jobCode,
         name: name.trim() || job.name,
         startDate: job.start_date,
@@ -90,13 +110,76 @@ export function IncomingMondayJobs() {
         ]
           .filter(Boolean)
           .join("\n"),
-      }),
-    onSuccess: async () => {
+      });
+
+      // THE JOB IS BUILT AT THIS POINT AND STAYS BUILT. A file that will not
+      // come across — Monday down, a 90 MB survey, a token that expired — is a
+      // thing to say out loud and try again later from the Plans page, never a
+      // reason to undo a job the office has already made.
+      const wanted = pullRequestFiles(filesOnMonday(job), fileChoices);
+      if (wanted.length === 0) return { results: [] as MondayPullResult[] };
+      try {
+        const pulled = await pullMondayFiles({
+          mondayJobId: job.id,
+          projectId,
+          files: wanted,
+        });
+        if (!pulled.ok && pulled.results.length === 0) {
+          return {
+            results: wanted.map((w) => ({
+              asset_id: w.asset_id,
+              name:
+                filesOnMonday(job).find((f) => f.asset_id === w.asset_id)?.name ?? "",
+              ok: false,
+              where: null,
+              error: pulled.error ?? null,
+            })) as MondayPullResult[],
+          };
+        }
+        return { results: pulled.results };
+      } catch (err) {
+        return {
+          results: wanted.map((w) => ({
+            asset_id: w.asset_id,
+            name: filesOnMonday(job).find((f) => f.asset_id === w.asset_id)?.name ?? "",
+            ok: false,
+            where: null,
+            error: formatApiError(err),
+          })) as MondayPullResult[],
+        };
+      }
+    },
+    onSuccess: async (result) => {
       setBuilding(null);
+      setPullResults(result.results);
+      const { pulled, total } = pullCounts(result.results);
+      setPullNote(
+        total === 0
+          ? t("mondayFiles.result.noFiles")
+          : pulled === total
+            ? total === 1
+              ? t("mondayFiles.result.onePulled")
+              : t("mondayFiles.result.allPulled", { total: String(total) })
+            : pulled === 0
+              ? t("mondayFiles.result.nonePulled")
+              : t("mondayFiles.result.somePulled", {
+                  pulled: String(pulled),
+                  total: String(total),
+                }),
+      );
       await qc.invalidateQueries({ queryKey: ["mondayIncoming"] });
       await qc.invalidateQueries({ queryKey: ["projects"] });
     },
   });
+
+  /** What one file's outcome says on the results list. */
+  const resultLine = (r: MondayPullResult): string => {
+    if (!r.ok) return r.error?.trim() || t("mondayFiles.result.failed");
+    if (r.already) return t("mondayFiles.result.already");
+    if (r.where === "plans") return t("mondayFiles.result.toPlans");
+    if (r.where === "specs") return t("mondayFiles.result.toSpecs");
+    return t("mondayFiles.result.toDocuments");
+  };
 
   const dismiss = useMutation({
     mutationFn: dismissMondayJob,
@@ -104,7 +187,10 @@ export function IncomingMondayJobs() {
   });
 
   const rows = useMemo(() => incoming.data ?? [], [incoming.data]);
-  if (rows.length === 0 && !syncNow.isPending && !syncNote) return null;
+  // The pull note outlives the last incoming row: building the only job on the
+  // list empties it, and "2 of 3 files pulled" is the sentence that must not
+  // vanish with it.
+  if (rows.length === 0 && !syncNow.isPending && !syncNote && !pullNote) return null;
 
   return (
     <section style={{ marginTop: 12 }}>
@@ -121,6 +207,28 @@ export function IncomingMondayJobs() {
       </div>
       {syncNote && (
         <p className="muted" style={{ margin: "2px 0 0", fontSize: 11.5 }}>{syncNote}</p>
+      )}
+      {pullNote && (
+        <div style={{ marginTop: 6 }}>
+          <p className="ok" style={{ margin: 0, fontSize: 12 }} data-testid="monday-pull-note">
+            {pullNote}
+          </p>
+          {pullResults.length > 0 && (
+            <ul className="unit-list" style={{ marginTop: 4 }}>
+              {pullResults.map((r) => (
+                <li
+                  key={r.asset_id}
+                  className="find-row"
+                  data-testid="monday-pull-result"
+                  style={{ fontSize: 11.5 }}
+                >
+                  <span style={{ minWidth: 0, flex: 1 }}>{r.name}</span>
+                  <span className={r.ok ? "muted" : "error"}>{resultLine(r)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
       <ul className="unit-list" style={{ marginTop: 8 }}>
         {rows.map((j) => (
@@ -151,6 +259,21 @@ export function IncomingMondayJobs() {
                   setBuilding(j);
                   setJobCode(suggestCode(j.name));
                   setName(j.name);
+                  setPullNote(null);
+                  setPullResults([]);
+                  // Everything ticked, each in the slot the file's own name
+                  // suggests. Un-ticking is the deliberate act.
+                  setFileChoices(
+                    Object.fromEntries(
+                      filesOnMonday(j).map((f) => [
+                        f.asset_id,
+                        {
+                          kind: guessMondayFileKind(f.name, f.ext),
+                          selected: true,
+                        },
+                      ]),
+                    ),
+                  );
                 }}
               >
                 Build project
@@ -190,6 +313,103 @@ export function IncomingMondayJobs() {
             />
             <label className="field-label">Project name</label>
             <input value={name} onChange={(e) => setName(e.target.value)} />
+
+            {/* The row's paperwork. Everything Monday holds, ticked, in the
+                slot its own name suggests — so the ordinary case is one tap
+                and the office only touches this when the guess is wrong. */}
+            <label className="field-label">{t("mondayFiles.build.heading")}</label>
+            {buildingFiles.length === 0 ? (
+              <p className="muted" style={{ margin: 0, fontSize: 11.5 }}>
+                {t("mondayFiles.build.none")}
+              </p>
+            ) : (
+              <>
+                <p className="muted" style={{ margin: "0 0 4px", fontSize: 11.5 }}>
+                  {t("mondayFiles.build.blurb")}
+                </p>
+                <ul className="unit-list" data-testid="monday-build-files">
+                  {buildingFiles.map((f) => {
+                    const choice = fileChoices[f.asset_id];
+                    const locked = !isExtractableFile(f.name, f.ext);
+                    const size = fileSizeLabel(f.size);
+                    return (
+                      <li
+                        key={f.asset_id}
+                        className="find-row"
+                        style={{ flexWrap: "wrap", gap: 6 }}
+                      >
+                        <label
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 6,
+                            minWidth: 0,
+                            flex: 1,
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={choice?.selected !== false}
+                            aria-label={f.name}
+                            onChange={(e) =>
+                              setFileChoices((prev) => ({
+                                ...prev,
+                                [f.asset_id]: {
+                                  kind:
+                                    prev[f.asset_id]?.kind ??
+                                    guessMondayFileKind(f.name, f.ext),
+                                  selected: e.target.checked,
+                                },
+                              }))
+                            }
+                          />
+                          <span style={{ minWidth: 0 }}>
+                            {f.name}
+                            {size && (
+                              <span className="muted" style={{ fontSize: 11.5 }}>
+                                {" "}
+                                · {size}
+                              </span>
+                            )}
+                          </span>
+                        </label>
+                        <select
+                          value={
+                            locked
+                              ? "document"
+                              : choice?.kind ?? guessMondayFileKind(f.name, f.ext)
+                          }
+                          disabled={locked}
+                          aria-label={`${f.name} — ${t("mondayFiles.build.heading")}`}
+                          onChange={(e) =>
+                            setFileChoices((prev) => ({
+                              ...prev,
+                              [f.asset_id]: {
+                                kind: e.target.value as MondayFileKind,
+                                selected: prev[f.asset_id]?.selected !== false,
+                              },
+                            }))
+                          }
+                        >
+                          <option value="building">{t("mondayFiles.kind.building")}</option>
+                          <option value="specs">{t("mondayFiles.kind.specs")}</option>
+                          <option value="document">{t("mondayFiles.kind.document")}</option>
+                        </select>
+                        {locked && (
+                          <span
+                            className="muted"
+                            style={{ fontSize: 11, flexBasis: "100%" }}
+                          >
+                            {t("mondayFiles.build.lockedToDocument")}
+                          </span>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </>
+            )}
+
             {build.isError && (
               <p className="error">{formatApiError(build.error)}</p>
             )}
@@ -199,7 +419,11 @@ export function IncomingMondayJobs() {
                 disabled={build.isPending || jobCode.trim() === ""}
                 onClick={() => build.mutate(building)}
               >
-                {build.isPending ? "Building…" : "Build project"}
+                {build.isPending
+                  ? buildingFiles.length > 0
+                    ? t("mondayFiles.build.pulling")
+                    : "Building…"
+                  : "Build project"}
               </button>
               <button className="button-like" onClick={() => setBuilding(null)}>
                 Cancel

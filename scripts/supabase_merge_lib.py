@@ -480,6 +480,14 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     # parent opening plus the kind IS the row's identity.
     "opening_phases": ("opening_id", "kind"),
     "project_plansets": ("project_id", "storage_path"),
+    # A job's paperwork that is not a planset (Monday files, F6,
+    # 20260988000000). Same shape and same reasoning as project_plansets above:
+    # the storage path carries a timestamp, so one job holding the same path
+    # twice is the same upload seen twice and never two documents. The partial
+    # unique index on (project_id, source_asset_id) is the pull's own
+    # idempotency and covers only rows that came from Monday, so it is not the
+    # key a whole-table merge can lean on.
+    "project_documents": ("project_id", "storage_path"),
     "toolbox_completions": ("profile_id", "talk_id"),
     # Library content is keyed by its slug; one assignment per date (UNIQUE).
     "toolbox_talk_library": ("slug",),
