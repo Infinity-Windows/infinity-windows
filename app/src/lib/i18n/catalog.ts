@@ -1703,6 +1703,13 @@ export const CATALOG = {
     en: "Was already off the clock",
     es: "Ya estaba fuera de turno",
   },
+  // Somebody the sheet deliberately never sent. The server cannot report this
+  // one — it never heard about them — so the screen says it instead, rather
+  // than handing back eleven lines for fourteen ticked names.
+  "crewclock.outcome.skipped": {
+    en: "Left on their other job",
+    es: "Se quedó en su otro trabajo",
+  },
   "crewclock.outcome.refused": { en: "Not done — {reason}", es: "No se hizo — {reason}" },
   "crewclock.outcome.unknown": { en: "Nothing changed", es: "No cambió nada" },
   // The database has not been updated yet. Said plainly, because the roster

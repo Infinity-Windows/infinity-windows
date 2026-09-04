@@ -29,6 +29,7 @@ export type CrewClockOutcomeKind =
   | "moved_from_other_job"
   | "clocked_out"
   | "already_out"
+  | "skipped"
   | "refused"
   | "unknown";
 
@@ -38,7 +39,16 @@ const KNOWN_OUTCOMES = new Set<CrewClockOutcomeKind>([
   "moved_from_other_job",
   "clocked_out",
   "already_out",
+  "skipped",
 ]);
+
+/**
+ * The answer for somebody the sheet deliberately never sent — the one outcome
+ * the server cannot report, because it never heard about them. Written here
+ * rather than as a bare string at the call site so the results list and the
+ * counts read it exactly like a server answer.
+ */
+export const SKIPPED_OUTCOME = "skipped";
 
 /**
  * The server's outcome string → a code. Anything unrecognised reads as
@@ -150,6 +160,36 @@ export function addCrewIds(
   return added.length === 0 ? [...selected] : [...selected, ...added];
 }
 
+/**
+ * The list of answers a supervisor should actually read: the people the server
+ * replied about, plus the ones this screen chose not to send.
+ *
+ * WHY (2026-09-04 review): ticking fourteen names and getting eleven lines back
+ * is not an answer, it is a puzzle. The three left out are the ones a
+ * supervisor most needs told about — they are still on somebody else's job —
+ * and the pre-submit warning that named them is gone the moment the results
+ * replace the form. Skipped people come FIRST for the same reason: they are the
+ * part of the answer that is not "done".
+ *
+ * An id the server did answer for is never repeated, so a race that sent
+ * somebody after all shows their real outcome and not a stale "skipped".
+ */
+export function withSkipped(
+  results: readonly { profile_id: string; outcome: string }[],
+  skippedIds: readonly string[],
+  outcome: string = SKIPPED_OUTCOME,
+): { profile_id: string; outcome: string }[] {
+  const answered = new Set(results.map((r) => r.profile_id));
+  const seen = new Set<string>();
+  const skipped: { profile_id: string; outcome: string }[] = [];
+  for (const id of skippedIds) {
+    if (answered.has(id) || seen.has(id)) continue;
+    seen.add(id);
+    skipped.push({ profile_id: id, outcome });
+  }
+  return [...skipped, ...results];
+}
+
 /** Tick / untick one row, keeping the list stable and free of duplicates. */
 export function toggleCrewId(selected: readonly string[], id: string): string[] {
   return selected.includes(id)
@@ -217,6 +257,7 @@ export function countCrewOutcomes(
     moved_from_other_job: 0,
     clocked_out: 0,
     already_out: 0,
+    skipped: 0,
     refused: 0,
     unknown: 0,
   };

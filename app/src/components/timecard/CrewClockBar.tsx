@@ -35,6 +35,7 @@ import {
   outcomeKind,
   planCrewClockIn,
   refusalReason,
+  withSkipped,
   type CrewClockMember,
 } from "../../lib/crewClock";
 import type { Project } from "../../lib/types";
@@ -48,6 +49,7 @@ const OUTCOME_KEYS = {
   moved_from_other_job: "crewclock.outcome.moved_from_other_job",
   clocked_out: "crewclock.outcome.clocked_out",
   already_out: "crewclock.outcome.already_out",
+  skipped: "crewclock.outcome.skipped",
   unknown: "crewclock.outcome.unknown",
 } as const;
 
@@ -96,6 +98,12 @@ export function CrewClockBar({
   const [attested, setAttested] = useState(false);
   const [move, setMove] = useState(false);
   const [results, setResults] = useState<CrewClockOutcome[] | null>(null);
+  // The people this sheet deliberately did NOT send, frozen at the moment the
+  // button was pressed. It has to be a snapshot: onDone() clears the selection,
+  // so by the time the answer is on screen `plan.elsewhere` is empty and the
+  // three people still on somebody else's job would vanish from the list of
+  // fourteen names that was ticked (2026-09-04 review).
+  const [skipped, setSkipped] = useState<string[]>([]);
 
   // Same query key as ClockInBlock / ClockSheet, so the list a supervisor sees
   // here is literally the cached one an installer would see for that job.
@@ -120,6 +128,7 @@ export function CrewClockBar({
   const close = () => {
     setSheet(null);
     setResults(null);
+    setSkipped([]);
   };
 
   /**
@@ -134,6 +143,7 @@ export function CrewClockBar({
    */
   const open = (which: "in" | "out") => {
     setResults(null);
+    setSkipped([]);
     setAttested(false);
     setMove(false);
     setSheet(which);
@@ -191,6 +201,19 @@ export function CrewClockBar({
     },
   });
 
+  // Everyone who was ticked gets a line, including the ones no request carried.
+  // Their word differs by sheet: somebody held back from a clock-in is still on
+  // another job, while somebody held back from a clock-out was simply already
+  // off — which is exactly what the server would have answered had it been
+  // asked, so it reuses that same line rather than inventing a second one.
+  const answers = useMemo(
+    () =>
+      results
+        ? withSkipped(results, skipped, sheet === "out" ? "already_out" : undefined)
+        : [],
+    [results, skipped, sheet],
+  );
+
   const busy = doClockIn.isPending || doClockOut.isPending;
   const failure = doClockIn.error ?? doClockOut.error;
   // The migration has not landed on this database yet. The roster itself is
@@ -245,7 +268,7 @@ export function CrewClockBar({
                   {t("crewclock.results.title")}
                 </h2>
                 <ul className="unit-list">
-                  {results.map((r) => (
+                  {answers.map((r) => (
                     <OutcomeLine
                       key={r.profile_id}
                       name={nameById.get(r.profile_id) ?? "Crew"}
@@ -379,7 +402,10 @@ export function CrewClockBar({
                       !costCodeId ||
                       plan.willClockIn.length === 0
                     }
-                    onClick={() => doClockIn.mutate()}
+                    onClick={() => {
+                      setSkipped(plan.elsewhere);
+                      doClockIn.mutate();
+                    }}
                   >
                     {busy ? t("crewclock.in.going") : t("crewclock.in.go")}
                   </button>
@@ -404,7 +430,14 @@ export function CrewClockBar({
                     type="button"
                     className="button-like active-pill"
                     disabled={busy || outIds.length === 0}
-                    onClick={() => doClockOut.mutate()}
+                    onClick={() => {
+                      // Everybody ticked who is already off the clock: the
+                      // server never hears about them, so their (true) line —
+                      // "was already off the clock" — is added here.
+                      const off = new Set(outIds);
+                      setSkipped(selected.filter((id) => !off.has(id)));
+                      doClockOut.mutate();
+                    }}
                   >
                     {busy ? t("crewclock.out.going") : t("crewclock.out.go")}
                   </button>

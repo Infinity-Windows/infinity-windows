@@ -70,6 +70,17 @@ describe("the roster's bulk clock is fully translated", () => {
     expect(PAGE).toContain('t("crewclock.select.clear")');
   });
 
+  // Somebody held back from the request still gets a line in the answer.
+  it("has copy for the people the sheet never sent", () => {
+    expect(translate(CATALOG, "en", "crewclock.outcome.skipped")).toBe(
+      "Left on their other job",
+    );
+    expect(translate(CATALOG, "es", "crewclock.outcome.skipped")).toBe(
+      "Se quedó en su otro trabajo",
+    );
+    expect(BAR).toContain("crewclock.outcome.skipped");
+  });
+
   // The attestation is the one claim in this feature that stands in for a
   // signature. It is flagged for the same bilingual review every other safety
   // string carries.

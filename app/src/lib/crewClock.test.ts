@@ -13,6 +13,7 @@ import {
   planCrewClockIn,
   refusalReason,
   toggleCrewId,
+  withSkipped,
   type CrewClockMember,
 } from "./crewClock";
 
@@ -124,6 +125,52 @@ describe("addCrewIds", () => {
   });
 });
 
+// Fourteen names ticked, eleven lines back, and no word about the other three
+// is not an answer — it is a puzzle. The skipped people come first, because
+// they are the part of the answer that is not "done".
+describe("withSkipped", () => {
+  const SERVER = [
+    { profile_id: "c", outcome: "clocked_in" },
+    { profile_id: "e", outcome: "clocked_in" },
+  ];
+
+  it("puts the people no request carried at the top of the answer", () => {
+    expect(withSkipped(SERVER, ["b"])).toEqual([
+      { profile_id: "b", outcome: "skipped" },
+      ...SERVER,
+    ]);
+  });
+
+  it("takes the word to use, so a clock-out says what is actually true", () => {
+    expect(withSkipped([], ["c", "e"], "already_out")).toEqual([
+      { profile_id: "c", outcome: "already_out" },
+      { profile_id: "e", outcome: "already_out" },
+    ]);
+  });
+
+  // A race can send somebody the plan meant to skip. The server's word wins.
+  it("never repeats an id the server already answered for", () => {
+    expect(withSkipped(SERVER, ["c", "b"])).toEqual([
+      { profile_id: "b", outcome: "skipped" },
+      ...SERVER,
+    ]);
+  });
+
+  it("does not duplicate a skipped id given twice", () => {
+    expect(withSkipped([], ["b", "b"])).toEqual([
+      { profile_id: "b", outcome: "skipped" },
+    ]);
+  });
+
+  it("is just the server's list when nothing was skipped", () => {
+    expect(withSkipped(SERVER, [])).toEqual(SERVER);
+  });
+
+  it("reads as its own outcome, not as an unknown word", () => {
+    expect(outcomeKind(withSkipped([], ["b"])[0].outcome)).toBe("skipped");
+  });
+});
+
 describe("outcomeKind / refusalReason", () => {
   it("reads every outcome the server can send", () => {
     expect(outcomeKind("clocked_in")).toBe("clocked_in");
@@ -156,7 +203,11 @@ describe("countCrewOutcomes / actuallyChanged", () => {
   ];
 
   it("counts each kind", () => {
-    const counts = countCrewOutcomes(RESULTS);
+    const counts = countCrewOutcomes([
+      ...RESULTS,
+      { profile_id: "e", outcome: "skipped" },
+    ]);
+    expect(counts.skipped).toBe(1);
     expect(counts.clocked_in).toBe(1);
     expect(counts.moved_from_other_job).toBe(1);
     expect(counts.already_on_this_job).toBe(1);
@@ -165,9 +216,11 @@ describe("countCrewOutcomes / actuallyChanged", () => {
   });
 
   // Nobody is pushed about a punch that did not move: telling somebody
-  // already on the job that they were "clocked in" is a false alert.
+  // already on the job that they were "clocked in" is a false alert — and
+  // somebody the request never carried is the clearest case of all.
   it("only pushes the people something actually happened to", () => {
     expect(actuallyChanged(RESULTS)).toEqual(["a", "b"]);
+    expect(actuallyChanged(withSkipped(RESULTS, ["z"]))).toEqual(["a", "b"]);
     expect(
       actuallyChanged([
         { profile_id: "x", outcome: "clocked_out" },

@@ -17,7 +17,9 @@
 //      checkboxes and no bar at all;
 //   7. "Select all" ticks the people the SEARCH BOX is showing and nobody
 //      else, so a supervisor looking at one filtered row cannot tick — and
-//      then clock in — the whole company in two taps.
+//      then clock in — the whole company in two taps;
+//   8. everybody who was ticked gets a line in the answer, INCLUDING the ones
+//      the sheet deliberately never sent.
 //
 // The shifts and the crew are hand-built here rather than captured, because
 // the whole point is a specific geometry: one person already on the target
@@ -300,6 +302,18 @@ test("somebody already on another job is left alone until Move is ticked", async
   await sheet.getByRole("button", { name: "Clock them in" }).click();
   await expect.poll(() => calls.length).toBe(1);
   expect(calls[0].body.p_profile_ids).toEqual([CARA]);
+
+  // Two names were ticked, so TWO lines come back. The server only heard about
+  // one of them; the screen accounts for the other rather than leaving a
+  // supervisor to notice a missing row (2026-09-04 review).
+  await expect(sheet.getByText("What happened")).toBeVisible();
+  await expect(sheet.locator("li")).toHaveCount(2);
+  await expect(sheet.locator("li", { hasText: "Ben Cole" })).toContainText(
+    "Left on their other job",
+  );
+  await expect(sheet.locator("li", { hasText: "Cara Diaz" })).toContainText(
+    "Clocked in",
+  );
 
   // Tick Move, and he goes with them. (Closing the result list clears the
   // selection — a done action should not leave fourteen boxes still ticked —
