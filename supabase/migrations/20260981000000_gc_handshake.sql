@@ -1008,6 +1008,12 @@ grant execute on function public.post_gc_message(uuid, text) to authenticated;
  * phone with bad signal will retry, and a limit tight enough to catch a script
  * would catch him first; 256 bits of token is what stops a stranger, and this
  * only stops a stuck retry loop from filling the table.
+ *
+ * And it can only ever be that, for a reason worth writing down: a REFUSED
+ * write rolls back its own claim along with everything else in the statement,
+ * so somebody posting nothing but invalid answers is never throttled by this.
+ * That is fine here — the counter is a guard against a loop, not against an
+ * attacker, and the attacker would need the token first.
  */
 create or replace function public._gc_link_for_write(p_token_hash text)
 returns gc_links
@@ -1086,11 +1092,15 @@ begin
          v_link.project_id,
          coalesce(nullif(btrim(p.name), ''), p.job_code) as job_label,
          v_link.brand,
-         case
+         -- Cast spelled out: RETURN QUERY matches the function's declared
+         -- result type by TYPE, and a bare string literal is `unknown` until
+         -- something resolves it. claim_pipeline_nudges casts its own CASE for
+         -- the same reason.
+         (case
            when v_link.revoked_at is not null then 'revoked'
            when v_link.expires_at <= now() then 'expired'
            else 'live'
-         end as state
+         end)::text as state
     from projects p
    where p.id = v_link.project_id;
 end;
