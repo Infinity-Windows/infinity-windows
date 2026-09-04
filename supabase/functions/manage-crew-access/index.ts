@@ -32,6 +32,15 @@
  * Deleting the auth user would cascade or orphan it. Banning ends the login and
  * keeps the record, which is the right trade for a company that may have to
  * answer "who installed this window".
+ *
+ * THE THIRD DOOR: `purge_login`. `remove_access` above closes a login and
+ * leaves everything else exactly as it was — including the email address,
+ * which auth.users holds unique forever, so the same person can never be
+ * invited again. `purge_login` is the owner's "remove this login and start
+ * fresh": it frees the address either way, and it chooses between deleting the
+ * account outright and retiring it BY COUNTING THE ROWS, not by asking. The
+ * cascade / set-null / restrict facts that force that split are written out in
+ * _shared/purgeLogin.ts; read that before touching this.
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import {
@@ -52,6 +61,14 @@ import {
   isRedeemable,
   roleRank,
 } from "../_shared/crewInvites.ts";
+import {
+  type HistoryCounts,
+  probeKey,
+  type PurgeShape,
+  shapeFor,
+  tombstoneEmail,
+  WORK_HISTORY_PROBES,
+} from "../_shared/purgeLogin.ts";
 
 type ServiceClient = ReturnType<typeof createClient>;
 
@@ -150,6 +167,159 @@ async function issueInvite(
     .single();
   if (error) throw new Error(error.message);
   return { code, invite: data as unknown as InviteRecord };
+}
+
+interface PurgeTarget {
+  id: string;
+  display_name: string | null;
+  role: string;
+  is_partner: boolean;
+}
+
+interface MemberRow {
+  id: string;
+  display_name: string;
+  role: string;
+  access_revoked_at: string | null;
+  /** Absent on a database that predates 20260987000000 — see below. */
+  retired_at?: string | null;
+}
+
+/**
+ * One crew member, with `retired_at` when the database has it.
+ *
+ * The backend deploys as its own workflow and has silently failed before, so
+ * "the app is live and the migration is not" is a state that really happens.
+ * Asking for a column that isn't there 400s the whole read, which would take
+ * "New password code" and "Let them back in" down for everybody — so the wide
+ * read is tried once and the narrow one answers if it fails.
+ */
+async function readMember(
+  supabase: ServiceClient,
+  userId: string,
+): Promise<MemberRow | null> {
+  const wide = await supabase
+    .from("profiles")
+    .select("id, display_name, role, access_revoked_at, retired_at")
+    .eq("id", userId)
+    .maybeSingle();
+  if (!wide.error) return wide.data as unknown as MemberRow | null;
+  const narrow = await supabase
+    .from("profiles")
+    .select("id, display_name, role, access_revoked_at")
+    .eq("id", userId)
+    .maybeSingle();
+  return narrow.data as unknown as MemberRow | null;
+}
+
+/** The one sentence a removed login gets, wherever somebody tries to revive it. */
+const ALREADY_REMOVED =
+  'That login was removed for good, so there is nothing to switch back on. Add them again under "Add someone" and they\'ll get a fresh login.';
+
+/**
+ * One count per table, taken on the SERVICE-ROLE key so row-level security
+ * cannot hide a row and make a person look emptier than they are — the whole
+ * decision below hangs on these numbers being complete.
+ *
+ * `head: true, count: "exact"` asks Postgres for the number without shipping
+ * the rows: nineteen counts on a phone, not nineteen table scans down the wire.
+ *
+ * A count that FAILS is recorded as 1, never 0. A table that does not exist yet
+ * (this app ships features ahead of their migrations) genuinely has no rows and
+ * is skipped; anything else — a permission error, a timeout — means "we do not
+ * know", and the only safe answer to not knowing is "there is history here",
+ * because that keeps the record instead of deleting it.
+ */
+async function countHistory(
+  supabase: ServiceClient,
+  userId: string,
+): Promise<HistoryCounts> {
+  const counts: HistoryCounts = {};
+  for (const probe of WORK_HISTORY_PROBES) {
+    const { count, error } = await supabase
+      .from(probe.table)
+      .select(probe.column, { count: "exact", head: true })
+      .eq(probe.column, userId);
+    if (error) {
+      const message = `${error.message ?? ""} ${(error as { code?: string }).code ?? ""}`;
+      // PGRST205 / 42P01: the table is not in this database yet. Really zero.
+      const missing = /PGRST205|42P01|does not exist|could not find the table/i
+        .test(message);
+      counts[probeKey(probe)] = missing ? 0 : 1;
+      continue;
+    }
+    counts[probeKey(probe)] = count ?? 0;
+  }
+  return counts;
+}
+
+/**
+ * Everything that refuses a purge, in one place so the preview and the real
+ * thing cannot drift: the preview must be able to say "this is not going to
+ * work" before the owner commits to a sentence that promises it will.
+ *
+ * Returns null when the purge may go ahead.
+ */
+async function purgeRefusal(
+  supabase: ServiceClient,
+  args: {
+    target: PurgeTarget;
+    callerId: string | null;
+    callerRole: string | null;
+    callerIsService: boolean;
+  },
+): Promise<{ error: string; status: number } | null> {
+  const { target, callerId, callerRole, callerIsService } = args;
+
+  // Removing your own login would leave you signed in to an account that no
+  // longer exists, with nobody able to let you back in.
+  if (callerId && target.id === callerId) {
+    return { error: "You can't remove your own login.", status: 400 };
+  }
+
+  // Owner-only, one rung above remove_access. Closing a login is reversible;
+  // this one frees the email and may delete the account outright.
+  if (!callerIsService && roleRank(callerRole) < 3) {
+    return {
+      error:
+        "Only the owner can remove a login for good. A supervisor can switch someone's access off instead.",
+      status: 403,
+    };
+  }
+  const verdict = canManageMember(callerRole, target.role);
+  if (!verdict.ok) return { error: verdict.message, status: 403 };
+
+  // A builder's login is not a crew login and is not managed from this screen —
+  // it is granted and taken away with the job grants, and deleting one here
+  // would silently drop a builder off jobs nobody on this screen can see.
+  if (target.is_partner) {
+    return {
+      error:
+        "That's a builder's login, not a crew login. Take it away from the builder's own jobs instead.",
+      status: 409,
+    };
+  }
+
+  // Never lock the company out of its own app — the same rule remove_access
+  // carries, and it matters more here because there is no undo.
+  if (roleRank(target.role) >= 3) {
+    const { data: owners } = await supabase
+      .from("profiles")
+      .select("id, role, access_revoked_at")
+      .in("role", ["owner", "big_boss"])
+      .is("access_revoked_at", null);
+    const remaining = (owners ?? []).filter(
+      (o) => (o as { id: string }).id !== target.id,
+    ).length;
+    if (remaining === 0) {
+      return {
+        error:
+          "That is the last owner with access. Make someone else an owner first, or nobody could let anyone back in.",
+        status: 409,
+      };
+    }
+  }
+  return null;
 }
 
 Deno.serve(async (req) => {
@@ -339,23 +509,19 @@ Deno.serve(async (req) => {
         if (!userId) {
           return jsonResponse({ error: "user_id is required" }, 400, cors);
         }
-        const { data: target } = await supabase
-          .from("profiles")
-          .select("id, display_name, role, access_revoked_at")
-          .eq("id", userId)
-          .maybeSingle();
-        if (!target) {
+        const targetRow = await readMember(supabase, userId);
+        if (!targetRow) {
           return jsonResponse({ error: "No such crew member." }, 404, cors);
         }
-        const targetRow = target as {
-          id: string;
-          display_name: string;
-          role: string;
-          access_revoked_at: string | null;
-        };
         const verdict = canManageMember(callerRole, targetRow.role);
         if (!verdict.ok) {
           return jsonResponse({ error: verdict.message }, 403, cors);
+        }
+        // Checked BEFORE the ban message below, which would otherwise point at
+        // a "Let them back in" button that refuses: a removed login has no
+        // address left to sign in with, so a new code could never work.
+        if (targetRow.retired_at) {
+          return jsonResponse({ error: ALREADY_REMOVED }, 409, cors);
         }
         // A banned account cannot sign in whatever password it has, so a code
         // for one would look like a working invite and then fail at the door.
@@ -476,20 +642,20 @@ Deno.serve(async (req) => {
         if (!userId) {
           return jsonResponse({ error: "user_id is required" }, 400, cors);
         }
-        const { data: target } = await supabase
-          .from("profiles")
-          .select("id, role")
-          .eq("id", userId)
-          .maybeSingle();
+        const target = await readMember(supabase, userId);
         if (!target) {
           return jsonResponse({ error: "No such crew member." }, 404, cors);
         }
-        const verdict = canManageMember(
-          callerRole,
-          (target as { role: string }).role,
-        );
+        const verdict = canManageMember(callerRole, target.role);
         if (!verdict.ok) {
           return jsonResponse({ error: verdict.message }, 403, cors);
+        }
+        // A removed login has had its email handed back, so un-banning it would
+        // restore an account whose address is now a tombstone nobody can type.
+        // Removing a login is deliberately a one-way door; the way back is a
+        // fresh invite, which is the whole point of freeing the email.
+        if (target.retired_at) {
+          return jsonResponse({ error: ALREADY_REMOVED }, 409, cors);
         }
 
         const { error: banErr } = await supabase.auth.admin.updateUserById(
@@ -507,11 +673,193 @@ Deno.serve(async (req) => {
         return jsonResponse({ ok: true }, 200, cors);
       }
 
+      // -----------------------------------------------------------------------
+      // What "Remove this login…" is about to do, WITHOUT doing any of it.
+      //
+      // The confirm sheet has to say which of the two shapes will happen —
+      // "nothing on file, the account will be deleted" reads very differently
+      // from "14 punches on file, everything is kept" — and a generic "are you
+      // sure?" is what makes a destructive button dangerous. So the counts are
+      // taken here and handed back for the sentence. Read-only: it writes
+      // nothing, and it runs every refusal so the sheet can say "this won't
+      // work" instead of promising something the next call would refuse.
+      case "purge_login_preview": {
+        const userId = String(body.user_id ?? "");
+        if (!userId) {
+          return jsonResponse({ error: "user_id is required" }, 400, cors);
+        }
+        const { data: target } = await supabase
+          .from("profiles")
+          .select("id, display_name, role, is_partner")
+          .eq("id", userId)
+          .maybeSingle();
+        if (!target) {
+          return jsonResponse({ error: "No such crew member." }, 404, cors);
+        }
+        const row = target as unknown as PurgeTarget;
+        const refusal = await purgeRefusal(supabase, {
+          target: row,
+          callerId,
+          callerRole,
+          callerIsService,
+        });
+        if (refusal) {
+          return jsonResponse({ error: refusal.error }, refusal.status, cors);
+        }
+        const counts = await countHistory(supabase, userId);
+        return jsonResponse(
+          {
+            ok: true,
+            user_id: userId,
+            display_name: row.display_name,
+            counts,
+            shape: shapeFor(counts) satisfies PurgeShape,
+          },
+          200,
+          cors,
+        );
+      }
+
+      // -----------------------------------------------------------------------
+      // The third, strongest door: remove a login and free its email.
+      //
+      // TWO SHAPES, CHOSEN BY THE DATA (see _shared/purgeLogin.ts):
+      //
+      //   NO HISTORY  → the auth user is deleted. profiles.id references
+      //     auth.users ON DELETE CASCADE, so the profile goes with it, and
+      //     there is nothing else to lose — that is what "no history" was
+      //     counted to establish. The email is free because the row is gone.
+      //
+      //   HAS HISTORY → nothing is deleted, ever. The auth user is banned (the
+      //     same primitive remove_access uses), profiles.access_revoked_at is
+      //     stamped, the profile is marked retired, and the auth user's EMAIL
+      //     is renamed to a tombstone so the real address comes free. Every
+      //     record still points at the same profile id, so "who installed this
+      //     window" still answers, and the roster shows the person as Removed
+      //     under the name they always had.
+      //
+      // The counts are taken again here rather than trusted from the preview:
+      // a punch clocked in between the two calls must move the answer, and a
+      // caller posting straight at this endpoint never supplied them at all.
+      case "purge_login": {
+        const userId = String(body.user_id ?? "");
+        if (!userId) {
+          return jsonResponse({ error: "user_id is required" }, 400, cors);
+        }
+        const { data: target } = await supabase
+          .from("profiles")
+          .select("id, display_name, role, is_partner")
+          .eq("id", userId)
+          .maybeSingle();
+        if (!target) {
+          return jsonResponse({ error: "No such crew member." }, 404, cors);
+        }
+        const row = target as unknown as PurgeTarget;
+        const refusal = await purgeRefusal(supabase, {
+          target: row,
+          callerId,
+          callerRole,
+          callerIsService,
+        });
+        if (refusal) {
+          return jsonResponse({ error: refusal.error }, refusal.status, cors);
+        }
+
+        // Any code still outstanding for them dies first, whichever shape
+        // follows — a live invite naming a deleted user is a code that fails at
+        // the door, and one naming a retired user is a way back in.
+        await supabase
+          .from("crew_invites")
+          .update({ revoked_at: new Date().toISOString(), revoked_by: invitedBy })
+          .eq("target_user_id", userId)
+          .is("redeemed_at", null)
+          .is("revoked_at", null);
+
+        const counts = await countHistory(supabase, userId);
+        const shape = shapeFor(counts);
+
+        if (shape === "deleted") {
+          const { error: delErr } = await supabase.auth.admin.deleteUser(userId);
+          if (delErr) throw new Error(delErr.message);
+          // The profile went with the auth user (ON DELETE CASCADE). Deleting
+          // it here as well would be a second statement that can only fail.
+          return jsonResponse(
+            {
+              ok: true,
+              shape,
+              email_released: true,
+              display_name: row.display_name,
+            },
+            200,
+            cors,
+          );
+        }
+
+        const { error: banErr } = await supabase.auth.admin.updateUserById(
+          userId,
+          { ban_duration: FOREVER },
+        );
+        if (banErr) throw new Error(banErr.message);
+
+        // Free the address. Supabase Auth allows updating the email of a banned
+        // user — the ban gates signing IN, not administrative writes — and this
+        // is the whole point of the feature: without it the address stays taken
+        // forever and the same person can never be given a fresh account.
+        // `email_confirm: true` because a confirmation mail for an address that
+        // cannot receive one would leave the row half-changed, and this project
+        // has no mail sender anyway (docs/crew-invites.md).
+        const { error: emailErr } = await supabase.auth.admin.updateUserById(
+          userId,
+          { email: tombstoneEmail(userId), email_confirm: true },
+        );
+        if (emailErr) throw new Error(emailErr.message);
+
+        const now = new Date().toISOString();
+        const { error: profErr } = await supabase
+          .from("profiles")
+          .update({
+            access_revoked_at: now,
+            retired_at: now,
+            retired_by: invitedBy,
+            active: false,
+            updated_at: now,
+          })
+          .eq("id", userId);
+        // A database that has not had 20260987000000 yet has no retired_at.
+        // The login is already closed and the email already freed at this
+        // point, so the honest thing is to finish the part that CAN be done
+        // rather than fail after a ban that cannot be taken back.
+        if (profErr) {
+          const message = String(
+            (profErr as { message?: string }).message ?? profErr,
+          );
+          if (!/retired_at|retired_by|PGRST204/i.test(message)) {
+            throw new Error(message);
+          }
+          const { error: fallbackErr } = await supabase
+            .from("profiles")
+            .update({ access_revoked_at: now, active: false, updated_at: now })
+            .eq("id", userId);
+          if (fallbackErr) throw new Error(fallbackErr.message);
+        }
+
+        return jsonResponse(
+          {
+            ok: true,
+            shape,
+            email_released: true,
+            display_name: row.display_name,
+          },
+          200,
+          cors,
+        );
+      }
+
       default:
         return jsonResponse(
           {
             error:
-              "Unknown action. Expected create_invite, resend_invite, revoke_invite, reissue_login, remove_access or restore_access.",
+              "Unknown action. Expected create_invite, resend_invite, revoke_invite, reissue_login, remove_access, restore_access, purge_login_preview or purge_login.",
           },
           400,
           cors,
