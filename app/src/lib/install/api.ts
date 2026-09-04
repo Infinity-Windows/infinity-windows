@@ -3934,7 +3934,15 @@ export async function applyPlacementSuggestions(
   return { saved: Number(data) || 0, unavailable: false };
 }
 
-/** Install events by this installer whose AI-filled memo still needs a glance. */
+/**
+ * Install events by this installer whose AI-filled memo still needs a glance.
+ *
+ * Deliberately NOT switched to coalesce(credited_to, installer_id) in wave Y:
+ * the memo is a recording of what the person who FILED it dictated, and the
+ * confirm step is "read back what the AI heard you say". Handing Sam somebody
+ * else's dictation to approve would be asking him to vouch for words he never
+ * spoke.
+ */
 export async function listMemosToConfirm(
   installerId: string,
 ): Promise<InstallEvent[]> {
