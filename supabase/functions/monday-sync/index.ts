@@ -66,9 +66,7 @@ async function fetchBoardItems(): Promise<MondayItem[]> {
   do {
     const query = `query ($board: [ID!], $cursor: String) {
       boards(ids: $board) {
-        items_page(limit: 100, cursor: $cursor,
-          query_params: { rules: [{ column_id: "__grouping__", compare_value: ${JSON.stringify(GROUP_IDS)}, operator: any_of }] }
-        ) {
+        items_page(limit: 100, cursor: $cursor) {
           cursor
           items {
             id
@@ -92,7 +90,12 @@ async function fetchBoardItems(): Promise<MondayItem[]> {
     const json = await res.json();
     if (json.errors?.length) throw new Error(`Monday API: ${JSON.stringify(json.errors)}`);
     const page = json.data?.boards?.[0]?.items_page;
-    out.push(...(page?.items ?? []));
+    // Monday used to accept a query_params rule on the pseudo-column
+    // "__grouping__" to return only the two groups we sync. On 2026-09-04 it
+    // answered "Column not found: __grouping__" (ResourceNotFoundException),
+    // so the board is walked whole — ~150 jobs, two pages — and the group
+    // filter lives here instead. Same rows in, same rows out.
+    out.push(...(page?.items ?? []).filter((item: MondayItem) => GROUP_IDS.includes(item.group?.id)));
     cursor = page?.cursor ?? null;
   } while (cursor);
   return out;
