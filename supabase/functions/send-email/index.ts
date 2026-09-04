@@ -158,7 +158,7 @@ Deno.serve(async (req) => {
 
   const { data: link } = await admin
     .from("gc_links")
-    .select("id, project_id, brand, sent_to_email, token_hash, expires_at, revoked_at")
+    .select("id, project_id, sent_to_email, token_hash, expires_at, revoked_at")
     .eq("id", linkId)
     .maybeSingle();
   if (!link) return jsonResponse({ error: "That link is not one of ours." }, 404, cors);
@@ -177,10 +177,13 @@ Deno.serve(async (req) => {
   }
 
   // Can this caller actually see the job? Their own client, their own RLS. A
-  // foreman who cannot read the job cannot mail its builder.
+  // foreman who cannot read the job cannot mail its builder. gc_brand rides
+  // along on the same read because the JOB owns the brand, not the link: the
+  // subject line has to say the name the office is using with this builder
+  // now, even when the link being resent was minted under the other one.
   const { data: project } = await caller
     .from("projects")
-    .select("id, name, job_code")
+    .select("id, name, job_code, gc_brand")
     .eq("id", link.project_id)
     .maybeSingle();
   if (!project) {
@@ -188,9 +191,10 @@ Deno.serve(async (req) => {
   }
 
   const jobLabel = String(project.name || project.job_code || "your job");
+  const brand = String(project.gc_brand ?? "stg");
   const { subject, text } = emailBody(
     jobLabel,
-    String(link.brand ?? "stg"),
+    brand,
     linkUrl(body.appBase, token),
   );
 
@@ -217,9 +221,15 @@ Deno.serve(async (req) => {
   }
 
   // Stamp the send on the link, so the card can say when it went and to whom.
+  // THIS IS THE ONLY WRITER OF sent_at, and it runs only after a 2xx from
+  // Resend — create_gc_link deliberately leaves it null, so "sent" on the card
+  // means a mail server accepted it rather than "somebody typed an address".
+  // brand is written here too, and only here after mint: the column is the
+  // record of the name this email actually wore, which is a real question
+  // months later and cannot be edited into the mail after the fact.
   await admin
     .from("gc_links")
-    .update({ sent_at: new Date().toISOString() })
+    .update({ sent_at: new Date().toISOString(), brand })
     .eq("id", link.id);
 
   return jsonResponse({ ok: true, to: link.sent_to_email }, 200, cors);

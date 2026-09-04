@@ -10341,7 +10341,15 @@ begin
   select v_link.id,
          v_link.project_id,
          coalesce(nullif(btrim(p.name), ''), p.job_code) as job_label,
-         v_link.brand,
+         -- THE JOB'S BRAND, NOT THE LINK'S. gc_links.brand is a record of the
+         -- name we used when this link went out; the page has to wear the name
+         -- the office is using with this builder NOW. A foreman who sends a
+         -- link, then realises this builder knows us as Forge and taps the
+         -- pill, would otherwise leave the builder's open page headed "STG
+         -- Windows & Doors" with nothing on either screen saying it is stale —
+         -- and the column comment on projects.gc_brand says the opposite is
+         -- the intent ("a job's brand outlives any one link").
+         coalesce(p.gc_brand, v_link.brand, 'stg') as brand,
          -- Cast spelled out: RETURN QUERY matches the function's declared
          -- result type by TYPE, and a bare string literal is `unknown` until
          -- something resolves it. claim_pipeline_nudges casts its own CASE for
@@ -10357,7 +10365,7 @@ end;
 $$;
 
 comment on function public.gc_link_open(text) is
-  'Service role only (the gc-link edge function): turn a token HASH into the job label, the brand and whether the link is live. Counts the read. Returns no row at all for a token nobody minted, so a stranger cannot tell an unknown token from an expired one.';
+  'Service role only (the gc-link edge function): turn a token HASH into the job label, the job''s CURRENT brand (projects.gc_brand, not the link''s record of what was sent) and whether the link is live. Counts the read. Returns no row at all for a token nobody minted, so a stranger cannot tell an unknown token from an expired one.';
 
 revoke all on function public.gc_link_open(text) from public, anon, authenticated;
 grant execute on function public.gc_link_open(text) to service_role;
