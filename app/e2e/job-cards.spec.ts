@@ -142,55 +142,79 @@ async function shoot(page: Page, label: string) {
   await page.screenshot({ path: join(SHOTS, `${label}.png`), fullPage: true });
 }
 
+/** Loads the list, checks it is the list we meant, and photographs it. */
+async function loadAndShoot(page: Page, label: string): Promise<number[]> {
+  await page.goto("/projects");
+  await expect(page.locator("a.project-card")).toHaveCount(3);
+  await expect(page.locator("a.project-card").first()).toContainText("Mad Moose");
+  // Taken before the assertions on purpose, so a failing run still leaves the
+  // picture that explains it.
+  await shoot(page, label);
+  return textEdges(page);
+}
+
 /**
- * What each width's foreman run measured, so the installer run below can check
- * it against the same number. The config runs this file in one worker with
- * `fullyParallel: false`, so the foreman test has always finished by then;
- * running one test on its own just leaves this empty and skips the comparison.
+ * BOTH ROLES IN ONE TEST BODY, deliberately.
+ *
+ * The cross-role check is the only assertion that actually holds the reserved
+ * rail column up: delete the spacer and every other assertion here still passes,
+ * because an installer's three cards would all shift left together and stay
+ * perfectly uniform with each other. Carrying the foreman's number between two
+ * tests in a module-level variable made that one assertion vanish silently — on
+ * `--grep installer`, on a shard, behind a `test.only`, or any time the foreman
+ * test failed first — and a check that can disappear with a green tick is not a
+ * check. So the installer gets a browser context of its own inside this test,
+ * and the two numbers are compared where both of them are known.
  */
-const foremanEdge = new Map<number, number>();
-
 for (const width of [390, 1024] as const) {
-  for (const role of ["foreman", "installer"] as const) {
-    test.describe(`${width}px, ${role}`, () => {
-      test.use({ viewport: { width, height: 844 }, deviceScaleFactor: 2 });
+  test.describe(`${width}px`, () => {
+    test.use({ viewport: { width, height: 844 }, deviceScaleFactor: 2 });
 
-      test(`every job card starts its text at the same place (${width}px, ${role})`, async ({
-        page,
-      }) => {
-        // Inline rather than behind a helper: the fixture setters read as React
-        // hooks to the linter, and it only forgives them inside a test body.
-        await useSupabaseFixtures(page, { role });
-        await useCardFixtures(page);
-        await page.goto("/projects");
-        await expect(page.locator("a.project-card")).toHaveCount(3);
-        await expect(page.locator("a.project-card").first()).toContainText("Mad Moose");
+    test(`every job card starts its text at the same place (${width}px)`, async ({
+      page,
+      browser,
+    }) => {
+      // Inline rather than behind a helper, and never in a loop or a try: the
+      // fixture setter reads as a React hook to the linter, which only forgives
+      // one at the top level of a test body.
+      await useSupabaseFixtures(page, { role: "foreman" });
+      await useCardFixtures(page);
 
-        // Taken before the assertion on purpose, so a failing run still leaves
-        // the picture that explains it.
-        await shoot(page, `${width}-${role}`);
-
-        const edges = await textEdges(page);
-        expect(edges).toHaveLength(3);
-        // THE POINT: one number, three cards. A tracking job with two lines
-        // starts exactly where a data job with four does.
-        expect(new Set(edges).size).toBe(1);
-
-        // And the reorder rail is only the difference between the roles, not
-        // between the cards: foreman gets three rails, an installer none.
-        await expect(page.locator(".job-order-rail .job-order-btn")).toHaveCount(
-          role === "foreman" ? 6 : 0,
-        );
-
-        // THE OTHER POINT: the rail's column is RESERVED whether or not the
-        // rail is in it, so an installer's job names start on exactly the same
-        // pixel a foreman's do — the two roles read one list, not two.
-        if (role === "foreman") foremanEdge.set(width, edges[0]);
-        else {
-          const theirs = foremanEdge.get(width);
-          if (theirs !== undefined) expect(edges[0]).toBe(theirs);
-        }
+      const installerCtx = await browser.newContext({
+        viewport: { width, height: 844 },
+        deviceScaleFactor: 2,
       });
+      const installer = await installerCtx.newPage();
+      await useSupabaseFixtures(installer, { role: "installer" });
+      await useCardFixtures(installer);
+
+      const foremanEdges = await loadAndShoot(page, `${width}-foreman`);
+      const installerEdges = await loadAndShoot(installer, `${width}-installer`);
+
+      // THE POINT: one number, three cards, for each role on its own. A
+      // tracking job with two lines starts exactly where a data job with four
+      // does, and the first and last cards — whose reorder button is disabled —
+      // do not drift either.
+      expect(foremanEdges).toHaveLength(3);
+      expect(installerEdges).toHaveLength(3);
+      expect(new Set(foremanEdges).size).toBe(1);
+      expect(new Set(installerEdges).size).toBe(1);
+
+      // THE OTHER POINT: the rail's column is RESERVED whether or not the rail
+      // is in it, so an installer's job names start on exactly the same pixel a
+      // foreman's do — the two roles read one list, not two.
+      expect(installerEdges[0]).toBe(foremanEdges[0]);
+
+      // And the thing that reserves it is named directly, so deleting the
+      // spacer fails here rather than only in the comparison above: a foreman
+      // gets three rails and no spacers, an installer three spacers and no
+      // rails, and between them that is the ONLY difference in the head.
+      await expect(page.locator(".job-order-rail .job-order-btn")).toHaveCount(6);
+      await expect(page.locator(".job-order-spacer")).toHaveCount(0);
+      await expect(installer.locator(".job-order-rail .job-order-btn")).toHaveCount(0);
+      await expect(installer.locator(".job-order-spacer")).toHaveCount(3);
+
+      await installerCtx.close();
     });
-  }
+  });
 }

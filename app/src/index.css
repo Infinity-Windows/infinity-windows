@@ -11629,54 +11629,66 @@ button.stage-chip {
   text-align: left;
 }
 
-/* The job name at a size a person reads at arm's length, in the condensed
-   display face so a long name still fits a phone. Badges and chips sit inline
-   after it, on the same baseline, so the row reads as one line rather than a
-   stack of stickers. */
+/* The name row. Type deliberately does NOT live here: DATA, NOT READY and
+   "Needs a call" are children of this row, and none of them names a font of its
+   own, so anything set here is a font they inherit. Putting the display face on
+   the row once made those three badges render in Barlow Condensed on this
+   screen and in Inter on the job header, the clock-in list and the pipeline
+   panel -- one badge, two typefaces, depending which screen you were on, and at
+   10px uppercase the condensed one is the harder of the two to read. So the row
+   only lays out; `.job-card-name` below carries the face and the size. */
 .job-card-title {
   display: flex;
   align-items: baseline;
   flex-wrap: wrap;
   gap: 4px 6px;
   width: 100%;
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-size: 22px;
-  line-height: 1.1;
 }
 
+/* The job name at a size a person reads at arm's length, in the condensed
+   display face so a long name still fits a phone. Badges and chips sit inline
+   after it, on the same baseline, so the row reads as one line rather than a
+   stack of stickers. */
 .job-card-name {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--text-lg);
+  line-height: 1.1;
 }
 
 /* Job code, address, scope, pipeline: the supporting lines, all one size. */
 .job-card-sub {
-  font-size: 14px;
+  font-size: var(--text-sm);
   line-height: 1.35;
 }
 
 .job-card-head .job-pipeline-line {
-  font-size: 14px;
+  font-size: var(--text-sm);
   line-height: 1.35;
 }
 
-/* Sized to sit beside a 22px name rather than under it. The colour still comes
+/* Sized to sit beside the name rather than under it. The colour still comes
    from the card (green/amber/orange by how far along the job is) and the bar
    below is untouched. */
 .job-card-pct {
   font-family: var(--font-display);
   font-weight: 700;
-  font-size: 18px;
+  font-size: var(--text-md);
   line-height: 1.1;
   font-variant-numeric: tabular-nums;
 }
 
+/* The card's four sizes are the ramp's four smallest, in order of how much the
+   line matters: name --text-lg, percent --text-md, the supporting lines
+   --text-sm, and this one --text-xs. Named rather than written as numbers so
+   the whole card moves together when the ramp does. */
 .job-card-meta {
   justify-content: space-between;
   align-items: center;
-  font-size: 13px;
+  font-size: var(--text-xs);
 }
 
 /* ---------------------------------------------------------------------------

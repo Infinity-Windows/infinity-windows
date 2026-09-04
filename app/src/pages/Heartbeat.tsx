@@ -179,40 +179,50 @@ export function Heartbeat() {
               p.pct >= 80 ? "var(--ok)" : p.pct >= 40 ? "var(--accent)" : "var(--warn)";
             return (
               <div key={p.id} className="project-card home-project">
-                <div className="home-project-head">
+                {/* The same job card as Jobs and Home, minus the reorder rail —
+                    Heartbeat never reorders. "/" lands on one of three screens
+                    depending who you are, and a job read the same way on all
+                    three is the whole point of the shared classes. */}
+                <div className="home-project-head job-card-head">
                   <Link
                     to={`/projects/${p.id}?tab=dispatch`}
-                    style={{ minWidth: 0, color: "inherit", textDecoration: "none" }}
+                    className="job-card-body"
+                    style={{ color: "inherit", textDecoration: "none" }}
                   >
-                    <div style={{ fontWeight: 600, fontSize: 16 }}>
-                      <span
-                        aria-hidden
-                        title={p.greenLight ? "Green light — cleared to run" : "No green light"}
-                        style={{
-                          display: "inline-block",
-                          width: 10,
-                          height: 10,
-                          borderRadius: "50%",
-                          marginRight: 8,
-                          background: p.greenLight ? "var(--ok, #34d399)" : "var(--muted, #94a3b8)",
-                          verticalAlign: "middle",
-                        }}
-                      />
-                      {p.name}
+                    <div className="job-card-title">
+                      {/* The green-light dot rides INSIDE the name span rather
+                          than beside it: the title row is a baseline flex row,
+                          and an empty 10px box in it would hang off the
+                          baseline instead of sitting in the middle of the
+                          word. Inline in the text, `vertical-align` still
+                          means what it says. */}
+                      <span className="job-card-name">
+                        <span
+                          aria-hidden
+                          title={p.greenLight ? "Green light — cleared to run" : "No green light"}
+                          style={{
+                            display: "inline-block",
+                            width: 10,
+                            height: 10,
+                            borderRadius: "50%",
+                            marginRight: 8,
+                            background: p.greenLight
+                              ? "var(--ok, #34d399)"
+                              : "var(--muted, #94a3b8)",
+                            verticalAlign: "middle",
+                          }}
+                        />
+                        {p.name}
+                      </span>
                     </div>
-                    <div className="muted" style={{ fontSize: 12 }}>
+                    <div className="muted job-card-sub">
                       {p.jobCode}
                       {onTaskCount(p) > 0 ? ` · ${onTaskCount(p)} on task` : ""}
                     </div>
                   </Link>
                   <span
-                    style={{
-                      fontFamily: "var(--font-display)",
-                      fontWeight: 700,
-                      fontSize: 15,
-                      color: p.total > 0 ? pctColor : "var(--muted)",
-                      flex: "none",
-                    }}
+                    className="job-card-pct"
+                    style={{ color: p.total > 0 ? pctColor : "var(--muted)" }}
                   >
                     {p.total > 0 ? `${p.pct}%` : "—"}
                   </span>
