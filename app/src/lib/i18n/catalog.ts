@@ -1804,6 +1804,39 @@ export const CATALOG = {
   // "eliminado" would read as though the PERSON's record had been deleted,
   // which is the exact thing this feature refuses to do.
   "crew.removedLogin": { en: "Removed", es: "Dado de baja" },
+
+  // ---- The before photo the chain used to delete (2026-09-04) -----------
+  // The unit sheet's before-photo card only rendered while the unit had no
+  // start time. On the chain — the default loop — the next unit's session is
+  // started server-side by the previous unit's finish, so the sheet opens with
+  // the clock already running and the card never appeared. Every unit after
+  // the first of the day filed with no before photo, under a Capture-stage
+  // caption promising "the before you took in step 1".
+  //
+  // Two of these five replace English that was hardcoded on that screen
+  // (`requiredToStart`, `afterOverBefore`); they are here because their new
+  // neighbours are, and a sentence pair where one half translates and the
+  // other does not is worse than either.
+  "opening.before.requiredToStart": {
+    en: "The opening as you found it — required before the clock starts.",
+    es: "La abertura como la encontraste — obligatoria antes de que arranque el reloj.",
+  },
+  "opening.before.clockRunning": {
+    en: "The opening as you found it. Your clock is already running, so take it now.",
+    es: "La abertura como la encontraste. Tu reloj ya está corriendo, así que tómala ahora.",
+  },
+  "opening.before.taken": {
+    en: "Before photo taken — it files with the install.",
+    es: "Foto de antes tomada — se guarda con la instalación.",
+  },
+  "opening.capture.afterOverBefore": {
+    en: "The after lines up over the before you took.",
+    es: "La foto de después se alinea con la de antes que tomaste.",
+  },
+  "opening.capture.afterOnly": {
+    en: "Take the after photo of the finished window.",
+    es: "Toma la foto de después de la ventana terminada.",
+  },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */

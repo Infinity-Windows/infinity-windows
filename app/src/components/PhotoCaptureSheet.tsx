@@ -62,6 +62,15 @@ type PhotoCaptureSheetProps =
        * keeps both so a bad first shot can be retaken.
        */
       slots?: ("before" | "after")[];
+      /**
+       * Open the camera straight to this slot, once, without a tap. For the
+       * chain: the previous unit's Finish walked the installer to this window,
+       * so the one thing owed here is a shutter press and it should cost no
+       * navigation and no decision. One-shot on purpose — dismissing the camera
+       * leaves the sheet exactly as it would otherwise be, and nothing reopens
+       * it behind the person's back.
+       */
+      autoOpen?: "before" | "after" | null;
     }
   | {
       /**
@@ -713,11 +722,23 @@ function BeforeAfterCapture({
   onChange,
   label,
   slots,
+  autoOpen,
 }: Extract<PhotoCaptureSheetProps, { mode: "beforeAfter" }>) {
   const t = useT();
   const [mode, setMode] = useState<"idle" | "before" | "after">("idle");
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [stamping, setStamping] = useState(false);
+
+  // Fires once, the first time a slot is asked for. `autoOpen` arrives late on
+  // a chained sheet (the hand-off stamp is read out of history state in an
+  // effect), so this cannot be a mount-only effect — but it must never fire a
+  // second time, or dismissing the camera would just reopen it.
+  const autoOpened = useRef(false);
+  useEffect(() => {
+    if (!autoOpen || autoOpened.current) return;
+    autoOpened.current = true;
+    setMode(autoOpen);
+  }, [autoOpen]);
 
   // Warm a fix from the moment the card is on screen — an installer standing at
   // the window has been standing there for a while before the shutter.

@@ -403,6 +403,115 @@ test("Chain: finishing with a queued next unit hands the clock to it", async ({
   await expect(banner).toContainText(str(next.opening_code));
 });
 
+/**
+ * A camera that exists. Headless Chromium has no capture device, so
+ * getUserMedia rejects and every live-camera view falls back to "use a file
+ * instead" — which is fine for the tests that only pick files, but hides the
+ * one thing the chain test below has to see: WHICH slot the camera opened
+ * itself to. A canvas stream is a real MediaStream and the <video> plays it.
+ */
+async function stubCamera(page: Page) {
+  await page.addInitScript(() => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 64;
+    canvas.height = 64;
+    canvas.getContext("2d");
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        getUserMedia: async () =>
+          (
+            canvas as HTMLCanvasElement & {
+              captureStream: (fps?: number) => MediaStream;
+            }
+          ).captureStream(10),
+      },
+    });
+  });
+}
+
+test("Chain: the next unit asks for its before photo, and the after stage stops promising one that was never taken", async ({
+  page,
+}) => {
+  await useSupabaseFixtures(page, { role: "installer" });
+  await stubGeolocationDenied(page);
+  await stubCamera(page);
+  const current = opening(2, {
+    status: "assigned",
+    needs_flashing: false,
+    work_started_at: "2026-08-20T09:00:00Z",
+    confirmed: true,
+  });
+  const next = opening(3, {
+    status: "assigned",
+    needs_flashing: false,
+    work_started_at: null,
+    confirmed: true,
+    assigned_to: TEST_USER.id,
+  });
+  const openings = await routeOpenings(page, [current, next]);
+  await routeMyOpenings(page, [next]);
+
+  const finishes: Json[] = [];
+  await page.route("**/rest/v1/rpc/finish_unit", async (route) => {
+    const body = route.request().postDataJSON() as Json;
+    finishes.push(body);
+    const nextId = body.p_next_opening_id;
+    if (typeof nextId === "string") {
+      // The chain: the next unit's clock is running before its sheet ever
+      // renders. This is exactly what used to make the before-photo card
+      // unreachable, so the fixture has to reproduce it.
+      openings.set(nextId, { work_started_at: new Date().toISOString() });
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ id: "evt-e2e-before" }),
+    });
+  });
+
+  await page.goto(`/projects/${str(current.project_id)}/opening/${str(current.id)}`);
+  await page.getByRole("button", { name: "3. Capture" }).click();
+  await page
+    .locator('input[type="file"][accept="image/*"]')
+    .setInputFiles(pngFile("after.png"));
+  await page.getByRole("button", { name: "5", exact: true }).click();
+  await page.getByRole("button", { name: "Submit install" }).click();
+  await expect.poll(() => finishes.length).toBe(1);
+
+  await page.getByRole("button", { name: /Next one/ }).click();
+  await expect(page).toHaveURL(new RegExp(`/opening/${str(next.id)}$`));
+
+  // The card the chain used to delete, on a unit whose clock is already
+  // running — and the camera already open on the before slot, so the whole
+  // ask is one shutter press with no navigation and no decision.
+  await expect(page.getByRole("heading", { name: "Before photo" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Capture before" })).toBeVisible();
+
+  // Dismissing it changes nothing else: the sheet carries on exactly as it did.
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByRole("button", { name: "Capture before" })).toBeHidden();
+
+  await page.getByRole("button", { name: "3. Capture" }).click();
+  // No before was taken, so the caption must not point at one.
+  await expect(
+    page.getByText("Take the after photo of the finished window."),
+  ).toBeVisible();
+  await expect(
+    page.getByText("The after lines up over the before you took."),
+  ).toBeHidden();
+
+  // And the after stage still files: Submit's requirements for a chained unit
+  // are deliberately unchanged — a missing before never blocks it.
+  await page
+    .locator('input[type="file"][accept="image/*"]')
+    .setInputFiles(pngFile("after.png"));
+  await page.getByRole("button", { name: "4", exact: true }).click();
+  await page.getByRole("button", { name: "Submit install" }).click();
+  await expect.poll(() => finishes.length).toBe(2);
+  expect(finishes[1].p_opening_id).toBe(str(next.id));
+});
+
 test("Redo: filing a redo fires press_redo, and the confirmation never wears the error class", async ({
   page,
 }) => {
