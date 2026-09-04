@@ -277,6 +277,19 @@ begin
     raise exception 'Sign in before adding a card.' using errcode = '42501';
   end if;
 
+  -- THE PARTNER WALL, and it has to be here rather than only on the table. Both
+  -- policies below carry `not is_partner_user()`, but a policy is a READ and
+  -- WRITE gate for direct table access, and this function is SECURITY DEFINER —
+  -- it writes straight past every policy on the table. A builder login is
+  -- pinned to role 'installer' (20260950000000), which is rank 0, which is
+  -- exactly the rank "anybody may add their OWN card" was written for. Without
+  -- this line a GC could file certifications against themselves: rows they
+  -- could never read back, but rows the company's own screens and the 7 AM
+  -- sweep would count as crew.
+  if public.is_partner_user() then
+    raise exception 'Not available for your account.' using errcode = '42501';
+  end if;
+
   -- ---------------------------------------------------------------- new card
   if p_id is null then
     v_target := coalesce(p_profile_id, v_me);
@@ -394,7 +407,7 @@ end;
 $$;
 
 comment on function public.set_certification(uuid, uuid, text, text, date, date, text, boolean, boolean, boolean, boolean) is
-  'The one writer for certifications. Adding your OWN card needs no rank and always lands unverified; adding somebody else''s, and every edit, verification and void, is supervisor+. NOBODY checks their own card, whatever their rank — un-checking it is allowed, because taking a claim back is not making one. Partial: a null argument leaves that column alone, and a date is cleared through its own flag so verifying cannot wipe an expiry (Wave O, O1).';
+  'The one writer for certifications. A partner (builder/GC) login is refused outright — SECURITY DEFINER writes past the table''s own partner guard, so the wall is repeated in here. Adding your OWN card needs no rank and always lands unverified; adding somebody else''s, and every edit, verification and void, is supervisor+. NOBODY checks their own card, whatever their rank — un-checking it is allowed, because taking a claim back is not making one. Partial: a null argument leaves that column alone, and a date is cleared through its own flag so verifying cannot wipe an expiry (Wave O, O1).';
 
 revoke all on function public.set_certification(uuid, uuid, text, text, date, date, text, boolean, boolean, boolean, boolean) from public, anon;
 grant execute on function public.set_certification(uuid, uuid, text, text, date, date, text, boolean, boolean, boolean, boolean) to authenticated;
