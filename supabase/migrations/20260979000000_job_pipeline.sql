@@ -296,6 +296,18 @@ comment on table pipeline_nudges is
 -- about Sand Hollow every morning is how a crew learns to swipe the app's
 -- notifications away without reading them.
 --
+-- SCHEDULED MEANS PUBLISHED. A schedule assignment is born 'draft' and stays
+-- invisible to the crew until a supervisor publishes it — that is what the
+-- publish step is FOR (20260721010000's own header), and every app-side read of
+-- "who is on this job" agrees: My Schedule, the job hub's crew list and the
+-- offline fallback all filter status = 'published'. So the sweep filters the
+-- statuses the crew has actually been shown, and never `<> 'canceled'`, which
+-- would let a draft in. A foreman pencilled into a plan nobody has published
+-- would otherwise be pushed at 7 AM about a job the app has deliberately not
+-- told him he is on — and the push itself would leak next month's unpublished
+-- board. 'in_progress' and 'done' are included because an assignment only
+-- reaches them after being published; nothing in the app moves a draft there.
+--
 -- Partner logins are excluded outright. They are not crew, and a builder must
 -- never learn from a notification that our windows are late.
 --
@@ -323,7 +335,8 @@ as $$
                join schedule_assignment_members sam on sam.assignment_id = sa.id
               where sa.project_id = p_project_id
                 and sam.profile_id = pr.id
-                and sa.status <> 'canceled'
+                -- Published, not drafted — see the note above.
+                and sa.status in ('published', 'in_progress', 'done')
                 and sa.end_date >= (now() at time zone 'America/Denver')::date
                 and sa.start_date <= (now() at time zone 'America/Denver')::date + 14
            )
@@ -341,7 +354,7 @@ as $$
 $$;
 
 comment on function public.pipeline_nudge_audience(uuid) is
-  'Who hears a pipeline warning about one job: every active supervisor+, plus every foreman scheduled on it within the next fortnight or clocked into it right now. Partner logins never.';
+  'Who hears a pipeline warning about one job: every active supervisor+, plus every foreman on a PUBLISHED assignment for it within the next fortnight or clocked into it right now. A draft assignment does not count — the crew has not been shown it. Partner logins never.';
 
 revoke all on function public.pipeline_nudge_audience(uuid) from public, anon, authenticated;
 grant execute on function public.pipeline_nudge_audience(uuid) to service_role;
