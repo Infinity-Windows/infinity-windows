@@ -214,14 +214,23 @@ export const NAV: NavDest[] = [
   { id: "qc", to: "/qc", label: "Quality", icon: "✓", minRole: "foreman" },
   { id: "analytics", to: "/analytics", label: "Analytics", icon: "◲", minRole: "foreman" },
   { id: "crew", to: "/crew", label: "Roster", icon: "☰", minRole: "foreman" },
-  { id: "receive", to: "/receive", label: "Receive", icon: "⬇", minRole: "foreman" },
+  // A signpost page, not a screen: unit intake retired with the chain
+  // (ADR-0005) and /receive now just points at /storage/tag and /warehouse.
+  // ADR-0007 opened tagging and the warehouse to every crew member, so a
+  // sign that reads "receiving is packages now" has to be readable by the
+  // people doing the receiving. Nothing links it; it stays for bookmarks.
+  { id: "receive", to: "/receive", label: "Receive", icon: "⬇", minRole: "installer" },
   // /storage used to be the container hub's own foreman+ address (D6); it
   // merged into /warehouse (ticket 18) and the route is now a bare redirect,
-  // same as /search below. Kept in the registry (unchanged minRole) so old
-  // links/bookmarks still resolve to a real entry instead of an unknown path,
-  // and so this floor stays test-pinned the way it always was.
-  { id: "storage", to: "/storage", label: "Storage", icon: "▧", minRole: "foreman" },
-  { id: "labels", to: "/labels", label: "Slot labels", icon: "❏", minRole: "foreman" },
+  // with no route guard on it at all. Kept in the registry so old
+  // links/bookmarks resolve to a real entry instead of an unknown path. The
+  // floor drops with ADR-0007 to match where it lands: /warehouse, which
+  // every crew member opens. A redirect whose floor is higher than its
+  // destination's is a door that says no to people already inside.
+  { id: "storage", to: "/storage", label: "Storage", icon: "▧", minRole: "installer" },
+  // Slot labels live in the warehouse page's "Other tools" fold, which
+  // ADR-0007 opened to everyone — printing a rack label is warehouse work.
+  { id: "labels", to: "/labels", label: "Slot labels", icon: "❏", minRole: "installer" },
   { id: "catalog", to: "/catalog", label: "Catalog", icon: "❒", minRole: "foreman" },
   // Installers, not foreman+: the whole point of ticket 07 is that an
   // installer finds the caulk and logs what they took, three taps, no list.

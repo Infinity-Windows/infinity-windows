@@ -1782,6 +1782,18 @@ export const CATALOG = {
     en: "group talk — recorded {time}",
     es: "charla en grupo — registrada a las {time}",
   },
+
+  // ---- Warehouse actions are crew actions (ADR-0007, 2026-09-04) ---------
+  // The whole wave takes gates OFF, so there is almost no new copy. This is
+  // the one sentence it adds: on the Rewrite-a-set screen every control is
+  // now anyone's, and the single card that is still a rank — "Start this set
+  // over", which really does delete arrived material — would otherwise just
+  // vanish with nothing said. A blank space teaches nobody; this line says
+  // who to ask.
+  "rewriteSet.startOverIsLeadOnly": {
+    en: "Only a foreman or above can start a set over.",
+    es: "Solo un supervisor o superior puede empezar un juego desde cero.",
+  },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */

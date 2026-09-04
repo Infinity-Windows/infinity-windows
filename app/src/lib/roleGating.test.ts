@@ -80,24 +80,29 @@ describe("role helpers derive from roleRank", () => {
 
 describe("minRoleForPath matches page-level gating", () => {
   it("guards foreman+ surfaces at the foreman floor", () => {
-    for (const path of [
-      "/qc",
-      "/analytics",
-      "/crew",
-      "/receive",
-      "/labels",
-      "/catalog",
-      "/team",
-      "/issues",
-    ]) {
+    for (const path of ["/qc", "/analytics", "/crew", "/catalog", "/team", "/issues"]) {
       expect(minRoleForPath(path)).toBe("foreman");
+    }
+  });
+
+  it("opens the warehouse's own routes to installers (ADR-0007)", () => {
+    // Warehouse actions are crew actions (owner call, 2026-09-04). /labels
+    // prints rack labels from the warehouse page's own fold; /receive and
+    // /storage are signposts onto /warehouse and /storage/tag, both of which
+    // an installer has always been able to open. A floor above the thing it
+    // points at is a door that says no to somebody already inside.
+    for (const path of ["/labels", "/receive", "/storage"]) {
+      expect(minRoleForPath(path)).toBe("installer");
     }
   });
 
   it("opens Supplies to installers — they are the ones taking the caulk", () => {
     // Warehouse tickets 07/08: an installer finds the supply, taps Take, says
-    // how many and which job. Setting a HOME SPOT stays foreman+, enforced by
-    // set_supply_home server-side rather than by the route floor.
+    // how many and which job. Setting a HOME SPOT was the one thing on this
+    // screen that stayed foreman+, enforced by set_supply_home rather than by
+    // the route floor — until ADR-0007 (owner call, 2026-09-04) opened that
+    // RPC with the rest. The floor is installer and now so is everything
+    // behind it.
     expect(minRoleForPath("/supplies")).toBe("installer");
   });
 

@@ -130,9 +130,9 @@ export const APP_GUIDE: AppGuideEntry[] = [
   {
     path: "/storage",
     label: "Storage",
-    minRole: "foreman",
+    minRole: "installer",
     blurb:
-      "The container hub, for foreman and up: every conex, crate and the warehouse on one grid, with what is inside each one and how long it has sat there. Leads add containers, print blank stickers and door posters, check packages in by ticking a list, and archive a container once it is empty. Installers tag packages at the truck and check them out on their own screens; this is where the containers themselves are managed. Every package keeps its full history.",
+      "The old container-hub address. It redirects to Warehouse, where every conex, crate and the warehouse itself sit on one grid with what is inside each and how long it has sat there. Any crew member adds a container, prints blank stickers and door posters, checks packages in by ticking a list, and archives a container once it is empty (ADR-0007). Every package keeps its full history.",
   },
     {
     path: "/warehouse",
@@ -290,16 +290,16 @@ export const APP_GUIDE: AppGuideEntry[] = [
   {
     path: "/receive",
     label: "Receive",
-    minRole: "foreman",
+    minRole: "installer",
     blurb:
       "The old unit intake — retired. The address still works and walks you to where receiving lives now: labels plan and print from the job's Warehouse tab, and everything at the truck happens on Tag packages.",
   },
   {
     path: "/labels",
     label: "Slot labels",
-    minRole: "foreman",
+    minRole: "installer",
     blurb:
-      "Print QR labels for warehouse slots. Use it when setting up or relabeling storage locations.",
+      "Print QR labels for warehouse slots. Use it when setting up or relabeling storage locations. Open to any crew member, from the Warehouse page's \"Other tools\" fold (ADR-0007).",
   },
   {
     path: "/catalog",

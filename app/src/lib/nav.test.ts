@@ -274,16 +274,19 @@ describe("the warehouse is one row", () => {
   });
 });
 
-describe("the storage hub is one door with one rule (D6)", () => {
+describe("the storage hub is one door with one rule (D6, then ADR-0007)", () => {
   // The hub page kept "Coming in" and "In storage" to foreman and up, while
   // /storage handed the same tools to anyone who typed the address. Two doors
   // to the same room with different locks is how the drift started, so the
-  // hub's rule is the rule.
-  it("keeps the container hub to foreman and up", () => {
-    expect(canAccess("installer", "/storage")).toBe(false);
-    expect(canAccess("foreman", "/storage")).toBe(true);
-    expect(canAccess("supervisor", "/storage")).toBe(true);
-    expect(canAccess("owner", "/storage")).toBe(true);
+  // hub's rule is the rule — and since ADR-0007 (owner call, 2026-09-04) the
+  // hub's rule is "any crew member". /storage is a bare redirect onto it, so
+  // it moves with it rather than turning people away at a door they are
+  // already through.
+  it("keeps the container hub's floor and the redirect's floor identical", () => {
+    for (const role of ["installer", "foreman", "supervisor", "owner"] as const) {
+      expect(canAccess(role, "/storage")).toBe(canAccess(role, "/warehouse"));
+      expect(canAccess(role, "/storage")).toBe(true);
+    }
   });
 
   it("leaves tagging and check-out with the installers who do them", () => {

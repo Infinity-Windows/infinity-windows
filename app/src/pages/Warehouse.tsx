@@ -7,10 +7,13 @@
 // navigating, because the tab-switching was never the disease: two location
 // models were, and with one model a single screen can hold the whole job.
 //
-// One screen for every role, sections filtered (Q5): an installer sees Find,
-// Going out and Supplies — find my crate, take my crate. Foreman+ get the
-// rest. Two pages would mean two sets of bugs and every explanation written
-// twice.
+// One screen, one audience (ADR-0007, owner call 2026-09-04). The page used
+// to filter its sections by rank — an installer got Find, Going out and
+// Supplies; foreman+ got the rest. Warehouse work is crew work now, so every
+// section and every tool on this page is open to any crew member. The only
+// rank gate left is Testing (supervisor+), which is not a warehouse rule:
+// RLS hides testing jobs below supervisor, so the section would always be
+// empty. Destructive doors stay foreman+ on the sheets that own them.
 //
 // NOT in this ticket, deliberately: retiring the unit system's staged/loaded
 // statuses and per-window shelf spots. Those die with the screens that write
@@ -23,7 +26,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { listLocations, listProjects, listProjectsAnyStatus } from "../lib/api";
 import { formatApiError } from "../lib/errors";
-import { isForemanPlus, isSupervisorPlus } from "../lib/install/types";
+import { isSupervisorPlus } from "../lib/install/types";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { Explain } from "../components/ui/Explain";
 import { EmptyState } from "../components/ui/States";
@@ -82,22 +85,16 @@ import {
 interface Section {
   id: string;
   title: string;
-  /** Installers see only these three: find it, take it, grab supplies. */
-  everyone?: boolean;
 }
 
+// All five, for everyone (ADR-0007). Three carried an `everyone` flag and two
+// did not, which is how a person could tag a package at the truck and then be
+// unable to see the conex they had just put it in.
 const SECTIONS: Section[] = [
-  // Everyone sees "Coming in" because tagging lives in it, and tagging is the
-  // installer's first job of the day — whoever is at the truck does it (S3).
-  // Locking the whole section to leads (D6) left an installer with no way to
-  // reach /storage/tag at all: the other door, the Storage hub, went foreman+
-  // in the same change (and later merged into this page entirely — ticket
-  // 18). The foreman-only tools INSIDE the section are gated one at a time
-  // below, which is the pattern the rest of the page uses.
-  { id: "coming-in", title: "Coming in", everyone: true },
+  { id: "coming-in", title: "Coming in" },
   { id: "in-storage", title: "In storage" },
-  { id: "going-out", title: "Going out", everyone: true },
-  { id: "supplies", title: "Supplies", everyone: true },
+  { id: "going-out", title: "Going out" },
+  { id: "supplies", title: "Supplies" },
   { id: "problems", title: "Problems" },
 ];
 
@@ -108,10 +105,10 @@ export function Warehouse() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { effectiveRole } = useEffectiveRole();
-  const lead = isForemanPlus(effectiveRole);
   // Testing projects (owner-confirmed 2026-08-25) are invisible below
   // supervisor by RLS, so an installer/foreman's `projects` list never has
-  // one in it — this is supervisor+ in its own right, not shorthand for lead.
+  // one in it — this is supervisor+ in its own right, and the only rank
+  // gate left on this page.
   const supervisor = isSupervisorPlus(effectiveRole);
   const { counts: outbox } = useOutbox();
   // ?q= prefills Find (Studio 100x #15's door in) — read once; FindBar owns
@@ -244,7 +241,7 @@ export function Warehouse() {
     },
   });
 
-  const visible = SECTIONS.filter((s) => lead || s.everyone);
+  const visible = SECTIONS;
 
   return (
     <div className="page wh-page">
@@ -343,16 +340,13 @@ export function Warehouse() {
           </div>
           <p className="muted station-when">{STATION_PUT_AWAY.when}</p>
           {/* No new destination — "In storage" is already a section on this
-              page, below the strip. It's lead-only there (D6, carried over
-              in ticket 18), so the button here matches: only a lead has
-              anywhere to land. */}
-          {lead && (
-            <div className="row-gap station-actions">
-              <a className="button-like" href="#in-storage">
-                See containers
-              </a>
-            </div>
-          )}
+              page, below the strip, open to everyone now (ADR-0007), so this
+              button is too. */}
+          <div className="row-gap station-actions">
+            <a className="button-like" href="#in-storage">
+              See containers
+            </a>
+          </div>
         </div>
         <span className="station-connector" aria-hidden="true">→</span>
 
@@ -389,59 +383,58 @@ export function Warehouse() {
         </div>
       </div>
 
-      {lead && (
-        <>
-          <div className="stat-grid">
-            {WAREHOUSE_CARDS.map((c) => (
-              <Link
-                key={c.id}
-                to={cardLink(c.id)}
-                className={c.tone ? `stat-card ${c.tone}` : "stat-card"}
-              >
-                <span className="stat-num">{ready ? counts[c.id] : "-"}</span>
-                <span>{c.label}</span>
-              </Link>
-            ))}
-          </div>
-          {/* raw because a <ul> may not sit inside Explain's quoted <p> —
-              React 19 logs a DOM-nesting error on every load without it.
-              The list carries the quoted-note styling itself instead. */}
-          <Explain id="warehouse-cards" summary="What do these numbers mean?" raw>
-            <ul
-              style={{
-                margin: "6px 0 0",
-                paddingLeft: 18,
-                color: "var(--muted)",
-                lineHeight: 1.5,
-                borderLeft: "2px solid var(--border)",
-              }}
-            >
-              {WAREHOUSE_CARDS.map((c) => (
-                <li key={c.id} style={{ marginBottom: 6 }}>
-                  <strong>{c.label}</strong> — {c.blurb}
-                </li>
-              ))}
-              <li>
-                One thing to know about <strong>not tagged</strong>: a window mark
-                that shows up eight times on the plans counts once, because the
-                manufacturer&rsquo;s labels don&rsquo;t number the eight apart.
-              </li>
-            </ul>
-          </Explain>
-        </>
-      )}
+      {/* The four counts, for everyone (ADR-0007). They ARE the warehouse's
+          health, and the people moving the material are the ones who can do
+          something about "12 loose". */}
+      <div className="stat-grid">
+        {WAREHOUSE_CARDS.map((c) => (
+          <Link
+            key={c.id}
+            to={cardLink(c.id)}
+            className={c.tone ? `stat-card ${c.tone}` : "stat-card"}
+          >
+            <span className="stat-num">{ready ? counts[c.id] : "-"}</span>
+            <span>{c.label}</span>
+          </Link>
+        ))}
+      </div>
+      {/* raw because a <ul> may not sit inside Explain's quoted <p> —
+          React 19 logs a DOM-nesting error on every load without it.
+          The list carries the quoted-note styling itself instead. */}
+      <Explain id="warehouse-cards" summary="What do these numbers mean?" raw>
+        <ul
+          style={{
+            margin: "6px 0 0",
+            paddingLeft: 18,
+            color: "var(--muted)",
+            lineHeight: 1.5,
+            borderLeft: "2px solid var(--border)",
+          }}
+        >
+          {WAREHOUSE_CARDS.map((c) => (
+            <li key={c.id} style={{ marginBottom: 6 }}>
+              <strong>{c.label}</strong> — {c.blurb}
+            </li>
+          ))}
+          <li>
+            One thing to know about <strong>not tagged</strong>: a window mark
+            that shows up eight times on the plans counts once, because the
+            manufacturer&rsquo;s labels don&rsquo;t number the eight apart.
+          </li>
+        </ul>
+      </Explain>
       {/* A tapped stat card drills in right here (ticket 06/18) — same rule
-          as the cards above: lead-only, since a non-lead never sees a card
-          to tap in the first place. */}
-      {lead && card && (
+          as the cards above: everyone sees the cards, so everyone can tap
+          one (ADR-0007). */}
+      {card && (
         <CardList card={card} packages={real} containers={boxes} jobCode={jobCode} />
       )}
 
       {/* Pick 26: visible to every role — movements, packages and
           deliveries are all open reads to any signed-in crew member, same
-          as the hub counts above are to a lead. Waits on all three reads so
-          a still-loading page never flashes "Quiet so far" a moment before
-          the real counts land. */}
+          as the hub counts above. Waits on all three reads so a still-loading
+          page never flashes "Quiet so far" a moment before the real counts
+          land. */}
       {packages.isSuccess && movementsToday.isSuccess && deliveries.isSuccess && (
         <DayRecapCard recap={recap} />
       )}
@@ -510,21 +503,19 @@ export function Warehouse() {
                   all live right below now, in "In storage". Both nav links
                   that used to live in this row moved into station 1 of the
                   strip above (wave F) — minting stays here, untouched. */}
-              {lead && (
-                <div className="row-gap">
-                  <button className="button-like" onClick={() => setMinting(true)}>
-                    Print blank stickers
-                  </button>
-                </div>
-              )}
-              {lead && needsPutaway.length > 0 && (
+              <div className="row-gap">
+                <button className="button-like" onClick={() => setMinting(true)}>
+                  Print blank stickers
+                </button>
+              </div>
+              {needsPutaway.length > 0 && (
                 <p className="muted" style={{ marginTop: 8, fontSize: 13 }}>
                   <strong>{needsPutaway.length}</strong> tagged package
                   {needsPutaway.length === 1 ? "" : "s"} with nowhere to be —{" "}
                   <Link to={cardLink("loose")}>put them away</Link>.
                 </p>
               )}
-              {lead && split.length > 0 && (
+              {split.length > 0 && (
                 <p className="muted" style={{ marginTop: 4, fontSize: 13 }}>
                   <strong>{split.length}</strong> window
                   {split.length === 1 ? "" : "s"} split across places —{" "}
@@ -536,7 +527,7 @@ export function Warehouse() {
                   Ask Find for one to see where its parts sit.
                 </p>
               )}
-              {lead && untagged.length > 0 && (
+              {untagged.length > 0 && (
                 <p className="muted" style={{ marginTop: 4, fontSize: 13 }}>
                   <strong>{untagged.length}</strong> window
                   {untagged.length === 1 ? "" : "s"} on the plans with nothing
@@ -553,21 +544,21 @@ export function Warehouse() {
                 container moves everything inside it in one action — you never
                 re-scan the contents.
               </Explain>
-              {/* Absorbed from the Storage hub (ticket 18). */}
-              {lead && (
-                <div className="row-gap" style={{ marginBottom: 8 }}>
-                  <button className="button-like" onClick={() => setNewContainer(true)}>
-                    New container
-                  </button>
-                  <button
-                    className="button-like"
-                    disabled={posters.isPending || boxes.length === 0}
-                    onClick={() => posters.mutate(boxes)}
-                  >
-                    All posters
-                  </button>
-                </div>
-              )}
+              {/* Absorbed from the Storage hub (ticket 18); open to every
+                  crew member since ADR-0007 — registering the conex that
+                  turned up and printing its door poster is warehouse work. */}
+              <div className="row-gap" style={{ marginBottom: 8 }}>
+                <button className="button-like" onClick={() => setNewContainer(true)}>
+                  New container
+                </button>
+                <button
+                  className="button-like"
+                  disabled={posters.isPending || boxes.length === 0}
+                  onClick={() => posters.mutate(boxes)}
+                >
+                  All posters
+                </button>
+              </div>
               <div className="warehouse-grid">
                 {boxes
                   .filter((c) => !c.parent_container_id)
@@ -618,9 +609,7 @@ export function Warehouse() {
                     );
                   })}
                 {boxes.length === 0 && (
-                  <EmptyState
-                    title={lead ? "No containers yet — add one above." : "No containers yet."}
-                  />
+                  <EmptyState title="No containers yet — add one above." />
                 )}
               </div>
             </>
@@ -781,11 +770,10 @@ export function Warehouse() {
         </section>
       )}
 
-      {lead && <Operations />}
+      <Operations />
 
-      {/* Absorbed from the Storage hub (ticket 18). Both open only from
-          lead-gated buttons above, but the check is repeated here too. */}
-      {lead && newContainer && (
+      {/* Absorbed from the Storage hub (ticket 18). */}
+      {newContainer && (
         <ContainerForm
           onClose={() => setNewContainer(false)}
           onSaved={(c) => {
@@ -795,7 +783,7 @@ export function Warehouse() {
           }}
         />
       )}
-      {lead && minting && (
+      {minting && (
         <MintForm
           onClose={() => setMinting(false)}
           onMinted={() => {

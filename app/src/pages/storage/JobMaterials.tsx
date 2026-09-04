@@ -21,6 +21,8 @@ import { jobTallies, tallyLine } from "../../lib/warehouse/jobTally";
 import { LoadList } from "../../components/warehouse/LoadList";
 import { listProjects } from "../../lib/api";
 import { formatApiError } from "../../lib/errors";
+import { isForemanPlus } from "../../lib/install/types";
+import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import {
   addCrateSupplies,
   addJobCrate,
@@ -56,6 +58,8 @@ const STAGE_LABELS: Record<Exclude<Stage, "all">, string> = {
 
 export function JobMaterials() {
   const qc = useQueryClient();
+  const { effectiveRole } = useEffectiveRole();
+  const lead = isForemanPlus(effectiveRole);
   const [params, setParams] = useSearchParams();
   // Wave M: the scope is a union — a real job by id (?job=) or a waiting
   // job by its typed name (?pending=), never both.
@@ -180,6 +184,11 @@ export function JobMaterials() {
     onError: (e) => setMessage(formatApiError(e)),
   });
 
+  // "− crate" is delete_packages, which is foreman+ on the server and always
+  // was — this button never asked. An installer tapping it got the server's
+  // refusal, which reads like the app is broken rather than like a rule.
+  // ADR-0007 opened the everyday warehouse doors and deliberately left the
+  // destructive ones shut, so the button now matches the door behind it.
   const removeCrate = useMutation({
     mutationFn: async () => {
       // Newest loose crate goes first; a stored crate is deleted from its
@@ -314,21 +323,23 @@ export function JobMaterials() {
               >
                 + crate
               </button>
-              <button
-                className="button-like"
-                disabled={removeCrate.isPending || crates.length === 0}
-                onClick={() => {
-                  if (
-                    window.confirm(
-                      "Remove one crate from this job? The pool numbers stay until you edit them.",
-                    )
-                  ) {
-                    removeCrate.mutate();
-                  }
-                }}
-              >
-                − crate
-              </button>
+              {lead && (
+                <button
+                  className="button-like"
+                  disabled={removeCrate.isPending || crates.length === 0}
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        "Remove one crate from this job? The pool numbers stay until you edit them.",
+                      )
+                    ) {
+                      removeCrate.mutate();
+                    }
+                  }}
+                >
+                  − crate
+                </button>
+              )}
               <button
                 className="button-like"
                 onClick={() => setSupplyOpen((v) => !v)}

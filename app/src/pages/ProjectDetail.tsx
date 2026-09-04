@@ -377,12 +377,14 @@ export function ProjectDetail() {
             jobCode={project?.job_code ?? null}
             isLead={isLead}
           />
-          {isLead && (
-            <PlanPackagesPanel
-              projectId={projectId}
-              jobCode={project?.job_code ?? null}
-            />
-          )}
+          {/* Open to every crew member since ADR-0007. mint_mark_packages was
+              one of the eighteen functions that opened, and this panel is its
+              only door — a promise the installer day map makes out loud.
+              Burning stays foreman+ and is gated inside the panel. */}
+          <PlanPackagesPanel
+            projectId={projectId}
+            jobCode={project?.job_code ?? null}
+          />
           {isLead && <ReorderNeedsPanel projectId={projectId} />}
           {/* The unit chain's panels lived here — pre-issue, the delivery
               reconciliation, unload, and the load-to-truck tab (ticket 21,

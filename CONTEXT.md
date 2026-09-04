@@ -46,11 +46,11 @@ Settled 2026-08-17. The warehouse answers one question — *where is it* — and
 
 **Loose stock** — an on-hand package with no container and no shelf spot. The genuinely-cannot-find-it pile, and the number that says how much the warehouse is drifting.
 
-**Area** — roughly where inside its current box a package sits. Front / Middle / Back inside anything that moves — a conex has a door end, and the door end is the front wherever it is parked — and the compass plus Middle only inside the main warehouse, which never moves. Foreman and up set it; every move clears it, because "Back" carried into a different box reads as an answer and is a lie. An area is a pointer, not an address: nothing points at it and no label prints for it (ADR-0006). The stopgap until slots are real.
+**Area** — roughly where inside its current box a package sits. Front / Middle / Back inside anything that moves — a conex has a door end, and the door end is the front wherever it is parked — and the compass plus Middle only inside the main warehouse, which never moves. Any crew member sets it (ADR-0007, superseding ADR-0006's "foreman and up" on this one point); every move clears it, because "Back" carried into a different box reads as an answer and is a lie. An area is a pointer, not an address: nothing points at it and no label prints for it (ADR-0006). The stopgap until slots are real.
 
 **Boneyard** — the crew's word, and therefore the app's, for company stock no job owns yet. A boneyard package is tagged like any other — sticker, part fields, BONEYARD printed where the job code would go — but carries no window number, because a window number is a position on one job's plans. Not the same thing as a finished job's packages; those still belong to their job.
 
-**Assign to job** — the foreman-and-up action that moves a package out of the Boneyard: pick the job, pick the window number, one movement line. The sticker's QR is the package's identity, so the old label still scans; a fresh printed label is offered, never required.
+**Assign to job** — the action, open to any crew member (ADR-0007), that moves a package out of the Boneyard: pick the job, pick the window number, one movement line. The sticker's QR is the package's identity, so the old label still scans; a fresh printed label is offered, never required.
 
 **Burn** — killing a minted label that never lived: the serial dies and its part slot reopens for a fresh label. Allowed only while the package has no history — Burn refuses anything that has been stored or moved and points at Reprint instead. Carries a loud warning because the paper must be destroyed: anything still wearing a burned sticker scans as nothing.
 
@@ -145,7 +145,8 @@ Rationale: cohorts at the unit level are too sparse to trust. We may install thr
 - Existing stock is tagged when someone touches it, not in a big-bang pass. The untagged count is the progress bar.
 - One chain. Packages are the only material record, planned per window number; the unit chain — pre-issue, `window_units`, Receive-by-unit — retires (ADR-0005).
 - Labels mint at declaration, pre-bound to job + window + part, and print in one batch. Receiving is sticking, not typing.
-- An area is a pointer, not a place: options depend on the kind of box, every move clears it, foreman+ sets it (ADR-0006).
+- An area is a pointer, not a place: options depend on the kind of box, and every move clears it (ADR-0006).
+- Warehouse actions are crew actions: any crew member does the everyday warehouse work. Two exceptions, and only two — the destructive doors (burn a label, delete a package, delete a delivery, start a set over) stay foreman+, and scheduling a truck or editing the checkout-reason list stays supervisor+ (ADR-0007).
 - Slots stay parked until the physical reorganization. Nothing new points at them until then; areas are the interim.
 - The Boneyard keeps its name. The crew's word beats a cleaner word the crew would have to learn.
 - Container moves are movement events, never edits. The main warehouse never moves.

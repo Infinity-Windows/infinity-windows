@@ -6,7 +6,7 @@
 // pull list in the way. The count is always an estimate and always says so
 // ("about 140 · last counted Aug 3" — onHandLabel enforces the pairing).
 // Counting the shelf corrects it. The old per-job pull list survives below
-// as REQUEST — a foreman planning ahead — and a take that matches a request
+// as REQUEST — anybody planning ahead — and a take that matches a request
 // ticks it off server-side.
 
 import { BackChip } from "../components/BackChip";
@@ -17,8 +17,6 @@ import { useSearchParams } from "react-router-dom";
 import { listLocations, listProjects } from "../lib/api";
 import { containerKind, listContainers } from "../lib/storage";
 import { formatApiError } from "../lib/errors";
-import { isForemanPlus } from "../lib/install/types";
-import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { pushToast } from "../lib/toast";
 import { takeSupplyOffline, writeToast } from "../lib/warehouse/offlineWrites";
 import {
@@ -73,8 +71,6 @@ const LAST_JOB_KEY = "infinity.storage.lastJob";
 export function Supplies() {
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
-  const { effectiveRole } = useEffectiveRole();
-  const lead = isForemanPlus(effectiveRole);
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const supplies = useQuery({ queryKey: ["supplies"], queryFn: listSupplies });
   const locations = useQuery({ queryKey: ["locations"], queryFn: listLocations });
@@ -186,11 +182,11 @@ export function Supplies() {
               <button className="button-like" onClick={() => setCounting(s)}>
                 Count
               </button>
-              {lead && (
-                <button className="button-like" onClick={() => setHoming(s)}>
-                  Home
-                </button>
-              )}
+              {/* ADR-0007: a home spot is "where the caulk lives" — the
+                  person who put it there is the one who knows. */}
+              <button className="button-like" onClick={() => setHoming(s)}>
+                Home
+              </button>
               <button className="button-like" onClick={() => setViewingHistory(s)}>
                 History
               </button>
@@ -255,60 +251,57 @@ export function Supplies() {
         </>
       )}
 
-      {/* Owner's call: the catalog is the company's official supply list, not
-          a scratchpad — same reasoning that already keeps Home spots (above)
-          out of an installer's hands. Anyone can add a stray name otherwise,
-          and the list stops meaning anything. */}
-      {lead && (
-        <>
-          <h2>Add to catalog</h2>
-          <div className="detail-card">
-            {/* The unit is asked for here or it is wrong forever: there is no
-                screen that edits it afterwards, and it is the word every
-                installer reads on the Take form ("How many (roll)"). */}
-            <div className="manual-entry" style={{ flexWrap: "wrap" }}>
-              <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="New supply type" />
-              <select
-                aria-label="Unit"
-                value={newUnit}
-                style={{ marginBottom: 0 }}
-                onChange={(e) => setNewUnit(e.target.value)}
-              >
-                {SUPPLY_UNIT_PRESETS.map((u) => (
-                  <option key={u} value={u}>
-                    {u}
-                  </option>
-                ))}
-                <option value="other">other…</option>
-              </select>
-              {newUnit === "other" && (
-                <input
-                  aria-label="Other unit"
-                  value={newUnitOther}
-                  style={{ marginBottom: 0 }}
-                  placeholder="spool, sheet, box…"
-                  onChange={(e) => setNewUnitOther(e.target.value)}
-                />
-              )}
-              <button
-                className="primary"
-                disabled={
-                  addCat.isPending ||
-                  !newName.trim() ||
-                  newSupplyUnitInvalid(newUnit, newUnitOther)
-                }
-                onClick={() => addCat.mutate()}
-              >
-                Add
-              </button>
-            </div>
-            <p className="muted" style={{ margin: "6px 0 0", fontSize: 12 }}>
-              How it is counted on the shelf — a roll of tape, a tube of
-              sealant. Pick <em>other…</em> to type your own.
-            </p>
-          </div>
-        </>
-      )}
+      {/* ADR-0007: the catalog opens too. The company's official supply
+          list stays a list, not a scratchpad, because add_supply already
+          folds "Caulk", "caulk" and "CAULK" into one row — the duplicate
+          guard is what protects the list, not the rank that used to sit
+          in front of it. */}
+      <h2>Add to catalog</h2>
+      <div className="detail-card">
+        {/* The unit is asked for here or it is wrong forever: there is no
+            screen that edits it afterwards, and it is the word every
+            installer reads on the Take form ("How many (roll)"). */}
+        <div className="manual-entry" style={{ flexWrap: "wrap" }}>
+          <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="New supply type" />
+          <select
+            aria-label="Unit"
+            value={newUnit}
+            style={{ marginBottom: 0 }}
+            onChange={(e) => setNewUnit(e.target.value)}
+          >
+            {SUPPLY_UNIT_PRESETS.map((u) => (
+              <option key={u} value={u}>
+                {u}
+              </option>
+            ))}
+            <option value="other">other…</option>
+          </select>
+          {newUnit === "other" && (
+            <input
+              aria-label="Other unit"
+              value={newUnitOther}
+              style={{ marginBottom: 0 }}
+              placeholder="spool, sheet, box…"
+              onChange={(e) => setNewUnitOther(e.target.value)}
+            />
+          )}
+          <button
+            className="primary"
+            disabled={
+              addCat.isPending ||
+              !newName.trim() ||
+              newSupplyUnitInvalid(newUnit, newUnitOther)
+            }
+            onClick={() => addCat.mutate()}
+          >
+            Add
+          </button>
+        </div>
+        <p className="muted" style={{ margin: "6px 0 0", fontSize: 12 }}>
+          How it is counted on the shelf — a roll of tape, a tube of
+          sealant. Pick <em>other…</em> to type your own.
+        </p>
+      </div>
 
       {taking && (
         <TakeForm
@@ -489,8 +482,9 @@ function CountForm({
   );
 }
 
-/** Home: the one spot this supply lives (foreman+ — it's the answer the app
- * gives an installer, so somebody accountable sets it). */
+/** Home: the one spot this supply lives. Foreman+ until ADR-0007 — the
+ * person who put the caulk on the shelf is the one who knows which shelf,
+ * and set_supply_home draws the same line now. */
 function HomeForm({
   supply,
   onClose,

@@ -28,7 +28,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Stuck writes (`/stuck`)
 - Settings (`/settings`)
 
-**Can reach (all 26 allowed destinations):**
+**Can reach (all 29 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
@@ -53,6 +53,9 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - My Schedule (`/my-schedule`)
 - Travel (`/travel`)
 - My timecard (`/timecard`)
+- Receive (`/receive`)
+- Storage (`/storage`)
+- Slot labels (`/labels`)
 - Supplies (`/supplies`)
 - Photos & receipts (`/photos`)
 - Toolbox talk history (`/toolbox-history`)
@@ -69,9 +72,6 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Quality (`/qc`)
 - Analytics (`/analytics`)
 - Roster (`/crew`)
-- Receive (`/receive`)
-- Storage (`/storage`)
-- Slot labels (`/labels`)
 - Catalog (`/catalog`)
 - AI Knowledge (`/knowledge`)
 - Scheduling (`/scheduling`)

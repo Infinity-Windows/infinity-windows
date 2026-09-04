@@ -1,8 +1,10 @@
 // Takeoffs (owner spec + grill, 2026-08-18): the warehouse bundles a job's
-// supplies for a named person. Foreman+ see every takeoff (the shared
-// warehouse inbox — "warehouse manager" is a hat, not a rung); an installer
-// sees the ones for them. Requests come from foremen; ready bundles can be
-// for anyone.
+// supplies for a named person. "Warehouse manager" is a hat, not a rung —
+// and since ADR-0007 (2026-09-04) that is true of the whole screen: every
+// crew member sees the shared warehouse inbox, asks for a bundle, answers a
+// request with a rough when, and marks one ready. The one thing still keyed
+// to a rank is handing a READY bundle to somebody other than the person it
+// was built for.
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -34,6 +36,11 @@ import {
 export function Takeoffs() {
   const qc = useQueryClient();
   const { effectiveRole } = useEffectiveRole();
+  // ADR-0007: building a takeoff, answering one with a rough when, and
+  // marking it ready are warehouse work — whoever is filling the bundle does
+  // them, at any rank. `lead` survives for one thing only: handing a READY
+  // bundle to somebody other than the person it was built for, which is the
+  // warehouse acting on someone else's behalf, not warehouse work.
   const lead = isForemanPlus(effectiveRole);
   const takeoffs = useQuery({ queryKey: ["takeoffs"], queryFn: listTakeoffs });
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
@@ -148,20 +155,18 @@ export function Takeoffs() {
       </header>
       <Explain id="wh-takeoffs">
         A takeoff is a job&rsquo;s supplies, bundled by the warehouse for a
-        named person. Foremen can request one; the warehouse answers with a
-        rough when, marks it ready, and picking it up logs every line against
-        the job — pickup <em>is</em> the take.
+        named person. Anyone on the crew can ask for one; whoever is filling
+        it answers with a rough when, marks it ready, and picking it up logs
+        every line against the job — pickup <em>is</em> the take.
       </Explain>
 
-      {lead && (
-        <button
-          className="button-like active-pill"
-          style={{ marginBottom: 10 }}
-          onClick={() => setCreating(true)}
-        >
-          New takeoff
-        </button>
-      )}
+      <button
+        className="button-like active-pill"
+        style={{ marginBottom: 10 }}
+        onClick={() => setCreating(true)}
+      >
+        New takeoff
+      </button>
 
       <div className="home-projects">
         {active.map((t) => (
@@ -229,7 +234,8 @@ export function Takeoffs() {
               void sendPush({
                 profileIds: foremanIds,
                 title: `Supply request — ${jobCode.get(created.project_id) ?? "a job"}`,
-                body: "A foreman needs a takeoff built.",
+                // Not "a foreman" any more: anyone on the crew can ask.
+                body: "Somebody needs a takeoff built.",
                 tag: `takeoff-${created.id}`,
                 url: "/takeoffs",
               });
@@ -322,7 +328,7 @@ function TakeoffRow({
             </div>
           )}
 
-          {lead && t.status === "requested" && (
+          {t.status === "requested" && (
             <div style={{ marginTop: 8 }}>
               <label className="field-label">Roughly when?</label>
               <div className="row-gap" style={{ flexWrap: "wrap" }}>
@@ -352,7 +358,7 @@ function TakeoffRow({
               </div>
             </div>
           )}
-          {lead && t.status === "acknowledged" && (
+          {t.status === "acknowledged" && (
             <button
               className="button-like active-pill"
               style={{ marginTop: 8 }}

@@ -3,7 +3,8 @@
 // tap boxes in as they arrive, rapid-split identical twins across conexes
 // by COUNT (they're interchangeable — nobody cares which twin goes where),
 // and read what never came. Material for a job that isn't built yet is
-// fully receivable and storable; a foreman files it onto the job later.
+// fully receivable and storable; anybody on the crew files it onto the job
+// later (file_pending_packages opened with ADR-0007).
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -47,8 +48,6 @@ import {
   type TypeGroup,
 } from "../../lib/warehouse/deliveryReceiving";
 import { rewriteSetHref, scopeHref } from "../../lib/warehouse/materialsScope";
-import { useEffectiveRole } from "../../lib/useEffectiveRole";
-import { isForemanPlus } from "../../lib/install/types";
 import { useScanWedge } from "../../lib/warehouse/scanWedge";
 import { STATION_COMING_IN } from "../../lib/warehouse/stations";
 
@@ -58,8 +57,9 @@ export function DeliveryDetail() {
   useScanWedge();
   const { id = "" } = useParams();
   const qc = useQueryClient();
-  const { effectiveRole } = useEffectiveRole();
-  const lead = isForemanPlus(effectiveRole);
+  // Filing a waiting job's material onto a real job, and adding a mark the
+  // manifest missed, are both ordinary warehouse work now (ADR-0007) — the
+  // `lead` gate came off both. Nothing on this page still needs it.
   const [message, setMessage] = useState<string | null>(null);
   const [storeCounts, setStoreCounts] = useState<Record<string, number>>({});
   const [storeTargets, setStoreTargets] = useState<Record<string, string>>({});
@@ -605,7 +605,7 @@ export function DeliveryDetail() {
               <span className="wh-row-sub">
                 Job not built yet — everything still works; file it once it exists.
               </span>
-              {lead && g.unfiledIds.length > 0 && (
+              {g.unfiledIds.length > 0 && (
                 <>
                   <select
                     value={filePick[g.key] ?? ""}
@@ -765,77 +765,75 @@ export function DeliveryDetail() {
               );
             })}
           </ul>
-          {lead && (
-            <div className="wh-row" style={{ marginTop: 4 }}>
-              <input
-                value={addDraft[g.key]?.mark ?? ""}
-                onChange={(e) =>
-                  setAddDraft((prev) => ({
-                    ...prev,
-                    [g.key]: {
-                      mark: e.target.value,
-                      count: prev[g.key]?.count ?? "2",
-                      kind: prev[g.key]?.kind ?? "window",
-                    },
-                  }))
-                }
-                placeholder="Add a mark…"
-                aria-label={`New mark for ${g.projectId ? (jobCode.get(g.projectId) ?? "job") : (g.pendingJobName ?? "job")}`}
-                maxLength={40}
-                style={{ width: 120 }}
-              />
-              {(addDraft[g.key]?.mark ?? "").trim() !== "" && (
-                <>
-                  <select
-                    value={addDraft[g.key]?.count ?? "2"}
-                    onChange={(e) =>
-                      setAddDraft((prev) => ({
-                        ...prev,
-                        [g.key]: { ...prev[g.key]!, count: e.target.value },
-                      }))
-                    }
-                    aria-label="How many packages"
-                  >
-                    {Array.from({ length: 20 }, (_, n) => (
-                      <option key={n + 1} value={String(n + 1)}>
-                        {n + 1} package{n === 0 ? "" : "s"}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    value={addDraft[g.key]?.kind ?? "window"}
-                    onChange={(e) =>
-                      setAddDraft((prev) => ({
-                        ...prev,
-                        [g.key]: {
-                          ...prev[g.key]!,
-                          kind: e.target.value as "window" | "door",
-                        },
-                      }))
-                    }
-                    aria-label="Window or door"
-                  >
-                    <option value="window">Window</option>
-                    <option value="door">Door</option>
-                  </select>
-                  <button
-                    className="button-like"
-                    disabled={addSet.isPending}
-                    onClick={() =>
-                      addSet.mutate({
-                        g,
-                        mark: addDraft[g.key]!.mark.trim(),
-                        count: Number(addDraft[g.key]!.count ?? "2"),
-                        kind: addDraft[g.key]?.kind ?? "window",
-                      })
-                    }
-                  >
-                    {addSet.isPending ? "Adding…" : "Add mark"}
-                  </button>
-                </>
-              )}
-            </div>
-          )}
+          <div className="wh-row" style={{ marginTop: 4 }}>
+            <input
+              value={addDraft[g.key]?.mark ?? ""}
+              onChange={(e) =>
+                setAddDraft((prev) => ({
+                  ...prev,
+                  [g.key]: {
+                    mark: e.target.value,
+                    count: prev[g.key]?.count ?? "2",
+                    kind: prev[g.key]?.kind ?? "window",
+                  },
+                }))
+              }
+              placeholder="Add a mark…"
+              aria-label={`New mark for ${g.projectId ? (jobCode.get(g.projectId) ?? "job") : (g.pendingJobName ?? "job")}`}
+              maxLength={40}
+              style={{ width: 120 }}
+            />
+            {(addDraft[g.key]?.mark ?? "").trim() !== "" && (
+              <>
+                <select
+                  value={addDraft[g.key]?.count ?? "2"}
+                  onChange={(e) =>
+                    setAddDraft((prev) => ({
+                      ...prev,
+                      [g.key]: { ...prev[g.key]!, count: e.target.value },
+                    }))
+                  }
+                  aria-label="How many packages"
+                >
+                  {Array.from({ length: 20 }, (_, n) => (
+                    <option key={n + 1} value={String(n + 1)}>
+                      {n + 1} package{n === 0 ? "" : "s"}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={addDraft[g.key]?.kind ?? "window"}
+                  onChange={(e) =>
+                    setAddDraft((prev) => ({
+                      ...prev,
+                      [g.key]: {
+                        ...prev[g.key]!,
+                        kind: e.target.value as "window" | "door",
+                      },
+                    }))
+                  }
+                  aria-label="Window or door"
+                >
+                  <option value="window">Window</option>
+                  <option value="door">Door</option>
+                </select>
+                <button
+                  className="button-like"
+                  disabled={addSet.isPending}
+                  onClick={() =>
+                    addSet.mutate({
+                      g,
+                      mark: addDraft[g.key]!.mark.trim(),
+                      count: Number(addDraft[g.key]!.count ?? "2"),
+                      kind: addDraft[g.key]?.kind ?? "window",
+                    })
+                  }
+                >
+                  {addSet.isPending ? "Adding…" : "Add mark"}
+                </button>
+              </>
+            )}
+          </div>
         </section>
       ))}
 
