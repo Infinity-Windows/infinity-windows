@@ -330,9 +330,14 @@ create policy "receipts_select" on receipts
 -- ---- the AI spend meters ---------------------------------------------------
 -- `ai_role_rank(auth.uid()) >= 2` (20260729230000, swept by 20260950000000):
 -- supervisor+. What these tables hold is money the company spent, so they move
--- to the same predicate as every other money table. The PAGE stays owner-only
--- in the nav (/ai-spend, minRole owner) — this only decides who the database
--- will answer, and it now answers exactly the people allowed to see spending.
+-- to the same predicate as every other money table.
+--
+-- These five policies are DEFENCE IN DEPTH and nothing more. Nothing in the app
+-- selects from these tables; the only read path is the SECURITY DEFINER RPC
+-- below, which bypasses RLS entirely. Tightening the policies without
+-- tightening the RPC would have locked the window and left the door open — the
+-- first draft of this migration did exactly that, and its comment claimed the
+-- opposite. The lock that counts is `ai_spend_overview()`.
 drop policy if exists "ai_spend_alerts_select_office" on ai_spend_alerts;
 create policy "ai_spend_alerts_select_office" on ai_spend_alerts
   for select to authenticated
@@ -357,6 +362,116 @@ drop policy if exists "ai_usage_events_select_office" on ai_usage_events;
 create policy "ai_usage_events_select_office" on ai_usage_events
   for select to authenticated
   using (not public.is_partner_user() and public.can_see_costs(auth.uid()));
+
+-- ---- and the door the app actually uses ------------------------------------
+-- THE READ PATH. app/src/lib/aiSpend.ts calls exactly one thing —
+-- `supabase.rpc("ai_spend_overview")` — and that function is SECURITY DEFINER,
+-- so it runs as the table owner and the five policies above never fire for it.
+-- Its gate was `ai_role_rank(auth.uid()) < 2`: supervisor+. A supervisor with
+-- no cost grant could ask it for the month's spend, the cap, and every
+-- person's cost by name.
+--
+-- Same body, same shape, same `can_edit` (still `v_rank >= 3`, so only an owner
+-- may move the limits — ai_spend_set_limits enforces that itself and calls this
+-- function to return the fresh picture, which keeps working because an owner
+-- passes can_see_costs). Only the gate moves, onto the one predicate every
+-- other money table in this migration answers to.
+create or replace function public.ai_spend_overview()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_cfg ai_spend_limits;
+  v_month date;
+  v_day date;
+  v_rank integer := ai_role_rank(auth.uid());
+begin
+  if not public.can_see_costs(auth.uid()) then
+    raise exception 'Only an owner, or somebody given "Sees costs", can see what the assistant costs.'
+      using errcode = '42501';
+  end if;
+
+  select * into v_cfg from ai_spend_limits where id = 1;
+  v_month := date_trunc('month', (now() at time zone coalesce(v_cfg.timezone, 'UTC')))::date;
+  v_day := (now() at time zone coalesce(v_cfg.timezone, 'UTC'))::date;
+
+  return jsonb_build_object(
+    'can_edit', v_rank >= 3,
+    'limits', jsonb_build_object(
+      'per_user_daily_calls', v_cfg.per_user_daily_calls,
+      'monthly_cap_cents', v_cfg.monthly_cap_cents,
+      'content_multiplier', v_cfg.content_multiplier,
+      'min_role', v_cfg.min_role,
+      'alert_at_pct', v_cfg.alert_at_pct,
+      'enforced', v_cfg.enforced,
+      'timezone', v_cfg.timezone,
+      'updated_at', v_cfg.updated_at
+    ),
+    'month', jsonb_build_object(
+      'usage_month', v_month,
+      'calls', coalesce((select calls from ai_spend_months where usage_month = v_month), 0),
+      'spent_micros', coalesce((select spent_micros from ai_spend_months where usage_month = v_month), 0),
+      'reserved_micros', coalesce((select reserved_micros from ai_spend_months where usage_month = v_month), 0),
+      'cap_micros', v_cfg.monthly_cap_cents::bigint * 10000
+    ),
+    'people', coalesce((
+      select jsonb_agg(row_to_json(t))
+      from (
+        select
+          e.user_id,
+          coalesce(p.display_name, 'Removed user') as display_name,
+          coalesce(p.role, 'unknown') as role,
+          count(*) filter (where e.outcome = 'allowed') as calls,
+          coalesce(sum(e.cost_micros), 0) as cost_micros,
+          count(*) filter (where e.outcome like 'denied%') as blocked,
+          coalesce((
+            select d.calls from ai_usage_days d
+             where d.user_id = e.user_id and d.usage_day = v_day
+          ), 0) as calls_today
+        from ai_usage_events e
+        left join profiles p on p.id = e.user_id
+        where e.usage_month = v_month
+        group by e.user_id, p.display_name, p.role
+        order by coalesce(sum(e.cost_micros), 0) desc,
+                 count(*) filter (where e.outcome = 'allowed') desc
+        limit 25
+      ) t
+    ), '[]'::jsonb),
+    'functions', coalesce((
+      select jsonb_agg(row_to_json(f))
+      from (
+        select function_name,
+               count(*) filter (where outcome = 'allowed') as calls,
+               coalesce(sum(cost_micros), 0) as cost_micros
+          from ai_usage_events
+         where usage_month = v_month
+         group by function_name
+         order by coalesce(sum(cost_micros), 0) desc
+      ) f
+    ), '[]'::jsonb),
+    'alerts', coalesce((
+      select jsonb_agg(row_to_json(a))
+      from (
+        select level, reserved_micros, cap_micros, created_at
+          from ai_spend_alerts
+         where usage_month = v_month
+         order by created_at desc
+      ) a
+    ), '[]'::jsonb)
+  );
+end;
+$$;
+
+comment on function public.ai_spend_overview() is
+  'The AI spend picture. Wave Z moved its gate from supervisor+ to can_see_costs(auth.uid()) — owner, or somebody the owner granted "Sees costs" — because this SECURITY DEFINER function, not the tables, is what the app reads. can_edit stays owner-only.';
+
+-- `create or replace` keeps the existing ACL, so these are a no-op today. Said
+-- out loud anyway: a reader should be able to see what this function is
+-- reachable by without opening 20260729230000.
+revoke all on function public.ai_spend_overview() from public, anon;
+grant execute on function public.ai_spend_overview() to authenticated, service_role;
 
 
 -- ===========================================================================
