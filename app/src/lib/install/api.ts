@@ -26,6 +26,7 @@ import {
 } from "./pinHistory";
 import { foremanOnlyRefusal, REMOVED_LIST_DENIED } from "./openingAccess";
 import { isDataOff, type DataOffKind } from "./dataOff";
+import { specKindColumns, type SpecKindColumns } from "./unitKind";
 import type { CustomMarkRegistrationPayload } from "../modelstudio/customMarks";
 import type {
   InstallEvent,
@@ -2265,31 +2266,61 @@ function specDraftColumns(
     image_page: spec.image_page,
     image_bbox: spec.image_bbox,
     source: spec.source,
+    // Wave X: window or door, and which door, read off the words the extractor
+    // just captured. Stored rather than worked out at read time so a job card
+    // can count them in one grouped query instead of pulling every opening.
+    ...specKindColumns(spec),
   };
 }
 
 /**
  * Spec columns that arrive with their own migration and may not exist yet:
- * `image_page`/`image_bbox` (20260727000000_mark_spec_drawings.sql) and
- * `planset_id` (20260728000000_mark_spec_planset.sql). Losing the picture — or
- * the record of which file it came from — must never cost us the spec TEXT, so a
- * write PostgREST rejects for one of these is retried without it.
+ * `image_page`/`image_bbox` (20260727000000_mark_spec_drawings.sql),
+ * `planset_id` (20260728000000_mark_spec_planset.sql) and `unit_kind`/
+ * `door_kind` (20260980000000_scope_at_a_glance.sql). Losing the picture — or
+ * the record of which file it came from, or what kind of unit it is — must never
+ * cost us the spec TEXT, so a write PostgREST rejects for one of these is
+ * retried without it.
  */
-const OPTIONAL_SPEC_COLUMNS = ["image_page", "image_bbox", "planset_id"] as const;
+const OPTIONAL_SPEC_COLUMNS = [
+  "image_page",
+  "image_bbox",
+  "planset_id",
+  "unit_kind",
+  "door_kind",
+] as const;
+
+/**
+ * Columns that arrive together and so must be dropped together. PostgREST names
+ * ONE column per complaint, and `unit_kind`/`door_kind` come from one migration:
+ * a retry that dropped only the named half would be refused all over again —
+ * for the other half, or (worse, on a half-migrated database) by the check
+ * constraint that says a door kind only means something on a door.
+ */
+type OptionalSpecColumn = (typeof OPTIONAL_SPEC_COLUMNS)[number];
+
+const SPEC_COLUMN_PAIRS: readonly (readonly OptionalSpecColumn[])[] = [
+  ["unit_kind", "door_kind"],
+];
 
 /**
  * Which optional columns (if any) PostgREST is complaining about. Empty when the
- * error is something else entirely — those must still surface.
+ * error is something else entirely — those must still surface. PURE; exported
+ * so the degrade path is tested without a database.
  */
-function missingOptionalSpecColumns(error: unknown): string[] {
+export function missingOptionalSpecColumns(error: unknown): string[] {
   if (!error || typeof error !== "object") return [];
   const e = error as { code?: unknown; message?: unknown };
   const message = typeof e.message === "string" ? e.message.toLowerCase() : "";
-  const named = OPTIONAL_SPEC_COLUMNS.filter((c) => message.includes(c));
-  if (named.length === 0) return [];
+  const named = new Set(OPTIONAL_SPEC_COLUMNS.filter((c) => message.includes(c)));
+  if (named.size === 0) return [];
   const looksLikeColumnError =
     e.code === "PGRST204" || e.code === "42703" || message.includes("column");
-  return looksLikeColumnError ? [...named] : [];
+  if (!looksLikeColumnError) return [];
+  for (const pair of SPEC_COLUMN_PAIRS) {
+    if (pair.some((c) => named.has(c))) for (const c of pair) named.add(c);
+  }
+  return OPTIONAL_SPEC_COLUMNS.filter((c) => named.has(c));
 }
 
 function withoutColumns(
@@ -3019,11 +3050,54 @@ export async function updateMarkSpec(
     >
   >,
 ): Promise<void> {
-  const { error } = await supabase
+  const row: Record<string, unknown> = { ...patch, source: "manual" };
+
+  // Wave X: the stored kind is a READING of the spec text, so when a foreman
+  // corrects the text the kind has to move with it — a mark rewritten from
+  // "Fixed Window" to "French Door" that stayed filed as a window would make
+  // the job card quietly wrong, and nothing on screen would say why. Reading
+  // the row first is what lets an edit that touches only `style` still be
+  // classified with the operation the row already holds.
+  if ("style" in patch || "operation" in patch) {
+    const kinds = await markSpecKindsAfterEdit(id, patch);
+    if (kinds) Object.assign(row, kinds);
+  }
+
+  let { error } = await supabase.from("project_mark_specs").update(row).eq("id", id);
+  if (error) {
+    // A database that has not had the kind columns yet still takes the edit —
+    // the same drop-the-optional-column retry the extraction save does.
+    const missing = missingOptionalSpecColumns(error);
+    if (missing.length === 0) throw error;
+    ({ error } = await supabase
+      .from("project_mark_specs")
+      .update(withoutColumns(row, missing))
+      .eq("id", id));
+    if (error) throw error;
+  }
+}
+
+/**
+ * The kind columns for a spec row AFTER `patch` is applied to it: whichever of
+ * style/operation the edit is changing, plus whatever the row already says for
+ * the other one. Best-effort — a read that fails leaves the kinds untouched
+ * rather than failing the foreman's edit, and the backfill picks the row up.
+ */
+async function markSpecKindsAfterEdit(
+  id: string,
+  patch: { style?: string | null; operation?: string | null },
+): Promise<SpecKindColumns | null> {
+  const { data, error } = await supabase
     .from("project_mark_specs")
-    .update({ ...patch, source: "manual" })
-    .eq("id", id);
-  if (error) throw error;
+    .select("style, operation")
+    .eq("id", id)
+    .maybeSingle();
+  if (error || !data) return null;
+  const current = data as { style: string | null; operation: string | null };
+  return specKindColumns({
+    style: "style" in patch ? (patch.style ?? null) : current.style,
+    operation: "operation" in patch ? (patch.operation ?? null) : current.operation,
+  });
 }
 
 /**
@@ -3244,8 +3318,17 @@ export async function registerCustomMark(
   });
   if (markError) throw markError;
   await addOpening(projectId, payload.opening);
-  const { error } = await supabase.from("project_mark_specs").insert(payload.spec);
-  if (error) throw refusalOrError(error);
+  let { error } = await supabase.from("project_mark_specs").insert(payload.spec);
+  if (error) {
+    // Wave X's kind columns may not be on this database yet. A mark the crew
+    // just named must still land; the backfill fills the kinds in later.
+    const missing = missingOptionalSpecColumns(error);
+    if (missing.length === 0) throw refusalOrError(error);
+    ({ error } = await supabase
+      .from("project_mark_specs")
+      .insert(withoutColumns(payload.spec, missing)));
+    if (error) throw refusalOrError(error);
+  }
 }
 
 // --- Assignment + install events (RPCs) ---
