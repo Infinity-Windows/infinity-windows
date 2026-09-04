@@ -206,7 +206,10 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
       };
       const suggestions = autoDistribute(dispatchOpenings, dispatchCrew, ctx);
       for (const s of suggestions) {
-        await assignOpeningToInstaller(s.openingId, s.profileId);
+        // "auto" in the assignment history (wave Y): a unit the app handed
+        // out reads differently from one a person chose to hand out, and the
+        // conversation about why somebody has this window starts there.
+        await assignOpeningToInstaller(s.openingId, s.profileId, null, "auto");
       }
       return suggestions.length;
     },

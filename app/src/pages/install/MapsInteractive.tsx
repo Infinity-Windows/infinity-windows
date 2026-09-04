@@ -11,6 +11,7 @@ import {
 } from "../../lib/install/api";
 import type { Project } from "../../lib/types";
 import { pushToast } from "../../lib/toast";
+import { useT } from "../../lib/i18n";
 import { formatApiError } from "../../lib/install/errors";
 import { listQcPassedOpeningIds } from "../../lib/ops";
 import { listOpeningPhases } from "../../lib/install/phases";
@@ -79,6 +80,7 @@ export function MapsInteractive({ project }: { project: Project }) {
     }
   };
   const { effectiveRole } = useEffectiveRole();
+  const t = useT();
   // Editing the model is supervisor+ (stories design doc); the tab itself
   // is everyone's reference.
   const canEditModel = isSupervisorPlus(effectiveRole);
@@ -255,6 +257,12 @@ export function MapsInteractive({ project }: { project: Project }) {
   // map. Caught locally instead (owner decision, 2026-08-21) so only the map
   // area goes dark, with a way back in that doesn't need a reload.
   const [mountFailed, setMountFailed] = useState(false);
+  // Wave Y (Y3): the unit the foreman tapped "Record install for…" on, held
+  // while they pick a person. The renderer hands over the window it drew, so
+  // the mark code is all React needs to find the real opening.
+  const [recordFor, setRecordFor] = useState<{ code: string; label: string } | null>(
+    null,
+  );
   const [retryNonce, setRetryNonce] = useState(0);
   const retryMount = () => {
     setMountFailed(false);
@@ -323,6 +331,15 @@ export function MapsInteractive({ project }: { project: Project }) {
                   name: p.display_name ?? p.id.slice(0, 8),
                   role: p.role,
                 })),
+              // Wave Y (Y3). Foreman+ only, because the shim only carries it
+              // for foreman+ — the renderer draws the button if and only if
+              // the callback is there. It picks a PERSON and then opens the
+              // real opening sheet: nothing is marked done from the map, and
+              // the after photo, the grade and the flashing gate all still
+              // apply (owner-approved refusal).
+              onRecordFor: (win: { id: string; type?: string }) => {
+                setRecordFor({ code: win.id, label: win.type ?? win.id });
+              },
               onAssign: (codes: string[], profileId: string | null) => {
                 const all = openingsRef.current ?? [];
                 const ids = codes
@@ -518,6 +535,55 @@ export function MapsInteractive({ project }: { project: Project }) {
           ref={hostRef}
           style={mountFailed ? { display: "none" } : undefined}
         />
+        {/* Wave Y (Y3): pick who installed it, then go to that window's own
+            sheet with the person already chosen. The same crew list the assign
+            sheet draws, so there is one roster on this screen and not two. */}
+        {recordFor && (
+          <div className="modal-backdrop" role="dialog" aria-modal="true">
+            <div className="modal-card">
+              <span className="field-label">{t("credit.pickPerson")}</span>
+              <p className="muted" style={{ margin: "2px 0 8px", fontSize: 12.5 }}>
+                {recordFor.label} · {t("credit.gateStillApplies")}
+              </p>
+              <div className="row-gap" style={{ flexWrap: "wrap" }}>
+                {(profilesRef.current ?? [])
+                  .filter((p) => p.active)
+                  .map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      className="button-like"
+                      data-record-for={p.id}
+                      onClick={() => {
+                        const want = normalizeMarkCode(recordFor.code);
+                        const match = openingsRef.current?.find(
+                          (o) => normalizeMarkCode(o.opening_code) === want,
+                        );
+                        setRecordFor(null);
+                        if (!match) {
+                          pushToast("That unit has no opening yet.", "error");
+                          return;
+                        }
+                        navigate(
+                          `/projects/${projectId}/opening/${match.id}?credit=${p.id}`,
+                        );
+                      }}
+                    >
+                      {p.display_name ?? p.id.slice(0, 8)}
+                    </button>
+                  ))}
+              </div>
+              <button
+                type="button"
+                className="button-like"
+                style={{ marginTop: 10 }}
+                onClick={() => setRecordFor(null)}
+              >
+                {t("credit.cancel")}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
