@@ -122,7 +122,7 @@ export function shouldPersistQuery(queryKey: readonly unknown[]): boolean {
 
 /**
  * The whole test App.tsx applies before writing a query to disk: the right
- * key, AND an answer that actually arrived.
+ * key, and an answer that is not still in the air.
  *
  * The status half is not a nicety — it is what keeps the cache readable at
  * all. React Query dehydrates a query that is still PENDING with its
@@ -134,12 +134,24 @@ export function shouldPersistQuery(queryKey: readonly unknown[]): boolean {
  * offline lists above, every one of them added after a real field incident,
  * could silently restore nothing at all. Found by the offline e2e spec
  * (e2e/offline-spec-card.spec.ts), 2026-09-04.
+ *
+ * PENDING and nothing else. A query whose last refetch FAILED still holds the
+ * data from the read before it, and that is precisely the phone this cache
+ * exists for: "bars but no data" fails a background refetch on a sheet that
+ * was showing the spec fine a minute ago. React Query keeps `state.data`
+ * through a failed refetch, and hydrate restores it (it says so itself —
+ * "you can opt into dehydrating failed queries, and those can have data from
+ * previous successful fetches"). Narrowing this to `=== "success"` looked
+ * tidier and quietly deleted the offline copy of markSpecs, openingPhases and
+ * toolboxToday from the next snapshot, because the persister rewrites the
+ * whole file on every save. Keep the data; drop only what cannot survive
+ * JSON.
  */
 export function shouldPersistQueryState(
   queryKey: readonly unknown[],
   status: "pending" | "error" | "success",
 ): boolean {
-  return status === "success" && shouldPersistQuery(queryKey);
+  return status !== "pending" && shouldPersistQuery(queryKey);
 }
 
 /**

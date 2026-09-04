@@ -89,8 +89,11 @@ describe("offline cache: a gate and the fact that clears it travel together", ()
  * threw away every offline answer on the device, including all the ones added
  * above after real incidents. The offline e2e spec caught it: the cache was
  * written, and came back empty on the very next load.
+ *
+ * PENDING is the only status that does this, which is why the guard excludes
+ * that and nothing else — see the failed-refetch case below.
  */
-describe("only answers that actually arrived are written to disk", () => {
+describe("only answers that are not still in the air are written to disk", () => {
   it("persists a settled answer on a listed key", () => {
     expect(shouldPersistQueryState(["markSpecs", "project-1"], "success")).toBe(true);
   });
@@ -100,11 +103,28 @@ describe("only answers that actually arrived are written to disk", () => {
     expect(shouldPersistQueryState(["opening", "opening-1"], "pending")).toBe(false);
   });
 
-  it("refuses a failed read, and any key not on the list", () => {
-    expect(shouldPersistQueryState(["opening", "opening-1"], "error")).toBe(false);
+  it("refuses any key not on the list", () => {
     expect(shouldPersistQueryState(["openingPhotos", "opening-1"], "success")).toBe(
       false,
     );
+    expect(shouldPersistQueryState(["openingPhotos", "opening-1"], "error")).toBe(
+      false,
+    );
+  });
+
+  // Changed 2026-09-04, in review of this same branch: this used to assert
+  // that a failed read was refused. That was wrong, and it was a regression
+  // against the behaviour that shipped before the status test existed at all.
+  // A refetch that fails leaves the previous good data on the query, and a
+  // phone with bars but no data does exactly that all morning. Refusing it
+  // does not merely leave the file stale — the persister rewrites the whole
+  // snapshot on every save, so the spec sheet, the flashing phases and the
+  // toolbox state would be DELETED from the phone by a failed background
+  // refetch, which is the one moment the installer is about to need them.
+  it("keeps a listed answer whose last refetch failed — the data is still there", () => {
+    expect(shouldPersistQueryState(["markSpecs", "project-1"], "error")).toBe(true);
+    expect(shouldPersistQueryState(["opening", "opening-1"], "error")).toBe(true);
+    expect(shouldPersistQueryState(["openingPhases", "opening-1"], "error")).toBe(true);
   });
 });
 
