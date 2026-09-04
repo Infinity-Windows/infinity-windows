@@ -555,18 +555,70 @@ warning and a moved start date earns a fresh one. Wave H adds a fourth reason
 never counts against a job, because "nobody has logged a check-in" is true of
 every job in the company and is not news.
 
-**What a builder can see of it** — all four of the pipeline facts live as
-columns on `projects`, and `projects` is the one table a builder (partner)
-login reads whole for the jobs they were granted. That is row-level, and there
-is no column-level half to it: a column on `projects` is readable by a granted
-builder, now and forever after. It was allowed here on purpose — the readiness
-and the two materials dates are facts about the builder's own house, and the
-list order is an integer that means nothing outside our list. What a builder
-must never be told is that we are behind, which is why the 7 AM sweep excludes
-partner logins outright. Anything genuinely ours — a price, a margin, a cost, a
-wage — does NOT go in a column on `projects`; it goes in a table of its own
-with its own policy, the way the bid and target margin moved to
-`project_financials`.
+**What a builder can see of it** — nothing, and that was a correction. All four
+pipeline facts started as columns on `projects`, which is the one table a
+builder (partner) login reads whole for the jobs they were granted. That is
+row-level and has no column-level half: a column there is readable by a granted
+builder, now and forever after. Wave J allowed it, reasoning that readiness and
+the materials dates are facts about the builder's own house. Wave H moved three
+of them straight back out (`project_pipeline`, 20260981000000) because the
+reasoning had the question wrong. It is not "is this fact sensitive"; it is "is
+this fact ABOUT US". "Not ready" is a note we write to ourselves about a site
+nobody has walked yet — read by the builder who owns that site, it is an
+accusation, and "your windows still are not here" is the sentence this whole
+handshake exists to let us say ourselves, in our words, at a moment we chose.
+Only `sort_order` stayed: an integer that means nothing outside a list a builder
+cannot see. So anything genuinely ours — a price, a margin, a cost, a wage, our
+own state of readiness — goes in a table of its own with its own policy, the way
+the bid and target margin moved to `project_financials`. Two waves in a row got
+this wrong in the same direction; the third should not have to.
+
+## The GC handshake
+
+Settled 2026-09-03, wave H (transcripts program, Q10 + Q11 + Q20 — grilled and
+approved; cite, never re-decide). The other end of the pipeline: the general
+contractor, who owns the house, sets the schedule everybody else works to, and
+until now has been talked to entirely by phone with the answers kept in
+somebody's head.
+
+**GC check-in** — one conversation with a job's general contractor, filed. Six
+standing answers, always the same six: when he expects the house finished, when
+the roof goes on, whether the framing has been checked, whether he wants the
+windows inset or outset, and what is going on the outside and the inside.
+Filing one is what "communicated with the GC" MEANS in this app — there is no
+other way to say it happened, and the 7 AM sweep's fourth reason is a job that
+has not had one in a fortnight. Append-only: a changed answer is a second row,
+and the pair is the story ("he said the 14th in August and the 28th in
+September"), which an update would erase. All six are required, because a
+half-filled check-in looks like somebody asked and the next person to open the
+job believes it. The inset/outset answer here is JOB-LEVEL and decides nothing
+about a unit — the per-unit spec field in the signature stays authoritative for
+what actually gets installed where; this is what the builder SAID, which is
+sometimes a different answer.
+
+**GC link** — a no-login page one job's general contractor opens from a text or
+an email, answers the same six questions on, and asks a question back through.
+The credential is 32 random bytes, stored only as a sha256 hash, good for 30
+days and revocable; one live link per job, and sending a fresh one turns the old
+one off. THE TOKEN IS A KEY TO AN EDGE FUNCTION, NEVER TO A TABLE — no anon
+policy exists anywhere for it, everything the page reads and writes goes through
+`gc-link` on the service role, and the outward payload is built field by field
+(wave S's projection law). What the GC sees is the job's name, the brand, the
+questions with his own prior answers, and the thread; what he never sees is our
+readiness, our dates, our schedule, our crew or our costs — which is why moving
+the pipeline facts off `projects` had to happen first. An answer arrives as an
+ordinary check-in with `source = gc`, and pushes the same people the 7 AM sweep
+would. His messages live in `gc_messages` and NEVER in crew chat: two audiences,
+two tables, no join.
+
+**Brand (per job)** — which of the company's two names a customer hears on this
+job: STG Windows & Doors or Forge Windows and Doors. `projects.gc_brand`,
+default `stg`, a foreman's choice through `set_project_gc_brand`, and it drives
+the GC page's header and the email's subject and signature. Per JOB rather than
+per company because some builders have only ever known us as STG and some as
+Forge, and the wrong name on an email is the kind of small wrong thing that
+makes somebody wonder who they are dealing with. The partner wall's own STG
+branding is a different thing and this wave does not touch it.
 
 ## Scope at a glance
 
@@ -606,6 +658,91 @@ storey is a shape for the renderer, not a survey, so it loses to the typed
 number. The job HEADER applies this rule; a job CARD shows the typed number
 alone, because resolving it needs the job's traced model and pulling every
 listed job's model down to a phone is the whole-table read this wave deleted.
+
+## Who did what
+
+Settled 2026-09-04, wave Y (transcripts program, Q2 — grilled and approved;
+cite, never re-decide). Two questions the app could not answer: who actually
+installed this, and who has had it.
+
+**Credited installer** — the person an install is filed UNDER, when that is
+not the person who filed it (`install_events.credited_to`; null means
+`installer_id`, the filer, and is the ordinary case). A foreman finishing a
+unit for an installer whose phone is dead used to move that window onto his
+own record — his median, his fail rate, the figures dispatch ranks him on —
+and off the person who stood on the ladder. Credit is about the RECORD and
+never about time: the finisher's session stays the finisher's, because
+sessions follow the human and the walk to that window was his. Every
+per-person rollup in the database reads `coalesce(credited_to,
+installer_id)`; nothing reads either column alone. A plain installer may
+credit themselves or whoever the unit is assigned to — the one on-site case
+that needs no permission — and a foreman or above may credit any active crew
+member, checked in the RPC and again on the table, because an RPC is not the
+only door. Deliberately NOT restricted to people with a shift on that job: a
+helper who walked over for a four-man lift still installed the window, and a
+rule that refuses the honest answer teaches people to file the dishonest
+one. The Record reads it back as "Installed by Sam · filed by Jed", and the
+sheet only ASKS the question when the unit is on somebody else's list —
+finishing your own work stays one tap.
+
+**Assignment history** — every time a unit changed hands
+(`opening_assignment_events`): who it was on, who it went to, who moved it,
+and from which screen. `assigned_to` is one column that gets overwritten, so
+before this the previous assignee was simply gone, and every "why has this
+been sitting for two days" conversation ran into that wall. Written by a
+TRIGGER on the column rather than by each of the four screens that assign — a
+screen can forget, a trigger cannot — which is also why a plain PATCH is
+recorded like any other hand-over. The screen it came from cannot be worked
+out by the database, so the assigning RPC states it and the trigger records
+what it was told, falling back to "dispatch" when nobody said. Read by
+foreman+ only: an installer sees their own list, not the ledger of everybody
+else's. Read back in three places, all the same card and the same rows: on the
+unit's Record beside its sessions, on the Dispatch tab while a job is running,
+and against each finished job on Job history — because "who had the three that
+came back" is a question asked after a job is over, and the Dispatch tab is a
+working screen for jobs that are not.
+
+## Credentials
+
+Settled 2026-09-03, wave O (transcripts program, Q14 — grilled and approved;
+cite, never re-decide). What a crew member is CERTIFIED to do, as opposed to
+what they are good at.
+
+**Certification** — one card somebody holds, with the day it runs out. Six
+named kinds (`osha10`, `osha30`, `first_aid_cpr`, `aerial_lift`, `forklift`,
+`fall_protection`) plus `other` with the name typed in, and naming them is what
+makes the bid summary countable — a company cannot count "4 OSHA 30" if
+everybody spells it differently. Adding your OWN card needs no rank and always
+lands UNCHECKED, because "I have an OSHA 30" is a claim until somebody with a
+rank has looked at the paper; checking it, editing it and voiding it are
+supervisor+, all through `set_certification`. Cards are VOIDED, never deleted:
+"who said this person had an OSHA 30" is exactly the question asked after an
+incident, and a deleted row takes its own history with it. `expires_on` may be
+null, which means the card carries no expiry — a real answer, shown as a grey
+chip rather than a green one, because "nobody said when it runs out" is not the
+same as "fine". The photo of the card lives in the private `credential-docs`
+bucket where THE PATH IS THE PERMISSION (`<profile_id>/<uuid>.jpg`): the
+cardholder or a supervisor+ may read it, and only the cardholder may write into
+their own folder. The 7 AM sweep says a card is running out thirty days before
+the date and again ON the day it runs out — two pushes, and the second one has
+to be the day itself rather than the morning after, because the day a card runs
+out is the last day somebody can still do something about it before a gate turns
+them away. Both warnings are filed against the expiry date, so they take one
+ledger key each or the second never gets said. It rides wave J's existing
+`pipeline-sweep` as one more rule — the ledger is `credential_nudges` rather
+than `pipeline_nudges` only because that table's `project_id` is NOT NULL and a
+card belongs to a person, not a job.
+
+**Skill tree** — one view of everything the app knows a person is allowed to
+do, in the three flavours that had grown up separately and never sat beside
+each other: BADGES (what a foreman said they may take on), CLEARANCES (which
+window types a lead or a passed video quiz signed them off for), and
+CERTIFICATIONS (the cards, with their expiry chips). It renders on the person's
+Roster row, where a supervisor can act on it, and on their own My Work, where
+they read it about themselves and the only write they have is adding a card.
+The tree does not decide anything; it is the place all three answers finally
+show up together, so "can this crew go up in a lift on Tuesday" is one screen
+rather than three.
 
 ## Recordings by link
 

@@ -9,6 +9,7 @@ import {
 } from "../lib/offline/outbox";
 import {
   capturePhotoMeta,
+  shrinkPhotoFile,
   stampPhoto,
   stampPhotoFile,
   toPhotoMetaFields,
@@ -73,6 +74,22 @@ type PhotoCaptureSheetProps =
       label?: string | null;
       /** Button copy, e.g. "Photo of the finished flashing". */
       prompt: string;
+      /**
+       * Wave O: burn the GPS + timestamp watermark in, or don't. Defaults to
+       * true, which is every existing caller — a phase-proof photo is evidence
+       * about a place and a time, and the stamp IS the proof.
+       *
+       * A photo of an OSHA card is the opposite: it is a picture of a piece of
+       * paper somebody is holding, the stamp says nothing true about the card,
+       * and burning a GPS fix onto a document that already carries a full legal
+       * name adds a fact nobody asked for. It also costs a location lookup —
+       * capturePhotoMeta waits up to eight seconds for a fix — for a photo
+       * taken at a desk.
+       */
+      stamp?: boolean;
+      /** Replaces the "GPS and time are added automatically" line under the
+       * button, for a capture that adds neither. */
+      hint?: string;
     };
 
 /**
@@ -849,6 +866,8 @@ function SinglePhotoCapture({
   onChange,
   label,
   prompt,
+  stamp = true,
+  hint,
 }: Extract<PhotoCaptureSheetProps, { mode: "single" }>) {
   const t = useT();
   const [live, setLive] = useState(false);
@@ -856,6 +875,22 @@ function SinglePhotoCapture({
   const [stamping, setStamping] = useState(false);
 
   const applyPhoto = async (raw: File) => {
+    // An unstamped shot skips the GPS wait entirely — see `stamp` above — but
+    // NOT the shrink and re-encode. That half has nothing to do with stamping:
+    // "Choose from files" hands over whatever the phone's camera roll holds, at
+    // full resolution and in whatever container, and every upload in this app
+    // has always counted on it arriving as a sensible JPEG. Handing the raw
+    // pick straight to a bucket is how a screenshot of a certificate gets
+    // refused for being 14 MB, or stored as a PNG under a .jpg name.
+    if (!stamp) {
+      setStamping(true);
+      try {
+        onChange(await shrinkPhotoFile(raw));
+      } finally {
+        setStamping(false);
+      }
+      return;
+    }
     setStamping(true);
     try {
       const meta = await capturePhotoMeta(label ?? null, 8000);
@@ -877,7 +912,9 @@ function SinglePhotoCapture({
     if (!video) return;
     void grabFrame(video).then((blob) => {
       if (!blob) return;
-      const file = new File([blob], `phase-${Date.now()}.jpg`, { type: "image/jpeg" });
+      const file = new File([blob], `${stamp ? "phase" : "card"}-${Date.now()}.jpg`, {
+        type: "image/jpeg",
+      });
       setLive(false);
       void applyPhoto(file);
     });
@@ -906,12 +943,18 @@ function SinglePhotoCapture({
     <div className="ba-grid one">
       <CaptureSlot
         title={prompt}
-        hint={t("photo.gpsTimeAuto")}
+        hint={hint ?? (stamp ? t("photo.gpsTimeAuto") : undefined)}
         url={url}
         onCamera={() => setLive(true)}
         onFile={pick}
       />
-      {stamping && <p className="muted">{t("photo.stampingGps")}</p>}
+      {/* An unstamped shot is waiting on the shrink and re-encode, not on a
+          GPS fix it never asked for. Saying "Stamping GPS & time…" over a photo
+          of somebody's OSHA card would be telling them the opposite of what the
+          hint just promised. */}
+      {stamping && (
+        <p className="muted">{stamp ? t("photo.stampingGps") : t("photo.preparing")}</p>
+      )}
       {cameraError && (
         <p className="muted">{cameraError} — {t("photo.useFileInstead")}</p>
       )}

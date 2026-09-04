@@ -152,7 +152,23 @@ class TestSchemaParsing(unittest.TestCase):
         # +1: pipeline_nudges — the ledger of what the 7 AM job-pipeline sweep
         # has already said about a job (Wave J, J4, 20260979000000). Wave E
         # (20260977000000) declared no table of its own.
-        self.assertEqual(len(SCHEMA.tables), 122)
+        # +1: project_pipeline — readiness and the two materials dates, moved
+        # off `projects` because a granted builder reads that row whole (Wave H,
+        # H0, 20260981000000). The move DROPS three columns from `projects` and
+        # adds exactly one table.
+        # +1: project_gc_checkins — one filed conversation with a job's general
+        # contractor, the six standing answers (Wave H, H1, 20260981000000).
+        # +2: gc_links + gc_messages — the no-login link a GC opens and the
+        # thread on it (Wave H, H2, 20260981000000). Four tables for the wave.
+        # +1: opening_assignment_events — one row per time a unit changed
+        # hands, written by a trigger on project_openings.assigned_to (Wave Y,
+        # Y5, 20260982000000).
+        # (20260977000000) declared no table of its own, and neither did wave X
+        # (20260980000000).
+        # +2: certifications + credential_nudges — one row per card a crew
+        # member holds, and the ledger of what the sweep has already said about
+        # one running out (Wave O, O1/O4, 20260983000000).
+        self.assertEqual(len(SCHEMA.tables), 129)
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 

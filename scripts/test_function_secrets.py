@@ -217,7 +217,13 @@ class FunctionSecretsTest(unittest.TestCase):
         # 21: +pipeline-sweep, the 7 AM "this job is not ready" push (Wave J,
         # J4). Third of the same shape — cron target, VAPID pair, no new
         # secret — so the ANTHROPIC headline sentence below is unmoved.
-        self.assertEqual(len(names), 21)
+        # 23: +gc-link and +send-email, the GC handshake (Wave H, H2). gc-link
+        # runs on the VAPID pair it shares with every other pusher, and
+        # send-email's two secrets are BOTH optional — RESEND_API_KEY behind a
+        # truthiness guard and EMAIL_FROM with a real default — so neither
+        # appears in the required union and the ANTHROPIC headline sentence in
+        # verify-function-secrets.test.sh is unmoved again.
+        self.assertEqual(len(names), 23)
         self.assertIn("ask", names)
         self.assertIn("studio-assist", names)
         # Creates accounts on the service-role key, and needs no secret of its
@@ -228,6 +234,29 @@ class FunctionSecretsTest(unittest.TestCase):
         self.assertIn("manage-crew-access", names)
         self.assertIn("redeem-crew-invite", names)
         self.assertNotIn("_shared", names)
+
+    def test_send_email_needs_no_secret_the_owner_has_not_set(self):
+        """The whole point of the optional-guard pattern, pinned.
+
+        A deploy must not fail because the owner has not added a Resend key
+        yet. RESEND_API_KEY is read behind `if (Deno.env.get(...))`, which this
+        parser reads as feature detection, and EMAIL_FROM has a working default
+        — so neither is REQUIRED, the secret gate stays green, and the function
+        answers "email is not configured" until somebody sets the key.
+        """
+        r = fs.requirements_for("send-email")
+        self.assertEqual(r["required"], [])
+        self.assertIn("RESEND_API_KEY", r["optional"])
+        self.assertIn("EMAIL_FROM", r["optional"])
+
+    def test_gc_link_rides_the_push_pair_and_adds_no_secret(self):
+        # It pushes the office when a GC answers, so it needs what every other
+        # pusher needs and nothing else. A new secret here would have moved the
+        # census sentence for no gain.
+        r = fs.requirements_for("gc-link")
+        self.assertIn("VAPID_PUBLIC_KEY", r["required"])
+        self.assertIn("VAPID_PRIVATE_KEY", r["required"])
+        self.assertNotIn("RESEND_API_KEY", r["required"])
 
     def test_ask_needs_anthropic_and_treats_openai_as_optional(self):
         r = fs.requirements_for("ask")

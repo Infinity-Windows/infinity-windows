@@ -609,6 +609,11 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     # nudged back and forth all afternoon and every nudge is a real step in the
     # undo history, so two rows that look alike are two moves, not a duplicate.
     "project_opening_pin_moves": None,
+    # Same shape one row up: one row per time a unit changed hands (Wave Y, Y5,
+    # 20260982000000). A unit can go to Sam, come back, and go to Sam again in
+    # one morning, and all three are real handovers — there is nothing to dedup
+    # on, and merging two databases keeps both sides' history.
+    "opening_assignment_events": None,
     "project_plan_outlines": None,
     # A snapped receipt, like job_notes/opening_notes above: two receipts
     # with the same vendor/amount/date can be two real purchases (gas twice
@@ -667,6 +672,27 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     # -- project_id IS the primary key, so it is the natural key too — merge it
     # -- the same way the job it belongs to is merged.
     "project_financials": ("project_id",),
+    # -- One row per job: readiness and the two materials dates, moved off
+    # -- `projects` by wave H (H0, 20260981000000) because a granted builder
+    # -- reads a `projects` row whole. Same shape as project_financials above —
+    # -- project_id IS the primary key, so it is the natural key too.
+    "project_pipeline": ("project_id",),
+    # -- One conversation with a job's GC (Wave H, H1, 20260981000000).
+    # -- APPEND-ONLY and no natural key: two check-ins on the same job on the
+    # -- same day are two calls, and a merge that folded them into one would
+    # -- erase the very thing this table exists to keep — that somebody rang
+    # -- twice, and what changed between the two.
+    "project_gc_checkins": None,
+    # -- A no-login link handed to one job's GC (Wave H, H2). token_hash is
+    # -- UNIQUE and is the only thing that identifies a link, so it IS the
+    # -- natural key: two databases holding the same hash hold the same link,
+    # -- and a union that kept both would leave two rows one token opens.
+    "gc_links": ("token_hash",),
+    # -- One line of the thread with a job's GC (Wave H, H2). No natural key,
+    # -- the same reasoning as project_messages: two identical sentences on the
+    # -- same job are two times somebody said it, and merging them would erase
+    # -- a repeat that meant something.
+    "gc_messages": None,
     # -- One rate per person per start date, and the table's own UNIQUE says so
     # -- (Wave Z, Z3). Two projects holding the same person's 2026-06-01 rate
     # -- are the same fact, so it dedups cleanly.
@@ -681,6 +707,23 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     # -- hash of date + amount + description. Exactly the question a merge
     # -- asks, already answered.
     "bank_transactions": ("dedupe_key",),
+    # -- One card per person per kind per issue date (Wave O, O1). Not a UNIQUE
+    # -- in the migration — somebody genuinely can hold two OSHA 10 cards issued
+    # -- on different days, and voiding a mistyped row leaves the row behind —
+    # -- but two projects each holding "Cesar's OSHA 30 issued 2026-03-04" are
+    # -- the same piece of paper, and merging them as two would double every
+    # -- count on the bid summary. issued_on can be null (a card whose date
+    # -- nobody typed), and a null key part means the rows do not match, which
+    # -- errs toward keeping both rather than silently merging two cards that
+    # -- might be different.
+    "certifications": ("profile_id", "kind", "issued_on"),
+    # -- The "we already said this" ledger behind the credential half of the
+    # -- 7 AM sweep (Wave O, O4, 20260983000000). Its own UNIQUE constraint is
+    # -- the natural key, exactly as pipeline_nudges' is: two databases that
+    # -- each warned about the same card's same expiry hold ONE fact between
+    # -- them, and a union that kept both would let the merged database warn
+    # -- twice about a card it has already warned about.
+    "credential_nudges": ("certification_id", "kind", "on_date"),
 }
 
 #: Tables where combining two projects' rows is meaningless or actively wrong.

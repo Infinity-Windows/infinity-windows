@@ -39,6 +39,15 @@ export const SAFETY_KEYS = [
   "toolbox.signTalk",
   "toolbox.signing",
   "opening.action.signToolbox",
+  // Wave O: the names of the safety cards themselves. A crew member reads these
+  // to decide whether the card in their wallet is the one being asked for, and
+  // "protección contra caídas" is the phrase a fall-protection class is sold
+  // under in Spanish — worth a bilingual crew member's eyes before it is
+  // trusted.
+  "cred.kind.first_aid_cpr",
+  "cred.kind.aerial_lift",
+  "cred.kind.forklift",
+  "cred.kind.fall_protection",
 ] as const;
 
 export const CATALOG = {
@@ -1186,6 +1195,336 @@ export const CATALOG = {
     en: "From the traced 3D model.",
     es: "Del modelo 3D trazado.",
   },
+
+  // ---- Credentials (wave O) ---------------------------------------------
+  // The cards a crew member holds and the day each one runs out. The KIND
+  // names are the trade's and the regulator's own — OSHA 10 is called OSHA 10
+  // in both languages, and translating it would leave somebody hunting for a
+  // card they hold — so those two entries are deliberately identical, the same
+  // way picker.english names itself in its own language. The rest are the
+  // words a Spanish-reading installer would recognise on the class certificate
+  // and are flagged in SAFETY_KEYS for the owner's bilingual review.
+  "cred.kind.osha10": { en: "OSHA 10", es: "OSHA 10" },
+  "cred.kind.osha30": { en: "OSHA 30", es: "OSHA 30" },
+  "cred.kind.first_aid_cpr": {
+    en: "First aid / CPR",
+    es: "Primeros auxilios / RCP",
+  },
+  "cred.kind.aerial_lift": { en: "Aerial lift", es: "Plataforma elevadora" },
+  "cred.kind.forklift": { en: "Forklift", es: "Montacargas" },
+  "cred.kind.fall_protection": {
+    en: "Fall protection",
+    es: "Protección contra caídas",
+  },
+  "cred.kind.other": { en: "Other", es: "Otra" },
+
+  // The section itself, on a Roster row and on My Work.
+  "cred.heading": { en: "Credentials", es: "Certificaciones" },
+  "cred.none": { en: "No cards on file yet.", es: "Todavía no hay tarjetas." },
+  "cred.skillTree": { en: "Skill tree", es: "Árbol de habilidades" },
+  "cred.badges": { en: "Badges", es: "Insignias" },
+  "cred.clearances.one": { en: "{n} type cleared", es: "{n} tipo aprobado" },
+  "cred.clearances.many": { en: "{n} types cleared", es: "{n} tipos aprobados" },
+
+  // The expiry chips. Deliberately four different sentences rather than one
+  // with a number swapped in: "no expiry" and "ran out" are not the same
+  // sentence with a different number, and a phrase assembled from parts reads
+  // like a phrase assembled from parts in Spanish.
+  "cred.chip.noExpiry": { en: "No expiry", es: "Sin vencimiento" },
+  "cred.chip.good": { en: "Good until {date}", es: "Válida hasta el {date}" },
+  "cred.chip.soon": { en: "Runs out {date}", es: "Vence el {date}" },
+  "cred.chip.expired": { en: "Expired {date}", es: "Venció el {date}" },
+  "cred.unverified": { en: "Not checked yet", es: "Sin verificar" },
+  "cred.verified": { en: "Checked", es: "Verificada" },
+
+  // Adding a card.
+  "cred.add": { en: "Add a card", es: "Agregar tarjeta" },
+  "cred.addMine": { en: "Add my card", es: "Agregar mi tarjeta" },
+  "cred.whichCard": { en: "Which card is it?", es: "¿Qué tarjeta es?" },
+  "cred.nameIt": { en: "Name the card", es: "Nombre de la tarjeta" },
+  "cred.issued": { en: "Issued", es: "Emitida" },
+  "cred.expires": { en: "Runs out", es: "Vence" },
+  "cred.expiresHint": {
+    en: "Leave blank if the card has no expiry date on it.",
+    es: "Déjalo en blanco si la tarjeta no tiene fecha de vencimiento.",
+  },
+  "cred.photo": { en: "Photo of the card", es: "Foto de la tarjeta" },
+  "cred.photoHint": {
+    en: "No stamp on this one — it is a photo of a card, not proof of where you stood.",
+    es: "Esta foto no lleva sello — es una tarjeta, no una prueba de dónde estabas.",
+  },
+  "cred.save": { en: "Save card", es: "Guardar tarjeta" },
+  "cred.saving": { en: "Saving…", es: "Guardando…" },
+  "cred.cancel": { en: "Cancel", es: "Cancelar" },
+  "cred.mineLandUnverified": {
+    en: "A card you add yourself waits for a supervisor to check it.",
+    es: "Una tarjeta que agregas tú espera a que un supervisor la revise.",
+  },
+  "cred.uploading": { en: "Sending the photo…", es: "Enviando la foto…" },
+  "cred.viewCard": { en: "See the card", es: "Ver la tarjeta" },
+  // The bucket answers "you may not read this" and "there is nothing here" the
+  // same way, so this one sentence has to cover both without guessing.
+  "cred.viewCard.noLuck": {
+    en: "That photo would not open. Only the person it belongs to, or a supervisor, can see it.",
+    es: "No se pudo abrir esa foto. Solo la persona dueña de la tarjeta, o un supervisor, puede verla.",
+  },
+
+  // Supervisor actions on somebody else's card.
+  "cred.verify": { en: "Mark checked", es: "Marcar verificada" },
+  "cred.unverify": { en: "Undo checked", es: "Quitar verificada" },
+  "cred.void": { en: "Void", es: "Anular" },
+  "cred.voidConfirm": {
+    en: "Void this card? It stays on file and stops counting anywhere.",
+    es: "¿Anular esta tarjeta? Queda en el archivo y deja de contar en todas partes.",
+  },
+
+  // O5 — the bid summary, supervisor+ on the Roster.
+  "cred.summary.heading": { en: "Credential summary", es: "Resumen de certificaciones" },
+  "cred.summary.hint": {
+    en: "Checked cards that have not run out. No names — this line is written to be pasted into a bid.",
+    es: "Tarjetas verificadas que no han vencido. Sin nombres — esta línea es para pegarla en una propuesta.",
+  },
+  "cred.summary.none": {
+    en: "No checked cards on file yet.",
+    es: "Todavía no hay tarjetas verificadas.",
+  },
+  "cred.summary.copy": { en: "Copy as text", es: "Copiar como texto" },
+  "cred.summary.copied": { en: "Copied", es: "Copiado" },
+
+  // O4 — the Heartbeat tile. Thirty days rather than "this month" so the tile
+  // and the 7 AM push are counting the same cards; a calendar month would hide
+  // a card expiring on the 2nd from anybody reading this on the 30th.
+  "cred.expiring.one": {
+    en: "1 credential runs out within 30 days",
+    es: "1 certificación vence en 30 días o menos",
+  },
+  "cred.expiring.many": {
+    en: "{n} credentials run out within 30 days",
+    es: "{n} certificaciones vencen en 30 días o menos",
+  },
+
+  // A photo.* key filed in this wave's block because this wave is what created
+  // it: the capture sheet's only unstamped caller. Its neighbour says "Stamping
+  // GPS & time…", which would be a plain lie under a shot that carries neither
+  // — the wait here is the shrink and re-encode, and nothing else.
+  "photo.preparing": {
+    en: "Getting the photo ready…",
+    es: "Preparando la foto…",
+  },
+  // ---- Wave H — the GC handshake ----------------------------------------
+  // (transcripts program, grill 2026-09-03, Q10 + Q11 + Q20). Six questions
+  // get asked on every job, and the answers used to live in somebody's memory
+  // of a phone call. These are the CREW side of that — the card on a job's
+  // Overview where the office files what the builder said and hands him a link
+  // to answer it himself.
+  //
+  // The GC'S OWN PAGE IS NOT HERE AND MUST NOT BE. It is customer-facing, it is
+  // English-only in v1 by decision, and it is rendered before the app's
+  // language layer exists at all — a general contractor opening a link from a
+  // text message has never picked a language in this app and never will. The
+  // email it goes out with is English for the same reason. When somebody asks
+  // for Spanish there, it is a translation of the PAGE, not of this catalog.
+  "gc.heading": { en: "GC", es: "Contratista general" },
+  "gc.noCheckins": { en: "Nobody has checked in with the GC yet.", es: "Nadie ha hablado con el contratista general todavía." },
+  "gc.log": { en: "Log a GC check-in", es: "Anotar contacto con el GC" },
+  "gc.lastSpoke": { en: "Last spoke {date}", es: "Último contacto {date}" },
+  "gc.answeredByGc": { en: "The GC answered this himself", es: "El GC contestó él mismo" },
+  "gc.history": { en: "Earlier check-ins", es: "Contactos anteriores" },
+  "gc.showHistory": { en: "Show earlier check-ins", es: "Ver contactos anteriores" },
+  "gc.hideHistory": { en: "Hide earlier check-ins", es: "Ocultar contactos anteriores" },
+  // The six questions. Short labels — this is a form filled in on a phone with
+  // the builder still on the line.
+  "gc.expectedEnd": { en: "House finished", es: "Casa terminada" },
+  "gc.roofOn": { en: "Roof on", es: "Techo puesto" },
+  "gc.framingChecked": { en: "Framing checked?", es: "¿Revisaron el marco?" },
+  "gc.setPreference": { en: "Inset or outset?", es: "¿Adentro o afuera?" },
+  "gc.set.inset": { en: "Inset", es: "Adentro" },
+  "gc.set.outset": { en: "Outset", es: "Afuera" },
+  "gc.set.unknown": { en: "He has not said", es: "No ha dicho" },
+  "gc.exterior": { en: "Going on the outside", es: "Material de afuera" },
+  "gc.interior": { en: "Going on the inside", es: "Material de adentro" },
+  "gc.exteriorHint": { en: "Stucco, stone, siding…", es: "Estuco, piedra, siding…" },
+  "gc.interiorHint": { en: "Drywall, plaster, wood…", es: "Panel de yeso, yeso, madera…" },
+  "gc.yes": { en: "Yes", es: "Sí" },
+  "gc.no": { en: "No", es: "No" },
+  // Who and how — not required, but the first thing anybody wants when the
+  // answers turn out to be wrong.
+  "gc.contactName": { en: "Who you talked to", es: "Con quién hablaste" },
+  "gc.channel": { en: "How", es: "Cómo" },
+  "gc.channel.call": { en: "Call", es: "Llamada" },
+  "gc.channel.text": { en: "Text", es: "Mensaje" },
+  "gc.channel.email": { en: "Email", es: "Correo" },
+  "gc.channel.site": { en: "On site", es: "En la obra" },
+  // Not offered on the form — nobody in the office talked to the builder "on
+  // the link". It is what a check-in the GC filed HIMSELF reads back as.
+  "gc.channel.link": { en: "On his link", es: "En su enlace" },
+  "gc.notes": { en: "Anything else", es: "Algo más" },
+  "gc.save": { en: "File this check-in", es: "Guardar el contacto" },
+  "gc.saving": { en: "Saving…", es: "Guardando…" },
+  "gc.cancel": { en: "Cancel", es: "Cancelar" },
+  "gc.saved": { en: "Filed. The job stops asking for a call.", es: "Guardado. El trabajo deja de pedir una llamada." },
+  // The refusals, one per required answer, in the order the form asks them.
+  // Each one names the box that is empty rather than saying "fill in the form".
+  "gc.missing.expectedEnd": { en: "Say when the GC expects the house to be finished.", es: "Di cuándo espera el GC que la casa esté terminada." },
+  "gc.missing.roofOn": { en: "Say when the roof goes on.", es: "Di cuándo ponen el techo." },
+  "gc.missing.framingChecked": { en: "Say whether the framing has been checked.", es: "Di si ya revisaron el marco." },
+  "gc.missing.setPreference": { en: "Say whether he wants the windows inset, outset, or that he has not said.", es: "Di si quiere las ventanas adentro, afuera, o que no ha dicho." },
+  "gc.missing.exterior": { en: "Say what is going on the outside.", es: "Di qué va por fuera." },
+  "gc.missing.interior": { en: "Say what is going on the inside.", es: "Di qué va por dentro." },
+  "gc.missing.channel": { en: "Say how you talked to the GC.", es: "Di cómo hablaste con el GC." },
+  // H2 — the link we hand the builder, and the thread on it. Crew-facing, so
+  // both languages; the PAGE the link opens and the email that carries it are
+  // English only in v1 and live in GcPage.tsx and the send-email function.
+  "gc.link.heading": { en: "The GC's own link", es: "El enlace del GC" },
+  "gc.link.none": { en: "No link has gone out yet.", es: "Todavía no se ha enviado ningún enlace." },
+  "gc.link.live": { en: "The link works until {date}.", es: "El enlace funciona hasta el {date}." },
+  "gc.link.sentTo": { en: "Sent to {email}", es: "Enviado a {email}" },
+  // Said when the link exists and an address is on it but no email ever went —
+  // which is every link while RESEND_API_KEY is unset. It has to name the next
+  // move, because the card is all the foreman sees after he reloads the job.
+  "gc.link.notSent": {
+    en: "No email went. Copy the link and text it.",
+    es: "No se envió ningún correo. Copia el enlace y mándalo por mensaje.",
+  },
+  "gc.link.answered": { en: "He answered on it {date}.", es: "Contestó ahí el {date}." },
+  "gc.link.off": { en: "The link is off.", es: "El enlace está apagado." },
+  "gc.link.email": { en: "GC's email", es: "Correo del GC" },
+  "gc.link.send": { en: "Send to GC", es: "Enviar al GC" },
+  "gc.link.resend": { en: "Send a fresh link", es: "Enviar un enlace nuevo" },
+  "gc.link.revoke": { en: "Turn the link off", es: "Apagar el enlace" },
+  "gc.link.sending": { en: "Sending…", es: "Enviando…" },
+  "gc.link.needEmail": { en: "Type the GC's email address first.", es: "Escribe primero el correo del GC." },
+  // Said BEFORE the tap, because a fresh link turns the old one off and a
+  // builder who is holding the old one should not find that out by tapping it.
+  "gc.link.confirm": {
+    en: "Send the six questions to {email}? Any earlier link stops working.",
+    es: "¿Enviar las seis preguntas a {email}? Cualquier enlace anterior deja de funcionar.",
+  },
+  "gc.link.copy": { en: "Copy the link", es: "Copiar el enlace" },
+  "gc.link.copied": { en: "Copied.", es: "Copiado." },
+  // The token exists in one place after this and it is the clipboard. Say so
+  // plainly rather than letting somebody discover it by coming back tomorrow.
+  "gc.link.onceOnly": {
+    en: "Copy it now if you want to text it — we cannot show it again. Sending again makes a new one.",
+    es: "Cópialo ahora si quieres mandarlo por mensaje — no podemos volver a mostrarlo. Enviar de nuevo crea uno nuevo.",
+  },
+  "gc.link.emailOff": {
+    en: "Email is not set up yet, so nothing was sent. Copy the link and text it instead.",
+    es: "El correo todavía no está configurado, así que no se envió nada. Copia el enlace y mándalo por mensaje.",
+  },
+  // Which of the company's two names this job's GC hears (Q20).
+  "gc.brand.label": { en: "The GC sees us as", es: "El GC nos ve como" },
+  "gc.brand.stg": { en: "STG Windows & Doors", es: "STG Windows & Doors" },
+  "gc.brand.forge": { en: "Forge Windows and Doors", es: "Forge Windows and Doors" },
+  // The thread. Never crew chat — said on the card, because the two boxes look
+  // alike and sending the wrong one to the wrong audience is the mistake.
+  "gc.thread.heading": { en: "Messages with the GC", es: "Mensajes con el GC" },
+  "gc.thread.notCrewChat": {
+    en: "This goes to the GC, not to the crew.",
+    es: "Esto va al GC, no al equipo.",
+  },
+  "gc.thread.empty": { en: "Nothing yet.", es: "Nada todavía." },
+  "gc.thread.placeholder": { en: "Write to the GC", es: "Escribe al GC" },
+  "gc.thread.send": { en: "Send", es: "Enviar" },
+  "gc.thread.us": { en: "Us", es: "Nosotros" },
+  "gc.thread.them": { en: "The GC", es: "El GC" },
+
+  // ---- Who installed this? (wave Y, transcripts program) ----------------
+  // The finish step only asks when the unit belongs to somebody else, so
+  // every one of these is read by a person who is filing for a workmate.
+  // "Credit" is deliberately absent from the copy: on a job site that word
+  // means money. The question the crew actually asks each other is who put
+  // it in, so that is the question the app asks.
+  "credit.who": { en: "Who installed this?", es: "¿Quién lo instaló?" },
+  "credit.help": {
+    en: "This unit is on someone else's list. Whoever you pick gets it on their record; the time still counts as yours.",
+    es: "Esta unidad está en la lista de otra persona. A quien elijas le queda en su historial; el tiempo sigue contando como tuyo.",
+  },
+  "credit.me": { en: "Me", es: "Yo" },
+  // The map's door into this (Y3). It goes to the same finish flow with the
+  // same photo, grade and flashing gates — nothing is marked done from here.
+  "credit.recordFor": { en: "Record install for…", es: "Registrar instalación de…" },
+  "credit.pickPerson": { en: "Who installed it?", es: "¿Quién lo instaló?" },
+  "credit.gateStillApplies": {
+    en: "This opens the window's own sheet — the after photo and the grade are still needed.",
+    es: "Esto abre la hoja de la ventana — todavía hacen falta la foto final y la calificación.",
+  },
+  "credit.cancel": { en: "Cancel", es: "Cancelar" },
+  // The map's single-unit Assign door (Y4).
+  "credit.assignOne": { en: "Assign…", es: "Asignar…" },
+  // The map picked a person for a mark it cannot find an opening behind —
+  // a plan drawn ahead of the schedule, usually.
+  "credit.noOpeningYet": {
+    en: "That unit has no opening yet.",
+    es: "Esa unidad todavía no tiene abertura.",
+  },
+  // The line the Record reads back on a filed round. The two halves are one
+  // sentence in both languages, so they are one key rather than a name glued
+  // to a separator in code — Spanish does not put them in the same order.
+  "credit.installedBy": {
+    en: "Installed by {installer}",
+    es: "Instalada por {installer}",
+  },
+  "credit.installedByFiledBy": {
+    en: "Installed by {installer} · filed by {filer}",
+    es: "Instalada por {installer} · registrada por {filer}",
+  },
+  // The credited person left the crew, or was never on it. Better than a
+  // blank: somebody was named, we just cannot say who any more.
+  "credit.someoneElse": { en: "someone else", es: "otra persona" },
+
+  // ---- Who has had this unit (wave Y, Y5) --------------------------------
+  // The hand-over log, read on the unit's Record and on the job's own list.
+  // Three sentences because three different things happen — a unit going out,
+  // a unit moving between two people, and a unit coming off a list — and each
+  // has a with-a-name and a without-a-name form, because a hand-over made by
+  // an account nobody can name still has to read as a sentence. Spanish puts
+  // the person who moved it first, which is why these are whole sentences and
+  // not an English stem with a " by …" stuck on the end.
+  "assign.assigned": { en: "Assigned to {to}", es: "Asignada a {to}" },
+  "assign.assignedBy": {
+    en: "Assigned to {to} by {by}",
+    es: "{by} se la asignó a {to}",
+  },
+  "assign.moved": { en: "Moved from {from} to {to}", es: "Pasó de {from} a {to}" },
+  "assign.movedBy": {
+    en: "Moved from {from} to {to} by {by}",
+    es: "{by} la pasó de {from} a {to}",
+  },
+  "assign.takenOff": {
+    en: "Taken off {from}'s list",
+    es: "Quitada de la lista de {from}",
+  },
+  "assign.takenOffBy": {
+    en: "Taken off {from}'s list by {by}",
+    es: "{by} la quitó de la lista de {from}",
+  },
+  "assign.cleared": { en: "Assignment cleared", es: "Asignación borrada" },
+  "assign.clearedBy": {
+    en: "Assignment cleared by {by}",
+    es: "{by} borró la asignación",
+  },
+  // Somebody the roster cannot name — the same fallback the session timeline
+  // already uses rather than showing a raw id.
+  "assign.crew": { en: "Crew", es: "Cuadrilla" },
+  // The log itself. Folded shut by default: it is the thing you go and look at
+  // when something is wrong, not a thing to read every morning.
+  "assign.historyOpen": {
+    en: "Assignment history — who has had what",
+    es: "Historial de asignaciones — quién ha tenido qué",
+  },
+  "assign.history": {
+    en: "Assignment history",
+    es: "Historial de asignaciones",
+  },
+  "assign.historyLoading": { en: "Loading…", es: "Cargando…" },
+  "assign.historyEmpty": {
+    en: "Nothing handed out on this job yet.",
+    es: "Todavía no se ha repartido nada en este trabajo.",
+  },
+  "assign.historyClose": { en: "Close history", es: "Cerrar historial" },
+  // A hand-over whose unit is not in the list this screen loaded.
+  "assign.unit": { en: "unit", es: "unidad" },
 
   // ---- Recordings by link (wave U) --------------------------------------
   // The owner's design (Q15/Q19): the app never collects raw footage. An

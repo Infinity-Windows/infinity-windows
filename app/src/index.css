@@ -11553,3 +11553,96 @@ button.stage-chip {
   opacity: 0.35;
   cursor: default;
 }
+
+/* ---------------------------------------------------------------------------
+   Credentials (Wave O) — the cards a person holds, on a Roster row and on
+   My Work. Four chip colours, and they are the only thing on the row that
+   carries meaning by colour, so each one also says its own sentence: a card
+   that reads "Expired 3 Mar" is still readable to somebody who cannot tell
+   the red from the amber.
+   --------------------------------------------------------------------------- */
+
+.skill-tree {
+  margin-top: 8px;
+}
+
+.cred-section {
+  margin-top: 6px;
+}
+
+.cred-list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cred-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.cred-name {
+  font-weight: 650;
+}
+
+.cred-chip {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.cred-chip.ok {
+  border-color: color-mix(in oklch, var(--ok) 45%, transparent);
+  background: color-mix(in oklch, var(--ok) 12%, transparent);
+  color: var(--ok);
+}
+
+.cred-chip.soon {
+  border-color: color-mix(in oklch, var(--warn) 45%, transparent);
+  background: color-mix(in oklch, var(--warn) 12%, transparent);
+  color: var(--warn);
+}
+
+.cred-chip.expired {
+  border-color: color-mix(in oklch, var(--danger) 45%, transparent);
+  background: color-mix(in oklch, var(--danger) 12%, transparent);
+  color: var(--danger);
+}
+
+.cred-chip.none {
+  color: var(--muted);
+}
+
+.cred-checked,
+.cred-unchecked {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.cred-unchecked {
+  font-style: italic;
+}
+
+.cred-form {
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.cred-summary-line {
+  font-size: 15px;
+}

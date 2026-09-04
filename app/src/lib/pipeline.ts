@@ -47,6 +47,9 @@ export type PipelineReason =
  * simply are not in the row yet, is a normal input rather than a crash.
  */
 export interface PipelineJob {
+  /** From the `project_pipeline` side table, folded onto the job by
+   * lib/api.ts's flattenPipeline. Wave H (H0) moved it off `projects`, which a
+   * granted builder reads whole — see the note in lib/types.ts. */
   ready_state?: string | null;
   start_date?: string | null;
   materials_eta?: string | null;
@@ -64,8 +67,12 @@ export interface NeedsCallResult {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** Local midnight for a YYYY-MM-DD day string, or null for anything else. */
-function localMidnight(day: string | null | undefined): Date | null {
+/** Local midnight for a YYYY-MM-DD day string, or null for anything else.
+ *
+ * Exported for lib/credentials.ts, which formats a card's expiry with the year
+ * in it and needs the same parse — one place that knows a day string is local,
+ * rather than a second copy that drifts. */
+export function localMidnight(day: string | null | undefined): Date | null {
   if (!day) return null;
   const iso = day.slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
@@ -139,6 +146,22 @@ export function materialsLate(job: PipelineJob, today: string): boolean {
 }
 
 /**
+ * Has it been a fortnight (or forever) since anybody talked to this job's GC?
+ *
+ * Null means "no check-in on file at all", which — once there is a table to put
+ * one in — is itself the thing worth calling about, and is deliberately NOT the
+ * same as "we cannot ask". Callers decide that with `gcCheckinsKnown`; this
+ * function only answers the question about a database that can be asked.
+ *
+ * The SQL twin is claim_pipeline_nudges()'s
+ * `last_checkin_day is null or last_checkin_day <= v_today - 14`.
+ */
+export function checkinIsStale(lastCheckinAt: string | null, today: string): boolean {
+  const since = lastCheckinAt ? daysBetween(today, lastCheckinAt.slice(0, 10)) : null;
+  return since === null || -since >= GC_CHECKIN_STALE_DAYS;
+}
+
+/**
  * Does somebody need to pick up the phone about this job?
  *
  * `lastCheckinAt` is the seam for wave H (the GC handshake), and it is
@@ -165,13 +188,8 @@ export function needsCall(
   if (startingSoon && materialsMissing(job)) reasons.push("materials_missing");
   if (materialsLate(job, today)) reasons.push("materials_late");
 
-  if (gcCheckinsKnown && startingSoon) {
-    const sinceCheckin = lastCheckinAt ? daysBetween(today, lastCheckinAt.slice(0, 10)) : null;
-    // Null here means "no check-in on file at all", which — once the table
-    // exists — is itself the thing worth calling about.
-    if (sinceCheckin === null || -sinceCheckin >= GC_CHECKIN_STALE_DAYS) {
-      reasons.push("no_gc_checkin");
-    }
+  if (gcCheckinsKnown && startingSoon && checkinIsStale(lastCheckinAt, today)) {
+    reasons.push("no_gc_checkin");
   }
 
   return { call: reasons.length > 0, reasons, daysUntilStart };
@@ -186,6 +204,10 @@ export interface DueNudge {
   daysUntilStart: number | null;
   notReady: boolean;
   materialsMissing: boolean;
+  /** Wave H (H1): nobody has talked to this job's GC in a fortnight, or ever.
+   * False on a late-materials nudge whatever the truth of it — late windows are
+   * their own message and padding it helps nobody. */
+  noGcCheckin: boolean;
 }
 
 /**
@@ -204,14 +226,33 @@ export interface DueNudge {
  *
  * A job nobody has promised windows for raises neither, on purpose — see
  * materialsMissing.
+ *
+ * Wave H (H1) added the third half of rule (a): nobody has talked to this job's
+ * GC in a fortnight, or ever. `gcCheckinsKnown` gates it exactly the way it
+ * gates needsCall — false means the table cannot be asked and the reason is
+ * never counted — but note the difference in what a TRUE-and-empty answer
+ * means. An absent materials date meant nobody could record one; an absent
+ * check-in, now that there is somewhere to put one, means nobody has called
+ * that builder. The first was a gap in the record, the second is the news.
  */
-export function dueNudges(job: PipelineJob, today: string): DueNudge[] {
+export function dueNudges(
+  job: PipelineJob,
+  today: string,
+  lastCheckinAt: string | null = null,
+  gcCheckinsKnown = false,
+): DueNudge[] {
   const out: DueNudge[] = [];
   const days = daysBetween(today, job.start_date);
   const notReady = job.ready_state === "not_ready";
   const missing = materialsMissing(job);
+  const staleCheckin = gcCheckinsKnown && checkinIsStale(lastCheckinAt, today);
 
-  if (days !== null && days >= 0 && days <= NUDGE_DAYS_FAR && (notReady || missing)) {
+  if (
+    days !== null &&
+    days >= 0 &&
+    days <= NUDGE_DAYS_FAR &&
+    (notReady || missing || staleCheckin)
+  ) {
     out.push({
       kind: days > NUDGE_DAYS_NEAR ? "start_14" : "start_7",
       // The start date itself is the key: move the date and the crew is warned
@@ -220,6 +261,7 @@ export function dueNudges(job: PipelineJob, today: string): DueNudge[] {
       daysUntilStart: days,
       notReady,
       materialsMissing: missing,
+      noGcCheckin: staleCheckin,
     });
   }
 
@@ -230,6 +272,7 @@ export function dueNudges(job: PipelineJob, today: string): DueNudge[] {
       daysUntilStart: days,
       notReady,
       materialsMissing: true,
+      noGcCheckin: false,
     });
   }
 

@@ -4,6 +4,11 @@
 // page stays fully readable), and can be reopened by a supervisor if the
 // site calls back.
 //
+// Wave Y adds the hand-over log per finished job: "who has had what" is a
+// question people ask about a job AFTER it is done — who had the three that
+// came back — and the dispatch board it otherwise lives on is a working
+// screen for jobs still running.
+//
 // Wave D adds the Deleted section (supervisor+ since standard-tracking-jobs
 // slice 5 — was owner-only): a job trashed from Active projects lives here for
 // 30 days with an Undo, then it's gone for good
@@ -13,6 +18,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { AssignmentHistoryCard } from "../components/install/AssignmentHistoryCard";
 import { BackChip } from "../components/BackChip";
 import { EmptyState } from "../components/ui/States";
 import { listProjectsAnyStatus, listTrashedProjects, restoreProject, setProjectStatus } from "../lib/api";
@@ -20,7 +26,7 @@ import { countDataOffByProject } from "../lib/install/api";
 import { deleteJob } from "../lib/jobDeletion";
 import { fetchServerNowMs } from "../lib/clockSkew";
 import { formatApiError } from "../lib/errors";
-import { isSupervisorPlus } from "../lib/install/types";
+import { isForemanPlus, isSupervisorPlus } from "../lib/install/types";
 import { trashStatusLine } from "../lib/projectTrash";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 
@@ -35,6 +41,10 @@ export function JobHistory() {
   // Supervisor+ reopens finished jobs, deletes jobs, and works the trash
   // (slice 5 widened delete/restore from owner-only to supervisor+).
   const boss = isSupervisorPlus(effectiveRole);
+  // The hand-over log is foreman+ in the database (opening_assignment_events'
+  // own policy), so the card is drawn to exactly the people it would answer —
+  // an empty panel with no explanation is worse than no panel.
+  const canSeeHandovers = isForemanPlus(effectiveRole);
   const [message, setMessage] = useState<string | null>(null);
 
   const projects = useQuery({
@@ -164,6 +174,7 @@ export function JobHistory() {
                 </button>
               )}
             </div>
+            {canSeeHandovers && <AssignmentHistoryCard projectId={p.id} />}
           </li>
         ))}
       </ul>

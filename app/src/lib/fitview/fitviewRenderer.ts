@@ -16,6 +16,16 @@
  *   openOpening?(id, win)                  - deep-link to the opening sheet
  *   onStatusChange?(win, next)             - absent = read-only sheet
  *   photos?          { photoURL(id) }    - absent = no photo section
+ *   onRecordFor?(win)                      - transcripts-program-spec wave Y
+ *                                            (2026-09-04): host picks who
+ *                                            installed it, then opens the
+ *                                            opening sheet's finish flow.
+ *                                            Absent = no such button.
+ *   labels?          { recordFor, assignOne } - wave Y (2026-09-04): the two
+ *                                            buttons above, in the reader's
+ *                                            own language. This file has no
+ *                                            t(); the host does. Absent falls
+ *                                            back to the English below.
  */
 
 // Stories (docs/maps-interactive-stories-design.md): the canonicalizers live
@@ -1775,6 +1785,19 @@ export function mountFitView(host, job, shim) {
     if (openBtn) openBtn.addEventListener("click", function () {
       SHIM.openOpening(win.id, win);
     });
+    // transcripts-program-spec wave Y (2026-09-04).
+    var recordBtn = sheet.querySelector("[data-recordfor]");
+    if (recordBtn) recordBtn.addEventListener("click", function () {
+      SHIM.onRecordFor(win);
+    });
+    // Assign one unit: the SAME assign sheet the multi-pick bar opens, with
+    // this one already picked - no second crew list to keep in step.
+    var assignOneBtn = sheet.querySelector("[data-assignone]");
+    if (assignOneBtn) assignOneBtn.addEventListener("click", function () {
+      enterAssign();
+      togglePick(win.id);
+      openAssignSheet();
+    });
 
     if (SHIM.photos) renderSheetPhotos(win);
   }
@@ -1825,6 +1848,12 @@ export function mountFitView(host, job, shim) {
     return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
     });
+  }
+
+  // transcripts-program-spec wave Y (2026-09-04): one translated label, or the
+  // English the prototype would have used.
+  function label(key, fallback) {
+    return (SHIM.labels && SHIM.labels[key]) || fallback;
   }
 
   function sheetHTML(win) {
@@ -1899,6 +1928,16 @@ export function mountFitView(host, job, shim) {
           '</button>' : '') +
         (SHIM.openOpening ?
           '<button class="btn" data-open>Open opening &#8594;</button>' : '') +
+        // transcripts-program-spec wave Y (2026-09-04). Both are host-provided
+        // callbacks, so a crew map without them keeps exactly the buttons it
+        // has today - the shim contract above is the whole gate.
+        // "Record install for..." never marks anything done: it hands the host
+        // a person and the host opens the real finish flow, photo and grade
+        // gates and all.
+        (SHIM.onRecordFor ?
+          '<button class="btn" data-recordfor>' + esc(label("recordFor", "Record install for\u2026")) + '</button>' : '') +
+        (SHIM.onAssign ?
+          '<button class="btn" data-assignone>' + esc(label("assignOne", "Assign\u2026")) + '</button>' : '') +
       '</div>';
   }
 

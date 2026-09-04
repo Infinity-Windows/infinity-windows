@@ -46,20 +46,40 @@ const VAPID_PUBLIC_KEY = Deno.env.get("VAPID_PUBLIC_KEY") ?? "";
 const VAPID_PRIVATE_KEY = Deno.env.get("VAPID_PRIVATE_KEY") ?? "";
 const VAPID_SUBJECT = Deno.env.get("VAPID_SUBJECT") ?? "mailto:ops@infinitywindows.app";
 
-/** One claimed warning, exactly as claim_pipeline_nudges() returns it. */
+/**
+ * One claimed warning. Every rule's claim RPC returns `kind` and `profile_ids`;
+ * the rest of the columns belong to whichever rule produced the row, which is
+ * why they are optional. Wave J's rows are about a job, wave O's about a
+ * person's expiring card, and each rule's own `copy` reads only its own fields.
+ */
 interface ClaimedNudge {
-  project_id: string;
-  job_label: string;
+  project_id?: string | null;
+  job_label?: string;
   kind: string;
   days_until: number | null;
-  not_ready: boolean;
-  materials_missing: boolean;
+  not_ready?: boolean;
+  materials_missing?: boolean;
+  /** Wave H (H1): nobody has talked to this job's GC in a fortnight — or ever. */
+  no_gc_checkin?: boolean;
   profile_ids: string[] | null;
+  // Wave O (O4): a credential warning.
+  certification_id?: string;
+  person_name?: string;
+  cert_kind?: string;
+  cert_label?: string;
+  expires_on?: string | null;
 }
 
 interface PushCopy {
   title: string;
   body: string;
+  /**
+   * Wave O: a warning that is not about a job needs its own lock-screen tag and
+   * its own link. Absent means the job defaults below, which is what every
+   * pipeline rule uses.
+   */
+  tag?: string;
+  url?: string;
 }
 
 /**
@@ -85,6 +105,11 @@ function pipelineCopy(row: ClaimedNudge): PushCopy {
   const reasons: string[] = [];
   if (row.not_ready) reasons.push("still Not ready");
   if (row.materials_missing) reasons.push("windows not in");
+  // Wave H (H1). Said last because it is the one a person fixes with a phone
+  // call rather than with a truck, and because on the first mornings after this
+  // ships it will be the only reason on most of these jobs — nobody has ever
+  // been able to file a check-in before now.
+  if (row.no_gc_checkin) reasons.push("no GC check-in");
   const tail = reasons.length > 0 ? ` — ${reasons.join(" · ")}` : "";
 
   if (row.kind === "materials_late") {
@@ -100,10 +125,85 @@ function pipelineCopy(row: ClaimedNudge): PushCopy {
   return { title: `${row.job_label} ${when}`, body: `${row.job_label} ${when}${tail}.` };
 }
 
+/**
+ * What each card is called in a sentence a person reads on a lock screen. The
+ * database's own words (`first_aid_cpr`) never reach a phone; an `other` card
+ * uses the free-text name whoever filed it typed.
+ */
+const CERT_LABELS: Record<string, string> = {
+  osha10: "OSHA 10",
+  osha30: "OSHA 30",
+  first_aid_cpr: "first aid / CPR card",
+  aerial_lift: "aerial lift card",
+  forklift: "forklift card",
+  fall_protection: "fall protection card",
+};
+
+/**
+ * "Cesar's OSHA 30 runs out in 12 days".
+ *
+ * Said to the person and to every supervisor, so it names the person: a
+ * supervisor reading "a card runs out in 12 days" would have to open the app to
+ * find out whose, which is the opposite of what a push is for. The card itself
+ * is named in the trade's own words (the kind's label, or the free-text name of
+ * an "other" card), never the database's `first_aid_cpr`.
+ *
+ * Push copy stays English by design — see the header.
+ */
+function credentialCopy(row: ClaimedNudge): PushCopy {
+  const who = row.person_name ?? "Somebody";
+  const card =
+    row.cert_kind === "other"
+      ? row.cert_label ?? "certification"
+      : CERT_LABELS[row.cert_kind ?? ""] ?? "certification";
+  const tag = `credential-${row.kind}-${row.certification_id ?? ""}`;
+  // My Work, not the Roster. This push goes to the cardholder AND to every
+  // supervisor, and one payload carries one link: /crew is foreman+, so an
+  // installer tapping their own expiry warning would land on "Not available for
+  // your role". My Work is the one screen every role can open, and it is where
+  // O3 puts a person's own credentials. The title and body already carry the
+  // whole fact — whose card, which card, when — so the link is a landing, not
+  // the message.
+  const url = "/my-work";
+
+  if (row.kind === "credential_expired") {
+    // Day 0 is claimed by this rule, not by the thirty-day one — see
+    // claim_credential_nudges — so this branch has to say both things. Today is
+    // the last day the card is good, which is a different sentence from "it ran
+    // out last Tuesday": one asks somebody to act before tomorrow, the other
+    // tells them they are already late.
+    if ((row.days_until ?? -1) === 0) {
+      return {
+        title: `${who}: ${card} runs out today`,
+        body: `Today is the last day ${who}'s ${card} is good. Book the renewal before the next gate check.`,
+        tag,
+        url,
+      };
+    }
+    return {
+      title: `${who}: ${card} has expired`,
+      body: `It ran out on ${row.expires_on ?? "the date on the card"}. Book the renewal before the next gate check.`,
+      tag,
+      url,
+    };
+  }
+
+  // Only 1..30 days reach here; day 0 went to the branch above.
+  const days = row.days_until ?? 1;
+  const when = days === 1 ? "expires tomorrow" : `expires in ${days} days`;
+  return {
+    title: `${who}: ${card} ${when}`,
+    body: `${who}'s ${card} ${when}. Book the renewal now so nobody is turned away at the gate.`,
+    tag,
+    url,
+  };
+}
+
 const RULES: SweepRule[] = [
   { name: "job pipeline", rpc: "claim_pipeline_nudges", copy: pipelineCopy },
-  // Wave O (O4) adds:
-  //   { name: "credentials", rpc: "claim_credential_nudges", copy: credentialCopy },
+  // Wave O (O4): credential expiry, riding this sweep exactly as wave J's
+  // section 8 asked — one more claim RPC, one more entry, no second cron.
+  { name: "credentials", rpc: "claim_credential_nudges", copy: credentialCopy },
 ];
 
 /** Send one push to everybody named, ignoring endpoints that have gone dead. */
@@ -170,14 +270,15 @@ Deno.serve(async (req) => {
     const rows = (data ?? []) as ClaimedNudge[];
     claimed += rows.length;
     for (const row of rows) {
-      const { title, body } = rule.copy(row);
+      const { title, body, tag, url } = rule.copy(row);
       const payload = JSON.stringify({
         title,
         body,
-        // One tag per job per kind, so a second morning's warning replaces the
-        // first on the lock screen instead of stacking up.
-        tag: `pipeline-${row.kind}-${row.project_id}`,
-        url: `/projects/${row.project_id}`,
+        // One tag per subject per kind, so a second morning's warning replaces
+        // the first on the lock screen instead of stacking up. A rule about
+        // something other than a job supplies its own (wave O).
+        tag: tag ?? `pipeline-${row.kind}-${row.project_id}`,
+        url: url ?? `/projects/${row.project_id}`,
       });
       pushed += await pushAll(admin, row.profile_ids ?? [], payload);
     }
