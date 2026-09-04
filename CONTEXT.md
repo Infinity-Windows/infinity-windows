@@ -555,18 +555,23 @@ warning and a moved start date earns a fresh one. Wave H adds a fourth reason
 never counts against a job, because "nobody has logged a check-in" is true of
 every job in the company and is not news.
 
-**What a builder can see of it** — all four of the pipeline facts live as
-columns on `projects`, and `projects` is the one table a builder (partner)
-login reads whole for the jobs they were granted. That is row-level, and there
-is no column-level half to it: a column on `projects` is readable by a granted
-builder, now and forever after. It was allowed here on purpose — the readiness
-and the two materials dates are facts about the builder's own house, and the
-list order is an integer that means nothing outside our list. What a builder
-must never be told is that we are behind, which is why the 7 AM sweep excludes
-partner logins outright. Anything genuinely ours — a price, a margin, a cost, a
-wage — does NOT go in a column on `projects`; it goes in a table of its own
-with its own policy, the way the bid and target margin moved to
-`project_financials`.
+**What a builder can see of it** — nothing, and that was a correction. All four
+pipeline facts started as columns on `projects`, which is the one table a
+builder (partner) login reads whole for the jobs they were granted. That is
+row-level and has no column-level half: a column there is readable by a granted
+builder, now and forever after. Wave J allowed it, reasoning that readiness and
+the materials dates are facts about the builder's own house. Wave H moved three
+of them straight back out (`project_pipeline`, 20260981000000) because the
+reasoning had the question wrong. It is not "is this fact sensitive"; it is "is
+this fact ABOUT US". "Not ready" is a note we write to ourselves about a site
+nobody has walked yet — read by the builder who owns that site, it is an
+accusation, and "your windows still are not here" is the sentence this whole
+handshake exists to let us say ourselves, in our words, at a moment we chose.
+Only `sort_order` stayed: an integer that means nothing outside a list a builder
+cannot see. So anything genuinely ours — a price, a margin, a cost, a wage, our
+own state of readiness — goes in a table of its own with its own policy, the way
+the bid and target margin moved to `project_financials`. Two waves in a row got
+this wrong in the same direction; the third should not have to.
 
 ## Open questions
 

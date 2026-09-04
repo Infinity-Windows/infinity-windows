@@ -152,7 +152,11 @@ class TestSchemaParsing(unittest.TestCase):
         # +1: pipeline_nudges — the ledger of what the 7 AM job-pipeline sweep
         # has already said about a job (Wave J, J4, 20260979000000). Wave E
         # (20260977000000) declared no table of its own.
-        self.assertEqual(len(SCHEMA.tables), 122)
+        # +1: project_pipeline — readiness and the two materials dates, moved
+        # off `projects` because a granted builder reads that row whole (Wave H,
+        # H0, 20260981000000). The move DROPS three columns from `projects` and
+        # adds exactly one table.
+        self.assertEqual(len(SCHEMA.tables), 123)
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 

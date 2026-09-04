@@ -47,6 +47,9 @@ export type PipelineReason =
  * simply are not in the row yet, is a normal input rather than a crash.
  */
 export interface PipelineJob {
+  /** From the `project_pipeline` side table, folded onto the job by
+   * lib/api.ts's flattenPipeline. Wave H (H0) moved it off `projects`, which a
+   * granted builder reads whole — see the note in lib/types.ts. */
   ready_state?: string | null;
   start_date?: string | null;
   materials_eta?: string | null;

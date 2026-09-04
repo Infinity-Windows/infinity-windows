@@ -16,7 +16,7 @@ import type {
   WindowUnit,
 } from "./types";
 import { quickJobName, quickTrackingJobCode } from "./quickJobs";
-import { isMissingColumn, isMissingFunction } from "./schemaErrors";
+import { isMissingColumn, isMissingFunction, isMissingTable } from "./schemaErrors";
 import { sortProjectsForList, type ReadyState } from "./pipeline";
 
 const WINDOW_SELECT =
@@ -75,23 +75,110 @@ function inPipelineOrder<T extends Orderable<T>>(query: T): T {
     .order("name", { ascending: true });
 }
 
-export async function listProjects(): Promise<Project[]> {
-  const rows = () =>
-    supabase.from("projects").select("*").eq("status", "active").is("deleted_at", null);
-  const { data, error } = await inPipelineOrder(rows());
-  if (error) {
-    // A phone (or a preview database) that is ahead of migration
-    // 20260979000000 has no sort_order column, and PostgREST refuses the whole
-    // read rather than ignoring the ORDER BY. The Jobs page must still load, so
-    // fall back to the order this list had before wave J.
-    if (isMissingColumn(error, "sort_order")) {
-      const fallback = await rows().order("name");
+/**
+ * Wave H (H0): readiness and the two materials dates live in `project_pipeline`
+ * now, not on the job row.
+ *
+ * They were columns on `projects` for one wave, and `projects` is the one table
+ * a builder (partner) login reads WHOLE for the jobs it was granted — so "your
+ * windows have not turned up" was readable by the general contractor. The side
+ * table carries its own policy (crew read, never a partner), which is the only
+ * shape that actually works; `project_financials` did the same for the bid.
+ *
+ * A partner reading a job therefore gets `project_pipeline: null` back from
+ * RLS, not an error, and `flattenPipeline` turns that into a job that is Ready
+ * with nothing to say — which is exactly what a builder should see.
+ */
+const PIPELINE_EMBED = "*, project_pipeline(ready_state, materials_eta, materials_arrived_at)";
+
+/** The three facts, as PostgREST hands them back on the embed. */
+interface PipelineSide {
+  ready_state?: string | null;
+  materials_eta?: string | null;
+  materials_arrived_at?: string | null;
+}
+
+/**
+ * Fold the embedded row up onto the job, so every screen keeps reading
+ * `project.ready_state` the way it did when it was a column.
+ *
+ * Three cases, and the difference between the last two is the whole reason this
+ * is a function rather than a spread:
+ *   - the key is ABSENT — this read did not ask for the embed (a phone running
+ *     ahead of the migration fell back below). The fields stay `undefined`,
+ *     which lib/pipeline.ts and the Pipeline card both read as "nothing is
+ *     known", and no pill or chip is drawn.
+ *   - the key is NULL — the embed ran and there is no row: nobody has ever said
+ *     anything about this job, so it is Ready with no dates. That is the same
+ *     answer the NOT NULL DEFAULT gave while these were columns, and the only
+ *     one that does not put a red flag on every job in the company.
+ *   - the key is an object — the real answer.
+ */
+export function flattenPipeline(row: Record<string, unknown>): Project {
+  const { project_pipeline: side, ...rest } = row as Record<string, unknown> & {
+    project_pipeline?: PipelineSide | PipelineSide[] | null;
+  };
+  if (side === undefined) return rest as unknown as Project;
+  // PostgREST answers a one-to-one embed with an object, but a schema cache
+  // that has not noticed the primary key yet answers with an array. Both mean
+  // the same thing here, and a card that silently lost its readiness because of
+  // a cache warm-up is not worth the risk.
+  const one = (Array.isArray(side) ? (side[0] ?? null) : side) as PipelineSide | null;
+  return {
+    ...(rest as unknown as Project),
+    ready_state: one?.ready_state ?? "ready",
+    materials_eta: one?.materials_eta ?? null,
+    materials_arrived_at: one?.materials_arrived_at ?? null,
+  };
+}
+
+function activeProjectRows(columns: string) {
+  return supabase.from("projects").select(columns).eq("status", "active").is("deleted_at", null);
+}
+
+/** The shape both jobs-list readers hand `readProjects`, before ordering. */
+type ProjectQuery = ReturnType<typeof activeProjectRows>;
+
+function pipelineRows(rows: unknown): Project[] {
+  return sortProjectsForList((rows as Record<string, unknown>[]).map(flattenPipeline));
+}
+
+/**
+ * Read a jobs list in pipeline order, degrading one step at a time.
+ *
+ * Two independent things can be missing on a database behind the app: the
+ * `project_pipeline` table (wave H) and the `sort_order` column (wave J).
+ * PostgREST refuses the WHOLE read for either rather than ignoring the part it
+ * cannot serve, so each one gets its own retry and the Jobs page loads on any
+ * of the three shapes. A job hub that white-screens because a migration is ten
+ * minutes behind a deploy is the failure this repo keeps writing guards against.
+ */
+async function readProjects(build: (columns: string) => ProjectQuery): Promise<Project[]> {
+  const withEmbed = await inPipelineOrder(build(PIPELINE_EMBED));
+  if (!withEmbed.error) return pipelineRows(withEmbed.data);
+
+  if (isMissingTable(withEmbed.error, "project_pipeline")) {
+    const plain = await inPipelineOrder(build("*"));
+    if (!plain.error) return sortProjectsForList(plain.data as unknown as Project[]);
+    if (isMissingColumn(plain.error, "sort_order")) {
+      const fallback = await build("*").order("name");
       if (fallback.error) throw fallback.error;
-      return sortProjectsForList(fallback.data as Project[]);
+      return sortProjectsForList(fallback.data as unknown as Project[]);
     }
-    throw error;
+    throw plain.error;
   }
-  return sortProjectsForList(data as Project[]);
+
+  if (isMissingColumn(withEmbed.error, "sort_order")) {
+    const fallback = await build(PIPELINE_EMBED).order("name");
+    if (fallback.error) throw fallback.error;
+    return pipelineRows(fallback.data);
+  }
+
+  throw withEmbed.error;
+}
+
+export async function listProjects(): Promise<Project[]> {
+  return readProjects(activeProjectRows);
 }
 
 /**
@@ -111,17 +198,9 @@ export async function listProjects(): Promise<Project[]> {
  * that deliberately reads a trashed row, and it does so separately.
  */
 export async function listProjectsAnyStatus(): Promise<Project[]> {
-  const rows = () => supabase.from("projects").select("*").is("deleted_at", null);
-  const { data, error } = await inPipelineOrder(rows());
-  if (error) {
-    if (isMissingColumn(error, "sort_order")) {
-      const fallback = await rows().order("name");
-      if (fallback.error) throw fallback.error;
-      return sortProjectsForList(fallback.data as Project[]);
-    }
-    throw error;
-  }
-  return sortProjectsForList(data as Project[]);
+  return readProjects((columns) =>
+    supabase.from("projects").select(columns).is("deleted_at", null),
+  );
 }
 
 /**

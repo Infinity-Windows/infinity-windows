@@ -37,7 +37,15 @@ const day = (offset: number): string => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 };
 
-function project(over: Record<string, unknown>) {
+/**
+ * Wave H (H0) moved readiness and the materials dates OFF the job row into
+ * `project_pipeline`, because a granted builder reads a `projects` row whole.
+ * The app asks for them as a PostgREST embed, so the fixtures nest them the way
+ * the real server answers — a flat row here would prove nothing about the shape
+ * the client now has to fold up.
+ */
+function project(over: Record<string, unknown> & { pipeline?: Record<string, unknown> }) {
+  const { pipeline, ...rest } = over;
   return {
     id: NOT_READY_ID,
     job_code: "SANDHOLLOW",
@@ -46,12 +54,15 @@ function project(over: Record<string, unknown>) {
     status: "active",
     is_test: false,
     allowed_modes: ["data"],
-    ready_state: "ready",
     start_date: null,
-    materials_eta: null,
-    materials_arrived_at: null,
     sort_order: null,
-    ...over,
+    ...rest,
+    project_pipeline: {
+      ready_state: "ready",
+      materials_eta: null,
+      materials_arrived_at: null,
+      ...(pipeline ?? {}),
+    },
   };
 }
 
@@ -60,9 +71,8 @@ function project(over: Record<string, unknown>) {
 // The contact details are here on purpose: the Pipeline card can save this
 // job's start date, and the test below proves it takes none of them with it.
 const NOT_READY = project({
-  ready_state: "not_ready",
+  pipeline: { ready_state: "not_ready", materials_eta: day(4) },
   start_date: day(10),
-  materials_eta: day(4),
   sort_order: 1,
   address: "1 Sand Hollow Way",
   customer_name: "Dixie Builders",
@@ -77,8 +87,10 @@ const FINE = project({
   job_code: "PECAN14",
   name: "Pecan Valley",
   start_date: day(7),
-  materials_eta: day(-20),
-  materials_arrived_at: `${day(-20)}T15:00:00Z`,
+  pipeline: {
+    materials_eta: day(-20),
+    materials_arrived_at: `${day(-20)}T15:00:00Z`,
+  },
   sort_order: 2,
 });
 
@@ -89,7 +101,7 @@ const LATE = project({
   job_code: "BLACK22",
   name: "Black Desert",
   start_date: day(120),
-  materials_eta: day(-14),
+  pipeline: { materials_eta: day(-14) },
   sort_order: 3,
 });
 
@@ -131,15 +143,18 @@ function usePipelineFixtures(page: Page) {
   void page.route("**/rest/v1/rpc/set_project_materials", async (r) => {
     const body = r.request().postDataJSON() as Record<string, unknown>;
     calls.push({ fn: "set_project_materials", body });
-    state.rows = state.rows.map((row) =>
-      row.id === body.p_project_id
-        ? {
-            ...row,
-            materials_arrived_at:
-              body.p_arrived === true ? new Date().toISOString() : row.materials_arrived_at,
-          }
-        : row,
-    );
+    state.rows = state.rows.map((row) => {
+      if (row.id !== body.p_project_id) return row;
+      const side = (row.project_pipeline ?? {}) as Record<string, unknown>;
+      return {
+        ...row,
+        project_pipeline: {
+          ...side,
+          materials_arrived_at:
+            body.p_arrived === true ? new Date().toISOString() : side.materials_arrived_at,
+        },
+      };
+    });
     return json(r, null, 0);
   });
 

@@ -106,6 +106,11 @@ const CASCADE_COVERED: Record<string, string> = {
   // about this job: the row means nothing without the job, so it goes with it
   // on the final `delete from projects`. Nothing else references it.
   pipeline_nudges: "ON DELETE CASCADE from projects, on the final delete from projects",
+  // Wave H (H0), 20260981000000. Readiness and the materials dates moved off
+  // `projects` into a side table whose primary key IS the FK, exactly like
+  // project_financials — so the final `delete from projects` takes the row, and
+  // it dies with the job the same way it did as three columns on it.
+  project_pipeline: "ON DELETE CASCADE from projects (the pk is the FK)",
 };
 
 function purgeBody(): string {
