@@ -2,7 +2,7 @@ import { BackChip } from "../../components/BackChip";
 import { useT } from "../../lib/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Ban, Link2, RotateCcw } from "lucide-react";
 import { PhotoCaptureSheet, type BeforeAfterValue } from "../../components/PhotoCaptureSheet";
 import { Scanner } from "../../components/Scanner";
@@ -42,6 +42,12 @@ import {
 import { pickNextOpening } from "../../lib/install/nextOpening";
 import { movedAgoLabel } from "../../lib/install/pinHistory";
 import { submitBlockersLine } from "../../lib/install/submitGate";
+import {
+  creditChoices,
+  creditToSend,
+  defaultCredit,
+  shouldAskWhoInstalled,
+} from "../../lib/install/credit";
 import {
   flashingOutstanding,
   formatPhaseClock,
@@ -266,6 +272,10 @@ export function OpeningSheet() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
+  // The map's "Record install for…" preset (wave Y, Y3). A profile id, not a
+  // person's details — the same class of internal id the route already carries.
+  const presetCredit = searchParams.get("credit");
   // Set when we recovered a dead opening link and sent them here instead.
   const movedFrom = (location.state as { movedFrom?: string } | null)
     ?.movedFrom;
@@ -302,6 +312,11 @@ export function OpeningSheet() {
   const [minutes] = useState("");
   const [minutesTouched] = useState(false);
   const [grade, setGrade] = useState<number | null>(null);
+  // Wave Y: who the install gets filed under. Null means "not answered yet",
+  // and the effect below seeds it from the assignee the first time the
+  // question is worth asking. A map "Record install for…" tap arrives with the
+  // person already chosen in the URL.
+  const [creditedTo, setCreditedTo] = useState<string | null>(null);
   const [topics, setTopics] = useState<Partial<MemoTopics>>({});
   const [pending, setPending] = useState(0);
   const [transcribing, setTranscribing] = useState(0);
@@ -532,6 +547,47 @@ export function OpeningSheet() {
     hasAfterPhoto: photos.after !== null,
     flashingOwed: flashingBlocked,
   });
+
+  // --- Who installed this? (wave Y, Y2) ------------------------------------
+  // Only asked when the unit is on somebody ELSE'S list. Finishing your own
+  // work stays one tap, which is the overwhelming majority of finishes and the
+  // thing that must not get slower.
+  const myId = myProfile.data?.id ?? null;
+  const askWhoInstalled = shouldAskWhoInstalled({
+    meId: myId,
+    assignedTo: opening.data?.assigned_to ?? null,
+  });
+  const creditPeople = useMemo(
+    () =>
+      creditChoices({
+        meId: myId,
+        assignedTo: opening.data?.assigned_to ?? null,
+        canCreditAnyone: isForemanPlus(effectiveRole),
+        crew: (crew.data ?? [])
+          .filter((p) => p.active)
+          .map((p) => ({ id: p.id, name: p.display_name ?? p.id.slice(0, 8), role: p.role })),
+      }),
+    [myId, opening.data?.assigned_to, effectiveRole, crew.data],
+  );
+  // Seed once the answer is knowable: the person the map named if there is
+  // one, otherwise the assignee. Left alone afterwards so a deliberate change
+  // is never quietly overwritten by a refetch.
+  useEffect(() => {
+    if (creditedTo || creditPeople.length === 0) return;
+    if (presetCredit && creditPeople.some((c) => c.id === presetCredit)) {
+      setCreditedTo(presetCredit);
+      return;
+    }
+    if (!askWhoInstalled) return;
+    setCreditedTo(
+      defaultCredit({
+        meId: myId,
+        assignedTo: opening.data?.assigned_to ?? null,
+        choices: creditPeople,
+      }),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [creditPeople, presetCredit, askWhoInstalled]);
   // Undo an install from the window itself (foreman+): required reason,
   // nothing lost - the event is voided, never deleted.
   const [undoReason, setUndoReason] = useState("");
@@ -1133,6 +1189,11 @@ export function OpeningSheet() {
         });
       }
 
+      // Wave Y: the install is filed under whoever actually did it, and the
+      // points go the same way. Null on the ordinary finish, which keeps the
+      // call on the narrow shape a phone behind the migration can still make.
+      const credited = creditToSend({ meId: uid, creditedTo });
+      const pointsTo = credited ?? uid;
       const entries = uid
         ? computeInstallPoints({
             minutes: submittedMinutes,
@@ -1162,11 +1223,12 @@ export function OpeningSheet() {
             : null,
           qualityGrade: grade,
           startedAt,
+          creditedTo: credited,
           ...topics,
         },
-        points: uid
+        points: pointsTo
           ? {
-              profileId: uid,
+              profileId: pointsTo,
               entries,
               ref: openingId,
               status: "pending",
@@ -2555,6 +2617,35 @@ export function OpeningSheet() {
             {timer.minutes != null ? ` — about ${timer.minutes} min so far` : ""}.
             Breaks never count.
           </p>
+
+          {/* Wave Y (Y2): this unit is on somebody else's list, so the sheet
+              asks rather than assuming. The person picked gets the install on
+              their record; the SESSION stays with whoever is standing here,
+              because sessions follow the human (CONTEXT.md). */}
+          {askWhoInstalled && creditPeople.length > 1 && (
+            <div className="detail-card" style={{ marginTop: 10 }}>
+              <span className="field-label">{t("credit.who")}</span>
+              <p className="muted" style={{ margin: "2px 0 8px", fontSize: 12.5 }}>
+                {t("credit.help")}
+              </p>
+              <div className="row-gap" style={{ flexWrap: "wrap" }}>
+                {creditPeople.map((person) => (
+                  <button
+                    key={person.id}
+                    type="button"
+                    className={
+                      creditedTo === person.id ? "button-like active-pill" : "button-like"
+                    }
+                    aria-pressed={creditedTo === person.id}
+                    data-credit-id={person.id}
+                    onClick={() => setCreditedTo(person.id)}
+                  >
+                    {person.id === myId ? t("credit.me") : person.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           <label className="field-label">Quality grade</label>
           <div className="grade-row">

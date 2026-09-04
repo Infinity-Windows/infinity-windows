@@ -1144,6 +1144,35 @@ export const CATALOG = {
     en: "It lands as Not ready, with the windows due {date} — mark it ready once somebody has checked the site.",
     es: "Entra como No listo, con las ventanas para el {date} — márcalo listo cuando alguien haya revisado el sitio.",
   },
+
+  // ---- Who installed this? (wave Y, transcripts program) ----------------
+  // The finish step only asks when the unit belongs to somebody else, so
+  // every one of these is read by a person who is filing for a workmate.
+  // "Credit" is deliberately absent from the copy: on a job site that word
+  // means money. The question the crew actually asks each other is who put
+  // it in, so that is the question the app asks.
+  "credit.who": { en: "Who installed this?", es: "¿Quién lo instaló?" },
+  "credit.help": {
+    en: "This unit is on someone else's list. Whoever you pick gets it on their record; the time still counts as yours.",
+    es: "Esta unidad está en la lista de otra persona. A quien elijas le queda en su historial; el tiempo sigue contando como tuyo.",
+  },
+  "credit.me": { en: "Me", es: "Yo" },
+  "credit.assignee": { en: "Assigned to them", es: "Le toca a esta persona" },
+  "credit.filedFor": {
+    en: "Filed for {name}",
+    es: "Registrado a nombre de {name}",
+  },
+  // The map's door into this (Y3). It goes to the same finish flow with the
+  // same photo, grade and flashing gates — nothing is marked done from here.
+  "credit.recordFor": { en: "Record install for…", es: "Registrar instalación de…" },
+  "credit.pickPerson": { en: "Who installed it?", es: "¿Quién lo instaló?" },
+  "credit.gateStillApplies": {
+    en: "This opens the window's own sheet — the after photo and the grade are still needed.",
+    es: "Esto abre la hoja de la ventana — todavía hacen falta la foto final y la calificación.",
+  },
+  "credit.cancel": { en: "Cancel", es: "Cancelar" },
+  // The map's single-unit Assign door (Y4).
+  "credit.assignOne": { en: "Assign…", es: "Asignar…" },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */
