@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -179,22 +179,127 @@ describe("the probe list itself", () => {
     expect(new Set(keys).size).toBe(keys.length);
   });
 
-  it("covers every RESTRICT foreign key to profiles in the schema", () => {
-    // These eight columns have no ON DELETE clause, so a hard delete against a
-    // person who appears in any of them FAILS. Missing one would turn "delete
-    // the account" into a 500 on a phone.
-    const restrict = [
-      "unit_sessions.profile_id",
-      "unit_redos.pressed_by",
-      "daily_logs.filed_by",
-      "summons.requested_by",
-      "opening_phases.started_by",
-      "opening_phases.submitted_by",
-      "time_shift_edits.edited_by",
-      "flash_run_assignments.assigned_by",
-    ];
+});
+
+/**
+ * THE LIST IS DERIVED FROM THE SCHEMA, NOT FROM MEMORY.
+ *
+ * This used to be a hand-written list of the eight RESTRICT columns, which
+ * proved the loud half and nothing else. RESTRICT is the half that cannot hurt
+ * anybody: a hard delete against a person who appears in one of those columns
+ * FAILS, so a missing one is a 500 on a phone and the record survives.
+ *
+ * CASCADE is the half that loses records. A CASCADE column nobody counted makes
+ * the person look empty, so the delete SUCCEEDS and takes those rows with it in
+ * silence. Written from memory, the first cut of WORK_HISTORY_PROBES named eight
+ * of the schema's twenty-seven CASCADE columns and left out signed safety talks
+ * (`safety_acks`, a different table from `toolbox_completions`), signed
+ * timecards, a person's own overtime deal and the badges a foreman signed them
+ * off on — every one of them the record this feature promises to keep.
+ *
+ * So the schema is read instead. Every `references profiles(id)` in
+ * supabase/migrations is parsed out with its ON DELETE action, and each CASCADE
+ * or RESTRICT column has to be either counted or on the allow-list below. A new
+ * table with a CASCADE link to a person fails this test on the day it lands,
+ * which is the only day anybody is thinking about it.
+ */
+describe("the probe list covers the schema", () => {
+  const HERE = dirname(fileURLToPath(import.meta.url));
+  const MIGRATIONS = join(HERE, "../../../supabase/migrations");
+
+  /**
+   * Rows that are not a record of anybody's work, money or safety, and whose
+   * loss with the account is the point rather than the problem. Each one is
+   * here on its own reasons — this list is short and stays short.
+   */
+  const EPHEMERA = new Set([
+    // A device's push endpoint. The device is gone with the login.
+    "push_subscriptions.profile_id",
+    // "I dismissed that chip." Per-person UI state.
+    "notification_dismissals.profile_id",
+    // Read receipts on job chat. The messages themselves ARE counted.
+    "project_message_reads.profile_id",
+    // Partner-only, and a builder login is refused by this door outright
+    // (purgeRefusal's is_partner check), so neither can ever be reached here.
+    "calendar_feed_tokens.partner_profile_id",
+    "partner_job_grants.partner_profile_id",
+  ]);
+
+  /** `references profiles(id)` across every migration, with its ON DELETE. */
+  function foreignKeys(): { key: string; action: string; where: string }[] {
+    const out: { key: string; action: string; where: string }[] = [];
+    for (const file of readdirSync(MIGRATIONS).filter((f) => f.endsWith(".sql"))) {
+      const lines = readFileSync(join(MIGRATIONS, file), "utf8").split("\n");
+      let table = "";
+      lines.forEach((line, i) => {
+        // A `--` line is prose. This file's own header talks ABOUT
+        // `references profiles(id)`, and a parser that reads its own
+        // explanation as schema reports a column called "?" forever.
+        if (/^\s*--/.test(line)) return;
+        const created = /(?:create\s+table|alter\s+table)\s+(?:if\s+not\s+exists\s+|if\s+exists\s+|only\s+)?([a-z0-9_.]+)/i
+          .exec(line);
+        if (created) table = created[1].split(".").pop()!;
+        if (!/references\s+(?:public\.)?profiles\s*\(\s*id\s*\)/i.test(line)) return;
+        const named =
+          /^\s*(?:add\s+column\s+(?:if\s+not\s+exists\s+)?)?([a-z0-9_]+)\s+uuid/i
+            .exec(line);
+        // A column this parser cannot name is not silently skipped: it is
+        // reported as `?`, which no probe key can match, so the test fails and
+        // somebody looks. A parser that shrugs is worse than none here.
+        const column = named ? named[1] : "?";
+        const action = /on\s+delete\s+cascade/i.test(line)
+          ? "CASCADE"
+          : /on\s+delete\s+set\s+null/i.test(line)
+            ? "SET NULL"
+            : /on\s+delete/i.test(line)
+              ? "OTHER"
+              : "RESTRICT";
+        out.push({ key: `${table}.${column}`, action, where: `${file}:${i + 1}` });
+      });
+    }
+    return out;
+  }
+
+  it("finds the schema at all, so this test is not vacuous", () => {
+    const fks = foreignKeys();
+    expect(fks.length).toBeGreaterThan(50);
+    expect(fks.some((f) => f.key === "time_shifts.profile_id")).toBe(true);
+  });
+
+  it("counts every RESTRICT link — the delete would fail on any it missed", () => {
     const keys = new Set(WORK_HISTORY_PROBES.map(probeKey));
-    for (const key of restrict) expect(keys.has(key)).toBe(true);
+    const missed = foreignKeys()
+      .filter((f) => f.action === "RESTRICT" && !keys.has(f.key))
+      .map((f) => `${f.key} (${f.where})`);
+    expect(missed).toEqual([]);
+  });
+
+  it("counts every CASCADE link — the delete would take them in silence", () => {
+    const keys = new Set(WORK_HISTORY_PROBES.map(probeKey));
+    const missed = foreignKeys()
+      .filter(
+        (f) => f.action === "CASCADE" && !keys.has(f.key) && !EPHEMERA.has(f.key),
+      )
+      .map((f) => `${f.key} (${f.where})`);
+    // If this fails, do not add the key to EPHEMERA to make it pass. Ask
+    // whether losing those rows with the account would lose a record of
+    // somebody's work, money or safety. If the answer is anything but a plain
+    // no, it belongs in WORK_HISTORY_PROBES and in person_record_counts.
+    expect(missed).toEqual([]);
+  });
+
+  it("keeps the allow-list honest — every entry is still a real CASCADE link", () => {
+    // An allow-list entry for a column that no longer exists is a hole waiting
+    // for a table of the same name.
+    const cascade = new Set(
+      foreignKeys().filter((f) => f.action === "CASCADE").map((f) => f.key),
+    );
+    for (const key of EPHEMERA) expect(cascade.has(key)).toBe(true);
+  });
+
+  it("never both counts and excuses the same column", () => {
+    const keys = new Set(WORK_HISTORY_PROBES.map(probeKey));
+    for (const key of EPHEMERA) expect(keys.has(key)).toBe(false);
   });
 });
 

@@ -12544,15 +12544,6 @@ grant execute on function public.foreman_contacts_for_me() to authenticated, ser
 
 -- ===========================================================================
 -- 20260987000000_remove_login_start_fresh.sql (mirrored)
--- Remove a login and start fresh: profiles.retired_at / retired_by, the widened
--- crew_access_directory, person_record_counts (the count that decides whether a
--- login can be deleted outright), the two nightly push audiences restated to
--- exclude a removed login outright, access_requests.decision_note with RLS that
--- finally locks deciding to supervisor+, and decide_access_request — the one
--- client-side writer of a decision, which can deny, note a reason and re-open,
--- and can never write 'approved'.
--- ===========================================================================
-
 -- Remove a login and start fresh, plus access-request hygiene
 -- (owner's decision, 2026-09-04: "the ability to delete user accounts and
 -- start fresh").
@@ -12659,11 +12650,32 @@ grant select on public.crew_access_directory to authenticated;
 -- ---------------------------------------------------------------------------
 -- One row per table this person appears in, as one jsonb object, keyed
 -- `table.column`. The keys here are the contract: they are the exact strings
--- WORK_HISTORY_PROBES uses in supabase/functions/_shared/purgeLogin.ts, and
--- app/src/lib/purgeLogin.test.ts reads THIS FILE and fails if the two lists
+-- WORK_HISTORY_PROBES uses in app/src/lib/purgeWords.ts, and
+-- app/src/lib/purgeWords.test.ts reads THIS FILE and fails if the two lists
 -- ever stop agreeing. The rule lives twice on purpose — SQL owns the counting,
 -- TypeScript owns the words and the order they are said in — and the two copies
 -- are pinned together rather than trusted to stay in step.
+--
+-- WHAT HAS TO BE IN HERE, and why the first cut of this list was dangerous.
+-- The RESTRICT columns are the loud ones: a hard delete against a person who
+-- appears in any of them FAILS, so missing one is a 500 on a phone and nothing
+-- worse. The CASCADE columns are the quiet ones, and they are the reason this
+-- list is now derived from the schema rather than written from memory: a
+-- CASCADE column that is NOT counted here makes the person look empty, the
+-- delete SUCCEEDS, and their rows go with it without a word. The first cut
+-- counted eight of the twenty-seven CASCADE columns and missed, among others,
+-- `safety_acks` (a signed safety talk, a DIFFERENT table from
+-- toolbox_completions), `timecard_periods` (the row carrying the employee's
+-- and the supervisor's signatures on a pay period), `overtime_rules` (a
+-- person's own overtime deal) and `capability_badges` (what a foreman signed
+-- them off to touch). Every one of those is exactly the record this feature
+-- promises to keep.
+--
+-- purgeWords.test.ts now parses every `references profiles(id)` in
+-- supabase/migrations and fails unless each CASCADE and RESTRICT column is
+-- either counted below or on a short, commented allow-list of ephemera (push
+-- subscriptions, notification dismissals, chat read receipts, and the two
+-- partner-only tables — a builder login is refused by this door outright).
 --
 -- WHY THIS IS A DATABASE FUNCTION AND NOT NINETEEN READS FROM THE EDGE
 -- FUNCTION. Two reasons, and the second is the binding one:
@@ -12692,6 +12704,7 @@ security definer
 set search_path = public, pg_temp
 as $$
   select jsonb_build_object(
+    -- Time and money.
     'time_shifts.profile_id',
       (select count(*) from time_shifts where profile_id = p_id),
     'unit_sessions.profile_id',
@@ -12704,10 +12717,28 @@ as $$
       (select count(*) from receipts where uploaded_by = p_id),
     'pay_rates.profile_id',
       (select count(*) from pay_rates where profile_id = p_id),
+    'overtime_rules.profile_id',
+      (select count(*) from overtime_rules where profile_id = p_id),
+    'timecard_periods.profile_id',
+      (select count(*) from timecard_periods where profile_id = p_id),
+    'time_shift_edits.edited_by',
+      (select count(*) from time_shift_edits where edited_by = p_id),
+    -- Safety and training.
     'certifications.profile_id',
       (select count(*) from certifications where profile_id = p_id),
     'toolbox_completions.profile_id',
       (select count(*) from toolbox_completions where profile_id = p_id),
+    'safety_acks.profile_id',
+      (select count(*) from safety_acks where profile_id = p_id),
+    'capability_badges.installer_id',
+      (select count(*) from capability_badges where installer_id = p_id),
+    'installer_clearance.installer_id',
+      (select count(*) from installer_clearance where installer_id = p_id),
+    'learn_progress.profile_id',
+      (select count(*) from learn_progress where profile_id = p_id),
+    'learning_video_quiz_attempts.profile_id',
+      (select count(*) from learning_video_quiz_attempts where profile_id = p_id),
+    -- The job site.
     'daily_logs.filed_by',
       (select count(*) from daily_logs where filed_by = p_id),
     'opening_phases.started_by',
@@ -12716,20 +12747,31 @@ as $$
       (select count(*) from opening_phases where submitted_by = p_id),
     'flash_run_assignments.assigned_by',
       (select count(*) from flash_run_assignments where assigned_by = p_id),
+    'flash_run_assignments.profile_id',
+      (select count(*) from flash_run_assignments where profile_id = p_id),
     'summons.requested_by',
       (select count(*) from summons where requested_by = p_id),
     'summon_helpers.profile_id',
       (select count(*) from summon_helpers where profile_id = p_id),
+    'summon_declines.profile_id',
+      (select count(*) from summon_declines where profile_id = p_id),
     'unit_redos.pressed_by',
       (select count(*) from unit_redos where pressed_by = p_id),
-    'time_shift_edits.edited_by',
-      (select count(*) from time_shift_edits where edited_by = p_id),
+    'schedule_assignment_members.profile_id',
+      (select count(*) from schedule_assignment_members where profile_id = p_id),
+    'trip_crew.profile_id',
+      (select count(*) from trip_crew where profile_id = p_id),
+    'vehicle_drivers.profile_id',
+      (select count(*) from vehicle_drivers where profile_id = p_id),
+    -- What they said and what they were given credit for.
     'points_ledger.profile_id',
       (select count(*) from points_ledger where profile_id = p_id),
     'task_sessions.profile_id',
       (select count(*) from task_sessions where profile_id = p_id),
     'project_messages.author_id',
-      (select count(*) from project_messages where author_id = p_id)
+      (select count(*) from project_messages where author_id = p_id),
+    'ask_question_log.asker_id',
+      (select count(*) from ask_question_log where asker_id = p_id)
   );
 $$;
 

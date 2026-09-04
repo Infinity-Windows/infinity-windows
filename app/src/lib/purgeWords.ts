@@ -50,21 +50,35 @@ export interface HistoryProbe {
 /**
  * Every table a person's work, money or safety record lives in.
  *
- * COMPLETENESS RULE, so this list can be checked rather than trusted: every
- * RESTRICT foreign key to `profiles` in the schema is in here (there are eight
- * such columns — see the header of _shared/purgeLogin.ts), because a hard
- * delete would otherwise fail outright; every CASCADE one whose rows are a
- * record of work, money or safety is in here, because a hard delete would
- * silently take them. Columns that are SET NULL and merely decorative —
- * `updated_by`, `resolved_by`, `granted_by` and friends — are deliberately NOT
- * here: losing "who ticked this box" is not losing a record of somebody's work,
- * and a person whose only trace is one of those is exactly the mistyped login
- * this feature is for.
+ * COMPLETENESS RULE, and it is checked rather than trusted. purgeWords.test.ts
+ * parses every `references profiles(id)` in supabase/migrations and fails
+ * unless each one is accounted for:
+ *
+ *   RESTRICT (no ON DELETE clause) — must be in here. A hard delete against a
+ *     person who appears in one of these FAILS outright, so missing one turns
+ *     "delete the account" into a 500 on a phone. Loud, and therefore the easy
+ *     half.
+ *   CASCADE — must be in here, or on the test's short allow-list of ephemera.
+ *     This is the half that matters. A CASCADE column nobody counted makes the
+ *     person look empty, so the delete SUCCEEDS and takes those rows with it
+ *     without a word. The first cut of this list named eight of the schema's
+ *     twenty-seven CASCADE columns and quietly left out signed safety talks,
+ *     signed timecards, a person's own overtime deal and the badges a foreman
+ *     signed them off on — all of them exactly what "every record kept under
+ *     their name" promises.
+ *   SET NULL and merely decorative — `updated_by`, `resolved_by`, `granted_by`
+ *     and friends are deliberately NOT here: losing "who ticked this box" is
+ *     not losing a record of somebody's work, and a person whose only trace is
+ *     one of those is exactly the mistyped login this feature is for.
+ *     `install_events.installer_id` and `.credited_to` are SET NULL and ARE
+ *     counted, because "the window stays installed and nobody installed it" is
+ *     losing a record.
  *
  * ORDER MATTERS for the sentence only: the first non-zero counts are the ones
  * named, so the heaviest, most recognisable records come first.
  */
 export const WORK_HISTORY_PROBES: readonly HistoryProbe[] = [
+  // Time and money.
   { table: "time_shifts", column: "profile_id", one: "punch", many: "punches" },
   {
     table: "unit_sessions",
@@ -87,6 +101,25 @@ export const WORK_HISTORY_PROBES: readonly HistoryProbe[] = [
   { table: "receipts", column: "uploaded_by", one: "receipt", many: "receipts" },
   { table: "pay_rates", column: "profile_id", one: "pay rate", many: "pay rates" },
   {
+    table: "overtime_rules",
+    column: "profile_id",
+    one: "overtime deal",
+    many: "overtime deals",
+  },
+  {
+    table: "timecard_periods",
+    column: "profile_id",
+    one: "signed timecard",
+    many: "signed timecards",
+  },
+  {
+    table: "time_shift_edits",
+    column: "edited_by",
+    one: "timecard edit",
+    many: "timecard edits",
+  },
+  // Safety and training.
+  {
     table: "certifications",
     column: "profile_id",
     one: "safety card",
@@ -98,6 +131,37 @@ export const WORK_HISTORY_PROBES: readonly HistoryProbe[] = [
     one: "signed safety talk",
     many: "signed safety talks",
   },
+  {
+    table: "safety_acks",
+    column: "profile_id",
+    one: "signed safety notice",
+    many: "signed safety notices",
+  },
+  {
+    table: "capability_badges",
+    column: "installer_id",
+    one: "badge",
+    many: "badges",
+  },
+  {
+    table: "installer_clearance",
+    column: "installer_id",
+    one: "training sign-off",
+    many: "training sign-offs",
+  },
+  {
+    table: "learn_progress",
+    column: "profile_id",
+    one: "training term",
+    many: "training terms",
+  },
+  {
+    table: "learning_video_quiz_attempts",
+    column: "profile_id",
+    one: "quiz attempt",
+    many: "quiz attempts",
+  },
+  // The job site.
   { table: "daily_logs", column: "filed_by", one: "day log", many: "day logs" },
   {
     table: "opening_phases",
@@ -118,6 +182,12 @@ export const WORK_HISTORY_PROBES: readonly HistoryProbe[] = [
     many: "flashing hand-outs",
   },
   {
+    table: "flash_run_assignments",
+    column: "profile_id",
+    one: "flashing job of their own",
+    many: "flashing jobs of their own",
+  },
+  {
     table: "summons",
     column: "requested_by",
     one: "call for help",
@@ -129,13 +199,27 @@ export const WORK_HISTORY_PROBES: readonly HistoryProbe[] = [
     one: "time helping somebody",
     many: "times helping somebody",
   },
+  {
+    table: "summon_declines",
+    column: "profile_id",
+    one: "turned-down call for help",
+    many: "turned-down calls for help",
+  },
   { table: "unit_redos", column: "pressed_by", one: "redo", many: "redos" },
   {
-    table: "time_shift_edits",
-    column: "edited_by",
-    one: "timecard edit",
-    many: "timecard edits",
+    table: "schedule_assignment_members",
+    column: "profile_id",
+    one: "job on the schedule",
+    many: "jobs on the schedule",
   },
+  { table: "trip_crew", column: "profile_id", one: "trip", many: "trips" },
+  {
+    table: "vehicle_drivers",
+    column: "profile_id",
+    one: "vehicle they drive",
+    many: "vehicles they drive",
+  },
+  // What they earned, tracked and said.
   {
     table: "points_ledger",
     column: "profile_id",
@@ -154,6 +238,12 @@ export const WORK_HISTORY_PROBES: readonly HistoryProbe[] = [
     one: "chat message",
     many: "chat messages",
   },
+  {
+    table: "ask_question_log",
+    column: "asker_id",
+    one: "question asked",
+    many: "questions asked",
+  },
 ] as const;
 
 /** The key a probe's count is filed under. */
@@ -170,8 +260,8 @@ function countInWords(probe: HistoryProbe, n: number): string {
  * The non-zero counts, heaviest first, at most `limit` of them.
  *
  * `limit` exists because the sentence is read on a phone: "14 punches, 3
- * receipts and 2 safety cards" is a sentence, and the same line carrying all
- * nineteen probes is a wall.
+ * receipts and 2 safety cards" is a sentence, and the same line carrying every
+ * probe in the list is a wall.
  */
 export function historyHighlights(
   counts: HistoryCounts,
