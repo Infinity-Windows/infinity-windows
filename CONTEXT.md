@@ -425,11 +425,17 @@ open shift on that job is the permission, because the person who can see the
 hole is the person who should be able to record it. It becomes a real opening
 coded "Missed N" with its own mark spec (source `field`), a photo, and
 `flag_kind = not_on_plans`; it lands where the map was tapped, or unplaced
-when there is no map. Every supervisor and every lead on the job is pushed
-the same minute. A supervisor then Keeps it (renaming it once the paperwork
-catches up), Merges it into the mark it turned out to be, or Removes it — the
-last two only while it carries no sessions and no install, because after that
-the row is evidence and Keep is the honest answer. `field_added` makes it
+when there is no map. The N is issued once per job and never handed out
+again — not after a rename, not after a removal — because the number is what
+its measurements are filed under, and two units sharing one would put the
+first one's width and height on the second one's glass order. That flag is
+also the one data-off reason that never holds a unit back from being
+dispatched: it is not doubt about the record, it IS the record. Every
+supervisor and every lead on the job is pushed the same minute. A supervisor
+then Keeps it (renaming it once the paperwork catches up), Merges it into the
+mark it turned out to be, or Removes it — the last two only while it carries
+no sessions and no install, because after that the row is evidence and Keep is
+the honest answer. `field_added` makes it
 immune to every re-extraction sweep, permanently and independently of its
 flag: the extractor may drop its own guesses, never a person's record.
 
