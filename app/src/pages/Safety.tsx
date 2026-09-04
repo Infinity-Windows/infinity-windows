@@ -17,13 +17,16 @@ import { TalkLibrary } from "../components/safety/TalkLibrary";
 import { TalkContent } from "../components/safety/TalkContent";
 import {
   generateToolboxTalk,
+  isGroupSignIn,
   myTodayCompletion,
   signedRecordUrl,
   submitToolboxCompletion,
   todayCompliance,
   updateTalkSections,
 } from "../lib/toolbox";
+import { getProfileName } from "../lib/timeclock";
 import { SignaturePad, type SignaturePadHandle } from "../components/SignaturePad";
+import { useT } from "../lib/i18n";
 import { formatApiError } from "../lib/errors";
 
 const SEVERITY = [
@@ -98,6 +101,10 @@ function TalkEditor({ talk, onSaved }: { talk: SafetyTalk; onSaved: () => void }
 
 export function Safety() {
   const queryClient = useQueryClient();
+  // This page is otherwise plain English. Only the strings that describe a
+  // GROUP sign-in are translated, because they are new safety copy and the
+  // program's rule is that new crew-facing wording ships in both languages.
+  const t = useT();
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const { effectiveRole } = useEffectiveRole();
   const lead = isForemanPlus(effectiveRole);
@@ -115,6 +122,25 @@ export function Safety() {
     enabled: lead,
   });
   const incidents = useQuery({ queryKey: ["incidents"], queryFn: listIncidents, enabled: lead });
+
+  // Who gave the talk, when today's record is a supervisor's attestation
+  // rather than this person's own signature. A separate, failure-tolerant read
+  // rather than an embed on myTodayCompletion: PostgREST hard-errors on an
+  // embed naming a column the database does not have yet, and that would take
+  // the whole clock-in gate down on a phone that loaded before the migration.
+  const attestedBy = isGroupSignIn(myDone.data) ? (myDone.data?.signed_by ?? null) : null;
+  const attestedByName = useQuery({
+    queryKey: ["profileName", attestedBy],
+    queryFn: () => getProfileName(attestedBy!),
+    enabled: Boolean(attestedBy),
+  });
+
+  // Two numbers, not one: how many people SIGNED today, and how many were
+  // covered by somebody else's word for it.
+  const signedCount = (compliance.data ?? []).filter(
+    (r) => r.signed && r.via !== "group",
+  ).length;
+  const groupCount = (compliance.data ?? []).filter((r) => r.via === "group").length;
 
   const sigRef = useRef<SignaturePadHandle>(null);
   const [ack, setAck] = useState(false);
@@ -213,9 +239,28 @@ export function Safety() {
       {talk.data && (
         myDone.data ? (
           <div className="detail-card">
-            <p className="ok" style={{ margin: 0 }}>Signed today ✓</p>
+            {/* A group sign-in is NOT a signature, and this card is the one
+                place the person it was made about ever sees it. Saying "Signed
+                today ✓" above a blank name told them they had signed something
+                they never saw. */}
+            <p className="ok" style={{ margin: 0 }}>
+              {isGroupSignIn(myDone.data)
+                ? t("toolbox.group.recordedTitle")
+                : "Signed today ✓"}
+            </p>
             <p className="muted" style={{ margin: "4px 0 8px" }}>
-              {new Date(myDone.data.signed_at).toLocaleString()} · {myDone.data.typed_name}
+              {new Date(myDone.data.signed_at).toLocaleString()}
+              {isGroupSignIn(myDone.data)
+                ? ` · ${
+                    attestedByName.data
+                      ? t("toolbox.group.by", { name: attestedByName.data })
+                      : t("toolbox.group.bySupervisor")
+                  }`
+                : /* No typed name means no name to print — and no dangling
+                     separator either. */
+                  myDone.data.typed_name
+                  ? ` · ${myDone.data.typed_name}`
+                  : ""}
             </p>
             {myDone.data.pdf_path && (
               <PdfLink path={myDone.data.pdf_path} label="View signed PDF" />
@@ -274,7 +319,19 @@ export function Safety() {
 
       {lead && (
         <>
-          <h2>Signed today ({(compliance.data ?? []).filter((r) => r.signed).length}/{compliance.data?.length ?? 0})</h2>
+          {/* The count is SIGNATURES, not "covered". A group sign-in satisfies
+              the clock-in gate, but somebody reading this list to answer "who
+              signed today" is asking about signatures, and counting the two
+              together over-states them. The attestations are said separately,
+              in their own sentence, so both numbers are on screen. */}
+          <h2>Signed today ({signedCount}/{compliance.data?.length ?? 0})</h2>
+          {groupCount > 0 && (
+            <p className="muted" style={{ margin: "-4px 0 8px", fontSize: 12 }}>
+              {groupCount === 1
+                ? t("toolbox.group.count.one", { n: groupCount })
+                : t("toolbox.group.count.many", { n: groupCount })}
+            </p>
+          )}
           <ul className="unit-list work-list">
             {(compliance.data ?? []).map((r) => (
               <li key={r.profile_id} className="find-row compliance-row">
@@ -283,10 +340,18 @@ export function Safety() {
                   <div className="muted" style={{ fontSize: 12 }}>{r.role}</div>
                 </div>
                 <span
-                  className={r.signed ? "status-yes" : "status-no"}
+                  className={
+                    r.via === "group" ? "status-part" : r.signed ? "status-yes" : "status-no"
+                  }
                   style={{ marginLeft: "auto" }}
                 >
-                  {r.signed ? "Signed ✓" : "Not yet"}
+                  {r.via === "group"
+                    ? r.signed_by_name
+                      ? t("toolbox.group.chipBy", { name: r.signed_by_name })
+                      : t("toolbox.group.chip")
+                    : r.signed
+                      ? "Signed ✓"
+                      : "Not yet"}
                 </span>
               </li>
             ))}

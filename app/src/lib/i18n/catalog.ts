@@ -54,6 +54,11 @@ export const SAFETY_KEYS = [
   // languages before anybody leans on it.
   "crewclock.in.attest",
   "crewclock.in.attestHelp",
+  // The other half of the same claim: what the person it was made ABOUT reads
+  // on their own safety page, and what an auditor reads on the crew list.
+  "toolbox.group.recordedTitle",
+  "toolbox.group.by",
+  "toolbox.group.bySupervisor",
 ] as const;
 
 export const CATALOG = {
@@ -1740,6 +1745,42 @@ export const CATALOG = {
   "clock.clockedInBy": {
     en: "Clocked in by {name}",
     es: "Entrada marcada por {name}",
+  },
+
+  // SAFETY / toolbox — needs bilingual review. A group sign-in on the Safety
+  // page and in the personal history (2026-09-04 review). The database has
+  // recorded the difference between a signature and a supervisor's attestation
+  // since 20260985000000; until these strings existed, NO screen showed it —
+  // a worker's own page said "Signed today ✓" above a blank name, and a
+  // compliance list an auditor reads counted the two the same.
+  "toolbox.group.recordedTitle": {
+    en: "Today's talk was recorded for you",
+    es: "La charla de hoy quedó registrada para ti",
+  },
+  "toolbox.group.by": {
+    en: "Given by {name} — group talk, no signature",
+    es: "La dio {name} — charla en grupo, sin firma",
+  },
+  "toolbox.group.bySupervisor": {
+    en: "Given by a supervisor — group talk, no signature",
+    es: "La dio un supervisor — charla en grupo, sin firma",
+  },
+  "toolbox.group.chip": { en: "Group talk", es: "Charla en grupo" },
+  "toolbox.group.chipBy": {
+    en: "Group talk — {name}",
+    es: "Charla en grupo — {name}",
+  },
+  "toolbox.group.count.one": {
+    en: "{n} more was recorded by a supervisor, not signed.",
+    es: "{n} más lo registró un supervisor, sin firma.",
+  },
+  "toolbox.group.count.many": {
+    en: "{n} more were recorded by a supervisor, not signed.",
+    es: "{n} más los registró un supervisor, sin firma.",
+  },
+  "toolbox.group.historyLine": {
+    en: "group talk — recorded {time}",
+    es: "charla en grupo — registrada a las {time}",
   },
 } satisfies Record<string, CatalogEntry>;
 

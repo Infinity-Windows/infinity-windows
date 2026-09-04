@@ -84,11 +84,19 @@ create index if not exists time_shifts_clocked_in_by_idx
 -- ---------------------------------------------------------------------------
 -- signed_via defaults to 'self' so EVERY existing row, and every row the
 -- worker's own sign-off path keeps inserting, reads as a real signature
--- without touching either. Nothing that reads this table today names these
--- columns — the clock gate asks only "is there a row for this person today",
--- todayCompliance asks for profile_id + signed_at, and the personal record
--- selects * — so all of them keep working unchanged, which is the point: a
--- group sign-in satisfies the gate exactly like a signature does.
+-- without touching either. The clock gate is untouched: it asks only "is there
+-- a row for this person today", which is the point — a group sign-in satisfies
+-- it exactly like a signature does.
+--
+-- The screens are NOT untouched, and must not be. Recording the difference in
+-- the database and then showing the two identically would be the worst of both
+-- (2026-09-04 review: for a day, that is exactly what shipped — a worker's own
+-- Safety page said "Signed today ✓" above a blank name for a talk they never
+-- saw). lib/toolbox.ts now names these columns in every read, todayCompliance
+-- counts signatures and attestations separately, and the Safety page and the
+-- personal history say which one a row is. todayCompliance falls back to the
+-- old two-column select on a missing-column error, so a phone running ahead of
+-- this migration still gets its compliance list.
 alter table toolbox_completions
   add column if not exists signed_by uuid references profiles(id) on delete set null;
 alter table toolbox_completions

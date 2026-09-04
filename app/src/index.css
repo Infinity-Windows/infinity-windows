@@ -5468,6 +5468,14 @@ button.clock-out {
 }
 .compliance-row .status-yes { color: var(--ok); font-weight: 700; }
 .compliance-row .status-no { color: var(--danger); font-weight: 700; }
+/* A group sign-in is covered but NOT signed, so it gets its own colour rather
+   than borrowing the green a real signature earns (20260985000000). Amber, and
+   the words say which it is — colour alone is never the only signal. */
+.compliance-row .status-part {
+  color: var(--warn);
+  font-weight: 700;
+  text-align: right;
+}
 
 /* --- Post-install spam-through modal --- */
 
