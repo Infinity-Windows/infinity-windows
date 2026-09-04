@@ -1621,7 +1621,9 @@ export const CATALOG = {
   // Both select buttons act on the rows the SEARCH BOX is showing, and carry
   // the number they would tick, so a supervisor filtered down to one name can
   // never tap "Select all" and quietly get the whole company (2026-09-04
-  // review).
+  // review). Every counted string below is a .one/.many pair: the framework
+  // interpolates {n} but has no plural rule, so the caller picks the key by
+  // count — the same shape as scope.openings.one/.many.
   "crewclock.select.all": {
     en: "Select all ({n})",
     es: "Seleccionar a todos ({n})",
@@ -1632,14 +1634,16 @@ export const CATALOG = {
   },
   "crewclock.select.clear": { en: "Clear", es: "Quitar la selección" },
   "crewclock.select.person": { en: "Select {name}", es: "Seleccionar a {name}" },
-  "crewclock.bar.count": {
-    en: "{n} selected",
-    es: "{n} seleccionados",
-  },
+  "crewclock.bar.count.one": { en: "{n} selected", es: "{n} seleccionado" },
+  "crewclock.bar.count.many": { en: "{n} selected", es: "{n} seleccionados" },
   "crewclock.bar.clockIn": { en: "Clock in…", es: "Marcar entrada…" },
   "crewclock.bar.clockOut": { en: "Clock out…", es: "Marcar salida…" },
 
-  "crewclock.in.title": {
+  "crewclock.in.title.one": {
+    en: "Clock in {n} person",
+    es: "Marcar la entrada de {n} persona",
+  },
+  "crewclock.in.title.many": {
     en: "Clock in {n} people",
     es: "Marcar la entrada de {n} personas",
   },
@@ -1664,20 +1668,32 @@ export const CATALOG = {
     en: "Move anyone already on another job here",
     es: "Traer aquí a quien ya esté en otro trabajo",
   },
-  "crewclock.in.moveOff": {
+  "crewclock.in.moveOff.one": {
+    en: "Someone you picked is already on another job — they'll be left where they are.",
+    es: "Alguien que elegiste ya está en otro trabajo — se quedará donde está.",
+  },
+  "crewclock.in.moveOff.many": {
     en: "{n} already on another job — they'll be left where they are.",
     es: "{n} ya están en otro trabajo — se quedarán donde están.",
   },
   "crewclock.in.go": { en: "Clock them in", es: "Marcar su entrada" },
   "crewclock.in.going": { en: "Clocking them in…", es: "Marcando la entrada…" },
 
-  "crewclock.out.title": {
+  "crewclock.out.title.one": {
+    en: "Clock out {n} person",
+    es: "Marcar la salida de {n} persona",
+  },
+  "crewclock.out.title.many": {
     en: "Clock out {n} people",
     es: "Marcar la salida de {n} personas",
   },
-  "crewclock.out.body": {
+  "crewclock.out.body.one": {
+    en: "One of the people you picked is on the clock. Their punch ends now.",
+    es: "Una de las personas que elegiste está marcada. Su turno termina ahora.",
+  },
+  "crewclock.out.body.many": {
     en: "{n} of the people you picked are on the clock. Their punches end now.",
-    es: "{n} de las personas que elegiste están marcadas. Su turno termina ahora.",
+    es: "{n} de las personas que elegiste están marcadas. Sus turnos terminan ahora.",
   },
   "crewclock.out.nobody": {
     en: "Nobody you picked is on the clock.",

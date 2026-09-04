@@ -70,6 +70,33 @@ describe("the roster's bulk clock is fully translated", () => {
     expect(PAGE).toContain('t("crewclock.select.clear")');
   });
 
+  // Every counted string is a .one/.many pair, because "Clock in 1 people" is
+  // not English and "1 seleccionados" is not Spanish (2026-09-04 review). The
+  // framework has no plural rule — the caller picks the key by count — so the
+  // pair has to exist and the bar has to branch on it.
+  it("ships a singular for every counted string, and picks it by count", () => {
+    for (const stem of [
+      "crewclock.bar.count",
+      "crewclock.in.title",
+      "crewclock.out.title",
+      "crewclock.out.body",
+      "crewclock.in.moveOff",
+    ]) {
+      expect(CATALOG, `${stem}.one`).toHaveProperty(`${stem}.one`);
+      expect(CATALOG, `${stem}.many`).toHaveProperty(`${stem}.many`);
+      // …and the un-suffixed key is gone, so nothing can quietly go back to it.
+      expect(Object.keys(CATALOG)).not.toContain(stem);
+      expect(BAR).toContain(`${stem}.one`);
+      expect(BAR, `${stem}.many is used`).toContain(`${stem}.many`);
+    }
+    expect(translate(CATALOG, "en", "crewclock.in.title.one", { n: 1 })).toBe(
+      "Clock in 1 person",
+    );
+    expect(translate(CATALOG, "es", "crewclock.bar.count.one", { n: 1 })).toBe(
+      "1 seleccionado",
+    );
+  });
+
   // Somebody held back from the request still gets a line in the answer.
   it("has copy for the people the sheet never sent", () => {
     expect(translate(CATALOG, "en", "crewclock.outcome.skipped")).toBe(

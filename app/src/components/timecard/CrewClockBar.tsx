@@ -125,6 +125,18 @@ export function CrewClockBar({
   );
   const outIds = useMemo(() => crewToClockOut(members, selected), [members, selected]);
 
+  // One person is not "1 people". The framework interpolates {n} but has no
+  // plural rule, so the caller picks the key by count — the crew flow's own
+  // convention (scope.openings.one/.many, mywork.newUnits.one/.many).
+  const inTitle =
+    plan.willClockIn.length === 1
+      ? t("crewclock.in.title.one", { n: 1 })
+      : t("crewclock.in.title.many", { n: plan.willClockIn.length });
+  const outTitle =
+    outIds.length === 1
+      ? t("crewclock.out.title.one", { n: 1 })
+      : t("crewclock.out.title.many", { n: outIds.length });
+
   const close = () => {
     setSheet(null);
     setResults(null);
@@ -229,7 +241,9 @@ export function CrewClockBar({
     <>
       <div className="crewclock-bar">
         <span className="crewclock-bar-count">
-          {t("crewclock.bar.count", { n: selected.length })}
+          {selected.length === 1
+            ? t("crewclock.bar.count.one", { n: 1 })
+            : t("crewclock.bar.count.many", { n: selected.length })}
         </span>
         <button
           type="button"
@@ -254,11 +268,7 @@ export function CrewClockBar({
           className="modal-backdrop"
           role="dialog"
           aria-modal="true"
-          aria-label={
-            sheet === "in"
-              ? t("crewclock.in.title", { n: plan.willClockIn.length })
-              : t("crewclock.out.title", { n: outIds.length })
-          }
+          aria-label={sheet === "in" ? inTitle : outTitle}
           onClick={close}
         >
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
@@ -287,9 +297,7 @@ export function CrewClockBar({
               </>
             ) : sheet === "in" ? (
               <>
-                <h2 style={{ margin: "0 0 8px", fontSize: 16 }}>
-                  {t("crewclock.in.title", { n: plan.willClockIn.length })}
-                </h2>
+                <h2 style={{ margin: "0 0 8px", fontSize: 16 }}>{inTitle}</h2>
 
                 <label className="field-label" htmlFor="crewclock-job">
                   {t("crewclock.in.job")}
@@ -384,7 +392,9 @@ export function CrewClockBar({
                 </label>
                 {!move && plan.elsewhere.length > 0 && (
                   <p className="muted" style={{ fontSize: 11.5, margin: "6px 0 0" }}>
-                    {t("crewclock.in.moveOff", { n: plan.elsewhere.length })}{" "}
+                    {plan.elsewhere.length === 1
+                      ? t("crewclock.in.moveOff.one")
+                      : t("crewclock.in.moveOff.many", { n: plan.elsewhere.length })}{" "}
                     {plan.elsewhere.map((id) => nameById.get(id) ?? "Crew").join(", ")}
                   </p>
                 )}
@@ -416,13 +426,13 @@ export function CrewClockBar({
               </>
             ) : (
               <>
-                <h2 style={{ margin: "0 0 8px", fontSize: 16 }}>
-                  {t("crewclock.out.title", { n: outIds.length })}
-                </h2>
+                <h2 style={{ margin: "0 0 8px", fontSize: 16 }}>{outTitle}</h2>
                 <p style={{ margin: 0 }}>
                   {outIds.length === 0
                     ? t("crewclock.out.nobody")
-                    : t("crewclock.out.body", { n: outIds.length })}
+                    : outIds.length === 1
+                      ? t("crewclock.out.body.one")
+                      : t("crewclock.out.body.many", { n: outIds.length })}
                 </p>
                 {failureText && <p className="error">{failureText}</p>}
                 <div className="row-gap" style={{ marginTop: 12 }}>
