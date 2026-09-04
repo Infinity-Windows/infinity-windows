@@ -369,6 +369,34 @@ describe("glowFor (role-aware window colors)", () => {
     expect(glowFor(other, me)).toBe("none");
     expect(glowFor(openingRow({ assigned_to: "chris", status: "installed" }), me)).toBe("none");
   });
+
+  // Wave E. The flag is about the RECORD, so it has to outlive the work: a
+  // green "QC passed" over a unit the crew has said is wrong is exactly the
+  // lie this wave exists to stop.
+  it("data off is amber, over green, and for every viewer", async () => {
+    const { glowFor } = await import("./adapter");
+    const off = new Set(["op1"]);
+    expect(glowFor(openingRow({}), { ...manager, dataOffOpeningIds: off })).toBe("amber");
+    expect(
+      glowFor(openingRow({ status: "installed" }), {
+        ...me,
+        qcPassedOpeningIds: new Set(["op1"]),
+        dataOffOpeningIds: off,
+      }),
+    ).toBe("amber");
+    // Somebody else's window, flagged: still amber to a plain installer,
+    // because a wrong record is not one person's private problem.
+    expect(
+      glowFor(openingRow({ assigned_to: "chris" }), { ...me, dataOffOpeningIds: off }),
+    ).toBe("amber");
+    // An unflagged unit is untouched by the new set.
+    expect(
+      glowFor(openingRow({ id: "op2", status: "installed" }), {
+        ...manager,
+        dataOffOpeningIds: off,
+      }),
+    ).toBe("yellow");
+  });
 });
 
 describe("flashFor (the aqua frame channel)", () => {

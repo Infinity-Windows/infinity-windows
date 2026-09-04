@@ -15,6 +15,7 @@ import { formatApiError } from "../../lib/install/errors";
 import { listQcPassedOpeningIds } from "../../lib/ops";
 import { listOpeningPhases } from "../../lib/install/phases";
 import { isForemanPlus, isSupervisorPlus } from "../../lib/install/types";
+import { dataOffIds } from "../../lib/install/dataOff";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import {
   buildAuthoredJob,
@@ -145,6 +146,10 @@ export function MapsInteractive({ project }: { project: Project }) {
           .filter((p) => p.kind === "flashing" && p.status === "submitted")
           .map((p) => p.opening_id),
       ),
+      // Wave E: amber for a unit whose record is wrong. Read straight off the
+      // openings this view already has — no extra query, and it stays amber
+      // after the install and after QC, until a foreman clears the flag.
+      dataOffOpeningIds: dataOffIds(openings.data ?? []),
     };
     // A full hand-traced survey model (multi-mass footprint, named walls,
     // surveyor-placed windows) beats anything derivable from plan pins —

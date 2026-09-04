@@ -1879,12 +1879,17 @@ a.tb-tag:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; 
   --gl-red: #e4655c;
   --gl-yellow: #e8c14a;
   --gl-green: #35b98d;
+  /* Wave E: "data off" — the record is wrong. Orange rather than the
+     installed yellow, because the two mean opposite things and a crew reading
+     a wall of glass at arm's length must not have to tell two yellows apart. */
+  --gl-amber: #e08a2e;
 }
 
 /* drop-shadow, not box-shadow: .win's box-shadow already draws the glass
    inset, and a halo must ride on top of it, not replace it. */
 .fitview-app .win.glow-red,
 .fitview-app .win.glow-yellow,
+.fitview-app .win.glow-amber,
 .fitview-app .win.glow-green {
   filter: drop-shadow(0 0 6px var(--wc)) drop-shadow(0 0 2px var(--wc));
 }

@@ -58,6 +58,7 @@ import {
   type Planset,
   type ProjectOpening,
 } from "../../lib/install/types";
+import { isDataOff } from "../../lib/install/dataOff";
 import {
   buildInstallerWorklist,
   buildSequenceAssignments,
@@ -2325,6 +2326,12 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
               style={{ borderColor: VOIDED_RING_COLOR }}
             />{" "}
             install undone
+          </span>
+        )}
+        {/* Wave E: a marker, not a ring or a fill — those two are spoken for. */}
+        {all.some((o) => isDataOff(o)) && (
+          <span>
+            <i className="map-legend__dataoff" /> data off
           </span>
         )}
         {dispatchMode &&
