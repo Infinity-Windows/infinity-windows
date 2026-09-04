@@ -9684,8 +9684,9 @@ begin
     new.credited_to := null;
   end if;
 
-  -- No JWT is the service role or a migration, not a phone. The key IS the
-  -- fence there, and the 20260716001000 backfill of installer_id runs here.
+  -- No JWT is the service role or a migration, not a phone — the same
+  -- exemption credit_refusal makes, for the same reason: the key is the fence
+  -- there, and a rank check would only break the server's own jobs.
   if v_actor is null then
     return new;
   end if;
