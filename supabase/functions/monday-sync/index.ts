@@ -332,6 +332,15 @@ async function pullOneFile(
   }
   if (existing) return { ...base, ok: true, where, already: true };
 
+  // The picker locks this on screen and pullRequestFiles locks it again on the
+  // way out of the browser; this is the third lock, and the only one a caller
+  // posting straight at this endpoint has to get past. A planset row whose
+  // source_format lied would be a file the extractor opens and the map draws.
+  const format = plansetFormatOf(name, asset.file_extension);
+  if (asPlanset && !format) {
+    return { ...base, error: "Only a PDF, DWG or DXF can be plans or specs." };
+  }
+
   const stated = typeof asset.file_size === "number" ? asset.file_size : null;
   if (stated !== null && stated > MAX_PULL_BYTES) {
     return {
@@ -379,12 +388,11 @@ async function pullOneFile(
   // the map and the extractor cannot tell the two apart: PDFs are 'uploaded'
   // and ready to be read, CAD files are 'converting' because nothing converts
   // them yet.
-  const format = plansetFormatOf(name, asset.file_extension);
   const row = asPlanset
     ? {
       project_id: projectId,
       storage_path: path,
-      source_format: format ?? "pdf",
+      source_format: format,
       status: format === "pdf" ? "uploaded" : "converting",
       kind,
       source_asset_id: asset.id,
