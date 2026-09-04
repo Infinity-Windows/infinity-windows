@@ -91,6 +91,8 @@ function json(route: Route, body: unknown, rows = 0) {
 async function routeCrewAccess(
   page: Page,
   countsByUser: Record<string, Record<string, number>>,
+  /** A refusal the preview answers with, the way the real endpoint does. */
+  refusal?: { user_id: string; error: string },
 ): Promise<{ calls: Record<string, unknown>[] }> {
   const calls: Record<string, unknown>[] = [];
   await page.route("**/rest/v1/crew_access_directory**", (r) =>
@@ -104,6 +106,13 @@ async function routeCrewAccess(
     const person = DIRECTORY.find((p) => p.id === userId);
     const counts = countsByUser[userId] ?? {};
     if (body.action === "purge_login_preview") {
+      if (refusal && userId === refusal.user_id) {
+        return r.fulfill({
+          status: 409,
+          contentType: "application/json",
+          body: JSON.stringify({ error: refusal.error }),
+        });
+      }
       return json(r, {
         ok: true,
         user_id: userId,
@@ -191,6 +200,42 @@ test("a login with nothing behind it says it will be deleted", async ({ page }) 
     page.getByText("Eduardo Reyes's account is gone and the email is free to use again."),
   ).toBeVisible();
   expect(calls.at(-1)).toEqual({ action: "purge_login", user_id: EDUARDO });
+});
+
+/**
+ * The refusals reach the owner BEFORE he commits to anything.
+ *
+ * Removing a login cannot be undone, so every refusal is checked by the preview
+ * as well as by the removal itself — a sheet that promised "the email will be
+ * freed" and then refused would be the worst of both. The one mocked here is
+ * the automation login the end-to-end checks sign in with, but the shape is the
+ * same for a builder's login and for a database that is running behind the app
+ * and could not write the removal down.
+ */
+test("a refusal is shown instead of a promise, and there is nothing to press", async ({
+  page,
+}) => {
+  await useSupabaseFixtures(page, { role: "owner" });
+  const refused =
+    "That's the automation login the tests sign in with, not a person's login. " +
+    "Removing it would break the checks that run before every deploy.";
+  const { calls } = await routeCrewAccess(
+    page,
+    { [ENRIQUE]: ENRIQUE_COUNTS },
+    { user_id: ENRIQUE, error: refused },
+  );
+
+  await page.goto("/access");
+  const row = memberRow(page, "Enrique Salas");
+  await row.getByRole("button", { name: "Remove this login…" }).click();
+
+  await expect(row.getByTestId("purge-sheet")).toContainText(refused);
+  // No sentence promising anything, and no button to confirm it with.
+  await expect(row.getByTestId("purge-shape-sentence")).toHaveCount(0);
+  await expect(row.getByTestId("purge-confirm")).toHaveCount(0);
+
+  // And asking must not have removed anything.
+  expect(calls.map((c) => c.action)).toEqual(["purge_login_preview"]);
 });
 
 test("a supervisor is never offered the third door", async ({ page }) => {
