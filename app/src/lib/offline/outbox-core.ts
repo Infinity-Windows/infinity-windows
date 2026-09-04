@@ -223,9 +223,13 @@ export function isRetryableError(err: unknown): boolean {
   // Nothing is lost by dropping it: the SQLSTATE check above already catches
   // every refusal that matters — a real permission failure arrives as 42501,
   // one of our own rules as P0001 — and those are the codes an auth problem
-  // that is NOT about a stale token comes back with. The install drain now
-  // refreshes the session once before it starts (lib/install/installOutbox.ts),
-  // so the common case is fixed rather than retried.
+  // that is NOT about a stale token comes back with.
+  //
+  // A stale token fixes itself on the retry, without any help from us:
+  // supabase-js asks auth for the session before every request it sends, and
+  // that call refreshes a token that has expired. Calling it retryable is
+  // therefore not just safer, it is accurate — the next attempt goes out with
+  // a good token.
   if (/duplicate key|already exists|violates|invalid input|permission denied|not authorized|forbidden|row-level security/.test(msg)) {
     return false;
   }

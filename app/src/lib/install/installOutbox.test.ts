@@ -19,17 +19,6 @@ vi.mock("./queue", () => ({
   enqueueUpload: vi.fn(async () => {}),
   flushQueue: vi.fn(async () => ({ sent: 0, remaining: 0 })),
 }));
-// The drain asks for the session once before it sends anything, so a phone
-// coming back from a dead zone sends with a token the server will accept.
-// Faked here so "how many times" is countable.
-vi.mock("../supabase", () => ({
-  supabase: {
-    auth: {
-      getSession: vi.fn(async () => ({ data: { session: null }, error: null })),
-    },
-  },
-}));
-
 const RECORD: InstallOutboxRecord = {
   id: "outbox-1",
   step: "queued",
@@ -473,34 +462,6 @@ describe("a refused install reaches the person who submitted it", () => {
 
     expect(vi.mocked(submitInstallEvent)).toHaveBeenCalledTimes(1);
     expect(rows.size).toBe(0);
-  });
-
-  // The stale-token case the "jwt" deletion is the other half of: ask for the
-  // session before sending, so a phone back from a dead zone sends with a
-  // token the server will take. Once per pass — not once per install, and not
-  // at all when there is nothing to send.
-  it("asks for the session once per pass, and never with nothing to send", async () => {
-    const { supabase } = await import("../supabase");
-    const { submitInstallEvent } = await import("./api");
-    vi.mocked(submitInstallEvent).mockRejectedValue(
-      new TypeError("Failed to fetch"),
-    );
-
-    const { enqueueInstall, flushInstallOutbox } = await import("./installOutbox");
-    await enqueueInstall(INPUT);
-    await enqueueInstall({
-      ...INPUT,
-      openingId: "opening-2",
-      submitParams: { openingId: "opening-2" },
-    });
-
-    await flushInstallOutbox();
-    expect(vi.mocked(supabase.auth.getSession)).toHaveBeenCalledTimes(1);
-
-    // Both are now inside their backoff, so this pass has nothing due and
-    // must not touch auth at all.
-    await flushInstallOutbox();
-    expect(vi.mocked(supabase.auth.getSession)).toHaveBeenCalledTimes(1);
   });
 
   it("files a clean install and clears it off the device", async () => {

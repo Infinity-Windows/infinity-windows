@@ -10,7 +10,6 @@ import {
   isRetryableError,
   MAX_ATTEMPTS,
 } from "../offline/outbox-core";
-import { supabase } from "../supabase";
 import { submitInstallEvent, type SubmitInstallParams } from "./api";
 import { enqueueUpload, flushQueue, type QueuedUploadMeta } from "./queue";
 
@@ -487,28 +486,6 @@ export function flushInstallOutbox(): Promise<InstallFlushResult> {
   return run;
 }
 
-/**
- * Ask the auth client for the session once, before a pass touches the network.
- *
- * A phone that has been out of signal for an hour comes back holding an access
- * token the server will refuse. `getSession()` hands back the stored one and
- * refreshes it only when it has actually expired, so this costs a healthy
- * phone nothing and saves the one case that used to lose an install.
- *
- * Never throws, and never awaited more than once per pass: a refresh that
- * fails is not a reason to skip the drain. The writes still get their attempt,
- * and a token that genuinely will not work comes back as an ordinary retryable
- * error on the next one.
- */
-async function refreshSessionQuietly(): Promise<void> {
-  try {
-    await supabase.auth.getSession();
-  } catch {
-    // Deliberately silent — see above. Killing the pass would be worse than
-    // attempting it with the token we already have.
-  }
-}
-
 async function runFlushPass(): Promise<InstallFlushResult> {
   let synced = 0;
   const failedNow: InstallRefusal[] = [];
@@ -534,9 +511,14 @@ async function runFlushPass(): Promise<InstallFlushResult> {
       due.push({ row, record });
     }
 
-    // Once, and only when there is something to send.
-    if (due.length > 0) await refreshSessionQuietly();
-
+    // No session refresh here on purpose. This drain used to open with one,
+    // and it was doing nothing: supabase-js asks auth for the session before
+    // EVERY request it sends (`fetchWithAuth` → `_getSessionToken` →
+    // `auth.getSession()`), and `getSession()` refreshes a token that has
+    // actually expired. So `submitInstallEvent` below already sends with a
+    // fresh token; a pass-level call only moved the same work a few lines
+    // earlier. What used to lose an install here was the word "jwt" in the
+    // permanent-error list — see isRetryableError — not a missing refresh.
     for (const { row, record } of due) {
       let current = record;
       const blobs = row.blobs ?? [];
