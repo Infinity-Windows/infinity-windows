@@ -122,6 +122,23 @@ export function CrewClockBar({
     setResults(null);
   };
 
+  /**
+   * Open a sheet with both claims cleared.
+   *
+   * The attestation is a statement about THIS group of people, made now — a
+   * box left ticked from the last batch would let the second one through
+   * without anybody saying anything, which is the whole thing the tick exists
+   * to prevent. "Move anyone already on another job here" resets for the same
+   * reason: off by default means off every time, not off once. The job, the
+   * cost code and the note are conveniences and stay put.
+   */
+  const open = (which: "in" | "out") => {
+    setResults(null);
+    setAttested(false);
+    setMove(false);
+    setSheet(which);
+  };
+
   /** Tell each person the app changed their punch (English — push copy law). */
   const pushEveryone = (list: CrewClockOutcome[], jobLabel: string | null) => {
     const byName = me.data?.display_name ?? "";
@@ -195,10 +212,7 @@ export function CrewClockBar({
           type="button"
           className="button-like active-pill"
           disabled={selected.length === 0}
-          onClick={() => {
-            setResults(null);
-            setSheet("in");
-          }}
+          onClick={() => open("in")}
         >
           {t("crewclock.bar.clockIn")}
         </button>
@@ -206,10 +220,7 @@ export function CrewClockBar({
           type="button"
           className="button-like"
           disabled={selected.length === 0}
-          onClick={() => {
-            setResults(null);
-            setSheet("out");
-          }}
+          onClick={() => open("out")}
         >
           {t("crewclock.bar.clockOut")}
         </button>
