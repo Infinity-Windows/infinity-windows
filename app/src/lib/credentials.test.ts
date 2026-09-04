@@ -11,6 +11,7 @@ import {
   EXPIRED_NUDGE_GRACE_DAYS,
   EXPIRY_WARN_DAYS,
   countsOnBid,
+  credentialDocExt,
   credentialDocPath,
   dueCredentialNudges,
   expiringSoon,
@@ -321,5 +322,23 @@ describe("credentialDocPath — the path IS the permission", () => {
 
   it("keeps a PDF a PDF", () => {
     expect(credentialDocPath("p1", "pdf")).toMatch(/\.pdf$/);
+  });
+});
+
+describe("credentialDocExt — a stored card is named what it actually is", () => {
+  it("names each of the bucket's four types honestly", () => {
+    // A signed URL serves this path. A PNG under a .jpg name is a file the
+    // browser downloads instead of showing.
+    expect(credentialDocExt("image/jpeg")).toBe("jpg");
+    expect(credentialDocExt("image/png")).toBe("png");
+    expect(credentialDocExt("image/webp")).toBe("webp");
+    expect(credentialDocExt("application/pdf")).toBe("pdf");
+  });
+
+  it("falls back to jpg for anything the bucket would refuse anyway", () => {
+    expect(credentialDocExt("image/heic")).toBe("jpg");
+    expect(credentialDocExt("")).toBe("jpg");
+    expect(credentialDocExt(null)).toBe("jpg");
+    expect(credentialDocExt(undefined)).toBe("jpg");
   });
 });

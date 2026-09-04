@@ -9,6 +9,7 @@ import {
 } from "../lib/offline/outbox";
 import {
   capturePhotoMeta,
+  shrinkPhotoFile,
   stampPhoto,
   stampPhotoFile,
   toPhotoMetaFields,
@@ -874,9 +875,20 @@ function SinglePhotoCapture({
   const [stamping, setStamping] = useState(false);
 
   const applyPhoto = async (raw: File) => {
-    // An unstamped shot skips the GPS wait entirely — see `stamp` above.
+    // An unstamped shot skips the GPS wait entirely — see `stamp` above — but
+    // NOT the shrink and re-encode. That half has nothing to do with stamping:
+    // "Choose from files" hands over whatever the phone's camera roll holds, at
+    // full resolution and in whatever container, and every upload in this app
+    // has always counted on it arriving as a sensible JPEG. Handing the raw
+    // pick straight to a bucket is how a screenshot of a certificate gets
+    // refused for being 14 MB, or stored as a PNG under a .jpg name.
     if (!stamp) {
-      onChange(raw);
+      setStamping(true);
+      try {
+        onChange(await shrinkPhotoFile(raw));
+      } finally {
+        setStamping(false);
+      }
       return;
     }
     setStamping(true);
@@ -936,7 +948,13 @@ function SinglePhotoCapture({
         onCamera={() => setLive(true)}
         onFile={pick}
       />
-      {stamping && <p className="muted">{t("photo.stampingGps")}</p>}
+      {/* An unstamped shot is waiting on the shrink and re-encode, not on a
+          GPS fix it never asked for. Saying "Stamping GPS & time…" over a photo
+          of somebody's OSHA card would be telling them the opposite of what the
+          hint just promised. */}
+      {stamping && (
+        <p className="muted">{stamp ? t("photo.stampingGps") : t("photo.preparing")}</p>
+      )}
       {cameraError && (
         <p className="muted">{cameraError} — {t("photo.useFileInstead")}</p>
       )}

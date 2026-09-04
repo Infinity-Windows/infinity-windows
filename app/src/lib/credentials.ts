@@ -315,7 +315,7 @@ export function todayLocalDay(): string {
 }
 
 /**
- * Where this person's next document goes: "<profile_id>/<uuid>.jpg".
+ * Where this person's next document goes: "<profile_id>/<uuid>.<ext>".
  *
  * The FIRST FOLDER IS THE PERMISSION — the storage policies read it directly
  * rather than joining back to the certifications table, so a path built any
@@ -391,6 +391,30 @@ export async function setCertification(args: SetCertificationArgs): Promise<void
 }
 
 /**
+ * The four things the credential-docs bucket accepts, and the file extension
+ * each one is honestly stored under. The bucket pins the same list; a type that
+ * is not on it is refused there, so guessing an extension for it would only
+ * mean a confusing name on a file that never arrived.
+ *
+ * Naming a PNG ".jpg" is not cosmetic: the path is what a signed URL serves,
+ * and a browser handed a mismatched name and content-type is a browser
+ * downloading a file it will not preview.
+ */
+const CREDENTIAL_DOC_EXT: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "application/pdf": "pdf",
+};
+
+/** The extension a stored card should carry, from what the file actually is.
+ * Anything off the list falls back to jpg, because the bucket refuses it
+ * anyway and a made-up extension helps nobody read the error. */
+export function credentialDocExt(mimeType: string | null | undefined): string {
+  return CREDENTIAL_DOC_EXT[mimeType ?? ""] ?? "jpg";
+}
+
+/**
  * Put the photo of a card in the private bucket and hand back its path.
  *
  * Uploaded straight rather than through the offline outbox, unlike a job photo:
@@ -402,8 +426,10 @@ export async function uploadCredentialDoc(
   profileId: string,
   file: File,
 ): Promise<string> {
-  const ext = file.type === "application/pdf" ? "pdf" : "jpg";
-  const path = credentialDocPath(profileId, ext);
+  // The capture sheet re-encodes what it hands over, so in practice this is
+  // "jpg" — but this function is the boundary the bucket sees, and a boundary
+  // that renames files is a boundary that lies.
+  const path = credentialDocPath(profileId, credentialDocExt(file.type));
   const { error } = await supabase.storage
     .from("credential-docs")
     .upload(path, file, { contentType: file.type || "image/jpeg", upsert: false });

@@ -1302,6 +1302,15 @@ export const CATALOG = {
     en: "{n} credentials run out within 30 days",
     es: "{n} certificaciones vencen en 30 días o menos",
   },
+
+  // A photo.* key filed in this wave's block because this wave is what created
+  // it: the capture sheet's only unstamped caller. Its neighbour says "Stamping
+  // GPS & time…", which would be a plain lie under a shot that carries neither
+  // — the wait here is the shrink and re-encode, and nothing else.
+  "photo.preparing": {
+    en: "Getting the photo ready…",
+    es: "Preparando la foto…",
+  },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */
