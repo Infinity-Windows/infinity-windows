@@ -90,6 +90,14 @@ Both are derived from sessions. Neither is stored directly. Storing an aggregate
 
 **Sign-off** — the worker's attestation that one pay period's hours are correct, and the supervisor's countersign after it. Layered *on top of* per-punch approval, not a replacement for it: approval is per punch and can happen any time; sign-off is per two-Monday-week pay period and only once that period has actually ended — there is nothing to attest to yet while it's still running. A supervisor edit after a period is signed doesn't undo the sign-off; it notes "edited after signing" on the row instead, so the record stays honest without unsigning anything.
 
+**Last seen** — where a phone was, and when, the last time the app was brought to the FOREGROUND while that shift was open. One point per shift, overwritten each visit, written by the person's own device through a self-only RPC. It is deliberately not a track: there is no background location in this app and there must not be, so "last seen" can only ever say "they had the app open at 4:12, fourteen miles from where they clocked in" — never where anybody went in between. Read back on the supervisor's "Still on the clock" list, and only when it is away from the job, because "last seen at the job" for everybody is noise.
+
+**Far from the job** — the soft, advisory judgement that a phone is nowhere near where this job's clock-ins actually happen (800 m by default, `farFromJob`). Silent whenever anything is uncertain — no fix, no reference point, or a fix too fuzzy to tell near from far — and it never blocks anything. On the clock it earns one question, once the app is opened: switch to Travel, or "I'm still here", which holds the question for an hour.
+
+**Evening nudge** — the company-local time of day, 5:30 PM by default and a foreman's to move, when everyone still clocked in to a JOB cost code gets one push: "Still on the job?". Travel is skipped, because somebody on Travel is already doing the thing the push would ask for. Claimed once per person per local day, so a shift nobody ever closes is asked about each evening rather than once ever.
+
+**Gusto file** — the pay-period hours file the office uploads to payroll: one row per employee for the two weeks, regular / overtime / double, with the overtime split per calendar week rather than across the whole period. It is a FILE the office uploads, never a live link to payroll — nothing in this app talks to Gusto.
+
 **Graveyard** — a `X_graveyard` table, holding a straight copy of every row `X` had the moment before a clean-slate migration truncated it. RLS-enabled with no policies at all, so it is invisible to the app — nothing but a direct database connection can read it — and exists purely so the owner can look, or drop it, once he's satisfied nothing needs recovering. The pattern a payroll-data wipe uses in place of a dump file (this repo is public); a plain DELETE is still fine for data nobody needs a copy of.
 
 ## The estimation model
