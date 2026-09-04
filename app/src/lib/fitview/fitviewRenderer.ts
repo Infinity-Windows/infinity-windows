@@ -21,11 +21,23 @@
  *                                            installed it, then opens the
  *                                            opening sheet's finish flow.
  *                                            Absent = no such button.
- *   labels?          { recordFor, assignOne } - wave Y (2026-09-04): the two
- *                                            buttons above, in the reader's
+ *   labels?          { recordFor, assignOne, crewEmpty } - wave Y (2026-09-04):
+ *                                            the two buttons above, plus the
+ *                                            line the assign sheet shows with
+ *                                            nobody to list, in the reader's
  *                                            own language. This file has no
  *                                            t(); the host does. Absent falls
  *                                            back to the English below.
+ *   crew?            [{id,name,role}]      - the roster AT MOUNT.
+ *   getCrew?()    -> [{id,name,role}]      - map-crew-list-arrives fix
+ *                                            (2026-09-04): the roster NOW,
+ *                                            asked for when the assign sheet
+ *                                            opens. A host whose roster query
+ *                                            lands after the scene was built
+ *                                            can only reach the sheet this
+ *                                            way - rebuilding the scene to
+ *                                            refresh `crew` would throw the
+ *                                            camera away. Absent = `crew`.
  */
 
 // Stories (docs/maps-interactive-stories-design.md): the canonicalizers live
@@ -257,6 +269,17 @@ export function mountFitView(host, job, shim) {
   // {id, name, role} — the host feeds the real crew through the shim; the
   // prototype's fetch never shipped. Assign stays hidden without it.
   var EMPLOYEES = SHIM.crew || [];
+
+  // 2026-09-04 (map-crew-list-arrives): the roster as it stood at mount is not
+  // good enough. The host reads it in its own query, and on a slow phone that
+  // read lands AFTER the scene was built - leaving the assign sheet with an
+  // empty list and no way to refill it, because refilling `crew` would mean
+  // rebuilding the scene and losing the camera. So ask the host for the live
+  // list at the moment the sheet opens. EMPLOYEES stays the fallback for a
+  // host that only passes `crew`.
+  function crewNow() {
+    return (SHIM.getCrew ? SHIM.getCrew() : null) || EMPLOYEES;
+  }
 
   function cap(s) { return String(s).charAt(0).toUpperCase() + String(s).slice(1); }
 
@@ -1982,6 +2005,9 @@ export function mountFitView(host, job, shim) {
     var ids = pickedIds();
     if (!ids.length) { SHIM.toast("Tap some openings first"); return; }
 
+    // 2026-09-04 (map-crew-list-arrives): read at OPEN time, not at mount.
+    var crew = crewNow();
+
     sheet.innerHTML =
       '<div class="sh-head">' +
         '<div style="flex:1"><div class="sh-id">' + ids.length +
@@ -1992,12 +2018,14 @@ export function mountFitView(host, job, shim) {
       '<div class="fsec">' +
         '<div class="flab">Assign to</div>' +
         '<div class="checks" id="crew">' +
-          (EMPLOYEES.length ? EMPLOYEES.map(function (u) {
+          (crew.length ? crew.map(function (u) {
             return '<button type="button" class="chk" data-id="' + esc(u.id) +
               '" data-name="' + esc(u.name) +
               '" aria-pressed="false">' + esc(cap(u.name)) +
               ' &middot; ' + esc(u.role) + '</button>';
-          }).join("") : '<span class="flab">No crew list on this device yet - go online once.</span>') +
+          }).join("") : '<span class="flab">' +
+            esc(label("crewEmpty", "No crew list on this device yet - go online once.")) +
+            '</span>') +
         '</div>' +
       '</div>' +
       '<div class="sh-act">' +

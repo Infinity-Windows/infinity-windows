@@ -135,3 +135,67 @@ test("map assign: pick windows, pick a person, sequenced RPCs fire", async ({
   expect(assigns[0].profile).toBe(profileId);
   expect(new Set(assigns.map((a) => a.opening)).size).toBe(2);
 });
+
+test("the crew list arrives after the map and the assign sheet still lists it", async ({
+  page,
+}) => {
+  // Found in the field 2026-09-04. The crew roster (listProfiles) was read
+  // ONCE, when the scene was built, and handed to the vendored renderer as a
+  // plain array. On a slow phone or a loaded machine that read lands AFTER the
+  // model does — and nothing rebuilds the scene for it, because rebuilding
+  // would throw the camera away. So the foreman taps "Assign…", gets "No crew
+  // list on this device yet", and there is no way out of it but leaving the
+  // tab and coming back.
+  //
+  // The role is NOT delayed here: getRealProfile keeps its own `id=eq.` read,
+  // so the map is built once, for the right role, and never remounts. That is
+  // the whole point — this is the race with no second chance.
+  await useSupabaseFixtures(page, { role: "supervisor" });
+  await useOutline(page);
+
+  let releaseCrew: () => void = () => {};
+  const crewHeld = new Promise<void>((resolve) => {
+    releaseCrew = resolve;
+  });
+  let crewServed = false;
+  await page.route(
+    (url) =>
+      url.pathname.endsWith("/rest/v1/profiles") &&
+      !(url.searchParams.get("id") ?? "").startsWith("eq."),
+    async (route) => {
+      await crewHeld;
+      crewServed = true;
+      await route.fallback();
+    },
+  );
+
+  await page.goto(`/projects/${BLACK22.projectId}?tab=maps-interactive`);
+  await expect(page.locator("button.win").first()).toBeVisible({ timeout: 60_000 });
+  // The race really happened: the model is on screen, the roster is not.
+  expect(crewServed).toBe(false);
+
+  // Somewhere to stand, so the fix can be checked against the thing it must
+  // never cost: a unit selected, and a mark on the live host node.
+  const unit = page.locator('button.win[data-id="11"]').first();
+  await unit.click({ force: true });
+  await expect(page.locator(".sheet .sh-id")).toHaveText("11");
+  await page.locator("#stage").evaluate((el) => {
+    (el as HTMLElement).dataset.cameraProbe = "kept";
+  });
+
+  releaseCrew();
+  await expect.poll(() => crewServed, { timeout: 30_000 }).toBe(true);
+  // Long enough for a rebuild to have happened, if one were going to.
+  await page.waitForTimeout(500);
+
+  // The camera survived: same host node, same selected unit, same open sheet.
+  await expect(page.locator("#stage")).toHaveAttribute("data-camera-probe", "kept");
+  await expect(unit).toHaveClass(/(^|\s)sel(\s|$)/);
+  await expect(page.locator(".sheet .sh-id")).toHaveText("11");
+
+  // And the sheet the foreman opens now names real people.
+  await page.getByRole("button", { name: "Assign…" }).click();
+  const chips = page.locator("#crew .chk");
+  await expect(chips.first()).toBeVisible();
+  expect(await chips.first().getAttribute("data-id")).toBeTruthy();
+});
