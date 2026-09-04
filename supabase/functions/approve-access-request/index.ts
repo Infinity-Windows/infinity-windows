@@ -32,6 +32,18 @@
  *   - It refuses if the email already has an account, rather than resetting
  *     that account's password. Otherwise this endpoint would be a way for a
  *     supervisor to take over the owner's login.
+ *
+ * WHAT HAPPENS AFTER THAT REFUSAL (2026-09-04). "They already have a login" is
+ * the commonest thing that goes wrong in this queue — somebody asks twice, or
+ * asks after being invited by text — and until now the request just sat in
+ * Pending forever, because the only way to clear it was Deny, which is a lie
+ * about a person who does in fact work here. The refusal now carries
+ * `code: 'already_has_login'` so the Admin screen can recognise it rather than
+ * pattern-match an English sentence, and offer one tap that files the request
+ * as approved with a note saying so. That tap comes back here as
+ * `action: 'mark_already_linked'` and not as a client-side UPDATE, because
+ * 'approved' means "an account exists" and this function is the only thing
+ * allowed to say that (decide_access_request refuses the word outright).
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import {
@@ -167,8 +179,10 @@ Deno.serve(async (req) => {
 
     const body = (await req.json().catch(() => ({}))) as {
       request_id?: unknown;
+      action?: unknown;
     };
     const requestId = typeof body.request_id === "string" ? body.request_id : "";
+    const action = typeof body.action === "string" ? body.action : "";
     if (!requestId) {
       return jsonResponse({ error: "request_id is required" }, 400, cors);
     }
@@ -182,6 +196,47 @@ Deno.serve(async (req) => {
     if (!request) {
       return jsonResponse({ error: "that request no longer exists" }, 404, cors);
     }
+
+    // "They already have a login." Files the request as dealt with, creates
+    // nothing, and touches no account — the person already has one, which is
+    // the whole reason this exists. It writes 'approved' because that is the
+    // truth from the asker's point of view (they can sign in), and the note is
+    // what stops the row reading as though this queue made the account.
+    if (action === "mark_already_linked") {
+      const now = new Date().toISOString();
+      const { error: linkErr } = await supabase
+        .from("access_requests")
+        .update({
+          status: "approved",
+          decided_at: now,
+          decided_by: callerId && !callerIsService ? callerId : null,
+          decision_note: "Already had a login",
+        })
+        .eq("id", requestId);
+      // A database without decision_note yet (this ships with
+      // 20260987000000) must still be able to clear the row — the note is the
+      // nicety, the decision is the point.
+      if (linkErr) {
+        if (!/decision_note|PGRST204/i.test(linkErr.message ?? "")) {
+          throw new Error(linkErr.message);
+        }
+        const { error: retryErr } = await supabase
+          .from("access_requests")
+          .update({
+            status: "approved",
+            decided_at: now,
+            decided_by: callerId && !callerIsService ? callerId : null,
+          })
+          .eq("id", requestId);
+        if (retryErr) throw new Error(retryErr.message);
+      }
+      return jsonResponse(
+        { ok: true, marked: "already_has_login", request_id: requestId },
+        200,
+        cors,
+      );
+    }
+
     if (request.status === "denied") {
       return jsonResponse(
         { error: "that request was denied; ask them to request access again" },
@@ -203,8 +258,13 @@ Deno.serve(async (req) => {
     }
 
     if (await findUserByEmail(supabase, email)) {
+      // `code` is the machine-readable half, so the Admin screen can offer
+      // "Mark as already has a login" instead of leaving the row in Pending
+      // forever. The sentence stays the sentence; nothing reads it to decide.
       return jsonResponse(
         {
+          code: "already_has_login",
+          email,
           error:
             `${email} already has an account. They should sign in, or use "Reset password" on the sign-in screen.`,
         },
