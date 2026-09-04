@@ -1,6 +1,6 @@
 // Wave J — the job pipeline, on the real Jobs page and the real job hub.
 //
-// Four things this proves that a unit test cannot:
+// Five things this proves that a unit test cannot:
 //   J1  a job card wears "Not ready" beside its mode badge and reads
 //       "Not ready · start ~… · windows ETA …", while a job that is ready with
 //       its windows in wears nothing at all.
@@ -8,6 +8,12 @@
 //       on that job.
 //   J1  the Pipeline card on Overview marks the windows arrived in one tap,
 //       and an installer can read the card without being able to change it.
+//   J1  saving "Expected start" from that card sends ONE column. It is an
+//       ordinary PATCH on the job row rather than an RPC, and a writer that
+//       filled in the eight columns the card does not hold would blank the
+//       job's address, customer, phone and notes on the way past — which is
+//       exactly what it did before updateProject learned to send only what it
+//       was given.
 //   J2  a foreman reorders the list with the up/down buttons, the whole new
 //       order goes to the server, AND IT SURVIVES A RELOAD — which is the
 //       whole point of an order that lives in the database rather than in a
