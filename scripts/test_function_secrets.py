@@ -214,7 +214,10 @@ class FunctionSecretsTest(unittest.TestCase):
         # 20: +still-on-the-job-sweep, the evening "are you really still on the
         # job?" push (Wave K, K2). Like summon-warning-sweep it is a cron
         # target on the VAPID pair and introduces no new secret.
-        self.assertEqual(len(names), 20)
+        # 21: +pipeline-sweep, the 7 AM "this job is not ready" push (Wave J,
+        # J4). Third of the same shape — cron target, VAPID pair, no new
+        # secret — so the ANTHROPIC headline sentence below is unmoved.
+        self.assertEqual(len(names), 21)
         self.assertIn("ask", names)
         self.assertIn("studio-assist", names)
         # Creates accounts on the service-role key, and needs no secret of its

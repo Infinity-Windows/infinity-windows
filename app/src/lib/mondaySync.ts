@@ -60,12 +60,37 @@ export async function triggerMondaySync(force = false): Promise<{
   return data as { ok: boolean; synced?: number; skipped?: string };
 }
 
+/**
+ * What a staged Monday row becomes when it is built into a real job.
+ *
+ * Pure, and separate from the write below, so the mapping itself is testable:
+ * this is the one place where a fact Monday knows turns into a fact the app
+ * runs on, and getting it wrong is invisible until somebody drives to a job.
+ *
+ * Wave J (J3) added the two lines that matter here. `est_arrival` has been
+ * synced into monday_jobs since the connector shipped and then thrown away at
+ * build time — the office already knew when the windows were coming and the app
+ * did not. It is now the job's `materials_eta`. And an imported job is born
+ * NOT READY: nobody has walked that site or checked its order, so it should not
+ * claim otherwise the moment it lands.
+ */
+export function buildInputFromMonday(
+  job: MondayJob,
+  input: CreateProjectInput,
+): CreateProjectInput {
+  return {
+    ...input,
+    materialsEta: input.materialsEta ?? job.est_arrival ?? null,
+    readyState: input.readyState ?? "not_ready",
+  };
+}
+
 /** Build a real project from a staged row and link the two. */
 export async function buildProjectFromMonday(
   job: MondayJob,
   input: CreateProjectInput,
 ): Promise<void> {
-  const project = await createProject(input);
+  const project = await createProject(buildInputFromMonday(job, input));
   const { error } = await supabase
     .from("monday_jobs")
     .update({ project_id: project.id })

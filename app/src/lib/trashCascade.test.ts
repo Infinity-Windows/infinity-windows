@@ -102,6 +102,10 @@ const CASCADE_COVERED: Record<string, string> = {
   // with retention weight, and it died with the job when it was a column on
   // `projects`. This wave moved where it lives, not how long it lives.
   project_financials: "ON DELETE CASCADE from projects (the pk is the FK)",
+  // Wave J, 20260979000000. The ledger of what the pipeline sweep already said
+  // about this job: the row means nothing without the job, so it goes with it
+  // on the final `delete from projects`. Nothing else references it.
+  pipeline_nudges: "ON DELETE CASCADE from projects, on the final delete from projects",
 };
 
 function purgeBody(): string {

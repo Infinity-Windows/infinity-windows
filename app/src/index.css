@@ -11475,3 +11475,81 @@ button.stage-chip {
   text-transform: uppercase;
   white-space: nowrap;
 }
+
+/* Wave J — the job pipeline (transcripts grill 2026-09-03, Q8+Q9).
+
+   Readiness pill: the SAME shape as .job-mode-badge, deliberately, so the two
+   read as one row of labels rather than two competing stickers -- but amber
+   rather than grey, because "Not ready" is the one that should catch an eye
+   scrolling past twenty cards. A Ready job wears no pill at all: absence is the
+   quiet state, so the card missing a sticker is never the important one. */
+.job-ready-badge {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklch, var(--warn) 45%, transparent);
+  background: color-mix(in oklch, var(--warn) 12%, transparent);
+  color: var(--warn);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* "Needs a call" -- the one chip on this list that asks somebody to DO
+   something, so it borrows the same amber family and adds the phone glyph. */
+.job-needs-call {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklch, var(--danger) 40%, transparent);
+  background: color-mix(in oklch, var(--danger) 10%, transparent);
+  color: var(--danger);
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* Reordering the jobs list. The grip is the desktop affordance; the two
+   buttons are the ones that actually get used, because a drag needs a mouse and
+   this list is read on a phone. 48px square is the glove size the owner asked
+   for -- do not shrink these to match the other icon buttons on the card. */
+.job-order-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+  margin: -4px 4px -4px -4px;
+}
+
+.job-order-grip {
+  color: var(--muted);
+  cursor: grab;
+  line-height: 0;
+  padding: 2px 0;
+}
+
+.job-order-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.job-order-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}

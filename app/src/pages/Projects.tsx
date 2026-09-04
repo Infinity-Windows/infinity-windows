@@ -1,9 +1,15 @@
 import { BackChip } from "../components/BackChip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { LayoutGrid } from "lucide-react";
-import { createProject, getProjectDeleteCounts, listProjects, setProjectModes } from "../lib/api";
+import { ChevronDown, ChevronUp, GripVertical, LayoutGrid, Phone } from "lucide-react";
+import {
+  createProject,
+  getProjectDeleteCounts,
+  listProjects,
+  setProjectModes,
+  setProjectsOrder,
+} from "../lib/api";
 import { deleteJob } from "../lib/jobDeletion";
 import { formatApiError } from "../lib/errors";
 import { useT } from "../lib/i18n";
@@ -17,6 +23,9 @@ import { useUnreadCounts } from "../lib/chat/useUnreadCounts";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { buildDeleteConfirmMessage } from "../lib/projectTrash";
 import { IncomingMondayJobs } from "../components/projects/IncomingMondayJobs";
+import { PipelineLine } from "../components/projects/PipelineLine";
+import { ReadinessBadge } from "../components/projects/ReadinessBadge";
+import { needsCall, sortProjectsForList } from "../lib/pipeline";
 import { MessagesSquare } from "lucide-react";
 import type { Project } from "../lib/types";
 
@@ -28,6 +37,14 @@ interface OpeningCountRow {
 type ModeChoice = "data" | "tracking" | "both";
 const modesForChoice = (choice: ModeChoice): JobMode[] =>
   choice === "both" ? ["data", "tracking"] : [choice];
+
+/** Today as a YYYY-MM-DD day string in the device's own timezone — what the
+ * "Needs a call" chip counts days from. */
+function todayLocal(): string {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
 
 export function Projects() {
   const t = useT();
@@ -48,6 +65,11 @@ export function Projects() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [notes, setNotes] = useState("");
+  // Wave J (J1): the full New project form defaults READY, and only this form
+  // does. Somebody is filling it in by hand, so they know. A job that arrives
+  // instead — imported from Monday, built in one tap from the clock-in — is
+  // born Not ready with nobody asked.
+  const [readyState, setReadyState] = useState<"ready" | "not_ready">("ready");
   const [message, setMessage] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
@@ -87,6 +109,7 @@ export function Projects() {
         startDate,
         endDate,
         notes,
+        readyState,
       });
       const modes = modesForChoice(modeChoice);
       // The column already defaults to data-only, so only spend the extra RPC
@@ -110,6 +133,7 @@ export function Projects() {
       setStartDate("");
       setEndDate("");
       setNotes("");
+      setReadyState("ready");
       // A tracking-only job has no plans to extract, so land it on its hub
       // rather than the planset upload; data (and both-mode) jobs keep the
       // straight-to-PDFs flow they had.
@@ -126,6 +150,63 @@ export function Projects() {
     const pct = total > 0 ? Math.round((installed / total) * 100) : 0;
     return { total, installed, pct };
   };
+
+  // ---- J2: the order the office puts the jobs in --------------------------
+  // The list on screen is the server's order until a foreman moves something,
+  // and then it is `pending` until the save comes back. Holding an optimistic
+  // copy rather than re-fetching is what makes "move up" feel like moving one
+  // card instead of the whole list blinking; the refetch after the save is
+  // what proves the server agreed.
+  const [pending, setPending] = useState<Project[] | null>(null);
+  const serverRows = useMemo(
+    () => sortProjectsForList(projects.data ?? []),
+    [projects.data],
+  );
+  // A refetch that brings a genuinely different list (a job created, deleted or
+  // reordered elsewhere) drops the optimistic copy: what the server says is the
+  // list, and a stale local order quietly hiding a new job would be worse than
+  // a blink.
+  useEffect(() => {
+    setPending((current) => {
+      if (!current) return null;
+      const same =
+        current.length === serverRows.length &&
+        current.every((row) => serverRows.some((s) => s.id === row.id));
+      return same ? current : null;
+    });
+  }, [serverRows]);
+  const rows = pending ?? serverRows;
+  const canOrder = isForemanPlus(effectiveRole);
+
+  const saveOrder = useMutation({
+    mutationFn: (ids: string[]) => setProjectsOrder(ids),
+    onSuccess: async () => {
+      setMessage(t("pipeline.order.saved"));
+      await queryClient.invalidateQueries({ queryKey: ["projects"] });
+      await queryClient.invalidateQueries({ queryKey: ["projectsAll"] });
+    },
+    onError: (e) => {
+      // Put the server's order back: a list that keeps showing an order the
+      // database refused is a list that lies on the next reload.
+      setPending(null);
+      setMessage(formatApiError(e));
+    },
+  });
+
+  /** Move the job at `from` to `to`, then save the WHOLE list's new order. */
+  const moveTo = (from: number, to: number) => {
+    if (from === to || to < 0 || to >= rows.length) return;
+    const next = [...rows];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    setPending(next);
+    saveOrder.mutate(next.map((p) => p.id));
+  };
+
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  // One "today" for every card in this render, so a list drawn across midnight
+  // cannot have two cards disagreeing about what day it is.
+  const today = useMemo(() => todayLocal(), []);
 
   const trash = useMutation({
     mutationFn: ({ id, reason }: { id: string; reason: string }) =>
@@ -305,6 +386,19 @@ export function Projects() {
                   />
                 </label>
                 <label className="project-create-address">
+                  <span className="field-label">{t("pipeline.create.label")}</span>
+                  <select
+                    value={readyState}
+                    onChange={(e) => setReadyState(e.target.value as "ready" | "not_ready")}
+                  >
+                    <option value="ready">{t("pipeline.ready")}</option>
+                    <option value="not_ready">{t("pipeline.notReady")}</option>
+                  </select>
+                  <span className="wh-row-sub" style={{ display: "block", marginTop: 4 }}>
+                    {t("pipeline.create.hint")}
+                  </span>
+                </label>
+                <label className="project-create-address">
                   <span className="field-label">{t("jobmode.create.label")}</span>
                   <select
                     value={modeChoice}
@@ -352,24 +446,99 @@ export function Projects() {
         )}
         {!projects.isLoading &&
           !projects.isError &&
-          (projects.data ?? []).map((p) => {
+          rows.map((p, index) => {
           const c = countFor(p.id);
           const chatUnread = unread.data?.[p.id] ?? 0;
           const pctColor =
             c.pct >= 80 ? "var(--ok)" : c.pct >= 40 ? "var(--accent)" : "var(--warn)";
+          const call = needsCall(p, today);
           return (
             // Keeps the exact tag and className `a.project-card` other e2e
             // specs already select (foreman-marks.spec.ts) — the Delete
             // button nests inside and stops its own click from bubbling up
             // to the Link's navigation, rather than restructuring the card.
-            <Link key={p.id} to={`/projects/${p.id}`} className="project-card home-project">
+            //
+            // J2: the whole card is the drag handle on desktop (the grip is the
+            // affordance, not the only target), and dropping on another card
+            // moves this one into its place. A drag needs a mouse, which is
+            // exactly why the up/down buttons below are not optional.
+            <Link
+              key={p.id}
+              to={`/projects/${p.id}`}
+              className="project-card home-project"
+              draggable={canOrder}
+              onDragStart={(e) => {
+                if (!canOrder) return;
+                setDragIndex(index);
+                e.dataTransfer.effectAllowed = "move";
+              }}
+              onDragOver={(e) => {
+                if (canOrder && dragIndex !== null) e.preventDefault();
+              }}
+              onDrop={(e) => {
+                if (!canOrder || dragIndex === null) return;
+                e.preventDefault();
+                moveTo(dragIndex, index);
+                setDragIndex(null);
+              }}
+              onDragEnd={() => setDragIndex(null)}
+            >
               <div className="home-project-head">
+                {canOrder && (
+                  <div
+                    className="job-order-rail"
+                    // Inside the Link, so every control here stops its own
+                    // click reaching the card's navigation — the same trick
+                    // the Delete button below already plays.
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
+                  >
+                    <span className="job-order-grip" title={t("pipeline.order.drag")} aria-hidden>
+                      <GripVertical size={16} />
+                    </span>
+                    <button
+                      type="button"
+                      className="job-order-btn"
+                      aria-label={t("pipeline.order.up")}
+                      disabled={index === 0 || saveOrder.isPending}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        moveTo(index, index - 1);
+                      }}
+                    >
+                      <ChevronUp size={18} aria-hidden />
+                    </button>
+                    <button
+                      type="button"
+                      className="job-order-btn"
+                      aria-label={t("pipeline.order.down")}
+                      disabled={index === rows.length - 1 || saveOrder.isPending}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        moveTo(index, index + 1);
+                      }}
+                    >
+                      <ChevronDown size={18} aria-hidden />
+                    </button>
+                  </div>
+                )}
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: 600, fontSize: 16, display: "flex", alignItems: "center", gap: 6 }}>
+                  <div style={{ fontWeight: 600, fontSize: 16, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                     <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
                       {p.name || p.job_code}
                     </span>
                     <JobModeBadge allowed={p.allowed_modes} />
+                    {/* Beside the mode badge, never on top of it. */}
+                    <ReadinessBadge readyState={p.ready_state} />
+                    {call.call && (
+                      <span className="job-needs-call">
+                        <Phone size={11} aria-hidden /> {t("pipeline.needsCall")}
+                      </span>
+                    )}
                     {chatUnread > 0 && (
                       <span className="chat-badge" title={`${chatUnread} unread message${chatUnread > 1 ? "s" : ""}`}>
                         <MessagesSquare size={11} aria-hidden />
@@ -381,6 +550,8 @@ export function Projects() {
                     {p.job_code}
                     {p.address ? ` · ${p.address}` : ""}
                   </div>
+                  {/* "Not ready · start ~Sep 22 · windows ETA Sep 15" */}
+                  <PipelineLine job={p} />
                 </div>
                 <span
                   style={{
