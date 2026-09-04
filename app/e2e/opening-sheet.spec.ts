@@ -156,15 +156,68 @@ async function routeEligible(page: Page) {
 }
 
 /** Fail geolocation immediately (PERMISSION_DENIED) so the photo-capture
- * pipeline's soft GPS lookup (captureGeoSoft, up to an 8s timeout) never
- * waits one out — headless Chromium has no UI to grant or deny the real
- * prompt, so this makes the outcome deterministic instead of relying on it. */
+ * pipeline's soft GPS lookup never waits one out — headless Chromium has no UI
+ * to grant or deny the real prompt, so this makes the outcome deterministic
+ * instead of relying on it. Both doors are stubbed: the one-shot lookup a cold
+ * shutter falls back to, and the position watch a capture screen now starts on
+ * mount (lib/geoWatch.ts). */
 async function stubGeolocationDenied(page: Page) {
   await page.addInitScript(() => {
     if (!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition = (_ok, err) => {
       err?.({ code: 1, message: "denied" } as GeolocationPositionError);
     };
+    navigator.geolocation.watchPosition = (_ok, err) => {
+      err?.({
+        code: 1,
+        message: "denied",
+        PERMISSION_DENIED: 1,
+      } as GeolocationPositionError);
+      return 1;
+    };
+    navigator.geolocation.clearWatch = () => {};
+  });
+}
+
+/** What the warm-fix stub records, read back with page.evaluate. */
+interface GeoProbeWindow {
+  __geoOneShots: number;
+}
+
+/**
+ * A phone that HAS a fix, but only through the position watch: the one-shot
+ * `getCurrentPosition` never answers, which is high-accuracy GPS indoors — the
+ * thing every shutter used to sit through for up to eight seconds. It also
+ * counts one-shot calls, so "the shutter stopped asking for its own fix" is
+ * asserted directly rather than inferred from the clock.
+ */
+async function stubGeolocationWarmWatch(page: Page) {
+  await page.addInitScript(() => {
+    (window as unknown as GeoProbeWindow).__geoOneShots = 0;
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition = () => {
+      (window as unknown as GeoProbeWindow).__geoOneShots += 1;
+    };
+    navigator.geolocation.watchPosition = (ok) => {
+      setTimeout(
+        () =>
+          ok({
+            coords: {
+              latitude: 30.2672,
+              longitude: -97.7431,
+              accuracy: 9,
+              altitude: null,
+              altitudeAccuracy: null,
+              heading: null,
+              speed: null,
+            },
+            timestamp: Date.now(),
+          } as GeolocationPosition),
+        50,
+      );
+      return 7;
+    };
+    navigator.geolocation.clearWatch = () => {};
   });
 }
 
@@ -208,6 +261,40 @@ test("Start: a ready opening fires start_unit_session with its own id", async ({
   expect(starts[0]).toEqual({ opening: str(o.id), role: "install" });
   // Visible: the sheet drops the Start gate and moves into the install stage.
   await expect(page.getByText("Installing")).toBeVisible();
+});
+
+test("Camera: the shutter reads the warm fix instead of waiting for its own", async ({
+  page,
+}) => {
+  await useSupabaseFixtures(page, { role: "installer" });
+  await stubGeolocationWarmWatch(page);
+  const o = opening(0, {
+    status: "assigned",
+    needs_flashing: false,
+    work_started_at: null,
+    confirmed: true,
+  });
+  await routeOpenings(page, [o]);
+  await routeEligible(page);
+
+  await page.goto(`/projects/${str(o.project_id)}/opening/${str(o.id)}`);
+  // The watch was started when the card came on screen, so by the time a photo
+  // is picked the fix is already in hand.
+  await page
+    .locator('input[type="file"][accept="image/*"]')
+    .setInputFiles(pngFile("before.png"));
+
+  // The label only flips to "Start install →" once the before photo is stamped
+  // and in hand. Five seconds is the whole point of this test: the old shutter
+  // asked for a high-accuracy fix of its own and sat on it for eight.
+  await expect(
+    page.getByRole("button", { name: "Start install →" }),
+  ).toBeVisible({ timeout: 5_000 });
+  expect(
+    await page.evaluate(
+      () => (window as unknown as GeoProbeWindow).__geoOneShots,
+    ),
+  ).toBe(0);
 });
 
 test("Finish: submitting a capture fires finish_unit with the grade, and no chain target", async ({

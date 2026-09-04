@@ -15,6 +15,7 @@ import {
   toPhotoMetaFields,
   type StampMeta,
 } from "../lib/photo/stampPhoto";
+import { useWarmGeoFix } from "../lib/geoWatch";
 import { supabase } from "../lib/supabase";
 import { formatApiError } from "../lib/errors";
 import { pushToast } from "../lib/toast";
@@ -83,8 +84,8 @@ type PhotoCaptureSheetProps =
        * paper somebody is holding, the stamp says nothing true about the card,
        * and burning a GPS fix onto a document that already carries a full legal
        * name adds a fact nobody asked for. It also costs a location lookup —
-       * capturePhotoMeta waits up to eight seconds for a fix — for a photo
-       * taken at a desk.
+       * this is the one capture surface that never warms a GPS fix — for a
+       * photo taken at a desk.
        */
       stamp?: boolean;
       /** Replaces the "GPS and time are added automatically" line under the
@@ -494,6 +495,9 @@ function JobPhotoCapture({
   const [queued, setQueued] = useState(0);
   const [filedReceipt, setFiledReceipt] = useState<{ id: string; entryId: string } | null>(null);
 
+  // Ask for the fix when the SHEET opens, not when the shutter is tapped.
+  useWarmGeoFix();
+
   const videoRef = useCameraStream(cameraOn, (message) => {
     setCameraError(message);
     setCameraOn(false);
@@ -502,7 +506,13 @@ function JobPhotoCapture({
   const queueBlob = async (raw: Blob) => {
     setBusy(true);
     try {
-      const meta = await capturePhotoMeta(label ?? null, 8000);
+      // THE WATERMARK RULE: what comes back here is burned into the picture
+      // AND stored on the row, so the two can never disagree. A photo is never
+      // queued with no coordinates for someone to attach later. The wait is the
+      // warm fix this sheet started on mount — instant in the ordinary case,
+      // three seconds at worst, then time-only. A multi-file pick reads the
+      // same held fix for every file instead of waiting one out per file.
+      const meta = await capturePhotoMeta(label ?? null);
 
       if (isReceipt) {
         // Phone-side compression per the spec (1280px longest edge, JPEG
@@ -528,7 +538,14 @@ function JobPhotoCapture({
 
       const stamped = await stampPhoto(raw, meta);
       const fields = toPhotoMetaFields(meta);
-      const createdBy = (await supabase.auth.getUser()).data.user?.email ?? null;
+      // getSession(), not getUser(): getUser() is a GET /auth/v1/user round
+      // trip on every single shutter tap. On a phone with no data that stalls
+      // the shutter for as long as the request takes to give up and then hands
+      // back a null user anyway — so the photo went out with nobody's name on
+      // it, having made the installer wait for the privilege. The session is
+      // already on the device; reading it is instant and works with no bars.
+      const createdBy =
+        (await supabase.auth.getSession()).data.session?.user?.email ?? null;
       const stamp = Date.now();
       const rand = Math.random().toString(16).slice(2, 8);
       const prefix = projectId ?? "unassigned";
@@ -675,7 +692,12 @@ function JobPhotoCapture({
         )}
 
         {cameraError && <p className="muted">{t("photo.cameraUnavailable")}</p>}
-        {busy && !cameraOn && <p className="muted">{t("photo.stampingGps")}</p>}
+        {/* This line used to be hidden whenever the camera was on, which is
+            the one mode where the whole screen is a live picture and the only
+            other feedback is a greyed-out "Saving…". Any wait at all needs a
+            sentence saying what is being waited for, or it reads as a broken
+            app and gets tapped again. */}
+        {busy && <p className="muted">{t("photo.stampingGps")}</p>}
         {queued > 0 && (
           <p className="ok jobphoto-count">
             {queued} photo{queued === 1 ? "" : "s"} queued — syncing in the background.
@@ -697,13 +719,20 @@ function BeforeAfterCapture({
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [stamping, setStamping] = useState(false);
 
+  // Warm a fix from the moment the card is on screen — an installer standing at
+  // the window has been standing there for a while before the shutter.
+  useWarmGeoFix();
+
   const metaKey = (slot: "before" | "after"): "beforeMeta" | "afterMeta" =>
     slot === "before" ? "beforeMeta" : "afterMeta";
 
   const applyPhoto = async (slot: "before" | "after", raw: File) => {
     setStamping(true);
     try {
-      const meta = await capturePhotoMeta(label ?? null, 8000);
+      // THE WATERMARK RULE: these coordinates are burned into the picture and
+      // stored on the row together, so they can never disagree. Never queue a
+      // photo with no fix and attach one later.
+      const meta = await capturePhotoMeta(label ?? null);
       const stamped = await stampPhotoFile(raw, meta);
       onChange({ ...value, [slot]: stamped, [metaKey(slot)]: meta });
     } finally {
@@ -874,6 +903,10 @@ function SinglePhotoCapture({
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [stamping, setStamping] = useState(false);
 
+  // Only when this shot is actually stamped. A photo of somebody's OSHA card
+  // asks for no fix at the shutter, so it must not ask for one on mount either.
+  useWarmGeoFix(stamp);
+
   const applyPhoto = async (raw: File) => {
     // An unstamped shot skips the GPS wait entirely — see `stamp` above — but
     // NOT the shrink and re-encode. That half has nothing to do with stamping:
@@ -893,7 +926,9 @@ function SinglePhotoCapture({
     }
     setStamping(true);
     try {
-      const meta = await capturePhotoMeta(label ?? null, 8000);
+      // THE WATERMARK RULE: burned in and stored from the same reading, so a
+      // printed stamp can never disagree with the row it was filed under.
+      const meta = await capturePhotoMeta(label ?? null);
       const stamped = await stampPhotoFile(raw, meta);
       onChange(stamped);
     } finally {

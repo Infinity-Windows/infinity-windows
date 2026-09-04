@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  capturePhotoMeta,
   composeStampLines,
   formatCoords,
   formatStampTime,
@@ -92,6 +93,33 @@ describe("toPhotoMetaFields", () => {
       accuracyM: null,
       takenAt: "2026-07-21T13:16:00.000Z",
     });
+  });
+});
+
+describe("capturePhotoMeta", () => {
+  // The time-only path, unchanged by the warm-fix work: on a device with no
+  // geolocation at all (this test runner, and a browser with the API missing),
+  // the stamp still goes out with a real timestamp and the label, and the geo
+  // fields are null rather than absent. This is the shape the watermark and the
+  // attachments row both read, and it must never come back half-filled.
+  it("stamps time-only when the device has no fix to give", async () => {
+    const before = Date.now();
+    const meta = await capturePhotoMeta("BLACK22 · 1-1");
+    expect(meta.lat).toBeNull();
+    expect(meta.lng).toBeNull();
+    expect(meta.accuracyM).toBeNull();
+    expect(meta.label).toBe("BLACK22 · 1-1");
+    expect(meta.takenAt.getTime()).toBeGreaterThanOrEqual(before);
+    expect(toPhotoMetaFields(meta)).toMatchObject({
+      lat: null,
+      lng: null,
+      accuracyM: null,
+    });
+  });
+
+  it("keeps a missing label as null rather than undefined", async () => {
+    const meta = await capturePhotoMeta();
+    expect(meta.label).toBeNull();
   });
 });
 
