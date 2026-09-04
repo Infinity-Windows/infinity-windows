@@ -5,6 +5,7 @@ import {
   dataOffIds,
   dataOffKind,
   dataOffRate,
+  dataOffUnits,
   isDataOff,
 } from "./dataOff";
 
@@ -37,6 +38,38 @@ describe("dataOffIds", () => {
       { id: "c", flag_kind: null, flag_note: "sill is rotten" },
     ]);
     expect([...ids].sort()).toEqual(["a", "c"]);
+  });
+});
+
+describe("dataOffUnits", () => {
+  it("lists the flagged ones newest first, with reason and who", () => {
+    const out = dataOffUnits([
+      {
+        id: "a",
+        opening_code: "7-1",
+        flag_kind: "wrong_size",
+        flag_note: " ordered 3060 ",
+        flagged_by: "ben",
+        flagged_at: "2026-09-01T10:00:00Z",
+      },
+      { id: "b", opening_code: "8-1", flag_kind: null, flag_note: null },
+      {
+        id: "c",
+        opening_code: "9-1",
+        flag_kind: "mirrored",
+        flag_note: null,
+        flagged_by: null,
+        flagged_at: "2026-09-03T10:00:00Z",
+      },
+    ]);
+    expect(out.map((u) => u.code)).toEqual(["9-1", "7-1"]);
+    expect(out[1]).toEqual({
+      openingId: "a",
+      code: "7-1",
+      reason: "wrong_size",
+      note: "ordered 3060",
+      flaggedBy: "ben",
+    });
   });
 });
 

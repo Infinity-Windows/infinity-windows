@@ -931,6 +931,20 @@ export const CATALOG = {
   },
   "missed.cancel": { en: "Cancel", es: "Cancelar" },
   "missed.badge": { en: "Missed unit", es: "Unidad faltante" },
+  "datahub.dataOff.title": { en: "Units data off", es: "Unidades con datos incorrectos" },
+  "datahub.dataOff.explain": {
+    en: "Windows and doors the crew says the paperwork is wrong about. Their install time is kept out of every average, because it timed a unit we did not really order — the rate beside it is how often that happens.",
+    es: "Ventanas y puertas donde la cuadrilla dice que el papeleo está mal. Su tiempo de instalación se deja fuera de todos los promedios, porque midió una unidad que en realidad no pedimos — la tasa al lado dice con qué frecuencia pasa.",
+  },
+  "datahub.dataOff.none": {
+    en: "Nothing flagged. When a crew member marks a unit data off, it lands here with the reason and their name.",
+    es: "Nada marcado. Cuando alguien marca una unidad con datos incorrectos, aparece aquí con el motivo y su nombre.",
+  },
+  "datahub.dataOff.chip": { en: "Data off", es: "Datos incorrectos" },
+  "datahub.dataOff.excluded": {
+    en: "{n} kept out of the averages",
+    es: "{n} fuera de los promedios",
+  },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */

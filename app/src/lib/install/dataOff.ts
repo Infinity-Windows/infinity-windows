@@ -89,6 +89,40 @@ export function dataOffIds<T extends FlaggableOpening & { id: string }>(
   return out;
 }
 
+/** One flagged unit, as the Data Tab and Job history read it. */
+export interface DataOffUnit {
+  openingId: string;
+  code: string;
+  reason: DataOffKind;
+  note: string | null;
+  /** Profile id — the caller turns it into a name. */
+  flaggedBy: string | null;
+}
+
+/**
+ * PURE: the flagged units in a job's openings, newest flag first so the thing
+ * somebody just said is the thing they see at the top.
+ */
+export function dataOffUnits(
+  openings: readonly (FlaggableOpening & {
+    id: string;
+    opening_code: string;
+    flagged_by?: string | null;
+    flagged_at?: string | null;
+  })[],
+): DataOffUnit[] {
+  return openings
+    .filter((o) => isDataOff(o))
+    .sort((a, b) => (b.flagged_at ?? "").localeCompare(a.flagged_at ?? ""))
+    .map((o) => ({
+      openingId: o.id,
+      code: o.opening_code,
+      reason: dataOffKind(o) as DataOffKind,
+      note: o.flag_note?.trim() || null,
+      flaggedBy: o.flagged_by ?? null,
+    }));
+}
+
 /**
  * The share of units whose record is off — shown beside the rework rate, and
  * read the same way: how often does the paperwork lie? Null when there are no

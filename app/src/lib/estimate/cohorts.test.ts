@@ -11,6 +11,7 @@ import {
   estimateJobUnits,
   evidenceFromSessions,
   manualEstimate,
+  partitionDataOff,
   type CohortEvidence,
 } from "./cohorts";
 import { configFromTiers, type UnitConfig } from "../modelstudio/units";
@@ -376,5 +377,66 @@ describe("estimateForSignature — the formula rung (Studio 100x #24)", () => {
       minutes: 40,
       label: "this exact unit · n=5",
     });
+  });
+});
+
+describe("data off never enters a cohort (wave E)", () => {
+  const t = computeSignature(fixedWindow(3), { story: 1, insetOutset: null });
+  const sample = (unitId: string, minutes: number, dataOff?: string | null): CohortEvidence => ({
+    sigKey: t.sigKey,
+    signature: t.signature,
+    minutes,
+    unitId,
+    dataOff: dataOff as CohortEvidence["dataOff"],
+  });
+
+  it("drops the flagged sample and says why", () => {
+    const { usable, excluded } = partitionDataOff([
+      sample("clean-1", 30),
+      sample("bad-1", 200, "wrong_size"),
+      sample("clean-2", 34),
+    ]);
+    expect(usable.map((e) => e.unitId)).toEqual(["clean-1", "clean-2"]);
+    expect(excluded).toEqual([{ unitId: "bad-1", sigKey: t.sigKey, reason: "wrong_size" }]);
+  });
+
+  it("a flagged install cannot move the cohort's answer", () => {
+    // Five honest 40-minute installs, and one 400-minute install of a unit
+    // whose order was the wrong size. Left in, it drags the median; the whole
+    // point of the exclusion is that it cannot.
+    const clean = [38, 39, 40, 41, 42].map((m, i) => sample(`c${i}`, m));
+    const flagged = sample("bad", 400, "mirrored");
+    const { usable } = partitionDataOff([...clean, flagged]);
+    const withFlag = estimateForSignature(t, [...clean, flagged]);
+    const without = estimateForSignature(t, usable);
+    expect(usable).toHaveLength(5);
+    expect(without.n).toBe(5);
+    expect(without.minutes).toBe(40);
+    // And leaving it in really would have changed the answer — so the filter
+    // is doing work, not decorating a pool that never had a problem.
+    expect(withFlag.n).toBe(6);
+    expect(withFlag.minutes).not.toBe(without.minutes);
+  });
+
+  it("a flag with a note and no reason still counts as data off", () => {
+    // evidenceFromSessions reads the flag through dataOffKind, so the whole
+    // back catalogue of free-text flags is excluded too, as "other".
+    const out = evidenceFromSessions([
+      {
+        started_at: new Date(Date.UTC(2026, 7, 17, 8, 0)).toISOString(),
+        ended_at: new Date(Date.UTC(2026, 7, 17, 8, 30)).toISOString(),
+        role: "install",
+        is_rework: false,
+        end_reason: "finish",
+        opening: {
+          id: "legacy-flag",
+          sig_key: t.sigKey,
+          signature: t.signature,
+          flag_note: "came in mirrored",
+        },
+      },
+    ]);
+    expect(out[0].dataOff).toBe("other");
+    expect(partitionDataOff(out).usable).toHaveLength(0);
   });
 });

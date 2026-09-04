@@ -25,7 +25,7 @@ import {
   type PinMove,
 } from "./pinHistory";
 import { foremanOnlyRefusal, REMOVED_LIST_DENIED } from "./openingAccess";
-import type { DataOffKind } from "./dataOff";
+import { isDataOff, type DataOffKind } from "./dataOff";
 import type { CustomMarkRegistrationPayload } from "../modelstudio/customMarks";
 import type {
   InstallEvent,
@@ -443,6 +443,40 @@ export async function clearOpeningFlag(openingId: string): Promise<ProjectOpenin
   if (!cleared.error) return cleared.data as ProjectOpening;
   if (!isMissingSchemaFunction(cleared.error)) throw cleared.error;
   return flagOpening(openingId, null);
+}
+
+/**
+ * How many units on each of these jobs carry a data-off flag.
+ *
+ * Job history's line ("3 units data off") reads this: a finished job's honest
+ * epitaph is not only how long it took, it is how much of what it recorded was
+ * wrong. Degrades to an empty map on a database without the flag column — no
+ * flags there is the truth there, not an error screen.
+ */
+export async function countDataOffByProject(
+  projectIds: readonly string[],
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (projectIds.length === 0) return out;
+  const { data, error } = await supabase
+    .from("project_openings")
+    .select("project_id, flag_kind, flag_note")
+    .in("project_id", [...projectIds]);
+  if (error) {
+    if (isMissingColumn(error, "flag_kind") || isMissingTable(error, "project_openings")) {
+      return out;
+    }
+    throw error;
+  }
+  for (const row of (data ?? []) as {
+    project_id: string;
+    flag_kind?: string | null;
+    flag_note?: string | null;
+  }[]) {
+    if (!isDataOff(row)) continue;
+    out.set(row.project_id, (out.get(row.project_id) ?? 0) + 1);
+  }
+  return out;
 }
 
 // --- A window or door nobody drew (wave E) ---------------------------------
