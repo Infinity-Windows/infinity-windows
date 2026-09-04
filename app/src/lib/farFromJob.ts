@@ -112,7 +112,7 @@ export function holdKey(shiftId: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// K3 — the reading half: "last seen 14 mi from job · 4:12 PM"
+// K3 — the reading half: "last seen 14 mi from where they clocked in · 4:12 PM"
 // ---------------------------------------------------------------------------
 
 /** What the supervisor list needs off a shift to say where somebody was. */
@@ -127,12 +127,17 @@ export interface LastSeenShift {
 }
 
 /**
- * "Last seen away from the job", or null when there is nothing honest to say.
+ * "Last seen away from where this punch started", or null when there is
+ * nothing honest to say.
  *
- * The job's position here is where THIS punch was clocked in — the only one a
- * single shift row carries on its own. That makes the line mean something
- * precise: they started the shift here, and the last time they opened the app
- * they were N miles from that spot.
+ * THE REFERENCE POINT IS THE CLOCK-IN, NOT THE JOB, and the sentence this
+ * feeds says exactly that. A single shift row carries one position of its own —
+ * where it was punched in — and that is what this measures against. It is NOT
+ * the same reference K1 uses: the prompt asks `getJobLastGeo(projectId)`, which
+ * is where the job's clock-ins generally happen. Clocking in away from the site
+ * is a normal morning (the shop, a supply stop, a bad address on a new job), so
+ * a line that claimed "N mi from job" off this number would report somebody
+ * standing on site as miles away from it.
  *
  * The accuracy radius rides along on purpose. `farFromJob` refuses to call a
  * fix "far" when its own uncertainty is wider than the threshold, and dropping
@@ -157,12 +162,12 @@ export function lastSeenAwayFromJob(
           accuracyM: shift.last_seen_accuracy_m ?? undefined,
         }
       : null;
-  const job =
+  const startedAt =
     shift.clock_in_lat != null && shift.clock_in_lng != null
       ? { lat: shift.clock_in_lat, lng: shift.clock_in_lng }
       : null;
-  if (!seen || !job) return null;
-  if (!farFromJob(seen, job)) return null;
-  const away = describeMiles(milesFromMeters(haversineMeters(seen, job)));
+  if (!seen || !startedAt) return null;
+  if (!farFromJob(seen, startedAt)) return null;
+  const away = describeMiles(milesFromMeters(haversineMeters(seen, startedAt)));
   return { miles: away.value, atIso: at };
 }

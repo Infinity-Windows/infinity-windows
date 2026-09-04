@@ -882,9 +882,14 @@ export const CATALOG = {
   "farjob.switched": { en: "Switched to Travel", es: "Cambiado a Viaje" },
   // The supervisor's reading of the same fact (K3). "mi" abbreviates the same
   // way in both languages, so one key covers one mile and fourteen.
+  //
+  // "from where they clocked in", NOT "from job": the only position a single
+  // shift row carries is its own clock-in, and clocking in away from the site
+  // (the shop, a supply stop, a bad address) is a normal morning. Saying "from
+  // job" would report somebody standing on site as miles away from it.
   "lastseen.farFromJob": {
-    en: "last seen {miles} mi from job · {time}",
-    es: "visto por última vez a {miles} mi del trabajo · {time}",
+    en: "last seen {miles} mi from where they clocked in · {time}",
+    es: "visto por última vez a {miles} mi de donde marcó entrada · {time}",
   },
   // The evening nudge hour, set by a foreman on Team timecards (K2).
   "nudge.label": {

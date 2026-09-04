@@ -114,7 +114,7 @@ async function useTimeFixtures(page: Page) {
 
 test.use({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
 
-test("a runaway punch says where the person was last seen, and only when that is away from the job", async ({
+test("a runaway punch says where the person was last seen, and only when that is away from where they clocked in", async ({
   page,
 }) => {
   await useSupabaseFixtures(page, { role: "foreman" });
@@ -124,7 +124,11 @@ test("a runaway punch says where the person was last seen, and only when that is
   const runaways = page.locator(".runaway-shifts");
   await expect(runaways).toBeVisible();
   // 14 miles from where the punch started, at the hour the app was last opened.
-  await expect(runaways.getByText(/last seen 14 mi from job ·/)).toHaveCount(1);
+  // The sentence names the clock-in, not "the job": clocking in at the shop and
+  // driving to site is a normal morning, and this number cannot tell them apart.
+  await expect(
+    runaways.getByText(/last seen 14 mi from where they clocked in ·/),
+  ).toHaveCount(1);
   // Three people are on the list; only one of them has a fix worth reporting.
   await expect(runaways.getByText("Ana Ruiz")).toHaveCount(1);
   await expect(runaways.getByText("Ben Cole")).toHaveCount(1);
