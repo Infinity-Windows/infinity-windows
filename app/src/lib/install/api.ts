@@ -3418,13 +3418,21 @@ export async function listProjectExceptions(
   canSee = true,
 ): Promise<ProjectExceptions> {
   if (!canSee) return { failedInstalls: [], flaggedOpenings: [] };
-  const [flaggedRes, voidedRes] = await Promise.all([
+  // A data-off flag can carry a reason and NO note (wave E) — a note is
+  // optional on the card and the reason is the message. Asking only about
+  // flag_note therefore missed the ordinary case the wave introduced: the
+  // foreman's exceptions list stayed empty while the map went amber.
+  const flaggedWhere = "flag_kind.not.is.null,flag_note.not.is.null,condition.eq.damaged";
+  const flaggedWhereNoKind = "flag_note.not.is.null,condition.eq.damaged";
+  const flaggedQuery = (where: string) =>
     supabase
       .from("project_openings")
       .select(OPENING_SELECT)
       .eq("project_id", projectId)
-      .or("flag_note.not.is.null,condition.eq.damaged")
-      .order("opening_code"),
+      .or(where)
+      .order("opening_code");
+  const [flaggedFirst, voidedRes] = await Promise.all([
+    flaggedQuery(flaggedWhere),
     supabase
       .from("install_events")
       .select(
@@ -3436,6 +3444,13 @@ export async function listProjectExceptions(
       .eq("project_openings.project_id", projectId)
       .order("voided_at", { ascending: false }),
   ]);
+  // A phone ahead of the migration asks about a column the server has not got.
+  // Peel back to the question it can answer rather than throwing the whole
+  // exceptions screen away: on that database every flag has a note anyway.
+  const flaggedRes =
+    flaggedFirst.error && isMissingColumn(flaggedFirst.error, "flag_kind")
+      ? await flaggedQuery(flaggedWhereNoKind)
+      : flaggedFirst;
   if (flaggedRes.error) throw flaggedRes.error;
   if (voidedRes.error) throw voidedRes.error;
 
