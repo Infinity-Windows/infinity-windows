@@ -11,8 +11,8 @@ import {
 } from "./recordings";
 
 const contact = (email: string | null, name = "Jed"): ForemanContact => ({
-  display_name: name,
-  email,
+  contact_name: name,
+  contact_email: email,
 });
 
 describe("mailAddresses", () => {

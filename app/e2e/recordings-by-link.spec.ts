@@ -54,7 +54,7 @@ async function useRecordingRoutes(
   page: Page,
   opts: {
     videos: VideoRow[];
-    contacts?: { display_name: string; email: string }[];
+    contacts?: { contact_name: string; contact_email: string }[];
     /** The open shift the "Send a recording" subject names, if any. */
     shift?: Record<string, unknown> | null;
     onPublish?: (body: Record<string, unknown>) => void;
@@ -164,8 +164,8 @@ test("Send a recording addresses the leads on the job the installer is clocked i
     videos: [],
     shift: OPEN_SHIFT,
     contacts: [
-      { display_name: "Jed", email: "jed@forgewd.com" },
-      { display_name: "Sam", email: "sam@forgewd.com" },
+      { contact_name: "Jed", contact_email: "jed@forgewd.com" },
+      { contact_name: "Sam", contact_email: "sam@forgewd.com" },
     ],
   });
 
@@ -203,7 +203,7 @@ test("Send a recording is on the job screen too", async ({ page }) => {
   await useRecordingRoutes(page, {
     videos: [],
     shift: OPEN_SHIFT,
-    contacts: [{ display_name: "Jed", email: "jed@forgewd.com" }],
+    contacts: [{ contact_name: "Jed", contact_email: "jed@forgewd.com" }],
   });
 
   await page.goto("/my-work");

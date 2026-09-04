@@ -19,8 +19,8 @@ import { isMissingFunction } from "./schemaErrors";
 /** The minimal projection foreman_contacts_for_me() answers with: a name to
  * show and an address to send to, and deliberately nothing else. */
 export interface ForemanContact {
-  display_name: string | null;
-  email: string | null;
+  contact_name: string | null;
+  contact_email: string | null;
 }
 
 /**
@@ -56,7 +56,7 @@ export function mailAddresses(contacts: ForemanContact[]): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
   for (const c of contacts) {
-    const address = (c.email ?? "").trim();
+    const address = (c.contact_email ?? "").trim();
     if (!PLAIN_ADDRESS.test(address)) continue;
     const key = address.toLowerCase();
     if (seen.has(key)) continue;

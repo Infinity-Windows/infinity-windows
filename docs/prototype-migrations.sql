@@ -9478,8 +9478,14 @@ grant execute on function public.publish_learning_video(uuid) to authenticated, 
 --
 -- Partners are refused outright. A builder login is not crew and must never be
 -- handed the crew's address book.
+--
+-- The two returned columns are named contact_name / contact_email rather than
+-- display_name / email on purpose. It says what they are — a contact card, not
+-- a profiles row — and it keeps every identifier inside the body unambiguous:
+-- an OUT parameter sharing a name with a column of a table the body queries is
+-- the classic way a plpgsql function that reads fine refuses to compile.
 create or replace function public.foreman_contacts_for_me()
-returns table (display_name text, email text)
+returns table (contact_name text, contact_email text)
 language plpgsql
 stable
 security definer
