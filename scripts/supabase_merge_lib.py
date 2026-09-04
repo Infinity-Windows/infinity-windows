@@ -681,6 +681,23 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     # -- hash of date + amount + description. Exactly the question a merge
     # -- asks, already answered.
     "bank_transactions": ("dedupe_key",),
+    # -- One card per person per kind per issue date (Wave O, O1). Not a UNIQUE
+    # -- in the migration — somebody genuinely can hold two OSHA 10 cards issued
+    # -- on different days, and voiding a mistyped row leaves the row behind —
+    # -- but two projects each holding "Cesar's OSHA 30 issued 2026-03-04" are
+    # -- the same piece of paper, and merging them as two would double every
+    # -- count on the bid summary. issued_on can be null (a card whose date
+    # -- nobody typed), and a null key part means the rows do not match, which
+    # -- errs toward keeping both rather than silently merging two cards that
+    # -- might be different.
+    "certifications": ("profile_id", "kind", "issued_on"),
+    # -- The "we already said this" ledger behind the credential half of the
+    # -- 7 AM sweep (Wave O, O4, 20260983000000). Its own UNIQUE constraint is
+    # -- the natural key, exactly as pipeline_nudges' is: two databases that
+    # -- each warned about the same card's same expiry hold ONE fact between
+    # -- them, and a union that kept both would let the merged database warn
+    # -- twice about a card it has already warned about.
+    "credential_nudges": ("certification_id", "kind", "on_date"),
 }
 
 #: Tables where combining two projects' rows is meaningless or actively wrong.
