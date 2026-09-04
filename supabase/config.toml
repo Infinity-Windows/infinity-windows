@@ -55,3 +55,9 @@ verify_jwt = true
 # Parameterless, idempotent cron target — see the function header for why
 # no JWT is safe here. The pg_cron poke carries no auth on purpose.
 verify_jwt = false
+
+[functions.still-on-the-job-sweep]
+# Parameterless, idempotent cron target, same as summon-warning-sweep above —
+# the pg_cron poke carries no auth on purpose and the function decides
+# everything from the database (Wave K, K2).
+verify_jwt = false

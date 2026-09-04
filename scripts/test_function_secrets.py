@@ -211,7 +211,10 @@ class FunctionSecretsTest(unittest.TestCase):
 
     def test_every_real_function_is_covered(self):
         names = fs.function_names()
-        self.assertEqual(len(names), 19)
+        # 20: +still-on-the-job-sweep, the evening "are you really still on the
+        # job?" push (Wave K, K2). Like summon-warning-sweep it is a cron
+        # target on the VAPID pair and introduces no new secret.
+        self.assertEqual(len(names), 20)
         self.assertIn("ask", names)
         self.assertIn("studio-assist", names)
         # Creates accounts on the service-role key, and needs no secret of its

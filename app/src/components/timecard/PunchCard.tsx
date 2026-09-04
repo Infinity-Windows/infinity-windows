@@ -5,9 +5,11 @@
 // the per-punch Approve / Reject / Edit actions live at the bottom edge.
 
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Coffee } from "lucide-react";
 import { formatApiError } from "../../lib/errors";
+import { getMyProfile } from "../../lib/install/api";
+import { sendPush } from "../../lib/permissions/pushServer";
 import {
   elapsedWorkSeconds,
   restoreShift,
@@ -36,9 +38,22 @@ export function PunchCard({ shift: s, isLead, isSup, projects, costCodes, reject
 
   // T3: the persistent restore path for the "Show removed" list, once the
   // five-second Undo toast on the delete itself has already expired.
+  const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
+  const isMine = Boolean(me.data?.id) && me.data?.id === s.profile_id;
   const restore = useMutation({
     mutationFn: () => restoreShift(s.id),
     onSuccess: () => {
+      // K4: a punch coming BACK moves somebody's hours exactly as much as one
+      // going away did, and the delete already pushed. Tell them both halves.
+      if (!isMine) {
+        void sendPush({
+          profileIds: [s.profile_id],
+          title: "Timecard punch restored",
+          body: "A punch that was deleted from your timecard was put back.",
+          tag: `timecard-restored-${s.id}`,
+          url: "/timecard",
+        });
+      }
       qc.invalidateQueries({ queryKey: ["teamShifts"] });
       qc.invalidateQueries({ queryKey: ["timecardMine"] });
       qc.invalidateQueries({ queryKey: ["timecardPanel"] });

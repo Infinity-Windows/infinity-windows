@@ -12,6 +12,7 @@ import { getMyProfile } from "./install/api";
 import { getOpenShift, type TimeShift } from "./timeclock";
 import { subscribeSynced } from "./offline/outbox";
 import { ClockSheet } from "../components/clock/ClockSheet";
+import { FarFromJobPrompt } from "../components/clock/FarFromJobPrompt";
 
 /**
  * App-wide clock state. The clock is a bottom sheet that any surface can open
@@ -98,6 +99,11 @@ export function ClockProvider({ children }: { children: ReactNode }) {
           onChanged={refresh}
         />
       )}
+      {/* Wave K, K1/K3: rides every screen the same way the sheet does,
+          because "you're 14 miles from the job" is worth asking wherever the
+          person happens to be looking when they open the app. Renders nothing
+          until it has something to ask. */}
+      <FarFromJobPrompt shift={shiftQuery.data ?? null} onChanged={refresh} />
     </ClockContext.Provider>
   );
 }

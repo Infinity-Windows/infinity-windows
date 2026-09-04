@@ -2,7 +2,8 @@ import { supabase } from "./supabase";
 import type { GeoFix } from "./geo";
 import type { JobMode } from "./types";
 import { sendPush } from "./permissions/pushServer";
-import { isMissingTable } from "./schemaErrors";
+import { isMissingFunction, isMissingTable } from "./schemaErrors";
+import { TRAVEL_COST_CODE } from "./farFromJob";
 import { isMissingClockInOverload, normalizeNote } from "./timeclockNote";
 import type { TimecardExportShift } from "./timecardExport";
 
@@ -62,6 +63,27 @@ export interface TimeShift {
   clock_in_lng?: number | null;
   clock_out_lat?: number | null;
   clock_out_lng?: number | null;
+  /**
+   * The work mode picked at clock-in on a both-mode job (20260970000000).
+   * Null on a single-mode job, and on every punch made before that migration.
+   */
+  job_mode?: JobMode | null;
+  /**
+   * Wave K, K3: when the app was last brought to the FOREGROUND while this
+   * shift was open, and where the phone was if it had already granted
+   * location. One point, overwritten each time — this app has no background
+   * location and must never grow one.
+   */
+  last_seen_at?: string | null;
+  last_seen_lat?: number | null;
+  last_seen_lng?: number | null;
+  /**
+   * How precise that fix claimed to be, in metres. Stored beside the point so
+   * a reader can apply the same "too fuzzy to tell near from far" guard the
+   * prompt applies live — a point without its uncertainty would let the
+   * supervisor line state a distance the app itself would not act on.
+   */
+  last_seen_accuracy_m?: number | null;
   approved_by?: string | null;
   approved_at?: string | null;
   edited_by?: string | null;
@@ -125,6 +147,26 @@ export interface RecentJob {
 // "voided by <name>" (T3) lines.
 const SHIFT_SELECT =
   "*, projects(job_code, name), cost_codes(code, label), profiles!profile_id(display_name), editor:profiles!edited_by(display_name), voider:profiles!voided_by(display_name)";
+
+/**
+ * The Travel code itself (Wave K, K1). Read from the GLOBAL library rather than
+ * the job's pickable subset on purpose: a job that narrowed its subset to
+ * install codes must still be switchable to Travel — driving away from a job is
+ * something a person can always do, whatever that job's paperwork says.
+ * Returns null if a company ever deletes or deactivates it; the caller then
+ * simply never offers the switch.
+ */
+export async function getTravelCostCode(): Promise<CostCode | null> {
+  const { data, error } = await supabase
+    .from("cost_codes")
+    .select("id, code, label, active")
+    .eq("code", TRAVEL_COST_CODE)
+    .eq("active", true)
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as CostCode | null) ?? null;
+}
 
 export async function listCostCodes(): Promise<CostCode[]> {
   const { data, error } = await supabase
@@ -195,25 +237,69 @@ export async function listShiftsToApprove(): Promise<TimeShift[]> {
   return (data ?? []) as TimeShift[];
 }
 
+/** How many shift rows to ask for at a time; the server may hand back fewer. */
+const TEAM_SHIFT_PAGE = 1000;
+/**
+ * Purely a runaway-loop stop. A server that answered every page full forever
+ * would spin this function; 50 pages is far past any real pay period (Forge's
+ * whole crew punching every few minutes for two weeks does not reach 50,000
+ * rows), so hitting it means something is wrong, not that a company got busy.
+ */
+const TEAM_SHIFT_MAX_PAGES = 50;
+
 /**
  * Every crew member's shifts within a date window, newest first. Foreman+ only
  * surface (installers never see this in the UI). Powers the team roster, the
- * per-person timecard drill-down, and the weekly payroll export.
+ * per-person timecard drill-down, and the payroll exports.
+ *
+ * PAGED, not capped. This used to ask for one page of 1000 and stop, which was
+ * survivable while the screen showed one week and the export carried no
+ * overtime. It stopped being survivable when the same array became the Gusto
+ * file the office uploads to payroll over a fourteen-day period: every
+ * cost-code switch is a close-then-open, so a crew switching codes a few times
+ * a day reaches a thousand punches inside a pay period — and because the order
+ * is newest-first, the rows a cap drops are the OLDEST ones, silently shorting
+ * the first of the two weeks. Nobody would have seen it in the file.
+ *
+ * `id` is the tiebreaker on the sort so paging is deterministic: two punches
+ * clocked in the same second must not be able to swap places between pages and
+ * lose one.
+ *
+ * The stop condition is the EXACT COUNT, asked for once with the first page,
+ * rather than "a page came back shorter than we asked for". PostgREST has its
+ * own max-rows ceiling, so a short page can mean either the end or the server
+ * declining to go further — and reading a server ceiling as "that's all of
+ * them" is precisely the shape of the bug this replaces. A count leaves no room
+ * for that reading. If a database ever answers without one, the short-page rule
+ * is the fallback.
  */
 export async function listTeamShifts(
   sinceIso: string,
   untilIso: string,
 ): Promise<TimeShift[]> {
-  const { data, error } = await supabase
-    .from("time_shifts")
-    .select(SHIFT_SELECT)
-    .gte("clock_in_at", sinceIso)
-    .lt("clock_in_at", untilIso)
-    .neq("status", "voided")
-    .order("clock_in_at", { ascending: false })
-    .limit(1000);
-  if (error) throw error;
-  return (data ?? []) as TimeShift[];
+  const out: TimeShift[] = [];
+  let total: number | null = null;
+  for (let page = 0; page < TEAM_SHIFT_MAX_PAGES; page++) {
+    const from = out.length;
+    const { data, error, count } = await supabase
+      .from("time_shifts")
+      .select(SHIFT_SELECT, page === 0 ? { count: "exact" } : undefined)
+      .gte("clock_in_at", sinceIso)
+      .lt("clock_in_at", untilIso)
+      .neq("status", "voided")
+      .order("clock_in_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(from, from + TEAM_SHIFT_PAGE - 1);
+    if (error) throw error;
+    const rows = (data ?? []) as TimeShift[];
+    out.push(...rows);
+    if (rows.length === 0) break;
+    if (total === null && typeof count === "number") total = count;
+    if (total !== null ? out.length >= total : rows.length < TEAM_SHIFT_PAGE) {
+      break;
+    }
+  }
+  return out;
 }
 
 /**
@@ -575,6 +661,41 @@ export async function listShiftEdits(shiftId: string): Promise<ShiftEdit[]> {
   return (data ?? []) as unknown as ShiftEdit[];
 }
 
+/**
+ * Edits somebody ELSE made to MY punches, newest first (Wave K, K4).
+ *
+ * The durable half of "your timecard was changed": a push can be swiped away
+ * or arrive on a phone that is off, so the same fact also becomes a line in the
+ * notifications feed that stays until the person clears it.
+ *
+ * `edited_by <> me` on purpose — my own corrections are not news to me. Reads
+ * as the worker, which the "own shift read" policy added by 20260976000000
+ * allows; before that migration this table was supervisor-read-only, so on a
+ * database without it the query simply comes back empty and the feed line
+ * never appears.
+ */
+export async function listMyTimecardEdits(
+  profileId: string,
+  sinceIso: string,
+): Promise<ShiftEdit[]> {
+  const { data, error } = await supabase
+    .from("time_shift_edits")
+    .select(
+      "id, shift_id, edited_by, field, old_value, new_value, reason, created_at, editor:edited_by(display_name), shift:time_shifts!inner(profile_id)",
+    )
+    .eq("shift.profile_id", profileId)
+    .neq("edited_by", profileId)
+    .gte("created_at", sinceIso)
+    .order("created_at", { ascending: false })
+    .limit(100);
+  if (isMissingTableError(error)) return [];
+  // A database where the worker cannot read this table yet answers with an
+  // empty list rather than an error — the feed line is a courtesy, and a
+  // permission gap must never blank the whole notifications page.
+  if (error) return [];
+  return (data ?? []) as unknown as ShiftEdit[];
+}
+
 /** overtime_rules row: one company default plus per-person overrides. */
 export interface OvertimeRuleRow {
   id: string;
@@ -784,6 +905,45 @@ export async function getJobLastGeo(
   const row = data as { clock_in_lat: number | null; clock_in_lng: number | null } | null;
   if (!row || row.clock_in_lat == null || row.clock_in_lng == null) return null;
   return { lat: row.clock_in_lat, lng: row.clock_in_lng };
+}
+
+/**
+ * Stamp my own open shift with "the app was open, here, just now" (Wave K, K3).
+ *
+ * Called ONLY when the app comes to the foreground, and only while on the
+ * clock — there is no background location in this app and there must not be
+ * (see the migration's own header). Coordinates are optional: a foreground
+ * visit with location switched off still records the TIME, which is the half
+ * of "last seen" a supervisor mostly cares about.
+ *
+ * The fix's accuracy radius travels with the coordinates. Without it the point
+ * would be read back later as if it were exact, and the supervisor's "last
+ * seen N mi" line would confidently state a distance derived from a fix the
+ * app itself was too unsure of to ask a question about.
+ *
+ * Never throws at the caller. This runs on every app open and it is a courtesy,
+ * not a duty: a database that has not applied the migration yet, or a phone
+ * with no signal, simply records nothing.
+ */
+export async function touchShiftLocation(
+  lat?: number | null,
+  lng?: number | null,
+  accuracyM?: number | null,
+): Promise<void> {
+  try {
+    const { error } = await supabase.rpc("touch_shift_location", {
+      p_lat: lat ?? null,
+      p_lng: lng ?? null,
+      p_accuracy_m: accuracyM ?? null,
+    });
+    if (error && !isMissingFunction(error)) {
+      // Still swallowed — logged nowhere on purpose, because there is no
+      // screen this could usefully interrupt.
+      return;
+    }
+  } catch {
+    /* offline, or the RPC isn't there yet: nothing to say to anybody */
+  }
 }
 
 export async function approveShift(shiftId: string): Promise<void> {

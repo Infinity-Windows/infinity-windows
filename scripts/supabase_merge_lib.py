@@ -552,6 +552,10 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     # -- hold part of the real total, so the counts have to be added. See the
     # -- "pick one winner" note below and docs/ai-spend-limits.md.
     "ai_spend_limits": ("id",),
+    # -- The other single settings row: when the evening "Still on the job?"
+    # -- nudge goes out (Wave K, K2, 20260976000000). Same shape and same
+    # -- answer as ai_spend_limits — id = 1, and a human picks which side wins.
+    "company_settings": ("id",),
     "ai_usage_days": ("user_id", "usage_day"),
     "ai_spend_months": ("usage_month",),
     "ai_spend_alerts": ("usage_month", "level"),
@@ -672,6 +676,11 @@ PICK_ONE_WINNER: dict[str, str] = {
     "ai_spend_limits": (
         "A single settings row (id = 1) holding the company's AI budget. Two "
         "projects mean two budgets; a human picks one."
+    ),
+    "company_settings": (
+        "A single settings row (id = 1) holding when the evening 'Still on the "
+        "job?' nudge goes out. Two projects mean two nudge times; a human picks "
+        "one."
     ),
     "ai_usage_days": (
         "A per-person-per-day call count. Matching on (user_id, usage_day) and "
