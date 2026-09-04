@@ -69,6 +69,7 @@ import { ClockInBlock } from "../components/clock/ClockInBlock";
 import { SpecsTab } from "../components/project/SpecsTab";
 import { CallForHandsPanel } from "../components/install/CallForHandsPanel";
 import { MissedUnitButton } from "../components/install/MissedUnitButton";
+import { JobDocuments } from "../components/projects/JobDocuments";
 import { JobCostCodesPanel } from "../components/project/JobCostCodesPanel";
 import { JobModeBadge } from "../components/JobModeBadge";
 import { GcPanel } from "../components/projects/GcPanel";
@@ -765,6 +766,13 @@ function OverviewTab({
         />
         <OfflineDownloadButton projectId={projectId} />
       </div>
+
+      {/* The job's paperwork that is not a planset — the quote, the signed
+          order, the ironwork sheet. Beside Plans on purpose: this is where
+          somebody looks for it while standing on the site, and until it came
+          across from Monday it existed nowhere the crew could reach. Not
+          role-gated: a document on a job is for whoever is on that job. */}
+      <JobDocuments projectId={projectId} />
 
       <h2>Needed (by type)</h2>
       <p className="muted">

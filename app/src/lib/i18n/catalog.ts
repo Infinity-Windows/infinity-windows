@@ -1907,10 +1907,6 @@ export const CATALOG = {
   },
   "jobDocuments.open": { en: "Open", es: "Abrir" },
   "jobDocuments.opening": { en: "Opening…", es: "Abriendo…" },
-  "jobDocuments.notReady": {
-    en: "Job documents aren't switched on yet. They arrive with the next update.",
-    es: "Los documentos del trabajo todavía no están activos. Llegan con la próxima actualización.",
-  },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */
