@@ -142,7 +142,10 @@ class TestSchemaParsing(unittest.TestCase):
         # (standard-tracking-jobs slice 3, 20260973000000).
         # +1: company_settings — the single settings row behind the evening
         # "Still on the job?" nudge (Wave K, K2, 20260976000000).
-        self.assertEqual(len(SCHEMA.tables), 117)
+        # +1: project_financials — the bid and target margin, moved off
+        # `projects` so they can carry a policy of their own (Wave Z, Z2,
+        # 20260978000000).
+        self.assertEqual(len(SCHEMA.tables), 118)
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 

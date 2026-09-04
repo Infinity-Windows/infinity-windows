@@ -20,11 +20,15 @@ function money(n: number): string {
 export function Costing() {
   const queryClient = useQueryClient();
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
-  const { effectiveRole } = useEffectiveRole();
+  const { effectiveRole, grants } = useEffectiveRole();
+  // Wave Z: an owner, or anyone the owner granted "Sees costs". The database
+  // decides the same way (can_see_costs(auth.uid()) on every money policy);
+  // this only stops the screen asking for rows it would be refused.
+  const canSeeCosts = isOwner(effectiveRole) || grants.costs === true;
   const jobs = useQuery({
     queryKey: ["companyCosting"],
     queryFn: getCompanyCosting,
-    enabled: isOwner(effectiveRole),
+    enabled: canSeeCosts,
   });
   const [sel, setSel] = useState<string>("");
   const [costAmt, setCostAmt] = useState("");
@@ -52,14 +56,16 @@ export function Costing() {
     onSuccess: () => { setCoLabel(""); setCoAmt(""); refresh(); },
   });
 
-  if (me.data && !isOwner(effectiveRole)) {
+  if (me.data && !canSeeCosts) {
     return (
       <div className="page">
         <header className="page-header">
           <h1>Job costing</h1>
           <BackChip fallback="/" label="Home" />
         </header>
-        <p className="muted">Revenue, costs and margin — Owner only.</p>
+        <p className="muted">
+          Revenue, costs and margin. Ask an owner to turn on “Sees costs” for you.
+        </p>
       </div>
     );
   }
@@ -86,7 +92,7 @@ export function Costing() {
         <div>
           <h1>Job costing</h1>
           <p className="muted" style={{ margin: 0 }}>
-            Revenue, costs and margin — Owner only.
+            Revenue, costs and margin — owners, and anyone given “Sees costs”.
           </p>
         </div>
         <BackChip fallback="/" label="Home" />

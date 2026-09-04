@@ -133,7 +133,11 @@ create or replace function public.set_profile_grants(
   p_costs boolean,
   p_pay boolean
 )
-returns table (profile_id uuid, can_see_costs boolean, can_see_pay boolean)
+-- The OUT columns are `sees_costs` / `sees_pay`, NOT the column names: a
+-- `returns table` column in PL/pgSQL is a variable, and one spelled exactly
+-- like a column of the table being updated is the classic ambiguous-reference
+-- trap. Different words, no ambiguity to reason about.
+returns table (profile_id uuid, sees_costs boolean, sees_pay boolean)
 language plpgsql
 security definer
 set search_path = public, pg_temp
@@ -174,3 +178,193 @@ comment on function public.set_profile_grants(uuid, boolean, boolean) is
 
 revoke all on function public.set_profile_grants(uuid, boolean, boolean) from public, anon;
 grant execute on function public.set_profile_grants(uuid, boolean, boolean) to authenticated;
+
+
+-- ===========================================================================
+-- 2. Z2 — lock the money tables
+-- ===========================================================================
+-- Do this even if nothing else in wave Z ships. Everything below is a policy
+-- that was open to every crew login until now.
+--
+-- Every policy keeps its EXISTING NAME. scripts/partner_wall_lib.py replays
+-- `create policy` / `drop policy` across the migrations to recover the live
+-- policy set; a renamed policy would leave the old name standing in that replay
+-- as a second, wide-open policy that no longer exists. Same name, new predicate.
+
+-- ---- job_costs / change_orders --------------------------------------------
+-- The ledger and the change orders. `using (not is_partner_user() and (true))`
+-- since 20260950000000 — the partner wall correctly kept a builder out and let
+-- every installer in.
+--
+-- The predicate covers writes too (`for all`), which is deliberate: Costing's
+-- "Add cost" and "Add change order" write these tables directly, and the person
+-- allowed to type a cost line is exactly the person allowed to read them.
+-- review_receipt's bridge (Z4) writes job_costs from a SECURITY DEFINER
+-- function, so it is unaffected by the narrowing.
+drop policy if exists "authenticated full access" on job_costs;
+create policy "authenticated full access" on job_costs
+  for all to authenticated
+  using (not public.is_partner_user() and public.can_see_costs(auth.uid()))
+  with check (not public.is_partner_user() and public.can_see_costs(auth.uid()));
+
+drop policy if exists "authenticated full access" on change_orders;
+create policy "authenticated full access" on change_orders
+  for all to authenticated
+  using (not public.is_partner_user() and public.can_see_costs(auth.uid()))
+  with check (not public.is_partner_user() and public.can_see_costs(auth.uid()));
+
+
+-- ---- project_financials: the bid moves off `projects` ----------------------
+-- `projects.bid_amount` and `.target_margin_pct` (20260717002000) could not be
+-- locked where they sat. A column has no policy of its own: it rides the
+-- table's, and `projects` MUST stay readable — the app shell, the job list,
+-- every screen with a job code on it reads that row, and a partner reads their
+-- granted jobs through it. Column privileges do not help either, because RLS
+-- and grants answer different questions: revoking SELECT (bid_amount) would
+-- break the owner's own read through PostgREST as surely as an installer's.
+--
+-- So the money moves to a table that can carry its own policy. One row per job,
+-- project_id as the primary key — a job has one bid, and a surrogate id would
+-- invite two.
+--
+-- ON DELETE CASCADE, not the detach treatment `job_costs` and `receipts` get in
+-- 20260959000000: a bid is not a money RECORD with retention weight, it is a
+-- number about a job, and when the job is purged it goes with it — exactly what
+-- happened when it was a column on `projects`. This migration changes where the
+-- bid lives, not how long it lives.
+create table if not exists project_financials (
+  project_id uuid primary key references projects(id) on delete cascade,
+  bid_amount numeric,
+  target_margin_pct numeric,
+  updated_at timestamptz not null default now(),
+  -- `default auth.uid()` rather than a column the client fills: this is a
+  -- direct table write from the Cost screen, and who last touched a bid is not
+  -- something the browser should get to claim. Null under service_role or a
+  -- SQL console, which is the honest answer there.
+  updated_by uuid default auth.uid() references profiles(id) on delete set null
+);
+
+comment on table project_financials is
+  'One job''s bid and target margin, moved off `projects` (20260717002000) so it can carry a policy of its own: `projects` has to stay readable by every crew login, and a column cannot be gated separately from its table. Readable and writable by an owner or anybody granted "Sees costs" (Wave Z, Z2).';
+
+-- Backfill BEFORE the drop, and only while the old columns still exist, so a
+-- re-run of this migration is a no-op rather than an error. `on conflict do
+-- nothing` protects a row the Cost screen already wrote against being reset to
+-- whatever the old column happened to hold.
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'projects' and column_name = 'bid_amount'
+  ) then
+    execute $q$
+      insert into project_financials (project_id, bid_amount, target_margin_pct)
+      select id, bid_amount, target_margin_pct
+        from projects
+       where bid_amount is not null or target_margin_pct is not null
+      on conflict (project_id) do nothing
+    $q$;
+  end if;
+end;
+$$;
+
+alter table projects drop column if exists bid_amount;
+alter table projects drop column if exists target_margin_pct;
+
+-- THE PROJECTS GRANT LAW (wave D, 20260959000000): table-level INSERT/UPDATE on
+-- `projects` is revoked and only the app-written columns are granted back.
+-- Dropping a column drops its privilege with it, so the two lists are re-stated
+-- here MINUS bid_amount / target_margin_pct — the law says the grant lists move
+-- with the columns, and a reader of this file should not have to diff two
+-- migrations to learn what is still writable.
+revoke insert, update on table projects from anon, authenticated;
+grant insert (job_code, name, address, customer_name, contact_phone,
+              contact_email, site_state, unit_number, start_date, end_date,
+              notes)
+  on projects to authenticated;
+grant update (name, address, customer_name, contact_phone, contact_email,
+              site_state, unit_number, start_date, end_date, notes,
+              estimated_minutes, estimated_crew, estimated_at)
+  on projects to authenticated;
+
+alter table project_financials enable row level security;
+
+-- Revoke BEFORE granting: this project's default privileges hand every new
+-- table in `public` the full set to `authenticated`, and RLS alone is not the
+-- place to stand (20260729230000 / wave K's review). Here the policy IS meant
+-- to allow writes — the Cost screen saves a bid directly, the same way it adds
+-- a job cost line — so select/insert/update are granted back deliberately.
+-- DELETE is not: nothing deletes a financials row except the job's own cascade.
+revoke all on project_financials from anon, authenticated;
+grant select, insert, update on project_financials to authenticated;
+grant all on project_financials to service_role;
+
+drop policy if exists "financials_cost_seers" on project_financials;
+create policy "financials_cost_seers" on project_financials
+  for all to authenticated
+  using (not public.is_partner_user() and public.can_see_costs(auth.uid()))
+  with check (not public.is_partner_user() and public.can_see_costs(auth.uid()));
+
+
+-- ---- receipts: the foreman read goes ---------------------------------------
+-- `my_role_rank() >= 1` (20260957000000) let every foreman read every receipt
+-- the company has ever filed, while the office table itself is supervisor-only.
+-- Supervisor+ keeps the office read, a cost-grant holder gains it (a bookkeeper
+-- who is not a supervisor still has to reconcile the card statement), and an
+-- uploader keeps seeing their OWN receipts — an installer who snapped a gas
+-- receipt has to watch it land, and that has nothing to do with seeing the
+-- company's spending.
+drop policy if exists "receipts_select" on receipts;
+create policy "receipts_select" on receipts
+  for select to authenticated
+  using (
+    not public.is_partner_user()
+    and (
+      public.my_role_rank() >= 2
+      or public.can_see_costs(auth.uid())
+      or uploaded_by = auth.uid()
+    )
+  );
+
+
+-- ---- the AI spend meters ---------------------------------------------------
+-- `ai_role_rank(auth.uid()) >= 2` (20260729230000, swept by 20260950000000):
+-- supervisor+. What these tables hold is money the company spent, so they move
+-- to the same predicate as every other money table. The PAGE stays owner-only
+-- in the nav (/ai-spend, minRole owner) — this only decides who the database
+-- will answer, and it now answers exactly the people allowed to see spending.
+drop policy if exists "ai_spend_alerts_select_office" on ai_spend_alerts;
+create policy "ai_spend_alerts_select_office" on ai_spend_alerts
+  for select to authenticated
+  using (not public.is_partner_user() and public.can_see_costs(auth.uid()));
+
+drop policy if exists "ai_spend_limits_select_office" on ai_spend_limits;
+create policy "ai_spend_limits_select_office" on ai_spend_limits
+  for select to authenticated
+  using (not public.is_partner_user() and public.can_see_costs(auth.uid()));
+
+drop policy if exists "ai_spend_months_select_office" on ai_spend_months;
+create policy "ai_spend_months_select_office" on ai_spend_months
+  for select to authenticated
+  using (not public.is_partner_user() and public.can_see_costs(auth.uid()));
+
+drop policy if exists "ai_usage_days_select_office" on ai_usage_days;
+create policy "ai_usage_days_select_office" on ai_usage_days
+  for select to authenticated
+  using (not public.is_partner_user() and public.can_see_costs(auth.uid()));
+
+drop policy if exists "ai_usage_events_select_office" on ai_usage_events;
+create policy "ai_usage_events_select_office" on ai_usage_events
+  for select to authenticated
+  using (not public.is_partner_user() and public.can_see_costs(auth.uid()));
+
+
+-- ===========================================================================
+-- 99. Re-arm the sandbox fence
+-- ===========================================================================
+-- project_financials carries a `project_id`, which is what makes a table
+-- project-scoped (sandbox_scoped_tables, 20260967000000). Without this line a
+-- QA test login could write a bid on ANY job, not only its sandbox ones —
+-- scripts/test_sandbox_guard.py fails CI for exactly this omission. Idempotent:
+-- a table already correctly guarded is left alone rather than re-triggered.
+select public.attach_sandbox_guards();

@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { isMissingTable } from "./schemaErrors";
 
 /** Default hourly labor rates by role (company setting; edit as needed). */
 export const HOURLY_RATE: Record<string, number> = {
@@ -113,22 +114,39 @@ export async function addChangeOrder(
   if (error) throw error;
 }
 
+/**
+ * The bid and target margin, which live in `project_financials` since wave Z
+ * (20260978000000) — they used to be two columns on `projects`, where they
+ * could not be gated: a column rides its table's policy, and `projects` has to
+ * stay readable by every crew login.
+ *
+ * One row per job, so this is an upsert on the primary key.
+ */
 export async function setBid(
   projectId: string,
   bid: number,
   targetMarginPct: number | null,
 ): Promise<void> {
-  const { error } = await supabase
-    .from("projects")
-    .update({ bid_amount: bid, target_margin_pct: targetMarginPct })
-    .eq("id", projectId);
+  const { error } = await supabase.from("project_financials").upsert(
+    {
+      project_id: projectId,
+      bid_amount: bid,
+      target_margin_pct: targetMarginPct,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "project_id" },
+  );
   if (error) throw error;
 }
 
 /** Company-wide costing rollup across active jobs. */
 export async function getCompanyCosting(): Promise<JobCosting[]> {
-  const [projRes, costRes, coRes, shiftRes] = await Promise.all([
-    supabase.from("projects").select("id, job_code, name, bid_amount, target_margin_pct"),
+  const [projRes, finRes, costRes, coRes, shiftRes] = await Promise.all([
+    supabase.from("projects").select("id, job_code, name"),
+    // Wave Z: the bid moved off `projects` into its own gated table. Degrades
+    // to "no bids on file" on a database that has the app but not yet
+    // 20260978000000 — the screen empties, it never white-screens.
+    supabase.from("project_financials").select("project_id, bid_amount, target_margin_pct"),
     supabase.from("job_costs").select("project_id, amount"),
     supabase.from("change_orders").select("project_id, amount"),
     supabase
@@ -140,9 +158,18 @@ export async function getCompanyCosting(): Promise<JobCosting[]> {
       ),
   ]);
   if (projRes.error) throw projRes.error;
+  if (finRes.error && !isMissingTable(finRes.error, "project_financials")) throw finRes.error;
   if (costRes.error) throw costRes.error;
   if (coRes.error) throw coRes.error;
   if (shiftRes.error) throw shiftRes.error;
+
+  const finByProj = new Map<string, { bid: number; target: number | null }>();
+  for (const f of finRes.data ?? []) {
+    finByProj.set(f.project_id, {
+      bid: Number(f.bid_amount ?? 0),
+      target: f.target_margin_pct ?? null,
+    });
+  }
 
   const costByProj = new Map<string, number>();
   for (const c of costRes.data ?? []) {
@@ -163,7 +190,8 @@ export async function getCompanyCosting(): Promise<JobCosting[]> {
   );
 
   return (projRes.data ?? []).map((p) => {
-    const bid = Number(p.bid_amount ?? 0);
+    const fin = finByProj.get(p.id);
+    const bid = fin?.bid ?? 0;
     const changeOrders = coByProj.get(p.id) ?? 0;
     const revenue = bid + changeOrders;
     const manualCosts = costByProj.get(p.id) ?? 0;
@@ -183,7 +211,7 @@ export async function getCompanyCosting(): Promise<JobCosting[]> {
       costs: Math.round(costs),
       margin: Math.round(margin),
       marginPct: revenue > 0 ? Math.round((margin / revenue) * 1000) / 10 : 0,
-      targetMarginPct: p.target_margin_pct ?? null,
+      targetMarginPct: fin?.target ?? null,
     };
   });
 }

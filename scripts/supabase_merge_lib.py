@@ -655,6 +655,11 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     # duplicate, so there is no natural key to dedup on (Wave A, A1,
     # 20260955000000).
     "saved_crews": None,
+    # -- One row per job: the bid and target margin, moved off `projects` so
+    # -- they could carry a policy of their own (Wave Z, Z2, 20260978000000).
+    # -- project_id IS the primary key, so it is the natural key too — merge it
+    # -- the same way the job it belongs to is merged.
+    "project_financials": ("project_id",),
 }
 
 #: Tables where combining two projects' rows is meaningless or actively wrong.
