@@ -54,6 +54,67 @@ export function filesOnMonday(job: Pick<MondayJob, "files">): MondayFile[] {
   return Array.isArray(job.files) ? job.files.filter((f) => f && f.asset_id) : [];
 }
 
+/** Where a pulled Monday file lands on the job. */
+export type MondayFileKind = "building" | "specs" | "document";
+
+/** The three formats the planset slots can actually do anything with. */
+const EXTRACTABLE_EXTENSIONS = new Set(["pdf", "dwg", "dxf"]);
+
+/** "pdf" from ".PDF", "HC24 - LP.pdf", or nothing at all. */
+export function fileExtension(name: string, ext?: string | null): string {
+  const raw =
+    (ext ?? "").trim() ||
+    (name.includes(".") ? name.slice(name.lastIndexOf(".")) : "");
+  return raw.replace(/^\./, "").toLowerCase();
+}
+
+/** Could this file be a plan set or a spec sheet at all? */
+export function isExtractableFile(name: string, ext?: string | null): boolean {
+  return EXTRACTABLE_EXTENSIONS.has(fileExtension(name, ext));
+}
+
+/**
+ * Which slot a Monday file probably belongs in, from its name.
+ *
+ * THIS IS THE OFFICE'S OWN SHORTHAND, not a convention we invented. On the Ops
+ * Gantt Chart a file called "SV2 - LP.pdf" is the plan set ("LP"), "SV2 - CU.pdf"
+ * is the cut sheets, and "Summit View 2 - July16_26 - IRON.pdf" is the ironwork
+ * order — paperwork worth keeping and not something to run an extraction over.
+ *
+ * A GUESS, shown before anything is pulled and always overridable. The office
+ * has been naming these files by hand for years and the shorthand holds on most
+ * rows, not all of them; being wrong quietly is what would turn a signed quote
+ * into a building plan the map then tries to draw from.
+ *
+ * The rules, in the order they are asked:
+ *   1. Anything that is not a PDF, DWG or DXF is a document. The other two
+ *      slots feed a plan renderer and an extractor, and neither can open a
+ *      spreadsheet.
+ *   2. "LP", or the word "plan" / "plans" (which is also how "Marked Plans"
+ *      lands here) — the building plan.
+ *   3. "CU", "CAD" / "CADs", "specs", or "units" — the spec sheets.
+ *   4. Everything else is a job document.
+ *
+ * Plans are asked FIRST on purpose: a sheet named for both is far more likely
+ * to be the marked-up plan set with a CAD note in its name than the reverse,
+ * and the plan slot is the one a foreman notices is empty.
+ *
+ * Whole words only. "LP" must not be found inside "Alpine" and "CU" must not be
+ * found inside "Cut List" — every one of those is a real name shape on this
+ * board. The extension is stripped before matching so a ".dwg" can never read
+ * as a word in the name.
+ */
+export function guessMondayFileKind(
+  name: string,
+  ext?: string | null,
+): MondayFileKind {
+  if (!isExtractableFile(name, ext)) return "document";
+  const base = name.replace(/\.[^.]*$/, "");
+  if (/\b(lp|plans?)\b/i.test(base)) return "building";
+  if (/\b(cu|cads?|specs?|units?)\b/i.test(base)) return "specs";
+  return "document";
+}
+
 /** Staged Monday jobs awaiting review — newest sync first. */
 export async function listIncomingMondayJobs(): Promise<MondayJob[]> {
   const { data, error } = await supabase
