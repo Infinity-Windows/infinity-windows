@@ -12571,6 +12571,9 @@ grant execute on function public.foreman_contacts_for_me() to authenticated, ser
 --     in the audit trail supervisors already read AND in the worker's own
 --     "Your timecard was changed" feed (Wave K, K4, 20260976000000). The
 --     person finds out from the app, not from a short cheque.
+--   * the bulk loops repeat only the refusals written here, marked with
+--     `using hint = 'crew-clock'`. Anything else `when others` catches is an
+--     accident, and its raw Postgres wording is logged rather than shown.
 --
 -- THE TOOLBOX PROBLEM, and why this is not a hole in the safety gate. Since
 -- 20260718003000 nobody may clock in without today's signed toolbox talk, and
@@ -12777,51 +12780,52 @@ declare
 begin
   -- ---- who is asking ------------------------------------------------------
   if v_actor is null then
-    raise exception 'Sign in before clocking anybody in.';
+    raise exception 'Sign in before clocking anybody in.' using hint = 'crew-clock';
   end if;
   -- A builder/GC login is pinned to 'installer' (20260950000000), so the rank
   -- check below already refuses it. Said out loud anyway: this function is
   -- SECURITY DEFINER and writes straight past every policy on time_shifts, so
   -- the wall has to stand in the body, not only on the table.
   if public.is_partner_user() then
-    raise exception 'Not available for your account.' using errcode = '42501';
+    raise exception 'Not available for your account.' using errcode = '42501', hint = 'crew-clock';
   end if;
   if not _is_supervisor(v_actor) then
-    raise exception 'Only a supervisor or above can clock somebody else in.';
+    raise exception 'Only a supervisor or above can clock somebody else in.' using hint = 'crew-clock';
   end if;
   if not coalesce(p_talk_attested, false) then
-    raise exception 'Give today''s toolbox talk first, then tick the box to say you did.';
+    raise exception 'Give today''s toolbox talk first, then tick the box to say you did.' using hint = 'crew-clock';
   end if;
 
   -- ---- who is being clocked in -------------------------------------------
   select * into v_person from profiles where id = p_profile_id;
   if not found then
-    raise exception 'That person is not on the crew list.';
+    raise exception 'That person is not on the crew list.' using hint = 'crew-clock';
   end if;
   if not coalesce(v_person.active, false) then
-    raise exception 'They are not an active crew member.';
+    raise exception 'They are not an active crew member.' using hint = 'crew-clock';
   end if;
   if coalesce(v_person.is_partner, false) then
-    raise exception 'That is a builder login, not a crew member.';
+    raise exception 'That is a builder login, not a crew member.' using hint = 'crew-clock';
   end if;
 
   -- ---- the job ------------------------------------------------------------
   select * into v_project from projects where id = p_project_id;
   if not found or v_project.deleted_at is not null then
-    raise exception 'That job is not there any more.';
+    raise exception 'That job is not there any more.' using hint = 'crew-clock';
   end if;
   if v_project.status is distinct from 'active' then
-    raise exception '% is not an active job, so nobody can put time on it.', v_project.job_code;
+    raise exception '% is not an active job, so nobody can put time on it.', v_project.job_code
+      using hint = 'crew-clock';
   end if;
 
   -- ---- the cost code ------------------------------------------------------
   if p_cost_code_id is null then
-    raise exception 'Pick a cost code before clocking anybody in.';
+    raise exception 'Pick a cost code before clocking anybody in.' using hint = 'crew-clock';
   end if;
   if not exists (
     select 1 from cost_codes cc where cc.id = p_cost_code_id and cc.active
   ) then
-    raise exception 'That cost code is not in use any more.';
+    raise exception 'That cost code is not in use any more.' using hint = 'crew-clock';
   end if;
   -- The same rule resolveClockCostCodes plays by on the phone (20260973000000):
   -- a job with its own subset allows only those codes, a job without one allows
@@ -12838,13 +12842,14 @@ begin
         select 1 from cost_codes cc where cc.id = p_cost_code_id and cc.is_general
       )
   then
-    raise exception 'That cost code is not one % uses.', v_project.job_code;
+    raise exception 'That cost code is not one % uses.', v_project.job_code using hint = 'crew-clock';
   end if;
 
   -- ---- the mode -----------------------------------------------------------
   v_mode := case when p_mode in ('data', 'tracking') then p_mode else null end;
   if v_mode is not null and not (v_mode = any (v_project.allowed_modes)) then
-    raise exception '% is not set up for % work.', v_project.job_code, v_mode;
+    raise exception '% is not set up for % work.', v_project.job_code, v_mode
+      using hint = 'crew-clock';
   end if;
 
   -- ---- are they already on the clock? -------------------------------------
@@ -12865,7 +12870,7 @@ begin
     select pj.job_code into v_moved_from from projects pj where pj.id = v_open.project_id;
     if not coalesce(p_move_if_elsewhere, false) then
       raise exception 'Already on %. Tick "Move anyone already on another job here" to bring them over.',
-        coalesce(v_moved_from, 'another job');
+        coalesce(v_moved_from, 'another job') using hint = 'crew-clock';
     end if;
     v_outcome := 'moved_from_other_job';
   end if;
@@ -12950,13 +12955,13 @@ declare
   v_shift time_shifts;
 begin
   if v_actor is null then
-    raise exception 'Sign in before clocking anybody out.';
+    raise exception 'Sign in before clocking anybody out.' using hint = 'crew-clock';
   end if;
   if public.is_partner_user() then
-    raise exception 'Not available for your account.' using errcode = '42501';
+    raise exception 'Not available for your account.' using errcode = '42501', hint = 'crew-clock';
   end if;
   if not _is_supervisor(v_actor) then
-    raise exception 'Only a supervisor or above can clock somebody else out.';
+    raise exception 'Only a supervisor or above can clock somebody else out.' using hint = 'crew-clock';
   end if;
 
   select * into v_open
@@ -12976,7 +12981,8 @@ begin
   if v_open.status = 'needs_finish' then
     -- The app already refused to guess an end for this one. Stamping now()
     -- here would be that same guess, made by somebody who was not there.
-    raise exception 'Their punch ran too long to guess an end for. Set the real finish time on "Still on the clock".';
+    raise exception 'Their punch ran too long to guess an end for. Set the real finish time on "Still on the clock".'
+      using hint = 'crew-clock';
   end if;
 
   select p.display_name into v_actor_name from profiles p where p.id = v_actor;
@@ -13023,6 +13029,19 @@ grant execute on function public.clock_out_for(uuid) to authenticated;
 -- deactivated account or somebody who wandered onto another job cannot take
 -- the other thirteen down with them. Their line comes back as
 -- 'refused:<sentence>' and the roster prints it beside their name.
+--
+-- WHOSE WORDS end up on that line matters, and it is why every deliberate
+-- refusal above carries `using hint = 'crew-clock'`. `when others` catches far
+-- more than the sentences this file writes: a check constraint on time_shifts,
+-- one of the unit_sessions triggers, a deadlock. Passing sqlerrm straight
+-- through would print
+--   Not done — new row for relation "time_shifts" violates check constraint
+--   "time_shifts_job_mode_check"
+-- onto a supervisor's phone, which is exactly the leak the app's own rule
+-- against String(err) exists to stop. The hint is the marker that separates
+-- "we refused this, on purpose, in plain English" from "something broke": the
+-- first is repeated word for word, the second becomes one generic line and the
+-- real text goes to the Postgres log for whoever is fixing it.
 create or replace function public.clock_in_many(
   p_profile_ids uuid[],
   p_project_id uuid,
@@ -13039,21 +13058,22 @@ set search_path = public, pg_temp
 as $$
 declare
   v_id uuid;
+  v_hint text;
 begin
   -- The whole-call refusals are checked ONCE, up front, and thrown rather than
   -- returned: "you are not allowed to do this" and "you have not said you gave
   -- the talk" are facts about the request, not fourteen separate outcomes.
   if auth.uid() is null then
-    raise exception 'Sign in before clocking anybody in.';
+    raise exception 'Sign in before clocking anybody in.' using hint = 'crew-clock';
   end if;
   if public.is_partner_user() then
-    raise exception 'Not available for your account.' using errcode = '42501';
+    raise exception 'Not available for your account.' using errcode = '42501', hint = 'crew-clock';
   end if;
   if not _is_supervisor(auth.uid()) then
-    raise exception 'Only a supervisor or above can clock somebody else in.';
+    raise exception 'Only a supervisor or above can clock somebody else in.' using hint = 'crew-clock';
   end if;
   if not coalesce(p_talk_attested, false) then
-    raise exception 'Give today''s toolbox talk first, then tick the box to say you did.';
+    raise exception 'Give today''s toolbox talk first, then tick the box to say you did.' using hint = 'crew-clock';
   end if;
 
   for v_id in
@@ -13064,7 +13084,22 @@ begin
         v_id, p_project_id, p_cost_code_id, p_note, p_mode,
         p_talk_attested, p_move_if_elsewhere);
     exception when others then
-      return next (v_id, 'refused:' || sqlerrm)::crew_clock_result;
+      -- Only a refusal this file WROTE is repeated to a supervisor. Everything
+      -- else caught here is an accident — a check constraint, a trigger, a
+      -- deadlock — and sqlerrm for those is raw Postgres wording, which is the
+      -- one thing an installer-facing app must never put on a screen. It is
+      -- logged instead, where whoever is fixing it can read it.
+      get stacked diagnostics v_hint = pg_exception_hint;
+      if v_hint is distinct from 'crew-clock' then
+        raise warning 'clock_in_many: unexpected error for %: % (%)',
+          v_id, sqlerrm, sqlstate;
+        return next (
+          v_id,
+          'refused:Something went wrong for this person. Try again, or clock them in from their own phone.'
+        )::crew_clock_result;
+      else
+        return next (v_id, 'refused:' || sqlerrm)::crew_clock_result;
+      end if;
     end;
   end loop;
 end;
@@ -13084,15 +13119,16 @@ set search_path = public, pg_temp
 as $$
 declare
   v_id uuid;
+  v_hint text;
 begin
   if auth.uid() is null then
-    raise exception 'Sign in before clocking anybody out.';
+    raise exception 'Sign in before clocking anybody out.' using hint = 'crew-clock';
   end if;
   if public.is_partner_user() then
-    raise exception 'Not available for your account.' using errcode = '42501';
+    raise exception 'Not available for your account.' using errcode = '42501', hint = 'crew-clock';
   end if;
   if not _is_supervisor(auth.uid()) then
-    raise exception 'Only a supervisor or above can clock somebody else out.';
+    raise exception 'Only a supervisor or above can clock somebody else out.' using hint = 'crew-clock';
   end if;
 
   for v_id in
@@ -13101,7 +13137,18 @@ begin
     begin
       return next public.clock_out_for(v_id);
     exception when others then
-      return next (v_id, 'refused:' || sqlerrm)::crew_clock_result;
+      -- Same rule as clock_in_many: our own sentence, or one generic line.
+      get stacked diagnostics v_hint = pg_exception_hint;
+      if v_hint is distinct from 'crew-clock' then
+        raise warning 'clock_out_many: unexpected error for %: % (%)',
+          v_id, sqlerrm, sqlstate;
+        return next (
+          v_id,
+          'refused:Something went wrong for this person. Try again, or clock them out from their own phone.'
+        )::crew_clock_result;
+      else
+        return next (v_id, 'refused:' || sqlerrm)::crew_clock_result;
+      end if;
     end;
   end loop;
 end;
