@@ -16,7 +16,7 @@ import {
   type StampMeta,
 } from "../lib/photo/stampPhoto";
 import { useWarmGeoFix } from "../lib/geoWatch";
-import { supabase } from "../lib/supabase";
+import { signedInEmail } from "../lib/signedIn";
 import { formatApiError } from "../lib/errors";
 import { pushToast } from "../lib/toast";
 import { useClock } from "../lib/clockContext";
@@ -547,14 +547,15 @@ function JobPhotoCapture({
 
       const stamped = await stampPhoto(raw, meta);
       const fields = toPhotoMetaFields(meta);
-      // getSession(), not getUser(): getUser() is a GET /auth/v1/user round
-      // trip on every single shutter tap. On a phone with no data that stalls
-      // the shutter for as long as the request takes to give up and then hands
-      // back a null user anyway — so the photo went out with nobody's name on
-      // it, having made the installer wait for the privilege. The session is
-      // already on the device; reading it is instant and works with no bars.
-      const createdBy =
-        (await supabase.auth.getSession()).data.session?.user?.email ?? null;
+      // No auth call at the shutter, of any kind. getUser() is a GET
+      // /auth/v1/user on every tap; getSession() only LOOKS cheaper — it
+      // refreshes the token over the network the moment the token is near
+      // expiry, which is the state a phone reaches after a while asleep in a
+      // dead zone, and then answers "nobody" if the token has actually run out.
+      // Either way the installer waited and the photo went out unsigned. The
+      // app learned this person's name at sign-in and keeps it current from
+      // App's auth subscription; here it is a string read (lib/signedIn.ts).
+      const createdBy = signedInEmail();
       const stamp = Date.now();
       const rand = Math.random().toString(16).slice(2, 8);
       const prefix = projectId ?? "unassigned";
