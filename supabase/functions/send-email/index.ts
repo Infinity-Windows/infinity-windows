@@ -27,9 +27,20 @@
 // nobody has added yet. A Resend account already exists; password resets were
 // routed through it on 2026-09-01. This wave needs an API key of its own.
 //
-// EMAIL_FROM is optional too, defaulting to office@forgewd.com. It has to be an
-// address on a domain verified in Resend or Resend refuses the send — which is
-// the failure the UI reports verbatim rather than swallowing.
+// THE SENDER FOLLOWS THE JOB'S BRAND, and its address is configuration rather
+// than code. STG-branded jobs mail from one mailbox and Forge-branded jobs from
+// another, because the From line is the half a phone shows before anybody opens
+// the message — and the owner can move either mailbox without anybody editing
+// this repo. Three optional settings, tried in this order:
+//
+//     EMAIL_FROM_STG   ─┐
+//     EMAIL_FROM_FORGE ─┴─► EMAIL_FROM ─► office@forgewd.com
+//
+// All three are optional in the same truthiness-guard form RESEND_API_KEY uses,
+// so a deploy never fails over an address nobody has set yet. The rule itself
+// lives in ../_shared/emailSender.ts, where vitest can test it. Each address
+// has to be on a domain verified in Resend or Resend refuses the send — which
+// is the failure the UI reports verbatim rather than swallowing.
 //
 // The email is ENGLISH ONLY in v1, by decision: it goes to a customer who has
 // never opened this app and never picked a language in it. Spanish here is a
@@ -39,16 +50,33 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders, jsonResponse } from "../_shared/openai.ts";
 import { callerSupabaseClient, verifyCaller } from "../_shared/auth.ts";
 import { hashGcToken, looksLikeGcToken } from "../_shared/gcToken.ts";
+import {
+  BRAND_NAMES,
+  brandKey,
+  resolveSender,
+  type SenderSettings,
+} from "../_shared/emailSender.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-const EMAIL_FROM = Deno.env.get("EMAIL_FROM") ?? "office@forgewd.com";
 
-/** The company's two names, spelled the way the owner spells them (Q20). */
-const BRAND_NAMES: Record<string, string> = {
-  stg: "STG Windows & Doors",
-  forge: "Forge Windows and Doors",
-};
+/**
+ * The three sender addresses, feature-detected one at a time in the
+ * truthiness-guard form scripts/function_secrets.py reads as OPTIONAL (the same
+ * shape monday-sync uses for MONDAY_API_TOKEN, and RESEND_API_KEY uses below).
+ *
+ * Read here rather than bound to module constants on purpose: a constant with a
+ * `?? ""` fallback is the exact shape the census counts as REQUIRED, and a
+ * required sender address would turn the deploy red over configuration nobody
+ * has to provide.
+ */
+function senderSettings(): SenderSettings {
+  const settings: SenderSettings = {};
+  if (Deno.env.get("EMAIL_FROM_STG")) settings.stg = Deno.env.get("EMAIL_FROM_STG") ?? "";
+  if (Deno.env.get("EMAIL_FROM_FORGE")) settings.forge = Deno.env.get("EMAIL_FROM_FORGE") ?? "";
+  if (Deno.env.get("EMAIL_FROM")) settings.both = Deno.env.get("EMAIL_FROM") ?? "";
+  return settings;
+}
 
 /**
  * Where this app is actually served from. The page hands over the origin its
@@ -79,7 +107,7 @@ function linkUrl(appBase: unknown, token: string): string {
 /** Plain text, because a builder reads this on a phone in a truck and half of
  * them have images off. One paragraph, one link, one instruction. */
 function emailBody(job: string, brand: string, url: string): { subject: string; text: string } {
-  const company = BRAND_NAMES[brand] ?? BRAND_NAMES.stg;
+  const company = BRAND_NAMES[brandKey(brand)];
   return {
     subject: `${company}: six quick questions about ${job}`,
     text: [
@@ -192,6 +220,24 @@ Deno.serve(async (req) => {
 
   const jobLabel = String(project.name || project.job_code || "your job");
   const brand = String(project.gc_brand ?? "stg");
+
+  // Who it comes FROM follows the same brand the subject and signature do. A
+  // setting that is not an address is refused here, by name, rather than sent:
+  // Resend would refuse it too, but "check EMAIL_FROM_STG" is worth more to the
+  // foreman holding the phone than a 422 from an API he has never heard of.
+  const sender = resolveSender(brand, senderSettings());
+  if (!sender.ok) {
+    return jsonResponse(
+      {
+        error:
+          "The address this brand's email comes from is not a real address, so nothing was " +
+          `sent. Copy the link and text it, and ask the office to fix ${sender.source}.`,
+      },
+      500,
+      cors,
+    );
+  }
+
   const { subject, text } = emailBody(
     jobLabel,
     brand,
@@ -205,7 +251,7 @@ Deno.serve(async (req) => {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      from: EMAIL_FROM,
+      from: sender.header,
       to: [link.sent_to_email],
       subject,
       text,
@@ -232,5 +278,8 @@ Deno.serve(async (req) => {
     .update({ sent_at: new Date().toISOString(), brand })
     .eq("id", link.id);
 
-  return jsonResponse({ ok: true, to: link.sent_to_email }, 200, cors);
+  // `from` goes back so the card can say which of the company's two mailboxes
+  // this builder just heard from — the question the office asks first when a
+  // builder says he never got anything.
+  return jsonResponse({ ok: true, to: link.sent_to_email, from: sender.address }, 200, cors);
 });

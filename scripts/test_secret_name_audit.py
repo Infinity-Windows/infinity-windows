@@ -157,6 +157,36 @@ check(
     False,
 )
 
+# The GC email's sender addresses (2026-09-04). Three names a word apart —
+# EMAIL_FROM, EMAIL_FROM_STG, EMAIL_FROM_FORGE — stored side by side in the
+# same project, which is exactly the shape that makes a "did you mean" line
+# tempting and wrong. Two things have to hold.
+#
+# First, none of them may ever be offered as a misspelling of a key the app
+# really needs: an owner who adds a sender address must not be told he has
+# fumbled his Anthropic key.
+for stored in ["EMAIL_FROM", "EMAIL_FROM_STG", "EMAIL_FROM_FORGE"]:
+    for required in REQUIRED:
+        check(
+            "not flagged: %s is not a misspelling of %s" % (stored, required),
+            flags(required, stored),
+            False,
+        )
+
+# Second, they are all OPTIONAL — each one falls back to the next and then to a
+# built-in address — and an optional name is never a candidate. So setting one
+# brand's address and not the other's produces no advice at all, which is the
+# right amount: nothing is missing.
+check(
+    "a brand sender address on its own produces no advice",
+    audit.audit(
+        REQUIRED,
+        ["EMAIL_FROM", "EMAIL_FROM_STG", "EMAIL_FROM_FORGE"],
+        REQUIRED + ["EMAIL_FROM_STG"],
+    ),
+    [],
+)
+
 # --- the search is narrow on purpose ---------------------------------------
 
 # Today's actual state: the key was misnamed and everything else was in place.

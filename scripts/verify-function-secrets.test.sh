@@ -260,6 +260,31 @@ assert_lacks "ANTHROPIC_MODEL"
 assert_lacks "MISSING  VAPID_SUBJECT"
 assert_lacks "OPENAI_MODEL"
 
+# The GC email's four settings, none of which the owner has to provide: a
+# Resend key the feature detects, and three sender addresses that fall back
+# down a chain to a built-in one. A deploy that went red because STG-branded
+# jobs have not been given their own mailbox yet would be this gate crying wolf
+# about a feature that works.
+new_case "the GC email's optional settings never fail a deploy"
+live_state
+run
+assert_rc 1
+assert_lacks "RESEND_API_KEY"
+assert_lacks "EMAIL_FROM"
+assert_lacks "EMAIL_FROM_STG"
+assert_lacks "EMAIL_FROM_FORGE"
+assert_lacks "emailing a job's GC"
+
+# And with everything genuinely required in place, a project holding none of
+# them passes outright — which is the shipping state of the whole feature.
+new_case "a project with no email settings at all still passes"
+# shellcheck disable=SC2086  # deliberate word splitting over the name list.
+write_stub_listing $REQUIRED
+run
+assert_rc 0
+assert_has "All required Edge Function secrets are set"
+assert_lacks "EMAIL_FROM"
+
 # Supabase injects these into every function. Asking a human to set them would
 # be asking for something impossible.
 new_case "platform-injected variables are never reported missing"
