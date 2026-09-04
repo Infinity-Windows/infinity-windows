@@ -18,7 +18,7 @@
 // wiring and the sheet.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeftRight, X } from "lucide-react";
 import {
   captureGeoIfGranted,
@@ -29,17 +29,22 @@ import {
 import { haversineMeters } from "../../lib/jobProximity";
 import {
   STILL_HERE_HOLD_MS,
+  TRAVEL_COST_CODE,
   describeMiles,
   holdKey,
   milesFromMeters,
   shouldAskAboutTravel,
 } from "../../lib/farFromJob";
+import { isNetworkError } from "../../lib/offline/outbox-core";
+import { enqueueClockIn, pendingRefForShift } from "../../lib/offline/outbox";
 import {
   clockIn,
-  getJobLastGeo,
   getTravelCostCode,
+  getJobLastGeo,
   isOnTheClock,
+  listCostCodes,
   touchShiftLocation,
+  type CostCode,
   type TimeShift,
 } from "../../lib/timeclock";
 import { toastError, toastSuccess } from "../../lib/toast";
@@ -72,6 +77,7 @@ export function FarFromJobPrompt({
   onChanged: () => void;
 }) {
   const t = useT();
+  const qc = useQueryClient();
   const [asking, setAsking] = useState(false);
   const [metersAway, setMetersAway] = useState<number | null>(null);
   /** The fix the check ran on, reused if they tap Switch. */
@@ -82,6 +88,26 @@ export function FarFromJobPrompt({
   const shiftId = shift?.id ?? null;
   const projectId = shift?.project_id ?? null;
   const onClock = isOnTheClock(shift);
+
+  /**
+   * The cost-code library, warmed while the person is on the clock.
+   *
+   * WHY IT IS A QUERY AND NOT A LOOKUP AT TAP TIME: the phone this prompt
+   * targets has just driven away from a job, which in this valley usually means
+   * away from signal too. A fresh `getTravelCostCode()` read at the moment they
+   * tap Switch would throw before the punch was even attempted, and the one-tap
+   * answer would be lost to an error toast. Same cache key the clock sheet
+   * uses, so this costs one small read per session at most.
+   */
+  const costCodes = useQuery({
+    queryKey: ["costCodes"],
+    queryFn: listCostCodes,
+    enabled: onClock,
+  });
+  const cachedTravel: CostCode | null =
+    (costCodes.data ?? []).find(
+      (c) => (c.code ?? "").trim() === TRAVEL_COST_CODE,
+    ) ?? null;
 
   /**
    * The current shift, held in a ref rather than closed over.
@@ -161,9 +187,14 @@ export function FarFromJobPrompt({
   // The existing switch path, exactly: clock_in again on the SAME job with the
   // Travel code, which auto-closes the current punch so there is no gap. The
   // worker's note and the job mode ride along so nothing about the day is lost.
-  const switchToTravel = useMutation({
+  //
+  // And it queues, like every other punch in this app. The person being asked
+  // has driven away from a job; "no signal" is the normal state of the phone
+  // that gets this question, and a switch that only worked in coverage would
+  // fail exactly when it matters and leave the clock charging the job.
+  const switchToTravel = useMutation<{ queued: boolean }>({
     mutationFn: async () => {
-      const travel = await getTravelCostCode();
+      const travel = cachedTravel ?? (await getTravelCostCode());
       if (!travel) {
         throw new Error(
           "There's no Travel cost code set up, so this can't switch for you.",
@@ -176,18 +207,60 @@ export function FarFromJobPrompt({
       const fresh = await captureGeoSoft();
       const geo: GeoFix =
         fresh.lat != null ? fresh : (fixRef.current ?? {});
-      await clockIn(
-        shift!.project_id,
-        travel.id,
-        geo,
-        shift!.note ?? null,
-        shift!.job_mode ?? null,
-      );
+      const current = shift!;
+      try {
+        await clockIn(
+          current.project_id,
+          travel.id,
+          geo,
+          current.note ?? null,
+          current.job_mode ?? null,
+        );
+        return { queued: false };
+      } catch (e) {
+        // isNetworkError already answers "is the browser offline?" first, so
+        // this is the same test ClockSheet's punches make.
+        if (!isNetworkError(e)) throw e;
+        const entryId = await enqueueClockIn({
+          projectId: current.project_id,
+          costCodeId: travel.id,
+          lat: geo.lat ?? null,
+          lng: geo.lng ?? null,
+          note: current.note ?? null,
+        });
+        // Show the switch immediately, the way the clock sheet does. Built from
+        // the shift already in hand rather than through ClockSheet's own
+        // synthOpenShift, which is closed over that component's project and
+        // cost-code queries; here the whole previous punch is the template and
+        // only the code and the start time move. The job mode is NOT carried:
+        // the outbox's clock_in payload has never held one, so a queued switch
+        // lands without it and is corrected on sync like any other.
+        const optimistic: TimeShift = {
+          ...current,
+          id: pendingRefForShift(entryId),
+          cost_code_id: travel.id,
+          cost_codes: { code: travel.code, label: travel.label },
+          clock_in_at: new Date().toISOString(),
+          clock_in_lat: geo.lat ?? null,
+          clock_in_lng: geo.lng ?? null,
+          last_seen_at: null,
+          last_seen_lat: null,
+          last_seen_lng: null,
+          last_seen_accuracy_m: null,
+          status: "open",
+        };
+        qc.setQueryData(["openShift", current.profile_id], optimistic);
+        return { queued: true };
+      }
     },
-    onSuccess: () => {
-      toastSuccess(t("farjob.switched"));
+    onSuccess: (r) => {
+      toastSuccess(
+        r.queued ? t("clock.toast.switchedQueued") : t("farjob.switched"),
+      );
       setAsking(false);
-      onChanged();
+      // A queued switch is already in the cache; re-reading the server would
+      // just overwrite it with the punch the phone could not change yet.
+      if (!r.queued) onChanged();
     },
     onError: (e) => toastError(e),
   });
