@@ -257,6 +257,16 @@ function VideoCard({
   );
 }
 
+/**
+ * What a button in the form means by "save". `publish` is the one that matters:
+ * it is a save AND the status flip, because those two used to be separate taps
+ * and the second one silently dropped the first one's typing.
+ */
+interface SaveIntent {
+  retire?: boolean;
+  publish?: boolean;
+}
+
 function VideoForm({
   initial,
   types,
@@ -280,8 +290,19 @@ function VideoForm({
 
   const youtubeBad = youtube.trim() !== "" && !youtubeEmbedUrl(youtube);
 
+  // Saving is the ONLY thing in this form that writes a row, so every button
+  // that leaves the modal goes through it. Publish used to be a mutation of its
+  // own that flipped the status and nothing else — which threw away whatever
+  // the supervisor had typed but not yet saved, because every field here is
+  // local state and onSaved() closes the modal. The transcript is the one that
+  // hurt: the flow this form is built around is paste the link, paste the
+  // transcript, Generate, Approve, Publish, so having unsaved words in the box
+  // when Publish is tapped is the ordinary case, not an edge case. Publishing
+  // from in here is therefore a save that also sets the status — one write, one
+  // round trip, nothing lost. The Inbox card's one-tap Publish stays a plain
+  // status flip; there is no unsaved typing behind that one.
   const save = useMutation({
-    mutationFn: async (retire?: boolean) => {
+    mutationFn: async (intent: SaveIntent) => {
       let videoPath = initial?.video_path ?? null;
       if (file) videoPath = await uploadLearningVideo(file);
       return saveLearningVideo({
@@ -293,25 +314,30 @@ function VideoForm({
         youtubeUrl: youtube || null,
         summary: summary || null,
         transcript: transcript || null,
-        active: !retire,
+        active: !intent.retire,
+        // Null means "leave the status where it is", so an ordinary Save never
+        // publishes a draft and never unpublishes a live lesson.
+        status: intent.publish ? "published" : null,
         grantsClearance: grantsClearance || null,
       });
     },
-    onSuccess: (_v, retire) => {
-      pushToast(retire ? "Video removed from Learn." : "Training video saved.");
+    onSuccess: (_v, intent) => {
+      pushToast(
+        intent.publish
+          ? t("learn.videos.publishedToast")
+          : intent.retire
+            ? "Video removed from Learn."
+            : "Training video saved.",
+      );
       onSaved();
     },
     onError: (e) => pushToast(formatApiError(e), "error"),
   });
 
-  const publish = useMutation({
-    mutationFn: () => publishLearningVideo(initial!.id),
-    onSuccess: () => {
-      pushToast(t("learn.videos.publishedToast"));
-      onSaved();
-    },
-    onError: (e) => pushToast(formatApiError(e), "error"),
-  });
+  // Which button is busy. Both read the same mutation, so without this they
+  // would both say they were working.
+  const publishing = save.isPending && save.variables?.publish === true;
+  const saving = save.isPending && !save.variables?.publish;
 
   const hasSource = Boolean(file || initial?.video_path || (youtube.trim() && !youtubeBad));
   // A brand-new lesson has no row yet, so it is a draft the moment it is
@@ -387,20 +413,22 @@ function VideoForm({
           <button
             className="button-like active-pill"
             disabled={!title.trim() || !hasSource || save.isPending}
-            onClick={() => save.mutate(false)}
+            onClick={() => save.mutate({})}
           >
-            {save.isPending ? "Saving…" : "Save"}
+            {saving ? "Saving…" : "Save"}
           </button>
           {/* The last step of the flow, right where the flow ends: paste the
-              link, paste the transcript, Generate, Approve, Publish. A video
-              that has never been saved has no row to publish yet. */}
+              link, paste the transcript, Generate, Approve, Publish. It saves
+              the form on the way through, so the transcript that was pasted a
+              moment ago goes live with the lesson. A video that has never been
+              saved has no row to publish yet. */}
           {initial && isDraft && (
             <button
               className="button-like active-pill"
-              disabled={publish.isPending || save.isPending}
-              onClick={() => publish.mutate()}
+              disabled={!title.trim() || !hasSource || save.isPending}
+              onClick={() => save.mutate({ publish: true })}
             >
-              {publish.isPending ? t("learn.videos.publishing") : t("learn.videos.publish")}
+              {publishing ? t("learn.videos.publishing") : t("learn.videos.publish")}
             </button>
           )}
           {initial && (
@@ -408,7 +436,7 @@ function VideoForm({
               className="button-like"
               style={{ color: "var(--danger, #f87171)" }}
               disabled={save.isPending}
-              onClick={() => save.mutate(true)}
+              onClick={() => save.mutate({ retire: true })}
             >
               Remove
             </button>

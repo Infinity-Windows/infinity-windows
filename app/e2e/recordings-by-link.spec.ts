@@ -58,6 +58,7 @@ async function useRecordingRoutes(
     /** The open shift the "Send a recording" subject names, if any. */
     shift?: Record<string, unknown> | null;
     onPublish?: (body: Record<string, unknown>) => void;
+    onSave?: (body: Record<string, unknown>) => void;
   },
 ) {
   const state = { videos: opts.videos };
@@ -81,6 +82,27 @@ async function useRecordingRoutes(
       v.id === body.p_id ? { ...v, status: "published" } : v,
     );
     return json(route, state.videos.find((v) => v.id === body.p_id) ?? null, 1);
+  });
+
+  // save_learning_video is the whole write path for the edit form, so the spec
+  // reads what the form actually sent rather than what it rendered.
+  await page.route("**/rest/v1/rpc/save_learning_video", (route) => {
+    const body = route.request().postDataJSON() as Record<string, unknown>;
+    opts.onSave?.(body);
+    let saved: VideoRow | null = null;
+    state.videos = state.videos.map((v) => {
+      if (v.id !== body.p_id) return v;
+      saved = {
+        ...v,
+        title: String(body.p_title ?? v.title),
+        transcript: (body.p_transcript ?? null) as string | null,
+        summary: (body.p_summary ?? null) as string | null,
+        // Null p_status means "leave it where it is" — the same rule the RPC follows.
+        status: (body.p_status as string | null) ?? v.status,
+      };
+      return saved;
+    });
+    return json(route, saved, saved ? 1 : 0);
   });
 
   await page.route("**/rest/v1/rpc/foreman_contacts_for_me", (route) =>
@@ -156,6 +178,62 @@ test("a supervisor's draft waits in the Inbox, and Publish moves it into the lib
   // simply in the library now.
   await expect(page.getByText("Inbox — not published yet")).toHaveCount(0);
   await expect(page.getByText("Installing the corner unit")).toBeVisible();
+});
+
+test("Publish inside the edit form takes the transcript that was just pasted with it", async ({ page }) => {
+  // The regression this pins: Publish used to be a status flip on its own, so a
+  // supervisor who pasted the transcript and reached straight for Publish —
+  // which is what the flow tells them to do — published a lesson with no words
+  // in it and never knew.
+  await useSupabaseFixtures(page, { role: "supervisor" });
+  const saves: Record<string, unknown>[] = [];
+  const publishes: Record<string, unknown>[] = [];
+  await useRecordingRoutes(page, {
+    videos: [video({ id: VIDEO_ID, title: "Installing the corner unit", status: "draft" })],
+    onSave: (b) => saves.push(b),
+    onPublish: (b) => publishes.push(b),
+  });
+
+  await page.goto("/learn");
+  await page.getByRole("button", { name: "Videos" }).click();
+  await page.getByRole("button", { name: "✎ Edit" }).click();
+
+  // Two boxes in the form: Transcript Summary, then Transcript Full.
+  await page.locator(".modal-card textarea").nth(1).fill("Shim the sill, then the head.");
+  await page.locator(".modal-card").getByRole("button", { name: "Publish", exact: true }).click();
+
+  await expect.poll(() => saves.length).toBe(1);
+  expect(saves[0].p_transcript).toBe("Shim the sill, then the head.");
+  expect(saves[0].p_status).toBe("published");
+  // One write, not a save chased by a second call that could half-succeed.
+  expect(publishes).toHaveLength(0);
+
+  // And the lesson really is in the library now, transcript and all.
+  await expect(page.getByText("Inbox — not published yet")).toHaveCount(0);
+  await page.getByText("Transcript Full").click();
+  await expect(page.getByText("Shim the sill, then the head.")).toBeVisible();
+});
+
+test("an ordinary Save leaves a draft a draft", async ({ page }) => {
+  await useSupabaseFixtures(page, { role: "supervisor" });
+  const saves: Record<string, unknown>[] = [];
+  await useRecordingRoutes(page, {
+    videos: [video({ id: VIDEO_ID, title: "Installing the corner unit", status: "draft" })],
+    onSave: (b) => saves.push(b),
+  });
+
+  await page.goto("/learn");
+  await page.getByRole("button", { name: "Videos" }).click();
+  await page.getByRole("button", { name: "✎ Edit" }).click();
+  await page.locator(".modal-card textarea").nth(1).fill("Half a transcript so far.");
+  await page.locator(".modal-card").getByRole("button", { name: "Save", exact: true }).click();
+
+  await expect.poll(() => saves.length).toBe(1);
+  expect(saves[0].p_transcript).toBe("Half a transcript so far.");
+  // Silence, so the server leaves the status alone. Publishing stays a
+  // deliberate tap.
+  expect(saves[0].p_status).toBe(null);
+  await expect(page.getByText("Inbox — not published yet")).toBeVisible();
 });
 
 test("Send a recording addresses the leads on the job the installer is clocked into", async ({ page }) => {
