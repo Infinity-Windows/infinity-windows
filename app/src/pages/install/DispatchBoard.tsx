@@ -40,7 +40,7 @@ import { installerColorMap } from "../../lib/install/mapDispatch";
 import { toggleExpandedOpening } from "../../lib/install/openingRowAction";
 import { readyStatusLabel, type ProjectOpening } from "../../lib/install/types";
 import { dataOffReasonKey, holdsOffDispatch } from "../../lib/install/dataOff";
-import { useT } from "../../lib/i18n";
+import { useT, type TFn } from "../../lib/i18n";
 import {
   compareIssues,
   KIND_LABELS,
@@ -524,6 +524,7 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
         projectId={projectId}
         openingCodeById={openingCodeById}
         nameOf={(id) => nameOf(id)}
+        t={t}
       />
     </div>
   );
@@ -543,10 +544,12 @@ function AssignmentHistoryCard({
   projectId,
   openingCodeById,
   nameOf,
+  t,
 }: {
   projectId: string;
   openingCodeById: Map<string, string>;
   nameOf: (id: string) => string | null | undefined;
+  t: TFn;
 }) {
   const [open, setOpen] = useState(false);
   const events = useQuery({
@@ -559,22 +562,24 @@ function AssignmentHistoryCard({
     <div className="detail-card wh-card">
       {!open ? (
         <button className="button-like" onClick={() => setOpen(true)}>
-          Assignment history — who has had what
+          {t("assign.historyOpen")}
         </button>
       ) : (
         <>
-          <span className="field-label">Assignment history</span>
-          {events.isLoading && <p className="muted">Loading…</p>}
+          <span className="field-label">{t("assign.history")}</span>
+          {events.isLoading && <p className="muted">{t("assign.historyLoading")}</p>}
           {!events.isLoading && rows.length === 0 && (
             <p className="muted" style={{ margin: "4px 0 0", fontSize: 12.5 }}>
-              Nothing handed out on this job yet.
+              {t("assign.historyEmpty")}
             </p>
           )}
           <ul className="unit-list" style={{ marginTop: 4 }}>
             {rows.map((e) => (
               <li key={e.id} className="muted" style={{ fontSize: 12.5 }}>
-                <strong>{openingCodeById.get(e.opening_id) ?? "unit"}</strong>{" "}
-                {assignmentText(e, nameOf)}
+                <strong>
+                  {openingCodeById.get(e.opening_id) ?? t("assign.unit")}
+                </strong>{" "}
+                {assignmentText(e, nameOf, t)}
                 {" · "}
                 {new Date(e.changed_at).toLocaleString(undefined, {
                   weekday: "short",
@@ -589,7 +594,7 @@ function AssignmentHistoryCard({
             style={{ marginTop: 10 }}
             onClick={() => setOpen(false)}
           >
-            Close history
+            {t("assign.historyClose")}
           </button>
         </>
       )}

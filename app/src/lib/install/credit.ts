@@ -15,6 +15,8 @@
 // real gate; these two say the same thing on purpose, and if one changes the
 // other has to change with it.
 
+import type { TFn } from "../i18n";
+
 /** A person the picker can offer, in the shape both the sheet and the map have. */
 export interface CreditCandidate {
   id: string;
@@ -126,12 +128,13 @@ export function creditLine(
     credited_to?: string | null;
   },
   nameOf: (profileId: string) => string | null | undefined,
+  t: TFn,
 ): string | null {
   const credited = event.credited_to ?? null;
   const filerName =
     (event.installer_id ? nameOf(event.installer_id) : null) || event.installer || null;
   if (!credited) return filerName || null;
-  const creditedName = nameOf(credited) || "someone else";
-  if (!filerName) return `Installed by ${creditedName}`;
-  return `Installed by ${creditedName} · filed by ${filerName}`;
+  const installer = nameOf(credited) || t("credit.someoneElse");
+  if (!filerName) return t("credit.installedBy", { installer });
+  return t("credit.installedByFiledBy", { installer, filer: filerName });
 }

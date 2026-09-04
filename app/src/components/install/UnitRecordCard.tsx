@@ -12,6 +12,7 @@ import {
   listOpeningAssignmentEvents,
 } from "../../lib/install/assignmentHistory";
 import { creditLine } from "../../lib/install/credit";
+import { useT, type TFn } from "../../lib/i18n";
 import type { OpeningPhase } from "../../lib/install/phases";
 import {
   buildTimeline,
@@ -41,6 +42,7 @@ export function UnitRecordCard({
   openingId: string;
   flashing: OpeningPhase | null;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
 
   // Cheap always-on probe: does this window have a story yet? Rounds exist
@@ -97,7 +99,7 @@ export function UnitRecordCard({
     redos.data ?? [],
     nameOf,
     Date.now(),
-    assignmentTimelineRows(assignments.data ?? [], nameOf),
+    assignmentTimelineRows(assignments.data ?? [], nameOf, t),
   );
 
   return (
@@ -119,6 +121,7 @@ export function UnitRecordCard({
               round={r}
               many={rounds.length > 1}
               nameOf={nameOf}
+              t={t}
             />
           ))}
 
@@ -175,15 +178,17 @@ function RoundBlock({
   round,
   many,
   nameOf,
+  t,
 }: {
   round: RecordRound;
   many: boolean;
   nameOf: (profileId: string) => string | null | undefined;
+  t: TFn;
 }) {
   const e = round.event;
   // "Installed by Sam · filed by Jed" — or just the name, when the person who
   // filed it is the person who did it, which is nearly always (wave Y).
-  const who = creditLine(e, nameOf);
+  const who = creditLine(e, nameOf, t);
   const topics = filledTopics(e);
   const photos = round.media.filter((m) => m.kind === "photo" && m.signedUrl);
   const video = round.media.find((m) => m.kind === "video" && m.signedUrl);

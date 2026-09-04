@@ -6,6 +6,11 @@ import {
   defaultCredit,
   shouldAskWhoInstalled,
 } from "./credit";
+import { CATALOG, translate, type Lang, type TFn } from "../i18n";
+
+// The real catalog: a key that does not exist renders as "" and fails here.
+const tIn = (lang: Lang): TFn => (key, vars) => translate(CATALOG, lang, key, vars);
+const t = tIn("en");
 
 const SAM = { id: "sam", name: "Sam", role: "installer" };
 const JED = { id: "jed", name: "Jed", role: "foreman" };
@@ -119,7 +124,7 @@ describe("creditLine", () => {
   const JED_EMAIL = "jed@forgewd.com";
 
   it("names the filer from their profile, not from the login they filed with", () => {
-    expect(creditLine({ installer: JED_EMAIL, installer_id: "jed" }, nameOf)).toBe("Jed");
+    expect(creditLine({ installer: JED_EMAIL, installer_id: "jed" }, nameOf, t)).toBe("Jed");
   });
 
   it("names both people when one filed for another", () => {
@@ -127,6 +132,7 @@ describe("creditLine", () => {
       creditLine(
         { installer: JED_EMAIL, installer_id: "jed", credited_to: "sam" },
         nameOf,
+        t,
       ),
     ).toBe("Installed by Sam · filed by Jed");
   });
@@ -135,24 +141,48 @@ describe("creditLine", () => {
     // A profile that has since gone, or a round filed before ids were stored:
     // an email a foreman recognises beats no name at all.
     expect(
-      creditLine({ installer: JED_EMAIL, installer_id: "ghost" }, nameOf),
+      creditLine({ installer: JED_EMAIL, installer_id: "ghost" }, nameOf, t),
     ).toBe(JED_EMAIL);
-    expect(creditLine({ installer: JED_EMAIL, credited_to: null }, nameOf)).toBe(
+    expect(creditLine({ installer: JED_EMAIL, credited_to: null }, nameOf, t)).toBe(
       JED_EMAIL,
     );
   });
 
   it("falls back to the filer's id when no name was typed at file time", () => {
-    expect(creditLine({ installer: null, installer_id: "jed" }, nameOf)).toBe("Jed");
+    expect(creditLine({ installer: null, installer_id: "jed" }, nameOf, t)).toBe("Jed");
   });
 
   it("says something rather than nothing for a credited person we cannot name", () => {
     expect(
-      creditLine({ installer: JED_EMAIL, installer_id: "jed", credited_to: "who-dis" }, nameOf),
+      creditLine({ installer: JED_EMAIL, installer_id: "jed", credited_to: "who-dis" }, nameOf, t),
     ).toBe("Installed by someone else · filed by Jed");
   });
 
   it("is null for a round with no name on it at all", () => {
-    expect(creditLine({ installer: null }, nameOf)).toBeNull();
+    expect(creditLine({ installer: null }, nameOf, t)).toBeNull();
+  });
+});
+
+describe("the Record line reads in Spanish too", () => {
+  const nameOf = (id: string) => CREW.find((c) => c.id === id)?.name ?? null;
+  const es = tIn("es");
+
+  it("names both people in Spanish, not in English with Spanish around it", () => {
+    expect(
+      creditLine(
+        { installer: "jed@forgewd.com", installer_id: "jed", credited_to: "sam" },
+        nameOf,
+        es,
+      ),
+    ).toBe("Instalada por Sam · registrada por Jed");
+  });
+
+  it("has Spanish for the shapes with only one name in them", () => {
+    expect(creditLine({ installer: null, credited_to: "sam" }, nameOf, es)).toBe(
+      "Instalada por Sam",
+    );
+    expect(
+      creditLine({ installer: null, credited_to: "who-dis" }, nameOf, es),
+    ).toBe("Instalada por otra persona");
   });
 });

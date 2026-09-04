@@ -570,7 +570,7 @@ export function MapsInteractive({ project }: { project: Project }) {
                         );
                         setRecordFor(null);
                         if (!match) {
-                          pushToast("That unit has no opening yet.", "error");
+                          pushToast(t("credit.noOpeningYet"), "error");
                           return;
                         }
                         navigate(

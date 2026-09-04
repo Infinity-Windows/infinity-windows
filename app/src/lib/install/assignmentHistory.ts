@@ -13,6 +13,7 @@
 
 import { supabase } from "../supabase";
 import { isMissingTable } from "../schemaErrors";
+import type { TFn } from "../i18n";
 
 /** Which screen a hand-over came from. */
 export type AssignmentVia = "dispatch" | "map" | "auto" | "unassign";
@@ -87,31 +88,45 @@ export function listProjectAssignmentEvents(
  * Three shapes, because three things actually happen: a unit is given out, a
  * unit moves from one person to another, and a unit comes off a list. Saying
  * all three with one template ("assigned to nobody") is how a log stops being
- * read.
+ * read. Each has a named and an unnamed form rather than a " by …" tail glued
+ * on, because Spanish puts the person who moved it at the front of the
+ * sentence.
+ *
+ * `t` is a parameter and not a hook so this stays pure and testable — the same
+ * reason `nameOf` is one.
  */
 export function assignmentText(
   event: Pick<OpeningAssignmentEvent, "from_profile" | "to_profile" | "changed_by">,
   nameOf: (profileId: string) => string | null | undefined,
+  t: TFn,
 ): string {
-  const who = (id: string | null) => (id ? nameOf(id) || "Crew" : null);
+  const who = (id: string | null) => (id ? nameOf(id) || t("assign.crew") : null);
   const to = who(event.to_profile);
   const from = who(event.from_profile);
   const by = who(event.changed_by);
-  const bySuffix = by ? ` by ${by}` : "";
-  if (to && from) return `Moved from ${from} to ${to}${bySuffix}`;
-  if (to) return `Assigned to ${to}${bySuffix}`;
-  if (from) return `Taken off ${from}'s list${bySuffix}`;
-  return `Assignment cleared${bySuffix}`;
+  if (to && from) {
+    return by
+      ? t("assign.movedBy", { from, to, by })
+      : t("assign.moved", { from, to });
+  }
+  if (to) return by ? t("assign.assignedBy", { to, by }) : t("assign.assigned", { to });
+  if (from) {
+    return by
+      ? t("assign.takenOffBy", { from, by })
+      : t("assign.takenOff", { from });
+  }
+  return by ? t("assign.clearedBy", { by }) : t("assign.cleared");
 }
 
 /** A unit's hand-overs in the shape the Record's timeline merges and sorts. */
 export function assignmentTimelineRows(
   events: readonly OpeningAssignmentEvent[],
   nameOf: (profileId: string) => string | null | undefined,
+  t: TFn,
 ): { at: string; text: string; kind: "assign" }[] {
   return events.map((e) => ({
     at: e.changed_at,
-    text: assignmentText(e, nameOf),
+    text: assignmentText(e, nameOf, t),
     kind: "assign" as const,
   }));
 }

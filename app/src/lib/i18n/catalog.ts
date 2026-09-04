@@ -1210,6 +1210,79 @@ export const CATALOG = {
   "credit.cancel": { en: "Cancel", es: "Cancelar" },
   // The map's single-unit Assign door (Y4).
   "credit.assignOne": { en: "Assign…", es: "Asignar…" },
+  // The map picked a person for a mark it cannot find an opening behind —
+  // a plan drawn ahead of the schedule, usually.
+  "credit.noOpeningYet": {
+    en: "That unit has no opening yet.",
+    es: "Esa unidad todavía no tiene abertura.",
+  },
+  // The line the Record reads back on a filed round. The two halves are one
+  // sentence in both languages, so they are one key rather than a name glued
+  // to a separator in code — Spanish does not put them in the same order.
+  "credit.installedBy": {
+    en: "Installed by {installer}",
+    es: "Instalada por {installer}",
+  },
+  "credit.installedByFiledBy": {
+    en: "Installed by {installer} · filed by {filer}",
+    es: "Instalada por {installer} · registrada por {filer}",
+  },
+  // The credited person left the crew, or was never on it. Better than a
+  // blank: somebody was named, we just cannot say who any more.
+  "credit.someoneElse": { en: "someone else", es: "otra persona" },
+
+  // ---- Who has had this unit (wave Y, Y5) --------------------------------
+  // The hand-over log, read on the unit's Record and on the job's own list.
+  // Three sentences because three different things happen — a unit going out,
+  // a unit moving between two people, and a unit coming off a list — and each
+  // has a with-a-name and a without-a-name form, because a hand-over made by
+  // an account nobody can name still has to read as a sentence. Spanish puts
+  // the person who moved it first, which is why these are whole sentences and
+  // not an English stem with a " by …" stuck on the end.
+  "assign.assigned": { en: "Assigned to {to}", es: "Asignada a {to}" },
+  "assign.assignedBy": {
+    en: "Assigned to {to} by {by}",
+    es: "{by} se la asignó a {to}",
+  },
+  "assign.moved": { en: "Moved from {from} to {to}", es: "Pasó de {from} a {to}" },
+  "assign.movedBy": {
+    en: "Moved from {from} to {to} by {by}",
+    es: "{by} la pasó de {from} a {to}",
+  },
+  "assign.takenOff": {
+    en: "Taken off {from}'s list",
+    es: "Quitada de la lista de {from}",
+  },
+  "assign.takenOffBy": {
+    en: "Taken off {from}'s list by {by}",
+    es: "{by} la quitó de la lista de {from}",
+  },
+  "assign.cleared": { en: "Assignment cleared", es: "Asignación borrada" },
+  "assign.clearedBy": {
+    en: "Assignment cleared by {by}",
+    es: "{by} borró la asignación",
+  },
+  // Somebody the roster cannot name — the same fallback the session timeline
+  // already uses rather than showing a raw id.
+  "assign.crew": { en: "Crew", es: "Cuadrilla" },
+  // The log itself. Folded shut by default: it is the thing you go and look at
+  // when something is wrong, not a thing to read every morning.
+  "assign.historyOpen": {
+    en: "Assignment history — who has had what",
+    es: "Historial de asignaciones — quién ha tenido qué",
+  },
+  "assign.history": {
+    en: "Assignment history",
+    es: "Historial de asignaciones",
+  },
+  "assign.historyLoading": { en: "Loading…", es: "Cargando…" },
+  "assign.historyEmpty": {
+    en: "Nothing handed out on this job yet.",
+    es: "Todavía no se ha repartido nada en este trabajo.",
+  },
+  "assign.historyClose": { en: "Close history", es: "Cerrar historial" },
+  // A hand-over whose unit is not in the list this screen loaded.
+  "assign.unit": { en: "unit", es: "unidad" },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */
