@@ -880,6 +880,12 @@ export const CATALOG = {
     es: "Tu reloj sigue corriendo de todos modos — nada cambia hasta que toques.",
   },
   "farjob.switched": { en: "Switched to Travel", es: "Cambiado a Viaje" },
+  // The supervisor's reading of the same fact (K3). "mi" abbreviates the same
+  // way in both languages, so one key covers one mile and fourteen.
+  "lastseen.farFromJob": {
+    en: "last seen {miles} mi from job · {time}",
+    es: "visto por última vez a {miles} mi del trabajo · {time}",
+  },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */

@@ -4,6 +4,7 @@ import {
   describeMiles,
   holdKey,
   isJobCostCode,
+  lastSeenAwayFromJob,
   milesFromMeters,
   shouldAskAboutTravel,
   type TravelPromptShift,
@@ -132,6 +133,54 @@ describe("milesFromMeters", () => {
   it("converts a mile to a mile", () => {
     expect(milesFromMeters(1609.344)).toBeCloseTo(1, 6);
     expect(milesFromMeters(800)).toBeCloseTo(0.497, 3);
+  });
+});
+
+describe("lastSeenAwayFromJob", () => {
+  const AT = "2026-09-03T22:12:00.000Z";
+
+  it("reads the miles between the last foreground fix and where the punch started", () => {
+    const line = lastSeenAwayFromJob({
+      last_seen_at: AT,
+      last_seen_lat: FAR.lat,
+      last_seen_lng: FAR.lng,
+      clock_in_lat: JOB.lat,
+      clock_in_lng: JOB.lng,
+    });
+    expect(line).toEqual({ miles: "14", atIso: AT });
+  });
+
+  it("says nothing when they are still at the job", () => {
+    expect(
+      lastSeenAwayFromJob({
+        last_seen_at: AT,
+        last_seen_lat: NEAR.lat,
+        last_seen_lng: NEAR.lng,
+        clock_in_lat: JOB.lat,
+        clock_in_lng: JOB.lng,
+      }),
+    ).toBeNull();
+  });
+
+  it("says nothing when any half of the answer is missing", () => {
+    expect(lastSeenAwayFromJob(null)).toBeNull();
+    expect(lastSeenAwayFromJob({})).toBeNull();
+    // Seen, but the punch carries no clock-in fix to measure against.
+    expect(
+      lastSeenAwayFromJob({
+        last_seen_at: AT,
+        last_seen_lat: FAR.lat,
+        last_seen_lng: FAR.lng,
+      }),
+    ).toBeNull();
+    // A time but no point: the supervisor list has nothing to say about where.
+    expect(
+      lastSeenAwayFromJob({
+        last_seen_at: AT,
+        clock_in_lat: JOB.lat,
+        clock_in_lng: JOB.lng,
+      }),
+    ).toBeNull();
   });
 });
 

@@ -22,7 +22,12 @@
 // Pure on purpose: the decision is tested here with fixtures, and the component
 // only supplies today's inputs.
 
-import { farFromJob, type DeviceFix, type LatLng } from "./jobProximity";
+import {
+  farFromJob,
+  haversineMeters,
+  type DeviceFix,
+  type LatLng,
+} from "./jobProximity";
 
 /** The seeded Travel cost code (20260717001000_time_clock.sql). */
 export const TRAVEL_COST_CODE = "900";
@@ -104,4 +109,49 @@ export function describeMiles(miles: number): { value: string; one: boolean } {
 /** The localStorage key holding an "I'm still here" hold for one shift. */
 export function holdKey(shiftId: string): string {
   return `forge:far-from-job-hold:${shiftId}`;
+}
+
+// ---------------------------------------------------------------------------
+// K3 — the reading half: "last seen 14 mi from job · 4:12 PM"
+// ---------------------------------------------------------------------------
+
+/** What the supervisor list needs off a shift to say where somebody was. */
+export interface LastSeenShift {
+  last_seen_at?: string | null;
+  last_seen_lat?: number | null;
+  last_seen_lng?: number | null;
+  clock_in_lat?: number | null;
+  clock_in_lng?: number | null;
+}
+
+/**
+ * "Last seen away from the job", or null when there is nothing honest to say.
+ *
+ * The job's position here is where THIS punch was clocked in — the same
+ * reference the far-from-job question uses, and the only one a single shift row
+ * carries on its own. That makes the line mean something precise: they started
+ * the shift here, and the last time they opened the app they were N miles from
+ * that spot.
+ *
+ * Null whenever any of it is unknown, and null when they are NOT far. A
+ * supervisor list that said "last seen at the job" for everybody would be noise;
+ * this line only appears when it is telling somebody something.
+ */
+export function lastSeenAwayFromJob(
+  shift: LastSeenShift | null | undefined,
+): { miles: string; atIso: string } | null {
+  if (!shift?.last_seen_at) return null;
+  const at = shift.last_seen_at;
+  const seen =
+    shift.last_seen_lat != null && shift.last_seen_lng != null
+      ? { lat: shift.last_seen_lat, lng: shift.last_seen_lng }
+      : null;
+  const job =
+    shift.clock_in_lat != null && shift.clock_in_lng != null
+      ? { lat: shift.clock_in_lat, lng: shift.clock_in_lng }
+      : null;
+  if (!seen || !job) return null;
+  if (!farFromJob(seen, job)) return null;
+  const away = describeMiles(milesFromMeters(haversineMeters(seen, job)));
+  return { miles: away.value, atIso: at };
 }

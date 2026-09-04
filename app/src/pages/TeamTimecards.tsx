@@ -11,6 +11,8 @@ import { useEffect, useMemo, useState } from "react";
 import { ChevronRight, Search } from "lucide-react";
 import { listProjects } from "../lib/api";
 import { formatApiError } from "../lib/errors";
+import { lastSeenAwayFromJob } from "../lib/farFromJob";
+import { useT } from "../lib/i18n";
 import { SkeletonList } from "../components/ui/States";
 import { listProfiles } from "../lib/install/api";
 import { isForemanPlus, isSupervisorPlus, visibleRole } from "../lib/install/types";
@@ -60,6 +62,7 @@ function initials(name: string): string {
 
 export function TeamTimecards() {
   const qc = useQueryClient();
+  const t = useT();
   const { effectiveRole } = useEffectiveRole();
   const isLead = isForemanPlus(effectiveRole);
   const isSup = isSupervisorPlus(effectiveRole);
@@ -169,7 +172,8 @@ export function TeamTimecards() {
   }, [crew.data, weekSummary, liveShifts, search]);
 
   const clockedCount = roster.filter((r) => r.open).length;
-  const pendingCount = weekSummary.reduce((t, r) => t + r.submittedCount, 0);
+  // `sum`, not `t` — `t` is the translator on this component now.
+  const pendingCount = weekSummary.reduce((sum, r) => sum + r.submittedCount, 0);
 
   // ---- Team-wide export (the roster's "Export all") ----
   // T7: shiftsToExportRows (lib/timeclock.ts) is the one shared mapping —
@@ -338,6 +342,22 @@ export function TeamTimecards() {
                         ? " · stopped counting, needs a real finish time"
                         : " · still counting"}
                     </div>
+                    {/* K3: where they were the last time the app was opened on
+                        this punch — shown ONLY when that is away from where the
+                        punch started, because "last seen at the job" for
+                        everybody would just be noise. */}
+                    {(() => {
+                      const seen = lastSeenAwayFromJob(s);
+                      if (!seen) return null;
+                      return (
+                        <div className="muted" style={{ fontSize: 11.5 }}>
+                          {t("lastseen.farFromJob", {
+                            miles: seen.miles,
+                            time: fmtTime(seen.atIso),
+                          })}
+                        </div>
+                      );
+                    })()}
                     {needsFinishTime(s) && s.edited_note && (
                       <div
                         className="muted"
