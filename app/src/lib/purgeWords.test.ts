@@ -1,15 +1,21 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   hasWorkHistory,
-  historyHighlights,
   isTombstoneEmail,
+  shapeFor,
+  tombstoneEmail,
+  UNKNOWN_RECORDS,
+} from "../../../supabase/functions/_shared/purgeLogin";
+import {
+  historyHighlights,
   probeKey,
   removalResultSentence,
   removalSentence,
-  shapeFor,
-  tombstoneEmail,
   WORK_HISTORY_PROBES,
-} from "../../../supabase/functions/_shared/purgeLogin";
+} from "./purgeWords";
 
 /**
  * The decision that decides whether a person's record survives.
@@ -153,6 +159,20 @@ describe("the tombstone address", () => {
   });
 });
 
+describe("when the server could not check at all", () => {
+  it("reads as history, so the record is kept", () => {
+    expect(shapeFor({ [UNKNOWN_RECORDS]: 1 })).toBe("retired");
+  });
+
+  it("still promises the right thing, without inventing a list", () => {
+    const sentence = removalSentence("Dave", { [UNKNOWN_RECORDS]: 1 });
+    expect(sentence).toBe(
+      "Dave has work on file — the login will be closed, the email freed, " +
+        "and every record kept under their name.",
+    );
+  });
+});
+
 describe("the probe list itself", () => {
   it("has no duplicate keys — a duplicate would double-count one table", () => {
     const keys = WORK_HISTORY_PROBES.map(probeKey);
@@ -175,5 +195,50 @@ describe("the probe list itself", () => {
     ];
     const keys = new Set(WORK_HISTORY_PROBES.map(probeKey));
     for (const key of restrict) expect(keys.has(key)).toBe(true);
+  });
+});
+
+/**
+ * THE RULE LIVES TWICE, ON PURPOSE, AND THE TWO COPIES ARE PINNED HERE.
+ *
+ * SQL owns the counting — `person_record_counts` in 20260987000000, because a
+ * count that RLS shortened would make a person look emptier than they are, and
+ * because no edge function may name `pay_rates` (wave Z; app/src/lib/
+ * payRates.test.ts scans for it). TypeScript owns the words and the order they
+ * are said in. The join between them is the key strings, and a key added on one
+ * side and not the other is silent: the count would be taken and never named,
+ * or named and never taken.
+ */
+describe("the SQL and the probe list agree", () => {
+  const HERE = dirname(fileURLToPath(import.meta.url));
+  const MIGRATION = join(
+    HERE,
+    "../../../supabase/migrations/20260987000000_remove_login_start_fresh.sql",
+  );
+
+  /** Every `'table.column',` key inside person_record_counts's jsonb object. */
+  function sqlKeys(): string[] {
+    const sql = readFileSync(MIGRATION, "utf8");
+    const body = sql.split("create or replace function public.person_record_counts")[1];
+    if (!body) throw new Error("person_record_counts is not in the migration");
+    const object = body.split("$$;")[0];
+    return [...object.matchAll(/'([a-z_]+\.[a-z_]+)'\s*,/g)].map((m) => m[1]);
+  }
+
+  it("finds the function at all, so this test is not vacuous", () => {
+    expect(sqlKeys().length).toBeGreaterThan(10);
+  });
+
+  it("counts exactly what the probe list names, in the same set", () => {
+    expect(new Set(sqlKeys())).toEqual(
+      new Set(WORK_HISTORY_PROBES.map(probeKey)),
+    );
+  });
+
+  it("names pay_rates in SQL and nowhere in an edge function", () => {
+    // The reason the counting moved into the database at all. If this ever
+    // fails because pay_rates left the SQL, the probe list is now lying about
+    // what gets checked before an account is deleted.
+    expect(sqlKeys()).toContain("pay_rates.profile_id");
   });
 });

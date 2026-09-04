@@ -63,11 +63,10 @@ import {
 } from "../_shared/crewInvites.ts";
 import {
   type HistoryCounts,
-  probeKey,
   type PurgeShape,
   shapeFor,
   tombstoneEmail,
-  WORK_HISTORY_PROBES,
+  UNKNOWN_RECORDS,
 } from "../_shared/purgeLogin.ts";
 
 type ServiceClient = ReturnType<typeof createClient>;
@@ -217,38 +216,38 @@ const ALREADY_REMOVED =
   'That login was removed for good, so there is nothing to switch back on. Add them again under "Add someone" and they\'ll get a fresh login.';
 
 /**
- * One count per table, taken on the SERVICE-ROLE key so row-level security
- * cannot hide a row and make a person look emptier than they are — the whole
- * decision below hangs on these numbers being complete.
+ * How many rows of work, money and safety record this person has, in one call.
  *
- * `head: true, count: "exact"` asks Postgres for the number without shipping
- * the rows: nineteen counts on a phone, not nineteen table scans down the wire.
+ * The counting lives in SQL (`person_record_counts`, 20260987000000), not here,
+ * for two reasons written out in full in that migration. The short version: one
+ * round trip instead of nineteen, and wave Z's standing rule that no edge
+ * function may ever name the wage table — these functions hold the service-role
+ * key, which bypasses RLS, and app/src/lib/payRates.test.ts scans this source
+ * to keep it that way.
  *
- * A count that FAILS is recorded as 1, never 0. A table that does not exist yet
- * (this app ships features ahead of their migrations) genuinely has no rows and
- * is skipped; anything else — a permission error, a timeout — means "we do not
- * know", and the only safe answer to not knowing is "there is history here",
- * because that keeps the record instead of deleting it.
+ * A FAILURE HERE IS "THERE IS HISTORY", NEVER "THERE IS NONE". A database that
+ * has not had 20260987000000 yet has no such function; a timeout is a timeout.
+ * Either way the honest answer is "we do not know", and the only safe way to
+ * act on not knowing is to keep the record — so the fallback returns a count
+ * that forces the retire path. It is spelled with its own key so the sentence
+ * on screen still says something true about why.
  */
 async function countHistory(
   supabase: ServiceClient,
   userId: string,
 ): Promise<HistoryCounts> {
+  const { data, error } = await supabase.rpc("person_record_counts", {
+    p_id: userId,
+  });
+  if (error || !data || typeof data !== "object") {
+    return { [UNKNOWN_RECORDS]: 1 };
+  }
+  // Whatever the database answered with, verbatim: hasWorkHistory reads the
+  // whole object, so a table added to person_record_counts after this build
+  // shipped still counts without anything here having to hear about it.
   const counts: HistoryCounts = {};
-  for (const probe of WORK_HISTORY_PROBES) {
-    const { count, error } = await supabase
-      .from(probe.table)
-      .select(probe.column, { count: "exact", head: true })
-      .eq(probe.column, userId);
-    if (error) {
-      const message = `${error.message ?? ""} ${(error as { code?: string }).code ?? ""}`;
-      // PGRST205 / 42P01: the table is not in this database yet. Really zero.
-      const missing = /PGRST205|42P01|does not exist|could not find the table/i
-        .test(message);
-      counts[probeKey(probe)] = missing ? 0 : 1;
-      continue;
-    }
-    counts[probeKey(probe)] = count ?? 0;
+  for (const [key, value] of Object.entries(data as Record<string, unknown>)) {
+    counts[key] = Number(value ?? 0);
   }
   return counts;
 }

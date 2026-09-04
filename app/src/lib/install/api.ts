@@ -252,6 +252,14 @@ export interface AccessRequest {
   requested_role: string;
   note: string | null;
   status: "pending" | "approved" | "denied";
+  /** Who decided it. Null while pending, and after a Re-open. */
+  decided_by: string | null;
+  decided_at: string | null;
+  /**
+   * Why, in the decider's own words. Optional, and absent (rather than null)
+   * on a database that predates 20260987000000.
+   */
+  decision_note?: string | null;
   created_at: string;
 }
 
@@ -281,15 +289,64 @@ export async function listAccessRequests(): Promise<AccessRequest[]> {
   return (data ?? []) as AccessRequest[];
 }
 
+/**
+ * Deny a request (with an optional reason) or re-open a denied one.
+ *
+ * Goes through the RPC, not a PATCH: `decide_access_request` is SECURITY
+ * DEFINER, stamps `decided_by` from the verified session rather than from
+ * anything the browser sends, and refuses to write 'approved' at all —
+ * approving means an account now exists, and only the approve-access-request
+ * edge function can make that true. Before 20260987000000 the table's own
+ * policy let ANY signed-in user write any of this, which is the hole this
+ * closes.
+ *
+ * Falls back to the plain update on a database that has not had the migration
+ * yet, so a phone ahead of the deploy can still clear its queue.
+ */
 export async function decideAccessRequest(
   id: string,
-  status: "approved" | "denied",
+  status: "denied" | "pending",
+  note?: string | null,
 ): Promise<void> {
-  const { error } = await supabase
+  const { error } = await supabase.rpc("decide_access_request", {
+    p_id: id,
+    p_status: status,
+    p_note: note?.trim() || null,
+  });
+  if (!error) return;
+  if (!isMissingFunction(error)) throw error;
+
+  const { error: fallbackErr } = await supabase
     .from("access_requests")
-    .update({ status, decided_at: new Date().toISOString() })
+    .update({
+      status,
+      decided_at: status === "pending" ? null : new Date().toISOString(),
+    })
     .eq("id", id);
-  if (error) throw error;
+  if (fallbackErr) throw fallbackErr;
+}
+
+/**
+ * File a request from somebody who already has a login.
+ *
+ * Not a client-side write of 'approved' — see decideAccessRequest above. The
+ * edge function does it on the service role and writes the note that stops the
+ * row reading as though this queue made the account.
+ */
+export async function markRequestAlreadyLinked(id: string): Promise<void> {
+  const { data, error } = await supabase.functions.invoke(
+    "approve-access-request",
+    { body: { request_id: id, action: "mark_already_linked" } },
+  );
+  if (error) {
+    const context = (error as { context?: Response }).context;
+    if (context && typeof context.json === "function") {
+      const body = await context.json().catch(() => null);
+      if (body?.error) throw new Error(String(body.error));
+    }
+    throw error;
+  }
+  if (data?.error) throw new Error(String(data.error));
 }
 
 export interface ApprovedAccount {
@@ -311,6 +368,26 @@ export interface ApprovedAccount {
  * the `approve-access-request` edge function; it lands them as an installer and
  * hands back a one-time password to pass on.
  */
+/**
+ * An error from the approve function that the screen can act on rather than
+ * only print. Today there is one: the email already has an account, which is
+ * the commonest thing that goes wrong in this queue and the one the Admin
+ * screen offers a one-tap answer to.
+ */
+export class ApproveAccessError extends Error {
+  readonly code: string | null;
+  constructor(message: string, code: string | null) {
+    super(message);
+    this.name = "ApproveAccessError";
+    this.code = code;
+  }
+}
+
+/** True when this request's person already has a login, so nothing was made. */
+export function isAlreadyHasLogin(err: unknown): boolean {
+  return err instanceof ApproveAccessError && err.code === "already_has_login";
+}
+
 export async function approveAccessRequest(
   id: string,
 ): Promise<ApprovedAccount> {
@@ -326,11 +403,21 @@ export async function approveAccessRequest(
     const context = (error as { context?: Response }).context;
     if (context && typeof context.json === "function") {
       const body = await context.json().catch(() => null);
-      if (body?.error) throw new Error(String(body.error));
+      if (body?.error) {
+        throw new ApproveAccessError(
+          String(body.error),
+          typeof body.code === "string" ? body.code : null,
+        );
+      }
     }
     throw error;
   }
-  if (data?.error) throw new Error(String(data.error));
+  if (data?.error) {
+    throw new ApproveAccessError(
+      String(data.error),
+      typeof data.code === "string" ? data.code : null,
+    );
+  }
   return data as ApprovedAccount;
 }
 

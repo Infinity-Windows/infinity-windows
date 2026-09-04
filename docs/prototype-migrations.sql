@@ -12544,8 +12544,9 @@ grant execute on function public.foreman_contacts_for_me() to authenticated, ser
 
 -- ===========================================================================
 -- 20260987000000_remove_login_start_fresh.sql (mirrored)
--- Remove a login and start fresh: profiles.retired_at / retired_by and the
--- widened crew_access_directory, access_requests.decision_note with RLS that
+-- Remove a login and start fresh: profiles.retired_at / retired_by, the widened
+-- crew_access_directory, person_record_counts (the count that decides whether a
+-- login can be deleted outright), access_requests.decision_note with RLS that
 -- finally locks deciding to supervisor+, and decide_access_request — the one
 -- client-side writer of a decision, which can deny, note a reason and re-open,
 -- and can never write 'approved'.
@@ -12650,6 +12651,92 @@ comment on view public.crew_access_directory is
 
 revoke all on public.crew_access_directory from public, anon, authenticated;
 grant select on public.crew_access_directory to authenticated;
+
+
+-- ---------------------------------------------------------------------------
+-- 1b. person_record_counts — the count that decides which shape happens
+-- ---------------------------------------------------------------------------
+-- One row per table this person appears in, as one jsonb object, keyed
+-- `table.column`. The keys here are the contract: they are the exact strings
+-- WORK_HISTORY_PROBES uses in supabase/functions/_shared/purgeLogin.ts, and
+-- app/src/lib/purgeLogin.test.ts reads THIS FILE and fails if the two lists
+-- ever stop agreeing. The rule lives twice on purpose — SQL owns the counting,
+-- TypeScript owns the words and the order they are said in — and the two copies
+-- are pinned together rather than trusted to stay in step.
+--
+-- WHY THIS IS A DATABASE FUNCTION AND NOT NINETEEN READS FROM THE EDGE
+-- FUNCTION. Two reasons, and the second is the binding one:
+--
+--   1. Nineteen round trips to decide one button is nineteen round trips.
+--   2. Wave Z's standing guarantee is that NO edge function ever names
+--      `pay_rates` — they hold the service-role key, which bypasses RLS
+--      entirely, so a single `.from("pay_rates")` in one of them would put
+--      every wage in the company one edit away from a model's context.
+--      app/src/lib/payRates.test.ts enforces that by scanning the function
+--      source. Counting a person's rows is not reading a wage, but the scan
+--      cannot tell the difference and should not have to: the table names stay
+--      in SQL, where that guarantee is not at stake.
+--
+-- SECURITY DEFINER so the counts are complete — daily_logs is foreman+ and
+-- pay_rates is grant-gated, and a count that RLS quietly shortened would make a
+-- person look emptier than they are, which is the one error that loses records.
+-- Granted to service_role ONLY: the sole caller is manage-crew-access, which
+-- does its own owner-rank check first, and nothing in a browser has any reason
+-- to ask how many receipts somebody has.
+create or replace function public.person_record_counts(p_id uuid)
+returns jsonb
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select jsonb_build_object(
+    'time_shifts.profile_id',
+      (select count(*) from time_shifts where profile_id = p_id),
+    'unit_sessions.profile_id',
+      (select count(*) from unit_sessions where profile_id = p_id),
+    'install_events.installer_id',
+      (select count(*) from install_events where installer_id = p_id),
+    'install_events.credited_to',
+      (select count(*) from install_events where credited_to = p_id),
+    'receipts.uploaded_by',
+      (select count(*) from receipts where uploaded_by = p_id),
+    'pay_rates.profile_id',
+      (select count(*) from pay_rates where profile_id = p_id),
+    'certifications.profile_id',
+      (select count(*) from certifications where profile_id = p_id),
+    'toolbox_completions.profile_id',
+      (select count(*) from toolbox_completions where profile_id = p_id),
+    'daily_logs.filed_by',
+      (select count(*) from daily_logs where filed_by = p_id),
+    'opening_phases.started_by',
+      (select count(*) from opening_phases where started_by = p_id),
+    'opening_phases.submitted_by',
+      (select count(*) from opening_phases where submitted_by = p_id),
+    'flash_run_assignments.assigned_by',
+      (select count(*) from flash_run_assignments where assigned_by = p_id),
+    'summons.requested_by',
+      (select count(*) from summons where requested_by = p_id),
+    'summon_helpers.profile_id',
+      (select count(*) from summon_helpers where profile_id = p_id),
+    'unit_redos.pressed_by',
+      (select count(*) from unit_redos where pressed_by = p_id),
+    'time_shift_edits.edited_by',
+      (select count(*) from time_shift_edits where edited_by = p_id),
+    'points_ledger.profile_id',
+      (select count(*) from points_ledger where profile_id = p_id),
+    'task_sessions.profile_id',
+      (select count(*) from task_sessions where profile_id = p_id),
+    'project_messages.author_id',
+      (select count(*) from project_messages where author_id = p_id)
+  );
+$$;
+
+comment on function public.person_record_counts(uuid) is
+  'How many rows of work, money and safety record one person has, keyed table.column. The input to "remove this login": nothing anywhere means the account can be deleted outright, anything at all means it is retired and every row kept. Service role only — manage-crew-access checks the caller is the owner before it asks.';
+
+revoke all on function public.person_record_counts(uuid) from public, anon, authenticated;
+grant execute on function public.person_record_counts(uuid) to service_role;
 
 
 -- ---------------------------------------------------------------------------
