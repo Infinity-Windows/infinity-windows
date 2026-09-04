@@ -15377,6 +15377,28 @@ alter table monday_jobs
 comment on column monday_jobs.files is
   'Files Monday says are attached to this item: [{asset_id, name, ext, size, column_id, uploaded_at}]. Rewritten by every sync. Never a public_url — Monday''s expires in an hour and is fetched fresh at pull time (Monday files, F1).';
 
+-- IT IS A MIRROR, AND NOBODY BUT THE SYNC MAY WRITE IT.
+--
+-- monday_jobs has carried a whole-row "lead update" policy since the connector
+-- shipped (20260812000000), and this project's default privileges hand every
+-- new table in `public` the full set to `authenticated` — so before this line
+-- any foreman could rewrite any column of any staged row from the browser. That
+-- was harmless while the row was only ever read back onto a screen. It stops
+-- being harmless the moment a column of it names a file this server will go and
+-- download: a list of asset ids the caller can write is not an allow-list.
+--
+-- The pull does not trust this column any more either (it asks Monday again,
+-- and refuses an item that is not on the Ops Gantt Chart) — this is the second
+-- lock, and the one that keeps `raw`, `monday_item_id` and the synced dates
+-- honest as well. The office still needs the only two columns it actually
+-- writes: `project_id` when it builds a job from a row, `dismissed_at` when it
+-- says "not this one".
+--
+-- Column-level GRANTs, not a policy: RLS decides which ROWS, grants decide
+-- which COLUMNS, and only the second one can say "this row, but not this field".
+revoke update on monday_jobs from anon, authenticated;
+grant update (project_id, dismissed_at) on monday_jobs to authenticated;
+
 
 -- ---------------------------------------------------------------------------
 -- 2. F4 — which Monday file a planset came from
@@ -15434,12 +15456,53 @@ create table if not exists project_documents (
   source text not null default 'monday' check (source in ('monday', 'upload')),
   -- The Monday asset this came from; null for anything not pulled from Monday.
   source_asset_id text,
+  -- OUR NUMBER IS ON THIS ONE. See section 3b below for why it exists.
+  money boolean not null default false,
   created_by uuid references profiles(id) on delete set null,
   created_at timestamptz not null default now()
 );
 
+-- Separately as well as in the CREATE above, so a database that already took an
+-- earlier run of this migration gains the column rather than silently keeping a
+-- table with no money flag and a policy that reads one.
+alter table project_documents
+  add column if not exists money boolean not null default false;
+
 comment on table project_documents is
   'A job document that is not a planset — the quote, the signed order, the survey. Pulled from the job''s Monday item by monday-sync; the client holds no write grant (Monday files, F6).';
+
+comment on column project_documents.money is
+  'This document has the company''s own number on it — a quote, a bid, a signed order. Only somebody with can_see_costs may read it or its bytes, which is the money wall (CONTEXT.md, wave Z) applied to paperwork (Monday files, F6).';
+
+
+-- ---------------------------------------------------------------------------
+-- 3b. F6 — the ones with our number on them
+-- ---------------------------------------------------------------------------
+-- THE MONEY WALL APPLIES TO PAPERWORK TOO. Wave Z (20260978000000) moved money
+-- off the rank ladder and onto an explicit grant for one stated reason: before
+-- it, "the lock was the nav floor, which is not a lock: it is a hidden button,
+-- and every crew phone could read the company's bids". A job's Monday item
+-- carries "Estates at Sand Hollow 20 - FINAL - Iron - signed.pdf" — a signed
+-- quote, with our price on it — in the same column as the ironwork order every
+-- foreman on that site needs. Filing both under "whoever can see the job" would
+-- hand the company's bids to every crew phone through a different door than the
+-- one wave Z just shut, six days later.
+--
+-- So documents are sorted, once, by the pull that creates them
+-- (`looksLikeMoneyDocument` in _shared/mondayFiles.ts, unit-tested), and the
+-- flag is read by both policies below. The sort is allowed to be WRONG IN ONE
+-- DIRECTION ONLY: a word that might mean money makes a document office-only.
+-- Being wrong that way costs a foreman a phone call; being wrong the other way
+-- is the thing wave Z existed to stop.
+--
+-- WHY A COLUMN AND NOT A SEPARATE TABLE. CONTEXT.md's rule is that "anything
+-- genuinely ours — a price, a margin, a cost — goes in a table of its own with
+-- its own policy". That rule is about FIELDS: a bid amount sitting in a column
+-- of `projects` is readable by anyone who reads the row. Here the sensitive
+-- thing is the whole document, row and bytes together, and a second table would
+-- be the same columns twice with the same pull writing both — two things to
+-- keep in step for no extra wall. One flag, read by one predicate, in both the
+-- table policy and the storage policy.
 
 -- Every read is "this job's documents, newest first".
 create index if not exists project_documents_project_idx
@@ -15462,11 +15525,15 @@ grant select on project_documents to authenticated;
 grant all on project_documents to service_role;
 
 -- WHO READS WHAT.
---   * Any crew member, on a job they can already see. The document list is the
---     same fact as the Plans list — paperwork for a job somebody is working —
---     and `projects`' own policy is what decides which jobs those are. Asking
---     it here rather than restating its rules means a job in the trash, or a
---     job a test login is fenced out of, disappears from this list for free.
+--   * Any crew member, on a job they can already see — for a document with no
+--     price on it. The document list is the same fact as the Plans list —
+--     paperwork for a job somebody is working — and `projects`' own policy is
+--     what decides which jobs those are. Asking it here rather than restating
+--     its rules means a job in the trash, or a job a test login is fenced out
+--     of, disappears from this list for free.
+--   * A money document (`money = true`), only somebody with can_see_costs. See
+--     section 3b: the quote and the signed order are the company's own numbers,
+--     and wave Z settled that those answer to a grant and not to a rank.
 --   * A partner (builder) login, never. THE WALL's mechanical guard, which
 --     every crew table has carried since 20260950000000 and which
 --     scripts/test_partner_wall.py checks dynamically. Worth saying plainly for
@@ -15478,6 +15545,7 @@ create policy "project_documents_select" on project_documents
   for select to authenticated
   using (
     not public.is_partner_user()
+    and (not money or public.can_see_costs(auth.uid()))
     and exists (
       select 1 from public.projects p where p.id = project_documents.project_id
     )
@@ -15517,9 +15585,22 @@ on conflict (id) do update
 -- no promise about evaluating a guarding `~` regex before the cast beside it —
 -- a single stray object would then break reads for the whole bucket.
 --
--- Read: any crew member who can see the job, and no partner — the same sentence
--- as the table's own policy, asked of `projects` in the same way, so the list
--- and the bytes can never disagree about who may look.
+-- Read: exactly the people who can read the ROW for this file, asked by looking
+-- for that row rather than by restating its rules.
+--
+-- The first version of this policy restated them — no partner, plus a `projects`
+-- join on the folder name — and that was already two copies of one sentence.
+-- Adding the money gate (section 3b) would have made it three, and the third
+-- copy is where they drift: a `money` document whose bytes stayed readable
+-- through a signed link is the whole wall gone, silently, and nothing would
+-- have failed. `project_documents`' own SELECT policy runs inside this
+-- subquery for the person asking, so the bytes are readable exactly when the
+-- row is — partner wall, money wall and job visibility, all of them, once.
+--
+-- The project folder is still checked, because it costs nothing and it keeps
+-- the bucket's own shape honest: an object filed under a folder that is not a
+-- job is unreachable even if a row somehow pointed at it. The project id is
+-- compared AS TEXT for the reason given above.
 --
 -- Write: nobody, from a client, in this version. There is no INSERT, UPDATE or
 -- DELETE policy here at all, so the only writer is the service role inside
@@ -15532,8 +15613,9 @@ create policy "job documents read"
     bucket_id = 'job-documents'
     and not public.is_partner_user()
     and exists (
-      select 1 from public.projects p
-      where p.id::text = (storage.foldername(name))[1]
+      select 1 from public.project_documents d
+      where d.storage_path = storage.objects.name
+        and d.project_id::text = (storage.foldername(storage.objects.name))[1]
     )
   );
 

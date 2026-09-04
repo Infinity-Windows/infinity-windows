@@ -801,6 +801,19 @@ ten-minute signed link; a partner login never sees one, because these are OUR
 documents about a builder's job. Nothing in the app writes one from a browser:
 the pull inside `monday-sync` is the only writer, on the service role.
 
+**Money document** — a job document with the company's own number on it: the
+quote, the bid, the signed order (`project_documents.money`). It is the money
+wall of wave Z applied to paperwork, and it is why a job's Documents card is not
+simply "whoever can see the job": that card was about to hand every crew phone
+the signed quote the wave before had just moved behind `can_see_costs`. The pull
+sorts them by name as it files them (`looksLikeMoneyDocument`), the flag is read
+by the table policy AND by the bucket policy — the bytes are readable exactly
+when the row is, asked by looking for the row rather than by restating its rules
+— and the sort is deliberately wrong in ONE direction: a word that might mean
+money makes a document office-only. Being wrong that way costs a foreman a phone
+call. The ironwork order, the survey, the marked-up sheet — everything without a
+price word in its name — stays on every phone on the job.
+
 **LP / CU** — the office's own shorthand on the Ops Gantt Chart, not a
 convention this app invented. "SV2 - LP.pdf" is the plan set, "SV2 - CU.pdf" is
 the cut sheets, "Summit View 2 - IRON.pdf" is neither. `guessMondayFileKind`

@@ -24,6 +24,15 @@ export interface JobDocument {
   content_type: string | null;
   source: "monday" | "upload";
   source_asset_id: string | null;
+  /**
+   * The company's own number is on this one — a quote, a bid, a signed order.
+   * The wall is in SQL, not here: the row and its bytes are both refused to
+   * anybody without `can_see_costs`, so a phone that is not allowed to see one
+   * never receives it to begin with. This field is only ever read to explain
+   * that to somebody who CAN see it. Optional because a phone can be running
+   * ahead of the migration.
+   */
+  money?: boolean;
   created_by: string | null;
   created_at: string;
 }

@@ -1907,6 +1907,11 @@ export const CATALOG = {
   },
   "jobDocuments.open": { en: "Open", es: "Abrir" },
   "jobDocuments.opening": { en: "Opening…", es: "Abriendo…" },
+  // Shown beside a document with the company's own price on it — a quote, a
+  // signed order. Only somebody who can see costs is ever handed one to read,
+  // so this tag only ever appears to a person who can already open it; it is
+  // there to say WHY the crew on the site cannot, before somebody asks.
+  "jobDocuments.officeOnly": { en: "Office only", es: "Solo oficina" },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */

@@ -77,6 +77,11 @@ export function JobDocuments({ projectId }: { projectId: string }) {
                     <span className="muted" style={{ fontSize: 11.5 }}>
                       {size ? ` · ${size}` : ""}
                       {d.source === "monday" ? ` · ${t("mondayFiles.fromMonday")}` : ""}
+                      {/* Only somebody who can see costs is ever handed this
+                          row at all — the wall is the table's policy, not this
+                          line. It says why the crew on the site cannot open
+                          it, so nobody has to guess the list is broken. */}
+                      {d.money === true ? ` · ${t("jobDocuments.officeOnly")}` : ""}
                     </span>
                   </span>
                 </span>

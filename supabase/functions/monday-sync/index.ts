@@ -29,6 +29,18 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders, jsonResponse } from "../_shared/openai.ts";
 import { verifyCaller } from "../_shared/auth.ts";
+// The pure half — the two file column ids, what Monday's answer becomes, and
+// the two decisions the app's own test suite has to be able to reach: which
+// assets a pull may fetch, and which documents carry a price.
+import {
+  FILES_COLUMN_ID,
+  filesOf,
+  looksLikeMoneyDocument,
+  MEASURE_COLUMN_ID,
+  type MondayFileItem,
+  pullAllowList,
+  type StagedFile,
+} from "../_shared/mondayFiles.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -38,64 +50,16 @@ const BOARD_ID = "8185408239"; // Ops Gantt Chart ("STG Windows" workspace)
 const GROUP_IDS = ["group_mkwrzygn", "group_mkwrz2sm"]; // Ready to Schedule, Scheduled
 const THROTTLE_MS = 10 * 60 * 1000;
 
-// The board's two file columns, verified against the live board on 2026-09-04:
-// "Files" (files_1) is where the office puts a job's paperwork and carries 1-4
-// PDFs on every sampled row; "Measure files" (file_mm4wnjn8) is empty today but
-// is the column a site survey would land in, so it is read from the start
-// rather than discovered missing later. Asked for one column at a time under a
-// GraphQL alias, because asking for both column ids at once returns one flat
-// list that does not say which column each file came from.
-const FILES_COLUMN_ID = "files_1";
-const MEASURE_COLUMN_ID = "file_mm4wnjn8";
+// The board's two file columns live in _shared/mondayFiles.ts beside the rules
+// that read them. They are asked for one column at a time under a GraphQL
+// alias, because asking for both column ids at once returns one flat list that
+// does not say which column each file came from.
 
-interface MondayAsset {
-  id: string;
-  name: string;
-  file_extension: string | null;
-  file_size: number | null;
-  created_at: string | null;
-}
-
-interface MondayItem {
-  id: string;
+/** A board row, with the file columns MondayFileItem already describes. */
+interface MondayItem extends MondayFileItem {
   name: string;
   group: { id: string; title: string };
   column_values: { id: string; text: string | null; value: string | null }[];
-  /** Aliased `assets(column_ids: ["files_1"])`. */
-  files?: MondayAsset[] | null;
-  /** Aliased `assets(column_ids: ["file_mm4wnjn8"])`. */
-  measure?: MondayAsset[] | null;
-}
-
-/** One entry in monday_jobs.files — see the migration for why no public_url. */
-interface StagedFile {
-  asset_id: string;
-  name: string;
-  ext: string | null;
-  size: number | null;
-  column_id: string;
-  uploaded_at: string | null;
-}
-
-/** Everything Monday says is attached to an item, in board order per column. */
-function filesOf(item: MondayItem): StagedFile[] {
-  const out: StagedFile[] = [];
-  const take = (assets: MondayAsset[] | null | undefined, columnId: string) => {
-    for (const a of assets ?? []) {
-      if (!a?.id) continue;
-      out.push({
-        asset_id: String(a.id),
-        name: a.name ?? "",
-        ext: a.file_extension ?? null,
-        size: typeof a.file_size === "number" ? a.file_size : null,
-        column_id: columnId,
-        uploaded_at: a.created_at ?? null,
-      });
-    }
-  };
-  take(item.files, FILES_COLUMN_ID);
-  take(item.measure, MEASURE_COLUMN_ID);
-  return out;
 }
 
 /** The asset fields both board reads ask for. No download link, on purpose. */
@@ -186,6 +150,11 @@ async function fetchBoardItems(): Promise<MondayItem[]> {
  * still adds files to it, which is exactly when "new on Monday" matters most.
  * One extra read per sync, only for rows that are actually linked to a job and
  * were not already seen, asked in pages of 100 (Monday's own item cap).
+ *
+ * `board { id }` is asked for because this is also the read the PULL leans on,
+ * and `items(ids:)` reaches across STG's whole account. The pull refuses any
+ * item whose board is not the Ops Gantt Chart; the sync ignores the field
+ * because it only ever passes ids it read off that board a moment earlier.
  */
 async function fetchItemsByIds(ids: string[]): Promise<MondayItem[]> {
   const out: MondayItem[] = [];
@@ -194,6 +163,7 @@ async function fetchItemsByIds(ids: string[]): Promise<MondayItem[]> {
       items(ids: $ids) {
         id
         name
+        board { id }
         files: assets(column_ids: ["${FILES_COLUMN_ID}"]) { ${ASSET_FIELDS} }
         measure: assets(column_ids: ["${MEASURE_COLUMN_ID}"]) { ${ASSET_FIELDS} }
       }
@@ -405,6 +375,13 @@ async function pullOneFile(
       content_type: contentType,
       source: "monday",
       source_asset_id: asset.id,
+      // THE MONEY WALL, decided here because here is the only place that knows
+      // the file's real name. A signed quote and the ironwork order arrive in
+      // the same Monday column; wave Z settled that the company's own numbers
+      // answer to `can_see_costs` and not to a rank, and the table's policy
+      // reads this flag. Wrong towards office-only on purpose — see the
+      // migration's section 3b.
+      money: looksLikeMoneyDocument(name),
       created_by: userId,
     };
 
@@ -491,7 +468,7 @@ async function handlePullFiles(
 
   const { data: staged, error: stagedErr } = await db
     .from("monday_jobs")
-    .select("id, project_id, files")
+    .select("id, project_id, monday_item_id")
     .eq("id", mondayJobId)
     .maybeSingle();
   if (stagedErr && (isMissingTable(stagedErr) || isMissingColumn(stagedErr))) {
@@ -513,13 +490,56 @@ async function handlePullFiles(
     );
   }
 
-  // Only files Monday itself said were on this row. The asset ids are never
-  // taken on trust: this is what stops the endpoint being a way to fetch any
-  // document in STG's whole account by guessing an id.
-  const onTheRow = new Map<string, StagedFile>();
-  for (const f of (staged.files ?? []) as StagedFile[]) {
-    if (f?.asset_id) onTheRow.set(String(f.asset_id), f);
+  // WHAT MONDAY SAYS RIGHT NOW — asked again, here, at the moment of the pull.
+  //
+  // This used to read `monday_jobs.files`, and that was wrong. That column is a
+  // MIRROR of somebody else's board, and the table's "lead update" policy
+  // (20260812000000) lets any foreman rewrite the whole row from the browser.
+  // An allow-list the caller can write is not an allow-list: three lines in a
+  // console would have put any asset id into that column, and this function
+  // would then have fetched it. `assets(ids:)` below is account-wide and
+  // Monday's asset ids are sequential integers, so the reachable set was every
+  // document in STG's account.
+  //
+  // Two things make it an allow-list again: the file list comes from Monday
+  // rather than from us, and Monday has to agree the item is on THIS board —
+  // `items(ids:)` reaches across the whole account, so without the board check
+  // a made-up item id would be an equally good way in.
+  const mondayItemId = String(staged.monday_item_id ?? "").trim();
+  if (!mondayItemId) {
+    return jsonResponse(
+      { ok: false, error: "That job is not linked to a Monday item any more." },
+      404,
+    );
   }
+  let item: MondayItem | null = null;
+  try {
+    const [found] = await fetchItemsByIds([mondayItemId]);
+    item = found ?? null;
+  } catch (err) {
+    console.error(
+      "monday-sync: could not re-read the item before a pull:",
+      err instanceof Error ? err.message : String(err),
+    );
+    return jsonResponse(
+      {
+        ok: false,
+        error: "We could not check with Monday which files are on this job. Try again in a minute.",
+      },
+      503,
+    );
+  }
+  const allowed = pullAllowList(item, BOARD_ID);
+  if (!allowed.ok) {
+    return allowed.reason === "gone"
+      ? jsonResponse({ ok: false, error: "Monday no longer has this job." }, 404)
+      : jsonResponse(
+        { ok: false, error: "That Monday job is not on the board this app reads." },
+        403,
+      );
+  }
+  const onTheRow = new Map<string, StagedFile>();
+  for (const f of allowed.files) onTheRow.set(f.asset_id, f);
 
   const results: PullResult[] = [];
   const chosen: { asset_id: string; kind: "building" | "specs" | "document" }[] = [];
