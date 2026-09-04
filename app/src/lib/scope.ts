@@ -109,11 +109,21 @@ export function doorBreakdownParts(
 /**
  * How many storeys to SHOW, from the two things that can know.
  *
- * The traced model wins whenever a job has one: somebody drew that building
- * over its own planset, so it is a survey, while the number on the job form is
- * what a person typed before anyone had been to site. The typed number is the
- * fallback, and "nobody said" is a perfectly good answer — the line simply
- * leaves storeys out.
+ * A traced model wins when it has actually been asked the question: somebody
+ * drew that building over its own planset storey by storey, which is a survey,
+ * while the number on the job form is what a person typed before anyone had
+ * been to site. The typed number is the fallback, and "nobody said" is a
+ * perfectly good answer — the line simply leaves storeys out.
+ *
+ * ONLY when the model carries a `stories` array, though, and that condition is
+ * the whole reason this reads the raw field before calling `storiesOf`. A model
+ * traced before storeys existed — Ben's hand-traced Black Desert among them,
+ * which is to say the models on the real jobs — has no such array, and
+ * `storiesOf` canonicalizes it to exactly ONE storey of the building's own
+ * footprint (see fitview/stories.ts). That 1 is a shape the renderer needs, not
+ * a survey of the building, and letting it win meant a two-storey house with an
+ * old model read "1 story" over the top of the 2 somebody had typed. Silence
+ * from the model is silence, not an answer.
  *
  * Deliberately ONE-WAY. Nothing here writes the model's count back into
  * `projects.stories`: three writers already share an outline row's `features`,
@@ -126,9 +136,16 @@ export function storiesToShow(
 ): number | null {
   const row = preferModelOutline(outlines ?? []);
   const model = row ? fitviewModel(row.features) : null;
-  if (model) {
-    const n = storiesOf(model.building).length;
-    if (n > 0) return n;
-  }
+  const drawn = model
+    ? (model.building as { stories?: unknown }).stories
+    : undefined;
+  // A non-EMPTY array is the test, because `storiesOf` gives its one-storey
+  // fallback for `[]` exactly as it does for a missing field — both mean the
+  // tracer never drew a storey.
+  const surveyed =
+    model && Array.isArray(drawn) && drawn.length > 0
+      ? storiesOf(model.building).length
+      : 0;
+  if (surveyed > 0) return surveyed;
   return typed != null && typed > 0 ? typed : null;
 }

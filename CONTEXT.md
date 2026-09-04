@@ -539,9 +539,14 @@ checked. A tracking job with nothing on it says "Tracking job". The numbers come
 from `project_scope_counts`, one grouped row per job computed under the reader's
 own row-level security, which replaced pulling every opening row on the company
 down to a phone to count them there. Storeys are the exception to "counted": a
-traced 3D model's storey count wins when there is one, else the number typed on
-the job form, else nothing — and the model never writes back into the typed
-number.
+traced 3D model's storey count wins when the model actually drew storeys, else
+the number typed on the job form, else nothing — and the model never writes back
+into the typed number. A model traced before storeys existed (every model on a
+real job today) says nothing about them, and `storiesOf` turning that into one
+storey is a shape for the renderer, not a survey, so it loses to the typed
+number. The job HEADER applies this rule; a job CARD shows the typed number
+alone, because resolving it needs the job's traced model and pulling every
+listed job's model down to a phone is the whole-table read this wave deleted.
 
 ## Open questions
 

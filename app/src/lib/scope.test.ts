@@ -142,10 +142,21 @@ describe("how many storeys to show", () => {
     expect(storiesToShow([traced], 5)).toBe(2);
   });
 
-  // A model with no stories array is one storey of its own footprint — the
-  // pre-stories model, and still a survey of a real building.
-  it("an unstoried model still counts as one", () => {
-    expect(storiesToShow([model(undefined)], 4)).toBe(1);
+  // A model traced before storeys existed — which is every model on a real job
+  // today, Ben's hand-traced Black Desert included — has no stories array.
+  // storiesOf turns that into one storey because the renderer needs a shape to
+  // draw, but nobody surveyed it, so it must not beat a number a person typed.
+  it("a model that never said how many storeys does not overrule the job form", () => {
+    expect(storiesToShow([model(undefined)], 4)).toBe(4);
+    expect(storiesToShow([model(undefined)], 2)).toBe(2);
+  });
+
+  it("and says nothing when nobody typed one either", () => {
+    expect(storiesToShow([model(undefined)], null)).toBeNull();
+  });
+
+  it("an empty stories array is silence too, not zero storeys", () => {
+    expect(storiesToShow([model([])], 3)).toBe(3);
   });
 
   it("falls back to the typed number when there is no model", () => {
