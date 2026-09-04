@@ -9,7 +9,8 @@ import { useMemo, useState } from "react";
 import { CheckCircle2, XCircle } from "lucide-react";
 import { SkeletonList } from "../components/ui/States";
 import { getMyProfile } from "../lib/install/api";
-import { listMyCompletions, signedRecordUrl } from "../lib/toolbox";
+import { isGroupSignIn, listMyCompletions, signedRecordUrl } from "../lib/toolbox";
+import { useT } from "../lib/i18n";
 import { supabase } from "../lib/supabase";
 
 interface DayTalk {
@@ -48,6 +49,9 @@ function PdfButton({ path }: { path: string }) {
 }
 
 export function ToolboxHistory() {
+  // Plain English page; only the group sign-in line is translated, for the
+  // same reason it is on the Safety page.
+  const t = useT();
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const [days, setDays] = useState<30 | 90>(30);
   const sinceISO = useMemo(() => {
@@ -86,6 +90,8 @@ export function ToolboxHistory() {
       state: "signed" | "missed" | "pending";
       signedAt?: string;
       pdfPath?: string | null;
+      /** A supervisor's attestation, not this person's signature. */
+      group?: boolean;
     }[] = [];
     for (const t of talks.data ?? []) {
       if (seen.has(t.talk_date)) continue;
@@ -97,6 +103,9 @@ export function ToolboxHistory() {
         state: c ? "signed" : t.talk_date === todayISO ? "pending" : "missed",
         signedAt: c?.signed_at,
         pdfPath: c?.pdf_path,
+        // This is somebody's own compliance record. A day a supervisor
+        // attested for them must not read back to them as "signed 7:03 AM".
+        group: isGroupSignIn(c),
       });
     }
     return out;
@@ -153,8 +162,14 @@ export function ToolboxHistory() {
                   month: "short",
                   day: "numeric",
                 })}
-                {r.state === "signed" && r.signedAt &&
-                  ` · signed ${new Date(r.signedAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`}
+                {r.state === "signed" && r.signedAt && " · "}
+                {r.state === "signed" && r.signedAt && (
+                  r.group
+                    ? t("toolbox.group.historyLine", {
+                        time: new Date(r.signedAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }),
+                      })
+                    : `signed ${new Date(r.signedAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`
+                )}
                 {r.state === "missed" && " · not signed"}
                 {r.state === "pending" && " · today — not signed yet"}
               </div>

@@ -10,10 +10,20 @@ import {
 } from "../lib/bulk";
 import { downloadPdf, locationLabelsPdf, ZONE_NAMES } from "../lib/labels";
 import { formatApiError } from "../lib/errors";
+import { isForemanPlus } from "../lib/install/types";
+import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { toastError, toastSuccess } from "../lib/toast";
 
 export function Labels() {
   const queryClient = useQueryClient();
+  // ADR-0007 opened the warehouse — and this page's door with it, because
+  // printing a rack label is warehouse work. Retiring a slot and renaming
+  // one are not: they are the destructive kind the ADR deliberately kept at
+  // foreman+, and `locations` is a plain table whose only policy is the
+  // partner wall (20260950000000), so there is no RPC underneath to refuse
+  // them. The rank lives here or nowhere. Print stays open to everyone.
+  const { effectiveRole } = useEffectiveRole();
+  const lead = isForemanPlus(effectiveRole);
   const locations = useQuery({ queryKey: ["locations"], queryFn: listLocations });
   const [zone, setZone] = useState<string>("all");
   const [busy, setBusy] = useState(false);
@@ -155,7 +165,7 @@ export function Labels() {
           >
             Print {selectedFiltered.length} selected
           </button>
-          {confirmingDelete ? (
+          {!lead ? null : confirmingDelete ? (
             <div className="sched-conflict-inline is-emphasized" role="alert">
               <div>
                 <p style={{ margin: 0 }}>
@@ -257,18 +267,20 @@ export function Labels() {
                     </div>
                   )}
                 </div>
-                <button
-                  className="link"
-                  style={{ marginLeft: "auto" }}
-                  onClick={() => {
-                    setEditId(l.id);
-                    setAddressDraft(l.address);
-                    setNameDraft(l.display_name ?? "");
-                    setEditError(null);
-                  }}
-                >
-                  Edit
-                </button>
+                {lead && (
+                  <button
+                    className="link"
+                    style={{ marginLeft: "auto" }}
+                    onClick={() => {
+                      setEditId(l.id);
+                      setAddressDraft(l.address);
+                      setNameDraft(l.display_name ?? "");
+                      setEditError(null);
+                    }}
+                  >
+                    Edit
+                  </button>
+                )}
               </div>
             )}
           </li>

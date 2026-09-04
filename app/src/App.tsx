@@ -522,16 +522,19 @@ export default function App() {
                 far end of "where is it": the Find bar on the warehouse page
                 hands an installer an "Open Conex 7" button, and
                 store_packages / move_container ask only that you are signed
-                in. The lead-only actions on that page (Edit, Archive) are
-                gated inside it, which is the same line save_storage_container
-                draws server-side. */}
+                in. Since ADR-0007 that page's Edit and Archive are open to
+                every crew member too, which is the same line
+                save_storage_container now draws server-side; the one action
+                still gated inside it is the sweep-delete. */}
             <Route path="/storage" element={<Navigate to="/warehouse" replace />} />
             <Route path="/storage/log-delivery" element={<LogDelivery />} />
             <Route path="/storage/d/:id" element={<DeliveryDetail />} />
             {/* Wave R: the one "Rewrite this set" editor, reachable from
                 both doors (the ledger's set-level edit and the tailgate's
-                "Edit set…") — no RequireRole, same as its siblings above:
-                the view stays open, rewrite_set gates the write server-side. */}
+                "Edit set…") — no RequireRole, same as its siblings above.
+                Since ADR-0007 rewrite_set itself is open to any crew member;
+                what the server still refuses is the "Start this set over"
+                path, which is delete_packages. */}
             <Route path="/storage/rewrite-set" element={<RewriteSet />} />
             <Route path="/storage/deliveries" element={<DeliveriesList />} />
             <Route path="/warehouse/materials" element={<JobMaterials />} />

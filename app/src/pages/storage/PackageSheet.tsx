@@ -86,6 +86,9 @@ export function PackageSheet() {
   const { effectiveRole } = useEffectiveRole();
   const qc = useQueryClient();
   const navigate = useNavigate();
+  // Foreman+ now gates exactly two things on this sheet: Burn and Delete.
+  // Everything else here — the area, the job, the window — is ordinary
+  // warehouse work and belongs to whoever is holding the package (ADR-0007).
   const lead = isForemanPlus(effectiveRole);
   const [newPartType, setNewPartType] = useState("");
   const [partWarn, setPartWarn] = useState<string | null>(null);
@@ -700,10 +703,11 @@ export function PackageSheet() {
             )}
         </div>
 
-        {/* Where in the box (ticket 14, ADR-0006). Foreman+, and only while the
-            package is actually IN a box — the options come from what kind of box
-            it is, so a re-parkable conex never offers a compass. */}
-        {lead && p.status === "stored" && p.container_id && (
+        {/* Where in the box (ticket 14, ADR-0006, opened by ADR-0007). Shown
+            only while the package is actually IN a box — the options come from
+            what kind of box it is, so a re-parkable conex never offers a
+            compass. The person who put it at the back is the one who knows. */}
+        {p.status === "stored" && p.container_id && (
           <div style={{ marginTop: 10 }}>
             <label className="field-label row-gap" style={{ alignItems: "center" }}>
               {/* Pick 5: the container's own badge, not a new lookup — same
@@ -768,13 +772,12 @@ export function PackageSheet() {
           <button className="button-like" onClick={() => reprint.mutate()}>
             Reprint sticker
           </button>
-          {lead && p.status !== "blank" && p.project_id == null && (
+          {p.status !== "blank" && p.project_id == null && (
             <button className="button-like" onClick={() => setAssigning((v) => !v)}>
               {assigning ? "Cancel assign" : "Assign to job…"}
             </button>
           )}
-          {lead &&
-            p.status !== "blank" &&
+          {p.status !== "blank" &&
             p.project_id != null &&
             (p.package_marks ?? []).length <= 1 && (
               <button className="button-like" onClick={() => setSettingWindow((v) => !v)}>

@@ -55,7 +55,12 @@ export interface SetEditorProps {
    *  row's current piece fields and the set's current category. */
   packagesById: Map<string, StoragePackage>;
   partChoices: string[];
-  /** foreman+ — gates add/delete, same floor DeliveryDetail always used. */
+  /**
+   * foreman+ — gates DELETE only, since ADR-0007. Retyping a piece, flipping
+   * the set between windows and doors, and adding one more piece are ordinary
+   * warehouse work and are open to every crew member; deleting a piece or a
+   * whole set is not, and matches delete_packages server-side.
+   */
   lead: boolean;
   onClose: () => void;
   /** Invalidate/refetch whatever query the caller reads packages from. */
@@ -217,29 +222,27 @@ export function SetEditor({
           own window, so only the pieces are editable here.
         </p>
       )}
-      {lead && (
-        <div className="wh-row" style={{ marginTop: 6 }}>
-          <span className="wh-row-sub">Kind</span>
-          <button
-            type="button"
-            className={kindOf === "windows" ? "button-like active-pill" : "button-like"}
-            aria-pressed={kindOf === "windows"}
-            disabled={saveCategory.isPending}
-            onClick={() => saveCategory.mutate("windows")}
-          >
-            Window
-          </button>
-          <button
-            type="button"
-            className={kindOf === "doors" ? "button-like active-pill" : "button-like"}
-            aria-pressed={kindOf === "doors"}
-            disabled={saveCategory.isPending}
-            onClick={() => saveCategory.mutate("doors")}
-          >
-            Door
-          </button>
-        </div>
-      )}
+      <div className="wh-row" style={{ marginTop: 6 }}>
+        <span className="wh-row-sub">Kind</span>
+        <button
+          type="button"
+          className={kindOf === "windows" ? "button-like active-pill" : "button-like"}
+          aria-pressed={kindOf === "windows"}
+          disabled={saveCategory.isPending}
+          onClick={() => saveCategory.mutate("windows")}
+        >
+          Window
+        </button>
+        <button
+          type="button"
+          className={kindOf === "doors" ? "button-like active-pill" : "button-like"}
+          aria-pressed={kindOf === "doors"}
+          disabled={saveCategory.isPending}
+          onClick={() => saveCategory.mutate("doors")}
+        >
+          Door
+        </button>
+      </div>
       <ul className="unit-list" style={{ marginTop: 6 }}>
         {set.slots.map((row) => {
           const rowFirst = packagesById.get(row.allIds[0] ?? "");
@@ -328,19 +331,19 @@ export function SetEditor({
           );
         })}
       </ul>
-      {lead && (
-        <div className="wh-row" style={{ marginTop: 6 }}>
-          {addPieceStrategy.kind === "delivery" ? (
-            <button
-              className="button-like"
-              disabled={addPieceStrategy.pending}
-              onClick={() => addPieceStrategy.run()}
-            >
-              + one more piece
-            </button>
-          ) : (
-            <span className="wh-row-sub">{addPieceStrategy.message}</span>
-          )}
+      <div className="wh-row" style={{ marginTop: 6 }}>
+        {addPieceStrategy.kind === "delivery" ? (
+          <button
+            className="button-like"
+            disabled={addPieceStrategy.pending}
+            onClick={() => addPieceStrategy.run()}
+          >
+            + one more piece
+          </button>
+        ) : (
+          <span className="wh-row-sub">{addPieceStrategy.message}</span>
+        )}
+        {lead && (
           <button
             className="button-like"
             style={{ color: "var(--danger)" }}
@@ -357,8 +360,8 @@ export function SetEditor({
           >
             Delete this set…
           </button>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

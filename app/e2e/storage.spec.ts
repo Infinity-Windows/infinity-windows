@@ -139,22 +139,21 @@ test("warehouse's In storage section shows each container with its contents and 
   await page.screenshot({ path: join(SHOTS, "hub.png"), fullPage: true });
 });
 
-test("an installer visiting the old storage address lands on the warehouse, container list hidden", async ({
+test("an installer visiting the old storage address lands on the warehouse, containers and all", async ({
   page,
 }) => {
   // /storage used to be its own foreman+ hub (D6); it merged into /warehouse
-  // (ticket 18) and the address is now a bare redirect. An installer landing
-  // here from an old bookmark gets the warehouse page they already have full
-  // access to — the container tiles stay foreman+, gated inside the page
-  // itself, same as every other lead-only tool on it. Tagging and checking
-  // out are unaffected either way — those belong to whoever is at the truck
-  // (S3) and always lived on the warehouse page.
+  // (ticket 18) and the address is now a bare redirect. This test used to
+  // assert the container tiles stayed hidden from an installer. ADR-0007
+  // (owner call, 2026-09-04) makes warehouse actions crew actions, so the
+  // assertion is inverted deliberately: the tiles are the answer to "where is
+  // it", and the installer is usually the one asking.
   await useSupabaseFixtures(page, { role: "installer" });
   await useStorageFixtures(page);
   await page.goto("/storage");
 
   await expect(page.getByRole("heading", { name: "Where is it" })).toBeVisible();
-  await expect(page.getByText("Conex 7")).toHaveCount(0);
+  await expect(page.getByText("Conex 7")).toBeVisible();
 });
 
 test("check-in: pick the conex once, tick packages, one submit", async ({

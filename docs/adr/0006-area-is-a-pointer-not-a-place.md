@@ -7,3 +7,11 @@ The obvious answers break on a fact settled the same day: **containers move, wit
 Considered and rejected: **one flat list everywhere** (above). **Reusing the slot machinery** — a slot is an addressed record with its own label that packages point at; welding a rough pointer onto it would confuse the two forever and prejudge the reorganization. **Waiting for slots entirely** — leaves the reorganization untrackable, which is precisely when rough position matters most.
 
 Chosen (owner call, 2026-08-18): a package carries an **area** — set by foreman and up, meaningful only inside its current container. The option list depends on what kind of box it is in: **Front / Middle / Back** for anything that moves (a conex has a door end, and the door end is the front wherever it is parked), the full compass plus Middle only inside the main warehouse, which never moves. **Every move clears it, with no prompt** — an area carried into a different box reads as an answer and is a lie. An area is not an address: nothing points at it, no label prints for it, and it dies with the move. Slots, when they come, are the opposite on every one of those counts — which is how you tell the two apart.
+
+**ADR-0007 addendum (2026-09-04):** "set by foreman and up" is superseded —
+any crew member sets an area now (see
+[ADR-0007](0007-warehouse-actions-are-crew-actions.md)). Nothing else here
+moves: an area is still a pointer and not a place, still meaningful only
+inside its current box, still cleared by every move with no prompt, still has
+no label printed for it. The rank was the one sentence in this decision that
+was about who, rather than about what an area is.

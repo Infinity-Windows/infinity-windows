@@ -831,11 +831,16 @@ export async function getLocationBySerial(
 }
 
 /**
- * Edit a slot's address and/or friendly display name (foreman+ via the
- * trusted-crew RLS). `address` is a GENERATED column (zone-rack-slot), so we
- * parse ZONE-RACK-SLOT and update the underlying parts; the address then
- * regenerates. The permanent serial is never touched, so printed QRs keep
- * scanning even after a rename.
+ * Edit a slot's address and/or friendly display name. `address` is a
+ * GENERATED column (zone-rack-slot), so we parse ZONE-RACK-SLOT and update
+ * the underlying parts; the address then regenerates. The permanent serial is
+ * never touched, so printed QRs keep scanning even after a rename.
+ *
+ * `locations` carries exactly one policy — the partner wall
+ * (20260950000000): any signed-in crew member may write it, and only a
+ * builder login is refused. There is no rank underneath, so the foreman+ rule
+ * ADR-0007 keeps on destructive warehouse doors is drawn in the one screen
+ * that calls this (pages/Labels.tsx). A new caller has to draw it again.
  */
 export async function updateLocation(
   id: string,
@@ -874,8 +879,9 @@ export async function updateLocation(
  * slot reference the row, so a hard delete would either break history or be
  * blocked by foreign keys. `listLocations` already only returns active slots,
  * so flipping the flag makes the slot disappear from every picker and label
- * list while keeping the audit trail intact. Foreman+ via the same trusted-crew
- * RLS that guards `updateLocation`.
+ * list while keeping the audit trail intact. Same wall as `updateLocation`
+ * above: the table itself only refuses a builder login, so foreman+ is the
+ * calling screen's job.
  */
 export async function deleteLocation(id: string): Promise<void> {
   const { error } = await supabase

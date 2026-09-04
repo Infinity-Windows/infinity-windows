@@ -21,8 +21,6 @@ import {
 } from "../../lib/warehouse/offlineWrites";
 import { Explain } from "../../components/ui/Explain";
 import { addProjectMark, listScheduledMarks } from "../../lib/warehouse/warehouseCards";
-import { useEffectiveRole } from "../../lib/useEffectiveRole";
-import { isForemanPlus } from "../../lib/install/types";
 import { useScanWedge } from "../../lib/warehouse/scanWedge";
 import { STATION_OFF_TRUCK } from "../../lib/warehouse/stations";
 import {
@@ -258,8 +256,6 @@ export function TagPackages() {
       a.localeCompare(b, undefined, { numeric: true }),
     );
   }, [scheduled.data, specs.data]);
-  const { effectiveRole } = useEffectiveRole();
-  const lead = isForemanPlus(effectiveRole);
 
   // The wall gets a door (owner report, 2026-08-18): a typed window that is
   // not on the schedule used to bounce off the server with nothing saying how
@@ -571,20 +567,19 @@ export function TagPackages() {
           {markUnscheduled && (
             <p className="wh-pending" style={{ marginTop: 4 }}>
               Window {markTyped} isn&rsquo;t on this job&rsquo;s schedule yet.{" "}
-              {lead ? (
-                <button
-                  className="link"
-                  style={{ font: "inherit" }}
-                  disabled={addMark.isPending}
-                  onClick={() => addMark.mutate()}
-                >
-                  {addMark.isPending
-                    ? "Adding…"
-                    : `Add window ${markTyped} to the schedule`}
-                </button>
-              ) : (
-                "A foreman can add it — the schedule fills from the plans at spec review."
-              )}
+              {/* The handle, not a note about who holds it (ADR-0007): the
+                  person at the truck with a package in their hand is the one
+                  who found the window the plans missed. */}
+              <button
+                className="link"
+                style={{ font: "inherit" }}
+                disabled={addMark.isPending}
+                onClick={() => addMark.mutate()}
+              >
+                {addMark.isPending
+                  ? "Adding…"
+                  : `Add window ${markTyped} to the schedule`}
+              </button>
             </p>
           )}
         </>

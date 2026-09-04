@@ -1,11 +1,12 @@
 // Log a delivery WITHOUT stickers (owner ask, 2026-08-21 night: the truck
 // comes in the morning; the scanner and label printer haven't arrived).
 //
-// The chooser comes first: with QR stickers -> the existing tag flow, open to
-// whoever's at the tailgate (ticket 20 made this page the one front door for
-// trucks); without -> this wizard, foreman+ only because create_manual_delivery
-// refuses below that on the server — hidden here rather than shown and left
-// to fail at the end of a three-step form. The wizard collects the skeleton
+// The chooser comes first, and since ADR-0007 both ways in are open to
+// whoever's at the tailgate: with QR stickers -> the existing tag flow
+// (ticket 20 made this page the one front door for trucks); without -> this
+// wizard, which calls create_manual_delivery. That RPC was foreman+ until
+// ADR-0007 opened it; what it still refuses is a builder login. The wizard
+// collects the skeleton
 // (jobs -> sets -> package counts -> crates) and deliberately NOT per-package
 // part labels: the boxes' own labels decide that order, so parts get labeled
 // later on the package screen with the box in front of you. Labels for every
@@ -17,8 +18,6 @@ import { Link, useNavigate } from "react-router-dom";
 import { BackChip } from "../../components/BackChip";
 import { StationChip } from "../../components/warehouse/StationChip";
 import { listProjects } from "../../lib/api";
-import { isForemanPlus } from "../../lib/install/types";
-import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import { createManualDelivery } from "../../lib/storage";
 import { STATION_COMING_IN } from "../../lib/warehouse/stations";
 import {
@@ -43,14 +42,9 @@ type Stage = "mode" | "jobs" | "sets" | "review" | "done";
 
 export function LogDelivery() {
   const navigate = useNavigate();
-  // Ticket 20: this page is the ONE front door for trucks now, open to
-  // whoever's at the tailgate — but the hand-entry wizard below still calls
-  // create_manual_delivery, which the server refuses below foreman+. Hiding
-  // the option here (rather than showing a button that only errors at the
-  // very end of a three-step form) is the same pattern the warehouse page
-  // uses everywhere else: gate the tool, not the door.
-  const { effectiveRole } = useEffectiveRole();
-  const lead = isForemanPlus(effectiveRole);
+  // Ticket 20: this page is the ONE front door for trucks, open to whoever's
+  // at the tailgate — and since ADR-0007 the hand-entry wizard below is too.
+  // There is no rank left on this screen: the tool and the door finally agree.
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const [stage, setStage] = useState<Stage>("mode");
   const [label, setLabel] = useState("");
@@ -133,18 +127,16 @@ export function LogDelivery() {
           >
             With QR stickers — scan and tag at the tailgate
           </button>
-          {lead && (
-            <>
-              <button className="button-like big" onClick={() => setStage("jobs")}>
-                Without stickers — prepare the list, check the truck against it
-              </button>
-              <p className="muted">
-                Entering by hand builds a standby list of expected packages,
-                each with its own ID. At the truck you check material off
-                against the list; labels print whenever the printer shows up.
-              </p>
-            </>
-          )}
+          {/* Both ways in are open to every crew member (ADR-0007) — the
+              person meeting the truck decides how the truck gets tracked. */}
+          <button className="button-like big" onClick={() => setStage("jobs")}>
+            Without stickers — prepare the list, check the truck against it
+          </button>
+          <p className="muted">
+            Entering by hand builds a standby list of expected packages, each
+            with its own ID. At the truck you check material off against the
+            list; labels print whenever the printer shows up.
+          </p>
         </div>
       </div>
     );

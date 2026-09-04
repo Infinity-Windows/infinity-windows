@@ -4,10 +4,31 @@
 // server-side clock_in gate checks.
 import { PDFDocument, StandardFonts, rgb, type PDFFont } from "pdf-lib";
 import { supabase } from "./supabase";
+import { isMissingColumn } from "./schemaErrors";
 import type { SafetyTalk, TalkSections, TalkVisualAid } from "./ops";
 import { sendPush } from "./permissions/pushServer";
 
 const BUCKET = "toolbox-records";
+
+/**
+ * How today's talk got onto somebody's record.
+ *
+ * 'self' is the real thing: they read it on their own phone, typed their name
+ * and drew a signature, and the app archived a PDF of it. 'group' is a
+ * supervisor's attestation, filed for them while clocking a crew in from the
+ * roster (20260985000000) — no typed name, no signature, no PDF. It satisfies
+ * the clock-in gate exactly as a signature does, which is the point, but it is
+ * a WEAKER record and every screen that shows it has to say so. A safety audit
+ * run off a list that counted the two the same would over-count signatures.
+ */
+export type SignedVia = "self" | "group";
+
+/** True when this completion is a supervisor's attestation, not a signature. */
+export function isGroupSignIn(
+  c: { signed_via?: string | null } | null | undefined,
+): boolean {
+  return c?.signed_via === "group";
+}
 
 export interface ToolboxCompletion {
   id: string;
@@ -19,6 +40,13 @@ export interface ToolboxCompletion {
   talk_snapshot: string | null;
   pdf_path: string | null;
   created_at: string;
+  /**
+   * 20260985000000. Optional because both reads below select `*`, and a
+   * database that has not applied the migration yet simply answers rows
+   * without these keys — which read as undefined, i.e. an ordinary signature.
+   */
+  signed_via?: string | null;
+  signed_by?: string | null;
   safety_talks?: { title: string } | null;
   profiles?: { display_name: string } | null;
 }
@@ -27,8 +55,13 @@ export interface ComplianceRow {
   profile_id: string;
   display_name: string;
   role: string;
+  /** Covered for today — by their own signature OR a supervisor's attestation. */
   signed: boolean;
   signed_at: string | null;
+  /** Which of the two it was. 'self' on any database without the columns. */
+  via: SignedVia;
+  /** The supervisor who attested, when there is one and they are on the crew list. */
+  signed_by_name: string | null;
 }
 
 function localDateStr(d = new Date()): string {
@@ -69,37 +102,80 @@ export async function listMyCompletions(
   return (data ?? []) as ToolboxCompletion[];
 }
 
-/** Foreman+ view: everyone on the crew and whether they've signed today. */
+/** One row of today's completions, as the compliance list needs to read it. */
+interface TodayRow {
+  profile_id: string | null;
+  signed_at: string;
+  signed_via?: string | null;
+  signed_by?: string | null;
+}
+
+/**
+ * Today's completions, naming HOW each one was made.
+ *
+ * The narrow retry is the ahead-of-the-migration path: PostgREST answers a hard
+ * error for a select naming a column the database does not have, and the
+ * backend deploys as its own workflow that has silently failed before. Losing
+ * the Safety page's whole compliance list to that would be a far worse outcome
+ * than losing the badge on it, so a missing column falls back to the two
+ * columns this read has always asked for, and every row is 'self' — which is
+ * exactly what every row on such a database is.
+ */
+async function todayCompletionRows(sinceISO: string): Promise<TodayRow[]> {
+  const wide = await supabase
+    .from("toolbox_completions")
+    .select("profile_id, signed_at, signed_via, signed_by")
+    .gte("signed_at", sinceISO);
+  if (!wide.error) return (wide.data ?? []) as TodayRow[];
+  if (!isMissingColumn(wide.error)) throw wide.error;
+
+  const narrow = await supabase
+    .from("toolbox_completions")
+    .select("profile_id, signed_at")
+    .gte("signed_at", sinceISO);
+  if (narrow.error) throw narrow.error;
+  return (narrow.data ?? []) as TodayRow[];
+}
+
+/**
+ * Foreman+ view: everyone on the crew and whether they're covered for today —
+ * and, for anybody covered by a supervisor's attestation rather than their own
+ * signature, who attested. The attester's name comes out of the profiles list
+ * this function already fetched, so telling the two apart costs no extra query.
+ */
 export async function todayCompliance(): Promise<ComplianceRow[]> {
   const start = new Date();
   start.setHours(0, 0, 0, 0);
-  const [profilesRes, doneRes] = await Promise.all([
+  const [profilesRes, done] = await Promise.all([
     supabase
       .from("profiles")
       .select("id, display_name, role, active")
       .eq("active", true)
       .order("display_name"),
-    supabase
-      .from("toolbox_completions")
-      .select("profile_id, signed_at")
-      .gte("signed_at", start.toISOString()),
+    todayCompletionRows(start.toISOString()),
   ]);
   if (profilesRes.error) throw profilesRes.error;
-  if (doneRes.error) throw doneRes.error;
 
-  const signed = new Map<string, string>();
-  for (const c of doneRes.data ?? []) {
-    if (c.profile_id && !signed.has(c.profile_id)) {
-      signed.set(c.profile_id, c.signed_at as string);
-    }
+  const signed = new Map<string, TodayRow>();
+  for (const c of done) {
+    if (c.profile_id && !signed.has(c.profile_id)) signed.set(c.profile_id, c);
   }
-  return (profilesRes.data ?? []).map((p) => ({
-    profile_id: p.id,
-    display_name: p.display_name,
-    role: p.role,
-    signed: signed.has(p.id),
-    signed_at: signed.get(p.id) ?? null,
-  }));
+  const nameById = new Map(
+    (profilesRes.data ?? []).map((p) => [p.id as string, p.display_name as string]),
+  );
+  return (profilesRes.data ?? []).map((p) => {
+    const row = signed.get(p.id);
+    const group = isGroupSignIn(row);
+    return {
+      profile_id: p.id,
+      display_name: p.display_name,
+      role: p.role,
+      signed: Boolean(row),
+      signed_at: row?.signed_at ?? null,
+      via: group ? ("group" as const) : ("self" as const),
+      signed_by_name: group && row?.signed_by ? (nameById.get(row.signed_by) ?? null) : null,
+    };
+  });
 }
 
 /** Short-lived signed URL to view an archived PDF (or signature) in the bucket. */

@@ -1,11 +1,16 @@
 // Plan a window's packages and mint its labels (ticket 15, ADR-0005).
 //
-// The foreman's side of the merge: declare "window 16 arrives as 4 packages"
-// and four stickers exist — already bound to job + window + part — before the
-// truck does. Receiving becomes sticking a label on, and the typing that
-// wrong data comes from never happens at a tailgate.
+// Declare "window 16 arrives as 4 packages" and four stickers exist — already
+// bound to job + window + part — before the truck does. Receiving becomes
+// sticking a label on, and the typing that wrong data comes from never
+// happens at a tailgate.
 //
-// Lives on the job page's Warehouse tab, foreman+. The blank-roll path stays
+// Lives on the job page's Warehouse tab, open to every crew member since
+// ADR-0007: mint_mark_packages is one of the eighteen that opened, and the
+// person who plans the labels is usually the person meeting the truck. Burn
+// is the exception on this panel and stays foreman+, because it ENDS a serial
+// and burn_packages refuses below foreman on the server — a live burn button
+// in front of that refusal reads as a broken app. The blank-roll path stays
 // on /storage for everything unplanned.
 
 import { useMemo, useState } from "react";
@@ -26,6 +31,8 @@ import { listMarkSpecs } from "../../lib/install/api";
 import { indexSpecsByMark } from "../../lib/install/specs";
 import { listStudioUnits } from "../../lib/modelstudio/units";
 import { catalogByMarkFrom, resolveMarkConfig } from "../../lib/modelstudio/fromProject";
+import { isForemanPlus } from "../../lib/install/types";
+import { useEffectiveRole } from "../../lib/useEffectiveRole";
 
 export function PlanPackagesPanel({
   projectId,
@@ -35,6 +42,9 @@ export function PlanPackagesPanel({
   jobCode: string | null;
 }) {
   const qc = useQueryClient();
+  // The only rank left on this panel: burning is a door that ends something.
+  const { effectiveRole } = useEffectiveRole();
+  const canBurn = isForemanPlus(effectiveRole);
   const marks = useQuery({
     queryKey: ["scheduledMarks", [projectId]],
     queryFn: () => listScheduledMarks([projectId]),
@@ -129,15 +139,17 @@ export function PlanPackagesPanel({
             <button className="action-btn" onClick={() => void printLabels(mintedRows)}>
               Print all on-the-way labels ({mintedRows.length})
             </button>
-            <button
-              className="action-btn"
-              onClick={() => {
-                setBurnMode((v) => !v);
-                setBurning(new Set());
-              }}
-            >
-              {burnMode ? "Cancel burn" : "Burn labels…"}
-            </button>
+            {canBurn && (
+              <button
+                className="action-btn"
+                onClick={() => {
+                  setBurnMode((v) => !v);
+                  setBurning(new Set());
+                }}
+              >
+                {burnMode ? "Cancel burn" : "Burn labels…"}
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -146,10 +158,11 @@ export function PlanPackagesPanel({
         the truck does — already carrying the job, the window and &ldquo;2 of
         4&rdquo;. At the truck, receiving is sticking the label on and tapping
         Arrived. If the maker&rsquo;s own label says a different count, the
-        maker wins — burn the wrong stickers and mint the right number.
+        maker wins — a foreman burns the wrong stickers, then anybody mints
+        the right number.
       </Explain>
 
-      {burnMode && (
+      {canBurn && burnMode && (
         <div
           className="detail-card"
           style={{ borderLeft: "3px solid var(--danger)", margin: "10px 0" }}
