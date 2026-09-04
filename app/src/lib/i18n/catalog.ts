@@ -1203,6 +1203,55 @@ export const CATALOG = {
   "gc.missing.exterior": { en: "Say what is going on the outside.", es: "Di qué va por fuera." },
   "gc.missing.interior": { en: "Say what is going on the inside.", es: "Di qué va por dentro." },
   "gc.missing.channel": { en: "Say how you talked to the GC.", es: "Di cómo hablaste con el GC." },
+  // H2 — the link we hand the builder, and the thread on it. Crew-facing, so
+  // both languages; the PAGE the link opens and the email that carries it are
+  // English only in v1 and live in GcPage.tsx and the send-email function.
+  "gc.link.heading": { en: "The GC's own link", es: "El enlace del GC" },
+  "gc.link.none": { en: "No link has gone out yet.", es: "Todavía no se ha enviado ningún enlace." },
+  "gc.link.live": { en: "The link works until {date}.", es: "El enlace funciona hasta el {date}." },
+  "gc.link.sentTo": { en: "Sent to {email}", es: "Enviado a {email}" },
+  "gc.link.answered": { en: "He answered on it {date}.", es: "Contestó ahí el {date}." },
+  "gc.link.off": { en: "The link is off.", es: "El enlace está apagado." },
+  "gc.link.email": { en: "GC's email", es: "Correo del GC" },
+  "gc.link.send": { en: "Send to GC", es: "Enviar al GC" },
+  "gc.link.resend": { en: "Send a fresh link", es: "Enviar un enlace nuevo" },
+  "gc.link.revoke": { en: "Turn the link off", es: "Apagar el enlace" },
+  "gc.link.sending": { en: "Sending…", es: "Enviando…" },
+  "gc.link.needEmail": { en: "Type the GC's email address first.", es: "Escribe primero el correo del GC." },
+  // Said BEFORE the tap, because a fresh link turns the old one off and a
+  // builder who is holding the old one should not find that out by tapping it.
+  "gc.link.confirm": {
+    en: "Send the six questions to {email}? Any earlier link stops working.",
+    es: "¿Enviar las seis preguntas a {email}? Cualquier enlace anterior deja de funcionar.",
+  },
+  "gc.link.copy": { en: "Copy the link", es: "Copiar el enlace" },
+  "gc.link.copied": { en: "Copied.", es: "Copiado." },
+  // The token exists in one place after this and it is the clipboard. Say so
+  // plainly rather than letting somebody discover it by coming back tomorrow.
+  "gc.link.onceOnly": {
+    en: "Copy it now if you want to text it — we cannot show it again. Sending again makes a new one.",
+    es: "Cópialo ahora si quieres mandarlo por mensaje — no podemos volver a mostrarlo. Enviar de nuevo crea uno nuevo.",
+  },
+  "gc.link.emailOff": {
+    en: "Email is not set up yet, so nothing was sent. Copy the link and text it instead.",
+    es: "El correo todavía no está configurado, así que no se envió nada. Copia el enlace y mándalo por mensaje.",
+  },
+  // Which of the company's two names this job's GC hears (Q20).
+  "gc.brand.label": { en: "The GC sees us as", es: "El GC nos ve como" },
+  "gc.brand.stg": { en: "STG Windows & Doors", es: "STG Windows & Doors" },
+  "gc.brand.forge": { en: "Forge Windows and Doors", es: "Forge Windows and Doors" },
+  // The thread. Never crew chat — said on the card, because the two boxes look
+  // alike and sending the wrong one to the wrong audience is the mistake.
+  "gc.thread.heading": { en: "Messages with the GC", es: "Mensajes con el GC" },
+  "gc.thread.notCrewChat": {
+    en: "This goes to the GC, not to the crew.",
+    es: "Esto va al GC, no al equipo.",
+  },
+  "gc.thread.empty": { en: "Nothing yet.", es: "Nada todavía." },
+  "gc.thread.placeholder": { en: "Write to the GC", es: "Escribe al GC" },
+  "gc.thread.send": { en: "Send", es: "Enviar" },
+  "gc.thread.us": { en: "Us", es: "Nosotros" },
+  "gc.thread.them": { en: "The GC", es: "El GC" },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */

@@ -69,3 +69,19 @@ verify_jwt = false
 # in claim_pipeline_nudges() rather than in anything a caller could send
 # (Wave J, J4).
 verify_jwt = false
+
+[functions.gc-link]
+# Reached by a general contractor who has no account and never will, which is
+# the whole point, so it must not require an end-user session. It stays
+# verify_jwt = true because the gateway accepts the project's anon key as a
+# valid JWT (the same reasoning redeem-crew-invite documents above, confirmed
+# against production): with no Authorization header at all the gateway refuses
+# before the function runs. The real credential is the 32-random-byte token,
+# checked inside the function against a stored sha256 (Wave H, H2).
+verify_jwt = true
+
+[functions.send-email]
+# Foreman+ only, and not a relay: the recipient is the address stored on the
+# link, the body is written inside the function, and the caller's own JWT is
+# what my_role_rank() and the projects RLS read (Wave H, H2).
+verify_jwt = true

@@ -228,3 +228,187 @@ export async function logGcCheckin(
   });
   if (error) throw error;
 }
+
+// ---------------------------------------------------------------------------
+// H2 — the link, the thread, and the email
+// ---------------------------------------------------------------------------
+
+export interface GcLink {
+  id: string;
+  project_id: string;
+  brand: string;
+  sent_to_email: string | null;
+  sent_at: string | null;
+  expires_at: string;
+  used_at: string | null;
+  revoked_at: string | null;
+  created_at: string;
+}
+
+/** Note what is NOT selected: token_hash. The office has no use for it, and a
+ * column nobody reads is a column that cannot leak into a screenshot. */
+const LINK_COLS =
+  "id, project_id, brand, sent_to_email, sent_at, expires_at, used_at, revoked_at, created_at";
+
+export interface GcLinkState {
+  link: GcLink | null;
+  known: boolean;
+}
+
+/** The job's live link, if it has one. One job, one live link — create_gc_link
+ * revokes any earlier one in the same statement. */
+export async function currentGcLink(projectId: string): Promise<GcLinkState> {
+  const { data, error } = await supabase
+    .from("gc_links")
+    .select(LINK_COLS)
+    .eq("project_id", projectId)
+    .is("revoked_at", null)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  if (error) {
+    if (isMissingTable(error, "gc_links")) return { link: null, known: false };
+    throw error;
+  }
+  return { link: ((data ?? []) as unknown as GcLink[])[0] ?? null, known: true };
+}
+
+/** What create_gc_link hands back — including the plaintext token, ONCE. */
+export interface MintedGcLink {
+  link_id: string;
+  token: string;
+  expires_at: string;
+  brand: string;
+}
+
+/**
+ * Foreman+: mint a link for this job's GC, revoking any earlier live one.
+ *
+ * The token in the result is the only copy that will ever exist on this side —
+ * the database keeps a sha256 and nothing else. Hold it in component state long
+ * enough to copy or email it; once the card is closed it is gone, and "send
+ * again" mints a fresh one.
+ */
+export async function createGcLink(
+  projectId: string,
+  email: string | null,
+  brand: GcBrand | null,
+): Promise<MintedGcLink> {
+  const { data, error } = await supabase.rpc("create_gc_link", {
+    p_project_id: projectId,
+    p_email: email,
+    p_brand: brand,
+  });
+  if (error) throw error;
+  const row = (data as MintedGcLink[] | MintedGcLink | null);
+  const minted = Array.isArray(row) ? row[0] : row;
+  if (!minted?.token) throw new Error("The link came back empty. Try again.");
+  return minted;
+}
+
+/** Foreman+: turn a link off. Idempotent. */
+export async function revokeGcLink(linkId: string): Promise<void> {
+  const { error } = await supabase.rpc("revoke_gc_link", { p_link_id: linkId });
+  if (error) throw error;
+}
+
+/** Foreman+: choose which of the company's two names this job's GC sees. */
+export async function setProjectGcBrand(projectId: string, brand: GcBrand): Promise<void> {
+  const { error } = await supabase.rpc("set_project_gc_brand", {
+    p_project_id: projectId,
+    p_brand: brand,
+  });
+  if (error) throw error;
+}
+
+export interface GcMessage {
+  id: string;
+  project_id: string;
+  author: string;
+  author_profile_id: string | null;
+  body: string;
+  created_at: string;
+}
+
+export interface GcThread {
+  rows: GcMessage[];
+  known: boolean;
+}
+
+/** The query key the GC card reads the thread under. */
+export const gcThreadKey = (projectId: string) => ["gcThread", projectId] as const;
+/** The query key the GC card reads the live link under. */
+export const gcLinkKey = (projectId: string) => ["gcLink", projectId] as const;
+
+/** The whole conversation with this job's builder, oldest first. NEVER crew
+ * chat: project_messages is a different table for a different audience. */
+export async function listGcMessages(projectId: string): Promise<GcThread> {
+  const { data, error } = await supabase
+    .from("gc_messages")
+    .select("id, project_id, author, author_profile_id, body, created_at")
+    .eq("project_id", projectId)
+    .order("created_at", { ascending: true })
+    .limit(200);
+  if (error) {
+    if (isMissingTable(error, "gc_messages")) return { rows: [], known: false };
+    throw error;
+  }
+  return { rows: (data ?? []) as unknown as GcMessage[], known: true };
+}
+
+/** Foreman+: reply to the GC on the page he already has open. */
+export async function postGcMessage(projectId: string, body: string): Promise<void> {
+  const { error } = await supabase.rpc("post_gc_message", {
+    p_project_id: projectId,
+    p_body: body,
+  });
+  if (error) throw error;
+}
+
+/** What send-email answers with. `unconfigured` is not a failure: it means the
+ * owner has not added a Resend key yet, and the card says so and offers the
+ * link to copy instead. */
+export interface SendEmailResult {
+  ok: boolean;
+  unconfigured?: boolean;
+  error?: string;
+  to?: string;
+}
+
+/**
+ * Foreman+: email the link to the address stored on it.
+ *
+ * The function is NOT a relay — it will not take a recipient, a subject or a
+ * body from here. It takes the link id, the token (checked against the link's
+ * own hash), and the origin this app is being served from, and writes the mail
+ * itself. `appBase` is what makes the link right on github.io today and on the
+ * custom domain after the cutover.
+ */
+export async function sendGcLinkEmail(
+  linkId: string,
+  token: string,
+  appBase: string,
+): Promise<SendEmailResult> {
+  const { data, error } = await supabase.functions.invoke("send-email", {
+    body: { linkId, token, appBase },
+  });
+  if (error) {
+    // A non-2xx from an edge function arrives as a FunctionsHttpError whose
+    // useful half is in the response body, so read that rather than showing
+    // "Edge Function returned a non-2xx status code" to a foreman.
+    const detail = await readFunctionError(error);
+    return { ok: false, error: detail };
+  }
+  return (data ?? { ok: false, error: "Email did not go." }) as SendEmailResult;
+}
+
+/** Pull the plain sentence out of an edge function's error response. */
+async function readFunctionError(error: unknown): Promise<string> {
+  const res = (error as { context?: { json?: () => Promise<unknown> } })?.context;
+  try {
+    const body = (await res?.json?.()) as { error?: unknown } | undefined;
+    if (typeof body?.error === "string" && body.error) return body.error;
+  } catch {
+    // No JSON body — fall through to the error's own message.
+  }
+  return error instanceof Error ? error.message : "Email did not go.";
+}

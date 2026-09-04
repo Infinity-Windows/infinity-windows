@@ -130,6 +130,16 @@ export interface Project {
   /** Wave J (J1), wave H home: when somebody tapped "Materials arrived". Null
    * means the windows are still not in. */
   materials_arrived_at?: string | null;
+  /**
+   * Wave H (H2): which of the company's two names this job's general contractor
+   * hears — 'stg' | 'forge'. A real column on `projects` (unlike the three
+   * above), RPC-only through set_project_gc_brand: it is deliberately off wave
+   * D's grant lists, because choosing what a customer is told we are called is
+   * a foreman's decision and a column grant cannot check a rank. A granted
+   * builder reading it learns which of our names we use with them, which they
+   * already know.
+   */
+  gc_brand?: string | null;
   /** Wave J (J2): the office's hand-made place for this job in the list, 1..n.
    * Null means nobody has placed it, and it sorts after the ones somebody did
    * (lib/pipeline.ts compareProjectsForList). */

@@ -124,6 +124,19 @@ test("a job nobody has called about says so, on both cards", async ({ page }) =>
   await expect(pipeline.getByText(/None yet/i)).toBeVisible();
 });
 
+test("the Pipeline card shows the day the GC was last spoken to", async ({ page }) => {
+  await useSupabaseFixtures(page, { role: "foreman" });
+  useGcFixtures(page, [EXISTING_CHECKIN]);
+  await page.goto(`/projects/${PROJECT_ID}`);
+
+  // "Last GC check-in" is a PIPELINE fact — one of the four reasons the 7 AM
+  // push exists — so it belongs on that card and not only on the GC card, and
+  // it must read the real date rather than the seam's "None yet".
+  const pipeline = page.locator("section.detail-card").filter({ hasText: "Pipeline" }).first();
+  await expect(pipeline.getByText(/None yet/i)).toHaveCount(0);
+  await expect(pipeline.getByText(/Aug 1/)).toBeVisible();
+});
+
 test("a foreman files the six answers and one call carries all of them", async ({ page }) => {
   await useSupabaseFixtures(page, { role: "foreman" });
   const fixtures = useGcFixtures(page);

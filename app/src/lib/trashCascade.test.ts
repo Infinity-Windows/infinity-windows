@@ -116,6 +116,14 @@ const CASCADE_COVERED: Record<string, string> = {
   // and nobody reads it once the job is gone — so it goes on the final `delete
   // from projects` rather than being detached like a money record.
   project_gc_checkins: "ON DELETE CASCADE from projects, on the final delete from projects",
+  // Wave H (H2), 20260981000000. A link is a key to ONE job — there is nothing
+  // for it to point at once the job is gone, and leaving one alive would be
+  // leaving a live credential for a purged job.
+  gc_links: "ON DELETE CASCADE from projects, on the final delete from projects",
+  // And the thread on it. gc_messages.gc_link_id is ON DELETE SET NULL so
+  // revoking a link never deletes what the builder said, but project_id is
+  // CASCADE: the conversation is about the job and dies with it.
+  gc_messages: "ON DELETE CASCADE from projects, on the final delete from projects",
 };
 
 function purgeBody(): string {

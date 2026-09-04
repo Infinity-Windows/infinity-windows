@@ -1,0 +1,226 @@
+// send-email (Wave H, H2 — transcripts grill, 2026-09-03, Q11): the one thing
+// in this repo that sends mail, and it sends exactly one kind of message.
+//
+// IT IS NOT A RELAY, and every rule below exists to keep it from becoming one:
+//
+//   * The caller must be a FOREMAN OR ABOVE, checked as the caller (their own
+//     JWT, my_role_rank through their client) rather than on the service role —
+//     the permission mirror this repo already uses for the AI's scheduling
+//     tools.
+//   * The caller must be able to READ THE JOB the link belongs to. Their own
+//     client asks for the row; RLS answers. A foreman who cannot see the job
+//     cannot mail its builder.
+//   * The recipient is the address STORED ON THE LINK. The request cannot name
+//     one. There is no "to" field to abuse.
+//   * The body is written here, from the job's name and brand. The request
+//     supplies no HTML, no subject and no arbitrary URL — only the token, which
+//     is checked against the link's own hash before anything is sent.
+//   * The link's origin is checked against a short allow-list of places this
+//     app is actually served from, so the mail cannot be made to point a
+//     customer at somebody else's site.
+//
+// RESEND_API_KEY IS OPTIONAL, on purpose (the truthiness-guard form
+// scripts/function_secrets.py reads as optional, the same shape monday-sync
+// uses for MONDAY_API_TOKEN). Until the owner sets it, this function answers
+// "email is not configured" and the GC card says so in plain English and offers
+// the link to copy instead — and the deploy's secret gate never fails on a key
+// nobody has added yet. A Resend account already exists; password resets were
+// routed through it on 2026-09-01. This wave needs an API key of its own.
+//
+// EMAIL_FROM is optional too, defaulting to office@forgewd.com. It has to be an
+// address on a domain verified in Resend or Resend refuses the send — which is
+// the failure the UI reports verbatim rather than swallowing.
+//
+// The email is ENGLISH ONLY in v1, by decision: it goes to a customer who has
+// never opened this app and never picked a language in it. Spanish here is a
+// translation of the GC page and the mail together, not a catalog entry.
+
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { corsHeaders, jsonResponse } from "../_shared/openai.ts";
+import { callerSupabaseClient, verifyCaller } from "../_shared/auth.ts";
+import { hashGcToken, looksLikeGcToken } from "../_shared/gcToken.ts";
+
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const EMAIL_FROM = Deno.env.get("EMAIL_FROM") ?? "office@forgewd.com";
+
+/** The company's two names, spelled the way the owner spells them (Q20). */
+const BRAND_NAMES: Record<string, string> = {
+  stg: "STG Windows & Doors",
+  forge: "Forge Windows and Doors",
+};
+
+/**
+ * Where this app is actually served from. The page hands over the origin its
+ * own browser is on so the link works from GitHub Pages today and from the
+ * custom domain after the cutover; anything else falls back to the canonical
+ * address rather than being sent as given. Without this the request could aim a
+ * customer at any site at all, which is precisely the "not a relay" rule.
+ */
+const ALLOWED_ORIGINS = [
+  "https://app.forgewd.com",
+  "https://forgewd.com",
+  "https://infinity-windows.github.io",
+];
+const DEFAULT_LINK_BASE = "https://app.forgewd.com/";
+
+function linkUrl(appBase: unknown, token: string): string {
+  const base = typeof appBase === "string" ? appBase : "";
+  try {
+    const url = new URL(base);
+    if (!ALLOWED_ORIGINS.includes(url.origin)) return `${DEFAULT_LINK_BASE}gc/${token}`;
+    const path = url.pathname.endsWith("/") ? url.pathname : `${url.pathname}/`;
+    return `${url.origin}${path}gc/${token}`;
+  } catch {
+    return `${DEFAULT_LINK_BASE}gc/${token}`;
+  }
+}
+
+/** Plain text, because a builder reads this on a phone in a truck and half of
+ * them have images off. One paragraph, one link, one instruction. */
+function emailBody(job: string, brand: string, url: string): { subject: string; text: string } {
+  const company = BRAND_NAMES[brand] ?? BRAND_NAMES.stg;
+  return {
+    subject: `${company}: six quick questions about ${job}`,
+    text: [
+      `Hi,`,
+      ``,
+      `We are getting ready for the windows and doors at ${job}, and there are six`,
+      `things we need from you: when you expect the house to be finished, when the`,
+      `roof goes on, whether the framing has been checked, whether you want the`,
+      `windows inset or outset, and what is going on the outside and the inside.`,
+      ``,
+      `Please answer them here — it takes a minute and needs no password:`,
+      ``,
+      url,
+      ``,
+      `Please answer on that page rather than replying to this email, so your`,
+      `answers reach the crew on the job instead of one inbox. You can also ask us`,
+      `a question on the same page, and we will answer you there.`,
+      ``,
+      `The link works for 30 days.`,
+      ``,
+      `— ${company}`,
+    ].join("\n"),
+  };
+}
+
+Deno.serve(async (req) => {
+  const cors = corsHeaders(req);
+  if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    return jsonResponse({ error: "service role not configured" }, 500, cors);
+  }
+
+  // Feature-detect the key (the guard form scripts/function_secrets.py reads as
+  // OPTIONAL): until the owner sets RESEND_API_KEY this reports itself
+  // unconfigured instead of failing the deploy secret gate.
+  let resendKey = "";
+  if (Deno.env.get("RESEND_API_KEY")) {
+    resendKey = Deno.env.get("RESEND_API_KEY") ?? "";
+  } else {
+    return jsonResponse(
+      { ok: false, error: "email is not configured", unconfigured: true },
+      200,
+      cors,
+    );
+  }
+
+  const auth = await verifyCaller(req);
+  if (auth.status === "unauthorized") return jsonResponse({ error: "unauthorized" }, 401, cors);
+  const caller = callerSupabaseClient(req);
+  if (!caller) return jsonResponse({ error: "unauthorized" }, 401, cors);
+
+  // Rank checked AS THE CALLER — my_role_rank() reads auth.uid(), which on the
+  // service role would be nobody at all. This is the same permission mirror the
+  // scheduling tools use.
+  const { data: rank } = await caller.rpc("my_role_rank");
+  if (typeof rank !== "number" || rank < 1) {
+    return jsonResponse({ error: "Only a foreman or above can email a job's GC." }, 403, cors);
+  }
+
+  let body: Record<string, unknown>;
+  try {
+    body = (await req.json()) as Record<string, unknown>;
+  } catch {
+    return jsonResponse({ error: "Nothing to send." }, 400, cors);
+  }
+
+  const linkId = typeof body.linkId === "string" ? body.linkId : "";
+  const token = body.token;
+  if (!linkId || !looksLikeGcToken(token)) {
+    return jsonResponse({ error: "That link is not one of ours." }, 400, cors);
+  }
+
+  const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+
+  const { data: link } = await admin
+    .from("gc_links")
+    .select("id, project_id, brand, sent_to_email, token_hash, expires_at, revoked_at")
+    .eq("id", linkId)
+    .maybeSingle();
+  if (!link) return jsonResponse({ error: "That link is not one of ours." }, 404, cors);
+
+  // The token has to match the link it claims to be. Without this check the
+  // request could name a real link id and any string, and we would mail a
+  // customer a URL that opens nothing.
+  if ((await hashGcToken(token)) !== link.token_hash) {
+    return jsonResponse({ error: "That link is not one of ours." }, 400, cors);
+  }
+  if (link.revoked_at || new Date(link.expires_at).getTime() <= Date.now()) {
+    return jsonResponse({ error: "That link has been turned off. Make a new one." }, 400, cors);
+  }
+  if (!link.sent_to_email) {
+    return jsonResponse({ error: "This link has no email address on it." }, 400, cors);
+  }
+
+  // Can this caller actually see the job? Their own client, their own RLS. A
+  // foreman who cannot read the job cannot mail its builder.
+  const { data: project } = await caller
+    .from("projects")
+    .select("id, name, job_code")
+    .eq("id", link.project_id)
+    .maybeSingle();
+  if (!project) {
+    return jsonResponse({ error: "You do not have that job." }, 403, cors);
+  }
+
+  const jobLabel = String(project.name || project.job_code || "your job");
+  const { subject, text } = emailBody(
+    jobLabel,
+    String(link.brand ?? "stg"),
+    linkUrl(body.appBase, token),
+  );
+
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${resendKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: EMAIL_FROM,
+      to: [link.sent_to_email],
+      subject,
+      text,
+    }),
+  });
+
+  if (!res.ok) {
+    // Resend's own words. A verified-domain problem reads as "The gmail.com
+    // domain is not verified", which is exactly what the person pressing the
+    // button needs to hear — swallowing it would leave them pressing again.
+    const detail = await res.text();
+    return jsonResponse({ error: `Email did not go: ${detail.slice(0, 300)}` }, 502, cors);
+  }
+
+  // Stamp the send on the link, so the card can say when it went and to whom.
+  await admin
+    .from("gc_links")
+    .update({ sent_at: new Date().toISOString() })
+    .eq("id", link.id);
+
+  return jsonResponse({ ok: true, to: link.sent_to_email }, 200, cors);
+});

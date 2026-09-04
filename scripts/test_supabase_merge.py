@@ -158,7 +158,9 @@ class TestSchemaParsing(unittest.TestCase):
         # adds exactly one table.
         # +1: project_gc_checkins — one filed conversation with a job's general
         # contractor, the six standing answers (Wave H, H1, 20260981000000).
-        self.assertEqual(len(SCHEMA.tables), 124)
+        # +2: gc_links + gc_messages — the no-login link a GC opens and the
+        # thread on it (Wave H, H2, 20260981000000). Four tables for the wave.
+        self.assertEqual(len(SCHEMA.tables), 126)
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 

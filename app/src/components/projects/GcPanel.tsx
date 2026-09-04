@@ -11,7 +11,7 @@
 // listGcCheckins answers `known: false` instead of throwing, the card says
 // nobody has checked in, and the form is simply not offered.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MessageSquare } from "lucide-react";
 import { formatApiError } from "../../lib/errors";
@@ -20,16 +20,30 @@ import type { TKey } from "../../lib/i18n/catalog";
 import {
   GC_CHANNELS,
   GC_SET_PREFERENCES,
+  createGcLink,
+  currentGcLink,
   firstMissingAnswer,
+  gcBrandOf,
   gcCheckinsKey,
   gcCheckinsLatestKey,
+  gcLinkKey,
+  gcThreadKey,
   listGcCheckins,
+  listGcMessages,
   logGcCheckin,
+  postGcMessage,
+  revokeGcLink,
+  sendGcLinkEmail,
+  setProjectGcBrand,
+  type GcBrand,
   type GcCheckin,
   type GcCheckinDraft,
   type GcCheckinProblem,
+  type MintedGcLink,
 } from "../../lib/gc";
+import { gcLinkUrl } from "../../lib/gcToken";
 import { shortDay } from "../../lib/pipeline";
+import type { Project } from "../../lib/types";
 
 /** The key each unanswered question complains with. */
 const MISSING_KEYS: Record<GcCheckinProblem, TKey> = {
@@ -67,7 +81,15 @@ const EMPTY: GcCheckinDraft = {
   notes: "",
 };
 
-export function GcPanel({ projectId, isLead }: { projectId: string; isLead: boolean }) {
+export function GcPanel({
+  projectId,
+  project,
+  isLead,
+}: {
+  projectId: string;
+  project: Project | null;
+  isLead: boolean;
+}) {
   const t = useT();
   const { lang } = useLanguage();
   const queryClient = useQueryClient();
@@ -305,9 +327,255 @@ export function GcPanel({ projectId, isLead }: { projectId: string; isLead: bool
       )}
 
       {message && <p className="error">{message}</p>}
+
+      {/* The link half: foreman+ only. An installer reading what the GC said is
+          useful; an installer emailing him is not. */}
+      {isLead && <GcLinkPanel projectId={projectId} project={project} />}
     </section>
   );
 }
+/**
+ * The link half of the GC card (Wave H, H2): hand this job to its builder, and
+ * talk to him on the page he opens.
+ *
+ * Foreman+ only, and hidden entirely below that — an installer reading what the
+ * GC said is useful, an installer emailing him is not.
+ */
+function GcLinkPanel({ projectId, project }: { projectId: string; project: Project | null }) {
+  const t = useT();
+  const { lang } = useLanguage();
+  const queryClient = useQueryClient();
+  const [email, setEmail] = useState("");
+  const [note, setNote] = useState<string | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  // The plaintext token, held ONLY for as long as this card is open. The
+  // database keeps a sha256 and nothing else, so this is the one copy on our
+  // side and it goes when the page does — which the copy: hint says out loud.
+  const [minted, setMinted] = useState<MintedGcLink | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [reply, setReply] = useState("");
+
+  const link = useQuery({
+    queryKey: gcLinkKey(projectId),
+    queryFn: () => currentGcLink(projectId),
+  });
+  const thread = useQuery({
+    queryKey: gcThreadKey(projectId),
+    queryFn: () => listGcMessages(projectId),
+  });
+
+  const brand = gcBrandOf(project?.gc_brand);
+  const live = link.data?.link ?? null;
+
+  useEffect(() => {
+    // Prefill from the job's own contact email — the office typed it once when
+    // the job was made and should not type it again.
+    setEmail((current) => current || live?.sent_to_email || project?.contact_email || "");
+  }, [live?.sent_to_email, project?.contact_email]);
+
+  const send = useMutation({
+    mutationFn: async () => {
+      const address = email.trim();
+      if (!address) throw new Error(t("gc.link.needEmail"));
+      const made = await createGcLink(projectId, address, brand);
+      setMinted(made);
+      const result = await sendGcLinkEmail(
+        made.link_id,
+        made.token,
+        `${window.location.origin}${import.meta.env.BASE_URL}`,
+      );
+      return result;
+    },
+    onSuccess: async (result) => {
+      setProblem(null);
+      setCopied(false);
+      // "Not configured" is not a failure: the link exists and can be texted.
+      // Saying so is the difference between a foreman copying it and a foreman
+      // pressing the button again.
+      setNote(
+        result.unconfigured
+          ? t("gc.link.emailOff")
+          : result.ok
+            ? t("gc.link.sentTo", { email: result.to ?? email.trim() })
+            : (result.error ?? t("gc.link.emailOff")),
+      );
+      await queryClient.invalidateQueries({ queryKey: gcLinkKey(projectId) });
+    },
+    onError: (e) => {
+      setNote(null);
+      setProblem(formatApiError(e));
+    },
+  });
+
+  const revoke = useMutation({
+    mutationFn: (linkId: string) => revokeGcLink(linkId),
+    onSuccess: async () => {
+      setMinted(null);
+      setNote(t("gc.link.off"));
+      setProblem(null);
+      await queryClient.invalidateQueries({ queryKey: gcLinkKey(projectId) });
+    },
+    onError: (e) => setProblem(formatApiError(e)),
+  });
+
+  const brandChoice = useMutation({
+    mutationFn: (next: GcBrand) => setProjectGcBrand(projectId, next),
+    onSuccess: async () => {
+      setProblem(null);
+      await queryClient.invalidateQueries({ queryKey: ["projects"] });
+      await queryClient.invalidateQueries({ queryKey: ["projectsAll"] });
+    },
+    onError: (e) => setProblem(formatApiError(e)),
+  });
+
+  const say = useMutation({
+    mutationFn: () => postGcMessage(projectId, reply),
+    onSuccess: async () => {
+      setReply("");
+      setProblem(null);
+      await queryClient.invalidateQueries({ queryKey: gcThreadKey(projectId) });
+    },
+    onError: (e) => setProblem(formatApiError(e)),
+  });
+
+  // A database behind the migration has no gc_links table; the whole half of
+  // the card simply is not offered, rather than showing buttons that 404.
+  if (link.data && !link.data.known) return null;
+
+  const url = minted
+    ? gcLinkUrl(window.location.origin, import.meta.env.BASE_URL, minted.token)
+    : null;
+
+  return (
+    <div style={{ marginTop: 16, borderTop: "1px solid var(--line)", paddingTop: 12 }}>
+      <h3 style={{ margin: "0 0 6px", fontSize: "1rem" }}>{t("gc.link.heading")}</h3>
+
+      <div className="row-gap" style={{ flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+        <span className="field-label">{t("gc.brand.label")}</span>
+        {(["stg", "forge"] as const).map((value) => (
+          <button
+            key={value}
+            type="button"
+            className={brand === value ? "button-like active-pill" : "button-like"}
+            disabled={brandChoice.isPending}
+            onClick={() => brandChoice.mutate(value)}
+          >
+            {value === "stg" ? t("gc.brand.stg") : t("gc.brand.forge")}
+          </button>
+        ))}
+      </div>
+
+      <p className="muted" style={{ margin: "8px 0 0" }}>
+        {live
+          ? t("gc.link.live", { date: shortDay(live.expires_at, lang) })
+          : t("gc.link.none")}
+        {live?.sent_to_email ? ` · ${t("gc.link.sentTo", { email: live.sent_to_email })}` : ""}
+        {live?.used_at ? ` · ${t("gc.link.answered", { date: shortDay(live.used_at, lang) })}` : ""}
+      </p>
+
+      <label className="field" style={{ marginTop: 8 }}>
+        <span className="field-label">{t("gc.link.email")}</span>
+        <input
+          type="email"
+          aria-label={t("gc.link.email")}
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
+      </label>
+
+      <div className="row-gap" style={{ flexWrap: "wrap", marginTop: 8 }}>
+        <button
+          type="button"
+          className="action-btn"
+          style={{ minHeight: 48 }}
+          disabled={send.isPending}
+          onClick={() => {
+            const address = email.trim();
+            if (!address) {
+              setProblem(t("gc.link.needEmail"));
+              return;
+            }
+            // Said BEFORE the tap: a fresh link turns the old one off, and a
+            // builder holding the old one should not find that out by tapping
+            // it. Confirmed, because this leaves the building.
+            if (!window.confirm(t("gc.link.confirm", { email: address }))) return;
+            send.mutate();
+          }}
+        >
+          {send.isPending
+            ? t("gc.link.sending")
+            : live
+              ? t("gc.link.resend")
+              : t("gc.link.send")}
+        </button>
+        {live && (
+          <button
+            type="button"
+            className="link"
+            disabled={revoke.isPending}
+            onClick={() => revoke.mutate(live.id)}
+          >
+            {t("gc.link.revoke")}
+          </button>
+        )}
+      </div>
+
+      {url && (
+        <div style={{ marginTop: 8 }}>
+          <p className="wh-row-sub" style={{ margin: 0 }}>{t("gc.link.onceOnly")}</p>
+          <p className="muted" style={{ wordBreak: "break-all", margin: "4px 0" }}>{url}</p>
+          <button
+            type="button"
+            className="link"
+            onClick={() => {
+              void navigator.clipboard?.writeText(url).then(() => setCopied(true));
+            }}
+          >
+            {copied ? t("gc.link.copied") : t("gc.link.copy")}
+          </button>
+        </div>
+      )}
+
+      {note && <p className="wh-row-sub">{note}</p>}
+
+      <h3 style={{ margin: "16px 0 2px", fontSize: "1rem" }}>{t("gc.thread.heading")}</h3>
+      <p className="muted" style={{ margin: 0 }}>{t("gc.thread.notCrewChat")}</p>
+
+      {thread.data?.rows.length === 0 && <p className="muted">{t("gc.thread.empty")}</p>}
+      {thread.data?.rows.map((line) => (
+        <div key={line.id} style={{ marginTop: 8 }}>
+          <p className="field-label" style={{ margin: 0 }}>
+            {line.author === "gc" ? t("gc.thread.them") : t("gc.thread.us")}
+            {" · "}
+            {shortDay(line.created_at, lang)}
+          </p>
+          <p style={{ margin: 0 }}>{line.body}</p>
+        </div>
+      ))}
+
+      <textarea
+        aria-label={t("gc.thread.placeholder")}
+        placeholder={t("gc.thread.placeholder")}
+        rows={2}
+        value={reply}
+        onChange={(e) => setReply(e.target.value)}
+        style={{ width: "100%", marginTop: 8 }}
+      />
+      <button
+        type="button"
+        className="action-btn"
+        style={{ minHeight: 48, marginTop: 4 }}
+        disabled={say.isPending || !reply.trim()}
+        onClick={() => say.mutate()}
+      >
+        {t("gc.thread.send")}
+      </button>
+
+      {problem && <p className="error">{problem}</p>}
+    </div>
+  );
+}
+
 
 /** One check-in, read back as a sentence rather than a table of six fields. */
 function CheckinSummary({ checkin, lang }: { checkin: GcCheckin; lang: string }) {

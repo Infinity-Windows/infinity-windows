@@ -592,7 +592,7 @@ function OverviewTab({
           the same question from opposite ends — "is this job going to happen on
           time" and "what did the builder say about it" — and reading one
           without the other is how the office ends up guessing. */}
-      {project && <GcPanel projectId={projectId} isLead={isLead} />}
+      {project && <GcPanel projectId={projectId} project={project} isLead={isLead} />}
 
       {project && <JobDetailsPanel project={project} isLead={isLead} />}
 

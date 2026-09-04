@@ -596,6 +596,30 @@ about a unit — the per-unit spec field in the signature stays authoritative fo
 what actually gets installed where; this is what the builder SAID, which is
 sometimes a different answer.
 
+**GC link** — a no-login page one job's general contractor opens from a text or
+an email, answers the same six questions on, and asks a question back through.
+The credential is 32 random bytes, stored only as a sha256 hash, good for 30
+days and revocable; one live link per job, and sending a fresh one turns the old
+one off. THE TOKEN IS A KEY TO AN EDGE FUNCTION, NEVER TO A TABLE — no anon
+policy exists anywhere for it, everything the page reads and writes goes through
+`gc-link` on the service role, and the outward payload is built field by field
+(wave S's projection law). What the GC sees is the job's name, the brand, the
+questions with his own prior answers, and the thread; what he never sees is our
+readiness, our dates, our schedule, our crew or our costs — which is why moving
+the pipeline facts off `projects` had to happen first. An answer arrives as an
+ordinary check-in with `source = gc`, and pushes the same people the 7 AM sweep
+would. His messages live in `gc_messages` and NEVER in crew chat: two audiences,
+two tables, no join.
+
+**Brand (per job)** — which of the company's two names a customer hears on this
+job: STG Windows & Doors or Forge Windows and Doors. `projects.gc_brand`,
+default `stg`, a foreman's choice through `set_project_gc_brand`, and it drives
+the GC page's header and the email's subject and signature. Per JOB rather than
+per company because some builders have only ever known us as STG and some as
+Forge, and the wrong name on an email is the kind of small wrong thing that
+makes somebody wonder who they are dealing with. The partner wall's own STG
+branding is a different thing and this wave does not touch it.
+
 ## Open questions
 
 None right now — the next ones come from building.
