@@ -487,8 +487,19 @@ $$;
 -- notifications away without reading them, and the supervisors are the ones who
 -- book the renewal class.
 --
--- An inactive person is skipped — somebody who has left does not need to be
--- told, and neither does anybody else on their behalf. Partner logins never.
+-- NOT `profiles.active`, and this is the trap. In this app `active` means "on
+-- site TODAY" — the Roster renders it as "On site / Off today" and a foreman
+-- flips it every morning (20260730010000 says so in as many words: "It is
+-- availability, not permission"). Filtering the audience on it would mean a
+-- supervisor who happened to be marked off on the ONE morning a card entered
+-- its window never hears about that card at all: the warning is claimed once
+-- per expiry date and the ledger stops it ever being claimed again, so the
+-- recipient list is frozen the first time it is computed. Being off sick on a
+-- Tuesday is not a reason to be cut out of a deadline for good.
+--
+-- `access_revoked_at` is the column that means what "inactive" was reaching
+-- for: the login has been switched off, the person has left, and it does not
+-- change from one day to the next. Partner logins never.
 create or replace function public.credential_nudge_audience(p_profile_id uuid)
 returns uuid[]
 language sql
@@ -498,13 +509,13 @@ set search_path = public, pg_temp
 as $$
   select coalesce(array_agg(distinct pr.id), '{}'::uuid[])
     from profiles pr
-   where pr.active
+   where pr.access_revoked_at is null
      and not coalesce(pr.is_partner, false)
      and (pr.id = p_profile_id or public._is_supervisor(pr.id));
 $$;
 
 comment on function public.credential_nudge_audience(uuid) is
-  'Who hears that a card is running out: the person it belongs to, plus every active supervisor and owner. Partner logins never (Wave O, O4).';
+  'Who hears that a card is running out: the person it belongs to, plus every supervisor and owner whose login is still switched on. Deliberately NOT filtered on profiles.active, which means "on site today" — the warning is claimed once per expiry date, so a supervisor who happened to be off that one morning would never hear about that card again. Partner logins never (Wave O, O4).';
 
 revoke all on function public.credential_nudge_audience(uuid) from public, anon, authenticated;
 grant execute on function public.credential_nudge_audience(uuid) to service_role;
@@ -549,8 +560,10 @@ grant execute on function public.credential_nudge_audience(uuid) to service_role
 --       must not wake three supervisors' phones about a fact everybody already
 --       knows.
 --
--- A VOIDED card is silent, and so is a card belonging to somebody who is no
--- longer active. An UNVERIFIED card still warns — the office not having got
+-- A VOIDED card is silent, and so is a card belonging to somebody whose login
+-- has been switched off. A card belonging to somebody merely marked "off today"
+-- is NOT silent — see the candidate CTE, where that distinction is the whole
+-- note. An UNVERIFIED card still warns — the office not having got
 -- round to looking at the paper is not a reason to let the crew member's OSHA
 -- card lapse, and the push says nothing about whether it was verified.
 create or replace function public.claim_credential_nudges()
@@ -611,7 +624,12 @@ begin
       join profiles pr on pr.id = c.profile_id
      where c.voided_at is null
        and c.expires_on is not null
-       and pr.active
+       -- Same column, same reason as the audience above: a card belonging to
+       -- somebody who is off site today still runs out on the day it runs out,
+       -- and each rule fires once per expiry date, so a morning skipped here is
+       -- a warning lost rather than delayed. `access_revoked_at` — the login
+       -- has been switched off — is the one that means "no longer ours".
+       and pr.access_revoked_at is null
        and not coalesce(pr.is_partner, false)
   ),
   due as (
