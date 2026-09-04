@@ -4,7 +4,14 @@
 // the full text to read along. Installers watch and read.
 
 import { supabase } from "./supabase";
-import { isMissingTable } from "./schemaErrors";
+import { isMissingFunction, isMissingTable } from "./schemaErrors";
+
+/**
+ * Wave U: where a lesson is in its life. A supervisor builds it as a `draft`
+ * — the link is in, the transcript or the quiz is not — and `published` is the
+ * deliberate tap that lets crews see it.
+ */
+export type VideoStatus = "draft" | "published";
 
 export interface LearningVideo {
   id: string;
@@ -22,8 +29,55 @@ export interface LearningVideo {
   /** Wave Q: the window type a PASSING quiz on this video clears the
    * installer for. Null means the video teaches without gating any work. */
   grants_clearance: string | null;
+  /**
+   * Wave U. OPTIONAL on purpose: Learn has to load on a phone whose database
+   * has not had 20260984000000 applied yet, and a row from that database
+   * carries no status at all. `videoStatus()` below is the one place that
+   * decides what an absent status means (published — it was visible
+   * yesterday, so it stays visible today).
+   */
+  status?: VideoStatus | string | null;
 }
 
+/**
+ * A row's state, with the pre-migration answer folded in. PURE — unit-tested.
+ *
+ * Anything that is not literally 'draft' reads as published: an absent column,
+ * a null, or a value some future writer invents. Erring toward published is
+ * the safe direction here, because the failure mode of the other choice is the
+ * whole Learn library going blank on a crew's phone the day a frontend deploy
+ * lands ahead of its migration.
+ */
+export function videoStatus(video: Pick<LearningVideo, "status">): VideoStatus {
+  return video.status === "draft" ? "draft" : "published";
+}
+
+/**
+ * Split the library into what a supervisor still has to finish and what crews
+ * can see. PURE — unit-tested.
+ *
+ * Row-level security already keeps drafts away from a crew login, so this is
+ * belt and braces rather than the lock — but it is what draws the Inbox, and a
+ * client that filtered nothing would show a draft to anybody whose read
+ * somehow returned one.
+ */
+export function partitionLearningVideos(
+  videos: LearningVideo[],
+  canAuthor: boolean,
+): { inbox: LearningVideo[]; published: LearningVideo[] } {
+  const published = videos.filter((v) => videoStatus(v) === "published");
+  if (!canAuthor) return { inbox: [], published };
+  return { inbox: videos.filter((v) => videoStatus(v) === "draft"), published };
+}
+
+/**
+ * Every lesson the caller may read.
+ *
+ * Deliberately NOT filtered by status server-side: the "crew read" policy
+ * (20260984000000) already answers a crew login with published rows only, and
+ * a `.eq("status", …)` here would be the one thing in this read that breaks
+ * outright against a database that has not had the column yet.
+ */
 export async function listLearningVideos(): Promise<LearningVideo[]> {
   const { data, error } = await supabase
     .from("learning_videos")
@@ -48,8 +102,12 @@ export async function saveLearningVideo(input: {
   transcript?: string | null;
   active?: boolean;
   grantsClearance?: string | null;
+  /** Wave U: omitted means "leave it where it is" — the server keeps a
+   * published lesson published and a draft a draft. Publishing is its own tap
+   * (publishLearningVideo). */
+  status?: VideoStatus | null;
 }): Promise<LearningVideo> {
-  const { data, error } = await supabase.rpc("save_learning_video", {
+  const args: Record<string, unknown> = {
     p_id: input.id ?? null,
     p_title: input.title,
     p_window_type: input.windowTypeId ?? null,
@@ -60,7 +118,25 @@ export async function saveLearningVideo(input: {
     p_transcript: input.transcript ?? null,
     p_active: input.active ?? true,
     p_grants_clearance: input.grantsClearance ?? null,
-  });
+    p_status: input.status ?? null,
+  };
+  const { data, error } = await supabase.rpc("save_learning_video", args);
+  if (!error) return data as LearningVideo;
+  // A database that still has the ten-argument version of this RPC answers
+  // "no function matches" rather than refusing the caller. Drop the new
+  // argument and save anyway: a supervisor should not lose their typing
+  // because the frontend deployed before the migration did.
+  if (!isMissingFunction(error)) throw error;
+  delete args.p_status;
+  const retry = await supabase.rpc("save_learning_video", args);
+  if (retry.error) throw retry.error;
+  return retry.data as LearningVideo;
+}
+
+/** One tap on a draft: crews can see it from now on. Supervisor+ (enforced in
+ * SQL, not here). */
+export async function publishLearningVideo(id: string): Promise<LearningVideo> {
+  const { data, error } = await supabase.rpc("publish_learning_video", { p_id: id });
   if (error) throw error;
   return data as LearningVideo;
 }
