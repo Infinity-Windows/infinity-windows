@@ -29,6 +29,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders, jsonResponse } from "../_shared/openai.ts";
 import { verifyCaller } from "../_shared/auth.ts";
+import { readBodyCapped } from "../_shared/bytes.ts";
 // The pure half — the two file column ids, what Monday's answer becomes, and
 // the two decisions the app's own test suite has to be able to reach: which
 // assets a pull may fetch, and which documents carry a price.
@@ -263,6 +264,9 @@ function mbLabel(bytes: number): string {
   return `${Math.round(bytes / (1024 * 1024))} MB`;
 }
 
+// The 80 MB ceiling itself is `readBodyCapped` in _shared/bytes.ts, where the
+// app's own suite can exercise it against a real stream.
+
 // deno-lint-ignore no-explicit-any
 type ServiceClient = any;
 
@@ -311,15 +315,21 @@ async function pullOneFile(
     return { ...base, error: "Only a PDF, DWG or DXF can be plans or specs." };
   }
 
+  // THREE CHECKS, AND ONLY THE LAST ONE IS A LIMIT.
+  //
+  // Monday's `file_size` is metadata, and it is `number | null` — so this first
+  // check is a courtesy that saves a pointless 80 MB download when Monday
+  // happens to have said. It used to be the ONLY check before the body was
+  // read, which meant a file Monday said nothing about had no ceiling at all:
+  // `res.arrayBuffer()` buffered whatever arrived and the size was measured
+  // afterwards, in an edge runtime, with the whole thing already resident.
+  const tooBig = `Anything over ${mbLabel(MAX_PULL_BYTES)} has to be added by hand.`;
   const stated = typeof asset.file_size === "number" ? asset.file_size : null;
   if (stated !== null && stated > MAX_PULL_BYTES) {
-    return {
-      ...base,
-      error: `This file is ${mbLabel(stated)}. Anything over ${mbLabel(MAX_PULL_BYTES)} has to be added by hand.`,
-    };
+    return { ...base, error: `This file is ${mbLabel(stated)}. ${tooBig}` };
   }
 
-  let bytes: ArrayBuffer;
+  let bytes: Uint8Array;
   let contentType: string;
   try {
     const res = await fetch(asset.public_url);
@@ -327,7 +337,21 @@ async function pullOneFile(
       return { ...base, error: `Monday would not hand this file over (${res.status}). Try again in a minute.` };
     }
     contentType = res.headers.get("content-type") ?? "application/octet-stream";
-    bytes = await res.arrayBuffer();
+
+    // What the response itself says, which beats what Monday's metadata said:
+    // refuse before a single byte of the body is read.
+    const declared = Number(res.headers.get("content-length") ?? "");
+    if (Number.isFinite(declared) && declared > MAX_PULL_BYTES) {
+      await res.body?.cancel();
+      return { ...base, error: `This file is ${mbLabel(declared)}. ${tooBig}` };
+    }
+
+    // And the real ceiling, for the responses that declare nothing at all.
+    const read = await readBodyCapped(res, MAX_PULL_BYTES);
+    if (read === null) {
+      return { ...base, error: `This file is bigger than ${mbLabel(MAX_PULL_BYTES)}. ${tooBig}` };
+    }
+    bytes = read;
   } catch (err) {
     // THE MESSAGE STAYS ON THE SERVER. Deno puts the request URL into the
     // message of any network failure ("error sending request for url (…)"),
@@ -343,21 +367,11 @@ async function pullOneFile(
     return { ...base, error: "Could not download this file from Monday. Try again in a minute." };
   }
 
-  // Checked again against what actually arrived: Monday's stated size is
-  // metadata and a wrong one would put the whole file in memory anyway, but a
-  // file that is too big must never reach the bucket.
-  if (bytes.byteLength > MAX_PULL_BYTES) {
-    return {
-      ...base,
-      error: `This file is ${mbLabel(bytes.byteLength)}. Anything over ${mbLabel(MAX_PULL_BYTES)} has to be added by hand.`,
-    };
-  }
-
   const bucket = asPlanset ? "plansets" : "job-documents";
   const path = `${projectId}/${Date.now()}-${safeStorageName(name)}`;
   const { error: upErr } = await db.storage
     .from(bucket)
-    .upload(path, new Uint8Array(bytes), { contentType });
+    .upload(path, bytes, { contentType });
   if (upErr) {
     // Storage's own text names buckets and policies. The repo's rule is that
     // an error tells a person what to do, not what the database returned.
