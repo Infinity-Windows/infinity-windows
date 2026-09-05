@@ -1945,6 +1945,21 @@ export const CATALOG = {
     en: "Take the after photo of the finished window.",
     es: "Toma la foto de después de la ventana terminada.",
   },
+
+  // ---- The one Capture button, on every screen (2026-09-05) -------------
+  // The owner's ask: "you should see the capture button on every tab and view
+  // through the app, it should also be able to capture a photo and assign it
+  // to a job, in fact, thats how the receipt should work too."
+  //
+  // The sheet and the daily-log dialog were the two capture surfaces still
+  // hardcoded in English, and this is the one aimed squarely at the installer
+  // floor — most of whom read Spanish more comfortably. The English below is
+  // exactly what those screens said before, so nothing changes for a reader
+  // in English. Nothing here is safety copy, so none of it is a SAFETY_KEY.
+  "capture.tab": { en: "Capture", es: "Capturar" },
+  "capture.a11y.open": { en: "Quick capture", es: "Captura rápida" },
+  "capture.title": { en: "Quick capture", es: "Captura rápida" },
+  "capture.a11y.close": { en: "Close", es: "Cerrar" },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */

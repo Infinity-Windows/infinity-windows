@@ -5367,6 +5367,52 @@ button.clock-out {
     right: 28px;
     bottom: 28px;
   }
+
+  /* Capture on a laptop is a centred modal, not a bottom sheet. A bottom sheet
+     is a thumb shape: it exists so the controls land where a hand already is
+     on a phone. Stretched across a 1400px window it reads as a broken page.
+     There is no bottom bar up here either, so the sheets rest on the bottom of
+     the screen rather than above one — which is why the backdrop goes to 0. */
+  .capture-backdrop {
+    bottom: 0;
+  }
+  .capture-sheet,
+  .jobphoto-sheet {
+    left: 50%;
+    right: auto;
+    top: 50%;
+    bottom: auto;
+    width: min(520px, calc(100vw - 64px));
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 0 20px 22px;
+    /* Same shape as .menu-drawer's cap: a modal, never a full screen. The
+       token still governs the ceiling so the safe-area contract holds. */
+    max-height: min(34rem, var(--sheet-max-h-above-tabbar));
+  }
+  /* The grip is the "drag me up from the bottom" affordance of a bottom
+     sheet. A centred modal is not draggable and never was. */
+  .capture-sheet .capture-grip,
+  .jobphoto-sheet .capture-grip {
+    display: none;
+  }
+  .capture-sheet .capture-head,
+  .jobphoto-sheet .capture-head {
+    padding-top: 18px;
+  }
+  /* Slide from the centre, not from the bottom edge — the same override
+     .wizard-card.sheet-enter already makes for the same reason. */
+  .capture-sheet.sheet-enter,
+  .jobphoto-sheet.sheet-enter {
+    transform: translate(-50%, -50%);
+  }
+  @starting-style {
+    .capture-sheet.sheet-enter,
+    .jobphoto-sheet.sheet-enter {
+      opacity: 0;
+      transform: translate(-50%, -46%);
+    }
+  }
 }
 
 /* --- Toolbox talks: rich content + signature --- */
@@ -6133,6 +6179,37 @@ body {
   text-shadow:
     0 0 12px oklch(0.68 0.24 30 / 0.55),
     0 0 24px oklch(0.68 0.24 30 / 0.3);
+}
+
+/* Desktop's Capture control. Lives in the rail because the bottom bar — and
+   the centre (+) FAB with it — is display:none from 860px up, so this is the
+   only Capture a laptop ever gets. Rendered unconditionally; .app-rail's own
+   display:none keeps it off phones without a second breakpoint here. */
+.rail-capture {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 12px 16px 2px;
+  min-height: 44px;
+  padding: 10px 14px;
+  border: none;
+  border-radius: 12px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.15s var(--ease-out), background 0.15s var(--ease-out);
+}
+.rail-capture:hover {
+  background: var(--accent-hover);
+}
+.rail-capture:active {
+  transform: scale(0.98);
+}
+.rail-capture.open {
+  background: var(--accent-hover);
 }
 
 /* Desktop sidebar internals (the .app-rail media query still owns display). */
