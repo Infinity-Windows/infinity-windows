@@ -1805,6 +1805,114 @@ export const CATALOG = {
   // which is the exact thing this feature refuses to do.
   "crew.removedLogin": { en: "Removed", es: "Dado de baja" },
 
+  // ---- Monday files (2026-09-04) ----------------------------------------
+  // The office's job paperwork lived on the Monday item and nowhere the crew
+  // could reach it. Two audiences here, and both go through t():
+  //
+  //   * The Build form is OFFICE-FACING (foreman+), and it is still written
+  //     once, in both languages, because "office-facing" is not a promise
+  //     about who is standing at the desk.
+  //   * The Plans page block and the Documents card are read on a phone on a
+  //     job site, which is the crew flow this catalog was seeded for.
+  //
+  // "Plans", "Specs" and "Document" are the three slot names, and they are the
+  // same three words in the picker, the result line and the card heading — one
+  // word per slot, everywhere, so nobody has to work out that "the plan set"
+  // and "building plan" are the same thing.
+  "mondayFiles.kind.building": { en: "Plans", es: "Planos" },
+  "mondayFiles.kind.specs": { en: "Specs", es: "Especificaciones" },
+  "mondayFiles.kind.document": { en: "Document", es: "Documento" },
+
+  // The Build form's file list.
+  "mondayFiles.build.heading": {
+    en: "Files on this Monday job",
+    es: "Archivos de este trabajo en Monday",
+  },
+  "mondayFiles.build.blurb": {
+    en: "These come across with the job. Untick anything you don't want.",
+    es: "Estos vienen con el trabajo. Desmarca lo que no quieras.",
+  },
+  "mondayFiles.build.none": {
+    en: "Monday has no files on this job yet.",
+    es: "Monday todavía no tiene archivos en este trabajo.",
+  },
+  "mondayFiles.build.lockedToDocument": {
+    en: "Kept as a document — only PDF, DWG and DXF can be plans or specs.",
+    es: "Se guarda como documento — solo PDF, DWG y DXF pueden ser planos o especificaciones.",
+  },
+  "mondayFiles.build.pulling": {
+    en: "Getting the files…",
+    es: "Trayendo los archivos…",
+  },
+
+  // How the pull went. One whole sentence per case rather than a stem with a
+  // clause spliced in, so both languages can be written properly.
+  "mondayFiles.result.allPulled": {
+    en: "Job built. All {total} files came across.",
+    es: "Trabajo creado. Los {total} archivos llegaron.",
+  },
+  "mondayFiles.result.onePulled": {
+    en: "Job built. The file came across.",
+    es: "Trabajo creado. El archivo llegó.",
+  },
+  "mondayFiles.result.somePulled": {
+    en: "Job built. {pulled} of {total} files pulled — the rest can be pulled from the job's Plans page.",
+    es: "Trabajo creado. Se trajeron {pulled} de {total} archivos — el resto se puede traer desde la página de Planos del trabajo.",
+  },
+  "mondayFiles.result.nonePulled": {
+    en: "Job built, but no files came across. They can be pulled from the job's Plans page.",
+    es: "El trabajo se creó, pero no llegó ningún archivo. Se pueden traer desde la página de Planos del trabajo.",
+  },
+  "mondayFiles.result.noFiles": {
+    en: "Job built.",
+    es: "Trabajo creado.",
+  },
+  "mondayFiles.result.toPlans": { en: "Added to Plans", es: "Añadido a Planos" },
+  "mondayFiles.result.toSpecs": { en: "Added to Specs", es: "Añadido a Especificaciones" },
+  "mondayFiles.result.toDocuments": {
+    en: "Added to Documents",
+    es: "Añadido a Documentos",
+  },
+  "mondayFiles.result.already": {
+    en: "Already on the job",
+    es: "Ya estaba en el trabajo",
+  },
+  "mondayFiles.result.failed": { en: "Not added", es: "No se añadió" },
+
+  // The Plans page block: files Monday has that the job does not.
+  "mondayFiles.new.heading": { en: "Files on Monday", es: "Archivos en Monday" },
+  "mondayFiles.new.blurb": {
+    en: "On the Monday job and not yet here. Nothing comes across until you tap Get.",
+    es: "Están en el trabajo de Monday y todavía no aquí. Nada llega hasta que toques Traer.",
+  },
+  "mondayFiles.new.pull": { en: "Get", es: "Traer" },
+  "mondayFiles.new.pulling": { en: "Getting…", es: "Trayendo…" },
+  "mondayFiles.new.upToDate": {
+    en: "Everything on Monday is already here.",
+    es: "Todo lo de Monday ya está aquí.",
+  },
+  "mondayFiles.fromMonday": { en: "from Monday", es: "de Monday" },
+
+  // Re-reading a pulled file. A plan the server put here has never been read,
+  // so without this the pull would leave a file on the page and nothing on the
+  // map — which looks exactly like a broken extraction.
+  "mondayFiles.extract": { en: "Read this file", es: "Leer este archivo" },
+  "mondayFiles.extracting": { en: "Reading…", es: "Leyendo…" },
+
+  // The Documents card on the job.
+  "jobDocuments.heading": { en: "Documents", es: "Documentos" },
+  "jobDocuments.empty": {
+    en: "No documents on this job yet.",
+    es: "Todavía no hay documentos en este trabajo.",
+  },
+  "jobDocuments.open": { en: "Open", es: "Abrir" },
+  "jobDocuments.opening": { en: "Opening…", es: "Abriendo…" },
+  // Shown beside a document with the company's own price on it — a quote, a
+  // signed order. Only somebody who can see costs is ever handed one to read,
+  // so this tag only ever appears to a person who can already open it; it is
+  // there to say WHY the crew on the site cannot, before somebody asks.
+  "jobDocuments.officeOnly": { en: "Office only", es: "Solo oficina" },
+
   // ---- The before photo the chain used to delete (2026-09-04) -----------
   // The unit sheet's before-photo card only rendered while the unit had no
   // start time. On the chain — the default loop — the next unit's session is

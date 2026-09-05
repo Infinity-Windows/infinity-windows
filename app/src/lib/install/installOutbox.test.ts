@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { BACKOFF_BASE_MS, BACKOFF_CAP_MS, MAX_ATTEMPTS } from "../offline/outbox-core";
 import {
+  applyInstallFailure,
   deserializeInstallOutbox,
+  isInstallDue,
   nextInstallStep,
   serializeInstallOutbox,
   stageToAttempt,
@@ -16,7 +19,6 @@ vi.mock("./queue", () => ({
   enqueueUpload: vi.fn(async () => {}),
   flushQueue: vi.fn(async () => ({ sent: 0, remaining: 0 })),
 }));
-
 const RECORD: InstallOutboxRecord = {
   id: "outbox-1",
   step: "queued",
@@ -24,6 +26,9 @@ const RECORD: InstallOutboxRecord = {
   // A queued install now carries its own retry state, so a permanently broken
   // one can stop and be seen instead of retrying every 30 seconds forever.
   attemptCount: 0,
+  // …and its own next-attempt time, so a flaky morning spaces its tries out
+  // instead of spending all eight of them inside four minutes.
+  nextAttemptAt: 0,
   lastError: null,
   status: "pending",
   payload: {
@@ -98,6 +103,79 @@ describe("install outbox state machine", () => {
         JSON.stringify({ id: "x", step: "queued", payload: { openingId: "o" } }),
       ),
     ).toBeNull();
+  });
+});
+
+// --- the wait between tries -----------------------------------------------
+//
+// 2026-09-04. The failure handler bumped the attempt count and stopped there,
+// setting no time to try again — and the pass that drains this queue runs
+// every thirty seconds AND on every "online" event. So all eight attempts fit
+// inside about four minutes of ordinary "bars but no data", and a FINISHED
+// install dead-lettered on the phone of somebody standing in a house with one
+// bar. These pin the spacing that turns those same eight tries into about
+// fifteen minutes.
+describe("a failed install waits before it tries again", () => {
+  const NOW = 1_700_000_000_000;
+  const DEAD_ZONE = new TypeError("Failed to fetch");
+
+  it("schedules the sibling queue's backoff, and grows it", () => {
+    const first = applyInstallFailure(RECORD, DEAD_ZONE, NOW);
+    expect(first.status).toBe("pending");
+    expect(first.attemptCount).toBe(1);
+    expect(first.nextAttemptAt).toBe(NOW + BACKOFF_BASE_MS * 2);
+
+    const second = applyInstallFailure(first, DEAD_ZONE, NOW);
+    expect(second.nextAttemptAt).toBe(NOW + BACKOFF_BASE_MS * 4);
+  });
+
+  it("stops growing at the five-minute ceiling", () => {
+    const late = applyInstallFailure(
+      { ...RECORD, attemptCount: 6 },
+      DEAD_ZONE,
+      NOW,
+    );
+    expect(late.nextAttemptAt).toBe(NOW + BACKOFF_CAP_MS);
+  });
+
+  it("gives up at the cap, and leaves the clock alone once it has", () => {
+    const last = applyInstallFailure(
+      { ...RECORD, attemptCount: MAX_ATTEMPTS - 1, nextAttemptAt: NOW },
+      DEAD_ZONE,
+      NOW,
+    );
+    expect(last.status).toBe("failed");
+    // Waiting on a person now, not on a clock — Retry sets its own time.
+    expect(last.nextAttemptAt).toBe(NOW);
+  });
+
+  it("still refuses a permanent error on the very first attempt", () => {
+    const refused = applyInstallFailure(
+      RECORD,
+      { code: "P0001", message: "this opening needs flashing first" },
+      NOW,
+    );
+    expect(refused.status).toBe("failed");
+    expect(refused.attemptCount).toBe(1);
+    expect(refused.lastError).toContain("needs flashing");
+  });
+
+  it("is not due until its wait has passed", () => {
+    const waiting = applyInstallFailure(RECORD, DEAD_ZONE, NOW);
+    expect(isInstallDue(waiting, NOW + 1_000)).toBe(false);
+    expect(isInstallDue(waiting, waiting.nextAttemptAt)).toBe(true);
+    // One that gave up is never due: it needs a person, not another pass.
+    expect(isInstallDue({ ...RECORD, status: "failed" }, NOW)).toBe(false);
+  });
+
+  it("opens an install that was saved before any of this existed", () => {
+    // Records already sitting on phones carry no nextAttemptAt at all. If the
+    // loader left it undefined they would never be due again — a finished
+    // install, on a real phone, silently stranded by the fix meant to save it.
+    const { nextAttemptAt: _dropped, ...older } = RECORD;
+    const restored = deserializeInstallOutbox(JSON.stringify(older));
+    expect(restored?.nextAttemptAt).toBe(0);
+    expect(isInstallDue(restored!, NOW)).toBe(true);
   });
 });
 
@@ -333,6 +411,57 @@ describe("a refused install reaches the person who submitted it", () => {
     // is still just a dead zone, still pending, still going to retry.
     const { failedInstallCount } = await import("./installOutbox");
     expect(await failedInstallCount()).toBe(1);
+  });
+
+  // The four-minute incident, at the level the record actually lives: a dead
+  // zone must buy a wait, and the passes that arrive during it — one every
+  // thirty seconds, plus one per "online" event on a flapping connection —
+  // must leave the record alone instead of spending its eight tries.
+  it("does not attempt an install again on the very next pass", async () => {
+    const { submitInstallEvent } = await import("./api");
+    vi.mocked(submitInstallEvent).mockRejectedValue(
+      new TypeError("Failed to fetch"),
+    );
+
+    const { submitInstallViaOutbox, flushInstallOutbox, pendingInstallCount } =
+      await import("./installOutbox");
+    await submitInstallViaOutbox(INPUT);
+    expect(vi.mocked(submitInstallEvent)).toHaveBeenCalledTimes(1);
+
+    await flushInstallOutbox();
+    await flushInstallOutbox();
+    await flushInstallOutbox();
+
+    expect(vi.mocked(submitInstallEvent)).toHaveBeenCalledTimes(1);
+    // Still on the phone and still trying — skipped, not given up on.
+    expect(await pendingInstallCount()).toBe(1);
+  });
+
+  // A person tapped Retry and is watching. Leaving a five-minute backoff in
+  // front of their tap would look exactly like a button that does nothing.
+  it("Retry sends now, even with minutes still on the clock", async () => {
+    const { submitInstallEvent } = await import("./api");
+    vi.mocked(submitInstallEvent).mockResolvedValue({
+      id: "event-1",
+    } as unknown as Awaited<ReturnType<typeof submitInstallEvent>>);
+
+    const { retryFailedInstall } = await import("./installOutbox");
+    const stuck: InstallOutboxRecord = {
+      ...RECORD,
+      status: "failed",
+      attemptCount: MAX_ATTEMPTS,
+      nextAttemptAt: Date.now() + 5 * 60_000,
+    };
+    rows.set(stuck.id, {
+      id: stuck.id,
+      meta: serializeInstallOutbox(stuck),
+      blobs: [],
+    });
+
+    await retryFailedInstall(stuck.id);
+
+    expect(vi.mocked(submitInstallEvent)).toHaveBeenCalledTimes(1);
+    expect(rows.size).toBe(0);
   });
 
   it("files a clean install and clears it off the device", async () => {

@@ -129,6 +129,13 @@ const CASCADE_COVERED: Record<string, string> = {
   // so the final delete would take it even if the openings went another road).
   // Nothing else references it.
   opening_assignment_events: "ON DELETE CASCADE from project_openings",
+  // Monday files (F6), 20260988000000. A job's paperwork that is not a planset.
+  // project_id is ON DELETE CASCADE, so the final `delete from projects` takes
+  // the rows — and the `forget_job_document_bytes` trigger in that same
+  // migration clears each file out of the job-documents bucket as its row goes,
+  // which is the half purge_project's hand-written bucket list would otherwise
+  // have missed.
+  project_documents: "ON DELETE CASCADE from projects, on the final delete from projects",
 };
 
 function purgeBody(): string {

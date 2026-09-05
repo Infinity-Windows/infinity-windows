@@ -8,7 +8,7 @@ import {
   persister,
   prefetchWarehousePack,
   queryClient,
-  shouldPersistQuery,
+  shouldPersistQueryState,
 } from "./lib/queryClient";
 import {
   useLocation,
@@ -447,7 +447,12 @@ export default function App() {
         persister: persister!,
         maxAge: 1000 * 60 * 60 * 24 * 7,
         dehydrateOptions: {
-          shouldDehydrateQuery: (query) => shouldPersistQuery(query.queryKey),
+          // Key AND status — a query still in flight must not be written to
+          // disk, because its dehydrated form carries a promise that cannot
+          // survive JSON and takes the whole cache down with it on the next
+          // launch. See shouldPersistQueryState.
+          shouldDehydrateQuery: (query) =>
+            shouldPersistQueryState(query.queryKey, query.state.status),
         },
       }}
     >
