@@ -84,6 +84,57 @@ async function stubGeolocationDenied(page: Page) {
   });
 }
 
+/** A phone that HAS a tight fix, delivered through the watch the capture
+ *  surfaces warm on mount — the shape lib/geoWatch.ts actually reads. */
+async function stubGeolocationAt(page: Page, lat: number, lng: number) {
+  await page.addInitScript(
+    ({ lat, lng }) => {
+      if (!navigator.geolocation) return;
+      const position = {
+        coords: {
+          latitude: lat,
+          longitude: lng,
+          accuracy: 8,
+          altitude: null,
+          altitudeAccuracy: null,
+          heading: null,
+          speed: null,
+        },
+        timestamp: Date.now(),
+      } as GeolocationPosition;
+      navigator.geolocation.getCurrentPosition = (ok) => ok(position);
+      navigator.geolocation.watchPosition = (ok) => {
+        setTimeout(() => ok(position), 20);
+        return 7;
+      };
+      navigator.geolocation.clearWatch = () => {};
+    },
+    { lat, lng },
+  );
+}
+
+/**
+ * Where BLACK22's clock-ins have happened, answered ONLY to the batched
+ * job-geo read (`listJobLastGeos`, which filters `project_id=in.(…)`).
+ *
+ * A blanket time_shifts route would also answer getOpenShift, which would hand
+ * this installer an open shift on BLACK22 — the sheet would then prime the job
+ * from the shift and never render a chip at all. The first cut of this test did
+ * exactly that and passed a different feature.
+ */
+async function useJobGeoFixture(page: Page, at: { lat: number; lng: number }) {
+  await page.route("**/rest/v1/time_shifts**", (route) => {
+    const url = new URL(route.request().url());
+    const isGeoRead = (url.searchParams.get("project_id") ?? "").startsWith("in.");
+    if (!isGeoRead) return json(route, []);
+    return json(
+      route,
+      [{ project_id: BLACK22.projectId, clock_in_lat: at.lat, clock_in_lng: at.lng }],
+      1,
+    );
+  });
+}
+
 const captureFab = (page: Page) => page.getByRole("button", { name: "Quick capture" });
 const sheet = (page: Page) => page.getByRole("dialog", { name: "Quick capture" });
 
@@ -268,4 +319,64 @@ test("the desktop rail opens the same sheet where there is no bottom bar", async
 
   mkdirSync(SHOTS, { recursive: true });
   await page.screenshot({ path: `${SHOTS}/desktop-1200.png` });
+});
+
+test("standing on a job, the sheet offers it with the reason on the chip", async ({ page }) => {
+  await useSupabaseFixtures(page, { role: "installer" });
+  await useProjectFixture(page);
+  // Where this job's clock-ins have happened — the only coordinates a job ever
+  // has (projects carry a text address and nothing else), and the same signal
+  // the far-from-job clock prompt reads.
+  const JOB = { lat: 30.2672, lng: -97.7431 };
+  await useJobGeoFixture(page, JOB);
+  // 0.0005° of latitude is about 55 metres — inside the 250m radius.
+  await stubGeolocationAt(page, JOB.lat + 0.0005, JOB.lng);
+
+  await page.goto("/");
+  await captureFab(page).click();
+
+  const chip = sheet(page).getByRole("button", { name: /BLACK22/ });
+  await expect(chip).toBeVisible();
+  // The reason travels ON the chip. A suggestion with no reason is one more
+  // thing the person has to audit before trusting it.
+  await expect(chip).toContainText("You're near this one");
+});
+
+test("a fix too fuzzy to trust offers nothing rather than guessing", async ({ page }) => {
+  await useSupabaseFixtures(page, { role: "installer" });
+  await useProjectFixture(page);
+  const JOB = { lat: 30.2672, lng: -97.7431 };
+  await useJobGeoFixture(page, JOB);
+  // Standing on the job, but the phone is only sure to within 3km — indoors,
+  // which is where windows get installed. Trusting it would file the photo on
+  // whichever job happened to be nearest, with total confidence.
+  await page.addInitScript(
+    ({ lat, lng }) => {
+      if (!navigator.geolocation) return;
+      const position = {
+        coords: {
+          latitude: lat,
+          longitude: lng,
+          accuracy: 3000,
+          altitude: null,
+          altitudeAccuracy: null,
+          heading: null,
+          speed: null,
+        },
+        timestamp: Date.now(),
+      } as GeolocationPosition;
+      navigator.geolocation.getCurrentPosition = (ok) => ok(position);
+      navigator.geolocation.watchPosition = (ok) => {
+        setTimeout(() => ok(position), 20);
+        return 7;
+      };
+      navigator.geolocation.clearWatch = () => {};
+    },
+    { lat: JOB.lat, lng: JOB.lng },
+  );
+
+  await page.goto("/");
+  await captureFab(page).click();
+  await expect(sheet(page)).toBeVisible();
+  await expect(sheet(page).getByText("You're near this one")).toHaveCount(0);
 });

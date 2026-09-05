@@ -998,6 +998,49 @@ export async function getJobLastGeo(
 }
 
 /**
+ * {@link getJobLastGeo} for MANY jobs in one round trip.
+ *
+ * The Capture sheet asks "which of these jobs am I standing on", which is the
+ * same question getJobLastGeo answers, once per job. Asking it one job at a
+ * time would be a query per job every time the sheet opens — on a phone, in
+ * the field, before the person has tapped anything. One ordered read and a
+ * first-wins reduce gives the identical answer.
+ *
+ * `limit` bounds the read rather than the answer: shifts come back newest
+ * first, so the newest fix for each job is whichever the reduce sees first,
+ * and a job whose only fix is older than the window simply has none here. That
+ * is the same degradation getJobLastGeo already has for a job nobody has ever
+ * clocked into with location on.
+ */
+export async function listJobLastGeos(
+  projectIds: string[],
+  limit = 400,
+): Promise<Map<string, { lat: number; lng: number }>> {
+  const out = new Map<string, { lat: number; lng: number }>();
+  if (projectIds.length === 0) return out;
+  const { data, error } = await supabase
+    .from("time_shifts")
+    .select("project_id, clock_in_lat, clock_in_lng")
+    .in("project_id", projectIds)
+    .not("clock_in_lat", "is", null)
+    .not("clock_in_lng", "is", null)
+    .order("clock_in_at", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  const rows = (data ?? []) as {
+    project_id: string | null;
+    clock_in_lat: number | null;
+    clock_in_lng: number | null;
+  }[];
+  for (const r of rows) {
+    if (!r.project_id || r.clock_in_lat == null || r.clock_in_lng == null) continue;
+    if (out.has(r.project_id)) continue; // newest first — the first is the one
+    out.set(r.project_id, { lat: r.clock_in_lat, lng: r.clock_in_lng });
+  }
+  return out;
+}
+
+/**
  * Stamp my own open shift with "the app was open, here, just now" (Wave K, K3).
  *
  * Called ONLY when the app comes to the foreground, and only while on the

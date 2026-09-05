@@ -41,6 +41,8 @@ import type { CrewRole } from "../../lib/install/types";
 import { PhotoCaptureSheet } from "../PhotoCaptureSheet";
 import { DailyLogDialog } from "../dailyLogs/DailyLogDialog";
 import { localDateISO } from "../../lib/dailyLogDay";
+import { useNearbyJob } from "../../lib/capture/useNearbyJob";
+import { readLastCaptureJob, writeLastCaptureJob } from "../../lib/capture/lastJob";
 
 function todayLocalISO(): string {
   const d = new Date();
@@ -180,6 +182,13 @@ export function CaptureSheet({ open, onClose, role }: CaptureSheetProps) {
     enabled: open,
   });
 
+  // "You're near <job>" — never blocks, never waits past two seconds.
+  const nearby = useNearbyJob(open && showingTiles, projects.data);
+  // Read once per open, not on every render: this is a device memory, and a
+  // chip that changed under the person's thumb mid-decision would be worse
+  // than no chip. `open` is the dependency on purpose.
+  const lastJob = useMemo(() => (open ? readLastCaptureJob() : null), [open]);
+
   useEffect(() => {
     if (!open) {
       setSelectedId("");
@@ -233,13 +242,23 @@ export function CaptureSheet({ open, onClose, role }: CaptureSheetProps) {
       seen.add(projectId);
       out.push({ projectId, label, reason });
     };
+    // Where the phone actually is beats what it remembers, which beats what
+    // the timesheet says. Each job appears once, under its strongest reason.
+    if (nearby) push(nearby.projectId, nearby.label, t("capture.job.reason.near"));
+    if (lastJob) {
+      const p = (projects.data ?? []).find((x) => x.id === lastJob);
+      if (p) push(p.id, p.job_code || p.name, t("capture.job.reason.last"));
+    }
     for (const r of recents.data ?? []) {
       push(r.projectId, r.jobCode || r.name, t("capture.job.reason.recent"));
     }
     return out;
-  }, [recents.data, t]);
+  }, [nearby, lastJob, projects.data, recents.data, t]);
 
   const startFlow = (key: TileKey, pid: string | null) => {
+    // Remembered at the moment of use, not at the moment of picking: opening
+    // the list and closing it again should not change tomorrow's default.
+    writeLastCaptureJob(pid);
     setPending(null);
     if (key === "photo") return setFlow("photo");
     if (key === "receipt") return setFlow("receipt");
