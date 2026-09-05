@@ -156,15 +156,68 @@ async function routeEligible(page: Page) {
 }
 
 /** Fail geolocation immediately (PERMISSION_DENIED) so the photo-capture
- * pipeline's soft GPS lookup (captureGeoSoft, up to an 8s timeout) never
- * waits one out — headless Chromium has no UI to grant or deny the real
- * prompt, so this makes the outcome deterministic instead of relying on it. */
+ * pipeline's soft GPS lookup never waits one out — headless Chromium has no UI
+ * to grant or deny the real prompt, so this makes the outcome deterministic
+ * instead of relying on it. Both doors are stubbed: the one-shot lookup a cold
+ * shutter falls back to, and the position watch a capture screen now starts on
+ * mount (lib/geoWatch.ts). */
 async function stubGeolocationDenied(page: Page) {
   await page.addInitScript(() => {
     if (!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition = (_ok, err) => {
       err?.({ code: 1, message: "denied" } as GeolocationPositionError);
     };
+    navigator.geolocation.watchPosition = (_ok, err) => {
+      err?.({
+        code: 1,
+        message: "denied",
+        PERMISSION_DENIED: 1,
+      } as GeolocationPositionError);
+      return 1;
+    };
+    navigator.geolocation.clearWatch = () => {};
+  });
+}
+
+/** What the warm-fix stub records, read back with page.evaluate. */
+interface GeoProbeWindow {
+  __geoOneShots: number;
+}
+
+/**
+ * A phone that HAS a fix, but only through the position watch: the one-shot
+ * `getCurrentPosition` never answers, which is high-accuracy GPS indoors — the
+ * thing every shutter used to sit through for up to eight seconds. It also
+ * counts one-shot calls, so "the shutter stopped asking for its own fix" is
+ * asserted directly rather than inferred from the clock.
+ */
+async function stubGeolocationWarmWatch(page: Page) {
+  await page.addInitScript(() => {
+    (window as unknown as GeoProbeWindow).__geoOneShots = 0;
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition = () => {
+      (window as unknown as GeoProbeWindow).__geoOneShots += 1;
+    };
+    navigator.geolocation.watchPosition = (ok) => {
+      setTimeout(
+        () =>
+          ok({
+            coords: {
+              latitude: 30.2672,
+              longitude: -97.7431,
+              accuracy: 9,
+              altitude: null,
+              altitudeAccuracy: null,
+              heading: null,
+              speed: null,
+            },
+            timestamp: Date.now(),
+          } as GeolocationPosition),
+        50,
+      );
+      return 7;
+    };
+    navigator.geolocation.clearWatch = () => {};
   });
 }
 
@@ -208,6 +261,40 @@ test("Start: a ready opening fires start_unit_session with its own id", async ({
   expect(starts[0]).toEqual({ opening: str(o.id), role: "install" });
   // Visible: the sheet drops the Start gate and moves into the install stage.
   await expect(page.getByText("Installing")).toBeVisible();
+});
+
+test("Camera: the shutter reads the warm fix instead of waiting for its own", async ({
+  page,
+}) => {
+  await useSupabaseFixtures(page, { role: "installer" });
+  await stubGeolocationWarmWatch(page);
+  const o = opening(0, {
+    status: "assigned",
+    needs_flashing: false,
+    work_started_at: null,
+    confirmed: true,
+  });
+  await routeOpenings(page, [o]);
+  await routeEligible(page);
+
+  await page.goto(`/projects/${str(o.project_id)}/opening/${str(o.id)}`);
+  // The watch was started when the card came on screen, so by the time a photo
+  // is picked the fix is already in hand.
+  await page
+    .locator('input[type="file"][accept="image/*"]')
+    .setInputFiles(pngFile("before.png"));
+
+  // The label only flips to "Start install →" once the before photo is stamped
+  // and in hand. Five seconds is the whole point of this test: the old shutter
+  // asked for a high-accuracy fix of its own and sat on it for eight.
+  await expect(
+    page.getByRole("button", { name: "Start install →" }),
+  ).toBeVisible({ timeout: 5_000 });
+  expect(
+    await page.evaluate(
+      () => (window as unknown as GeoProbeWindow).__geoOneShots,
+    ),
+  ).toBe(0);
 });
 
 test("Finish: submitting a capture fires finish_unit with the grade, and no chain target", async ({
@@ -314,6 +401,143 @@ test("Chain: finishing with a queued next unit hands the clock to it", async ({
   const banner = page.locator('.detail-card[role="status"]');
   await expect(banner).toContainText("Clock's on");
   await expect(banner).toContainText(str(next.opening_code));
+});
+
+/**
+ * A camera that exists. Headless Chromium has no capture device, so
+ * getUserMedia rejects and every live-camera view falls back to "use a file
+ * instead" — which is fine for the tests that only pick files, but hides the
+ * one thing the chain test below has to see: WHICH slot the camera opened
+ * itself to. A canvas stream is a real MediaStream and the <video> plays it.
+ */
+async function stubCamera(page: Page) {
+  await page.addInitScript(() => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 64;
+    canvas.height = 64;
+    canvas.getContext("2d");
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        getUserMedia: async () =>
+          (
+            canvas as HTMLCanvasElement & {
+              captureStream: (fps?: number) => MediaStream;
+            }
+          ).captureStream(10),
+      },
+    });
+  });
+}
+
+test("Chain: the next unit asks for its before photo, and the after stage stops promising one that was never taken", async ({
+  page,
+}) => {
+  await useSupabaseFixtures(page, { role: "installer" });
+  await stubGeolocationDenied(page);
+  await stubCamera(page);
+  const current = opening(2, {
+    status: "assigned",
+    needs_flashing: false,
+    work_started_at: "2026-08-20T09:00:00Z",
+    confirmed: true,
+  });
+  const next = opening(3, {
+    status: "assigned",
+    needs_flashing: false,
+    work_started_at: null,
+    confirmed: true,
+    assigned_to: TEST_USER.id,
+  });
+  const openings = await routeOpenings(page, [current, next]);
+  await routeMyOpenings(page, [next]);
+
+  const finishes: Json[] = [];
+  await page.route("**/rest/v1/rpc/finish_unit", async (route) => {
+    const body = route.request().postDataJSON() as Json;
+    finishes.push(body);
+    const nextId = body.p_next_opening_id;
+    if (typeof nextId === "string") {
+      // The chain: the next unit's clock is running before its sheet ever
+      // renders. This is exactly what used to make the before-photo card
+      // unreachable, so the fixture has to reproduce it.
+      openings.set(nextId, { work_started_at: new Date().toISOString() });
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ id: "evt-e2e-before" }),
+    });
+  });
+
+  await page.goto(`/projects/${str(current.project_id)}/opening/${str(current.id)}`);
+  await page.getByRole("button", { name: "3. Capture" }).click();
+  await page
+    .locator('input[type="file"][accept="image/*"]')
+    .setInputFiles(pngFile("after.png"));
+  await page.getByRole("button", { name: "5", exact: true }).click();
+  await page.getByRole("button", { name: "Submit install" }).click();
+  await expect.poll(() => finishes.length).toBe(1);
+
+  await page.getByRole("button", { name: /Next one/ }).click();
+  await expect(page).toHaveURL(new RegExp(`/opening/${str(next.id)}$`));
+
+  // The card the chain used to delete, on a unit whose clock is already
+  // running — and the camera already open on the before slot, so the whole
+  // ask is one shutter press with no navigation and no decision.
+  await expect(page.getByRole("heading", { name: "Before photo" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Capture before" })).toBeVisible();
+
+  // Dismissing it changes nothing else: the sheet carries on exactly as it did.
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByRole("button", { name: "Capture before" })).toBeHidden();
+
+  // And it stays dismissed. The card lives inside step 1, so stepping away and
+  // back remounts it; a one-shot guard held inside the card would come back
+  // fresh and the camera would take over the screen again, every time, for the
+  // rest of the visit.
+  await page.getByRole("button", { name: "2. Install" }).click();
+  await page.getByRole("button", { name: "1. Check" }).click();
+  await expect(page.getByRole("heading", { name: "Before photo" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Capture before" })).toBeHidden();
+
+  await page.getByRole("button", { name: "3. Capture" }).click();
+  // Nothing was taken, so the caption must not point at a before that does not
+  // exist.
+  await expect(
+    page.getByText("Take the after photo of the finished window."),
+  ).toBeVisible();
+  await expect(
+    page.getByText("The after lines up over the before you took."),
+  ).toBeHidden();
+
+  // Back on step 1, a first shot that is black, blurry or taken in a pocket —
+  // likelier now the camera opens itself — can be replaced: the card stays put,
+  // filled, with its Retake bar. It is the only one on the sheet.
+  await page.getByRole("button", { name: "1. Check" }).click();
+  await page
+    .locator('input[type="file"][accept="image/*"]')
+    .setInputFiles(pngFile("before.png"));
+  await expect(page.getByRole("button", { name: "Retake" })).toBeVisible();
+  await expect(
+    page.getByText("Before photo taken — it files with the install."),
+  ).toBeVisible();
+
+  // And with a before in hand the caption tells the other truth.
+  await page.getByRole("button", { name: "3. Capture" }).click();
+  await expect(
+    page.getByText("The after lines up over the before you took."),
+  ).toBeVisible();
+
+  // The after stage still files: Submit's requirements for a chained unit are
+  // deliberately unchanged — a missing before never blocked it either.
+  await page
+    .locator('input[type="file"][accept="image/*"]')
+    .setInputFiles(pngFile("after.png"));
+  await page.getByRole("button", { name: "4", exact: true }).click();
+  await page.getByRole("button", { name: "Submit install" }).click();
+  await expect.poll(() => finishes.length).toBe(2);
+  expect(finishes[1].p_opening_id).toBe(str(next.id));
 });
 
 test("Redo: filing a redo fires press_redo, and the confirmation never wears the error class", async ({

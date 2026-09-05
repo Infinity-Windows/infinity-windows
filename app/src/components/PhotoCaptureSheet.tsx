@@ -15,7 +15,8 @@ import {
   toPhotoMetaFields,
   type StampMeta,
 } from "../lib/photo/stampPhoto";
-import { supabase } from "../lib/supabase";
+import { useWarmGeoFix } from "../lib/geoWatch";
+import { signedInEmail } from "../lib/signedIn";
 import { formatApiError } from "../lib/errors";
 import { pushToast } from "../lib/toast";
 import { useClock } from "../lib/clockContext";
@@ -56,11 +57,29 @@ type PhotoCaptureSheetProps =
       /** Optional job/opening label burned into the watermark. */
       label?: string | null;
       /**
-       * Which slots to offer. The Check stage shows only ["before"] — the
-       * before photo is captured while "before" still exists — and Capture
-       * keeps both so a bad first shot can be retaken.
+       * Which slots to offer. The unit sheet's step 1 shows only ["before"] —
+       * the before photo is captured while "before" still exists, and its
+       * filled slot keeps the Retake bar there for a bad first shot — and step
+       * 3 shows only ["after"].
        */
       slots?: ("before" | "after")[];
+      /**
+       * Open the camera straight to this slot, without a tap. For the chain:
+       * the previous unit's Finish walked the installer to this window, so the
+       * one thing owed here is a shutter press and it should cost no navigation
+       * and no decision. Dismissing the camera leaves the sheet exactly as it
+       * would otherwise be.
+       *
+       * This component cannot decide "once" by itself — it is mounted inside a
+       * step of the unit sheet and remounts every time the person steps away
+       * and back — so the caller owns that memory and is told, through
+       * {@link onAutoOpened}, when to start remembering. Pass null to open
+       * nothing.
+       */
+      autoOpen?: "before" | "after" | null;
+      /** Fired the one time an `autoOpen` slot actually takes the screen, so
+       * the caller can stop asking for it. */
+      onAutoOpened?: () => void;
     }
   | {
       /**
@@ -83,8 +102,8 @@ type PhotoCaptureSheetProps =
        * paper somebody is holding, the stamp says nothing true about the card,
        * and burning a GPS fix onto a document that already carries a full legal
        * name adds a fact nobody asked for. It also costs a location lookup —
-       * capturePhotoMeta waits up to eight seconds for a fix — for a photo
-       * taken at a desk.
+       * this is the one capture surface that never warms a GPS fix — for a
+       * photo taken at a desk.
        */
       stamp?: boolean;
       /** Replaces the "GPS and time are added automatically" line under the
@@ -494,6 +513,9 @@ function JobPhotoCapture({
   const [queued, setQueued] = useState(0);
   const [filedReceipt, setFiledReceipt] = useState<{ id: string; entryId: string } | null>(null);
 
+  // Ask for the fix when the SHEET opens, not when the shutter is tapped.
+  useWarmGeoFix();
+
   const videoRef = useCameraStream(cameraOn, (message) => {
     setCameraError(message);
     setCameraOn(false);
@@ -502,7 +524,13 @@ function JobPhotoCapture({
   const queueBlob = async (raw: Blob) => {
     setBusy(true);
     try {
-      const meta = await capturePhotoMeta(label ?? null, 8000);
+      // THE WATERMARK RULE: what comes back here is burned into the picture
+      // AND stored on the row, so the two can never disagree. A photo is never
+      // queued with no coordinates for someone to attach later. The wait is the
+      // warm fix this sheet started on mount — instant in the ordinary case,
+      // three seconds at worst, then time-only. A multi-file pick reads the
+      // same held fix for every file instead of waiting one out per file.
+      const meta = await capturePhotoMeta(label ?? null);
 
       if (isReceipt) {
         // Phone-side compression per the spec (1280px longest edge, JPEG
@@ -528,7 +556,15 @@ function JobPhotoCapture({
 
       const stamped = await stampPhoto(raw, meta);
       const fields = toPhotoMetaFields(meta);
-      const createdBy = (await supabase.auth.getUser()).data.user?.email ?? null;
+      // No auth call at the shutter, of any kind. getUser() is a GET
+      // /auth/v1/user on every tap; getSession() only LOOKS cheaper — it
+      // refreshes the token over the network the moment the token is near
+      // expiry, which is the state a phone reaches after a while asleep in a
+      // dead zone, and then answers "nobody" if the token has actually run out.
+      // Either way the installer waited and the photo went out unsigned. The
+      // app learned this person's name at sign-in and keeps it current from
+      // App's auth subscription; here it is a string read (lib/signedIn.ts).
+      const createdBy = signedInEmail();
       const stamp = Date.now();
       const rand = Math.random().toString(16).slice(2, 8);
       const prefix = projectId ?? "unassigned";
@@ -675,7 +711,12 @@ function JobPhotoCapture({
         )}
 
         {cameraError && <p className="muted">{t("photo.cameraUnavailable")}</p>}
-        {busy && !cameraOn && <p className="muted">{t("photo.stampingGps")}</p>}
+        {/* This line used to be hidden whenever the camera was on, which is
+            the one mode where the whole screen is a live picture and the only
+            other feedback is a greyed-out "Saving…". Any wait at all needs a
+            sentence saying what is being waited for, or it reads as a broken
+            app and gets tapped again. */}
+        {busy && <p className="muted">{t("photo.stampingGps")}</p>}
         {queued > 0 && (
           <p className="ok jobphoto-count">
             {queued} photo{queued === 1 ? "" : "s"} queued — syncing in the background.
@@ -691,11 +732,33 @@ function BeforeAfterCapture({
   onChange,
   label,
   slots,
+  autoOpen,
+  onAutoOpened,
 }: Extract<PhotoCaptureSheetProps, { mode: "beforeAfter" }>) {
   const t = useT();
   const [mode, setMode] = useState<"idle" | "before" | "after">("idle");
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [stamping, setStamping] = useState(false);
+
+  // Fires the first time a slot is asked for. `autoOpen` arrives late on a
+  // chained sheet (the hand-off stamp is read out of history state in an
+  // effect), so this cannot be a mount-only effect. The local guard only keeps
+  // it from firing twice while THIS card is on screen — "once per visit" is the
+  // caller's to remember, because this card unmounts and comes back every time
+  // the person steps to "2. Install" and back, and a guard that lived here
+  // would come back fresh with it and reopen the camera every time.
+  const autoOpened = useRef(false);
+  useEffect(() => {
+    if (!autoOpen || autoOpened.current) return;
+    autoOpened.current = true;
+    setMode(autoOpen);
+    onAutoOpened?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoOpen]);
+
+  // Warm a fix from the moment the card is on screen — an installer standing at
+  // the window has been standing there for a while before the shutter.
+  useWarmGeoFix();
 
   const metaKey = (slot: "before" | "after"): "beforeMeta" | "afterMeta" =>
     slot === "before" ? "beforeMeta" : "afterMeta";
@@ -703,7 +766,10 @@ function BeforeAfterCapture({
   const applyPhoto = async (slot: "before" | "after", raw: File) => {
     setStamping(true);
     try {
-      const meta = await capturePhotoMeta(label ?? null, 8000);
+      // THE WATERMARK RULE: these coordinates are burned into the picture and
+      // stored on the row together, so they can never disagree. Never queue a
+      // photo with no fix and attach one later.
+      const meta = await capturePhotoMeta(label ?? null);
       const stamped = await stampPhotoFile(raw, meta);
       onChange({ ...value, [slot]: stamped, [metaKey(slot)]: meta });
     } finally {
@@ -874,6 +940,10 @@ function SinglePhotoCapture({
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [stamping, setStamping] = useState(false);
 
+  // Only when this shot is actually stamped. A photo of somebody's OSHA card
+  // asks for no fix at the shutter, so it must not ask for one on mount either.
+  useWarmGeoFix(stamp);
+
   const applyPhoto = async (raw: File) => {
     // An unstamped shot skips the GPS wait entirely — see `stamp` above — but
     // NOT the shrink and re-encode. That half has nothing to do with stamping:
@@ -893,7 +963,9 @@ function SinglePhotoCapture({
     }
     setStamping(true);
     try {
-      const meta = await capturePhotoMeta(label ?? null, 8000);
+      // THE WATERMARK RULE: burned in and stored from the same reading, so a
+      // printed stamp can never disagree with the row it was filed under.
+      const meta = await capturePhotoMeta(label ?? null);
       const stamped = await stampPhotoFile(raw, meta);
       onChange(stamped);
     } finally {

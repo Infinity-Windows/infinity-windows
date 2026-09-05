@@ -4,7 +4,7 @@
 // pixel work touches the DOM, behind a tiny canvas seam that degrades to the
 // original blob when no 2D context is available (e.g. jsdom in tests).
 
-import { captureGeoSoft } from "../geo";
+import { SHUTTER_FIX_WAIT_MS, warmGeoFix } from "../geoWatch";
 
 export interface StampMeta {
   takenAt: Date;
@@ -93,12 +93,24 @@ export function toPhotoMetaFields(meta: StampMeta): PhotoMetaFields {
   };
 }
 
-/** Gather GPS (soft — never blocks) + a capture timestamp for a new photo. */
+/**
+ * Gather GPS (soft — never blocks) + a capture timestamp for a new photo.
+ *
+ * THE WATERMARK RULE. Whatever comes back here is BURNED INTO THE PICTURE a
+ * moment later, and the same values are what the attachments row stores. So a
+ * photo is never queued with no coordinates and patched with them afterwards:
+ * that ships a picture whose printed watermark disagrees with its own row,
+ * which is worse evidence than an honest time-only stamp. The fix is read from
+ * the watch the capture screen warmed up (`warmGeoFix`), and when there is
+ * nothing young enough to trust the wait is capped at three seconds and the
+ * stamp goes out with the time alone — the same path this has always taken
+ * when GPS fails.
+ */
 export async function capturePhotoMeta(
   label?: string | null,
-  timeoutMs?: number,
+  timeoutMs: number = SHUTTER_FIX_WAIT_MS,
 ): Promise<StampMeta> {
-  const fix = await captureGeoSoft(timeoutMs);
+  const fix = await warmGeoFix.waitFor(timeoutMs);
   return {
     takenAt: new Date(),
     lat: fix.lat ?? null,

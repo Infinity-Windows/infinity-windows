@@ -30,6 +30,7 @@ import { SetNewPassword } from "./components/SetNewPassword";
 import { ViewAsRoleProvider } from "./lib/viewAsRole";
 import { useEffectiveRole } from "./lib/useEffectiveRole";
 import { supabase } from "./lib/supabase";
+import { rememberSignedIn } from "./lib/signedIn";
 import { AskInfinity } from "./pages/AskInfinity";
 import { AskMisses } from "./pages/AskMisses";
 import { Knowledge } from "./pages/Knowledge";
@@ -351,12 +352,19 @@ export default function App() {
       void prefetchWarehousePack();
     };
     supabase.auth.getSession().then(({ data }) => {
+      // This is the ONE place the app asks who is signed in. Everywhere that
+      // only wants a name on a record — the photo shutter above all — reads
+      // lib/signedIn instead of making its own auth call, because an auth call
+      // in the middle of a tap is a network round trip, and on a token that has
+      // gone stale offline it is a long one that answers "nobody".
+      rememberSignedIn(data.session);
       setSession(data.session);
       setReady(true);
       onSignedIn(data.session);
     });
     const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
       if (event === "PASSWORD_RECOVERY") setRecovery(true);
+      rememberSignedIn(s);
       setSession(s);
       onSignedIn(s);
     });
