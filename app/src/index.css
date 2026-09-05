@@ -8959,7 +8959,18 @@ body {
   flex: none;
   width: 18px; height: 18px;
   border-radius: 5px;
-  border: 1.5px solid var(--border);
+  /* NOT var(--border). That token draws the seam between two big filled panels,
+     and at 18px it disappeared: on the dark theme it is 1.27:1 against the chip
+     it sits on, and the box's own var(--card) fill is 1.05:1 against the same
+     chip — so the first cut of this control had NOTHING visible in the off
+     state, and an empty chip read as a plain name rather than something you
+     could tick. (Worse on the lodging toggles, which sit on var(--card)
+     themselves, so the fill contributes literally nothing there.) The outline
+     IS the control, so it gets the palette's mid grey: 3.8:1 in dark, 3.4:1 in
+     light — both clear of the 3:1 WCAG 1.4.11 asks of a control boundary, and
+     close to the weight of the native box this replaced. --border is left alone
+     and still right for the chip around it, which is a big filled rectangle. */
+  border: 1.5px solid var(--faint);
   background: var(--card);
   display: grid; place-items: center;
   /* The tick is drawn in currentColor and simply isn't painted until the box

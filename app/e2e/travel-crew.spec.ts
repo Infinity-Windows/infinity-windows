@@ -213,3 +213,87 @@ test.describe("picking somebody", () => {
     await expect(chip.locator("input[type=checkbox]")).toBeFocused();
   });
 });
+
+type Rgb = [number, number, number];
+
+/** WCAG relative luminance of an 8-bit sRGB triple. */
+function luminance([r, g, b]: Rgb): number {
+  const chan = (v: number) => {
+    const c = v / 255;
+    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * chan(r) + 0.7152 * chan(g) + 0.0722 * chan(b);
+}
+
+function contrast(a: Rgb, b: Rgb): number {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+/**
+ * The three colours this screen's off-state box is made of, as sRGB bytes.
+ *
+ * Every colour in this app is an `oklch()` token, and Chromium hands those
+ * straight back out of `getComputedStyle` — `oklch(0.55 0.02 40)`, not an
+ * `rgb()`. So the browser is asked to do the conversion the only way it will:
+ * paint one pixel and read it back. Reading the string with a number regex
+ * instead silently treats L, C and hue as r, g and b, which is how the first
+ * cut of this test "passed" against a colour it had never actually looked at.
+ */
+async function offStatePaint(chip: ReturnType<Page["locator"]>) {
+  return chip.evaluate((el) => {
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = 1;
+    const ctx = canvas.getContext("2d")!;
+    const rgb = (css: string): [number, number, number] => {
+      ctx.clearRect(0, 0, 1, 1);
+      ctx.fillStyle = css;
+      ctx.fillRect(0, 0, 1, 1);
+      const d = ctx.getImageData(0, 0, 1, 1).data;
+      return [d[0], d[1], d[2]];
+    };
+    const box = getComputedStyle(el.querySelector(".travel-check")!);
+    return {
+      outline: rgb(box.borderTopColor),
+      fill: rgb(box.backgroundColor),
+      chip: rgb(getComputedStyle(el).backgroundColor),
+    };
+  });
+}
+
+// The drawn box has to be VISIBLE when nobody is ticked, in the theme the phone
+// is actually in. Replacing the native checkbox with one this file draws meant
+// picking its off-state outline by hand, and the first pick was var(--border) —
+// the token for the seam between two big filled panels. At 18px on the dark
+// theme that is 1.27:1 against the chip, and the box's var(--card) fill is
+// 1.05:1 against the same chip, so an empty chip had nothing on it that read as
+// tickable at all. WCAG 1.4.11 puts a control boundary at 3:1. Both themes are
+// checked, because the token that failed only failed in one of them.
+for (const scheme of ["light", "dark"] as const) {
+  test.describe(`${scheme} theme`, () => {
+    test.use({ viewport: { width: 390, height: 900 }, deviceScaleFactor: 2, colorScheme: scheme });
+
+    test(`an unticked box stands off its chip (${scheme})`, async ({ page }) => {
+      await useSupabaseFixtures(page, { role: "supervisor" });
+      await useCrewFixtures(page);
+      await openPicker(page);
+
+      const chip = page.locator("[data-testid='travel-crew-chip']").first();
+      await expect(chip).not.toHaveClass(/is-on/);
+
+      const paint = await offStatePaint(chip);
+
+      // Proves the emulation actually landed — without this, a run that stayed
+      // light would quietly assert the light theme twice and call it two themes.
+      const chipLum = luminance(paint.chip);
+      if (scheme === "dark") expect(chipLum).toBeLessThan(0.2);
+      else expect(chipLum).toBeGreaterThan(0.7);
+
+      // The outline is the whole control in the off state: the fill is all but
+      // the same colour as the chip on purpose (and on the lodging toggles, which
+      // sit on var(--card) themselves, it is the same colour exactly).
+      expect(contrast(paint.outline, paint.chip)).toBeGreaterThanOrEqual(3);
+      expect(contrast(paint.outline, paint.fill)).toBeGreaterThanOrEqual(3);
+    });
+  });
+}
