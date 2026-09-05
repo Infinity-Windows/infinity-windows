@@ -16,6 +16,7 @@ import {
   type StampMeta,
 } from "../lib/photo/stampPhoto";
 import { useWarmGeoFix } from "../lib/geoWatch";
+import { useFocusTrap } from "../lib/useFocusTrap";
 import { signedInEmail } from "../lib/signedIn";
 import { formatApiError } from "../lib/errors";
 import { pushToast } from "../lib/toast";
@@ -46,6 +47,17 @@ type PhotoCaptureSheetProps =
       label?: string | null;
       /** Receipts store as attachments.kind 'document' but still get watermarked. */
       kind?: "photo" | "receipt";
+      /**
+       * Is `projectId` a hard lock, or just a good guess?
+       *
+       * On /photos it is a lock: the page's own job filter IS the job, and
+       * re-asking a question the page already answered is noise. Opened from
+       * the global Capture button it is a SOFT DEFAULT — the sheet primed the
+       * job from the open shift, which is usually right and sometimes is not
+       * (the fuel receipt bought on the way to a different job). Horizon draws
+       * the same distinction with `projectId` vs `defaultProjectId`.
+       */
+      jobChangeable?: boolean;
       onClose: () => void;
       /** Fired after at least one photo is queued, so the feed can refetch. */
       onQueued?: () => void;
@@ -212,6 +224,7 @@ function ReceiptFollowUp({
   entryId,
   presetProjectId,
   presetJobLabel,
+  jobChangeable = false,
   onClose,
 }: {
   receiptId: string;
@@ -219,6 +232,9 @@ function ReceiptFollowUp({
   /** Already known (the page's own job filter) — skips the job question. */
   presetProjectId: string | null;
   presetJobLabel: string | null;
+  /** The preset was a guess, not the page's own filter: still ask, but with
+   * the guess already filled in. See PhotoCaptureSheet's own prop doc. */
+  jobChangeable?: boolean;
   onClose: () => void;
 }) {
   const t = useT();
@@ -235,10 +251,13 @@ function ReceiptFollowUp({
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  // Ask the job question whenever the answer is still open — no preset at all,
+  // or a preset that was only a guess.
+  const askJob = !presetProjectId || jobChangeable;
   const suggestions = useQuery({
     queryKey: ["receiptJobSuggestions", profileId],
     queryFn: () => listThisWeekJobSuggestions(profileId!),
-    enabled: !presetProjectId && Boolean(profileId),
+    enabled: askJob && Boolean(profileId),
   });
   const projects = useQuery({
     queryKey: ["projects"],
@@ -318,7 +337,9 @@ function ReceiptFollowUp({
   };
 
   const jobLabel = () => {
-    if (presetProjectId) return presetJobLabel ?? "this job";
+    if (presetProjectId && answer.projectId === presetProjectId) {
+      return presetJobLabel ?? "this job";
+    }
     if (answer.pendingJobName) return `“${answer.pendingJobName}” (waiting job)`;
     if (answer.projectId) {
       const s = (suggestions.data ?? []).find((x) => x.projectId === answer.projectId);
@@ -376,10 +397,16 @@ function ReceiptFollowUp({
         </button>
       </div>
 
-      {!presetProjectId && (
+      {askJob && (
         <>
           <p className="field-label">Which job?</p>
           {jobLabel() && <p className="muted">Filed to {jobLabel()}.</p>}
+          {/* The soft-default case: say out loud which job it went to and
+              that another tap moves it. A default nobody was told about is
+              indistinguishable from a mistake nobody can find. */}
+          {jobChangeable && answer.projectId === presetProjectId && (
+            <p className="muted">{t("capture.receipt.changeJob")}</p>
+          )}
           {(suggestions.data ?? []).length > 0 && (
             <div className="capture-chip-row">
               {(suggestions.data ?? []).map((s) => (
@@ -501,11 +528,19 @@ function JobPhotoCapture({
   projectId,
   label,
   kind = "photo",
+  jobChangeable = false,
   onClose,
   onQueued,
 }: Extract<PhotoCaptureSheetProps, { mode: "job" }>) {
   const t = useT();
   const isReceipt = kind === "receipt";
+  // This sheet is reachable from the global Capture button now, which means
+  // it opens over whatever screen a person was already on rather than over a
+  // page that is itself about photos. Escape has to get them out, and Tab
+  // must not walk off into the page underneath — the same contract
+  // CaptureSheet has had since it was written.
+  const sheetRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(sheetRef, true, onClose);
   const [cameraOn, setCameraOn] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -618,6 +653,7 @@ function JobPhotoCapture({
       <>
         <div className="capture-backdrop overlay-enter" onClick={onClose} aria-hidden />
         <div
+          ref={sheetRef}
           className="jobphoto-sheet sheet-enter"
           role="dialog"
           aria-modal="true"
@@ -635,6 +671,7 @@ function JobPhotoCapture({
             entryId={filedReceipt.entryId}
             presetProjectId={projectId}
             presetJobLabel={label ?? null}
+            jobChangeable={jobChangeable}
             onClose={onClose}
           />
         </div>
@@ -646,6 +683,7 @@ function JobPhotoCapture({
     <>
       <div className="capture-backdrop overlay-enter" onClick={onClose} aria-hidden />
       <div
+        ref={sheetRef}
         className="jobphoto-sheet sheet-enter"
         role="dialog"
         aria-modal="true"

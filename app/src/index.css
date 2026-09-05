@@ -5368,51 +5368,6 @@ button.clock-out {
     bottom: 28px;
   }
 
-  /* Capture on a laptop is a centred modal, not a bottom sheet. A bottom sheet
-     is a thumb shape: it exists so the controls land where a hand already is
-     on a phone. Stretched across a 1400px window it reads as a broken page.
-     There is no bottom bar up here either, so the sheets rest on the bottom of
-     the screen rather than above one — which is why the backdrop goes to 0. */
-  .capture-backdrop {
-    bottom: 0;
-  }
-  .capture-sheet,
-  .jobphoto-sheet {
-    left: 50%;
-    right: auto;
-    top: 50%;
-    bottom: auto;
-    width: min(520px, calc(100vw - 64px));
-    border: 1px solid var(--border);
-    border-radius: 18px;
-    padding: 0 20px 22px;
-    /* Same shape as .menu-drawer's cap: a modal, never a full screen. The
-       token still governs the ceiling so the safe-area contract holds. */
-    max-height: min(34rem, var(--sheet-max-h-above-tabbar));
-  }
-  /* The grip is the "drag me up from the bottom" affordance of a bottom
-     sheet. A centred modal is not draggable and never was. */
-  .capture-sheet .capture-grip,
-  .jobphoto-sheet .capture-grip {
-    display: none;
-  }
-  .capture-sheet .capture-head,
-  .jobphoto-sheet .capture-head {
-    padding-top: 18px;
-  }
-  /* Slide from the centre, not from the bottom edge — the same override
-     .wizard-card.sheet-enter already makes for the same reason. */
-  .capture-sheet.sheet-enter,
-  .jobphoto-sheet.sheet-enter {
-    transform: translate(-50%, -50%);
-  }
-  @starting-style {
-    .capture-sheet.sheet-enter,
-    .jobphoto-sheet.sheet-enter {
-      opacity: 0;
-      transform: translate(-50%, -46%);
-    }
-  }
 }
 
 /* --- Toolbox talks: rich content + signature --- */
@@ -6706,6 +6661,10 @@ body {
   padding-bottom: 2px;
 }
 .capture-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
   flex: none;
   min-height: 36px;
   padding: 7px 12px;
@@ -6716,6 +6675,33 @@ body {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
+}
+/* Why this job is being offered — "You're near this one", "Last time". A chip
+   without its reason is a guess the person has to audit before trusting. */
+.capture-chip-reason {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+}
+/* "Find a job" and "No job — general" sit on one line: two answers to the
+   same question, not a primary and an afterthought. */
+.capture-project-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+/* The beat after a photo queues: what happened, where it went, what next. */
+.capture-done {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-bottom: 6px;
+}
+.capture-done .capture-grid {
+  margin-top: 8px;
 }
 .capture-chip:hover {
   border-color: var(--accent-line);
@@ -11925,4 +11911,63 @@ button.stage-chip {
   display: block;
   font-size: 11px;
   color: var(--muted);
+}
+
+
+/* ---- Capture on a laptop: a centred modal, not a bottom sheet ------------
+ *
+ * A bottom sheet is a thumb shape — it exists so the controls land where a
+ * hand already is on a phone. Stretched across a 1400px window it reads as a
+ * broken page, and on desktop there is no bottom bar for it to rest above
+ * anyway (.tabbar is display:none from 860px up).
+ *
+ * WHY THIS BLOCK LIVES AT THE END OF THE FILE. A media query adds no
+ * specificity. `.capture-sheet` inside `@media` and `.capture-sheet` outside
+ * it are the same weight, so the LATER one wins — and the base rules
+ * (line ~6587, ~7952) and the height caps (~9580) all come after the desktop
+ * section up top. Written there, `left: 50%` lost to the base `left: 0` and
+ * the sheet rendered half off the left edge of the screen with only its
+ * transform applied. Moving it here is the fix; do not move it back.
+ */
+@media (min-width: 860px) {
+  .capture-backdrop {
+    bottom: 0;
+  }
+  .capture-sheet,
+  .jobphoto-sheet {
+    left: 50%;
+    right: auto;
+    top: 50%;
+    bottom: auto;
+    width: min(520px, calc(100vw - 64px));
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 0 20px 22px;
+    /* Same shape as .menu-drawer's cap: a modal, never a full screen. The
+       token still governs the ceiling, so the safe-area contract holds. */
+    max-height: min(34rem, var(--sheet-max-h-above-tabbar));
+  }
+  /* The grip is the "drag me up from the bottom" affordance of a bottom
+     sheet. A centred modal is not draggable and never was. */
+  .capture-sheet .capture-grip,
+  .jobphoto-sheet .capture-grip {
+    display: none;
+  }
+  .capture-sheet .capture-head,
+  .jobphoto-sheet .capture-head {
+    padding-top: 18px;
+  }
+  /* Slide from the centre, not from the bottom edge — the same override
+     .wizard-card.sheet-enter already makes for the same reason. */
+  .capture-sheet.sheet-enter,
+  .jobphoto-sheet.sheet-enter {
+    transform: translate(-50%, -50%);
+  }
+  @starting-style {
+    .capture-sheet.sheet-enter,
+    .jobphoto-sheet.sheet-enter {
+      opacity: 0;
+      transform: translate(-50%, -46%);
+    }
+  }
 }

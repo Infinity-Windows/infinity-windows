@@ -1960,6 +1960,80 @@ export const CATALOG = {
   "capture.a11y.open": { en: "Quick capture", es: "Captura rápida" },
   "capture.title": { en: "Quick capture", es: "Captura rápida" },
   "capture.a11y.close": { en: "Close", es: "Cerrar" },
+
+  // The job question at the top of the sheet.
+  "capture.job.forJob": { en: "Capturing for", es: "Capturando para" },
+  "capture.job.which": { en: "Which job? (optional)", es: "¿Qué trabajo? (opcional)" },
+  "capture.job.pickForPhoto": {
+    en: "Pick the job this photo belongs to.",
+    es: "Elige el trabajo al que pertenece esta foto.",
+  },
+  "capture.job.pickForLog": {
+    en: "Which job is this log for?",
+    es: "¿De qué trabajo es este registro?",
+  },
+  "capture.job.change": { en: "Change", es: "Cambiar" },
+  "capture.job.find": { en: "Find a job", es: "Buscar un trabajo" },
+  "capture.job.hideList": { en: "Hide job list", es: "Ocultar la lista" },
+  "capture.job.search": { en: "Search jobs…", es: "Buscar trabajos…" },
+  "capture.job.a11ySearch": { en: "Search jobs", es: "Buscar trabajos" },
+  "capture.job.noMatch": { en: "No jobs match “{q}”.", es: "Ningún trabajo coincide con “{q}”." },
+  "capture.job.none": { en: "No job — general", es: "Sin trabajo — general" },
+  // Every chip says why it is being offered, the way the receipt follow-up's
+  // suggestions already do. A chip with no reason is a guess the person has
+  // to audit; a chip with a reason is an answer they can accept.
+  "capture.job.reason.near": { en: "You're near this one", es: "Estás cerca de este" },
+  "capture.job.reason.last": { en: "Last time", es: "La vez pasada" },
+  "capture.job.reason.recent": { en: "Recent", es: "Reciente" },
+
+  // The tiles.
+  "capture.tile.photo": { en: "Take a photo", es: "Tomar una foto" },
+  "capture.tile.photoHint": {
+    en: "Attach a progress or install photo",
+    es: "Adjunta una foto del avance o de la instalación",
+  },
+  "capture.tile.receipt": { en: "Add a receipt", es: "Agregar un recibo" },
+  "capture.tile.receiptHint": {
+    en: "Snap or upload a materials receipt",
+    es: "Toma o sube un recibo de materiales",
+  },
+  "capture.tile.dailyLog": { en: "Daily log", es: "Registro del día" },
+  "capture.tile.dailyLogHint": {
+    en: "Log today's progress and notes",
+    es: "Anota el avance y las notas de hoy",
+  },
+  "capture.tile.gallery": { en: "Open gallery", es: "Abrir la galería" },
+  "capture.tile.galleryHint": {
+    en: "Browse the photo & receipt library",
+    es: "Explora las fotos y los recibos",
+  },
+  "capture.tile.scan": { en: "Scan a unit", es: "Escanear una unidad" },
+  "capture.tile.scanHint": {
+    en: "Look up a unit by its QR/ID",
+    es: "Busca una unidad por su QR o ID",
+  },
+
+  // After a photo queues.
+  "capture.photo.queuedOne": {
+    en: "Photo saved — syncing in the background.",
+    es: "Foto guardada — sincronizando en segundo plano.",
+  },
+  "capture.photo.queuedMany": {
+    en: "{n} photos saved — syncing in the background.",
+    es: "{n} fotos guardadas — sincronizando en segundo plano.",
+  },
+  "capture.photo.toJob": { en: "Filed to {job}.", es: "Archivada en {job}." },
+  "capture.photo.toNoJob": {
+    en: "Filed with no job — you can set one later in the gallery.",
+    es: "Archivada sin trabajo — puedes elegir uno después en la galería.",
+  },
+  "capture.photo.seeGallery": { en: "See it in the gallery", es: "Verla en la galería" },
+  "capture.photo.another": { en: "Take another", es: "Tomar otra" },
+
+  "capture.receipt.changeJob": {
+    en: "That's the job it went to. Pick another below if it belongs somewhere else.",
+    es: "Ese es el trabajo al que se archivó. Elige otro abajo si pertenece a otro lugar.",
+  },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */

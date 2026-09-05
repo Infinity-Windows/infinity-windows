@@ -418,7 +418,10 @@ export function Layout() {
         })}
       </nav>
 
-      <CaptureSheet open={captureOpen} onClose={() => setCaptureOpen(false)} />
+      {/* `role` is the effective one (view-as included), so an owner previewing
+          installer sees the installer's tiles. Every write underneath is still
+          keyed to the real signed-in user and gated by RLS. */}
+      <CaptureSheet open={captureOpen} onClose={() => setCaptureOpen(false)} role={role} />
       <AppMenuDrawer
         open={menuOpen}
         onClose={() => setMenuOpen(false)}
