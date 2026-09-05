@@ -63,6 +63,7 @@ import { DispatchBoard } from "./install/DispatchBoard";
 import { SignatureEstimates } from "../components/install/SignatureEstimates";
 import { ScrollTabs } from "../components/nav/ScrollTabs";
 import { PhotoFeed } from "../components/photos/PhotoFeed";
+import { PhotoKindTabs } from "../components/photos/PhotoKindTabs";
 import { JobChat } from "../components/chat/JobChat";
 import { DailyLogsTab } from "../components/dailyLogs/DailyLogsTab";
 import { ClockInBlock } from "../components/clock/ClockInBlock";
@@ -119,6 +120,19 @@ export function ProjectDetail() {
     } else {
       setSearchParams({ tab: next }, { replace: true });
     }
+  };
+
+  // Photos or receipts, inside the Photos tab. It lives in the URL so a reload
+  // (and a link somebody pastes into the job chat) comes back to the half they
+  // were looking at; leaving the tab drops it, because setTab above rewrites
+  // the whole query — which is right, "receipts" means nothing on the Overview.
+  const photoKind = searchParams.get("kind") === "receipt" ? "receipt" : "photo";
+  const setPhotoKind = (next: "photo" | "receipt") => {
+    const params = new URLSearchParams(searchParams);
+    params.set("tab", "photos");
+    if (next === "receipt") params.set("kind", "receipt");
+    else params.delete("kind");
+    setSearchParams(params, { replace: true });
   };
 
   // Any-status on purpose (owner ask, 2026-08-26): job history links here,
@@ -418,7 +432,12 @@ export function ProjectDetail() {
       )}
 
       {tab === "photos" && (
-        <PhotoFeed projectId={projectId} selectedJobCode={project?.job_code ?? null} />
+        <PhotoFeed
+          projectId={projectId}
+          selectedJobCode={project?.job_code ?? null}
+          kind={photoKind}
+          toolbarExtra={<PhotoKindTabs kind={photoKind} onChange={setPhotoKind} />}
+        />
       )}
 
       {tab === "chat" && (

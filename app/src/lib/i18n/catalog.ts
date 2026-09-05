@@ -2156,6 +2156,16 @@ export const CATALOG = {
     en: "That file isn't a photo this phone can read — try a JPG or PNG.",
     es: "Ese archivo no es una foto que este teléfono pueda leer — usa un JPG o PNG.",
   },
+  "photos.kind.photos": { en: "Photos", es: "Fotos" },
+  "photos.kind.receipts": { en: "Receipts", es: "Recibos" },
+  "photos.kind.aria": { en: "Photos or receipts", es: "Fotos o recibos" },
+  // An installer sees only the receipts they added (that is the receipts
+  // table's own RLS), so an empty list here must not read as "nobody bought
+  // anything for this job". A foreman, who sees them all, keeps the plain line.
+  "feed.noReceiptsMineMsg": {
+    en: "You only see receipts you added. Snap a gas or materials receipt — the job is optional.",
+    es: "Solo ves los recibos que tú agregaste. Toma una foto de un recibo de gasolina o materiales — el trabajo es opcional.",
+  },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */
