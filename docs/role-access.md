@@ -8,7 +8,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 
 - Menu (opens the drawer)
 - Today (`/`)
-- Scan (`/scan`)
+- Capture (quick-capture sheet)
 - Clock (time tracking sheet)
 - Ask (`/ask`)
 
@@ -24,6 +24,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Points (`/points`)
 - Memo review (`/review`)
 - Safety (`/safety`)
+- Photos & receipts (`/photos`)
 - Notifications (`/notifications`)
 - Stuck writes (`/stuck`)
 - Settings (`/settings`)

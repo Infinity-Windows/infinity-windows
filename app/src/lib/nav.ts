@@ -307,11 +307,16 @@ export function canAccess(
 // Phone bottom bar (single source for Layout + the role-access doc)
 // =============================================================================
 //
-// The mobile bottom bar is intentionally tiny. Installers get the whole job
-// loop — Today / Scan / Clock / Ask — and nothing else competes for a tap;
-// managers keep Jobs / Capture / Clock / Ask (Photos moved into the menu). The
-// leading Menu button and
-// the Clock/Capture controls are actions, not destinations. Layout renders
+// The mobile bottom bar is intentionally tiny. Every role now gets the same
+// centre control — Capture — because the owner's ask was "you should see the
+// capture button on every tab and view through the app", and the people who
+// most need it were the ones who could not reach it: the capture tab used to
+// be foreman+, so an installer had no route to photos or receipts at all.
+// Scan did not lose its place, it moved: it is a tile inside the capture
+// sheet, one tap deeper, which is where a lookup belongs next to the four
+// things a person actually captures. Managers keep Jobs / Capture / Clock /
+// Ask (Photos lives in the menu). The leading Menu button and the
+// Clock/Capture controls are actions, not destinations. Layout renders
 // these; roleAccessDoc reads them so the docs can never drift from the UI.
 
 export type BottomTab =
@@ -337,7 +342,7 @@ export function bottomBarForRole(
     return [
       { kind: "menu" },
       { kind: "link", id: "today", to: "/", label: "Today", end: true, readyBadge: true },
-      { kind: "link", id: "scan", to: "/scan", label: "Scan" },
+      { kind: "capture" },
       { kind: "clock" },
       { kind: "link", id: "ask", to: "/ask", label: "Ask" },
     ];
@@ -541,8 +546,8 @@ for (const section of MENU_DEF) {
 
 /**
  * Installer-first: the phone bottom bar already carries the whole job loop
- * (Today / Scan / Clock / Ask), so the installer drawer drops the duplicate
- * Scan/Ask rows and shows only the short daily loop up top. Everything else an
+ * (Today / Capture / Clock / Ask), so the installer drawer drops the duplicate
+ * Ask row and shows only the short daily loop up top. Everything else an
  * installer can reach folds under a collapsible "More". Managers keep the full
  * grouped menu. Action items (e.g. clock) always show.
  */
@@ -554,6 +559,12 @@ const INSTALLER_MORE_PATHS: RoutePath[] = [
   "/review",
   "/safety",
   "/supplies",
+  // The gallery the Capture sheet's own tiles land on. /photos has been
+  // minRole "installer" since it was written and its route carries no guard,
+  // but it appeared in neither installer path list — so an installer could
+  // not reach photos or receipts by any door in the app. The capture sheet
+  // opens the camera; this is the door back to what was captured.
+  "/photos",
   "/notifications",
   // An installer's own stranded punch lives on their own phone; the drawer is
   // the only way they would ever reach it.
