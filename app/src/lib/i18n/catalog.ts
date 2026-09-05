@@ -2023,6 +2023,22 @@ export const CATALOG = {
     es: "{n} fotos guardadas — sincronizando en segundo plano.",
   },
   "capture.photo.toJob": { en: "Filed to {job}.", es: "Archivada en {job}." },
+  // The line the camera sheet itself shows after a shot. It was hardcoded
+  // English inside an otherwise fully translated component, and the global
+  // Capture button now puts it in front of the installer floor several times a
+  // day, which is where that gap started to matter.
+  "photo.queuedOne": {
+    en: "1 photo queued — syncing in the background.",
+    es: "1 foto en cola — sincronizando en segundo plano.",
+  },
+  "photo.queuedMany": {
+    en: "{n} photos queued — syncing in the background.",
+    es: "{n} fotos en cola — sincronizando en segundo plano.",
+  },
+  "photo.receiptQueued": {
+    en: "Receipt saved — syncing in the background.",
+    es: "Recibo guardado — sincronizando en segundo plano.",
+  },
   "capture.photo.toNoJob": {
     en: "Filed with no job — you can set one later in the gallery.",
     es: "Archivada sin trabajo — puedes elegir uno después en la galería.",
@@ -2039,6 +2055,63 @@ export const CATALOG = {
   "capture.receipt.changeJob": {
     en: "That's the job it went to. Pick another below if it belongs somewhere else.",
     es: "Ese es el trabajo al que se archivó. Elige otro abajo si pertenece a otro lugar.",
+  },
+
+  // ---- The daily log dialog ---------------------------------------------
+  // Foreman-and-up only (Q7), but plenty of foremen on this crew read Spanish
+  // first, and this is the one screen where somebody writes several sentences
+  // in their own words. It was hardcoded English until now; the English below
+  // is exactly what it said before.
+  "dailyLog.title.edit": { en: "Edit the log", es: "Editar el registro" },
+  "dailyLog.title.new": { en: "Log today", es: "Anotar el día" },
+  "dailyLog.loading": {
+    en: "Putting together what happened today…",
+    es: "Reuniendo lo que pasó hoy…",
+  },
+  "dailyLog.field.headline": { en: "Headline", es: "Titular" },
+  "dailyLog.field.dayFlow": { en: "Day flow", es: "Cómo fue el día" },
+  "dailyLog.flow.smooth": { en: "Smooth", es: "Tranquilo" },
+  "dailyLog.flow.fine": { en: "Fine", es: "Normal" },
+  "dailyLog.flow.stuck": { en: "Stuck", es: "Atorado" },
+  "dailyLog.field.wentWell": { en: "What went well", es: "Qué salió bien" },
+  "dailyLog.field.wentPoorly": { en: "What went poorly", es: "Qué salió mal" },
+  "dailyLog.field.wouldHaveHelped": {
+    en: "What would have helped",
+    es: "Qué habría ayudado",
+  },
+  "dailyLog.field.whatWorked": {
+    en: "What's worth doing again",
+    es: "Qué vale la pena repetir",
+  },
+  "dailyLog.field.notes": {
+    en: "Notes — what did the crew get done today?",
+    es: "Notas — ¿qué logró la cuadrilla hoy?",
+  },
+  "dailyLog.field.notesPlaceholder": {
+    en: "What got done, what didn't, anything worth a word",
+    es: "Qué se hizo, qué no, y cualquier cosa que valga mencionar",
+  },
+  "dailyLog.field.weather": { en: "Weather (optional)", es: "Clima (opcional)" },
+  // The accessible names, shorter than the visible labels on purpose: a screen
+  // reader announcing "Notes — what did the crew get done today?, edit text"
+  // buries the field under its own prompt.
+  "dailyLog.a11y.headline": { en: "Headline", es: "Titular" },
+  "dailyLog.a11y.notes": { en: "Notes", es: "Notas" },
+  "dailyLog.a11y.weather": { en: "Weather", es: "Clima" },
+  "dailyLog.field.weatherPlaceholder": { en: "Clear, 88°, breezy", es: "Despejado, 88°, con brisa" },
+  "dailyLog.action.save": { en: "Save", es: "Guardar" },
+  "dailyLog.action.saving": { en: "Saving…", es: "Guardando…" },
+  "dailyLog.action.cancel": { en: "Cancel", es: "Cancelar" },
+  "dailyLog.notesGate": {
+    en: "Add a few words about what got done before saving.",
+    es: "Escribe unas palabras sobre lo que se hizo antes de guardar.",
+  },
+  "dailyLog.saved": { en: "Day logged.", es: "Día anotado." },
+  // The calm sentence for no signal — the same voice the photo sheet uses,
+  // because to the foreman standing in the canyon the log IS written.
+  "dailyLog.savedOffline": {
+    en: "Saved on your phone — it'll send itself.",
+    es: "Guardado en tu teléfono — se enviará solo.",
   },
 } satisfies Record<string, CatalogEntry>;
 

@@ -195,6 +195,32 @@ day). Surfaced today as one line for owners on Heartbeat; wave S's later
 reviewer flow reads the same ratio at a 70% bar before it lets an outsider
 read anything a Daily Log says.
 
+## Capture
+
+Settled 2026-09-05. One button, on every screen, for the things a person
+records in the field.
+
+**Capture** — the centre (+) on the phone's bottom bar and the button under
+the logo in the desktop rail. Every role has it: it used to be foreman-and-up,
+which left an installer with no route to photos or receipts anywhere in the
+app. It opens over whatever is on screen and hands that screen back — a
+receipt filed halfway through a unit sheet does not cost the unit sheet.
+
+**The five tiles** — take a photo, add a receipt, file a Daily Log, open the
+gallery, scan a unit. Daily Log is foreman+ and is HIDDEN below that rank, not
+greyed out: an installer cannot read a log at all (Q7), so a disabled tile
+would advertise a door that does not exist. Scan lives here rather than on the
+bottom bar, which holds five slots and no more.
+
+**The capture job** — which job a photo, receipt or log belongs to, answered
+before the camera opens rather than after. Primed from the open shift, then
+today's published assignment; failing both, the sheet offers chips carrying
+their own reason — you are standing near this one, you captured to it last
+time, you clocked it recently. A photo may answer "No job — general" and land
+in the unassigned feed; a Daily Log may not, because the server cannot file one
+without a job. Nothing is auto-applied from a location fix: a wrong "here"
+files a photo on the neighbour's house.
+
 ## The partner wall
 
 Settled 2026-08-26/27, wave S. A builder or GC gets a login too — outside

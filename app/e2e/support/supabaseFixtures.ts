@@ -134,6 +134,14 @@ export interface FixtureOptions {
    */
   canSeeCosts?: boolean;
   canSeePay?: boolean;
+  /**
+   * The signed-in person's reading language. `profiles.language` is what the
+   * app actually resolves from (LanguageProvider: the profile wins once
+   * loaded, the device cache only carries the first paint), so a spec proving
+   * a screen speaks Spanish has to set it HERE — seeding the localStorage
+   * cache alone is overruled the moment the profile query returns.
+   */
+  language?: "en" | "es";
 }
 
 /** Every first-run micro-tip, pre-dismissed (see lib/featureTips). */
@@ -259,6 +267,7 @@ export async function useSupabaseFixtures(
     role: opts.role ?? TEST_PROFILE.role,
     can_see_costs: opts.canSeeCosts ?? false,
     can_see_pay: opts.canSeePay ?? false,
+    language: opts.language ?? "en",
   };
 
   // A session in localStorage, under whatever key this build's Supabase URL
@@ -267,7 +276,7 @@ export async function useSupabaseFixtures(
   // squarely on top of the drawing, and a screenshot of a modal proves nothing
   // about the map.
   await page.addInitScript(
-    ({ session, tipKeys }) => {
+    ({ session, tipKeys, lang }) => {
       const raw = JSON.stringify(session);
       const proto = Object.getPrototypeOf(window.localStorage);
       const original = proto.getItem;
@@ -289,9 +298,9 @@ export async function useSupabaseFixtures(
       // And the first-login language picker (i18n slice 0): a full-screen
       // choice shown until a language is picked on this device. Seeding the
       // cache marks the choice as made, so it never overlays a fixture.
-      window.localStorage.setItem("infinity.language", "en");
+      window.localStorage.setItem("infinity.language", lang);
     },
-    { session: SESSION, tipKeys: DISMISSED_TIPS },
+    { session: SESSION, tipKeys: DISMISSED_TIPS, lang: opts.language ?? "en" },
   );
 
   await page.route("**/auth/v1/**", (route) => {

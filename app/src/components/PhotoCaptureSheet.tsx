@@ -377,7 +377,7 @@ function ReceiptFollowUp({
 
   return (
     <div className="jobphoto-followup">
-      <p className="ok jobphoto-count">Receipt saved — syncing in the background.</p>
+      <p className="ok jobphoto-count">{t("photo.receiptQueued")}</p>
 
       <p className="field-label">Bill this to the customer?</p>
       <div className="row-gap">
@@ -757,7 +757,7 @@ function JobPhotoCapture({
         {busy && <p className="muted">{t("photo.stampingGps")}</p>}
         {queued > 0 && (
           <p className="ok jobphoto-count">
-            {queued} photo{queued === 1 ? "" : "s"} queued — syncing in the background.
+            {queued === 1 ? t("photo.queuedOne") : t("photo.queuedMany", { n: queued })}
           </p>
         )}
       </div>

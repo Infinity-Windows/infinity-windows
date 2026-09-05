@@ -522,3 +522,35 @@ test("an installer clocking out is never offered a log they cannot read", async 
   // so offering them one would be an offer that leads nowhere.
   await expect(page.getByText(/Log today for/)).toHaveCount(0);
 });
+
+test("the whole thing speaks Spanish, sheet and daily log alike", async ({ page }) => {
+  // On the PROFILE, not just the device cache: LanguageProvider resolves the
+  // profile's language first and the cache only carries the first paint, so a
+  // localStorage seed alone is overruled the moment the profile query returns.
+  await useSupabaseFixtures(page, { role: "foreman", language: "es" });
+  await useProjectFixture(page);
+  await stubGeolocationDenied(page);
+  await page.route("**/rest/v1/rpc/file_daily_log", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: "null" }),
+  );
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Captura rápida" }).click();
+
+  const sheetEs = page.getByRole("dialog", { name: "Captura rápida" });
+  await expect(sheetEs.getByText("Tomar una foto", { exact: true })).toBeVisible();
+  await expect(sheetEs.getByText("Agregar un recibo", { exact: true })).toBeVisible();
+  await expect(sheetEs.getByText("Registro del día", { exact: true })).toBeVisible();
+
+  // And through into the dialog, which was hardcoded English until now — the
+  // one screen where somebody writes several sentences in their own words.
+  await sheetEs.getByText("Registro del día", { exact: true }).click();
+  await sheetEs.getByRole("button", { name: /BLACK22/ }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByText("Cómo fue el día")).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Atorado" })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Guardar" })).toBeVisible();
+  await expect(
+    page.getByText("Escribe unas palabras sobre lo que se hizo antes de guardar."),
+  ).toBeVisible();
+});

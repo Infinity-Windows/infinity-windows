@@ -8,6 +8,7 @@
 //   - seed from buildDraftForJobDay's factual, fully-editable starting point.
 import { Fragment, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useT, type TKey } from "../../lib/i18n";
 import { formatApiError } from "../../lib/errors";
 import { pushToast, toastSuccess } from "../../lib/toast";
 import { formatLogDateLabel } from "../../lib/dailyLogDay";
@@ -20,11 +21,11 @@ import {
   type DayFlow,
 } from "../../lib/dailyLogs";
 
-const REFLECTION_FIELDS: { key: keyof DailyLogReflection; label: string }[] = [
-  { key: "went_well", label: "What went well" },
-  { key: "went_poorly", label: "What went poorly" },
-  { key: "would_have_helped", label: "What would have helped" },
-  { key: "what_worked", label: "What's worth doing again" },
+const REFLECTION_FIELDS: { key: keyof DailyLogReflection; labelKey: TKey }[] = [
+  { key: "went_well", labelKey: "dailyLog.field.wentWell" },
+  { key: "went_poorly", labelKey: "dailyLog.field.wentPoorly" },
+  { key: "would_have_helped", labelKey: "dailyLog.field.wouldHaveHelped" },
+  { key: "what_worked", labelKey: "dailyLog.field.whatWorked" },
 ];
 
 /** Only the fields with something actually typed in them — reflection is
@@ -51,6 +52,7 @@ export function DailyLogDialog({
   onClose: () => void;
   onSaved?: (log: DailyLog) => void;
 }) {
+  const t = useT();
   const queryClient = useQueryClient();
   const existing = useQuery({
     queryKey: ["dailyLog", projectId, logDate],
@@ -105,7 +107,7 @@ export function DailyLogDialog({
       // To the foreman standing in the canyon the log IS written — it is on
       // their phone and it will go — so this says where it is, not that
       // something went wrong.
-      toastSuccess(result.queued ? "Saved on your phone — it'll send itself." : "Day logged.");
+      toastSuccess(result.queued ? t("dailyLog.savedOffline") : t("dailyLog.saved"));
       queryClient.invalidateQueries({ queryKey: ["dailyLogs", projectId] });
       queryClient.invalidateQueries({ queryKey: ["dailyLog", projectId, logDate] });
       queryClient.invalidateQueries({ queryKey: ["jobsNeedingLog"] });
@@ -123,19 +125,19 @@ export function DailyLogDialog({
     <div className="modal-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
       <div className="modal-card" onClick={(e) => e.stopPropagation()}>
         <p style={{ margin: 0, fontWeight: 700 }}>
-          {existing.data ? "Edit the log" : "Log today"} — {jobLabel}
+          {existing.data ? t("dailyLog.title.edit") : t("dailyLog.title.new")} — {jobLabel}
         </p>
         <p className="muted" style={{ margin: "2px 0 10px", fontSize: 12.5 }}>
           {formatLogDateLabel(logDate)}
         </p>
 
         {loading ? (
-          <p className="muted">Putting together what happened today…</p>
+          <p className="muted">{t("dailyLog.loading")}</p>
         ) : (
           <>
-            <label className="field-label">Headline</label>
+            <label className="field-label">{t("dailyLog.field.headline")}</label>
             <input
-              aria-label="Headline"
+              aria-label={t("dailyLog.a11y.headline")}
               value={headline}
               onChange={(e) => setHeadline(e.target.value)}
             />
@@ -145,7 +147,7 @@ export function DailyLogDialog({
               </p>
             )}
 
-            <label className="field-label">Day flow</label>
+            <label className="field-label">{t("dailyLog.field.dayFlow")}</label>
             <div className="grade-row">
               {(["smooth", "fine", "stuck"] as const).map((f) => (
                 <button
@@ -158,17 +160,21 @@ export function DailyLogDialog({
                   }
                   onClick={() => setDayFlow((cur) => (cur === f ? null : f))}
                 >
-                  {f === "smooth" ? "Smooth" : f === "fine" ? "Fine" : "Stuck"}
+                  {f === "smooth"
+                    ? t("dailyLog.flow.smooth")
+                    : f === "fine"
+                      ? t("dailyLog.flow.fine")
+                      : t("dailyLog.flow.stuck")}
                 </button>
               ))}
             </div>
 
             {showReflection &&
-              REFLECTION_FIELDS.map(({ key, label }) => (
+              REFLECTION_FIELDS.map(({ key, labelKey }) => (
                 <Fragment key={key}>
-                  <label className="field-label">{label}</label>
+                  <label className="field-label">{t(labelKey)}</label>
                   <input
-                    aria-label={label}
+                    aria-label={t(labelKey)}
                     value={reflection[key] ?? ""}
                     onChange={(e) =>
                       setReflection((cur) => ({ ...cur, [key]: e.target.value }))
@@ -177,21 +183,21 @@ export function DailyLogDialog({
                 </Fragment>
               ))}
 
-            <label className="field-label">Notes — what did the crew get done today?</label>
+            <label className="field-label">{t("dailyLog.field.notes")}</label>
             <textarea
-              aria-label="Notes"
+              aria-label={t("dailyLog.a11y.notes")}
               rows={5}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="What got done, what didn't, anything worth a word"
+              placeholder={t("dailyLog.field.notesPlaceholder")}
             />
 
-            <label className="field-label">Weather (optional)</label>
+            <label className="field-label">{t("dailyLog.field.weather")}</label>
             <input
-              aria-label="Weather"
+              aria-label={t("dailyLog.a11y.weather")}
               value={weather}
               onChange={(e) => setWeather(e.target.value)}
-              placeholder="Clear, 88°, breezy"
+              placeholder={t("dailyLog.field.weatherPlaceholder")}
             />
 
             <div className="row-gap" style={{ marginTop: 10, alignItems: "center" }}>
@@ -200,14 +206,14 @@ export function DailyLogDialog({
                 disabled={!notes.trim() || save.isPending}
                 onClick={() => save.mutate()}
               >
-                {save.isPending ? "Saving…" : "Save"}
+                {save.isPending ? t("dailyLog.action.saving") : t("dailyLog.action.save")}
               </button>
               <button className="button-like" onClick={onClose}>
-                Cancel
+                {t("dailyLog.action.cancel")}
               </button>
               {!notes.trim() && (
                 <span className="muted" style={{ fontSize: 12.5 }}>
-                  Add a few words about what got done before saving.
+                  {t("dailyLog.notesGate")}
                 </span>
               )}
             </div>
