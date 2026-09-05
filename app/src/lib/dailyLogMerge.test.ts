@@ -20,7 +20,6 @@ function queued(over: Partial<QueuedDailyLog> = {}): QueuedDailyLog {
     dayFlow: null,
     reflection: null,
     weather: null,
-    authorName: "Sam",
     ...over,
   };
 }
@@ -86,15 +85,14 @@ describe("somebody else filed while this sat in a truck", () => {
     );
   });
 
-  it("names whose phone the late half came from", () => {
-    expect(mergeQueuedDailyLog(queued(), server()).notes).toContain(
-      "— added later from Sam's phone",
-    );
-  });
-
-  it("still says where it came from when the name is unknown", () => {
-    const out = mergeQueuedDailyLog(queued({ authorName: null }), server());
+  it("says the late half came in late, and names nobody", () => {
+    // Daily-log notes reach a builder or GC login through stg_day, which hands
+    // over headline/notes/day_flow and deliberately withholds filed_by. A crew
+    // name spliced into the notes would walk straight through that wall; the
+    // first version of this line put an email address there.
+    const out = mergeQueuedDailyLog(queued(), server());
     expect(out.notes).toContain("— added later from a phone that was offline");
+    expect(out.notes).not.toMatch(/@/);
   });
 
   it("does not append the same words twice on a resend", () => {

@@ -44,8 +44,6 @@ function entry(over: Record<string, unknown> = {}): OutboxEntry {
       dayFlow: "smooth",
       reflection: null,
       weather: null,
-      authorName: "Sam",
-      queuedAt: QUEUED_AT,
       ...over,
     },
     createdAt: QUEUED_AT,
@@ -114,7 +112,9 @@ describe("a daily log that waited for signal", () => {
     const sent = rpc.mock.calls[0][1] as Record<string, string>;
     expect(sent.p_notes).toContain("Glass showed up late.");
     expect(sent.p_notes).toContain("Set four units on the south wall.");
-    expect(sent.p_notes).toContain("— added later from Sam's phone");
+    expect(sent.p_notes).toContain("— added later from a phone that was offline");
+    // Never a name and never an email: a builder login reads these notes.
+    expect(String(sent.p_notes)).not.toMatch(/@/);
   });
 
   it("sends what was typed when the current row cannot be read", async () => {

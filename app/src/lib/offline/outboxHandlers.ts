@@ -590,7 +590,6 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
       dayFlow: (str(p.dayFlow) as QueuedDailyLog["dayFlow"]) ?? null,
       reflection: (p.reflection as QueuedDailyLog["reflection"]) ?? null,
       weather: str(p.weather),
-      authorName: str(p.authorName),
     };
 
     let server: DailyLog | null = null;

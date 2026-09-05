@@ -58,8 +58,6 @@ export interface QueuedDailyLog {
   dayFlow: DayFlow | null;
   reflection: DailyLogReflection | null;
   weather: string | null;
-  /** Whose phone it was, for the appended line. */
-  authorName: string | null;
 }
 
 /** Exactly the arguments `file_daily_log` takes. */
@@ -71,11 +69,20 @@ export interface MergedDailyLog {
   weather: string | null;
 }
 
-/** The seam between the queued notes and the ones already on the server. */
-export function appendedLine(authorName: string | null): string {
-  return authorName
-    ? `— added later from ${authorName}'s phone`
-    : "— added later from a phone that was offline";
+/**
+ * The seam between the queued notes and the ones already on the server.
+ *
+ * It names NOBODY, and that is the point. Daily-log notes are one of the few
+ * crew-written things that leave the crew: stg_day hands `headline`, `notes`
+ * and `day_flow` to a builder or GC login, and deliberately withholds
+ * `filed_by` because who on the crew wrote it is not that login's business.
+ * A name spliced into the notes would walk straight through that wall — and
+ * the first version of this line put an email address there. Whose phone it
+ * was is already on the row (`updated_by`), where the partner wall can hold
+ * it back.
+ */
+export function appendedLine(): string {
+  return "— added later from a phone that was offline";
 }
 
 function firstNonEmpty(...values: (string | null | undefined)[]): string | null {
@@ -136,7 +143,7 @@ export function mergeQueuedDailyLog(
     ? serverNotes
     : serverNotes.includes(queuedNotes)
       ? serverNotes
-      : `${serverNotes}\n\n${appendedLine(queued.authorName)}\n${queuedNotes}`;
+      : `${serverNotes}\n\n${appendedLine()}\n${queuedNotes}`;
 
   return {
     headline: firstNonEmpty(server.headline, queued.headline),

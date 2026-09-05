@@ -6,7 +6,6 @@
 import { supabase } from "./supabase";
 import { isNetworkError } from "./offline/outbox-core";
 import { enqueueDailyLog } from "./offline/outbox";
-import { signedInEmail } from "./signedIn";
 import { listProjects } from "./api";
 import { listTeamShifts, punchDay, weekRange } from "./timeclock";
 import { listProjectRedosAll, listProjectSessions } from "./install/sessions";
@@ -106,13 +105,6 @@ export interface FileDailyLogInput {
   dayFlow: DayFlow | null;
   reflection: DailyLogReflection | null;
   weather: string | null;
-  /**
-   * Whose phone this came from, used ONLY if the write has to be queued and
-   * another foreman edits the same job-day before it drains — the appended
-   * "— added later from <name>'s phone" line. Falls back to the signed-in
-   * email, which is true and identifying if less friendly.
-   */
-  authorName?: string | null;
 }
 
 /** What happened to a filing: it reached the server, or it is waiting. */
@@ -161,7 +153,6 @@ export async function fileDailyLog(input: FileDailyLogInput): Promise<FiledDaily
       dayFlow: input.dayFlow,
       reflection: input.reflection,
       weather: input.weather,
-      authorName: input.authorName ?? signedInEmail(),
     });
     return { log: null, queued: true };
   }

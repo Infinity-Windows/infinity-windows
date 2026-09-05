@@ -441,8 +441,6 @@ export interface DailyLogInput {
    * which does read it, names the real type. */
   reflection: object | null;
   weather: string | null;
-  /** For the "— added later from <name>'s phone" line, if this one races. */
-  authorName?: string | null;
 }
 
 export function enqueueDailyLog(input: DailyLogInput): Promise<string> {
@@ -456,7 +454,6 @@ export function enqueueDailyLog(input: DailyLogInput): Promise<string> {
       dayFlow: input.dayFlow,
       reflection: input.reflection,
       weather: input.weather,
-      authorName: input.authorName ?? null,
     },
   });
 }
