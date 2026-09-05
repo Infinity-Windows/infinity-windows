@@ -31,6 +31,7 @@ import { InfinityLogo } from "./brand/InfinityLogo";
 import { AppMenu } from "./nav/AppMenu";
 import { AppMenuDrawer } from "./nav/AppMenuDrawer";
 import { CaptureSheet } from "./nav/CaptureSheet";
+import { DailyLogNudge } from "./dailyLogs/DailyLogNudge";
 import { GlobalAskFab } from "./nav/GlobalAskFab";
 import { FeatureTip } from "./assistant/FeatureTip";
 import { SyncStatusPill } from "./offline/SyncStatusPill";
@@ -422,6 +423,11 @@ export function Layout() {
           installer sees the installer's tiles. Every write underneath is still
           keyed to the real signed-in user and gated by RLS. */}
       <CaptureSheet open={captureOpen} onClose={() => setCaptureOpen(false)} role={role} />
+      {/* Rides every screen the same way the clock sheet does, for the same
+          reason: whoever clocks out is looking at whatever they happened to be
+          looking at, and that is where the day's log has to be offered.
+          Renders nothing until there is something to ask. */}
+      <DailyLogNudge role={role} />
       <AppMenuDrawer
         open={menuOpen}
         onClose={() => setMenuOpen(false)}

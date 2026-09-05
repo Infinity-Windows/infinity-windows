@@ -23,7 +23,7 @@ import { expect, test, type Page, type Route } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { jobFixtures, useSupabaseFixtures } from "./support/supabaseFixtures";
+import { TEST_USER, jobFixtures, useSupabaseFixtures } from "./support/supabaseFixtures";
 
 const SHOTS = resolve(dirname(fileURLToPath(import.meta.url)), "__screenshots__/global-capture");
 
@@ -411,4 +411,114 @@ test("a daily log written with no signal is kept on the phone, not lost", async 
   // And the person is told where their words are, in the same calm voice the
   // photo sheet uses. Not an error: to them the log IS written.
   await expect(page.getByText("Saved on your phone — it'll send itself.")).toBeVisible();
+});
+
+test("clocking off a job nobody logged today offers the log, once", async ({ page }) => {
+  await useSupabaseFixtures(page, { role: "foreman" });
+  await useProjectFixture(page);
+  await stubGeolocationDenied(page);
+
+  const SHIFT = {
+    id: "shift-1",
+    profile_id: TEST_USER.id,
+    project_id: BLACK22.projectId,
+    cost_code_id: null,
+    clock_in_at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+    clock_out_at: null,
+    break_started_at: null,
+    break_seconds: 0,
+    status: "open",
+    injured: false,
+    time_confirmed: true,
+    note: null,
+    clock_in_lat: null,
+    clock_in_lng: null,
+  };
+
+  // One open shift on BLACK22 — and the same rows answer jobsNeedingLogToday's
+  // "which jobs were worked today", which is exactly the point: this job was
+  // worked and has no log.
+  await page.route("**/rest/v1/time_shifts**", (route) => {
+    const isSingle = (route.request().headers()["accept"] ?? "").includes("pgrst.object");
+    return route.fulfill({
+      status: 200,
+      contentType: isSingle ? "application/vnd.pgrst.object+json" : "application/json",
+      headers: { "content-range": "0-0/1" },
+      body: JSON.stringify(isSingle ? SHIFT : [SHIFT]),
+    });
+  });
+  // Nobody has filed a log for anything today.
+  await page.route("**/rest/v1/daily_logs**", (route) => json(route, []));
+
+  let clockedOut = 0;
+  await page.route("**/rest/v1/rpc/clock_out", async (route) => {
+    clockedOut += 1;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ...SHIFT, status: "closed", clock_out_at: new Date().toISOString() }),
+    });
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "On the clock" }).click();
+  // Two things say "Clock out" — the home card and the sheet's own button.
+  // The sheet's is the one that punches.
+  await page.getByLabel("Time clock").getByRole("button", { name: "Clock out" }).click();
+  await expect.poll(() => clockedOut).toBe(1);
+
+  // The day just ended on a job with no log, and a foreman is still holding
+  // the phone. One offer, with the job named, and a way to say no.
+  await expect(page.getByText("Log today for BLACK22?")).toBeVisible();
+  await page.getByRole("button", { name: "Write it" }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(page.getByLabel("Notes")).toBeVisible();
+});
+
+test("an installer clocking out is never offered a log they cannot read", async ({ page }) => {
+  await useSupabaseFixtures(page, { role: "installer" });
+  await useProjectFixture(page);
+  await stubGeolocationDenied(page);
+
+  const SHIFT = {
+    id: "shift-2",
+    profile_id: TEST_USER.id,
+    project_id: BLACK22.projectId,
+    cost_code_id: null,
+    clock_in_at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+    clock_out_at: null,
+    break_started_at: null,
+    break_seconds: 0,
+    status: "open",
+    injured: false,
+    time_confirmed: true,
+    note: null,
+    clock_in_lat: null,
+    clock_in_lng: null,
+  };
+  await page.route("**/rest/v1/time_shifts**", (route) => {
+    const isSingle = (route.request().headers()["accept"] ?? "").includes("pgrst.object");
+    return route.fulfill({
+      status: 200,
+      contentType: isSingle ? "application/vnd.pgrst.object+json" : "application/json",
+      headers: { "content-range": "0-0/1" },
+      body: JSON.stringify(isSingle ? SHIFT : [SHIFT]),
+    });
+  });
+  await page.route("**/rest/v1/daily_logs**", (route) => json(route, []));
+  await page.route("**/rest/v1/rpc/clock_out", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ...SHIFT, status: "closed" }),
+    }),
+  );
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "On the clock" }).click();
+  await page.getByLabel("Time clock").getByRole("button", { name: "Clock out" }).click();
+
+  // daily_logs' RLS is foreman+ (Q7): an installer cannot read a log at all,
+  // so offering them one would be an offer that leads nowhere.
+  await expect(page.getByText(/Log today for/)).toHaveCount(0);
 });

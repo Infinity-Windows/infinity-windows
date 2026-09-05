@@ -2030,6 +2030,12 @@ export const CATALOG = {
   "capture.photo.seeGallery": { en: "See it in the gallery", es: "Verla en la galería" },
   "capture.photo.another": { en: "Take another", es: "Tomar otra" },
 
+  // The offer that appears once, when a foreman clocks off a job nobody has
+  // logged today. Never for installers — they cannot read a log at all.
+  "dailyLog.nudge.ask": { en: "Log today for {job}?", es: "¿Anotar el día de {job}?" },
+  "dailyLog.nudge.write": { en: "Write it", es: "Anotarlo" },
+  "dailyLog.nudge.dismiss": { en: "Not now", es: "Ahora no" },
+
   "capture.receipt.changeJob": {
     en: "That's the job it went to. Pick another below if it belongs somewhere else.",
     es: "Ese es el trabajo al que se archivó. Elige otro abajo si pertenece a otro lugar.",
