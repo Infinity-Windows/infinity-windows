@@ -59,6 +59,33 @@ export function AreaField({
   );
 }
 
+/**
+ * The tick the travel section draws for itself.
+ *
+ * The native checkbox is still in the DOM, and still the thing that gets
+ * checked, focused and read out — it is only taken out of the picture, because
+ * the app's global `input, select` rule sizes every input for a gloved thumb
+ * (52px tall, full width) and a checkbox inheriting that grew into a grey
+ * square beside the label. Purely decorative, so it is hidden from assistive
+ * tech: the label's own text is the accessible name.
+ */
+export function CheckBox() {
+  return (
+    <span className="travel-check" aria-hidden>
+      <svg viewBox="0 0 16 16" width="11" height="11" focusable="false" aria-hidden>
+        <path
+          d="M2.6 8.5 6.2 12l7.2-7.6"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.4"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </span>
+  );
+}
+
 /** Labeled yes/no toggle (tri-state: unset shows as No). */
 export function ToggleField({
   label,
@@ -70,8 +97,9 @@ export function ToggleField({
   onChange: (v: boolean) => void;
 }) {
   return (
-    <label className="travel-toggle">
+    <label className={`travel-toggle${value ? " is-on" : ""}`}>
       <input type="checkbox" checked={value} onChange={(e) => onChange(e.target.checked)} />
+      <CheckBox />
       <span>{label}</span>
     </label>
   );
