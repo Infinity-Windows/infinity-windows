@@ -227,8 +227,10 @@ there was no door to photos or receipts anywhere in the app. What it shows is
 scoped by neither job nor person: `attachments` has a single policy —
 authenticated full access, behind the partner wall — so any crew member sees
 every job photo on every job. Receipts are the narrow one and behave
-differently: below foreman you see only the receipts you uploaded yourself.
-Nothing here widened that; the Capture button is simply the first door to it.
+differently: below supervisor, and without the cost-books grant, you see only
+the receipts you uploaded yourself (`receipts_select`, tightened from rank 1 to
+rank 2 by wave Z's money doors). Nothing here widened the photo policy; the
+Capture button is simply the first door to it.
 
 A photo and a Daily Log both REQUIRE a job and the sheet keeps asking until it
 has one, because neither server can take the write without it: `file_daily_log`
