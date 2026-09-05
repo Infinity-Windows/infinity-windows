@@ -2073,6 +2073,13 @@ export const CATALOG = {
     en: "Putting together what happened today…",
     es: "Reuniendo lo que pasó hoy…",
   },
+  // Shown when the phone could not read today's log — no signal, usually. The
+  // box below opens empty in that case, and without this line an empty box
+  // reads as "nobody has written today", which may be untrue.
+  "dailyLog.cannotCheck": {
+    en: "Can't check today's log from here. Write what you've got — it gets added to whatever is already there, never written over it.",
+    es: "No se puede revisar el registro de hoy desde aquí. Escribe lo que tengas — se agregará a lo que ya esté, nunca lo reemplaza.",
+  },
   "dailyLog.field.headline": { en: "Headline", es: "Titular" },
   "dailyLog.field.dayFlow": { en: "Day flow", es: "Cómo fue el día" },
   "dailyLog.flow.smooth": { en: "Smooth", es: "Tranquilo" },

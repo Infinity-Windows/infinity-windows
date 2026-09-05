@@ -118,6 +118,14 @@ export function DailyLogDialog({
   });
 
   const loading = existing.isLoading || (existing.data == null && draft.isLoading && !seeded);
+  // "I could not find out whether today's log exists" — which offline is the
+  // NORMAL answer, not an error: react-query pauses a query it cannot run, so
+  // it never resolves and never fails, and the box below opens empty over a
+  // log that may well be sitting on the server. Saying so is the difference
+  // between a foreman writing an addendum knowingly and one who thinks they
+  // are the first person to write today. What they type is appended to
+  // whatever is already there (lib/dailyLogMerge.ts), never swapped for it.
+  const cannotCheck = !existing.isSuccess && !existing.isLoading;
   const showReflection = dayFlow === "fine" || dayFlow === "stuck";
   const crewLine = existing.data == null ? draft.data?.crewLine : null;
 
@@ -135,6 +143,7 @@ export function DailyLogDialog({
           <p className="muted">{t("dailyLog.loading")}</p>
         ) : (
           <>
+            {cannotCheck && <p className="muted">{t("dailyLog.cannotCheck")}</p>}
             <label className="field-label">{t("dailyLog.field.headline")}</label>
             <input
               aria-label={t("dailyLog.a11y.headline")}

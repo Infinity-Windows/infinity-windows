@@ -457,11 +457,6 @@ export function enqueueDailyLog(input: DailyLogInput): Promise<string> {
       reflection: input.reflection,
       weather: input.weather,
       authorName: input.authorName ?? null,
-      // The "since when" of the race the handler has to resolve: anything the
-      // server's copy gained after this moment belongs to somebody else and
-      // must survive the drain. createdAt on the entry would do, but this is
-      // the payload's own contract and does not depend on the queue's shape.
-      queuedAt: Date.now(),
     },
   });
 }

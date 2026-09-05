@@ -565,8 +565,9 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
    * (project_id, log_date), so a blind resend of an hour-old draft would
    * silently overwrite whatever a second foreman filed from the office in the
    * meantime — on a shared row, with no copy of the lost text anywhere. So the
-   * handler reads the current row first and merges: the queued notes are
-   * APPENDED under a line naming whose phone they came from, and every other
+   * handler reads the current row first and merges: unless the queued notes
+   * already contain the server's (an ordinary edit typed on the end of them),
+   * they are APPENDED under a line saying they came in late, and every other
    * field keeps the server's answer where it has one. The rule and its reasons
    * live in lib/dailyLogMerge.ts, where they can be tested.
    *
@@ -589,7 +590,6 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
       dayFlow: (str(p.dayFlow) as QueuedDailyLog["dayFlow"]) ?? null,
       reflection: (p.reflection as QueuedDailyLog["reflection"]) ?? null,
       weather: str(p.weather),
-      queuedAt: num(p.queuedAt) ?? entry.createdAt,
       authorName: str(p.authorName),
     };
 

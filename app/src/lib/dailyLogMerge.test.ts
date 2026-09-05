@@ -8,10 +8,8 @@
 // — silently, on a row both people share, with no copy of the lost text.
 
 import { describe, expect, it } from "vitest";
-import { mergeQueuedDailyLog, serverMovedOn, type QueuedDailyLog } from "./dailyLogMerge";
+import { mergeQueuedDailyLog, type QueuedDailyLog } from "./dailyLogMerge";
 import type { DailyLog } from "./dailyLogs";
-
-const QUEUED_AT = Date.parse("2026-09-05T16:00:00Z");
 
 function queued(over: Partial<QueuedDailyLog> = {}): QueuedDailyLog {
   return {
@@ -22,7 +20,6 @@ function queued(over: Partial<QueuedDailyLog> = {}): QueuedDailyLog {
     dayFlow: null,
     reflection: null,
     weather: null,
-    queuedAt: QUEUED_AT,
     authorName: "Sam",
     ...over,
   };
@@ -60,9 +57,20 @@ describe("nobody raced — the ordinary case, and it stays boring", () => {
     });
   });
 
-  it("sends what was typed when the server's row predates the queue", () => {
-    const old = server({ updated_at: "2026-09-05T15:00:00Z" });
-    expect(mergeQueuedDailyLog(queued(), old).notes).toBe("Set four units on the south wall.");
+  it("sends what was typed when it was typed on the end of the server's own text", () => {
+    // What an ordinary edit looks like: the dialog seeded the box from the
+    // server's row, somebody added a sentence, and the whole box came back.
+    const edited = "Glass showed up late, crew of three. Set four units on the south wall.";
+    expect(mergeQueuedDailyLog(queued({ notes: edited }), server()).notes).toBe(edited);
+  });
+
+  it("lets an edit that DELETES a line stand", () => {
+    const trimmed = "Glass showed up late.";
+    const out = mergeQueuedDailyLog(
+      queued({ notes: `${trimmed} Crew of three.` }),
+      server({ notes: trimmed }),
+    );
+    expect(out.notes).toBe(`${trimmed} Crew of three.`);
   });
 });
 
@@ -134,21 +142,32 @@ describe("somebody else filed while this sat in a truck", () => {
   });
 });
 
-describe("serverMovedOn", () => {
-  it("is true only when the row changed after this was queued", () => {
-    expect(serverMovedOn(server({ updated_at: "2026-09-05T17:00:00Z" }), QUEUED_AT)).toBe(true);
-    expect(serverMovedOn(server({ updated_at: "2026-09-05T15:00:00Z" }), QUEUED_AT)).toBe(false);
+// The two cases the old timestamp rule got wrong. It merged only when the
+// server's `updated_at` looked newer than the moment the phone queued the
+// entry, which compared Postgres's clock against a phone's.
+describe("no clocks are consulted, because both of these look like 'nobody raced'", () => {
+  it("appends when the log was written offline over an EXISTING one it could not read", () => {
+    // Offline the dialog's lookup pauses rather than resolving, so the notes
+    // box opens empty and what comes back never saw the morning's log. The
+    // server's row is older than the queue moment, so a timestamp rule called
+    // this "nobody raced" and replaced a full day of notes with the addendum.
+    const morning = server({
+      notes: "Morning: glass delivered.",
+      created_at: "2026-09-05T13:00:00Z",
+      updated_at: "2026-09-05T13:00:00Z",
+    });
+    const out = mergeQueuedDailyLog(queued({ notes: "Also set four on the south wall." }), morning);
+    expect(out.notes).toContain("Morning: glass delivered.");
+    expect(out.notes).toContain("Also set four on the south wall.");
   });
 
-  // Cautious on purpose: an unreadable timestamp costs an appended paragraph,
-  // while assuming "nobody raced" costs somebody's whole day of notes.
-  it("treats an unreadable timestamp as a race", () => {
-    expect(serverMovedOn(server({ updated_at: "not a date" }), QUEUED_AT)).toBe(true);
-  });
-
-  it("falls back to created_at when there is no updated_at", () => {
-    const row = server({ created_at: "2026-09-05T18:00:00Z" });
-    (row as { updated_at: string | null }).updated_at = null;
-    expect(serverMovedOn(row, QUEUED_AT)).toBe(true);
+  it("appends when the phone's clock runs minutes fast", () => {
+    // lib/clockSkew.ts exists because phones here do this, and ClockSheet has
+    // a "my time is wrong" checkbox for the same reason. A phone five minutes
+    // ahead reported a queue time later than the race that actually happened.
+    const raced = server({ notes: "Filed from the office.", updated_at: "2026-09-05T16:02:00Z" });
+    const out = mergeQueuedDailyLog(queued(), raced);
+    expect(out.notes).toContain("Filed from the office.");
+    expect(out.notes).toContain("Set four units on the south wall.");
   });
 });
