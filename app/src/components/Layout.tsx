@@ -18,6 +18,7 @@ import { ROLE_LABELS, type CrewRole } from "../lib/install/types";
 import { CoreValuesStrip } from "./CoreValuesStrip";
 import { bottomBarForRole, menuForRole, roleRank, type MenuAction } from "../lib/nav";
 import { useClock } from "../lib/clockContext";
+import { useT } from "../lib/i18n";
 import { formatClock } from "../lib/timeclock";
 import { shiftGuard } from "../lib/shiftGuard";
 import { effectiveRole, previewableRoles, useViewAsRole } from "../lib/viewAsRoleContext";
@@ -30,6 +31,7 @@ import { InfinityLogo } from "./brand/InfinityLogo";
 import { AppMenu } from "./nav/AppMenu";
 import { AppMenuDrawer } from "./nav/AppMenuDrawer";
 import { CaptureSheet } from "./nav/CaptureSheet";
+import { DailyLogNudge } from "./dailyLogs/DailyLogNudge";
 import { GlobalAskFab } from "./nav/GlobalAskFab";
 import { FeatureTip } from "./assistant/FeatureTip";
 import { SyncStatusPill } from "./offline/SyncStatusPill";
@@ -58,6 +60,7 @@ const TAB_ICONS: Record<string, ReactNode> = {
  * FAB. The menu content + role gating flow from the shared NAV registry.
  */
 export function Layout() {
+  const t = useT();
   const queryClient = useQueryClient();
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const realMe = useQuery({ queryKey: ["myRealProfile"], queryFn: getRealProfile });
@@ -82,8 +85,10 @@ export function Layout() {
   const [clockNow, setClockNow] = useState(Date.now());
   useEffect(() => {
     if (!shift) return;
-    const t = setInterval(() => setClockNow(Date.now()), 1000);
-    return () => clearInterval(t);
+    // Named `tick`, not `t`: `t` is the translator now and a shadow here would
+    // read as one at a glance.
+    const tick = setInterval(() => setClockNow(Date.now()), 1000);
+    return () => clearInterval(tick);
   }, [shift?.id]);
   // Past the believable maximum the nav tab stops showing a running total and
   // says what it actually needs, so a runaway shift reads as a job to do rather
@@ -293,6 +298,22 @@ export function Layout() {
           <Link to="/" className="rail-brand" aria-label="Forge Windows home">
             <InfinityLogo variant="full" size={22} />
           </Link>
+          {/* Desktop's only door to Capture. The bottom bar — and with it the
+              centre (+) FAB — is display:none from 860px up, so without this
+              the button the owner asked to be "on every tab and view" simply
+              did not exist on a laptop. Primary weight, directly under the
+              brand and above the menu, because it is an action and the rows
+              below it are destinations. */}
+          <button
+            type="button"
+            className={`rail-capture${captureOpen ? " open" : ""}`}
+            aria-label={t("capture.a11y.open")}
+            aria-expanded={captureOpen}
+            onClick={openCapture}
+          >
+            <Plus size={18} aria-hidden />
+            <span>{t("capture.tab")}</span>
+          </button>
           <div className="rail-sync">
             <SyncStatusPill />
           </div>
@@ -370,13 +391,15 @@ export function Layout() {
                 <button
                   type="button"
                   className={`capture-fab${captureOpen ? " open" : ""}`}
-                  aria-label="Quick capture"
+                  aria-label={t("capture.a11y.open")}
                   aria-expanded={captureOpen}
                   onClick={openCapture}
                 >
                   <Plus size={24} className="capture-fab-plus" />
                 </button>
-                <span className={`tab-label${captureOpen ? " active" : ""}`}>Capture</span>
+                <span className={`tab-label${captureOpen ? " active" : ""}`}>
+                  {t("capture.tab")}
+                </span>
               </div>
             );
           }
@@ -396,7 +419,15 @@ export function Layout() {
         })}
       </nav>
 
-      <CaptureSheet open={captureOpen} onClose={() => setCaptureOpen(false)} />
+      {/* `role` is the effective one (view-as included), so an owner previewing
+          installer sees the installer's tiles. Every write underneath is still
+          keyed to the real signed-in user and gated by RLS. */}
+      <CaptureSheet open={captureOpen} onClose={() => setCaptureOpen(false)} role={role} />
+      {/* Rides every screen the same way the clock sheet does, for the same
+          reason: whoever clocks out is looking at whatever they happened to be
+          looking at, and that is where the day's log has to be offered.
+          Renders nothing until there is something to ask. */}
+      <DailyLogNudge role={role} />
       <AppMenuDrawer
         open={menuOpen}
         onClose={() => setMenuOpen(false)}

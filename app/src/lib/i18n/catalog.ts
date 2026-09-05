@@ -1965,6 +1965,186 @@ export const CATALOG = {
     en: "No crew found.",
     es: "No hay nadie en la lista.",
   },
+
+  // ---- The one Capture button, on every screen (2026-09-05) -------------
+  // The owner's ask: "you should see the capture button on every tab and view
+  // through the app, it should also be able to capture a photo and assign it
+  // to a job, in fact, thats how the receipt should work too."
+  //
+  // The sheet and the daily-log dialog were the two capture surfaces still
+  // hardcoded in English, and this is the one aimed squarely at the installer
+  // floor — most of whom read Spanish more comfortably. The English below is
+  // exactly what those screens said before, so nothing changes for a reader
+  // in English. Nothing here is safety copy, so none of it is a SAFETY_KEY.
+  "capture.tab": { en: "Capture", es: "Capturar" },
+  "capture.a11y.open": { en: "Quick capture", es: "Captura rápida" },
+  "capture.title": { en: "Quick capture", es: "Captura rápida" },
+  "capture.a11y.close": { en: "Close", es: "Cerrar" },
+
+  // The job question at the top of the sheet.
+  "capture.job.forJob": { en: "Capturing for", es: "Capturando para" },
+  "capture.job.which": { en: "Which job?", es: "¿Qué trabajo?" },
+  // Stands in for the job's name in the gap where the sheet knows WHICH job
+  // (the open shift told it) but the jobs list has not loaded yet, so there is
+  // no code or name to print.
+  "capture.job.yourJob": { en: "The job you're on", es: "El trabajo en el que estás" },
+  "capture.job.pickForPhoto": {
+    en: "Pick the job this photo belongs to.",
+    es: "Elige el trabajo al que pertenece esta foto.",
+  },
+  "capture.job.pickForLog": {
+    en: "Which job is this log for?",
+    es: "¿De qué trabajo es este registro?",
+  },
+  "capture.job.change": { en: "Change", es: "Cambiar" },
+  "capture.job.find": { en: "Find a job", es: "Buscar un trabajo" },
+  "capture.job.hideList": { en: "Hide job list", es: "Ocultar la lista" },
+  "capture.job.search": { en: "Search jobs…", es: "Buscar trabajos…" },
+  "capture.job.a11ySearch": { en: "Search jobs", es: "Buscar trabajos" },
+  "capture.job.noMatch": { en: "No jobs match “{q}”.", es: "Ningún trabajo coincide con “{q}”." },
+  // Every chip says why it is being offered, the way the receipt follow-up's
+  // suggestions already do. A chip with no reason is a guess the person has
+  // to audit; a chip with a reason is an answer they can accept.
+  "capture.job.reason.near": { en: "You're near this one", es: "Estás cerca de este" },
+  "capture.job.reason.last": { en: "Last time", es: "La vez pasada" },
+  "capture.job.reason.recent": { en: "Recent", es: "Reciente" },
+
+  // The tiles.
+  "capture.tile.photo": { en: "Take a photo", es: "Tomar una foto" },
+  "capture.tile.photoHint": {
+    en: "Attach a progress or install photo",
+    es: "Adjunta una foto del avance o de la instalación",
+  },
+  "capture.tile.receipt": { en: "Add a receipt", es: "Agregar un recibo" },
+  "capture.tile.receiptHint": {
+    en: "Snap or upload a materials receipt",
+    es: "Toma o sube un recibo de materiales",
+  },
+  "capture.tile.dailyLog": { en: "Daily log", es: "Registro del día" },
+  "capture.tile.dailyLogHint": {
+    en: "Log today's progress and notes",
+    es: "Anota el avance y las notas de hoy",
+  },
+  "capture.tile.gallery": { en: "Open gallery", es: "Abrir la galería" },
+  "capture.tile.galleryHint": {
+    en: "Browse the photo & receipt library",
+    es: "Explora las fotos y los recibos",
+  },
+  "capture.tile.scan": { en: "Scan a unit", es: "Escanear una unidad" },
+  "capture.tile.scanHint": {
+    en: "Look up a unit by its QR/ID",
+    es: "Busca una unidad por su QR o ID",
+  },
+
+  // After a photo queues.
+  "capture.photo.queuedOne": {
+    en: "Photo saved — syncing in the background.",
+    es: "Foto guardada — sincronizando en segundo plano.",
+  },
+  "capture.photo.queuedMany": {
+    en: "{n} photos saved — syncing in the background.",
+    es: "{n} fotos guardadas — sincronizando en segundo plano.",
+  },
+  "capture.photo.toJob": { en: "Filed to {job}.", es: "Archivada en {job}." },
+  // The line the camera sheet itself shows after a shot. It was hardcoded
+  // English inside an otherwise fully translated component, and the global
+  // Capture button now puts it in front of the installer floor several times a
+  // day, which is where that gap started to matter.
+  "photo.queuedOne": {
+    en: "1 photo queued — syncing in the background.",
+    es: "1 foto en cola — sincronizando en segundo plano.",
+  },
+  "photo.queuedMany": {
+    en: "{n} photos queued — syncing in the background.",
+    es: "{n} fotos en cola — sincronizando en segundo plano.",
+  },
+  "photo.receiptQueued": {
+    en: "Receipt saved — syncing in the background.",
+    es: "Recibo guardado — sincronizando en segundo plano.",
+  },
+  // The camera does not open without a job. A photo has nowhere to be filed
+  // without one, and finding that out after the shot means losing the shot.
+  "photo.needJob": {
+    en: "Pick a job first — a photo has to belong to one. Choose it above, then come back.",
+    es: "Elige primero un trabajo — una foto tiene que pertenecer a uno. Selecciónalo arriba y vuelve.",
+  },
+  "capture.photo.seeGallery": { en: "See it in the gallery", es: "Verla en la galería" },
+  "capture.photo.another": { en: "Take another", es: "Tomar otra" },
+
+  // The offer that appears once, when a foreman clocks off a job nobody has
+  // logged today. Never for installers — they cannot read a log at all.
+  "dailyLog.nudge.ask": { en: "Log today for {job}?", es: "¿Anotar el día de {job}?" },
+  "dailyLog.nudge.write": { en: "Write it", es: "Anotarlo" },
+  "dailyLog.nudge.dismiss": { en: "Not now", es: "Ahora no" },
+
+  "capture.receipt.changeJob": {
+    en: "That's the job it went to. Pick another below if it belongs somewhere else.",
+    es: "Ese es el trabajo al que se archivó. Elige otro abajo si pertenece a otro lugar.",
+  },
+
+  // ---- The daily log dialog ---------------------------------------------
+  // Foreman-and-up only (Q7), but plenty of foremen on this crew read Spanish
+  // first, and this is the one screen where somebody writes several sentences
+  // in their own words. It was hardcoded English until now; the English below
+  // is exactly what it said before.
+  "dailyLog.title.edit": { en: "Edit the log", es: "Editar el registro" },
+  "dailyLog.title.new": { en: "Log today", es: "Anotar el día" },
+  "dailyLog.loading": {
+    en: "Putting together what happened today…",
+    es: "Reuniendo lo que pasó hoy…",
+  },
+  // Shown when the phone could not read today's log — no signal, usually. The
+  // box below opens empty in that case, and without this line an empty box
+  // reads as "nobody has written today", which may be untrue.
+  "dailyLog.cannotCheck": {
+    en: "Can't check today's log from here. Write what you've got — it gets added to whatever is already there, never written over it.",
+    es: "No se puede revisar el registro de hoy desde aquí. Escribe lo que tengas — se agregará a lo que ya esté, nunca lo reemplaza.",
+  },
+  "dailyLog.field.headline": { en: "Headline", es: "Titular" },
+  "dailyLog.field.dayFlow": { en: "Day flow", es: "Cómo fue el día" },
+  "dailyLog.flow.smooth": { en: "Smooth", es: "Tranquilo" },
+  "dailyLog.flow.fine": { en: "Fine", es: "Normal" },
+  "dailyLog.flow.stuck": { en: "Stuck", es: "Atorado" },
+  "dailyLog.field.wentWell": { en: "What went well", es: "Qué salió bien" },
+  "dailyLog.field.wentPoorly": { en: "What went poorly", es: "Qué salió mal" },
+  "dailyLog.field.wouldHaveHelped": {
+    en: "What would have helped",
+    es: "Qué habría ayudado",
+  },
+  "dailyLog.field.whatWorked": {
+    en: "What's worth doing again",
+    es: "Qué vale la pena repetir",
+  },
+  "dailyLog.field.notes": {
+    en: "Notes — what did the crew get done today?",
+    es: "Notas — ¿qué logró la cuadrilla hoy?",
+  },
+  "dailyLog.field.notesPlaceholder": {
+    en: "What got done, what didn't, anything worth a word",
+    es: "Qué se hizo, qué no, y cualquier cosa que valga mencionar",
+  },
+  "dailyLog.field.weather": { en: "Weather (optional)", es: "Clima (opcional)" },
+  // The accessible names, shorter than the visible labels on purpose: a screen
+  // reader announcing "Notes — what did the crew get done today?, edit text"
+  // buries the field under its own prompt.
+  "dailyLog.a11y.headline": { en: "Headline", es: "Titular" },
+  "dailyLog.a11y.notes": { en: "Notes", es: "Notas" },
+  "dailyLog.a11y.weather": { en: "Weather", es: "Clima" },
+  "dailyLog.field.weatherPlaceholder": { en: "Clear, 88°, breezy", es: "Despejado, 88°, con brisa" },
+  "dailyLog.action.save": { en: "Save", es: "Guardar" },
+  "dailyLog.action.saving": { en: "Saving…", es: "Guardando…" },
+  "dailyLog.action.cancel": { en: "Cancel", es: "Cancelar" },
+  "dailyLog.notesGate": {
+    en: "Add a few words about what got done before saving.",
+    es: "Escribe unas palabras sobre lo que se hizo antes de guardar.",
+  },
+  "dailyLog.saved": { en: "Day logged.", es: "Día anotado." },
+  // The calm sentence for no signal — the same voice the photo sheet uses,
+  // because to the foreman standing in the canyon the log IS written.
+  "dailyLog.savedOffline": {
+    en: "Saved on your phone — it'll send itself.",
+    es: "Guardado en tu teléfono — se enviará solo.",
+  },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */

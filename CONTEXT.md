@@ -195,6 +195,51 @@ day). Surfaced today as one line for owners on Heartbeat; wave S's later
 reviewer flow reads the same ratio at a 70% bar before it lets an outsider
 read anything a Daily Log says.
 
+## Capture
+
+Settled 2026-09-05. One button, on every screen, for the things a person
+records in the field.
+
+**Capture** — the centre (+) on the phone's bottom bar and the button under
+the logo in the desktop rail. Every role has it: it used to be foreman-and-up,
+which left an installer with no route to photos or receipts anywhere in the
+app. It opens over whatever is on screen and hands that screen back — a
+receipt filed halfway through a unit sheet does not cost the unit sheet.
+
+**The five tiles** — take a photo, add a receipt, file a Daily Log, open the
+gallery, scan a unit. Daily Log is foreman+ and is HIDDEN below that rank, not
+greyed out: an installer cannot read a log at all (Q7), so a disabled tile
+would advertise a door that does not exist. Scan lives here rather than on the
+bottom bar, which holds five slots and no more.
+
+**The capture job** — which job a photo, receipt or log belongs to, answered
+before the camera opens rather than after. Primed from the job page a person is
+standing on, then the open shift, then today's published assignment; failing
+all three, the sheet offers chips carrying their own reason — you are standing
+near this one, you captured to it last time, you clocked it recently. Nothing
+is auto-applied from a location fix: a wrong "here" files a photo on the
+neighbour's house.
+
+**The gallery** — `/photos`, the door back to what was captured, and new to an
+installer's menu with this change: the route has been open to installers since
+it was written but appeared in neither installer path list, so below foreman
+there was no door to photos or receipts anywhere in the app. What it shows is
+scoped by neither job nor person: `attachments` has a single policy —
+authenticated full access, behind the partner wall — so any crew member sees
+every job photo on every job. Receipts are the narrow one and behave
+differently: below supervisor, and without the cost-books grant, you see only
+the receipts you uploaded yourself (`receipts_select`, tightened from rank 1 to
+rank 2 by wave Z's money doors). Nothing here widened the photo policy; the
+Capture button is simply the first door to it.
+
+A photo and a Daily Log both REQUIRE a job and the sheet keeps asking until it
+has one, because neither server can take the write without it: `file_daily_log`
+refuses, and an `attachments` row must hang off something (`attachments_target`
+— a window, an install event, a package, an opening, or the job). A receipt is
+the one that may go without: `receipts.project_id` is nullable on purpose (gas
+gets bought before anybody knows the job), so its tile never asks and its own
+follow-up question does.
+
 ## The partner wall
 
 Settled 2026-08-26/27, wave S. A builder or GC gets a login too — outside

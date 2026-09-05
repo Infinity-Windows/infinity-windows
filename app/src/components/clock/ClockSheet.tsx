@@ -15,6 +15,7 @@ import { listProjects } from "../../lib/api";
 import { listMyPublished } from "../../lib/schedule/api";
 import { captureGeoSoft } from "../../lib/geo";
 import { pushToast, toastError, toastSuccess } from "../../lib/toast";
+import { announceClockedOut } from "../../lib/dailyLogNudge";
 import { supabase } from "../../lib/supabase";
 import { getMyOpenSession } from "../../lib/install/sessions";
 import { isNetworkError } from "../../lib/offline/outbox-core";
@@ -526,6 +527,13 @@ export function ClockSheet({
       setTimeWrong(false);
       if (!r.queued) refresh();
       onClose();
+      // The day just ended on this job, and a foreman is still holding the
+      // phone — the one moment the app knows both of those (DailyLogNudge
+      // decides whether to say anything). Deliberately the LAST thing here:
+      // the punch is already saved, the sheet is already closed, and nothing
+      // downstream of this line can undo either. Queued punches count too — a
+      // log written offline queues the same way the punch did.
+      announceClockedOut(shift?.project_id ?? null);
     },
     onError: (e) => toastError(e),
   });

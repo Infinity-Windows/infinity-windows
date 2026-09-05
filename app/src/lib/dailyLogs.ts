@@ -4,6 +4,8 @@
 // to bypass its validation.
 
 import { supabase } from "./supabase";
+import { isNetworkError } from "./offline/outbox-core";
+import { enqueueDailyLog } from "./offline/outbox";
 import { listProjects } from "./api";
 import { listTeamShifts, punchDay, weekRange } from "./timeclock";
 import { listProjectRedosAll, listProjectSessions } from "./install/sessions";
@@ -105,18 +107,55 @@ export interface FileDailyLogInput {
   weather: string | null;
 }
 
-export async function fileDailyLog(input: FileDailyLogInput): Promise<DailyLog> {
-  const { data, error } = await supabase.rpc("file_daily_log", {
-    p_project_id: input.projectId,
-    p_log_date: input.logDate,
-    p_headline: input.headline,
-    p_notes: input.notes,
-    p_day_flow: input.dayFlow,
-    p_reflection: input.reflection,
-    p_weather: input.weather,
-  });
-  if (error) throw error;
-  return data as DailyLog;
+/** What happened to a filing: it reached the server, or it is waiting. */
+export interface FiledDailyLog {
+  /** The saved row, or null when this is sitting in the outbox instead. */
+  log: DailyLog | null;
+  /** True when it is queued on this phone rather than done on the server. */
+  queued: boolean;
+}
+
+/**
+ * File (or update) one job-day's log — SERVER FIRST, queue only on no signal.
+ *
+ * This used to be a bare RPC with no fallback, which meant a log written in a
+ * canyon was simply lost: the toast said what the server said, which was
+ * nothing, and the words were gone. It now follows the same doctrine as the
+ * warehouse writes (lib/warehouse/offlineWrites.ts).
+ *
+ * The direction of that doctrine matters here more than most places, because
+ * file_daily_log genuinely rejects things: notes are required, a future date
+ * is refused, and anyone below foreman is turned away. Those are REAL answers
+ * and they surface immediately — queueing a refusal means it fails forever in
+ * the dead-letter and the person never learns they were wrong. Only a network
+ * failure queues.
+ */
+export async function fileDailyLog(input: FileDailyLogInput): Promise<FiledDailyLog> {
+  try {
+    const { data, error } = await supabase.rpc("file_daily_log", {
+      p_project_id: input.projectId,
+      p_log_date: input.logDate,
+      p_headline: input.headline,
+      p_notes: input.notes,
+      p_day_flow: input.dayFlow,
+      p_reflection: input.reflection,
+      p_weather: input.weather,
+    });
+    if (error) throw error;
+    return { log: data as DailyLog, queued: false };
+  } catch (e) {
+    if (!isNetworkError(e)) throw e;
+    await enqueueDailyLog({
+      projectId: input.projectId,
+      logDate: input.logDate,
+      headline: input.headline,
+      notes: input.notes,
+      dayFlow: input.dayFlow,
+      reflection: input.reflection,
+      weather: input.weather,
+    });
+    return { log: null, queued: true };
+  }
 }
 
 /** Wave S, S2: supervisor+ shares (or un-shares) one day's log with the

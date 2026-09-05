@@ -18,6 +18,8 @@
 
 import { supabase } from "../supabase";
 import { isMissingStagingBayError } from "../staging";
+import { getDailyLog, type DailyLog } from "../dailyLogs";
+import { mergeQueuedDailyLog, type QueuedDailyLog } from "../dailyLogMerge";
 import {
   errorMessage,
   type OpHandler,
@@ -89,6 +91,29 @@ function isMissingColumn(err: unknown): boolean {
   if (code === "PGRST204" || code === "42703") return true;
   const msg = errorMessage(err).toLowerCase();
   return msg.includes("client_id") && msg.includes("column");
+}
+
+/**
+ * A CHECK constraint said no (Postgres 23514).
+ *
+ * This is not a network hiccup and not a missing column, and the difference
+ * matters: retrying it eight times changes nothing, and every one of those
+ * attempts ends the same way. The row is shaped wrong for the database it is
+ * being sent to, and the only thing that fixes it is a person.
+ *
+ * The one that bit (2026-09-05): `attachments_target` did not admit a
+ * project-only row, which is exactly what a job-feed photo is. The upload
+ * handler peeled back on missing COLUMNS only, so those photos burned their
+ * retries and dead-lettered under raw PostgREST text — on a screen an
+ * installer had no menu row for. 20260989000000 widens the constraint; this
+ * makes the next one of these fail on the first try and say something a
+ * foreman can act on.
+ */
+function isCheckViolation(err: unknown): boolean {
+  const code = (err as { code?: string })?.code;
+  if (code === "23514") return true;
+  const msg = errorMessage(err).toLowerCase();
+  return msg.includes("violates check constraint");
 }
 
 /** The server's refusal when a sticker has already been bound to a package. */
@@ -409,6 +434,20 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
       // prevents duplicate blobs, so a rare double row is the worst case.
       res = await supabase.from("attachments").insert(row);
     }
+    // There is no tier for this one, deliberately. A check violation means the
+    // row does not fit the database's own rules — peeling columns off would
+    // send an emptier row that fits even less, and retrying sends the identical
+    // row seven more times. Fail once, in words, where somebody can act.
+    if (res.error && isCheckViolation(res.error)) {
+      throw tagPermanent(
+        new Error(
+          "This photo can't be filed the way it was taken — the database is " +
+            "not set up to accept a photo attached to only a job yet. The " +
+            "picture is still safe on this phone. Tell whoever manages the " +
+            "app, then press Try again.",
+        ),
+      );
+    }
     if (res.error) throw res.error;
   };
 
@@ -511,22 +550,66 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
     }
   };
 
+  /**
+   * A daily log written where there was no signal.
+   *
+   * REWRITTEN 2026-09-05. The old handler upserted `daily_logs` directly with
+   * `{project_id, profile_id, log_date, notes, created_by, client_id}` — three
+   * of those columns have never existed on that table, and `daily_logs` has no
+   * insert policy at all, so every one of those writes would have been refused.
+   * It had no callers, so nothing ever found out. `file_daily_log` is the only
+   * writer daily_logs has, and it is what this calls.
+   *
+   * THE CLOBBER IT HAS TO AVOID. One job-day has ONE shared log and any
+   * foreman on the job may edit it (Q6). file_daily_log upserts on
+   * (project_id, log_date), so a blind resend of an hour-old draft would
+   * silently overwrite whatever a second foreman filed from the office in the
+   * meantime — on a shared row, with no copy of the lost text anywhere. So the
+   * handler reads the current row first and merges: unless the queued notes
+   * already contain the server's (an ordinary edit typed on the end of them),
+   * they are APPENDED under a line saying they came in late, and every other
+   * field keeps the server's answer where it has one. The rule and its reasons
+   * live in lib/dailyLogMerge.ts, where they can be tested.
+   *
+   * A read that fails is not a reason to lose the log: if the current row
+   * cannot be fetched, the queued values go as they are — the ordinary
+   * no-race outcome, which is also the overwhelmingly common one.
+   */
   const dailyLog: OpHandler = async (entry) => {
     const p = entry.payload;
-    const row = {
-      project_id: str(p.projectId),
-      profile_id: str(p.profileId),
-      log_date: str(p.logDate),
-      notes: str(p.notes),
-      created_by: str(p.createdBy),
-    };
-    let res = await supabase
-      .from("daily_logs")
-      .upsert({ ...row, client_id: entry.id }, { onConflict: "client_id" });
-    if (res.error && isMissingColumn(res.error)) {
-      res = await supabase.from("daily_logs").insert(row);
+    const projectId = str(p.projectId);
+    const logDate = str(p.logDate);
+    if (!projectId || !logDate) {
+      throw tagPermanent(new Error("This daily log is missing its job or its day"));
     }
-    if (res.error) throw res.error;
+    const queued: QueuedDailyLog = {
+      projectId,
+      logDate,
+      headline: str(p.headline),
+      notes: str(p.notes) ?? "",
+      dayFlow: (str(p.dayFlow) as QueuedDailyLog["dayFlow"]) ?? null,
+      reflection: (p.reflection as QueuedDailyLog["reflection"]) ?? null,
+      weather: str(p.weather),
+    };
+
+    let server: DailyLog | null = null;
+    try {
+      server = await getDailyLog(projectId, logDate);
+    } catch {
+      /* can't tell whether anybody raced — send what was typed */
+    }
+    const merged = mergeQueuedDailyLog(queued, server);
+
+    const { error } = await supabase.rpc("file_daily_log", {
+      p_project_id: projectId,
+      p_log_date: logDate,
+      p_headline: merged.headline,
+      p_notes: merged.notes,
+      p_day_flow: merged.dayFlow,
+      p_reflection: merged.reflection,
+      p_weather: merged.weather,
+    });
+    if (error) throw missingGuard(error, "daily log");
   };
 
   // Undoing a mark move names the exact move to walk back, so a press made in

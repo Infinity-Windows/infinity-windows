@@ -5367,6 +5367,7 @@ button.clock-out {
     right: 28px;
     bottom: 28px;
   }
+
 }
 
 /* --- Toolbox talks: rich content + signature --- */
@@ -6135,6 +6136,37 @@ body {
     0 0 24px oklch(0.68 0.24 30 / 0.3);
 }
 
+/* Desktop's Capture control. Lives in the rail because the bottom bar — and
+   the centre (+) FAB with it — is display:none from 860px up, so this is the
+   only Capture a laptop ever gets. Rendered unconditionally; .app-rail's own
+   display:none keeps it off phones without a second breakpoint here. */
+.rail-capture {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 12px 16px 2px;
+  min-height: 44px;
+  padding: 10px 14px;
+  border: none;
+  border-radius: 12px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.15s var(--ease-out), background 0.15s var(--ease-out);
+}
+.rail-capture:hover {
+  background: var(--accent-hover);
+}
+.rail-capture:active {
+  transform: scale(0.98);
+}
+.rail-capture.open {
+  background: var(--accent-hover);
+}
+
 /* Desktop sidebar internals (the .app-rail media query still owns display). */
 .rail-scroll {
   flex: 1 1 auto;
@@ -6629,6 +6661,10 @@ body {
   padding-bottom: 2px;
 }
 .capture-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
   flex: none;
   min-height: 36px;
   padding: 7px 12px;
@@ -6639,6 +6675,33 @@ body {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
+}
+/* Why this job is being offered — "You're near this one", "Last time". A chip
+   without its reason is a guess the person has to audit before trusting. */
+.capture-chip-reason {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+}
+/* "Find a job" and "No job — general" sit on one line: two answers to the
+   same question, not a primary and an afterthought. */
+.capture-project-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+/* The beat after a photo queues: what happened, where it went, what next. */
+.capture-done {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-bottom: 6px;
+}
+.capture-done .capture-grid {
+  margin-top: 8px;
 }
 .capture-chip:hover {
   border-color: var(--accent-line);
@@ -11959,4 +12022,135 @@ button.stage-chip {
   display: block;
   font-size: 11px;
   color: var(--muted);
+}
+
+
+/* ---- "Log today for <job>?" — the one post-clock-out offer ---------------
+ *
+ * Sits where the undo toast sits and looks like it on purpose: this is the
+ * same kind of thing — a passing offer with one action, above the bottom bar,
+ * out of the way of everything. It differs in the one way that matters: it
+ * does NOT time out. The undo toast expires because a missed undo is
+ * recoverable; a missed log is a day nobody wrote down, so this waits for an
+ * answer and takes "not now" for one.
+ *
+ * Unlike .undo-toast this is fully clickable — it has two buttons and no
+ * countdown, so there is no window where a stray tap could land on it by
+ * accident and no reason to let taps pass through.
+ */
+.log-nudge {
+  position: fixed;
+  left: 50%;
+  bottom: calc(84px + var(--safe-bottom));
+  transform: translateX(-50%);
+  z-index: 1001;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: min(92vw, 420px);
+  padding: 10px 12px 10px 14px;
+  border-radius: 12px;
+  background: var(--card-hot);
+  border: 1px solid var(--accent-line);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+}
+.log-nudge-message {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+.log-nudge-btn {
+  flex: none;
+  min-height: 36px;
+  padding: 7px 14px;
+  border: none;
+  border-radius: 10px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.log-nudge-close {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.log-nudge-close:hover {
+  color: var(--text);
+}
+
+/* Desktop drops the bottom bar, so the offer comes down to the corner-ish
+   height everything else there uses. */
+@media (min-width: 860px) {
+  .log-nudge {
+    bottom: calc(28px + var(--safe-bottom));
+  }
+}
+
+/* ---- Capture on a laptop: a centred modal, not a bottom sheet ------------
+ *
+ * A bottom sheet is a thumb shape — it exists so the controls land where a
+ * hand already is on a phone. Stretched across a 1400px window it reads as a
+ * broken page, and on desktop there is no bottom bar for it to rest above
+ * anyway (.tabbar is display:none from 860px up).
+ *
+ * WHY THIS BLOCK LIVES AT THE END OF THE FILE. A media query adds no
+ * specificity. `.capture-sheet` inside `@media` and `.capture-sheet` outside
+ * it are the same weight, so the LATER one wins — and the base rules
+ * (line ~6587, ~7952) and the height caps (~9580) all come after the desktop
+ * section up top. Written there, `left: 50%` lost to the base `left: 0` and
+ * the sheet rendered half off the left edge of the screen with only its
+ * transform applied. Moving it here is the fix; do not move it back.
+ */
+@media (min-width: 860px) {
+  .capture-backdrop {
+    bottom: 0;
+  }
+  .capture-sheet,
+  .jobphoto-sheet {
+    left: 50%;
+    right: auto;
+    top: 50%;
+    bottom: auto;
+    width: min(520px, calc(100vw - 64px));
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 0 20px 22px;
+    /* Same shape as .menu-drawer's cap: a modal, never a full screen. The
+       token still governs the ceiling, so the safe-area contract holds. */
+    max-height: min(34rem, var(--sheet-max-h-above-tabbar));
+  }
+  /* The grip is the "drag me up from the bottom" affordance of a bottom
+     sheet. A centred modal is not draggable and never was. */
+  .capture-sheet .capture-grip,
+  .jobphoto-sheet .capture-grip {
+    display: none;
+  }
+  .capture-sheet .capture-head,
+  .jobphoto-sheet .capture-head {
+    padding-top: 18px;
+  }
+  /* Slide from the centre, not from the bottom edge — the same override
+     .wizard-card.sheet-enter already makes for the same reason. */
+  .capture-sheet.sheet-enter,
+  .jobphoto-sheet.sheet-enter {
+    transform: translate(-50%, -50%);
+  }
+  @starting-style {
+    .capture-sheet.sheet-enter,
+    .jobphoto-sheet.sheet-enter {
+      opacity: 0;
+      transform: translate(-50%, -46%);
+    }
+  }
 }

@@ -32,11 +32,39 @@ describe("bottomBarForRole (phone bottom bar)", () => {
       .filter((t): t is Extract<typeof t, { kind: "link" }> => t.kind === "link")
       .map((t) => t.to);
 
-  it("gives installers exactly the core loop: Today, Scan, Ask", () => {
+  // CHANGED DELIBERATELY (the global capture button): the installer bar is
+  // Menu / Today / Capture / Clock / Ask. Scan gave up the centre slot to
+  // Capture and became a tile inside the capture sheet.
+  //
+  // Why the swap and not a sixth tab: .tabbar is a hard-coded five-column
+  // grid, so a sixth tab silently squeezes the row. Why Scan was the one to
+  // move: the capture tab used to be foreman+ only, which left an installer
+  // with no route to photos or receipts anywhere in the app — the owner's
+  // ask ("you should see the capture button on every tab and view") is
+  // worth more than saving one tap on a unit lookup, and Scan is still one
+  // tap away inside the sheet.
+  it("gives installers exactly the core loop: Today, Ask (Scan moved into Capture)", () => {
     const labels = bottomBarForRole("installer")
       .filter((t): t is Extract<typeof t, { kind: "link" }> => t.kind === "link")
       .map((t) => t.label);
-    expect(labels).toEqual(["Today", "Scan", "Ask"]);
+    expect(labels).toEqual(["Today", "Ask"]);
+  });
+
+  it("gives EVERY role the capture control — that is the whole point of it", () => {
+    for (const role of ["installer", "foreman", "supervisor", "owner"] as const) {
+      expect(
+        bottomBarForRole(role).some((t) => t.kind === "capture"),
+        `${role} should have a Capture button`,
+      ).toBe(true);
+    }
+  });
+
+  it("puts Capture in the centre slot, where the thumb is", () => {
+    for (const role of ["installer", "foreman", "supervisor", "owner"] as const) {
+      const kinds = bottomBarForRole(role).map((t) => t.kind);
+      expect(kinds).toHaveLength(5);
+      expect(kinds[2], `capture should be centre for ${role}`).toBe("capture");
+    }
   });
 
   it("always leads with a Menu button and includes a Clock control", () => {
@@ -52,6 +80,17 @@ describe("bottomBarForRole (phone bottom bar)", () => {
     for (const hidden of ["/projects", "/photos", "/warehouse", "/costing"]) {
       expect(tos).not.toContain(hidden);
     }
+  });
+
+  // The gallery an installer's own captures land in. It is not a bottom-bar
+  // tab (see above) — it is the "Open gallery" tile in the capture sheet and
+  // a row in the installer's More fold. Without it the tile has nowhere to go.
+  it("gives installers a menu door to Photos & receipts", () => {
+    const paths = menuForRole("installer")
+      .flatMap((s) => s.items)
+      .map((i) => i.to)
+      .filter(Boolean);
+    expect(paths).toContain("/photos");
   });
 
   it("gives managers Jobs, Capture and one-tap Ask (Photos moved to the menu)", () => {
@@ -332,6 +371,11 @@ describe("every NAV destination has a door", () => {
     "/storage/arrive",
     "/storage/tag",
     "/storage/out",
+    // The global capture button: Scan gave up the installer bar's centre slot
+    // to Capture and is now the "Scan a unit" tile inside the capture sheet —
+    // the same shape as the warehouse paths above, which lost their menu rows
+    // and not their doors. One tap deeper than it was, on purpose.
+    "/scan",
   ];
 
   it("every other NAV path appears in some role's menu or bottom bar", () => {
