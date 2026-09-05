@@ -30,6 +30,17 @@ export interface BeforeAutoOpenState {
   /** Has a before photo been taken for THIS round? (Not yet filed — it lives
    * in the sheet's own state until Submit hands it to the outbox.) */
   hasBeforePhoto: boolean;
+  /**
+   * Has the camera already opened itself once on this visit?
+   *
+   * This is the sheet's memory, not the card's, and it has to be: the card
+   * lives inside the "1. Check" step, so tapping through to "2. Install" and
+   * back unmounts and remounts it. A one-shot guard held inside the card came
+   * back fresh every time, and the camera took over the screen again — and
+   * again — for the rest of the visit, because the chain stamp is never
+   * cleared. The sheet outlives the step, so the memory lives there.
+   */
+  autoOpenSpent: boolean;
 }
 
 /**
@@ -38,11 +49,13 @@ export interface BeforeAutoOpenState {
  * Only ever the before slot, and only on a chain: the person did not tap
  * anything to get to this window — the previous unit's Finish walked them here
  * — so the one thing owed is a shutter tap, and it should cost no navigation
- * and no decision. Dismissing it is fine and changes nothing else on the sheet.
+ * and no decision. Dismissing it is fine, changes nothing else on the sheet,
+ * and is final: it opens once per visit, never again.
  */
 export function autoOpenBeforeSlot(
   state: BeforeAutoOpenState,
 ): "before" | null {
+  if (state.autoOpenSpent) return null;
   if (!state.chainedAt) return null;
   if (state.hasBeforePhoto) return null;
   return "before";

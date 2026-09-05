@@ -492,6 +492,15 @@ test("Chain: the next unit asks for its before photo, and the after stage stops 
   await page.getByRole("button", { name: "Cancel" }).click();
   await expect(page.getByRole("button", { name: "Capture before" })).toBeHidden();
 
+  // And it stays dismissed. The card lives inside step 1, so stepping away and
+  // back remounts it; a one-shot guard held inside the card would come back
+  // fresh and the camera would take over the screen again, every time, for the
+  // rest of the visit.
+  await page.getByRole("button", { name: "2. Install" }).click();
+  await page.getByRole("button", { name: "1. Check" }).click();
+  await expect(page.getByRole("heading", { name: "Before photo" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Capture before" })).toBeHidden();
+
   await page.getByRole("button", { name: "3. Capture" }).click();
   // Nothing was taken, so the caption must not point at a before that does not
   // exist.

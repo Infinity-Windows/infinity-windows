@@ -70,10 +70,16 @@ type PhotoCaptureSheetProps =
        * and no decision. Dismissing the camera leaves the sheet exactly as it
        * would otherwise be.
        *
-       * One-shot: it opens the first time a slot is asked for and never again
-       * while this card is on screen. Pass null to open nothing.
+       * This component cannot decide "once" by itself — it is mounted inside a
+       * step of the unit sheet and remounts every time the person steps away
+       * and back — so the caller owns that memory and is told, through
+       * {@link onAutoOpened}, when to start remembering. Pass null to open
+       * nothing.
        */
       autoOpen?: "before" | "after" | null;
+      /** Fired the one time an `autoOpen` slot actually takes the screen, so
+       * the caller can stop asking for it. */
+      onAutoOpened?: () => void;
     }
   | {
       /**
@@ -727,21 +733,27 @@ function BeforeAfterCapture({
   label,
   slots,
   autoOpen,
+  onAutoOpened,
 }: Extract<PhotoCaptureSheetProps, { mode: "beforeAfter" }>) {
   const t = useT();
   const [mode, setMode] = useState<"idle" | "before" | "after">("idle");
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [stamping, setStamping] = useState(false);
 
-  // Fires once, the first time a slot is asked for. `autoOpen` arrives late on
-  // a chained sheet (the hand-off stamp is read out of history state in an
-  // effect), so this cannot be a mount-only effect — but it must never fire a
-  // second time, or dismissing the camera would just reopen it.
+  // Fires the first time a slot is asked for. `autoOpen` arrives late on a
+  // chained sheet (the hand-off stamp is read out of history state in an
+  // effect), so this cannot be a mount-only effect. The local guard only keeps
+  // it from firing twice while THIS card is on screen — "once per visit" is the
+  // caller's to remember, because this card unmounts and comes back every time
+  // the person steps to "2. Install" and back, and a guard that lived here
+  // would come back fresh with it and reopen the camera every time.
   const autoOpened = useRef(false);
   useEffect(() => {
     if (!autoOpen || autoOpened.current) return;
     autoOpened.current = true;
     setMode(autoOpen);
+    onAutoOpened?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoOpen]);
 
   // Warm a fix from the moment the card is on screen — an installer standing at

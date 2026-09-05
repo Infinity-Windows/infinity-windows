@@ -845,12 +845,17 @@ export function OpeningSheet() {
   const chainGraceLeft = chainedAt ? chainGraceRemainingMs(chainedAt, now) : 0;
 
   // The camera that opens itself on a chained arrival — see
-  // lib/install/beforePhotoGate.ts. Nothing here touches the clock: the chain's
-  // grace, and the rule that Finish never stops the clock, are exactly as they
-  // were.
+  // lib/install/beforePhotoGate.ts. It opens ONCE per visit, and the memory of
+  // that has to live out here rather than inside the card: the card is part of
+  // step 1, so tapping to "2. Install" and back would remount it and hand it a
+  // fresh guard, and the camera would take over the screen again every time.
+  // Nothing here touches the clock: the chain's grace, and the rule that Finish
+  // never stops the clock, are exactly as they were.
+  const beforeAutoOpenSpent = useRef(false);
   const beforeCardAutoOpen = autoOpenBeforeSlot({
     chainedAt,
     hasBeforePhoto: photos.before !== null,
+    autoOpenSpent: beforeAutoOpenSpent.current,
   });
   const redirectChain = useMutation({
     mutationFn: (targetId: string) => reattributeSession(targetId),
@@ -2233,6 +2238,9 @@ export function OpeningSheet() {
             mode="beforeAfter"
             slots={["before"]}
             autoOpen={beforeCardAutoOpen}
+            onAutoOpened={() => {
+              beforeAutoOpenSpent.current = true;
+            }}
             value={photos}
             onChange={setPhotos}
             label={o.opening_code}
