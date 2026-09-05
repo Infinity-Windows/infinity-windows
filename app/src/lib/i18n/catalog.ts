@@ -2145,6 +2145,17 @@ export const CATALOG = {
     en: "Saved on your phone — it'll send itself.",
     es: "Guardado en tu teléfono — se enviará solo.",
   },
+
+  // ---- Photos: the phone's own picker, and the Photos / Receipts toggle ----
+  // (2026-09-05). "Upload files" used to carry a `capture` attribute, so it
+  // could only ever open the camera; now it opens the library, the Files app
+  // and Drive, and whatever comes back may not be a picture at all — hence the
+  // first line. The rest is the toggle that finally makes a job's receipts
+  // reachable from the Photos page and from the job's own Photos tab.
+  "photo.fileUnreadable": {
+    en: "That file isn't a photo this phone can read — try a JPG or PNG.",
+    es: "Ese archivo no es una foto que este teléfono pueda leer — usa un JPG o PNG.",
+  },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */

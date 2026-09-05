@@ -8,6 +8,7 @@ import {
   subscribeSynced,
 } from "../lib/offline/outbox";
 import {
+  canDecodePhoto,
   capturePhotoMeta,
   shrinkPhotoFile,
   stampPhoto,
@@ -546,7 +547,19 @@ function JobPhotoCapture({
   const [busy, setBusy] = useState(false);
   const [caption, setCaption] = useState("");
   const [queued, setQueued] = useState(0);
+  /** Files this pick could not use, by name — see pickFiles. */
+  const [rejected, setRejected] = useState<string[]>([]);
   const [filedReceipt, setFiledReceipt] = useState<{ id: string; entryId: string } | null>(null);
+
+  // Is there a live camera this sheet can drive itself? A browser with no
+  // getUserMedia (desktop Safari on an old machine, an in-app webview) and a
+  // permission the person already refused amount to the same answer, and in
+  // both cases the phone's OWN camera app — reached through a file input that
+  // asks for `capture` — is the only shutter left.
+  const hasLiveCamera =
+    typeof navigator !== "undefined" && Boolean(navigator.mediaDevices?.getUserMedia);
+  const [cameraRefused, setCameraRefused] = useState(false);
+  const liveCamera = hasLiveCamera && !cameraRefused;
 
   // Ask for the fix when the SHEET opens, not when the shutter is tapped.
   useWarmGeoFix();
@@ -554,6 +567,7 @@ function JobPhotoCapture({
   const videoRef = useCameraStream(cameraOn, (message) => {
     setCameraError(message);
     setCameraOn(false);
+    setCameraRefused(true);
   });
 
   const queueBlob = async (raw: Blob) => {
@@ -641,8 +655,22 @@ function JobPhotoCapture({
   const pickFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
     e.target.value = "";
+    setRejected([]);
     for (const file of files) {
-      if (file.type.startsWith("image/")) await queueBlob(file);
+      // Now that this really is a file picker, what arrives is whatever the
+      // phone will hand over: a PDF of a spec sheet, a half-synced download, a
+      // HEIC on a browser with no HEIC decoder. stampPhoto degrades to the
+      // original blob rather than throwing (so a live shutter never breaks),
+      // which without this check would file an unopenable file as a photo, and
+      // the person would be told it saved. Ask first, name the file that
+      // failed, and carry on with the rest of the pick — one bad file must not
+      // take the other nine with it.
+      const usable = file.type.startsWith("image/") && (await canDecodePhoto(file));
+      if (!usable) {
+        setRejected((names) => [...names, file.name]);
+        continue;
+      }
+      await queueBlob(file);
     }
   };
 
@@ -763,21 +791,49 @@ function JobPhotoCapture({
               placeholder={isReceipt ? "e.g. Home Depot — shims" : "e.g. South elevation, unit 3"}
             />
             <div className="jobphoto-actions">
-              <button
-                type="button"
-                className="jobphoto-action"
-                onClick={() => setCameraOn(true)}
-              >
-                <Camera size={22} aria-hidden />
-                <span>{t("photo.action.useCamera")}</span>
-              </button>
+              {liveCamera ? (
+                <button
+                  type="button"
+                  className="jobphoto-action"
+                  onClick={() => setCameraOn(true)}
+                >
+                  <Camera size={22} aria-hidden />
+                  <span>{t("photo.action.useCamera")}</span>
+                </button>
+              ) : (
+                /* The camera FALLBACK, and the only input on this sheet that
+                   asks for `capture`: with no getUserMedia to drive (or a
+                   permission already refused) the phone's own camera app is
+                   the only shutter left, and `capture="environment"` is what
+                   opens it straight to the rear lens instead of the picker.
+                   Rendered only in that case, so the ordinary sheet has
+                   exactly one file input. */
+                <label className="jobphoto-action" style={{ cursor: "pointer" }}>
+                  <Camera size={22} aria-hidden />
+                  <span>{t("photo.action.useCamera")}</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    style={{ display: "none" }}
+                    onChange={(e) => void pickFiles(e)}
+                  />
+                </label>
+              )}
               <label className="jobphoto-action" style={{ cursor: "pointer" }}>
                 <ImagePlus size={22} aria-hidden />
                 <span>{t("photo.action.uploadFiles")}</span>
+                {/* THE INCIDENT: this input carried capture="environment",
+                    which tells iOS and Android to open the camera and offer
+                    nothing else — so "Upload files" could only ever take a new
+                    photo, and the library, the Files app and Google Drive were
+                    unreachable from the app. Without it iOS offers Photo
+                    Library / Take Photo / Choose File, and Android opens the
+                    system picker with Drive in it. Never put `capture` back on
+                    this one; the fallback above is where it belongs. */}
                 <input
                   type="file"
                   accept="image/*"
-                  capture="environment"
                   multiple={!isReceipt}
                   style={{ display: "none" }}
                   onChange={(e) => void pickFiles(e)}
@@ -799,6 +855,14 @@ function JobPhotoCapture({
             {queued === 1 ? t("photo.queuedOne") : t("photo.queuedMany", { n: queued })}
           </p>
         )}
+        {/* One line per file that could not be used, named — a pick of ten
+            where the third one fails has to say WHICH one, or the person
+            re-picks all ten looking for it. */}
+        {rejected.map((name, i) => (
+          <p className="warn-text jobphoto-rejected" key={`${name}-${i}`}>
+            <strong>{name}</strong> — {t("photo.fileUnreadable")}
+          </p>
+        ))}
       </div>
     </>
   );
