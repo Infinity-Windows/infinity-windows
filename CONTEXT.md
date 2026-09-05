@@ -220,6 +220,16 @@ near this one, you captured to it last time, you clocked it recently. Nothing
 is auto-applied from a location fix: a wrong "here" files a photo on the
 neighbour's house.
 
+**The gallery** — `/photos`, the door back to what was captured, and new to an
+installer's menu with this change: the route has been open to installers since
+it was written but appeared in neither installer path list, so below foreman
+there was no door to photos or receipts anywhere in the app. What it shows is
+scoped by neither job nor person: `attachments` has a single policy —
+authenticated full access, behind the partner wall — so any crew member sees
+every job photo on every job. Receipts are the narrow one and behave
+differently: below foreman you see only the receipts you uploaded yourself.
+Nothing here widened that; the Capture button is simply the first door to it.
+
 A photo and a Daily Log both REQUIRE a job and the sheet keeps asking until it
 has one, because neither server can take the write without it: `file_daily_log`
 refuses, and an `attachments` row must hang off something (`attachments_target`
