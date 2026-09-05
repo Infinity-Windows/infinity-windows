@@ -91,6 +91,29 @@ function isMissingColumn(err: unknown): boolean {
   return msg.includes("client_id") && msg.includes("column");
 }
 
+/**
+ * A CHECK constraint said no (Postgres 23514).
+ *
+ * This is not a network hiccup and not a missing column, and the difference
+ * matters: retrying it eight times changes nothing, and every one of those
+ * attempts ends the same way. The row is shaped wrong for the database it is
+ * being sent to, and the only thing that fixes it is a person.
+ *
+ * The one that bit (2026-09-05): `attachments_target` did not admit a
+ * project-only row, which is exactly what a job-feed photo is. The upload
+ * handler peeled back on missing COLUMNS only, so those photos burned their
+ * retries and dead-lettered under raw PostgREST text — on a screen an
+ * installer had no menu row for. 20260989000000 widens the constraint; this
+ * makes the next one of these fail on the first try and say something a
+ * foreman can act on.
+ */
+function isCheckViolation(err: unknown): boolean {
+  const code = (err as { code?: string })?.code;
+  if (code === "23514") return true;
+  const msg = errorMessage(err).toLowerCase();
+  return msg.includes("violates check constraint");
+}
+
 /** The server's refusal when a sticker has already been bound to a package. */
 function isAlreadyAssigned(err: unknown): boolean {
   return errorMessage(err).toLowerCase().includes("already assigned");
@@ -408,6 +431,20 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
       // Tier 3: geo columns absent too — base insert. Storage upsert already
       // prevents duplicate blobs, so a rare double row is the worst case.
       res = await supabase.from("attachments").insert(row);
+    }
+    // There is no tier for this one, deliberately. A check violation means the
+    // row does not fit the database's own rules — peeling columns off would
+    // send an emptier row that fits even less, and retrying sends the identical
+    // row seven more times. Fail once, in words, where somebody can act.
+    if (res.error && isCheckViolation(res.error)) {
+      throw tagPermanent(
+        new Error(
+          "This photo can't be filed the way it was taken — the database is " +
+            "not set up to accept a photo attached to only a job yet. The " +
+            "picture is still safe on this phone. Tell whoever manages the " +
+            "app, then press Try again.",
+        ),
+      );
     }
     if (res.error) throw res.error;
   };
