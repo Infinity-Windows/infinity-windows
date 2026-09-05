@@ -160,8 +160,7 @@ export function CaptureSheet({ open, onClose, role }: CaptureSheetProps) {
   // The trap follows the TILE view only: each flow below renders its own
   // dialog with its own trap, and two traps fighting over Tab is worse than
   // none. `flow` being set means the tile grid is not on screen.
-  const showingTiles = flow === null || flow === "photoDone";
-  useFocusTrap(sheetRef, open && showingTiles, onClose);
+  useFocusTrap(sheetRef, open && (flow === null || flow === "photoDone"), onClose);
 
   const canLog = isForemanPlus(role);
 
@@ -182,8 +181,13 @@ export function CaptureSheet({ open, onClose, role }: CaptureSheetProps) {
     enabled: open,
   });
 
-  // "You're near <job>" — never blocks, never waits past two seconds.
-  const nearby = useNearbyJob(open && showingTiles, projects.data);
+  // "You're near <job>" — never blocks, never waits past two seconds. Asked
+  // for only while the tile grid is up; a flow that stamps photos warms its
+  // own fix, and the holder is ref-counted so the watch spans both.
+  const nearby = useNearbyJob(
+    open && (flow === null || flow === "photoDone"),
+    projects.data,
+  );
   // Read once per open, not on every render: this is a device memory, and a
   // chip that changed under the person's thumb mid-decision would be worse
   // than no chip. `open` is the dependency on purpose.
@@ -255,10 +259,16 @@ export function CaptureSheet({ open, onClose, role }: CaptureSheetProps) {
     return out;
   }, [nearby, lastJob, projects.data, recents.data, t]);
 
+  /** The tiles that actually record something — the only ones worth
+   *  remembering a job for. Browsing the gallery is not capturing to a job,
+   *  and a "Last time" chip that came from a look-around would be a lie in a
+   *  chip whose whole value is that its reason is true. */
+  const CAPTURES: TileKey[] = ["photo", "receipt", "daily-log"];
+
   const startFlow = (key: TileKey, pid: string | null) => {
     // Remembered at the moment of use, not at the moment of picking: opening
     // the list and closing it again should not change tomorrow's default.
-    writeLastCaptureJob(pid);
+    if (CAPTURES.includes(key)) writeLastCaptureJob(pid);
     setPending(null);
     if (key === "photo") return setFlow("photo");
     if (key === "receipt") return setFlow("receipt");
@@ -299,13 +309,19 @@ export function CaptureSheet({ open, onClose, role }: CaptureSheetProps) {
 
   if (!open) return null;
 
+  // A daily log cannot be filed without a job, and nothing should be able to
+  // reach that state (tapTile keeps asking, chooseJob refuses "No job" for a
+  // log). If something ever does, this reads as no flow at all and the picker
+  // comes back — a repeated question beats a dialog with nowhere to save.
+  const activeFlow: Flow = flow === "dailyLog" && !projectId ? null : flow;
+
   // ---- The flows, each replacing the tile grid rather than stacking on it --
 
-  if (flow === "photo" || flow === "receipt") {
+  if (activeFlow === "photo" || activeFlow === "receipt") {
     return (
       <PhotoCaptureSheet
         mode="job"
-        kind={flow === "receipt" ? "receipt" : "photo"}
+        kind={activeFlow === "receipt" ? "receipt" : "photo"}
         projectId={projectId}
         label={selected?.job_code ?? null}
         // The job here was primed from the open shift, not typed by the
@@ -316,14 +332,14 @@ export function CaptureSheet({ open, onClose, role }: CaptureSheetProps) {
           // A receipt closes the whole sheet: its own follow-up question is
           // the confirmation. A photo earns one more beat — "it's saved,
           // here's where it went" — so the person can see it landed.
-          if (flow === "photo" && queued > 0) return setFlow("photoDone");
+          if (activeFlow === "photo" && queued > 0) return setFlow("photoDone");
           onClose();
         }}
       />
     );
   }
 
-  if (flow === "dailyLog" && projectId) {
+  if (activeFlow === "dailyLog" && projectId) {
     return (
       <DailyLogDialog
         projectId={projectId}
@@ -357,7 +373,7 @@ export function CaptureSheet({ open, onClose, role }: CaptureSheetProps) {
           </button>
         </div>
 
-        {flow === "photoDone" ? (
+        {activeFlow === "photoDone" ? (
           <div className="capture-done">
             <p className="ok">
               {queued === 1

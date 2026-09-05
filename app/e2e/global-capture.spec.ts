@@ -554,3 +554,35 @@ test("the whole thing speaks Spanish, sheet and daily log alike", async ({ page 
     page.getByText("Escribe unas palabras sobre lo que se hizo antes de guardar."),
   ).toBeVisible();
 });
+
+test("only a real capture becomes the 'Last time' job — not a look at the gallery", async ({
+  page,
+}) => {
+  await useSupabaseFixtures(page, { role: "installer" });
+  await useProjectFixture(page);
+  await stubGeolocationDenied(page);
+
+  const lastJob = () =>
+    page.evaluate(() => window.localStorage.getItem("infinity.capture.lastJob"));
+
+  await page.goto("/");
+  await captureFab(page).click();
+  await sheet(page).getByRole("button", { name: /Find a job/ }).click();
+  await sheet(page).getByRole("button", { name: /BLACK22/ }).click();
+
+  // Browsing is not capturing. A "Last time" chip whose reason came from a
+  // look-around would be a lie in a chip whose whole value is that its reason
+  // is true.
+  await sheet(page).getByText("Open gallery", { exact: true }).click();
+  await expect(page).toHaveURL(/\/photos\?project=/);
+  expect(await lastJob()).toBeNull();
+
+  // Opening the camera does count.
+  await page.goto("/");
+  await captureFab(page).click();
+  await sheet(page).getByRole("button", { name: /Find a job/ }).click();
+  await sheet(page).getByRole("button", { name: /BLACK22/ }).click();
+  await sheet(page).getByText("Take a photo", { exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Add job photos" })).toBeVisible();
+  expect(await lastJob()).toBe(BLACK22.projectId);
+});
