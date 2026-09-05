@@ -201,13 +201,15 @@ test("a receipt captured from a job page files against that job", async ({ page 
     json(route, { amount_cents: null, vendor: null, purchased_on: null, category: null, note: null }),
   );
 
-  // The sheet primes its job from the open shift; this installer has none, so
-  // pick the job by hand — which is also the path a person on a job page takes
-  // when the shift and the screen disagree.
+  // Opened from the job's own page, and this installer has no open shift — so
+  // the job comes from the SCREEN. That is the whole point of the ordering:
+  // the page a person is standing on outranks the timesheet, and nobody has to
+  // answer a question the app can already see the answer to.
   await page.goto(`/projects/${BLACK22.projectId}`);
   await captureFab(page).click();
-  await sheet(page).getByRole("button", { name: /Find a job/ }).click();
-  await sheet(page).getByRole("button", { name: /BLACK22/ }).click();
+  await expect(sheet(page).getByText("Capturing for")).toBeVisible();
+  await expect(sheet(page).getByRole("button", { name: /BLACK22/ })).toBeVisible();
+  await expect(sheet(page).getByRole("button", { name: /Find a job/ })).toHaveCount(0);
   await sheet(page).getByText("Add a receipt", { exact: true }).click();
 
   await expect(page.getByRole("dialog", { name: "Add a receipt" })).toBeVisible();

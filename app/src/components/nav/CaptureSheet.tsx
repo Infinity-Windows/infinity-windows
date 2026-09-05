@@ -20,7 +20,7 @@
 //    attachment must hang off something (attachments_target), and a photo that
 //    hangs off nothing is a row the database refuses — see TILES below.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   Camera,
@@ -44,6 +44,7 @@ import { PhotoCaptureSheet } from "../PhotoCaptureSheet";
 import { DailyLogDialog } from "../dailyLogs/DailyLogDialog";
 import { localDateISO } from "../../lib/dailyLogDay";
 import { useNearbyJob } from "../../lib/capture/useNearbyJob";
+import { projectIdFromPath } from "../../lib/capture/routeJob";
 import { readLastCaptureJob, writeLastCaptureJob } from "../../lib/capture/lastJob";
 
 function todayLocalISO(): string {
@@ -149,6 +150,7 @@ interface JobChip {
 export function CaptureSheet({ open, onClose, role }: CaptureSheetProps) {
   const t = useT();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const { profileId, shift } = useClock();
   const [selectedId, setSelectedId] = useState<string>("");
   const [search, setSearch] = useState("");
@@ -207,19 +209,32 @@ export function CaptureSheet({ open, onClose, role }: CaptureSheetProps) {
     }
   }, [open]);
 
-  // Default the capture context to today's job — the open shift you're on, or
-  // today's published assignment — so captures land on the right job by
-  // default. The open shift still wins over every chip below it: a person
-  // standing on a job clocked into it, and that is the strongest signal the
-  // app has about where they are.
+  // Default the capture context to the job in front of the person: the job
+  // SCREEN they are standing on first, then the open shift, then today's
+  // published assignment.
+  //
+  // The screen leads because this button rides every route, so it opens over a
+  // job page as often as over Today — and on a job page the shift is the
+  // weaker answer. A foreman clocked into job B who opens job A's page and
+  // taps Capture is capturing for A; the page is a choice they just made,
+  // where the open shift is a guess about where they are standing. Off a job
+  // page the shift is the strongest thing the app knows and takes over.
+  //
+  // Primed once per opening (primedRef) and no more: Layout closes this sheet
+  // on every route change, so the path cannot move under an open sheet, and a
+  // job the person then picked by hand must not be overwritten by a refetch.
   useEffect(() => {
     if (!open || primedRef.current) return;
-    const todayJob = shift?.project_id ?? scheduledToday.data?.[0]?.project_id ?? null;
+    const todayJob =
+      projectIdFromPath(pathname) ??
+      shift?.project_id ??
+      scheduledToday.data?.[0]?.project_id ??
+      null;
     if (todayJob) {
       primedRef.current = true;
       setSelectedId(todayJob);
     }
-  }, [open, shift?.project_id, scheduledToday.data]);
+  }, [open, pathname, shift?.project_id, scheduledToday.data]);
 
   const filtered = useMemo(() => {
     const list = projects.data ?? [];
