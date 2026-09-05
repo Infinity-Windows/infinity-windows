@@ -8984,14 +8984,125 @@ body {
 .travel-field-row { display: flex; gap: 10px; }
 .travel-field-row > * { flex: 1; min-width: 0; }
 .travel-toggle-row { display: flex; gap: 16px; flex-wrap: wrap; }
-.travel-toggle { display: inline-flex; align-items: center; gap: 7px; font-size: 14px; cursor: pointer; }
-.travel-crew-picker { display: flex; flex-wrap: wrap; gap: 8px; }
-.travel-crew-chip {
-  display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
-  border: 1px solid var(--border); background: var(--card-raised);
-  border-radius: 999px; padding: 6px 12px; font-size: 13px;
+.travel-toggle {
+  position: relative;
+  display: inline-flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer;
+  /* Nothing paints here — it is only so the focus ring below is rounded. */
+  border-radius: 8px;
 }
-.travel-crew-chip.is-on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+
+/* THE INCIDENT (2026-09-05): a two-line name grew the native checkbox into a
+   grey square the size of a stamp, because nothing here sized it.
+   `input, select` up at the top of this file gives EVERY input on the phone
+   `width: 100%`, `min-height: 52px`, `padding: 14px 15px` and
+   `margin-bottom: 10px` — office fields, built for a gloved thumb. A checkbox
+   is an input, so each chip's box inherited all four: 52px tall on every chip
+   (plus its 10px bottom margin and the browser's own 3px top margin, which is
+   what made every chip 79px), and as WIDE as the flex row would let it be —
+   measured 13px next to "Isaac" and 71px next to "Tyson antonio diaz", because
+   `width: 100%` on a flex item is a starting size the row then shrinks against
+   whatever the name needs. Two-word names left the most room, so they got the
+   biggest square. Fixed at the root for these two labels only: the input is
+   taken out of the layout entirely (it stays in the DOM, focusable, so the
+   keyboard and a screen reader still work), and the box you see is drawn by
+   `.travel-check` below at a size this file actually chose. The global rule is
+   left alone — it is the right rule for the fields it was written for. */
+.travel-crew-chip > input[type="checkbox"],
+.travel-toggle > input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+  width: 1px; height: 1px; min-height: 0;
+  margin: 0; padding: 0;
+}
+
+/* The box that replaces it. One class, so the trip editor's crew chips and the
+   lodging washer/dryer toggles cannot drift apart. */
+.travel-check {
+  flex: none;
+  width: 18px; height: 18px;
+  border-radius: 5px;
+  /* NOT var(--border). That token draws the seam between two big filled panels,
+     and at 18px it disappeared: on the dark theme it is 1.27:1 against the chip
+     it sits on, and the box's own var(--card) fill is 1.05:1 against the same
+     chip — so the first cut of this control had NOTHING visible in the off
+     state, and an empty chip read as a plain name rather than something you
+     could tick. (Worse on the lodging toggles, which sit on var(--card)
+     themselves, so the fill contributes literally nothing there.) The outline
+     IS the control, so it gets the palette's mid grey: 3.8:1 in dark, 3.4:1 in
+     light — both clear of the 3:1 WCAG 1.4.11 asks of a control boundary, and
+     close to the weight of the native box this replaced. --border is left alone
+     and still right for the chip around it, which is a big filled rectangle. */
+  border: 1.5px solid var(--faint);
+  background: var(--card);
+  display: grid; place-items: center;
+  /* The tick is drawn in currentColor and simply isn't painted until the box
+     fills, so nothing moves between off and on. */
+  color: transparent;
+  transition: background var(--motion), border-color var(--motion);
+}
+.is-on > .travel-check {
+  background: var(--accent);
+  border-color: var(--accent);
+  /* --ink is the token for "text sitting on the accent", and it flips with the
+     theme: near-white on the light theme's deeper coral, near-black on the dark
+     theme's brighter one. A literal white tick would nearly vanish in dark. */
+  color: var(--ink);
+}
+
+/* A grid, not a wrapping flex row: every chip gets the SAME width from the
+   column, so rows line up and a column shares one left edge. 150px min gives a
+   390px phone two clean columns and a laptop three (the sheet stops widening at
+   560px), with no chip sized by how long somebody's name happens to be. */
+.travel-crew-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+}
+/* "No crew found." is a sentence, not a chip — it takes the whole row. */
+.travel-crew-empty { grid-column: 1 / -1; }
+
+.travel-crew-chip {
+  position: relative;
+  display: flex; align-items: center; gap: 10px; cursor: pointer;
+  /* Fixed, not min: two names of different lengths must not make two different
+     heights. Two clamped lines of 13.5px/1.15 text fit inside 48 with room. */
+  height: 48px;
+  padding: 0 12px;
+  min-width: 0;
+  border: 1px solid var(--border); background: var(--card-raised);
+  /* A rounded rectangle like the app's cards, not a pill — a pill turns a
+     one-word name into a circle and a three-word name into a lozenge. */
+  border-radius: 10px;
+  font-size: 13.5px; line-height: 1.15; color: var(--text);
+  transition: border-color var(--motion), background var(--motion);
+}
+.travel-crew-name {
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-weight: 400;
+}
+.travel-crew-first { font-weight: 600; }
+.travel-crew-chip.is-on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  /* Deliberately NOT var(--accent): accent text on accent-soft was coral on a
+     12%-coral wash, which is close to unreadable on a dark phone in daylight.
+     The border and the filled box say "picked"; the name stays legible. */
+  color: var(--text);
+}
+/* Hover moves the border and nothing else — a hover must never move layout. */
+.travel-crew-chip:hover { border-color: var(--accent-line); }
+/* The real checkbox is invisible, so its focus ring has to be drawn on the
+   chip, or tabbing through the picker shows nothing at all. */
+.travel-crew-chip:has(> input[type="checkbox"]:focus-visible),
+.travel-toggle:has(> input[type="checkbox"]:focus-visible) {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
 .travel-danger { color: oklch(0.7 0.2 25); }
 .travel-detail-titlerow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .travel-lodging .travel-route { font-weight: 500; }

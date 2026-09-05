@@ -1946,6 +1946,26 @@ export const CATALOG = {
     es: "Toma la foto de después de la ventana terminada.",
   },
 
+  // ---- The trip editor's crew picker (2026-09-05) ----------------------
+  // The strings a supervisor building a trip reads. The label carries the
+  // count so somebody who has scrolled past the grid still knows how many
+  // people are on the trip without scrolling back up. Spanish splits singular
+  // from plural, same shape as crewclock.bar.count above — the caller picks
+  // the key by count, because interpolate() has no plural rule of its own.
+  "travel.crew.label": { en: "Assigned crew", es: "Cuadrilla asignada" },
+  "travel.crew.labelCount.one": {
+    en: "Assigned crew · {n} selected",
+    es: "Cuadrilla asignada · {n} seleccionado",
+  },
+  "travel.crew.labelCount.many": {
+    en: "Assigned crew · {n} selected",
+    es: "Cuadrilla asignada · {n} seleccionados",
+  },
+  "travel.crew.empty": {
+    en: "No crew found.",
+    es: "No hay nadie en la lista.",
+  },
+
   // ---- The one Capture button, on every screen (2026-09-05) -------------
   // The owner's ask: "you should see the capture button on every tab and view
   // through the app, it should also be able to capture a photo and assign it

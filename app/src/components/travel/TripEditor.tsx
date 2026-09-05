@@ -6,9 +6,11 @@ import { createTrip, deleteTrip, updateTrip } from "../../lib/travel/api";
 import { listProfiles } from "../../lib/install/api";
 import { listProjects } from "../../lib/api";
 import { COMMON_TIMEZONES, guessTimezone } from "../../lib/travel/zones";
+import { splitName } from "../../lib/travel/crewName";
 import { toastError, toastSuccess } from "../../lib/toast";
+import { useT } from "../../lib/i18n";
 import { Sheet } from "./Sheet";
-import { Field, FieldRow, SelectField, AreaField } from "./Field";
+import { Field, FieldRow, SelectField, AreaField, CheckBox } from "./Field";
 
 const ZONE_OPTIONS = COMMON_TIMEZONES.map((z) => ({ value: z.id, label: z.label }));
 
@@ -26,6 +28,7 @@ export function TripEditor({
   onSaved: (trip: Trip) => void;
   onDeleted: () => void;
 }) {
+  const t = useT();
   const profiles = useQuery({ queryKey: ["profiles"], queryFn: listProfiles });
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
 
@@ -45,7 +48,17 @@ export function TripEditor({
   const set = (k: keyof typeof form) => (v: string) => setForm((f) => ({ ...f, [k]: v }));
 
   const roster = useMemo(
-    () => (profiles.data ?? []).filter((p) => p.active),
+    () =>
+      (profiles.data ?? [])
+        .filter((p) => p.active)
+        // listProfiles() hands back role first (owners, then supervisors, then
+        // installers, then foreman — `order("role", desc)`) and only then name.
+        // That is right for the roster screen, where the rank is printed beside
+        // every row. Here there is no rank on screen at all, just a grid of
+        // names, and a supervisor picking Antonio out of thirty people hunts
+        // alphabetically. Sorted HERE, not in the api module: every other picker
+        // that reads listProfiles() keeps the order it already has.
+        .sort((a, b) => a.display_name.localeCompare(b.display_name)),
     [profiles.data],
   );
 
@@ -142,17 +155,36 @@ export function TripEditor({
       />
 
       <div className="travel-field">
-        <span className="travel-field-label">Assigned crew</span>
-        <div className="travel-crew-picker">
+        <span className="travel-field-label" data-testid="travel-crew-label">
+          {crew.size === 0
+            ? t("travel.crew.label")
+            : crew.size === 1
+              ? t("travel.crew.labelCount.one", { n: 1 })
+              : t("travel.crew.labelCount.many", { n: crew.size })}
+        </span>
+        <div className="travel-crew-picker" data-testid="travel-crew-picker">
           {roster.length === 0 ? (
-            <span className="muted">No crew found.</span>
+            <span className="muted travel-crew-empty">{t("travel.crew.empty")}</span>
           ) : (
-            roster.map((p) => (
-              <label key={p.id} className={`travel-crew-chip${crew.has(p.id) ? " is-on" : ""}`}>
-                <input type="checkbox" checked={crew.has(p.id)} onChange={() => toggleCrew(p.id)} />
-                <span>{p.display_name}</span>
-              </label>
-            ))
+            roster.map((p) => {
+              const { first, rest } = splitName(p.display_name);
+              return (
+                <label
+                  key={p.id}
+                  className={`travel-crew-chip${crew.has(p.id) ? " is-on" : ""}`}
+                  data-testid="travel-crew-chip"
+                >
+                  <input type="checkbox" checked={crew.has(p.id)} onChange={() => toggleCrew(p.id)} />
+                  <CheckBox />
+                  {/* title, because two lines is the most a chip shows and a
+                      long name is clipped rather than allowed to resize it. */}
+                  <span className="travel-crew-name" title={p.display_name}>
+                    <span className="travel-crew-first">{first}</span>
+                    {rest ? ` ${rest}` : ""}
+                  </span>
+                </label>
+              );
+            })
           )}
         </div>
       </div>
