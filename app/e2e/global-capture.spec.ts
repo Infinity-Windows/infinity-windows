@@ -285,10 +285,12 @@ test("a foreman files a daily log from Capture without leaving the screen", asyn
   await captureFab(page).click();
   await sheet(page).getByText("Daily log", { exact: true }).click();
 
-  // No job chosen yet, so the sheet asks — and does NOT offer "No job", since
-  // file_daily_log cannot file one without a project.
+  // No job chosen yet, so the sheet asks — and there is no way past the
+  // question: file_daily_log cannot file a log without a project, and an
+  // attachments row cannot hang off nothing, so the sheet offers no "No job"
+  // escape to either of the tiles that ask.
   await expect(page.getByText("Which job is this log for?")).toBeVisible();
-  await expect(sheet(page).getByRole("button", { name: "No job — general" })).toHaveCount(0);
+  await expect(sheet(page).getByRole("button", { name: /No job/ })).toHaveCount(0);
   await sheet(page).getByRole("button", { name: /BLACK22/ }).click();
 
   const dialog = page.getByRole("dialog");

@@ -213,13 +213,20 @@ would advertise a door that does not exist. Scan lives here rather than on the
 bottom bar, which holds five slots and no more.
 
 **The capture job** — which job a photo, receipt or log belongs to, answered
-before the camera opens rather than after. Primed from the open shift, then
-today's published assignment; failing both, the sheet offers chips carrying
-their own reason — you are standing near this one, you captured to it last
-time, you clocked it recently. A photo may answer "No job — general" and land
-in the unassigned feed; a Daily Log may not, because the server cannot file one
-without a job. Nothing is auto-applied from a location fix: a wrong "here"
-files a photo on the neighbour's house.
+before the camera opens rather than after. Primed from the job page a person is
+standing on, then the open shift, then today's published assignment; failing
+all three, the sheet offers chips carrying their own reason — you are standing
+near this one, you captured to it last time, you clocked it recently. Nothing
+is auto-applied from a location fix: a wrong "here" files a photo on the
+neighbour's house.
+
+A photo and a Daily Log both REQUIRE a job and the sheet keeps asking until it
+has one, because neither server can take the write without it: `file_daily_log`
+refuses, and an `attachments` row must hang off something (`attachments_target`
+— a window, an install event, a package, an opening, or the job). A receipt is
+the one that may go without: `receipts.project_id` is nullable on purpose (gas
+gets bought before anybody knows the job), so its tile never asks and its own
+follow-up question does.
 
 ## The partner wall
 

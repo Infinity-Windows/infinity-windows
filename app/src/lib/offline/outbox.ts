@@ -293,6 +293,24 @@ export interface UploadInput {
 }
 
 export function enqueueUpload(input: UploadInput): Promise<string> {
+  // An attachment must hang off something — `attachments_target` says so, and
+  // it is the whole reason a job photo needed 20260989000000 to add the job
+  // itself to that list. A row with every target null is a 23514 the queue can
+  // only retry into a dead letter, hours after the person was told it saved.
+  // Refusing here costs one photo and one honest sentence; letting it through
+  // costs the photo silently. Every caller sets one of these today (the job
+  // photo sheet a job, PackageSheet a package, ModelStudio a job) — this is
+  // the guard for the next caller that forgets.
+  if (
+    !input.windowId &&
+    !input.installEventId &&
+    !input.projectId &&
+    !input.packageId
+  ) {
+    return Promise.reject(
+      new Error("This photo needs a job before it can be saved. Pick one, then take it again."),
+    );
+  }
   return enqueue(
     {
       op: input.kind === "receipt" ? "receipt_upload" : "photo_upload",

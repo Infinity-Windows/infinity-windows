@@ -14,9 +14,11 @@
 //    gets there.
 //
 // 2. The job is asked for BEFORE the camera, not after. Horizon hides its two
-//    photo actions entirely until a project is known; we ask instead, with an
-//    explicit "No job — general" answer, because the owner's ask is that
-//    photos get assigned and a hidden button teaches nobody why.
+//    photo actions entirely until a project is known; we ask instead, because
+//    the owner's ask is that photos get assigned and a hidden button teaches
+//    nobody why. The question has no "no job" answer for a photo: an
+//    attachment must hang off something (attachments_target), and a photo that
+//    hangs off nothing is a row the database refuses — see TILES below.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -76,15 +78,17 @@ interface CaptureTile {
    * "none"     — it asks later, or does not care. A receipt's own follow-up
    *              question is the job question, and it is better placed there:
    *              the photo is already safely queued by then, so nothing is
-   *              lost if the person walks away mid-answer.
-   * "asks"     — ask once, and "No job — general" is a real answer. A photo
-   *              with no job lands in the unassigned feed, which is a normal
-   *              place for it to be.
-   * "required" — no job, no write. file_daily_log takes a project and will
-   *              refuse without one, so offering "No job" here would be a
-   *              button that cannot work.
+   *              lost if the person walks away mid-answer. A receipt with no
+   *              job is a real, filable row — `receipts.project_id` is
+   *              nullable, and gas gets bought before anybody knows the job.
+   * "required" — no job, no write, and the sheet keeps asking. Both tiles
+   *              that carry this have a server that cannot take the write
+   *              without one: `file_daily_log` takes a project and refuses
+   *              without it, and an `attachments` row must hang off something
+   *              (`attachments_target`) — a photo with every target column
+   *              null is a check violation no retry ever fixes.
    */
-  job: "none" | "asks" | "required";
+  job: "none" | "required";
 }
 
 /**
@@ -101,7 +105,7 @@ const TILES: CaptureTile[] = [
     labelKey: "capture.tile.photo",
     hintKey: "capture.tile.photoHint",
     Icon: Camera,
-    job: "asks",
+    job: "required",
   },
   {
     key: "receipt",
@@ -147,8 +151,6 @@ export function CaptureSheet({ open, onClose, role }: CaptureSheetProps) {
   const navigate = useNavigate();
   const { profileId, shift } = useClock();
   const [selectedId, setSelectedId] = useState<string>("");
-  /** The person answered "no job" out loud, so stop asking. */
-  const [noJob, setNoJob] = useState(false);
   const [search, setSearch] = useState("");
   const [showList, setShowList] = useState(false);
   const [flow, setFlow] = useState<Flow>(null);
@@ -196,7 +198,6 @@ export function CaptureSheet({ open, onClose, role }: CaptureSheetProps) {
   useEffect(() => {
     if (!open) {
       setSelectedId("");
-      setNoJob(false);
       setSearch("");
       setShowList(false);
       setFlow(null);
@@ -232,6 +233,16 @@ export function CaptureSheet({ open, onClose, role }: CaptureSheetProps) {
   const selected = (projects.data ?? []).find((p) => p.id === selectedId);
   const projectId = selectedId || null;
   const jobLabel = selected ? `${selected.job_code} — ${selected.name}` : null;
+
+  // A primed job the jobs list does not contain has to be given up, not kept
+  // invisibly. `listProjects()` reads ACTIVE jobs only, and an open shift
+  // carries no such filter — so a person still clocked into a job that was
+  // closed or archived would otherwise capture to a job this sheet could not
+  // name, on tiles that offered no way to change it. Once the list has
+  // actually answered and the job is not in it, the question comes back.
+  useEffect(() => {
+    if (projects.isSuccess && selectedId && !selected) setSelectedId("");
+  }, [projects.isSuccess, selectedId, selected]);
 
   /**
    * The chips under the job question. Each carries the reason it is on screen,
@@ -282,12 +293,10 @@ export function CaptureSheet({ open, onClose, role }: CaptureSheetProps) {
   };
 
   const tapTile = (tile: CaptureTile) => {
-    // The one question worth asking before the camera. A photo asks once and
-    // takes "No job" for an answer; a daily log keeps asking until it has a
-    // real job, because the server has no way to file one without.
-    const needsAnswer =
-      !projectId && (tile.job === "required" || (tile.job === "asks" && !noJob));
-    if (needsAnswer) {
+    // The one question worth asking before the camera, and it has no "skip"
+    // for the two tiles that ask it: the server refuses both writes without a
+    // job, so the question stays up until it has a real answer.
+    if (!projectId && tile.job === "required") {
       setPending(tile.key);
       setShowList(true);
       return;
@@ -296,24 +305,21 @@ export function CaptureSheet({ open, onClose, role }: CaptureSheetProps) {
   };
 
   /** Picking a job answers whatever question was waiting on it. */
-  const chooseJob = (pid: string | null) => {
-    setSelectedId(pid ?? "");
-    setNoJob(pid == null);
+  const chooseJob = (pid: string) => {
+    setSelectedId(pid);
     setShowList(false);
-    const waiting = pending;
-    if (!waiting) return;
-    // "No job" cannot start a tile that requires one — the question stays up.
-    if (pid == null && TILES.find((x) => x.key === waiting)?.job === "required") return;
-    startFlow(waiting, pid);
+    if (pending) startFlow(pending, pid);
   };
 
   if (!open) return null;
 
-  // A daily log cannot be filed without a job, and nothing should be able to
-  // reach that state (tapTile keeps asking, chooseJob refuses "No job" for a
-  // log). If something ever does, this reads as no flow at all and the picker
-  // comes back — a repeated question beats a dialog with nowhere to save.
-  const activeFlow: Flow = flow === "dailyLog" && !projectId ? null : flow;
+  // Neither a daily log nor a photo can be written without a job — the RPC
+  // refuses one and attachments_target refuses the other — and nothing should
+  // be able to reach that state (tapTile keeps asking until there is an
+  // answer). If something ever does, this reads as no flow at all and the
+  // picker comes back: a repeated question beats a camera with nowhere to save.
+  const activeFlow: Flow =
+    (flow === "dailyLog" || flow === "photo") && !projectId ? null : flow;
 
   // ---- The flows, each replacing the tile grid rather than stacking on it --
 
@@ -381,7 +387,7 @@ export function CaptureSheet({ open, onClose, role }: CaptureSheetProps) {
                 : t("capture.photo.queuedMany", { n: queued })}
             </p>
             <p className="muted">
-              {jobLabel ? t("capture.photo.toJob", { job: jobLabel }) : t("capture.photo.toNoJob")}
+              {t("capture.photo.toJob", { job: jobLabel ?? t("capture.job.yourJob") })}
             </p>
             <div className="capture-grid">
               <button
@@ -414,7 +420,7 @@ export function CaptureSheet({ open, onClose, role }: CaptureSheetProps) {
             {/* Job context — suggestion chips with reasons, then the full list */}
             <div className="capture-project">
               <p className="capture-project-label">
-                {selected
+                {selectedId
                   ? t("capture.job.forJob")
                   : pending === "daily-log"
                     ? t("capture.job.pickForLog")
@@ -422,17 +428,27 @@ export function CaptureSheet({ open, onClose, role }: CaptureSheetProps) {
                       ? t("capture.job.pickForPhoto")
                       : t("capture.job.which")}
               </p>
-              {selected ? (
+              {/* Keyed on selectedId, NOT on the row it looks up. A job primed
+                  from the open shift is already the job every tile will file
+                  to, and while the jobs list is still loading there is no row
+                  to name it with — showing the chips in that gap would offer a
+                  choice the tiles were not going to honour. */}
+              {selectedId ? (
                 <button
                   type="button"
                   className="capture-project-current"
                   onClick={() => {
                     setSelectedId("");
-                    setNoJob(false);
                     setShowList(true);
                   }}
                 >
-                  <strong>{selected.job_code}</strong> · {selected.name}
+                  {selected ? (
+                    <>
+                      <strong>{selected.job_code}</strong> · {selected.name}
+                    </>
+                  ) : (
+                    t("capture.job.yourJob")
+                  )}
                   <span className="capture-project-change">{t("capture.job.change")}</span>
                 </button>
               ) : (
@@ -452,6 +468,15 @@ export function CaptureSheet({ open, onClose, role }: CaptureSheetProps) {
                       ))}
                     </div>
                   )}
+                  {/* There is deliberately no "No job — general" escape here.
+                      It used to sit beside this button and it could not work:
+                      a photo answering it produced an attachments row with
+                      every target column null, which the database refuses
+                      (attachments_target) — the picture uploaded, the row was
+                      rejected, and the person was told it was filed. A receipt
+                      needs no such answer: its tile never asks, because its own
+                      follow-up question does, and a receipt with no job is a
+                      row the receipts table takes happily. */}
                   <div className="capture-project-row">
                     <button
                       type="button"
@@ -461,19 +486,6 @@ export function CaptureSheet({ open, onClose, role }: CaptureSheetProps) {
                       <Search size={14} aria-hidden />{" "}
                       {showList ? t("capture.job.hideList") : t("capture.job.find")}
                     </button>
-                    {/* An explicit answer, not an absence of one. A photo with
-                        no job is a real thing (the unassigned feed) and saying
-                        so out loud beats leaving the question hanging. Hidden
-                        for the daily log, which cannot be filed without a job. */}
-                    {pending !== "daily-log" && (
-                      <button
-                        type="button"
-                        className="capture-list-toggle"
-                        onClick={() => chooseJob(null)}
-                      >
-                        {t("capture.job.none")}
-                      </button>
-                    )}
                   </div>
                   {showList && (
                     <div className="capture-picker">

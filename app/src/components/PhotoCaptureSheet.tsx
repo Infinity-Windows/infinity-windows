@@ -648,6 +648,45 @@ function JobPhotoCapture({
 
   const title = isReceipt ? t("photo.title.addReceipt") : t("photo.title.addPhotos");
 
+  // A job photo with no job cannot be saved, so it must not be taken.
+  //
+  // An `attachments` row has to hang off something (`attachments_target`), and
+  // a job photo's only target is the job. With no job every target column is
+  // null, the insert comes back 23514, and the retries cannot help — the
+  // person is told the photo saved and it never arrives anywhere. The Capture
+  // sheet asks for the job before it opens this; the other door is the Photos
+  // page with its filter on "All jobs", which is where this catches it.
+  // Receipts are different and are let through: `receipts.project_id` is
+  // nullable on purpose, and the receipt's own follow-up asks afterwards.
+  if (!isReceipt && !projectId) {
+    return (
+      <>
+        <div className="capture-backdrop overlay-enter" onClick={onClose} aria-hidden />
+        <div
+          ref={sheetRef}
+          className="jobphoto-sheet sheet-enter"
+          role="dialog"
+          aria-modal="true"
+          aria-label={title}
+        >
+          <div className="capture-grip" aria-hidden />
+          <div className="capture-head">
+            <h2 className="capture-title">{title}</h2>
+            <button
+              type="button"
+              className="capture-close"
+              aria-label={t("photo.a11y.close")}
+              onClick={onClose}
+            >
+              <X size={20} />
+            </button>
+          </div>
+          <p className="muted">{t("photo.needJob")}</p>
+        </div>
+      </>
+    );
+  }
+
   if (filedReceipt) {
     return (
       <>

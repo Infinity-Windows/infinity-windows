@@ -1963,7 +1963,11 @@ export const CATALOG = {
 
   // The job question at the top of the sheet.
   "capture.job.forJob": { en: "Capturing for", es: "Capturando para" },
-  "capture.job.which": { en: "Which job? (optional)", es: "¿Qué trabajo? (opcional)" },
+  "capture.job.which": { en: "Which job?", es: "¿Qué trabajo?" },
+  // Stands in for the job's name in the gap where the sheet knows WHICH job
+  // (the open shift told it) but the jobs list has not loaded yet, so there is
+  // no code or name to print.
+  "capture.job.yourJob": { en: "The job you're on", es: "El trabajo en el que estás" },
   "capture.job.pickForPhoto": {
     en: "Pick the job this photo belongs to.",
     es: "Elige el trabajo al que pertenece esta foto.",
@@ -1978,7 +1982,6 @@ export const CATALOG = {
   "capture.job.search": { en: "Search jobs…", es: "Buscar trabajos…" },
   "capture.job.a11ySearch": { en: "Search jobs", es: "Buscar trabajos" },
   "capture.job.noMatch": { en: "No jobs match “{q}”.", es: "Ningún trabajo coincide con “{q}”." },
-  "capture.job.none": { en: "No job — general", es: "Sin trabajo — general" },
   // Every chip says why it is being offered, the way the receipt follow-up's
   // suggestions already do. A chip with no reason is a guess the person has
   // to audit; a chip with a reason is an answer they can accept.
@@ -2039,9 +2042,11 @@ export const CATALOG = {
     en: "Receipt saved — syncing in the background.",
     es: "Recibo guardado — sincronizando en segundo plano.",
   },
-  "capture.photo.toNoJob": {
-    en: "Filed with no job — you can set one later in the gallery.",
-    es: "Archivada sin trabajo — puedes elegir uno después en la galería.",
+  // The camera does not open without a job. A photo has nowhere to be filed
+  // without one, and finding that out after the shot means losing the shot.
+  "photo.needJob": {
+    en: "Pick a job first — a photo has to belong to one. Choose it above, then come back.",
+    es: "Elige primero un trabajo — una foto tiene que pertenecer a uno. Selecciónalo arriba y vuelve.",
   },
   "capture.photo.seeGallery": { en: "See it in the gallery", es: "Verla en la galería" },
   "capture.photo.another": { en: "Take another", es: "Tomar otra" },

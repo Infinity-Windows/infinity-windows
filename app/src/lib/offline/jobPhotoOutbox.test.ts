@@ -97,6 +97,40 @@ describe("a photo attached to a job and nothing else", () => {
   });
 });
 
+describe("a photo with no job at all", () => {
+  it("is refused at the queue instead of queued to fail forever", async () => {
+    // The row this would build has every target column null, which no widening
+    // of attachments_target admits — so it can only be queued, retried and
+    // dead-lettered, hours after the person was told the photo saved. The
+    // Capture sheet asks for the job before opening the camera; this is the
+    // backstop for any caller that forgets.
+    const { enqueueUpload } = await import("./outbox");
+    await expect(
+      enqueueUpload({
+        kind: "photo",
+        path: "unassigned/feed/1000-ab12cd.jpg",
+        contentType: "image/jpeg",
+        blob: BLOB,
+      }),
+    ).rejects.toThrow(/needs a job/i);
+  });
+
+  it("still takes a photo hung off a package rather than a job", async () => {
+    // The guard is "hangs off SOMETHING", not "has a project" — package photos
+    // (PackageSheet) set package_id and no project and are perfectly valid.
+    const { enqueueUpload } = await import("./outbox");
+    await expect(
+      enqueueUpload({
+        kind: "photo",
+        path: "packages/p1/1000-ab12cd.jpg",
+        contentType: "image/jpeg",
+        packageId: "22222222-2222-4222-8222-222222222222",
+        blob: BLOB,
+      }),
+    ).resolves.toEqual(expect.any(String));
+  });
+});
+
 describe("reaching a database that has not applied 20260989000000", () => {
   it("fails permanently instead of burning eight retries", async () => {
     attachmentsUpsert.mockResolvedValue({ data: null, error: CHECK_VIOLATION });
