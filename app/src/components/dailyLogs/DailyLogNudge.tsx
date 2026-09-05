@@ -13,7 +13,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { X } from "lucide-react";
 import { isForemanPlus } from "../../lib/install/types";
 import type { CrewRole } from "../../lib/install/types";
-import { jobsNeedingLogToday } from "../../lib/dailyLogs";
+import { jobsNeedingLogToday, type JobNeedingLog } from "../../lib/dailyLogs";
 import { localDateISO } from "../../lib/dailyLogDay";
 import {
   CLOCKED_OUT_EVENT,
@@ -29,7 +29,13 @@ export function DailyLogNudge({ role }: { role: CrewRole | string | null | undef
   const queryClient = useQueryClient();
   const canLog = isForemanPlus(role);
   const [askedFor, setAskedFor] = useState<string | null>(null);
-  const [openFor, setOpenFor] = useState<string | null>(null);
+  // The whole job, not its id. The dialog below is mounted from THIS and never
+  // from the live query: `jobsNeedingLog` refetches on window focus and on
+  // every invalidation, and it stops listing a job the moment anybody files
+  // that job-day's log — which a second foreman on the same job may do at any
+  // time (Q6). Mounting off the query meant a background refetch could unmount
+  // the dialog mid-sentence and take the typing with it, with no message.
+  const [openFor, setOpenFor] = useState<JobNeedingLog | null>(null);
 
   // Which jobs were worked today with no log filed yet — the SAME query the
   // "Log today · N" chip reads, so the two can never disagree about whether a
@@ -63,12 +69,12 @@ export function DailyLogNudge({ role }: { role: CrewRole | string | null | undef
     setAskedFor(null);
   };
 
-  if (openFor && job) {
+  if (openFor) {
     return (
       <DailyLogDialog
-        projectId={job.projectId}
+        projectId={openFor.projectId}
         logDate={localDateISO()}
-        jobLabel={`${job.jobCode} — ${job.name}`}
+        jobLabel={`${openFor.jobCode} — ${openFor.name}`}
         onClose={() => {
           setOpenFor(null);
           close();
@@ -91,7 +97,7 @@ export function DailyLogNudge({ role }: { role: CrewRole | string | null | undef
         className="log-nudge-btn"
         onClick={() => {
           rememberAskedToday(job.projectId, localDateISO());
-          setOpenFor(job.projectId);
+          setOpenFor(job);
         }}
       >
         {t("dailyLog.nudge.write")}
