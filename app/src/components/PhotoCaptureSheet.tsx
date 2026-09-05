@@ -57,18 +57,21 @@ type PhotoCaptureSheetProps =
       /** Optional job/opening label burned into the watermark. */
       label?: string | null;
       /**
-       * Which slots to offer. The Check stage shows only ["before"] — the
-       * before photo is captured while "before" still exists — and Capture
-       * keeps both so a bad first shot can be retaken.
+       * Which slots to offer. The unit sheet's step 1 shows only ["before"] —
+       * the before photo is captured while "before" still exists, and its
+       * filled slot keeps the Retake bar there for a bad first shot — and step
+       * 3 shows only ["after"].
        */
       slots?: ("before" | "after")[];
       /**
-       * Open the camera straight to this slot, once, without a tap. For the
-       * chain: the previous unit's Finish walked the installer to this window,
-       * so the one thing owed here is a shutter press and it should cost no
-       * navigation and no decision. One-shot on purpose — dismissing the camera
-       * leaves the sheet exactly as it would otherwise be, and nothing reopens
-       * it behind the person's back.
+       * Open the camera straight to this slot, without a tap. For the chain:
+       * the previous unit's Finish walked the installer to this window, so the
+       * one thing owed here is a shutter press and it should cost no navigation
+       * and no decision. Dismissing the camera leaves the sheet exactly as it
+       * would otherwise be.
+       *
+       * One-shot: it opens the first time a slot is asked for and never again
+       * while this card is on screen. Pass null to open nothing.
        */
       autoOpen?: "before" | "after" | null;
     }

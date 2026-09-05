@@ -493,7 +493,8 @@ test("Chain: the next unit asks for its before photo, and the after stage stops 
   await expect(page.getByRole("button", { name: "Capture before" })).toBeHidden();
 
   await page.getByRole("button", { name: "3. Capture" }).click();
-  // No before was taken, so the caption must not point at one.
+  // Nothing was taken, so the caption must not point at a before that does not
+  // exist.
   await expect(
     page.getByText("Take the after photo of the finished window."),
   ).toBeVisible();
@@ -501,8 +502,26 @@ test("Chain: the next unit asks for its before photo, and the after stage stops 
     page.getByText("The after lines up over the before you took."),
   ).toBeHidden();
 
-  // And the after stage still files: Submit's requirements for a chained unit
-  // are deliberately unchanged — a missing before never blocks it.
+  // Back on step 1, a first shot that is black, blurry or taken in a pocket —
+  // likelier now the camera opens itself — can be replaced: the card stays put,
+  // filled, with its Retake bar. It is the only one on the sheet.
+  await page.getByRole("button", { name: "1. Check" }).click();
+  await page
+    .locator('input[type="file"][accept="image/*"]')
+    .setInputFiles(pngFile("before.png"));
+  await expect(page.getByRole("button", { name: "Retake" })).toBeVisible();
+  await expect(
+    page.getByText("Before photo taken — it files with the install."),
+  ).toBeVisible();
+
+  // And with a before in hand the caption tells the other truth.
+  await page.getByRole("button", { name: "3. Capture" }).click();
+  await expect(
+    page.getByText("The after lines up over the before you took."),
+  ).toBeVisible();
+
+  // The after stage still files: Submit's requirements for a chained unit are
+  // deliberately unchanged — a missing before never blocked it either.
   await page
     .locator('input[type="file"][accept="image/*"]')
     .setInputFiles(pngFile("after.png"));

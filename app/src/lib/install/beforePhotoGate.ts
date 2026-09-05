@@ -1,5 +1,6 @@
-// When the before-photo card is on the unit sheet, and when the camera opens
-// straight to it.
+// The before photo on the unit sheet: why it has no show/hide gate any more,
+// and the one thing that is still a decision — whether the camera opens itself
+// on arrival.
 //
 // WHY THIS IS ITS OWN FILE. The card used to render only while the unit had no
 // start time. That condition was written when Start was the only way a clock
@@ -12,44 +13,23 @@
 // on screen. So every unit after the first of the day filed with no before
 // photo, permanently, on the DEFAULT loop.
 //
-// The gate is keyed on the photo instead of the clock. The unit's own gates,
-// before photo included, stay on its sheet (CONTEXT.md, standing decisions) —
-// nothing here touches the clock, and nothing here is a new Submit
+// Keying the card on the photo instead of the clock fixed that and bought a
+// smaller version of the same bug: the card vanished the instant a shot landed,
+// taking its Retake button with it, and the Capture stage offers only the after
+// slot — so a black frame or a pocket shot, which the camera opening itself
+// makes likelier, was filed with no way to replace it. There is no gate at all
+// now. The before photo is step 1 of the sheet; it stays on step 1, filled or
+// empty, until the unit is filed, exactly as the pre-start path always behaved.
+// The unit's own gates, before photo included, stay on its sheet (CONTEXT.md,
+// standing decisions), and nothing here touches the clock or adds a Submit
 // requirement: a chained unit still files with whatever it has.
 
-export interface BeforePhotoState {
-  /** When work began, as the sheet resolved it. A chained arrival always has one. */
-  startedAt: string | null;
+export interface BeforeAutoOpenState {
+  /** The chain hand-off stamp carried in on arrival, or null. */
+  chainedAt: string | null;
   /** Has a before photo been taken for THIS round? (Not yet filed — it lives
    * in the sheet's own state until Submit hands it to the outbox.) */
   hasBeforePhoto: boolean;
-}
-
-/**
- * Should the before-photo card be on screen?
- *
- * Two reasons for yes, and they are different reasons:
- *  - this round has no before photo yet — the chained case, and the whole point
- *    of the change;
- *  - the clock has not started — where the card is ALSO the start gate, so it
- *    stays put with its filled slot and its Retake button once a shot is taken.
- */
-export function showBeforePhotoCard(state: BeforePhotoState): boolean {
-  return !state.startedAt || !state.hasBeforePhoto;
-}
-
-/**
- * True when the card is hidden ONLY because the photo is already in hand. The
- * sheet says so in one line, so a shutter tap that makes the card disappear
- * never reads as a photo that went nowhere.
- */
-export function beforePhotoIsInHand(state: BeforePhotoState): boolean {
-  return !showBeforePhotoCard(state);
-}
-
-export interface BeforeAutoOpenState extends BeforePhotoState {
-  /** The chain hand-off stamp carried in on arrival, or null. */
-  chainedAt: string | null;
 }
 
 /**

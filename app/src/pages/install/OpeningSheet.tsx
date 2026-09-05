@@ -42,11 +42,7 @@ import {
 import { pickNextOpening } from "../../lib/install/nextOpening";
 import { movedAgoLabel } from "../../lib/install/pinHistory";
 import { submitBlockersLine } from "../../lib/install/submitGate";
-import {
-  autoOpenBeforeSlot,
-  beforePhotoIsInHand,
-  showBeforePhotoCard,
-} from "../../lib/install/beforePhotoGate";
+import { autoOpenBeforeSlot } from "../../lib/install/beforePhotoGate";
 import {
   creditChoices,
   creditToSend,
@@ -848,16 +844,14 @@ export function OpeningSheet() {
   }, [location.state, location.pathname, navigate]);
   const chainGraceLeft = chainedAt ? chainGraceRemainingMs(chainedAt, now) : 0;
 
-  // The before photo, keyed on the PHOTO rather than the clock — see
-  // lib/install/beforePhotoGate.ts for why the old clock condition became
-  // unreachable. Nothing here touches the clock: the chain's grace, and the
-  // rule that Finish never stops the clock, are exactly as they were.
-  const beforeState = {
-    startedAt,
+  // The camera that opens itself on a chained arrival — see
+  // lib/install/beforePhotoGate.ts. Nothing here touches the clock: the chain's
+  // grace, and the rule that Finish never stops the clock, are exactly as they
+  // were.
+  const beforeCardAutoOpen = autoOpenBeforeSlot({
+    chainedAt,
     hasBeforePhoto: photos.before !== null,
-  };
-  const beforeCardShown = showBeforePhotoCard(beforeState);
-  const beforeCardAutoOpen = autoOpenBeforeSlot({ ...beforeState, chainedAt });
+  });
   const redirectChain = useMutation({
     mutationFn: (targetId: string) => reattributeSession(targetId),
     onSuccess: (_s, targetId) => {
@@ -2211,42 +2205,39 @@ export function OpeningSheet() {
 
           {/* Before photo — captured HERE, while "before" still exists. By the
               old flow's step 3 the original window was already in the dumpster
-              and every "before" was really a "during". Starting the install
-              requires it; Capture keeps a retake slot for bad first shots.
+              and every "before" was really a "during".
 
-              The condition used to be `!startedAt`, and on the app's DEFAULT
-              loop it was never true: a chained unit's session is started
-              server-side by the previous unit's finish_unit, so the sheet
-              opens with the clock already running and the card simply never
-              rendered — every unit after the first filed with no before photo.
-              Two standing decisions collided (the unit's own gates live on its
-              sheet; Finish never stops the clock) and the clock won by
-              accident. Keyed on the photo, both hold. */}
-          {beforeCardShown && (
-            <>
-              <h2 style={{ marginBottom: 2 }}>Before photo</h2>
-              <p className="muted" style={{ marginTop: 0 }}>
-                {startedAt
-                  ? t("opening.before.clockRunning")
-                  : t("opening.before.requiredToStart")}
-              </p>
-              <PhotoCaptureSheet
-                mode="beforeAfter"
-                slots={["before"]}
-                autoOpen={beforeCardAutoOpen}
-                value={photos}
-                onChange={setPhotos}
-                label={o.opening_code}
-              />
-            </>
-          )}
-          {/* The card disappears the moment the shot lands on a running unit,
-              which on its own reads as a photo that went nowhere. One line. */}
-          {beforePhotoIsInHand(beforeState) && (
-            <p className="ok" style={{ marginTop: 0 }}>
-              {t("opening.before.taken")}
-            </p>
-          )}
+              It has no show/hide condition, and that is the fix. It used to be
+              `!startedAt`, which on the app's DEFAULT loop was never true: a
+              chained unit's session is started server-side by the previous
+              unit's finish_unit, so the sheet opened with the clock already
+              running and the card simply never rendered — every unit after the
+              first filed with no before photo. Keying it on the photo instead
+              brought the card back and then hid it again the instant the shot
+              landed, taking the only Retake button on the sheet with it (step 3
+              offers the after slot alone), so a black frame or a pocket shot —
+              likelier now the camera opens itself on a chain — was filed with
+              no way to replace it. Step 1 keeps its before photo, filled or
+              empty, for as long as the unit is unfiled. The unit's own gates
+              stay on its sheet and Finish still never stops the clock; nothing
+              here is a new Submit requirement. */}
+          <h2 style={{ marginBottom: 2 }}>Before photo</h2>
+          <p className="muted" style={{ marginTop: 0 }}>
+            {photos.before
+              ? t("opening.before.taken")
+              : startedAt
+                ? t("opening.before.clockRunning")
+                : t("opening.before.requiredToStart")}
+          </p>
+          <PhotoCaptureSheet
+            mode="beforeAfter"
+            slots={["before"]}
+            autoOpen={beforeCardAutoOpen}
+            value={photos}
+            onChange={setPhotos}
+            label={o.opening_code}
+          />
+
 
           {/* Flashing is the FLASH RUN's job now (owner, 2026-08-14): the
               sheet only reports status — the clock, photo and submit live
