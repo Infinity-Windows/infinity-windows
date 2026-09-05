@@ -380,3 +380,35 @@ test("a fix too fuzzy to trust offers nothing rather than guessing", async ({ pa
   await expect(sheet(page)).toBeVisible();
   await expect(sheet(page).getByText("You're near this one")).toHaveCount(0);
 });
+
+test("a daily log written with no signal is kept on the phone, not lost", async ({ page }) => {
+  await useSupabaseFixtures(page, { role: "foreman" });
+  await useProjectFixture(page);
+  await stubGeolocationDenied(page);
+
+  // The dead zone: file_daily_log never reaches anybody. Before this, the RPC
+  // was a bare call with no fallback, so the words were simply gone.
+  let attempts = 0;
+  await page.route("**/rest/v1/rpc/file_daily_log", async (route) => {
+    attempts += 1;
+    await route.abort("internetdisconnected");
+  });
+
+  await page.goto("/warehouse");
+  await captureFab(page).click();
+  await sheet(page).getByText("Daily log", { exact: true }).click();
+  await sheet(page).getByRole("button", { name: /BLACK22/ }).click();
+
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Notes").fill("Framed the west elevation.");
+  await dialog.getByRole("button", { name: "Save" }).click();
+
+  // It tried the server first — the whole point of the doctrine: a REAL
+  // refusal ("notes are required", "you're not a foreman") must still surface
+  // rather than queue and fail forever where nobody looks.
+  await expect.poll(() => attempts).toBeGreaterThan(0);
+
+  // And the person is told where their words are, in the same calm voice the
+  // photo sheet uses. Not an error: to them the log IS written.
+  await expect(page.getByText("Saved on your phone — it'll send itself.")).toBeVisible();
+});

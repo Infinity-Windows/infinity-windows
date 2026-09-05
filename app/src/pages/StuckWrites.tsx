@@ -35,6 +35,9 @@ const OP_LABELS: Record<OutboxOp, string> = {
   clock_out: "Clock out",
   break_start: "Break started",
   break_stop: "Break ended",
+  // Reachable for real since 2026-09-05: fileDailyLog queues on no signal.
+  // Before that this op had no callers at all, so this label was a placeholder
+  // for a row that could never appear.
   daily_log: "Daily log",
   photo_upload: "Photo",
   receipt_upload: "Receipt",

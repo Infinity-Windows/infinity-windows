@@ -100,12 +100,16 @@ export function DailyLogDialog({
         reflection: dayFlow === "smooth" || dayFlow === null ? null : reflectionOrNull(reflection),
         weather: weather.trim() || null,
       }),
-    onSuccess: (log) => {
-      toastSuccess("Day logged.");
+    onSuccess: (result) => {
+      // The same calm sentence the photo sheet gives when there is no signal.
+      // To the foreman standing in the canyon the log IS written — it is on
+      // their phone and it will go — so this says where it is, not that
+      // something went wrong.
+      toastSuccess(result.queued ? "Saved on your phone — it'll send itself." : "Day logged.");
       queryClient.invalidateQueries({ queryKey: ["dailyLogs", projectId] });
       queryClient.invalidateQueries({ queryKey: ["dailyLog", projectId, logDate] });
       queryClient.invalidateQueries({ queryKey: ["jobsNeedingLog"] });
-      onSaved?.(log);
+      if (result.log) onSaved?.(result.log);
       onClose();
     },
     onError: (e) => pushToast(formatApiError(e), "error"),

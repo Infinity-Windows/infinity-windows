@@ -400,12 +400,31 @@ export function enqueueVideoQuizSubmit(input: {
   });
 }
 
+/**
+ * One job-day's log, waiting for signal.
+ *
+ * REWRITTEN 2026-09-05, and the old shape was never sendable. It carried
+ * `{projectId, profileId, logDate, notes, createdBy}` and its handler upserted
+ * those straight into `daily_logs` — three of those columns do not exist on
+ * that table, and `daily_logs` has no insert policy at all (file_daily_log is
+ * the only writer there is). It also had zero callers, so nothing ever proved
+ * it. Now it carries every field the RPC takes, and the handler calls the RPC.
+ */
 export interface DailyLogInput {
-  projectId: string | null;
-  profileId: string | null;
+  projectId: string;
   logDate: string;
+  headline: string | null;
   notes: string;
-  createdBy?: string | null;
+  dayFlow: "smooth" | "fine" | "stuck" | null;
+  /** The four optional one-liners (DailyLogReflection), carried opaquely.
+   * Deliberately not that exact type: outbox.ts is the queue and never reads
+   * this, and importing it back from lib/dailyLogs.ts — which imports
+   * enqueueDailyLog from here — would draw a circle for no gain. The handler,
+   * which does read it, names the real type. */
+  reflection: object | null;
+  weather: string | null;
+  /** For the "— added later from <name>'s phone" line, if this one races. */
+  authorName?: string | null;
 }
 
 export function enqueueDailyLog(input: DailyLogInput): Promise<string> {
@@ -413,10 +432,18 @@ export function enqueueDailyLog(input: DailyLogInput): Promise<string> {
     op: "daily_log",
     payload: {
       projectId: input.projectId,
-      profileId: input.profileId,
       logDate: input.logDate,
+      headline: input.headline,
       notes: input.notes,
-      createdBy: input.createdBy ?? null,
+      dayFlow: input.dayFlow,
+      reflection: input.reflection,
+      weather: input.weather,
+      authorName: input.authorName ?? null,
+      // The "since when" of the race the handler has to resolve: anything the
+      // server's copy gained after this moment belongs to somebody else and
+      // must survive the drain. createdAt on the entry would do, but this is
+      // the payload's own contract and does not depend on the queue's shape.
+      queuedAt: Date.now(),
     },
   });
 }

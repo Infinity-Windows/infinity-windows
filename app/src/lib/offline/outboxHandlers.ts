@@ -18,6 +18,8 @@
 
 import { supabase } from "../supabase";
 import { isMissingStagingBayError } from "../staging";
+import { getDailyLog, type DailyLog } from "../dailyLogs";
+import { mergeQueuedDailyLog, type QueuedDailyLog } from "../dailyLogMerge";
 import {
   errorMessage,
   type OpHandler,
@@ -548,22 +550,67 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
     }
   };
 
+  /**
+   * A daily log written where there was no signal.
+   *
+   * REWRITTEN 2026-09-05. The old handler upserted `daily_logs` directly with
+   * `{project_id, profile_id, log_date, notes, created_by, client_id}` — three
+   * of those columns have never existed on that table, and `daily_logs` has no
+   * insert policy at all, so every one of those writes would have been refused.
+   * It had no callers, so nothing ever found out. `file_daily_log` is the only
+   * writer daily_logs has, and it is what this calls.
+   *
+   * THE CLOBBER IT HAS TO AVOID. One job-day has ONE shared log and any
+   * foreman on the job may edit it (Q6). file_daily_log upserts on
+   * (project_id, log_date), so a blind resend of an hour-old draft would
+   * silently overwrite whatever a second foreman filed from the office in the
+   * meantime — on a shared row, with no copy of the lost text anywhere. So the
+   * handler reads the current row first and merges: the queued notes are
+   * APPENDED under a line naming whose phone they came from, and every other
+   * field keeps the server's answer where it has one. The rule and its reasons
+   * live in lib/dailyLogMerge.ts, where they can be tested.
+   *
+   * A read that fails is not a reason to lose the log: if the current row
+   * cannot be fetched, the queued values go as they are — the ordinary
+   * no-race outcome, which is also the overwhelmingly common one.
+   */
   const dailyLog: OpHandler = async (entry) => {
     const p = entry.payload;
-    const row = {
-      project_id: str(p.projectId),
-      profile_id: str(p.profileId),
-      log_date: str(p.logDate),
-      notes: str(p.notes),
-      created_by: str(p.createdBy),
-    };
-    let res = await supabase
-      .from("daily_logs")
-      .upsert({ ...row, client_id: entry.id }, { onConflict: "client_id" });
-    if (res.error && isMissingColumn(res.error)) {
-      res = await supabase.from("daily_logs").insert(row);
+    const projectId = str(p.projectId);
+    const logDate = str(p.logDate);
+    if (!projectId || !logDate) {
+      throw tagPermanent(new Error("This daily log is missing its job or its day"));
     }
-    if (res.error) throw res.error;
+    const queued: QueuedDailyLog = {
+      projectId,
+      logDate,
+      headline: str(p.headline),
+      notes: str(p.notes) ?? "",
+      dayFlow: (str(p.dayFlow) as QueuedDailyLog["dayFlow"]) ?? null,
+      reflection: (p.reflection as QueuedDailyLog["reflection"]) ?? null,
+      weather: str(p.weather),
+      queuedAt: num(p.queuedAt) ?? entry.createdAt,
+      authorName: str(p.authorName),
+    };
+
+    let server: DailyLog | null = null;
+    try {
+      server = await getDailyLog(projectId, logDate);
+    } catch {
+      /* can't tell whether anybody raced — send what was typed */
+    }
+    const merged = mergeQueuedDailyLog(queued, server);
+
+    const { error } = await supabase.rpc("file_daily_log", {
+      p_project_id: projectId,
+      p_log_date: logDate,
+      p_headline: merged.headline,
+      p_notes: merged.notes,
+      p_day_flow: merged.dayFlow,
+      p_reflection: merged.reflection,
+      p_weather: merged.weather,
+    });
+    if (error) throw missingGuard(error, "daily log");
   };
 
   // Undoing a mark move names the exact move to walk back, so a press made in
