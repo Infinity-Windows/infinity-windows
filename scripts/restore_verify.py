@@ -62,21 +62,38 @@ def psql_runner(db_url: str) -> Callable[[str], str]:
 # Reading what the schema dump promised.
 
 
+# One identifier, quoted or not. `supabase db dump` runs pg_dump with
+# --quote-all-identifier, so a real dump says `"public"."finish_unit"` and never
+# `public.finish_unit`. Both spellings are accepted because a hand-run pg_dump
+# without that flag produces the bare one, and this file is also what somebody
+# points at a dump on the worst day.
+IDENT = r"(?:\"([^\"]+)\"|([A-Za-z0-9_]+))"
+
+
+def _ident(*groups: Optional[str]) -> str:
+    """Whichever half of an IDENT alternation matched."""
+    for g in groups:
+        if g is not None:
+            return g
+    return ""
+
+
 def declared_functions(schema_sql: str) -> List[Tuple[str, str]]:
     """(schema, name) for every function the dump creates.
 
-    pg_dump writes `CREATE FUNCTION public.foo(a integer) RETURNS ...`. Only the
-    schema and name are taken: argument types are rendered differently by
+    pg_dump writes `CREATE FUNCTION "public"."foo"("a" integer) RETURNS ...`,
+    and the CLI rewrites the leading verb to `CREATE OR REPLACE FUNCTION`. Only
+    the schema and name are taken: argument types are rendered differently by
     different server versions, and a check that is wrong on a version bump is a
     check somebody turns off.
     """
     out = []
     for m in re.finditer(
-        r"^CREATE (?:OR REPLACE )?FUNCTION\s+([A-Za-z0-9_]+)\.\"?([A-Za-z0-9_]+)\"?\s*\(",
+        r"^CREATE (?:OR REPLACE )?FUNCTION\s+%s\.%s\s*\(" % (IDENT, IDENT),
         schema_sql,
         re.MULTILINE,
     ):
-        out.append((m.group(1), m.group(2)))
+        out.append((_ident(m.group(1), m.group(2)), _ident(m.group(3), m.group(4))))
     return sorted(set(out))
 
 
@@ -84,14 +101,13 @@ def declared_policies(schema_sql: str) -> List[Tuple[str, str, str]]:
     """(schema, table, policy name) for every RLS policy the dump creates."""
     out = []
     for m in re.finditer(
-        r"^CREATE POLICY\s+(\"[^\"]+\"|[A-Za-z0-9_]+)\s+ON\s+([A-Za-z0-9_]+)\."
-        r"(\"[^\"]+\"|[A-Za-z0-9_]+)",
+        r"^CREATE POLICY\s+%s\s+ON\s+%s\.%s" % (IDENT, IDENT, IDENT),
         schema_sql,
         re.MULTILINE,
     ):
-        name = m.group(1).strip('"')
-        schema = m.group(2)
-        table = m.group(3).strip('"')
+        name = _ident(m.group(1), m.group(2))
+        schema = _ident(m.group(3), m.group(4))
+        table = _ident(m.group(5), m.group(6))
         out.append((schema, table, name))
     return sorted(set(out))
 
@@ -215,6 +231,19 @@ def verify(
             % (len(missing_pol), ", ".join("%s.%s/%s" % p for p in missing_pol[:10]))
         )
     checks.append("policies: %d of %d declared exist" % (len(want_pol) - len(missing_pol), len(want_pol)))
+
+    # A dump that declares nothing at all is not a database with nothing in it —
+    # it is a dump this file could not read. That happened once already: pg_dump
+    # quotes every identifier and the patterns above did not, so both checks
+    # found zero declarations and reported "0 of 0 declared exist" as a pass. A
+    # restore that had silently dropped every policy would have gone to Slack as
+    # PASSED. This floor is what makes that a failure instead of a shrug.
+    if schema_sql.strip() and not want_fns and not want_pol:
+        problems.append(
+            "the schema dump declares no functions and no policies, which this "
+            "database has plenty of — so the dump was not read, and the function "
+            "and policy checks above proved nothing"
+        )
 
     # 3. Spot rows.
     spots = manifest.get("spot_rows") or []

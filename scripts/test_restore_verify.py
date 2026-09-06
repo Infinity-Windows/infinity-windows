@@ -25,14 +25,41 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import restore_verify as rv  # noqa: E402
 from backup_manifest import row_hash  # noqa: E402
 
-SCHEMA_SQL = """
---
--- PostgreSQL database dump
---
--- Dumped from database version 15.8
+# What `supabase db dump --linked -f schema.sql` actually writes, and the only
+# input that matters: pg_dump runs with --quote-all-identifier, so EVERY
+# identifier is quoted, and the CLI's pipeline rewrites `CREATE FUNCTION "` to
+# `CREATE OR REPLACE FUNCTION "` and then deletes every comment line.
+#
+# This file used to test against an unquoted, commented dump that the CLI cannot
+# produce. Both checks found nothing in a real dump and reported "0 of 0
+# declared exist" as a pass.
+SCHEMA_SQL = """SET statement_timeout = 0;
+SET row_security = off;
 
-CREATE TABLE public.profiles (id uuid NOT NULL, display_name text);
+CREATE TABLE IF NOT EXISTS "public"."profiles" (
+    "id" "uuid" NOT NULL,
+    "display_name" "text"
+);
 
+CREATE OR REPLACE FUNCTION "public"."finish_unit"("p_unit" "uuid") RETURNS void
+    LANGUAGE "plpgsql"
+    AS $$ begin end $$;
+
+CREATE OR REPLACE FUNCTION "public"."my_pin_status"() RETURNS boolean
+    LANGUAGE "sql"
+    AS $$ select false $$;
+
+ALTER TABLE "public"."profiles" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "profiles are readable by the crew" ON "public"."profiles" FOR SELECT USING (true);
+
+CREATE POLICY "installers_own_pay" ON "public"."time_shifts" FOR SELECT USING (true);
+"""
+
+# A pg_dump run by hand, without --quote-all-identifier. Not what the nightly
+# writes, but it is what somebody reaches for on the worst day, so it has to
+# read too.
+UNQUOTED_SCHEMA_SQL = """
 CREATE FUNCTION public.finish_unit(p_unit uuid) RETURNS void
     LANGUAGE plpgsql
     AS $$ begin end $$;
@@ -40,8 +67,6 @@ CREATE FUNCTION public.finish_unit(p_unit uuid) RETURNS void
 CREATE OR REPLACE FUNCTION public.my_pin_status() RETURNS boolean
     LANGUAGE sql
     AS $$ select false $$;
-
-ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "profiles are readable by the crew" ON public.profiles FOR SELECT USING (true);
 
@@ -153,8 +178,8 @@ class Case(unittest.TestCase):
         problems, _ = rv.verify(MANIFEST, SCHEMA_SQL, runner(spot=None))
         self.assertTrue(any("is not in the restored database" in p for p in problems))
 
-    # Reading the dump.
-    def test_it_reads_both_create_function_spellings_and_quoted_policy_names(self):
+    # Reading the dump. This is the pair that silently found nothing.
+    def test_it_reads_the_quoted_identifiers_a_real_dump_is_made_of(self):
         self.assertEqual(
             rv.declared_functions(SCHEMA_SQL),
             [("public", "finish_unit"), ("public", "my_pin_status")],
@@ -167,10 +192,28 @@ class Case(unittest.TestCase):
             ],
         )
 
-    def test_a_schema_dump_that_declares_nothing_is_not_treated_as_a_pass_signal(self):
+    def test_it_still_reads_a_pg_dump_run_by_hand_without_quoting(self):
+        self.assertEqual(
+            rv.declared_functions(UNQUOTED_SCHEMA_SQL),
+            [("public", "finish_unit"), ("public", "my_pin_status")],
+        )
+        self.assertEqual(
+            rv.declared_policies(UNQUOTED_SCHEMA_SQL),
+            [
+                ("public", "profiles", "profiles are readable by the crew"),
+                ("public", "time_shifts", "installers_own_pay"),
+            ],
+        )
+
+    # The floor. "0 of 0 declared exist" must never read as a pass.
+    def test_a_dump_this_file_cannot_read_fails_instead_of_passing_vacuously(self):
+        problems, _ = rv.verify(MANIFEST, "CREATE TABLE nothing_it_understands();", runner())
+        self.assertTrue(any("the dump was not read" in p for p in problems), problems)
+
+    def test_no_schema_dump_at_all_is_not_turned_into_a_false_alarm(self):
+        # A backup folder with no schema.sql has nothing to check; the counts and
+        # the spot row still have to hold, and the summary must not claim more.
         problems, checks = rv.verify(MANIFEST, "", runner())
-        # Nothing declared means nothing to miss — but the counts and the spot
-        # row still have to hold, and the summary must not claim otherwise.
         self.assertEqual(problems, [])
         self.assertIn("functions: 0 of 0", checks[1])
 
