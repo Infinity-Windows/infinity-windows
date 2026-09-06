@@ -15,6 +15,7 @@ import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useT } from "../../lib/i18n";
 import { usePhotoPicker } from "../../lib/photo/usePhotoPicker";
+import { imageFilesOnly } from "../../lib/photo/imageFiles";
 import { addFieldUnit } from "../../lib/install/api";
 import { announceMissedUnit } from "../../lib/install/missedUnit";
 import { uploadMissedUnitPhoto } from "../../lib/install/missedUnitPhoto";
@@ -63,9 +64,25 @@ export function AddMissedUnitSheet({
   // takes a single `p_photo_path` — so a multi-pick would silently drop all but
   // the first. The photo is NOT watermarked here and never has been; that is
   // left exactly as it was rather than changed on the way past.
+  //
+  // Filtered, and the filter is new work: while this input carried `capture`
+  // only a camera could feed it, and a camera cannot hand back a PDF. The
+  // library door can, and `uploadMissedUnitPhoto` would name it `.jpg` and file
+  // it without complaint — so the unit would exist forever pointing at a broken
+  // image, with nothing on screen ever having said so. Say so instead.
   const picker = usePhotoPicker({
     camera: true,
-    onFiles: (files) => setPhoto(files[0] ?? null),
+    onFiles: (files) => {
+      const picked = imageFilesOnly(files)[0] ?? null;
+      if (!picked) {
+        setError(t("photo.fileUnreadable"));
+        return;
+      }
+      // A good pick answers the complaint the bad one made — and the submit
+      // button clears this same line for the same reason.
+      setError(null);
+      setPhoto(picked);
+    },
   });
 
   const add = useMutation({

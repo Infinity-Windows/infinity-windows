@@ -24,6 +24,7 @@ import { isForemanPlus } from "../../lib/install/types";
 import { pushToast } from "../../lib/toast";
 import { useT } from "../../lib/i18n";
 import { usePhotoPicker } from "../../lib/photo/usePhotoPicker";
+import { imageFilesOnly } from "../../lib/photo/imageFiles";
 import { enqueueUpload, subscribeSynced } from "../../lib/offline/outbox";
 import {
   setPieceCount,
@@ -273,9 +274,18 @@ export function PackageSheet() {
   const addPhotos = async (picked: File[]) => {
     // Still filtered, and it matters more now than it did: the library door
     // reaches the Files app, which will happily hand back a PDF of a packing
-    // slip. The input's `accept` is a hint on a phone, not a promise.
-    const files = picked.filter((f) => f.type.startsWith("image/"));
+    // slip. The input's `accept` is a hint on a phone, not a promise. Shared
+    // with the missed-unit sheet, which meets the same door — see imageFiles.ts.
+    const files = imageFilesOnly(picked);
     const packageId = pkg.data?.id;
+    // Everything picked was thrown away. The hook never calls this with an
+    // empty list, so this is only ever "you picked something and it wasn't a
+    // photo" — and a silent return there looks exactly like a button that does
+    // nothing. Same sentence the capture sheet gives the same file.
+    if (files.length === 0 && picked.length > 0) {
+      setPhotoError(t("photo.fileUnreadable"));
+      return;
+    }
     if (files.length === 0 || !packageId) return;
     setPhotoBusy(true);
     setPhotoError(null);

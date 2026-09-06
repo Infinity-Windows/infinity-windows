@@ -46,6 +46,19 @@ function pngFile(name: string) {
   return { name, mimeType: "image/png", buffer: Buffer.from(TINY_PNG_BASE64, "base64") };
 }
 
+/**
+ * A PDF — the packing slip, the spec sheet — sitting in the Files app one tap
+ * away from the photos. This is the file the library door made reachable and
+ * the camera door never could, and `accept="image/*"` does not stop a phone
+ * handing it over.
+ */
+function pdfFile(name: string) {
+  return { name, mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\n") };
+}
+
+/** The one sentence both sheets give a file that isn't a picture. */
+const NOT_A_PHOTO = /isn't a photo this phone can read/;
+
 function json(route: Route, body: unknown, rows = 0) {
   return route.fulfill({
     status: 200,
@@ -288,6 +301,82 @@ test("a missed unit's photo can come from the phone, and rides into the same RPC
     p_width_in: 36,
     p_height_in: 60,
   });
+});
+
+/**
+ * THE COST OF THE SECOND DOOR, on the sheet where it is highest.
+ *
+ * A missed unit gets one photo and `uploadMissedUnitPhoto` names the object
+ * `.jpg` from a template whatever it was handed — so a PDF picked here would
+ * upload, its path would ride into `add_field_unit`, and the unit would exist
+ * forever pointing at something the feed renders as a broken image. Every step
+ * succeeds, so without this check nobody is ever told.
+ */
+test("a PDF picked for a missed unit is refused, and the sheet says so", async ({
+  page,
+}) => {
+  await useSupabaseFixtures(page, { role: "installer" });
+  const uploads = await collectUploads(page);
+  const bodies: Record<string, unknown>[] = [];
+  await page.route("**/rest/v1/rpc/add_field_unit", (route) => {
+    bodies.push(route.request().postDataJSON() as Record<string, unknown>);
+    return json(route, {
+      id: "00000000-0000-4000-8000-0000000000f2",
+      opening_code: "F2",
+      project_id: BLACK22.projectId,
+    });
+  });
+
+  await page.goto(`/projects/${BLACK22.projectId}`);
+  await expect(page.getByRole("button", { name: "Add a missed unit" })).toBeVisible({
+    timeout: 60_000,
+  });
+  await page.getByRole("button", { name: "Add a missed unit" }).click();
+  const sheet = page.locator(".missed-unit-sheet");
+
+  await missedLibrary(page).setInputFiles(pdfFile("packing-slip.pdf"));
+
+  // Told, not ignored. A silent drop here is a tap that looks like nothing
+  // happened, on the one field somebody walked outside to fill in.
+  await expect(sheet.getByText(NOT_A_PHOTO)).toBeVisible();
+  // And it is not held as the photo: the sheet prints the picked file's name,
+  // and there is no name to print.
+  await expect(sheet.getByText("packing-slip.pdf")).toHaveCount(0);
+  expect(uploads).toEqual([]);
+
+  // A real photo after the refusal still works, and answers the complaint.
+  await missedLibrary(page).setInputFiles(pngFile("from-the-library.png"));
+  await expect(sheet.getByText("from-the-library.png")).toBeVisible();
+  await expect(sheet.getByText(NOT_A_PHOTO)).toHaveCount(0);
+
+  await page.locator("#missed-width").fill("36");
+  await page.locator("#missed-height").fill("60");
+  await page.getByRole("button", { name: "Add it" }).click();
+  await expect.poll(() => bodies.length, { timeout: 60_000 }).toBe(1);
+
+  // One upload, and it is the photo — the PDF never got a path of its own.
+  expect(uploads).toHaveLength(1);
+  expect(String(bodies[0].p_photo_path)).toMatch(
+    new RegExp(`^install-media/${BLACK22.projectId}/missed/\\d+-[0-9a-z]+\\.jpg$`),
+  );
+});
+
+test("a PDF picked on a package is refused, and the card says so", async ({ page }) => {
+  await useSupabaseFixtures(page, { role: "foreman" });
+  await usePackageFixture(page);
+  const uploads = await collectUploads(page);
+  const rows = await collectAttachments(page);
+
+  await page.goto(`/pkg/${PKG_SERIAL}`);
+  await expect(page.getByRole("heading", { name: "Photos" })).toBeVisible();
+
+  // The same hazard as the missed-unit sheet, and now the same answer. This
+  // card already threw the PDF away — in silence, which from the outside is a
+  // button that does nothing.
+  await pkgLibrary(page).setInputFiles(pdfFile("packing-slip.pdf"));
+  await expect(page.getByText(NOT_A_PHOTO)).toBeVisible();
+  expect(uploads).toEqual([]);
+  expect(rows).toEqual([]);
 });
 
 test("the missed-unit sheet shows both doors", async ({ page }) => {
