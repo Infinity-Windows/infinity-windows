@@ -78,6 +78,33 @@ select json_build_object(
         where d.classid = 'pg_proc'::regclass and d.objid = p.oid and d.deptype = 'e'
       )
   ),
+  -- Every SECURITY DEFINER routine in public with no pinned search_path. Such
+  -- a function runs as its owner and ignores row security, and with the path
+  -- unpinned the CALLER decides which schema an unqualified name resolves in.
+  -- 20260718090000 and 20260729210100 pinned every one that existed on their
+  -- day, and both are loops over this same catalog question, so a function
+  -- born later — or rebuilt later by `create or replace`, which rewrites the
+  -- SET clauses along with the body — is invisible to them. 20260997000000
+  -- pinned the ones that had slipped through by 2026-09-06; this keeps the
+  -- next one from staying open for months. The identity arguments are
+  -- included so the answer can be pasted straight into an `alter function`.
+  -- Extension members are skipped for the reason anon_functions gives.
+  'definer_unpinned', (
+    select coalesce(json_agg(
+      p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')'
+      order by p.proname, p.oid), '[]'::json)
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.prosecdef
+      and not exists (
+        select 1 from unnest(coalesce(p.proconfig, array[]::text[])) c
+        where c like 'search_path=%'
+      )
+      and not exists (
+        select 1 from pg_depend d
+        where d.classid = 'pg_proc'::regclass and d.objid = p.oid and d.deptype = 'e'
+      )
+  ),
   -- Whether the NEXT function postgres creates in public would be executable
   -- by anon. Those are the rules 20260992000000 altered; if they come back,
   -- every new migration re-opens the door one function at a time. The answer
