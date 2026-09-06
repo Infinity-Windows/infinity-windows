@@ -172,6 +172,15 @@ jobs:
         shell: bash
         run: scripts/advisory-rules.test.sh
 
+      # And the half that asks a model. What is worth proving here is that it
+      # never fails: a missing credential, a missing CLI, a model answering with
+      # prose and a CLI that crashed all have to end in a sentence and exit 0,
+      # because this must never stand between a fix and an auto-merge. Stubs the
+      # Claude Code CLI; no credential, no network, nothing spent.
+      - name: Test scripts/advisory-agent.sh
+        shell: bash
+        run: scripts/advisory-agent.test.sh
+
   supabase-tooling:
     name: Supabase merge tooling
     runs-on: ubuntu-latest
