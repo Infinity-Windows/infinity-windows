@@ -1,6 +1,6 @@
 # 04 — The truck: tailgate unit-first, offline, one door
 
-Status: ready-for-agent
+Status: in-progress (slice A: unit-first rows + one put-away button + offline reads, PR pending; deferred: damage tap + photo per unit, "+ not on the list" card replacing the wizard, load photo/hauler on the delivery, retiring the wizard/arrival-check/tag/deliveries-list screens)
 Type: task
 Size: L
 
