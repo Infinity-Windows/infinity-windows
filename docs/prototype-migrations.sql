@@ -16107,6 +16107,15 @@ begin
   -- No marker, no credit — the same rule learning_video_heartbeat uses for the
   -- first beat of a visit, and for the same reason: nothing has been observed
   -- yet, so the honest number is zero.
+  --
+  -- floor(), AND IT SHAVES A LITTLE. A beat sent fifteen seconds after the last
+  -- one arrives fifteen-point-something or fourteen-point-something later
+  -- depending on which trip was slower, and floor() pays 14 for the second one.
+  -- Over a long sitting that is a small under-count, and it is deliberate:
+  -- round() would pay 15 for 14.6, and a caller sending beats half a second
+  -- apart would then bank a second each time, forever. Any slack at all is
+  -- unbounded once the call rate is, so the number is a floor and the page
+  -- prints minutes and hours over it. Under is the direction to be wrong in.
   v_add := least(
     v_add,
     greatest(0, floor(extract(epoch from (now() - coalesce(v_kind_seen, now()))))::int)
