@@ -109,6 +109,9 @@ the moment it is on, every event and breadcrumb passes
 `supabase/functions/_shared/scrub.ts` — shared by the app and the functions,
 one implementation, tested. Never widen what it keeps without reading
 [`docs/monitoring.md`](docs/monitoring.md), which lists what is dropped and why.
+An edge function that catches its own errors must also REPORT them
+(`reportCaughtError` from `_shared/sentry.ts`) — `withSentry` only ever sees a
+throw that escapes the handler, and a caught one is invisible without it.
 
 **`tsconfig` has `noUnusedLocals`.** Removing the last use of an import breaks the
 build. Let `tsc` tell you which ones to drop.

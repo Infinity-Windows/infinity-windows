@@ -17,7 +17,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import webpush from "npm:web-push@3.6.7";
 import { corsHeaders, jsonResponse } from "../_shared/openai.ts";
 import { requireCaller } from "../_shared/auth.ts";
-import { withSentry } from "../_shared/sentry.ts";
+import { UNEXPECTED_ERROR, reportCaughtError, withSentry } from "../_shared/sentry.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -140,7 +140,11 @@ Deno.serve(withSentry("send-push", async (req) => {
       cors,
     );
   } catch (e) {
-    console.error("send-push failed", e);
-    return jsonResponse({ error: String(e) }, 500, cors);
+    // withSentry only ever sees a throw that ESCAPES the handler, and this one
+    // never does — so report it here, or nobody finds out this has been failing
+    // since Tuesday. Then one plain sentence: String(e) hands whoever is
+    // holding the phone a Postgres constraint name (CLAUDE.md).
+    await reportCaughtError("send-push", req, e);
+    return jsonResponse({ error: UNEXPECTED_ERROR }, 500, cors);
   }
 }));

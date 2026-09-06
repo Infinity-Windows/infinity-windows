@@ -167,6 +167,42 @@ export interface WithSentryDeps {
 }
 
 /**
+ * Build `reportCaughtError(name, req, error)` — the report for a throw that
+ * will NEVER reach withSentry, because the function answered it itself.
+ *
+ * WHY THIS EXISTS. withSentry only sees what ESCAPES a handler, and most
+ * functions here catch everything: extract-receipt's outer catch logs and
+ * answers 500, so the throw never leaves the handler and the monitor never
+ * hears about it. docs/monitoring.md opens by naming exactly that failure —
+ * "no way to find out that the receipt reader has been failing since Tuesday"
+ * — so a function that catches its own errors has to report them itself.
+ *
+ * Never throws and never rejects: it is called from inside a catch block, and
+ * a monitor that can fail loudly turns one broken request into two.
+ */
+export function makeReportCaughtError(
+  deps: Pick<WithSentryDeps, "capture" | "log">,
+) {
+  return async function reportCaughtError(
+    functionName: string,
+    req: RequestFacts,
+    error: unknown,
+  ): Promise<void> {
+    // The console line is the part that works with no DSN set at all, which is
+    // the state this ships in.
+    deps.log?.(
+      `${functionName} threw:`,
+      error instanceof Error ? error.message : describeThrowable(error),
+    );
+    try {
+      await deps.capture(functionName, { method: req.method, url: req.url }, error);
+    } catch {
+      // See above.
+    }
+  };
+}
+
+/**
  * Build the `withSentry(name, handler)` wrapper.
  *
  * Every function in this repo already catches its own errors and answers in its
@@ -181,6 +217,9 @@ export interface WithSentryDeps {
  * down or absent, the sentence still goes out.
  */
 export function makeWithSentry(deps: WithSentryDeps) {
+  // The same report a function makes from inside its own catch — one path, so
+  // an escaped throw and a caught one cannot come out looking different.
+  const report = makeReportCaughtError(deps);
   return function withSentry(
     functionName: string,
     handler: (req: Request) => Response | Promise<Response>,
@@ -189,17 +228,7 @@ export function makeWithSentry(deps: WithSentryDeps) {
       try {
         return await handler(req);
       } catch (error) {
-        // The console line is the part that works with no DSN set at all,
-        // which is the state this ships in.
-        deps.log?.(
-          `${functionName} threw:`,
-          error instanceof Error ? error.message : describeThrowable(error),
-        );
-        try {
-          await deps.capture(functionName, { method: req.method, url: req.url }, error);
-        } catch {
-          // A monitor that can fail loudly turns one broken request into two.
-        }
+        await report(functionName, req, error);
         return deps.respond(req, UNEXPECTED_ERROR);
       }
     };

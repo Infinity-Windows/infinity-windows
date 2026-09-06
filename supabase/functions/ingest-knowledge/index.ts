@@ -19,7 +19,7 @@ import {
   reserveAiSpend,
   settleAiSpend,
 } from "../_shared/spendGuard.ts";
-import { withSentry } from "../_shared/sentry.ts";
+import { UNEXPECTED_ERROR, reportCaughtError, withSentry } from "../_shared/sentry.ts";
 
 interface IncomingFile {
   path: string;
@@ -289,7 +289,11 @@ Deno.serve(withSentry("ingest-knowledge", async (req) => {
       cors,
     );
   } catch (e) {
-    console.error(e);
-    return jsonResponse({ error: String(e) }, 500, cors);
+    // withSentry only ever sees a throw that ESCAPES the handler, and this one
+    // never does — so report it here, or nobody finds out this has been failing
+    // since Tuesday. Then one plain sentence: String(e) hands whoever is
+    // holding the phone a Postgres constraint name (CLAUDE.md).
+    await reportCaughtError("ingest-knowledge", req, e);
+    return jsonResponse({ error: UNEXPECTED_ERROR }, 500, cors);
   }
 }));

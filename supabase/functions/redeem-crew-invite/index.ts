@@ -42,7 +42,7 @@ import {
   redemptionRefusal,
   validateInvitePassword,
 } from "../_shared/crewInvites.ts";
-import { withSentry } from "../_shared/sentry.ts";
+import { reportCaughtError, withSentry } from "../_shared/sentry.ts";
 
 interface InviteRow {
   id: string;
@@ -255,6 +255,11 @@ Deno.serve(withSentry("redeem-crew-invite", async (req) => {
       throw inner;
     }
   } catch (err) {
+    // Reported as well as answered: withSentry only sees a throw that ESCAPES
+    // the handler, and this catch swallows every one. The answer is left as it
+    // was — this screen is the office's, and the message it already shows is
+    // the one they act on.
+    await reportCaughtError("redeem-crew-invite", req, err);
     const message = err instanceof Error ? err.message : "unknown error";
     return jsonResponse({ error: message }, 500, cors);
   }

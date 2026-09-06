@@ -144,6 +144,24 @@ Sentry account. When GitHub does not hold it, the sync step passes over it in
 silence — a warning on every merge about a feature nobody turned on is how
 warnings stop being read.
 
+### What actually gets reported
+
+Every function's handler is wrapped in `withSentry`, which reports a throw that
+**escapes** it. Most functions here catch everything themselves, though, and a
+caught throw never escapes — so the seventeen that do call
+`reportCaughtError(name, req, err)` from inside their own catch. Without that,
+the receipt reader could fail every hour of every day and Sentry would show
+nothing, which is the exact failure this page opens by describing.
+
+Fourteen of those seventeen also used to answer `{"error": String(e)}` — a
+Postgres constraint name shown to somebody standing at a window opening. They
+now answer one plain sentence, the same one `withSentry` uses, and the real
+reason goes to the function log and to Sentry. `functionSentry.test.ts` sweeps
+all 23 functions and fails if either rule is dropped.
+
+**Writing a new function?** If you catch your own errors, report them. If you do
+not catch anything, `withSentry` has you covered.
+
 ### Alerts
 
 Alert routing is **Sentry's own settings, not this repo**: in the Sentry project,

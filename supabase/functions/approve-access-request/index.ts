@@ -54,7 +54,7 @@ import {
 } from "../_shared/openai.ts";
 import { verifyCaller } from "../_shared/auth.ts";
 import { isTestAccount, TEST_ACCOUNT_REFUSED } from "../_shared/testAccounts.ts";
-import { withSentry } from "../_shared/sentry.ts";
+import { reportCaughtError, withSentry } from "../_shared/sentry.ts";
 
 type ServiceClient = ReturnType<typeof createClient>;
 
@@ -335,6 +335,11 @@ Deno.serve(withSentry("approve-access-request", async (req) => {
       cors,
     );
   } catch (err) {
+    // Reported as well as answered: withSentry only sees a throw that ESCAPES
+    // the handler, and this catch swallows every one. The answer is left as it
+    // was — this screen is the office's, and the message it already shows is
+    // the one they act on.
+    await reportCaughtError("approve-access-request", req, err);
     const message = err instanceof Error ? err.message : "unknown error";
     return jsonResponse({ error: message }, 500, cors);
   }

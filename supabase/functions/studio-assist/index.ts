@@ -25,7 +25,7 @@ import {
   STUDIO_ASSIST_SYSTEM_PROMPT,
   type HistoryTurn,
 } from "../_shared/studioAssist.ts";
-import { withSentry } from "../_shared/sentry.ts";
+import { UNEXPECTED_ERROR, reportCaughtError, withSentry } from "../_shared/sentry.ts";
 
 /**
  * Model Studio's "Ask about this model" assistant (Studio 100x #42). Mirrors
@@ -156,7 +156,11 @@ Deno.serve(withSentry("studio-assist", async (req) => {
 
     return jsonResponse({ answer }, 200, cors);
   } catch (e) {
-    console.error(e);
-    return jsonResponse({ error: String(e) }, 500, cors);
+    // withSentry only ever sees a throw that ESCAPES the handler, and this one
+    // never does — so report it here, or nobody finds out this has been failing
+    // since Tuesday. Then one plain sentence: String(e) hands whoever is
+    // holding the phone a Postgres constraint name (CLAUDE.md).
+    await reportCaughtError("studio-assist", req, e);
+    return jsonResponse({ error: UNEXPECTED_ERROR }, 500, cors);
   }
 }));

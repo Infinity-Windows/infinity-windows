@@ -32,6 +32,7 @@ import {
   UNEXPECTED_ERROR,
   buildFunctionEvent,
   ingestHeaders,
+  makeReportCaughtError,
   makeWithSentry,
   parseDsn,
   type RequestFacts,
@@ -93,13 +94,26 @@ export async function captureFunctionError(
   }
 }
 
-const wrap = makeWithSentry({
+const deps = {
   capture: captureFunctionError,
   // The same shape every function in this repo answers with: JSON, the app's
   // CORS headers, a plain sentence under `error`.
-  respond: (req, message) => jsonResponse({ error: message }, 500, corsHeaders(req)),
-  log: (line, detail) => console.error(line, detail),
-});
+  respond: (req: Request, message: string) =>
+    jsonResponse({ error: message }, 500, corsHeaders(req)),
+  log: (line: string, detail: string) => console.error(line, detail),
+};
+
+const wrap = makeWithSentry(deps);
+
+/**
+ * Report an error a function CAUGHT and is answering itself.
+ *
+ * withSentry only sees a throw that escapes the handler, and most functions
+ * here wrap their whole body in a try. Call this from that catch — before you
+ * answer — or the monitor stays quiet about the failures it exists to find.
+ * Never throws; safe to await in a catch block.
+ */
+export const reportCaughtError = makeReportCaughtError(deps);
 
 /**
  * Wrap a Deno.serve handler so an escaped throw is reported and then answered

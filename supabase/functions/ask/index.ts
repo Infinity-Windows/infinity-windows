@@ -44,7 +44,7 @@ import {
   schedulingRefusal,
   type DraftEntry,
 } from "../_shared/schedulingTools.ts";
-import { withSentry } from "../_shared/sentry.ts";
+import { UNEXPECTED_ERROR, reportCaughtError, withSentry } from "../_shared/sentry.ts";
 
 // Wave A2: SCHEDULING_TOOLS is offered on EVERY ask call, to every caller — a
 // below-rank caller gets the same clean tool refusal a human trying a hidden
@@ -1356,7 +1356,11 @@ Deno.serve(withSentry("ask", async (req) => {
       cors,
     );
   } catch (e) {
-    console.error(e);
-    return jsonResponse({ error: String(e) }, 500, cors);
+    // withSentry only ever sees a throw that ESCAPES the handler, and this one
+    // never does — so report it here, or nobody finds out this has been failing
+    // since Tuesday. Then one plain sentence: String(e) hands whoever is
+    // holding the phone a Postgres constraint name (CLAUDE.md).
+    await reportCaughtError("ask", req, e);
+    return jsonResponse({ error: UNEXPECTED_ERROR }, 500, cors);
   }
 }));

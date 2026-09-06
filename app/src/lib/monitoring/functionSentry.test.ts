@@ -11,7 +11,7 @@
 // constant. That distinction is the difference between an optional secret and a
 // backend deploy that goes red for everyone.
 
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
@@ -20,6 +20,7 @@ import {
   buildFunctionEvent,
   describeThrowable,
   ingestHeaders,
+  makeReportCaughtError,
   makeWithSentry,
   parseDsn,
   parseStack,
@@ -27,6 +28,7 @@ import {
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SENTRY_TS = resolve(HERE, "../../../../supabase/functions/_shared/sentry.ts");
+const FUNCTIONS_DIR = resolve(HERE, "../../../../supabase/functions");
 
 const DSN = "https://abc123@o4507.ingest.sentry.io/42";
 
@@ -243,6 +245,82 @@ describe("the Deno half stays optional", () => {
         expect(line).not.toContain("configuredDsn");
         expect(line).not.toContain("SENTRY_DSN");
       }
+    }
+  });
+});
+
+describe("reportCaughtError", () => {
+  const req = { method: "POST", url: "https://x.functions.supabase.co/extract-receipt" };
+
+  it("reports an error the function caught and answered itself", async () => {
+    const capture = vi.fn().mockResolvedValue(true);
+    const log = vi.fn();
+    await makeReportCaughtError({ capture, log })("extract-receipt", req, new Error("boom"));
+
+    expect(capture).toHaveBeenCalledWith("extract-receipt", req, expect.any(Error));
+    expect(log).toHaveBeenCalledWith("extract-receipt threw:", "boom");
+  });
+
+  it("never throws out of a catch block, whatever the monitor does", async () => {
+    const capture = vi.fn().mockRejectedValue(new Error("sentry is down"));
+    await expect(
+      makeReportCaughtError({ capture })("ask", req, new Error("boom")),
+    ).resolves.toBeUndefined();
+  });
+
+  it("says something useful about a thrown payload that is not an Error", async () => {
+    const log = vi.fn();
+    await makeReportCaughtError({ capture: vi.fn().mockResolvedValue(false), log })(
+      "ask",
+      req,
+      { message: "insert on units failed" },
+    );
+    expect(log).toHaveBeenCalledWith("ask threw:", "insert on units failed");
+  });
+});
+
+// A source contract over all 23 functions.
+//
+// WHY: withSentry only sees a throw that ESCAPES a handler, and most functions
+// here wrap their whole body in a try. Before this, 14 of them caught
+// everything and answered `String(e)` — so the monitor was silent about exactly
+// the failure docs/monitoring.md opens by promising to find, and an installer
+// was shown a Postgres constraint name. Neither can come back quietly.
+describe("a function that catches its own errors reports them", () => {
+  const names = readdirSync(FUNCTIONS_DIR, { withFileTypes: true })
+    .filter((e) => e.isDirectory() && !e.name.startsWith("_"))
+    .map((e) => e.name)
+    .filter((n) => {
+      try {
+        readFileSync(resolve(FUNCTIONS_DIR, n, "index.ts"), "utf8");
+        return true;
+      } catch {
+        return false;
+      }
+    });
+
+  it("finds every function, so this contract cannot pass by looking at none", () => {
+    expect(names.length).toBeGreaterThanOrEqual(23);
+  });
+
+  it("never answers a caller with String(err) — the leak lib/errors.ts exists to stop", () => {
+    for (const name of names) {
+      const src = readFileSync(resolve(FUNCTIONS_DIR, name, "index.ts"), "utf8");
+      expect(src, name).not.toContain("error: String(");
+    }
+  });
+
+  it("reports from the outer catch, where the throw would otherwise stop", () => {
+    for (const name of names) {
+      const src = readFileSync(resolve(FUNCTIONS_DIR, name, "index.ts"), "utf8");
+      // The handler's own catch is the last one in the file; a function with
+      // no catch at all lets withSentry do the reporting and needs nothing.
+      const tail = src.slice(src.lastIndexOf("} catch ("));
+      const swallowsIntoA500 =
+        src.includes("} catch (") && tail.includes("jsonResponse(") && tail.includes("500");
+      if (!swallowsIntoA500) continue;
+      expect(tail, name).toContain("reportCaughtError(");
+      expect(tail, name).toContain(`"${name}"`);
     }
   });
 });
