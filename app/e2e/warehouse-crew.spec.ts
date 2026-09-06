@@ -188,22 +188,23 @@ async function openGroup(page: Page, title: string) {
 
 test.use({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
 
-test("an installer sees the In storage section and the count cards", async ({ page }) => {
+test("an installer sees the yard and the counts", async ({ page }) => {
   // Both were foreman+ until ADR-0007. The counts ARE the warehouse's health
-  // and the containers are where the material is; hiding them from the people
-  // moving it is how "12 loose" stayed 12.
+  // and the boxes are where the material is; hiding them from the people
+  // moving it is how "12 loose" stayed 12. Wave 3 of the redesign drew the
+  // boxes as a yard and the counts as chips — same facts, new shape.
   await useSupabaseFixtures(page, { role: "installer" });
   await useWarehouseFixtures(page);
   await page.goto("/warehouse");
 
   await expect(page.getByRole("heading", { name: "Where is it" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "In storage" })).toBeVisible();
+  await expect(page.getByRole("list", { name: "The yard" })).toBeVisible();
   await expect(page.getByText("Conex 7")).toBeVisible();
 
   for (const label of ["on hand", "not tagged", "loose", "damaged"]) {
     await expect(
-      page.locator(".stat-card").filter({ hasText: label }),
-      `an installer should see the "${label}" card`,
+      page.locator(".yard-chip").filter({ hasText: label }),
+      `an installer should see the "${label}" chip`,
     ).toHaveCount(1);
   }
 

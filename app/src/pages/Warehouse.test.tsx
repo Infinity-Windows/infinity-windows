@@ -92,6 +92,8 @@ interface Seed {
   /** Defaults to foreman, which renders the whole page. Set "installer" to see
    * only what somebody at the truck sees. */
   role?: "installer" | "foreman";
+  /** Defaults to the one conex. */
+  containers?: StorageContainer[];
 }
 
 let root: Root | null = null;
@@ -128,7 +130,7 @@ function mount(seed: Seed): HTMLElement {
   // 2026-08-26) — same fixture list here, no finished jobs in these tests.
   qc.setQueryData(["projectsAll"], JOBS);
   qc.setQueryData(["storagePackages"], seed.packages);
-  qc.setQueryData(["storageContainers"], [conex]);
+  qc.setQueryData(["storageContainers"], seed.containers ?? [conex]);
   qc.setQueryData(["issues"], []);
   qc.setQueryData(["supplies"], []);
   qc.setQueryData(["findableUnits"], []);
@@ -238,34 +240,13 @@ describe("Find on the real warehouse page", () => {
   });
 });
 
-describe("Other tools after the unit chain retired (ticket 21)", () => {
-  // 08b kept the unit screens reachable "until the units retire" — that
-  // retirement happened (ADR-0005), so the fold now holds only the living
-  // tools, and the dead doors are gone rather than dead-ending people.
-  function openOtherTools(el: HTMLElement): string[] {
-    const toggle = [...el.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("Other tools"),
-    );
-    click(toggle);
-    const fold = toggle?.closest("section");
-    if (!fold) throw new Error("the Other tools fold is not on the page");
-    return [...fold.querySelectorAll("a")].map((a) => a.getAttribute("href") ?? "");
-  }
-
-  it("keeps the living tools", () => {
-    // "/storage" left this fold when the Storage hub merged into this very
-    // page (ticket 18) — a tile pointing back at the page you're already on
-    // would just be a dead loop.
+describe("the doors that used to hide in Other tools (wave 3)", () => {
+  // The fold is gone: slot labels are a chip under the yard, and scanning is
+  // the floating Scan button the layout draws on every warehouse screen.
+  it("keeps the slot-label door on the page, and never dead-ends", () => {
     const el = mount({ packages: [], locations: [bay] });
-    const hrefs = openOtherTools(el);
-    for (const to of ["/scan", "/labels"]) {
-      expect(hrefs).toContain(to);
-    }
-  });
-
-  it("the unit-chain doors are gone, not dead-ending", () => {
-    const el = mount({ packages: [], locations: [bay] });
-    const hrefs = openOtherTools(el);
+    const hrefs = [...el.querySelectorAll("a")].map((a) => a.getAttribute("href") ?? "");
+    expect(hrefs).toContain("/labels");
     expect(hrefs).not.toContain("/warehouse/on-hand");
     expect(hrefs).not.toContain("/count");
   });
@@ -351,19 +332,20 @@ describe("container tools absorbed from the Storage hub (ticket 18)", () => {
   });
 });
 
-describe("the station strip (wave F)", () => {
-  it("shows all five stations, in the order material moves", () => {
-    const el = mount({ packages: [], locations: [], role: "foreman" });
-    const names = [...el.querySelectorAll(".station-name")].map((n) => n.textContent);
-    expect(names).toEqual([
-      "Coming in",
-      "Off the truck",
-      "Put away",
-      "Out the door",
-      "Fix a mistake",
-    ]);
+describe("the yard (wave 3)", () => {
+  it("draws every box as a box, the building first", () => {
+    const main: StorageContainer = { ...conex, id: "main", serial: "CTR-000009", name: "Main warehouse", kind: "building" };
+    const el = mount({ packages: [], locations: [], role: "installer", containers: [conex, main] });
+    const names = [...el.querySelectorAll('[data-testid="yard-box"] .yard-name')].map((n) => n.textContent);
+    expect(names).toEqual(["Main warehouse", "Conex 3"]);
   });
-
+  it("lights up the box Find's answer sits in", () => {
+    const p = packageRow({ status: "stored", container_id: "conex", marks: ["16"] });
+    const el = mount({ packages: [p], locations: [], role: "installer" });
+    expect(el.querySelector(".yard-box--glow")).toBeNull();
+    typeFind(el, "16");
+    expect(el.querySelector(".yard-box--glow")?.textContent).toContain("Conex 3");
+  });
   it("lists 'Deliveries — check trucks in' exactly once — the old duplicate is gone", () => {
     const el = mount({ packages: [], locations: [], role: "foreman" });
     const hits = [...el.querySelectorAll("a")].filter(
@@ -383,17 +365,10 @@ describe("the station strip (wave F)", () => {
     expect(hrefs).toContain("/warehouse/materials");
   });
 
-  it("opens station 3's container link to everyone, same as 'In storage' now is", () => {
-    // Inverted deliberately with ADR-0007: "In storage" is no longer
-    // foreman+, so the station card that lands on it must not be either. A
-    // station in the funnel that half the crew cannot enter is the funnel
-    // lying about the flow.
+  it("shows the yard to everyone — installers most of all", () => {
     for (const role of ["installer", "foreman"] as const) {
       const el = mount({ packages: [], locations: [], role });
-      expect(
-        [...el.querySelectorAll("a")].some((a) => a.textContent === "See containers"),
-        `${role} should reach the containers`,
-      ).toBe(true);
+      expect(el.querySelector('[data-testid="yard-box"]'), `${role} should see the yard`).not.toBeNull();
     }
   });
 });

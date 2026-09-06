@@ -23,6 +23,8 @@ import { showUndoToast } from "../../lib/undoToast";
 import { playErrorTone, playSuccessTone } from "../../lib/sound";
 import { useScanWedge } from "../../lib/warehouse/scanWedge";
 import { BackChip } from "../../components/BackChip";
+import { BoxThirds } from "../../components/warehouse/BoxThirds";
+import { hasThirds } from "../../lib/warehouse/boxThirds";
 import { containerPostersPdf, downloadPdf } from "../../lib/labels";
 import { ContainerForm } from "../../components/warehouse/ContainerForm";
 import {
@@ -766,6 +768,12 @@ export function ContainerDetail() {
             {store.isPending ? "Storing…" : `Store ${picked.size} here`}
           </button>
         </>
+      )}
+
+      {/* The box, drawn: front / middle / back from the door end (wave 3).
+          The building keeps its compass picker on the package sheet. */}
+      {hasThirds(container?.kind) && stored.length > 0 && (
+        <BoxThirds stored={stored} jobCode={jobCode} glowPieceId={searchParams.get("piece")} />
       )}
 
       <div className="row-between">
