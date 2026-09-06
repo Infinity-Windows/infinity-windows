@@ -24,8 +24,10 @@ unattended:
      already holds, and never asks for a key to be revealed.
   3. A bucket over the size ceiling made it write "listing only" and copy
      NOTHING. A ceiling that turns one big file into zero backed-up files is
-     worse than no ceiling. It now copies until the ceiling is reached, warns
-     loudly, and records exactly what it did not get to.
+     worse than no ceiling. It now copies until the ceiling is reached, records
+     exactly what it did not get to, and FAILS — because a backup that is
+     missing files is a backup that is missing files, however good the reason,
+     and a warning in a job summary on a green run is a warning nobody reads.
 
 The key is held in memory only. It is never printed, never written to the
 manifest, and never put in a URL.
@@ -43,6 +45,11 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 # 2 GiB. Chosen to be larger than anything this project has held (the July
 # snapshot was 23 MB) so the ceiling is a runaway-cost stop, not a routine
 # limit. `--limit-bytes 0` turns it off.
+#
+# It is measured against the bytes THIS RUN writes. On a laptop, a re-run into
+# the same folder re-uses what is already there and only the new files count
+# against it. In CI every run starts in an empty folder, so it is the whole
+# bucket every night — size it against the bucket, not against a day's uploads.
 DEFAULT_LIMIT = 2 * 1024 * 1024 * 1024
 
 # Supabase's storage list endpoint caps a page at 100 whether you ask for more
@@ -261,8 +268,9 @@ def run(
             continue
 
         if limit_bytes and bytes_written + obj["size"] > limit_bytes:
-            # The whole point of the rewrite: warn and keep going rather than
-            # turn one oversized bucket into an empty backup.
+            # Keep going rather than turn one oversized bucket into an empty
+            # backup — but the run still fails at the end (see main), so the
+            # files that were missed reach a person instead of a summary page.
             obj["copied"] = False
             obj["skipped_reason"] = "would exceed the %d-byte ceiling" % limit_bytes
             skipped += 1
@@ -288,9 +296,9 @@ def run(
 
     if skipped:
         warnings.append(
-            "%d object(s) were not copied because the run reached the %d-byte ceiling. "
-            "Everything under the ceiling WAS copied. Raise --limit-bytes, or pass 0 "
-            "to turn the ceiling off." % (skipped, limit_bytes)
+            "%d file(s) are NOT in this backup: the run reached its %d-byte ceiling. "
+            "Everything under the ceiling was copied. Raise --limit-bytes, or pass 0 "
+            "to turn the ceiling off, and run it again." % (skipped, limit_bytes)
         )
 
     per_bucket = {}
@@ -381,9 +389,19 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 2
 
     manifest = run(Storage(args.ref, key), args.out.rstrip("/"), args.limit_bytes)
-    # A failure to copy an object is a failed backup. A ceiling skip is a warning
-    # the job summary reports, because the rest of the copy is still good.
-    return 1 if manifest["failed"] else 0
+    # Both of these are a backup with files missing from it, so both fail the
+    # run. A ceiling skip used to exit 0 and say so only in the job summary,
+    # which meant the night the install photos outgrew the ceiling would have
+    # looked exactly like every other night: green check, nothing in Slack, and
+    # a backup quietly missing the bucket the crew fills every day.
+    if manifest["failed"] or manifest["skipped_over_ceiling"]:
+        print(
+            "This backup is incomplete: %d file(s) failed and %d were not copied "
+            "because of the ceiling." % (manifest["failed"], manifest["skipped_over_ceiling"]),
+            file=sys.stderr,
+        )
+        return 1
+    return 0
 
 
 if __name__ == "__main__":

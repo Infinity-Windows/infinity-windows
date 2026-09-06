@@ -16,12 +16,15 @@ copied nothing still exits 0 and still uploads an archive:
   2. A second run reuses last night's bytes when size and etag match, and copies
      again when either changed. Without this a nightly job re-downloads the
      whole bucket every night forever.
-  3. Reaching the size ceiling warns and keeps the objects it already copied,
-     rather than refusing the bucket outright.
+  3. Reaching the size ceiling keeps the objects it already copied, rather than
+     refusing the bucket outright — and fails the run, so a backup that is
+     missing files never reports a green night.
   4. The service key never reaches the manifest.
 """
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import os
 import shutil
@@ -145,7 +148,7 @@ class Case(unittest.TestCase):
         self.assertEqual(api2.downloads, ["plansets/a.pdf"])
         self.assertEqual(m["reused"], 0)
 
-    # 3. The ceiling warns and continues.
+    # 3. The ceiling keeps what fits, says so, and fails the run.
     def test_ceiling_keeps_what_fits_and_warns(self):
         api = FakeStorage(
             {
@@ -165,6 +168,29 @@ class Case(unittest.TestCase):
         self.assertIn("ceiling", skipped[0]["skipped_reason"])
         # The July behaviour, which this replaces, would have copied nothing.
         self.assertGreater(len(api.downloads), 0)
+
+    def test_a_ceiling_hit_fails_the_run_rather_than_passing_for_a_green_night(self):
+        # The night the install photos outgrow the ceiling must not look exactly
+        # like every other night. Before this, it exited 0, posted nothing to
+        # Slack, and left the warning on a summary page nobody opens on a pass.
+        api = FakeStorage({"plansets/%d.pdf" % i: b"x" * 100 for i in range(3)})
+        prior_cls, bso.Storage = bso.Storage, lambda ref, key: api
+        prior_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+        os.environ["SUPABASE_SERVICE_ROLE_KEY"] = KEY
+        try:
+            with contextlib.redirect_stderr(io.StringIO()) as err:
+                code = bso.main(["--ref", "abc", "--out", self.out, "--limit-bytes", "250"])
+        finally:
+            bso.Storage = prior_cls
+            if prior_key is None:
+                os.environ.pop("SUPABASE_SERVICE_ROLE_KEY", None)
+            else:
+                os.environ["SUPABASE_SERVICE_ROLE_KEY"] = prior_key
+        self.assertEqual(code, 1, "a backup with files missing from it must not exit 0")
+        self.assertIn("incomplete", err.getvalue())
+        m = self.manifest()
+        self.assertEqual(m["skipped_over_ceiling"], 1)
+        self.assertEqual(m["copied"], 2, "and everything that fit is still kept")
 
     def test_no_ceiling_by_request(self):
         api = FakeStorage({"plansets/a.pdf": b"x" * 5000})
