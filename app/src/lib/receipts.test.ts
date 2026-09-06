@@ -69,6 +69,8 @@ function receipt(overrides: Partial<Receipt> = {}): Receipt {
     // Wave Z: not yet coded, not yet posted — a freshly snapped receipt.
     costCodeId: null,
     jobCostId: null,
+    // Snapped, not emailed: no original PDF beside it. Most receipts.
+    documentPath: null,
     ...overrides,
   };
 }
@@ -78,10 +80,10 @@ describe("buildReceiptsCsv — the accounting bridge", () => {
     const csv = buildReceiptsCsv([receipt()]);
     const lines = csv.replace(/^﻿/, "").split("\r\n");
     expect(lines[0]).toBe(
-      "date,vendor,amount,category,job_code,job_name,pending_job_name,billed_to_customer,uploaded_by,reviewed,note",
+      "date,vendor,amount,category,job_code,job_name,pending_job_name,billed_to_customer,uploaded_by,reviewed,note,original_pdf",
     );
     expect(lines[1]).toBe(
-      "2026-08-20,Shell,12.50,gas,BLACK22,Black Desert,,no,Taylor,no,",
+      "2026-08-20,Shell,12.50,gas,BLACK22,Black Desert,,no,Taylor,no,,no",
     );
   });
 

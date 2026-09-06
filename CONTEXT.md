@@ -294,6 +294,21 @@ bills to the customer. ANYONE signed in may file one; the job is optional
 packages.pending_job_name already established: a real job, a typed name for
 one not built in the app yet, or neither.
 
+**PDF receipt** — one that arrived as a file rather than a slip of paper
+(2026-09-05): the emailed fuel invoice, the supply-house statement. The phone
+renders PAGE ONE with the pdf.js it already ships and files that image as the
+receipt's `photo_path`, so the machine read, the feed thumbnail and the office
+table need no new shape; the original follows on its own outbox entry to
+`document_path` (`receipts/<id>.pdf`), because page one is not the document a
+bookkeeper hands an auditor. Stamped TIME ONLY and labelled PDF — never GPS:
+the watermark rule is about a photo taken at the wall, and whoever files an
+emailed invoice is not standing at one. How many pages the original had goes
+in the note — after whatever the person typed, never instead of it, and only
+when there is more than one page. The path is checked at both ends: a receipt's
+original lives at `install-media/receipts/<id>.pdf` and nowhere else, so a row
+cannot aim the office's "Open original" (or the month-end zip) at some other
+object in the bucket.
+
 **Fill-missing-only** — THE LAW this wave exists to enforce: the machine
 never overwrites a human's typing, full stop, no exception. A null field
 takes a machine reading; anything already set — by a human or by an

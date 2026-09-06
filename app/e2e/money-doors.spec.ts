@@ -218,8 +218,10 @@ test("the receipt sheet's cost-code picker sends the code through its own RPC", 
   });
 
   await page.goto("/photos?kind=receipt&capture=1");
+  // The receipt picker's accept widened to take a PDF too (2026-09-05); the
+  // library input is still the one WITHOUT `capture` on it.
   await page
-    .locator('input[type="file"][accept="image/*"]')
+    .locator('.jobphoto-actions input[type="file"]:not([capture])')
     .setInputFiles({
       name: "receipt.png",
       mimeType: "image/png",

@@ -106,13 +106,20 @@ async function collectPhotoRows(page: Page): Promise<Record<string, unknown>[]> 
   return rows;
 }
 
+/* The two inputs are siblings of the two tiles now, not children of them —
+   usePhotoPicker owns the pair and the tiles are buttons that click them (see
+   that hook's header). `capture` is what tells them apart, and it is also the
+   attribute this whole spec exists to pin, so addressing them by it is the
+   honest selector rather than a workaround. */
 const uploadInput = (page: Page) =>
-  page.locator('.jobphoto-actions label:has-text("Upload files") input[type="file"]');
+  page.locator('.jobphoto-actions input[type="file"]:not([capture])');
 const cameraInput = (page: Page) =>
-  page.locator('.jobphoto-actions label:has-text("Use camera") input[type="file"]');
-/** The live-preview shutter: a real button, not the camera-app hand-off. */
+  page.locator('.jobphoto-actions input[type="file"][capture]');
+/** The live-preview shutter, as opposed to the camera-app hand-off. Both tiles
+ * are buttons and both say "Use camera", so `data-shutter` is what tells them
+ * apart — which one is on the sheet is this spec's whole subject. */
 const cameraButton = (page: Page) =>
-  page.locator('.jobphoto-actions button:has-text("Use camera")');
+  page.locator('.jobphoto-actions button[data-shutter="live"]');
 
 /** Make getUserMedia fail the way a given phone fails.
  *

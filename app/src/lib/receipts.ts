@@ -45,6 +45,10 @@ export interface Receipt {
   /** Wave Z: the one job_costs line this receipt became. Set once and never
    * cleared, so a receipt reads "posted" for good once it has. */
   jobCostId: string | null;
+  /** The original file a PDF receipt came from (2026-09-05). Null on a
+   * snapped photo, which is most of them. `photoPath` is the readable image
+   * either way — for a PDF it is page one, rendered on the phone. */
+  documentPath: string | null;
 }
 
 interface ReceiptRow {
@@ -66,6 +70,7 @@ interface ReceiptRow {
   reviewed_at: string | null;
   cost_code_id?: string | null;
   job_cost_id?: string | null;
+  document_path?: string | null;
   projects?: { job_code: string; name: string } | { job_code: string; name: string }[] | null;
   profiles?: { display_name: string } | { display_name: string }[] | null;
 }
@@ -75,31 +80,46 @@ const RECEIPT_BASE_COLS =
   "purchased_on, category, category_by, is_passthrough, note, ocr, created_at, " +
   "reviewed_by, reviewed_at, projects(job_code, name), profiles!uploaded_by(display_name)";
 
-/** Wave Z's two columns (20260978000000), asked for separately so the office
- * table can fall back to the list without them. */
-const RECEIPT_SELECT = `${RECEIPT_BASE_COLS}, cost_code_id, job_cost_id`;
+/** Wave Z's two columns (20260978000000). */
+const RECEIPT_WAVE_Z_COLS = `${RECEIPT_BASE_COLS}, cost_code_id, job_cost_id`;
+
+/** PDF receipts' one column (20260990000000). */
+const RECEIPT_SELECT = `${RECEIPT_WAVE_Z_COLS}, document_path`;
 
 /**
- * Narrowed once, for the life of the tab, the first time the database says it
- * has no wave Z columns. The house rule: a phone running a bundle ahead of the
- * migration still LOADS the Receipts screen — it just shows no cost codes and
- * no "posted" chips until the backend catches up.
+ * THE COLUMN TIERS, newest first. Each entry is the column that tier ADDS and
+ * the select to fall back to when the database says it has never heard of it.
+ *
+ * The house rule these exist for: a phone running a bundle ahead of the
+ * migration still LOADS every receipt screen. It shows no PDF tag, no cost
+ * codes and no "posted" chips until the backend catches up — never a blank
+ * screen and an error nobody on a job site can act on. Deploying the backend
+ * has silently failed on this project before, so this is the likely direction,
+ * not the theoretical one.
  */
+const RECEIPT_TIERS: { column: string; fallback: string }[] = [
+  { column: "document_path", fallback: RECEIPT_WAVE_Z_COLS },
+  { column: "cost_code_id", fallback: RECEIPT_BASE_COLS },
+];
+
+/** Narrowed once, for the life of the tab, the first time the database says a
+ * column is not there. */
 let receiptCols = RECEIPT_SELECT;
 
 async function readReceipts(
   run: (cols: string) => PromiseLike<{ data: unknown; error: unknown }>,
 ): Promise<{ data: unknown; error: unknown }> {
-  const first = await run(receiptCols);
-  if (
-    first.error &&
-    receiptCols !== RECEIPT_BASE_COLS &&
-    isMissingColumn(first.error, "cost_code_id")
-  ) {
-    receiptCols = RECEIPT_BASE_COLS;
-    return run(receiptCols);
+  let res = await run(receiptCols);
+  // Walk down the ladder rather than dropping straight to the base list: a
+  // database with wave Z but no document_path must keep its cost codes.
+  for (const tier of RECEIPT_TIERS) {
+    if (!res.error) break;
+    if (receiptCols === tier.fallback) continue;
+    if (!isMissingColumn(res.error, tier.column)) continue;
+    receiptCols = tier.fallback;
+    res = await run(receiptCols);
   }
-  return first;
+  return res;
 }
 
 function one<T>(v: T | T[] | null | undefined): T | null {
@@ -132,6 +152,7 @@ async function mapRow(row: ReceiptRow): Promise<Receipt> {
     reviewedAt: row.reviewed_at,
     costCodeId: row.cost_code_id ?? null,
     jobCostId: row.job_cost_id ?? null,
+    documentPath: row.document_path ?? null,
   };
 }
 
@@ -368,6 +389,77 @@ export function receiptPhotoPath(id: string): string {
   return `receipts/${id}.jpg`;
 }
 
+/** The one bucket a receipt's files live in — pictures and originals both. */
+const RECEIPT_BUCKET = "install-media";
+
+/**
+ * Bucket-relative path for the ORIGINAL file a PDF receipt came from:
+ * `receipts/<id>.pdf`, beside the rendered page one at `receipts/<id>.jpg`.
+ * Same id, same one-receipt-one-path rule, so nothing has to be looked up to
+ * know where it went.
+ */
+export function receiptDocumentPath(id: string): string {
+  return `receipts/${id}.pdf`;
+}
+
+/** What `document_path` holds on the row: bucket-first, the same shape
+ * `photo_path` carries. Written by the outbox, checked by the database
+ * (20260990000000), and checked again here before anything is signed. */
+function receiptDocumentRef(id: string): string {
+  return `${RECEIPT_BUCKET}/${receiptDocumentPath(id)}`;
+}
+
+/**
+ * Record the original PDF on the receipt row. Called by the offline outbox
+ * once the file's bytes are actually in the bucket — never before, or the row
+ * would point at nothing.
+ */
+export async function setReceiptDocument(
+  id: string,
+  documentPath: string,
+): Promise<Receipt> {
+  const { data, error } = await supabase.rpc("set_receipt_document", {
+    p_id: id,
+    p_document_path: documentPath,
+  });
+  if (error) throw error;
+  return mapRow(data as ReceiptRow);
+}
+
+/**
+ * A link that opens the original PDF, good for ten minutes.
+ *
+ * Minted on the tap, not on the row — the same reason job documents work this
+ * way (lib/jobDocuments.ts): a receipt can have a price on it and the bucket is
+ * private, so there is no URL to hand out that outlives the person looking. The
+ * ten minutes is deliberately shorter than the hour `signedMedia` gives a
+ * thumbnail: a thumbnail has to survive a page sitting open, a download does
+ * not.
+ *
+ * THE BUCKET AND THE PATH ARE DERIVED FROM THE ID, never read out of the
+ * stored string — and the stored string has to match, or nothing is signed.
+ * `document_path` is a row a phone wrote, and this call is the door it would
+ * open: signing whatever bucket the first path segment happens to name would
+ * let a receipt row hand out a link to some unrelated object, under the
+ * credentials of whoever tapped. The database refuses to store anything but
+ * install-media/receipts/<id>.pdf (20260990000000); this refuses to sign
+ * anything else. One rule, stated at both ends, so neither has to be the only
+ * one standing.
+ */
+export async function receiptDocumentSignedUrl(
+  id: string,
+  documentPath: string,
+): Promise<string> {
+  if (documentPath !== receiptDocumentRef(id)) {
+    throw new Error("That receipt's original file is not where receipts keep theirs.");
+  }
+  const { data, error } = await supabase.storage
+    .from(RECEIPT_BUCKET)
+    .createSignedUrl(receiptDocumentPath(id), 600);
+  if (error) throw error;
+  return data.signedUrl;
+}
+
 // ---------------------------------------------------------------- suggestions
 
 export interface JobSuggestion {
@@ -466,6 +558,11 @@ const CSV_HEADER = [
   "uploaded_by",
   "reviewed",
   "note",
+  // The image zip carries the original PDF beside the picture whenever there
+  // is one (see zipEntryName / exportZip). This column is how a bookkeeper
+  // reading the CSV knows to go looking for it — a row that says "yes" has a
+  // second file in the zip, and one that says "no" never did.
+  "original_pdf",
 ];
 
 /**
@@ -488,6 +585,7 @@ export function buildReceiptsCsv(receipts: Receipt[]): string {
       r.uploaderName ?? "",
       r.reviewedAt ? "yes" : "no",
       r.note ?? "",
+      r.documentPath ? "yes" : "no",
     ];
     lines.push(row.map(csvEscape).join(","));
   }
