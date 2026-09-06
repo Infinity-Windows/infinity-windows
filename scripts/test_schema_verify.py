@@ -1145,7 +1145,9 @@ INSTALLER_GALLERY = "20260995000000_installer_gallery.sql"
 #: (20260718070000) is not in that constraint and is a target column all the
 #: same — a row that carries one is about that case's job. Any column added to
 #: either list has to be resolvable, or a photo naming only that column reads
-#: as "belongs to no job" and falls out of the rule entirely.
+#: as "belongs to no job" — which below foreman means invisible to everybody
+#: but its uploader, not visible to everybody. The risk of forgetting one is a
+#: photo of real work disappearing, not a leak.
 ATTACHMENT_TARGET_COLUMNS = [
     "project_id",
     "window_id",

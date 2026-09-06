@@ -141,9 +141,13 @@ grant execute on function public.my_worked_project_ids() to authenticated, servi
 -- An attachments row hangs off ONE of five things (`attachments_target`,
 -- 20260989000000) and may carry a sixth column besides (`service_case_id`,
 -- 20260718070000, which that constraint still does not list). Every one of them
--- has to resolve, or the rule would be a sieve: a photo that named only a
--- window would be readable by everyone, because "no project id" would fall
--- through the job test.
+-- has to resolve, and the danger is the opposite of a sieve. A column with no
+-- branch here yields nothing, so the job test is NULL, every other test in the
+-- policy is false, and RLS reads "not true" as no. A photo naming only that
+-- column would belong to no job and go INVISIBLE below foreman — including to
+-- the crew who took it. That is the failure to hold in mind when a seventh
+-- target column turns up: not a leak, a picture of real work disappearing off
+-- the phone of the person who photographed it.
 --
 --   project_id           the job itself
 --   window_id            windows.project_id

@@ -251,8 +251,9 @@ are the same list, both read off `my_worked_project_ids()`. Every column a
 photo can hang off has to resolve to a job — the job itself, or through the
 window, the install event (which carries no `project_id` of its own and goes by
 its opening), the opening, the package or the service case — because a photo
-naming only an unresolved column would belong to no job and fall straight
-through the rule. Two things this deliberately is not. It is not a change to
+naming only an unresolved column belongs to no job, and a row that belongs to
+no job DISAPPEARS below foreman rather than leaking: the crew who took it lose
+it, which is the mistake to watch for when a seventh target column is added. Two things this deliberately is not. It is not a change to
 writes: the day-one FOR ALL policy became four per-command ones, and the three
 write policies are restated at exactly the width they had. And it is not a
 scoping of the BYTES — `install-media` is still one bucket-wide crew policy, so
