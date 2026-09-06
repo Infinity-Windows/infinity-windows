@@ -4,7 +4,9 @@ import { Camera, ImagePlus, RefreshCw, X } from "lucide-react";
 import {
   enqueueReceiptAnswer,
   enqueueReceiptCapture,
+  enqueueReceiptDocument,
   enqueueUpload,
+  ReceiptDocumentTooLargeError,
   subscribeSynced,
 } from "../lib/offline/outbox";
 import {
@@ -16,6 +18,14 @@ import {
   toPhotoMetaFields,
   type StampMeta,
 } from "../lib/photo/stampPhoto";
+import { usePhotoPicker } from "../lib/photo/usePhotoPicker";
+import {
+  isPdfPick,
+  receiptPdfNote,
+  RECEIPT_PDF_LONG_EDGE,
+  RECEIPT_PDF_QUALITY,
+  renderReceiptPdfPage1,
+} from "../lib/photo/receiptPdf";
 import { isPermanentCameraFailure } from "../lib/photo/cameraErrors";
 import { useWarmGeoFix } from "../lib/geoWatch";
 import { useFocusTrap } from "../lib/useFocusTrap";
@@ -29,6 +39,7 @@ import { getClockCostCodesForProject } from "../lib/costCodes";
 import {
   extractReceipt,
   listThisWeekJobSuggestions,
+  receiptDocumentPath,
   receiptPhotoPath,
   type JobSuggestion,
 } from "../lib/receipts";
@@ -558,8 +569,11 @@ function JobPhotoCapture({
   const [busy, setBusy] = useState(false);
   const [caption, setCaption] = useState("");
   const [queued, setQueued] = useState(0);
-  /** Files this pick could not use, by name — see pickFiles. */
-  const [rejected, setRejected] = useState<string[]>([]);
+  /** Files this pick could not use, by name and by reason — see pickFiles.
+   * The reason travels with the name now that there are two of them: an
+   * unreadable picture and a PDF that would not open need different words and
+   * a pick can hit both. */
+  const [rejected, setRejected] = useState<{ name: string; reason: string }[]>([]);
   const [filedReceipt, setFiledReceipt] = useState<{ id: string; entryId: string } | null>(null);
 
   // Is there a live camera this sheet can drive itself? A browser with no
@@ -668,9 +682,87 @@ function JobPhotoCapture({
     });
   };
 
-  const pickFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files ?? []);
-    e.target.value = "";
+  /**
+   * A receipt that arrived as a PDF (2026-09-05).
+   *
+   * Page one is rendered on the phone and filed as the receipt's photo, so
+   * every reader downstream — extract-receipt, the feed thumbnail, the office
+   * table — sees the JPEG it has always seen. The PDF itself follows as a
+   * second queued write, so the document a bookkeeper needs is not lost to a
+   * picture of its first page.
+   */
+  const queueReceiptPdf = async (file: File) => {
+    setBusy(true);
+    try {
+      let page;
+      try {
+        page = await renderReceiptPdfPage1(file);
+      } catch {
+        // NOTHING is filed. A receipt row pointing at a picture that was never
+        // made would show the office a broken thumbnail with no way to find
+        // out what it was meant to be.
+        setRejected((list) => [...list, { name: file.name, reason: t("photo.pdfUnreadable") }]);
+        return;
+      }
+
+      // THE WATERMARK RULE, and the one place it does NOT apply. The rule is
+      // about a photo taken at the wall: the coordinates are burned in and
+      // stored together because they are evidence of where somebody stood. A
+      // PDF was emailed. Whoever is filing it is at a desk, in a truck, or on
+      // a different job entirely, and stamping this phone's position onto it
+      // would put a fact on the picture that nobody checked and nobody meant.
+      // Time only, and the word PDF so a reader knows what they are looking at.
+      const meta: StampMeta = {
+        takenAt: new Date(),
+        lat: null,
+        lng: null,
+        accuracyM: null,
+        label: label ? `${label} · PDF` : "PDF",
+      };
+      const stamped = await stampPhoto(page.blob, meta, {
+        maxDimension: RECEIPT_PDF_LONG_EDGE,
+        quality: RECEIPT_PDF_QUALITY,
+      });
+
+      const id = crypto.randomUUID();
+      const entryId = await enqueueReceiptCapture({
+        id,
+        path: receiptPhotoPath(id),
+        contentType: "image/jpeg",
+        projectId,
+        // Page one is the automatic read; the note is where the rest of the
+        // pages get mentioned, unless the person typed something themselves.
+        note: receiptPdfNote(caption, page.pageCount),
+        blob: stamped,
+      });
+
+      // The original, second and dependent — see enqueueReceiptDocument. Its
+      // failure never costs the receipt, which is already queued by now.
+      try {
+        await enqueueReceiptDocument({
+          id,
+          dependsOn: entryId,
+          path: receiptDocumentPath(id),
+          contentType: "application/pdf",
+          blob: file,
+        });
+      } catch (e) {
+        pushToast(
+          e instanceof ReceiptDocumentTooLargeError ? t("photo.pdfTooBig") : formatApiError(e),
+          "error",
+        );
+      }
+
+      setFiledReceipt({ id, entryId });
+      onQueued?.();
+    } catch (e) {
+      pushToast(`Couldn't save that receipt — ${formatApiError(e)}`, "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const pickFiles = async (files: File[]) => {
     setRejected([]);
     for (const file of files) {
       // Now that this really is a file picker, what arrives is whatever the
@@ -681,14 +773,40 @@ function JobPhotoCapture({
       // the person would be told it saved. Ask first, name the file that
       // failed, and carry on with the rest of the pick — one bad file must not
       // take the other nine with it.
+      if (isPdfPick(file)) {
+        // A PDF is a receipt's business, not a job photo's: the photo feed
+        // stores an image and has nothing to show for a document. The receipt
+        // picker is the only one that offers PDFs, so this only catches a
+        // phone that ignored `accept` and handed one over anyway.
+        if (!isReceipt) {
+          setRejected((list) => [...list, { name: file.name, reason: t("photo.fileUnreadable") }]);
+          continue;
+        }
+        await queueReceiptPdf(file);
+        continue;
+      }
       const usable = file.type.startsWith("image/") && (await canDecodePhoto(file));
       if (!usable) {
-        setRejected((names) => [...names, file.name]);
+        setRejected((list) => [...list, { name: file.name, reason: t("photo.fileUnreadable") }]);
         continue;
       }
       await queueBlob(file);
     }
   };
+
+  // The app's ONE file-input pair (lib/photo/usePhotoPicker.tsx): the camera
+  // hand-off always carries `capture`, the library one never does. The camera
+  // input is rendered only when there is no live preview to drive, so the
+  // ordinary sheet still holds exactly one file input.
+  //
+  // A receipt is the one pick that takes a PDF — the emailed fuel invoice, the
+  // supply-house statement. A job photo stays pictures-only.
+  const picker = usePhotoPicker({
+    accept: isReceipt ? "image/*,application/pdf" : "image/*",
+    multiple: !isReceipt,
+    camera: !liveCamera,
+    onFiles: pickFiles,
+  });
 
   const title = isReceipt ? t("photo.title.addReceipt") : t("photo.title.addPhotos");
 
@@ -811,6 +929,13 @@ function JobPhotoCapture({
                 <button
                   type="button"
                   className="jobphoto-action"
+                  /* Which shutter this tile is. Both tiles are buttons now and
+                     both say "Use camera", so the words no longer tell them
+                     apart — and WHICH one is on the sheet is the whole subject
+                     of photos-upload.spec.ts: the live preview means the app
+                     drives the lens itself, the hand-off means it has lost it
+                     and the phone's own camera app is all that is left. */
+                  data-shutter="live"
                   onClick={() => {
                     // Clear last time's complaint on the way in, or a retry
                     // that works still sits under "Camera busy".
@@ -822,44 +947,38 @@ function JobPhotoCapture({
                   <span>{t("photo.action.useCamera")}</span>
                 </button>
               ) : (
-                /* The camera FALLBACK, and the only input on this sheet that
-                   asks for `capture`: with no getUserMedia to drive (or a
+                /* The camera FALLBACK: with no getUserMedia to drive (or a
                    permission already refused) the phone's own camera app is
-                   the only shutter left, and `capture="environment"` is what
-                   opens it straight to the rear lens instead of the picker.
-                   Rendered only in that case, so the ordinary sheet has
-                   exactly one file input. */
-                <label className="jobphoto-action" style={{ cursor: "pointer" }}>
+                   the only shutter left. The `capture` attribute that opens it
+                   straight to the rear lens lives in usePhotoPicker, and the
+                   input itself is rendered only in this case — so the ordinary
+                   sheet still has exactly one file input. */
+                <button
+                  type="button"
+                  className="jobphoto-action"
+                  data-shutter="handoff"
+                  onClick={picker.openCamera}
+                >
                   <Camera size={22} aria-hidden />
                   <span>{t("photo.action.useCamera")}</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    style={{ display: "none" }}
-                    onChange={(e) => void pickFiles(e)}
-                  />
-                </label>
+                </button>
               )}
-              <label className="jobphoto-action" style={{ cursor: "pointer" }}>
+              <button
+                type="button"
+                className="jobphoto-action"
+                onClick={picker.openLibrary}
+              >
                 <ImagePlus size={22} aria-hidden />
                 <span>{t("photo.action.uploadFiles")}</span>
-                {/* THE INCIDENT: this input carried capture="environment",
-                    which tells iOS and Android to open the camera and offer
-                    nothing else — so "Upload files" could only ever take a new
-                    photo, and the library, the Files app and Google Drive were
-                    unreachable from the app. Without it iOS offers Photo
-                    Library / Take Photo / Choose File, and Android opens the
-                    system picker with Drive in it. Never put `capture` back on
-                    this one; the fallback above is where it belongs. */}
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple={!isReceipt}
-                  style={{ display: "none" }}
-                  onChange={(e) => void pickFiles(e)}
-                />
-              </label>
+              </button>
+              {/* THE INCIDENT lives in usePhotoPicker's header now: this input
+                  once carried capture="environment", which tells iOS and
+                  Android to open the camera and offer nothing else — so
+                  "Upload files" could only ever take a new photo, and the
+                  library, the Files app and Google Drive were unreachable from
+                  the app. One hook owns both inputs so the two can never be
+                  confused for each other again. */}
+              {picker.inputs}
             </div>
           </>
         )}
@@ -888,9 +1007,9 @@ function JobPhotoCapture({
         {/* One line per file that could not be used, named — a pick of ten
             where the third one fails has to say WHICH one, or the person
             re-picks all ten looking for it. */}
-        {rejected.map((name, i) => (
-          <p className="warn-text jobphoto-rejected" key={`${name}-${i}`}>
-            <strong>{name}</strong> — {t("photo.fileUnreadable")}
+        {rejected.map((r, i) => (
+          <p className="warn-text jobphoto-rejected" key={`${r.name}-${i}`}>
+            <strong>{r.name}</strong> — {r.reason}
           </p>
         ))}
       </div>
@@ -970,12 +1089,8 @@ function BeforeAfterCapture({
     });
   };
 
-  const pickFile = (slot: "before" | "after") => (
-    e: React.ChangeEvent<HTMLInputElement>,
-  ) => {
-    const file = e.target.files?.[0];
-    if (file) void applyPhoto(slot, file);
-    e.target.value = "";
+  const pickFile = (slot: "before" | "after") => (file: File) => {
+    void applyPhoto(slot, file);
   };
 
   if (mode !== "idle") {
@@ -1048,9 +1163,16 @@ function CaptureSlot({
   hint?: string;
   url: string | null;
   onCamera: () => void;
-  onFile: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onFile: (file: File) => void;
 }) {
   const t = useT();
+  // This slot drives a live getUserMedia preview itself (onCamera), so it needs
+  // only the library half of the pair — `camera: false`, and the DOM keeps the
+  // one file input it has always had. The input is rendered INSIDE the label,
+  // which is how a click opens it without any JavaScript at all.
+  const picker = usePhotoPicker({
+    onFiles: (files) => onFile(files[0]),
+  });
   if (url) {
     return (
       <div className="cap-slot filled">
@@ -1061,7 +1183,7 @@ function CaptureSlot({
           </button>
           <label className="cap-bar-btn">
             <ImagePlus size={14} aria-hidden /> {t("photo.action.file")}
-            <input type="file" accept="image/*" hidden onChange={onFile} />
+            {picker.inputs}
           </label>
         </div>
       </div>
@@ -1078,7 +1200,7 @@ function CaptureSlot({
       </button>
       <label className="cap-file-alt">
         <ImagePlus size={13} aria-hidden /> {t("photo.chooseFromFiles")}
-        <input type="file" accept="image/*" hidden onChange={onFile} />
+        {picker.inputs}
       </label>
     </div>
   );
@@ -1177,10 +1299,8 @@ function SinglePhotoCapture({
     );
   }
 
-  const pick = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (f) void applyPhoto(f);
-    e.target.value = "";
+  const pick = (file: File) => {
+    void applyPhoto(file);
   };
   return (
     <div className="ba-grid one">

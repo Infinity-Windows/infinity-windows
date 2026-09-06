@@ -485,6 +485,42 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
     if (error) throw missingGuard(error, "receipt");
   };
 
+  // The ORIGINAL file a PDF receipt came from. Two steps, same shape as
+  // receiptCapture: put the bytes in the bucket, then record where they went.
+  //
+  // Always queued AFTER (and dependsOn) the receipt_capture entry, so
+  // set_receipt_document always names a receipt that exists. Both halves are
+  // safe to repeat — the upload upserts and the RPC writes the same path — so
+  // a resend after a lost reply changes nothing, which is what lets the queue
+  // retry it blind.
+  //
+  // A database that has not got the function yet fails on the FIRST try with a
+  // sentence, not on the eighth with PostgREST's own words: missingGuard. The
+  // receipt itself is already filed and readable by then; what is stuck is the
+  // original, and the person who has to hear about it is whoever deploys.
+  const receiptDocumentUpload: OpHandler = async (entry, ctx) => {
+    const p = entry.payload;
+    const id = str(p.id);
+    const bucket = str(p.bucket) ?? "install-media";
+    const path = str(p.path);
+    const contentType = str(p.contentType) ?? "application/pdf";
+    if (!id) throw tagPermanent(new Error("This receipt file is missing its receipt"));
+    if (!path) throw tagPermanent(new Error("This receipt file is missing where it goes"));
+    const blob = await ctx.getBlob();
+    if (!blob) throw tagPermanent(new Error("This receipt file is missing its file"));
+
+    const { error: upErr } = await supabase.storage
+      .from(bucket)
+      .upload(path, blob, { contentType, upsert: true });
+    if (upErr) throw upErr;
+
+    const { error } = await supabase.rpc("set_receipt_document", {
+      p_id: id,
+      p_document_path: `${bucket}/${path}`,
+    });
+    if (error) throw missingGuard(error, "receipt file");
+  };
+
   // receiptAnswer sets ONLY what the upload flow's one question actually
   // answered (which job, bill-to-customer). It reads the row's OTHER
   // fields fresh (not from the payload, which was minted before extraction
@@ -1210,6 +1246,7 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
     receipt_upload: upload,
     receipt_capture: receiptCapture,
     receipt_answer: receiptAnswer,
+    receipt_document_upload: receiptDocumentUpload,
     video_quiz_submit: videoQuizSubmit,
     daily_log: dailyLog,
     pin_undo: pinUndo,

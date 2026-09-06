@@ -375,6 +375,58 @@ export function enqueueReceiptCapture(input: ReceiptCaptureInput): Promise<strin
 }
 
 /**
+ * Queue the ORIGINAL file a PDF receipt came from.
+ *
+ * A second entry rather than a sixth field on the capture payload, and it
+ * `dependsOn` that entry: the receipt has to exist before anything can be
+ * recorded on it, and the capture payload's shape is frozen by the entries
+ * already sitting in IndexedDB on phones (see the op's own comment).
+ *
+ * TOO BIG TO KEEP is refused HERE, in its own words, rather than through the
+ * generic BlobTooLargeError — that one says "try a smaller photo", which is no
+ * help at all to somebody holding a 40 MB scanned invoice. The receipt itself
+ * has already been filed by the time this is called, and it stays filed: what
+ * is lost is the original attachment, and the sentence says exactly that.
+ */
+export class ReceiptDocumentTooLargeError extends Error {
+  constructor(bytes: number) {
+    super(
+      `That PDF is too big to keep a copy of (${Math.round(bytes / 1024 / 1024)} MB). ` +
+        "The receipt was still saved — the first page is on it.",
+    );
+    this.name = "ReceiptDocumentTooLargeError";
+  }
+}
+
+export function enqueueReceiptDocument(input: {
+  /** The receipt this file belongs to — the same client-minted id. */
+  id: string;
+  dependsOn: string;
+  bucket?: string;
+  path: string;
+  contentType: string;
+  blob: Blob;
+}): Promise<string> {
+  if (input.blob.size > MAX_BLOB_BYTES) {
+    return Promise.reject(new ReceiptDocumentTooLargeError(input.blob.size));
+  }
+  return enqueue(
+    {
+      op: "receipt_document_upload",
+      dependsOn: input.dependsOn,
+      hasBlob: true,
+      payload: {
+        id: input.id,
+        bucket: input.bucket ?? "install-media",
+        path: input.path,
+        contentType: input.contentType,
+      },
+    },
+    input.blob,
+  );
+}
+
+/**
  * Queue the upload flow's one skippable question — a job picked (or typed
  * as a waiting-job name) and/or the bill-to-customer answer, made AFTER the
  * photo was already snapped. `dependsOn` the enqueueReceiptCapture entry's

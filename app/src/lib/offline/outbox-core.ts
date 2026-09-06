@@ -74,6 +74,16 @@ export type OutboxOp =
   // Always `dependsOn` its receipt_capture entry: asking the server to
   // update a receipt that has not been filed yet would fail every time.
   | "receipt_answer"
+  // The ORIGINAL file a PDF receipt came from (2026-09-05). The receipt's own
+  // photo is page one, rendered on the phone, and it travels in the
+  // receipt_capture entry above exactly as a snapped photo always has — this
+  // is the second entry that puts the PDF itself in the bucket and records it
+  // on the row. Always `dependsOn` its receipt_capture entry, the same reason
+  // receipt_answer is: set_receipt_document cannot name a receipt that has not
+  // been filed. A separate entry rather than a sixth field on the capture
+  // payload, because that payload is sitting in IndexedDB on phones right now,
+  // minted by a bundle that never heard of a document.
+  | "receipt_document_upload"
   // Wave Q: a finished video quiz attempt. Unlike most of this queue, the
   // caller tries submit_video_quiz directly FIRST (videoQuiz.ts's
   // submitVideoQuiz, the offlineWrites.ts pattern) so an installer sees
@@ -601,6 +611,7 @@ const OP_REGISTRY = {
   issue_photo_upload: true,
   receipt_capture: true,
   receipt_answer: true,
+  receipt_document_upload: true,
   video_quiz_submit: true,
 } as const satisfies Record<OutboxOp, true>;
 
