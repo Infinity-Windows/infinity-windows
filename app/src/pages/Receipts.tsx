@@ -198,7 +198,7 @@ export function Receipts() {
           // to press Export.
           if (!r.documentPath) return;
           try {
-            const docUrl = await receiptDocumentSignedUrl(r.documentPath);
+            const docUrl = await receiptDocumentSignedUrl(r.id, r.documentPath);
             const docRes = await fetch(docUrl);
             if (!docRes.ok) return;
             zip.file(`${name.replace(/\.[^.]+$/, "")}.pdf`, await docRes.blob());
@@ -348,7 +348,11 @@ export function Receipts() {
                   {/* This one came in as a PDF. The thumbnail is page one; the
                       original is one tap away and goes in the zip export too. */}
                   {r.documentPath && (
-                    <ReceiptDocumentLink documentPath={r.documentPath} variant="button" />
+                    <ReceiptDocumentLink
+                      receiptId={r.id}
+                      documentPath={r.documentPath}
+                      variant="button"
+                    />
                   )}
                   <button
                     type="button"

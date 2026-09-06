@@ -379,7 +379,11 @@ export function PhotoFeed({
                   {/* A receipt that came in as a PDF says so, and the tag is
                       the way back to the original file — see the component. */}
                   {r.documentPath && (
-                    <ReceiptDocumentLink documentPath={r.documentPath} variant="chip" />
+                    <ReceiptDocumentLink
+                      receiptId={r.id}
+                      documentPath={r.documentPath}
+                      variant="chip"
+                    />
                   )}
                 </div>
               ))}

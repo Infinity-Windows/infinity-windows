@@ -389,6 +389,9 @@ export function receiptPhotoPath(id: string): string {
   return `receipts/${id}.jpg`;
 }
 
+/** The one bucket a receipt's files live in — pictures and originals both. */
+const RECEIPT_BUCKET = "install-media";
+
 /**
  * Bucket-relative path for the ORIGINAL file a PDF receipt came from:
  * `receipts/<id>.pdf`, beside the rendered page one at `receipts/<id>.jpg`.
@@ -397,6 +400,13 @@ export function receiptPhotoPath(id: string): string {
  */
 export function receiptDocumentPath(id: string): string {
   return `receipts/${id}.pdf`;
+}
+
+/** What `document_path` holds on the row: bucket-first, the same shape
+ * `photo_path` carries. Written by the outbox, checked by the database
+ * (20260990000000), and checked again here before anything is signed. */
+function receiptDocumentRef(id: string): string {
+  return `${RECEIPT_BUCKET}/${receiptDocumentPath(id)}`;
 }
 
 /**
@@ -425,14 +435,27 @@ export async function setReceiptDocument(
  * ten minutes is deliberately shorter than the hour `signedMedia` gives a
  * thumbnail: a thumbnail has to survive a page sitting open, a download does
  * not.
+ *
+ * THE BUCKET AND THE PATH ARE DERIVED FROM THE ID, never read out of the
+ * stored string — and the stored string has to match, or nothing is signed.
+ * `document_path` is a row a phone wrote, and this call is the door it would
+ * open: signing whatever bucket the first path segment happens to name would
+ * let a receipt row hand out a link to some unrelated object, under the
+ * credentials of whoever tapped. The database refuses to store anything but
+ * install-media/receipts/<id>.pdf (20260990000000); this refuses to sign
+ * anything else. One rule, stated at both ends, so neither has to be the only
+ * one standing.
  */
-export async function receiptDocumentSignedUrl(documentPath: string): Promise<string> {
-  // Stored bucket-first ("install-media/receipts/<id>.pdf"), the same shape
-  // photo_path carries and signedMedia splits.
-  const slash = documentPath.indexOf("/");
-  const bucket = slash >= 0 ? documentPath.slice(0, slash) : "install-media";
-  const path = slash >= 0 ? documentPath.slice(slash + 1) : documentPath;
-  const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 600);
+export async function receiptDocumentSignedUrl(
+  id: string,
+  documentPath: string,
+): Promise<string> {
+  if (documentPath !== receiptDocumentRef(id)) {
+    throw new Error("That receipt's original file is not where receipts keep theirs.");
+  }
+  const { data, error } = await supabase.storage
+    .from(RECEIPT_BUCKET)
+    .createSignedUrl(receiptDocumentPath(id), 600);
   if (error) throw error;
   return data.signedUrl;
 }

@@ -17,6 +17,10 @@ import { pushToast } from "../../lib/toast";
 import { useT } from "../../lib/i18n";
 
 export function ReceiptDocumentLink({
+  /** The receipt this original belongs to. The signing call needs it: the
+   * bucket and the path are worked out FROM the id, and the stored string has
+   * to agree — see receiptDocumentSignedUrl. */
+  receiptId,
   documentPath,
   /**
    * "chip" is the feed tile: 120 pixels wide, with the vendor and the amount
@@ -27,6 +31,7 @@ export function ReceiptDocumentLink({
    */
   variant,
 }: {
+  receiptId: string;
   documentPath: string;
   variant: "chip" | "button";
 }) {
@@ -40,7 +45,7 @@ export function ReceiptDocumentLink({
     const tab = window.open("", "_blank");
     if (tab) tab.opener = null;
     try {
-      const url = await receiptDocumentSignedUrl(documentPath);
+      const url = await receiptDocumentSignedUrl(receiptId, documentPath);
       if (tab) tab.location.href = url;
       else window.location.href = url;
     } catch {

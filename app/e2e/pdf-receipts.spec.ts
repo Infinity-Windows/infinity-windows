@@ -74,13 +74,29 @@ function servePng(route: Route) {
 }
 
 /** Sign every receipt thumbnail, and answer the signed URL with a real pixel.
- * As broad as the fixtures' own storage route so it wins for both halves. */
-async function useReceiptThumbnails(page: Page) {
+ * As broad as the fixtures' own storage route so it wins for both halves.
+ *
+ * Returns the list of objects the page asked to sign, in order — which is the
+ * only way to see WHICH object a tap on "Open original" actually reaches for. */
+async function useReceiptThumbnails(page: Page): Promise<string[]> {
+  const signed: string[] = [];
   await page.route("**/storage/v1/**", (route) => {
-    if (route.request().url().includes("/object/sign/")) {
+    const url = route.request().url();
+    if (url.includes("/object/sign/")) {
+      signed.push(decodeURIComponent(url.split("/object/sign/")[1].split("?")[0]));
       return json(route, { signedURL: "/receipt-fixture.png" });
     }
     return servePng(route);
+  });
+  return signed;
+}
+
+/** "Open original" opens a tab. The assertion is about which OBJECT gets
+ * signed, not about the tab, and a real popup is one more page to chase. */
+async function stubWindowOpen(page: Page) {
+  await page.addInitScript(() => {
+    window.open = () =>
+      ({ opener: null, location: { href: "" }, close: () => {} }) as unknown as Window;
   });
 }
 
@@ -294,9 +310,10 @@ test("the feed tags a PDF receipt and offers the original", async ({ page }) => 
 test("the office table row says PDF and opens the original", async ({ page }) => {
   await useSupabaseFixtures(page, { role: "supervisor" });
   await hideWrongProjectBanner(page);
+  await stubWindowOpen(page);
   await page.setViewportSize({ width: 1200, height: 900 });
 
-  await useReceiptThumbnails(page);
+  const signed = await useReceiptThumbnails(page);
   await page.route("**/rest/v1/receipts**", (route) => json(route, [receiptRow()], 1));
 
   await page.goto("/receipts");
@@ -306,4 +323,37 @@ test("the office table row says PDF and opens the original", async ({ page }) =>
 
   mkdirSync(SHOTS, { recursive: true });
   await page.screenshot({ path: `${SHOTS}/office-row-pdf-1200.png` });
+
+  // WHICH object the tap reaches for, which is the whole of the rule: the
+  // bucket and the path are worked out from the receipt's own id, never read
+  // out of the row. A row is something a phone wrote — signing the bucket it
+  // names would let one hand out a link to any object the tapper can read.
+  await page.getByRole("button", { name: "Open original" }).click();
+  await expect
+    .poll(() => signed.filter((o) => o.endsWith(".pdf")))
+    .toEqual([`install-media/receipts/${receiptRow().id}.pdf`]);
+});
+
+test("a receipt row pointing somewhere else signs nothing at all", async ({ page }) => {
+  await useSupabaseFixtures(page, { role: "supervisor" });
+  await hideWrongProjectBanner(page);
+  await stubWindowOpen(page);
+  await page.setViewportSize({ width: 1200, height: 900 });
+
+  const signed = await useReceiptThumbnails(page);
+  // The shape the database now refuses to store (20260990000000) — asserted
+  // here anyway, because a client that would sign it is a client one bad row
+  // away from handing somebody an ID document named as a Shell invoice.
+  await page.route("**/rest/v1/receipts**", (route) =>
+    json(route, [{ ...receiptRow(), document_path: "credential-docs/u9/anything.pdf" }], 1),
+  );
+
+  await page.goto("/receipts");
+  await expect(page.getByText(/Shell/)).toBeVisible();
+  await page.getByRole("button", { name: "Open original" }).click();
+
+  // The office is told, in words about signal rather than about buckets — and
+  // storage is never asked for the object at all.
+  await expect(page.getByText(/Couldn't open that PDF just now/)).toBeVisible();
+  expect(signed.filter((o) => o.endsWith(".pdf"))).toEqual([]);
 });
