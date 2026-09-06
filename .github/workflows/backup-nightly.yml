@@ -1,0 +1,335 @@
+# Copy the whole database and every stored file, every night.
+#
+# WHY THIS EXISTS. This project's Supabase plan has no automatic backup. Until
+# this workflow, the only copy of the database that had ever been taken was made
+# by hand on 2026-07-29 and committed into this repository, and it was already
+# five weeks stale before anyone noticed. The database is payroll truth: it is
+# where an installer's hours live, and if it goes, so do their hours.
+#
+# The three scripts that took that July copy could not have run unattended. They
+# hardcoded `2026-07-29` in the filenames they wrote, so a second run would have
+# overwritten the first; the storage one copied only the objects another file
+# already listed, which is why it captured nine PDFs and NOT ONE install photo.
+# Those are fixed in scripts/backup_storage_objects.py; the database side now
+# uses the Supabase CLI, which is the tool Supabase itself documents for this.
+#
+# WHAT A GOOD RUN LEAVES BEHIND. One dated .tar.gz holding:
+#
+#   roles.sql              cluster roles
+#   schema.sql             every table, function, policy, extension
+#   data.sql               every row, as COPY statements
+#   storage/               the bytes of every object in every bucket
+#   storage-manifest.json  bucket/path/size/etag/sha256 per object
+#   MANIFEST.json          row counts taken at dump time, spot-row hashes,
+#                          the git sha, the timestamps
+#
+# MANIFEST.json is what makes the copy checkable rather than merely present:
+# .github/workflows/restore-test.yml replays the dump into a throwaway Postgres
+# every week and insists those numbers come back. See docs/backups.md.
+#
+# SECRETS. Three the repository already holds:
+#
+#   SUPABASE_ACCESS_TOKEN      links the CLI, and takes the row counts through
+#                              the read-only Management API helper.
+#   SUPABASE_DB_PASSWORD       what `supabase db dump` authenticates with.
+#   SUPABASE_SERVICE_ROLE_KEY  reads every storage object regardless of RLS.
+#
+# ...and three OPTIONAL ones that turn on the off-site copy. Until they are set
+# this job still proves a good backup can be taken, and says in its summary that
+# nothing left the runner:
+#
+#   B2_KEY_ID, B2_APPLICATION_KEY, B2_BUCKET   a Backblaze B2 application key
+#                              and bucket. See docs/backups.md for how to make
+#                              them; the key only needs write access.
+#
+# THE ARCHIVE IS NEVER UPLOADED AS A WORKFLOW ARTIFACT. This repository is
+# public, and anyone can download the artifacts of a public repository's
+# workflow run. An artifact here would publish every crew member's hours, every
+# builder's plans, and — because `data.sql` dumps `--schema '*'` and Supabase's
+# tool does not exclude `auth` — every crew member's email and bcrypt password
+# hash, to the whole internet, nightly. That is a worse leak than the committed
+# backups this same change is removing. So the fallback when B2 is not
+# configured is to make no copy off the runner at all, and to say so.
+#
+# Scheduled and manual only, for the same reason: nothing that holds a
+# credential in this repository may be triggered by a pull request.
+
+name: Nightly backup
+
+on:
+  schedule:
+    # 09:10 UTC — about 3am Mountain, after the last install of the day is
+    # written up and before the first crew clocks in.
+    - cron: "10 9 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Two backups of the same project at once would race on the resume manifest and
+# double the read load for no gain.
+concurrency:
+  group: backup-nightly
+  cancel-in-progress: false
+
+env:
+  # The one shared project. See app/.env.example and README.
+  SUPABASE_PROJECT_REF: czprjcskmzzagdztqonm
+  # Pinned to the same version the backend deploy uses, so the dump this takes
+  # and the migrations that produced it were handled by one CLI.
+  SUPABASE_CLI_VERSION: 2.110.0
+
+jobs:
+  backup:
+    name: Copy the database and the files
+    runs-on: ubuntu-latest
+    steps:
+      # First, before anything else, so a missing credential is always the
+      # reported cause rather than something further down failing oddly.
+      - name: Check the credentials are present
+        env:
+          TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          missing=""
+          [ -z "$TOKEN" ] && missing="SUPABASE_ACCESS_TOKEN"
+          [ -z "$DB_PASSWORD" ] && missing="${missing:+$missing, }SUPABASE_DB_PASSWORD"
+          [ -z "$SERVICE_KEY" ] && missing="${missing:+$missing, }SUPABASE_SERVICE_ROLE_KEY"
+          if [ -n "$missing" ]; then
+            echo "::error title=No backup was taken::$missing is missing, so tonight's backup did not run."
+            exit 1
+          fi
+          echo "All three credentials are present."
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: ${{ env.SUPABASE_CLI_VERSION }}
+
+      - name: Name tonight's backup
+        id: name
+        run: |
+          set -euo pipefail
+          stamp="$(date -u +%Y-%m-%dT%H%MZ)"
+          day="$(date -u +%Y/%m/%d)"
+          dir="$RUNNER_TEMP/backup/$stamp"
+          mkdir -p "$dir"
+          {
+            echo "stamp=$stamp"
+            echo "day=$day"
+            echo "dir=$dir"
+            echo "archive=$RUNNER_TEMP/${SUPABASE_PROJECT_REF}-$stamp.tar.gz"
+            echo "started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Link the project
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
+
+      # The three commands Supabase documents for taking a copy of a hosted
+      # project, in the order a restore replays them. `--use-copy` because COPY
+      # restores an order of magnitude faster than a file of INSERTs, and the
+      # weekly restore test has to finish inside a CI job.
+      #
+      # No connection string is ever built here: `--linked` uses the project the
+      # step above linked, so there is nothing that could end up in a log.
+      - name: Dump the database
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          DIR: ${{ steps.name.outputs.dir }}
+        run: |
+          set -euo pipefail
+          supabase db dump --linked --role-only -f "$DIR/roles.sql"
+          supabase db dump --linked            -f "$DIR/schema.sql"
+          supabase db dump --linked --data-only --use-copy -f "$DIR/data.sql"
+          for f in roles.sql schema.sql data.sql; do
+            [ -s "$DIR/$f" ] || { echo "::error::$f is empty — the dump did not work"; exit 1; }
+          done
+          wc -c "$DIR"/*.sql
+
+      # Every bucket, every object, including the install photos the July
+      # snapshot missed.
+      #
+      # This downloads the WHOLE bucket every night. The script can resume — it
+      # re-uses bytes whose etag has not changed — but resuming needs last
+      # night's files still on disk, and a fresh runner has an empty
+      # RUNNER_TEMP, so in CI it never does. Fetching the previous archive back
+      # out of B2 first would fix that; it is not worth the moving parts while
+      # the buckets are this size. What matters is that the ceiling in
+      # backup_storage_objects.py is measured against the whole bucket here, not
+      # against a day's new uploads — and that a run which hits it now fails.
+      - name: Copy the stored files
+        id: files
+        env:
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DIR: ${{ steps.name.outputs.dir }}
+        run: |
+          # A file that would not copy, or a run that hit its ceiling, exits
+          # non-zero and has to reach a person. But NOT by ending the job here:
+          # that would throw away tonight's database dump because some photos
+          # were missing, which is a far worse trade. So the result is
+          # remembered and the job is failed at the very end, once the archive
+          # has been packaged and sent off-site.
+          set +e
+          set -uo pipefail
+          python3 scripts/backup_storage_objects.py \
+            --ref "$SUPABASE_PROJECT_REF" --out "$DIR"
+          code=$?
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          if [ "$code" -ne 0 ]; then
+            echo "::warning title=Files are missing from tonight's copy::The archive is still being made and sent. This job fails at the end so it is not lost."
+          fi
+          exit 0
+
+      - name: Write the manifest
+        id: manifest
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          DIR: ${{ steps.name.outputs.dir }}
+          STARTED: ${{ steps.name.outputs.started_at }}
+        run: |
+          # Same rule as the file copy above: a manifest that cannot describe
+          # the dump has to reach a person, but must not cost the dump. The
+          # counts come from the Management API and the dump came down the
+          # database connection, so the API failing says nothing about whether
+          # tonight's copy is good — and an unverified copy still beats none.
+          set +e
+          set -uo pipefail
+          python3 scripts/backup_manifest.py \
+            --ref "$SUPABASE_PROJECT_REF" --out "$DIR" --started-at "$STARTED" \
+            --summary "$RUNNER_TEMP/backup-summary.md"
+          code=$?
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          if [ "$code" -ne 0 ]; then
+            echo "::warning title=Tonight's copy could not be described::The archive is still being made and sent. This job fails at the end so it is not lost."
+          fi
+          exit 0
+
+      - name: Package it
+        id: package
+        env:
+          DIR: ${{ steps.name.outputs.dir }}
+          ARCHIVE: ${{ steps.name.outputs.archive }}
+        run: |
+          set -euo pipefail
+          tar -czf "$ARCHIVE" -C "$(dirname "$DIR")" "$(basename "$DIR")"
+          echo "bytes=$(wc -c < "$ARCHIVE")" >> "$GITHUB_OUTPUT"
+
+      # rclone from Ubuntu's own package list rather than a piped install
+      # script: one fewer thing downloading and running code as root next to a
+      # copy of the whole database.
+      - name: Send it off-site
+        id: offsite
+        env:
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APPLICATION_KEY: ${{ secrets.B2_APPLICATION_KEY }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          ARCHIVE: ${{ steps.name.outputs.archive }}
+          DAY: ${{ steps.name.outputs.day }}
+        run: |
+          set -euo pipefail
+          if [ -z "$B2_KEY_ID" ] || [ -z "$B2_APPLICATION_KEY" ] || [ -z "$B2_BUCKET" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "B2 is not configured; nothing is leaving this runner."
+            exit 0
+          fi
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq rclone
+          # The remote is defined by environment variables, so no config file
+          # holding a key is ever written to disk.
+          export RCLONE_CONFIG_OFFSITE_TYPE=b2
+          export RCLONE_CONFIG_OFFSITE_ACCOUNT="$B2_KEY_ID"
+          export RCLONE_CONFIG_OFFSITE_KEY="$B2_APPLICATION_KEY"
+          rclone copy --no-traverse "$ARCHIVE" "offsite:$B2_BUCKET/$DAY/"
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+          echo "dest=$B2_BUCKET/$DAY/" >> "$GITHUB_OUTPUT"
+
+      - name: Say what happened
+        if: always()
+        env:
+          STAMP: ${{ steps.name.outputs.stamp }}
+          BYTES: ${{ steps.package.outputs.bytes }}
+          OFFSITE: ${{ steps.offsite.outputs.configured }}
+          DEST: ${{ steps.offsite.outputs.dest }}
+        run: |
+          set -uo pipefail
+          {
+            echo "### Backup $STAMP"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ -f "$RUNNER_TEMP/backup-summary.md" ]; then
+            cat "$RUNNER_TEMP/backup-summary.md" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "- No manifest was written, so this run did not get as far as a checkable backup." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "- Archive: ${BYTES:-0} bytes" >> "$GITHUB_STEP_SUMMARY"
+          echo >> "$GITHUB_STEP_SUMMARY"
+          if [ "${OFFSITE:-false}" = "true" ]; then
+            {
+              echo "Copied off-site to \`$DEST\`."
+              echo
+              echo "RETENTION: nothing here deletes an old copy. Every night writes a new"
+              echo "dated file name, so B2's \"keep only the last version\" rule would expire"
+              echo "NOTHING — it acts on repeated uploads of one name. Use a custom rule:"
+              echo "days from uploading to hiding = 30, days from hiding to deleting = 1."
+              echo "docs/backups.md, step 3. Until then the bucket grows forever."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "This backup was taken and checked, but no copy left the runner, so it is"
+              echo "already gone. Off-site copies start the moment B2_KEY_ID,"
+              echo "B2_APPLICATION_KEY and B2_BUCKET are set in Settings > Secrets and"
+              echo "variables > Actions. See docs/backups.md."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # Last, on purpose: everything above has run, the archive exists and has
+      # gone off-site, and the summary is written. All that is left is to make
+      # the run red so notify-failure posts. Default `success()` gating, so a
+      # night that already failed for another reason does not get a second,
+      # more confusing error on top of the real one.
+      - name: Fail the run if tonight's copy is not whole
+        # Both halves test non-empty as well as non-zero on purpose. An output
+        # that was never set reads as '', and '' != '0' is TRUE, which would
+        # fail the run for a step that simply did not get to write one.
+        if: >-
+          (steps.files.outputs.code != '' && steps.files.outputs.code != '0') ||
+          (steps.manifest.outputs.code != '' && steps.manifest.outputs.code != '0')
+        env:
+          FILES: ${{ steps.files.outputs.code }}
+          MANIFEST: ${{ steps.manifest.outputs.code }}
+        run: |
+          set -uo pipefail
+          if [ "${FILES:-0}" != "0" ]; then
+            echo "::error title=Tonight's backup is missing files::Some stored files could not be copied. The archive was still made and sent, but it is missing them — see the 'Copy the stored files' step, and docs/backups.md for the ceiling."
+          fi
+          if [ "${MANIFEST:-0}" != "0" ]; then
+            echo "::error title=Tonight's backup cannot be checked::MANIFEST.json is missing or describes nothing, so nothing can prove this copy holds what the database held. The archive was still made and sent. See the 'Write the manifest' step."
+          fi
+          exit 1
+
+  notify-failure:
+    name: Tell Slack if the backup did not happen
+    needs: backup
+    if: failure()
+    uses: ./.github/workflows/notify-failure.yml
+    with:
+      workflow: ${{ github.workflow }}
+      cause: Last night's backup did not run, is missing files, or cannot be checked
+      detail: >-
+        Nothing users see is affected. What is affected is what happens if the
+        database is lost today: the newest copy is now whatever the last
+        successful run left, and there is no automatic backup behind it.
+    secrets: inherit

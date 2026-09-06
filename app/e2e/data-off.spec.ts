@@ -17,9 +17,11 @@
 import { expect, test, type Page } from "@playwright/test";
 import {
   buildingPlansetFor,
+  NO_STORAGE_BACKUP_REASON,
   jobFixtures,
   openingsFor,
   plansetPdfPath,
+  storageBackupPresent,
   useSupabaseFixtures,
 } from "./support/supabaseFixtures";
 
@@ -65,11 +67,14 @@ async function flagTwoUnits(page: Page, flagged: { id: string }[]) {
 test("a data-off unit is marked on BLACK22's real map without touching fill or ring", async ({
   page,
 }) => {
+  test.skip(!storageBackupPresent(), NO_STORAGE_BACKUP_REASON);
   const planset = buildingPlansetFor(BLACK22.projectId);
+  // The folder is here but this job's sheet is not: that is a broken backup,
+  // not a missing one, and it must not pass quietly.
   expect(
     plansetPdfPath(planset),
     `BLACK22's real planset PDF is missing from the storage backup ` +
-      `(${planset.storage_path}). Restore docs/backups/ before trusting this run.`,
+      `(${planset.storage_path}), even though the backup folder is here.`,
   ).not.toBeNull();
 
   const flagged = flaggedPair();

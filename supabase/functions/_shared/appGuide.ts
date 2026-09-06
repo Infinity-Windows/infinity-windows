@@ -344,6 +344,13 @@ export const APP_GUIDE: AppGuideEntry[] = [
       "A job's building in 3D, read-only — look, orbit, zoom, and tap a window or door to see its mark and size. Opens from the job's Maps Interactive tab when a supervisor has built a Studio model. Works from a cached copy with no signal. The map, not the pen: nothing here can be moved.",
   },
   {
+    path: "/unit",
+    label: "Unit card",
+    minRole: "installer",
+    blurb:
+      "One window or door on one job, its pieces as tiles, and every fact a chip you tap to change: job, window number, piece count, each piece's label, part number and note. A piece can be moved to another window or another job with a warning, never a refusal, and every change shows an Undo. The history at the bottom lists what happened to the unit; your own lines can be undone the same day, a foreman can undo any line (ADR-0008).",
+  },
+  {
     path: "/storage/tag",
     label: "Tag packages",
     minRole: "installer",

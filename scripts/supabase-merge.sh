@@ -4,8 +4,10 @@
 #   scripts/supabase-merge.sh --source <json> --target <json> [--limit N] [--out plan.txt]
 #
 # `--source` and `--target` are either inventory files from
-# scripts/supabase-inventory.sh, or full-table backup JSON (as in
-# docs/backups/) when you want to see the actual INSERT statements.
+# scripts/supabase-inventory.sh, or full-table backup JSON when you want to see
+# the actual INSERT statements. scripts/fixtures/merge-sample-project.json is
+# one of those, kept as a scrubbed sample; a real backup comes out of the
+# nightly archive (docs/backups.md) and is never committed here.
 #
 # This tool prints the statements a merge would run, in foreign-key dependency
 # order, and stops. There is no --execute. Merging two databases that were

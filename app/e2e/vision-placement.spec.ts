@@ -17,6 +17,8 @@
 import { expect, test } from "@playwright/test";
 import {
   jobFixtures,
+  NO_STORAGE_BACKUP_REASON,
+  storageBackupPresent,
   useSupabaseFixtures,
 } from "./support/supabaseFixtures";
 import { json } from "./support/specHelpers";
@@ -89,9 +91,13 @@ function makeOpening(): OpeningState {
   };
 }
 
+// Both tests below run the client's own floor-plan-page detection against a
+// REAL document, which is the whole point of the header above — so both skip
+// when that document is not on this machine.
 test("Find placements suggests a dashed dot, and Confirm all writes a real pin", async ({
   page,
 }) => {
+  test.skip(!storageBackupPresent(), NO_STORAGE_BACKUP_REASON);
   await useSupabaseFixtures(page, { role: "supervisor" });
 
   let opening = makeOpening();
@@ -216,6 +222,7 @@ test("Find placements suggests a dashed dot, and Confirm all writes a real pin",
 });
 
 test("dismissing a suggestion clears it without writing a pin", async ({ page }) => {
+  test.skip(!storageBackupPresent(), NO_STORAGE_BACKUP_REASON);
   await useSupabaseFixtures(page, { role: "supervisor" });
 
   let opening = makeOpening();

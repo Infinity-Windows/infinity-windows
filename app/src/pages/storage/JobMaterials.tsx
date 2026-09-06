@@ -37,9 +37,9 @@ import {
   distinctPendingJobNames,
   hasScope,
   matchesScope,
-  rewriteSetHref,
   scopeFromParams,
   scopeKey,
+  unitHref,
 } from "../../lib/warehouse/materialsScope";
 import {
   loadListStorageKey,
@@ -441,7 +441,7 @@ export function JobMaterials() {
                     {/* Wave R: set-level edit navigates to the Rewrite
                         view — one editor reachable from both doors. */}
                     <Link
-                      to={rewriteSetHref(scope, mark)}
+                      to={unitHref(scope, mark)}
                       className="link"
                       aria-label={`Edit set #${mark}`}
                     >

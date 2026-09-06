@@ -12,7 +12,9 @@ import { roleRank } from "./install/types";
 
 // Guide entries that intentionally exist beyond the canonical NAV registry
 // (real installer-level routes that live only in the menu, not the NAV list).
-const EXTRA_GUIDE_PATHS = new Set(["/my-work", "/settings"]);
+// "/unit" is the unit card (ADR-0008): reached from Find, a job's materials
+// and a package, never from a menu — a door the guide should still describe.
+const EXTRA_GUIDE_PATHS = new Set(["/my-work", "/settings", "/unit"]);
 
 describe("guideRank (mirrors install/types roleRank exactly)", () => {
   it("ranks the four real roles and legacy aliases the same as roleRank", () => {
