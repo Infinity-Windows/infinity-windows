@@ -303,7 +303,8 @@ table need no new shape; the original follows on its own outbox entry to
 bookkeeper hands an auditor. Stamped TIME ONLY and labelled PDF — never GPS:
 the watermark rule is about a photo taken at the wall, and whoever files an
 emailed invoice is not standing at one. How many pages the original had goes
-in the note, unless a note was typed. The path is checked at both ends: a receipt's
+in the note — after whatever the person typed, never instead of it, and only
+when there is more than one page. The path is checked at both ends: a receipt's
 original lives at `install-media/receipts/<id>.pdf` and nowhere else, so a row
 cannot aim the office's "Open original" (or the month-end zip) at some other
 object in the bucket.

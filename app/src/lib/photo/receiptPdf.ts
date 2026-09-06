@@ -60,17 +60,27 @@ export function isPdfPick(file: { type?: string; name?: string }): boolean {
 /**
  * What the receipt's note should say.
  *
- * A typed note always wins — the person told us what this was, and overwriting
- * that with a fact they can see for themselves would be rude. With nothing
- * typed, the note carries the one thing the rendered image cannot: how many
- * pages the original had. Page one is what the machine read; "PDF, 3 pages"
- * is how the office finds out there are two more in the original.
+ * The note carries the one thing the rendered image cannot: how many pages the
+ * original had. Page one is what the machine read; "PDF, 3 pages" is how the
+ * office finds out there are two more in the original, and it is the ONLY place
+ * that fact is ever written down.
+ *
+ * WHAT SOMEBODY TYPED IS NEVER OVERWRITTEN — it leads, in their words. The
+ * count is appended after it, and only when there is more than one page, which
+ * is the only case where it says anything the reader did not already know. A
+ * one-page invoice with a caption on it reads exactly as it was typed.
+ *
+ * The alternative — typed note wins outright — quietly dropped the page count
+ * on every multi-page PDF whose person also wrote a caption, which is the exact
+ * loss this function exists to prevent.
  */
 export function receiptPdfNote(typed: string | null, pageCount: number): string | null {
   const trimmed = typed?.trim();
-  if (trimmed) return trimmed;
+  const pages =
+    Number.isFinite(pageCount) && pageCount > 1 ? `PDF, ${pageCount} pages` : null;
+  if (trimmed) return pages ? `${trimmed} · ${pages}` : trimmed;
   if (!Number.isFinite(pageCount) || pageCount < 1) return null;
-  return pageCount === 1 ? "PDF, 1 page" : `PDF, ${pageCount} pages`;
+  return pages ?? "PDF, 1 page";
 }
 
 export interface ReceiptPdfPage {

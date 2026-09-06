@@ -108,8 +108,22 @@ describe("receiptPdfNote", () => {
     expect(receiptPdfNote(null, 1)).toBe("PDF, 1 page");
   });
 
-  it("never overwrites what the person typed", () => {
-    expect(receiptPdfNote("Home Depot — shims", 4)).toBe("Home Depot — shims");
+  it("keeps what the person typed FIRST, and adds the count they cannot see", () => {
+    // The typed words are never overwritten — they lead, in their words. The
+    // count follows, because a picture of page one says nothing about pages
+    // two, three and four, and the note is the only place that fact is kept.
+    expect(receiptPdfNote("Home Depot — shims", 4)).toBe("Home Depot — shims · PDF, 4 pages");
+  });
+
+  it("leaves a one-page PDF's typed note exactly as it was typed", () => {
+    // "PDF, 1 page" alongside a caption tells the office nothing they could not
+    // work out from the single picture in front of them.
+    expect(receiptPdfNote("Home Depot — shims", 1)).toBe("Home Depot — shims");
+  });
+
+  it("adds nothing when the page count is not a number to trust", () => {
+    expect(receiptPdfNote("Fuel, truck 4", 0)).toBe("Fuel, truck 4");
+    expect(receiptPdfNote("Fuel, truck 4", Number.NaN)).toBe("Fuel, truck 4");
   });
 
   it("treats a note of only spaces as nothing typed", () => {
