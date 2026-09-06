@@ -34,6 +34,15 @@ thing to read out over the phone: "it says K7F3Q."
   the same crash may get a new code; that is fine, because a code is only ever
   used to find the report it was born with.
 
+The crash also files itself as a bug row on the owners' suggestions list. That
+row is inserted *as the crew member who crashed* — row security requires it — so
+it would otherwise appear in their own "Your reports" list: an English headline
+and a JavaScript stack trace among the things they wrote. It doesn't. Every
+auto-filed row opens with one fixed sentence, and the suggestions page shows
+those rows to owners only (`isAutoFiledCrashReport`, tested). The crew member
+already has the five-character code from the crash screen, which is the part
+they can act on.
+
 The crashed screen also offers **Try again**, which re-renders rather than
 reloading, so nobody is forced to lose the screen they were on. Anything already
 saved on the phone — queued installs, photos waiting to send — is untouched by a

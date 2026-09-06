@@ -9,6 +9,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildCrashReportBody,
   crashDigest,
+  isAutoFiledCrashReport,
   reportCrash,
   resetCrashReportsForTest,
 } from "./crashReport";
@@ -83,6 +84,25 @@ describe("buildCrashReportBody", () => {
     const body = buildCrashReportBody(err, "\n    at Deep".repeat(500), "/");
     expect(body.length).toBeLessThanOrEqual(2000);
     expect(body.length).toBeGreaterThan(0);
+  });
+});
+
+describe("isAutoFiledCrashReport", () => {
+  // Suggestions.tsx keeps these off a crew member's own list: the row is filed
+  // AS them, so RLS shows it back to them, and an English stack trace in a list
+  // of things they wrote is somebody else's homework.
+  it("knows a row the app filed from one a person wrote", () => {
+    const auto = buildCrashReportBody(new Error("boom"), null, "/projects/abc");
+    expect(isAutoFiledCrashReport(auto)).toBe(true);
+    expect(isAutoFiledCrashReport("The scanner won't open the camera")).toBe(false);
+    expect(isAutoFiledCrashReport("")).toBe(false);
+    expect(isAutoFiledCrashReport(null)).toBe(false);
+  });
+
+  it("recognises a row that was cut off at the 2000-char CHECK", () => {
+    const huge = new Error("boom");
+    huge.stack = ["Error: boom", ...Array.from({ length: 400 }, () => "    at f (x.ts:1:1)")].join("\n");
+    expect(isAutoFiledCrashReport(buildCrashReportBody(huge, null, "/x"))).toBe(true);
   });
 });
 

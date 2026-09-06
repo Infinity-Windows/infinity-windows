@@ -73,6 +73,28 @@ export function crashDigest(error: unknown): string {
 }
 
 /**
+ * How every automatically-filed crash row begins.
+ *
+ * The row is inserted as the crashing crew member — RLS requires it — so it
+ * lands in the "Your reports" list of somebody who never wrote it, under an
+ * English headline and a JavaScript stack trace. A Spanish-reading installer
+ * would find it there and have no idea what it was.
+ *
+ * There is no column that says "the app filed this", and adding one is a
+ * migration, so the opening sentence is the marker: Suggestions.tsx keeps
+ * these off the crew's own list and shows them only to the owners, who are the
+ * people the stack is for. Both sides read this one constant so they cannot
+ * drift apart.
+ */
+export const CRASH_REPORT_OPENING =
+  "A screen crashed and this report was sent automatically.";
+
+/** True for a row this app filed itself rather than one a person wrote. */
+export function isAutoFiledCrashReport(body: string | null | undefined): boolean {
+  return typeof body === "string" && body.startsWith(CRASH_REPORT_OPENING);
+}
+
+/**
  * The app_feedback row body: plain words first (the reporter sees this row in
  * their own suggestions tab), then the technical trail for whoever fixes it.
  *
@@ -96,7 +118,7 @@ export function buildCrashReportBody(
     .trim();
   const components = (componentStack ?? "").trim().split("\n").slice(0, 12).join("\n");
   const body = [
-    `A screen crashed and this report was sent automatically. Code ${digest}, on ${path}.`,
+    `${CRASH_REPORT_OPENING} Code ${digest}, on ${path}.`,
     headline,
     stack && stack !== headline ? stack : "",
     components ? `Component stack:\n${components}` : "",
