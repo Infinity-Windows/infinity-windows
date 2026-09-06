@@ -1018,6 +1018,8 @@ export function ModelStudio({ source }: { source: StudioSource }) {
       el.addEventListener("mousedown", (e) => {
         downX = e.clientX;
         downY = e.clientY;
+        lastPointer.x = e.clientX;
+        lastPointer.y = e.clientY;
       });
       el.addEventListener("mouseup", (e) => {
         if (Math.hypot(e.clientX - downX, e.clientY - downY) > 6) return;
@@ -1120,8 +1122,23 @@ export function ModelStudio({ source }: { source: StudioSource }) {
       onUnitDrag: (k, d, p) => onUnitHandleDrag(k, d, p),
       onWallDrag: (k, d, p) => onWallHandleDrag(k, d, p),
     });
+    // Where the last press landed on the 3D pane — read by wallClicked below.
+    const lastPointer = { x: -1, y: -1 };
     bp.three.itemUnselectedCallbacks.add(() => setSelUnit(null));
     bp.three.wallClicked.add((edge) => {
+      // A tap on a window is a tap on the window, not the wall behind it.
+      // The vendor only selects an item its HOVER raycast registered, and
+      // that raycast misses a freshly placed unit often enough that the tap
+      // fell through here and the wall replaced the unit — on a phone, "I
+      // tapped the window and got the wall". Ask the still-click pick
+      // first; it uses the live pane rect and hits what the person sees.
+      const pick = (window as { __studioPick?: (x: number, y: number) => StudioItem | null })
+        .__studioPick;
+      const under = pick ? pick(lastPointer.x, lastPointer.y) : null;
+      if (under) {
+        selectUnit(under);
+        return;
+      }
       const w = edge?.wall;
       if (w) selectWall(w as never);
     });
