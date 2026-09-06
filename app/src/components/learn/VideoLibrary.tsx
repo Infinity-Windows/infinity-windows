@@ -15,7 +15,7 @@
 // security is the real lock (20260984000000); partitionLearningVideos is what
 // draws the two groups, and a second pair of hands on the same rule.
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { listWindowTypes } from "../../lib/api";
 import { getMyProfile } from "../../lib/install/api";
@@ -31,8 +31,19 @@ import {
   uploadLearningVideo,
   videoStatus,
   youtubeEmbedUrl,
+  youtubePlayerEmbedUrl,
   type LearningVideo,
 } from "../../lib/learnVideos";
+import {
+  sendVideoWatchHeartbeat,
+  VIDEO_HEARTBEAT_MS,
+} from "../../lib/learningTime";
+import { useLearningTime } from "../../lib/useLearningTime";
+import {
+  loadYouTubeIframeApi,
+  YT_STATE,
+  type YouTubePlayer,
+} from "../../lib/youtubeApi";
 import {
   approveVideoQuiz,
   buildAnswers,
@@ -50,8 +61,182 @@ import {
   type SubmitVideoQuizResponse,
 } from "../../lib/videoQuiz";
 
+/**
+ * The beat a playing lesson sends (Learning time, L2). One every ten seconds
+ * while it plays, one more when it stops, and one at the end.
+ *
+ * The server decides how much of each beat is real — it measures the elapsed
+ * time itself and credits only a window the wall clock and the play head both
+ * agree on — so nothing here can turn a drag of the scrubber into watching.
+ * All of it is best effort: a failed beat is dropped and the lesson plays on.
+ */
+function useWatchBeats(videoId: string) {
+  const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const stop = useCallback(() => {
+    if (timer.current !== null) {
+      clearInterval(timer.current);
+      timer.current = null;
+    }
+  }, []);
+
+  const beat = useCallback(
+    (at: { position: number; duration: number; playing: boolean }) => {
+      void sendVideoWatchHeartbeat({
+        videoId,
+        positionSeconds: at.position,
+        durationSeconds: at.duration,
+        playing: at.playing,
+      });
+    },
+    [videoId],
+  );
+
+  const start = useCallback(
+    (read: () => { position: number; duration: number }) => {
+      stop();
+      const now = read();
+      beat({ ...now, playing: true });
+      timer.current = setInterval(() => beat({ ...read(), playing: true }), VIDEO_HEARTBEAT_MS);
+    },
+    [beat, stop],
+  );
+
+  useEffect(() => stop, [stop]);
+  return { start, stop, beat };
+}
+
+/**
+ * A YouTube lesson, played through the IFrame Player API.
+ *
+ * The API is what makes "did they watch the whole thing" answerable at all: a
+ * plain embed plays perfectly and tells the page nothing. If it cannot load —
+ * blocked, offline, a slow phone that never signals ready — this is still an
+ * ordinary iframe and the lesson still plays. Nothing is recorded and nobody is
+ * told, which is the right trade for a crew member on two bars.
+ */
+function YouTubeLesson({
+  video,
+  src,
+  onPlayingChange,
+}: {
+  video: LearningVideo;
+  src: string;
+  onPlayingChange: (playing: boolean) => void;
+}) {
+  const frame = useRef<HTMLIFrameElement>(null);
+  const beats = useWatchBeats(video.id);
+
+  useEffect(() => {
+    let live = true;
+    let player: YouTubePlayer | null = null;
+
+    const read = () => ({
+      position: player?.getCurrentTime() ?? 0,
+      duration: player?.getDuration() ?? 0,
+    });
+
+    void loadYouTubeIframeApi().then((api) => {
+      if (!live || !api || !frame.current) return;
+      player = new api.Player(frame.current, {
+        events: {
+          onStateChange: (event) => {
+            if (!live) return;
+            if (event.data === YT_STATE.PLAYING) {
+              onPlayingChange(true);
+              beats.start(read);
+              return;
+            }
+            onPlayingChange(false);
+            beats.stop();
+            if (event.data === YT_STATE.ENDED) {
+              // The end is reported as "at the duration, not playing" — the one
+              // shape learning_video_heartbeat reads as finished.
+              const { duration } = read();
+              beats.beat({ position: duration, duration, playing: false });
+            } else if (event.data === YT_STATE.PAUSED) {
+              beats.beat({ ...read(), playing: false });
+            }
+          },
+        },
+      });
+    });
+
+    return () => {
+      live = false;
+      beats.stop();
+      onPlayingChange(false);
+      // Deliberately NOT player.destroy(): attaching to an existing iframe means
+      // destroy() removes that iframe from the DOM, and the iframe is React's
+      // to remove. The player goes with the frame either way.
+    };
+  }, [beats, onPlayingChange, src]);
+
+  return (
+    <iframe
+      ref={frame}
+      className="learn-video-frame"
+      src={src}
+      title={video.title}
+      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+      allowFullScreen
+    />
+  );
+}
+
+/** An uploaded lesson. Same recording, read off the element instead of an API. */
+function UploadedLesson({
+  video,
+  src,
+  onPlayingChange,
+}: {
+  video: LearningVideo;
+  src: string;
+  onPlayingChange: (playing: boolean) => void;
+}) {
+  const el = useRef<HTMLVideoElement>(null);
+  const beats = useWatchBeats(video.id);
+  const read = () => ({
+    position: el.current?.currentTime ?? 0,
+    duration: Number.isFinite(el.current?.duration) ? (el.current?.duration ?? 0) : 0,
+  });
+
+  return (
+    <video
+      ref={el}
+      className="learn-video-frame"
+      src={src}
+      title={video.title}
+      controls
+      preload="metadata"
+      onPlay={() => {
+        onPlayingChange(true);
+        beats.start(read);
+      }}
+      onPause={() => {
+        onPlayingChange(false);
+        beats.stop();
+        beats.beat({ ...read(), playing: false });
+      }}
+      onEnded={() => {
+        onPlayingChange(false);
+        beats.stop();
+        const { duration } = read();
+        beats.beat({ position: duration, duration, playing: false });
+      }}
+    />
+  );
+}
+
 function Player({ video }: { video: LearningVideo }) {
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
+  const [playing, setPlaying] = useState(false);
+
+  // Time on the ITEM, as opposed to which seconds of the film were seen: a
+  // lesson counts as an item somebody is spending time on while it is playing,
+  // and not while its card merely sits on a scrolled page with nine others.
+  useLearningTime("video", playing ? video.id : null);
+
   useEffect(() => {
     let live = true;
     if (video.video_path) {
@@ -64,21 +249,18 @@ function Player({ video }: { video: LearningVideo }) {
     };
   }, [video.video_path]);
 
-  const embed = video.youtube_url ? youtubeEmbedUrl(video.youtube_url) : null;
+  const embed = video.youtube_url
+    ? youtubePlayerEmbedUrl(
+        video.youtube_url,
+        typeof window === "undefined" ? null : window.location.origin,
+      )
+    : null;
   if (embed) {
-    return (
-      <iframe
-        className="learn-video-frame"
-        src={embed}
-        title={video.title}
-        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-        allowFullScreen
-      />
-    );
+    return <YouTubeLesson video={video} src={embed} onPlayingChange={setPlaying} />;
   }
   if (video.video_path) {
     return signedUrl ? (
-      <video className="learn-video-frame" src={signedUrl} controls preload="metadata" />
+      <UploadedLesson video={video} src={signedUrl} onPlayingChange={setPlaying} />
     ) : (
       <p className="muted">Loading video…</p>
     );

@@ -200,3 +200,38 @@ export function formatLearningTime(seconds: number): string {
   const rest = mins % 60;
   return rest === 0 ? `${hours}h` : `${hours}h ${rest}m`;
 }
+
+// ---------------------------------------------------------------------------
+// Video watches (L2)
+// ---------------------------------------------------------------------------
+
+/** One beat every ten seconds while a lesson is playing. */
+export const VIDEO_HEARTBEAT_MS = 10_000;
+
+/**
+ * Tell the server where the play head is. Best effort, exactly like the Learn
+ * heartbeat above and for the same reasons — see the "no outbox" note at the
+ * top of this file.
+ *
+ * The server decides how much of this is real: it measures the elapsed time
+ * itself and credits only a window the wall clock and the play head both agree
+ * on, so nothing here can turn a drag of the scrubber into watching.
+ */
+export async function sendVideoWatchHeartbeat(input: {
+  videoId: string;
+  positionSeconds: number;
+  durationSeconds: number;
+  playing: boolean;
+}): Promise<void> {
+  try {
+    await supabase.rpc("learning_video_heartbeat", {
+      p_video_id: input.videoId,
+      p_session_id: learningSessionId(),
+      p_position_s: Math.max(0, Math.round(input.positionSeconds)),
+      p_duration_s: Math.max(0, Math.round(input.durationSeconds)),
+      p_playing: input.playing,
+    });
+  } catch {
+    // A lesson must never stop playing because a measurement failed.
+  }
+}

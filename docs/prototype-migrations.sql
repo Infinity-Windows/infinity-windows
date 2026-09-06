@@ -16037,3 +16037,319 @@ comment on function public.learning_heartbeat(uuid, text, text, int) is
 
 revoke all on function public.learning_heartbeat(uuid, text, text, int) from public, anon;
 grant execute on function public.learning_heartbeat(uuid, text, text, int) to authenticated;
+
+
+-- ---------------------------------------------------------------------------
+-- 3. L2 — merge_watch_ranges: which seconds of a lesson were really played
+-- ---------------------------------------------------------------------------
+-- "Did they watch the whole thing" cannot be answered by counting presses of
+-- play. A lesson left running to an empty room answers yes; a scrubber dragged
+-- to the last second answers yes. So what is stored is the SET OF SECONDS a
+-- person has actually played, as merged [start, end] ranges, and every answer
+-- above it is arithmetic on that set.
+--
+-- THE RULE, and it is deliberately simple enough to hold in one head: sort by
+-- start, then walk. A stretch beginning at or before the end of the one in hand
+-- extends it — 0-10 and 10-20 are one viewing of 0-20, not two — and anything
+-- else starts a new range. Nothing is counted twice, so watching the same
+-- thirty seconds four times covers thirty seconds and no more.
+--
+-- THIS FUNCTION HAS A TWIN in app/src/lib/videoWatch.ts, because the app has to
+-- render what this computed and the tests have to exercise it without a
+-- database. The two are pinned to each other by the cases below:
+-- app/src/lib/videoWatch.test.ts generates these lines from TWIN_CASES and
+-- fails unless every one of them appears in this file, verbatim. A change to
+-- either copy that is not made to both cannot land quietly.
+--
+-- TWIN CASES (ranges + new stretch -> merged, and the seconds they cover):
+--   [] + 0..10 -> [[0,10]] covered 10
+--   [[0,10]] + 10..20 -> [[0,20]] covered 20
+--   [[0,10]] + 20..30 -> [[0,10],[20,30]] covered 20
+--   [[0,10],[20,30]] + 5..25 -> [[0,30]] covered 30
+--   [[0,30]] + 5..10 -> [[0,30]] covered 30
+--   [[20,30]] + 0..10 -> [[0,10],[20,30]] covered 20
+--   [] + 10..10 -> [] covered 0
+--   [] + -5..10 -> [[0,10]] covered 10
+--   [[0,10],[5,15]] + 30..40 -> [[0,15],[30,40]] covered 25
+--
+-- Whole seconds throughout. A player reports a fractional position and nobody
+-- needs the fraction; integers keep the stored json small and the twin exact.
+create or replace function public.merge_watch_ranges(
+  p_ranges jsonb,
+  p_start int,
+  p_end int
+)
+returns jsonb
+language plpgsql
+immutable
+set search_path = public, pg_temp
+as $$
+declare
+  v_out jsonb := '[]'::jsonb;
+  v_s int;
+  v_e int;
+  r record;
+begin
+  for r in
+    select s, e from (
+      select greatest(0, (x->>0)::int) as s, (x->>1)::int as e
+        from jsonb_array_elements(coalesce(p_ranges, '[]'::jsonb)) x
+      union all
+      select greatest(0, least(coalesce(p_start, 0), coalesce(p_end, 0))),
+             greatest(coalesce(p_start, 0), coalesce(p_end, 0))
+    ) t
+    where t.e > t.s
+    order by s, e
+  loop
+    if v_s is null then
+      v_s := r.s;
+      v_e := r.e;
+    elsif r.s <= v_e then
+      -- Touching counts as continuous: a beat ending at 10 and the next one
+      -- starting at 10 are one stretch of watching, not two.
+      v_e := greatest(v_e, r.e);
+    else
+      v_out := v_out || jsonb_build_array(jsonb_build_array(v_s, v_e));
+      v_s := r.s;
+      v_e := r.e;
+    end if;
+  end loop;
+
+  if v_s is not null then
+    v_out := v_out || jsonb_build_array(jsonb_build_array(v_s, v_e));
+  end if;
+  return v_out;
+end;
+$$;
+
+comment on function public.merge_watch_ranges(jsonb, int, int) is
+  'Fold one newly-watched stretch into the seconds of a lesson already covered, merging anything that touches or overlaps. Twin of mergeWatchRanges in app/src/lib/videoWatch.ts (Learning time, L2).';
+
+-- Internal: nothing in a browser calls this. learning_video_heartbeat, which is
+-- SECURITY DEFINER and runs as the owner, is the only caller there is.
+revoke all on function public.merge_watch_ranges(jsonb, int, int)
+  from public, anon, authenticated;
+
+
+-- ---------------------------------------------------------------------------
+-- 4. L2 — learning_video_watches: one row per lesson per visit
+-- ---------------------------------------------------------------------------
+-- Same grain as learning_time, for the same reason: a row per (person, lesson,
+-- visit) is what makes "how many times" countable at all. A running total could
+-- only ever say "forty minutes", which cannot tell four viewings from one long
+-- afternoon with the tab open.
+--
+-- `ranges` is the record; `watch_seconds` is its sum, kept beside it so every
+-- read is not a fold over json, and `completed` is the verdict. All three are
+-- written by the RPC and by nothing else.
+--
+-- `last_position_s` is the marker that makes a seek detectable: without the
+-- previous position there is no way to tell ten seconds of playing from a drag
+-- of the scrubber, and the whole point of this table is that the difference
+-- shows up.
+create table if not exists learning_video_watches (
+  id uuid primary key default gen_random_uuid(),
+  profile_id uuid not null references profiles(id) on delete cascade,
+  video_id uuid not null references learning_videos(id) on delete cascade,
+  session_id uuid not null,
+  started_at timestamptz not null default now(),
+  last_seen_at timestamptz not null default now(),
+  -- The sum of `ranges` — seconds of the lesson actually seen in this visit.
+  watch_seconds int not null default 0 check (watch_seconds >= 0),
+  -- [[start, end], …] in whole seconds, merged. See merge_watch_ranges.
+  ranges jsonb not null default '[]'::jsonb,
+  -- What the player said the lesson runs to. Null until a player reports it —
+  -- an embed that never loaded has no length, and a percentage of null is not
+  -- zero percent, it is "we do not know".
+  duration_seconds int,
+  completed boolean not null default false,
+  -- Where the play head was at the last beat. See the note above.
+  last_position_s int,
+  created_at timestamptz not null default now(),
+  unique (profile_id, video_id, session_id)
+);
+
+create index if not exists learning_video_watches_profile_idx
+  on learning_video_watches (profile_id, last_seen_at desc);
+create index if not exists learning_video_watches_video_idx
+  on learning_video_watches (video_id, last_seen_at desc);
+
+comment on table learning_video_watches is
+  'Which seconds of one lesson a person actually played during one visit, as merged ranges. Written only by learning_video_heartbeat. "Times watched" counts the visits that got through 30 seconds; "watched the whole thing" is completed (Learning time, L2).';
+
+alter table learning_video_watches enable row level security;
+
+revoke all on learning_video_watches from anon, authenticated;
+grant select on learning_video_watches to authenticated;
+grant all on learning_video_watches to service_role;
+
+-- Same three rules as learning_time above, for the same three reasons: your own
+-- rows so the Learn tab can tell you what it recorded, supervisor+ for the
+-- owner's table, and never a partner login.
+drop policy if exists "learning_video_watches_select" on learning_video_watches;
+create policy "learning_video_watches_select" on learning_video_watches
+  for select to authenticated
+  using (
+    not public.is_partner_user()
+    and (profile_id = auth.uid() or public.my_role_rank() >= 2)
+  );
+
+
+-- ---------------------------------------------------------------------------
+-- 5. L2 — learning_video_heartbeat: the only writer
+-- ---------------------------------------------------------------------------
+-- While a lesson is playing the page sends the play head's position every ten
+-- seconds. This decides how much of that is real.
+--
+-- A BEAT CLAIMS THE SMALLEST OF THREE NUMBERS: the fifteen-second cap, the wall
+-- clock that really passed since the last beat (measured here, from
+-- last_seen_at — the phone never supplies it), and the distance the play head
+-- actually moved. It claims NOTHING at all when:
+--
+--   * the player was not playing. A pause is not watching.
+--   * this is the first beat of a visit. There is no marker yet, so no play
+--     time has been observed. A visit therefore under-reports by up to one
+--     beat, which is the direction to be wrong in.
+--   * the head went backwards. A rewind is watching, but the seconds it
+--     re-covers are already covered, and the range merge would drop them
+--     anyway.
+--   * the head jumped further forward than the clock could explain. That is a
+--     drag of the scrubber, not ten seconds of anybody's attention. The
+--     allowance is twice the elapsed time plus two seconds, so double-speed
+--     playback is credited — at the slower of the two, deliberately — and a
+--     jump is not.
+--
+-- COMPLETED is either "covered ninety percent" or "the player said it ended",
+-- and the second half is why every screen shows the percentage BESIDE the
+-- verdict rather than instead of it. Dragging to the last second and letting
+-- the player stop does end a video; the honest answer is to let an owner read
+-- "finished · 4% watched" and draw their own conclusion, not to guess at
+-- intent in here. Once true it stays true: rewinding a lesson you finished
+-- does not unfinish it.
+--
+-- The client sends p_position_s = the duration and p_playing = false when the
+-- player fires ENDED, which is what the check below is reading.
+create or replace function public.learning_video_heartbeat(
+  p_video_id uuid,
+  p_session_id uuid,
+  p_position_s numeric,
+  p_duration_s numeric,
+  p_playing boolean
+)
+returns learning_video_watches
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_me uuid := auth.uid();
+  v_row learning_video_watches;
+  v_pos int := floor(greatest(coalesce(p_position_s, 0), 0))::int;
+  v_dur int := floor(greatest(coalesce(p_duration_s, 0), 0))::int;
+  v_known_dur int;
+  v_elapsed int;
+  v_delta int;
+  v_window int := 0;
+  v_ranges jsonb;
+  v_covered int;
+  v_ended boolean;
+begin
+  if v_me is null then
+    raise exception 'Sign in before the app can record what you watched.'
+      using errcode = '42501';
+  end if;
+
+  -- The partner wall, for the same reason it is in learning_heartbeat: this
+  -- function is SECURITY DEFINER and writes straight past the table policy.
+  if public.is_partner_user() then
+    raise exception 'Not available for your account.' using errcode = '42501';
+  end if;
+
+  if p_session_id is null then
+    raise exception 'The app did not say which visit this belongs to.';
+  end if;
+  if not exists (select 1 from learning_videos where id = p_video_id) then
+    raise exception 'That lesson is not in the library any more.';
+  end if;
+
+  select * into v_row
+    from learning_video_watches
+   where profile_id = v_me
+     and video_id = p_video_id
+     and session_id = p_session_id;
+
+  -- A position past the end of the lesson is a rounding artefact of the
+  -- player, not a discovery of extra video.
+  if v_dur > 0 then
+    v_pos := least(v_pos, v_dur);
+  end if;
+
+  if not found then
+    -- The opening beat of a visit. It banks no seconds — there is no marker to
+    -- measure from — it just starts the row and plants one.
+    insert into learning_video_watches (
+      profile_id, video_id, session_id, watch_seconds, ranges,
+      duration_seconds, completed, last_position_s
+    )
+    values (
+      v_me, p_video_id, p_session_id, 0, '[]'::jsonb,
+      nullif(v_dur, 0),
+      -- An ENDED on the very first beat of a visit is somebody who opened the
+      -- card at the end of the video. It is recorded as finished with nothing
+      -- watched, and the screens say exactly that.
+      (v_dur > 0 and v_pos >= v_dur - 1 and not coalesce(p_playing, false)),
+      v_pos
+    )
+    returning * into v_row;
+    return v_row;
+  end if;
+
+  v_known_dur := coalesce(nullif(v_dur, 0), v_row.duration_seconds);
+  v_elapsed := greatest(0, floor(extract(epoch from (now() - v_row.last_seen_at)))::int);
+  v_delta := v_pos - coalesce(v_row.last_position_s, v_pos);
+
+  if coalesce(p_playing, false)
+     and v_row.last_position_s is not null
+     and v_delta > 0
+     and v_delta <= v_elapsed * 2 + 2 then
+    v_window := least(15, v_elapsed, v_delta);
+  end if;
+
+  v_ranges := v_row.ranges;
+  if v_window > 0 then
+    v_ranges := public.merge_watch_ranges(v_ranges, v_pos - v_window, v_pos);
+  end if;
+
+  select coalesce(sum((x->>1)::int - (x->>0)::int), 0)::int
+    into v_covered
+    from jsonb_array_elements(v_ranges) x;
+
+  v_ended := v_known_dur is not null
+         and v_known_dur > 0
+         and v_pos >= v_known_dur - 1
+         and not coalesce(p_playing, false);
+
+  update learning_video_watches set
+    ranges = v_ranges,
+    watch_seconds = v_covered,
+    duration_seconds = v_known_dur,
+    last_position_s = v_pos,
+    last_seen_at = now(),
+    completed = completed
+      or v_ended
+      or (v_known_dur is not null and v_known_dur > 0
+          and v_covered::numeric / v_known_dur >= 0.9)
+  where id = v_row.id
+  returning * into v_row;
+
+  return v_row;
+end;
+$$;
+
+comment on function public.learning_video_heartbeat(uuid, uuid, numeric, numeric, boolean) is
+  'Record the seconds of one lesson a person has actually played in this visit. The server measures the elapsed time itself and credits only a window the wall clock and the play head both agree on, so a seek never counts as watching (Learning time, L2).';
+
+revoke all on function public.learning_video_heartbeat(uuid, uuid, numeric, numeric, boolean)
+  from public, anon;
+grant execute on function public.learning_video_heartbeat(uuid, uuid, numeric, numeric, boolean)
+  to authenticated;

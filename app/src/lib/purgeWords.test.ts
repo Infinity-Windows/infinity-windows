@@ -232,6 +232,11 @@ describe("the probe list covers the schema", () => {
     // logged against an account with none of those are the minutes of a
     // mistyped login, and nobody will ever read them.
     "learning_time.profile_id",
+    // And which seconds of a lesson they played (20260992000000). Same answer
+    // and the same reasoning as the line above: the lesson's own outcomes —
+    // the quiz attempt, the clearance it granted — are counted, and these are
+    // the measurements beside them.
+    "learning_video_watches.profile_id",
   ]);
 
   /** `references profiles(id)` across every migration, with its ON DELETE. */
