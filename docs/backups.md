@@ -39,8 +39,15 @@ plausible size. Counting the rows at the moment of the dump, and insisting on
 the same counts after a restore, is what turns "we have a file" into "we have
 the company".
 
-The storage copy **resumes**: a second run re-uses last night's bytes wherever
-the etag has not changed, so only new and changed files are fetched.
+The nightly downloads every stored file, every night. The script can resume — a
+second run into the same folder re-uses bytes whose etag has not changed, which
+is what makes re-running it on a laptop quick — but a GitHub runner starts empty
+every night, so in CI it never resumes. That is fine at this size and worth
+knowing before anyone sizes the job around it.
+
+If the copy cannot fetch every file, the nightly **fails** and Slack says so.
+That includes hitting its 2 GiB ceiling: an incomplete backup is reported as a
+problem rather than as a green night with a note on a page nobody opens.
 
 ## Where the copies go
 

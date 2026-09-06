@@ -4,8 +4,9 @@
     SUPABASE_SERVICE_ROLE_KEY=... scripts/backup_storage_objects.py \
         --ref czprjcskmzzagdztqonm --out backups/2026-09-05
 
-Read-only against the project. Writes a manifest next to the files so the next
-run can resume, and so a restore can prove it got everything back.
+Read-only against the project. Writes a manifest next to the files so a re-run
+into the same folder can resume, and so a restore can prove it got everything
+back. (A CI run starts in an empty folder every night and so never resumes.)
 
 WHY THIS WAS REWRITTEN (2026-09-05). The first version of this script ran once,
 by hand, on 2026-07-29, and three things about it meant it could never run

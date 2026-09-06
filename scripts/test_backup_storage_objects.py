@@ -13,9 +13,10 @@ copied nothing still exits 0 and still uploads an archive:
   1. It finds objects nested under folders. Every planset and every install
      photo is stored under a folder per project, so a walk that does not recurse
      backs up an empty bucket and says it succeeded.
-  2. A second run reuses last night's bytes when size and etag match, and copies
-     again when either changed. Without this a nightly job re-downloads the
-     whole bucket every night forever.
+  2. A second run INTO THE SAME FOLDER reuses bytes when size and etag match, and
+     copies again when either changed. This is what makes re-running the script
+     by hand quick. It does not happen in CI, where every run starts in an empty
+     RUNNER_TEMP — see the comment on the copy step in backup-nightly.yml.
   3. Reaching the size ceiling keeps the objects it already copied, rather than
      refusing the bucket outright — and fails the run, so a backup that is
      missing files never reports a green night.

@@ -158,8 +158,16 @@ jobs:
           wc -c "$DIR"/*.sql
 
       # Every bucket, every object, including the install photos the July
-      # snapshot missed. Re-uses last night's bytes where the etag is unchanged,
-      # so this is a few seconds after the first run.
+      # snapshot missed.
+      #
+      # This downloads the WHOLE bucket every night. The script can resume — it
+      # re-uses bytes whose etag has not changed — but resuming needs last
+      # night's files still on disk, and a fresh runner has an empty
+      # RUNNER_TEMP, so in CI it never does. Fetching the previous archive back
+      # out of B2 first would fix that; it is not worth the moving parts while
+      # the buckets are this size. What matters is that the ceiling in
+      # backup_storage_objects.py is measured against the whole bucket here, not
+      # against a day's new uploads — and that a run which hits it now fails.
       - name: Copy the stored files
         env:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
