@@ -1,7 +1,8 @@
 // The unit card (warehouse redesign wave 1): one editor for a window's
 // pieces. Driven through the real UI with fixture data; the asserts capture
 // the actual RPC payloads the buttons send, the same way storage.spec.ts does.
-import { expect, test, type Route } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+import { json } from "./support/specHelpers";
 import { jobFixtures, useSupabaseFixtures } from "./support/supabaseFixtures";
 
 const JOBS = jobFixtures();
@@ -21,14 +22,6 @@ function pkg(n: number, status: string, over: Record<string, unknown> = {}) {
     package_marks: [{ mark_code: "16" }],
     ...over,
   };
-}
-
-function json(route: Route, body: unknown, rows = 0) {
-  return route.fulfill({
-    status: 200, contentType: "application/json",
-    headers: { "content-range": `0-${Math.max(0, rows - 1)}/${rows}` },
-    body: JSON.stringify(body),
-  });
 }
 
 test("moving one piece to another job sends reassign_package and offers Undo", async ({ page }) => {
