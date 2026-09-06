@@ -26,7 +26,7 @@ All from `app/`:
 ```bash
 npm run dev      # vite dev server on :5173
 npm test         # vitest — ~2800 tests, ~7 seconds
-npm run lint     # oxlint — 26 known warnings, treat any increase as a regression
+npm run lint     # oxlint — 25 known warnings, treat any increase as a regression
 npm run build    # tsc -b && vite build
 npm run e2e      # playwright (needs `npx playwright install` first)
 ```
