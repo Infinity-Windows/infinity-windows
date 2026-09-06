@@ -1,6 +1,6 @@
 # 04 — Migration drift checked nightly and on the PR
 
-Status: ready-for-agent
+Status: resolved
 Type: task
 Size: S
 
@@ -37,3 +37,18 @@ Between deploys nobody looks, and migrations do get applied outside the repo.
 - The nightly run is green on a quiet night and red when a migration is
   applied by hand and not committed (prove with the existing script tests,
   not on production).
+
+## Comments
+
+2026-09-06 — Built as `.github/workflows/migration-drift.yml`. Detect only on
+every trigger; applying stays in Deploy backend. Nightly at 08:05 UTC and on
+demand: `scripts/verify-schema.sh` (declared-and-absent fails, live-and-
+undeclared becomes the same Slack warning Deploy backend raises) plus the
+function-body comparison from `scripts/audit-migrations.sh` in the summary.
+On a pull request that touches `supabase/migrations/**` or the drift tooling:
+the question is asked of MASTER's files from a detached checkout of the base
+commit, so the PR's own unapplied migrations are not counted as drift; the
+PR's added migrations are listed in the summary; and `scripts/migration_lint.py`
+runs — it was tested in CI and had never actually been run on a migration.
+Missing secret = red, fork PR = skip with a notice. No script changed; the
+existing tests (`test_schema_verify.py`) are the self-test job.
