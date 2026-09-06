@@ -97,11 +97,3 @@ export function digestMessage(jobCount: number): { title: string; body: string }
     body: `You're scheduled on ${jobCount} jobs. Tap to see your week.`,
   };
 }
-
-/** Push copy for someone removed from a published assignment. */
-export function removalMessage(): { title: string; body: string } {
-  return {
-    title: "Schedule updated",
-    body: "One of your jobs was changed or removed. Tap to check your schedule.",
-  };
-}

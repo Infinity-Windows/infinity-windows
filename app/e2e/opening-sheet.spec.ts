@@ -21,6 +21,11 @@ import {
   useSupabaseFixtures,
   TEST_USER,
 } from "./support/supabaseFixtures";
+import {
+  pngFile,
+  str,
+  stubGeolocationDenied,
+} from "./support/specHelpers";
 
 const BLACK22 = jobFixtures().find((j) => j.jobCode === "BLACK22")!;
 
@@ -32,27 +37,10 @@ const BLACK22 = jobFixtures().find((j) => j.jobCode === "BLACK22")!;
 type Json = Record<string, unknown>;
 const REAL_OPENINGS = openingsFor(BLACK22.projectId) as unknown as Json[];
 
-function str(v: unknown): string {
-  return v as string;
-}
-
 /** One real opening, overridden the way sessions.spec.ts's Block test builds
  * its fixture: `{...realRow, ...overrides}`. */
 function opening(index: number, overrides: Json = {}): Json {
   return { ...REAL_OPENINGS[index], ...overrides };
-}
-
-/** A tiny (1x1) real PNG — small enough to inline, real enough for the
- * capture pipeline's canvas decode (createImageBitmap/Image) to succeed. */
-const TINY_PNG_BASE64 =
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
-
-function pngFile(name: string) {
-  return {
-    name,
-    mimeType: "image/png",
-    buffer: Buffer.from(TINY_PNG_BASE64, "base64"),
-  };
 }
 
 /**
@@ -153,30 +141,6 @@ async function routeEligible(page: Page) {
         ]),
       }),
   );
-}
-
-/** Fail geolocation immediately (PERMISSION_DENIED) so the photo-capture
- * pipeline's soft GPS lookup never waits one out — headless Chromium has no UI
- * to grant or deny the real prompt, so this makes the outcome deterministic
- * instead of relying on it. Both doors are stubbed: the one-shot lookup a cold
- * shutter falls back to, and the position watch a capture screen now starts on
- * mount (lib/geoWatch.ts). */
-async function stubGeolocationDenied(page: Page) {
-  await page.addInitScript(() => {
-    if (!navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition = (_ok, err) => {
-      err?.({ code: 1, message: "denied" } as GeolocationPositionError);
-    };
-    navigator.geolocation.watchPosition = (_ok, err) => {
-      err?.({
-        code: 1,
-        message: "denied",
-        PERMISSION_DENIED: 1,
-      } as GeolocationPositionError);
-      return 1;
-    };
-    navigator.geolocation.clearWatch = () => {};
-  });
 }
 
 /** What the warm-fix stub records, read back with page.evaluate. */

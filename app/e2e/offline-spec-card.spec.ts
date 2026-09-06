@@ -32,16 +32,11 @@
 //     honest evidence.
 import { expect, test, type Page } from "@playwright/test";
 import { jobFixtures, openingsFor, useSupabaseFixtures } from "./support/supabaseFixtures";
+import { str } from "./support/specHelpers";
 
 const BLACK22 = jobFixtures().find((j) => j.jobCode === "BLACK22")!;
 type Json = Record<string, unknown>;
 const REAL_OPENINGS = openingsFor(BLACK22.projectId) as unknown as Json[];
-
-/** Fixture rows are read as plain records and cast at the point of use — the
- * same idiom opening-sheet.spec.ts uses. */
-function str(v: unknown): string {
-  return v as string;
-}
 
 /** `getOpening` reads one row by `id=eq.`; the shared router only answers the
  * by-project form, so the single-row read is served here (same helper shape as

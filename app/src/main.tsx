@@ -7,6 +7,7 @@ import { WrongProjectBanner } from "./components/WrongProjectBanner";
 import "./lib/mapPolyfill";
 import { installServiceWorkerGuard } from "./lib/serviceWorkerGuard";
 import { installPushChangeListener } from "./lib/permissions/pushSubscribe";
+import { installPreloadRecovery } from "./lib/pwa/preloadRecovery";
 
 // DEV only: kill orphaned service workers so a cached bundle never masks hot
 // reload. Production keeps the vite-plugin-pwa worker. See serviceWorkerGuard.ts.
@@ -16,6 +17,11 @@ installServiceWorkerGuard();
 // and messages us the new subscription; persist it so the server keeps a live
 // endpoint. No-op when service workers / push are unavailable.
 installPushChangeListener();
+
+// A deploy renames every chunk; a tab opened before it asks for one that is
+// gone. Reload once (never over unsaved work, never in a loop) instead of a
+// white screen. See lib/pwa/preloadRecovery.ts.
+installPreloadRecovery();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

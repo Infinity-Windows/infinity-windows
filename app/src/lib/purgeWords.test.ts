@@ -223,6 +223,20 @@ describe("the probe list covers the schema", () => {
     // (purgeRefusal's is_partner check), so neither can ever be reached here.
     "calendar_feed_tokens.partner_profile_id",
     "partner_job_grants.partner_profile_id",
+    // Seconds spent looking at a Learn tab (20260993000000). Attention, not a
+    // record of work, money or safety — and the reason it is safe to say so is
+    // the shape of the feature this list serves: an account is only ever hard
+    // DELETED when it has no work of any kind, and every training record that
+    // does mean something (`learn_progress`, `learning_video_quiz_attempts`,
+    // `installer_clearance`, `capability_badges`) is counted above. Minutes
+    // logged against an account with none of those are the minutes of a
+    // mistyped login, and nobody will ever read them.
+    "learning_time.profile_id",
+    // And which seconds of a lesson they played (20260993000000). Same answer
+    // and the same reasoning as the line above: the lesson's own outcomes —
+    // the quiz attempt, the clearance it granted — are counted, and these are
+    // the measurements beside them.
+    "learning_video_watches.profile_id",
   ]);
 
   /** `references profiles(id)` across every migration, with its ON DELETE. */
@@ -316,17 +330,31 @@ describe("the probe list covers the schema", () => {
  */
 describe("the SQL and the probe list agree", () => {
   const HERE = dirname(fileURLToPath(import.meta.url));
-  const MIGRATION = join(
-    HERE,
-    "../../../supabase/migrations/20260987000000_remove_login_start_fresh.sql",
-  );
+  const MIGRATIONS = join(HERE, "../../../supabase/migrations");
 
-  /** Every `'table.column',` key inside person_record_counts's jsonb object. */
+  /**
+   * Every `'table.column',` key inside person_record_counts's jsonb object, as
+   * of the LAST migration that defines it.
+   *
+   * It was defined once, in 20260987000000, and this read named that file. A
+   * later wave then had to add a table to the count (education_credits,
+   * 20260991000000) and restated the whole function, which is how `create or
+   * replace` is meant to be used — so the pin has to follow the definition the
+   * database actually ends up with, not the first one ever written. Migrations
+   * apply in name order, so the last file that defines it wins.
+   */
   function sqlKeys(): string[] {
-    const sql = readFileSync(MIGRATION, "utf8");
-    const body = sql.split("create or replace function public.person_record_counts")[1];
-    if (!body) throw new Error("person_record_counts is not in the migration");
-    const object = body.split("$$;")[0];
+    const files = readdirSync(MIGRATIONS)
+      .filter((f) => f.endsWith(".sql"))
+      .sort();
+    let object = "";
+    for (const file of files) {
+      const sql = readFileSync(join(MIGRATIONS, file), "utf8");
+      const parts = sql.split("create or replace function public.person_record_counts");
+      if (parts.length < 2) continue;
+      object = parts[parts.length - 1].split("$$;")[0];
+    }
+    if (!object) throw new Error("person_record_counts is in no migration");
     return [...object.matchAll(/'([a-z_]+\.[a-z_]+)'\s*,/g)].map((m) => m[1]);
   }
 

@@ -15,17 +15,9 @@
 // House style, same as receipts.spec.ts: mocked routes, real UI, assert the
 // CAPTURED RPC PAYLOAD a tap actually sends.
 
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { useSupabaseFixtures } from "./support/supabaseFixtures";
-
-function json(route: Route, body: unknown, rows = 0) {
-  return route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    headers: { "content-range": `0-${Math.max(0, rows - 1)}/${rows}` },
-    body: JSON.stringify(body),
-  });
-}
+import { TINY_PNG_BASE64, json } from "./support/specHelpers";
 
 /** Every money table answers empty, so the screens render their real chrome
  * without a fixture pretending the company has books. */
@@ -166,9 +158,6 @@ test("a supervisor sees no grant checkboxes at all — money is an owner's to ha
 });
 
 // ------------------------------------------------- Z4: the cost-code picker
-
-const TINY_PNG_BASE64 =
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
 
 test("the receipt sheet's cost-code picker sends the code through its own RPC", async ({
   page,

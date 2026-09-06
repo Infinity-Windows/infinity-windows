@@ -15923,3 +15923,1763 @@ comment on function public.set_receipt_document(uuid, text) is
 
 revoke all on function public.set_receipt_document(uuid, text) from public, anon;
 grant execute on function public.set_receipt_document(uuid, text) to authenticated;
+
+-- ===========================================================================
+-- 20260991000000_points_cap.sql (mirrored)
+-- Points cap: the ledger stops taking writes from a phone, and the Education
+-- quizzes stop paying for the same term twice (owner's ask, 2026-09-05: "my
+-- crew is racking up points on repeating quizzes, we need to make sure there
+-- is a cap to these … if its real learning great, but it needs to be new
+-- content").
+--
+-- ORDERING: this file must apply AFTER 20260990000000 (pdf receipts). Nothing
+-- in it depends on that migration; the number is simply later, and the
+-- migration runner applies these in name order.
+--
+-- THE DEPLOY GAP, said out loud. The frontend and the database ship from one
+-- merge through two independent workflows, so for a few minutes one is ahead
+-- of the other. The revoke below takes the ledger's write grant away at once,
+-- while the build still being served inserts into the table directly — so an
+-- install finished inside that gap loses its points, quietly, and the outbox
+-- will not retry it (it advances past the award on any failure, on purpose, so
+-- that a refused award never blocks the photos). Nothing shipped in this branch
+-- can repair that from the browser: the old build is already on the phones.
+-- Two things follow, and they are the deploy instruction for this PR.
+--
+--   * Watch the backend deploy actually finish. A merge is not a deploy here,
+--     and this one is the half that matters — while it is unapplied the Learn
+--     tab's new door does not exist yet either.
+--   * Expect a handful of installs finished in that window to show no points,
+--     and re-award them by hand from the ledger rather than asking anyone to
+--     re-submit — a redo pays, but it also files a second install event.
+--
+-- The Learn tab has a softer landing for the same gap: award_education_quiz
+-- missing is caught and shown as "not saved yet, try in a few minutes"
+-- (Education.tsx, learn.points.notReadyYet) rather than a failure, because
+-- there the person is standing in front of the screen waiting.
+--
+-- WHAT WENT WRONG. `points_ledger` has had exactly one policy since the day it
+-- was created (20260717004000, re-stated with the partner guard by THE WALL,
+-- 20260950000000): "authenticated full access", FOR ALL, `using (true)`. So
+-- every signed-in phone could INSERT any row it liked into the company's
+-- scoreboard. It did not even take a determined person: the Education Quiz tab
+-- wrote its own points straight from the browser after every round of five
+-- random glossary terms, and put an "Another round" button underneath. No cap,
+-- no ref, no record of which terms were asked — so the same five terms paid
+-- again every time somebody tapped it. The read-only ledger shows two profiles
+-- who between them filed hundreds of quiz rows in a single day — a year's worth
+-- of points each, every row with a null ref.
+--
+-- The video quizzes were never part of this and are untouched: submit_video_
+-- quiz (20260962000000) already scores server-side, pays only on a FIRST pass,
+-- and stamps its rows 'video_quiz:<id>'.
+--
+-- TWO RULES, and this migration is both of them.
+--
+--   1. SERVER-ONLY WRITES. points_ledger keeps its read (the leaderboard is
+--      everybody's, unchanged) and loses every write policy. Three SECURITY
+--      DEFINER functions below are the only doors: award_install_points,
+--      resolve_install_points, award_education_quiz. A unique partial index
+--      makes "one install payment per person per unit per kind" structural
+--      rather than a promise a function makes. It is scoped to the five
+--      install kinds on purpose — summon points share this table and are
+--      allowed to land twice on one ref.
+--
+--   2. NEW CONTENT ONLY. A glossary term pays the FIRST time a person answers
+--      it right and never again; the install-sequence quiz pays once. That is
+--      education_credits, and it makes the lifetime ceiling arithmetic:
+--      105 terms + 1 sequence, 10 points each = 1,060 points from the Learn
+--      tab, ever. Practising stays free and unlimited — "Another round" is
+--      still there, it just stops paying for ground already covered.
+--
+-- HONEST ABOUT WHAT THIS DOES NOT DO. The Education quizzes are generated in
+-- the browser from a client-side glossary, so unlike the video quiz the server
+-- cannot re-score them: it is still the phone that says which terms it got
+-- right. That is fine, and it is why the cap is the fix rather than the
+-- scoring. A person who lies about every answer reaches 1,060 sooner and then
+-- stops, forever. Before today one person could pass that ceiling ten times
+-- over in an afternoon and keep going. The server's own list is what makes the ceiling real — a made-up key
+-- pays nothing, so the ceiling cannot be walked around by inventing terms.
+--
+-- NOTHING IS DELETED. The farmed rows are voided with a reason written beside
+-- them, so the history still says what happened and to whom. Nobody is handed
+-- replacement credit either: the terms are all still there to be earned, by
+-- doing the quiz.
+
+-- ---------------------------------------------------------------------------
+-- 1. points_ledger: a reason column, and the two backfills
+-- ---------------------------------------------------------------------------
+
+alter table points_ledger add column if not exists void_reason text;
+alter table points_ledger add column if not exists detail jsonb;
+
+comment on column points_ledger.void_reason is
+  'Why a row was voided, in a sentence, when something other than a QC callback voided it. Written by the 2026-09-05 backfill in this migration and by resolve_install_points; null on every row that was never voided.';
+comment on column points_ledger.detail is
+  'Free-form receipt for what a row stands for. An Education quiz round carries {"keys": [...]}, the item keys newly credited and paid for in that round. An install row carries {"event_id": "..."}, the install_events row it paid for — that is what lets award_install_points tell an outbox resend (same event, ignore it) from a unit undone and genuinely installed again (new event, pay it). Never read back for a total; points is the number that counts.';
+
+-- BACKFILL A (the incident). Every client-inserted Education quiz row — kind
+-- 'quiz' with a null ref — is voided. Video quiz rows carry a
+-- 'video_quiz:<id>' ref and are therefore not touched by this. Idempotent:
+-- after the first run nothing matches, because the rows are already void.
+update points_ledger
+   set status = 'void',
+       void_reason = 'education quiz rows before the new-content rule (2026-09-05)'
+ where kind = 'quiz'
+   and ref is null
+   and status <> 'void';
+
+-- BACKFILL B (making the index creatable, and correcting the same fault).
+-- The install path awards through an offline outbox that retries, and until
+-- today a retry that got as far as the award and then failed on the media
+-- could pay the same install twice. Keep the FIRST row for each
+-- (person, ref, kind) and void the rest — a second payment for one install was
+-- never earned, and the unique index below cannot be built while one exists.
+--
+-- ONLY THE INSTALL KINDS, and this restriction is load-bearing. A summon is
+-- allowed to be answered twice on one ref: answer_summon (20260963000000)
+-- writes a 'summon_answer' row, cancel_summon_help (20260919000000) writes a
+-- separate 'summon_answer_canceled' row of -10 rather than voiding the first,
+-- and a helper who cancels may re-join the same call — which writes a second
+-- 'summon_answer' for the same (person, summon, kind), legitimately. Voiding
+-- that second row would leave the -10 standing beside it and quietly dock
+-- somebody 10 points for help they actually gave. The kinds listed here are
+-- exactly the ones award_install_points writes and clamps.
+with ranked as (
+  select l.id,
+         row_number() over (
+           partition by l.profile_id, l.ref, l.kind
+           order by l.created_at, l.id
+         ) as rn
+    from points_ledger l
+   where l.ref is not null
+     and l.status <> 'void'
+     and l.kind in ('install', 'par', 'photos', 'teach', 'quality')
+)
+update points_ledger p
+   set status = 'void',
+       void_reason = coalesce(
+         p.void_reason,
+         'the same award landed twice for one unit — the first one stands (2026-09-05)'
+       )
+  from ranked r
+ where p.id = r.id
+   and r.rn > 1;
+
+-- THE STRUCTURAL GUARANTEE. One INSTALL payment per person, per ref, per kind.
+-- Partial on three counts:
+--
+--   * a null ref is outside it (the voided history above, and nothing new
+--     writes one);
+--   * a VOIDED row is outside it, so voiding a duplicate actually frees the
+--     slot — and so a unit that was undone and genuinely installed again can
+--     be paid a second time. award_install_points is the thing that tells
+--     those two apart, by the install event it is paying for;
+--   * and only the five kinds award_install_points writes are in it at all.
+--
+-- That last one is not tidiness. 'summon_answer' rides the same table with a
+-- summon id for a ref, and answering a summon twice — cancel, then re-join —
+-- is a supported flow that writes the pair twice on purpose. A repo-wide index
+-- here would abort answer_summon with a raw unique-violation and leave a
+-- helper unable to re-join a call at all. The kind list must stay in step with
+-- the CASE in award_install_points below; scripts/test_schema_verify.py pins
+-- the two together.
+--
+-- Dropped by its old name first, so a database that already took the earlier,
+-- unscoped shape of this index picks up the predicate rather than skipping it
+-- on `if not exists`.
+drop index if exists points_ledger_one_award_per_ref_kind;
+create unique index if not exists points_ledger_one_install_award_per_ref_kind
+  on points_ledger (profile_id, ref, kind)
+  where ref is not null
+    and status <> 'void'
+    and kind in ('install', 'par', 'photos', 'teach', 'quality');
+
+-- ---------------------------------------------------------------------------
+-- 2. points_ledger: reads stay, writes go
+-- ---------------------------------------------------------------------------
+-- The old policy was FOR ALL. Everyone who could read the leaderboard could
+-- also write it. Reads are unchanged — every non-partner crew member still
+-- sees every row, because the Points page's team ranking is assembled in the
+-- browser from exactly that (lib/points.ts getPointsLeaderboard) and always
+-- has been. Only the writing half is taken away.
+drop policy if exists "authenticated full access" on points_ledger;
+drop policy if exists "points_ledger read" on points_ledger;
+create policy "points_ledger read" on points_ledger
+  for select to authenticated
+  using (not public.is_partner_user());
+
+-- Belt and braces: with no write POLICY a write already fails, but revoking
+-- the table-level grants means a phone cannot even ask.
+--
+-- This does NOT shut the doors that are supposed to be open. A SECURITY
+-- DEFINER function runs as the function's owner, which owns this table, so
+-- submit_video_quiz (20260962000000) keeps writing its first-pass row exactly
+-- as it did, and so do the three functions below. The grant that just went
+-- away is the one a browser was using.
+revoke insert, update, delete on table points_ledger from anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 3. education_items — the server's own list of what can pay
+-- ---------------------------------------------------------------------------
+-- The glossary itself lives in the app (app/src/lib/glossary.ts, 105 terms):
+-- it is content a person reads, and it belongs where it is. What has to live
+-- here is the KEY LIST, because a key the server does not recognise must pay
+-- nothing — otherwise the ceiling is imaginary and a phone earns forever by
+-- inventing term ids. scripts/test_schema_verify.py asserts this seed and
+-- glossary.ts's TERMS agree exactly, so adding a term to one without the other
+-- is a red build rather than a silent hole.
+create table if not exists education_items (
+  key text primary key,
+  kind text not null check (kind in ('term', 'sequence')),
+  points int not null default 10 check (points > 0)
+);
+
+comment on table education_items is
+  'Every Learn-tab item that can ever pay points, and what it pays. One row per glossary term (key ''term:<glossary id>'') plus the install-sequence quiz (''seq:install''). Read-only to the app; award_education_quiz is the only thing that consults it. The row count IS the lifetime ceiling: sum(points) is the most any one person can earn from the Learn tab, ever.';
+
+alter table education_items enable row level security;
+
+drop policy if exists "education_items read" on education_items;
+create policy "education_items read" on education_items
+  for select to authenticated
+  using (not public.is_partner_user());
+
+revoke insert, update, delete on table education_items from anon, authenticated;
+
+insert into education_items (key, kind, points) values
+  ('term:frame', 'term', 10),
+  ('term:jamb', 'term', 10),
+  ('term:head', 'term', 10),
+  ('term:sill', 'term', 10),
+  ('term:mullion', 'term', 10),
+  ('term:muntin', 'term', 10),
+  ('term:sash', 'term', 10),
+  ('term:thermalbreak', 'term', 10),
+  ('term:extrusion', 'term', 10),
+  ('term:anodized', 'term', 10),
+  ('term:kynar', 'term', 10),
+  ('term:weep', 'term', 10),
+  ('term:flange', 'term', 10),
+  ('term:igu', 'term', 10),
+  ('term:lowe', 'term', 10),
+  ('term:argon', 'term', 10),
+  ('term:spacer', 'term', 10),
+  ('term:laminated', 'term', 10),
+  ('term:tempered', 'term', 10),
+  ('term:annealed', 'term', 10),
+  ('term:glazingbead', 'term', 10),
+  ('term:setblock', 'term', 10),
+  ('term:edgedelete', 'term', 10),
+  ('term:vt', 'term', 10),
+  ('term:shgc', 'term', 10),
+  ('term:ufactor', 'term', 10),
+  ('term:backerrod', 'term', 10),
+  ('term:sealant', 'term', 10),
+  ('term:sillpan', 'term', 10),
+  ('term:flashtape', 'term', 10),
+  ('term:paperflash', 'term', 10),
+  ('term:wrb', 'term', 10),
+  ('term:enddam', 'term', 10),
+  ('term:bondbreaker', 'term', 10),
+  ('term:tooling', 'term', 10),
+  ('term:fillet', 'term', 10),
+  ('term:capbead', 'term', 10),
+  ('term:compatibility', 'term', 10),
+  ('term:drainage', 'term', 10),
+  ('term:ro', 'term', 10),
+  ('term:kingstud', 'term', 10),
+  ('term:jackstud', 'term', 10),
+  ('term:header', 'term', 10),
+  ('term:shim', 'term', 10),
+  ('term:plumb', 'term', 10),
+  ('term:level', 'term', 10),
+  ('term:square', 'term', 10),
+  ('term:reveal', 'term', 10),
+  ('term:racking', 'term', 10),
+  ('term:deflection', 'term', 10),
+  ('term:embed', 'term', 10),
+  ('term:substrate', 'term', 10),
+  ('term:panicbar', 'term', 10),
+  ('term:closer', 'term', 10),
+  ('term:threshold', 'term', 10),
+  ('term:strike', 'term', 10),
+  ('term:hinge', 'term', 10),
+  ('term:roller', 'term', 10),
+  ('term:lockrail', 'term', 10),
+  ('term:astragal', 'term', 10),
+  ('term:sweep', 'term', 10),
+  ('term:operator', 'term', 10),
+  ('term:limitdevice', 'term', 10),
+  ('term:balance', 'term', 10),
+  ('term:weatherstrip', 'term', 10),
+  ('term:storefront', 'term', 10),
+  ('term:curtainwall', 'term', 10),
+  ('term:windowwall', 'term', 10),
+  ('term:punched', 'term', 10),
+  ('term:ribbon', 'term', 10),
+  ('term:stickbuilt', 'term', 10),
+  ('term:unitized', 'term', 10),
+  ('term:pressureplate', 'term', 10),
+  ('term:snapcover', 'term', 10),
+  ('term:subsill', 'term', 10),
+  ('term:receptor', 'term', 10),
+  ('term:entrance', 'term', 10),
+  ('term:transom', 'term', 10),
+  ('term:dryfit', 'term', 10),
+  ('term:fullbed', 'term', 10),
+  ('term:faceseal', 'term', 10),
+  ('term:barrier', 'term', 10),
+  ('term:blockframe', 'term', 10),
+  ('term:flangeinstall', 'term', 10),
+  ('term:brickmold', 'term', 10),
+  ('term:furring', 'term', 10),
+  ('term:anchorschedule', 'term', 10),
+  ('term:perimeterfasten', 'term', 10),
+  ('term:staging', 'term', 10),
+  ('term:aframe', 'term', 10),
+  ('term:liftgear', 'term', 10),
+  ('term:fgia', 'term', 10),
+  ('term:astme1105', 'term', 10),
+  ('term:nfrc', 'term', 10),
+  ('term:egress', 'term', 10),
+  ('term:safetyglazing', 'term', 10),
+  ('term:fallprotection', 'term', 10),
+  ('term:dp', 'term', 10),
+  ('term:airinfiltration', 'term', 10),
+  ('term:waterpen', 'term', 10),
+  ('term:mockup', 'term', 10),
+  ('term:shopdrawings', 'term', 10),
+  ('term:submittal', 'term', 10),
+  ('term:hwschedule', 'term', 10),
+  ('term:punchlist', 'term', 10),
+  ('seq:install', 'sequence', 10)
+on conflict (key) do nothing;
+
+-- ---------------------------------------------------------------------------
+-- 4. education_credits — what a person has already been paid for
+-- ---------------------------------------------------------------------------
+create table if not exists education_credits (
+  id uuid primary key default gen_random_uuid(),
+  profile_id uuid not null references profiles(id) on delete cascade,
+  item_key text not null references education_items(key) on delete cascade,
+  points int not null check (points >= 0),
+  credited_at timestamptz not null default now(),
+  unique (profile_id, item_key)
+);
+
+create index if not exists education_credits_profile_idx
+  on education_credits (profile_id, credited_at desc);
+
+comment on table education_credits is
+  'One row the first time a person answers a glossary term correctly, and one for the install-sequence quiz. The UNIQUE (profile_id, item_key) is the whole new-content rule: a second correct answer on the same term writes nothing, so the round that contains it pays nothing for it. Written only by award_education_quiz.';
+
+alter table education_credits enable row level security;
+
+-- Own rows, or foreman+ sees everyone's — the same shape
+-- learning_video_quiz_attempts uses (20260962000000), for the same reason:
+-- what somebody has learned is as private from their peers as their timecard,
+-- and as visible to a lead.
+drop policy if exists "own or lead read" on education_credits;
+create policy "own or lead read" on education_credits
+  for select to authenticated
+  using (
+    not public.is_partner_user()
+    and (profile_id = auth.uid() or _is_lead(auth.uid()))
+  );
+
+revoke insert, update, delete on table education_credits from anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 5. award_install_points — the install path's only door
+-- ---------------------------------------------------------------------------
+-- Called by the offline install outbox after finish_unit lands
+-- (app/src/lib/install/installOutbox.ts, through lib/points.ts awardPoints).
+-- p_ref is the OPENING's id, which is what the ledger has always stored and
+-- what QC looks a unit's points up by.
+--
+-- Three things it will not do:
+--   * pay somebody who had nothing to do with the install — the caller has to
+--     be the person who filed the event or the person it was credited to;
+--   * pay twice for one install — a resend is ignored in silence, because the
+--     outbox retries a whole install and the retry is not an error. "Twice for
+--     one install", not "twice for one unit": a unit that was undone and
+--     genuinely installed again is a NEW install_events row and is paid again.
+--     See the resend check below, which tells those two apart by event id;
+--   * pay more than the rule is worth — the amounts come off a phone, so each
+--     kind is clamped to POINT_RULES (app/src/lib/points.ts). SQL cannot import
+--     that TS constant, so it is kept in step by hand, the same arrangement
+--     submit_video_quiz already lives with.
+--
+-- p_status is a LEGACY ARGUMENT and its value is ignored. Install points are
+-- always filed pending; QC is the only thing that confirms them, through
+-- resolve_install_points, which is foreman-gated. It stayed in the signature
+-- so a phone still running the build that passes it keeps working.
+create or replace function public.award_install_points(
+  p_ref text,
+  p_entries jsonb,
+  p_status text default 'pending'
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_opening uuid;
+  v_ref text;
+  v_event uuid;
+  v_filer uuid;
+  v_credited uuid;
+  v_payee uuid;
+  v_minutes int;
+  v_estimate int;
+  v_grade int;
+  v_entry jsonb;
+  v_kind text;
+  v_points int;
+  v_cap int;
+  v_written int := 0;
+  v_skipped int := 0;
+begin
+  if public.is_partner_user() then
+    raise exception 'Points are for the install crew.';
+  end if;
+
+  begin
+    v_opening := p_ref::uuid;
+  exception when others then
+    raise exception 'Install points have to name the window they were earned on.';
+  end;
+
+  -- ONE SPELLING OF THE ID, chosen here rather than taken from the caller.
+  -- points_ledger.ref is text, and Postgres accepts an upper-case, brace-
+  -- wrapped or hyphen-free uuid as the same value — so 'A0EE…', '{a0ee…}' and
+  -- 'a0ee…' all name this one window while comparing as three different
+  -- strings. Stored raw, each spelling would miss the resend check below,
+  -- slip past the unique index, and pay the same install again; the rows would
+  -- also be unreachable to QC, which looks a unit up by the canonical id.
+  -- uuid::text always renders lower-case and hyphenated, which is byte for
+  -- byte what the app has always written.
+  v_ref := v_opening::text;
+
+  -- The most recent LIVE install filed on this opening, and the two people it
+  -- can possibly belong to. coalesce(credited_to, installer_id) is how every
+  -- per-person rollup in this database reads an install (20260982000000) —
+  -- and it is exactly what the phone was computing for itself before today.
+  --
+  -- `voided_at is null` matters: undo_install and unsubmit_own_install keep the
+  -- event and stamp it voided rather than deleting it (20260718002000). An
+  -- outbox that comes back to life after an undo must not find that event and
+  -- pay for an install somebody took back.
+  select e.id, e.installer_id, e.credited_to,
+         e.minutes, e.estimate_minutes, e.quality_grade
+    into v_event, v_filer, v_credited, v_minutes, v_estimate, v_grade
+    from install_events e
+   where e.project_opening_id = v_opening
+     and e.voided_at is null
+   order by e.created_at desc
+   limit 1;
+
+  if v_event is null then
+    raise exception 'That window has no finished install to pay for yet.';
+  end if;
+
+  if v_filer is null and v_credited is null then
+    raise exception 'That window has no finished install to pay for yet.';
+  end if;
+
+  if auth.uid() is distinct from v_filer and auth.uid() is distinct from v_credited then
+    raise exception 'Points go to whoever installed the window.';
+  end if;
+
+  v_payee := coalesce(v_credited, v_filer);
+
+  for v_entry in
+    select t.value from jsonb_array_elements(coalesce(p_entries, '[]'::jsonb)) as t(value)
+  loop
+    v_kind := v_entry ->> 'kind';
+    v_points := coalesce((v_entry ->> 'points')::int, 0);
+
+    -- POINT_RULES, mirrored. 'quiz' is deliberately absent: the Learn tab has
+    -- its own door and must never reach this one.
+    v_cap := case v_kind
+               when 'install' then 20
+               when 'par'     then 15
+               when 'photos'  then 10
+               when 'teach'   then 15
+               when 'quality' then 5
+               else 0
+             end;
+    if v_cap = 0 or v_points <= 0 then
+      continue;
+    end if;
+    if v_points > v_cap then
+      v_points := v_cap;
+    end if;
+
+    -- WAS IT ACTUALLY EARNED, for the two kinds the event can answer. The
+    -- amounts were already clamped; this asks the separate question of whether
+    -- the rule applies at all, so a bare install cannot claim the full set.
+    -- Both tests are the same ones computeInstallPoints makes in the browser
+    -- (app/src/lib/points.ts) against the same two numbers finish_unit stored,
+    -- so an honest phone is never paid less than before.
+    --
+    -- 'photos' and 'teach' are deliberately NOT checked here. The outbox
+    -- awards points BEFORE it hands the media to the upload queue
+    -- (installOutbox.ts: rpc → points → media), so at this moment the photos
+    -- and the voice memo genuinely do not exist yet on the server. Checking
+    -- them here would pay nothing for either, on every honest install.
+    if v_kind = 'par'
+       and not (v_minutes is not null and v_estimate is not null and v_minutes <= v_estimate)
+    then
+      continue;
+    end if;
+    if v_kind = 'quality' and not (v_grade is not null and v_grade >= 4) then
+      continue;
+    end if;
+
+    -- A RESEND, versus a redo. The outbox retries a whole install, so a second
+    -- call for an install already paid must be ignored in silence — including
+    -- when QC has since voided those points, which the retry must not undo.
+    -- But a unit that was sent back, fixed and finished again is a different
+    -- install: undo_install voids both the event and its points, and the crew
+    -- who did the work the second time have earned it.
+    --
+    -- The event id is what tells them apart. A row voided for an install that
+    -- is not this one no longer blocks payment; a row carrying THIS event id
+    -- does, whatever its status. Rows written before this migration carry no
+    -- event id, so a live one still blocks (a resend) and a voided one does
+    -- not (a redo) — which is the right answer in both cases.
+    if exists (
+      select 1 from points_ledger l
+       where l.profile_id = v_payee
+         and l.ref = v_ref
+         and l.kind = v_kind
+         and (l.status <> 'void' or l.detail ->> 'event_id' = v_event::text)
+    ) then
+      v_skipped := v_skipped + 1;
+      continue;
+    end if;
+
+    -- Always pending. QC confirms, and nothing a phone says can skip it.
+    insert into points_ledger (profile_id, kind, points, ref, status, detail)
+    values (v_payee, v_kind, v_points, v_ref, 'pending',
+            jsonb_build_object('event_id', v_event));
+    v_written := v_written + 1;
+  end loop;
+
+  return jsonb_build_object('awarded', v_written, 'already_had', v_skipped);
+end;
+$$;
+
+comment on function public.award_install_points(text, jsonb, text) is
+  'The install outbox''s only way to write points. p_ref is the opening id, stored in the one canonical spelling whatever spelling the caller used; the payee is coalesce(credited_to, installer_id) off the newest install_events row for it that has not been voided, and the caller must be one of those two people. Each kind pays at most once per INSTALL — a resend of the same install is ignored silently, a unit undone and installed again is a new event and pays again. Amounts are clamped to POINT_RULES, ''par'' and ''quality'' additionally have to have been earned, and every row is filed pending: p_status is a legacy argument and is ignored, because only QC confirms points. Returns {awarded, already_had}.';
+
+revoke all on function public.award_install_points(text, jsonb, text) from public, anon;
+grant execute on function public.award_install_points(text, jsonb, text) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 6. resolve_install_points — QC's confirm / void
+-- ---------------------------------------------------------------------------
+create or replace function public.resolve_install_points(p_ref text, p_status text)
+returns int
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_rows int;
+begin
+  if public.is_partner_user() or public.my_role_rank() < 1 then
+    raise exception 'Only a foreman or above can sign off points.';
+  end if;
+  if p_status is null or p_status not in ('confirmed', 'void') then
+    raise exception 'A QC decision either confirms points or voids them.';
+  end if;
+  if p_ref is null or p_ref = '' then
+    raise exception 'Say which window''s points to sign off.';
+  end if;
+
+  -- Only this ref, and only rows still waiting. Nothing already confirmed or
+  -- already voided moves, so a second tap on Pass changes nothing.
+  update points_ledger
+     set status = p_status,
+         void_reason = case
+           when p_status = 'void'
+             then coalesce(void_reason, 'QC sent this window back — a callback voids its points')
+           else void_reason
+         end
+   where ref = p_ref
+     and status = 'pending';
+
+  get diagnostics v_rows = row_count;
+  return v_rows;
+end;
+$$;
+
+comment on function public.resolve_install_points(text, text) is
+  'QC''s pass/callback decision, applied to one unit''s pending points. Foreman+ only. Touches nothing but rows whose ref is p_ref and whose status is still pending, so it can never reach across units or reopen a settled row. Returns how many rows moved.';
+
+revoke all on function public.resolve_install_points(text, text) from public, anon;
+grant execute on function public.resolve_install_points(text, text) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 7. award_education_quiz — the Learn tab's only door
+-- ---------------------------------------------------------------------------
+-- p_items is the round: [{key, correct}, …], one entry per question asked.
+-- What comes back is what the screen has to say — how many points, how many
+-- terms were new, and how many the person already had — because "you already
+-- earned these, keep practising" is a different sentence from "+30 points".
+create or replace function public.award_education_quiz(p_items jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_me uuid := auth.uid();
+  v_round uuid := gen_random_uuid();
+  v_item jsonb;
+  v_key text;
+  v_worth int;
+  v_gained int;
+  v_new int := 0;
+  v_already int := 0;
+  v_points int := 0;
+  v_keys text[] := '{}';
+begin
+  if v_me is null or public.is_partner_user() then
+    raise exception 'Sign in with your own crew login to earn points.';
+  end if;
+  if p_items is null or jsonb_typeof(p_items) <> 'array' then
+    raise exception 'Send the round''s questions and answers together.';
+  end if;
+  -- A round is five questions. The ceiling makes a long round pointless
+  -- anyway; this just keeps one call from being a whole afternoon of them.
+  if jsonb_array_length(p_items) > 25 then
+    raise exception 'That is more questions than one round holds.';
+  end if;
+
+  for v_item in
+    select t.value from jsonb_array_elements(p_items) as t(value)
+  loop
+    v_key := v_item ->> 'key';
+    if v_key is null then
+      continue;
+    end if;
+    if not coalesce((v_item ->> 'correct')::boolean, false) then
+      continue;
+    end if;
+    -- The same term twice in one round is one term.
+    if v_key = any (v_keys) then
+      continue;
+    end if;
+
+    -- The server's own list. A key it has never heard of pays nothing and
+    -- says nothing — there is no error to learn the shape of the list from.
+    select i.points into v_worth from education_items i where i.key = v_key;
+    if v_worth is null then
+      continue;
+    end if;
+
+    v_gained := null;
+    insert into education_credits (profile_id, item_key, points)
+    values (v_me, v_key, v_worth)
+        on conflict (profile_id, item_key) do nothing
+      returning points into v_gained;
+
+    if v_gained is null then
+      v_already := v_already + 1;
+    else
+      v_new := v_new + 1;
+      v_points := v_points + v_gained;
+      v_keys := v_keys || v_key;
+    end if;
+  end loop;
+
+  -- ONE ledger row for the round, carrying the keys it paid for. A round that
+  -- earned nothing writes nothing: an empty row would put "+0 points" in a
+  -- person's history every time they practised.
+  if v_points > 0 then
+    insert into points_ledger (profile_id, kind, points, ref, status, detail)
+    values (
+      v_me, 'quiz', v_points, 'education:' || v_round::text, 'confirmed',
+      jsonb_build_object('keys', to_jsonb(v_keys))
+    );
+  end if;
+
+  return jsonb_build_object(
+    'points_awarded', v_points,
+    'new_terms', v_new,
+    'already_had', v_already,
+    'keys', to_jsonb(v_keys)
+  );
+end;
+$$;
+
+comment on function public.award_education_quiz(jsonb) is
+  'The Learn tab''s Quiz and Sequence rounds, priced server-side. p_items is [{key, correct}] for the round. Pays only for items in education_items that this person has never been credited for, writes ONE points_ledger row for the whole round (ref ''education:<uuid>'', detail.keys naming what it paid for), and returns {points_awarded, new_terms, already_had, keys}. Practising costs nothing and pays nothing.';
+
+revoke all on function public.award_education_quiz(jsonb) from public, anon;
+grant execute on function public.award_education_quiz(jsonb) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 8. my_education_progress — "Earned 12 of 105 terms"
+-- ---------------------------------------------------------------------------
+-- The header line on the Quiz tab. It reads off the same two tables the payout
+-- does, so the number a person sees and the number they are paid against can
+-- never drift apart.
+create or replace function public.my_education_progress()
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_me uuid := auth.uid();
+begin
+  if v_me is null or public.is_partner_user() then
+    raise exception 'Sign in with your own crew login to see your progress.';
+  end if;
+  return jsonb_build_object(
+    'terms_earned', (
+      select count(*) from education_credits c
+        join education_items i on i.key = c.item_key
+       where c.profile_id = v_me and i.kind = 'term'
+    ),
+    'terms_total', (select count(*) from education_items i where i.kind = 'term'),
+    'sequence_done', exists (
+      select 1 from education_credits c
+        join education_items i on i.key = c.item_key
+       where c.profile_id = v_me and i.kind = 'sequence'
+    )
+  );
+end;
+$$;
+
+comment on function public.my_education_progress() is
+  'The caller''s own Learn-tab standing: {terms_earned, terms_total, sequence_done}. Read off education_credits and education_items, so the header line and the payout can never disagree.';
+
+revoke all on function public.my_education_progress() from public, anon;
+grant execute on function public.my_education_progress() to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 9. "Remove this login" has to count the new table too
+-- ---------------------------------------------------------------------------
+-- person_record_counts (20260987000000) is what decides whether a login can be
+-- deleted outright or has to be retired with every row kept, and the rule lives
+-- twice on purpose: SQL counts, TypeScript names (app/src/lib/purgeWords.ts).
+-- education_credits cascades off profiles, so a login deleted without this line
+-- would take a person's earned terms with it in silence — and a person can hold
+-- them with no learn_progress row at all, because the Quiz tab and the Daily 5
+-- are different screens. Restated in full rather than patched, the way this
+-- function's own migration restates the nudge audiences, so the whole list is
+-- readable in one place; the only change is the one line.
+create or replace function public.person_record_counts(p_id uuid)
+returns jsonb
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select jsonb_build_object(
+    -- Time and money.
+    'time_shifts.profile_id',
+      (select count(*) from time_shifts where profile_id = p_id),
+    'unit_sessions.profile_id',
+      (select count(*) from unit_sessions where profile_id = p_id),
+    'install_events.installer_id',
+      (select count(*) from install_events where installer_id = p_id),
+    'install_events.credited_to',
+      (select count(*) from install_events where credited_to = p_id),
+    'receipts.uploaded_by',
+      (select count(*) from receipts where uploaded_by = p_id),
+    'pay_rates.profile_id',
+      (select count(*) from pay_rates where profile_id = p_id),
+    'overtime_rules.profile_id',
+      (select count(*) from overtime_rules where profile_id = p_id),
+    'timecard_periods.profile_id',
+      (select count(*) from timecard_periods where profile_id = p_id),
+    'time_shift_edits.edited_by',
+      (select count(*) from time_shift_edits where edited_by = p_id),
+    -- Safety and training.
+    'certifications.profile_id',
+      (select count(*) from certifications where profile_id = p_id),
+    'toolbox_completions.profile_id',
+      (select count(*) from toolbox_completions where profile_id = p_id),
+    'safety_acks.profile_id',
+      (select count(*) from safety_acks where profile_id = p_id),
+    'capability_badges.installer_id',
+      (select count(*) from capability_badges where installer_id = p_id),
+    'installer_clearance.installer_id',
+      (select count(*) from installer_clearance where installer_id = p_id),
+    'learn_progress.profile_id',
+      (select count(*) from learn_progress where profile_id = p_id),
+    'learning_video_quiz_attempts.profile_id',
+      (select count(*) from learning_video_quiz_attempts where profile_id = p_id),
+    'education_credits.profile_id',
+      (select count(*) from education_credits where profile_id = p_id),
+    -- The job site.
+    'daily_logs.filed_by',
+      (select count(*) from daily_logs where filed_by = p_id),
+    'opening_phases.started_by',
+      (select count(*) from opening_phases where started_by = p_id),
+    'opening_phases.submitted_by',
+      (select count(*) from opening_phases where submitted_by = p_id),
+    'flash_run_assignments.assigned_by',
+      (select count(*) from flash_run_assignments where assigned_by = p_id),
+    'flash_run_assignments.profile_id',
+      (select count(*) from flash_run_assignments where profile_id = p_id),
+    'summons.requested_by',
+      (select count(*) from summons where requested_by = p_id),
+    'summon_helpers.profile_id',
+      (select count(*) from summon_helpers where profile_id = p_id),
+    'summon_declines.profile_id',
+      (select count(*) from summon_declines where profile_id = p_id),
+    'unit_redos.pressed_by',
+      (select count(*) from unit_redos where pressed_by = p_id),
+    'schedule_assignment_members.profile_id',
+      (select count(*) from schedule_assignment_members where profile_id = p_id),
+    'trip_crew.profile_id',
+      (select count(*) from trip_crew where profile_id = p_id),
+    'vehicle_drivers.profile_id',
+      (select count(*) from vehicle_drivers where profile_id = p_id),
+    -- What they said and what they were given credit for.
+    'points_ledger.profile_id',
+      (select count(*) from points_ledger where profile_id = p_id),
+    'task_sessions.profile_id',
+      (select count(*) from task_sessions where profile_id = p_id),
+    'project_messages.author_id',
+      (select count(*) from project_messages where author_id = p_id),
+    'ask_question_log.asker_id',
+      (select count(*) from ask_question_log where asker_id = p_id)
+  );
+$$;
+
+comment on function public.person_record_counts(uuid) is
+  'How many rows of work, money and safety record one person has, keyed table.column. The input to "remove this login": nothing anywhere means the account can be deleted outright, anything at all means it is retired and every row kept. Service role only — manage-crew-access checks the caller is the owner before it asks.';
+
+revoke all on function public.person_record_counts(uuid) from public, anon, authenticated;
+grant execute on function public.person_record_counts(uuid) to service_role;
+
+-- ===========================================================================
+-- 20260993000000_learning_time.sql (mirrored)
+-- Learning time (the owner's own ask, 2026-09-05): "I want a timer that I can
+-- see as an owner how long they spend in the learning tab and on what item.
+-- That way I can figure out if someone is trying to go above and beyond in a
+-- good way, as well as a timer for watching the YouTube videos, to see if they
+-- watch the whole thing and how many times."
+--
+-- TIME, NOT POINTS. The points cap landing beside this (20260991000000) makes
+-- quiz points new-content-only, because points were the only measure of effort
+-- the app had and they could be farmed by re-taking the same round. This is the
+-- honest companion: minutes actually spent, stamped by the SERVER, on named
+-- items. Nothing here pays anybody anything — it is a record an owner reads,
+-- not a currency a phone can mint.
+--
+-- MERGE ORDER: this is 20260993000000 (renumbered from 20260992000000 on 2026-09-06,
+-- because 20260992000000_anon_cannot_call_functions landed first) and it must land AFTER 20260992000000
+-- (the points cap). They share no object — the cap touches points_ledger and
+-- the quiz round, this touches two new tables — so the order matters only
+-- because migration numbers deploy in sequence, one at a time.
+--
+-- WHAT IS RECORDED, stated here because a crew member is told the same thing on
+-- their own Learn tab and the two sentences have to agree:
+--   * Seconds spent on a NAMED item of the Learn section, while the screen is
+--     visible and the app has focus. Nothing while the phone is locked, the
+--     tab is hidden, or the app is in the background.
+--   * Which parts of a YouTube lesson were actually played, so "watched the
+--     whole thing" is a fact rather than a click.
+-- What is NOT recorded: any content, any answer, any keystroke, any location.
+-- Two tables, two RPCs to write them, two RPCs to read them back.
+--
+-- THE SERVER STAMPS THE TIME. Both writers take a duration or a position from
+-- the phone and refuse to believe it beyond a clamp, and both cross-check what
+-- they are told against `now()`. The reference is deliberately NOT the row a
+-- beat names, because the phone chooses the row: learning_heartbeat credits no
+-- more than the seconds since this person last banked time on this KIND of
+-- item, so a loop of calls — or a thousand invented visit ids — banks the same
+-- nothing extra. See the clamps in learning_heartbeat and
+-- learning_video_heartbeat.
+--
+-- WHAT THE SERVER CANNOT SEE is whether anybody was looking. Real seconds are
+-- what these clamps bound; attention is what the phone's idle gate bounds
+-- (screenIsActive in app/src/lib/learningTime.ts). Both halves are needed and
+-- the file says so wherever it would otherwise overclaim.
+--
+-- IDEMPOTENT throughout (create ... if not exists / create or replace / drop
+-- policy if exists before create / on conflict), so re-running it changes
+-- nothing.
+--
+-- NOT PROJECT-SCOPED, on purpose, exactly like certifications (20260983000000):
+-- learning belongs to a person, not a job, so there is no project_id, no
+-- `attach_sandbox_guards()` call, and a test login has nothing to be fenced
+-- into. What stops a test login writing here is the RPCs' own rules.
+
+
+-- ---------------------------------------------------------------------------
+-- 1. L1 — learning_time: one row per item per visit
+-- ---------------------------------------------------------------------------
+-- THE GRAIN IS (person, visit, item). `session_id` is a uuid the page mints on
+-- load and throws away on unload, so one row is "this person, this open tab,
+-- this item" and `active_seconds` is how long they had it in front of them. A
+-- person who opens Learn three times in a day makes three rows; a person who
+-- flips between Glossary and Videos and back makes one row per item and the
+-- glossary row simply grows.
+--
+-- WHY A SESSION AT ALL, rather than a running per-person total: a total answers
+-- "how many minutes" and nothing else. The owner's question is about somebody
+-- going above and beyond, which is a shape — five separate evenings on the
+-- glossary reads differently from one four-hour afternoon, and only a row per
+-- visit can tell them apart. It is also what makes "times watched" countable
+-- for videos, one table down.
+--
+-- item_kind / item_key: the five places of the Learn section, and which one.
+--   'tab'      — the Learn page itself; key is the open tab, one of
+--                daily / quiz / sequence / glossary / videos
+--   'term'     — one glossary term; key is the term id
+--   'quiz'     — the Quiz tab's round; key is 'round'
+--   'sequence' — the Sequence tab's drill; key is 'round'
+--   'video'    — one lesson's card; key is the learning_videos id
+-- A kind outside that list is refused by the check AND by the RPC, so a typo
+-- in a future caller lands as a refusal rather than as a sixth silent bucket
+-- nobody's report adds up. The KEY is checked in the RPC too, against the list
+-- above — it is client-supplied text, and unchecked it is an unlimited supply
+-- of items nobody can name.
+create table if not exists learning_time (
+  id uuid primary key default gen_random_uuid(),
+  profile_id uuid not null references profiles(id) on delete cascade,
+  item_kind text not null check (
+    item_kind in ('tab', 'term', 'quiz', 'sequence', 'video')
+  ),
+  item_key text not null,
+  session_id uuid not null,
+  started_at timestamptz not null default now(),
+  last_seen_at timestamptz not null default now(),
+  -- Whole seconds. Nothing here needs sub-second precision and an int is what
+  -- every report below sums.
+  active_seconds int not null default 0 check (active_seconds >= 0),
+  created_at timestamptz not null default now(),
+  unique (profile_id, session_id, item_kind, item_key)
+);
+
+-- The two reads there are: "this person's time" (their own line on Learn, and
+-- one row of the owner's table) and "everything in a date window" (the owner's
+-- table itself, which filters on last_seen_at).
+create index if not exists learning_time_profile_idx
+  on learning_time (profile_id, last_seen_at desc);
+create index if not exists learning_time_seen_idx
+  on learning_time (last_seen_at desc);
+
+comment on table learning_time is
+  'Seconds a person spent on one named item of the Learn section during one visit. Written only by learning_heartbeat, which stamps the time itself. Nothing accrues while the screen is hidden or the phone is locked (Learning time, L1).';
+
+alter table learning_time enable row level security;
+
+-- Revoke BEFORE granting, the same reasoning every table since 20260983000000
+-- carries: this project's default privileges hand every new table in `public`
+-- the full set to `authenticated`, and RLS is not the wall on its own. There is
+-- deliberately NO insert/update/delete policy anywhere in this file — the RPC,
+-- SECURITY DEFINER, is the only writer there is, so a phone cannot file a row
+-- claiming an hour it did not spend.
+revoke all on learning_time from anon, authenticated;
+grant select on learning_time to authenticated;
+grant all on learning_time to service_role;
+
+-- WHO READS WHAT.
+--   * Your own rows, always. The Learn tab tells you what it recorded about
+--     you, in the same breath as recording it (L4). A measure of a person that
+--     the person cannot see is a measure they cannot argue with.
+--   * Supervisor and above, everybody's. Rank 2, matching the Data tab: on-tool
+--     and per-person time is already a supervisor+ read in this app, and this
+--     is more of the same thing. A FOREMAN deliberately does not get their
+--     crew's learning time — see the PR body; it is the owner's call to make,
+--     not this migration's to assume.
+--   * A partner (builder) login, never. The mechanical wall guard every crew
+--     table has carried since 20260950000000;
+--     scripts/test_partner_wall.py fails on a new table without it.
+drop policy if exists "learning_time_select" on learning_time;
+create policy "learning_time_select" on learning_time
+  for select to authenticated
+  using (
+    not public.is_partner_user()
+    and (profile_id = auth.uid() or public.my_role_rank() >= 2)
+  );
+
+
+-- ---------------------------------------------------------------------------
+-- 2. L1 — learning_heartbeat: the only writer
+-- ---------------------------------------------------------------------------
+-- The page sends one of these every 15 seconds of VISIBLE, FOCUSED time. It
+-- never sends while the tab is hidden, the phone is locked, or the app is in
+-- the background — that gate is in the client (useLearningTime), and the
+-- clamps here are what make the gate's honesty not matter:
+--
+--   * p_seconds is clamped to [0, 30]. Twice the real cadence, so one late
+--     beat after a slow network still lands whole, and a phone that asked for
+--     an hour gets thirty seconds.
+--   * THE KIND CLOCK, and it is the clamp that matters. A beat may claim no
+--     more than the seconds that have passed since this person last banked
+--     time on this KIND of item — not since this ROW was made, and not since
+--     this row was last touched.
+--
+--     Why not per row: the row key carries a session id and an item key the
+--     PHONE chose, so a caller who wanted more rows could always have more
+--     rows. A fresh uuid per call is a fresh row, and a fresh row measured
+--     against itself brings a whole clean wall clock to spend — which is how
+--     a per-row ceiling turns "the tab was open for eight hours" into eight
+--     hours of study banked in the last minute of them, a thousand times over.
+--     Measured against the KIND, a person banks at most one second per second
+--     of it however many rows they mint.
+--
+--     And an honest phone loses nothing, because one row per kind at a time is
+--     exactly what it has: one open tab, one focused term, one playing lesson.
+--     Two devices signed in as the same person now split the second between
+--     them, which is right — two open tabs are not two people studying.
+--   * THE OPENING BEAT BANKS ZERO. A row is created worth nothing and grows
+--     only through the capped update below, so minting rows is not a way to
+--     mint seconds. The client's first beat is worth zero seconds anyway
+--     (useLearningTime), so the honest path never notices.
+--   * A SECOND BELT, per row: active_seconds can never exceed the wall clock
+--     that row has existed for. The kind clock already implies it; it is kept
+--     because it makes the claim in the table readable on its own.
+--
+-- WHAT THIS DOES NOT CLAIM, said plainly because the sentence above it used to
+-- claim it: these clamps bound banked seconds by REAL seconds. They do not know
+-- whether anybody was looking. A focused tab nobody is sitting at is
+-- indistinguishable from somebody reading, to a server. What answers that is
+-- the idle gate on the phone (screenIsActive in learningTime.ts), which stops
+-- the beats after ten minutes with no pointer, no key and nothing playing. The
+-- two halves are the honest answer together and neither one is it alone.
+--
+-- The row's own started_at is the reference, and it is set by `default now()`
+-- on insert, so the phone never supplies the beginning either.
+--
+-- BEST EFFORT, and the client treats it that way: a failed heartbeat is
+-- dropped, never queued. See the note in app/src/lib/learningTime.ts.
+create or replace function public.learning_heartbeat(
+  p_session_id uuid,
+  p_item_kind text,
+  p_item_key text,
+  p_seconds int
+)
+returns void
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_me uuid := auth.uid();
+  v_key text := btrim(p_item_key);
+  v_add int := least(greatest(coalesce(p_seconds, 0), 0), 30);
+  v_kind_seen timestamptz;
+begin
+  if v_me is null then
+    raise exception 'Sign in before the app can record learning time.'
+      using errcode = '42501';
+  end if;
+
+  -- THE PARTNER WALL, and it has to be here as well as on the table. The policy
+  -- above is a gate on direct table access; this function is SECURITY DEFINER
+  -- and writes straight past every policy there is. A builder login is pinned to
+  -- role 'installer' (20260950000000) and would otherwise be filing learning
+  -- rows against itself — rows it could never read back, but rows the owner's
+  -- table would count as crew.
+  if public.is_partner_user() then
+    raise exception 'Not available for your account.' using errcode = '42501';
+  end if;
+
+  if p_session_id is null then
+    raise exception 'The app did not say which visit this time belongs to.';
+  end if;
+  if p_item_kind is null
+     or p_item_kind not in ('tab', 'term', 'quiz', 'sequence', 'video') then
+    raise exception 'That is not a part of Learn this app records time for.';
+  end if;
+  if coalesce(v_key, '') = '' then
+    raise exception 'The app did not say which item this time belongs to.';
+  end if;
+
+  -- WHICH ITEM, and it has to be one this app really has. The kind is checked
+  -- above; the key was free text of any length, which meant a caller could mint
+  -- unlimited distinct items per kind. The kind clock below stops those rows
+  -- adding up to more than the wall clock, but they would still land in the
+  -- owner's table as items nobody can name, each carrying its own visit count
+  -- beside a total it did not earn — and a key long enough would raise a btree
+  -- error off the unique index instead of a sentence a person can read.
+  --
+  -- A NEW TAB OF LEARN MEANS A NEW NAME ON THIS LINE. That is deliberate and it
+  -- is the same trade the kind check just above makes: a caller the app did not
+  -- ship lands as a refusal the client drops, rather than as a sixth silent
+  -- bucket nobody's report adds up.
+  if length(v_key) > 64 then
+    raise exception 'That is not an item this app records time for.';
+  end if;
+  if p_item_kind = 'tab'
+     and v_key not in ('daily', 'quiz', 'sequence', 'glossary', 'videos') then
+    raise exception 'That is not an item this app records time for.';
+  end if;
+  if p_item_kind in ('quiz', 'sequence') and v_key <> 'round' then
+    raise exception 'That is not an item this app records time for.';
+  end if;
+  -- Compared as text rather than cast to uuid: a key that is not a uuid at all
+  -- must come back as this sentence, not as a cast error nobody can act on.
+  if p_item_kind = 'video'
+     and not exists (select 1 from learning_videos lv where lv.id::text = v_key) then
+    raise exception 'That lesson is not in the library any more.';
+  end if;
+  -- 'term' gets the length cap and nothing more. The glossary is a constant in
+  -- the app (app/src/lib/glossary.ts), not a table, so there is nothing in this
+  -- database to check a term id against — and a wrong one costs a row named
+  -- after an id the owner's page prints as it stands, which is the truth.
+
+  -- THE KIND CLOCK. The newest beat this person has banked on this KIND, from
+  -- any visit and any item — see the note above this function for why the
+  -- reference is the kind and not the row.
+  --
+  -- Bounded to the last day so the scan is bounded too: the lookup walks the
+  -- (profile_id, last_seen_at desc) index newest-first and stops, rather than
+  -- reading a year of somebody's rows to find a kind they never opened.
+  -- Somebody whose last beat on this kind is older than that starts a fresh
+  -- clock and pays the same opening beat as somebody who never had one.
+  select t.last_seen_at into v_kind_seen
+    from learning_time t
+   where t.profile_id = v_me
+     and t.item_kind = p_item_kind
+     and t.last_seen_at > now() - interval '1 day'
+   order by t.last_seen_at desc
+   limit 1;
+
+  -- No marker, no credit — the same rule learning_video_heartbeat uses for the
+  -- first beat of a visit, and for the same reason: nothing has been observed
+  -- yet, so the honest number is zero.
+  --
+  -- floor(), AND IT SHAVES A LITTLE. A beat sent fifteen seconds after the last
+  -- one arrives fifteen-point-something or fourteen-point-something later
+  -- depending on which trip was slower, and floor() pays 14 for the second one.
+  -- Over a long sitting that is a small under-count, and it is deliberate:
+  -- round() would pay 15 for 14.6, and a caller sending beats half a second
+  -- apart would then bank a second each time, forever. Any slack at all is
+  -- unbounded once the call rate is, so the number is a floor and the page
+  -- prints minutes and hours over it. Under is the direction to be wrong in.
+  v_add := least(
+    v_add,
+    greatest(0, floor(extract(epoch from (now() - coalesce(v_kind_seen, now()))))::int)
+  );
+
+  -- The row is created worth NOTHING. The client sends a first beat to open it
+  -- so a visit that ends before the first full interval still shows up as a
+  -- visit, and that beat is worth zero seconds anyway — but the zero is written
+  -- here rather than trusted from there, because the insert path is reached by
+  -- every session id a caller cares to invent and a value in it would be thirty
+  -- seconds a call with no clock to answer to. Everything a row is worth is
+  -- added by the capped update below.
+  insert into learning_time (
+    profile_id, item_kind, item_key, session_id, active_seconds
+  )
+  values (v_me, p_item_kind, v_key, p_session_id, 0)
+  on conflict (profile_id, session_id, item_kind, item_key) do update
+    set active_seconds = least(
+          learning_time.active_seconds + v_add,
+          -- The per-row belt. floor(), not round(), so it is never generous by
+          -- half a second, and no slack at all: the insert above banks nothing,
+          -- so an honest row's seconds and its age come out level and a beat
+          -- that lands late is paid for by an age that grew with it.
+          floor(extract(epoch from (now() - learning_time.started_at)))::int
+        ),
+        last_seen_at = now();
+end;
+$$;
+
+comment on function public.learning_heartbeat(uuid, text, text, int) is
+  'Add up to 30 seconds of visible, focused time to this person''s row for one Learn item in one visit. The server stamps the time and credits no more than the seconds since this person last banked time on this kind of item, so minting fresh visits or fresh item keys mints no seconds (Learning time, L1).';
+
+revoke all on function public.learning_heartbeat(uuid, text, text, int) from public, anon;
+grant execute on function public.learning_heartbeat(uuid, text, text, int) to authenticated;
+
+
+-- ---------------------------------------------------------------------------
+-- 3. L2 — merge_watch_ranges: which seconds of a lesson were really played
+-- ---------------------------------------------------------------------------
+-- "Did they watch the whole thing" cannot be answered by counting presses of
+-- play. A lesson left running to an empty room answers yes; a scrubber dragged
+-- to the last second answers yes. So what is stored is the SET OF SECONDS a
+-- person has actually played, as merged [start, end] ranges, and every answer
+-- above it is arithmetic on that set.
+--
+-- THE RULE, and it is deliberately simple enough to hold in one head: sort by
+-- start, then walk. A stretch beginning at or before the end of the one in hand
+-- extends it — 0-10 and 10-20 are one viewing of 0-20, not two — and anything
+-- else starts a new range. Nothing is counted twice, so watching the same
+-- thirty seconds four times covers thirty seconds and no more.
+--
+-- THIS FUNCTION HAS A TWIN in app/src/lib/videoWatch.ts, because the app has to
+-- render what this computed and the tests have to exercise it without a
+-- database. The two are pinned to each other by the cases below:
+-- app/src/lib/videoWatch.test.ts generates these lines from TWIN_CASES and
+-- fails unless every one of them appears in this file, verbatim. A change to
+-- either copy that is not made to both cannot land quietly.
+--
+-- TWIN CASES (ranges + new stretch -> merged, and the seconds they cover):
+--   [] + 0..10 -> [[0,10]] covered 10
+--   [[0,10]] + 10..20 -> [[0,20]] covered 20
+--   [[0,10]] + 20..30 -> [[0,10],[20,30]] covered 20
+--   [[0,10],[20,30]] + 5..25 -> [[0,30]] covered 30
+--   [[0,30]] + 5..10 -> [[0,30]] covered 30
+--   [[20,30]] + 0..10 -> [[0,10],[20,30]] covered 20
+--   [] + 10..10 -> [] covered 0
+--   [] + -5..10 -> [[0,10]] covered 10
+--   [[0,10],[5,15]] + 30..40 -> [[0,15],[30,40]] covered 25
+--
+-- Whole seconds throughout. A player reports a fractional position and nobody
+-- needs the fraction; integers keep the stored json small and the twin exact.
+create or replace function public.merge_watch_ranges(
+  p_ranges jsonb,
+  p_start int,
+  p_end int
+)
+returns jsonb
+language plpgsql
+immutable
+set search_path = public, pg_temp
+as $$
+declare
+  v_out jsonb := '[]'::jsonb;
+  v_s int;
+  v_e int;
+  r record;
+begin
+  for r in
+    select s, e from (
+      select greatest(0, (x->>0)::int) as s, (x->>1)::int as e
+        from jsonb_array_elements(coalesce(p_ranges, '[]'::jsonb)) x
+      union all
+      select greatest(0, least(coalesce(p_start, 0), coalesce(p_end, 0))),
+             greatest(coalesce(p_start, 0), coalesce(p_end, 0))
+    ) t
+    where t.e > t.s
+    order by s, e
+  loop
+    if v_s is null then
+      v_s := r.s;
+      v_e := r.e;
+    elsif r.s <= v_e then
+      -- Touching counts as continuous: a beat ending at 10 and the next one
+      -- starting at 10 are one stretch of watching, not two.
+      v_e := greatest(v_e, r.e);
+    else
+      v_out := v_out || jsonb_build_array(jsonb_build_array(v_s, v_e));
+      v_s := r.s;
+      v_e := r.e;
+    end if;
+  end loop;
+
+  if v_s is not null then
+    v_out := v_out || jsonb_build_array(jsonb_build_array(v_s, v_e));
+  end if;
+  return v_out;
+end;
+$$;
+
+comment on function public.merge_watch_ranges(jsonb, int, int) is
+  'Fold one newly-watched stretch into the seconds of a lesson already covered, merging anything that touches or overlaps. Twin of mergeWatchRanges in app/src/lib/videoWatch.ts (Learning time, L2).';
+
+-- Internal: nothing in a browser calls this. learning_video_heartbeat, which is
+-- SECURITY DEFINER and runs as the owner, is the only caller there is.
+revoke all on function public.merge_watch_ranges(jsonb, int, int)
+  from public, anon, authenticated;
+
+
+-- ---------------------------------------------------------------------------
+-- 4. L2 — learning_video_watches: one row per lesson per visit
+-- ---------------------------------------------------------------------------
+-- Same grain as learning_time, for the same reason: a row per (person, lesson,
+-- visit) is what makes "how many times" countable at all. A running total could
+-- only ever say "forty minutes", which cannot tell four viewings from one long
+-- afternoon with the tab open.
+--
+-- `ranges` is the record; `watch_seconds` is its sum, kept beside it so every
+-- read is not a fold over json, and `completed` is the verdict. All three are
+-- written by the RPC and by nothing else.
+--
+-- `last_position_s` is the marker that makes a seek detectable: without the
+-- previous position there is no way to tell ten seconds of playing from a drag
+-- of the scrubber, and the whole point of this table is that the difference
+-- shows up.
+create table if not exists learning_video_watches (
+  id uuid primary key default gen_random_uuid(),
+  profile_id uuid not null references profiles(id) on delete cascade,
+  video_id uuid not null references learning_videos(id) on delete cascade,
+  session_id uuid not null,
+  started_at timestamptz not null default now(),
+  last_seen_at timestamptz not null default now(),
+  -- The sum of `ranges` — seconds of the lesson actually seen in this visit.
+  watch_seconds int not null default 0 check (watch_seconds >= 0),
+  -- [[start, end], …] in whole seconds, merged. See merge_watch_ranges.
+  ranges jsonb not null default '[]'::jsonb,
+  -- What the player said the lesson runs to. Null until a player reports it —
+  -- an embed that never loaded has no length, and a percentage of null is not
+  -- zero percent, it is "we do not know".
+  duration_seconds int,
+  completed boolean not null default false,
+  -- Where the play head was at the last beat. See the note above.
+  last_position_s int,
+  created_at timestamptz not null default now(),
+  unique (profile_id, video_id, session_id)
+);
+
+create index if not exists learning_video_watches_profile_idx
+  on learning_video_watches (profile_id, last_seen_at desc);
+create index if not exists learning_video_watches_video_idx
+  on learning_video_watches (video_id, last_seen_at desc);
+
+comment on table learning_video_watches is
+  'Which seconds of one lesson a person actually played during one visit, as merged ranges. Written only by learning_video_heartbeat. "Times watched" counts the visits that got through 30 seconds; "watched the whole thing" is completed (Learning time, L2).';
+
+alter table learning_video_watches enable row level security;
+
+revoke all on learning_video_watches from anon, authenticated;
+grant select on learning_video_watches to authenticated;
+grant all on learning_video_watches to service_role;
+
+-- Same three rules as learning_time above, for the same three reasons: your own
+-- rows so the Learn tab can tell you what it recorded, supervisor+ for the
+-- owner's table, and never a partner login.
+drop policy if exists "learning_video_watches_select" on learning_video_watches;
+create policy "learning_video_watches_select" on learning_video_watches
+  for select to authenticated
+  using (
+    not public.is_partner_user()
+    and (profile_id = auth.uid() or public.my_role_rank() >= 2)
+  );
+
+
+-- ---------------------------------------------------------------------------
+-- 5. L2 — learning_video_heartbeat: the only writer
+-- ---------------------------------------------------------------------------
+-- While a lesson is playing the page sends the play head's position every ten
+-- seconds. This decides how much of that is real.
+--
+-- A BEAT CLAIMS THE SMALLEST OF THREE NUMBERS: the fifteen-second cap, the wall
+-- clock that really passed since the last beat (measured here, from
+-- last_seen_at — the phone never supplies it), and the distance the play head
+-- actually moved. It claims NOTHING at all when:
+--
+--   * the player was not playing. A pause is not watching.
+--   * this is the first beat of a visit. There is no marker yet, so no play
+--     time has been observed. A visit therefore under-reports by up to one
+--     beat, which is the direction to be wrong in.
+--   * the head went backwards. A rewind is watching, but the seconds it
+--     re-covers are already covered, and the range merge would drop them
+--     anyway.
+--   * the head jumped further forward than the clock could explain. That is a
+--     drag of the scrubber, not ten seconds of anybody's attention. The
+--     allowance is twice the elapsed time plus two seconds, so double-speed
+--     playback is credited — at the slower of the two, deliberately — and a
+--     jump is not.
+--
+-- COMPLETED is either "covered ninety percent" or "the player said it ended",
+-- and the second half is why every screen shows the percentage BESIDE the
+-- verdict rather than instead of it. Dragging to the last second and letting
+-- the player stop does end a video; the honest answer is to let an owner read
+-- "finished · 4% watched" and draw their own conclusion, not to guess at
+-- intent in here. Once true it stays true: rewinding a lesson you finished
+-- does not unfinish it.
+--
+-- THE LENGTH IS NOT THIS PHONE'S TO DECIDE, and that is what makes the
+-- percentage worth printing. It is the denominator of every number on the
+-- owner's page, and it arrives from the same player that reports the play head:
+-- a client reporting forty seconds for a forty-minute lesson used to turn forty
+-- seconds of honest-looking beats into "100% watched · Finished", which is
+-- exactly the reading the percentage exists to make impossible.
+--
+-- So the length is resolved as the LONGEST any player has ever reported for
+-- that lesson, by anybody, and a beat can only raise it. learning_videos has no
+-- length of its own to check against — nothing in this app ever asks YouTube
+-- how long a video is — so the other people who watched it are the only second
+-- opinion there is, and one honest viewing pins the lesson for everyone.
+--
+-- The trade is deliberate: somebody could still report an absurdly LONG length
+-- and drive everybody's percentage down. That is vandalism against the whole
+-- crew's numbers and reads as one — every person on the lesson at 0% — where
+-- the short lie is quiet and flatters exactly one person. This feature exists
+-- to catch the quiet one.
+--
+-- The client sends p_position_s = the duration and p_playing = false when the
+-- player fires ENDED, which is what the check below is reading.
+create or replace function public.learning_video_heartbeat(
+  p_video_id uuid,
+  p_session_id uuid,
+  p_position_s numeric,
+  p_duration_s numeric,
+  p_playing boolean
+)
+returns learning_video_watches
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_me uuid := auth.uid();
+  v_row learning_video_watches;
+  v_pos int := floor(greatest(coalesce(p_position_s, 0), 0))::int;
+  v_dur int := floor(greatest(coalesce(p_duration_s, 0), 0))::int;
+  v_known_dur int;
+  -- The longest length any player has ever reported for this lesson. See the
+  -- note above: it is the second opinion this table has instead of a length
+  -- column on learning_videos.
+  v_seen_dur int;
+  v_elapsed int;
+  v_delta int;
+  v_window int := 0;
+  v_ranges jsonb;
+  v_covered int;
+  v_ended boolean;
+begin
+  if v_me is null then
+    raise exception 'Sign in before the app can record what you watched.'
+      using errcode = '42501';
+  end if;
+
+  -- The partner wall, for the same reason it is in learning_heartbeat: this
+  -- function is SECURITY DEFINER and writes straight past the table policy.
+  if public.is_partner_user() then
+    raise exception 'Not available for your account.' using errcode = '42501';
+  end if;
+
+  if p_session_id is null then
+    raise exception 'The app did not say which visit this belongs to.';
+  end if;
+  if not exists (select 1 from learning_videos where id = p_video_id) then
+    raise exception 'That lesson is not in the library any more.';
+  end if;
+
+  -- What everybody else's player has said this lesson runs to. Read here, with
+  -- the other lookups, because nothing may run between the `select into` below
+  -- and its `not found` test — FOUND belongs to the last statement, and a
+  -- reader should not have to know which statements set it.
+  select max(w.duration_seconds) into v_seen_dur
+    from learning_video_watches w
+   where w.video_id = p_video_id;
+
+  -- The length, resolved: the longest anybody has reported, this beat included.
+  -- A phone can raise it and cannot lower it, so the forty seconds a tampered
+  -- client claims for a forty-minute lesson is simply ignored.
+  v_known_dur := nullif(greatest(coalesce(v_dur, 0), coalesce(v_seen_dur, 0)), 0);
+
+  -- A position past the end of the lesson is a rounding artefact of the player,
+  -- not a discovery of extra video — and against the resolved length rather
+  -- than the reported one, so claiming a short lesson does not also move the
+  -- play head to the end of it.
+  if v_known_dur is not null and v_known_dur > 0 then
+    v_pos := least(v_pos, v_known_dur);
+  end if;
+
+  select * into v_row
+    from learning_video_watches
+   where profile_id = v_me
+     and video_id = p_video_id
+     and session_id = p_session_id;
+
+  if not found then
+    -- The opening beat of a visit. It banks no seconds — there is no marker to
+    -- measure from — it just starts the row and plants one.
+    insert into learning_video_watches (
+      profile_id, video_id, session_id, watch_seconds, ranges,
+      duration_seconds, completed, last_position_s
+    )
+    values (
+      v_me, p_video_id, p_session_id, 0, '[]'::jsonb,
+      v_known_dur,
+      -- An ENDED on the very first beat of a visit is somebody who opened the
+      -- card at the end of the video. It is recorded as finished with nothing
+      -- watched, and the screens say exactly that. Against the resolved length,
+      -- so "I opened it at the end" has to mean the end everybody else saw.
+      (v_known_dur is not null and v_known_dur > 0
+       and v_pos >= v_known_dur - 1 and not coalesce(p_playing, false)),
+      v_pos
+    )
+    returning * into v_row;
+    return v_row;
+  end if;
+
+  -- v_known_dur needs nothing more here. It was resolved above from the longest
+  -- length ANY watch of this lesson carries, and this visit's own row is one of
+  -- those — so the length the first beat of the visit stored is already in it,
+  -- and a later beat from a player that has not read its metadata yet reports
+  -- nothing and erases nothing.
+
+  v_elapsed := greatest(0, floor(extract(epoch from (now() - v_row.last_seen_at)))::int);
+  v_delta := v_pos - coalesce(v_row.last_position_s, v_pos);
+
+  if coalesce(p_playing, false)
+     and v_row.last_position_s is not null
+     and v_delta > 0
+     and v_delta <= v_elapsed * 2 + 2 then
+    v_window := least(15, v_elapsed, v_delta);
+  end if;
+
+  v_ranges := v_row.ranges;
+  if v_window > 0 then
+    v_ranges := public.merge_watch_ranges(v_ranges, v_pos - v_window, v_pos);
+  end if;
+
+  select coalesce(sum((x->>1)::int - (x->>0)::int), 0)::int
+    into v_covered
+    from jsonb_array_elements(v_ranges) x;
+
+  v_ended := v_known_dur is not null
+         and v_known_dur > 0
+         and v_pos >= v_known_dur - 1
+         and not coalesce(p_playing, false);
+
+  update learning_video_watches set
+    ranges = v_ranges,
+    watch_seconds = v_covered,
+    duration_seconds = v_known_dur,
+    last_position_s = v_pos,
+    last_seen_at = now(),
+    completed = completed
+      or v_ended
+      or (v_known_dur is not null and v_known_dur > 0
+          and v_covered::numeric / v_known_dur >= 0.9)
+  where id = v_row.id
+  returning * into v_row;
+
+  return v_row;
+end;
+$$;
+
+comment on function public.learning_video_heartbeat(uuid, uuid, numeric, numeric, boolean) is
+  'Record the seconds of one lesson a person has actually played in this visit. The server measures the elapsed time itself and credits only a window the wall clock and the play head both agree on, so a seek never counts as watching, and takes the lesson''s length to be the longest any player has ever reported for it, so a phone cannot shrink the number its own percentage is measured against (Learning time, L2).';
+
+revoke all on function public.learning_video_heartbeat(uuid, uuid, numeric, numeric, boolean)
+  from public, anon;
+grant execute on function public.learning_video_heartbeat(uuid, uuid, numeric, numeric, boolean)
+  to authenticated;
+
+
+-- ---------------------------------------------------------------------------
+-- 6. L3 — learning_time_report: what the owner's table reads
+-- ---------------------------------------------------------------------------
+-- One row per (person, kind, item) inside a date window, already added up.
+--
+-- WHY AN RPC RATHER THAN A SELECT. Two reasons. The rows are per visit, so a
+-- month of one company's learning is thousands of them and a phone should not
+-- be summing that; and the totals have to be the same numbers whoever asks,
+-- which means the adding up belongs in one place rather than in every screen
+-- that ever wants it.
+--
+-- WHO SEES WHOSE. Supervisor and above see everybody. Anybody else sees exactly
+-- their own rows and nothing else — the same answer the table policy gives, so
+-- this function cannot become a way around it. A partner login is refused
+-- outright.
+--
+-- EVERY COLUMN REFERENCE BELOW IS QUALIFIED, on purpose: the OUT parameters of
+-- a `returns table` are in scope inside the query, so a bare `profile_id` here
+-- would silently mean the OUT parameter and not the column. Same family of bug
+-- as the 2026-09-02 finish_unit incident that bought scripts/migration_lint.py.
+create or replace function public.learning_time_report(
+  p_from timestamptz default null,
+  p_to timestamptz default null
+)
+returns table (
+  profile_id uuid,
+  display_name text,
+  item_kind text,
+  item_key text,
+  active_seconds bigint,
+  visits bigint,
+  last_seen_at timestamptz
+)
+language plpgsql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_me uuid := auth.uid();
+  v_all boolean;
+begin
+  if v_me is null then
+    raise exception 'Sign in to read learning time.' using errcode = '42501';
+  end if;
+  if public.is_partner_user() then
+    raise exception 'Not available for your account.' using errcode = '42501';
+  end if;
+  v_all := public.my_role_rank() >= 2;
+
+  return query
+  select t.profile_id,
+         coalesce(pr.display_name, 'Someone')::text,
+         t.item_kind,
+         t.item_key,
+         sum(t.active_seconds)::bigint,
+         count(distinct t.session_id)::bigint,
+         max(t.last_seen_at)
+    from learning_time t
+    join profiles pr on pr.id = t.profile_id
+   where (v_all or t.profile_id = v_me)
+     and (p_from is null or t.last_seen_at >= p_from)
+     and (p_to is null or t.last_seen_at < p_to)
+   group by t.profile_id, pr.display_name, t.item_kind, t.item_key;
+end;
+$$;
+
+comment on function public.learning_time_report(timestamptz, timestamptz) is
+  'Learning time added up per person, per kind, per item, inside a date window. Supervisor+ sees everybody; anybody else sees only their own (Learning time, L3).';
+
+revoke all on function public.learning_time_report(timestamptz, timestamptz)
+  from public, anon;
+grant execute on function public.learning_time_report(timestamptz, timestamptz)
+  to authenticated;
+
+
+-- ---------------------------------------------------------------------------
+-- 7. L3 — learning_video_report: per person, per lesson
+-- ---------------------------------------------------------------------------
+-- The four numbers the owner asked for, per person per lesson:
+--
+--   times_watched  — visits that got through 30 seconds. Not presses of play:
+--                    a card scrolled past eleven times is not a lesson watched
+--                    eleven times. The floor is stated on screen.
+--   best_seconds   — the best single visit's covered seconds.
+--   union_seconds  — every visit's ranges merged together, so somebody who
+--                    watched the first half on Monday and the second half on
+--                    Tuesday reads as having seen the whole lesson, which they
+--                    have.
+--   completed      — did any visit finish it.
+--
+-- And the length underneath all three percentages, which comes from EVERY watch
+-- of the lesson rather than from the rows this reader can see. A length taken
+-- from one person's own rows is a denominator that person's phone can choose,
+-- and every percentage over it goes with it — see the note on
+-- learning_video_heartbeat.
+--
+-- THE UNION IS THE SAME RULE AS merge_watch_ranges, spelled as a window query
+-- because it folds across visits rather than into one row: sort every stretch
+-- by where it starts, and start a new island only where one begins AFTER the
+-- furthest end seen so far. Touching stretches merge, exactly as they do there.
+create or replace function public.learning_video_report(
+  p_from timestamptz default null,
+  p_to timestamptz default null
+)
+returns table (
+  profile_id uuid,
+  display_name text,
+  video_id uuid,
+  video_title text,
+  times_watched bigint,
+  best_seconds int,
+  union_seconds int,
+  duration_seconds int,
+  completed boolean,
+  last_watched_at timestamptz
+)
+language plpgsql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_me uuid := auth.uid();
+  v_all boolean;
+begin
+  if v_me is null then
+    raise exception 'Sign in to read what has been watched.' using errcode = '42501';
+  end if;
+  if public.is_partner_user() then
+    raise exception 'Not available for your account.' using errcode = '42501';
+  end if;
+  v_all := public.my_role_rank() >= 2;
+
+  return query
+  with scoped as (
+    select w.id as wid,
+           w.profile_id as pid,
+           w.video_id as vid,
+           w.watch_seconds as secs,
+           -- No duration here on purpose. The length this reader's own rows
+           -- carry is not the length anybody is measured against — see
+           -- `lengths` below, which takes it from every watch of the lesson.
+           w.completed as done,
+           w.last_seen_at as seen,
+           w.ranges as rs
+      from learning_video_watches w
+     where (v_all or w.profile_id = v_me)
+       and (p_from is null or w.last_seen_at >= p_from)
+       and (p_to is null or w.last_seen_at < p_to)
+  ),
+  segs as (
+    select sc.pid, sc.vid, (x->>0)::int as s0, (x->>1)::int as s1
+      from scoped sc, lateral jsonb_array_elements(sc.rs) x
+  ),
+  ordered as (
+    select sg.pid, sg.vid, sg.s0, sg.s1,
+           max(sg.s1) over (
+             partition by sg.pid, sg.vid
+             order by sg.s0, sg.s1
+             rows between unbounded preceding and 1 preceding
+           ) as prev_max
+      from segs sg
+  ),
+  islands as (
+    select od.pid, od.vid, od.s0, od.s1,
+           sum(case when od.prev_max is null or od.s0 > od.prev_max then 1 else 0 end)
+             over (
+               partition by od.pid, od.vid
+               order by od.s0, od.s1
+               rows between unbounded preceding and current row
+             ) as grp
+      from ordered od
+  ),
+  merged as (
+    select il.pid, il.vid, il.grp, min(il.s0) as g0, max(il.s1) as g1
+      from islands il
+     group by il.pid, il.vid, il.grp
+  ),
+  unioned as (
+    select mg.pid, mg.vid, sum(mg.g1 - mg.g0)::int as covered
+      from merged mg
+     group by mg.pid, mg.vid
+  ),
+  -- How long each lesson runs, across EVERYBODY's watches — not just the rows
+  -- this reader is scoped to. The length is the denominator of every percentage
+  -- on the page, and a length taken only from one person's own rows is a
+  -- denominator that person can choose: see the note on learning_video_heartbeat
+  -- above. Scoped to the lessons actually on this page so the lookup stays on
+  -- the (video_id, last_seen_at desc) index.
+  lengths as (
+    select w.video_id as vid, max(w.duration_seconds) as dur
+      from learning_video_watches w
+     where w.video_id in (select distinct sc2.vid from scoped sc2)
+     group by w.video_id
+  )
+  select sc.pid,
+         coalesce(pr.display_name, 'Someone')::text,
+         sc.vid,
+         coalesce(lv.title, 'Lesson')::text,
+         count(*) filter (where sc.secs >= 30)::bigint,
+         coalesce(max(sc.secs), 0)::int,
+         coalesce(max(un.covered), 0)::int,
+         max(ln.dur)::int,
+         bool_or(sc.done),
+         max(sc.seen)
+    from scoped sc
+    join profiles pr on pr.id = sc.pid
+    join learning_videos lv on lv.id = sc.vid
+    left join unioned un on un.pid = sc.pid and un.vid = sc.vid
+    left join lengths ln on ln.vid = sc.vid
+   group by sc.pid, pr.display_name, sc.vid, lv.title;
+end;
+$$;
+
+comment on function public.learning_video_report(timestamptz, timestamptz) is
+  'Per person per lesson: how many visits got through 30 seconds, the best visit, every visit''s seconds merged together, whether it was ever finished, and when it was last watched. Supervisor+ sees everybody; anybody else sees only their own (Learning time, L3).';
+
+revoke all on function public.learning_video_report(timestamptz, timestamptz)
+  from public, anon;
+grant execute on function public.learning_video_report(timestamptz, timestamptz)
+  to authenticated;

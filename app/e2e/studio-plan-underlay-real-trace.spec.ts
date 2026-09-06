@@ -31,25 +31,17 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { expect, test, type Route } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import {
   jobFixtures,
   NO_STORAGE_BACKUP_REASON,
   storageBackupPresent,
   useSupabaseFixtures,
 } from "./support/supabaseFixtures";
+import { json } from "./support/specHelpers";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const BLACK22 = jobFixtures().find((j) => j.jobCode === "BLACK22")!;
-
-function json(route: Route, body: unknown, rows = 0) {
-  return route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    headers: { "content-range": `0-${Math.max(0, rows - 1)}/${rows}` },
-    body: JSON.stringify(body),
-  });
-}
 
 interface MadMooseRow {
   id: string;

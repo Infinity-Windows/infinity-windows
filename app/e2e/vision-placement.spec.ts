@@ -14,13 +14,14 @@
 // footprints + windows to be arrays, never a traced polygon or a real pin,
 // so a suggestion for a mark with no pin yet still has somewhere to land in
 // the tracer's own JOB.windows.
-import { expect, test, type Route } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import {
   jobFixtures,
   NO_STORAGE_BACKUP_REASON,
   storageBackupPresent,
   useSupabaseFixtures,
 } from "./support/supabaseFixtures";
+import { json } from "./support/specHelpers";
 
 const OAKRIDGE = jobFixtures().find((j) => j.jobCode === "OAKRIDGE")!;
 const WINDOW_TYPE_ID = "4bf401a9-a166-4185-8f75-49142ccf585e";
@@ -45,15 +46,6 @@ const MODEL = {
   // thing a suggestion needs to have somewhere to land.
   windows: [{ id: "C102", elev: "", x: 0, w: 900, h: 1300 }],
 };
-
-function json(route: Route, body: unknown, rows = 0) {
-  return route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    headers: { "content-range": `0-${Math.max(0, rows - 1)}/${rows}` },
-    body: JSON.stringify(body),
-  });
-}
 
 interface OpeningState {
   id: string;

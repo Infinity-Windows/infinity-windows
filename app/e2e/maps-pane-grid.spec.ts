@@ -5,9 +5,10 @@
 // (fitviewRenderer.ts) through the real page, using the SAME canonical
 // madMooseMark7Grid fixture the unit tests pin against — 8 fixed lites
 // around a center double swing-door pair.
-import { expect, test, type Route } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { jobFixtures, useSupabaseFixtures } from "./support/supabaseFixtures";
 import { madMooseMark7Grid } from "../src/lib/fitview/paneGrid";
+import { json } from "./support/specHelpers";
 
 const BLACK22 = jobFixtures().find((j) => j.jobCode === "BLACK22")!;
 
@@ -29,15 +30,6 @@ const MODEL = {
   },
   windows: [{ id: "7", elev: "s0", x: 2, y: 0, w: 4254, h: 3645 }],
 };
-
-function json(route: Route, body: unknown, rows = 0) {
-  return route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    headers: { "content-range": `0-${Math.max(0, rows - 1)}/${rows}` },
-    body: JSON.stringify(body),
-  });
-}
 
 async function stageOutline(page: import("@playwright/test").Page) {
   await page.route("**/rest/v1/project_plan_outlines**", (route) =>

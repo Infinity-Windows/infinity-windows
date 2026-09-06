@@ -5,8 +5,9 @@
 // job's hub instead. A DATA job is unchanged. This drives the real page from a
 // supervisor's `projects` fetch, one tracking job beside one data job.
 
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { useSupabaseFixtures } from "./support/supabaseFixtures";
+import { json } from "./support/specHelpers";
 
 const TRACKING_ID = "11111111-1111-4111-8111-111111111111";
 const DATA_ID = "22222222-2222-4222-8222-222222222222";
@@ -32,15 +33,6 @@ const PROJECTS = [
     allowed_modes: ["data"],
   },
 ];
-
-function json(route: Route, body: unknown, rows = 0) {
-  return route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    headers: { "content-range": `0-${Math.max(0, rows - 1)}/${rows}` },
-    body: JSON.stringify(body),
-  });
-}
 
 // Registered AFTER useSupabaseFixtures so it wins (Playwright favours the most
 // recently added route): our two jobs, carrying allowed_modes, in place of the

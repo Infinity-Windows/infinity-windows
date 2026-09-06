@@ -13,8 +13,9 @@
 // point is a specific geometry: one punch left open twenty hours ago from a
 // phone that has since travelled fourteen miles, and one that has not moved.
 
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { useSupabaseFixtures } from "./support/supabaseFixtures";
+import { json } from "./support/specHelpers";
 
 const AWAY_ID = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
 const HERE_ID = "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb";
@@ -77,16 +78,6 @@ const SHIFTS = [
     profiles: { display_name: "Cara Diaz" },
   }),
 ];
-
-
-function json(route: Route, body: unknown, rows = 0) {
-  return route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    headers: { "content-range": `0-${Math.max(0, rows - 1)}/${rows}` },
-    body: JSON.stringify(body),
-  });
-}
 
 // Registered AFTER useSupabaseFixtures so these win (Playwright favours the
 // most recently added route).

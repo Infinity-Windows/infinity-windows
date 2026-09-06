@@ -68,8 +68,3 @@ export function getBrainIndex(catalog?: CatalogType[] | null): BrainIndex {
   cached = { catalog: catalog ?? null, index };
   return index;
 }
-
-/** Plain text for one answer, with its citation. */
-export function formatHit(hit: BrainHit): string {
-  return `${hit.entry.title}\n${hit.entry.body}`;
-}

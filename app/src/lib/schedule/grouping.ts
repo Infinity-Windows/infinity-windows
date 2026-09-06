@@ -3,7 +3,7 @@
 // covers within the visible window, grouped and sorted by day, then by start
 // time within a day.
 
-import { addDaysISO, daysBetween, enumerateDays } from "./dates";
+import { daysBetween, enumerateDays } from "./dates";
 import type { ScheduleAssignment } from "./types";
 
 export interface AgendaEntry {
@@ -110,9 +110,4 @@ export function unassignedProjects<
     }
   }
   return projects.filter((p) => !scheduled.has(p.id));
-}
-
-/** Next day after a window end (used for "load more" agenda paging). */
-export function nextWindowStart(toISO: string): string {
-  return addDaysISO(toISO, 1);
 }

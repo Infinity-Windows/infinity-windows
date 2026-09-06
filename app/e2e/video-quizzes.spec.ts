@@ -7,17 +7,9 @@
 // (mock the edge function) -> draft visible to supervisor, hidden from
 // installer -> Approve -> installer takes the quiz (mock RPC) -> pass shows
 // a points toast; fail path allows retake.
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { useSupabaseFixtures } from "./support/supabaseFixtures";
-
-function json(route: Route, body: unknown, rows = 0) {
-  return route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    headers: { "content-range": `0-${Math.max(0, rows - 1)}/${rows}` },
-    body: JSON.stringify(body),
-  });
-}
+import { json } from "./support/specHelpers";
 
 const VIDEO_ID = "11111111-1111-4111-8111-111111111111";
 
