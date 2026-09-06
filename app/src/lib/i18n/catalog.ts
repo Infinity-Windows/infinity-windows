@@ -2373,6 +2373,12 @@ export const CATALOG = {
     es: "Cuando algo no se guardó, esta página muestra lo que sabe el teléfono y te da un informe para enviar.",
   },
   "settings.diagnostics.open": { en: "Open diagnostics", es: "Abrir diagnóstico" },
+
+  // --- Stale chunk after a deploy (ticket 07, 2026-09-06) --------------------
+  "pwa.staleChunk": {
+    en: "The app updated while you were working. Finish and save, then pull down to refresh.",
+    es: "La app se actualizó mientras trabajabas. Termina y guarda, luego desliza hacia abajo para actualizar.",
+  },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */
