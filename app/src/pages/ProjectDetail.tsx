@@ -43,7 +43,7 @@ import {
   type JobEstimate,
   type TypeStat,
 } from "../lib/estimate";
-import { prefetchJobPack } from "../lib/queryClient";
+import { SaveJobOffline } from "../components/offline/SaveJobOffline";
 import { useRealtimeOpenings } from "../lib/useRealtimeOpenings";
 import { type Project } from "../lib/types";
 import { listActivePackages, type StoragePackage } from "../lib/storage";
@@ -483,24 +483,6 @@ export function ProjectDetail() {
   );
 }
 
-function OfflineDownloadButton({ projectId }: { projectId: string }) {
-  const download = useMutation({
-    mutationFn: () => prefetchJobPack(projectId),
-  });
-  return (
-    <button
-      className="action-btn"
-      disabled={download.isPending}
-      onClick={() => download.mutate()}
-    >
-      {download.isPending
-        ? "Downloading job for offline…"
-        : download.isSuccess
-          ? `Saved offline (${download.data} type brains) — re-download`
-          : "Download job for offline use"}
-    </button>
-  );
-}
 
 /**
  * "Build this out" — the one-way upgrade from a tracking job to a full data job
@@ -783,7 +765,7 @@ function OverviewTab({
           projectId={projectId}
           jobName={project?.job_code ?? project?.name ?? "this job"}
         />
-        <OfflineDownloadButton projectId={projectId} />
+        <SaveJobOffline projectId={projectId} />
       </div>
 
       {/* The job's paperwork that is not a planset — the ironwork sheet, the

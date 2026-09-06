@@ -12228,6 +12228,22 @@ button.stage-chip {
   }
 }
 
+/* "Save for offline" strip on the three landings (ticket 05). A row that
+   never changes height while saving: the button's text grows, the row does
+   not, and nothing moves on hover. */
+.save-offline-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 8px 0 12px;
+  min-height: 40px;
+}
+.save-offline-strip .action-btn {
+  flex: none;
+  white-space: nowrap;
+}
+
 /* --- Learn: the learning-time footer (2026-09-05) ---
    The person being measured reads the same number the owner's table does. It
    sits at the bottom of the Learn page, quiet enough not to compete with the

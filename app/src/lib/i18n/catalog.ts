@@ -2285,6 +2285,39 @@ export const CATALOG = {
   },
   "learn.points.anotherRound": { en: "Another round", es: "Otra ronda" },
 
+  // --- Save for offline (ticket 05, 2026-09-06) ----------------------------
+  "offline.save": { en: "Save for offline", es: "Guardar sin señal" },
+  "offline.savingStart": { en: "Saving…", es: "Guardando…" },
+  "offline.saving": { en: "Saving… {done} of {total}", es: "Guardando… {done} de {total}" },
+  "offline.saved": { en: "Saved offline · {ago}", es: "Guardado sin señal · {ago}" },
+  "offline.savedMissing": {
+    en: "Saved offline · {ago} · {n} items missing, refresh with better signal",
+    es: "Guardado sin señal · {ago} · faltan {n} elementos, actualiza con mejor señal",
+  },
+  "offline.savedPartly": {
+    en: "Saved, but {n} items could not be downloaded — try again with better signal",
+    es: "Guardado, pero {n} elementos no se pudieron descargar — intenta de nuevo con mejor señal",
+  },
+  "offline.failed": {
+    en: "Couldn't save this job. Try again with better signal.",
+    es: "No se pudo guardar este trabajo. Intenta de nuevo con mejor señal.",
+  },
+  "offline.refresh": { en: "Refresh the offline copy", es: "Actualizar la copia sin señal" },
+  "offline.strip": {
+    en: "{saved} of {total} jobs saved on this phone",
+    es: "{saved} de {total} trabajos guardados en este teléfono",
+  },
+  "offline.saveAll": { en: "Save all for offline", es: "Guardar todos sin señal" },
+  "offline.refreshAll": { en: "Refresh offline copies", es: "Actualizar copias sin señal" },
+  "offline.savingJobs": {
+    en: "Saving job {i} of {n}… {done} of {total}",
+    es: "Guardando trabajo {i} de {n}… {done} de {total}",
+  },
+  "offline.justNow": { en: "just now", es: "ahora mismo" },
+  "offline.minAgo": { en: "{n} min ago", es: "hace {n} min" },
+  "offline.hoursAgo": { en: "{n} h ago", es: "hace {n} h" },
+  "offline.daysAgo": { en: "{n} d ago", es: "hace {n} d" },
+
   // ---- Learning time (2026-09-05) ----------------------------------------
   // The owner's ask: "a timer that I can see as an owner how long they spend in
   // the learning tab and on what item… as well as a timer for watching the

@@ -1,4 +1,5 @@
 import { BackChip } from "../components/BackChip";
+import { SaveJobsStrip } from "../components/offline/SaveJobOffline";
 import { RoleMaps } from "../components/RoleMaps";
 import { ClockInBlock } from "../components/clock/ClockInBlock";
 import { LogTodayChip } from "../components/dailyLogs/LogTodayChip";
@@ -172,6 +173,10 @@ export function Heartbeat() {
       {hb.isError && <p className="error">{formatApiError(hb.error)}</p>}
 
       {/* Quick project pulse cards */}
+      {/* Ticket 05: every landing offers to put its jobs on the phone. */}
+      {!hb.isLoading && !hb.isError && (
+        <SaveJobsStrip projectIds={(hb.data?.projects ?? []).map((p) => p.id)} />
+      )}
       {!hb.isLoading && !hb.isError && (
         <div className="home-projects" style={{ marginTop: 8 }}>
           {(hb.data?.projects ?? []).map((p) => {

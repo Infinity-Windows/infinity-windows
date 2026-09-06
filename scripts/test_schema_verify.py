@@ -247,6 +247,33 @@ class SchemaVerifyTest(unittest.TestCase):
         blocking, _advisory, _extra = self.fx.run(["table|other|norls"])
         self.assertEqual(blocking, [])
 
+    def test_a_dropped_function_is_no_longer_expected(self):
+        self.fx.migration("create function old_fn() returns void language sql as $$ select 1 $$;")
+        self.fx.migration("drop function if exists old_fn();")
+        blocking, advisory, _extra = self.fx.run(["table|other|norls"])
+        self.assertEqual(blocking, [])
+        self.assertEqual(advisory, [])
+
+    def test_a_function_created_and_dropped_in_one_migration_is_not_expected(self):
+        # 20260992000000 proves its default-privileges change this way: a
+        # throwaway function inside a DO block, looked at, then dropped.
+        self.fx.migration(
+            "do $$ begin\n"
+            "  execute 'create function public._probe() returns void language sql as $f$ select 1 $f$';\n"
+            "  execute 'drop function public._probe()';\n"
+            "end $$;"
+        )
+        blocking, advisory, _extra = self.fx.run(["table|other|norls"])
+        self.assertEqual(blocking, [])
+        self.assertEqual(advisory, [])
+
+    def test_a_function_recreated_after_a_drop_is_expected_again(self):
+        self.fx.migration("create function fn() returns void language sql as $$ select 1 $$;")
+        self.fx.migration("drop function fn();")
+        self.fx.migration("create function fn() returns void language sql as $$ select 2 $$;")
+        _blocking, advisory, _extra = self.fx.run(["table|other|norls"])
+        self.assertIn("function|fn", [full for _fn, full in advisory])
+
     def test_a_table_recreated_after_a_drop_is_expected_again(self):
         self.fx.migration("create table widgets (id uuid primary key);")
         self.fx.migration("drop table widgets;")
