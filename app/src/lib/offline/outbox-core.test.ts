@@ -489,6 +489,36 @@ describe("drainUntilSettled", () => {
     expect(res.remaining).toBe(0);
   });
 
+  it("measures a failed entry's retry from when it failed, not from when the pass began", async () => {
+    // A pass can hold a big photo upload for half a minute. If a write fails
+    // AFTER that upload, its retry time must be measured from the failure,
+    // or the settle loop's next pass hands it straight back — one of its
+    // eight attempts spent on the same dead signal, seconds apart.
+    const store = new MemoryOutboxStore();
+    await store.put(entry({ id: "slow-photo", createdAt: 10 }));
+    await store.put(entry({ id: "answer", createdAt: 20 }));
+    let t = T0;
+    const clock = () => t;
+    let answerAttempts = 0;
+    const handlers: OpHandlers = {
+      clock_in: async (e) => {
+        if (e.id === "slow-photo") {
+          t += 30_000; // the upload took thirty seconds
+          return;
+        }
+        answerAttempts += 1;
+        throw new Error("Failed to fetch"); // retryable
+      },
+    };
+    const res = await drainUntilSettled(store, handlers, { now: clock });
+    expect(res.sent).toBe(1);
+    expect(answerAttempts).toBe(1); // NOT tried again in the follow-up pass
+    const answer = (await store.getAll()).find((e) => e.id === "answer")!;
+    expect(answer.status).toBe("queued");
+    // Stamped at t = T0 + 30 s, plus the first rung of the ladder.
+    expect(answer.nextAttemptAt).toBeGreaterThanOrEqual(T0 + 30_000 + BACKOFF_BASE_MS);
+  });
+
   it("sends an entry queued while an earlier one was still being sent", async () => {
     // The capture sheet queues the original WHILE the receipt is uploading;
     // the running pass never saw it.

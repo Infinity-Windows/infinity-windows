@@ -684,6 +684,24 @@ export interface DrainResult {
 }
 
 /**
+ * The drain's clock. Tests hand in a fixed number so a run is deterministic;
+ * a function is a live clock that advances while handlers run; nothing means
+ * the wall clock. Read once per pass to decide what is due, and again at each
+ * failure so a retry is measured from when it failed.
+ */
+export interface DrainOpts {
+  now?: number | (() => number);
+  onChange?: () => void;
+}
+
+function clockOf(opts: DrainOpts): () => number {
+  const n = opts.now;
+  if (typeof n === "function") return n;
+  if (typeof n === "number") return () => n;
+  return () => Date.now();
+}
+
+/**
  * Attempt every due entry once, FIFO. Success → delete; failure → backoff or
  * dead-letter. This is the whole drainer, decoupled from IndexedDB/Supabase so
  * it can be exercised with an in-memory store and fake handlers.
@@ -691,9 +709,10 @@ export interface DrainResult {
 export async function drainStore(
   store: OutboxStore,
   handlers: OpHandlers,
-  opts: { now?: number; onChange?: () => void } = {},
+  opts: DrainOpts = {},
 ): Promise<DrainResult> {
-  const now = opts.now ?? Date.now();
+  const clock = clockOf(opts);
+  const now = clock();
   const all = await store.getAll();
   const due = dueEntries(all, now);
   let sent = 0;
@@ -718,7 +737,12 @@ export async function drainStore(
       await store.delete(entry.id);
       sent += 1;
     } catch (err) {
-      const next = applyFailure(entry, err, now);
+      // Stamp the failure from the clock NOW, not from the pass's opening
+      // read. A pass can hold a 25 MB photo upload for half a minute; a write
+      // that fails after it would otherwise get a retry time already in the
+      // past, and drainUntilSettled's next pass would try it again at once —
+      // burning one of its MAX_ATTEMPTS on the same dead signal.
+      const next = applyFailure(entry, err, clock());
       await store.put(next);
       if (next.status === "failed") {
         deadLettered += 1;
@@ -770,7 +794,7 @@ export const MAX_DRAIN_PASSES = 25;
 export async function drainUntilSettled(
   store: OutboxStore,
   handlers: OpHandlers,
-  opts: { now?: number; onChange?: () => void } = {},
+  opts: DrainOpts = {},
 ): Promise<DrainResult> {
   const total: DrainResult = { attempted: 0, sent: 0, retried: 0, deadLettered: 0, remaining: 0 };
   for (let pass = 0; pass < MAX_DRAIN_PASSES; pass++) {
