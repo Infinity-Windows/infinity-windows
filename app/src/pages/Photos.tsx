@@ -82,10 +82,19 @@ export function Photos() {
   // not undone by the next render. Only when that job is really one of theirs:
   // a shift on a job the worked list does not name would select an option the
   // picker cannot show.
+  //
+  // PHOTOS ONLY, AND THE `kind` CHECK IS THE WHOLE REASON THIS IS SAFE. The
+  // receipt chase sends a phone to "/photos?kind=receipt&capture=1" with no job
+  // ON PURPOSE — a receipt may belong to a different job from the one the
+  // person is standing on, which is exactly the fuel bought on the way there.
+  // Filling the job in for them hides the question: the capture sheet treats a
+  // job that came from the URL as a LOCK (jobChangeable defaults to false), so
+  // company-card money would be filed to the wrong job with nobody asked.
+  // Guessing the job is right for a picture and wrong for a receipt.
   const primedRef = useRef(false);
   const openShiftJob = shift?.project_id ?? null;
   useEffect(() => {
-    if (primedRef.current || isLead || roleLoading) return;
+    if (primedRef.current || isLead || roleLoading || kind !== "photo") return;
     if (projectId || !openShiftJob || !worked.isSuccess) return;
     primedRef.current = true;
     if ((worked.data ?? []).some((j) => j.id === openShiftJob)) {
@@ -96,6 +105,7 @@ export function Photos() {
   }, [
     isLead,
     roleLoading,
+    kind,
     projectId,
     openShiftJob,
     worked.isSuccess,

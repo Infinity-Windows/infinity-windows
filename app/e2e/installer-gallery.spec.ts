@@ -11,6 +11,7 @@
 // the app actually asks the network for.
 import { expect, test, type Page, type Route } from "@playwright/test";
 import { jobFixtures, useSupabaseFixtures } from "./support/supabaseFixtures";
+import { pngFile } from "./support/specHelpers";
 
 const BLACK22 = jobFixtures().find((j) => j.jobCode === "BLACK22")!;
 const PECAN14 = jobFixtures().find((j) => j.jobCode === "PECAN14")!;
@@ -189,4 +190,46 @@ test("a foreman's gallery is unchanged", async ({ page }) => {
   await expect(
     page.getByText("Photos from every job show up here as the crew captures them."),
   ).toBeVisible();
+});
+
+test("a receipt chased to a phone still asks which job it was for", async ({ page }) => {
+  // The receipt chase pushes "/photos?kind=receipt&capture=1" with no job, on
+  // purpose: money spent on the company card belongs to whichever job it
+  // belongs to, and the fuel bought on the way to one is the standing example
+  // of it not being the one you are standing on. The gallery primes the open
+  // shift's job into the URL, and a job that arrives in the URL is a LOCK for
+  // the capture sheet — so priming it here would file the spend to the wrong
+  // job with nobody asked. The priming is for photos only.
+  await useSupabaseFixtures(page, { role: "installer" });
+  await recordPhotoReads(page, []);
+  // The condition that made this real: an open shift, on a job that IS theirs.
+  await useShift(page, BLACK22.projectId);
+  await useWorkedJobs(page, [
+    { id: BLACK22.projectId, job_code: "BLACK22", name: "Black Desert" },
+  ]);
+  await page.route("**/storage/v1/object/**", (route) =>
+    json(route, { Key: "install-media/receipts/x.jpg" }),
+  );
+  const filed: Record<string, unknown>[] = [];
+  await page.route("**/rest/v1/rpc/file_receipt", (route) => {
+    const body = route.request().postDataJSON() as Record<string, unknown>;
+    filed.push(body);
+    return json(route, { id: body.p_id, ...body }, 1);
+  });
+
+  await page.goto("/photos?kind=receipt&capture=1");
+  await expect(page.getByRole("heading", { name: "Add a receipt" })).toBeVisible();
+
+  // Nothing put a job in the URL, and the filter still reads "all of mine".
+  await expect(page).not.toHaveURL(/project=/);
+  await expect(page.getByLabel("Filter by job")).toHaveValue("");
+
+  // And the sheet asks. The receipt is filed with no job — the question is
+  // the person's to answer, not the gallery's to guess.
+  await page
+    .locator('.jobphoto-actions input[type="file"]:not([capture])')
+    .setInputFiles(pngFile("receipt.png"));
+  await expect.poll(() => filed.length).toBe(1);
+  expect(filed[0]).toMatchObject({ p_project_id: null });
+  await expect(page.getByText("Which job?")).toBeVisible();
 });
