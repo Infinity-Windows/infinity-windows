@@ -15866,6 +15866,18 @@ comment on column receipts.document_path is
 -- Idempotent by nature — writing the same path twice writes the same path — so
 -- the queue can retry it blind after a lost reply, which is the whole reason
 -- it rides the outbox.
+--
+-- AND IT CHECKS THE PATH, which is not paperwork. Any signed-in crew member
+-- may file a receipt (file_receipt, by design), so any crew member is the
+-- uploader of a row they may then write this column on. The string they write
+-- is not decoration: the office's "Open original" and the accounting zip
+-- export both FETCH whatever it names, in the browser of whoever is looking,
+-- and file it into the export beside the receipt's own picture. Left
+-- unchecked, `credential-docs/<somebody>/<uuid>.pdf` would put a person's ID
+-- document into a bookkeeper's month-end zip labelled as a Shell invoice.
+--
+-- There is nothing here that needs trusting: one receipt has one original, at
+-- one path, and that path is spelled out by the id already being passed in.
 create or replace function public.set_receipt_document(
   p_id uuid,
   p_document_path text
@@ -15890,6 +15902,13 @@ begin
     raise exception 'only the uploader or a supervisor can change this receipt'
       using errcode = '42501';
   end if;
+  -- The one path this receipt's original may live at — see the header above.
+  -- Clearing it (null) stays allowed; pointing it anywhere else never was.
+  if v_path is not null
+     and v_path <> 'install-media/receipts/' || p_id::text || '.pdf' then
+    raise exception 'a receipt''s original file lives at install-media/receipts/<id>.pdf'
+      using errcode = '22023';
+  end if;
 
   update receipts set document_path = v_path
    where id = p_id
@@ -15900,7 +15919,7 @@ end;
 $$;
 
 comment on function public.set_receipt_document(uuid, text) is
-  'Uploader-or-supervisor: records the original PDF a receipt came from (install-media/receipts/<id>.pdf). A narrow writer on purpose — see the migration header for why file_receipt''s argument list must not move.';
+  'Uploader-or-supervisor: records the original PDF a receipt came from. The path is CHECKED to be install-media/receipts/<id>.pdf, so a row cannot be aimed at some other object in the bucket — the office fetches whatever this names. A narrow writer on purpose — see the migration header for why file_receipt''s argument list must not move.';
 
 revoke all on function public.set_receipt_document(uuid, text) from public, anon;
 grant execute on function public.set_receipt_document(uuid, text) to authenticated;
