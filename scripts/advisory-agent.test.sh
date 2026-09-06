@@ -196,6 +196,14 @@ touch_catalog() { # bytes-ish
 # ---------------------------------------------------------------------------
 # Never fails
 # ---------------------------------------------------------------------------
+new_case "the API key alone is NOT used until the owner opts in with ADVISORY_ALLOW_API_KEY=1"
+OUT="$(env -u CLAUDE_CODE_OAUTH_TOKEN -u ADVISORY_ALLOW_API_KEY ANTHROPIC_API_KEY="stub-key-not-a-real-one" ADVISORY_REPO="$root" bash "$SCRIPT" --credential-kind 2>&1)"
+[ "$OUT" = "none" ] && pass "api key without the variable reads as no credential" || fail "expected none, got: $OUT"
+OUT="$(env -u CLAUDE_CODE_OAUTH_TOKEN ADVISORY_ALLOW_API_KEY=1 ANTHROPIC_API_KEY="stub-key-not-a-real-one" ADVISORY_REPO="$root" bash "$SCRIPT" --credential-kind 2>&1)"
+[ "$OUT" = "api-key" ] && pass "api key with ADVISORY_ALLOW_API_KEY=1 is used" || fail "expected api-key, got: $OUT"
+OUT="$(env -u ADVISORY_ALLOW_API_KEY CLAUDE_CODE_OAUTH_TOKEN="stub-token-not-a-real-one" ANTHROPIC_API_KEY="stub-key-not-a-real-one" ADVISORY_REPO="$root" bash "$SCRIPT" --credential-kind 2>&1)"
+[ "$OUT" = "oauth" ] && pass "the token still wins whenever it is present" || fail "expected oauth, got: $OUT"
+
 new_case "with no credential it says which secret would turn it on"
 touch_catalog
 head_commit "Add the clock-in button to the phrasebook"

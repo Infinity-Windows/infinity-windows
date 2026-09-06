@@ -147,6 +147,8 @@ jobs:
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # A variable, not a secret: the owner's explicit yes to reviewing on the Ask Infinity key.
+          ADVISORY_ALLOW_API_KEY: ${{ vars.ADVISORY_ALLOW_API_KEY }}
         run: |
           kind="$(scripts/advisory-agent.sh --credential-kind)"
           echo "kind=$kind" >>"$GITHUB_OUTPUT"
@@ -169,6 +171,8 @@ jobs:
           GH_REPO: ${{ github.repository }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # A variable, not a secret: the owner's explicit yes to reviewing on the Ask Infinity key.
+          ADVISORY_ALLOW_API_KEY: ${{ vars.ADVISORY_ALLOW_API_KEY }}
           PR: ${{ github.event.pull_request.number }}
           EXACT_RESULT: ${{ needs.house-rules.result }}
           # See the note in the other job: a branch name is contributor text.

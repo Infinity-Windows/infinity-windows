@@ -157,7 +157,12 @@ if [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
   CRED_KIND="oauth"
   CRED_WORDS="the Claude subscription, through CLAUDE_CODE_OAUTH_TOKEN"
   CRED_ENV=(env -u GH_TOKEN -u GITHUB_TOKEN -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN)
-elif [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+elif [ -n "${ANTHROPIC_API_KEY:-}" ] && [ "${ADVISORY_ALLOW_API_KEY:-}" = "1" ]; then
+  # Opt-in only. ANTHROPIC_API_KEY is already in this repository for Ask
+  # Infinity, so falling back to it by default would start spending a
+  # product key on code review the day this merged, with nobody choosing to.
+  # The owner says so out loud with the repository VARIABLE
+  # ADVISORY_ALLOW_API_KEY=1 (Settings -> Variables), or sets the token above.
   CRED_KIND="api-key"
   CRED_WORDS="metered API billing, through ANTHROPIC_API_KEY — the same key Ask Infinity uses"
 else
@@ -237,7 +242,7 @@ done
   stop "It has already run $RUNS_TODAY times on this pull request today, which is the cap. The exact house rules still ran, and the next push tomorrow gets a fresh allowance."
 
 [ "$CRED_KIND" != "none" ] ||
-  stop "No Claude credential is set, so only the exact house rules ran. Add ONE repository secret and this half turns itself on: CLAUDE_CODE_OAUTH_TOKEN (a one-year token from \`claude setup-token\`, billed against the Claude subscription that already exists) or ANTHROPIC_API_KEY (metered API billing). See docs/advisory-review.md."
+  stop "No Claude credential is in play, so only the exact house rules ran. Two ways to turn this half on: add the repository secret CLAUDE_CODE_OAUTH_TOKEN (a one-year token from \`claude setup-token\`, billed against the Claude subscription that already exists — recommended), or set the repository variable ADVISORY_ALLOW_API_KEY=1 to let it use ANTHROPIC_API_KEY (metered billing on the same key Ask Infinity uses). See docs/advisory-review.md."
 
 # ---------------------------------------------------------------------------
 # The tool

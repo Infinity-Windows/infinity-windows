@@ -295,6 +295,16 @@ neither belongs in that census, and neither check has anything to say about
 them. If either tool ever complains, the answer is that these are CI secrets,
 not function secrets.
 
+### The API key is opt-in
+
+`ANTHROPIC_API_KEY` already lives in this repository for Ask Infinity. The
+runner will not touch it unless the repository **variable**
+`ADVISORY_ALLOW_API_KEY` is set to `1` (Settings → Secrets and variables →
+Actions → Variables). Without that variable and without
+`CLAUDE_CODE_OAUTH_TOKEN`, only the exact house rules run and the comment says
+which of the two would turn the reading half on. This is deliberate: a review
+that quietly drains the key a feature depends on is worse than no review.
+
 ## The pull request it will not read
 
 The Claude Code CLI reads `CLAUDE.md` — and anything under `.claude/`, and
