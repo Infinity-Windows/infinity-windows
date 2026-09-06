@@ -169,6 +169,34 @@ async function loadBitmap(blob: Blob): Promise<{
 }
 
 /**
+ * Can this browser turn `blob` into a picture at all?
+ *
+ * WHY, and the incident behind it: the capture sheet's "Upload files" input
+ * carried a `capture` attribute, so the only thing a phone could ever hand it
+ * was a photo its own camera had just taken. Without that attribute the pick
+ * is the whole phone — the library, the Files app, Google Drive — and a PDF, a
+ * spreadsheet, a half-synced download or a HEIC on a browser with no HEIC
+ * decoder are all one tap away. renderToJpeg below DELIBERATELY returns the
+ * original blob when it cannot decode, so capture never breaks on a live
+ * shutter; without this question, that same kindness would quietly file an
+ * unreadable file as if it were a photo.
+ *
+ * Answers TRUE when the question cannot be asked here (no `createImageBitmap`:
+ * jsdom, an old browser) — refusing a file nobody was able to inspect would be
+ * worse than the behaviour this replaces. It costs one decode on top of the
+ * stamp's own, paid only on a PICKED file: the live shutter, the one tap that
+ * has to feel instant, never comes through here.
+ */
+export async function canDecodePhoto(blob: Blob): Promise<boolean> {
+  if (typeof createImageBitmap !== "function") return true;
+  const bitmap = await loadBitmap(blob);
+  if (!bitmap) return false;
+  const usable = Boolean(bitmap.width && bitmap.height);
+  bitmap.close();
+  return usable;
+}
+
+/**
  * Decode, downscale to `maxDimension`, optionally draw on top, and re-encode as
  * a JPEG. On any environment without a usable canvas (or on decode failure) the
  * ORIGINAL blob is returned unchanged so capture never breaks.

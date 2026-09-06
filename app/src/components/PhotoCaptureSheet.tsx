@@ -8,6 +8,7 @@ import {
   subscribeSynced,
 } from "../lib/offline/outbox";
 import {
+  canDecodePhoto,
   capturePhotoMeta,
   shrinkPhotoFile,
   stampPhoto,
@@ -15,6 +16,7 @@ import {
   toPhotoMetaFields,
   type StampMeta,
 } from "../lib/photo/stampPhoto";
+import { isPermanentCameraFailure } from "../lib/photo/cameraErrors";
 import { useWarmGeoFix } from "../lib/geoWatch";
 import { useFocusTrap } from "../lib/useFocusTrap";
 import { signedInEmail } from "../lib/signedIn";
@@ -138,8 +140,12 @@ export function PhotoCaptureSheet(props: PhotoCaptureSheetProps) {
   return <JobPhotoCapture {...props} />;
 }
 
-/** Start the rear camera while `active`, wiring the stream into `videoRef`. */
-function useCameraStream(active: boolean, onError: (message: string) => void) {
+/** Start the rear camera while `active`, wiring the stream into `videoRef`.
+ *
+ * `onError` is handed the raw rejection alongside the sentence, because what a
+ * caller does about it depends on WHICH failure it was (see cameraErrors.ts),
+ * and it is never called for a request the caller has already backed out of. */
+function useCameraStream(active: boolean, onError: (message: string, cause: unknown) => void) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
@@ -169,7 +175,13 @@ function useCameraStream(active: boolean, onError: (message: string) => void) {
           await videoRef.current.play().catch(() => {});
         }
       } catch (e) {
-        onError(formatApiError(e));
+        // The permission prompt outlives the request: tap "Use camera", change
+        // your mind and tap "Done", and this rejects seconds later against a
+        // stage nobody is looking at any more. Reporting it then puts an error
+        // under a sheet that is fine — and, worse, tells the caller the camera
+        // is gone (see cameraRefused) over a request the person cancelled.
+        if (cancelled) return;
+        onError(formatApiError(e), e);
       }
     })();
     return () => {
@@ -546,14 +558,32 @@ function JobPhotoCapture({
   const [busy, setBusy] = useState(false);
   const [caption, setCaption] = useState("");
   const [queued, setQueued] = useState(0);
+  /** Files this pick could not use, by name — see pickFiles. */
+  const [rejected, setRejected] = useState<string[]>([]);
   const [filedReceipt, setFiledReceipt] = useState<{ id: string; entryId: string } | null>(null);
+
+  // Is there a live camera this sheet can drive itself? A browser with no
+  // getUserMedia (desktop Safari on an old machine, an in-app webview) and a
+  // permission the person already refused amount to the same answer, and in
+  // both cases the phone's OWN camera app — reached through a file input that
+  // asks for `capture` — is the only shutter left.
+  const hasLiveCamera =
+    typeof navigator !== "undefined" && Boolean(navigator.mediaDevices?.getUserMedia);
+  /** Set only by a camera failure another tap cannot fix — see cameraErrors.ts. */
+  const [cameraRefused, setCameraRefused] = useState(false);
+  const liveCamera = hasLiveCamera && !cameraRefused;
 
   // Ask for the fix when the SHEET opens, not when the shutter is tapped.
   useWarmGeoFix();
 
-  const videoRef = useCameraStream(cameraOn, (message) => {
+  const videoRef = useCameraStream(cameraOn, (message, cause) => {
     setCameraError(message);
     setCameraOn(false);
+    // Only a failure that another tap cannot fix takes the live shutter away
+    // for the rest of this sheet. A camera another app is holding comes back
+    // the moment that app lets go, and the installer must be able to try again
+    // without closing and reopening the sheet.
+    if (isPermanentCameraFailure(cause)) setCameraRefused(true);
   });
 
   const queueBlob = async (raw: Blob) => {
@@ -641,8 +671,22 @@ function JobPhotoCapture({
   const pickFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
     e.target.value = "";
+    setRejected([]);
     for (const file of files) {
-      if (file.type.startsWith("image/")) await queueBlob(file);
+      // Now that this really is a file picker, what arrives is whatever the
+      // phone will hand over: a PDF of a spec sheet, a half-synced download, a
+      // HEIC on a browser with no HEIC decoder. stampPhoto degrades to the
+      // original blob rather than throwing (so a live shutter never breaks),
+      // which without this check would file an unopenable file as a photo, and
+      // the person would be told it saved. Ask first, name the file that
+      // failed, and carry on with the rest of the pick — one bad file must not
+      // take the other nine with it.
+      const usable = file.type.startsWith("image/") && (await canDecodePhoto(file));
+      if (!usable) {
+        setRejected((names) => [...names, file.name]);
+        continue;
+      }
+      await queueBlob(file);
     }
   };
 
@@ -763,21 +807,54 @@ function JobPhotoCapture({
               placeholder={isReceipt ? "e.g. Home Depot — shims" : "e.g. South elevation, unit 3"}
             />
             <div className="jobphoto-actions">
-              <button
-                type="button"
-                className="jobphoto-action"
-                onClick={() => setCameraOn(true)}
-              >
-                <Camera size={22} aria-hidden />
-                <span>{t("photo.action.useCamera")}</span>
-              </button>
+              {liveCamera ? (
+                <button
+                  type="button"
+                  className="jobphoto-action"
+                  onClick={() => {
+                    // Clear last time's complaint on the way in, or a retry
+                    // that works still sits under "Camera busy".
+                    setCameraError(null);
+                    setCameraOn(true);
+                  }}
+                >
+                  <Camera size={22} aria-hidden />
+                  <span>{t("photo.action.useCamera")}</span>
+                </button>
+              ) : (
+                /* The camera FALLBACK, and the only input on this sheet that
+                   asks for `capture`: with no getUserMedia to drive (or a
+                   permission already refused) the phone's own camera app is
+                   the only shutter left, and `capture="environment"` is what
+                   opens it straight to the rear lens instead of the picker.
+                   Rendered only in that case, so the ordinary sheet has
+                   exactly one file input. */
+                <label className="jobphoto-action" style={{ cursor: "pointer" }}>
+                  <Camera size={22} aria-hidden />
+                  <span>{t("photo.action.useCamera")}</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    style={{ display: "none" }}
+                    onChange={(e) => void pickFiles(e)}
+                  />
+                </label>
+              )}
               <label className="jobphoto-action" style={{ cursor: "pointer" }}>
                 <ImagePlus size={22} aria-hidden />
                 <span>{t("photo.action.uploadFiles")}</span>
+                {/* THE INCIDENT: this input carried capture="environment",
+                    which tells iOS and Android to open the camera and offer
+                    nothing else — so "Upload files" could only ever take a new
+                    photo, and the library, the Files app and Google Drive were
+                    unreachable from the app. Without it iOS offers Photo
+                    Library / Take Photo / Choose File, and Android opens the
+                    system picker with Drive in it. Never put `capture` back on
+                    this one; the fallback above is where it belongs. */}
                 <input
                   type="file"
                   accept="image/*"
-                  capture="environment"
                   multiple={!isReceipt}
                   style={{ display: "none" }}
                   onChange={(e) => void pickFiles(e)}
@@ -787,7 +864,16 @@ function JobPhotoCapture({
           </>
         )}
 
-        {cameraError && <p className="muted">{t("photo.cameraUnavailable")}</p>}
+        {/* Two failures, two sentences. Refused (or no camera at all) means the
+            live shutter is gone and Upload files is the way through; anything
+            else means it is worth another tap, and the button is still there
+            to tap. One line saying "unavailable" under a button that works is
+            how somebody stops trying. */}
+        {cameraError && (
+          <p className="muted">
+            {cameraRefused ? t("photo.cameraUnavailable") : t("photo.cameraBusy")}
+          </p>
+        )}
         {/* This line used to be hidden whenever the camera was on, which is
             the one mode where the whole screen is a live picture and the only
             other feedback is a greyed-out "Saving…". Any wait at all needs a
@@ -799,6 +885,14 @@ function JobPhotoCapture({
             {queued === 1 ? t("photo.queuedOne") : t("photo.queuedMany", { n: queued })}
           </p>
         )}
+        {/* One line per file that could not be used, named — a pick of ten
+            where the third one fails has to say WHICH one, or the person
+            re-picks all ten looking for it. */}
+        {rejected.map((name, i) => (
+          <p className="warn-text jobphoto-rejected" key={`${name}-${i}`}>
+            <strong>{name}</strong> — {t("photo.fileUnreadable")}
+          </p>
+        ))}
       </div>
     </>
   );

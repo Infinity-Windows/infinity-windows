@@ -7776,9 +7776,53 @@ body {
 /* ===================== Job photo feed + capture ===================== */
 .photos-toolbar {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   align-items: center;
   margin: 4px 0 14px;
+}
+/* Photos | Receipts. Its own full-width row on a phone — the job select and
+   the Add button already fill one row at 390px, and squeezing a third control
+   in beside them is what cut "BLACK22" down to "BLACK2" in the picker. From
+   620px up the whole toolbar fits on one line and the tabs sit next to the
+   job select, where the ask put them. Same pill shape as the scheduling view
+   switch, so a segmented control looks like a segmented control everywhere. */
+.photos-kind {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  flex: 1 1 100%;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card);
+}
+.photos-kind-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 13px;
+  /* 38px + the 3px of container padding clears the 44px touch floor. */
+  min-height: 38px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.photos-kind-tab.is-active {
+  background: var(--gradient-sunset);
+  color: #fff;
+  box-shadow: var(--shadow-glow);
+}
+@media (min-width: 620px) {
+  .photos-kind {
+    flex: 0 0 auto;
+    grid-template-columns: auto auto;
+  }
 }
 .photos-filter {
   flex: 1;
@@ -7962,6 +8006,17 @@ body {
 }
 .jobphoto-count {
   margin: 12px 0 0;
+}
+/* One line per file the pick could not use. Sits under the two big buttons,
+   where the eye already is after a tap, rather than in a toast that is gone
+   before a person on a ladder has looked down. */
+.jobphoto-rejected {
+  margin: 10px 0 0;
+  font-size: 13px;
+  line-height: 1.35;
+}
+.jobphoto-rejected strong {
+  overflow-wrap: anywhere;
 }
 /* Wave P: the upload flow's one question, shown right after a receipt
    photo lands (P3) — same vertical rhythm as the sheet's own fields. */

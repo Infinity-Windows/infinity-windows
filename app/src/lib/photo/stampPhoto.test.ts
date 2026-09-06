@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  canDecodePhoto,
   capturePhotoMeta,
   composeStampLines,
   formatCoords,
@@ -148,5 +149,45 @@ describe("stampPhoto and shrinkPhoto share one render, and both degrade", () => 
   it("does not leave a file with no name at all", async () => {
     const out = await shrinkPhotoFile(new File([blob], "", { type: "image/jpeg" }));
     expect(out.name).toBe("photo.jpg");
+  });
+});
+
+describe("canDecodePhoto", () => {
+  // The pick path asks this before it queues anything, now that "Upload files"
+  // really does open the phone's library, Files app and Drive.
+  const notAPicture = new Blob(["this is not a picture"], { type: "image/jpeg" });
+
+  it("says yes when this environment cannot decode anything at all", async () => {
+    // jsdom has no createImageBitmap, and the <img> fallback never fires load
+    // OR error for an object URL here — so the question genuinely cannot be
+    // asked, and the honest answer is to let the file through rather than
+    // refuse a file nobody managed to look at. A browser answers properly.
+    expect(typeof createImageBitmap).not.toBe("function");
+    await expect(canDecodePhoto(notAPicture)).resolves.toBe(true);
+  });
+
+  it("says no when the decoder is there and rejects the bytes", async () => {
+    const original = (globalThis as { createImageBitmap?: unknown }).createImageBitmap;
+    (globalThis as { createImageBitmap?: unknown }).createImageBitmap = () =>
+      Promise.reject(new Error("The source image could not be decoded"));
+    // The <img> ladder loadBitmap falls back to has to fail too, the way it
+    // does in a real browser: no load event ever arrives for undecodable bytes.
+    const url = URL.createObjectURL;
+    (URL as { createObjectURL: unknown }).createObjectURL = () => "blob:x";
+    class FailingImage {
+      onerror: (() => void) | null = null;
+      set src(_v: string) {
+        setTimeout(() => this.onerror?.(), 0);
+      }
+    }
+    const realImage = (globalThis as { Image?: unknown }).Image;
+    (globalThis as { Image?: unknown }).Image = FailingImage;
+    try {
+      await expect(canDecodePhoto(notAPicture)).resolves.toBe(false);
+    } finally {
+      (globalThis as { createImageBitmap?: unknown }).createImageBitmap = original;
+      (URL as { createObjectURL: unknown }).createObjectURL = url;
+      (globalThis as { Image?: unknown }).Image = realImage;
+    }
   });
 });

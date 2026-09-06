@@ -110,9 +110,10 @@ export function PhotoFeed({
   const t = useT();
   const queryClient = useQueryClient();
   const { effectiveRole } = useEffectiveRole();
+  const isLead = isForemanPlus(effectiveRole);
   // Removing / restoring a job photo is foreman+ (server-enforced by the RPCs).
   // Receipts have their own model — no trash here.
-  const canCurate = isForemanPlus(effectiveRole) && !isReceipt;
+  const canCurate = isLead && !isReceipt;
   const [capturing, setCapturing] = useState(initialCapture);
   const [viewer, setViewer] = useState<FeedPhoto | null>(null);
   const [showTrash, setShowTrash] = useState(false);
@@ -176,6 +177,12 @@ export function PhotoFeed({
   const isLoading = isReceipt ? receipts.isLoading : photos.isLoading;
   const isError = isReceipt ? receipts.isError : photos.isError;
   const isEmpty = isReceipt ? receiptGroups.length === 0 : groups.length === 0;
+  // The trash belongs to photos only, and the kind can now change under a lead
+  // who left it open: switching to Receipts with `showTrash` still true would
+  // hide the feed behind a panel whose query is disabled, i.e. a blank screen.
+  // The flag is remembered rather than reset, so switching back returns them
+  // to where they were.
+  const inTrash = showTrash && canCurate;
 
   return (
     <>
@@ -202,7 +209,7 @@ export function PhotoFeed({
       </div>
 
       {/* ---- The 30-day recoverable trash (foreman+) ---- */}
-      {showTrash && (
+      {inTrash && (
         <>
           <p className="muted" style={{ margin: "0 0 8px" }}>
             {t("feed.trashHint")}
@@ -257,27 +264,35 @@ export function PhotoFeed({
         </>
       )}
 
-      {!showTrash && isLoading && (
+      {!inTrash && isLoading && (
         <div className="photos-grid">
           {Array.from({ length: 6 }).map((_, i) => (
             <SkeletonCard key={i} height={120} />
           ))}
         </div>
       )}
-      {!showTrash && isError && (
+      {!inTrash && isError && (
         <QueryError
           error={isReceipt ? receipts.error : photos.error}
           onRetry={() => void (isReceipt ? receipts.refetch() : photos.refetch())}
           label={isReceipt ? t("feed.receiptLoadError") : t("feed.photoLoadError")}
         />
       )}
-      {!showTrash && !isLoading && !isError && isEmpty && (
+      {!inTrash && !isLoading && !isError && isEmpty && (
         <EmptyState
           icon={isReceipt ? <ReceiptIcon size={22} /> : <ImageIcon size={22} />}
           title={isReceipt ? t("feed.noReceiptsTitle") : t("feed.noPhotosTitle")}
           message={
             isReceipt
-              ? t("feed.noReceiptsMsg")
+              ? // An installer's Receipts list is not the job's receipts — the
+                // table's RLS hands them their OWN uploads and nothing else, so
+                // an empty list here does NOT mean nobody bought anything.
+                // Saying so is the difference between "there are none" and
+                // "there are none of yours"; a foreman, who does see them all,
+                // gets the ordinary line.
+                isLead
+                ? t("feed.noReceiptsMsg")
+                : t("feed.noReceiptsMineMsg")
               : selectedJobCode
                 ? t("feed.noPhotosJobMsg")
                 : t("feed.noPhotosAllMsg")
@@ -298,7 +313,7 @@ export function PhotoFeed({
         />
       )}
 
-      {!showTrash && !isLoading && !isError && !isReceipt &&
+      {!inTrash && !isLoading && !isError && !isReceipt &&
         groups.map((group) => (
           <section key={group.key} className="photos-day">
             <h2 className="photos-day-label">{group.label}</h2>
@@ -332,7 +347,7 @@ export function PhotoFeed({
           </section>
         ))}
 
-      {!showTrash && !isLoading && !isError && isReceipt &&
+      {!inTrash && !isLoading && !isError && isReceipt &&
         receiptGroups.map((group) => (
           <section key={group.key} className="photos-day">
             <h2 className="photos-day-label">{group.label}</h2>

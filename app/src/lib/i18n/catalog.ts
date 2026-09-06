@@ -2145,6 +2145,38 @@ export const CATALOG = {
     en: "Saved on your phone — it'll send itself.",
     es: "Guardado en tu teléfono — se enviará solo.",
   },
+
+  // ---- Photos: the phone's own picker, and the Photos / Receipts toggle ----
+  // (2026-09-05). "Upload files" used to carry a `capture` attribute, so it
+  // could only ever open the camera; now it opens the library, the Files app
+  // and Drive, and whatever comes back may not be a picture at all — hence the
+  // first line. The rest is the toggle that finally makes a job's receipts
+  // reachable from the Photos page and from the job's own Photos tab.
+  "photo.fileUnreadable": {
+    en: "That file isn't a photo this phone can read — try a JPG or PNG.",
+    es: "Ese archivo no es una foto que este teléfono pueda leer — usa un JPG o PNG.",
+  },
+  "photos.kind.photos": { en: "Photos", es: "Fotos" },
+  "photos.kind.receipts": { en: "Receipts", es: "Recibos" },
+  "photos.kind.aria": { en: "Photos or receipts", es: "Fotos o recibos" },
+  // An installer sees only the receipts they added (that is the receipts
+  // table's own RLS), so an empty list here must not read as "nobody bought
+  // anything for this job". A foreman, who sees them all, keeps the plain line.
+  "feed.noReceiptsMineMsg": {
+    en: "You only see receipts you added. Snap a gas or materials receipt — the job is optional.",
+    es: "Solo ves los recibos que tú agregaste. Toma una foto de un recibo de gasolina o materiales — el trabajo es opcional.",
+  },
+
+  // ---- Photos: the camera that is only busy, not gone (2026-09-05) ----
+  // Two different failures used to share one sentence. "Camera unavailable —
+  // use Upload files instead" is the truth when the permission was refused or
+  // the phone has no camera; it is wrong when another app simply had the lens
+  // for a moment, which is the everyday Android one. That case keeps the live
+  // shutter on the sheet, so the line has to say what to do to get it back.
+  "photo.cameraBusy": {
+    en: "Camera busy — close any other app using it, then tap Use camera again.",
+    es: "Cámara ocupada — cierra la otra app que la esté usando y toca Usar cámara otra vez.",
+  },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */
