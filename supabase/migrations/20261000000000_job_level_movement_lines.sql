@@ -16,14 +16,16 @@
 -- THE RULE, KEPT AND WIDENED. One subject per line stays the law for every
 -- movement of material — it is what makes the ledger readable and undoable.
 -- The two job-level events are a different kind of line: they are about the
--- job's story, not about a piece, and they carry NO subject on purpose. So the
+-- job's story, not about a piece, and they carry NO subject on purpose: the
+-- last page ADR-0010 gave a job has no unit to point at. So the
 -- constraint now says: exactly one subject, OR one of those two events with
 -- the job named and no subject at all. Any other event with no subject, or a
 -- job-level event that also names a piece, is still refused.
 --
--- Lands after 20260999000000, which it repairs. Idempotent: drops the old
--- constraint if present and adds the new one under the same name, so a
--- second run is a no-op.
+-- Lands after 20260999000000, which it repairs. Re-stated WHOLE — drop if
+-- exists, then the full expression — never appended to, the same lesson as
+-- movements_event_ck: a diff of a check constraint is a check constraint
+-- with the diff's list. Idempotent, so a second run is a no-op.
 
 alter table movements drop constraint if exists movements_one_subject_ck;
 
