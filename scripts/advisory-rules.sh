@@ -232,6 +232,34 @@ for f in $new_files; do
   case "$f" in supabase/migrations/*.sql) new_migrations="$new_migrations $f" ;; esac
 done
 
+# The functions master already has, so a REBUILD can be told from a birth.
+#
+# WHY THIS LIST EXISTS. `create or replace function` keeps the privileges the
+# object already carries — a replace changes the body, not the ACL — so a
+# migration that rebuilds an existing function has no reason to repeat its
+# grant, and demanding one is asking for a line that changes nothing. Without
+# this, the rule fired 14 times on 20260986000000_warehouse_is_crew_work.sql
+# (#531) and twice on 20260987000000_remove_login_start_fresh.sql (#532), both
+# merged and both correct: `pipeline_nudge_audience`, to take one, was granted
+# where it was born in 20260979000000_job_pipeline.sql:395.
+#
+# `set search_path` is NOT inherited the same way — a replace rewrites the
+# whole definition, SET clauses included — so that half of the rule still asks
+# the question of every definer function, rebuild or not.
+master_functions=""
+master_functions_readable=0
+if [ -n "$new_migrations" ] && git rev-parse --verify -q origin/master >/dev/null 2>&1; then
+  master_functions_readable=1
+  master_functions="$(git grep -h -oiE 'create (or replace )?function +[a-z0-9_.]+ *\(' \
+    origin/master -- 'supabase/migrations/*.sql' 2>/dev/null |
+    sed -E 's/^create (or replace )?function +//I; s/ *\($//' |
+    tr 'A-Z' 'a-z' | sed 's/^public\.//' | sort -u)"
+fi
+
+# True when master already holds a function of this name, so the statement
+# under the cursor is a rebuild rather than a birth.
+already_on_master() { printf '%s\n' "$master_functions" | grep -qxF "$1"; }
+
 for f in $new_migrations; do
   stmts="$(awk -f "$AWK_SQL" <(file_at_head "$f"))"
 
@@ -285,6 +313,17 @@ for f in $new_migrations; do
         "\`$short\` is SECURITY DEFINER and does not pin \`set search_path\`." "$LAW_DEFINER"
 
     printf '%s' "$stmt" | grep -q 'returns trigger' && continue
+
+    # A rebuild keeps the grant its first migration set. Only a function being
+    # BORN here has to say who may call it.
+    if printf '%s' "$stmt" | grep -q '^create or replace function '; then
+      if [ "$master_functions_readable" = 0 ]; then
+        note "origin/master could not be read, so \`$short\` was not checked for who may execute it: a \`create or replace\` of a function granted elsewhere inherits that grant, and this cannot tell the two apart."
+        continue
+      fi
+      already_on_master "$short" && continue
+    fi
+
     if ! printf '%s\n' "$stmts" | grep -E 'grant execute on function (public\.)?'"$short"'\(' | grep -q 'authenticated'; then
       printf '%s\n' "$stmts" | grep -E 'revoke .* on function (public\.)?'"$short"'\(' | grep -q 'authenticated' ||
         report "$f:$ln" definer-without-grant \

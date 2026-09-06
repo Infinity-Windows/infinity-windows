@@ -538,6 +538,98 @@ run
 assert_rc 1
 assert_has "definer-without-grant"
 
+new_case "rebuilding a function master already granted does not ask for the grant again"
+# 20260986000000_warehouse_is_crew_work.sql (#531) rebuilt eleven functions
+# with `create or replace` and the rule asked every one of them to repeat a
+# grant that a replace does not drop. A replace changes the body, not the ACL.
+mkdir -p "$root/supabase/migrations"
+cat >"$root/supabase/migrations/20290101000000_born.sql" <<'SQL'
+create or replace function public.my_jobs()
+returns setof uuid
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select project_id from time_shifts where profile_id = auth.uid();
+$$;
+
+revoke all on function public.my_jobs() from public, anon;
+grant execute on function public.my_jobs() to authenticated, service_role;
+SQL
+base_commit
+cat >"$root/supabase/migrations/20300101000000_rebuilt.sql" <<'SQL'
+-- my_jobs — rebuilt from 20290101000000_born.sql. The rank check is gone;
+-- every other line is byte-for-byte what it was.
+create or replace function public.my_jobs()
+returns setof uuid
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select project_id from time_shifts where profile_id = auth.uid();
+$$;
+SQL
+head_commit "Let any crew member see the jobs they have worked"
+run
+assert_rc 0
+assert_lacks "definer-without-grant"
+
+new_case "a rebuild still has to pin its search path, because a replace drops it"
+# The other half: `set search_path` lives in the definition a replace rewrites,
+# so it is NOT inherited. mint_packages and add_supply really did lose theirs.
+mkdir -p "$root/supabase/migrations"
+cat >"$root/supabase/migrations/20290101000000_born.sql" <<'SQL'
+create or replace function public.my_jobs()
+returns setof uuid
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select project_id from time_shifts where profile_id = auth.uid();
+$$;
+
+revoke all on function public.my_jobs() from public, anon;
+grant execute on function public.my_jobs() to authenticated, service_role;
+SQL
+base_commit
+cat >"$root/supabase/migrations/20300101000000_rebuilt.sql" <<'SQL'
+create or replace function public.my_jobs()
+returns setof uuid
+language sql
+stable
+security definer
+as $$
+  select project_id from time_shifts where profile_id = auth.uid();
+$$;
+SQL
+head_commit "Let any crew member see the jobs they have worked"
+run
+assert_rc 1
+assert_has "definer-without-search-path"
+
+new_case "a function born in this migration still has to say who may call it"
+# `create or replace` is also how a brand-new function is written here, so the
+# rebuild exemption must not be a blanket one.
+base_commit
+cat >"$root/supabase/migrations/20300101000000_worked.sql" <<'SQL'
+create or replace function public.brand_new_thing()
+returns setof uuid
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select project_id from time_shifts where profile_id = auth.uid();
+$$;
+SQL
+head_commit "List the jobs a person has worked"
+run
+assert_rc 1
+assert_has "definer-without-grant"
+
 new_case "a definer function written the house way is green"
 base_commit
 cat >"$root/supabase/migrations/20300101000000_worked.sql" <<'SQL'
