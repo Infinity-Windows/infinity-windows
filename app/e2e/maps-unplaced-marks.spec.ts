@@ -6,8 +6,9 @@
 // the gap and linking to the tracer (adapter.ts's unplacedScheduleMarks,
 // wired through MapsInteractive.tsx — the vendored renderer itself is
 // untouched by this banner).
-import { expect, test, type Route } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { jobFixtures, useSupabaseFixtures } from "./support/supabaseFixtures";
+import { json } from "./support/specHelpers";
 
 const BLACK22 = jobFixtures().find((j) => j.jobCode === "BLACK22")!;
 
@@ -30,15 +31,6 @@ const MODEL = {
   },
   windows: [{ id: "10", elev: "s0", x: 3, y: 0.9, w: 1500, h: 1200 }],
 };
-
-function json(route: Route, body: unknown, rows = 0) {
-  return route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    headers: { "content-range": `0-${Math.max(0, rows - 1)}/${rows}` },
-    body: JSON.stringify(body),
-  });
-}
 
 test("the map banners a schedule mark that never got placed, and links to the tracer", async ({
   page,

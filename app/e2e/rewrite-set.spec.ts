@@ -4,8 +4,9 @@
 // two doors into the one editor (DeliveryDetail's "Edit set…" navigates
 // here) and the marquee flow itself — declaring the Mad Moose truth and
 // hitting "Make it match."
-import { expect, test, type Route } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { useSupabaseFixtures } from "./support/supabaseFixtures";
+import { json } from "./support/specHelpers";
 
 const D = "00000000-0000-4000-8000-00000000de33";
 const JOB_NAME = "Mad Moose";
@@ -32,15 +33,6 @@ function pkg(over: Record<string, unknown>) {
     package_marks: [] as { mark_code: string }[],
     ...over,
   };
-}
-
-function json(route: Route, body: unknown, rows = 0) {
-  return route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    headers: { "content-range": `0-${Math.max(0, rows - 1)}/${rows}` },
-    body: JSON.stringify(body),
-  });
 }
 
 test("DeliveryDetail's Edit set… navigates to Rewrite this set", async ({ page }) => {

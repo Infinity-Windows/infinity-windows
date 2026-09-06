@@ -4,8 +4,9 @@
 // (3D is home), and the tools palette rides on BOTH views — the owner's
 // screenshot showed a fullscreen 3D pane with no tools at all.
 
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { jobFixtures, useSupabaseFixtures } from "./support/supabaseFixtures";
+import { json } from "./support/specHelpers";
 
 const BLACK22 = jobFixtures().find((j) => j.jobCode === "BLACK22")!;
 const SP1 = "00000000-0000-4000-8000-00000000d001";
@@ -22,15 +23,6 @@ const STUDIO_ROWS = [
     updated_at: "2026-08-13T00:00:00Z",
   },
 ];
-
-function json(route: Route, body: unknown, rows = 0) {
-  return route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    headers: { "content-range": `0-${Math.max(0, rows - 1)}/${rows}` },
-    body: JSON.stringify(body),
-  });
-}
 
 async function useStudioFixtures(page: Page) {
   const calls: { fn: string; body: unknown }[] = [];

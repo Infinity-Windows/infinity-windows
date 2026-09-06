@@ -11,19 +11,11 @@
 // and that drawing still works over it, not what any real sheet looks like
 // (planUnderlay.test.ts already proves the alignment math on its own).
 
-import { expect, test, type Route } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { jobFixtures, useSupabaseFixtures } from "./support/supabaseFixtures";
+import { json } from "./support/specHelpers";
 
 const BLACK22 = jobFixtures().find((j) => j.jobCode === "BLACK22")!;
-
-function json(route: Route, body: unknown, rows = 0) {
-  return route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    headers: { "content-range": `0-${Math.max(0, rows - 1)}/${rows}` },
-    body: JSON.stringify(body),
-  });
-}
 
 /** A rectangular serialized plan, no windows — same shape studio-walls.spec.ts's
  * rectPlan uses (blueprint3d-modern corners/walls). */

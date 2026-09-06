@@ -13,6 +13,7 @@
 // DayPanel.test.tsx for the canSeeHours prop itself, pinned directly.
 import { expect, test, type Page, type Route } from "@playwright/test";
 import { jobFixtures, TEST_USER, useSupabaseFixtures } from "./support/supabaseFixtures";
+import { dayISO } from "./support/specHelpers";
 
 const BLACK22 = jobFixtures().find((j) => j.jobCode === "BLACK22")!;
 const OAKRIDGE = jobFixtures().find((j) => j.jobCode === "OAKRIDGE")!;
@@ -28,17 +29,6 @@ const CREW = [
   { id: "e2e-taylor", display_name: "Taylor", skill_level: 3, role: "installer", active: true },
 ];
 
-/** "N days ago" as a local YYYY-MM-DD, built the same way Scheduling.tsx's
- * own todayLocalISO() is (local getters, not UTC) — so the fixture's dates
- * land exactly where the app itself thinks "today minus N" is, whatever
- * day this actually runs. */
-function daysAgoISO(n: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  const pad = (x: number) => String(x).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
 /** A local instant on `iso` at `hour` — built from local calendar fields
  * (dayMemory.test.ts's same idiom), so a shift lands on the calendar day
  * it's supposed to regardless of the host's timezone. */
@@ -49,9 +39,9 @@ function localInstant(iso: string, hour: number): string {
 
 // A rich past day: crew assigned, crew worked (with an honest gap either
 // way), a unit finished, and a log filed.
-const TEST_DATE = daysAgoISO(3);
+const TEST_DATE = dayISO(-3);
 // A past day with crew assigned and nobody who ever punched in.
-const FALLBACK_DATE = daysAgoISO(5);
+const FALLBACK_DATE = dayISO(-5);
 
 function jsonRoute(route: Route, body: unknown, rows = 0) {
   return route.fulfill({

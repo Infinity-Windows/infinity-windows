@@ -8,8 +8,9 @@
 // like — one testing project mixed in with a real one — and checks the page
 // draws the line correctly from there.
 
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { jobFixtures, useSupabaseFixtures } from "./support/supabaseFixtures";
+import { json } from "./support/specHelpers";
 
 const JOBS = jobFixtures();
 const BLACK22 = JOBS.find((j) => j.jobCode === "BLACK22")!;
@@ -67,15 +68,6 @@ const PACKAGES = [
   pkg(4, BLACK22.projectId),
   pkg(5, BLACK22.projectId),
 ];
-
-function json(route: Route, body: unknown, rows = 0) {
-  return route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    headers: { "content-range": `0-${Math.max(0, rows - 1)}/${rows}` },
-    body: JSON.stringify(body),
-  });
-}
 
 /**
  * Overrides `projects` (to mix a testing project into a supervisor's list)

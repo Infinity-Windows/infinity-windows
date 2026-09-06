@@ -15,8 +15,9 @@
 // registers fresher routes that shadow the warehouse ones, and the page then
 // reads an empty warehouse and fails for a reason that has nothing to do with
 // the rule under test.
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { jobFixtures, useSupabaseFixtures } from "./support/supabaseFixtures";
+import { json } from "./support/specHelpers";
 
 const JOBS = jobFixtures();
 const BLACK22 = JOBS.find((j) => j.jobCode === "BLACK22")!;
@@ -104,15 +105,6 @@ const MINTED = pkg({
 });
 
 const ALL = [STORED, BONEYARD, MINTED];
-
-function json(route: Route, body: unknown, rows = 0) {
-  return route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    headers: { "content-range": `0-${Math.max(0, rows - 1)}/${rows}` },
-    body: JSON.stringify(body),
-  });
-}
 
 /** The three RPCs ADR-0007 deliberately left foreman+, plus the two it left
  *  supervisor+. Nothing an installer does may reach any of them. */
