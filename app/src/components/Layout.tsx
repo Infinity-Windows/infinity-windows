@@ -33,6 +33,7 @@ import { AppMenuDrawer } from "./nav/AppMenuDrawer";
 import { CaptureSheet } from "./nav/CaptureSheet";
 import { DailyLogNudge } from "./dailyLogs/DailyLogNudge";
 import { GlobalAskFab } from "./nav/GlobalAskFab";
+import { ScanFab } from "./nav/ScanFab";
 import { FeatureTip } from "./assistant/FeatureTip";
 import { SyncStatusPill } from "./offline/SyncStatusPill";
 import { OnboardingWizard } from "./permissions/OnboardingWizard";
@@ -367,6 +368,7 @@ export function Layout() {
       </div>
 
       <GlobalAskFab />
+      <ScanFab />
 
       {!menuOpen && !captureOpen && !clock.isOpen && <FeatureTip />}
 

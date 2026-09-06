@@ -112,7 +112,9 @@ export function UnitCard() {
     return m;
   }, [projectsAll.data]);
 
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // `?piece=<id>` opens the card with that piece already selected — the scan
+  // sheet's "Fix something on this piece" lands here (wave 2).
+  const [selectedId, setSelectedId] = useState<string | null>(params.get("piece"));
   const selected = report.rows.find((p) => p.id === selectedId) ?? null;
   const [editor, setEditor] = useState<Editor>(null);
 

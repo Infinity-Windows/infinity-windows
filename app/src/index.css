@@ -12335,3 +12335,73 @@ button.stage-chip {
 .unit-line--undone .wh-row-title { text-decoration: line-through; color: var(--muted); }
 .unit-why { font-size: 12px; }
 .unit-card .mono { font-family: ui-monospace, Menlo, monospace; font-size: .92em; }
+
+/* ---------------------------------------------------------------------------
+   The scan sheet and its button (warehouse redesign wave 2, 2026-09-06).
+   One Scan button on every warehouse screen, bottom-left, opposite Ask. The
+   sheet is a full-screen camera with a bottom sheet that reads the sticker's
+   state and leads with the next verb. Targets ≥ 48px: gloves, sun, a truck.
+   --------------------------------------------------------------------------- */
+.scan-fab {
+  position: fixed;
+  left: 16px;
+  bottom: calc(3rem + 14px + var(--safe-bottom));
+  z-index: 45;
+  display: inline-flex; align-items: center; gap: 7px;
+  min-height: 44px; padding: 0 16px 0 13px; border-radius: 999px; border: none;
+  background: var(--text); color: var(--bg);
+  font-family: var(--font-display); font-size: 14px; font-weight: 700; letter-spacing: .01em;
+  cursor: pointer; box-shadow: 0 10px 24px rgba(0,0,0,.35);
+}
+.scan-fab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.scan-sheet {
+  position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column;
+  background: #151311; color: #fff;
+  /* The sheet reaches both edges: the close button sits below the status
+     bar and the verbs above the home indicator (safeArea.test.ts). */
+  padding-top: var(--safe-top);
+  padding-bottom: var(--safe-bottom);
+}
+.scan-sheet-top {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 10px 14px 6px;
+  font-family: ui-monospace, Menlo, monospace; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: #bbb;
+}
+.scan-sheet-top button { min-height: 44px; min-width: 44px; background: transparent; border: 1px solid rgba(255,255,255,.3); color: #fff; border-radius: 10px; font: inherit; }
+.scan-sheet-camera { flex: 1; min-height: 160px; margin: 0 12px; border-radius: 18px; overflow: hidden; }
+.scan-sheet-camera .scanner-viewport { height: 100%; }
+.scan-sheet-camera .manual-entry input { color: #111; }
+.scan-sheet-box { margin: 6px 14px 0; padding: 8px 12px; border-radius: 10px; background: rgba(255,255,255,.12); font-size: 13px; }
+.scan-panel {
+  background: var(--bg); color: var(--text);
+  border-radius: 22px 22px 0 0; padding: 10px 16px 16px;
+  max-height: 62vh; overflow-y: auto; box-shadow: 0 -12px 30px -18px rgba(0,0,0,.5);
+}
+.scan-panel-grab { width: 38px; height: 4px; border-radius: 2px; background: var(--border); margin: 0 auto 10px; }
+.scan-panel-title { font-weight: 600; font-size: 16px; }
+.scan-panel-sub { color: var(--muted); font-size: 12.5px; margin: 2px 0 10px; }
+.scan-verbs { display: flex; flex-direction: column; gap: 8px; }
+.scan-verb {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  min-height: 52px; padding: 10px 12px; border-radius: 12px; border: 1.5px solid var(--border);
+  background: var(--surface); color: var(--text); font: inherit; font-size: 15px; font-weight: 500; text-align: left; cursor: pointer;
+}
+.scan-verb small { font-weight: 400; font-size: 12px; opacity: .75; text-align: right; }
+.scan-verb--primary { border-color: var(--accent); background: var(--accent); color: var(--primary-foreground); }
+.scan-verb:disabled { opacity: .5; cursor: default; }
+.scan-boxes { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
+.scan-box {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-height: 64px; padding: 8px 10px;
+  border-radius: 12px; border: 1.5px solid var(--border); background: var(--surface); color: var(--text); font: inherit; text-align: left; cursor: pointer;
+}
+.scan-box b { font-family: var(--font-display); font-size: 18px; }
+.scan-box span { font-size: 11px; color: var(--muted); }
+.scan-picked { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.scan-picked .chip { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 4px 10px; border-radius: 999px; border: 1.5px solid var(--border); background: var(--surface); font-size: 13px; }
+.scan-picked .chip button { background: transparent; border: none; color: var(--muted); font: inherit; min-width: 28px; min-height: 28px; cursor: pointer; }
+.scan-hand { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.scan-hand .row { display: flex; gap: 8px; }
+.scan-hand input, .scan-hand select { min-height: 44px; flex: 1; }
+.scan-hand .pieces { display: flex; flex-wrap: wrap; gap: 6px; }
+.scan-hand .pieces button { min-height: 44px; padding: 6px 12px; border-radius: 10px; border: 1.5px solid var(--border); background: var(--surface); color: var(--text); font: inherit; cursor: pointer; }
+.scan-msg { color: var(--danger); font-size: 13px; margin: 6px 0 0; }
