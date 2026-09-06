@@ -314,16 +314,23 @@ export function ClockSheet({
       const noteText = note.trim() || null;
       // The mode the shift records (standard-tracking-jobs slice 2). The
       // landing block is where a both-mode job gets asked, so a carried pick
-      // wins; opened bare, this sheet has no mode step, so a single-mode job
-      // records its one mode and a both-mode job records nothing — which is
-      // what every sheet punch recorded before 2026-09-06, when this path
-      // always sent null and a both-mode job clocked here lost its mode.
+      // wins — but only for the job it was answered for: the pickers stay
+      // live after a pre-filled open, and the server does not check p_mode
+      // against the job's allowed_modes, so a tracking answer carried from
+      // one job must not ride onto a data-only job tapped here (review,
+      // 2026-09-06). Opened bare, or on a different job, this sheet has no
+      // mode step: a single-mode job records its one mode and a both-mode job
+      // records nothing — which is what every sheet punch recorded before
+      // 2026-09-06, when this path always sent null and a both-mode job
+      // clocked here lost its mode.
+      const jobsOwnMode = effectiveClockInMode(
+        (projects.data ?? []).find((p) => p.id === projectId)?.allowed_modes,
+        null,
+      );
       const jobMode =
-        initialPick?.mode ??
-        effectiveClockInMode(
-          (projects.data ?? []).find((p) => p.id === projectId)?.allowed_modes,
-          null,
-        );
+        initialPick && initialPick.projectId === projectId
+          ? (initialPick.mode ?? jobsOwnMode)
+          : jobsOwnMode;
       try {
         await clockIn(projectId, costCodeId, geo, noteText, jobMode);
         // Same tap starts the first window when one was picked. The clock-in

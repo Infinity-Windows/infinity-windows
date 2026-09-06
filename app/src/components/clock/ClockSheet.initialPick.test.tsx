@@ -167,6 +167,29 @@ describe("the clock sheet opened with a carried pick", () => {
     expect(clockInSpy.mock.calls[0]).toEqual(["p2", "cc2", expect.anything(), null, "tracking"]);
   });
 
+  it("drops the carried mode when the person taps a different job in the sheet", async () => {
+    // The block asked on OAK-2 (both modes) and got "tracking"; its punch was
+    // refused; the sheet opened on OAK-2. The person then taps BLACK22 —
+    // data only. The server records whatever p_mode it is sent, so the
+    // tracking answer must stay with the job it was given for: BLACK22's
+    // punch carries its own one mode (review, 2026-09-06).
+    const el = mount({ projectId: "p2", costCodeId: "cc1", note: null, mode: "tracking" });
+    await flush();
+    const chip = Array.from(el.querySelectorAll<HTMLButtonElement>(".clock-chip")).find(
+      (b) => b.textContent?.includes("BLACK22"),
+    )!;
+    act(() => chip.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    await flush();
+    await act(async () => {
+      el.querySelector<HTMLButtonElement>(".clock-btn.primary.big")!.dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+    });
+    await flush();
+    expect(clockInSpy).toHaveBeenCalledTimes(1);
+    expect(clockInSpy.mock.calls[0]).toEqual(["p1", "cc1", expect.anything(), null, "data"]);
+  });
+
   it("opened bare, records a single-mode job's one mode and nothing for a both-mode job", async () => {
     // Primed from the schedule onto BLACK22 (data only) → "data" rides along.
     const el = mount(null);
