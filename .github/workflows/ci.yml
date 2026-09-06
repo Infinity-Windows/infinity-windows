@@ -201,6 +201,17 @@ jobs:
       - name: Test the misnamed-secret check
         run: python3 scripts/test_secret_name_audit.py
 
+      # The live security probe (verify-invariants.yml asks production on
+      # every PR). Its judge and its wrapper are tested here too, so the
+      # meta-check below sees them: a failing case for every rule, and the
+      # healthy shape passing, or the gate would be red on day one.
+      - name: Test the security-invariant judge
+        run: python3 scripts/test_verify_invariants.py
+
+      - name: Test scripts/verify-invariants.sh
+        shell: bash
+        run: scripts/verify-invariants.test.sh
+
       # The migration-history tool decides what gets deleted from
       # supabase_migrations.schema_migrations, and it used to refuse to run at
       # all whenever a committed count went stale — which was after roughly
