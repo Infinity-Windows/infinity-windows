@@ -10,9 +10,17 @@
 // that bug passes on a build that is broken on every phone the crew carries.
 //
 // What a machine here CAN check is the source: how many places write a file
-// input that offers pictures, and which of them ask for `capture`. After the
-// parity pass there is one — lib/photo/usePhotoPicker.tsx — and it writes the
-// pair deliberately, side by side, with the rule in its header.
+// input that offers pictures, and which of them ask for `capture`. There is
+// one — lib/photo/usePhotoPicker.tsx — and it writes the pair deliberately,
+// side by side, with the rule in its header.
+//
+// This file carried an allow-list for a while: two hand-rolled camera-only
+// pickers that predated the hook — the package sheet's "Add a photo" and the
+// photo of a missed unit at the wall — named here as a record of work left,
+// because moving them was a change to two other screens rather than to
+// receipts. Both go through the hook now. The list is DELETED rather than kept
+// at zero entries: an empty allow-list is still a place to put a name, and the
+// rule below is meant to have nowhere to put one.
 //
 // WHY THIS IS NOT "no type=file anywhere but the hook". Eight file inputs in
 // this app have nothing to do with photos: a markdown import, a planset PDF, a
@@ -31,20 +39,6 @@ const srcRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 /** The one file allowed to write a picture picker. */
 const THE_HOOK = "lib/photo/usePhotoPicker.tsx";
-
-/**
- * The hand-rolled camera-only pickers that predate the hook — EMPTY as of this
- * commit, and that is the point of still having it.
- *
- * There were two: the package sheet's "Add a photo" and the photo of a missed
- * unit at the wall. Both carried `capture`, so both had the same "you cannot
- * pick one you already took" limitation the incident was about; both go
- * through the hook now and offer both doors.
- *
- * This list is asserted to be EXACTLY what it holds. It is a record of work
- * left, not a door: nothing can join it without somebody editing this test.
- */
-const LEGACY_CAMERA_PICKERS: string[] = [];
 
 /**
  * The two inputs that name no `accept` on purpose, and so technically offer
@@ -168,12 +162,7 @@ describe("one place writes a picture picker", () => {
 
   it("has no file input offering images outside the hook", () => {
     const offenders = files
-      .filter(
-        (f) =>
-          f.path !== THE_HOOK &&
-          !LEGACY_CAMERA_PICKERS.includes(f.path) &&
-          !ACCEPT_LESS.includes(f.path),
-      )
+      .filter((f) => f.path !== THE_HOOK && !ACCEPT_LESS.includes(f.path))
       .filter((f) => fileInputs(f.source).some(offersImages))
       .map((f) => f.path);
     expect(offenders).toEqual([]);
@@ -188,9 +177,12 @@ describe("one place writes a picture picker", () => {
     expect(acceptLess).toEqual([...ACCEPT_LESS].sort());
   });
 
+  // No allow-list on this one, and none on the images rule above beyond the two
+  // accept-less inputs that are not picture pickers at all. THE INCIDENT was a
+  // camera-only picture input, so this is the assertion the whole file is for.
   it("has no PICTURE input asking for `capture` outside the hook", () => {
     const offenders = files
-      .filter((f) => f.path !== THE_HOOK && !LEGACY_CAMERA_PICKERS.includes(f.path))
+      .filter((f) => f.path !== THE_HOOK)
       .filter((f) => fileInputs(f.source).some(isCameraOnlyPicture))
       .map((f) => f.path);
     expect(offenders).toEqual([]);
@@ -202,13 +194,19 @@ describe("one place writes a picture picker", () => {
     expect(fileInputs(sheet!.source)).toEqual([]);
   });
 
-  it("still has exactly the legacy camera-only pickers listed above, and no more", () => {
-    const withCapture = files
-      .filter((f) => f.path !== THE_HOOK)
-      .filter((f) => fileInputs(f.source).some(isCameraOnlyPicture))
-      .map((f) => f.path)
-      .sort();
-    expect(withCapture).toEqual([...LEGACY_CAMERA_PICKERS].sort());
+  // The two screens the deleted allow-list used to name, asserted by name so a
+  // revert of either one fails HERE — where this comment says what it cost —
+  // and not only as an anonymous path in the sweep above.
+  it("keeps the package sheet and the missed-unit sheet on the hook", () => {
+    for (const path of [
+      "pages/storage/PackageSheet.tsx",
+      "components/install/AddMissedUnitSheet.tsx",
+    ]) {
+      const f = files.find((x) => x.path === path);
+      expect(f, `${path} moved or was renamed`).toBeDefined();
+      expect(fileInputs(f!.source), `${path} grew a file input of its own`).toEqual([]);
+      expect(f!.source, `${path} stopped using the hook`).toMatch(/usePhotoPicker/);
+    }
   });
 });
 
