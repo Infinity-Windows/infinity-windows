@@ -12243,3 +12243,22 @@ button.stage-chip {
   flex: none;
   white-space: nowrap;
 }
+
+/* Connection tones on the sync pill (ticket 06). Offline is calm — the
+   phone is doing the right thing by holding writes; weak is the one to
+   notice, because a spinner on a screen right now is the signal, not the
+   app. Same shape as .sync-pill-syncing / -attention above. */
+.sync-pill-offline {
+  color: var(--muted);
+  border-color: oklch(0.45 0.02 250);
+  background: oklch(0.25 0.02 250 / 0.35);
+}
+.sync-pill-weak {
+  color: oklch(0.92 0.08 80);
+  border-color: oklch(0.62 0.14 80);
+  background: oklch(0.32 0.1 80 / 0.4);
+}
+.saved-copy-notice {
+  margin: 0 0 8px;
+  font-size: 13px;
+}

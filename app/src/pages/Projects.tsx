@@ -1,4 +1,6 @@
 import { BackChip } from "../components/BackChip";
+import { SavedCopyNotice } from "../components/offline/SavedCopyNotice";
+import { useSavedCopy } from "../lib/offline/useSavedCopy";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -74,6 +76,7 @@ export function Projects() {
   const [message, setMessage] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
+  const savedCopy = useSavedCopy(projects, "jobs");
   const unread = useUnreadCounts();
   const profile = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const canAdd = isForemanPlus(profile.data?.role);
@@ -258,6 +261,7 @@ export function Projects() {
         </div>
         <BackChip fallback="/" label="Home" />
       </header>
+      <SavedCopyNotice reason={savedCopy} />
       {/* Supervisors wrap jobs up from the job's own page; this is where
           they land afterwards (owner ask, 2026-08-26). */}
       {canAdd && (

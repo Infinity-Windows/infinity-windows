@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { TFn } from "../i18n";
 import { prefetchJobPack } from "../queryClient";
 import { readSavedJobs, recordSavedJob, type JobPackResult, type SavedJobRecord } from "./jobPack";
+import { logOfflineEvent } from "./telemetry";
 
 /** "just now", "12 min ago", "3 h ago", "2 d ago" — in the crew's language. PURE. */
 export function agoLabel(t: TFn, at: number, now: number = Date.now()): string {
@@ -55,6 +56,12 @@ export function useSaveJobsOffline(projectIds: readonly string[]) {
           setRun({ phase: "saving", done: p.done, total: p.total, jobIndex: i, jobCount: targets.length }),
         );
         recordSavedJob(result);
+        logOfflineEvent({
+          type: "save-job",
+          scope: "job",
+          count: result.drawings,
+          message: result.failed.length ? `${result.failed.length} missing` : undefined,
+        });
         results.push(result);
         setSaved(readSavedJobs());
       }

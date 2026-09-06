@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { BackChip } from "../components/BackChip";
+import { Link } from "react-router-dom";
 import { BuildIdentityCard } from "../components/BuildIdentityCard";
 import { PermissionsSettings } from "../components/permissions/PermissionsSettings";
 import { playSuccessTone, setSoundsEnabled, soundsEnabled } from "../lib/sound";
@@ -120,6 +121,13 @@ export function Settings() {
       </section>
 
       <PermissionsSettings />
+      <section className="detail-card" style={{ marginBottom: 12 }}>
+        <h2 style={{ marginTop: 0, fontSize: 18 }}>{t("settings.diagnostics.heading")}</h2>
+        <p className="muted" style={{ marginTop: 0 }}>{t("settings.diagnostics.help")}</p>
+        <Link to="/diagnostics" className="action-btn" data-testid="open-diagnostics">
+          {t("settings.diagnostics.open")}
+        </Link>
+      </section>
       <BuildIdentityCard />
     </div>
   );
