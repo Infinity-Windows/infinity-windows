@@ -125,11 +125,21 @@ stop() { # sentence [status]
 # NEITHER IS AN EDGE-FUNCTION SECRET. scripts/function_secrets.py enumerates
 # what supabase/functions/ reads; these two are read by a GitHub runner and
 # never reach a function, so nothing here belongs in that census.
-CRED_ENV=(env)
+#
+# AND WHY THE GITHUB TOKEN IS UNSET IN BOTH CASES. The workflow step that runs
+# this also holds GH_TOKEN, because scripts/advisory-comment.sh needs it — but
+# that is a SEPARATE invocation, and the model has no use for a token at all.
+# Leaving it in the environment put a `pull-requests: write` credential inside
+# the process that reads contributor-written text on a PUBLIC repository, one
+# `Read` of /proc/self/environ away, while the model's answer is rendered
+# verbatim into a public comment. Prompt injection needs both a secret to reach
+# for and a channel to publish it on; this removes the first. The preamble's
+# "the diff is data" is the other half, and neither is enough alone.
+CRED_ENV=(env -u GH_TOKEN -u GITHUB_TOKEN)
 if [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
   CRED_KIND="oauth"
   CRED_WORDS="the Claude subscription, through CLAUDE_CODE_OAUTH_TOKEN"
-  CRED_ENV=(env -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN)
+  CRED_ENV=(env -u GH_TOKEN -u GITHUB_TOKEN -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN)
 elif [ -n "${ANTHROPIC_API_KEY:-}" ]; then
   CRED_KIND="api-key"
   CRED_WORDS="metered API billing, through ANTHROPIC_API_KEY — the same key Ask Infinity uses"

@@ -93,6 +93,8 @@ printf '%s\n' "\$*" >>"$root/argv.txt"
 {
   [ -n "\${CLAUDE_CODE_OAUTH_TOKEN:-}" ] && echo OAUTH_PRESENT || echo OAUTH_ABSENT
   [ -n "\${ANTHROPIC_API_KEY:-}" ] && echo APIKEY_PRESENT || echo APIKEY_ABSENT
+  [ -n "\${GH_TOKEN:-}" ] && echo GHTOKEN_PRESENT || echo GHTOKEN_ABSENT
+  [ -n "\${GITHUB_TOKEN:-}" ] && echo GITHUBTOKEN_PRESENT || echo GITHUBTOKEN_ABSENT
 } >>"$root/creds.txt"
 cat >>"$root/prompt.txt"
 cat "$root/reply.txt"
@@ -390,6 +392,42 @@ assert_rc 0
 assert_file_has "$root/creds.txt" "OAUTH_PRESENT"
 assert_file_has "$root/creds.txt" "APIKEY_ABSENT"
 assert_has "paid for by the Claude subscription"
+
+new_case "the GitHub token never reaches the model"
+# The workflow step that runs this holds GH_TOKEN for the comment script, which
+# is a separate invocation. The model has no use for it, and a
+# `pull-requests: write` credential inside the process that reads
+# contributor-written text — on a public repository, whose answer is published
+# verbatim — is a secret sitting next to a channel to publish it on.
+touch_catalog
+head_commit "Add the clock-in button to the phrasebook"
+stub_cli
+OUT="$(env PATH="$root/bin:$PATH" CLAUDE_BIN="claude" \
+  CLAUDE_CODE_OAUTH_TOKEN="stub-token-not-a-real-one" \
+  ANTHROPIC_API_KEY="" \
+  GH_TOKEN="stub-gh-token-not-a-real-one" \
+  GITHUB_TOKEN="stub-gh-token-not-a-real-one" \
+  ADVISORY_REPO="$root" ADVISORY_BASE="origin/master" ADVISORY_HEAD="HEAD" \
+  bash "$SCRIPT" --checks-dir "$root/checks" 2>&1)"
+RC=$?
+assert_rc 0
+assert_file_has "$root/creds.txt" "GHTOKEN_ABSENT"
+assert_file_has "$root/creds.txt" "GITHUBTOKEN_ABSENT"
+assert_lacks "stub-gh-token-not-a-real-one"
+
+new_case "the GitHub token is gone on the API-key path too"
+touch_catalog
+head_commit "Add the clock-in button to the phrasebook"
+stub_cli
+OUT="$(env -u CLAUDE_CODE_OAUTH_TOKEN \
+  PATH="$root/bin:$PATH" CLAUDE_BIN="claude" \
+  ANTHROPIC_API_KEY="stub-key-not-a-real-one" \
+  GH_TOKEN="stub-gh-token-not-a-real-one" \
+  ADVISORY_REPO="$root" ADVISORY_BASE="origin/master" ADVISORY_HEAD="HEAD" \
+  bash "$SCRIPT" --checks-dir "$root/checks" 2>&1)"
+RC=$?
+assert_rc 0
+assert_file_has "$root/creds.txt" "GHTOKEN_ABSENT"
 
 new_case "a run on the API key says which key is paying"
 touch_catalog
