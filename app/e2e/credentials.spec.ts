@@ -18,19 +18,13 @@
 //
 // The cards are hand-built rather than captured, because the dates ARE the test.
 
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { useSupabaseFixtures, TEST_USER } from "./support/supabaseFixtures";
+import { dayISO, json } from "./support/specHelpers";
 
 const MARIA = "69a880bc-8489-48d5-8673-28dcfd5b0210";
 const DAVE = "0830d61d-3ed5-4a03-9efc-846dbfc3dce9";
 const CHRIS = "88e9158c-c299-4abf-86e2-4d6c1134d0be";
-
-const day = (offset: number): string => {
-  const d = new Date();
-  d.setDate(d.getDate() + offset);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-};
 
 function cert(over: Record<string, unknown>) {
   return {
@@ -38,8 +32,8 @@ function cert(over: Record<string, unknown>) {
     profile_id: MARIA,
     kind: "osha30",
     other_label: null,
-    issued_on: day(-400),
-    expires_on: day(400),
+    issued_on: dayISO(-400),
+    expires_on: dayISO(400),
     document_path: null,
     verified_by: "sup",
     verified_at: "2026-01-01T00:00:00Z",
@@ -63,14 +57,14 @@ const GOOD = cert({
 const SOON = cert({
   id: "00000000-0000-4000-8000-00000000000b",
   kind: "aerial_lift",
-  expires_on: day(30),
+  expires_on: dayISO(30),
 });
 // Red: gone yesterday.
 const EXPIRED = cert({
   id: "00000000-0000-4000-8000-00000000000c",
   kind: "forklift",
   profile_id: DAVE,
-  expires_on: day(-1),
+  expires_on: dayISO(-1),
 });
 // Grey: a card with no expiry printed on it. Verified, so it still counts on a
 // bid — which is what a card with no expiry means.
@@ -85,7 +79,7 @@ const UNCHECKED = cert({
   id: "00000000-0000-4000-8000-00000000000e",
   kind: "osha10",
   profile_id: CHRIS,
-  expires_on: day(200),
+  expires_on: dayISO(200),
   verified_at: null,
   verified_by: null,
 });
@@ -102,15 +96,6 @@ const CLEARANCES = [
   { installer_id: MARIA, window_type_id: "t2", cleared_at: "2026-02-01T00:00:00Z" },
   { installer_id: MARIA, window_type_id: "t3", cleared_at: "2026-02-01T00:00:00Z" },
 ];
-
-function json(route: Route, body: unknown, rows = 0) {
-  return route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    headers: { "content-range": `0-${Math.max(0, rows - 1)}/${rows}` },
-    body: JSON.stringify(body),
-  });
-}
 
 /**
  * A credentials router that remembers what the RPC did to it, the way the real
@@ -322,7 +307,7 @@ test("a supervisor cannot check their OWN card, but can take the check back", as
       id: "00000000-0000-4000-8000-0000000000f1",
       profile_id: TEST_USER.id,
       kind: "osha30",
-      expires_on: day(300),
+      expires_on: dayISO(300),
       verified_at: null,
       verified_by: null,
     }),
@@ -330,7 +315,7 @@ test("a supervisor cannot check their OWN card, but can take the check back", as
       id: "00000000-0000-4000-8000-0000000000f2",
       profile_id: TEST_USER.id,
       kind: "forklift",
-      expires_on: day(300),
+      expires_on: dayISO(300),
     }),
     UNCHECKED,
   ]);
@@ -388,7 +373,7 @@ test("somebody adds their own card from My Work and it goes over unchecked", asy
 
   await tree.getByRole("button", { name: /Add my card/i }).click();
   await page.getByRole("button", { name: /^OSHA 30$/ }).click();
-  await page.getByLabel(/^Runs out$/).fill(day(90));
+  await page.getByLabel(/^Runs out$/).fill(dayISO(90));
   // The camera is offered, and it says out loud that this shot carries no
   // stamp — a card is a piece of paper, not proof of where somebody stood.
   await expect(page.getByText(/No stamp on this one/i)).toBeVisible();
@@ -401,7 +386,7 @@ test("somebody adds their own card from My Work and it goes over unchecked", asy
   expect(body.p_id).toBeNull();
   expect(body.p_profile_id).toBe(TEST_USER.id);
   expect(body.p_kind).toBe("osha30");
-  expect(body.p_expires_on).toBe(day(90));
+  expect(body.p_expires_on).toBe(dayISO(90));
   // THE POINT: the app never asks for a card of its own to be trusted.
   expect(body.p_verified).toBeNull();
 

@@ -10,8 +10,9 @@
 // (#433) — it now navigates to /storage/rewrite-set instead (one editor,
 // reachable from both doors). That flow's own coverage lives in
 // rewrite-set.spec.ts; this file only asserts the navigation itself.
-import { expect, test, type Route } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { useSupabaseFixtures } from "./support/supabaseFixtures";
+import { json } from "./support/specHelpers";
 
 const JOB_NAME = "Sunset Ridge 4";
 const D = "00000000-0000-4000-8000-00000000de22";
@@ -38,15 +39,6 @@ function pkg(over: Record<string, unknown>) {
     package_marks: [] as { mark_code: string }[],
     ...over,
   };
-}
-
-function json(route: Route, body: unknown, rows = 0) {
-  return route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    headers: { "content-range": `0-${Math.max(0, rows - 1)}/${rows}` },
-    body: JSON.stringify(body),
-  });
 }
 
 test("the ledger shows a waiting job's material, and set-level Edit… opens the unit card", async ({

@@ -25,8 +25,9 @@
 // the whole point is a specific geometry: one person already on the target
 // job, one on a different job, two off the clock.
 
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { TEST_USER, useSupabaseFixtures } from "./support/supabaseFixtures";
+import { json } from "./support/specHelpers";
 
 /** The two fixture jobs this spec uses, by their real fixture ids. */
 const OFFICE = "ebf64f94-0413-4434-aeb3-1aff228fb5b3"; // BLACK22
@@ -136,15 +137,6 @@ const SHIFTS = [
   openShift("11111111-1111-4111-8111-111111111111", ANA, OFFICE, "BLACK22", "Ana Ruiz"),
   openShift("22222222-2222-4222-8222-222222222222", BEN, OTHER, "OAKRIDGE", "Ben Cole"),
 ];
-
-function json(route: Route, body: unknown, rows = 0) {
-  return route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    headers: { "content-range": `0-${Math.max(0, rows - 1)}/${rows}` },
-    body: JSON.stringify(body),
-  });
-}
 
 interface RpcCall {
   name: string;

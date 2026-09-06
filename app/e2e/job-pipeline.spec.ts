@@ -23,19 +23,13 @@
 // test: one job starting inside the fortnight with no windows, one starting
 // inside the fortnight that is fine, and one whose promised ETA has passed.
 
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { useSupabaseFixtures } from "./support/supabaseFixtures";
+import { dayISO, json } from "./support/specHelpers";
 
 const NOT_READY_ID = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
 const FINE_ID = "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb";
 const LATE_ID = "cccccccc-3333-4333-8333-cccccccccccc";
-
-const day = (offset: number): string => {
-  const d = new Date();
-  d.setDate(d.getDate() + offset);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-};
 
 /**
  * Wave H (H0) moved readiness and the materials dates OFF the job row into
@@ -71,8 +65,8 @@ function project(over: Record<string, unknown> & { pipeline?: Record<string, unk
 // The contact details are here on purpose: the Pipeline card can save this
 // job's start date, and the test below proves it takes none of them with it.
 const NOT_READY = project({
-  pipeline: { ready_state: "not_ready", materials_eta: day(4) },
-  start_date: day(10),
+  pipeline: { ready_state: "not_ready", materials_eta: dayISO(4) },
+  start_date: dayISO(10),
   sort_order: 1,
   address: "1 Sand Hollow Way",
   customer_name: "Dixie Builders",
@@ -86,10 +80,10 @@ const FINE = project({
   id: FINE_ID,
   job_code: "PECAN14",
   name: "Pecan Valley",
-  start_date: day(7),
+  start_date: dayISO(7),
   pipeline: {
-    materials_eta: day(-20),
-    materials_arrived_at: `${day(-20)}T15:00:00Z`,
+    materials_eta: dayISO(-20),
+    materials_arrived_at: `${dayISO(-20)}T15:00:00Z`,
   },
   sort_order: 2,
 });
@@ -100,19 +94,10 @@ const LATE = project({
   id: LATE_ID,
   job_code: "BLACK22",
   name: "Black Desert",
-  start_date: day(120),
-  pipeline: { materials_eta: day(-14) },
+  start_date: dayISO(120),
+  pipeline: { materials_eta: dayISO(-14) },
   sort_order: 3,
 });
-
-function json(route: Route, body: unknown, rows = 0) {
-  return route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    headers: { "content-range": `0-${Math.max(0, rows - 1)}/${rows}` },
-    body: JSON.stringify(body),
-  });
-}
 
 /**
  * A projects route that remembers what the RPCs did to it, the way the real
@@ -146,19 +131,19 @@ function usePipelineFixtures(page: Page) {
       {
         id: "checkin-fine",
         project_id: FINE_ID,
-        contacted_at: `${day(-2)}T16:00:00Z`,
+        contacted_at: `${dayISO(-2)}T16:00:00Z`,
         author_id: null,
         contact_name: "Dave",
         channel: "call",
-        expected_end_date: day(90),
-        roof_on_date: day(20),
+        expected_end_date: dayISO(90),
+        roof_on_date: dayISO(20),
         framing_checked: true,
         set_preference: "outset",
         exterior_material: "Stucco",
         interior_material: "Drywall",
         notes: null,
         source: "crew",
-        created_at: `${day(-2)}T16:00:00Z`,
+        created_at: `${dayISO(-2)}T16:00:00Z`,
       },
     ].filter((row) => !wanted || row.project_id === wanted);
     return json(r, rows, rows.length);

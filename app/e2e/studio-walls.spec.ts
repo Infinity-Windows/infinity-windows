@@ -4,8 +4,9 @@
 // a laptop tool, same call studio-holes.spec.ts makes); the narrow-viewport
 // test and the crew-map elevations test use the suite's own phone default.
 
-import { expect, test, type Route } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { jobFixtures, useSupabaseFixtures } from "./support/supabaseFixtures";
+import { json } from "./support/specHelpers";
 
 const BLACK22 = jobFixtures().find((j) => j.jobCode === "BLACK22")!;
 const SP1 = "00000000-0000-4000-8000-00000000d001";
@@ -22,15 +23,6 @@ const STUDIO_ROWS = [
     updated_at: "2026-08-13T00:00:00Z",
   },
 ];
-
-function json(route: Route, body: unknown, rows = 0) {
-  return route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    headers: { "content-range": `0-${Math.max(0, rows - 1)}/${rows}` },
-    body: JSON.stringify(body),
-  });
-}
 
 async function useStudioFixtures(page: import("@playwright/test").Page) {
   await page.route("**/rest/v1/studio_projects**", (r) => {

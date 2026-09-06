@@ -19,24 +19,18 @@
 // for a human to eyeball. Those are throwaway, like every other screenshot this
 // suite writes — see __screenshots__/README.md.
 
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { useSupabaseFixtures } from "./support/supabaseFixtures";
+import { dayISO, json } from "./support/specHelpers";
 
 const SHOTS = resolve(dirname(fileURLToPath(import.meta.url)), "__screenshots__/job-cards");
 
 const LONG_ID = "dddddddd-1111-4111-8111-dddddddddddd";
 const TRACK_ID = "eeeeeeee-2222-4222-8222-eeeeeeeeeeee";
 const SHORT_ID = "ffffffff-3333-4333-8333-ffffffffffff";
-
-const day = (offset: number): string => {
-  const d = new Date();
-  d.setDate(d.getDate() + offset);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-};
 
 /** Wave H keeps readiness and the materials dates in `project_pipeline`, and
  *  the app reads them as a PostgREST embed — so the fixture nests them. */
@@ -68,8 +62,8 @@ const LONG = project({
   name: "Mad Moose",
   address: "4821 Wandering Elk Trail, Heber City",
   stories: 2,
-  start_date: day(10),
-  pipeline: { ready_state: "not_ready", materials_eta: day(4) },
+  start_date: dayISO(10),
+  pipeline: { ready_state: "not_ready", materials_eta: dayISO(4) },
   sort_order: 1,
 });
 
@@ -108,15 +102,6 @@ const COUNTS = [
     unknown_units: 0,
   },
 ];
-
-function json(route: Route, body: unknown, rows = 0) {
-  return route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    headers: { "content-range": `0-${Math.max(0, rows - 1)}/${rows}` },
-    body: JSON.stringify(body),
-  });
-}
 
 /** Registered AFTER useSupabaseFixtures so these win — Playwright favours the
  *  most recently added route. */

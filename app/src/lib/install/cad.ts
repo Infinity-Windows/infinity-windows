@@ -95,10 +95,6 @@ export function parseOutlineFeatures(raw: unknown): OutlineFeatures {
   return { dividers, wallOpenings };
 }
 
-export function hasFeatures(features: OutlineFeatures): boolean {
-  return features.dividers.length > 0 || features.wallOpenings.length > 0;
-}
-
 /**
  * PlanModelEditor's own save writes only what it knows — dividers and wall
  * openings — but the `features` jsonb column also carries `fitview` (the

@@ -147,16 +147,6 @@ export async function removeTalkAssignment(id: string): Promise<void> {
     .from("toolbox_talk_assignments").delete().eq("id", id);
   if (error) throw error;
 }
-export async function ackTalk(talkId: string, profileId: string): Promise<void> {
-  const { error } = await supabase.from("safety_acks")
-    .upsert({ talk_id: talkId, profile_id: profileId }, { onConflict: "talk_id,profile_id" });
-  if (error) throw error;
-}
-export async function myAck(talkId: string, profileId: string): Promise<boolean> {
-  const { data } = await supabase.from("safety_acks")
-    .select("talk_id").eq("talk_id", talkId).eq("profile_id", profileId).maybeSingle();
-  return Boolean(data);
-}
 export async function reportIncident(payload: {
   profileId?: string; projectId?: string | null; description: string; severity: string;
 }): Promise<void> {
