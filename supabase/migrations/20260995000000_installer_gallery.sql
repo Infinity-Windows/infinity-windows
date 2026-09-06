@@ -219,33 +219,44 @@ grant execute on function public.attachment_project_ids(uuid, uuid, uuid, uuid, 
 -- ---------------------------------------------------------------------------
 -- `attachments.created_by` is TEXT and has been written two ways for as long as
 -- the column has existed: a phone writes the signed-in EMAIL, and the server
--- writers (20260977000000, 20260980000000) write the profile's DISPLAY NAME.
--- Both spellings have to count, or a photo the app itself filed on somebody's
--- behalf would stop being theirs.
+-- writers (add_field_unit, 20260977000000 then 20260980000000) write the
+-- profile's DISPLAY NAME. Only the first one counts here, and the reason is the
+-- whole point of the function.
 --
--- NOT security definer, on purpose: `profiles_select_authenticated` already
--- lets every non-partner crew member read the directory, so there is nothing
--- here to bypass, and the house rule is that definer is for functions that must.
+-- A DISPLAY NAME IS A CLAIM, NOT A FACT. Matching it looked like plain
+-- fairness: the app filed that photo on your behalf, so it is yours. But
+-- `display_name` is a column every crew member may write on their own row
+-- (`grant update (display_name, ...) to authenticated` under
+-- profiles_update_self_or_lead, 20260729200000), the crew directory is readable
+-- by all of them, and the photo feed prints the uploader string on every shot a
+-- person may already see. So the walk-around is four steps and no tooling: read
+-- a colleague's name off a photo, type it into your own profile, reload
+-- /photos, and every photo the app ever filed for that person, on every job in
+-- the company, is theirs no longer. A rule you can step past by renaming
+-- yourself is not a rule. The email survives because it is not a claim: it is
+-- in the SIGNED token, and public signup is off.
+--
+-- WHAT THE SERVER-FILED PHOTOS FALL BACK ON, so nothing is stranded. Both
+-- writers set `project_id` to the job in the same insert, so those rows are
+-- caught by the job test below for everybody who worked that job — which
+-- includes the person who added the missed unit, who was standing on it. And
+-- foreman and above see them either way.
+--
+-- NOT security definer, and now it reads no table at all: `auth.jwt()` is the
+-- caller's own token.
 create or replace function public.is_my_upload_name(p_created_by text)
 returns boolean
 language sql
 stable
 set search_path = public, pg_temp
 as $$
-  select case
-    when nullif(btrim(coalesce(p_created_by, '')), '') is null then false
-    else lower(btrim(p_created_by)) in (
-      select lower(btrim(coalesce(auth.jwt() ->> 'email', '')))
-      union all
-      select lower(btrim(coalesce(display_name, '')))
-        from profiles
-       where id = auth.uid()
-    )
-  end;
+  select nullif(btrim(coalesce(p_created_by, '')), '') is not null
+     and lower(btrim(p_created_by))
+         = lower(btrim(coalesce(auth.jwt() ->> 'email', '')));
 $$;
 
 comment on function public.is_my_upload_name(text) is
-  'True when an attachments.created_by string names the calling user — matched against both spellings that column has ever carried: the signed-in email a phone writes, and the profile display name the server-side writers use.';
+  'True when an attachments.created_by string is the calling user''s signed-in email. Deliberately NOT matched against profiles.display_name: that column is self-editable by every crew member, so matching it would let anybody read another person''s uploads by renaming themselves. A photo the server filed under a display name (add_field_unit) reaches its author through the job that same insert names.';
 
 revoke all on function public.is_my_upload_name(text) from public, anon;
 grant execute on function public.is_my_upload_name(text) to authenticated, service_role;
@@ -299,8 +310,8 @@ create policy "attachments_select" on attachments
       -- one stable function call for the whole query rather than a lookup per
       -- row.
       public.my_role_rank() >= 1
-      -- Mine, wherever it was filed. Also what keeps INSERT ... RETURNING
-      -- working for a photo taken on a job this person never clocked into.
+      -- Mine, wherever it was filed — by the signed-in email only, never by a
+      -- name somebody can type into their own profile.
       or public.is_my_upload_name(created_by)
       -- The common shape, answered without resolving anything: the row names
       -- the job outright.

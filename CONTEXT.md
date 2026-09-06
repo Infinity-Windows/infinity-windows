@@ -233,7 +233,12 @@ is what forced the question below, one day later.
 
 **Who sees which photos** — settled 2026-09-05. Below foreman you see photos
 from the jobs you have WORKED, plus the ones you took yourself, wherever they
-were filed; foreman and above see everything, exactly as before. "Worked" is
+were filed; foreman and above see everything, exactly as before. "You took it"
+is your signed-in EMAIL on the row and only that — never the display name,
+which is a field you may edit on your own profile, so matching it would let
+anybody read a colleague's uploads by renaming themselves. A photo the server
+filed under a display name (`add_field_unit`) still reaches its author, because
+that same insert names the job. "Worked" is
 three signals OR'd together — a `time_shifts` row on the job, a PUBLISHED
 crew-board assignment you are a member of, or a unit session on one of its
 openings — and it is a memory of work done rather than a roster of today: a job

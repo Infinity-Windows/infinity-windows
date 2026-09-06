@@ -1330,6 +1330,30 @@ class InstallerGalleryPolicyTest(unittest.TestCase):
                 f"{sig} is never granted to authenticated, so nothing can call it",
             )
 
+    # --- "mine" cannot be claimed by typing --------------------------------
+
+    def test_ownership_is_the_signed_in_email_and_nothing_editable(self):
+        """`display_name` is a column every crew member may write on their own
+        profile row (20260729200000). Matching an upload against it would mean
+        an installer could read another person's photos, on every job in the
+        company, by renaming themselves to that person. The signed-in email is
+        in the SIGNED token, so it is the only spelling that can be trusted."""
+        body = self._definition("is_my_upload_name")
+        self.assertIn("auth.jwt() ->> 'email'", body)
+        for editable in ("display_name", "profiles"):
+            self.assertNotIn(
+                editable, body,
+                f"is_my_upload_name reads {editable}, which the person it is "
+                "asking about can edit — ownership must not be claimable",
+            )
+
+    def test_the_only_ownership_test_the_policy_runs_is_that_one(self):
+        """A second ownership branch written straight into the policy would
+        walk around the function and its test."""
+        using = self.policies["attachments_select"].using
+        self.assertNotIn("display_name", using)
+        self.assertEqual(using.count("is_my_upload_name("), 1)
+
     def test_the_picker_and_the_policy_read_the_same_list(self):
         """A picker built from a different query would offer jobs whose photos
         come back empty, which reads as a broken screen rather than a rule."""
