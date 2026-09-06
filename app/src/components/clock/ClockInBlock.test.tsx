@@ -40,9 +40,15 @@ vi.mock("../../lib/costCodes", () => ({
 // ToolboxSignCard. Its write (two storage uploads + an insert) becomes a
 // resolved spy; the "did I sign today?" read stays unsigned so the card is
 // still mounted when its own onSuccess fires.
-const { submitSpy } = vi.hoisted(() => ({
+const { submitSpy, pushToastSpy } = vi.hoisted(() => ({
   submitSpy: vi.fn(async () => ({ id: "done1" }) as unknown),
+  pushToastSpy: vi.fn(),
 }));
+// The refused-punch hand-off says what happened; catch the sentence.
+vi.mock("../../lib/toast", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../lib/toast")>();
+  return { ...actual, pushToast: pushToastSpy };
+});
 vi.mock("../../lib/toolbox", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../lib/toolbox")>();
   return {
@@ -65,6 +71,7 @@ afterEach(() => {
   host = null;
   clockInSpy.mockClear();
   submitSpy.mockClear();
+  pushToastSpy.mockClear();
 });
 
 interface Seed {
@@ -400,6 +407,42 @@ describe("the clock-in block", () => {
       ]);
     } finally {
       restore();
+    }
+  });
+
+  it("hands a refused punch to the sheet WITH the picks, and says what happened", async () => {
+    // Offline, or a server no: the sheet is still the fallback (its outbox
+    // queues the punch), but it must open pre-filled and not in silence.
+    clockInSpy.mockRejectedValueOnce(new Error("Failed to fetch"));
+    const dispatch = vi.spyOn(window, "dispatchEvent");
+    try {
+      const el = mount({
+        costCodes: [CC],
+        recents: [recent("cc1")],
+        projects: [proj(["tracking"])],
+        talk: { id: "t1", title: "Ladders" },
+        toolboxDone: { id: "done1" },
+      });
+      setValue(el.querySelector<HTMLTextAreaElement>("#clockin-block-note")!, "gate code 4411");
+      await clickAndFlush(el.querySelector<HTMLButtonElement>(".clock-btn.primary.big")!);
+      await settle();
+
+      expect(clockInSpy).toHaveBeenCalledTimes(1);
+      const opened = dispatch.mock.calls
+        .map(([ev]) => ev as CustomEvent)
+        .filter((ev) => ev.type === "infinity:open-clock");
+      expect(opened).toHaveLength(1);
+      expect(opened[0].detail).toEqual({
+        projectId: "p1",
+        costCodeId: "cc1",
+        note: "gate code 4411",
+        mode: "tracking",
+      });
+      expect(pushToastSpy).toHaveBeenCalledTimes(1);
+      expect(String(pushToastSpy.mock.calls[0][0])).toContain("finish in the clock sheet");
+      expect(pushToastSpy.mock.calls[0][1]).toBe("error");
+    } finally {
+      dispatch.mockRestore();
     }
   });
 

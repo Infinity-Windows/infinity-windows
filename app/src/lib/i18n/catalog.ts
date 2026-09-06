@@ -2519,6 +2519,16 @@ export const CATALOG = {
     en: "Photos from the jobs you've worked show here. Take one and it lands on this list.",
     es: "Aquí aparecen las fotos de los trabajos en los que has trabajado. Toma una y se agrega a esta lista.",
   },
+
+  // ---- Clock in once (2026-09-06) ----
+  // The landing block's punch can still be refused — no signal, or a server
+  // no — and then the full clock sheet opens with the picks carried in. The
+  // old hand-off opened it in silence; a person whose tap "did nothing but
+  // open a sheet" needs one sentence saying why, with the reason on the end.
+  "clockblock.handoff": {
+    en: "Couldn't clock in from here — finish in the clock sheet. {reason}",
+    es: "No se pudo marcar entrada desde aquí — termina en la hoja del reloj. {reason}",
+  },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */

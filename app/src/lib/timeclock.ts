@@ -703,6 +703,20 @@ export async function listOvertimeRules(): Promise<OvertimeRuleRow[]> {
   return (data ?? []) as OvertimeRuleRow[];
 }
 
+/**
+ * A clock-in somebody had ready on the landing block — job, cost code, note,
+ * mode — handed to the clock sheet when the block's own punch is refused
+ * (offline, or a server no). The sheet opens pre-filled from it, so the person
+ * taps Start once instead of picking everything a second time (owner ask,
+ * 2026-09-06: "select a project twice, a cost code twice, clock in twice").
+ */
+export interface ClockInPick {
+  projectId: string | null;
+  costCodeId: string | null;
+  note: string | null;
+  mode: JobMode | null;
+}
+
 export async function clockIn(
   projectId: string | null,
   costCodeId: string | null,

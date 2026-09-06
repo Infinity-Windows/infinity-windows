@@ -30,7 +30,8 @@ import { getTodayTalk } from "../../lib/ops";
 import { myTodayCompletion } from "../../lib/toolbox";
 import { captureGeoIfGranted, captureGeoSoft } from "../../lib/geo";
 import { farFromJob, type DeviceFix } from "../../lib/jobProximity";
-import { toastSuccess } from "../../lib/toast";
+import { pushToast, toastSuccess } from "../../lib/toast";
+import { formatApiError } from "../../lib/errors";
 import { openClockGlobally } from "../../lib/clockContext";
 import { ToolboxSignCard } from "./ToolboxSignCard";
 import {
@@ -223,10 +224,20 @@ export function ClockInBlock() {
       toastSuccess(t("clock.action.clockingIn"));
       refresh();
     },
-    // Whatever went wrong — offline, or the server's toolbox gate — the clock
-    // sheet is the full path (outbox, pickers, sign today's talk). Hand off
-    // rather than fork any of that here.
-    onError: () => openClockGlobally(),
+    // Whatever went wrong — offline, or a server no — the clock sheet is the
+    // full path (the outbox queues a punch there; this block never forks
+    // that). Hand off WITH the picks so the sheet opens pre-filled and the
+    // person taps Start once, and say what happened: the old bare hand-off
+    // opened an empty sheet in silence, which read as "the app forgot".
+    onError: (e) => {
+      pushToast(t("clockblock.handoff", { reason: formatApiError(e) }), "error");
+      openClockGlobally({
+        projectId: pickProjectId || null,
+        costCodeId: pickCostCodeId || null,
+        note: note.trim() || null,
+        mode: effectiveMode,
+      });
+    },
   });
 
   const filteredProjects = useMemo(() => {
@@ -302,13 +313,13 @@ export function ClockInBlock() {
           {formatClock(workSec)}
         </span>
         <div className="clockin-bar-actions">
-          <button type="button" className="button-like" onClick={openClockGlobally}>
+          <button type="button" className="button-like" onClick={() => openClockGlobally()}>
             {t("clockblock.switch")}
           </button>
           <button
             type="button"
             className="button-like active-pill"
-            onClick={openClockGlobally}
+            onClick={() => openClockGlobally()}
           >
             {t("clock.action.clockOut")}
           </button>
@@ -330,7 +341,7 @@ export function ClockInBlock() {
           <button
             type="button"
             className="button-like active-pill"
-            onClick={openClockGlobally}
+            onClick={() => openClockGlobally()}
           >
             {t("clock.action.saveFinish")}
           </button>
@@ -664,7 +675,7 @@ export function ClockInBlock() {
       )}
       {/* Everything the sheet does and this block doesn't (break, switch, go
           offline, start on a picked unit) is one tap away. */}
-      <button type="button" className="clock-list-toggle" onClick={openClockGlobally}>
+      <button type="button" className="clock-list-toggle" onClick={() => openClockGlobally()}>
         {t("clockblock.moreOptions")}
       </button>
     </section>

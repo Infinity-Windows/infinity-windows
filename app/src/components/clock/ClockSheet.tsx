@@ -46,6 +46,7 @@ import {
   clockIn,
   clockOut,
   currentBreakSeconds,
+  type ClockInPick,
   elapsedWorkSeconds,
   endBreak,
   finishShiftAt,
@@ -91,11 +92,19 @@ type Mode = "pick" | "main" | "break-type" | "switch";
 export function ClockSheet({
   profileId,
   shift,
+  initialPick = null,
   onClose,
   onChanged,
 }: {
   profileId: string | null;
   shift: TimeShift | null;
+  /**
+   * What to open pre-filled with (2026-09-06): the landing block's job, cost
+   * code, note and mode when its own punch was refused, so nobody picks them
+   * a second time here. Null for every other opener — the sheet then primes
+   * from today's schedule or the last job, as it always has.
+   */
+  initialPick?: ClockInPick | null;
   onClose: () => void;
   onChanged: () => void;
 }) {
@@ -103,13 +112,13 @@ export function ClockSheet({
   const navigate = useNavigate();
   const t = useT();
   const [mode, setMode] = useState<Mode>(shift ? "main" : "pick");
-  const [pickProjectId, setPickProjectId] = useState<string>("");
-  const [pickCostCodeId, setPickCostCodeId] = useState<string>("");
+  const [pickProjectId, setPickProjectId] = useState<string>(initialPick?.projectId ?? "");
+  const [pickCostCodeId, setPickCostCodeId] = useState<string>(initialPick?.costCodeId ?? "");
   /** Optional first window to start on, in the same tap as clocking in. */
   const [pickOpeningId, setPickOpeningId] = useState<string>("");
   const [search, setSearch] = useState("");
   const [showFullList, setShowFullList] = useState(false);
-  const [note, setNote] = useState("");
+  const [note, setNote] = useState(initialPick?.note ?? "");
   const [injured, setInjured] = useState(false);
   // "What happened?" — appears the moment the injured box is ticked (owner
   // ask, 2026-08-19). The app is the record, never the emergency channel —
@@ -123,7 +132,11 @@ export function ClockSheet({
   const [timeWrong, setTimeWrong] = useState(false);
   const [now, setNow] = useState(Date.now());
   const [finishAt, setFinishAt] = useState("");
-  const primedRef = useRef(false);
+  // A carried pick counts as already primed: the schedule / recents priming
+  // below runs when those queries land, which is AFTER this mount, and it
+  // would otherwise overwrite the job the person just chose on the landing
+  // with yesterday's — the exact double-pick this hand-off exists to end.
+  const primedRef = useRef(Boolean(initialPick?.projectId));
 
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   // Cost codes scoped to the job in play (slice 3): while picking or switching,
@@ -199,6 +212,7 @@ export function ClockSheet({
 
   // Prime the picker with today's scheduled job when there is one (fewer wrong
   // clock-ins), otherwise fall back to the most recent job so "Resume" is one tap.
+  // Skipped entirely when the sheet opened with a carried pick (primedRef above).
   useEffect(() => {
     if (primedRef.current || shift) return;
     const r = recents.data?.[0];
