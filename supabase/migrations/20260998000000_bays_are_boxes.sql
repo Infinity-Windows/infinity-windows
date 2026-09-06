@@ -273,9 +273,26 @@ begin
 end;
 $$;
 
+-- Redefined above: say its grants again so the file is the whole truth about
+-- who may call it (signed-in crew, never anonymous) — CREATE OR REPLACE keeps
+-- the old ACL, but a reader of this file should not have to know that.
+revoke execute on function stage_packages(uuid[], uuid, jsonb) from public, anon;
+grant execute on function stage_packages(uuid[], uuid, jsonb) to authenticated;
+revoke all on function public.projects_create_staging_bays() from public, anon, authenticated;
+
 -- ---------------------------------------------------------------------------
 -- 3. A truck for a job that isn't built yet makes a real job
 -- ---------------------------------------------------------------------------
+-- Who may call it: any signed-in crew member who is not a builder login.
+-- Why that open: the person at the tailgate at 6am is an installer, and the
+-- truck does not wait for the office. A job the office has not built yet
+-- used to leave its packages under a typed name with no job row (audit
+-- 2026-09-06: 218 such packages under seven names). This makes the row —
+-- a real job with a NEW- code — so filing, finding and the unit card all
+-- work from the first scan; the office renames it. Same door as the other
+-- eighteen everyday warehouse functions (ADR-0007), same partner-wall
+-- refusal. It cannot delete or rename anything, and a duplicate name hands
+-- back the existing job rather than making a twin.
 create or replace function create_placeholder_job(p_name text)
 returns projects
 language plpgsql
