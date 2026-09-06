@@ -19,6 +19,7 @@ import {
   reserveAiSpend,
   settleAiSpend,
 } from "../_shared/spendGuard.ts";
+import { withSentry } from "../_shared/sentry.ts";
 
 interface ScheduleRow {
   openingCode: string;
@@ -201,7 +202,7 @@ async function visionScheduleRead(
   return jsonResponse({ rows, mode: "vision", failed_pages: failedPages }, 200, cors);
 }
 
-Deno.serve(async (req) => {
+Deno.serve(withSentry("extract-schedule", async (req) => {
   const cors = corsHeaders(req);
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: cors });
@@ -349,4 +350,4 @@ Deno.serve(async (req) => {
     console.error(e);
     return jsonResponse({ error: String(e) }, 500, cors);
   }
-});
+}));

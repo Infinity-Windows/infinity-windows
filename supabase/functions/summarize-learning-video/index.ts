@@ -44,6 +44,7 @@ import {
   settleAiSpend,
   type SpendVerdict,
 } from "../_shared/spendGuard.ts";
+import { withSentry } from "../_shared/sentry.ts";
 
 export interface QuizQuestion {
   q: string;
@@ -150,7 +151,7 @@ function whisperMicrosFor(transcript: string): number {
   return Math.max(1_000, Math.round((transcript.length / (150 * 5)) * 6_000));
 }
 
-Deno.serve(async (req) => {
+Deno.serve(withSentry("summarize-learning-video", async (req) => {
   const cors = corsHeaders(req);
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: cors });
@@ -355,4 +356,4 @@ Deno.serve(async (req) => {
     console.error(e);
     return jsonResponse({ error: String(e) }, 500, cors);
   }
-});
+}));

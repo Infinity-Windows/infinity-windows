@@ -17,6 +17,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import webpush from "npm:web-push@3.6.7";
 import { corsHeaders, jsonResponse } from "../_shared/openai.ts";
 import { requireCaller } from "../_shared/auth.ts";
+import { withSentry } from "../_shared/sentry.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -45,7 +46,7 @@ function isGoneStatus(status: number): boolean {
   return status === 404 || status === 410;
 }
 
-Deno.serve(async (req) => {
+Deno.serve(withSentry("send-push", async (req) => {
   const cors = corsHeaders(req);
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: cors });
@@ -142,4 +143,4 @@ Deno.serve(async (req) => {
     console.error("send-push failed", e);
     return jsonResponse({ error: String(e) }, 500, cors);
   }
-});
+}));

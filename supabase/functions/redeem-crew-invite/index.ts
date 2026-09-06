@@ -42,6 +42,7 @@ import {
   redemptionRefusal,
   validateInvitePassword,
 } from "../_shared/crewInvites.ts";
+import { withSentry } from "../_shared/sentry.ts";
 
 interface InviteRow {
   id: string;
@@ -54,7 +55,7 @@ interface InviteRow {
   revoked_at: string | null;
 }
 
-Deno.serve(async (req) => {
+Deno.serve(withSentry("redeem-crew-invite", async (req) => {
   const cors = corsHeaders(req);
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
 
@@ -257,4 +258,4 @@ Deno.serve(async (req) => {
     const message = err instanceof Error ? err.message : "unknown error";
     return jsonResponse({ error: message }, 500, cors);
   }
-});
+}));

@@ -36,6 +36,7 @@ import {
   settleAiSpend,
   type SpendVerdict,
 } from "../_shared/spendGuard.ts";
+import { withSentry } from "../_shared/sentry.ts";
 
 /** Running token total for one invocation. Every provider call adds to it, so
  * the ceiling is reconciled against what a whole planset actually cost. */
@@ -627,7 +628,7 @@ async function extractVisionPage(
   };
 }
 
-Deno.serve(async (req) => {
+Deno.serve(withSentry("extract-specs", async (req) => {
   const cors = corsHeaders(req);
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: cors });
@@ -833,4 +834,4 @@ Deno.serve(async (req) => {
     console.error(e);
     return jsonResponse({ error: String(e) }, 500, cors);
   }
-});
+}));

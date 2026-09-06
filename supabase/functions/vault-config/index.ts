@@ -14,6 +14,7 @@ import {
   validateNewPin,
   verifyPin,
 } from "../_shared/pin.ts";
+import { withSentry } from "../_shared/sentry.ts";
 
 type ServiceClient = ReturnType<typeof createClient>;
 
@@ -42,7 +43,7 @@ async function loadPinRow(supabase: ServiceClient) {
     | null;
 }
 
-Deno.serve(async (req) => {
+Deno.serve(withSentry("vault-config", async (req) => {
   const cors = corsHeaders(req);
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: cors });
@@ -120,4 +121,4 @@ Deno.serve(async (req) => {
     console.error("vault-config error", e);
     return jsonResponse({ error: String(e) }, 500, cors);
   }
-});
+}));

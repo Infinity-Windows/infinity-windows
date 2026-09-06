@@ -20,6 +20,7 @@ import {
   reserveAiSpend,
   settleAiSpend,
 } from "../_shared/spendGuard.ts";
+import { withSentry } from "../_shared/sentry.ts";
 
 const TOPIC_KEYS = [
   "difficulty",
@@ -63,7 +64,7 @@ const TOPICS_SCHEMA = {
   },
 };
 
-Deno.serve(async (req) => {
+Deno.serve(withSentry("transcribe-install-memo", async (req) => {
   const cors = corsHeaders(req);
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: cors });
@@ -295,4 +296,4 @@ Deno.serve(async (req) => {
     console.error(e);
     return jsonResponse({ error: String(e) }, 500, cors);
   }
-});
+}));

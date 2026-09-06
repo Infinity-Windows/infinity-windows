@@ -48,6 +48,7 @@ import {
   type ReceiptCategory,
   type ReceiptExtractableFields,
 } from "../_shared/receiptMerge.ts";
+import { withSentry } from "../_shared/sentry.ts";
 
 interface LineItem {
   description: string;
@@ -136,7 +137,7 @@ function cleanExtraction(raw: unknown): RawReceiptExtraction {
   };
 }
 
-Deno.serve(async (req) => {
+Deno.serve(withSentry("extract-receipt", async (req) => {
   const cors = corsHeaders(req);
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: cors });
@@ -266,4 +267,4 @@ Deno.serve(async (req) => {
     console.error(e);
     return jsonResponse({ error: String(e) }, 500, cors);
   }
-});
+}));

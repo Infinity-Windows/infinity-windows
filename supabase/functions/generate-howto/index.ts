@@ -17,6 +17,7 @@ import {
   reserveAiSpend,
   settleAiSpend,
 } from "../_shared/spendGuard.ts";
+import { withSentry } from "../_shared/sentry.ts";
 
 /** What the model sends back. Typed loosely on purpose: the schema asks for a
  * title and a detail per step, and a model that answers with a bare sentence has
@@ -44,7 +45,7 @@ const HOWTO_SCHEMA = {
   required: ["steps"],
 };
 
-Deno.serve(async (req) => {
+Deno.serve(withSentry("generate-howto", async (req) => {
   const cors = corsHeaders(req);
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
 
@@ -206,4 +207,4 @@ Deno.serve(async (req) => {
     console.error(e);
     return jsonResponse({ error: String(e) }, 500, cors);
   }
-});
+}));

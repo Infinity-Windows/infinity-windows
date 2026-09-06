@@ -44,6 +44,7 @@ import {
   schedulingRefusal,
   type DraftEntry,
 } from "../_shared/schedulingTools.ts";
+import { withSentry } from "../_shared/sentry.ts";
 
 // Wave A2: SCHEDULING_TOOLS is offered on EVERY ask call, to every caller — a
 // below-rank caller gets the same clean tool refusal a human trying a hidden
@@ -1188,7 +1189,7 @@ function buildSchedulingExecutor(
   };
 }
 
-Deno.serve(async (req) => {
+Deno.serve(withSentry("ask", async (req) => {
   const cors = corsHeaders(req);
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: cors });
@@ -1358,4 +1359,4 @@ Deno.serve(async (req) => {
     console.error(e);
     return jsonResponse({ error: String(e) }, 500, cors);
   }
-});
+}));

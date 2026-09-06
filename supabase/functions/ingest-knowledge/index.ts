@@ -19,6 +19,7 @@ import {
   reserveAiSpend,
   settleAiSpend,
 } from "../_shared/spendGuard.ts";
+import { withSentry } from "../_shared/sentry.ts";
 
 interface IncomingFile {
   path: string;
@@ -46,7 +47,7 @@ async function profileRole(
   return (data?.role as string | undefined) ?? null;
 }
 
-Deno.serve(async (req) => {
+Deno.serve(withSentry("ingest-knowledge", async (req) => {
   const cors = corsHeaders(req);
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: cors });
@@ -291,4 +292,4 @@ Deno.serve(async (req) => {
     console.error(e);
     return jsonResponse({ error: String(e) }, 500, cors);
   }
-});
+}));

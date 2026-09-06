@@ -25,6 +25,7 @@ import {
   STUDIO_ASSIST_SYSTEM_PROMPT,
   type HistoryTurn,
 } from "../_shared/studioAssist.ts";
+import { withSentry } from "../_shared/sentry.ts";
 
 /**
  * Model Studio's "Ask about this model" assistant (Studio 100x #42). Mirrors
@@ -50,7 +51,7 @@ import {
  * `insertUnit` path a human drag-drop uses) is what turns that block into an
  * Insert/Dismiss proposal card.
  */
-Deno.serve(async (req) => {
+Deno.serve(withSentry("studio-assist", async (req) => {
   const cors = corsHeaders(req);
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: cors });
@@ -158,4 +159,4 @@ Deno.serve(async (req) => {
     console.error(e);
     return jsonResponse({ error: String(e) }, 500, cors);
   }
-});
+}));

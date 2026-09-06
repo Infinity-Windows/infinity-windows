@@ -54,6 +54,7 @@ import {
 } from "../_shared/openai.ts";
 import { verifyCaller } from "../_shared/auth.ts";
 import { isTestAccount, TEST_ACCOUNT_REFUSED } from "../_shared/testAccounts.ts";
+import { withSentry } from "../_shared/sentry.ts";
 
 type ServiceClient = ReturnType<typeof createClient>;
 
@@ -133,7 +134,7 @@ async function findUserByEmail(
   return null;
 }
 
-Deno.serve(async (req) => {
+Deno.serve(withSentry("approve-access-request", async (req) => {
   const cors = corsHeaders(req);
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: cors });
@@ -337,4 +338,4 @@ Deno.serve(async (req) => {
     const message = err instanceof Error ? err.message : "unknown error";
     return jsonResponse({ error: message }, 500, cors);
   }
-});
+}));

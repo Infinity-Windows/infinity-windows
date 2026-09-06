@@ -20,6 +20,7 @@ import {
   reserveAiSpend,
   settleAiSpend,
 } from "../_shared/spendGuard.ts";
+import { withSentry } from "../_shared/sentry.ts";
 
 interface TalkResult {
   title: string;
@@ -112,7 +113,7 @@ async function tryGenerateImage(prompt: string): Promise<string | null> {
   return null;
 }
 
-Deno.serve(async (req) => {
+Deno.serve(withSentry("generate-toolbox-talk", async (req) => {
   const cors = corsHeaders(req);
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
 
@@ -300,4 +301,4 @@ Deno.serve(async (req) => {
     console.error(e);
     return jsonResponse({ error: String(e) }, 500, cors);
   }
-});
+}));
