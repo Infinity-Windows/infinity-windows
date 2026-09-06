@@ -12,6 +12,7 @@ import JSZip from "jszip";
 import { CheckCircle2, Circle, Download, FileArchive } from "lucide-react";
 import { BackChip } from "../components/BackChip";
 import { BankImportSection } from "../components/receipts/BankImportSection";
+import { ReceiptDocumentLink } from "../components/receipts/ReceiptDocumentLink";
 import { EmptyState, QueryError, SkeletonList } from "../components/ui/States";
 import { listBankTransactions } from "../lib/bank";
 import { isOwner } from "../lib/install/types";
@@ -22,6 +23,7 @@ import { listProjects } from "../lib/api";
 import {
   buildReceiptsCsv,
   listReceipts,
+  receiptDocumentSignedUrl,
   reviewReceipt,
   setCategory,
   setPassthrough,
@@ -68,9 +70,15 @@ function dateLabel(iso: string | null): string {
 /** A safe-ish file name for one receipt inside the export zip. */
 function zipEntryName(r: Receipt): string {
   const ext = r.photoPath.split(".").pop() || "jpg";
+  return `${zipEntryStem(r)}.${ext}`;
+}
+
+/** The same name without its extension, so a receipt's picture and its
+ * original PDF land side by side in the zip under one obvious pair of names. */
+function zipEntryStem(r: Receipt): string {
   const day = r.purchasedOn ?? r.createdAt.slice(0, 10);
   const who = (r.vendor ?? r.id).replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "");
-  return `${day}-${who || r.id.slice(0, 8)}.${ext}`;
+  return `${day}-${who || r.id.slice(0, 8)}`;
 }
 
 export function Receipts() {
@@ -180,6 +188,23 @@ export function Receipts() {
           if (used.has(name)) name = `${r.id.slice(0, 8)}-${name}`;
           used.add(name);
           zip.file(name, blob);
+
+          // A receipt that arrived as a PDF puts the ORIGINAL in the zip too,
+          // named off the same stem so the pair sits together in the listing.
+          // The picture is page one; an accounting export that shipped only
+          // that would be handing an auditor a screenshot of a document, with
+          // pages two and three simply missing. Its link is minted here rather
+          // than carried on the row — a ten-minute URL cannot wait for somebody
+          // to press Export.
+          if (!r.documentPath) return;
+          try {
+            const docUrl = await receiptDocumentSignedUrl(r.documentPath);
+            const docRes = await fetch(docUrl);
+            if (!docRes.ok) return;
+            zip.file(`${name.replace(/\.[^.]+$/, "")}.pdf`, await docRes.blob());
+          } catch {
+            // One unreachable original must not cost the whole export.
+          }
         }),
       );
       const blob = await zip.generateAsync({ type: "blob" });
@@ -320,6 +345,11 @@ export function Receipts() {
                   </span>
                 </div>
                 <div className="wh-actions">
+                  {/* This one came in as a PDF. The thumbnail is page one; the
+                      original is one tap away and goes in the zip export too. */}
+                  {r.documentPath && (
+                    <ReceiptDocumentLink documentPath={r.documentPath} variant="button" />
+                  )}
                   <button
                     type="button"
                     className={`button-like${r.category === "gas" ? " button-like--primary" : ""}`}
