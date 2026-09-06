@@ -822,5 +822,181 @@ class ShippedColumnBugRepairTest(unittest.TestCase):
             )
 
 
+# ---------------------------------------------------------------------------
+# The points cap (20260991000000)
+# ---------------------------------------------------------------------------
+"""The shape of the migration that stopped a phone writing the scoreboard.
+
+Two rules landed together on 2026-09-05, after two profiles filed hundreds of
+Education quiz rows apiece in a single day through a policy that had said
+`for all to authenticated using (true)` since the ledger was created:
+
+  1. SERVER-ONLY WRITES — points_ledger keeps its read and loses every write,
+     and three SECURITY DEFINER functions become the only doors.
+  2. NEW CONTENT ONLY — a glossary term pays the first time it is answered
+     correctly and never again, which makes the lifetime ceiling arithmetic.
+
+Neither rule can be proved by running the app, and both are the kind that rot
+quietly: a later migration that re-adds a FOR ALL policy, a term added to
+glossary.ts without a key on the server, a function shipped without its revoke.
+So the shape is pinned here, beside the other standing migration gates.
+"""
+
+POINTS_CAP = "20260991000000_points_cap.sql"
+GLOSSARY = REPO / "app" / "src" / "lib" / "glossary.ts"
+
+
+def _points_cap_sql() -> str:
+    return (migration_lint.MIGRATIONS_DIR / POINTS_CAP).read_text(encoding="utf-8")
+
+
+def _glossary_term_ids() -> list[str]:
+    """The `id` of every entry in glossary.ts's TERMS array, in order."""
+    text = GLOSSARY.read_text(encoding="utf-8")
+    start = text.index("export const TERMS")
+    end = text.index("export const PROC")
+    return re.findall(r'"id":\s*"([a-z0-9_-]+)"', text[start:end])
+
+
+class TestPointsCapMigration(unittest.TestCase):
+    def test_the_migration_is_there_at_all(self):
+        self.assertTrue((migration_lint.MIGRATIONS_DIR / POINTS_CAP).exists())
+
+    def test_it_is_mirrored_verbatim_into_the_prototype_file(self):
+        """docs/prototype-migrations.sql is the consolidated schema — a mirror
+        that drifted would restore a database missing this whole rule."""
+        mirror = (REPO / "docs" / "prototype-migrations.sql").read_text(encoding="utf-8")
+        self.assertIn(f"-- {POINTS_CAP} (mirrored)", mirror)
+        self.assertIn(_points_cap_sql(), mirror)
+
+    def test_the_ledgers_for_all_policy_is_gone(self):
+        sql = _points_cap_sql()
+        self.assertIn('drop policy if exists "authenticated full access" on points_ledger', sql)
+        # What replaces it reads, and only reads.
+        self.assertRegex(
+            sql,
+            r'create policy "points_ledger read" on points_ledger\s+for select to authenticated',
+        )
+        self.assertNotRegex(sql, r"create policy[^;]*on points_ledger\s+for all")
+
+    def test_the_ledger_keeps_the_partner_guard_it_already_had(self):
+        self.assertRegex(
+            _points_cap_sql(),
+            r'create policy "points_ledger read"[^;]*not public\.is_partner_user\(\)',
+        )
+
+    def test_every_table_the_rule_touches_refuses_writes_from_a_phone(self):
+        sql = _points_cap_sql()
+        for table in ("points_ledger", "education_items", "education_credits"):
+            self.assertIn(
+                f"revoke insert, update, delete on table {table} from anon, authenticated;",
+                sql,
+                f"{table} still lets a signed-in phone write it directly",
+            )
+
+    def test_the_new_tables_have_row_level_security_on(self):
+        sql = _points_cap_sql()
+        for table in ("education_items", "education_credits"):
+            self.assertIn(f"alter table {table} enable row level security;", sql)
+
+    def test_every_new_select_policy_carries_the_partner_guard(self):
+        # test_partner_wall.py replays this too; asserted here as well because
+        # this file is the one somebody reads when they change this migration.
+        sql = _points_cap_sql()
+        for policy in ("education_items read", "own or lead read"):
+            body = sql.split(f'create policy "{policy}" on ')[1].split(";")[0]
+            self.assertIn("not public.is_partner_user()", body)
+
+    def test_one_award_per_person_per_ref_per_kind_is_structural(self):
+        """A comment is a promise; a unique index is a rule."""
+        sql = _points_cap_sql()
+        self.assertRegex(
+            sql,
+            r"create unique index if not exists points_ledger_one_award_per_ref_kind\s+"
+            r"on points_ledger \(profile_id, ref, kind\)",
+        )
+
+    def test_the_backfill_voids_and_never_deletes(self):
+        sql = _points_cap_sql()
+        # The farmed rows: kind 'quiz' with no ref. Video quiz rows carry a
+        # 'video_quiz:' ref and must survive untouched.
+        self.assertIn("set status = 'void'", sql)
+        self.assertIn("where kind = 'quiz'", sql)
+        self.assertIn("and ref is null", sql)
+        self.assertNotIn("delete from points_ledger", sql)
+        self.assertIn("void_reason", sql)
+
+    def test_the_backfill_can_be_applied_twice(self):
+        """Idempotent by its own WHERE: after one run nothing matches, because
+        the rows it changes are the rows it excludes."""
+        self.assertIn("and status <> 'void'", _points_cap_sql())
+
+    def test_every_function_it_ships_is_definer_with_a_pinned_search_path(self):
+        sql = _points_cap_sql()
+        for fn in (
+            "award_install_points",
+            "resolve_install_points",
+            "award_education_quiz",
+            "my_education_progress",
+        ):
+            body = sql.split(f"create or replace function public.{fn}(")[1].split("$$")[0]
+            self.assertIn("security definer", body, f"{fn} is not SECURITY DEFINER")
+            self.assertIn(
+                "set search_path = public, pg_temp", body,
+                f"{fn} does not pin its search_path",
+            )
+
+    def test_every_function_it_ships_is_revoked_then_granted(self):
+        sql = _points_cap_sql()
+        for fn in (
+            "award_install_points",
+            "resolve_install_points",
+            "award_education_quiz",
+            "my_education_progress",
+        ):
+            self.assertRegex(
+                sql, rf"revoke all on function public\.{fn}\([^)]*\) from public, anon;",
+                f"{fn} is not revoked from public and anon",
+            )
+            self.assertRegex(
+                sql, rf"grant execute on function public\.{fn}\([^)]*\) to authenticated;",
+                f"{fn} is never granted to the crew",
+            )
+
+    def test_qc_confirm_and_void_are_gated_at_foreman(self):
+        body = _points_cap_sql().split(
+            "create or replace function public.resolve_install_points("
+        )[1].split("$$;")[0]
+        self.assertIn("public.my_role_rank() < 1", body)
+
+    def test_the_server_has_a_key_for_every_glossary_term_and_no_others(self):
+        """THE JOIN BETWEEN TWO FILES. The glossary is content and lives in the
+        app; the KEY LIST has to live in the database, because a key the server
+        does not recognise must pay nothing. Adding a term to one side without
+        the other is a silent hole — either a term nobody can earn, or a key
+        that pays for something the crew never sees. So it is a red build."""
+        sql = _points_cap_sql()
+        seed = sql.split("insert into education_items (key, kind, points) values")[1]
+        seed = seed.split("on conflict (key) do nothing;")[0]
+        seeded = set(re.findall(r"\('([a-z0-9_:-]+)',", seed))
+        expected = {f"term:{i}" for i in _glossary_term_ids()} | {"seq:install"}
+        self.assertEqual(seeded, expected)
+
+    def test_the_ceiling_is_a_number_somebody_can_check(self):
+        """105 terms plus the sequence, ten points each. If this ever changes,
+        the PR body's cap changes with it."""
+        self.assertEqual(len(_glossary_term_ids()), 105)
+        self.assertIn("'sequence', 10)", _points_cap_sql())
+
+    def test_the_remove_login_count_learned_about_the_new_table(self):
+        """education_credits cascades off profiles, so a login deleted outright
+        would take a person's earned terms with it in silence."""
+        sql = _points_cap_sql()
+        self.assertIn(
+            "create or replace function public.person_record_counts(p_id uuid)", sql)
+        self.assertIn("'education_credits.profile_id',", sql)
+
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
