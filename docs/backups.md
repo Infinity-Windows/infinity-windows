@@ -231,3 +231,27 @@ npm --prefix app run e2e
   is run, the next backend deploy would try to re-apply every migration.
 - **Anything done since last night.** At worst a day's work is lost. The honest
   thing on the day is to say so and have the crew re-enter it.
+
+## The archive is sealed, and how to open it
+
+Since the seal landed (the follow-up to #557), the file in the bucket is
+`<ref>-<stamp>.tar.gz.enc`: the archive encrypted with AES-256 under the
+`BACKUP_PASSPHRASE` repository secret, using nothing but `openssl`, which is
+on every runner and every Mac. The nightly job seals, then opens its own seal
+and re-verifies the result, so a file nobody could open never leaves. With no
+passphrase set it refuses to upload rather than send plaintext, and says so in
+the summary and in Slack.
+
+**Keep a copy of the passphrase in the password manager.** A passphrase that
+exists only as a GitHub secret is lost with the GitHub account, and every
+backup with it.
+
+To open one by hand:
+
+```bash
+BACKUP_PASSPHRASE='…' scripts/backup-seal.sh open czprjcskmzzagdztqonm-2026-09-06T0910Z.tar.gz.enc backup.tar.gz
+python3 scripts/backup_verify.py backup.tar.gz     # re-hashes every file against MANIFEST.json
+tar -xzf backup.tar.gz
+```
+
+The Sunday restore test does exactly this before it restores.

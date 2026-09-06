@@ -44,6 +44,18 @@ runs and proves itself every night, but nothing leaves the runner, and this page
 cannot help you. Setting those three secrets is the single most valuable
 half-hour anyone can spend on this project; `docs/backups.md` says how.
 
+**The file is sealed.** What is in the bucket is `….tar.gz.enc`. Open it first
+with the passphrase from the `BACKUP_PASSPHRASE` secret (a copy is in the
+owner's password manager), then check it reads back before trusting it:
+
+```bash
+BACKUP_PASSPHRASE='…' scripts/backup-seal.sh open czprjcskmzzagdztqonm-<stamp>.tar.gz.enc backup.tar.gz
+python3 scripts/backup_verify.py backup.tar.gz
+```
+
+`backup OK` from the second command means every dump is the size and hash the
+manifest recorded. Anything else: take the previous night's file instead.
+
 **How fresh it is.** At worst one day old. Anything the crew did between the
 last backup and the outage is gone, and the honest thing to do is tell them so
 and have them re-enter today's work.

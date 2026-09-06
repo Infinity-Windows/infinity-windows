@@ -225,6 +225,21 @@ jobs:
       - name: Test the restore verification
         run: python3 scripts/test_restore_verify.py
 
+      # The read-back between packaging and upload: every dump at the size and
+      # hash the manifest recorded, every stored file that was hashed, from a
+      # fresh unpack. What is tested is that damage is noticed — a flipped
+      # byte, a truncated dump, a missing one, no manifest — and that a good
+      # archive passes. Offline: a throwaway backup directory.
+      - name: Test the backup read-back
+        run: python3 scripts/test_backup_verify.py
+
+      # The seal on the archive before it goes off-site. It opens again with
+      # the passphrase we hold and refuses the wrong one. Throwaway passphrase,
+      # throwaway files.
+      - name: Test scripts/backup-seal.sh
+        shell: bash
+        run: scripts/backup-seal.test.sh
+
       # The misnamed-key check gives ADVICE to a human, so crying wolf is its
       # real failure mode: one wrong suggestion and nobody reads it again. The
       # tests check every secret this repo actually holds against every name the

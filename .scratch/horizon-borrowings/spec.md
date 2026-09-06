@@ -36,7 +36,7 @@ Infrastructure first, product features after, and 14 after 02.
 
 | # | Ticket | Status | Size |
 |---|--------|--------|------|
-| 01 | Nightly verified off-site database backup | ready-for-agent | S |
+| 01 | Nightly verified off-site database backup | resolved (#557 + seal/verify follow-up) | S |
 | 02 | Run the e2e suite in CI | ready-for-agent | M |
 | 03 | Production invariant probe on every PR | resolved (PR pending) | S |
 | 04 | Migration drift nightly and on the PR | resolved (PR pending) | S |
