@@ -12,7 +12,7 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { listLocations, listProjects, listProjectsAnyStatus } from "../../lib/api";
 import { splitLines } from "../../lib/warehouse/splitUnits";
 import { PackageRowText } from "../../components/warehouse/PackageRowText";
@@ -63,7 +63,13 @@ export function CheckoutPackages() {
   // NAME map reads every job; any picker on this page stays active-only.
   const projectsAll = useQuery({ queryKey: ["projectsAll"], queryFn: listProjectsAnyStatus });
   const reasons = useQuery({ queryKey: ["checkoutReasons"], queryFn: listCheckoutReasons });
-  const [picked, setPicked] = useState<Set<string>>(new Set());
+  // `?ids=a,b` arrives pre-picked from the scan sheet's "Check out" (wave 2):
+  // the person already scanned what they are taking; this screen only asks why
+  // and for which job.
+  const [params] = useSearchParams();
+  const [picked, setPicked] = useState<Set<string>>(
+    () => new Set((params.get("ids") ?? "").split(",").filter(Boolean)),
+  );
   const [reason, setReason] = useState("");
   const [otherNote, setOtherNote] = useState("");
   const [projectId, setProjectId] = useState("");
