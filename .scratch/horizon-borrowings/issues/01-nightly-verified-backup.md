@@ -1,6 +1,6 @@
 # 01 — Nightly verified off-site database backup
 
-Status: ready-for-agent
+Status: resolved
 Type: task
 Size: S
 
@@ -52,3 +52,22 @@ not the database.
 - A deliberately corrupted file makes the verify step fail (proven in the
   script test, not against production).
 - The next nightly run is green without anyone touching it.
+
+## Comments
+
+2026-09-06 — Resolved in two parts. The build session was given the same
+item by the owner and landed the larger half as #557 (`backup-nightly.yml`:
+Supabase CLI dumps + every stored file, `MANIFEST.json` with row counts and
+hashes, off-site to Backblaze B2 via rclone, a Sunday `restore-test.yml`
+that restores into a real Postgres and checks row counts, `docs/backups`
+removed from the public repo). My draft #545 was closed. This follow-up adds
+the two things #557 lacked: `scripts/backup_verify.py` — a fresh unpack and
+re-hash of every dump and stored file against the manifest, run between
+packaging and upload and again by the restore test on the copy actually
+kept — and `scripts/backup-seal.sh`, AES-256 under `BACKUP_PASSPHRASE`,
+sealed → opened → re-verified before upload; the upload REFUSES plaintext
+when the passphrase is missing. Dropped from the draft: the JSON-snapshot
+SQL generator (the restore is a psql replay of the dumps) and the GitHub
+artifact fallback (public repo; #557's reasoning stands). Owner actions:
+the three B2 secrets (nothing leaves the runner until then), then one manual
+run.

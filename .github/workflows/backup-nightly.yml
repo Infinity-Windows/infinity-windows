@@ -227,6 +227,41 @@ jobs:
           tar -czf "$ARCHIVE" -C "$(dirname "$DIR")" "$(basename "$DIR")"
           echo "bytes=$(wc -c < "$ARCHIVE")" >> "$GITHUB_OUTPUT"
 
+      # Read the archive back from disk, into a fresh directory, with no memory
+      # of the steps that wrote it: every dump the manifest names must be there
+      # at the same size and hash, and every stored file that was hashed must
+      # hash the same. A tar that truncated or a disk that filled would
+      # otherwise upload a confident manifest around a broken copy, and the
+      # Sunday restore test would find out six days later.
+      - name: Prove the archive reads back
+        env:
+          ARCHIVE: ${{ steps.name.outputs.archive }}
+        run: python3 scripts/backup_verify.py "$ARCHIVE"
+
+      # Sealed before it leaves. The archive holds every crew member's hours and
+      # auth.users with its password hashes; a private bucket is the right
+      # place and is still one leaked key from public. With no passphrase the
+      # archive stays on the runner — the upload step refuses plaintext. The
+      # seal is opened again here with the passphrase we hold, and what comes
+      # out is re-verified, so a sealed file nobody could open never leaves.
+      - name: Seal it
+        id: seal
+        env:
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+          ARCHIVE: ${{ steps.name.outputs.archive }}
+        run: |
+          set -euo pipefail
+          if [ -z "$BACKUP_PASSPHRASE" ]; then
+            echo "sealed=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Tonight's archive is not sealed::BACKUP_PASSPHRASE is not set, so the archive cannot be sealed and will not be sent off-site. Add it in Settings > Secrets and variables > Actions and keep a copy in the password manager. See docs/backups.md."
+            exit 0
+          fi
+          scripts/backup-seal.sh seal "$ARCHIVE" "$ARCHIVE.enc"
+          scripts/backup-seal.sh open "$ARCHIVE.enc" "$RUNNER_TEMP/reopened.tar.gz"
+          python3 scripts/backup_verify.py "$RUNNER_TEMP/reopened.tar.gz"
+          rm -f "$RUNNER_TEMP/reopened.tar.gz"
+          echo "sealed=true" >> "$GITHUB_OUTPUT"
+
       # rclone from Ubuntu's own package list rather than a piped install
       # script: one fewer thing downloading and running code as root next to a
       # copy of the whole database.
@@ -238,12 +273,20 @@ jobs:
           B2_BUCKET: ${{ secrets.B2_BUCKET }}
           ARCHIVE: ${{ steps.name.outputs.archive }}
           DAY: ${{ steps.name.outputs.day }}
+          SEALED: ${{ steps.seal.outputs.sealed }}
         run: |
           set -euo pipefail
           if [ -z "$B2_KEY_ID" ] || [ -z "$B2_APPLICATION_KEY" ] || [ -z "$B2_BUCKET" ]; then
             echo "configured=false" >> "$GITHUB_OUTPUT"
             echo "B2 is not configured; nothing is leaving this runner."
             exit 0
+          fi
+          # Plaintext never leaves. A backup that could not be sealed is a
+          # red run, not a quiet upload of every password hash in the company.
+          if [ "$SEALED" != "true" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+            echo "::error title=Refusing to upload an unsealed backup::B2 is configured but BACKUP_PASSPHRASE is not, so tonight's archive stayed on the runner. Add the passphrase secret and re-run."
+            exit 1
           fi
           sudo apt-get update -qq
           sudo apt-get install -y -qq rclone
@@ -252,7 +295,7 @@ jobs:
           export RCLONE_CONFIG_OFFSITE_TYPE=b2
           export RCLONE_CONFIG_OFFSITE_ACCOUNT="$B2_KEY_ID"
           export RCLONE_CONFIG_OFFSITE_KEY="$B2_APPLICATION_KEY"
-          rclone copy --no-traverse "$ARCHIVE" "offsite:$B2_BUCKET/$DAY/"
+          rclone copy --no-traverse "$ARCHIVE.enc" "offsite:$B2_BUCKET/$DAY/"
           echo "configured=true" >> "$GITHUB_OUTPUT"
           echo "dest=$B2_BUCKET/$DAY/" >> "$GITHUB_OUTPUT"
 
@@ -263,12 +306,18 @@ jobs:
           BYTES: ${{ steps.package.outputs.bytes }}
           OFFSITE: ${{ steps.offsite.outputs.configured }}
           DEST: ${{ steps.offsite.outputs.dest }}
+          SEALED: ${{ steps.seal.outputs.sealed }}
         run: |
           set -uo pipefail
           {
             echo "### Backup $STAMP"
             echo
           } >> "$GITHUB_STEP_SUMMARY"
+          if [ "${SEALED:-false}" = "true" ]; then
+            echo "- Sealed with BACKUP_PASSPHRASE; the off-site file is \`.tar.gz.enc\`. Open it with \`scripts/backup-seal.sh open\` (docs/backups.md)." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "- NOT sealed: BACKUP_PASSPHRASE is not set, so nothing was sent off-site tonight." >> "$GITHUB_STEP_SUMMARY"
+          fi
           if [ -f "$RUNNER_TEMP/backup-summary.md" ]; then
             cat "$RUNNER_TEMP/backup-summary.md" >> "$GITHUB_STEP_SUMMARY"
           else
