@@ -16,6 +16,7 @@
 // upload — the console line and the on-screen digest still happen.
 
 import { formatApiError, rawErrorMessage } from "./errors";
+import { captureCrash } from "./monitoring/sentry";
 import { supabase, supabaseConfigured } from "./supabase";
 
 /**
@@ -128,6 +129,12 @@ export async function reportCrash(
   console.error(`App crashed [${digest}]`, error, componentStack ?? "");
   if (reported.has(digest)) return;
   reported.add(digest);
+  // The crash monitor, when one is configured. It gets the SAME five-character
+  // code as a tag, so "it says K7F3Q" finds the report there too. With no DSN
+  // this returns false without loading anything at all. It is fired off rather
+  // than awaited: the app_feedback row below must not wait on somebody else's
+  // server, least of all on a phone with no signal.
+  void captureCrash(error, componentStack, digest);
   if (!supabaseConfigured) return;
   try {
     // getSession reads local storage — no network, so it cannot hang the

@@ -163,6 +163,16 @@ export default defineConfig({
   define: {
     __BUILD_ID__: JSON.stringify(buildId),
     __BUILT_AT__: JSON.stringify(builtAt),
+    // Sentry's own tree-shaking switches (see src/lib/monitoring/sentry.ts).
+    // The crash monitor is loaded on a phone over whatever signal a jobsite
+    // has, so every kilobyte of it that is never used is worth taking out:
+    // this app has no performance tracing and no Session Replay by decision,
+    // and these flags let the bundler delete both instead of shipping them.
+    // They are read only inside @sentry/*, so they change nothing else.
+    __SENTRY_DEBUG__: false,
+    __SENTRY_TRACING__: false,
+    __RRWEB_EXCLUDE_IFRAME__: true,
+    __RRWEB_EXCLUDE_SHADOW_DOM__: true,
   },
   plugins: [
     react(),
