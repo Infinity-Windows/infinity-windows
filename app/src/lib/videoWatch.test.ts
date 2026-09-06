@@ -68,8 +68,9 @@ describe("watchPercent and isWatchedThrough", () => {
   });
 
   it("says nothing rather than something wrong when the length is unknown", () => {
-    // An embed that never loaded reports no duration. Zero percent is a lie
-    // shaped like a fact; the screens print "—" for this.
+    // An embed that never loaded reports no duration. Zero percent would be a
+    // lie shaped like a fact, so the owner's page does not print a percentage
+    // at all for these — it says "3m played, length unknown" instead.
     expect(watchPercent(60, null)).toBe(0);
     expect(watchPercent(60, 0)).toBe(0);
     expect(isWatchedThrough(60, null, false)).toBe(false);
