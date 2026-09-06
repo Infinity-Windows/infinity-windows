@@ -165,6 +165,11 @@ assert_has() {
 $OUT"; fi
 }
 
+assert_file_lacks() {
+  if grep -qF -- "$2" "$1" 2>/dev/null; then bad "did not expect \"$2\" in $1. It holds:
+$(cat "$1" 2>/dev/null)"; else ok; fi
+}
+
 assert_lacks() {
   if printf '%s' "$OUT" | grep -qF -- "$1"; then bad "did not expect \"$1\". Output:
 $OUT"; else ok; fi
@@ -442,6 +447,10 @@ unset SPEND_OVERRIDE   # bash leaves it set after a FUNCTION call, unlike a comm
 assert_rc 0
 assert_has "Stopped at the spending ceiling"
 assert_has "was not asked"
+# A ceiling somebody chose is not the tooling letting us down, so it must not
+# be the word that wakes Slack. The daily run cap is `skipped` for the same
+# reason.
+assert_file_lacks "$root/status.txt" "broken"
 
 new_case "an ordinary run never notices the ceiling"
 touch_catalog

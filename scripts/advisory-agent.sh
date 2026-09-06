@@ -505,7 +505,10 @@ for check in "$CHECKS_DIR"/*.md; do
       'BEGIN { printf "%.6f", a + b }')"
     if awk -v s="$spent" -v m="$MAX_SPEND" 'BEGIN { exit !(s >= m) }'; then
       over_budget=1
-      printf 'TOOLING\tthis run reached its $%s ceiling here, so nothing after it was asked\n' \
+      # BUDGET, not TOOLING. A TOOLING row means the machinery let us down and
+      # sets the status that wakes Slack; reaching a ceiling somebody chose is
+      # the same kind of event as the daily run cap, which is a `skipped`.
+      printf 'BUDGET\tthis run reached its $%s ceiling here, so nothing after it was asked\n' \
         "$MAX_SPEND" >>"$WORK/answers.$name"
       break
     fi
@@ -526,6 +529,9 @@ for check in "$CHECKS_DIR"/*.md; do
       TOOLING)
         printf -- '- _%s_\n' "$f1" >>"$WORK/section.$name"
         broke=1
+        ;;
+      BUDGET)
+        printf -- '- _%s_\n' "$f1" >>"$WORK/section.$name"
         ;;
     esac
   done <"$WORK/answers.$name"
