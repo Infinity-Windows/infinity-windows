@@ -93,6 +93,16 @@ grant execute on function set_mark_kind(uuid, text, text) to authenticated;
 alter table storage_containers
   add column if not exists project_id uuid references projects (id) on delete set null;
 
+-- 'bay' joins the list of things a box can be. The list is a check constraint
+-- (20260902000000), and the first push of this file stopped right here: the
+-- bay insert below hit containers_kind_ck and the whole file rolled back
+-- (Deploy backend 2026-09-06, run 34048110884), so nothing in it reached
+-- production and the file is corrected in place rather than followed by a
+-- second one — a follow-up would run after this file, which fails first.
+alter table storage_containers drop constraint if exists containers_kind_ck;
+alter table storage_containers add constraint containers_kind_ck
+  check (kind in ('conex', 'crate', 'truck', 'building', 'bay'));
+
 create unique index if not exists storage_containers_one_bay_per_job
   on storage_containers (project_id)
   where project_id is not null and kind = 'bay' and active;
