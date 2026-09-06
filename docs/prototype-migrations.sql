@@ -16644,7 +16644,9 @@ begin
            w.profile_id as pid,
            w.video_id as vid,
            w.watch_seconds as secs,
-           w.duration_seconds as dur,
+           -- No duration here on purpose. The length this reader's own rows
+           -- carry is not the length anybody is measured against — see
+           -- `lengths` below, which takes it from every watch of the lesson.
            w.completed as done,
            w.last_seen_at as seen,
            w.ranges as rs
