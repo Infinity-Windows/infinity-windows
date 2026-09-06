@@ -111,6 +111,42 @@ export function yardTiles(
   return roots.sort(byYardOrder);
 }
 
+/** The yard has two pictures (owner call 2026-09-06, on seeing eleven bays
+ *  in the grid): the BOXES — building, conexes, crates, trucks — and the
+ *  BAYS, one per job, where material set aside for that job waits. A bay is
+ *  a box to the database and a different thing to the eye, so it is drawn on
+ *  its own view rather than between Conex 4 and the Black Trailer. */
+export function splitYard(tiles: readonly YardTile[]): { boxes: YardTile[]; bays: YardTile[] } {
+  const boxes: YardTile[] = [];
+  const bays: YardTile[] = [];
+  for (const t of tiles) (t.kind === "bay" ? bays : boxes).push(t);
+  return { boxes, bays };
+}
+
+/** One line over the bays: how many there are and how many hold anything. */
+export function baysSummary(bays: readonly YardTile[]): string {
+  if (bays.length === 0) return "No bays — a job gets its own the first time something is set aside for it.";
+  const holding = bays.filter((b) => b.inside > 0).length;
+  const inside = bays.reduce((n, b) => n + b.inside, 0);
+  const head = `${bays.length} bay${bays.length === 1 ? "" : "s"}`;
+  if (holding === 0) return `${head} · nothing set aside right now`;
+  return `${head} · ${inside} package${inside === 1 ? "" : "s"} set aside in ${holding}`;
+}
+
+/** Why a bay cannot be turned off right now, or null when it can: the same
+ *  rule a box has for the archive — empty first. */
+export function bayOffBlock(bay: Pick<YardTile, "name" | "inside" | "children">): string | null {
+  if (bay.inside > 0) {
+    return bay.inside === 1
+      ? `1 package is still set aside in ${bay.name}. Move it out first.`
+      : `${bay.inside} packages are still set aside in ${bay.name}. Move them out first.`;
+  }
+  if (bay.children.length > 0) {
+    return `${bay.name} still holds ${bay.children.map((c) => c.name).join(", ")}. Move that out first.`;
+  }
+  return null;
+}
+
 /** Which boxes a Find answer points at — the box holding each hit, or the
  *  box itself when the answer IS a box. */
 export function glowFromHits(

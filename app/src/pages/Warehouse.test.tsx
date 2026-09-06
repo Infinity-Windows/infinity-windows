@@ -31,6 +31,17 @@ vi.mock("../lib/queryClient", async (importOriginal) => ({
   prefetchWarehousePack: async () => {},
 }));
 
+// Turning a bay off is the one write this page makes on its own; it is
+// caught here so the test can read what was sent instead of hitting a server.
+const saved: unknown[] = [];
+vi.mock("../lib/storage", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/storage")>()),
+  saveContainer: async (input: unknown) => {
+    saved.push(input);
+    return input;
+  },
+}));
+
 const bay: Location = {
   id: "bay-1",
   zone: "J",
@@ -387,5 +398,56 @@ describe("jobs on the yard (the tally, reimagined)", () => {
     expect(link?.getAttribute("href")).toContain("/warehouse/materials");
     click(chip);
     expect(el.querySelector(".yard-box--glow")).toBeNull();
+  });
+});
+
+describe("the bays are their own picture (owner call 2026-09-06)", () => {
+  const bayBox = (id: string, name: string): StorageContainer => ({ ...conex, id, serial: `CTR-${id}`, name, kind: "bay", notes: "keep me" });
+  const viewButton = (el: HTMLElement, label: string) =>
+    [...el.querySelectorAll("button.yard-view")].find((b) => b.textContent?.startsWith(label));
+
+  it("keeps bays off the boxes view and shows them on their own", () => {
+    const el = mount({ packages: [], locations: [], role: "installer", containers: [conex, bayBox("b1", "BLACK22 bay")] });
+    const boxNames = [...el.querySelectorAll('[data-testid="yard-box"] .yard-name')].map((n) => n.textContent);
+    expect(boxNames).toEqual(["Conex 3"]);
+    expect(viewButton(el, "Boxes")?.textContent).toBe("Boxes1");
+    expect(viewButton(el, "Bays")?.textContent).toBe("Bays1");
+    click(viewButton(el, "Bays"));
+    expect(el.querySelector('[data-testid="yard-box"]')).toBeNull();
+    const bays = [...el.querySelectorAll('[data-testid="bay"]')].map((n) => n.querySelector(".yard-name")?.textContent);
+    expect(bays).toEqual(["BLACK22 bay"]);
+    expect(el.querySelector(".yard-summary")?.textContent).toBe("1 bay · nothing set aside right now");
+  });
+
+  it("turns an empty bay off, sending the whole row back so nothing on it is wiped", async () => {
+    saved.length = 0;
+    const el = mount({ packages: [], locations: [], role: "installer", containers: [conex, bayBox("b1", "BLACK22 bay")] });
+    click(viewButton(el, "Bays"));
+    const off = el.querySelector('[data-testid="bay"] button.bay-off') as HTMLButtonElement;
+    expect(off.disabled).toBe(false);
+    click(off);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(saved).toHaveLength(1);
+    expect(saved[0]).toMatchObject({ id: "b1", name: "BLACK22 bay", notes: "keep me", active: false });
+  });
+
+  it("refuses to turn off a bay that still holds material", () => {
+    const p = packageRow({ status: "stored", container_id: "b1", project_id: "job-1", marks: ["16"] });
+    const el = mount({ packages: [p], locations: [], role: "installer", containers: [conex, bayBox("b1", "BLACK22 bay")] });
+    click(viewButton(el, "Bays"));
+    const off = el.querySelector('[data-testid="bay"] button.bay-off') as HTMLButtonElement;
+    expect(off.disabled).toBe(true);
+    expect(off.title).toContain("still set aside in BLACK22 bay");
+  });
+
+  it("flips to the bays when a job chip lights only a bay", () => {
+    const p = packageRow({ status: "stored", container_id: "b1", project_id: "job-1", marks: ["16"] });
+    const el = mount({ packages: [p], locations: [], role: "installer", containers: [conex, bayBox("b1", "BLACK22 bay")] });
+    const chip = [...el.querySelectorAll("button.job-chip")].find((b) => b.textContent?.includes("BLACK22"));
+    click(chip);
+    expect(viewButton(el, "Bays")?.getAttribute("aria-pressed")).toBe("true");
+    expect(el.querySelector('[data-testid="bay"].yard-box--glow')?.textContent).toContain("BLACK22 bay");
   });
 });
