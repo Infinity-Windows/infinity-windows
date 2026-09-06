@@ -164,8 +164,3 @@ export function bigrams(words: string[]): string[] {
   for (let i = 0; i + 1 < words.length; i++) out.push(`${words[i]} ${words[i + 1]}`);
   return out;
 }
-
-/** Distinct words, order preserved — what the scorer iterates over. */
-export function uniqueTokens(text: string): string[] {
-  return [...new Set(tokenize(text))];
-}

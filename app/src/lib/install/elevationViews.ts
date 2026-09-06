@@ -25,7 +25,6 @@
 // a picture.
 
 import { bboxToPixelRect, type Bbox } from "./markDrawing";
-import { isElevationSheet, type PdfTextPage } from "./planDetails";
 
 /** One line of page text with its position, normalized 0..1 from the top-left. */
 export interface SheetTextLine {
@@ -405,11 +404,6 @@ export function elevationAppearances(args: {
     }
   }
   return out;
-}
-
-/** True when this page is an elevation sheet — re-exported for the callers. */
-export function isElevationPage(page: PdfTextPage): boolean {
-  return isElevationSheet(page.text);
 }
 
 /** A stored elevation-view row, as the app reads it back. */
