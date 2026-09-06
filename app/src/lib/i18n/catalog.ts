@@ -2234,6 +2234,22 @@ export const CATALOG = {
   "ltime.notFinished": { en: "Not finished", es: "Sin terminar" },
   // The definition, on screen, because "watched 3×" means nothing until the
   // reader knows what the app counts as a watch.
+  // The other half of the same promise, said to the person it is about — the
+  // footer at the bottom of Learn. `learn.time.why` and `ltime.blurb` are
+  // deliberately the same sentence from the two sides, and both agree with the
+  // migration's own header.
+  "learn.time.yours": { en: "Your learning time:", es: "Tu tiempo de aprendizaje:" },
+  "learn.time.week": { en: "{time} this week", es: "{time} esta semana" },
+  "learn.time.lessonsOne": { en: "1 lesson finished", es: "1 lección terminada" },
+  "learn.time.lessonsMany": {
+    en: "{count} lessons finished",
+    es: "{count} lecciones terminadas",
+  },
+  "learn.time.none": { en: "nothing yet this week", es: "nada aún esta semana" },
+  "learn.time.why": {
+    en: "Time in Learn is recorded so the company can see the effort you put in. It only counts while this screen is in front of you — never while your phone is locked or the app is in the background.",
+    es: "El tiempo en Aprender se registra para que la empresa vea el esfuerzo que pones. Solo cuenta mientras esta pantalla está frente a ti — nunca con el teléfono bloqueado ni con la app en segundo plano.",
+  },
   "ltime.watchNote": {
     en: "A watch is one visit that got through at least 30 seconds. The percentage is how much of the lesson was actually played — skipping to the end can finish a video without watching it.",
     es: "Una vista es una visita que pasó al menos 30 segundos. El porcentaje es cuánto de la lección se reprodujo de verdad — saltar al final puede terminar un video sin verlo.",

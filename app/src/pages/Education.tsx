@@ -23,6 +23,7 @@ import { awardPoints, POINT_RULES } from "../lib/points";
 import { SendRecordingButton } from "../components/learn/SendRecordingButton";
 import { VideoLibrary } from "../components/learn/VideoLibrary";
 import { useLearningTime } from "../lib/useLearningTime";
+import { YourLearningTime } from "../components/learn/YourLearningTime";
 
 type Tab = "daily" | "quiz" | "sequence" | "glossary" | "videos";
 
@@ -114,6 +115,10 @@ export function Education() {
           }}
         />
       )}
+
+      {/* Learning time, L4: the person being measured reads the same number
+          the owner's table does, and one sentence saying why it is kept. */}
+      <YourLearningTime profileId={me.data?.id} />
     </div>
   );
 }

@@ -25,6 +25,7 @@
 // recorded.
 
 import { supabase } from "./supabase";
+import { isMissingTable } from "./schemaErrors";
 
 /** The five places of Learn this app records time for. Mirrors the SQL check. */
 export type LearningItemKind = "tab" | "term" | "quiz" | "sequence" | "video";
@@ -234,4 +235,66 @@ export async function sendVideoWatchHeartbeat(input: {
   } catch {
     // A lesson must never stop playing because a measurement failed.
   }
+}
+
+// ---------------------------------------------------------------------------
+// Reading it back: a person's own line (L4)
+// ---------------------------------------------------------------------------
+
+export interface MyLearningTime {
+  /** Seconds on any Learn item since the start of this week (local Monday). */
+  weekSeconds: number;
+  /** Distinct lessons this person has finished, ever. */
+  videosFinished: number;
+}
+
+/**
+ * What a person is told about themselves at the bottom of Learn.
+ *
+ * Reads their OWN rows straight through the tables' select policies — no RPC,
+ * no rank involved, and nothing here can see anybody else even if it tried.
+ * That is the point of the line: a measure of somebody that the person cannot
+ * see is a measure they cannot argue with.
+ *
+ * The week total counts the 'tab' rows only, for the same reason the owner's
+ * page does — every minute in Learn lands on one, and the item rows are the
+ * same minutes named more precisely.
+ */
+export async function getMyLearningTime(
+  profileId: string,
+  now: Date = new Date(),
+): Promise<MyLearningTime> {
+  const since = startOfWeek(now).toISOString();
+  const [time, watches] = await Promise.all([
+    supabase
+      .from("learning_time")
+      .select("active_seconds")
+      .eq("profile_id", profileId)
+      .eq("item_kind", "tab")
+      .gte("last_seen_at", since),
+    supabase
+      .from("learning_video_watches")
+      .select("video_id")
+      .eq("profile_id", profileId)
+      .eq("completed", true),
+  ]);
+
+  // A database that has not had 20260992000000 yet answers "no such table" to
+  // both reads. That is not an error a crew member should ever see — the line
+  // simply does not appear, and the rest of Learn is untouched. Anything else
+  // is a real failure and is thrown, so it shows up where a developer looks.
+  if (time.error && !isMissingTable(time.error, "learning_time")) throw time.error;
+  if (watches.error && !isMissingTable(watches.error, "learning_video_watches")) {
+    throw watches.error;
+  }
+
+  const weekSeconds = (time.data ?? []).reduce(
+    (sum, r) => sum + Number((r as { active_seconds: number }).active_seconds ?? 0),
+    0,
+  );
+  const finished = new Set(
+    (watches.data ?? []).map((r) => String((r as { video_id: string }).video_id)),
+  );
+
+  return { weekSeconds, videosFinished: finished.size };
 }

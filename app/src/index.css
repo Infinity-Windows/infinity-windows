@@ -12209,3 +12209,25 @@ button.stage-chip {
     }
   }
 }
+
+/* --- Learn: the learning-time footer (2026-09-05) ---
+   The person being measured reads the same number the owner's table does. It
+   sits at the bottom of the Learn page, quiet enough not to compete with the
+   tab somebody actually came for, and separated by a rule so it reads as a
+   note about the page rather than as part of the last tab's content. */
+.learn-time-footer {
+  margin-top: 20px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.learn-time-line {
+  margin: 0;
+  font-size: 13px;
+}
+
+.learn-time-why {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
