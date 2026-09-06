@@ -9,7 +9,8 @@ import { TalkContent } from "../safety/TalkContent";
 import { useT } from "../../lib/i18n";
 
 /**
- * Sign today's toolbox talk without leaving the clock-in sheet.
+ * Sign today's toolbox talk without leaving the clock-in sheet — or the
+ * landing block, which hosts the same card since 2026-09-06.
  *
  * The morning ritual is one flow — pick the job, pick the cost code, sign the
  * talk, pick your first window, start — so the signing lives HERE, not on a
@@ -17,13 +18,20 @@ import { useT } from "../../lib/i18n";
  * flow (same submitToolboxCompletion: acknowledgment, typed name, drawn
  * signature, archived PDF); only the wrapper is compact. The full talk text
  * stays one tap away rather than filling the sheet.
+ *
+ * `onSigned` lets the host finish what the tap started: the landing block
+ * passes its own clock-in, so signing IS the punch and nobody picks the job
+ * and cost code a second time (owner ask, 2026-09-06). Optional — the sheet
+ * still mounts the card without it and keeps its own Start button.
  */
 export function ToolboxSignCard({
   profileId,
   talk,
+  onSigned,
 }: {
   profileId: string;
   talk: SafetyTalk;
+  onSigned?: () => void;
 }) {
   const queryClient = useQueryClient();
   const t = useT();
@@ -44,6 +52,12 @@ export function ToolboxSignCard({
       queryClient.invalidateQueries({ queryKey: ["toolboxToday"] });
       queryClient.invalidateQueries({ queryKey: ["toolboxHistory"] });
       queryClient.invalidateQueries({ queryKey: ["toolboxCompliance"] });
+      // Called from the mutation OPTION, not a per-call mutate(_, { onSuccess })
+      // callback on purpose: the toolboxToday refetch above is what makes the
+      // host stop rendering this card, and React Query drops a per-call
+      // callback once the component that made the call has unmounted — the
+      // clock-in would then silently never fire. Option callbacks survive.
+      onSigned?.();
     },
   });
 
