@@ -127,6 +127,10 @@ throw that escapes the handler, and a caught one is invisible without it.
 **`tsconfig` has `noUnusedLocals`.** Removing the last use of an import breaks the
 build. Let `tsc` tell you which ones to drop.
 
+**Most of the laws above are checked on every pull request.** The exact ones by
+`scripts/advisory-rules.sh`, which can go red; the rest by three prompts in
+`.checks/`, which never can — [`docs/advisory-review.md`](docs/advisory-review.md).
+
 ## Maps Interactive (the 3D fit view)
 
 The "Maps Interactive" project tab renders a tappable CSS-3D building — no
