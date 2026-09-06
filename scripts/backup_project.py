@@ -6,9 +6,14 @@ schema DDL needed to rebuild those tables, the auth roster (without password
 hashes), the storage inventory, the edge function and secret *names*, and the
 applied migration history.
 
-    scripts/backup_project.py <project-ref> <out-dir>
+    scripts/backup_project.py <project-ref> <out-dir> [date-stamp]
 
 Every statement it runs is a SELECT. It never writes to the project.
+
+The date stamp defaults to today (UTC). It used to be the literal string
+"2026-07-29", written on the day this was first used, which meant a second run
+silently overwrote the first and every file in the folder claimed to be from
+July. See scripts/backup_filename below.
 """
 from __future__ import annotations
 
@@ -435,10 +440,28 @@ def capture_migrations(ref: str) -> list[dict]:
     )
 
 
+def backup_filename(ref: str, out_dir: str, stamp: str | None = None) -> str:
+    """Where a snapshot of `ref` taken on `stamp` (default: today, UTC) lives."""
+    stamp = stamp or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return f"{out_dir}/{stamp}-{ref}-full.json"
+
+
+def newest_backup(ref: str, out_dir: str) -> str | None:
+    """The most recent snapshot of `ref` in `out_dir`, by filename.
+
+    Filenames start with an ISO date, so lexical order is chronological order.
+    """
+    import glob
+
+    found = sorted(glob.glob(f"{out_dir}/*-{ref}-full.json"))
+    return found[-1] if found else None
+
+
 def main() -> None:
-    if len(sys.argv) != 3:
+    if len(sys.argv) not in (3, 4):
         raise SystemExit(__doc__)
     ref, out_dir = sys.argv[1], sys.argv[2].rstrip("/")
+    stamp = sys.argv[3] if len(sys.argv) > 3 else None
 
     project = get(f"/projects/{ref}")
     schemas = list_schemas(ref)
@@ -515,7 +538,7 @@ def main() -> None:
     out["_edge_functions"] = capture_functions(ref)
     out["_migrations"] = capture_migrations(ref)
 
-    path = f"{out_dir}/2026-07-29-{ref}-full.json"
+    path = backup_filename(ref, out_dir, stamp)
     with open(path, "w") as fh:
         json.dump(out, fh, indent=2, sort_keys=True, default=str)
         fh.write("\n")

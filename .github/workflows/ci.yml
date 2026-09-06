@@ -194,6 +194,17 @@ jobs:
       - name: Test the test-login fence
         run: python3 scripts/test_sandbox_guard.py
 
+      # The two pieces of the nightly backup. They run unattended at 3am
+      # against the one database that holds people's hours, and both ways they
+      # can go wrong go wrong SILENTLY: a walk that misses a folder still exits
+      # 0, and a manifest that under-counts still validates. Stdlib-only; they
+      # touch no database, no key and no network.
+      - name: Test the storage backup
+        run: python3 scripts/test_backup_storage_objects.py
+
+      - name: Test the backup manifest
+        run: python3 scripts/test_backup_manifest.py
+
       # The misnamed-key check gives ADVICE to a human, so crying wolf is its
       # real failure mode: one wrong suggestion and nobody reads it again. The
       # tests check every secret this repo actually holds against every name the
