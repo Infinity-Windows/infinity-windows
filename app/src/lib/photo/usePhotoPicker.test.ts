@@ -33,19 +33,18 @@ const srcRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const THE_HOOK = "lib/photo/usePhotoPicker.tsx";
 
 /**
- * The hand-rolled camera-only pickers that predate the hook. It carries
- * `capture`, so it has the same "you cannot pick one you already took"
- * limitation the incident was about.
+ * The hand-rolled camera-only pickers that predate the hook — EMPTY as of this
+ * commit, and that is the point of still having it.
  *
- * The package sheet's "Add a photo" is off this list as of this commit — it
- * goes through the hook and offers both doors. What is left is the photo of a
- * missed unit at the wall.
+ * There were two: the package sheet's "Add a photo" and the photo of a missed
+ * unit at the wall. Both carried `capture`, so both had the same "you cannot
+ * pick one you already took" limitation the incident was about; both go
+ * through the hook now and offer both doors.
  *
  * This list is asserted to be EXACTLY what it holds. It is a record of work
- * left, not a door: a new file cannot join it without somebody editing this
- * test.
+ * left, not a door: nothing can join it without somebody editing this test.
  */
-const LEGACY_CAMERA_PICKERS = ["components/install/AddMissedUnitSheet.tsx"];
+const LEGACY_CAMERA_PICKERS: string[] = [];
 
 /**
  * The two inputs that name no `accept` on purpose, and so technically offer
