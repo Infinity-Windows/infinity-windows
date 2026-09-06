@@ -181,6 +181,14 @@ jobs:
         shell: bash
         run: scripts/advisory-agent.test.sh
 
+      # And the piece that writes on a pull request. Its failure mode is
+      # spamming: post instead of update and a busy branch buries the human
+      # conversation under a day of robot comments. Stubs gh; touches no
+      # network and no token.
+      - name: Test scripts/advisory-comment.sh
+        shell: bash
+        run: scripts/advisory-comment.test.sh
+
   supabase-tooling:
     name: Supabase merge tooling
     runs-on: ubuntu-latest

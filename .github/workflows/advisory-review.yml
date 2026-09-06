@@ -1,0 +1,253 @@
+# Read every pull request against the house rules, even when nobody is at the
+# keyboard.
+#
+# WHAT GAP THIS FILLS. Every judgement-based review in this repository today
+# happens inside a live session: somebody is running an agent, and it reads the
+# branch. A pull request opened while no session is running gets the
+# deterministic checks in ci.yml and nothing else. This is the review that
+# happens anyway.
+#
+# TWO JOBS, TWO DIFFERENT PROMISES, and the difference is the whole design.
+#
+#   "House rules (exact)" runs scripts/advisory-rules.sh, which greps for the
+#   laws in CLAUDE.md that a machine can check exactly — the same commit gives
+#   the same answer on any machine, with no model and no network. It FAILS on a
+#   hit. Because it is reproducible, the owner may mark it required in branch
+#   protection (Settings -> Branches -> master -> Require status checks, then
+#   pick "House rules (exact)"). This file does not change protection, and no
+#   workflow should: that is an owner's decision about who can merge.
+#
+#   "Advisory review" asks a model the questions a pattern cannot answer. Its
+#   conclusion is ALWAYS success, and it publishes through a pull request
+#   COMMENT rather than a review, so nothing it says can be marked required,
+#   can request changes, or can stand between a fix and an auto-merge. A wrong
+#   answer at 2 AM must cost somebody a minute of reading, never a night.
+#
+# ON A PUBLIC REPOSITORY, which changes what is safe:
+#
+#   * `pull_request`, never `pull_request_target` and never `workflow_run`.
+#     Those two run in the BASE repository's context with its secrets, against
+#     code the contributor wrote. This one runs the contributor's code with the
+#     contributor's permissions, which is the only safe way round.
+#   * fork pull requests are skipped explicitly. GitHub withholds secrets from
+#     them anyway, so the agent half could not run; skipping says so out loud
+#     rather than leaving a confusing half-run.
+#   * the token holds `contents: read` and `pull-requests: write`, and nothing
+#     else. There is no `actions: read`: the daily run count rides in the
+#     comment's own marker instead (scripts/advisory-comment.sh says why).
+#   * the diff and the pull request's text are DATA. The prompt says so to the
+#     model in as many words, the model gets Read, Grep and Glob and no shell,
+#     and its answer is parsed as strict JSON rather than executed.
+#
+# WHAT WAS NOT COPIED. The shape — rule files in markdown, run by the Claude
+# Code CLI inside an Action — is borrowed from continuedev/checks (Apache-2.0).
+# Its workflow was not: it truncates the diff at 100 KB without saying so,
+# passes no permission flags so the agent cannot actually read files, ignores
+# its own model setting, and posts blocking REQUEST_CHANGES reviews. Each of
+# those is deliberately the other way here.
+
+name: Advisory review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+# One review per pull request. A branch pushed three times in a minute should
+# leave one comment about the last commit, not three about three.
+concurrency:
+  group: advisory-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  # Pinned on purpose. The flags this depends on — -p, --model, --allowedTools,
+  # --output-format — are what fence the model in, and a CLI that renames one
+  # silently would either crash the job or run it unfenced. The script re-reads
+  # `claude --help` at run time and refuses rather than guessing; this pin is
+  # what makes that a rare event instead of a weekly one.
+  CLAUDE_CLI_VERSION: "2.1.263"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  house-rules:
+    name: House rules (exact)
+    # Fork pull requests are skipped, not half-run. See the header.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the branch as it really is
+        uses: actions/checkout@v4
+        with:
+          # The head commit, not the merge commit GitHub synthesises: the rules
+          # read the lines this pull request ADDS, and the merge commit's
+          # parentage makes that question mean something else.
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      # The version rule asks whether any OTHER open pull request has already
+      # claimed a migration number, which needs those branches to exist here.
+      - name: Fetch the other branches
+        run: git fetch --quiet origin "+refs/heads/*:refs/remotes/origin/*"
+
+      - name: Check the rules that are exact
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Through the environment rather than interpolated into the script: a
+          # branch name is contributor-controlled text, and text that reaches a
+          # shell by substitution is a command waiting to happen.
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          base="$(git merge-base "origin/$BASE_REF" HEAD)"
+          echo "Reading ${base:0:8}..$(git rev-parse --short HEAD)"
+          scripts/advisory-rules.sh --base "$base" --head HEAD | tee "$GITHUB_STEP_SUMMARY"
+          exit "${PIPESTATUS[0]}"
+
+  # ---------------------------------------------------------------------------
+  advisory:
+    name: Advisory review
+    # `always()` so the reading still happens when the exact rules went red —
+    # that is exactly the pull request somebody most wants a second opinion on.
+    needs: [house-rules]
+    if: always() && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      tooling: ${{ steps.review.outputs.tooling }}
+    steps:
+      - name: Checkout the branch as it really is
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Fetch the other branches
+        run: git fetch --quiet origin "+refs/heads/*:refs/remotes/origin/*"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      # Only when there is something to pay with. With neither secret set the
+      # deterministic half still ran, and the comment says which secret would
+      # turn this half on.
+      - name: Is there a credential?
+        id: cred
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          kind="$(scripts/advisory-agent.sh --credential-kind)"
+          echo "kind=$kind" >>"$GITHUB_OUTPUT"
+          echo "Credential: $kind"   # a word, never a value
+
+      - name: Install the Claude Code CLI
+        if: steps.cred.outputs.kind != 'none'
+        run: |
+          npm install -g "@anthropic-ai/claude-code@${CLAUDE_CLI_VERSION}"
+          claude --version
+          # Printed so the flags this depends on are visible in the log the day
+          # one of them changes. The script checks for them too and refuses to
+          # run unfenced.
+          claude --help || true
+
+      - name: Read the pull request
+        id: review
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          PR: ${{ github.event.pull_request.number }}
+          EXACT_RESULT: ${{ needs.house-rules.result }}
+          # See the note in the other job: a branch name is contributor text.
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          # GitHub runs this with `-e`. Turn that off, deliberately and first:
+          # the exact rules exit 1 when they find something, and that is
+          # precisely the pull request whose comment matters most. With `-e`
+          # left on, the step would die on the line below and the comment would
+          # never be written.
+          set +e
+          set -uo pipefail
+          base="$(git merge-base "origin/$BASE_REF" HEAD)"
+          runs="$(scripts/advisory-comment.sh --pr "$PR" --count)"
+          next=$((runs + 1))
+
+          # The exact half is run AGAIN here rather than passed between jobs as
+          # an artifact. That is the one thing it promises — same commit, same
+          # answer — so running it twice costs three seconds and proves it,
+          # while artifact plumbing would only have to be maintained.
+          scripts/advisory-rules.sh --base "$base" --head HEAD >exact.txt
+          exact_rc=$?
+
+          scripts/advisory-agent.sh \
+            --base "$base" --head HEAD \
+            --out agent.md --status-file agent.status \
+            --runs-today "$runs"
+          status="$(cat agent.status 2>/dev/null || echo broken)"
+          echo "tooling=$status" >>"$GITHUB_OUTPUT"
+
+          {
+            echo "## Advisory review"
+            echo
+            echo "Read \`$(git rev-parse --short HEAD)\` against \`${base:0:8}\`. This comment is updated in place on every push; it never blocks a merge."
+            echo
+            if [ "$EXACT_RESULT" = "failure" ]; then
+              echo "**House rules (exact): something to fix.** That check is the one that can go red, and it did."
+            elif [ "$EXACT_RESULT" = "success" ]; then
+              echo "**House rules (exact): clean.**"
+            else
+              echo "**House rules (exact): did not finish** (\`$EXACT_RESULT\`). What follows was measured here instead."
+            fi
+            echo
+            if [ "$exact_rc" -ne 0 ]; then
+              echo '```'
+              cat exact.txt
+              echo '```'
+            else
+              echo "_$(tail -1 exact.txt)_"
+            fi
+            echo
+            echo "### Read by a model"
+            cat agent.md
+            echo
+            echo "---"
+            # Not "run $next of 5": the sixth push of a day still leaves a
+            # comment, it just does not pay for the reading half, and "run 6 of
+            # 5" reads like a bug rather than like a budget.
+            echo "<sub>Run $next today, and the reading half stops after five · <a href=\"$RUN_URL\">the log</a> · rules in <code>scripts/advisory-rules.sh</code>, checks in <code>.checks/</code>, all of it explained in <code>docs/advisory-review.md</code></sub>"
+          } >body.md
+
+          scripts/advisory-comment.sh --pr "$PR" --body-file body.md --runs "$next"
+          # Always. Nothing this job decides may fail a pull request.
+          exit 0
+
+  # ---------------------------------------------------------------------------
+  # The advisory job is green even when its own tooling let us down, which is
+  # the right answer for the pull request and the wrong one for the owner: a
+  # review that has quietly stopped working looks exactly like a review that
+  # found nothing. So this says so in Slack, as a WARNING rather than a
+  # failure, and only when the tooling itself broke — never for a finding, and
+  # never for a deliberate skip.
+  notify-failure:
+    name: Tell Slack the review stopped working
+    needs: [advisory]
+    if: needs.advisory.outputs.tooling == 'broken'
+    uses: ./.github/workflows/notify-failure.yml
+    with:
+      workflow: ${{ github.workflow }}
+      kind: warning
+      cause: >-
+        The advisory pull-request review could not read a pull request — the
+        Claude Code CLI, its flags or its credential, not the code being
+        reviewed.
+      detail: >-
+        Nothing is blocked and no pull request went red; the exact house rules
+        still ran. Open the run to see which part gave way. If this is the
+        credential, docs/advisory-review.md says which secret to set.
+    secrets: inherit

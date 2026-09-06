@@ -35,6 +35,12 @@
 #                             [--checks-dir .checks] [--runs-today N]
 #   scripts/advisory-agent.sh --credential-kind    # prints oauth|api-key|none
 #
+# --status-file writes one word for the workflow to read: `ok` (checks ran and
+# every answer was understood), `skipped` (nothing ran, for a reason a person
+# chose — no credential, too big, over the daily cap, no matching paths), or
+# `broken` (the tooling itself let us down: no CLI, a CLI that crashed, an
+# answer that would not parse). Only `broken` is worth waking anybody for.
+#
 # Env: CLAUDE_BIN, ADVISORY_REPO, ADVISORY_MAX_DIFF_BYTES,
 #      ADVISORY_CHUNK_BYTES, ADVISORY_MAX_RUNS, ADVISORY_MODEL_DEFAULT.
 set -uo pipefail
@@ -46,6 +52,7 @@ CHECKS_DIR=""
 OUT=""
 RUNS_TODAY=0
 CRED_ONLY=0
+STATUS_FILE=""
 CLAUDE_BIN="${CLAUDE_BIN:-claude}"
 MAX_TOTAL="${ADVISORY_MAX_DIFF_BYTES:-409600}"
 CHUNK="${ADVISORY_CHUNK_BYTES:-204800}"
@@ -64,6 +71,7 @@ while [ $# -gt 0 ]; do
     --checks-dir) CHECKS_DIR="${2:-}"; shift 2 ;;
     --runs-today) RUNS_TODAY="${2:-0}"; shift 2 ;;
     --credential-kind) CRED_ONLY=1; shift ;;
+    --status-file) STATUS_FILE="${2:-}"; shift 2 ;;
     -h|--help) sed -n '2,45p' "$0"; exit 0 ;;
     *) echo "advisory-agent: unknown argument $1" >&2; exit 2 ;;
   esac
@@ -77,10 +85,16 @@ trap 'rm -rf "$WORK"' EXIT
 emit() { if [ -n "$OUT" ]; then printf '%s\n' "$1" >>"$OUT"; else printf '%s\n' "$1"; fi; }
 [ -n "$OUT" ] && : >"$OUT"
 
+# One word for the workflow, so a green job can still say that its tooling
+# broke. Written last-one-wins, so `broken` set during a run survives.
+say_status() { [ -n "$STATUS_FILE" ] && printf '%s\n' "$1" >"$STATUS_FILE"; return 0; }
+say_status skipped
+
 # The one exit door. Everything that stops the agent half leaves through here,
 # as a sentence a person can act on, and with a zero exit status.
-stop() {
+stop() { # sentence [status]
   emit "**The review by reading was not run.** $1"
+  say_status "${2:-skipped}"
   exit 0
 }
 
@@ -162,7 +176,7 @@ done
 # The tool
 # ---------------------------------------------------------------------------
 command -v "$CLAUDE_BIN" >/dev/null 2>&1 ||
-  stop "The Claude Code CLI is not on the PATH here, so nothing was asked. The exact house rules above still ran."
+  stop "The Claude Code CLI is not on the PATH here, so nothing was asked. The exact house rules above still ran." broken
 
 HELP="$("$CLAUDE_BIN" --help 2>&1)"
 missing=""
@@ -170,7 +184,7 @@ printf '%s' "$HELP" | grep -qE -- '--allowedTools|--allowed-tools' || missing="$
 printf '%s' "$HELP" | grep -q -- '--output-format' || missing="$missing --output-format"
 printf '%s' "$HELP" | grep -qE -- '(^|[^a-z-])-p([^a-z-]|$)|--print' || missing="$missing --print"
 [ -z "$missing" ] ||
-  stop "This version of the Claude Code CLI does not offer$missing, and the checks are only safe to run with the tools fenced off. Pin a version that has them (docs/advisory-review.md names the one this was written against)."
+  stop "This version of the Claude Code CLI does not offer$missing, and the checks are only safe to run with the tools fenced off. Pin a version that has them (docs/advisory-review.md names the one this was written against)." broken
 
 TOOLS_FLAG="--allowedTools"
 printf '%s' "$HELP" | grep -q -- '--allowedTools' || TOOLS_FLAG="--allowed-tools"
@@ -322,6 +336,7 @@ PY
 ran=0
 total_findings=0
 sections=0
+broke=0
 
 for check in "$CHECKS_DIR"/*.md; do
   [ -f "$check" ] || continue
@@ -416,6 +431,7 @@ for check in "$CHECKS_DIR"/*.md; do
         ;;
       TOOLING)
         printf -- '- _%s_\n' "$f1" >>"$WORK/section.$name"
+        broke=1
         ;;
     esac
   done <"$WORK/answers.$name"
@@ -440,6 +456,7 @@ fi
 if [ "$ran" -gt 0 ]; then
   emit ""
   emit "_Asked $ran check(s), paid for by $CRED_WORDS._"
+  [ "$broke" -eq 1 ] && say_status broken || say_status ok
 fi
 
 if [ -s "$WORK/skipped" ]; then

@@ -112,7 +112,8 @@ run() {
     ADVISORY_HEAD="HEAD" \
     ADVISORY_MAX_DIFF_BYTES="${MAX_DIFF_OVERRIDE:-409600}" \
     ADVISORY_CHUNK_BYTES="${CHUNK_OVERRIDE:-204800}" \
-    bash "$SCRIPT" --checks-dir "$root/checks" --runs-today "${RUNS_OVERRIDE:-0}" 2>&1)"
+    bash "$SCRIPT" --checks-dir "$root/checks" --status-file "$root/status.txt" \
+      --runs-today "${RUNS_OVERRIDE:-0}" 2>&1)"
   RC=$?
   if [ "$VERBOSE" = 1 ]; then
     echo "--- $current (rc=$RC)"
@@ -170,6 +171,11 @@ assert_file_has() { # file needle
   if [ -f "$1" ] && grep -qF -- "$2" "$1"; then ok; else bad "expected $1 to contain \"$2\""; fi
 }
 
+assert_status() { # the one word the workflow reads
+  if [ -f "$root/status.txt" ] && [ "$(cat "$root/status.txt")" = "$1" ]; then ok
+  else bad "expected status \"$1\", got \"$(cat "$root/status.txt" 2>/dev/null)\""; fi
+}
+
 assert_file_lacks() {
   if [ -f "$1" ] && grep -qF -- "$2" "$1"; then bad "did not expect $1 to contain \"$2\""; else ok; fi
 }
@@ -191,6 +197,8 @@ assert_rc 0
 assert_has "The review by reading was not run."
 assert_has "CLAUDE_CODE_OAUTH_TOKEN"
 assert_has "ANTHROPIC_API_KEY"
+# A missing secret is a choice somebody made, not a broken tool: nobody is woken.
+assert_status "skipped"
 
 new_case "with no CLI on the PATH it says so and stops"
 touch_catalog
@@ -199,6 +207,8 @@ CLAUDE_BIN_OVERRIDE="claude-is-not-installed-here" run
 unset CLAUDE_BIN_OVERRIDE
 assert_rc 0
 assert_has "not on the PATH"
+# The workflow installs the CLI, so its absence means that install failed.
+assert_status "broken"
 
 new_case "a CLI with no way to fence the tools is refused"
 touch_catalog
@@ -209,6 +219,7 @@ run
 assert_rc 0
 assert_has "does not offer"
 assert_has "allowedTools"
+assert_status "broken"
 
 new_case "a model that answers with prose is a note, not a finding and not a failure"
 touch_catalog
@@ -217,6 +228,7 @@ STUB_REPLY_TEXT='{"type":"result","is_error":false,"result":"Looks fine to me!"}
 run
 assert_rc 0
 assert_has "something other than JSON"
+assert_status "broken"
 
 new_case "a CLI that crashes without answering is a note, not a failure"
 touch_catalog
@@ -255,6 +267,7 @@ RUNS_OVERRIDE=5 run
 unset RUNS_OVERRIDE
 assert_rc 0
 assert_has "which is the cap"
+assert_status "skipped"
 if [ -f "$root/prompt.txt" ]; then bad "the model was asked anyway"; else ok; fi
 
 new_case "a file too big to send is named, not truncated in silence"
@@ -287,6 +300,7 @@ head_commit "Add the clock-in button to the phrasebook"
 run
 assert_rc 0
 assert_has "found nothing to raise"
+assert_status "ok"
 
 # ---------------------------------------------------------------------------
 # Findings
