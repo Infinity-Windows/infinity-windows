@@ -24,13 +24,18 @@
 //
 // NO SDK. The official Deno SDK would be a remote import in all 23 functions —
 // cold-start weight and a supply-chain surface, in a public repo, for something
-// that is off by default. One POST to Sentry's ingest endpoint does the whole
-// job, and the rules around it live in sentryCore.ts where vitest runs them.
+// that is off by default. One POST of one envelope to Sentry's ingest endpoint
+// does the whole job, and the rules around it live in sentryCore.ts where
+// vitest runs them. It posts to /envelope/ — /store/ is retired — and says so
+// in the function log if Sentry ever answers with anything but ok, because a
+// monitor being quietly refused looks exactly like a monitor with nothing to
+// report.
 
 import { corsHeaders, jsonResponse } from "./openai.ts";
 import {
   UNEXPECTED_ERROR,
   buildFunctionEvent,
+  envelopeBody,
   ingestHeaders,
   makeReportCaughtError,
   makeWithSentry,
@@ -84,10 +89,17 @@ export async function captureFunctionError(
     const res = await fetch(target.url, {
       method: "POST",
       headers: ingestHeaders(target),
-      body: JSON.stringify(event),
+      body: envelopeBody(event, new Date().toISOString()),
       // A monitor must never be the reason a request hangs.
       signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
     });
+    if (!res.ok) {
+      // Say so. A monitor that is being refused and never mentions it looks
+      // exactly like a monitor with nothing to report — which is how a project
+      // ends up believing it is watched when it is not. Status only: the
+      // endpoint and the key never go in a log line.
+      console.warn("Sentry refused a crash report:", res.status);
+    }
     return res.ok;
   } catch {
     return false;

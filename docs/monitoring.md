@@ -182,6 +182,11 @@ counts as noise.
 | `supabase/functions/_shared/sentryCore.ts` | the function-side rules, unit-tested |
 | `supabase/functions/_shared/sentry.ts` | the ten lines that touch `Deno.env` |
 
+The function side has no SDK: it POSTs one envelope to Sentry's `/envelope/`
+ingest endpoint (`/store/` is retired) and writes a line to the function log if
+Sentry answers with anything but ok — a monitor being quietly refused looks
+exactly like a monitor with nothing to report.
+
 The scrubber has one implementation on purpose. Two copies would be two
 scrubbers that agree on the day they are written and disagree the first time
 somebody adds a key to one of them.

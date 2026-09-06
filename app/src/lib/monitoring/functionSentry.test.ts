@@ -19,6 +19,7 @@ import {
   UNEXPECTED_ERROR,
   buildFunctionEvent,
   describeThrowable,
+  envelopeBody,
   ingestHeaders,
   makeReportCaughtError,
   makeWithSentry,
@@ -41,8 +42,10 @@ function jsonResponse(body: unknown, status: number): Response {
 
 describe("parseDsn", () => {
   it("finds the ingest endpoint and the public key", () => {
+    // /envelope/, not the retired /store/. A monitor pointed at a dead
+    // endpoint installs cleanly and then reports nothing, forever.
     expect(parseDsn(DSN)).toEqual({
-      url: "https://o4507.ingest.sentry.io/api/42/store/",
+      url: "https://o4507.ingest.sentry.io/api/42/envelope/",
       key: "abc123",
     });
   });
@@ -60,7 +63,37 @@ describe("parseDsn", () => {
   it("names the key in the header and never anything secret", () => {
     const headers = ingestHeaders(parseDsn(DSN)!);
     expect(headers["X-Sentry-Auth"]).toContain("sentry_key=abc123");
-    expect(headers["Content-Type"]).toBe("application/json");
+    expect(headers["Content-Type"]).toBe("application/x-sentry-envelope");
+  });
+});
+
+describe("envelopeBody", () => {
+  const event = buildFunctionEvent("ask", null, new Error("boom"), "e1", 1);
+
+  it("is three JSON lines: the envelope, what the item is, and the item", () => {
+    const lines = envelopeBody(event, "2026-09-06T00:00:00.000Z").split("\n");
+    expect(JSON.parse(lines[0])).toEqual({
+      event_id: "e1",
+      sent_at: "2026-09-06T00:00:00.000Z",
+    });
+    expect(JSON.parse(lines[1])).toEqual({ type: "event" });
+    expect(JSON.parse(lines[2])).toMatchObject({ event_id: "e1", level: "error" });
+    // A trailing newline ends the item, which is what "no length declared"
+    // means in the envelope format.
+    expect(lines[3]).toBe("");
+  });
+
+  it("never lets a newline inside the error split the envelope early", () => {
+    const multiline = buildFunctionEvent(
+      "ask",
+      null,
+      new Error("line one\nline two"),
+      "e2",
+      1,
+    );
+    const lines = envelopeBody(multiline, "2026-09-06T00:00:00.000Z").split("\n");
+    expect(lines).toHaveLength(4);
+    expect(JSON.parse(lines[2]).exception.values[0].value).toBe("line one\nline two");
   });
 });
 

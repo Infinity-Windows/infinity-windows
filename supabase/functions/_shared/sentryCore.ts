@@ -33,13 +33,19 @@ export interface SentryTarget {
  * A DSN reads `https://<key>@<host>/<projectId>`. Returns null for anything
  * that does not, because guessing at a malformed DSN would mean posting a crash
  * report at whatever host happened to parse out of it.
+ *
+ * THE ENVELOPE ENDPOINT, not `/store/`. Sentry retired `/store/` — it is the
+ * legacy path kept alive for old SDKs, and everything current posts envelopes
+ * to `/envelope/`. Sending to a retired endpoint is the worst kind of broken
+ * for a monitor: it installs, it never complains, and it reports nothing
+ * forever. See envelopeBody below for what goes in the body.
  */
 export function parseDsn(raw: string): SentryTarget | null {
   try {
     const u = new URL(raw.trim());
     const projectId = u.pathname.replace(/^\//, "");
     if (!u.username || !projectId || !/^\d+$/.test(projectId)) return null;
-    return { url: `${u.protocol}//${u.host}/api/${projectId}/store/`, key: u.username };
+    return { url: `${u.protocol}//${u.host}/api/${projectId}/envelope/`, key: u.username };
   } catch {
     return null;
   }
@@ -146,10 +152,24 @@ export function buildFunctionEvent(
 /** The headers Sentry's ingest wants. The key is public; there is no signature. */
 export function ingestHeaders(target: SentryTarget): Record<string, string> {
   return {
-    "Content-Type": "application/json",
+    "Content-Type": "application/x-sentry-envelope",
     "X-Sentry-Auth":
       `Sentry sentry_version=7, sentry_client=forge-edge/1, sentry_key=${target.key}`,
   };
+}
+
+/**
+ * One event as an envelope: three newline-separated JSON lines — the envelope's
+ * own header, then a header naming what the item is, then the item.
+ *
+ * An item header may declare a `length`; leaving it off means "read to the next
+ * newline", which is why every line here is written with JSON.stringify and
+ * nothing else — a raw newline inside the event would end the item early, and
+ * JSON.stringify escapes them.
+ */
+export function envelopeBody(event: ScrubbableEvent, sentAtIso: string): string {
+  const header = { event_id: event.event_id, sent_at: sentAtIso };
+  return `${JSON.stringify(header)}\n${JSON.stringify({ type: "event" })}\n${JSON.stringify(event)}\n`;
 }
 
 export interface WithSentryDeps {
