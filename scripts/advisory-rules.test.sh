@@ -417,6 +417,24 @@ run
 assert_rc 1
 assert_has "policy-without-partner-guard"
 
+new_case "a table name this cannot read is a note, not three findings"
+# `sed s/.../\2/` hands back its INPUT when the pattern misses, so a quoted
+# identifier used to become the whole statement text and get spliced raw into
+# three greps. The correct answer is that nothing was measured.
+base_commit
+cat >"$root/supabase/migrations/20300101000000_audit.sql" <<'SQL'
+create table "Audit Log" (id uuid primary key, note text);
+alter table "Audit Log" enable row level security;
+revoke all on table "Audit Log" from anon, authenticated;
+SQL
+head_commit "Keep a log of who changed what"
+run
+assert_rc 0
+assert_lacks "table-without-rls"
+assert_lacks "table-keeps-default-grants"
+assert_lacks "policy-without-partner-guard"
+assert_has "whose name this cannot read"
+
 new_case "a new table with no row security is reported"
 base_commit
 cat >"$root/supabase/migrations/20300101000000_tailgate.sql" <<'SQL'

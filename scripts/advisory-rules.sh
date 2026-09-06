@@ -64,6 +64,23 @@ fi
 hits=0
 notes=0
 
+# A name a `sed` substitution pulled out of a statement, or nothing.
+#
+# WHY THIS IS A FUNCTION AND NOT AN `if`. `sed s/pattern/\2/` returns its INPUT
+# unchanged when the pattern does not match, which for these rules means
+# `$short` silently becomes the whole statement text — and that text was then
+# spliced raw into three `grep -E` patterns. A table written
+# `create table "Audit Log" (...)` produced three findings whose wording was
+# the statement quoting itself, on a check that can block a merge, and the
+# parentheses in it made the pattern an invalid regular expression as well.
+# A name this cannot read is UNMEASURED, which is a note, never a finding.
+plain_name() { # candidate
+  case "$1" in
+    ""|*[!a-z0-9_.]*) return 1 ;;
+  esac
+  return 0
+}
+
 # One finding. `where` is file:line — or a commit sha for the subject rule, the
 # only law here that is not about a place in a file.
 report() {
@@ -279,7 +296,10 @@ for f in $new_migrations; do
     [ -n "$ln" ] || continue
     t="$(printf '%s' "$stmt" | sed -E 's/^create table (if not exists )?([a-z0-9_.]+).*/\2/')"
     short="${t#public.}"
-    [ -n "$short" ] || continue
+    if ! plain_name "$short"; then
+      note "$f:$ln creates a table whose name this cannot read — a quoted identifier, most likely. Its row security, its grants and its partner guard were NOT checked; read them by hand."
+      continue
+    fi
 
     printf '%s\n' "$stmts" | grep -qE 'alter table (only )?(public\.)?'"$short"' .*enable row level security' ||
       report "$f:$ln" table-without-rls \
@@ -307,6 +327,10 @@ for f in $new_migrations; do
     printf '%s' "$stmt" | grep -q 'security definer' || continue
     sig="$(printf '%s' "$stmt" | sed -E 's/^create (or replace )?function ([a-z0-9_.]+)\(.*/\2/')"
     short="${sig#public.}"
+    if ! plain_name "$short"; then
+      note "$f:$ln declares a SECURITY DEFINER function whose name this cannot read. Its search path and its grant were NOT checked; read them by hand."
+      continue
+    fi
 
     printf '%s' "$stmt" | grep -q 'set search_path' ||
       report "$f:$ln" definer-without-search-path \
