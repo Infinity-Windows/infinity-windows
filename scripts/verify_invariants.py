@@ -25,14 +25,19 @@ the migration files:
                    or TRUNCATE profiles. 20260729200000 and 20260729200100.
   sandbox fence    sandbox_guard_census() is empty, and there are at most
                    two test logins. 20260967000000.
+  rls everywhere   every table in public a client role can reach has
+                   row-level security ON. Empty on production from the first
+                   run (2026-09-06), so it fails from the second.
+  nobody calls     no routine in public is executable by anon except
+  anonymously      ANON_FUNCTIONS_ALLOWED (empty), and the default privileges
+                   would not hand the next one to anon. 20260992000000 swept
+                   152 of these; this keeps the next migration from adding
+                   one back.
 
-Three more are ADVISORY: listed in the output, never failing. Tables
-reachable by a client role with RLS switched off; functions anon may execute
-(20260992000000 revoked all of them, keep-list ANON_FUNCTIONS_ALLOWED); and
-whether the default privileges would hand the NEXT function to anon. They were
-true of parts of this schema before anyone looked, and a gate that is red on
-its first run is a gate people learn to skip. When the list is empty on
-production, promote them; the test suite pins the shape.
+All three of those started life as advisories — listed, never failing —
+because they were true of parts of this schema before anyone looked, and a
+gate that is red on its first run is a gate people learn to skip. Each was
+promoted the day production showed the list empty.
 
 READ-ONLY. The SQL is scripts/invariants.sql, run through scripts/pgq.sh,
 which refuses anything that is not a SELECT.
@@ -188,28 +193,35 @@ def judge(report: dict) -> tuple[list[str], list[str], list[str]]:
             "(the QA installer and the QA foreman). A third login inside the sandbox is news."
         )
 
-    # --- advisories ----------------------------------------------------------
-    rls_off = report.get("rls_off") or []
-    if rls_off:
-        advisories.append(
-            f"{len(rls_off)} table(s) a client role can reach have row-level security OFF: "
-            + ", ".join(rls_off)
-            + ". Not failing yet; promote when this list is empty on production."
+    # --- rls everywhere -------------------------------------------------------
+    rls_off = report.get("rls_off")
+    if rls_off is None:
+        failures.append("Could not list tables without row-level security (no rls_off in the report).")
+    for table in rls_off or []:
+        failures.append(
+            f"{table} has row-level security OFF and a client role can reach it, so every policy "
+            "written for it is decoration: `alter table public.{table} enable row level security;` "
+            "in a migration, then the policies it needs."
+            .replace("{table}", table)
         )
-    anon_fns = [f for f in (report.get("anon_functions") or []) if f not in ANON_FUNCTIONS_ALLOWED]
+
+    # --- nobody calls anonymously --------------------------------------------
+    anon_all = report.get("anon_functions")
+    if anon_all is None:
+        failures.append("Could not list anon-executable functions (no anon_functions in the report).")
+    anon_fns = [f for f in (anon_all or []) if f not in ANON_FUNCTIONS_ALLOWED]
     if anon_fns:
-        advisories.append(
+        failures.append(
             f"{len(anon_fns)} function(s) an anonymous caller may execute: "
             + ", ".join(anon_fns)
-            + ". 20260992000000 revoked EXECUTE from anon on every routine in public; "
-            "a new one is either granted back on purpose (and listed in ANON_FUNCTIONS_ALLOWED) "
-            "or has `revoke all on function ... from public, anon` in its migration."
+            + ". 20260992000000 revoked EXECUTE from anon on every routine in public; a new one "
+            "is either granted back on purpose (and listed in ANON_FUNCTIONS_ALLOWED in this file) "
+            "or carries `revoke all on function ... from public, anon` in its migration."
         )
     if report.get("anon_default_execute"):
-        advisories.append(
-            "The default privileges for role postgres in schema public grant EXECUTE to anon "
-            "or PUBLIC again, so the next function created is callable signed-out. "
-            "20260992000000 section 5 is the fix."
+        failures.append(
+            "The default privileges for role postgres grant EXECUTE to anon or PUBLIC again, so "
+            "the next function created is callable signed-out. 20260992000000 section 5 is the fix."
         )
 
     reads = sum(1 for p in policies if p["schema"] == "public" and _reads(p) and _client_facing(p.get("roles") or []))
@@ -219,6 +231,8 @@ def judge(report: dict) -> tuple[list[str], list[str], list[str]]:
         f"{len(COST_TABLES) + len(PAY_TABLES)} money and pay tables checked",
         f"profiles credential columns: {len(report.get('profile_columns') or [])} role/column pairs checked",
         f"sandbox fence: {len(unguarded or [])} unguarded table(s); {logins} test login(s)",
+        f"{len(rls_off or [])} reachable table(s) without RLS; "
+        f"{len(anon_all or [])} anon-executable function(s) (allowed: {len(ANON_FUNCTIONS_ALLOWED)})",
     ]
     return failures, advisories, summary
 
