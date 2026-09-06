@@ -139,6 +139,36 @@ async function openTheSheet(page: Page) {
   await expect(page.getByRole("dialog", { name: "Add job photos" })).toBeVisible();
 }
 
+/**
+ * Wait for the bottom sheet to stop moving before photographing it.
+ *
+ * `.sheet-enter` slides the sheet a full height up and fades it in over 220ms.
+ * A screenshot taken the instant the tiles become VISIBLE catches all of that
+ * half-done: the whole page dimmed by the opacity ramp, the sheet still pushed
+ * down, and its two buttons sliced off by the bottom of the viewport with the
+ * tab bar showing through them — a collision the CSS does not actually have
+ * (`bottom: var(--above-tabbar)` parks the settled sheet above the bar).
+ *
+ * The wait is also the assertion: the sheet has landed when its bottom edge is
+ * at or above the top of the tab bar, and that is the thing the shot is for.
+ */
+async function settleSheetAboveTabbar(page: Page) {
+  const sheet = page.locator(".jobphoto-sheet");
+  await expect(sheet).toBeVisible();
+  await expect
+    .poll(async () => {
+      const s = await sheet.boundingBox();
+      const bar = await page.locator("nav.tabbar").boundingBox();
+      if (!s || !bar) return false;
+      const landed = Math.round(s.y + s.height) <= Math.round(bar.y);
+      // Reduced motion drops the slide and keeps the fade, so the box can be
+      // right while the sheet is still see-through.
+      const opaque = await sheet.evaluate((el) => getComputedStyle(el).opacity === "1");
+      return landed && opaque;
+    })
+    .toBe(true);
+}
+
 test("Upload files opens the phone's own picker, and two picked photos both reach the queue", async ({
   page,
 }) => {
@@ -227,6 +257,7 @@ test("the capture sheet offers both doors: the camera, and everything else on th
   await openTheSheet(page);
   await expect(page.getByText("Use camera")).toBeVisible();
   await expect(page.getByText("Upload files")).toBeVisible();
+  await settleSheetAboveTabbar(page);
 
   mkdirSync(SHOTS, { recursive: true });
   await page.screenshot({ path: `${SHOTS}/upload-390-after.png` });
