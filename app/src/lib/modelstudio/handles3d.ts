@@ -171,6 +171,14 @@ export class StudioHandles3d {
     mesh.renderOrder = 999;
     mesh.position.copy(at);
     this.group.add(mesh);
+    // The raycast below reads the sphere's WORLD matrix, and three.js only
+    // refreshes that when the scene next renders — which here is on demand,
+    // not every frame. A grab that lands before that frame (a fast tap-then-
+    // drag on a phone; the browser test does exactly this) was testing a
+    // sphere still sitting at the origin, missed, and orbited the camera
+    // instead. Settle the matrix now so the handle is grabbable the moment
+    // it exists.
+    mesh.updateMatrixWorld(true);
     this.handles.push({ kind, target, axis: axis.clone().normalize(), mesh });
   }
 
@@ -208,6 +216,8 @@ export class StudioHandles3d {
     const p = this.ndc(e);
     if (!p) return;
     this.ray.setFromCamera(p, this.host.camera as THREE.PerspectiveCamera);
+    // Four spheres; cheap. Guards the same not-yet-rendered case as add().
+    this.group.updateMatrixWorld(true);
     const hit = this.ray.intersectObjects(this.handles.map((h) => h.mesh), false)[0];
     if (!hit) return;
     const def = this.handles.find((h) => h.mesh === hit.object);

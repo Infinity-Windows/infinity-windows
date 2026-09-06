@@ -128,15 +128,49 @@ async function useOutline(
 
 async function openStudio(page: import("@playwright/test").Page) {
   await page.goto(`/studio/j/${BLACK22.projectId}`);
+  // Wait for the WHOLE plan, not the first wall of it: the walls arrive in
+  // stages and the 3D wall edges are built after them, and a unit added in
+  // between can snap to whichever edge exists at that instant. Settled =
+  // every wall has its edge and both counts held for two polls (polling is
+  // per animation frame). Plain boolean on purpose: a predicate that
+  // returns a Promise is taken as truthy without being awaited.
   await page.waitForFunction(
     () => {
-      const bp = (window as { __studio?: unknown }).__studio as
-        | { model?: { floorplan?: { getWalls?: () => unknown[] } } }
-        | undefined;
-      return (bp?.model?.floorplan?.getWalls?.()?.length ?? 0) > 0;
+      const w = window as any;
+      const bp = w.__studio;
+      const walls = bp?.model?.floorplan?.getWalls?.()?.length ?? 0;
+      const edges = bp?.three?.floorplan?.edges?.length ?? 0;
+      const last = w.__studioSettle ?? { walls: -1, edges: -1, held: 0 };
+      const same = last.walls === walls && last.edges === edges;
+      w.__studioSettle = { walls, edges, held: same ? last.held + 1 : 0 };
+      return walls > 0 && edges >= walls && w.__studioSettle.held >= 2;
     },
     undefined,
-    { timeout: 60_000 },
+    { timeout: 60_000, polling: "raf" },
+  );
+}
+
+/**
+ * Selecting a unit glides the camera toward it for 800 ms (vendor
+ * three/main.ts, animejs). Anything projected to screen pixels during that
+ * glide is stale by the time the mouse lands — "pulling the top handle"
+ * grabbed thin air and orbited instead, one run in three. Wait for the
+ * camera to hold still for two frames before reading screen positions.
+ */
+async function waitForCameraToSettle(page: import("@playwright/test").Page) {
+  await page.waitForFunction(
+    () => {
+      const w = window as any;
+      const c = w.__studio?.three?.camera;
+      if (!c) return false;
+      const now = [c.position.x, c.position.y, c.position.z].map((v: number) => Math.round(v * 10));
+      const last = w.__cameraSettle ?? { pos: [NaN, NaN, NaN], held: 0 };
+      const same = last.pos.every((v: number, i: number) => v === now[i]);
+      w.__cameraSettle = { pos: now, held: same ? last.held + 1 : 0 };
+      return w.__cameraSettle.held >= 2;
+    },
+    undefined,
+    { timeout: 15_000, polling: "raf" },
   );
 }
 
@@ -453,14 +487,29 @@ test("3D drag handles: pulling the top handle makes the unit taller", async ({
   })()`);
   const { x: cx, y: cy } = centre as { x: number; y: number };
   await page.mouse.click(cx, cy);
+  // Wait for the UNIT's handles, not the first four spheres to appear. A tap
+  // on a just-placed unit can select the wall behind it first (the vendor's
+  // hover raycast runs before the unit's matrix has caught up with
+  // placeInRoom) and the page's still-click fallback then swaps to the unit
+  // a frame later. The wall's handles sit at the wall's ends; the unit's
+  // bracket the unit. Reading the first group gave a sphere that was gone
+  // by the time the mouse arrived — one run in three, orbit instead of drag.
   await page.waitForFunction(() => {
     const bp = (window as any).__studio;
+    const it = bp.model.scene.getItems()[0];
+    if (!it) return false;
     const scene = bp.model.scene.getScene();
-    // The handles group: four spheres drawn on top of everything.
-    return scene.children.some(
+    const group = scene.children.find(
       (g: any) => g.isGroup && g.children.length === 4 && g.renderOrder === 999,
     );
-  });
+    if (!group) return false;
+    const halfSpan = (it.metadata.unitConfig.panels.reduce((t: number, p: any) => t + p.widthMm, 0) / 10) / 2 + 40;
+    return group.children.every(
+      (m: any) => Math.abs(m.position.x - it.position.x) <= halfSpan && Math.abs(m.position.z - it.position.z) <= 40,
+    );
+  }, undefined, { timeout: 15_000 });
+
+  await waitForCameraToSettle(page);
 
   const before = await page.evaluate(() => {
     const bp = (window as any).__studio;
