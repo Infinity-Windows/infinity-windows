@@ -2226,6 +2226,15 @@ export const CATALOG = {
     en: "These are part of the total above, not extra time on top of it.",
     es: "Esto es parte del total de arriba, no tiempo adicional.",
   },
+  // The second half of the owner's question — "and on what item". The chips
+  // above these say how long on glossary terms; these say WHICH terms.
+  "ltime.items": { en: "What they were on", es: "En qué estuvieron" },
+  "ltime.visitsOne": { en: "1 visit", es: "1 visita" },
+  "ltime.visitsMany": { en: "{count} visits", es: "{count} visitas" },
+  "ltime.moreItems": {
+    en: "and {count} more",
+    es: "y {count} más",
+  },
   "ltime.lessons": { en: "Lessons", es: "Lecciones" },
   "ltime.timesWatched": { en: "watched {count}×", es: "visto {count}×" },
   "ltime.percentAll": { en: "{percent}% watched", es: "{percent}% visto" },

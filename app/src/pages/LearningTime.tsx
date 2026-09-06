@@ -16,10 +16,13 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { BackChip } from "../components/BackChip";
 import { EmptyState, QueryError, SkeletonList } from "../components/ui/States";
+import { TERMS } from "../lib/glossary";
 import { useT } from "../lib/i18n";
 import { formatLearningTime } from "../lib/learningTime";
 import {
   foldByPerson,
+  itemLabel,
+  ITEMS_SHOWN,
   listLearningTime,
   listLearningVideoWatches,
   type LearningRange,
@@ -63,6 +66,8 @@ export function LearningTime() {
         : people,
     [people, byName],
   );
+
+  const names = useItemNames(people);
 
   const loading = time.isLoading || videos.isLoading;
   const failed = time.isError ? time.error : videos.isError ? videos.error : null;
@@ -131,13 +136,36 @@ export function LearningTime() {
       {!loading &&
         !failed &&
         ordered.map((person) => (
-          <PersonCard key={person.profileId} person={person} />
+          <PersonCard key={person.profileId} person={person} names={names} />
         ))}
     </div>
   );
 }
 
-function PersonCard({ person }: { person: PersonLearning }) {
+/**
+ * Every id the page can put a name to: the glossary, which ships in the app, and
+ * the lessons this report already returned. Built once for the whole page —
+ * the glossary half is a constant, and rebuilding it per card would be 105
+ * entries per person on screen.
+ */
+function useItemNames(people: readonly PersonLearning[]): ReadonlyMap<string, string> {
+  return useMemo(() => {
+    const names = new Map<string, string>();
+    for (const term of TERMS) names.set(term.id, term.term);
+    for (const person of people) {
+      for (const v of person.videos) names.set(v.videoId, v.videoTitle);
+    }
+    return names;
+  }, [people]);
+}
+
+function PersonCard({
+  person,
+  names,
+}: {
+  person: PersonLearning;
+  names: ReadonlyMap<string, string>;
+}) {
   const t = useT();
   const kinds: { kind: string; label: string }[] = [
     { kind: "term", label: t("ltime.kind.term") },
@@ -146,6 +174,12 @@ function PersonCard({ person }: { person: PersonLearning }) {
     { kind: "video", label: t("ltime.kind.video") },
   ];
   const parts = kinds.filter((k) => (person.byKind[k.kind] ?? 0) > 0);
+  const kindLabels: Record<string, string> = {
+    quiz: t("ltime.kind.quiz"),
+    sequence: t("ltime.kind.sequence"),
+  };
+  const shown = person.items.slice(0, ITEMS_SHOWN);
+  const more = person.items.length - shown.length;
 
   return (
     <div className="project-card" style={{ padding: 12, marginBottom: 10 }}>
@@ -178,6 +212,35 @@ function PersonCard({ person }: { person: PersonLearning }) {
           <p className="muted" style={{ fontSize: 12, margin: "6px 0 0" }}>
             {t("ltime.breakdownNote")}
           </p>
+        </>
+      )}
+
+      {/* "AND ON WHAT ITEM" — the second half of the owner's question, and the
+          half the chips above cannot answer. A chip says fifteen minutes on
+          glossary terms; these lines say which terms. Same minutes, named
+          exactly, and the busiest first. */}
+      {shown.length > 0 && (
+        <>
+          <p className="field-label" style={{ marginTop: 12 }}>{t("ltime.items")}</p>
+          <ul className="unit-list">
+            {shown.map((item) => (
+              <li key={`${item.itemKind}:${item.itemKey}`}>
+                <strong>{itemLabel(item, names, kindLabels)}</strong>
+                <p className="muted" style={{ margin: "2px 0 0", fontSize: 12 }}>
+                  {formatLearningTime(item.activeSeconds)}
+                  {" · "}
+                  {item.visits === 1
+                    ? t("ltime.visitsOne")
+                    : t("ltime.visitsMany", { count: item.visits })}
+                </p>
+              </li>
+            ))}
+          </ul>
+          {more > 0 && (
+            <p className="muted" style={{ fontSize: 12, margin: "6px 0 0" }}>
+              {t("ltime.moreItems", { count: more })}
+            </p>
+          )}
         </>
       )}
 

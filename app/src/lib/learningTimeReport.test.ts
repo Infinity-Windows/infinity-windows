@@ -10,6 +10,7 @@
 import { describe, expect, it } from "vitest";
 import {
   foldByPerson,
+  itemLabel,
   rangeStart,
   type LearningTimeRow,
   type LearningVideoRow,
@@ -148,5 +149,45 @@ describe("rangeStart", () => {
 
   it("asks for no lower bound at all for all time", () => {
     expect(rangeStart("all", SATURDAY)).toBeNull();
+  });
+});
+
+describe("itemLabel", () => {
+  const names = new Map([
+    ["sill-pan", "Sill pan"],
+    ["11111111-1111-1111-1111-111111111111", "Flashing a head"],
+  ]);
+  const kinds = { quiz: "Quiz", sequence: "Sequence" };
+  const row = (itemKind: string, itemKey: string): LearningTimeRow => ({
+    profileId: "p",
+    displayName: "Crew A",
+    itemKind,
+    itemKey,
+    activeSeconds: 60,
+    visits: 1,
+    lastSeenAt: "2026-09-04T18:00:00Z",
+  });
+
+  it("names a glossary term the way the glossary does", () => {
+    // The whole point of the line: "sill-pan" is an id, "Sill pan" is an answer
+    // to what somebody was studying.
+    expect(itemLabel(row("term", "sill-pan"), names, kinds)).toBe("Sill pan");
+  });
+
+  it("names a lesson by its title", () => {
+    expect(
+      itemLabel(row("video", "11111111-1111-1111-1111-111111111111"), names, kinds),
+    ).toBe("Flashing a head");
+  });
+
+  it("calls a quiz and a sequence after their kind, not after 'round'", () => {
+    expect(itemLabel(row("quiz", "round"), names, kinds)).toBe("Quiz");
+    expect(itemLabel(row("sequence", "round"), names, kinds)).toBe("Sequence");
+  });
+
+  it("prints an id it cannot place rather than nothing at all", () => {
+    // A term retired from the glossary, or a lesson deleted since. A blank line
+    // would be a lie about a row that exists and has real minutes on it.
+    expect(itemLabel(row("term", "retired-term"), names, kinds)).toBe("retired-term");
   });
 });

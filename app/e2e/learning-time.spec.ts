@@ -176,7 +176,7 @@ test("the owner's page draws a person's learning out of the two report calls", a
           profile_id: PERSON_A,
           display_name: "Crew A",
           item_kind: "term",
-          item_key: "sill-pan",
+          item_key: "sillpan",
           active_seconds: 900,
           visits: 3,
           last_seen_at: "2026-09-04T18:00:00Z",
@@ -234,6 +234,13 @@ test("the owner's page draws a person's learning out of the two report calls", a
   await expect(
     page.getByText("These are part of the total above, not extra time on top of it."),
   ).toBeVisible();
+
+  // "AND ON WHAT ITEM" — the second half of the owner's ask. The chip says how
+  // long on glossary terms; this says WHICH term, by the glossary's own name
+  // for it rather than by the id the row carries.
+  await expect(cards.nth(0)).toContainText("What they were on");
+  await expect(cards.nth(0)).toContainText("Sill Pan");
+  await expect(cards.nth(0)).toContainText("3 visits");
 
   // The lesson line: how many times, how much of it, and finished — with the
   // percentage beside the verdict, never instead of it.

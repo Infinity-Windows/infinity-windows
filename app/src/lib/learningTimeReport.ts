@@ -131,6 +131,39 @@ export interface PersonLearning {
 }
 
 /**
+ * How many named items one person's card lists before it stops. PURE data, and
+ * a rendering decision: somebody skimming the glossary makes forty term rows,
+ * and forty lines under a name is a wall, not an answer. The card says how many
+ * more there are rather than pretending there are none.
+ */
+export const ITEMS_SHOWN = 5;
+
+/**
+ * What to call one item row on screen. PURE — unit-tested.
+ *
+ * The owner's question is "how long, AND ON WHAT ITEM", so these keys have to
+ * become names. A term's key is a glossary id and a lesson's is a uuid, and
+ * both are looked up in `names` — the map the page builds from the glossary it
+ * already ships and the lessons the report already returned. A quiz or sequence
+ * key is always 'round', which is not a name anybody wants to read, so those
+ * are called after their kind.
+ *
+ * Anything that cannot be found reads as its raw key rather than as nothing: an
+ * owner shown an id the app no longer recognises is being told the truth, and
+ * a blank line would be a lie about a row that exists.
+ */
+export function itemLabel(
+  row: LearningTimeRow,
+  names: ReadonlyMap<string, string>,
+  kindLabels: Readonly<Record<string, string>>,
+): string {
+  if (row.itemKind === "quiz" || row.itemKind === "sequence") {
+    return kindLabels[row.itemKind] ?? row.itemKind;
+  }
+  return names.get(row.itemKey) ?? row.itemKey;
+}
+
+/**
  * Rows per item → one line per person, sorted by time. PURE — unit-tested.
  *
  * Everybody who appears in EITHER read gets a line, so somebody who has only
