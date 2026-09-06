@@ -247,19 +247,17 @@ class NobodyCallsAnonymously(unittest.TestCase):
 
 
 class DefinerFunctionsPinSearchPath(unittest.TestCase):
-    # ADVISORY until production shows the list empty (20260997000000 is the
-    # sweep). The cases below pin that shape on purpose: the day it is
-    # promoted, the first two flip from advisories to failures and nothing
-    # else in this class moves.
-    def test_an_unpinned_definer_function_is_listed_by_signature(self):
+    # Promoted from an advisory the day production showed the list empty
+    # (20260997000000 was the sweep).
+    def test_an_unpinned_definer_function_fails_and_is_named_by_signature(self):
         r = healthy()
         r["definer_unpinned"] = ["mint_packages(p_count integer)", "add_supply(p_name text, p_unit text)"]
         failures, advisories, summary = vi.judge(r)
-        self.assertEqual(failures, [])
-        self.assertEqual(len(advisories), 1)
-        self.assertIn("mint_packages(p_count integer), add_supply(p_name text, p_unit text)", advisories[0])
-        self.assertIn("set search_path = public, pg_temp", advisories[0])
-        self.assertIn("20260997000000", advisories[0])
+        self.assertEqual(advisories, [])
+        self.assertEqual(len(failures), 1)
+        self.assertIn("mint_packages(p_count integer), add_supply(p_name text, p_unit text)", failures[0])
+        self.assertIn("set search_path = public, pg_temp", failures[0])
+        self.assertIn("20260997000000", failures[0])
         self.assertTrue(any("2 SECURITY DEFINER function(s) without a pinned search_path" in s for s in summary))
 
     def test_an_empty_list_says_nothing(self):

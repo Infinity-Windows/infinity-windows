@@ -273,7 +273,8 @@ list has gone stale, with an assertion that zero are left.
 > night as `definer_unpinned` in `scripts/invariants.sql`. It is listed as an
 > advisory until the master run shows it empty, then promoted to a failure the
 > way the anon sweep was, so the next rebuild that drops the clause is red on
-> its own pull request. `pg_temp` is named last (the 2026-07 loops pinned
+> its own pull request. (Promoted the same day: the master run after #571
+> landed, 34047551150, read 0.) `pg_temp` is named last (the 2026-07 loops pinned
 > `public` alone); the ~200 functions they pinned are left as they are.
 
 **`_naive_probe` is gone** — with a correction to the earlier note, which said it
