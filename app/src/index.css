@@ -12355,7 +12355,9 @@ button.stage-chip {
 }
 .scan-fab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .scan-sheet {
-  position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column;
+  /* Above the PWA banners (z 80/90): a sheet you opened on purpose wins
+     over a notice, and its close button must never sit under one. */
+  position: fixed; inset: 0; z-index: 95; display: flex; flex-direction: column;
   background: #151311; color: #fff;
   /* The sheet reaches both edges: the close button sits below the status
      bar and the verbs above the home indicator (safeArea.test.ts). */
