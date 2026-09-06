@@ -67,6 +67,10 @@ const OFFLINE_KEYS = new Set([
   // are what the Find bar and the cards actually need.
   "storagePackages",
   "storageContainers",
+  // The tailgate in a yard with no signal (wave 4): what truck is coming
+  // and what is on its list read from the last good copy.
+  "deliveries",
+  "deliveryPackages",
   "scheduledMarks",
   "issues",
   "inventory",

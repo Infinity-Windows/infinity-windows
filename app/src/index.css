@@ -12461,3 +12461,25 @@ button.stage-chip {
 .box-chip--on { outline: 2px solid var(--accent); outline-offset: 1px; }
 .box-chip--glow { background: var(--accent-soft); }
 .box-unplaced { margin-top: 8px; }
+
+/* The tailgate, unit first (wave 4). */
+.tailgate { margin: 10px 0 14px; }
+.tailgate-head { font-family: var(--font-display); font-weight: 700; font-size: 18px; margin: 0 0 2px; }
+.tailgate-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.tailgate-unit { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 56px; padding: 8px 10px; border-radius: 12px; border: 1.5px solid var(--border); background: var(--surface); color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.tailgate-unit:disabled { cursor: default; }
+.tailgate-unit--all { border-color: var(--stage-stored); }
+.tailgate-tick { width: 28px; height: 28px; border-radius: 8px; border: 2px solid var(--border); display: grid; place-items: center; font-size: 14px; flex: 0 0 auto; }
+.tailgate-tick--all { background: var(--stage-stored); border-color: var(--stage-stored); color: #fff; }
+.tailgate-tick--some { border-color: var(--stage-expected); color: var(--stage-expected); }
+.tailgate-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.tailgate-text b { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tailgate-text span { font-size: 12px; color: var(--muted); }
+.tailgate-dots { display: flex; flex-wrap: wrap; gap: 3px; max-width: 64px; justify-content: flex-end; align-items: center; }
+.tailgate-dot { width: 10px; height: 10px; border-radius: 3px; background: var(--border); }
+.tailgate-dot--arrived { background: var(--stage-stored); }
+.tailgate-dot--stored { background: var(--text); }
+.tailgate-dots em { font-size: 10px; color: var(--muted); font-style: normal; }
+.tailgate-bar { position: sticky; bottom: calc(3rem + 8px + var(--safe-bottom)); z-index: 5; margin-top: 10px; padding: 10px 12px; border-radius: 14px; background: var(--card-raised); border: 1px solid var(--border); box-shadow: 0 8px 24px -14px rgba(0,0,0,.5); display: flex; flex-direction: column; gap: 6px; align-items: center; }
+.tailgate-put { width: 100%; min-height: 56px; border-radius: 14px; border: none; background: var(--primary); color: var(--primary-foreground); font-family: var(--font-display); font-weight: 700; font-size: 20px; letter-spacing: .02em; cursor: pointer; }
+.tailgate-boxes { width: 100%; display: flex; flex-direction: column; gap: 8px; }
