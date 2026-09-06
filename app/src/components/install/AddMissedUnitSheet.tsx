@@ -14,6 +14,8 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useT } from "../../lib/i18n";
+import { usePhotoPicker } from "../../lib/photo/usePhotoPicker";
+import { imageFilesOnly } from "../../lib/photo/imageFiles";
 import { addFieldUnit } from "../../lib/install/api";
 import { announceMissedUnit } from "../../lib/install/missedUnit";
 import { uploadMissedUnitPhoto } from "../../lib/install/missedUnitPhoto";
@@ -50,6 +52,38 @@ export function AddMissedUnitSheet({
   const [note, setNote] = useState("");
   const [photo, setPhoto] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // The app's ONE file-input pair (lib/photo/usePhotoPicker.tsx). This sheet
+  // wrote its own input until now, and that input carried `capture="environment"`
+  // — which tells iOS and Android to open the camera and offer nothing else. So
+  // the only picture this form could take was one shot standing right there,
+  // and the one already on the phone (taken on the first walk of the house,
+  // before anyone opened the app) could not be attached to the unit it was of.
+  //
+  // One file, deliberately: a missed unit gets ONE photo — `add_field_unit`
+  // takes a single `p_photo_path` — so a multi-pick would silently drop all but
+  // the first. The photo is NOT watermarked here and never has been; that is
+  // left exactly as it was rather than changed on the way past.
+  //
+  // Filtered, and the filter is new work: while this input carried `capture`
+  // only a camera could feed it, and a camera cannot hand back a PDF. The
+  // library door can, and `uploadMissedUnitPhoto` would name it `.jpg` and file
+  // it without complaint — so the unit would exist forever pointing at a broken
+  // image, with nothing on screen ever having said so. Say so instead.
+  const picker = usePhotoPicker({
+    camera: true,
+    onFiles: (files) => {
+      const picked = imageFilesOnly(files)[0] ?? null;
+      if (!picked) {
+        setError(t("photo.fileUnreadable"));
+        return;
+      }
+      // A good pick answers the complaint the bad one made — and the submit
+      // button clears this same line for the same reason.
+      setError(null);
+      setPhoto(picked);
+    },
+  });
 
   const add = useMutation({
     mutationFn: async () => {
@@ -138,16 +172,29 @@ export function AddMissedUnitSheet({
         onChange={(e) => setHeight(e.target.value)}
       />
 
-      <label className="field-label" htmlFor="missed-photo">
-        {t("missed.photo")}
-      </label>
-      <input
-        id="missed-photo"
-        type="file"
-        accept="image/*"
-        capture="environment"
-        onChange={(e) => setPhoto(e.target.files?.[0] ?? null)}
-      />
+      <span className="field-label">{t("missed.photo")}</span>
+      {/* Two buttons where there was one input. A plain label can no longer
+          point at the field with `htmlFor` — there are two hidden inputs and
+          neither is "the" one — so the label is a span and the buttons name
+          themselves. The class on this wrapper is how the e2e spec tells the
+          camera door from the library one. */}
+      <div className="row-gap missed-photo-actions">
+        <button type="button" className="chip" onClick={picker.openCamera}>
+          {t("photo.action.useCamera")}
+        </button>
+        <button type="button" className="chip" onClick={picker.openLibrary}>
+          {t("photo.action.uploadFiles")}
+        </button>
+        {picker.inputs}
+      </div>
+      {/* The inputs are hidden now, so the browser no longer shows the picked
+          file's name and this sheet has to. Without it there is nothing at all
+          on screen to say the photo took. */}
+      {photo && (
+        <p className="muted" style={{ margin: "4px 0 0", fontSize: 13 }}>
+          {photo.name}
+        </p>
+      )}
 
       <input
         value={note}
