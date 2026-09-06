@@ -26,11 +26,13 @@ the migration files:
   sandbox fence    sandbox_guard_census() is empty, and there are at most
                    two test logins. 20260967000000.
 
-Two more are ADVISORY: listed in the output, never failing. Tables reachable
-by a client role with RLS switched off, and SECURITY DEFINER functions anon
-may execute. Both were true of parts of this schema before anyone looked, and
-a gate that is red on its first run is a gate people learn to skip. When the
-list is empty on production, promote them; the test suite pins the shape.
+Three more are ADVISORY: listed in the output, never failing. Tables
+reachable by a client role with RLS switched off; functions anon may execute
+(20260992000000 revoked all of them, keep-list ANON_FUNCTIONS_ALLOWED); and
+whether the default privileges would hand the NEXT function to anon. They were
+true of parts of this schema before anyone looked, and a gate that is red on
+its first run is a gate people learn to skip. When the list is empty on
+production, promote them; the test suite pins the shape.
 
 READ-ONLY. The SQL is scripts/invariants.sql, run through scripts/pgq.sh,
 which refuses anything that is not a SELECT.
@@ -65,6 +67,13 @@ COST_TABLES: frozenset[str] = frozenset({
 })
 PAY_TABLES: frozenset[str] = frozenset({"pay_rates"})
 CREDENTIAL_COLUMNS: frozenset[str] = frozenset({"pin", "pin_hash", "pin_salt"})
+#: Functions a signed-out caller is allowed to execute. Empty on purpose:
+#: 20260992000000 read every signed-out flow (GC portal, access request,
+#: sign-in, password reset, invite redemption) and none of them calls a
+#: function in public — they go through edge functions on the service key or
+#: through GoTrue. A name here must also be granted in a migration, the way
+#: that file's section 4 shows.
+ANON_FUNCTIONS_ALLOWED: frozenset[str] = frozenset()
 MAX_TEST_LOGINS = 2
 
 
@@ -187,12 +196,20 @@ def judge(report: dict) -> tuple[list[str], list[str], list[str]]:
             + ", ".join(rls_off)
             + ". Not failing yet; promote when this list is empty on production."
         )
-    anon_fns = report.get("anon_definer_functions") or []
+    anon_fns = [f for f in (report.get("anon_functions") or []) if f not in ANON_FUNCTIONS_ALLOWED]
     if anon_fns:
         advisories.append(
-            f"{len(anon_fns)} SECURITY DEFINER function(s) an anonymous caller may execute: "
+            f"{len(anon_fns)} function(s) an anonymous caller may execute: "
             + ", ".join(anon_fns)
-            + ". Supabase grants EXECUTE to anon by default; 20260729200000 shows the revoke."
+            + ". 20260992000000 revoked EXECUTE from anon on every routine in public; "
+            "a new one is either granted back on purpose (and listed in ANON_FUNCTIONS_ALLOWED) "
+            "or has `revoke all on function ... from public, anon` in its migration."
+        )
+    if report.get("anon_default_execute"):
+        advisories.append(
+            "The default privileges for role postgres in schema public grant EXECUTE to anon "
+            "or PUBLIC again, so the next function created is callable signed-out. "
+            "20260992000000 section 5 is the fix."
         )
 
     reads = sum(1 for p in policies if p["schema"] == "public" and _reads(p) and _client_facing(p.get("roles") or []))

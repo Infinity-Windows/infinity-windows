@@ -66,7 +66,8 @@ def healthy() -> dict:
         "fence_unguarded": [],
         "test_logins": 2,
         "rls_off": [],
-        "anon_definer_functions": [],
+        "anon_functions": [],
+        "anon_default_execute": False,
     }
 
 
@@ -192,12 +193,25 @@ class Advisories(unittest.TestCase):
     def test_rls_off_and_anon_functions_are_reported_not_failed(self):
         r = healthy()
         r["rls_off"] = ["window_id_counters"]
-        r["anon_definer_functions"] = ["role_rank"]
+        r["anon_functions"] = ["role_rank"]
+        r["anon_default_execute"] = True
         failures, advisories, _ = vi.judge(r)
         self.assertEqual(failures, [])
-        self.assertEqual(len(advisories), 2)
+        self.assertEqual(len(advisories), 3)
         self.assertIn("window_id_counters", advisories[0])
         self.assertIn("role_rank", advisories[1])
+        self.assertIn("20260992000000", advisories[1])
+        self.assertIn("default privileges", advisories[2])
+
+    def test_the_anon_keep_list_is_empty_and_honoured(self):
+        # Nothing signed-out calls a function in public (20260992000000's
+        # header lists every flow that was read). If that changes, the name
+        # goes here AND in a migration's grant; the probe then stays quiet.
+        self.assertEqual(vi.ANON_FUNCTIONS_ALLOWED, frozenset())
+        r = healthy()
+        r["anon_functions"] = ["vault_pin_is_set"]
+        _, advisories, _ = vi.judge(r)
+        self.assertTrue(any("vault_pin_is_set" in a for a in advisories))
 
 
 class TheReportEnvelope(unittest.TestCase):
