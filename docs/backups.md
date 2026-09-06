@@ -86,9 +86,17 @@ project needs, and the paid rate beyond it is a few dollars a month.
    reasonable one, and bucket names are globally unique so you may need a
    suffix. Set **Files in Bucket** to **Private**. Leave encryption and object
    lock at their defaults.
-3. **Lifecycle Settings** on that bucket → **Keep only the last version of the
-   file**, and set "Keep prior versions for this many days" to **30**. Without a
-   lifecycle rule the bucket grows forever and nothing here deletes anything.
+3. **Lifecycle Settings** on that bucket → **Use custom lifecycle rules**, and
+   add one rule covering the whole bucket (leave the file-name prefix empty)
+   with **"Days from uploading to hiding" = 30** and **"Days from hiding to
+   deleting" = 1**.
+
+   Take the trouble to get this one right: the obvious choice, *Keep only the
+   last version of the file*, would delete nothing here. B2's version rules act
+   on repeated uploads of the SAME file name, and this job writes a new dated
+   name every night (`YYYY/MM/DD/<ref>-<stamp>.tar.gz`), so no file ever gets a
+   prior version to expire and the bucket would grow forever while looking
+   handled. The custom rule above is the one that expires files by their age.
 4. **Application Keys → Add a New Application Key.**
    - Name it something you will recognise in a year, e.g. `github-nightly-backup`.
    - **Allow access to Bucket:** the bucket you just made, not "All".

@@ -251,9 +251,11 @@ jobs:
             {
               echo "Copied off-site to \`$DEST\`."
               echo
-              echo "RETENTION: nothing here deletes an old copy. Set a lifecycle rule on"
-              echo "the bucket — keep 30 daily copies and you hold a month of history for"
-              echo "a few dollars a month. Until you do, the bucket grows forever."
+              echo "RETENTION: nothing here deletes an old copy. Every night writes a new"
+              echo "dated file name, so B2's \"keep only the last version\" rule would expire"
+              echo "NOTHING — it acts on repeated uploads of one name. Use a custom rule:"
+              echo "days from uploading to hiding = 30, days from hiding to deleting = 1."
+              echo "docs/backups.md, step 3. Until then the bucket grows forever."
             } >> "$GITHUB_STEP_SUMMARY"
           else
             {
