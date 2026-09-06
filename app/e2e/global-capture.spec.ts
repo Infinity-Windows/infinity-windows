@@ -213,8 +213,10 @@ test("a receipt captured from a job page files against that job", async ({ page 
   await sheet(page).getByText("Add a receipt", { exact: true }).click();
 
   await expect(page.getByRole("dialog", { name: "Add a receipt" })).toBeVisible();
+  // The receipt picker's accept widened to take a PDF too (2026-09-05); the
+  // library input is still the one WITHOUT `capture` on it.
   await page
-    .locator('input[type="file"][accept="image/*"]')
+    .locator('.jobphoto-actions input[type="file"]:not([capture])')
     .setInputFiles(pngFile("receipt.png"));
 
   await expect.poll(() => filed.length).toBe(1);

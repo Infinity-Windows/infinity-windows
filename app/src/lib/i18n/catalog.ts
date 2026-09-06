@@ -2178,6 +2178,38 @@ export const CATALOG = {
     es: "Cámara ocupada — cierra la otra app que la esté usando y toca Usar cámara otra vez.",
   },
 
+  // ---- Receipts that arrive as a PDF (2026-09-05) ----
+  // The receipt picker takes a PDF now — the emailed fuel invoice, the
+  // supply-house statement. The phone renders page one and files THAT as the
+  // receipt's picture, and keeps the original file beside it. These are the two
+  // ways that can go wrong, in words an installer standing in a parking lot can
+  // act on: a file that will not open at all, and one too big to keep a copy of.
+  // Shown WHILE a PDF is being read, in place of "Stamping GPS & time…". A PDF
+  // gets the time and never a position — the watermark rule is about a photo
+  // taken at the wall — and this is the slowest wait on the capture sheet, so
+  // the wrong sentence would be the one an installer stares at longest.
+  "photo.readingPdf": { en: "Reading the PDF…", es: "Leyendo el PDF…" },
+  "photo.pdfUnreadable": {
+    en: "That PDF couldn't be opened — it may be password-protected or damaged. Try saving it again, or take a photo of the receipt.",
+    es: "No se pudo abrir ese PDF — puede estar protegido con contraseña o dañado. Vuelve a guardarlo, o toma una foto del recibo.",
+  },
+  // Said AFTER the receipt is already saved, which is the whole point of the
+  // second sentence: what was lost is the copy of the original file, not the
+  // receipt, and nobody should re-do the work thinking it failed.
+  "photo.pdfTooBig": {
+    en: "That PDF is too big to keep a copy of. The receipt was still saved — the first page is on it.",
+    es: "Ese PDF es demasiado grande para guardar una copia. El recibo sí se guardó — la primera página está en él.",
+  },
+  // The tag on a receipt whose original file we kept, and the way back to it.
+  // "Open original" and not "Download": the link opens the PDF in a new tab,
+  // where a phone shows it and offers to save it if that is what somebody wants.
+  "receipt.pdfTag": { en: "PDF", es: "PDF" },
+  "receipt.openOriginal": { en: "Open original", es: "Abrir original" },
+  "receipt.openOriginalFailed": {
+    en: "Couldn't open that PDF just now — check your signal and try again.",
+    es: "No se pudo abrir ese PDF ahora — revisa tu señal e inténtalo otra vez.",
+  },
+
   // ---- Learn: points are for new content now (2026-09-05) ----
   // The Quiz and Sequence tabs used to write their own points after every
   // round, so "Another round" paid again for the same five terms, hundreds of

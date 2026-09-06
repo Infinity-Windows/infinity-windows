@@ -7947,6 +7947,24 @@ body {
   color: #fff;
   background: oklch(0.55 0.16 155 / 0.9);
 }
+/* The "this came in as a PDF" tag on a receipt tile, which is also the way to
+   open the original — a 120px tile has the vendor and the amount on it already
+   and no room for a second control, so the tag IS the button. Top LEFT, because
+   the green "Reviewed" chip owns the top right and a receipt can be both. The
+   `button` element brings its own padding and border with it (see the global
+   button rule), and this pill sets its own. */
+.receipt-pdf-chip {
+  right: auto;
+  left: 5px;
+  padding: 2px 6px;
+  border: 0;
+  font-size: 10px;
+  background: oklch(0.45 0.02 260 / 0.92);
+  cursor: pointer;
+}
+.receipt-pdf-chip:disabled {
+  opacity: 0.6;
+}
 
 .jobphoto-sheet {
   position: fixed;

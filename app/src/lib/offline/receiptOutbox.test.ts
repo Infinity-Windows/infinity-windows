@@ -1,10 +1,12 @@
-// Wave P: the two receipt outbox ops — receipt_capture (upload + file_receipt,
-// mirroring photo_upload's shape) and receipt_answer (the upload flow's one
-// question, resent through update_receipt's full-record contract). Same
-// mocking idiom as packagePhotoOutbox.test.ts / issuePhotoOutbox.test.ts.
+// Wave P: the receipt outbox ops — receipt_capture (upload + file_receipt,
+// mirroring photo_upload's shape), receipt_answer (the upload flow's one
+// question, resent through update_receipt's full-record contract) and, since
+// 2026-09-05, receipt_document_upload (the original file a PDF receipt came
+// from). Same mocking idiom as packagePhotoOutbox.test.ts /
+// issuePhotoOutbox.test.ts.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { OutboxEntry } from "./outbox-core";
+import { ALL_OPS, type OutboxEntry, type OutboxOp } from "./outbox-core";
 
 const storageUpload = vi.fn();
 const rpc = vi.fn();
@@ -33,7 +35,7 @@ vi.mock("../supabase", () => ({
 const { createShiftResolver, createSupabaseHandlers } = await import("./outboxHandlers");
 const handlers = createSupabaseHandlers(createShiftResolver());
 
-function entryFor(op: "receipt_capture" | "receipt_answer", payload: Record<string, unknown>): OutboxEntry {
+function entryFor(op: OutboxOp, payload: Record<string, unknown>): OutboxEntry {
   return {
     id: "outbox-entry-1",
     op,
@@ -43,11 +45,12 @@ function entryFor(op: "receipt_capture" | "receipt_answer", payload: Record<stri
     lastError: null,
     status: "queued",
     nextAttemptAt: 0,
-    hasBlob: op === "receipt_capture",
+    hasBlob: op !== "receipt_answer",
   };
 }
 
 const BLOB = new Blob(["x"], { type: "image/jpeg" });
+const PDF = new Blob(["%PDF-1.4"], { type: "application/pdf" });
 
 async function sendCapture(payload: Record<string, unknown>): Promise<void> {
   const handler = handlers.receipt_capture;
@@ -59,6 +62,12 @@ async function sendAnswer(payload: Record<string, unknown>): Promise<void> {
   const handler = handlers.receipt_answer;
   if (!handler) throw new Error("no receipt_answer handler is registered");
   await handler(entryFor("receipt_answer", payload), { getBlob: async () => null });
+}
+
+async function sendDocument(payload: Record<string, unknown>): Promise<void> {
+  const handler = handlers.receipt_document_upload;
+  if (!handler) throw new Error("no receipt_document_upload handler is registered");
+  await handler(entryFor("receipt_document_upload", payload), { getBlob: async () => PDF });
 }
 
 beforeEach(() => {
@@ -202,5 +211,64 @@ describe("receipt_answer", () => {
   it("refuses (permanently) an answer with no receipt id", async () => {
     await expect(sendAnswer({ projectId: "job-1" })).rejects.toThrow(/missing which receipt/);
     expect(receiptSelectMaybeSingle).not.toHaveBeenCalled();
+  });
+});
+
+describe("receipt_document_upload — the original a PDF receipt came from", () => {
+  it("is a real op the queue can carry, not a name that deserializes to null", () => {
+    // The four edits an op needs (union, OP_REGISTRY, handler map, OP_LABELS)
+    // are compile-enforced; this is the runtime half of the same promise — an
+    // op missing from the registry reads back off disk as null and its write is
+    // lost with no error anywhere.
+    expect(ALL_OPS).toContain("receipt_document_upload");
+    expect(handlers.receipt_document_upload).toBeTypeOf("function");
+  });
+
+  it("puts the PDF in the bucket beside the picture, then records it on the row", async () => {
+    await sendDocument({
+      id: "receipt-1",
+      bucket: "install-media",
+      path: "receipts/receipt-1.pdf",
+      contentType: "application/pdf",
+    });
+    expect(storageUpload).toHaveBeenCalledWith(
+      "install-media",
+      "receipts/receipt-1.pdf",
+      PDF,
+      { contentType: "application/pdf", upsert: true },
+    );
+    expect(rpc).toHaveBeenCalledWith("set_receipt_document", {
+      p_id: "receipt-1",
+      p_document_path: "install-media/receipts/receipt-1.pdf",
+    });
+  });
+
+  it("never records a path whose bytes did not land", async () => {
+    storageUpload.mockResolvedValue({ data: null, error: new Error("storage is unhappy") });
+    await expect(
+      sendDocument({ id: "receipt-1", path: "receipts/receipt-1.pdf", contentType: "application/pdf" }),
+    ).rejects.toThrow("storage is unhappy");
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it("refuses (permanently) a file with no receipt to belong to", async () => {
+    await expect(
+      sendDocument({ path: "receipts/x.pdf", contentType: "application/pdf" }),
+    ).rejects.toThrow(/missing its receipt/);
+    expect(storageUpload).not.toHaveBeenCalled();
+  });
+
+  it("fails on the FIRST try with words when the database has not got the function yet", async () => {
+    // Deploying the backend has silently failed on this project before. Eight
+    // retries of PostgREST's own sentence, then a dead letter, tells nobody
+    // anything; missingGuard says what happened and what to do about it.
+    rpc.mockResolvedValue({ data: null, error: { code: "PGRST202", message: "Could not find the function" } });
+    const err = await sendDocument({
+      id: "receipt-1",
+      path: "receipts/receipt-1.pdf",
+      contentType: "application/pdf",
+    }).catch((e) => e);
+    expect((err as Error).message).toMatch(/needs an app update/);
+    expect((err as { permanent?: boolean }).permanent).toBe(true);
   });
 });

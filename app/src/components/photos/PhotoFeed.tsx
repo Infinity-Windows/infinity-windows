@@ -26,6 +26,7 @@ import { isForemanPlus } from "../../lib/install/types";
 import { pushToast, toastError } from "../../lib/toast";
 import { EmptyState, QueryError, SkeletonCard } from "../ui/States";
 import { PhotoCaptureSheet } from "../PhotoCaptureSheet";
+import { ReceiptDocumentLink } from "../receipts/ReceiptDocumentLink";
 import { useT } from "../../lib/i18n";
 
 // The fallback is passed in (t("feed.someone")) rather than hard-coded so a
@@ -60,6 +61,8 @@ interface FeedReceipt {
   jobCode: string | null;
   pendingJobName: string | null;
   reviewed: boolean;
+  /** The original file, when this receipt came in as a PDF. */
+  documentPath: string | null;
 }
 
 function toFeedReceipt(r: Receipt): FeedReceipt {
@@ -75,6 +78,7 @@ function toFeedReceipt(r: Receipt): FeedReceipt {
     jobCode: r.jobCode,
     pendingJobName: r.pendingJobName,
     reviewed: r.reviewedAt != null,
+    documentPath: r.documentPath,
   };
 }
 
@@ -371,6 +375,15 @@ export function PhotoFeed({
                     <span className="photo-gps-chip">
                       <CheckCircle2 size={11} aria-hidden /> {t("feed.reviewed")}
                     </span>
+                  )}
+                  {/* A receipt that came in as a PDF says so, and the tag is
+                      the way back to the original file — see the component. */}
+                  {r.documentPath && (
+                    <ReceiptDocumentLink
+                      receiptId={r.id}
+                      documentPath={r.documentPath}
+                      variant="chip"
+                    />
                   )}
                 </div>
               ))}
