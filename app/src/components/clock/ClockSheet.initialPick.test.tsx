@@ -133,6 +133,55 @@ describe("the clock sheet opened with a carried pick", () => {
     expect(el.querySelector<HTMLButtonElement>(".clock-btn.primary.big")!.disabled).toBe(false);
   });
 
+  it("records the carried mode on the punch", async () => {
+    // OAK-2 allows both modes; the block asked, the person said tracking, and
+    // the block's punch was refused. The sheet's Start must send that answer,
+    // not null (which is what every sheet punch recorded before 2026-09-06).
+    const el = mount({ projectId: "p2", costCodeId: "cc2", note: null, mode: "tracking" });
+    await flush();
+    await act(async () => {
+      el.querySelector<HTMLButtonElement>(".clock-btn.primary.big")!.dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+    });
+    await flush();
+    expect(clockInSpy).toHaveBeenCalledTimes(1);
+    expect(clockInSpy.mock.calls[0]).toEqual(["p2", "cc2", expect.anything(), null, "tracking"]);
+  });
+
+  it("opened bare, records a single-mode job's one mode and nothing for a both-mode job", async () => {
+    // Primed from the schedule onto BLACK22 (data only) → "data" rides along.
+    const el = mount(null);
+    await flush();
+    await act(async () => {
+      el.querySelector<HTMLButtonElement>(".clock-btn.primary.big")!.dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+    });
+    await flush();
+    expect(clockInSpy.mock.calls[0]).toEqual(["p1", "cc1", expect.anything(), null, "data"]);
+    clockInSpy.mockClear();
+
+    // Tap over to OAK-2 (both modes): the sheet has no mode step, so null.
+    const chip = Array.from(el.querySelectorAll<HTMLButtonElement>(".clock-list-toggle")).find(
+      (b) => b.textContent?.includes("Choose a different job"),
+    )!;
+    act(() => chip.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    const oak = Array.from(el.querySelectorAll<HTMLButtonElement>(".clock-project-item")).find(
+      (b) => b.textContent?.includes("OAK-2"),
+    )!;
+    act(() => oak.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    await flush();
+    await act(async () => {
+      el.querySelector<HTMLButtonElement>(".clock-btn.primary.big")!.dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+    });
+    await flush();
+    expect(clockInSpy).toHaveBeenCalledTimes(1);
+    expect(clockInSpy.mock.calls[0]).toEqual(["p2", "cc1", expect.anything(), null, null]);
+  });
+
   it("still primes from the schedule when opened bare", async () => {
     const el = mount(null);
     await flush();
