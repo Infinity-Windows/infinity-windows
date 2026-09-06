@@ -235,6 +235,36 @@ neither belongs in that census, and neither check has anything to say about
 them. If either tool ever complains, the answer is that these are CI secrets,
 not function secrets.
 
+## The pull request it will not read
+
+The Claude Code CLI reads `CLAUDE.md` — and anything under `.claude/`, and
+`.mcp.json` — from the checkout it is run in, which is the pull request's own
+branch. Those arrive ahead of the prompt and at project-instruction trust, so
+they sit outside the fence the preamble builds: the preamble can only say that
+everything after `----- DIFF -----` is data, and none of that comes after
+`----- DIFF -----`.
+
+There is no wording that closes this. A branch that edits the reviewer's
+instructions is reviewed by a reviewer it has edited.
+
+So when a pull request touches any of
+
+- `CLAUDE.md` or `AGENTS.md`, anywhere in the tree
+- anything under `.claude/`, or `.mcp.json`
+- anything under `.checks/`
+- `scripts/advisory-*` or `.github/workflows/advisory-review.yml`
+
+the reading half stands down, names the files in the comment, and asks for a
+person. The exact rules still run — they have no prompt to poison — and nothing
+is blocked, because nothing here ever blocks. That is the pull request a human
+most wants to read anyway.
+
+The model's environment also has `GH_TOKEN` and `GITHUB_TOKEN` removed before
+it is asked anything. It has no use for a GitHub credential, and a
+`pull-requests: write` token inside the process that reads contributor text on
+a public repository — whose answer is published verbatim — is a secret sitting
+next to a channel to publish it on.
+
 ## What it costs
 
 The arithmetic, at Claude Sonnet 5 rates — **$2.00 per million input tokens,

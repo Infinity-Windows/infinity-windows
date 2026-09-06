@@ -38,6 +38,14 @@
 #   * the diff and the pull request's text are DATA. The prompt says so to the
 #     model in as many words, the model gets Read, Grep and Glob and no shell,
 #     and its answer is parsed as strict JSON rather than executed.
+#   * GH_TOKEN is unset before the model is asked anything
+#     (scripts/advisory-agent.sh says why). The comment script is a separate
+#     invocation and is the only thing here that needs a GitHub credential.
+#   * a pull request that edits CLAUDE.md, `.claude/`, `.mcp.json` or `.checks/`
+#     is NOT read by the model. The CLI loads those from the branch it checks
+#     out, ahead of the prompt, so a branch could tell the reviewer what to
+#     think before it reads a line of the diff. The reading half stands down
+#     and asks for a person instead; the exact rules still run.
 #
 # WHAT WAS NOT COPIED. The shape — rule files in markdown, run by the Claude
 # Code CLI inside an Action — is borrowed from continuedev/checks (Apache-2.0).

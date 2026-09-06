@@ -167,6 +167,37 @@ while IFS= read -r -d '' p; do changed+=("$p"); done < <(
   git diff --name-only -z --diff-filter=d "$BASE" "$HEAD_REF" 2>/dev/null)
 [ "${#changed[@]}" -gt 0 ] || stop "This pull request changes no files that survive to its head."
 
+# ---------------------------------------------------------------------------
+# The one pull request this half refuses to read
+# ---------------------------------------------------------------------------
+# WHAT THE PROBLEM IS. The CLI is run with its working directory set to the
+# pull request's own checkout, so it loads THAT BRANCH's CLAUDE.md as project
+# instructions — and a `.claude/settings.json` or `.mcp.json` the branch adds
+# would be read the same way. All of that arrives ahead of the prompt, at
+# project-instruction trust, which is outside the fence the preamble builds:
+# the preamble can only say that everything after `----- DIFF -----` is data,
+# and none of this comes after `----- DIFF -----`.
+#
+# WHY NOT JUST FENCE IT OFF. Because the honest answer is not a cleverer fence.
+# A pull request that edits the reviewer's own instructions, or the checks it
+# runs, is exactly the pull request where a machine's opinion is worth least
+# and a person's is worth most. Reading it with the model would produce a
+# review whose trustworthiness depends on the thing under review.
+#
+# So this half stands down and says why, in the comment, by name. The exact
+# rules still run — they have no prompt to poison — and the pull request is not
+# blocked, because nothing here ever blocks. It is a request for a human.
+self_touched=""
+for f in ${changed[@]+"${changed[@]}"}; do
+  case "$f" in
+    CLAUDE.md|*/CLAUDE.md|AGENTS.md|*/AGENTS.md|.mcp.json|\
+    .claude/*|.checks/*|scripts/advisory-*|.github/workflows/advisory-review.yml)
+      self_touched="$self_touched \`$f\`" ;;
+  esac
+done
+[ -z "$self_touched" ] ||
+  stop "This pull request changes the review's own instructions —$self_touched. The Claude Code CLI reads \`CLAUDE.md\` and anything under \`.claude/\` from the branch it is checking out, which means a branch can rewrite what the reviewer was told before the reviewer reads a line of the diff. That is outside the \"everything after the diff marker is data\" fence, and no fence closes it honestly. So the reading half stood down. The exact house rules above still ran, and nothing is blocked — but this is the pull request that most wants a person to read it."
+
 total=0
 : >"$WORK/skipped"
 : >"$WORK/files"
