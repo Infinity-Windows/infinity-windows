@@ -50,6 +50,15 @@ describe("crashDigest", () => {
     expect(crashDigest("just a string")).toMatch(/^[0-9A-Z]{5}$/);
     expect(crashDigest(undefined)).toMatch(/^[0-9A-Z]{5}$/);
   });
+
+  it("tells two thrown payloads apart instead of stringifying both to [object Object]", () => {
+    // String(err) on a plain thrown payload is "[object Object]" for every one
+    // of them, so two unrelated crashes would share a code and the crew would
+    // read out the same five characters for both.
+    const a = crashDigest({ message: "insert on units failed" });
+    const b = crashDigest({ message: "upload of the before photo failed" });
+    expect(a).not.toBe(b);
+  });
 });
 
 describe("buildCrashReportBody", () => {
@@ -61,6 +70,12 @@ describe("buildCrashReportBody", () => {
     expect(body).toContain("/storage/jobs/BLACK22");
     expect(body).toContain("Cannot access 'jobCodeMap'");
     expect(body).toContain("Component stack:");
+  });
+
+  it("never writes [object Object] into the row an owner has to read", () => {
+    const body = buildCrashReportBody({ message: "insert on units failed" }, null, "/");
+    expect(body).not.toContain("[object Object]");
+    expect(body).toContain("insert on units failed");
   });
 
   it("stays inside app_feedback's 2000-char CHECK even for a huge stack", () => {

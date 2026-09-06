@@ -15,7 +15,21 @@
 // failures, and a device that is offline or signed out simply skips the
 // upload — the console line and the on-screen digest still happen.
 
+import { formatApiError, rawErrorMessage } from "./errors";
 import { supabase, supabaseConfigured } from "./supabase";
+
+/**
+ * What to call a thrown thing that is NOT an Error.
+ *
+ * `String(err)` is the shape this repo forbids (CLAUDE.md): a plain thrown
+ * payload stringifies to "[object Object]", which would give every one of them
+ * the same digest and tell whoever reads the report nothing at all.
+ * rawErrorMessage digs a message out of a Supabase-shaped payload, and
+ * formatApiError is the fallback sentence when there is nothing to dig out.
+ */
+function describeThrowable(error: unknown): string {
+  return rawErrorMessage(error) || formatApiError(error);
+}
 
 /**
  * Crockford base32: no I, L, O, or U, so the code survives being read out
@@ -40,7 +54,7 @@ export function crashDigest(error: unknown): string {
       ?.split("\n")
       .map((l) => l.trim())
       .find((l) => l.startsWith("at ") || l.includes("@")) ?? "";
-  const seed = `${err?.name ?? typeof error}|${err?.message ?? String(error)}|${firstFrame}`;
+  const seed = `${err?.name ?? typeof error}|${err?.message ?? describeThrowable(error)}|${firstFrame}`;
   // FNV-1a, 32-bit — tiny, deterministic, and plenty for telling a handful
   // of distinct crash sites apart.
   let hash = 0x811c9dc5;
@@ -60,6 +74,11 @@ export function crashDigest(error: unknown): string {
 /**
  * The app_feedback row body: plain words first (the reporter sees this row in
  * their own suggestions tab), then the technical trail for whoever fixes it.
+ *
+ * ENGLISH ONLY, by decision — unlike the crash SCREEN, which is translated.
+ * This text is written once and stored forever, and the person who acts on it
+ * is the owner reading the suggestions list. A row whose language depended on
+ * whichever phone crashed would give him half a bug list he cannot read.
  */
 export function buildCrashReportBody(
   error: unknown,
@@ -68,7 +87,7 @@ export function buildCrashReportBody(
 ): string {
   const digest = crashDigest(error);
   const err = error instanceof Error ? error : null;
-  const headline = err ? `${err.name}: ${err.message}` : String(error);
+  const headline = err ? `${err.name}: ${err.message}` : describeThrowable(error);
   const stack = (err?.stack ?? "")
     .split("\n")
     .slice(0, 8)

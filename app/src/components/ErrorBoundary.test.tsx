@@ -80,6 +80,24 @@ describe("ErrorBoundary", () => {
     expect(componentStack).toContain("Bomb");
   });
 
+  it("speaks the phone's own language, with no provider left to ask", () => {
+    // The crash unmounts LanguageProvider along with everything else, so the
+    // screen reads the per-device language cache directly. A Spanish-reading
+    // installer must not be handed English on the one screen with nothing
+    // else on it.
+    localStorage.setItem("infinity.language", "es");
+    try {
+      exploding = true;
+      const el = mount();
+      expect(el.textContent).toContain("Algo salió mal");
+      expect(el.textContent).toContain("Intentar de nuevo");
+      // The code itself is never translated — it is what gets read out loud.
+      expect(el.textContent).toContain(crashDigest(bomb));
+    } finally {
+      localStorage.removeItem("infinity.language");
+    }
+  });
+
   it("Try again re-renders the children without a reload", () => {
     exploding = true;
     const el = mount();
