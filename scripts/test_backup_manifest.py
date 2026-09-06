@@ -37,8 +37,47 @@ CATALOG = {
 }
 
 
+# What `supabase db dump --linked -f schema.sql` actually writes. Produced by
+# running the CLI's own pipeline (2.109.1 `db dump --dry-run`) over pg_dump
+# output: --quote-all-identifier quotes every identifier, and the pipeline ends
+# with `sed -E "/^--/d"`, which deletes every comment line — the
+# `-- Dumped from database version 15.8` header with them.
+#
+# The hand-written pg_dump header this file used to test against cannot occur.
+REAL_SCHEMA_DUMP = """SET statement_timeout = 0;
+SET row_security = off;
+
+CREATE SCHEMA IF NOT EXISTS "public";
+
+CREATE TABLE IF NOT EXISTS "public"."profiles" (
+    "id" "uuid" NOT NULL,
+    "display_name" "text"
+);
+"""
+
+# The data-only pipeline keeps comments, so its header survives.
+REAL_DATA_DUMP = """SET session_replication_role = replica;
+
+--
+-- PostgreSQL database dump
+--
+
+-- Dumped from database version 15.8
+-- Dumped by pg_dump version 15.8
+
+COPY "public"."profiles" ("id", "display_name") FROM stdin;
+\\.
+"""
+
+# What the live database answers `server_version_num` with. None makes the fake
+# behave like an API that stopped returning it.
+SERVER_VERSION_NUM = "150008"
+
+
 def fake_query(ref, sql):
     text = " ".join(sql.split())
+    if "server_version_num" in text:
+        return [] if SERVER_VERSION_NUM is None else [{"v": SERVER_VERSION_NUM}]
     if "from pg_namespace" in text:
         return [{"nspname": s} for s in sorted({k.split(".")[0] for k in CATALOG})]
     if "from pg_class" in text:
@@ -121,25 +160,62 @@ class Case(unittest.TestCase):
             bm.row_hash({"b": 2, "a": 1}),
         )
 
-    def test_dump_files_are_measured_and_the_postgres_version_is_read_from_the_header(self):
+    def write_real_dumps(self):
         with open(os.path.join(self.out, "schema.sql"), "w") as fh:
-            fh.write("--\n-- PostgreSQL database dump\n--\n\n")
-            fh.write("-- Dumped from database version 15.8\n")
-            fh.write("-- Dumped by pg_dump version 15.8\n\nCREATE TABLE public.a (id uuid);\n")
+            fh.write(REAL_SCHEMA_DUMP)
         with open(os.path.join(self.out, "data.sql"), "w") as fh:
-            fh.write("COPY public.a (id) FROM stdin;\n\\.\n")
+            fh.write(REAL_DATA_DUMP)
+
+    def test_dump_files_are_measured(self):
+        self.write_real_dumps()
         m = self.build()
-        self.assertEqual(m["postgres_version"], "15.8")
         self.assertIn("schema.sql", m["dumps"])
         self.assertIn("data.sql", m["dumps"])
         self.assertEqual(len(m["dumps"]["schema.sql"]["sha256"]), 64)
         self.assertGreater(m["dumps"]["schema.sql"]["bytes"], 0)
         self.assertNotIn("roles.sql", m["dumps"], "only files that exist are described")
 
-    def test_a_dump_with_no_version_header_says_so_rather_than_guessing(self):
-        with open(os.path.join(self.out, "schema.sql"), "w") as fh:
-            fh.write("CREATE TABLE public.a (id uuid);\n")
-        self.assertEqual(self.build()["postgres_version"], "")
+    # The restore test cannot start without this value, so it is checked against
+    # the dump the CLI really writes rather than one shaped to make it pass.
+    def test_the_postgres_version_comes_from_the_database_not_the_schema_dump(self):
+        self.write_real_dumps()
+        self.assertEqual(self.build()["postgres_version"], "15.8")
+
+    def test_the_real_schema_dump_carries_no_version_header_at_all(self):
+        path = os.path.join(self.out, "schema.sql")
+        with open(path, "w") as fh:
+            fh.write(REAL_SCHEMA_DUMP)
+        self.assertEqual(
+            bm.header_version(path),
+            "",
+            "the CLI strips every comment from schema.sql, which is exactly why "
+            "the version is asked of the database instead",
+        )
+
+    def test_it_falls_back_to_the_data_dump_header_when_the_database_will_not_say(self):
+        global SERVER_VERSION_NUM
+        self.write_real_dumps()
+        SERVER_VERSION_NUM, prior = None, SERVER_VERSION_NUM
+        try:
+            self.assertEqual(self.build()["postgres_version"], "15.8")
+        finally:
+            SERVER_VERSION_NUM = prior
+
+    def test_a_version_nobody_can_establish_says_so_rather_than_guessing(self):
+        global SERVER_VERSION_NUM
+        SERVER_VERSION_NUM, prior = None, SERVER_VERSION_NUM
+        try:
+            self.assertEqual(self.build()["postgres_version"], "")
+        finally:
+            SERVER_VERSION_NUM = prior
+
+    def test_the_packed_version_number_becomes_a_major_the_restore_test_can_split(self):
+        self.assertEqual(bm.version_from_num("150008"), "15.8")
+        self.assertEqual(bm.version_from_num(170006), "17.6")
+        self.assertEqual(bm.version_from_num(" 150000 "), "15.0")
+        self.assertEqual(bm.version_from_num(""), "")
+        self.assertEqual(bm.version_from_num(None), "")
+        self.assertEqual(bm.version_from_num("90624"), "", "9.x is not a version this runs on")
 
     def test_storage_counts_and_bytes_per_bucket_come_through(self):
         with open(os.path.join(self.out, "storage-manifest.json"), "w") as fh:

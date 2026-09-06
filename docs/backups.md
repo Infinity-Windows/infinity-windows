@@ -113,8 +113,9 @@ routine green message every week is a channel people stop reading.
 
 The image is `supabase/postgres`, not stock Postgres, because the schema dump
 creates extensions — pg_cron, pg_net, pgsodium — that stock Postgres has never
-heard of. The tag is chosen from the version `pg_dump` wrote into the dump's own
-header; the pinned tags are `supabase/postgres:15.14.1.168` and
+heard of. The tag is chosen from `postgres_version` in `MANIFEST.json`, which
+the nightly asks the live database for; the pinned tags are
+`supabase/postgres:15.14.1.168` and
 `supabase/postgres:17.6.1.168`, in the workflow's `env:` block. A dump from any
 other major version fails the job loudly rather than restoring into the wrong
 one.

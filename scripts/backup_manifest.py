@@ -95,16 +95,44 @@ def file_digest(path: str) -> Dict[str, Any]:
     return {"bytes": os.path.getsize(path), "sha256": h.hexdigest()}
 
 
-def postgres_version(schema_sql_path: str) -> str:
-    """The server version pg_dump wrote into the file's header.
+VERSION_SQL = "select current_setting('server_version_num') as v"
 
-    The restore test reads this to choose its Postgres image. Restoring a 15
-    dump into 17 mostly works and quietly is not the same database, so the
-    version travels with the dump rather than being remembered by a person.
+
+def version_from_num(num: Any) -> str:
+    """Postgres's own `server_version_num`, as a dotted version.
+
+    Postgres 10 and later pack the version as major * 10000 + minor, so this is
+    arithmetic and not parsing. `server_version` is deliberately not the thing
+    asked for: Debian- and Ubuntu-packaged servers append a vendor string to it
+    ("15.8 (Ubuntu 15.8-1.pgdg22.04+1)"), and the restore test splits this value
+    on the first dot to choose an image.
     """
-    if not os.path.exists(schema_sql_path):
+    try:
+        n = int(str(num).strip())
+    except (TypeError, ValueError):
         return ""
-    with open(schema_sql_path, errors="replace") as fh:
+    if n < 100000:  # 9.x packed the number differently; nothing here runs one
+        return ""
+    return "%d.%d" % (n // 10000, n % 10000)
+
+
+def header_version(dump_path: str) -> str:
+    """The version pg_dump wrote into a dump's own header, where it survived.
+
+    Only `data.sql` is worth asking, and the reason is worth writing down: the
+    SCHEMA pipeline in `supabase db dump` ends with `sed -E "/^--/d"`, which
+    deletes EVERY comment line in the file — the `-- Dumped from database
+    version 15.8` header along with them. The data-only pipeline keeps comments
+    on purpose ("Never delete SQL comments because multiline records may begin
+    with them"), so its header is still there.
+
+    This used to read schema.sql, which meant it returned "" against every real
+    dump the CLI has ever produced, and the weekly restore test could never get
+    past choosing an image.
+    """
+    if not os.path.exists(dump_path):
+        return ""
+    with open(dump_path, errors="replace") as fh:
         for _ in range(40):
             line = fh.readline()
             if not line:
@@ -113,6 +141,23 @@ def postgres_version(schema_sql_path: str) -> str:
             if m:
                 return m.group(1)
     return ""
+
+
+def postgres_version(ref: str, out_dir: str, query: Callable) -> str:
+    """Which Postgres this dump came out of.
+
+    Asked of the database rather than read out of the dump, because what the
+    dump says about itself depends on a sed pipeline inside a CLI that this
+    repository does not own. The restore test picks its image from this value,
+    and restoring a 15 dump into 17 mostly works and quietly is not the same
+    database, so it has to be right rather than merely present.
+    """
+    rows = query(ref, VERSION_SQL)
+    if isinstance(rows, list) and rows and isinstance(rows[0], dict):
+        got = version_from_num(rows[0].get("v", ""))
+        if got:
+            return got
+    return header_version(os.path.join(out_dir, "data.sql"))
 
 
 def git_sha() -> str:
@@ -190,7 +235,7 @@ def build(
         "git_sha": git_sha(),
         "started_at": started_at,
         "finished_at": finished_at,
-        "postgres_version": postgres_version(os.path.join(out_dir, "schema.sql")),
+        "postgres_version": postgres_version(ref, out_dir, query),
         "schemas": schemas,
         "table_count": len(table_rows),
         "total_rows": total_rows,

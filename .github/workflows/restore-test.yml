@@ -15,10 +15,12 @@
 # The image is `supabase/postgres`, not stock `postgres`, because the schema
 # dump creates extensions — pg_cron, pg_net, pgsodium, pgjwt — that stock
 # Postgres has never heard of. Restoring into stock would fail those lines and
-# then cheerfully report that the tables came back. The tag is chosen from the
-# major version pg_dump wrote into the dump's own header, so nobody has to
-# remember what production runs. Only 15 and 17 are published lines; a dump from
-# anything else fails the job loudly rather than restoring into the wrong major.
+# then cheerfully report that the tables came back. The tag is chosen from
+# `postgres_version` in MANIFEST.json — which the backup asks the live database
+# for, NOT out of the dump's header: `supabase db dump`'s schema pipeline ends
+# in `sed -E "/^--/d"` and strips that header away. So nobody has to remember
+# what production runs. Only 15 and 17 are published lines; a dump from anything
+# else fails the job loudly rather than restoring into the wrong major.
 #
 # WHY psql's EXIT CODE IS NOT THE CHECK. Replaying a Supabase dump into a
 # Supabase image always produces some noise — the roles and extensions the image
@@ -164,6 +166,9 @@ jobs:
           case "$major" in
             15) image="$PG15_IMAGE" ;;
             17) image="$PG17_IMAGE" ;;
+            "")
+              echo "::error title=The backup does not say which Postgres it came from::MANIFEST.json has an empty postgres_version, so there is no way to choose an image, and restoring into a guess would not be a test of anything. The backup itself may still be fine — check the nightly run's summary."
+              exit 1 ;;
             *)
               echo "::error title=No image for Postgres $version::The dump says Postgres '$version'. Only 15 and 17 are pinned in this workflow. Add the tag for $major to PG${major}_IMAGE and re-run — restoring into a different major version would not be a test of anything."
               exit 1 ;;
