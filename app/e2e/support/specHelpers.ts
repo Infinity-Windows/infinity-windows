@@ -84,7 +84,15 @@ export async function stubGeolocationDenied(
   );
 }
 
-/** A 1x1 PNG — the smallest thing that is still a real image to upload. */
+/**
+ * A 1x1 PNG — the smallest thing that is still a real image to upload.
+ *
+ * It has to be a REAL image, not just bytes with a .png name: the capture
+ * pipeline decodes what it is handed (createImageBitmap / Image) and a fake
+ * would fail there before any upload happened. It also stands in for what a
+ * signed thumbnail URL resolves to — the fixture's storage handler answers
+ * 404, and a broken <img> would sit in every screenshot the spec takes.
+ */
 export const TINY_PNG_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
 
