@@ -46,6 +46,7 @@ import {
   clockIn,
   clockOut,
   currentBreakSeconds,
+  type ClockInPick,
   elapsedWorkSeconds,
   endBreak,
   finishShiftAt,
@@ -66,6 +67,7 @@ import {
   type FinishTimeCheck,
 } from "../../lib/shiftGuard";
 import { useT } from "../../lib/i18n";
+import { effectiveClockInMode } from "../../lib/jobModes";
 
 const BREAK_ICONS: Record<BreakType, LucideIcon> = {
   lunch: UtensilsCrossed,
@@ -91,11 +93,19 @@ type Mode = "pick" | "main" | "break-type" | "switch";
 export function ClockSheet({
   profileId,
   shift,
+  initialPick = null,
   onClose,
   onChanged,
 }: {
   profileId: string | null;
   shift: TimeShift | null;
+  /**
+   * What to open pre-filled with (2026-09-06): the landing block's job, cost
+   * code, note and mode when its own punch was refused, so nobody picks them
+   * a second time here. Null for every other opener — the sheet then primes
+   * from today's schedule or the last job, as it always has.
+   */
+  initialPick?: ClockInPick | null;
   onClose: () => void;
   onChanged: () => void;
 }) {
@@ -103,13 +113,13 @@ export function ClockSheet({
   const navigate = useNavigate();
   const t = useT();
   const [mode, setMode] = useState<Mode>(shift ? "main" : "pick");
-  const [pickProjectId, setPickProjectId] = useState<string>("");
-  const [pickCostCodeId, setPickCostCodeId] = useState<string>("");
+  const [pickProjectId, setPickProjectId] = useState<string>(initialPick?.projectId ?? "");
+  const [pickCostCodeId, setPickCostCodeId] = useState<string>(initialPick?.costCodeId ?? "");
   /** Optional first window to start on, in the same tap as clocking in. */
   const [pickOpeningId, setPickOpeningId] = useState<string>("");
   const [search, setSearch] = useState("");
   const [showFullList, setShowFullList] = useState(false);
-  const [note, setNote] = useState("");
+  const [note, setNote] = useState(initialPick?.note ?? "");
   const [injured, setInjured] = useState(false);
   // "What happened?" — appears the moment the injured box is ticked (owner
   // ask, 2026-08-19). The app is the record, never the emergency channel —
@@ -123,7 +133,11 @@ export function ClockSheet({
   const [timeWrong, setTimeWrong] = useState(false);
   const [now, setNow] = useState(Date.now());
   const [finishAt, setFinishAt] = useState("");
-  const primedRef = useRef(false);
+  // A carried pick counts as already primed: the schedule / recents priming
+  // below runs when those queries land, which is AFTER this mount, and it
+  // would otherwise overwrite the job the person just chose on the landing
+  // with yesterday's — the exact double-pick this hand-off exists to end.
+  const primedRef = useRef(Boolean(initialPick?.projectId));
 
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   // Cost codes scoped to the job in play (slice 3): while picking or switching,
@@ -199,6 +213,7 @@ export function ClockSheet({
 
   // Prime the picker with today's scheduled job when there is one (fewer wrong
   // clock-ins), otherwise fall back to the most recent job so "Resume" is one tap.
+  // Skipped entirely when the sheet opened with a carried pick (primedRef above).
   useEffect(() => {
     if (primedRef.current || shift) return;
     const r = recents.data?.[0];
@@ -297,8 +312,34 @@ export function ClockSheet({
       const projectId = pickProjectId || null;
       const costCodeId = pickCostCodeId || null;
       const noteText = note.trim() || null;
+      // The mode the shift records (standard-tracking-jobs slice 2). The
+      // landing block is where a both-mode job gets asked, so a carried pick
+      // wins — but only for the job it was answered for: the pickers stay
+      // live after a pre-filled open, and the server does not check p_mode
+      // against the job's allowed_modes, so a tracking answer carried from
+      // one job must not ride onto a data-only job tapped here (review,
+      // 2026-09-06). Opened bare, or on a different job, this sheet has no
+      // mode step: a single-mode job records its one mode and a both-mode job
+      // records nothing — which is what every sheet punch recorded before
+      // 2026-09-06, when this path always sent null and a both-mode job
+      // clocked here lost its mode.
+      //
+      // ONLINE punch only. The offline queue below carries job, cost code and
+      // note but not the mode: no clock_in overload takes both p_client_id
+      // (the outbox's dedupe key) and p_mode, so the replay has nothing to
+      // send it to and the shift records job_mode null. Closing that needs a
+      // migration and a handler change, neither of which this sheet owns
+      // (stated limit, review 2026-09-06).
+      const jobsOwnMode = effectiveClockInMode(
+        (projects.data ?? []).find((p) => p.id === projectId)?.allowed_modes,
+        null,
+      );
+      const jobMode =
+        initialPick && initialPick.projectId === projectId
+          ? (initialPick.mode ?? jobsOwnMode)
+          : jobsOwnMode;
       try {
-        await clockIn(projectId, costCodeId, geo, noteText);
+        await clockIn(projectId, costCodeId, geo, noteText, jobMode);
         // Same tap starts the first window when one was picked. The clock-in
         // stands even if this part fails — a refused start must never un-ring
         // that bell, so the failure becomes a toast, not an error.

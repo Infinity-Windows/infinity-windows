@@ -9,7 +9,8 @@ import { TalkContent } from "../safety/TalkContent";
 import { useT } from "../../lib/i18n";
 
 /**
- * Sign today's toolbox talk without leaving the clock-in sheet.
+ * Sign today's toolbox talk without leaving the clock-in sheet — or the
+ * landing block, which hosts the same card since 2026-09-06.
  *
  * The morning ritual is one flow — pick the job, pick the cost code, sign the
  * talk, pick your first window, start — so the signing lives HERE, not on a
@@ -17,13 +18,20 @@ import { useT } from "../../lib/i18n";
  * flow (same submitToolboxCompletion: acknowledgment, typed name, drawn
  * signature, archived PDF); only the wrapper is compact. The full talk text
  * stays one tap away rather than filling the sheet.
+ *
+ * `onSigned` lets the host finish what the tap started: the landing block
+ * passes its own clock-in, so signing IS the punch and nobody picks the job
+ * and cost code a second time (owner ask, 2026-09-06). Optional — the sheet
+ * still mounts the card without it and keeps its own Start button.
  */
 export function ToolboxSignCard({
   profileId,
   talk,
+  onSigned,
 }: {
   profileId: string;
   talk: SafetyTalk;
+  onSigned?: () => void;
 }) {
   const queryClient = useQueryClient();
   const t = useT();
@@ -40,14 +48,36 @@ export function ToolboxSignCard({
         typedName: typedName.trim(),
         signatureDataUrl: sigRef.current!.toDataUrl(),
       }),
-    onSuccess: () => {
+    onSuccess: (row) => {
+      // Write the signed row into the cache BEFORE asking for a refetch, so
+      // every host — this card's own parent, the landing block, the sheet,
+      // the on-the-clock nag — knows the talk is signed in the same render,
+      // not one network round trip later. Two things hung on that gap
+      // (review, 2026-09-06): the landing block kept this card on screen with
+      // its button live until the refetch landed, so a second tap filed a
+      // second signature AND a second clock_in, which auto-closes the shift
+      // the first one had just opened; and a phone that lost signal right
+      // after the signature never got the refetch at all (offlineFirst
+      // pauses it), so the clock sheet it was handed to still read "unsigned"
+      // and held its Start — the punch could not even be queued.
+      queryClient.setQueryData(["toolboxToday", profileId], row);
       queryClient.invalidateQueries({ queryKey: ["toolboxToday"] });
       queryClient.invalidateQueries({ queryKey: ["toolboxHistory"] });
       queryClient.invalidateQueries({ queryKey: ["toolboxCompliance"] });
+      // Called from the mutation OPTION, not a per-call mutate(_, { onSuccess })
+      // callback on purpose: the cache write above is what makes the host stop
+      // rendering this card, and React Query drops a per-call callback once
+      // the component that made the call has unmounted — the clock-in would
+      // then silently never fire. Option callbacks survive.
+      onSigned?.();
     },
   });
 
   const canSubmit = ack && typedName.trim().length > 1 && !sigEmpty;
+  // Held after success as well as during it: a host that keys "signed" off
+  // something other than toolboxToday would otherwise show a live button on a
+  // talk already on record.
+  const held = !canSubmit || sign.isPending || sign.isSuccess;
 
   return (
     <div className="detail-card" style={{ marginTop: 8 }}>
@@ -88,7 +118,7 @@ export function ToolboxSignCard({
         type="button"
         className="button-like active-pill"
         style={{ marginTop: 8 }}
-        disabled={!canSubmit || sign.isPending}
+        disabled={held}
         onClick={() => sign.mutate()}
       >
         {sign.isPending ? t("toolbox.signing") : t("toolbox.signTalk")}

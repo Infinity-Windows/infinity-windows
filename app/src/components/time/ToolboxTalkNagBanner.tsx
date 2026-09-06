@@ -10,10 +10,20 @@ function isWeekday(d = new Date()): boolean {
 }
 
 /**
- * Post-clock-in toolbox-talk nag. Clocking in is NOT gated on the talk anymore
- * (installers can always start their shift); this non-blocking banner nudges
- * them to read & sign today's safety talk while on the clock. It disappears the
- * moment today's talk is completed. Rendered only when clocked in on a weekday.
+ * On-the-clock toolbox-talk nag.
+ *
+ * The server DOES gate clock-in on today's talk — every clock_in call
+ * (20260970000000_job_modes.sql) refuses without a toolbox_completions row on
+ * the caller's record for today's America/Denver date — so anyone on the
+ * clock has a row for the server's today, and most never see this. (A crew
+ * clocked in from the roster gets one too: _file_group_toolbox_signin writes
+ * a 'group' completion on each crew member's own record, and the read below
+ * does not care how a row was signed.) What it exists for is the two days
+ * disagreeing: the read below asks from the phone's local midnight while the
+ * gate asks from Denver's, so a shift that crosses either midnight, or a
+ * phone in another zone, can be on the clock with nothing on record for
+ * "today" as this component counts it. Non-blocking; disappears the moment
+ * today's talk is completed. Rendered only when clocked in on a weekday.
  */
 export function ToolboxTalkNagBanner({
   profileId,
