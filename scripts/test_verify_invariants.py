@@ -10,8 +10,9 @@ project or a network.
 A check nobody has proved can FAIL is not a check, so the cases that matter
 are the failing ones: a wall policy without its guard, a money table without
 its door, a read policy open to anon, a client role that can read pin_hash, a
-project-scoped table missing the fence. Each has to be reported in a sentence
-that names the table. And the good shape — the one production is supposed to
+project-scoped table missing the fence, a table without RLS, a function anon
+can call. Each has to be reported in a sentence that names the table or the
+function. And the good shape — the one production is supposed to
 have — has to pass with no failures, or the gate is red on day one and people
 learn to skip it.
 """
@@ -21,6 +22,7 @@ import io
 import json
 import sys
 import unittest
+import unittest.mock
 from contextlib import redirect_stdout
 from pathlib import Path
 
@@ -77,6 +79,7 @@ class TheHealthyShapePasses(unittest.TestCase):
         self.assertEqual(failures, [])
         self.assertEqual(advisories, [])
         self.assertTrue(any("read policies" in s for s in summary))
+        self.assertTrue(any("anon-executable" in s for s in summary))
 
     def test_exempt_tables_are_the_walls_own_list(self):
         # projects and daily_logs carry no guard in the healthy fixture and
@@ -189,29 +192,57 @@ class TheFence(unittest.TestCase):
         self.assertTrue(any("could not be measured" in f for f in failures))
 
 
-class Advisories(unittest.TestCase):
-    def test_rls_off_and_anon_functions_are_reported_not_failed(self):
+class RlsEverywhere(unittest.TestCase):
+    def test_a_reachable_table_without_rls_fails_and_names_it(self):
         r = healthy()
         r["rls_off"] = ["window_id_counters"]
-        r["anon_functions"] = ["role_rank"]
-        r["anon_default_execute"] = True
         failures, advisories, _ = vi.judge(r)
-        self.assertEqual(failures, [])
-        self.assertEqual(len(advisories), 3)
-        self.assertIn("window_id_counters", advisories[0])
-        self.assertIn("role_rank", advisories[1])
-        self.assertIn("20260992000000", advisories[1])
-        self.assertIn("default privileges", advisories[2])
+        self.assertEqual(advisories, [])
+        self.assertEqual(len(failures), 1)
+        self.assertIn("window_id_counters", failures[0])
+        self.assertIn("enable row level security", failures[0])
 
-    def test_the_anon_keep_list_is_empty_and_honoured(self):
+    def test_an_unmeasured_list_is_a_failure_not_a_pass(self):
+        r = healthy()
+        del r["rls_off"]
+        failures, _, _ = vi.judge(r)
+        self.assertTrue(any("rls_off" in f for f in failures))
+
+
+class NobodyCallsAnonymously(unittest.TestCase):
+    def test_a_function_anon_can_execute_fails_and_names_it(self):
+        r = healthy()
+        r["anon_functions"] = ["finish_unit", "role_rank"]
+        failures, advisories, _ = vi.judge(r)
+        self.assertEqual(advisories, [])
+        self.assertEqual(len(failures), 1)
+        self.assertIn("finish_unit, role_rank", failures[0])
+        self.assertIn("20260992000000", failures[0])
+
+    def test_the_keep_list_is_empty_and_honoured(self):
         # Nothing signed-out calls a function in public (20260992000000's
-        # header lists every flow that was read). If that changes, the name
-        # goes here AND in a migration's grant; the probe then stays quiet.
+        # header lists every flow that was read). A name added here must also
+        # be granted in a migration; then the probe stays quiet about it.
         self.assertEqual(vi.ANON_FUNCTIONS_ALLOWED, frozenset())
         r = healthy()
         r["anon_functions"] = ["vault_pin_is_set"]
-        _, advisories, _ = vi.judge(r)
-        self.assertTrue(any("vault_pin_is_set" in a for a in advisories))
+        failures, _, _ = vi.judge(r)
+        self.assertTrue(any("vault_pin_is_set" in f for f in failures))
+        with unittest.mock.patch.object(vi, "ANON_FUNCTIONS_ALLOWED", frozenset({"vault_pin_is_set"})):
+            failures, _, _ = vi.judge(r)
+        self.assertEqual(failures, [])
+
+    def test_a_default_rule_that_reopens_the_door_fails(self):
+        r = healthy()
+        r["anon_default_execute"] = True
+        failures, _, _ = vi.judge(r)
+        self.assertTrue(any("default privileges" in f and "20260992000000" in f for f in failures))
+
+    def test_an_unmeasured_list_is_a_failure_not_a_pass(self):
+        r = healthy()
+        del r["anon_functions"]
+        failures, _, _ = vi.judge(r)
+        self.assertTrue(any("anon_functions" in f for f in failures))
 
 
 class TheReportEnvelope(unittest.TestCase):
