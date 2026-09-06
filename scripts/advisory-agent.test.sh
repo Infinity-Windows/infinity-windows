@@ -140,9 +140,11 @@ run_with_both() {
 
 # What the script says it would bill, given an environment. Prints one word and
 # never a value.
-credential_kind() { # oauth-value api-key-value
-  OUT="$(env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_API_KEY \
-    ${1:+CLAUDE_CODE_OAUTH_TOKEN="$1"} ${2:+ANTHROPIC_API_KEY="$2"} \
+credential_kind() { # oauth-value api-key-value [allow-api-key=1]
+  # The third argument is the owner's opt-in; without it the API key must read
+  # as no credential, and an ambient variable on the machine must not leak in.
+  OUT="$(env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_API_KEY -u ADVISORY_ALLOW_API_KEY \
+    ${1:+CLAUDE_CODE_OAUTH_TOKEN="$1"} ${2:+ANTHROPIC_API_KEY="$2"} ${3:+ADVISORY_ALLOW_API_KEY="$3"} \
     ADVISORY_REPO="$root" bash "$SCRIPT" --credential-kind 2>&1)"
   RC=$?
 }
@@ -382,11 +384,16 @@ assert_rc 0
 assert_has "oauth"
 assert_lacks "stub-token-not-a-real-one"
 
-new_case "an API key on its own is enough"
-credential_kind "" "stub-key-not-a-real-one"
+new_case "an API key is enough once the owner has opted in with ADVISORY_ALLOW_API_KEY=1"
+credential_kind "" "stub-key-not-a-real-one" 1
 assert_rc 0
 assert_has "api-key"
-assert_lacks "stub-key-not-a-real-one"
+
+new_case "an API key WITHOUT the owner's opt-in reads as no credential"
+credential_kind "" "stub-key-not-a-real-one"
+assert_rc 0
+assert_has "none"
+assert_lacks "api-key"
 
 new_case "with both, the subscription wins"
 credential_kind "stub-token-not-a-real-one" "stub-key-not-a-real-one"
@@ -505,7 +512,7 @@ head_commit "Add the clock-in button to the phrasebook"
 stub_cli
 OUT="$(env -u CLAUDE_CODE_OAUTH_TOKEN \
   PATH="$root/bin:$PATH" CLAUDE_BIN="claude" \
-  ANTHROPIC_API_KEY="stub-key-not-a-real-one" \
+  ADVISORY_ALLOW_API_KEY=1 ANTHROPIC_API_KEY="stub-key-not-a-real-one" \
   GH_TOKEN="stub-gh-token-not-a-real-one" \
   ADVISORY_REPO="$root" ADVISORY_BASE="origin/master" ADVISORY_HEAD="HEAD" \
   bash "$SCRIPT" --checks-dir "$root/checks" 2>&1)"
@@ -518,7 +525,7 @@ touch_catalog
 head_commit "Add the clock-in button to the phrasebook"
 stub_cli
 OUT="$(env -u CLAUDE_CODE_OAUTH_TOKEN \
-  PATH="$root/bin:$PATH" CLAUDE_BIN="claude" ANTHROPIC_API_KEY="stub-key-not-a-real-one" \
+  PATH="$root/bin:$PATH" CLAUDE_BIN="claude" ADVISORY_ALLOW_API_KEY=1 ANTHROPIC_API_KEY="stub-key-not-a-real-one" \
   ADVISORY_REPO="$root" ADVISORY_BASE="origin/master" ADVISORY_HEAD="HEAD" \
   bash "$SCRIPT" --checks-dir "$root/checks" 2>&1)"
 RC=$?
