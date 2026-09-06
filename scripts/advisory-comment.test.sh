@@ -64,7 +64,15 @@ if printf '%s' "\$*" | grep -q -- '--jq'; then
   python3 - "$root/listing.json" <<'PY'
 import json, sys
 rows = json.load(open(sys.argv[1]))
-hit = next((r for r in rows if "<!-- advisory-review" in r.get("body", "")), None)
+hit = next(
+    (
+        r
+        for r in rows
+        if r.get("user", {}).get("type") == "Bot"
+        and "<!-- advisory-review" in r.get("body", "")
+    ),
+    None,
+)
 print(str(hit["id"]) + "\t" + hit["body"] if hit else "null")
 PY
   exit 0
@@ -112,6 +120,11 @@ assert_has() {
 $OUT"; fi
 }
 
+assert_lacks() {
+  if printf '%s' "$OUT" | grep -qF -- "$1"; then bad "did not expect \"$1\". Output:
+$OUT"; else ok; fi
+}
+
 assert_method() {
   if [ -f "$root/methods.txt" ] && grep -qxF -- "$1" "$root/methods.txt"; then ok
   else bad "expected a $1. Calls:
@@ -142,7 +155,7 @@ assert_body_has "Findings go here."
 new_case "the second run updates the comment the first one left"
 cat >"$root/listing.json" <<'JSON'
 [{"id": 11, "body": "Looks good to me"},
- {"id": 22, "body": "<!-- advisory-review -->\nAn earlier review"}]
+ {"id": 22, "user": {"type": "Bot"}, "body": "<!-- advisory-review -->\nAn earlier review"}]
 JSON
 printf 'A newer review.\n' >"$root/body.md"
 run
@@ -154,8 +167,42 @@ assert_body_has "A newer review."
 
 new_case "somebody else's comment is never rewritten"
 cat >"$root/listing.json" <<'JSON'
-[{"id": 11, "body": "Please also fix the thing"},
- {"id": 12, "body": "advisory-review is a good idea"}]
+[{"id": 11, "user": {"type": "User"}, "body": "Please also fix the thing"},
+ {"id": 12, "user": {"type": "User"}, "body": "advisory-review is a good idea"}]
+JSON
+run
+assert_rc 0
+assert_method POST
+assert_no_method PATCH
+
+new_case "a stranger who pastes the marker does not get their comment taken over"
+# This repository is public: anybody can comment. Matching on the marker alone
+# meant a drive-by comment containing `<!-- advisory-review -->` would be
+# PATCHed — their words replaced by ours, with a pull-requests:write token.
+cat >"$root/listing.json" <<'JSON'
+[{"id": 99, "user": {"type": "User"}, "body": "drive-by <!-- advisory-review runs=9 on=2026-09-06 -->"},
+ {"id": 100, "user": {"type": "Bot"}, "body": "<!-- advisory-review runs=1 on=2026-09-06 -->\nOurs"}]
+JSON
+run
+assert_rc 0
+assert_method PATCH
+assert_has "updated comment 100"
+assert_lacks "updated comment 99"
+
+new_case "a stranger cannot spend the day's run allowance either"
+# The cap rides in the marker, so a planted `runs=9` used to read as nine runs
+# already spent and switch the reading half off for the day.
+cat >"$root/listing.json" <<'JSON'
+[{"id": 99, "user": {"type": "User"}, "body": "drive-by <!-- advisory-review runs=9 on=2026-09-06 -->"}]
+JSON
+count
+assert_rc 0
+assert_has "0"
+assert_lacks "9"
+
+new_case "with only a stranger's marker there, a fresh comment is posted"
+cat >"$root/listing.json" <<'JSON'
+[{"id": 99, "user": {"type": "User"}, "body": "drive-by <!-- advisory-review runs=9 on=2026-09-06 -->"}]
 JSON
 run
 assert_rc 0
@@ -195,7 +242,7 @@ assert_has "0"
 
 new_case "a stamp from today is the count"
 cat >"$root/listing.json" <<'JSON'
-[{"id": 22, "body": "<!-- advisory-review runs=3 on=2026-09-06 -->\nAn earlier review"}]
+[{"id": 22, "user": {"type": "Bot"}, "body": "<!-- advisory-review runs=3 on=2026-09-06 -->\nAn earlier review"}]
 JSON
 count
 assert_rc 0
@@ -203,7 +250,7 @@ assert_has "3"
 
 new_case "a stamp from yesterday counts as nought, because the cap is per day"
 cat >"$root/listing.json" <<'JSON'
-[{"id": 22, "body": "<!-- advisory-review runs=5 on=2026-09-05 -->\nYesterday's review"}]
+[{"id": 22, "user": {"type": "Bot"}, "body": "<!-- advisory-review runs=5 on=2026-09-05 -->\nYesterday's review"}]
 JSON
 count
 assert_rc 0

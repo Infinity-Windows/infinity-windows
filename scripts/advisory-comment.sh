@@ -62,14 +62,27 @@ fi
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-# The comment this workflow already left, if there is one. Matched on the
-# marker rather than on the author, because the author differs between a
-# GITHUB_TOKEN run, an app-token run and a re-run, and the marker does not.
+# The comment this workflow already left, if there is one.
+#
+# TWO CONDITIONS, AND THE SECOND ONE IS THE IMPORTANT ONE. The marker says
+# which comment is ours; `.user.type == "Bot"` says it is ours at all. On a
+# PUBLIC repository anybody can leave a comment, and this used to match on the
+# marker alone — so a stranger could paste `<!-- advisory-review runs=9
+# on=<today> -->` into a drive-by comment and two things would follow. The
+# review would PATCH that person's comment, overwriting what they wrote, using
+# a `pull-requests: write` token. And `--count` would read the run count out of
+# it, so `runs=9` against a cap of five silently switched the reading half off
+# for the day. Neither needs an account with any access to this repository.
+#
+# The author is still not pinned to one LOGIN — that really does differ between
+# a GITHUB_TOKEN run, an app-token run and a re-run — but every one of those is
+# a Bot, and a person is not. Worst case, an unexpected author means a second
+# comment rather than a stolen one, which is the right way round to be wrong.
 find_existing() {
   "$GH_BIN" api --paginate \
     -H "Accept: application/vnd.github+json" \
     "/repos/$REPO/issues/$PR/comments" \
-    --jq "[.[] | select(.body | contains(\"$MARKER_PREFIX\"))] | first | (.id | tostring) + \"\\t\" + .body" \
+    --jq "[.[] | select(.user.type == \"Bot\" and (.body | contains(\"$MARKER_PREFIX\")))] | first | (.id | tostring) + \"\\t\" + .body" \
     2>"$WORK/err"
 }
 
