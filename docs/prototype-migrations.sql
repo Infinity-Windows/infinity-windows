@@ -17755,15 +17755,23 @@ grant execute on function public.learning_video_report(timestamptz, timestamptz)
 -- so that branch always catches it. Keep it that way: dropping `created_by`
 -- from an insert would break the write, not just the picture.
 --
--- STORAGE, CHECKED AND DELIBERATELY LEFT ALONE. `install-media` carries one
--- bucket-wide policy ("install media crew", 20260988000000): every non-partner
--- crew member may read any object in it. So an installer who already KNEW the
--- storage path of another job's photo could still mint a signed URL for it.
--- That is accepted here, for the reason 20260988000000 wrote down: the bucket's
--- paths are not all job folders ("receipts/…" is one), so there is no folder
--- rule to write yet — and the paths themselves now only reach a phone through
--- this table, which no longer hands them over. Scoping the bytes is a change of
--- its own, with its own decision to take.
+-- STORAGE, CHECKED AND DELIBERATELY LEFT ALONE — AND OPEN, NOT MERELY
+-- GUESSABLE. `install-media` carries one bucket-wide policy ("install media
+-- crew", 20260988000000) written FOR ALL, SELECT included: every non-partner
+-- crew member may read any object in it. Listing a bucket is a select on
+-- storage.objects, so nobody has to KNOW another job's path to reach its bytes
+-- — one list() call enumerates the whole bucket, and the top folder is the job
+-- id. Paths leak from other tables too: `opening_phases` holds finished-work
+-- photo paths that have no attachments row of their own (20260959000000 says
+-- so, while collecting them for a purge) behind a company-wide read this file
+-- does not touch.
+--
+-- So the honest sentence is: this migration closes the LIST an installer's
+-- gallery hands out. It does not close the bucket, and nothing here should be
+-- read as having closed it. The bucket stays where 20260988000000 left it, for
+-- the reason that migration wrote down — its paths are not all job folders
+-- ("receipts/…" is one), so there is no folder rule to write yet. Scoping the
+-- bytes is a change of its own, with its own decision to take.
 
 -- ---------------------------------------------------------------------------
 -- 1. Indexes the read rule leans on

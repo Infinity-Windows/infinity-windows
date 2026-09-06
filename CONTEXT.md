@@ -256,9 +256,10 @@ no job DISAPPEARS below foreman rather than leaking: the crew who took it lose
 it, which is the mistake to watch for when a seventh target column is added. Two things this deliberately is not. It is not a change to
 writes: the day-one FOR ALL policy became four per-command ones, and the three
 write policies are restated at exactly the width they had. And it is not a
-scoping of the BYTES — `install-media` is still one bucket-wide crew policy, so
-this closes the list an app hands out, not the bucket (20260988000000 says why
-that is still open). Receipts were already the narrow one and are untouched:
+scoping of the BYTES — `install-media` is still one bucket-wide crew policy
+covering SELECT, and listing a bucket is a select, so any crew member can still
+enumerate every job's objects and sign a URL for one. This closes the list an
+app hands out, not the bucket (20260988000000 says why that is still open). Receipts were already the narrow one and are untouched:
 below supervisor, and without the cost-books grant, you see only the receipts
 you uploaded yourself (`receipts_select`, tightened from rank 1 to rank 2 by
 wave Z's money doors).
