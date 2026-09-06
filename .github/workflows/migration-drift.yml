@@ -25,6 +25,11 @@
 # incident). Until now that lint was tested in CI and never run on a real
 # migration.
 #
+# ONE FALSE RED TO KNOW ABOUT: if another migration merged minutes ago and
+# Deploy backend has not finished applying it, master is briefly ahead of
+# production and this reads red. That is deploy lag, not the PR. Wait for
+# Deploy backend to go green and re-run the check.
+#
 # A MISSING SECRET IS RED, except on a pull request from a fork, which cannot
 # hold one and skips with a notice. "Nothing was measured" must not be green.
 #
