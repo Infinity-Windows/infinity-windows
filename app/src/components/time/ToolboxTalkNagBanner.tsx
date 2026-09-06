@@ -12,15 +12,18 @@ function isWeekday(d = new Date()): boolean {
 /**
  * On-the-clock toolbox-talk nag.
  *
- * The server DOES gate the day's first punch on today's talk — clock_in in
- * 20260970000000_job_modes.sql refuses it without a toolbox_completions row
- * for today's America/Denver date — so most people on the clock have already
- * signed and never see this. It exists for the ones who can be on the clock
- * with nothing on their own record: a crew clocked in from the roster on a
- * supervisor's group attestation (a 'group' completion, not a signature), or
- * a phone whose local midnight has passed while the server's day has not, so
- * "today" differs between the two. Non-blocking; disappears the moment today's
- * talk is completed. Rendered only when clocked in on a weekday.
+ * The server DOES gate clock-in on today's talk — every clock_in call
+ * (20260970000000_job_modes.sql) refuses without a toolbox_completions row on
+ * the caller's record for today's America/Denver date — so anyone on the
+ * clock has a row for the server's today, and most never see this. (A crew
+ * clocked in from the roster gets one too: _file_group_toolbox_signin writes
+ * a 'group' completion on each crew member's own record, and the read below
+ * does not care how a row was signed.) What it exists for is the two days
+ * disagreeing: the read below asks from the phone's local midnight while the
+ * gate asks from Denver's, so a shift that crosses either midnight, or a
+ * phone in another zone, can be on the clock with nothing on record for
+ * "today" as this component counts it. Non-blocking; disappears the moment
+ * today's talk is completed. Rendered only when clocked in on a weekday.
  */
 export function ToolboxTalkNagBanner({
   profileId,
