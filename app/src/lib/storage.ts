@@ -1521,3 +1521,69 @@ export async function listPackagePhotos(packageId: string): Promise<PackagePhoto
 export function packagePhotoPath(packageId: string, now: number, rand: string): string {
   return `packages/${packageId}/${now}-${rand}.jpg`;
 }
+
+// ---------------------------------------------------------------------------
+// The unit card's two doors (warehouse redesign wave 1, 20260994000000)
+// ---------------------------------------------------------------------------
+
+/**
+ * Move a package to any job and window — or back to the Boneyard with both
+ * null. A window not on the schedule yet is added in the same call. Returns
+ * the movement line's id (what the Undo toast reverses), or null when nothing
+ * changed. Warn, never block: the "wrong job" warnings live in the UI.
+ */
+export async function reassignPackage(input: {
+  packageId: string;
+  projectId: string | null;
+  markCode: string | null;
+  reason?: string | null;
+}): Promise<string | null> {
+  const { data, error } = await supabase.rpc("reassign_package", {
+    p_package: input.packageId,
+    p_project: input.projectId,
+    p_mark: input.markCode,
+    p_reason: input.reason ?? null,
+  });
+  if (error) throw error;
+  return (data as string | null) ?? null;
+}
+
+/** Write the opposite of a history line. Returns the new line's id. */
+export async function undoMovement(movementId: string): Promise<string> {
+  const { data, error } = await supabase.rpc("undo_movement", { p_movement: movementId });
+  if (error) throw error;
+  return data as string;
+}
+
+/** Every history line for a set of packages, newest first — one unit's
+ *  timeline is the union of its pieces' timelines. */
+export async function listMovementsForPackages(
+  packageIds: string[],
+): Promise<import("./warehouse/undo").MovementLine[]> {
+  if (packageIds.length === 0) return [];
+  const { data, error } = await supabase
+    .from("movements")
+    .select("id, package_id, event, reason, actor, created_at, undoes, from_container_id, to_container_id")
+    .in("package_id", packageIds)
+    .order("created_at", { ascending: false })
+    .limit(200);
+  if (error) {
+    // Deploy window: a database the unit-card migration has not reached yet
+    // has no `undoes` column — the timeline reads without the link.
+    if (isMissingColumn(error, "undoes")) {
+      const again = await supabase
+        .from("movements")
+        .select("id, package_id, event, reason, actor, created_at, from_container_id, to_container_id")
+        .in("package_id", packageIds)
+        .order("created_at", { ascending: false })
+        .limit(200);
+      if (again.error) throw again.error;
+      return ((again.data ?? []) as Record<string, unknown>[]).map((r) => ({
+        ...(r as unknown as import("./warehouse/undo").MovementLine),
+        undoes: null,
+      }));
+    }
+    throw error;
+  }
+  return (data ?? []) as unknown as import("./warehouse/undo").MovementLine[];
+}

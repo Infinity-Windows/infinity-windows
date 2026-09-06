@@ -5,6 +5,7 @@
 // package -> crate -> conex — not a list of results to dig through.
 
 import { useMemo, useState } from "react";
+import { unitHref } from "../../lib/warehouse/materialsScope";
 import { Link } from "react-router-dom";
 import { ScanLine, X } from "lucide-react";
 import { Scanner } from "../Scanner";
@@ -208,6 +209,13 @@ function Answer({
           Window {answer.markCode} · {answer.jobCode}
         </strong>
         <p style={{ margin: "2px 0 0", fontSize: 13 }}>{answer.headline}</p>
+        <Link
+          className="button-like"
+          style={{ marginTop: 8 }}
+          to={unitHref({ projectId: answer.projectId, pendingName: answer.projectId ? null : answer.jobCode }, answer.markCode)}
+        >
+          Open unit
+        </Link>
         <Rows hits={answer.hits} />
         {/* Job-building glow (#16's door): only when this job actually has
             a Studio model to show it on — a waiting job never does. */}

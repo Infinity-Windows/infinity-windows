@@ -83,3 +83,15 @@ export function distinctPendingJobNames(packages: StoragePackage[]): string[] {
   }
   return [...names].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 }
+
+/** The unit card's address (warehouse redesign wave 1). A job that is not
+ *  built yet is `waiting` plus its typed name — the same shadow-job idea the
+ *  delivery screens carry. */
+export function unitHref(
+  scope: { projectId: string | null; pendingName?: string | null },
+  mark: string,
+): string {
+  const m = encodeURIComponent(mark);
+  if (scope.projectId) return `/unit/${scope.projectId}/${m}`;
+  return `/unit/waiting/${m}?pending=${encodeURIComponent(scope.pendingName ?? "")}`;
+}
