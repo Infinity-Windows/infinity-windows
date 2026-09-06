@@ -1150,40 +1150,6 @@ export async function addPartTypeOption(name: string): Promise<string> {
   return (data as { name: string }).name;
 }
 
-export interface PendingDeliverySet {
-  id: string;
-  delivery_id: string;
-  job_name: string;
-  mark_code: string;
-  kind: string;
-  package_count: number;
-  crate_name: string | null;
-  crate_pieces: number | null;
-  materialized_at: string | null;
-}
-
-export async function listPendingDeliverySets(): Promise<PendingDeliverySet[]> {
-  const { data, error } = await supabase
-    .from("pending_delivery_sets")
-    .select(
-      "id, delivery_id, job_name, mark_code, kind, package_count, crate_name, crate_pieces, materialized_at",
-    )
-    .is("materialized_at", null)
-    .order("created_at");
-  if (error) throw error;
-  return (data ?? []) as PendingDeliverySet[];
-}
-
-export async function materializePendingSet(
-  setId: string,
-  projectId: string,
-): Promise<void> {
-  const { error } = await supabase.rpc("materialize_pending_set", {
-    p_set: setId,
-    p_project: projectId,
-  });
-  if (error) throw error;
-}
 
 export async function storePackages(packageIds: string[], containerId: string): Promise<number> {
   const { data, error } = await supabase.rpc("store_packages", {
