@@ -220,21 +220,6 @@ export function isOnTheClock(shift: TimeShift | null | undefined): boolean {
   return shift != null && shift.status === "open";
 }
 
-export async function listMyShifts(
-  profileId: string,
-  sinceIso: string,
-): Promise<TimeShift[]> {
-  const { data, error } = await supabase
-    .from("time_shifts")
-    .select(SHIFT_SELECT)
-    .eq("profile_id", profileId)
-    .gte("clock_in_at", sinceIso)
-    .neq("status", "voided")
-    .order("clock_in_at", { ascending: false });
-  if (error) throw error;
-  return (data ?? []) as TimeShift[];
-}
-
 export async function listShiftsToApprove(): Promise<TimeShift[]> {
   const { data, error } = await supabase
     .from("time_shifts")
@@ -329,19 +314,6 @@ export async function listUnfinishedShifts(): Promise<TimeShift[]> {
     .in("status", ["open", "needs_finish"])
     .order("clock_in_at", { ascending: true })
     .limit(200);
-  if (error) throw error;
-  return (data ?? []) as TimeShift[];
-}
-
-/** My own shifts still without a finish time — usually none, sometimes one. */
-export async function listMyUnfinishedShifts(profileId: string): Promise<TimeShift[]> {
-  const { data, error } = await supabase
-    .from("time_shifts")
-    .select(SHIFT_SELECT)
-    .eq("profile_id", profileId)
-    .is("clock_out_at", null)
-    .in("status", ["open", "needs_finish"])
-    .order("clock_in_at", { ascending: true });
   if (error) throw error;
   return (data ?? []) as TimeShift[];
 }
