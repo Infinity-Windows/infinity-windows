@@ -46,6 +46,10 @@ cloning a bundle checks out the local one. `master` is protected on GitHub now
 (PRs required, no force-push, no deletion, admins included), so the checkpoint
 is the copy that covers what protection cannot: the machine, and this account.
 
+The checkpoint covers the CODE. The DATABASE is copied by a separate nightly
+workflow and put back by [`scripts/restore.md`](scripts/restore.md) — read
+[`docs/backups.md`](docs/backups.md) before touching either.
+
 `npm run build` typechecks `e2e/` too, so it fails when `@playwright/test` isn't
 installed. To check only shipped code: `npx tsc --noEmit -p tsconfig.app.json`.
 

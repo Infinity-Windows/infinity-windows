@@ -9,7 +9,12 @@
 // override project_plan_outlines with a stateful mock, drive the real UI,
 // assert the CAPTURED write payload rather than just that something rendered.
 import { expect, test } from "@playwright/test";
-import { jobFixtures, useSupabaseFixtures } from "./support/supabaseFixtures";
+import {
+  jobFixtures,
+  NO_STORAGE_BACKUP_REASON,
+  storageBackupPresent,
+  useSupabaseFixtures,
+} from "./support/supabaseFixtures";
 import { json } from "./support/specHelpers";
 
 const BLACK22 = jobFixtures().find((j) => j.jobCode === "BLACK22")!;
@@ -70,6 +75,10 @@ function mockOutline(
 }
 
 test("setting north in the tracer rotates the mini-map's compass rose", async ({ page }) => {
+  // The tracer draws over the planset page, rendered by pdf.js. No sheet, no
+  // north anchor to drag. (The second test below needs no sheet and still
+  // runs.)
+  test.skip(!storageBackupPresent(), NO_STORAGE_BACKUP_REASON);
   await useSupabaseFixtures(page, { role: "supervisor" });
   const mock = mockOutline(
     page,

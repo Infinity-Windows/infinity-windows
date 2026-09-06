@@ -401,3 +401,7 @@ scripts/slack-notify.test.sh                 # 57  the failure notifier, posts n
 None of them need credentials or a network. What ships automatically, what
 verifies it and what alerts on failure is all written up in
 [`docs/always-live.md`](docs/always-live.md).
+
+The database is copied every night and a copy is restored and checked every
+week: [`docs/backups.md`](docs/backups.md). The page for the day production is
+gone is [`scripts/restore.md`](scripts/restore.md).

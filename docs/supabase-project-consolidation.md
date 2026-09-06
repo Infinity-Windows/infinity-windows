@@ -125,9 +125,12 @@ nobody has completed an install through the app on this project.
 | Mark drawings | **None.** `project_marks`, `project_mark_specs` and `project_mark_elevation_views` are all empty |
 | Openings progress | **109 openings, all still at status "planned."** Exactly 1 is assigned to an installer, and 0 have had their rough opening measured |
 
-There is also a **complete JSON backup of every non-empty table** already
-committed at `docs/backups/2026-07-29T1200Z-czprjcskmzzagdztqonm-full.json`
-(243,943 bytes). If this project is retired, that file is the safety net for
+There is also a **complete JSON snapshot of every non-empty table** taken on
+2026-07-29, kept with the crew's names scrubbed at
+`scripts/fixtures/merge-sample-project.json`. (It was committed under
+`docs/backups/` until 2026-09-05; see [`backups.md`](./backups.md) for why real
+backups are no longer kept in this public repository.) If this project is
+retired, that file is the safety net for
 every row listed above except the uploaded files and the login accounts, neither
 of which a JSON export can capture.
 
@@ -291,7 +294,7 @@ are against `master` at commit `505c049`.**
 | `docs/migration-drift-2026-07-28.sql` line 5 | Historical record |
 | `docs/migration-drift-2026-07-29-production.md` lines 1, 5, 13, 33, 202, 212, 216 | Historical record |
 | `docs/migration-repair-2026-07-29-production.md` lines 1, 11, 34, 36, 42, 44, 48, 285, 300, 304 | Historical record |
-| `docs/backups/2026-07-29T1200Z-czprjcskmzzagdztqonm-full.json` line 639, and the filename | The backup. **Leave this alone** — it is a record of a specific project at a specific moment |
+| `scripts/fixtures/merge-sample-project.json` (was `docs/backups/2026-07-29T1200Z-…-full.json`) | The snapshot, now a scrubbed fixture. **Leave the data alone** — it is a record of a specific project at a specific moment |
 
 These historical documents should **not** be rewritten. They describe what was
 true on a date. If the decision changes, the right move is to add a short note at

@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Prove a backup file matches the live database it claims to copy.
 
-    scripts/verify_backup.py <project-ref> <out-dir>
+    scripts/verify_backup.py <project-ref> <out-dir> [date-stamp]
+
+`out-dir` is the same gitignored `backups/` folder the snapshot was written to.
 
 Re-counts every table directly against the project, re-lists the live catalog,
 re-checks auth/storage totals, and re-hashes every downloaded storage object.
@@ -18,6 +20,8 @@ sys.path.insert(0, __file__.rsplit("/", 1)[0])
 from backup_project import (  # noqa: E402
     REDACTED_COLUMNS,
     REDACTION_MARKER,
+    backup_filename,
+    newest_backup,
     list_schemas,
     list_tables,
     row_counts,
@@ -26,10 +30,15 @@ from mgmt_query import query  # noqa: E402
 
 
 def main() -> None:
-    if len(sys.argv) != 3:
+    if len(sys.argv) not in (3, 4):
         raise SystemExit(__doc__)
     ref, out_dir = sys.argv[1], sys.argv[2].rstrip("/")
-    path = f"{out_dir}/2026-07-29-{ref}-full.json"
+    # Default to the newest snapshot in the folder rather than to a date typed
+    # in a year ago. Checking a file that is not the one just written is the
+    # kind of pass that is worse than no check at all.
+    path = backup_filename(ref, out_dir, sys.argv[3]) if len(sys.argv) > 3 else (
+        newest_backup(ref, out_dir) or backup_filename(ref, out_dir)
+    )
 
     problems: list[str] = []
     checks: list[str] = []

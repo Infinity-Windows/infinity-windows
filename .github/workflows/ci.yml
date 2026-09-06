@@ -207,6 +207,24 @@ jobs:
       - name: Test the test-login fence
         run: python3 scripts/test_sandbox_guard.py
 
+      # The two pieces of the nightly backup. They run unattended at 3am
+      # against the one database that holds people's hours, and both ways they
+      # can go wrong go wrong SILENTLY: a walk that misses a folder still exits
+      # 0, and a manifest that under-counts still validates. Stdlib-only; they
+      # touch no database, no key and no network.
+      - name: Test the storage backup
+        run: python3 scripts/test_backup_storage_objects.py
+
+      - name: Test the backup manifest
+        run: python3 scripts/test_backup_manifest.py
+
+      # And the check that decides whether a restore worked. A verifier that
+      # passes on a broken restore is worse than not having one: it turns an
+      # unknown into a false reassurance, which is exactly what "we take
+      # backups" was before any of this. Stubs psql; no Postgres, no dump.
+      - name: Test the restore verification
+        run: python3 scripts/test_restore_verify.py
+
       # The misnamed-key check gives ADVICE to a human, so crying wolf is its
       # real failure mode: one wrong suggestion and nobody reads it again. The
       # tests check every secret this repo actually holds against every name the
@@ -235,11 +253,11 @@ jobs:
 
       # The dry run must stay runnable with no credentials. If it ever needs a
       # database to plan a merge, that is a bug.
-      - name: Dry run against the committed backup
+      - name: Dry run against the committed sample
         run: |
           scripts/supabase-merge.sh \
-            --source docs/backups/2026-07-29T1200Z-czprjcskmzzagdztqonm-full.json \
-            --target docs/backups/2026-07-29T1200Z-czprjcskmzzagdztqonm-full.json \
+            --source scripts/fixtures/merge-sample-project.json \
+            --target scripts/fixtures/merge-sample-project.json \
             >/dev/null 2>&1 && { echo "merging a project into itself should have been refused"; exit 1; } || true
           ! scripts/supabase-merge.sh --source a --target b --execute
 

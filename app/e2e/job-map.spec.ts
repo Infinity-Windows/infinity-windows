@@ -38,8 +38,10 @@ import { fileURLToPath } from "node:url";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import {
   buildingPlansetFor,
+  NO_STORAGE_BACKUP_REASON,
   jobFixtures,
   plansetPdfPath,
+  storageBackupPresent,
   useSupabaseFixtures,
   type JobFixture,
 } from "./support/supabaseFixtures";
@@ -447,13 +449,15 @@ const labelFits: Record<string, LabelFit & { page: number }> = {};
 
 for (const job of jobFixtures()) {
   test(`${job.jobCode} job map is readable at 390px`, async ({ page }) => {
+    test.skip(!storageBackupPresent(), NO_STORAGE_BACKUP_REASON);
     const planset = buildingPlansetFor(job.projectId);
+    // Folder present, sheet missing. Without it the map cannot work out which
+    // pages are floor plans, and PECAN14 in particular would open on a page
+    // with no marks — so this is a failure, not a skip.
     expect(
       plansetPdfPath(planset),
       `The real planset PDF for ${job.jobCode} is missing from the storage ` +
-        `backup (${planset.storage_path}). Without it the map cannot work out ` +
-        `which pages are floor plans, and PECAN14 in particular would open on ` +
-        `a page with no marks. Restore docs/backups/ before trusting this run.`,
+        `backup (${planset.storage_path}), even though the backup folder is here.`,
     ).not.toBeNull();
 
     const { unmatched, missingStorage } = await useSupabaseFixtures(page);

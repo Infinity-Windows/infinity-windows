@@ -121,8 +121,9 @@ organization and carry on. Any database still in their personal account is
 theirs to keep or delete, which is exactly why nothing of ours may be in there.
 
 **A database in a personal account is being retired.** Never just forget it.
-Take a real export of its rows and its files first, commit the export under
-`docs/backups/`, and then pause or delete it deliberately. "We stopped using it"
+Take a real export of its rows and its files first, keep the export somewhere
+outside this repository — it is public, see [`backups.md`](./backups.md) — and
+then pause or delete it deliberately. "We stopped using it"
 is not a decision; it is a database quietly holding company records in someone
 else's account.
 

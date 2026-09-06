@@ -26,7 +26,9 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import {
   jobFixtures,
+  NO_STORAGE_BACKUP_REASON,
   openingsFor,
+  storageBackupPresent,
   useSupabaseFixtures,
 } from "./support/supabaseFixtures";
 
@@ -214,6 +216,10 @@ async function zoomTo(page: Page, clicks: number, expected: string) {
 
 for (const job of jobFixtures()) {
   test(`${job.jobCode} marks land on their callouts`, async ({ page }) => {
+    // "Is the dot where the window is" is measured against the real sheet the
+    // map opens on. Without the sheet there is no page, no dots and nothing to
+    // measure, so this is a skip rather than a red.
+    test.skip(!storageBackupPresent(), NO_STORAGE_BACKUP_REASON);
     const pageErrors: string[] = [];
     page.on("pageerror", (e) => pageErrors.push(String(e)));
     await useSupabaseFixtures(page);
