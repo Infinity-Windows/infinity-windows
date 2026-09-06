@@ -11,10 +11,12 @@ const BLACK22 = JOBS.find((j) => j.jobCode === "BLACK22")!;
 const C1 = "00000000-0000-4000-8000-00000000c001";
 const C3 = "00000000-0000-4000-8000-00000000c003";
 const P = (n: number) => `00000000-0000-4000-8000-00000000a0${String(n).padStart(2, "0")}`;
+/** Six characters from the sticker alphabet — no O, 0, I or 1 (lib/qr.ts). */
+const CODE = (n: number) => `AB${"CDEFGH"[n - 1]}QLM`;
 
 function pkg(n: number, status: string, over: Record<string, unknown> = {}) {
   return {
-    id: P(n), serial: `PKG-0000${String(n).padStart(2, "0")}`, short_code: `AB${n}CDE`,
+    id: P(n), serial: `PKG-0000${String(n).padStart(2, "0")}`, short_code: CODE(n),
     status, project_id: BLACK22.projectId, category: "windows", note: null, delivery_id: null,
     container_id: status === "stored" ? C1 : null, location_id: null, area: null,
     part_index: n, part_total: 3, part_type: ["frame", "glass", "hardware"][n - 1],
@@ -61,7 +63,7 @@ test("a loose piece leads with 'Put with the rest' when its unit sits in one box
   const rows = [pkg(1, "stored"), pkg(2, "stored"), pkg(3, "received")];
   const calls = await fixtures(page, rows);
   await page.goto("/scan");
-  await typeCode(page, "AB3CDE");
+  await typeCode(page, CODE(3));
   await expect(page.getByText("3 of 3 · Hardware", { exact: false }).or(page.getByText(/Part 3 of 3/))).toBeVisible();
   const primary = page.locator(".scan-verb--primary");
   await expect(primary).toContainText("Put with the rest of window 16");
@@ -75,13 +77,13 @@ test("an expected piece leads with Arrive; a stored one with Move, then a box li
   const rows = [pkg(1, "minted"), pkg(2, "stored")];
   const calls = await fixtures(page, rows);
   await page.goto("/scan");
-  await typeCode(page, "AB1CDE");
+  await typeCode(page, CODE(1));
   await expect(page.locator(".scan-verb--primary")).toContainText("Arrived");
   await page.locator(".scan-verb--primary").click();
   await expect.poll(() => calls.filter((c) => c.fn === "receive_minted_packages").length).toBe(1);
 
   await page.getByRole("button", { name: "Clear" }).click();
-  await typeCode(page, "AB2CDE");
+  await typeCode(page, CODE(2));
   await expect(page.locator(".scan-verb--primary")).toContainText("Move to another box");
   await page.locator(".scan-verb--primary").click();
   await expect(page.getByText("Which box?")).toBeVisible();
@@ -96,9 +98,9 @@ test("a box scanned first swallows every sticker after it", async ({ page }) => 
   await page.goto("/scan");
   await typeCode(page, "CTR-000003");
   await expect(page.getByText("Putting away into Conex 3")).toBeVisible();
-  await typeCode(page, "AB1CDE");
+  await typeCode(page, CODE(1));
   await expect.poll(() => calls.filter((c) => c.fn === "store_packages").length).toBe(1);
-  await typeCode(page, "AB2CDE");
+  await typeCode(page, CODE(2));
   await expect.poll(() => calls.filter((c) => c.fn === "store_packages").length).toBe(2);
   expect(calls.map((c) => (c.body as { p_container: string }).p_container)).toEqual([C3, C3]);
 });
@@ -108,8 +110,8 @@ test("no sticker: pick the piece by job and window", async ({ page }) => {
   await fixtures(page, rows);
   await page.goto("/scan");
   await page.getByRole("button", { name: "Pick it by job and window…" }).click();
-  await page.getByLabel("Job").selectOption(BLACK22.projectId);
-  await page.getByLabel("Window").selectOption("16");
+  await page.getByLabel("Job", { exact: true }).selectOption(BLACK22.projectId);
+  await page.getByLabel("Window", { exact: true }).selectOption("16");
   await page.getByRole("button", { name: /2 of 3 · glass/ }).click();
   await expect(page.locator(".scan-verb--primary")).toContainText("Put away");
 });
