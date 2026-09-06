@@ -21,6 +21,15 @@ set -uo pipefail
 
 cd "$(dirname "$0")/.." || exit 1
 SCRIPT="$PWD/scripts/advisory-comment.sh"
+
+# jq applies the script's own filter in the stub, so the author predicate is
+# really exercised rather than re-described. Without it these cases would pass
+# by agreeing with a reimplementation, which is worse than not running.
+if ! command -v jq >/dev/null 2>&1; then
+  echo "advisory-comment: jq is not installed, so these tests cannot run honestly."
+  echo "  brew install jq   (ubuntu runners already have it)"
+  exit 1
+fi
 VERBOSE=0
 [ "${1:-}" = "-v" ] && VERBOSE=1
 
@@ -60,23 +69,18 @@ if printf '%s' "\$*" | grep -q -- '--method'; then
   exit 0
 fi
 [ "$LIST_RC" -ne 0 ] && { echo "gh: listing refused" >&2; exit $LIST_RC; }
-if printf '%s' "\$*" | grep -q -- '--jq'; then
-  python3 - "$root/listing.json" <<'PY'
-import json, sys
-rows = json.load(open(sys.argv[1]))
-hit = next(
-    (
-        r
-        for r in rows
-        if r.get("user", {}).get("type") == "Bot"
-        and "<!-- advisory-review" in r.get("body", "")
-    ),
-    None,
-)
-print(str(hit["id"]) + "\t" + hit["body"] if hit else "null")
-PY
-  exit 0
-fi
+# The --jq expression is applied by the REAL jq, exactly as the script wrote
+# it. A stub that reimplemented the filter would be testing the stub: the
+# author predicate this suite exists to pin down lives inside that expression,
+# and a reimplementation agrees with it by construction.
+prev=
+for a in "\$@"; do
+  if [ "\${prev:-}" = "--jq" ]; then
+    jq -r "\$a" "$root/listing.json"
+    exit 0
+  fi
+  prev="\$a"
+done
 cat "$root/listing.json"
 exit 0
 STUB
