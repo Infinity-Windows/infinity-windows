@@ -70,6 +70,9 @@ const OPENED = [
   "add_delivery_set",
   "update_delivery",
   "rewrite_set",
+  // Wave 1 of the warehouse redesign (2026-09-06): moving a package to
+  // another job or window is everyday warehouse work, same door as the rest.
+  "reassign_package",
 ];
 
 /** Kept foreman+ by ADR-0007 — the actions that end something. */

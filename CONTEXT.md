@@ -60,6 +60,10 @@ Settled 2026-08-17. The warehouse answers one question — *where is it* — and
 
 **On hand** — how much of a supply we believe we have. Always an estimate, always shown with when it was last counted, because it is decremented by what installers say they took and corrected only by counting.
 
+**Unit card** — the one editor for a unit (ADR-0008, 2026-09-06): `/unit/:job/:mark` shows the unit's packages as tiles and every fact on it — job, window number, piece count, each piece's label, part number, note — as a chip you tap to change. Other screens link to it and carry no editors of their own. A package may be **reassigned** to any job or window from here (`reassign_package`), with a warning and a movement line, never a refusal.
+
+**Undo** — every movement line can be undone by writing its opposite (`undo_movement`): the state comes back, an `override` line linked by `movements.undoes` says so, and nothing is edited or deleted. The person who did it may undo it the same day; a foreman may undo any line at any time. Every warehouse write shows the app's five-second undo toast.
+
 **Warehouse stations** — the five-stage funnel the hub's top reads as, in the order material actually moves: Coming in, Off the truck, Put away, Out the door, Fix a mistake (wave F, grill Q5/Q6, 2026-08-28). The five names are vocabulary now — every destination page wears a chip naming which one it belongs to, both read from the one list in `lib/warehouse/stations.ts`.
 
 ## Time and measurement
