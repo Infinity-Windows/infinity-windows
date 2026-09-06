@@ -58,11 +58,18 @@ transport:
 
 - **email addresses and phone numbers**, wherever they appear — including inside
   an error message, which keeps the sentence and masks the address
-- **latitude, longitude and accuracy**
+- **latitude, longitude and accuracy** — and a lat/lng pair written into a
+  sentence, down to three decimal places, which is about a hundred metres
+- **a street address written into a sentence**, matched on its shape:
+  *"Home Depot, 1425 Sagebrush Hollow Dr"* keeps the shop and loses the house
 - **anything under a key whose words include** `note`, `notes`, `caption`,
   `address`, `display_name`, `name`, `email`, `phone`, `pin`, `token`,
   `password` or `authorization`. Matched on words, so `job_address`,
-  `installer_email` and `crew_notes` all go too
+  `installer_email` and `crew_notes` all go too — and the words this app's own
+  rows use for the same three things: a house (`site`, `street`, `city`, `zip`,
+  `location`, `place`), a person (`driver`, `customer`, `contact`, `member`,
+  `crew`) and free text somebody typed (`description`, `memo`, `title`,
+  `details`, `summary`, `text`, `label`)
 - **request and response bodies**, headers and cookies. A fetch breadcrumb keeps
   its method, its status and its route pattern, and loses everything else
 - **what a tapped control says about a person.** The SDK writes a tap's
@@ -94,6 +101,14 @@ One consequence worth knowing: because `name` is a sensitive word, the browser
 and OS names Sentry would normally attach are redacted too. That is the trade
 this makes on purpose — over-redacting costs a little debugging context, and
 under-redacting costs a crew member's privacy.
+
+**The one thing the scrubber cannot do for you.** The error's own message is
+kept, deliberately — *"could not save the receipt"* is the whole value of a
+report — and only the patterns above are masked inside it. A **person's name**
+written into free text matches no pattern and will go out as typed. So when you
+write an error, name the thing that broke, not the person: put the id in the
+console line and a plain sentence in the error. That rule is the reason `name`,
+`driver` and `description` are on the key list at all.
 
 ## Turning it on
 

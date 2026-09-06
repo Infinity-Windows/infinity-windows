@@ -28,6 +28,14 @@
 //     aria-label, a title, an alt — which in this app are crew members' names,
 //     photo captions and the address of the house somebody is standing at
 //   - console breadcrumb messages, into which the SDK stringifies whole objects
+//   - a street address written into a sentence, matched on its shape
+//
+// WHAT IS KEPT ON PURPOSE, and is therefore YOUR job when you write an error:
+// the message. "Could not save the receipt" is the whole value of a report, so
+// the sentence survives and only the patterns above are masked inside it. A
+// person's NAME in free text cannot be matched by any pattern — so never put
+// one in an error message. Put the id in the log and the plain sentence in the
+// error.
 //
 // ONE IMPLEMENTATION, TWO RUNTIMES. This file lives under supabase/functions so
 // the edge functions can import it directly, and the app imports it from here
@@ -63,6 +71,37 @@ const SENSITIVE_WORDS = new Set([
   "password",
   "authorization",
   "name",
+  // Where a HOUSE is. `address` alone catches `job_address` and misses every
+  // other word this app's own rows use for the same thing — the takeoff's
+  // `site`, the supply home's `place`, a vendor row's `street`/`city`/`zip`.
+  // A jobsite address is a customer's home address.
+  "site",
+  "street",
+  "city",
+  "zip",
+  "postal",
+  "location",
+  "place",
+  // Who a person is, where the key does not happen to say "name". A bare
+  // `driver`, `customer` or `member` holds exactly what `display_name` holds.
+  "driver",
+  "customer",
+  "contact",
+  "person",
+  "member",
+  "crew",
+  // Free text somebody typed. `note` and `comment` were the two the rule named,
+  // but the app writes the same kind of sentence under a dozen other words —
+  // a receipt line's `description`, a talk's `title`, a movement's `memo` — and
+  // Postgres puts the value that broke a constraint in `details`.
+  "description",
+  "memo",
+  "label",
+  "title",
+  "text",
+  "detail",
+  "details",
+  "summary",
   // Where a person was standing. `coords`/`position` cover the shapes the
   // browser's geolocation API hands back.
   "lat",
@@ -123,7 +162,23 @@ const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
 const PHONE_RE =
   /(^|[^\w.])((?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4})(?![\w.])/g;
 // A latitude/longitude pair as it appears in a message or a URL fragment.
-const COORD_PAIR_RE = /-?\d{1,3}\.\d{4,}\s*,\s*-?\d{1,3}\.\d{4,}/g;
+//
+// THREE decimal places, not four. Three is about a hundred metres — the width
+// of a cul-de-sac, which is close enough to say which house somebody was
+// standing at, and `30.267,-97.743` is the shape a rounded pair arrives in.
+// A pair of ordinary decimals masked by mistake costs a report nothing.
+const COORD_PAIR_RE = /-?\d{1,3}\.\d{3,}\s*,\s*-?\d{1,3}\.\d{3,}/g;
+// A street address written into a sentence: a house number, up to four
+// capitalised words, and a word that only ever ends a street name.
+//
+// A key called `address` is caught by the word list; this is for the other
+// door — "could not save the receipt for Home Depot, 1425 Sagebrush Hollow Dr"
+// is an ERROR MESSAGE, and the message is kept on purpose because it is the
+// whole point of the report. A person's NAME in free text cannot be matched
+// this way and is not masked: see docs/monitoring.md, and do not write one
+// into an error.
+const STREET_RE =
+  /\b\d{1,6}\s+(?:[A-Z][A-Za-z'.-]*\s+){0,4}(?:Street|St|Avenue|Ave|Road|Rd|Drive|Dr|Lane|Ln|Boulevard|Blvd|Court|Ct|Circle|Cir|Trail|Trl|Terrace|Ter|Parkway|Pkwy|Highway|Hwy|Way|Place|Pl|Loop|Cove|Cv|Ridge|Hollow|Hill|Bend|Pass|Creek|Path|Run)\b\.?/g;
 // A JWT, and Supabase's own key shapes. Never useful in a report, always awful.
 const JWT_RE = /\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}/g;
 const SB_KEY_RE = /\bsb(?:p|_publishable|_secret)?_[A-Za-z0-9_-]{12,}/g;
@@ -161,6 +216,7 @@ export function scrubText(text: string, max: number = MAX_TEXT): string {
     .replace(SB_KEY_RE, "[token]")
     .replace(EMAIL_RE, "[email]")
     .replace(COORD_PAIR_RE, "[coords]")
+    .replace(STREET_RE, "[address]")
     .replace(PHONE_RE, "$1[phone]");
   return masked.length > max ? `${masked.slice(0, max)}…` : masked;
 }

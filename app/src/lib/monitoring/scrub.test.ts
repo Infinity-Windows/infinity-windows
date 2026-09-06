@@ -66,6 +66,24 @@ describe("isSensitiveKey", () => {
     }
   });
 
+  it("catches a house, whatever the column happened to be called", () => {
+    for (const key of ["site", "site_address", "street", "city", "zip", "location", "place"]) {
+      expect(isSensitiveKey(key), key).toBe(true);
+    }
+  });
+
+  it("catches a person under a key that never says the word name", () => {
+    for (const key of ["driver", "customer", "contact", "crew_member", "assigned_person"]) {
+      expect(isSensitiveKey(key), key).toBe(true);
+    }
+  });
+
+  it("catches free text somebody typed", () => {
+    for (const key of ["description", "memo", "title", "details", "summary", "line_text"]) {
+      expect(isSensitiveKey(key), key).toBe(true);
+    }
+  });
+
   it("leaves the keys a fix actually needs", () => {
     for (const key of ["role", "build", "offline", "status_code", "method", "route"]) {
       expect(isSensitiveKey(key), key).toBe(false);
@@ -101,6 +119,21 @@ describe("scrubText", () => {
       .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
       .join("\n");
     expect(code).not.toMatch(/\(\?<[=!]/);
+  });
+
+  it("masks a jobsite address written into a message, and keeps the sentence", () => {
+    expect(
+      scrubText("Could not save the receipt — Home Depot, 1425 Sagebrush Hollow Dr"),
+    ).toBe("Could not save the receipt — Home Depot, [address]");
+    expect(scrubText("could not save install at 1428 Elm Street, Austin TX")).toBe(
+      "could not save install at [address], Austin TX",
+    );
+  });
+
+  it("masks a rounded lat/lng pair, not only a precise one", () => {
+    // Three decimals is about a hundred metres — still enough to say which
+    // house somebody was standing at.
+    expect(scrubText('where: "30.267,-97.743"')).toBe('where: "[coords]"');
   });
 
   it("masks a lat/lng pair written into a message", () => {
@@ -237,7 +270,14 @@ describe("scrubEvent", () => {
           },
         ],
       },
-      extra: { note: "picked up shims and a case of caulk", receipt_kind: "fuel" },
+      extra: {
+        note: "picked up shims and a case of caulk",
+        receipt_kind: "fuel",
+        // The keys nobody thought to put on the list: a jobsite under `site`,
+        // a crew member under `description`.
+        site: "1425 Sagebrush Hollow Dr, Austin TX",
+        description: "receipt for Maria Gomez",
+      },
     };
     const out = scrubEvent(event) as ScrubbableEvent;
     const value = out.exception!.values![0];
@@ -252,7 +292,11 @@ describe("scrubEvent", () => {
 
     expect((out.extra as Record<string, unknown>).note).toBe(REDACTED);
     expect((out.extra as Record<string, unknown>).receipt_kind).toBe("fuel");
+    expect((out.extra as Record<string, unknown>).site).toBe(REDACTED);
+    expect((out.extra as Record<string, unknown>).description).toBe(REDACTED);
     expect(JSON.stringify(out)).not.toContain("Bluff Trail");
+    expect(JSON.stringify(out)).not.toContain("Sagebrush");
+    expect(JSON.stringify(out)).not.toContain("Maria Gomez");
     expect(JSON.stringify(out)).not.toContain("case of caulk");
   });
 
