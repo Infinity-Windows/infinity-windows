@@ -31,10 +31,10 @@ const CONTAINERS = [
   { id: C3, serial: "CTR-000003", name: "Conex 3", kind: "conex", active: true, address: null, access_code: null, notes: null, created_at: "2026-08-01T00:00:00Z" },
 ];
 
-/** Named `use…` on purpose: it calls useSupabaseFixtures, and the hooks lint
- *  rule reads that as a hook (every other spec's fixture helper does the same). */
-async function useScanFixtures(page: import("@playwright/test").Page, rows: unknown[]) {
-  await useSupabaseFixtures(page, { role: "installer" });
+/** The storage routes only — useSupabaseFixtures is called inline in each
+ *  test, because the hooks lint rule refuses a `use…` call inside any other
+ *  async helper. */
+async function scanFixtures(page: import("@playwright/test").Page, rows: unknown[]) {
   await page.route("**/rest/v1/packages**", (r) => json(r, rows, rows.length));
   await page.route("**/rest/v1/storage_containers**", (r) => json(r, CONTAINERS, CONTAINERS.length));
   await page.route("**/rest/v1/movements**", (r) => json(r, [], 0));
@@ -56,7 +56,9 @@ async function typeCode(page: import("@playwright/test").Page, code: string) {
 
 test("a loose piece leads with 'Put with the rest' when its unit sits in one box", async ({ page }) => {
   const rows = [pkg(1, "stored"), pkg(2, "stored"), pkg(3, "received")];
-  const calls = await useScanFixtures(page, rows);
+  await useSupabaseFixtures(page, { role: "installer" });
+
+  const calls = await scanFixtures(page, rows);
   await page.goto("/scan");
   await typeCode(page, CODE(3));
   await expect(page.getByText("3 of 3 · Hardware", { exact: false }).or(page.getByText(/Part 3 of 3/))).toBeVisible();
@@ -70,7 +72,9 @@ test("a loose piece leads with 'Put with the rest' when its unit sits in one box
 
 test("an expected piece leads with Arrive; a stored one with Move, then a box list", async ({ page }) => {
   const rows = [pkg(1, "minted"), pkg(2, "stored")];
-  const calls = await useScanFixtures(page, rows);
+  await useSupabaseFixtures(page, { role: "installer" });
+
+  const calls = await scanFixtures(page, rows);
   await page.goto("/scan");
   await typeCode(page, CODE(1));
   await expect(page.locator(".scan-verb--primary")).toContainText("Arrived");
@@ -89,7 +93,9 @@ test("an expected piece leads with Arrive; a stored one with Move, then a box li
 
 test("a box scanned first swallows every sticker after it", async ({ page }) => {
   const rows = [pkg(1, "received"), pkg(2, "received")];
-  const calls = await useScanFixtures(page, rows);
+  await useSupabaseFixtures(page, { role: "installer" });
+
+  const calls = await scanFixtures(page, rows);
   await page.goto("/scan");
   await typeCode(page, "CTR-000003");
   await expect(page.getByText("Putting away into Conex 3")).toBeVisible();
@@ -102,7 +108,9 @@ test("a box scanned first swallows every sticker after it", async ({ page }) => 
 
 test("no sticker: pick the piece by job and window", async ({ page }) => {
   const rows = [pkg(1, "received"), pkg(2, "received")];
-  await useScanFixtures(page, rows);
+  await useSupabaseFixtures(page, { role: "installer" });
+
+  await scanFixtures(page, rows);
   await page.goto("/scan");
   await page.getByRole("button", { name: "Pick it by job and window…" }).click();
   await page.getByLabel("Job", { exact: true }).selectOption(BLACK22.projectId);
@@ -112,7 +120,9 @@ test("no sticker: pick the piece by job and window", async ({ page }) => {
 });
 
 test("the Scan button floats on warehouse screens and opens the same sheet", async ({ page }) => {
-  await useScanFixtures(page, [pkg(1, "stored")]);
+  await useSupabaseFixtures(page, { role: "installer" });
+
+  await scanFixtures(page, [pkg(1, "stored")]);
   await page.goto("/warehouse");
   await page.getByRole("button", { name: "Scan a sticker or a box" }).click();
   await expect(page.getByRole("dialog", { name: "Scan" })).toBeVisible();
