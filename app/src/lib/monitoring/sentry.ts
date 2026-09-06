@@ -12,7 +12,13 @@
 // exactly as it did before. That is why the SDK is behind a DYNAMIC import: an
 // ordinary import would put ~30 kB of monitoring in the shell every phone
 // downloads before it can show anything, for a feature that is switched off.
-// With the DSN unset the chunk is never requested at all.
+// With the DSN unset the chunk is never requested at all — and it takes TWO
+// things to make that true, because a dynamic import keeps the chunk off the
+// critical path but the service worker precaches every built .js file whether
+// anything asks for it or not. So vite.config.ts names this chunk
+// `monitoring` and leaves it out of the precache manifest while the DSN is
+// unset; with a DSN it goes back in, deliberately, because a crash in a dead
+// zone cannot wait for a download.
 //
 // THE DSN IS PUBLIC ON PURPOSE. This repo is public and the browser DSN is
 // compiled into the bundle, where anyone can read it — that is how every

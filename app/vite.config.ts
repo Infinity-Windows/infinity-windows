@@ -1,7 +1,7 @@
 import { execSync } from 'node:child_process'
 import { copyFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { defineConfig, type Plugin, type ResolvedConfig } from 'vite'
+import { defineConfig, loadEnv, type Plugin, type ResolvedConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 // Explicit .ts extension: this config is checked under `module: nodenext`
@@ -49,6 +49,27 @@ function localBuildId(): string {
 // and nag on every check.
 const buildId = process.env.VITE_BUILD_ID || localBuildId()
 const builtAt = new Date().toISOString()
+
+/**
+ * Whether this build has a crash monitor to load at all.
+ *
+ * It decides ONE thing: whether the monitoring chunk is precached. The service
+ * worker precaches every built .js file, so without this the 83 kB Sentry
+ * chunk lands on every installer's phone on every release — for a feature that
+ * is switched off and whose code is never executed. The chunk is behind a
+ * dynamic import, so it stays off the critical path either way; being in the
+ * precache manifest is what makes the SW go and FETCH it.
+ *
+ * When the DSN IS set the chunk is precached on purpose: a crash in a dead zone
+ * is the one worth having, and a monitor that has to be downloaded before it
+ * can report is no use on a phone with no signal.
+ *
+ * loadEnv rather than process.env alone, because it reads both — CI passes this
+ * in the build step's env (deploy-pages.yml) and a local build puts it in .env.
+ * Production mode, because the service worker is disabled in dev anyway.
+ */
+const monitoringOn =
+  (loadEnv('production', process.cwd(), 'VITE_').VITE_SENTRY_DSN ?? '').trim() !== ''
 
 /**
  * Emit `version.json` next to the bundle so a running app can ask "is there a
@@ -174,6 +195,21 @@ export default defineConfig({
     __RRWEB_EXCLUDE_IFRAME__: true,
     __RRWEB_EXCLUDE_SHADOW_DOM__: true,
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // Give the crash monitor a chunk with a NAME, so the service worker's
+        // globIgnores below can point at it. Left to itself rollup calls this
+        // `esm-<hash>.js` after whatever file happened to be first, which is
+        // not a thing a glob can name and not a thing anybody reading the
+        // build output would recognise.
+        manualChunks(id: string) {
+          if (id.includes('node_modules/@sentry')) return 'monitoring'
+          return undefined
+        },
+      },
+    },
+  },
   plugins: [
     react(),
     buildVersionPlugin(),
@@ -215,6 +251,14 @@ export default defineConfig({
           // look like it had not worked. Nothing is lost offline: you cannot
           // install an app you cannot reach.
           'manifest.webmanifest',
+          // The crash monitor, when there is no DSN to use it — which is the
+          // state this ships in. It is a dynamic import, so nothing on a phone
+          // ever asks for it; precaching it would make the service worker
+          // download 83 kB of switched-off feature for every installer on
+          // every release, over whatever signal a jobsite has. Turn monitoring
+          // on and this line disappears, because then the chunk has to be on
+          // the phone BEFORE the crash in the dead zone that needs it.
+          ...(monitoringOn ? [] : ['assets/monitoring-*.js']),
         ],
         // The app-shell JS bundle is >2 MB, above workbox's default precache
         // ceiling. Raise it so the whole shell is precached — offline-first

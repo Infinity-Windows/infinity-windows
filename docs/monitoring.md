@@ -12,7 +12,11 @@ so anything that broke outside a React render was caught by nothing at all.
 
 This is the plumbing that fixes that. **It is entirely optional and ships
 switched off** — with no DSN set, the app and the functions behave exactly as
-they did before, and the monitoring code is never even downloaded.
+they did before, and the monitoring code is never even downloaded: it sits
+behind a dynamic import nothing calls, *and* the build leaves its chunk out of
+the service worker's precache list, which would otherwise pull all 83 kB of it
+onto every phone on every release. Set a DSN and the chunk is precached again
+on purpose, because a crash in a dead zone cannot wait for a download.
 
 ## The five-character code
 

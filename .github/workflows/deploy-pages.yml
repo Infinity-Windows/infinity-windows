@@ -59,8 +59,10 @@ jobs:
           VITE_BUILD_ID: ${{ github.sha }}
           # Crash monitoring for the browser (2026-09-05). OPTIONAL, and unset
           # is the shipping state: with no value here the SDK is never even
-          # fetched (it sits behind a dynamic import) and the app behaves
-          # exactly as it did before. A repo secret that does not exist arrives
+          # fetched — it sits behind a dynamic import AND its chunk is left out
+          # of the service worker's precache list, which is the half that
+          # actually keeps it off a phone. vite.config.ts reads this same value
+          # to decide that, so the build follows the secret in both places. A repo secret that does not exist arrives
           # as an empty string, which is precisely what "off" means — so
           # nothing to guard, nothing that can fail.
           #

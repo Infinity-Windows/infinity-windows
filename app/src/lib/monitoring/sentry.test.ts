@@ -9,6 +9,9 @@
 // every one of them is a privacy decision: no replay, no tracing, errors only,
 // and a scrubber in front of the pipe.
 
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const sdk = vi.hoisted(() => {
@@ -195,5 +198,36 @@ describe("monitoringEnvironment", () => {
     expect(m.monitoringEnvironment("app.forgewd.com")).toBe("production");
     expect(m.monitoringEnvironment("infinity-windows.github.io")).toBe("preview");
     expect(m.monitoringEnvironment("localhost")).toBe("preview");
+  });
+});
+
+// A source contract, in the style of functionSentry.test.ts's Deno block: the
+// build config cannot be imported here, but the two lines that decide whether
+// a switched-off feature costs a phone anything can be read.
+//
+// WHY IT MATTERS: the service worker precaches every built .js file. A dynamic
+// import keeps the monitor off the critical path but NOT out of the precache
+// manifest — so without these two lines every installer downloads 83 kB of
+// code that never runs, on every release, over jobsite signal.
+describe("the chunk costs a phone nothing while monitoring is off", () => {
+  const config = readFileSync(
+    resolve(dirname(fileURLToPath(import.meta.url)), "../../../vite.config.ts"),
+    "utf8",
+  );
+
+  it("gives the monitor a chunk name a glob can point at", () => {
+    expect(config).toContain("node_modules/@sentry");
+    expect(config).toContain("return 'monitoring'");
+  });
+
+  it("keeps that chunk out of the precache when there is no DSN", () => {
+    expect(config).toContain("monitoringOn ? [] : ['assets/monitoring-*.js']");
+  });
+
+  it("still precaches it when there IS one, for the crash in the dead zone", () => {
+    // The condition, not its negation: with a DSN the chunk has to already be
+    // on the phone, because a monitor that must be downloaded first cannot
+    // report a crash that happened with no signal.
+    expect(config).toMatch(/VITE_SENTRY_DSN \?\? ''\)\.trim\(\) !== ''/);
   });
 });
