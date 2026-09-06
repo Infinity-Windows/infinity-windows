@@ -20,8 +20,14 @@ renderers) and are deliberately NOT here.
   through `scripts/pgq.sh`.
 - Each ticket lands as its own PR. Run `npm test` and `npm run lint` in `app/`
   on Node 22 before every push. Full gate first, then checkpoint after merge.
+- `~/Downloads/horizon-hub-44` is never modified. Read it, quote it, run its
+  tests if you must, but no edits, no branches, no `npm install` side effects
+  committed. "Don't touch Horizon" is the owner's standing rule.
+- This repo is public. No employee names, user ids, project ids, or point
+  totals in any ticket, comment or commit. Say "the owner", "a foreman", "an
+  installer".
 - Status strings are the five in `docs/agents/triage-labels.md`.
-  `ready-for-agent` = fully specified below. `needs-triage` = Isaac decides
+  `ready-for-agent` = fully specified below. `needs-triage` = the owner decides
   whether he wants the feature at all before anyone builds.
 
 ## Order

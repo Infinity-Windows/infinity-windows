@@ -4,7 +4,7 @@ Status: needs-triage
 Type: task
 Size: S
 
-Isaac decides whether the jobs list should carry these; `pipeline_nudges`
+The owner decides whether the jobs list should carry these; `pipeline_nudges`
 already covers part of it.
 
 ## Horizon does

@@ -38,4 +38,4 @@ the limited web one; #536's camera/GPS work was PWA workarounds.
   `mobile-build.yml`, and keep the remote-URL load strategy so deploys stay
   merge-driven.
 
-Reopen when Isaac asks for an App Store or Play listing.
+Reopen when the owner asks for an App Store or Play listing.

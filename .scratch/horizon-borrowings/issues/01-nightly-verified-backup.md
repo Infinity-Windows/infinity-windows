@@ -36,7 +36,7 @@ not the database.
    secret names in the workflow header the way `deploy-backend.yml` does.
 3. On failure, reuse `notify-failure.yml` so Slack hears about it.
 4. Stop committing dumps to `docs/backups/`: add a README there saying where
-   backups live now. Do NOT delete the existing July files without Isaac.
+   backups live now. Do NOT delete the existing July files without the owner.
 5. Restore path: a `scripts/restore-notes.md` (or section in
    `docs/consolidation-runbooks.md`) that says, step by step, how a dump from
    this job is put back. Prove the notes on the committed July dump against a

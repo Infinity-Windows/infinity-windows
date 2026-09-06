@@ -4,7 +4,7 @@ Status: needs-triage
 Type: task
 Size: M
 
-Isaac decides first: does he want installers to be able to turn categories of
+The owner decides first: should installers to be able to turn categories of
 pings off? The report's reason to say yes is the "first-morning chip storm"
 concern already in the program notes.
 

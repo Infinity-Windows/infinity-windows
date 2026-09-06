@@ -4,7 +4,7 @@ Status: needs-triage
 Type: task
 Size: M
 
-Isaac decides first. The report's reasons: window damage disputes get settled
+The owner decides first. The report's reasons: window damage disputes get settled
 with a circled photo; handing a builder one set of photos today needs a login
 or leaves the app. Share links fit the one-app principle (nothing leaves, the
 outsider comes to it).
