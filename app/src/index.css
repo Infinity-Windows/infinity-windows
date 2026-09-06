@@ -12483,3 +12483,23 @@ button.stage-chip {
 .tailgate-bar { position: sticky; bottom: calc(3rem + 8px + var(--safe-bottom)); z-index: 5; margin-top: 10px; padding: 10px 12px; border-radius: 14px; background: var(--card-raised); border: 1px solid var(--border); box-shadow: 0 8px 24px -14px rgba(0,0,0,.5); display: flex; flex-direction: column; gap: 6px; align-items: center; }
 .tailgate-put { width: 100%; min-height: 56px; border-radius: 14px; border: none; background: var(--primary); color: var(--primary-foreground); font-family: var(--font-display); font-weight: 700; font-size: 20px; letter-spacing: .02em; cursor: pointer; }
 .tailgate-boxes { width: 100%; display: flex; flex-direction: column; gap: 8px; }
+
+/* Jobs on the yard (the tally card, reimagined): one chip per job in the
+   same colour as its stripe on the boxes, a fill bar for units here versus
+   expected, and a tap that lights up the boxes holding that job's material. */
+.job-strip-title { font-family: ui-monospace, Menlo, monospace; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 14px 0 6px; font-weight: 500; }
+.job-strip { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 0; }
+.job-chip {
+  display: flex; flex-direction: column; gap: 4px; min-width: 132px; min-height: 52px;
+  padding: 8px 10px; border-radius: 12px; border: 1.5px solid var(--border); border-left-width: 6px;
+  background: var(--surface); color: var(--text); font: inherit; text-align: left; cursor: pointer;
+}
+.job-chip--on { background: var(--accent-soft); border-color: var(--accent); }
+.job-chip-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.job-chip-head a { font-family: var(--font-display); font-weight: 700; font-size: 16px; color: var(--text); text-decoration: none; }
+.job-chip-head span { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.job-chip-head span.ok { color: var(--stage-stored); }
+.job-chip-bar { height: 6px; border-radius: 3px; background: var(--border); overflow: hidden; }
+.job-chip-bar i { display: block; height: 100%; background: var(--stage-stored); }
+.job-chip--waiting .job-chip-bar i { background: var(--stage-expected); }
+.job-strip-hint { font-size: 12.5px; margin: 6px 0 0; }
