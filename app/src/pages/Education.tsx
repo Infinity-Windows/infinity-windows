@@ -27,6 +27,7 @@ import {
   type EducationQuizResult,
 } from "../lib/learn";
 import { formatApiError } from "../lib/errors";
+import { isMissingFunction } from "../lib/schemaErrors";
 import { useT, type TFn } from "../lib/i18n";
 import { SendRecordingButton } from "../components/learn/SendRecordingButton";
 import { VideoLibrary } from "../components/learn/VideoLibrary";
@@ -102,9 +103,10 @@ export function Education() {
           onDone={() => queryClient.invalidateQueries({ queryKey: ["learnProgress"] })}
         />
       )}
-      {(tab === "quiz" || tab === "sequence") && (
-        <EarnedLine progress={eduProgress.data} />
-      )}
+      {/* The count is about glossary TERMS, so it belongs over the tab that
+          asks them. The sequence quiz is one item of its own and says its own
+          piece when a round ends. */}
+      {tab === "quiz" && <EarnedLine progress={eduProgress.data} />}
       {tab === "quiz" && <Quiz />}
       {tab === "sequence" && <Sequence />}
       {tab === "videos" && (
@@ -178,6 +180,20 @@ function Daily({
       )}
     </div>
   );
+}
+
+/**
+ * What went wrong, in words an installer can act on.
+ *
+ * The frontend and the database ship from one merge through two independent
+ * workflows, so for a few minutes either can be ahead — and during those
+ * minutes award_education_quiz does not exist yet. That is not a mistake the
+ * person practising made, and it is not worth a red line: their answers are
+ * safe, the points land the next time they play. Anything else gets the real
+ * reason.
+ */
+function quizFailure(err: unknown, t: TFn): string {
+  return isMissingFunction(err) ? t("learn.points.notReadyYet") : formatApiError(err);
 }
 
 /**
@@ -265,8 +281,8 @@ function Quiz() {
         queryClient.invalidateQueries({ queryKey: ["ledger"] });
         queryClient.invalidateQueries({ queryKey: ["pointsLeaderboard"] });
       })
-      .catch((err) => setFailed(formatApiError(err)));
-  }, [n, filed, asked, queryClient]);
+      .catch((err) => setFailed(quizFailure(err, t)));
+  }, [n, filed, asked, queryClient, t]);
 
   if (n >= 5) {
     return (
@@ -383,8 +399,8 @@ function Sequence() {
         queryClient.invalidateQueries({ queryKey: ["ledger"] });
         queryClient.invalidateQueries({ queryKey: ["pointsLeaderboard"] });
       })
-      .catch((err) => setFailed(formatApiError(err)));
-  }, [n, filed, passed, queryClient]);
+      .catch((err) => setFailed(quizFailure(err, t)));
+  }, [n, filed, passed, queryClient, t]);
 
   return (
     <div>

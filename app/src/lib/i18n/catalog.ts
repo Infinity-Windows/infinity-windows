@@ -2231,6 +2231,14 @@ export const CATALOG = {
     en: "Counting your points…",
     es: "Contando tus puntos…",
   },
+  // The deploy window. The frontend and the database ship from one merge
+  // through two independent workflows, so for a few minutes either can be
+  // ahead — and the round an installer just played is not the place to say so
+  // in red. Their answers are safe; the points land next time.
+  "learn.points.notReadyYet": {
+    en: "Points aren't ready yet — that round still counted as practice. Try again in a few minutes.",
+    es: "Los puntos aún no están listos — esa ronda contó como práctica. Intenta otra vez en unos minutos.",
+  },
   "learn.points.failed": {
     en: "Points didn't save: {reason}",
     es: "Los puntos no se guardaron: {reason}",
