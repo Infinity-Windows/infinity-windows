@@ -271,6 +271,18 @@ export default defineConfig({
       },
     }),
   ],
+  optimizeDeps: {
+    // The pdf.js worker script is imported only inside the worker entry
+    // (lib/install/pdfWorkerEntry.ts), and the dev server's startup scan never
+    // looks inside a worker. Left to be discovered, the first PDF opened on a
+    // fresh dev server made Vite bundle it on the spot, decide its optimized
+    // dependencies had changed, and RELOAD EVERY OPEN PAGE — half a second
+    // after the file was picked. A developer loses the planset they just
+    // chose; the PDF-receipt browser test lost its picked file and timed out
+    // with nothing filed (2026-09-06). Pre-bundling it at startup is the fix
+    // Vite itself suggests for a dependency its scanner cannot see.
+    include: ['pdfjs-dist/legacy/build/pdf.worker.min.mjs'],
+  },
   server: {
     watch: {
       // macOS fsevents misses edits in this folder, leaving the dev server

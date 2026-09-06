@@ -9,7 +9,7 @@ import {
   retryEntry,
   type OutboxEntry,
   countsByOp,
-  drainStore,
+  drainUntilSettled,
   makeEntry,
   requeueStranded,
   type OpCounts,
@@ -36,6 +36,8 @@ const listeners = new Set<() => void>();
 const syncedListeners = new Set<() => void>();
 let cachedCounts: OpCounts = countsByOp([]);
 let draining = false;
+/** Somebody asked for a drain while one was running — see drain(). */
+let drainAgain = false;
 let wired = false;
 
 function newId(): string {
@@ -131,31 +133,50 @@ export async function enqueue(
   return id;
 }
 
-/** Drain the queue once. Safe to call often; only one drain runs at a time. */
+/**
+ * Drain the queue. Safe to call often; only one drain runs at a time.
+ *
+ * A call that lands while a drain is running is not dropped: its entry is
+ * already in the store, but the running drain took its snapshot before it got
+ * there, so it asks for one more look once this drain is done. Without that
+ * the entry waited for the next trigger — half a minute, on a healthy
+ * connection — which is how a PDF receipt's original file came to land 30
+ * seconds after the receipt on every phone. drainUntilSettled covers the same
+ * gap for the common case (a pass that sent something looks again); this flag
+ * covers a pass that sent nothing, when a write queued during it would
+ * otherwise sit behind the failures of unrelated entries.
+ */
 export async function drain(): Promise<void> {
-  if (draining || !isOnline()) return;
+  if (!isOnline()) return;
+  if (draining) {
+    drainAgain = true;
+    return;
+  }
   draining = true;
   try {
-    const res = await drainStore(store, handlers, {
-      onChange: () => void refresh(),
-    });
-    if (res.attempted > 0) {
-      logOfflineEvent({
-        type: "flush",
-        scope: "outbox",
-        count: res.sent,
-        message: res.deadLettered > 0 ? `${res.deadLettered} gave up` : res.retried > 0 ? `${res.retried} will retry` : undefined,
+    do {
+      drainAgain = false;
+      const res = await drainUntilSettled(store, handlers, {
+        onChange: () => void refresh(),
       });
-    }
-    if (res.sent > 0) {
-      for (const cb of syncedListeners) {
-        try {
-          cb();
-        } catch {
-          /* a listener must never break the queue */
+      if (res.attempted > 0) {
+        logOfflineEvent({
+          type: "flush",
+          scope: "outbox",
+          count: res.sent,
+          message: res.deadLettered > 0 ? `${res.deadLettered} gave up` : res.retried > 0 ? `${res.retried} will retry` : undefined,
+        });
+      }
+      if (res.sent > 0) {
+        for (const cb of syncedListeners) {
+          try {
+            cb();
+          } catch {
+            /* a listener must never break the queue */
+          }
         }
       }
-    }
+    } while (drainAgain && isOnline());
   } catch {
     /* transient — next trigger retries */
   } finally {

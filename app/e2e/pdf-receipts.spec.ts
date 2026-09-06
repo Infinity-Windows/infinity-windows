@@ -164,10 +164,17 @@ test("a PDF receipt files page one as its picture, then sends the original after
     events.push("set_receipt_document");
     await route.fulfill({ status: 200, contentType: "application/json", body: "null" });
   });
-  // The follow-up question's handler reads the row's other fields fresh.
-  await page.route("**/rest/v1/receipts**", (route) =>
-    json(route, { amount_cents: null, vendor: null, purchased_on: null, category: null, note: null }),
-  );
+  // Two readers, two shapes. The feed behind the sheet LISTS receipts and
+  // wants an array — handed one object it threw, and every run of this test
+  // carried a "Couldn't load receipts" alert nobody was testing. The
+  // follow-up question's handler reads the filed row's other fields fresh,
+  // one object, and says so with PostgREST's single-object Accept header.
+  await page.route("**/rest/v1/receipts**", (route) => {
+    const wantsOne = (route.request().headers().accept ?? "").includes("pgrst.object");
+    return wantsOne
+      ? json(route, { amount_cents: null, vendor: null, purchased_on: null, category: null, note: null })
+      : json(route, [], 0);
+  });
 
   await page.goto("/photos?kind=receipt&capture=1");
   await expect(page.getByRole("heading", { name: "Add a receipt" })).toBeVisible();
@@ -178,6 +185,14 @@ test("a PDF receipt files page one as its picture, then sends the original after
 
   await receiptFileInput(page).setInputFiles(pdfFile("shell-invoice.pdf", 2));
 
+  // Generous on purpose, not tight: the whole read — pdf.js up, page one
+  // rendered, stamped, uploaded, filed — is about 300 ms on a warm dev server.
+  // If this ever times out with the sheet back at "Use camera", the page was
+  // RELOADED under the pick and nothing was slow: a picked file is the one
+  // piece of state here that does not live in the URL, so this is the one
+  // test a mid-run reload can kill. The known cause (Vite meeting the pdf.js
+  // worker script for the first time) is closed by optimizeDeps.include in
+  // vite.config.ts; the original was one such reload, on 2026-09-06.
   await expect.poll(() => filed.length, { timeout: 60_000 }).toBe(1);
 
   // Page one, rendered on the phone, filed exactly where a snapped receipt's

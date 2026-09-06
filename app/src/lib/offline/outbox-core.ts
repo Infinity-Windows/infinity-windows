@@ -742,3 +742,45 @@ export async function drainStore(
     remaining: await store.count(),
   };
 }
+
+/**
+ * Ceiling on passes in one drain — a guard, not a budget. Every pass after the
+ * first runs only because the one before it SENT something, so a drain ends on
+ * its own as soon as the queue stops changing; this only stops a handler that
+ * keeps queueing more work from holding the drain open forever.
+ */
+export const MAX_DRAIN_PASSES = 25;
+
+/**
+ * Drain until a pass changes nothing.
+ *
+ * One pass works from a snapshot of the queue, and two things happen during a
+ * pass that the snapshot cannot see. Sending an entry unblocks whatever
+ * `dependsOn` it — a PDF receipt's original file waits on its receipt row, a
+ * clock-out on its clock-in — and `dueEntries` had already set those aside as
+ * blocked. And a write queued WHILE the pass was attempting an earlier one is
+ * in the store but not in the snapshot: the original file is queued while the
+ * receipt is still uploading, by design, and an answer to "bill this to the
+ * customer?" is given while the photo is. Either way the entry used to sit
+ * until the next trigger — the 30-second interval, in practice — so on every
+ * phone a receipt's PDF landed half a minute after the receipt did. A pass
+ * that sent something is now followed by another, until one sends nothing;
+ * a retried (backed-off) or still-blocked entry cannot keep it going.
+ */
+export async function drainUntilSettled(
+  store: OutboxStore,
+  handlers: OpHandlers,
+  opts: { now?: number; onChange?: () => void } = {},
+): Promise<DrainResult> {
+  const total: DrainResult = { attempted: 0, sent: 0, retried: 0, deadLettered: 0, remaining: 0 };
+  for (let pass = 0; pass < MAX_DRAIN_PASSES; pass++) {
+    const res = await drainStore(store, handlers, opts);
+    total.attempted += res.attempted;
+    total.sent += res.sent;
+    total.retried += res.retried;
+    total.deadLettered += res.deadLettered;
+    total.remaining = res.remaining;
+    if (res.sent === 0 || res.remaining === 0) break;
+  }
+  return total;
+}

@@ -10,6 +10,7 @@ import {
   dedupe,
   deserializeEntry,
   drainStore,
+  drainUntilSettled,
   dueEntries,
   errorCode,
   isDeadLetter,
@@ -19,6 +20,7 @@ import {
   makeEntry,
   markSending,
   MAX_ATTEMPTS,
+  MAX_DRAIN_PASSES,
   OPS,
   pillSummary,
   requeueStranded,
@@ -459,6 +461,84 @@ describe("drainStore", () => {
     );
     // sending is written before the successful send deletes the entry.
     expect(persistedStatuses).toContain("sending");
+  });
+});
+
+// --- drainUntilSettled: one drain finishes what one pass started ---------
+
+describe("drainUntilSettled", () => {
+  it("sends an entry that was waiting on the one before it, in the same drain", async () => {
+    // A PDF receipt: the row first, the original file dependent on it.
+    const store = new MemoryOutboxStore();
+    await store.put(entry({ id: "receipt", createdAt: 10 }));
+    await store.put(entry({ id: "original", createdAt: 20, dependsOn: "receipt" }));
+
+    // One pass leaves the dependent behind — it was blocked when the pass
+    // took its snapshot — which is the 30-second wait this exists to end.
+    const onePass: string[] = [];
+    const single = await drainStore(store, recordingHandlers(onePass), { now: T0 });
+    expect(onePass).toEqual(["receipt"]);
+    expect(single.remaining).toBe(1);
+
+    await store.put(entry({ id: "receipt", createdAt: 10 }));
+    await store.put(entry({ id: "original", createdAt: 20, dependsOn: "receipt" }));
+    const order: string[] = [];
+    const res = await drainUntilSettled(store, recordingHandlers(order), { now: T0 });
+    expect(order).toEqual(["receipt", "original"]);
+    expect(res.sent).toBe(2);
+    expect(res.remaining).toBe(0);
+  });
+
+  it("sends an entry queued while an earlier one was still being sent", async () => {
+    // The capture sheet queues the original WHILE the receipt is uploading;
+    // the running pass never saw it.
+    const store = new MemoryOutboxStore();
+    await store.put(entry({ id: "receipt", createdAt: 10 }));
+    const order: string[] = [];
+    const handlers: OpHandlers = {
+      clock_in: async (e) => {
+        order.push(e.id);
+        if (e.id === "receipt") {
+          await store.put(entry({ id: "original", createdAt: 20, dependsOn: "receipt" }));
+        }
+      },
+    };
+
+    const res = await drainUntilSettled(store, handlers, { now: T0 });
+    expect(order).toEqual(["receipt", "original"]);
+    expect(res.attempted).toBe(2);
+    expect(res.remaining).toBe(0);
+  });
+
+  it("stops after a pass that sent nothing — backoff and blocked entries do not keep it going", async () => {
+    const store = new MemoryOutboxStore();
+    await store.put(entry({ id: "receipt", createdAt: 10 }));
+    await store.put(entry({ id: "original", createdAt: 20, dependsOn: "receipt" }));
+    const order: string[] = [];
+    const flaky = recordingHandlers(order, () => new TypeError("Failed to fetch"));
+
+    const res = await drainUntilSettled(store, flaky, { now: T0 });
+    // One attempt at the receipt, none at the file it holds up, and no second pass.
+    expect(order).toEqual([]);
+    expect(res.attempted).toBe(1);
+    expect(res.retried).toBe(1);
+    expect(res.remaining).toBe(2);
+  });
+
+  it("gives up on a handler that keeps queueing more, after MAX_DRAIN_PASSES", async () => {
+    const store = new MemoryOutboxStore();
+    await store.put(entry({ id: "e0", createdAt: 0 }));
+    let n = 0;
+    const handlers: OpHandlers = {
+      clock_in: async () => {
+        n += 1;
+        await store.put(entry({ id: `e${n}`, createdAt: n }));
+      },
+    };
+
+    const res = await drainUntilSettled(store, handlers, { now: T0 });
+    expect(res.attempted).toBe(MAX_DRAIN_PASSES);
+    expect(res.remaining).toBe(1);
   });
 });
 
