@@ -58,6 +58,9 @@ export const SAFETY_KEYS = [
   // on their own safety page, and what an auditor reads on the crew list.
   "toolbox.group.recordedTitle",
   "toolbox.group.by",
+  // Clock in once (2026-09-06): the nudge for a talk signed after the picks
+  // above it came apart. Same family as clockblock.signFirst.
+  "clockblock.signedPickCode",
   "toolbox.group.bySupervisor",
 ] as const;
 
@@ -2528,6 +2531,14 @@ export const CATALOG = {
   "clockblock.handoff": {
     en: "Couldn't clock in from here — finish in the clock sheet. {reason}",
     es: "No se pudo marcar entrada desde aquí — termina en la hoja del reloj. {reason}",
+  },
+  // The talk was signed, but the job or cost code above it changed while the
+  // signature was uploading, so the punch did not fire (review, 2026-09-06).
+  // The signature stands; one more pick and the plain Start button is live.
+  // SAFETY / toolbox — needs bilingual review.
+  "clockblock.signedPickCode": {
+    en: "Talk signed. Pick a cost code to clock in.",
+    es: "Charla firmada. Elige un código de costo para marcar entrada.",
   },
 } satisfies Record<string, CatalogEntry>;
 

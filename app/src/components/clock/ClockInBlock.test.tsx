@@ -545,6 +545,116 @@ describe("the clock-in block", () => {
     }
   });
 
+  // Two jobs with different cost-code subsets: switching from p1 to p2 drops
+  // p1's code (the subset effect), which is the way the picks come apart
+  // under a revealed talk.
+  const twoJobs = () => {
+    const install = { id: "ccInstall", code: "100", label: "Install", active: true };
+    const service = { id: "ccService", code: "200", label: "Service call", active: true };
+    return {
+      costCodes: [install],
+      recents: [
+        { projectId: "p1", jobCode: "BLACK22", name: "Black Desert", costCodeId: "ccInstall", lastClockInAt: new Date().toISOString() },
+      ],
+      projects: [
+        { id: "p1", job_code: "BLACK22", name: "Black Desert", address: null, status: "active", allowed_modes: ["data"] },
+        { id: "p2", job_code: "SVC-9", name: "Service Run", address: null, status: "active", allowed_modes: ["data"] },
+      ],
+      costCodesByProject: { p1: [install], p2: [service] },
+      talk: { id: "t1", title: "Ladders", body: "Three points of contact.", talk_date: "2026-09-06" },
+      toolboxDone: null,
+    };
+  };
+
+  async function switchToServiceJob(el: HTMLElement) {
+    const toggle = el.querySelectorAll<HTMLButtonElement>(".clock-list-toggle")[0];
+    act(() => toggle.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    const p2Item = Array.from(el.querySelectorAll<HTMLButtonElement>(".clock-project-item")).find(
+      (b) => b.textContent?.includes("SVC-9"),
+    )!;
+    await clickAndFlush(p2Item);
+  }
+
+  it("takes the talk away again when a job switch clears the cost code, and brings it back once one is picked", async () => {
+    // The held button is what says "pick a cost code". With the talk
+    // revealed and the pickers still live above it, a job switch that drops
+    // the code used to leave the card up, and signing punched with
+    // cost_code_id null — the record the block's own button refuses
+    // (review, 2026-09-06).
+    const restore = stubCanvas();
+    try {
+      const el = mount(twoJobs());
+      act(() =>
+        el
+          .querySelector<HTMLButtonElement>(".clock-btn.primary.big")!
+          .dispatchEvent(new MouseEvent("click", { bubbles: true })),
+      );
+      expect(el.querySelector("canvas.sig-canvas")).toBeTruthy();
+
+      await switchToServiceJob(el);
+      expect(el.querySelector(".clock-costcode-item.selected")).toBeNull();
+      expect(el.querySelector("canvas.sig-canvas")).toBeNull();
+      const held = el.querySelector<HTMLButtonElement>(".clock-btn.primary.big")!;
+      expect(held.textContent).toContain("Sign safety talk & clock in");
+      expect(held.disabled).toBe(true);
+      expect(clockInSpy).not.toHaveBeenCalled();
+
+      // Pick the service job's code: the picks are whole, the talk is back
+      // without a second tap on the big button.
+      const code = el.querySelector<HTMLButtonElement>(".clock-costcode-item")!;
+      act(() => code.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+      expect(el.querySelector("canvas.sig-canvas")).toBeTruthy();
+    } finally {
+      restore();
+    }
+  });
+
+  it("does not punch when the picks came apart while the signature was uploading", async () => {
+    // The upload takes seconds. A job switched in that window clears the
+    // code and takes the card down, but the sign's own onSuccess still fires
+    // (it is an option callback, on purpose). It must NOT clock in with a
+    // null cost code off the picks the card was rendered with; the signature
+    // stands, the person is told, and the plain Start is what is left.
+    const restore = stubCanvas();
+    let finishSign!: () => void;
+    submitSpy.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishSign = () => {
+            completionHolder.current = { id: "done1" };
+            resolve({ id: "done1" });
+          };
+        }),
+    );
+    try {
+      const el = mount(twoJobs());
+      act(() =>
+        el
+          .querySelector<HTMLButtonElement>(".clock-btn.primary.big")!
+          .dispatchEvent(new MouseEvent("click", { bubbles: true })),
+      );
+      fillSignCard(el);
+      await clickAndFlush(byText(el, "Sign today's talk")!);
+      await settle();
+      expect(submitSpy).toHaveBeenCalledTimes(1);
+
+      await switchToServiceJob(el);
+      expect(el.querySelector("canvas.sig-canvas")).toBeNull();
+
+      await act(async () => finishSign());
+      await settle();
+      expect(clockInSpy).not.toHaveBeenCalled();
+      expect(pushToastSpy).toHaveBeenCalledTimes(1);
+      expect(String(pushToastSpy.mock.calls[0][0])).toContain("Pick a cost code to clock in");
+      // Signed: the plain Start is offered, held until a code is picked.
+      const start = el.querySelector<HTMLButtonElement>(".clock-btn.primary.big")!;
+      expect(start.textContent).toContain("Start clock");
+      expect(start.disabled).toBe(true);
+    } finally {
+      restore();
+    }
+  });
+
   it("hands a refused punch to the sheet WITH the picks, and says what happened", async () => {
     // Offline, or a server no: the sheet is still the fallback (its outbox
     // queues the punch), but it must open pre-filled and not in silence.

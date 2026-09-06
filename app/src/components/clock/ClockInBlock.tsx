@@ -117,6 +117,12 @@ export function ClockInBlock() {
   // to clock in — must not scroll past a signature pad every morning.
   const [showSign, setShowSign] = useState(false);
   const signRef = useRef<HTMLDivElement>(null);
+  // Read by the sign card's onSigned at the moment the signature LANDS, not
+  // when the card was rendered: the pickers stay live above the card, and a
+  // job switched during the upload can clear the cost code. A ref, because
+  // the card may already be gone by then (see the canStart guard on it) and
+  // the closure it was rendered with would still say the picks were complete.
+  const canStartRef = useRef(false);
   const [now, setNow] = useState(Date.now());
   // The device's current fix, captured ONLY when geolocation is already
   // permitted — the advisory must never trigger its own permission prompt.
@@ -353,6 +359,7 @@ export function ClockInBlock() {
   // ---- OFF THE CLOCK: the big, can't-miss block. ----
   const busy = doStart.isPending;
   const canStart = Boolean(pickProjectId && pickCostCodeId);
+  canStartRef.current = canStart;
   // The server refuses the first clock-in of the day without today's signed
   // toolbox talk (20260970000000_job_modes.sql, clock_in). Hold the button
   // only when we POSITIVELY know a talk exists today and isn't signed; if the
@@ -631,19 +638,35 @@ export function ClockInBlock() {
       {showFarNote && <p className="clockin-note">{t("clockblock.notNearJob")}</p>}
 
       {toolboxKnownUnsigned ? (
-        showSign && todayTalk.data ? (
+        showSign && todayTalk.data && canStart ? (
           /* The tap already happened: the talk takes the button's place, and
              signing it IS the clock-in (onSigned → doStart with the picks
              above). The card writes the signed row into the toolboxToday
              cache before it calls onSigned, so this branch is gone in the
              same render the punch starts and the signed branch below takes
              over with its button held as "Clocking in…" — there is no window
-             for a second tap on Sign. */
+             for a second tap on Sign.
+             Only while canStart: the pickers above stay live, and switching
+             job can clear the cost code (the subset effect). The held button
+             below is what says "pick a cost code"; without this guard the
+             card stayed and signing punched with cost_code_id null — the
+             exact record the block's own button refuses (review, 2026-09-06).
+             The card comes back on its own once the picks are whole again. */
           <div ref={signRef}>
             <ToolboxSignCard
               profileId={profileId}
               talk={todayTalk.data}
-              onSigned={() => doStart.mutate()}
+              onSigned={() => {
+                // The signature is on record either way; only the punch
+                // waits. Signed with the picks no longer whole (a job switch
+                // mid-upload): say so, and the plain Start below takes over
+                // once a cost code is picked.
+                if (!canStartRef.current) {
+                  pushToast(t("clockblock.signedPickCode"), "error");
+                  return;
+                }
+                doStart.mutate();
+              }}
             />
           </div>
         ) : (
