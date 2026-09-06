@@ -236,26 +236,37 @@ for f in $new_migrations; do
   stmts="$(awk -f "$AWK_SQL" <(file_at_head "$f"))"
 
   # Every table a migration creates has to arrive with its door shut.
+  #
+  # THESE FOUR GREPS ARE NOT ANCHORED TO THE START OF A STATEMENT, which they
+  # used to be, and the reason is the shape this repo actually writes. Policies
+  # here live inside `do $$ begin if not exists (...) then create policy ...`,
+  # so the statement the splitter emits BEGINS `do begin if not exists` and the
+  # `create policy` is forty characters in. Anchoring on the statement start
+  # made the partner-guard rule blind to 46 of the 81 migrations that have ever
+  # created a policy, and it went red on two MERGED ones whose policies are
+  # correct. Dropping the anchor is safe because the splitter has already
+  # removed the two places a false match could hide: `--` and `/* */` comments
+  # are gone, and `'...'` literals are blanked.
   while IFS=$'\t' read -r ln stmt; do
     [ -n "$ln" ] || continue
     t="$(printf '%s' "$stmt" | sed -E 's/^create table (if not exists )?([a-z0-9_.]+).*/\2/')"
     short="${t#public.}"
     [ -n "$short" ] || continue
 
-    printf '%s\n' "$stmts" | grep -qE $'\t''alter table (only )?(public\.)?'"$short"' .*enable row level security' ||
+    printf '%s\n' "$stmts" | grep -qE 'alter table (only )?(public\.)?'"$short"' .*enable row level security' ||
       report "$f:$ln" table-without-rls \
         "New table \`$short\` never says \`alter table $short enable row level security\`, so every login reads every row." "$LAW_RLS"
 
-    printf '%s\n' "$stmts" | grep -qE $'\t''revoke .* on (table )?(public\.)?'"$short"' from' ||
+    printf '%s\n' "$stmts" | grep -qE 'revoke .* on (table )?(public\.)?'"$short"' from' ||
       report "$f:$ln" table-keeps-default-grants \
         "New table \`$short\` never revokes its default grants. Supabase hands anon and authenticated a grant on every new table in public; row security is the second lock, not the first." "$LAW_RLS"
 
     # A table nothing in a browser may touch is allowed to have no policy —
     # said out loud, by revoking it from authenticated and granting it to
     # nobody. Anything a crew login can reach needs the partner guard.
-    if printf '%s\n' "$stmts" | grep -E $'\t''grant .* on (table )?(public\.)?'"$short"' to' | grep -q 'authenticated' ||
-       ! printf '%s\n' "$stmts" | grep -E $'\t''revoke .* on (table )?(public\.)?'"$short"' from' | grep -q 'authenticated'; then
-      printf '%s\n' "$stmts" | grep -E $'\t''create policy .* on (public\.)?'"$short"' ' | grep -qF 'not public.is_partner_user()' ||
+    if printf '%s\n' "$stmts" | grep -E 'grant .* on (table )?(public\.)?'"$short"' to' | grep -q 'authenticated' ||
+       ! printf '%s\n' "$stmts" | grep -E 'revoke .* on (table )?(public\.)?'"$short"' from' | grep -q 'authenticated'; then
+      printf '%s\n' "$stmts" | grep -E 'create policy .* on (public\.)?'"$short"'[ (]' | grep -qF 'not public.is_partner_user()' ||
         report "$f:$ln" policy-without-partner-guard \
           "No policy on \`$short\` carries \`not public.is_partner_user()\`, so a builder's portal login is inside the wall." "$LAW_RLS"
     fi
@@ -274,8 +285,8 @@ for f in $new_migrations; do
         "\`$short\` is SECURITY DEFINER and does not pin \`set search_path\`." "$LAW_DEFINER"
 
     printf '%s' "$stmt" | grep -q 'returns trigger' && continue
-    if ! printf '%s\n' "$stmts" | grep -E $'\t''grant execute on function (public\.)?'"$short"'\(' | grep -q 'authenticated'; then
-      printf '%s\n' "$stmts" | grep -E $'\t''revoke .* on function (public\.)?'"$short"'\(' | grep -q 'authenticated' ||
+    if ! printf '%s\n' "$stmts" | grep -E 'grant execute on function (public\.)?'"$short"'\(' | grep -q 'authenticated'; then
+      printf '%s\n' "$stmts" | grep -E 'revoke .* on function (public\.)?'"$short"'\(' | grep -q 'authenticated' ||
         report "$f:$ln" definer-without-grant \
           "\`$short\` is SECURITY DEFINER and the migration never says who may execute it — neither a grant to authenticated nor a revoke from it." "$LAW_DEFINER"
     fi

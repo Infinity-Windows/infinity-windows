@@ -309,6 +309,114 @@ assert_lacks "table-without-rls"
 assert_lacks "table-keeps-default-grants"
 assert_lacks "policy-without-partner-guard"
 
+new_case "the shape this repo really writes — a policy inside do \$\$ — is green"
+# Taken from supabase/migrations/20260982000000_who_did_what.sql. 49 migrations
+# here create their policies this way so that a replay is a no-op. The rules
+# used to be blind to every one of them, and went red on two MERGED migrations
+# whose policies do carry the guard.
+base_commit
+cat >"$root/supabase/migrations/20300101000000_tailgate.sql" <<'SQL'
+create table if not exists tailgate_checks (
+  id uuid primary key,
+  /* Who signed it off, and when. A crew member's own row is theirs. */
+  signed_by uuid
+);
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_tables
+    where tablename = 'tailgate_checks' and rowsecurity
+  ) then
+    alter table tailgate_checks enable row level security;
+  end if;
+end;
+$$;
+
+revoke all on tailgate_checks from anon, authenticated;
+grant select on tailgate_checks to authenticated;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where tablename = 'tailgate_checks' and policyname = 'crew read'
+  ) then
+    create policy "crew read" on tailgate_checks
+      for select to authenticated
+      using (not public.is_partner_user() and public.my_role_rank() >= 0);
+  end if;
+end;
+$$;
+SQL
+head_commit "Check a truck in one window at a time"
+run
+assert_rc 0
+assert_lacks "table-without-rls"
+assert_lacks "table-keeps-default-grants"
+assert_lacks "policy-without-partner-guard"
+
+new_case "a policy inside do \$\$ that forgets the guard is still reported"
+# The other half of the case above: descending into the block must not mean
+# waving it through.
+base_commit
+cat >"$root/supabase/migrations/20300101000000_tailgate.sql" <<'SQL'
+create table if not exists tailgate_checks (
+  id uuid primary key
+);
+alter table tailgate_checks enable row level security;
+revoke all on tailgate_checks from anon, authenticated;
+grant select on tailgate_checks to authenticated;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where tablename = 'tailgate_checks' and policyname = 'crew read'
+  ) then
+    create policy "crew read" on tailgate_checks
+      for select to authenticated using (true);
+  end if;
+end;
+$$;
+SQL
+head_commit "Add somewhere to record a tailgate check"
+run
+assert_rc 1
+assert_has "policy-without-partner-guard"
+
+new_case "a function body that only MENTIONS a policy does not stand in for one"
+# Why the do-block descent is narrow: the body of a create function is still
+# blanked whole, so prose or dynamic SQL inside it cannot satisfy a check.
+base_commit
+cat >"$root/supabase/migrations/20300101000000_tailgate.sql" <<'SQL'
+create table if not exists tailgate_checks (
+  id uuid primary key
+);
+alter table tailgate_checks enable row level security;
+revoke all on tailgate_checks from anon, authenticated;
+grant select on tailgate_checks to authenticated;
+
+create or replace function public.explain_wall()
+returns text
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $fn$
+begin
+  -- create policy "crew read" on tailgate_checks using (not public.is_partner_user())
+  return 'every crew table carries the guard';
+end;
+$fn$;
+
+revoke all on function public.explain_wall() from public, anon;
+grant execute on function public.explain_wall() to authenticated;
+SQL
+head_commit "Say what the wall is, in one place"
+run
+assert_rc 1
+assert_has "policy-without-partner-guard"
+
 new_case "a new table with no row security is reported"
 base_commit
 cat >"$root/supabase/migrations/20300101000000_tailgate.sql" <<'SQL'
