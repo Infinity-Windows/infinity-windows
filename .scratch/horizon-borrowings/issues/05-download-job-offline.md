@@ -1,6 +1,6 @@
 # 05 — "Download this job" for offline, WiFi-only by default
 
-Status: ready-for-agent
+Status: resolved
 Type: task
 Size: M
 
@@ -47,3 +47,24 @@ There is no way for a foreman to make sure tomorrow's jobs are on every phone.
 - Airplane mode after "Save for offline" opens the job, the map, and an
   opening sheet with its spec, with no spinner that never ends.
 - Auto-prefetch does not run on a simulated 3g connection; the manual tap does.
+
+## Comments
+
+2026-09-06 — Built. Less was missing than the ticket assumed: `prefetchJobPack`
+(five queries + type brains) and a "Download job for offline use" button already
+existed on the job page, and `install/prefetchDrawings.ts` already warms up to
+twelve drawings for My Work with a WiFi-only policy. What was missing and now
+exists: (1) the map's two reads, `planOutlines` and `elevationViews`, in the
+persisted cache and in the pack; (2) the planset PDF bytes kept on the phone
+(`lib/offline/plansetBlobCache.ts`, read first by `downloadPlanset`), which is
+what makes the flat map draw with no signal; (3) every mark's picture, not just
+twelve, when the tap is deliberate; (4) a record of what was saved and when
+(`recordSavedJob`), so the button says "Saved offline · 2 h ago" after a reload;
+(5) progress ("Saving… 12 of 40"), a partial-save message, and every string in
+both languages; (6) `SaveJobsStrip` on all three landings (My Work: the
+installer's own jobs; Home and Heartbeat: the active jobs), per the role-maps
+rule. The runner (`lib/offline/jobPack.ts`) is pure and never throws: a failed
+picture is one entry in `failed`, not a lost job. The manual tap does not
+consult the connection type — it is a decision; the background warmer stays
+polite. Not built: an automatic nightly pack; My Work's existing warmer covers
+the day's units, and the strip is one tap.

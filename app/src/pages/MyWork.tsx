@@ -1,4 +1,5 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { SaveJobsStrip } from "../components/offline/SaveJobOffline";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { AlertTriangle, CheckCircle2, Plane, Truck } from "lucide-react";
@@ -398,6 +399,11 @@ export function MyWork() {
           <h1>{t("mywork.title")}</h1>
         </div>
       </header>
+      {/* The jobs this person's units are on, saved on this phone before the
+          day starts (ticket 05). Every landing carries it, per the role-maps
+          rule; here the list is the installer's own jobs, which are exactly
+          the ones that should be in their pocket. */}
+      <SaveJobsStrip projectIds={(openings.data ?? []).map((o) => o.project_id)} />
       <LiveSummonsStrip />
       <ClockInBlock />
       <LogTodayChip />
