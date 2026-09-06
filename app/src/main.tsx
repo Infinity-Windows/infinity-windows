@@ -8,6 +8,7 @@ import "./lib/mapPolyfill";
 import { installServiceWorkerGuard } from "./lib/serviceWorkerGuard";
 import { startCrashMonitoring } from "./lib/monitoring/sentry";
 import { installPushChangeListener } from "./lib/permissions/pushSubscribe";
+import { installPreloadRecovery } from "./lib/pwa/preloadRecovery";
 
 // Crash monitoring, started BEFORE anything mounts so a crash on the very first
 // paint is still caught. With VITE_SENTRY_DSN unset — the state this ships in —
@@ -25,6 +26,11 @@ installServiceWorkerGuard();
 // and messages us the new subscription; persist it so the server keeps a live
 // endpoint. No-op when service workers / push are unavailable.
 installPushChangeListener();
+
+// A deploy renames every chunk; a tab opened before it asks for one that is
+// gone. Reload once (never over unsaved work, never in a loop) instead of a
+// white screen. See lib/pwa/preloadRecovery.ts.
+installPreloadRecovery();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

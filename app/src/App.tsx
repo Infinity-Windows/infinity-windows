@@ -59,6 +59,7 @@ import { DeliveriesList } from "./pages/storage/DeliveriesList";
 import { JobMaterials } from "./pages/storage/JobMaterials";
 import { CheckoutPackages } from "./pages/storage/CheckoutPackages";
 import { StuckWrites } from "./pages/StuckWrites";
+import { Diagnostics } from "./pages/Diagnostics";
 import { Suggestions } from "./pages/Suggestions";
 import { ArrivePackages } from "./pages/storage/ArrivePackages";
 import { PackageSheet } from "./pages/storage/PackageSheet";
@@ -106,6 +107,7 @@ import { CostCodes } from "./pages/CostCodes";
 import { Costing } from "./pages/Costing";
 import { Receipts } from "./pages/Receipts";
 import { Education } from "./pages/Education";
+import { LearningTime } from "./pages/LearningTime";
 import { Photos } from "./pages/Photos";
 import { Points } from "./pages/Points";
 import { Safety } from "./pages/Safety";
@@ -504,6 +506,7 @@ export default function App() {
             />
             <Route path="/notifications" element={<Notifications />} />
             <Route path="/stuck" element={<StuckWrites />} />
+            <Route path="/diagnostics" element={<Diagnostics />} />
             <Route path="/suggestions" element={<Suggestions />} />
             <Route path="/settings" element={<Settings />} />
             <Route
@@ -756,6 +759,10 @@ export default function App() {
               element={<RequireRole path="/receipts"><Receipts /></RequireRole>}
             />
             <Route path="/learn" element={<Education />} />
+            <Route
+              path="/learning/time"
+              element={<RequireRole path="/learning/time"><LearningTime /></RequireRole>}
+            />
             <Route path="/points" element={<Points />} />
             <Route path="/safety" element={<Safety />} />
             <Route

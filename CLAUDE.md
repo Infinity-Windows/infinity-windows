@@ -103,6 +103,13 @@ mutation stays keyed to the real signed-in user. Use `effectiveRole` for what th
 UI shows, `realRole` for anything about identity, and wait on `isLoading` in route
 guards — a null role during load is "not known yet", not "no permissions".
 
+**Every edge function must ask who is calling.** They all run on the service-role
+key, which bypasses row security. A new function under `supabase/functions/`
+must call `requireCaller` or `verifyCaller` from `_shared/auth.ts`, or be listed
+in `_shared/SYSTEM_ACTORS.md` with the reason it acts for the system (a cron
+target, a token-is-the-credential portal). `scripts/check-function-auth.sh`
+enforces it in CI, in both directions.
+
 **Anything that leaves in a crash report goes through one scrubber.** Error
 monitoring is optional and ships off (no DSN, nothing is even downloaded), but
 the moment it is on, every event and breadcrumb passes

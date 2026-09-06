@@ -179,6 +179,32 @@ describe("canAccess", () => {
     });
   });
 
+  // Learning time (2026-09-05), added DELIBERATELY at the supervisor floor.
+  // The same floor as /data, where per-person time already lives. A foreman is
+  // NOT given their crew's study hours here: that is a decision about people,
+  // not a gap in the registry, and it is the owner's to make (see the PR body).
+  it("keeps Learning time supervisor+ — a foreman does not see their crew's study hours", () => {
+    expect(canAccess("installer", "/learning/time")).toBe(false);
+    expect(canAccess("foreman", "/learning/time")).toBe(false);
+    expect(canAccess("supervisor", "/learning/time")).toBe(true);
+    expect(canAccess("owner", "/learning/time")).toBe(true);
+  });
+
+  it("is not one of the money doors — Sees costs does not open it", () => {
+    expect(canAccess("foreman", "/learning/time", { costs: true })).toBe(false);
+  });
+
+  it("puts Learning time in the Learning menu, beside Learn itself", () => {
+    const learning = menuForRole("supervisor").find((s) => s.title === "Learning");
+    expect(learning?.items.map((i) => i.to)).toContain("/learning/time");
+    // And nowhere in an installer's drawer, which is the same rule as above
+    // seen from the other side.
+    const installerPaths = menuForRole("installer")
+      .flatMap((s) => s.items)
+      .map((i) => i.to);
+    expect(installerPaths).not.toContain("/learning/time");
+  });
+
   it("keeps heartbeat supervisor+ (blocked for installers and foremen)", () => {
     expect(canAccess("installer", "/heartbeat")).toBe(false);
     expect(canAccess("foreman", "/heartbeat")).toBe(false);

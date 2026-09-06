@@ -6,6 +6,7 @@ import {
   partitionLearningVideos,
   videoStatus,
   youtubeEmbedUrl,
+  youtubePlayerEmbedUrl,
   type LearningVideo,
 } from "./learnVideos";
 
@@ -101,5 +102,31 @@ describe("partitionLearningVideos", () => {
       true,
     );
     expect(published.map((v) => v.id)).toEqual(["b", "a"]);
+  });
+});
+
+describe("youtubePlayerEmbedUrl", () => {
+  it("switches the IFrame Player API on, which is what makes watching measurable", () => {
+    const url = new URL(youtubePlayerEmbedUrl("https://youtu.be/dQw4w9WgXcQ", "https://app.example")!);
+    expect(url.origin + url.pathname).toBe("https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ");
+    expect(url.searchParams.get("enablejsapi")).toBe("1");
+    // YouTube pins the postMessage channel to the page's own address.
+    expect(url.searchParams.get("origin")).toBe("https://app.example");
+    // An iPhone throws an embed into its fullscreen player without this, and a
+    // crew member loses the transcript sitting underneath the video.
+    expect(url.searchParams.get("playsinline")).toBe("1");
+  });
+
+  it("leaves the origin off when there is none — a server render has no address", () => {
+    const url = new URL(youtubePlayerEmbedUrl("https://youtu.be/dQw4w9WgXcQ", null)!);
+    expect(url.searchParams.has("origin")).toBe(false);
+    expect(url.searchParams.get("enablejsapi")).toBe("1");
+  });
+
+  it("refuses exactly what the plain embed refuses, so callers can swap one for the other", () => {
+    for (const bad of ["https://vimeo.com/12345", "not a url at all !!", ""]) {
+      expect(youtubeEmbedUrl(bad)).toBeNull();
+      expect(youtubePlayerEmbedUrl(bad, "https://app.example")).toBeNull();
+    }
   });
 });
