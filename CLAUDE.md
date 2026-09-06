@@ -103,6 +103,13 @@ mutation stays keyed to the real signed-in user. Use `effectiveRole` for what th
 UI shows, `realRole` for anything about identity, and wait on `isLoading` in route
 guards — a null role during load is "not known yet", not "no permissions".
 
+**Anything that leaves in a crash report goes through one scrubber.** Error
+monitoring is optional and ships off (no DSN, nothing is even downloaded), but
+the moment it is on, every event and breadcrumb passes
+`supabase/functions/_shared/scrub.ts` — shared by the app and the functions,
+one implementation, tested. Never widen what it keeps without reading
+[`docs/monitoring.md`](docs/monitoring.md), which lists what is dropped and why.
+
 **`tsconfig` has `noUnusedLocals`.** Removing the last use of an import breaks the
 build. Let `tsc` tell you which ones to drop.
 
