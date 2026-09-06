@@ -218,6 +218,13 @@ export const APP_GUIDE: AppGuideEntry[] = [
       "Work this phone saved but could not send — a clock punch, a photo, packages checked out. Normally empty. When something is here you can try it again or throw it away. It only ever shows this device's own stuck items.",
   },
   {
+    path: "/diagnostics",
+    label: "Diagnostics",
+    minRole: "installer",
+    blurb:
+      "What this phone knows about its connection: online, weak or no signal, when it last heard from the database, what is waiting to send, which jobs are saved on it, and what the connection did this session. Copy the report into a message when something didn't save.",
+  },
+  {
     path: "/suggestions",
     label: "Suggestions",
     minRole: "installer",

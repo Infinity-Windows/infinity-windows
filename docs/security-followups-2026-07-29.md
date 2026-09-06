@@ -498,6 +498,19 @@ either; it is an unauthenticated write endpoint and deserves its own decision.
 
 ### 6b. Signed-out visitors can call 31 owner-privileged functions
 
+> **Done 2026-09-05** — `20260992000000_anon_cannot_call_functions.sql`, after
+> the live probe (`scripts/verify_invariants.py`, PR #546) counted **152** on its
+> first run. EXECUTE revoked from `anon` and `PUBLIC` on every routine in
+> `public`, `authenticated` and `service_role` re-granted by name where they had
+> rested on `PUBLIC`, and the default privileges altered so the next function
+> does not repeat it. Keep-list: none — every signed-out flow was read and each
+> goes through an edge function on the service key or through GoTrue;
+> `vault_pin_is_set()`'s one caller is behind the login. The "re-check
+> `pg_policies`" step below was done: the only policy scoped to `anon` is
+> `access_requests`' insert, whose `WITH CHECK` is `(true)`. Steps (1) and (2)
+> below — `create_issue`'s missing sign-in guard, the id-argument helpers — are
+> still open as such, but a signed-out caller can no longer reach them.
+
 **Measured today:** **31**, not 38 — the profile and PIN functions were revoked
 in the earlier lockdown and the two probe functions were dropped today. All 31
 are executable by `authenticated` too. Reading each source, they fall into three

@@ -161,6 +161,12 @@ export const WORK_HISTORY_PROBES: readonly HistoryProbe[] = [
     one: "quiz attempt",
     many: "quiz attempts",
   },
+  {
+    table: "education_credits",
+    column: "profile_id",
+    one: "earned term",
+    many: "earned terms",
+  },
   // The job site.
   { table: "daily_logs", column: "filed_by", one: "day log", many: "day logs" },
   {
