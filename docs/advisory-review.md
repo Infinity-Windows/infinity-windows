@@ -288,9 +288,10 @@ pull requests (#541, #542, #543) as the sample.
 | `rls-on-new-tables` | 5.6 / 40.4 / 44.6 KB | ~8,600 |
 | `error-copy` | 98 / 42 / 118 KB | ~24,300 |
 
-**Turns.** A model that reads two files to check a claim sends the whole context
-three times, so the input is about `3 × (fixed + diff)` plus the files it read
-(~3,000 tokens). Output is small — a JSON answer, ~600 tokens a turn.
+**Turns, typically three.** A model that reads two files to check a claim sends
+the whole context three times, so the input is about `3 × (fixed + diff)` plus
+the files it read (~3,000 tokens). Output is small — a JSON answer, ~600 tokens
+a turn.
 
 | Check | input tokens | output | cost |
 |---|---|---|---|
@@ -299,21 +300,47 @@ three times, so the input is about `3 × (fixed + diff)` plus the files it read
 | `error-copy` | 3 × (9,000 + 24,300) + 3,000 = 102,900 | ~1,800 | $0.224 |
 | **All three** | **192,900** | **~5,400** | **≈ $0.44** |
 
+**Turns, at the ceiling.** Three is what these checks usually take; it is not
+what they are ALLOWED to take. `.checks/spanish-parity.md` and
+`.checks/error-copy.md` set `max-turns: 12`, `.checks/rls-on-new-tables.md`
+sets `14`, and `scripts/advisory-agent.sh` passes that straight to the CLI. A
+check that keeps re-reading spends the whole budget, and the same arithmetic at
+those numbers is four times the table above.
+
+| Check | turns | input tokens | output | cost |
+|---|---|---|---|---|
+| `spanish-parity` | 12 | 127,800 | ~7,200 | $0.33 |
+| `rls-on-new-tables` | 14 | 249,400 | ~8,400 | $0.58 |
+| `error-copy` | 12 | 402,600 | ~7,200 | $0.88 |
+| **All three** | | **779,800** | **~22,800** | **≈ $1.79** |
+
 So:
 
-- **A push that touches everything: about 45 cents.** That is #543's shape — 233
-  KB of diff across migrations, the catalog and the app.
-- **A typical push, `error-copy` only** (~40 KB of `app/src`): about **15 cents**.
-- **The most one pull request can cost in a day: about $2.25**, five runs at the
-  worst case, which is what the daily cap is for.
+- **A push that touches everything: about 45 cents**, and up to **$1.79** if
+  every check uses every turn it is allowed. That is #543's shape — 233 KB of
+  diff across migrations, the catalog and the app.
+- **A typical push, `error-copy` only** (~40 KB of `app/src`): about **15
+  cents**, up to **88 cents**.
+- **The most one pull request can cost in a day: $7.50.** Five runs, and the
+  run itself stops once it has spent `ADVISORY_MAX_SPEND_USD`, which defaults
+  to **$1.50** — chosen to leave the ordinary run alone and catch the day a
+  check will not settle. Without that ceiling the same five runs would reach
+  about $9.
 - **A month**, at forty pull requests and two or three pushes each: **roughly
   $30** on the API key, or nothing extra on the subscription token beyond the
   plan already being paid for.
 
+The ceiling is read from the CLI's own `total_cost_usd`, so it counts what was
+billed rather than what this table estimated, and it is a stop rather than a
+refund: the answer that crosses it has been paid for, and it is the next one
+that does not happen. The comment says so when it fires.
+
 Two things this deliberately does not claim: prompt caching may cut the fixed
 9,000 tokens substantially across checks in one run, and is not counted here;
 and GitHub Actions minutes are free on public repositories, so the runner time
-is not a cost either.
+is not a cost either. Both make the real number smaller than the table, which
+is the direction an estimate should be wrong in when somebody is choosing a
+credential from it.
 
 ## When it goes wrong
 

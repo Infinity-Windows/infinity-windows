@@ -57,7 +57,7 @@ new_case() {
       --disallowedTools <tools>
       --max-turns <n>
       --output-format <format>"
-  STUB_REPLY_TEXT='{"type":"result","is_error":false,"result":"{\"status\":\"pass\",\"findings\":[]}"}'
+  STUB_REPLY_TEXT='{"type":"result","is_error":false,"total_cost_usd":0.01,"result":"{\"status\":\"pass\",\"findings\":[]}"}'
 }
 
 write_check() { # name glob
@@ -114,6 +114,7 @@ run() {
     ADVISORY_HEAD="HEAD" \
     ADVISORY_MAX_DIFF_BYTES="${MAX_DIFF_OVERRIDE:-409600}" \
     ADVISORY_CHUNK_BYTES="${CHUNK_OVERRIDE:-204800}" \
+    ADVISORY_MAX_SPEND_USD="${SPEND_OVERRIDE:-1.50}" \
     bash "$SCRIPT" --checks-dir "$root/checks" --status-file "$root/status.txt" \
       --runs-today "${RUNS_OVERRIDE:-0}" 2>&1)"
   RC=$?
@@ -427,6 +428,37 @@ head_commit "Show a crew member which window is next"
 run
 assert_rc 0
 assert_lacks "changes the review's own instructions"
+
+new_case "a run that reaches its dollar ceiling stops asking, and says so"
+# The diff-size limits bound how much text is SENT. Nothing bounded how long a
+# model may sit re-reading it, and a check may spend up to its max-turns — 12
+# and 14 in .checks/ — so one pull request could cost several dollars a day
+# with every stated limit respected.
+touch_catalog
+head_commit "Add the clock-in button to the phrasebook"
+STUB_REPLY_TEXT='{"type":"result","is_error":false,"total_cost_usd":9.99,"result":"{\"status\":\"pass\",\"findings\":[]}"}'
+SPEND_OVERRIDE=0.50 run
+unset SPEND_OVERRIDE   # bash leaves it set after a FUNCTION call, unlike a command
+assert_rc 0
+assert_has "Stopped at the spending ceiling"
+assert_has "was not asked"
+
+new_case "an ordinary run never notices the ceiling"
+touch_catalog
+head_commit "Add the clock-in button to the phrasebook"
+run
+assert_rc 0
+assert_lacks "Stopped at the spending ceiling"
+
+new_case "a CLI that reports no cost is not charged for one"
+# Counting an unknown as expensive would stop runs that never happened.
+touch_catalog
+head_commit "Add the clock-in button to the phrasebook"
+STUB_REPLY_TEXT='{"type":"result","is_error":false,"result":"{\"status\":\"pass\",\"findings\":[]}"}'
+SPEND_OVERRIDE=0.01 run
+unset SPEND_OVERRIDE
+assert_rc 0
+assert_lacks "Stopped at the spending ceiling"
 
 new_case "the GitHub token never reaches the model"
 # The workflow step that runs this holds GH_TOKEN for the comment script, which

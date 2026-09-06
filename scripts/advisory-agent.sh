@@ -29,11 +29,22 @@
 #   * after five runs on one pull request in a day, the agent half stops. A
 #     branch being pushed to every four minutes should not be re-reviewed every
 #     four minutes.
+#   * a run stops asking once it has spent ADVISORY_MAX_SPEND_USD (default
+#     $1.50). The other three limits bound how MUCH TEXT is sent; none of them
+#     bounded how long a model may sit there re-reading it. A check may spend
+#     up to its `max-turns` — 12 and 14 in .checks/ today — and at 14 turns the
+#     migration check alone is about 250K input tokens. The ceiling is read
+#     from the CLI's own `total_cost_usd`, so it counts what was actually
+#     billed rather than what was estimated.
 #
 # Usage:
 #   scripts/advisory-agent.sh --base <ref> --head <ref> [--out FILE]
 #                             [--checks-dir .checks] [--runs-today N]
 #   scripts/advisory-agent.sh --credential-kind    # prints oauth|api-key|none
+#
+# The dollar ceiling is a stop, not a refund: the batch that crosses it has
+# already been paid for. It stops the NEXT one, which is the only thing a
+# budget can honestly promise.
 #
 # --status-file writes one word for the workflow to read: `ok` (checks ran and
 # every answer was understood), `skipped` (nothing ran, for a reason a person
@@ -42,7 +53,8 @@
 # answer that would not parse). Only `broken` is worth waking anybody for.
 #
 # Env: CLAUDE_BIN, ADVISORY_REPO, ADVISORY_MAX_DIFF_BYTES,
-#      ADVISORY_CHUNK_BYTES, ADVISORY_MAX_RUNS, ADVISORY_MODEL_DEFAULT.
+#      ADVISORY_CHUNK_BYTES, ADVISORY_MAX_RUNS, ADVISORY_MODEL_DEFAULT,
+#      ADVISORY_MAX_SPEND_USD.
 set -uo pipefail
 
 REPO="${ADVISORY_REPO:-$(cd "$(dirname "$0")/.." && pwd)}"
@@ -57,6 +69,11 @@ CLAUDE_BIN="${CLAUDE_BIN:-claude}"
 MAX_TOTAL="${ADVISORY_MAX_DIFF_BYTES:-409600}"
 CHUNK="${ADVISORY_CHUNK_BYTES:-204800}"
 MAX_RUNS="${ADVISORY_MAX_RUNS:-5}"
+# One run of all three checks costs about 45 cents at the turn counts they
+# typically use, and about $1.80 if every one of them uses every turn it is
+# allowed. $1.50 leaves the ordinary run untouched and catches the day a check
+# will not settle. docs/advisory-review.md carries both numbers.
+MAX_SPEND="${ADVISORY_MAX_SPEND_USD:-1.50}"
 # Sonnet, because this is a per-push cost on every pull request and the checks
 # are narrow reads of a diff rather than open-ended work. docs/advisory-review.md
 # carries the arithmetic. A check may name a different model in its frontmatter.
@@ -380,9 +397,26 @@ if len(findings) > 10:
 PY
 }
 
+# What the CLI says this answer cost, from its own envelope. Anything it will
+# not tell us counts as nothing: a ceiling that guessed high would stop runs
+# that never happened.
+read_cost() {
+  python3 - "$1" <<'PY'
+import json, sys
+try:
+    envelope = json.load(open(sys.argv[1], encoding="utf-8", errors="replace"))
+    value = envelope.get("total_cost_usd") if isinstance(envelope, dict) else None
+    print("%.6f" % float(value))
+except Exception:
+    print("0")
+PY
+}
+
 # ---------------------------------------------------------------------------
 # Run the checks
 # ---------------------------------------------------------------------------
+spent=0
+over_budget=0
 ran=0
 total_findings=0
 sections=0
@@ -390,6 +424,7 @@ broke=0
 
 for check in "$CHECKS_DIR"/*.md; do
   [ -f "$check" ] || continue
+  [ "$over_budget" = 0 ] || break
   name="$(sed -n 's/^name:[[:space:]]*//p' "$check" | head -1)"
   [ -n "$name" ] || name="$(basename "$check" .md)"
   model="$(sed -n 's/^model:[[:space:]]*//p' "$check" | head -1)"
@@ -465,6 +500,15 @@ for check in "$CHECKS_DIR"/*.md; do
     else
       parse_answer "$WORK/raw" >>"$WORK/answers.$name"
     fi
+
+    spent="$(awk -v a="$spent" -v b="$(read_cost "$WORK/raw")" \
+      'BEGIN { printf "%.6f", a + b }')"
+    if awk -v s="$spent" -v m="$MAX_SPEND" 'BEGIN { exit !(s >= m) }'; then
+      over_budget=1
+      printf 'TOOLING\tthis run reached its $%s ceiling here, so nothing after it was asked\n' \
+        "$MAX_SPEND" >>"$WORK/answers.$name"
+      break
+    fi
     i=$((i + 1))
   done
 
@@ -507,6 +551,11 @@ if [ "$ran" -gt 0 ]; then
   emit ""
   emit "_Asked $ran check(s), paid for by $CRED_WORDS._"
   [ "$broke" -eq 1 ] && say_status broken || say_status ok
+fi
+
+if [ "$over_budget" = 1 ]; then
+  emit ""
+  emit "**Stopped at the spending ceiling.** This run cost \$$spent, which reached the \$$MAX_SPEND limit, so any check after that point was not asked. Nothing is wrong and nothing is blocked; a diff this size is worth a person's reading rather than more of a model's. Raise it with \`ADVISORY_MAX_SPEND_USD\` if that is the wrong call."
 fi
 
 if [ -s "$WORK/skipped" ]; then
