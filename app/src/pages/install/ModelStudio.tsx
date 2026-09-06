@@ -1003,6 +1003,13 @@ export function ModelStudio({ source }: { source: StudioSource }) {
         );
         ray.setFromCamera(ndc, bp.three.camera);
         const items = bp.model.scene.getItems() as unknown as THREE.Object3D[];
+        // A unit that was just placed (placeInRoom moved and turned it, the
+        // parametric build rescaled it) keeps its OLD world matrix until the
+        // next on-demand render, and a raycast reads the matrix. A tap that
+        // beat that frame tested the unit where it used to be, missed, and
+        // selected the wall behind it. Settle the matrices first — a handful
+        // of items, nothing to it.
+        for (const it of items) it.updateMatrixWorld(true);
         return (ray.intersectObjects(items, false)[0]?.object ??
           null) as unknown as StudioItem | null;
       };

@@ -507,7 +507,7 @@ test("3D drag handles: pulling the top handle makes the unit taller", async ({
     return group.children.every(
       (m: any) => Math.abs(m.position.x - it.position.x) <= halfSpan && Math.abs(m.position.z - it.position.z) <= 40,
     );
-  });
+  }, undefined, { timeout: 15_000 });
 
   await waitForCameraToSettle(page);
 

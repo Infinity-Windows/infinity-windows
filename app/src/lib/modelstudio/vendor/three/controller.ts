@@ -388,6 +388,10 @@ export class Controller {
 
     // check objects
     const items = this.model.scene.getItems()
+    // infinity: a just-placed item keeps a stale world matrix until the next
+    // on-demand render; the hover raycast below reads that matrix, so a tap
+    // right after placement missed the item and fell through to the wall.
+    for (const it of items) it.updateMatrixWorld(true)
     const intersects = this.getIntersections(
       this.mouse,
       items as any as THREE.Object3D[],
