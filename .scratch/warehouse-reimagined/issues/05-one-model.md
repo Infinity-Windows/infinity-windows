@@ -1,6 +1,6 @@
 # 05 — One model: bays become boxes, the duplicates go
 
-Status: ready-for-agent
+Status: in-progress (slice A: dead code + deploy-window fallbacks deleted, /receive redirect; slice B: migration 0996 = packages.tracking + copy_unit + drop materialize_pending_set. DEFERRED, need a production probe + owner eyes first: bays → boxes (46 seeded slots), dropping `category`, dropping `package_events` (three scripts reference it), pending-job rows, one stage vocabulary)
 Type: task
 Size: M
 

@@ -83,3 +83,23 @@ test("the history offers Undo on your own line and explains why not on others", 
   await expect(page.getByRole("button", { name: "Undo" })).toHaveCount(0);
   await expect(page.locator(".unit-why[title*='foreman']")).toHaveCount(1);
 });
+
+test("copy this unit ×N sends copy_unit, with the sticker choice", async ({ page }) => {
+  await useSupabaseFixtures(page, { role: "installer" });
+  const rows = [pkg(1, "stored"), pkg(2, "received")];
+  await page.route("**/rest/v1/packages**", (r) => json(r, rows, rows.length));
+  await page.route("**/rest/v1/storage_containers**", (r) => json(r, [], 0));
+  await page.route("**/rest/v1/movements**", (r) => json(r, [], 0));
+  const calls: unknown[] = [];
+  await page.route("**/rest/v1/rpc/copy_unit", (r) => {
+    calls.push(r.request().postDataJSON());
+    return json(r, 4);
+  });
+  await page.goto(`/unit/${BLACK22.projectId}/16`);
+  await page.getByRole("button", { name: "Copy ×N" }).click();
+  await page.getByRole("button", { name: "One more" }).click();
+  await page.getByRole("button", { name: "No stickers — copies ride on the original" }).click();
+  await page.getByRole("button", { name: "Add 2 copies" }).click();
+  await expect.poll(() => calls.length).toBe(1);
+  expect(calls[0]).toEqual({ p_project: BLACK22.projectId, p_mark: "16", p_times: 2, p_pooled: true });
+});

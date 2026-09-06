@@ -36,6 +36,7 @@ import { setPackageNoteOffline, writeToast } from "../../lib/warehouse/offlineWr
 import {
   addPartTypeOption,
   burnPackages,
+  copyUnit,
   deletePackages,
   listActivePackages,
   listContainers,
@@ -69,6 +70,7 @@ type Editor =
   | { kind: "job"; pieceId?: string }
   | { kind: "mark"; pieceId?: string }
   | { kind: "count" }
+  | { kind: "copy" }
   | null;
 
 export function UnitCard() {
@@ -198,6 +200,25 @@ export function UnitCard() {
         next > before
           ? `${kind} ${mark} now arrives as ${next} pieces — ${next - before} new label${next - before === 1 ? "" : "s"} to print.`
           : `${kind} ${mark} now arrives as ${next} pieces.`,
+      );
+    },
+    onError: (e) => pushToast(formatApiError(e), "error"),
+  });
+
+  // --- copies (owner's ask): N more of this unit, with or without stickers --
+  const copy = useMutation({
+    mutationFn: async (input: { times: number; pooled: boolean }) => {
+      if (!projectId) throw new Error("Copy a unit once its job is built.");
+      const n = await copyUnit({ projectId, markCode: mark, times: input.times, pooled: input.pooled });
+      return { ...input, n };
+    },
+    onSuccess: ({ times, pooled, n }) => {
+      refresh();
+      setEditor(null);
+      pushToast(
+        pooled
+          ? `${times} ${times === 1 ? "copy" : "copies"} added — they ride on this unit's stickers (×${times + 1} on the label).`
+          : `${times} ${times === 1 ? "copy" : "copies"} added — ${n} new expected label${n === 1 ? "" : "s"} to print.`,
       );
     },
     onError: (e) => pushToast(formatApiError(e), "error"),
@@ -337,7 +358,20 @@ export function UnitCard() {
           {report.expectedTotal == null ? `${report.rows.length} tagged, no count on labels` : `${total} piece${total === 1 ? "" : "s"}`}{" "}
           <span className="chip-pen">✎</span>
         </button>
+        <button
+          type="button"
+          className={`chip ${editor?.kind === "copy" ? "chip--on" : ""}`}
+          onClick={() => setEditor(editor?.kind === "copy" ? null : { kind: "copy" })}
+          title="Add identical copies of this unit"
+          disabled={!projectId || report.rows.length === 0}
+        >
+          Copy ×N
+        </button>
       </div>
+
+      {editor?.kind === "copy" ? (
+        <CopyEditor busy={copy.isPending} onCancel={() => setEditor(null)} onApply={(v) => copy.mutate(v)} />
+      ) : null}
 
       {editor?.kind === "job" || editor?.kind === "mark" ? (
         <MoveEditor
@@ -777,6 +811,63 @@ function CountEditor({
       <div className="row-gap">
         <button type="submit" className="button-like button-like--primary" disabled={n === total || busy || (n < total && maxIndex > n)}>
           {busy ? "Saving…" : "Set the count"}
+        </button>
+        <button type="button" className="button-like" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function CopyEditor({
+  busy,
+  onCancel,
+  onApply,
+}: {
+  busy: boolean;
+  onCancel: () => void;
+  onApply: (v: { times: number; pooled: boolean }) => void;
+}) {
+  const [n, setN] = useState(1);
+  const [pooled, setPooled] = useState(false);
+  return (
+    <form
+      className="wh-card unit-editor"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onApply({ times: n, pooled });
+      }}
+    >
+      <div className="field-label">How many more of this unit?</div>
+      <div className="row-gap unit-stepper">
+        <button type="button" className="button-like" onClick={() => setN((v) => Math.max(1, v - 1))} aria-label="One fewer">
+          −
+        </button>
+        <span className="unit-stepper-n" aria-live="polite">
+          {n}
+        </span>
+        <button type="button" className="button-like" onClick={() => setN((v) => Math.min(20, v + 1))} aria-label="One more">
+          +
+        </button>
+      </div>
+      <div className="field-label">Stickers</div>
+      <div className="row-gap">
+        <button type="button" className={`chip ${!pooled ? "chip--on" : ""}`} onClick={() => setPooled(false)} aria-pressed={!pooled}>
+          Each copy gets its own sticker
+        </button>
+        <button type="button" className={`chip ${pooled ? "chip--on" : ""}`} onClick={() => setPooled(true)} aria-pressed={pooled}>
+          No stickers — copies ride on the original
+        </button>
+      </div>
+      <p className="muted" style={{ fontSize: 12.5 }}>
+        {pooled
+          ? "The original's sticker prints ×N. Scanning it asks how many you are moving. Every copy still has its own ID, and any copy can be given its own sticker later."
+          : "Every copy is expected as its own pieces with its own labels to print — the same as a clone set on a delivery."}
+      </p>
+      <div className="row-gap">
+        <button type="submit" className="button-like button-like--primary" disabled={busy}>
+          {busy ? "Copying…" : `Add ${n} ${n === 1 ? "copy" : "copies"}`}
         </button>
         <button type="button" className="button-like" onClick={onCancel}>
           Cancel
