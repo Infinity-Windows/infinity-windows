@@ -1,6 +1,6 @@
 # 02 — Scan first: one Scan button, a state-aware sheet, hand confirm
 
-Status: ready-for-agent
+Status: in-progress (slice A: sheet + hand confirm + Scan button, PR pending; slice B: selection bar on lists, "by hand:" reason on the server, barcode-detector swap, removals)
 Type: task
 Size: M
 
