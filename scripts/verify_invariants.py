@@ -34,21 +34,18 @@ the migration files:
                    152 of these; this keeps the next migration from adding
                    one back.
 
-All three of those started life as advisories — listed, never failing —
-because they were true of parts of this schema before anyone looked, and a
-gate that is red on its first run is a gate people learn to skip. Each was
-promoted the day production showed the list empty.
-
-One more is ADVISORY today, on the same terms:
-
   definer pins     every SECURITY DEFINER routine in public pins
   search_path      `set search_path`. Two loop migrations (20260718090000,
                    20260729210100) pinned everything that existed on their
                    day, and `create or replace` rewrites the SET clauses
                    with the body, so every rebuild since that forgot the
-                   clause silently lost the pin. 20260997000000 pins the
-                   ones found on 2026-09-06; promote this the day the
-                   master run shows the list empty.
+                   clause silently lost the pin. 20260997000000 pinned the
+                   seventeen found on 2026-09-06; this fails on the next.
+
+All four of those started life as advisories — listed, never failing —
+because they were true of parts of this schema before anyone looked, and a
+gate that is red on its first run is a gate people learn to skip. Each was
+promoted the day production showed the list empty.
 
 READ-ONLY. The SQL is scripts/invariants.sql, run through scripts/pgq.sh,
 which refuses anything that is not a SELECT.
@@ -243,15 +240,14 @@ def judge(report: dict) -> tuple[list[str], list[str], list[str]]:
             "(no definer_unpinned in the report)."
         )
     if unpinned:
-        advisories.append(
+        failures.append(
             f"{len(unpinned)} SECURITY DEFINER function(s) with no pinned search_path: "
             + ", ".join(unpinned)
             + ". Each runs as its owner and ignores row security, and with the path unpinned "
             "the caller decides which schema an unqualified name resolves in. 20260997000000 "
             "pinned every one that had slipped through; a new or rebuilt function carries "
             "`set search_path = public, pg_temp` in its create statement (20260995000000 shows "
-            "the shape), because `create or replace` rewrites the SET clauses with the body. "
-            "Not failing yet; promote when this list is empty on production."
+            "the shape), because `create or replace` rewrites the SET clauses with the body."
         )
 
     reads = sum(1 for p in policies if p["schema"] == "public" and _reads(p) and _client_facing(p.get("roles") or []))
