@@ -30,8 +30,10 @@
 --      everybody's, unchanged) and loses every write policy. Three SECURITY
 --      DEFINER functions below are the only doors: award_install_points,
 --      resolve_install_points, award_education_quiz. A unique partial index
---      makes "one payment per person per ref per kind" structural rather than
---      a promise a function makes.
+--      makes "one install payment per person per unit per kind" structural
+--      rather than a promise a function makes. It is scoped to the five
+--      install kinds on purpose — summon points share this table and are
+--      allowed to land twice on one ref.
 --
 --   2. NEW CONTENT ONLY. A glossary term pays the FIRST time a person answers
 --      it right and never again; the install-sequence quiz pays once. That is
@@ -83,6 +85,16 @@ update points_ledger
 -- could pay the same install twice. Keep the FIRST row for each
 -- (person, ref, kind) and void the rest — a second payment for one install was
 -- never earned, and the unique index below cannot be built while one exists.
+--
+-- ONLY THE INSTALL KINDS, and this restriction is load-bearing. A summon is
+-- allowed to be answered twice on one ref: answer_summon (20260963000000)
+-- writes a 'summon_answer' row, cancel_summon_help (20260919000000) writes a
+-- separate 'summon_answer_canceled' row of -10 rather than voiding the first,
+-- and a helper who cancels may re-join the same call — which writes a second
+-- 'summon_answer' for the same (person, summon, kind), legitimately. Voiding
+-- that second row would leave the -10 standing beside it and quietly dock
+-- somebody 10 points for help they actually gave. The kinds listed here are
+-- exactly the ones award_install_points writes and clamps.
 with ranked as (
   select l.id,
          row_number() over (
@@ -92,6 +104,7 @@ with ranked as (
     from points_ledger l
    where l.ref is not null
      and l.status <> 'void'
+     and l.kind in ('install', 'par', 'photos', 'teach', 'quality')
 )
 update points_ledger p
    set status = 'void',
@@ -103,16 +116,34 @@ update points_ledger p
  where p.id = r.id
    and r.rn > 1;
 
--- THE STRUCTURAL GUARANTEE. One payment per person, per ref, per kind. Partial
--- on two counts: a null ref is outside it (the voided history above, and
--- nothing new writes one), and a VOIDED row is outside it so that voiding a
--- duplicate actually frees the slot. That carve-out does not open a re-pay
--- door: award_install_points checks for ANY existing row on the pair, void
--- included, before it inserts. The index is the backstop; the function is the
--- rule.
-create unique index if not exists points_ledger_one_award_per_ref_kind
+-- THE STRUCTURAL GUARANTEE. One INSTALL payment per person, per ref, per kind.
+-- Partial on three counts:
+--
+--   * a null ref is outside it (the voided history above, and nothing new
+--     writes one);
+--   * a VOIDED row is outside it, so voiding a duplicate actually frees the
+--     slot — and so a unit that was undone and genuinely installed again can
+--     be paid a second time. award_install_points is the thing that tells
+--     those two apart, by the install event it is paying for;
+--   * and only the five kinds award_install_points writes are in it at all.
+--
+-- That last one is not tidiness. 'summon_answer' rides the same table with a
+-- summon id for a ref, and answering a summon twice — cancel, then re-join —
+-- is a supported flow that writes the pair twice on purpose. A repo-wide index
+-- here would abort answer_summon with a raw unique-violation and leave a
+-- helper unable to re-join a call at all. The kind list must stay in step with
+-- the CASE in award_install_points below; scripts/test_schema_verify.py pins
+-- the two together.
+--
+-- Dropped by its old name first, so a database that already took the earlier,
+-- unscoped shape of this index picks up the predicate rather than skipping it
+-- on `if not exists`.
+drop index if exists points_ledger_one_award_per_ref_kind;
+create unique index if not exists points_ledger_one_install_award_per_ref_kind
   on points_ledger (profile_id, ref, kind)
-  where ref is not null and status <> 'void';
+  where ref is not null
+    and status <> 'void'
+    and kind in ('install', 'par', 'photos', 'teach', 'quality');
 
 -- ---------------------------------------------------------------------------
 -- 2. points_ledger: reads stay, writes go

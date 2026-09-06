@@ -912,8 +912,57 @@ class TestPointsCapMigration(unittest.TestCase):
         sql = _points_cap_sql()
         self.assertRegex(
             sql,
-            r"create unique index if not exists points_ledger_one_award_per_ref_kind\s+"
+            r"create unique index if not exists "
+            r"points_ledger_one_install_award_per_ref_kind\s+"
             r"on points_ledger \(profile_id, ref, kind\)",
+        )
+
+    def test_the_index_only_covers_the_kinds_the_install_door_writes(self):
+        """SUMMONS SHARE THIS TABLE. answer_summon writes 'summon_answer' with
+        a summon id for a ref, and a helper who cancels may re-join the same
+        call — which writes that pair a second time on purpose (the cancel
+        posts a separate -10 row rather than voiding the first). A repo-wide
+        unique index here would abort answer_summon with a raw unique-violation
+        and leave that person unable to re-join at all. So the index is scoped
+        to the five kinds award_install_points writes, and the two lists have
+        to stay in step."""
+        sql = _points_cap_sql()
+        index = sql.split("create unique index if not exists "
+                          "points_ledger_one_install_award_per_ref_kind")[1].split(";")[0]
+        self.assertIn(
+            "kind in ('install', 'par', 'photos', 'teach', 'quality')", index,
+            "the one-award index is not scoped to the install kinds",
+        )
+        # The same five, and no others, are what the function is willing to pay.
+        body = sql.split("create or replace function public.award_install_points(")[1]
+        caps = body.split("v_cap := case v_kind")[1].split("end;")[0]
+        self.assertEqual(
+            set(re.findall(r"when '([a-z]+)'\s+then", caps)),
+            {"install", "par", "photos", "teach", "quality"},
+        )
+
+    def test_the_index_is_dropped_by_its_old_name_before_it_is_rebuilt(self):
+        """`create ... if not exists` skips a rebuild, so a database that took
+        the earlier unscoped shape of this index would keep it and keep
+        breaking summons. Dropping the old name first is what makes re-running
+        this migration actually correct rather than merely quiet."""
+        sql = _points_cap_sql()
+        self.assertIn("drop index if exists points_ledger_one_award_per_ref_kind;", sql)
+        self.assertLess(
+            sql.index("drop index if exists points_ledger_one_award_per_ref_kind;"),
+            sql.index("create unique index if not exists "
+                      "points_ledger_one_install_award_per_ref_kind"),
+        )
+
+    def test_the_duplicate_backfill_leaves_summon_points_alone(self):
+        """Backfill B keeps the first row per (person, ref, kind) and voids the
+        rest. Across all kinds that would void the second, legitimate answer on
+        a summon somebody cancelled and re-joined — while the -10 cancellation
+        row stands beside it, docking them 10 points for help they gave."""
+        ranked = _points_cap_sql().split("with ranked as (")[1].split("\n)")[0]
+        self.assertIn(
+            "l.kind in ('install', 'par', 'photos', 'teach', 'quality')", ranked,
+            "the duplicate backfill sweeps kinds it does not govern",
         )
 
     def test_the_backfill_voids_and_never_deletes(self):
