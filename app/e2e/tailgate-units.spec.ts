@@ -13,7 +13,7 @@ function twin(id: string, status: string, over: Record<string, unknown> = {}) {
   return {
     id, status, project_id: null, pending_job_name: "Sunset Ridge 4", mfr_mark: "5050",
     part_index: 1, part_total: 1, part_type: null as string | null, piece_count: null,
-    container_id: null, delivery_id: D, serial: `PKG-${id}`, short_code: id,
+    container_id: null as string | null, delivery_id: D, serial: `PKG-${id}`, short_code: id,
     bound_at: "2026-08-25T12:00:00Z", package_marks: [], ...over,
   };
 }
