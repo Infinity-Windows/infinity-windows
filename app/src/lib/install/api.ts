@@ -2199,16 +2199,6 @@ export async function resetProjectPins(projectId: string): Promise<number> {
   return Number(data ?? 0);
 }
 
-/** Put ONE mark back where the plan put it. */
-export async function resetOpeningPin(openingId: string): Promise<number> {
-  const { data, error } = await supabase.rpc(
-    "reset_opening_pin_to_extracted",
-    { p_opening_id: openingId },
-  );
-  if (error) throw error;
-  return Number(data ?? 0);
-}
-
 /**
  * Confirm ONE opening — "I checked this window's numbers against the plans."
  *
