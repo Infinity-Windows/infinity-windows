@@ -57,15 +57,20 @@
 -- DEFINER and does not answer to these policies at all.
 --
 -- WHY "OR THE ROW IS MY OWN UPLOAD" IS LOAD-BEARING, AND NOT JUST KINDNESS.
--- The install queue writes its attachment with
--- `.insert(row).select("id").single()` — PostgREST asks for the row back, so
--- the statement is an INSERT ... RETURNING, and a RETURNING clause is a READ:
--- the SELECT policy is applied to the row that was just written. An installer
--- filing a photo on a job they never clocked into would otherwise write a row
--- they cannot read back. Every client insert sets `created_by` to the
--- signed-in email (PhotoCaptureSheet, OpeningSheet, ModelStudio, PackageSheet),
--- so that branch always catches it. Keep it that way: dropping `created_by`
--- from an insert would break the write, not just the picture.
+-- A RETURNING clause is a READ: ask PostgREST for the row back and this SELECT
+-- policy is applied to the row that was just written. So a photo filed on a job
+-- this person never clocked into gets written and then refused on the way out,
+-- and the upload queue reads that as a failed write and retries a row that is
+-- already saved. The ownership branch is what catches that — but only while
+-- `created_by` really carries the signed-in email, and it does not always: it
+-- is null before sign-in has resolved, which is exactly the state a phone
+-- waking up in a dead zone is in.
+--
+-- So the queue stopped asking for rows nothing needs (needsAttachmentId,
+-- app/src/lib/install/queue.ts). A photo is inserted and nothing is read back;
+-- only a voice memo, which needs its id to start a transcription, asks. Keep
+-- both halves: widening what asks for its row back puts a WRITE behind this
+-- read policy again.
 --
 -- STORAGE, CHECKED AND DELIBERATELY LEFT ALONE — AND OPEN, NOT MERELY
 -- GUESSABLE. `install-media` carries one bucket-wide policy ("install media
