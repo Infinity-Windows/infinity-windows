@@ -172,7 +172,16 @@ class TestSchemaParsing(unittest.TestCase):
         # quote and the signed order that used to live only on the Monday item
         # (Monday files, F6, 20260988000000). The same migration adds columns to
         # monday_jobs and project_plansets, which are not new tables.
-        self.assertEqual(len(SCHEMA.tables), 130)
+        # +2: education_items + education_credits — the server's own list of
+        # Learn-tab items that can pay points, and what each person has already
+        # been paid for (points cap, 20260991000000). The same migration
+        # replaces points_ledger's FOR ALL policy and adds two columns to it,
+        # which are not new tables.
+        # +2: learning_time + learning_video_watches — seconds a person spent
+        # on one named item of the Learn section during one visit, and which
+        # seconds of one lesson they actually played (Learning time, L1/L2,
+        # 20260993000000).
+        self.assertEqual(len(SCHEMA.tables), 134)
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 

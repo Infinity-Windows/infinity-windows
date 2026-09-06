@@ -440,6 +440,64 @@ before it happens. Once confirmed, a custom mark is registered through the
 same paths a plan-placed one would use and glows/assigns/QCs identically —
 nothing downstream can tell an opening was born in Studio.
 
+## Points
+
+Settled 2026-09-05 (the owner's ask: "my crew is racking up points on
+repeating quizzes, we need to make sure there is a cap to these … if its
+real learning great, but it needs to be new content"). Two rules, and
+everything else about points is unchanged.
+
+**Server-only writes** — `points_ledger` is read by everybody and written
+by nobody. Until this date it carried a single policy, FOR ALL to
+authenticated, so any signed-in phone could insert any row it liked into
+the company's scoreboard — and the Learn tab did exactly that, from the
+browser, after every round. Three SECURITY DEFINER functions are the only
+doors now: `award_install_points` (the offline install outbox, after
+finish_unit), `resolve_install_points` (QC's pass or callback, foreman+),
+`award_education_quiz` (the Learn tab). Reads did not change: the team
+ranking is still assembled in the browser out of everyone's confirmed rows,
+because that is what a leaderboard is. Install points are always filed
+**pending**: only QC confirms them, and nothing a phone says can skip that
+step.
+
+**One payment per install, not per unit** — a unique index over
+(person, ref, kind) makes it structural rather than a promise, so a
+retrying outbox cannot pay twice, and a resend is ignored in silence rather
+than refused: the queue is not wrong to try again. A **redo** is a
+different thing from a resend. A unit sent back by QC, or undone, returns
+to the work list and is installed again — a second `install_events` row,
+by people who did the work twice — and it pays again. The ledger row
+carries the install event it paid for, and that is what tells the two
+apart. The index is scoped to the five install kinds on purpose: summon
+points share this table, and answering a summon you cancelled and re-joined
+is allowed to land on the same ref twice.
+
+**New content only** — a glossary term pays the FIRST time a person
+answers it correctly and never again; the install-sequence quiz pays once,
+at the same 4-of-5 bar a video quiz passes at. That is `education_credits`,
+one row per person per item, and it makes the ceiling arithmetic: 105 terms
+plus the sequence, ten points each, 1,060 points from the Learn tab in a
+lifetime. Practising is deliberately untouched — "Another round" is still
+there and still free — because the practice was never the problem. What
+can pay is a list the SERVER keeps (`education_items`), not one the phone
+sends, so a made-up key earns nothing and the ceiling is real. The app
+still cannot re-score these quizzes the way it re-scores a video one: they
+are generated in the browser from a client-side glossary, so it is the
+phone that says which terms it got right. The cap is what makes lying
+pointless rather than merely dishonest — a liar reaches 1,060 sooner and
+then stops, forever.
+
+**Void, never delete** — the rows farmed before the rule (kind `quiz`,
+no ref) are set to `void` with a sentence in `void_reason` saying why. The
+history still says what happened and to whom. Nobody was handed replacement
+credit: the terms are all still there to be earned, by doing the quiz.
+Every reader that shows a total — the Points page, Home, the leaderboard —
+already counted confirmed rows only, which is why voiding was enough. A
+person's own ledger asks the database to leave void rows out rather than
+filtering them in the browser: it reads the 200 most recent rows, and the
+voided ones would otherwise have crowded the very people the backfill was
+aimed at out of their own history.
+
 ## Video quizzes
 
 Settled 2026-09-01, wave Q (grilled, Q1-Q4 approved — cite, never
@@ -897,6 +955,83 @@ one-hour link Monday mints is a read and is allowed; that link is never stored,
 because a stored one is a list that 404s and a live unauthenticated link to
 another company's document sitting in a table a foreman can read.
 
+
+## Learning time
+
+Settled 2026-09-05 (the owner's own ask): "a timer that I can see as an owner
+how long they spend in the learning tab and on what item… as well as a timer
+for watching the YouTube videos, to see if they watch the whole thing and how
+many times." The honest companion to the points cap: points could be farmed by
+re-taking a round, and minutes cannot.
+
+**Learning time** — seconds spent on one named item of Learn during one visit.
+A *visit* is one page load: the app mints an id when Learn opens and throws it
+away when the page goes, which is what makes "five separate evenings" tell
+itself apart from "one long afternoon with the tab open", and what makes times
+watched countable at all. The named items are the five places of Learn — the
+tab itself, a glossary term, the quiz round, the sequence drill, a lesson that
+is playing. The TAB rows are the total; every other kind is the same minutes
+named more precisely, so the parts sit inside the whole and are never added to
+it.
+
+**What is not recorded.** Nothing while the screen is hidden, the phone is
+locked, or the app is in the background — the beat only fires while the page is
+visible AND has focus, and stops the moment either goes. No content, no answer,
+no keystroke, no location. Time is never queued offline either: a lost beat is
+fifteen seconds nobody reads to the second, and a replayed one would carry the
+phone's idea of when it happened, which is the thing the server-stamped cap
+exists to refuse.
+
+**Idle gate** — the third condition, and the one that carries the promise the
+crew is shown. Visible and focused is the browser's answer to *is this window on
+top*, not to *is anybody there*: a Learn tab parked on a second monitor all day
+is both and is nobody. So the beat also wants a sign of life — a tap, a key, a
+scroll — inside the last ten minutes. A lesson that is really playing is exempt
+while it plays, because watching is the one kind of learning that looks exactly
+like an empty desk, and the ten minutes start again when it ends.
+
+**The server stamps it.** A phone says "fifteen seconds"; the server clamps
+that to thirty and then to the **kind clock** — the seconds since that person
+last banked time on this *kind* of item, from any visit and any item. The
+reference is deliberately not the row a beat names, because the phone chooses
+the row: its key carries a visit id and an item key both minted in the browser,
+so a per-row ceiling is a fresh clean wall clock for every uuid a caller cares
+to invent. Against the kind, a person banks at most one second per second
+however many rows they mint, and an honest phone has one row per kind open at a
+time anyway. A row is also created worth nothing, and an item key has to name a
+part of Learn the app really ships.
+
+The rule holds for video too, where a beat may only claim seconds that the clock
+AND the play head both agree passed — a jump further forward than the clock can
+explain is a drag of the scrubber and counts as zero — and where the lesson's
+**length** is the longest any player has ever reported for it, by anybody. A
+length taken from the phone being measured is a denominator that phone can
+choose, and every percentage over it goes with it.
+
+What the server cannot see is whether anybody was looking. Real seconds are what
+its clamps bound; attention is what the idle gate bounds. Both halves are needed
+and neither is the answer alone.
+
+**Watched through** — ninety percent of a lesson covered, or the player itself
+saying the video ended. The second half is reachable by skipping to the end, so
+the percentage is shown BESIDE the verdict everywhere and never instead of it:
+"finished · 4% watched" is a sentence the app is willing to print. **Times
+watched** is visits that got through thirty seconds, and the screen says so —
+a card scrolled past eleven times is not a lesson watched eleven times.
+
+**What it says on screen.** The owner's page answers both halves of the ask: a
+person's total, the same minutes broken down by kind under it, and then the
+named items themselves — which glossary term, which lesson — busiest first,
+five deep with a count of the rest. A kind chip without its items answers "how
+long" and leaves "on what" unanswered.
+
+**Who can see it.** A person always sees their own, at the bottom of Learn,
+beside one sentence saying it is recorded so the company can see the effort
+they put in — the same promise the owner's page makes, said to the person it is
+about. Supervisor and above see everybody's, at `/learning/time`, the same
+floor per-person time already has on the Data tab. A foreman does not: that is
+a decision about people rather than a gap, and it is the owner's to make.
+A partner (builder) login never, by the wall.
 
 ## Open questions
 

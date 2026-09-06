@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
+import { useT } from "../lib/i18n";
 import { getMyProfile } from "../lib/install/api";
 import {
   getPointsLeaderboard,
@@ -48,6 +49,7 @@ function tierFor(total: number) {
 }
 
 export function Points() {
+  const t = useT();
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const ledger = useQuery({
     queryKey: ["ledger", me.data?.id],
@@ -103,7 +105,11 @@ export function Points() {
           <li>Proof photos: +{POINT_RULES.photos}</li>
           <li>Teach the crew (voice memo): +{POINT_RULES.teach}</li>
           <li>Quality grade 4+: +{POINT_RULES.quality}</li>
-          <li>Quiz: +{POINT_RULES.quizPerCorrect}/correct</li>
+          {/* Not "per correct answer" any more (2026-09-05): a term pays the
+              first time it is answered right and never again, so the line that
+              used to promise ten points a round would now be a lie on the
+              screen every time somebody practised. */}
+          <li>{t("points.rule.quiz", { points: POINT_RULES.quizPerCorrect })}</li>
         </ul>
       </div>
 

@@ -17,6 +17,7 @@ import {
   type OutboxStore,
 } from "./outbox-core";
 import { createDefaultStore } from "./outboxStore";
+import { logOfflineEvent } from "./telemetry";
 import {
   createShiftResolver,
   createSupabaseHandlers,
@@ -138,6 +139,14 @@ export async function drain(): Promise<void> {
     const res = await drainStore(store, handlers, {
       onChange: () => void refresh(),
     });
+    if (res.attempted > 0) {
+      logOfflineEvent({
+        type: "flush",
+        scope: "outbox",
+        count: res.sent,
+        message: res.deadLettered > 0 ? `${res.deadLettered} gave up` : res.retried > 0 ? `${res.retried} will retry` : undefined,
+      });
+    }
     if (res.sent > 0) {
       for (const cb of syncedListeners) {
         try {

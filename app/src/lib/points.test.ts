@@ -1,10 +1,77 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+// Every RPC this module fires, and with what. The point of the 2026-09-05 tests
+// at the bottom: the ledger takes no writes from a phone any more, so what
+// leaves the browser is an RPC CALL with a payload, and the payload is the
+// thing worth pinning.
+const rpcCalls: { fn: string; args: unknown }[] = [];
+let rpcError: unknown = null;
+
+/**
+ * One read against a table: which table, and every filter that was chained
+ * onto it. Reads are allowed and recorded; a WRITE throws, because "no phone
+ * writes the ledger" is the rule this whole module exists to keep.
+ */
+interface TableRead {
+  table: string;
+  select?: string;
+  filters: string[];
+  limit?: number;
+}
+const tableReads: TableRead[] = [];
+let tableRows: unknown[] = [];
+
+vi.mock("./supabase", () => ({
+  supabase: {
+    rpc: (fn: string, args: unknown) => {
+      rpcCalls.push({ fn, args });
+      return Promise.resolve({ data: null, error: rpcError });
+    },
+    from: (table: string) => {
+      const read: TableRead = { table, filters: [] };
+      tableReads.push(read);
+      const refuse = (op: string) => () => {
+        throw new Error(`points.ts must not ${op} ${table} directly`);
+      };
+      const builder = {
+        select: (cols: string) => {
+          read.select = cols;
+          return builder;
+        },
+        eq: (col: string, val: unknown) => {
+          read.filters.push(`eq:${col}=${String(val)}`);
+          return builder;
+        },
+        neq: (col: string, val: unknown) => {
+          read.filters.push(`neq:${col}=${String(val)}`);
+          return builder;
+        },
+        order: () => builder,
+        limit: (n: number) => {
+          read.limit = n;
+          return builder;
+        },
+        insert: refuse("insert"),
+        update: refuse("update"),
+        upsert: refuse("upsert"),
+        delete: refuse("delete"),
+        then: (resolve: (r: unknown) => unknown) =>
+          Promise.resolve({ data: tableRows, error: null }).then(resolve),
+      };
+      return builder;
+    },
+  },
+}));
+
 import {
+  awardPoints,
   computeInstallPoints,
+  listLedger,
   POINT_KINDS,
   pointsByCategory,
   POINT_RULES,
   rankLeaderboard,
+  resolvePendingPoints,
   sumPoints,
 } from "./points";
 
@@ -151,5 +218,133 @@ describe("rankLeaderboard", () => {
   it("names someone it has no profile for rather than dropping their points", () => {
     const rows = rankLeaderboard([{ profile_id: "ghost", points: 7 }], crew);
     expect(rows).toEqual([{ profile_id: "ghost", display_name: "crew", points: 7 }]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Server-only writes (2026-09-05)
+// ---------------------------------------------------------------------------
+// points_ledger used to carry one policy — FOR ALL to authenticated — so every
+// signed-in phone could insert any row it liked, and the Education quiz tab did
+// exactly that after every round. These pin the two wrappers that replaced the
+// direct writes: what they send, and that they still send nothing else.
+describe("awardPoints", () => {
+  beforeEach(() => {
+    rpcCalls.length = 0;
+    rpcError = null;
+  });
+
+  it("sends the ref, the entries and the status to award_install_points", async () => {
+    await awardPoints(
+      "profile-1",
+      [
+        { kind: "install", points: POINT_RULES.installBase },
+        { kind: "photos", points: POINT_RULES.photos },
+      ],
+      "opening-1",
+      "pending",
+    );
+    expect(rpcCalls).toEqual([
+      {
+        fn: "award_install_points",
+        args: {
+          p_ref: "opening-1",
+          p_entries: [
+            { kind: "install", points: POINT_RULES.installBase },
+            { kind: "photos", points: POINT_RULES.photos },
+          ],
+          p_status: "pending",
+        },
+      },
+    ]);
+  });
+
+  it("does not send the profile id — the server pays whoever installed it", async () => {
+    await awardPoints("profile-1", [{ kind: "install", points: 20 }], "opening-1");
+    const args = rpcCalls[0].args as Record<string, unknown>;
+    expect(Object.keys(args).sort()).toEqual(["p_entries", "p_ref", "p_status"]);
+    expect(JSON.stringify(args)).not.toContain("profile-1");
+  });
+
+  // The server ignores this argument and files every install row pending, so a
+  // "confirmed" default here would be a caller saying something that does not
+  // happen — and on the build before this one it was a caller asking to skip
+  // QC entirely.
+  it("asks for pending when the caller does not say, because only QC confirms", async () => {
+    await awardPoints("profile-1", [{ kind: "install", points: 20 }], "opening-1");
+    const args = rpcCalls[0].args as Record<string, unknown>;
+    expect(args.p_status).toBe("pending");
+  });
+
+  it("says nothing at all when there is nothing to award", async () => {
+    await awardPoints("profile-1", [], "opening-1");
+    expect(rpcCalls).toEqual([]);
+  });
+
+  it("refuses to award points with no window to hang them on", async () => {
+    await expect(
+      awardPoints("profile-1", [{ kind: "install", points: 20 }]),
+    ).rejects.toThrow(/window/);
+    expect(rpcCalls).toEqual([]);
+  });
+
+  it("passes a server refusal on rather than swallowing it", async () => {
+    rpcError = { message: "Points go to whoever installed the window." };
+    await expect(
+      awardPoints("profile-1", [{ kind: "install", points: 20 }], "opening-1"),
+    ).rejects.toEqual(rpcError);
+  });
+});
+
+describe("resolvePendingPoints", () => {
+  beforeEach(() => {
+    rpcCalls.length = 0;
+    rpcError = null;
+  });
+
+  it("sends QC's decision as one call naming only that unit", async () => {
+    await resolvePendingPoints("opening-9", "confirmed");
+    expect(rpcCalls).toEqual([
+      { fn: "resolve_install_points", args: { p_ref: "opening-9", p_status: "confirmed" } },
+    ]);
+  });
+
+  it("voids the same way a callback does", async () => {
+    await resolvePendingPoints("opening-9", "void");
+    expect(rpcCalls[0].args).toEqual({ p_ref: "opening-9", p_status: "void" });
+  });
+});
+
+// A person's own ledger, and the 200-row window it reads through
+// ---------------------------------------------------------------------------
+// The backfill in 20260991000000 voids hundreds of farmed quiz rows for two
+// people, all filed inside one day. Left in the window they would have pushed
+// those same people's real install points off the end of it, so their own
+// Points page would have totalled less than the leaderboard — which reads the
+// table with no limit — showed for them. So the void rows are dropped at the
+// database, not in the browser.
+describe("listLedger", () => {
+  beforeEach(() => {
+    tableReads.length = 0;
+    tableRows = [];
+  });
+
+  it("asks the database to leave voided rows out of the window", async () => {
+    await listLedger("profile-1");
+    expect(tableReads).toHaveLength(1);
+    const read = tableReads[0];
+    expect(read.table).toBe("points_ledger");
+    expect(read.filters).toContain("eq:profile_id=profile-1");
+    expect(read.filters).toContain("neq:status=void");
+  });
+
+  it("still reads one person's rows, newest first, capped", async () => {
+    await listLedger("profile-1");
+    expect(tableReads[0].limit).toBe(200);
+  });
+
+  it("hands back what the table returned", async () => {
+    tableRows = [{ id: "a", kind: "install", points: 20, status: "confirmed" }];
+    await expect(listLedger("profile-1")).resolves.toEqual(tableRows);
   });
 });

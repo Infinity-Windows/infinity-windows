@@ -2209,6 +2209,266 @@ export const CATALOG = {
     en: "Couldn't open that PDF just now — check your signal and try again.",
     es: "No se pudo abrir ese PDF ahora — revisa tu señal e inténtalo otra vez.",
   },
+
+  // ---- Learn: points are for new content now (2026-09-05) ----
+  // The Quiz and Sequence tabs used to write their own points after every
+  // round, so "Another round" paid again for the same five terms, hundreds of
+  // times over between two profiles in a single day. A term now pays the
+  // first time it is answered correctly and never again, which means the
+  // screen has to say two different things: what a round earned, and why a
+  // round earned nothing. Neither is a telling-off — practising is still free
+  // and still encouraged, so the "keep practising" half is the point.
+  // The "How points work" line on the Points page. It used to read "+10 /
+  // correct", which stopped being true the day a term started paying once.
+  "points.rule.quiz": {
+    en: "Quiz: +{points} the first time you get a term right — once per term",
+    es: "Examen: +{points} la primera vez que aciertas un término — una vez por término",
+  },
+  "learn.points.progress": {
+    en: "Earned {earned} of {total} terms",
+    es: "Ganados {earned} de {total} términos",
+  },
+  "learn.points.newOne": {
+    en: "+{points} points — 1 new term.",
+    es: "+{points} puntos — 1 término nuevo.",
+  },
+  "learn.points.newMany": {
+    en: "+{points} points — {count} new terms.",
+    es: "+{points} puntos — {count} términos nuevos.",
+  },
+  "learn.points.none": {
+    en: "No new points — you'd already earned these. Keep practising.",
+    es: "Sin puntos nuevos — ya los habías ganado. Sigue practicando.",
+  },
+  // A round with nothing right is not the same round as one where every term
+  // was already earned, and telling somebody "you'd already earned these"
+  // after they missed all five is just untrue. The server returns the two
+  // apart — new_terms and already_had — so the screen says them apart too.
+  "learn.points.noneRight": {
+    en: "No new points this round — none of those were right. Keep practising.",
+    es: "Sin puntos nuevos en esta ronda — no acertaste ninguno. Sigue practicando.",
+  },
+  "learn.points.sequenceEarned": {
+    en: "+{points} points — you've earned the install sequence.",
+    es: "+{points} puntos — ganaste la secuencia de instalación.",
+  },
+  // The bar exists because the sequence is one procedure, not five facts: half
+  // of it in the right order is not knowing it. 4 of 5 is the same bar a video
+  // quiz passes at, so a crew member learns one number, not two.
+  "learn.points.sequenceBar": {
+    en: "Get 4 of 5 to earn the install sequence. Keep practising.",
+    es: "Acierta 4 de 5 para ganar la secuencia de instalación. Sigue practicando.",
+  },
+  "learn.points.sequenceHad": {
+    en: "No new points — you've already earned the install sequence. Keep practising.",
+    es: "Sin puntos nuevos — ya ganaste la secuencia de instalación. Sigue practicando.",
+  },
+  "learn.points.newContentOnly": {
+    en: "Points are for terms you haven't earned yet. Practise as much as you like.",
+    es: "Los puntos son por términos que aún no has ganado. Practica todo lo que quieras.",
+  },
+  "learn.points.saving": {
+    en: "Counting your points…",
+    es: "Contando tus puntos…",
+  },
+  // The deploy window. The frontend and the database ship from one merge
+  // through two independent workflows, so for a few minutes either can be
+  // ahead — and the round an installer just played is not the place to say so
+  // in red. Their answers are safe; the points land next time.
+  "learn.points.notReadyYet": {
+    en: "Points aren't ready yet — that round still counted as practice. Try again in a few minutes.",
+    es: "Los puntos aún no están listos — esa ronda contó como práctica. Intenta otra vez en unos minutos.",
+  },
+  "learn.points.failed": {
+    en: "Points didn't save: {reason}",
+    es: "Los puntos no se guardaron: {reason}",
+  },
+  "learn.points.anotherRound": { en: "Another round", es: "Otra ronda" },
+
+  // --- Save for offline (ticket 05, 2026-09-06) ----------------------------
+  "offline.save": { en: "Save for offline", es: "Guardar sin señal" },
+  "offline.savingStart": { en: "Saving…", es: "Guardando…" },
+  "offline.saving": { en: "Saving… {done} of {total}", es: "Guardando… {done} de {total}" },
+  "offline.saved": { en: "Saved offline · {ago}", es: "Guardado sin señal · {ago}" },
+  "offline.savedMissing": {
+    en: "Saved offline · {ago} · {n} items missing, refresh with better signal",
+    es: "Guardado sin señal · {ago} · faltan {n} elementos, actualiza con mejor señal",
+  },
+  "offline.savedPartly": {
+    en: "Saved, but {n} items could not be downloaded — try again with better signal",
+    es: "Guardado, pero {n} elementos no se pudieron descargar — intenta de nuevo con mejor señal",
+  },
+  "offline.failed": {
+    en: "Couldn't save this job. Try again with better signal.",
+    es: "No se pudo guardar este trabajo. Intenta de nuevo con mejor señal.",
+  },
+  "offline.refresh": { en: "Refresh the offline copy", es: "Actualizar la copia sin señal" },
+  "offline.strip": {
+    en: "{saved} of {total} jobs saved on this phone",
+    es: "{saved} de {total} trabajos guardados en este teléfono",
+  },
+  "offline.saveAll": { en: "Save all for offline", es: "Guardar todos sin señal" },
+  "offline.refreshAll": { en: "Refresh offline copies", es: "Actualizar copias sin señal" },
+  "offline.savingJobs": {
+    en: "Saving job {i} of {n}… {done} of {total}",
+    es: "Guardando trabajo {i} de {n}… {done} de {total}",
+  },
+  "offline.justNow": { en: "just now", es: "ahora mismo" },
+  "offline.minAgo": { en: "{n} min ago", es: "hace {n} min" },
+  "offline.hoursAgo": { en: "{n} h ago", es: "hace {n} h" },
+  "offline.daysAgo": { en: "{n} d ago", es: "hace {n} d" },
+
+  // --- Weak signal, saved copies, diagnostics (ticket 06, 2026-09-06) ------
+  "offline.savedCopy.offline": {
+    en: "Showing the last saved copy — no signal right now.",
+    es: "Mostrando la última copia guardada — sin señal ahora.",
+  },
+  "offline.savedCopy.weak": {
+    en: "Showing the last saved copy — the signal is weak.",
+    es: "Mostrando la última copia guardada — la señal es débil.",
+  },
+  "offline.savedCopy.failed": {
+    en: "Showing the last saved copy — the last refresh failed.",
+    es: "Mostrando la última copia guardada — la última actualización falló.",
+  },
+  "pill.noSignal": { en: "No signal", es: "Sin señal" },
+  "pill.noSignalDetail": {
+    en: "No signal. Changes are saved on this phone and send when it returns.",
+    es: "Sin señal. Los cambios se guardan en este teléfono y se envían cuando vuelva.",
+  },
+  "pill.weakSignal": { en: "Weak signal", es: "Señal débil" },
+  "pill.weakDetail": {
+    en: "Requests are timing out. Screens show the last saved copy.",
+    es: "Las solicitudes están tardando demasiado. Las pantallas muestran la última copia guardada.",
+  },
+  "diag.eyebrow": { en: "Support", es: "Soporte" },
+  "diag.title": { en: "Diagnostics", es: "Diagnóstico" },
+  "diag.back": { en: "Settings", es: "Ajustes" },
+  "diag.intro": {
+    en: "What this phone knows about its connection and its queues. Copy the report into a message when something didn't save.",
+    es: "Lo que este teléfono sabe de su conexión y sus colas. Copia el informe en un mensaje cuando algo no se guardó.",
+  },
+  "diag.copy": { en: "Copy report", es: "Copiar informe" },
+  "diag.copied": { en: "Copied", es: "Copiado" },
+  "diag.connection": { en: "Connection", es: "Conexión" },
+  "diag.online": { en: "Online", es: "En línea" },
+  "diag.offline": { en: "No signal", es: "Sin señal" },
+  "diag.weak": { en: "Weak signal", es: "Señal débil" },
+  "diag.lastOk": { en: "Last good request: {ago}", es: "Última solicitud correcta: {ago}" },
+  "diag.never": { en: "never this session", es: "nunca en esta sesión" },
+  "diag.queues": { en: "Waiting to send", es: "Pendiente de enviar" },
+  "diag.needAttention": { en: "{n} need attention", es: "{n} necesitan atención" },
+  "diag.savedJobs": { en: "Jobs saved on this phone", es: "Trabajos guardados en este teléfono" },
+  "diag.missing": { en: "{n} items missing", es: "faltan {n} elementos" },
+  "diag.none": { en: "None yet.", es: "Ninguno todavía." },
+  "diag.events": { en: "What the connection did this session", es: "Qué hizo la conexión en esta sesión" },
+  "diag.eventsSummary": {
+    en: "{timeouts} timeouts · {copies} saved-copy screens · {sent} items sent · {jobs} jobs saved",
+    es: "{timeouts} tiempos agotados · {copies} pantallas con copia guardada · {sent} elementos enviados · {jobs} trabajos guardados",
+  },
+  "diag.noEvents": { en: "Nothing yet.", es: "Nada todavía." },
+  "settings.diagnostics.heading": { en: "Diagnostics", es: "Diagnóstico" },
+  "settings.diagnostics.help": {
+    en: "When something didn't save, this page shows what the phone knows and gives you a report to send.",
+    es: "Cuando algo no se guardó, esta página muestra lo que sabe el teléfono y te da un informe para enviar.",
+  },
+  "settings.diagnostics.open": { en: "Open diagnostics", es: "Abrir diagnóstico" },
+
+  // --- Stale chunk after a deploy (ticket 07, 2026-09-06) --------------------
+  "pwa.staleChunk": {
+    en: "The app updated while you were working. Finish and save, then pull down to refresh.",
+    es: "La app se actualizó mientras trabajabas. Termina y guarda, luego desliza hacia abajo para actualizar.",
+  },
+
+  // ---- Learning time (2026-09-05) ----------------------------------------
+  // The owner's ask: "a timer that I can see as an owner how long they spend in
+  // the learning tab and on what item… as well as a timer for watching the
+  // YouTube videos, to see if they watch the whole thing and how many times."
+  //
+  // Everything this build says, in one block, both languages. The two sentences
+  // that MATTER most are `ltime.blurb` and `learn.time.why`: they are the same
+  // promise said to the two different people it is about — the owner reading
+  // the table, and the crew member being measured — and they have to agree with
+  // each other and with the migration's own header.
+  "ltime.section": { en: "Learning", es: "Aprendizaje" },
+  "ltime.title": { en: "Learning time", es: "Tiempo de aprendizaje" },
+  "ltime.back": { en: "Home", es: "Inicio" },
+  // Says the idle gate out loud, in both places. A page left open on a desk
+  // stops counting after ten minutes, and an owner reading these numbers has to
+  // know that or they will read a parked tab as a long evening of study.
+  "ltime.blurb": {
+    en: "How long each person spends in Learn, and on what. Counted only while the screen is in front of them and they are using it — never while the phone is locked, the app is in the background, or the page has sat untouched for ten minutes.",
+    es: "Cuánto tiempo pasa cada persona en Aprender, y en qué. Solo cuenta mientras la pantalla está frente a ellos y la están usando — nunca con el teléfono bloqueado, con la app en segundo plano, ni con la página sin tocar por diez minutos.",
+  },
+  "ltime.range.aria": { en: "Time range", es: "Rango de fechas" },
+  "ltime.range.week": { en: "This week", es: "Esta semana" },
+  "ltime.range.fourWeeks": { en: "Last 4 weeks", es: "Últimas 4 semanas" },
+  "ltime.range.all": { en: "All time", es: "Todo el tiempo" },
+  "ltime.sort.aria": { en: "Sort", es: "Ordenar" },
+  "ltime.sort.time": { en: "Most time first", es: "Más tiempo primero" },
+  "ltime.sort.name": { en: "By name", es: "Por nombre" },
+  "ltime.loadError": {
+    en: "Couldn't load learning time",
+    es: "No se pudo cargar el tiempo de aprendizaje",
+  },
+  "ltime.empty.title": { en: "Nothing recorded yet", es: "Aún no hay nada registrado" },
+  "ltime.empty.body": {
+    en: "Time starts counting the next time somebody opens Learn.",
+    es: "El tiempo empieza a contar la próxima vez que alguien abra Aprender.",
+  },
+  "ltime.inLearn": { en: "in Learn", es: "en Aprender" },
+  "ltime.last": { en: "last {when}", es: "última vez {when}" },
+  "ltime.kind.term": { en: "Glossary terms", es: "Términos del glosario" },
+  "ltime.kind.quiz": { en: "Quiz", es: "Examen" },
+  "ltime.kind.sequence": { en: "Sequence", es: "Secuencia" },
+  "ltime.kind.video": { en: "Lessons playing", es: "Lecciones en reproducción" },
+  // Said plainly because the alternative is an owner adding the chips up and
+  // getting more than the total.
+  "ltime.breakdownNote": {
+    en: "These are part of the total above, not extra time on top of it.",
+    es: "Esto es parte del total de arriba, no tiempo adicional.",
+  },
+  // The second half of the owner's question — "and on what item". The chips
+  // above these say how long on glossary terms; these say WHICH terms.
+  "ltime.items": { en: "What they were on", es: "En qué estuvieron" },
+  "ltime.visitsOne": { en: "1 visit", es: "1 visita" },
+  "ltime.visitsMany": { en: "{count} visits", es: "{count} visitas" },
+  "ltime.moreItems": {
+    en: "and {count} more",
+    es: "y {count} más",
+  },
+  "ltime.lessons": { en: "Lessons", es: "Lecciones" },
+  "ltime.timesWatched": { en: "watched {count}×", es: "visto {count}×" },
+  "ltime.percentAll": { en: "{percent}% watched", es: "{percent}% visto" },
+  "ltime.percentBest": { en: "best sitting {percent}%", es: "mejor sesión {percent}%" },
+  "ltime.lengthUnknown": {
+    en: "{time} played, length unknown",
+    es: "{time} reproducidos, duración desconocida",
+  },
+  "ltime.finished": { en: "Finished", es: "Terminado" },
+  "ltime.notFinished": { en: "Not finished", es: "Sin terminar" },
+  // The definition, on screen, because "watched 3×" means nothing until the
+  // reader knows what the app counts as a watch.
+  // The other half of the same promise, said to the person it is about — the
+  // footer at the bottom of Learn. `learn.time.why` and `ltime.blurb` are
+  // deliberately the same sentence from the two sides, and both agree with the
+  // migration's own header.
+  "learn.time.yours": { en: "Your learning time:", es: "Tu tiempo de aprendizaje:" },
+  "learn.time.week": { en: "{time} this week", es: "{time} esta semana" },
+  "learn.time.lessonsOne": { en: "1 lesson finished", es: "1 lección terminada" },
+  "learn.time.lessonsMany": {
+    en: "{count} lessons finished",
+    es: "{count} lecciones terminadas",
+  },
+  "learn.time.none": { en: "nothing yet this week", es: "nada aún esta semana" },
+  "learn.time.why": {
+    en: "Time in Learn is recorded so the company can see the effort you put in. It only counts while this screen is in front of you and you are using it — never while your phone is locked or the app is in the background, and it stops if the page sits untouched for ten minutes. A lesson that is playing always counts.",
+    es: "El tiempo en Aprender se registra para que la empresa vea el esfuerzo que pones. Solo cuenta mientras esta pantalla está frente a ti y la estás usando — nunca con el teléfono bloqueado ni con la app en segundo plano, y se detiene si dejas la página sin tocar por diez minutos. Una lección que se está reproduciendo siempre cuenta.",
+  },
+  "ltime.watchNote": {
+    en: "A watch is one visit that got through at least 30 seconds. The percentage is how much of the lesson was actually played — skipping to the end can finish a video without watching it.",
+    es: "Una vista es una visita que pasó al menos 30 segundos. El porcentaje es cuánto de la lección se reprodujo de verdad — saltar al final puede terminar un video sin verlo.",
+  },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */

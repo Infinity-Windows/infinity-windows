@@ -1,0 +1,253 @@
+# Does the database actually have what the repo says it has?
+#
+# Merging a migration and applying a migration are two separate events. Deploy
+# backend closes that gap on the days something merges, and proves it with
+# scripts/verify-schema.sh. Between merges, nobody looked — and the schema
+# changes without a merge: a migration applied by hand through the dashboard,
+# a table created for an experiment, a policy edited in place. July 2026 had
+# twelve migrations in that state and an audit that certified the wrong
+# database. So this asks the same question on a schedule, every night, and on
+# the pull request that carries a migration, so the reviewer sees the answer
+# beside the change instead of being told about it after the merge.
+#
+# DETECT ONLY, on every trigger. Applying stays in deploy-backend.yml, where a
+# merge is what earns it. A cron job that reshapes the production schema on its
+# own at 08:05 is not something anyone asked for.
+#
+# ON A PULL REQUEST the question is asked of MASTER's migrations, not the
+# PR's: the PR's own new files cannot be live yet — Deploy backend applies
+# them on merge — so measuring the PR branch would be red on every migration
+# ever proposed. Instead: is everything already on master live in production?
+# If not, this PR's deploy would push the missing ones too, and the reviewer
+# should know that before merging. The PR's own new migrations are listed in
+# the summary and run through scripts/migration_lint.py, the scanner for the
+# mistakes Postgres will not complain about (the 2026-09-02 finish_unit
+# incident). Until now that lint was tested in CI and never run on a real
+# migration.
+#
+# ONE FALSE RED TO KNOW ABOUT: if another migration merged minutes ago and
+# Deploy backend has not finished applying it, master is briefly ahead of
+# production and this reads red. That is deploy lag, not the PR. Wait for
+# Deploy backend to go green and re-run the check.
+#
+# A MISSING SECRET IS RED, except on a pull request from a fork, which cannot
+# hold one and skips with a notice. "Nothing was measured" must not be green.
+#
+# READ-ONLY. Every statement goes through scripts/pgq.sh, which refuses
+# anything that is not a SELECT.
+
+name: Migration drift
+
+on:
+  pull_request:
+    paths:
+      - "supabase/migrations/**"
+      - "scripts/schema_verify.py"
+      - "scripts/migration_drift.py"
+      - "scripts/migration_objects.py"
+      - "scripts/migration_lint.py"
+      - "scripts/live_schema.sql"
+      - "scripts/live_functions.sql"
+      - "scripts/verify-schema.sh"
+      - ".github/workflows/migration-drift.yml"
+  schedule:
+    # 08:05 UTC daily: after the vault sync (08:00), before the warehouse
+    # (08:10) and security (08:12) checks and the backup. A migration the
+    # backup depends on is flagged before the backup runs, not after it fails.
+    - cron: "5 8 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # Per ref, so a pull request run never cancels the nightly.
+  group: migration-drift-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # Production. Named explicitly for the same reason scripts/pgq.sh refuses
+  # to guess one: an unnamed project once measured the wrong database.
+  SUPABASE_PROJECT_REF: czprjcskmzzagdztqonm
+
+jobs:
+  self-test:
+    name: Test the check itself
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # The comparison's direction and the lint's two rules, offline.
+      - name: Test the schema drift check and the migration lint
+        run: python3 scripts/test_schema_verify.py
+
+  # The nightly and on-demand question: is master live?
+  nightly:
+    name: Is everything on master live in production?
+    if: github.event_name != 'pull_request'
+    needs: [self-test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      live_only_tables: ${{ steps.schema.outputs.live_only_tables }}
+      live_only_table_names: ${{ steps.schema.outputs.live_only_table_names }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check the credential is present
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          if [ -z "$SUPABASE_ACCESS_TOKEN" ]; then
+            echo "::error::SUPABASE_ACCESS_TOKEN is not set, so drift was not measured. That is a failure, not a pass: add the secret (the same management token deploy-backend.yml uses)."
+            exit 1
+          fi
+
+      # Declared-and-absent fails; live-and-undeclared is reported through
+      # the outputs and becomes a Slack warning below. The reasoning for the
+      # direction is in scripts/schema_verify.py.
+      - name: Compare the live schema with supabase/migrations
+        id: schema
+        shell: bash
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: scripts/verify-schema.sh
+
+      # Function bodies are invisible to an existence check: `create or
+      # replace` leaves the old body running while the name still exists.
+      # Informational — the script reports and does not judge — but it is in
+      # the summary every morning, which is more than it was.
+      - name: Compare live function bodies with their latest migration
+        if: always() && steps.schema.outcome != 'skipped'
+        shell: bash
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          snap="$(mktemp)"
+          if scripts/pgq.sh scripts/live_functions.sql >"$snap"; then
+            {
+              echo
+              echo "### Function bodies"
+              echo '```'
+              python3 scripts/function_drift.py "$snap"
+              echo '```'
+            } | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::could not snapshot live function bodies; the table and column check above still stands."
+          fi
+          rm -f "$snap"
+
+  # The pull-request question: is master live, and what does this PR add?
+  pull-request:
+    name: Is master live, and what does this PR add?
+    if: github.event_name == 'pull_request'
+    needs: [self-test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      FROM_FORK: ${{ github.event.pull_request.head.repo.fork == true && 'true' || 'false' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # The scanner for mistakes Postgres accepts: a column name that resolves
+      # against the enclosing query, a re-stated grant list that lost a
+      # column. Runs over every migration, so a PR cannot merge one in.
+      - name: Lint the migrations
+        run: python3 scripts/migration_lint.py | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: List the migrations this pull request adds
+        shell: bash
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          added="$(git diff --name-only --diff-filter=A "$base"...HEAD -- supabase/migrations | sort)"
+          {
+            echo "### Migrations in this pull request"
+            if [ -z "$added" ]; then
+              echo "None added. Deploy backend will push nothing new on merge."
+            else
+              echo "Deploy backend applies these on merge, in this order:"
+              echo '```'
+              echo "$added"
+              echo '```'
+            fi
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # Ask the question of MASTER's files, from a checkout of master, so the
+      # PR's own unapplied migrations are not counted as drift.
+      - name: Is everything already on master live in production?
+        shell: bash
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          if [ -z "$SUPABASE_ACCESS_TOKEN" ]; then
+            if [ "$FROM_FORK" = "true" ]; then
+              echo "::notice::Pull request from a fork: no secret, so production was not measured. The lint above still ran."
+              exit 0
+            fi
+            echo "::error::SUPABASE_ACCESS_TOKEN is not set, so drift was not measured. That is a failure, not a pass."
+            exit 1
+          fi
+          base="${{ github.event.pull_request.base.sha }}"
+          git worktree add --detach ../master-checkout "$base"
+          cd ../master-checkout
+          {
+            echo
+            echo "### Master against production (before this PR merges)"
+          } >>"$GITHUB_STEP_SUMMARY"
+          scripts/verify-schema.sh
+
+  notify-failure:
+    name: Tell Slack a migration is not really applied
+    needs: [self-test, nightly]
+    if: failure() && github.event_name != 'pull_request'
+    uses: ./.github/workflows/notify-failure.yml
+    with:
+      workflow: ${{ github.workflow }}
+      cause: >-
+        A migration on master is not applied to the production database, so
+        code that expects that table or column is broken right now.
+      detail: >-
+        Open the run: the summary names each missing table and column and the
+        migration file that declares it. Re-running Deploy backend applies
+        what is merged; if it refuses, the migration history needs repair
+        (docs/migration-drift-2026-07-29-production.md).
+    secrets: inherit
+
+  # Live-and-undeclared is drift worth seeing, not a reason to go red; the
+  # same warning Deploy backend raises, so nothing new to learn to read.
+  notify-undeclared:
+    name: Tell Slack about tables nobody wrote down
+    needs: [nightly]
+    if: success() && github.event_name != 'pull_request' && needs.nightly.outputs.live_only_tables != '0' && needs.nightly.outputs.live_only_tables != ''
+    uses: ./.github/workflows/notify-failure.yml
+    with:
+      workflow: ${{ github.workflow }}
+      kind: warning
+      cause: >-
+        ${{ needs.nightly.outputs.live_only_tables }} table(s) in the database
+        are not written down anywhere in this repo
+      detail: >-
+        ${{ needs.nightly.outputs.live_only_table_names }}. Each one needs a
+        migration written for it, or a fresh database could not be rebuilt from
+        this repo.
+    secrets: inherit

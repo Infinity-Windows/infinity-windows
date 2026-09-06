@@ -54,6 +54,10 @@ export type RoutePath =
   | "/warehouse"
   | "/clock"
   | "/learn"
+  // Learning time (2026-09-05): the owner's read of how long people spend in
+  // Learn and on what. Supervisor+, the same floor as /data — per-person time
+  // has been a supervisor+ read in this app since the Data tab was built.
+  | "/learning/time"
   | "/points"
   | "/safety"
   | "/scan"
@@ -104,6 +108,8 @@ export type RoutePath =
   | "/photos"
   | "/toolbox-history"
   | "/stuck"
+  // Ticket 06: what the phone knows about its connection and its queues.
+  | "/diagnostics"
   | "/suggestions"
   | "/settings"
   // Wave S: owner-only builder-login management (invite, grant/revoke jobs).
@@ -194,6 +200,9 @@ export const NAV: NavDest[] = [
   // invisible and unfixable on the one device it exists on, which is the
   // exact failure the screen was built to end.
   { id: "stuck", to: "/stuck", label: "Stuck writes", icon: "⚠", minRole: "installer" },
+  // Same floor as stuck writes, for the same reason: the phone that did not
+  // save is the one that holds the answer.
+  { id: "diagnostics", to: "/diagnostics", label: "Diagnostics", icon: "◉", minRole: "installer" },
   { id: "suggestions", to: "/suggestions", label: "Suggestions", icon: "💡", minRole: "installer" },
   { id: "search", to: "/search", label: "Search", icon: "⌕", minRole: "installer" },
   { id: "review", to: "/review", label: "Memo review", icon: "✍", minRole: "installer" },
@@ -253,6 +262,10 @@ export const NAV: NavDest[] = [
   // to foreman are the same power, so they must not have different doors.
   { id: "access", to: "/access", label: "Crew access", icon: "⚿", minRole: "supervisor" },
   { id: "cost-codes", to: "/cost-codes", label: "Cost codes", icon: "☷", minRole: "supervisor" },
+  // Learning time. Supervisor+, deliberately NOT foreman: a foreman's crew's
+  // study hours is a different question from a foreman's crew's work, and it is
+  // the owner's to answer, not this registry's to assume (see the PR body).
+  { id: "learning-time", to: "/learning/time", label: "Learning time", icon: "⏱", minRole: "supervisor" },
   // Wave P: the office receipts table — supervisor+ review (spec, settled).
   // Wave Z: or anyone the owner granted "Sees costs" — a bookkeeper who is
   // not a supervisor still has to reconcile the card statement.
@@ -502,6 +515,7 @@ const MENU_DEF: MenuSection[] = [
     Icon: BookOpen,
     items: [
       { to: "/learn", label: "Learn", Icon: BookOpen },
+      { to: "/learning/time", label: "Learning time", Icon: Clock },
       { to: "/points", label: "Points", Icon: Trophy },
       { to: "/review", label: "Memo review", Icon: ClipboardList },
       { to: "/safety", label: "Safety", Icon: ShieldCheck },
@@ -527,6 +541,7 @@ const MENU_DEF: MenuSection[] = [
       { to: "/notifications", label: "Notifications", Icon: Bell },
       { to: "/suggestions", label: "Suggestions", Icon: Lightbulb },
       { to: "/stuck", label: "Stuck writes", Icon: AlertTriangle },
+      { to: "/diagnostics", label: "Diagnostics", Icon: Activity },
       { to: "/settings", label: "Settings", Icon: SlidersHorizontal },
       // Importing window types is data admin, not warehouse work (ticket 08).
       { to: "/catalog", label: "Catalog", Icon: BookOpen },
@@ -569,6 +584,7 @@ const INSTALLER_MORE_PATHS: RoutePath[] = [
   // An installer's own stranded punch lives on their own phone; the drawer is
   // the only way they would ever reach it.
   "/stuck",
+  "/diagnostics",
   "/settings",
 ];
 

@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { getMyProfile } from "../lib/install/api";
 import { isForemanPlus, isSupervisorPlus } from "../lib/install/types";
@@ -15,13 +15,24 @@ import {
 } from "../lib/glossary";
 import {
   addPriorityTerm,
+  awardEducationQuiz,
+  educationTermKey,
+  EDUCATION_SEQUENCE_KEY,
+  getEducationProgress,
   listMyProgress,
   listPriorityTerms,
   recordCard,
+  type EducationProgress,
+  type EducationQuizItem,
+  type EducationQuizResult,
 } from "../lib/learn";
-import { awardPoints, POINT_RULES } from "../lib/points";
+import { formatApiError } from "../lib/errors";
+import { isMissingFunction } from "../lib/schemaErrors";
+import { useT, type TFn } from "../lib/i18n";
 import { SendRecordingButton } from "../components/learn/SendRecordingButton";
 import { VideoLibrary } from "../components/learn/VideoLibrary";
+import { useLearningTime } from "../lib/useLearningTime";
+import { YourLearningTime } from "../components/learn/YourLearningTime";
 
 type Tab = "daily" | "quiz" | "sequence" | "glossary" | "videos";
 
@@ -36,7 +47,25 @@ export function Education() {
   });
   const priority = useQuery({ queryKey: ["priorityTerms"], queryFn: listPriorityTerms });
 
+  // The Learn tab's own standing, read off the server's two tables so the line
+  // a person sees and the number they are paid against cannot drift apart.
+  const eduProgress = useQuery({
+    queryKey: ["educationProgress"],
+    queryFn: getEducationProgress,
+  });
+
   const [tab, setTab] = useState<Tab>("daily");
+
+  // Learning time (owner's ask, 2026-09-05). Three clocks, all keyed off the
+  // open tab and nothing else, so this page's own state is the only thing they
+  // read. The 'tab' clock is the TOTAL — every minute in Learn lands on it —
+  // and the other two are the same minutes named more precisely, because the
+  // Quiz and Sequence tabs ARE their rounds. Anything summing kinds together
+  // would double-count; the owner's table adds up 'tab' and shows the rest as
+  // the breakdown inside it.
+  useLearningTime("tab", tab);
+  useLearningTime("quiz", tab === "quiz" ? "round" : null);
+  useLearningTime("sequence", tab === "sequence" ? "round" : null);
 
   const score = knowledgeScore(progress.data ?? []);
   const mastered = (progress.data ?? []).filter((p) => p.box >= 3).length;
@@ -87,8 +116,12 @@ export function Education() {
           onDone={() => queryClient.invalidateQueries({ queryKey: ["learnProgress"] })}
         />
       )}
-      {tab === "quiz" && <Quiz profileId={me.data?.id} />}
-      {tab === "sequence" && <Sequence profileId={me.data?.id} />}
+      {/* The count is about glossary TERMS, so it belongs over the tab that
+          asks them. The sequence quiz is one item of its own and says its own
+          piece when a round ends. */}
+      {tab === "quiz" && <EarnedLine progress={eduProgress.data} />}
+      {tab === "quiz" && <Quiz />}
+      {tab === "sequence" && <Sequence />}
       {tab === "videos" && (
         <VideoLibrary canAuthor={isSupervisorPlus(me.data?.role)} />
       )}
@@ -102,6 +135,10 @@ export function Education() {
           }}
         />
       )}
+
+      {/* Learning time, L4: the person being measured reads the same number
+          the owner's table does, and one sentence saying why it is kept. */}
+      <YourLearningTime profileId={me.data?.id} />
     </div>
   );
 }
@@ -162,39 +199,116 @@ function Daily({
   );
 }
 
-function Quiz({ profileId }: { profileId?: string }) {
+/**
+ * What went wrong, in words an installer can act on.
+ *
+ * The frontend and the database ship from one merge through two independent
+ * workflows, so for a few minutes either can be ahead — and during those
+ * minutes award_education_quiz does not exist yet. That is not a mistake the
+ * person practising made, and it is not worth a red line: their answers are
+ * safe, the points land the next time they play. Anything else gets the real
+ * reason.
+ */
+function quizFailure(err: unknown, t: TFn): string {
+  return isMissingFunction(err) ? t("learn.points.notReadyYet") : formatApiError(err);
+}
+
+/**
+ * The line above both quizzes: how much of the glossary this person has
+ * actually earned, and why another round of the same terms pays nothing.
+ *
+ * It is deliberately not a scold. Practising is free and unlimited; the number
+ * is there so somebody who wants points can see where the new ground is.
+ */
+function EarnedLine({ progress }: { progress?: EducationProgress }) {
+  const t = useT();
+  if (!progress) return null;
+  return (
+    <p className="muted" style={{ margin: "8px 0 0", fontSize: 12 }}>
+      {t("learn.points.progress", {
+        earned: progress.termsEarned,
+        total: progress.termsTotal,
+      })}
+      {" · "}
+      {t("learn.points.newContentOnly")}
+    </p>
+  );
+}
+
+/**
+ * The glossary quiz: five random terms, four options each.
+ *
+ * WHAT CHANGED 2026-09-05. This used to write its own points into the ledger
+ * after every round — score x 10, straight from the browser, with no record of
+ * which terms it asked — and offer "Another round" underneath. So the same five
+ * terms paid again on every tap, hundreds of times over in a single day between
+ * two profiles. Now the round reports WHAT IT ASKED and how it went, and the server
+ * prices it: a term pays the first time it is answered correctly and never
+ * again. The round itself is untouched, because the practice was never the
+ * problem.
+ */
+function Quiz() {
+  const t = useT();
+  const queryClient = useQueryClient();
   const [q, setQ] = useState(() => quizQuestion(TERMS[Math.floor(Math.random() * TERMS.length)]));
   const [n, setN] = useState(0);
   const [score, setScore] = useState(0);
   const [picked, setPicked] = useState<string | null>(null);
-  const [awarded, setAwarded] = useState(false);
+  /** The round, as asked. This is the payload; the total is the server's. */
+  const [asked, setAsked] = useState<EducationQuizItem[]>([]);
+  const [filed, setFiled] = useState(false);
+  const [result, setResult] = useState<EducationQuizResult | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
 
   const answer = (id: string) => {
     setPicked(id);
-    if (id === q.answer.id) setScore((s) => s + 1);
+    const correct = id === q.answer.id;
+    if (correct) setScore((s) => s + 1);
+    setAsked((a) => [...a, { key: educationTermKey(q.answer.id), correct }]);
   };
   const next = () => {
     setPicked(null);
     setN((x) => x + 1);
     setQ(quizQuestion(TERMS[Math.floor(Math.random() * TERMS.length)]));
   };
+  // Question 1, not question 2. The old "Another round" reset n to 0 and then
+  // called next(), which added one back — every round after the first was four
+  // questions wearing a five-question label.
+  const anotherRound = () => {
+    setPicked(null);
+    setN(0);
+    setScore(0);
+    setAsked([]);
+    setFiled(false);
+    setResult(null);
+    setFailed(null);
+    setQ(quizQuestion(TERMS[Math.floor(Math.random() * TERMS.length)]));
+  };
+
+  // Filed once, after the fifth answer, from an effect rather than mid-render —
+  // the old code kicked the award off inside the render body and guarded it
+  // with a flag it set in the same breath.
+  useEffect(() => {
+    if (n < 5 || filed) return;
+    setFiled(true);
+    void awardEducationQuiz(asked)
+      .then((r) => {
+        setResult(r);
+        queryClient.invalidateQueries({ queryKey: ["educationProgress"] });
+        queryClient.invalidateQueries({ queryKey: ["ledger"] });
+        queryClient.invalidateQueries({ queryKey: ["pointsLeaderboard"] });
+      })
+      .catch((err) => setFailed(quizFailure(err, t)));
+  }, [n, filed, asked, queryClient, t]);
 
   if (n >= 5) {
-    // Write real points to the ledger once per completed round.
-    if (!awarded && profileId && score > 0) {
-      setAwarded(true);
-      void awardPoints(
-        profileId,
-        [{ kind: "quiz", points: score * POINT_RULES.quizPerCorrect }],
-        undefined,
-        "confirmed",
-      ).catch(() => {});
-    }
     return (
       <div className="quiz-done">
         <p className="next-code" style={{ margin: 0 }}>{score}/5</p>
-        <p className="ok">+{score * POINT_RULES.quizPerCorrect} points added.</p>
-        <button className="primary big" onClick={() => { setN(0); setScore(0); setAwarded(false); next(); }}>Another round</button>
+        <RoundOutcome result={result} failed={failed} t={t} />
+        <button className="primary big" onClick={anotherRound}>
+          {t("learn.points.anotherRound")}
+        </button>
       </div>
     );
   }
@@ -224,17 +338,67 @@ function Quiz({ profileId }: { profileId?: string }) {
   );
 }
 
-function Sequence({ profileId }: { profileId?: string }) {
+/** What a finished glossary round earned, in one line. */
+function RoundOutcome({
+  result,
+  failed,
+  t,
+}: {
+  result: EducationQuizResult | null;
+  failed: string | null;
+  t: TFn;
+}) {
+  if (failed) return <p className="warn">{t("learn.points.failed", { reason: failed })}</p>;
+  if (result == null) return <p className="muted">{t("learn.points.saving")}</p>;
+  if (result.newTerms === 1) {
+    return <p className="ok">{t("learn.points.newOne", { points: result.pointsAwarded })}</p>;
+  }
+  if (result.newTerms > 1) {
+    return (
+      <p className="ok">
+        {t("learn.points.newMany", {
+          points: result.pointsAwarded,
+          count: result.newTerms,
+        })}
+      </p>
+    );
+  }
+  // Nothing new, for one of two quite different reasons. "You'd already earned
+  // these" is only true if some of them were right; a round where nothing was
+  // says so instead.
+  if (result.alreadyHad === 0) {
+    return <p className="muted">{t("learn.points.noneRight")}</p>;
+  }
+  return <p className="muted">{t("learn.points.none")}</p>;
+}
+
+/**
+ * The install-sequence game: five "what comes right after this?" steps.
+ *
+ * The whole quiz is ONE earnable item, not one per step — it is a single
+ * procedure, and knowing it is a single thing to know. The bar is 4 of 5, the
+ * same bar a video quiz passes at (20260962000000), and it pays once.
+ */
+function Sequence() {
+  const t = useT();
+  const queryClient = useQueryClient();
   const [branch, setBranch] = useState<"win" | "door">("win");
   const [q, setQ] = useState(() => nextStepQuestion(branch));
   const [n, setN] = useState(0);
   const [score, setScore] = useState(0);
   const [picked, setPicked] = useState<string | null>(null);
-  const [awarded, setAwarded] = useState(false);
+  const [filed, setFiled] = useState(false);
+  const [result, setResult] = useState<EducationQuizResult | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
 
-  const pickBranch = (b: "win" | "door") => {
+  const restart = (b: "win" | "door") => {
     setBranch(b);
-    setN(0); setScore(0); setPicked(null); setAwarded(false);
+    setPicked(null);
+    setN(0);
+    setScore(0);
+    setFiled(false);
+    setResult(null);
+    setFailed(null);
     setQ(nextStepQuestion(b));
   };
   const answer = (id: string) => {
@@ -247,23 +411,33 @@ function Sequence({ profileId }: { profileId?: string }) {
     setQ(nextStepQuestion(branch));
   };
 
+  const passed = score >= 4;
+  useEffect(() => {
+    if (n < 5 || filed) return;
+    setFiled(true);
+    void awardEducationQuiz([{ key: EDUCATION_SEQUENCE_KEY, correct: passed }])
+      .then((r) => {
+        setResult(r);
+        queryClient.invalidateQueries({ queryKey: ["educationProgress"] });
+        queryClient.invalidateQueries({ queryKey: ["ledger"] });
+        queryClient.invalidateQueries({ queryKey: ["pointsLeaderboard"] });
+      })
+      .catch((err) => setFailed(quizFailure(err, t)));
+  }, [n, filed, passed, queryClient, t]);
+
   return (
     <div>
       <div className="grade-row">
-        <button className={branch === "win" ? "grade-btn selected" : "grade-btn"} onClick={() => pickBranch("win")}>Window</button>
-        <button className={branch === "door" ? "grade-btn selected" : "grade-btn"} onClick={() => pickBranch("door")}>Door</button>
+        <button className={branch === "win" ? "grade-btn selected" : "grade-btn"} onClick={() => restart("win")}>Window</button>
+        <button className={branch === "door" ? "grade-btn selected" : "grade-btn"} onClick={() => restart("door")}>Door</button>
       </div>
       {n >= 5 ? (
         <div>
           <p className="next-code">{score}/5</p>
-          {(() => {
-            if (!awarded && profileId && score > 0) {
-              setAwarded(true);
-              void awardPoints(profileId, [{ kind: "quiz", points: score * POINT_RULES.quizPerCorrect }], undefined, "confirmed").catch(() => {});
-            }
-            return <p className="ok">+{score * POINT_RULES.quizPerCorrect} points added.</p>;
-          })()}
-          <button className="primary big" onClick={() => { setN(0); setScore(0); setAwarded(false); next(); }}>Another round</button>
+          <SequenceOutcome result={result} failed={failed} passed={passed} t={t} />
+          <button className="primary big" onClick={() => restart(branch)}>
+            {t("learn.points.anotherRound")}
+          </button>
         </div>
       ) : (
         <div>
@@ -293,9 +467,34 @@ function Sequence({ profileId }: { profileId?: string }) {
   );
 }
 
+/** What a finished sequence round earned — including the "not this time" case,
+ * which needs to say what the bar is rather than just "no points". */
+function SequenceOutcome({
+  result,
+  failed,
+  passed,
+  t,
+}: {
+  result: EducationQuizResult | null;
+  failed: string | null;
+  passed: boolean;
+  t: TFn;
+}) {
+  if (failed) return <p className="warn">{t("learn.points.failed", { reason: failed })}</p>;
+  if (result == null) return <p className="muted">{t("learn.points.saving")}</p>;
+  if (result.newTerms > 0) {
+    return <p className="ok">{t("learn.points.sequenceEarned", { points: result.pointsAwarded })}</p>;
+  }
+  if (passed) return <p className="muted">{t("learn.points.sequenceHad")}</p>;
+  return <p className="muted">{t("learn.points.sequenceBar")}</p>;
+}
+
 function Glossary({ lead, onFlag }: { lead: boolean; onFlag: (id: string) => void }) {
   const [cat, setCat] = useState(CATS[0].id);
   const [focusId, setFocusId] = useState<string | null>(null);
+  // Only an OPEN term is time spent on that term; scrolling the list is time on
+  // the glossary tab, which the page-level clock already has.
+  useLearningTime("term", focusId);
   const byId = useMemo(() => new Map(TERMS.map((t) => [t.id, t])), []);
   const focus = focusId ? byId.get(focusId) : null;
 

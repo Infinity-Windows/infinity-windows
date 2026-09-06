@@ -150,6 +150,19 @@ jobs:
         shell: bash
         run: scripts/smoke-text-features.test.sh
 
+      # Every edge function runs on the service-role key, which bypasses row
+      # security, so each one must ask who is calling or be listed as a system
+      # actor with a reason. Twenty-three do today; this is what makes the
+      # twenty-fourth. The test proves the check can fail; the run proves the
+      # repo passes. Offline: throwaway functions in a temp directory.
+      - name: Test scripts/check-function-auth.sh
+        shell: bash
+        run: scripts/check-function-auth.test.sh
+
+      - name: Every edge function asks who is calling, or says why not
+        shell: bash
+        run: scripts/check-function-auth.sh
+
   supabase-tooling:
     name: Supabase merge tooling
     runs-on: ubuntu-latest
@@ -200,6 +213,17 @@ jobs:
       # app requires and insist none of them is reported.
       - name: Test the misnamed-secret check
         run: python3 scripts/test_secret_name_audit.py
+
+      # The live security probe (verify-invariants.yml asks production on
+      # every PR). Its judge and its wrapper are tested here too, so the
+      # meta-check below sees them: a failing case for every rule, and the
+      # healthy shape passing, or the gate would be red on day one.
+      - name: Test the security-invariant judge
+        run: python3 scripts/test_verify_invariants.py
+
+      - name: Test scripts/verify-invariants.sh
+        shell: bash
+        run: scripts/verify-invariants.test.sh
 
       # The migration-history tool decides what gets deleted from
       # supabase_migrations.schema_migrations, and it used to refuse to run at
