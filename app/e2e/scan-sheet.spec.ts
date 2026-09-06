@@ -3,7 +3,8 @@
 // type the code or pick the piece. Headless Chromium has no camera, so the
 // Scanner shows its typed-entry box and every "scan" here is typed — the same
 // path a hand confirmation takes on a phone.
-import { expect, test, type Route } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+import { json } from "./support/specHelpers";
 import { jobFixtures, useSupabaseFixtures } from "./support/supabaseFixtures";
 
 const JOBS = jobFixtures();
@@ -29,14 +30,6 @@ const CONTAINERS = [
   { id: C1, serial: "CTR-000001", name: "Conex 7", kind: "conex", active: true, address: null, access_code: null, notes: null, created_at: "2026-08-01T00:00:00Z" },
   { id: C3, serial: "CTR-000003", name: "Conex 3", kind: "conex", active: true, address: null, access_code: null, notes: null, created_at: "2026-08-01T00:00:00Z" },
 ];
-
-function json(route: Route, body: unknown, rows = 0) {
-  return route.fulfill({
-    status: 200, contentType: "application/json",
-    headers: { "content-range": `0-${Math.max(0, rows - 1)}/${rows}` },
-    body: JSON.stringify(body),
-  });
-}
 
 async function fixtures(page: import("@playwright/test").Page, rows: unknown[]) {
   await useSupabaseFixtures(page, { role: "installer" });
