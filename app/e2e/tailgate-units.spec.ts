@@ -1,7 +1,8 @@
 // The tailgate, unit first (wave 4): tap a unit and all its expected pieces
 // arrive; one button puts everything that arrived into the box used last.
 // Fixture-driven; the asserts capture the real RPC payloads.
-import { expect, test, type Route } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+import { json } from "./support/specHelpers";
 import { useSupabaseFixtures } from "./support/supabaseFixtures";
 
 const D = "00000000-0000-4000-8000-00000000de11";
@@ -15,13 +16,6 @@ function twin(id: string, status: string, over: Record<string, unknown> = {}) {
     container_id: null, delivery_id: D, serial: `PKG-${id}`, short_code: id,
     bound_at: "2026-08-25T12:00:00Z", package_marks: [], ...over,
   };
-}
-function json(route: Route, body: unknown, rows = 0) {
-  return route.fulfill({
-    status: 200, contentType: "application/json",
-    headers: { "content-range": `0-${Math.max(0, rows - 1)}/${rows}` },
-    body: JSON.stringify(body),
-  });
 }
 
 test("tap a unit to arrive its pieces, then put everything away in one tap", async ({ page }) => {
