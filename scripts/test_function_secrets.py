@@ -110,6 +110,51 @@ class FunctionSecretsTest(unittest.TestCase):
         self.assertEqual(r["required"], [])
         self.assertIn("OPENAI_API_KEY", r["optional"])
 
+    def test_a_guard_in_a_shared_module_makes_the_var_optional_for_importers(self):
+        """The withSentry shape: one helper feature-detects for everybody.
+
+        A module that every function wraps itself in is doing the feature
+        detection on their behalf. The census has to name the variable — an
+        owner asking what this project can be configured with should see it —
+        without anyone hand-maintaining a list of such names in the enumerator.
+        """
+        self.tree.shared(
+            "sentry.ts",
+            'export function on() { if (Deno.env.get("SENTRY_DSN")) return true; '
+            "return false; }\n"
+            "export function withSentry(h) { return h; }\n",
+        )
+        self.tree.function(
+            "f",
+            'import { withSentry } from "../_shared/sentry.ts";\n'
+            "Deno.serve(withSentry(() => new Response()));",
+        )
+        r = self.tree.requirements("f")
+        self.assertEqual(r["required"], [])
+        self.assertEqual(r["optional"], ["SENTRY_DSN"])
+
+    def test_a_shared_guard_never_demotes_something_really_required(self):
+        """The asymmetry, pinned: adding to optional must not empty required.
+
+        A function that genuinely needs a key and also imports a module that
+        feature-detects the SAME key still needs it. Getting this backwards
+        would turn the secret gate off for a real dependency.
+        """
+        self.tree.shared(
+            "probe.ts",
+            'export function on() { if (Deno.env.get("MY_KEY")) return true; '
+            "return false; }\n",
+        )
+        self.tree.function(
+            "f",
+            'import { on } from "../_shared/probe.ts";\n'
+            'const K = Deno.env.get("MY_KEY") ?? "";\n'
+            "on(); console.log(K);",
+        )
+        r = self.tree.requirements("f")
+        self.assertEqual(r["required"], ["MY_KEY"])
+        self.assertNotIn("MY_KEY", r["optional"])
+
     # --- reachability through a shared module -------------------------------
 
     def _openai_module(self):
@@ -224,6 +269,10 @@ class FunctionSecretsTest(unittest.TestCase):
         # EMAIL_FROM_STG and EMAIL_FROM_FORGE — so none appears in the required
         # union and the ANTHROPIC headline sentence in
         # verify-function-secrets.test.sh is unmoved again.
+        # Still 23 with crash monitoring (2026-09-05): withSentry adds no
+        # function and no required secret — SENTRY_DSN is optional for all 23
+        # (test_the_crash_monitor_is_optional_for_every_function), so the
+        # headline sentence does not move a third time.
         self.assertEqual(len(names), 23)
         self.assertIn("ask", names)
         self.assertIn("studio-assist", names)
@@ -296,7 +345,25 @@ class FunctionSecretsTest(unittest.TestCase):
         """
         r = fs.requirements_for("studio-assist")
         self.assertEqual(r["required"], ["ANTHROPIC_API_KEY"])
-        self.assertEqual(r["optional"], [])
+        # SENTRY_DSN is the one optional every function now carries: they all
+        # wrap their handler in _shared/sentry.ts's withSentry, and that module
+        # feature-detects the DSN. Optional, so no deploy can fail over it.
+        self.assertEqual(r["optional"], ["SENTRY_DSN"])
+
+    def test_the_crash_monitor_is_optional_for_every_function(self):
+        """The rule the whole monitoring feature rests on.
+
+        Every function wraps its handler in withSentry, so every function knows
+        about SENTRY_DSN. If any one of them ever counted it as REQUIRED, the
+        backend deploy would go red on a project where nobody has created a
+        Sentry account — which is the state this ships in and may stay in
+        forever. So: named everywhere, required nowhere.
+        """
+        reqs = fs.all_requirements()
+        for name, r in reqs.items():
+            self.assertIn("SENTRY_DSN", r["optional"], name)
+            self.assertNotIn("SENTRY_DSN", r["required"], name)
+        self.assertNotIn("SENTRY_DSN", fs.required_union(reqs))
 
     def test_send_push_needs_the_vapid_pair_and_no_ai_key(self):
         r = fs.requirements_for("send-push")

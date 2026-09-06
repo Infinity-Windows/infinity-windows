@@ -42,6 +42,7 @@ import {
   pullAllowList,
   type StagedFile,
 } from "../_shared/mondayFiles.ts";
+import { withSentry } from "../_shared/sentry.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -655,7 +656,7 @@ async function handlePullFiles(
   return jsonResponse({ ok: true, results });
 }
 
-Deno.serve(async (req) => {
+Deno.serve(withSentry("monday-sync", async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   // Feature-detect the token (the guard form scripts/function_secrets.py
@@ -852,4 +853,4 @@ Deno.serve(async (req) => {
     updatedProjects,
     refreshedFiles,
   });
-});
+}));

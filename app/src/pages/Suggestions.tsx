@@ -12,6 +12,7 @@ import {
   resolveAppFeedback,
   submitAppFeedback,
 } from "../lib/appFeedback";
+import { isAutoFiledCrashReport } from "../lib/crashReport";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { isOwner } from "../lib/install/types";
 import { listProfiles } from "../lib/install/api";
@@ -45,8 +46,15 @@ export function Suggestions() {
     onError: (e) => setMessage(formatApiError(e)),
   });
 
+  // A crash files its own bug row as whoever was holding the phone, so RLS
+  // shows it back to them under "Your reports" — an English headline and a
+  // JavaScript stack trace in a list of things they wrote. They did not write
+  // it and cannot act on it, so it goes to the owners only; the crash screen
+  // already gave them the five-character code to read out.
   const rows = (feedback.data ?? []).filter(
-    (f) => showResolved || f.status === "open",
+    (f) =>
+      (showResolved || f.status === "open") &&
+      (owner || !isAutoFiledCrashReport(f.body)),
   );
 
   return (

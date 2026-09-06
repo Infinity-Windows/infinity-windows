@@ -28,10 +28,19 @@ the sources instead:
      that function: the author is feature-detecting, so absence degrades instead
      of breaking. `ask` does this for OPENAI_API_KEY — its RAG step is optional
      and it answers from live data without it.
+  5. The same guard inside a SHARED module a function imports registers VAR as
+     optional for that function too. A helper every function wraps itself in —
+     _shared/sentry.ts and its SENTRY_DSN — is feature-detecting on behalf of
+     all of them, and the answer has to say so: an owner asking what this
+     project can be configured with should see the name, under "optional",
+     without anybody hand-maintaining a list of it here. Note the asymmetry
+     with rule 4: a guard over there only ADDS to optional, it never demotes
+     something another code path genuinely requires.
 
 Usage:
     scripts/function_secrets.py            # readable per-function report
     scripts/function_secrets.py --names    # required secret names, one per line
+    scripts/function_secrets.py --optional-names   # optional ones, one per line
     scripts/function_secrets.py --users    # VAR<tab>funcs<tab>feature|feature
     scripts/function_secrets.py --json     # machine-readable
 
@@ -288,6 +297,11 @@ def requirements_for(name: str, functions_dir: str = FUNCTIONS_DIR) -> dict:
         required.discard(var)
         optional.add(var)
 
+    # A guard inside a shared module this function imports. Optional only — it
+    # says "this project understands this variable", not "this one is safe to
+    # drop", so it must never take a var out of `required`.
+    optional |= _imported_guarded(entry, own, set())
+
     required -= PLATFORM_PROVIDED
     optional -= PLATFORM_PROVIDED | required
     return {'required': sorted(required), 'optional': sorted(optional)}
@@ -324,6 +338,32 @@ def _imported_vars(entry: str, module: Module, seen: set[str]) -> set[str]:
     return out
 
 
+def _imported_guarded(entry: str, module: Module, seen: set[str]) -> set[str]:
+    """VARs feature-detected inside `module`'s local imports, recursively.
+
+    Separate from _imported_vars because the question is different: that one
+    asks what an importer becomes DEPENDENT on and follows the specific names
+    imported, while this asks what the code it pulls in knows how to live
+    without — which is a property of the module, not of which export was named.
+    """
+    if entry in seen:
+        return set()
+    seen.add(entry)
+
+    out: set[str] = set(module.guarded)
+    base = os.path.dirname(entry)
+    for m in IMPORT_RE.finditer(module.src):
+        path = m.group('path')
+        if not path.startswith('.'):
+            continue
+        target = os.path.normpath(os.path.join(base, path))
+        dep = load_module(target)
+        if dep is None:
+            continue
+        out |= _imported_guarded(target, dep, seen)
+    return out
+
+
 def all_requirements(functions_dir: str = FUNCTIONS_DIR) -> dict:
     return {
         name: requirements_for(name, functions_dir)
@@ -336,6 +376,22 @@ def required_union(reqs: dict) -> list[str]:
     for r in reqs.values():
         out |= set(r['required'])
     return sorted(out)
+
+
+def optional_union(reqs: dict) -> list[str]:
+    """Names the functions UNDERSTAND but do not need.
+
+    The Resend key, the three sender addresses, the Monday token, the crash
+    monitor's DSN. Absence changes behaviour and never breaks anything, so
+    nothing may ever fail over one — but they are still worth pushing from
+    GitHub when GitHub happens to hold one, which is what
+    scripts/sync-function-secrets.sh uses this for. Anything genuinely required
+    is left out: that list is handled first and this must not double-count it.
+    """
+    out: set[str] = set()
+    for r in reqs.values():
+        out |= set(r['optional'])
+    return sorted(out - set(required_union(reqs)))
 
 
 def needing(reqs: dict, var: str) -> list[str]:
@@ -364,6 +420,9 @@ def main(argv):
         sys.stdout.write(json.dumps(reqs, indent=2, sort_keys=True) + '\n')
     elif '--names' in argv:
         sys.stdout.write('\n'.join(required_union(reqs)) + '\n')
+    elif '--optional-names' in argv:
+        names = optional_union(reqs)
+        sys.stdout.write(('\n'.join(names) + '\n') if names else '')
     elif '--users' in argv:
         # VAR <tab> function,function <tab> feature label|feature label
         for var in required_union(reqs):

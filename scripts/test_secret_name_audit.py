@@ -62,6 +62,14 @@ REAL_SECRETS = [
     "B2_APPLICATION_KEY",
     "B2_BUCKET",
     "B2_KEY_ID",
+    # Crash monitoring (2026-09-05). Two DSNs, stored side by side: the
+    # browser's VITE_SENTRY_DSN, which is public by design and compiled into
+    # the bundle, and the edge functions' SENTRY_DSN, which is a real secret.
+    # They differ by one word, which is exactly the shape that makes a "did you
+    # mean" line tempting — and both are OPTIONAL, so neither may ever be
+    # offered as a misspelling of a key the app really needs.
+    "SENTRY_DSN",
+    "VITE_SENTRY_DSN",
 ]
 
 passed = 0
@@ -204,6 +212,28 @@ check(
         ["EMAIL_FROM", "EMAIL_FROM_STG", "EMAIL_FROM_FORGE"],
         REQUIRED + ["EMAIL_FROM_STG"],
     ),
+    [],
+)
+
+# The crash monitor's two DSNs. Neither is required — with neither set the app
+# and the functions behave exactly as they do today — so setting one, or
+# neither, must produce no advice at all.
+for stored in ["SENTRY_DSN", "VITE_SENTRY_DSN"]:
+    for required in REQUIRED:
+        check(
+            "not flagged: %s is not a misspelling of %s" % (stored, required),
+            flags(required, stored),
+            False,
+        )
+
+check(
+    "the browser DSN is not offered as a misspelling of the functions' one",
+    flags("SENTRY_DSN", "VITE_SENTRY_DSN"),
+    False,
+)
+check(
+    "an optional DSN on its own produces no advice",
+    audit.audit(REQUIRED, ["SENTRY_DSN", "VITE_SENTRY_DSN"], REQUIRED + ["SENTRY_DSN"]),
     [],
 )
 
