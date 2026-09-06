@@ -27,6 +27,17 @@ describe("formatApiError", () => {
     expect(formatApiError(new TypeError("Failed to fetch"))).toContain("offline");
   });
 
+  it("turns a check-constraint violation into a sentence, never the constraint's name", () => {
+    const err = {
+      code: "23514",
+      message: 'new row for relation "movements" violates check constraint "movements_one_subject_ck"',
+    };
+    const text = formatApiError(err);
+    expect(text).toContain("Nothing was saved");
+    expect(text).not.toContain("movements_one_subject_ck");
+    expect(text).not.toContain("relation");
+  });
+
   it("passes strings through", () => {
     expect(formatApiError("Clock in before starting a task")).toBe("Clock in before starting a task");
   });
