@@ -575,6 +575,10 @@ function JobPhotoCapture({
    * a pick can hit both. */
   const [rejected, setRejected] = useState<{ name: string; reason: string }[]>([]);
   const [filedReceipt, setFiledReceipt] = useState<{ id: string; entryId: string } | null>(null);
+  /** Is the wait a PDF being read, rather than a photo being stamped? The two
+   * take the same `busy` flag and need opposite sentences — see the busy line
+   * below, and SinglePhotoCapture, which learned this first. */
+  const [readingPdf, setReadingPdf] = useState(false);
 
   // Is there a live camera this sheet can drive itself? A browser with no
   // getUserMedia (desktop Safari on an old machine, an in-app webview) and a
@@ -693,6 +697,7 @@ function JobPhotoCapture({
    */
   const queueReceiptPdf = async (file: File) => {
     setBusy(true);
+    setReadingPdf(true);
     try {
       let page;
       try {
@@ -758,6 +763,7 @@ function JobPhotoCapture({
     } catch (e) {
       pushToast(`Couldn't save that receipt — ${formatApiError(e)}`, "error");
     } finally {
+      setReadingPdf(false);
       setBusy(false);
     }
   };
@@ -998,7 +1004,16 @@ function JobPhotoCapture({
             other feedback is a greyed-out "Saving…". Any wait at all needs a
             sentence saying what is being waited for, or it reads as a broken
             app and gets tapped again. */}
-        {busy && <p className="muted">{t("photo.stampingGps")}</p>}
+        {busy && (
+          <p className="muted">
+            {/* A PDF is stamped with the TIME ONLY and never a position, and
+                reading one is the slowest wait on this sheet — the dynamic
+                pdf.js import, the parse, then the render. Saying "Stamping GPS
+                & time…" over it would be the sheet describing the opposite of
+                what it is doing, for longer than anything else here. */}
+            {readingPdf ? t("photo.readingPdf") : t("photo.stampingGps")}
+          </p>
+        )}
         {queued > 0 && (
           <p className="ok jobphoto-count">
             {queued === 1 ? t("photo.queuedOne") : t("photo.queuedMany", { n: queued })}

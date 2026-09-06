@@ -2184,6 +2184,11 @@ export const CATALOG = {
   // receipt's picture, and keeps the original file beside it. These are the two
   // ways that can go wrong, in words an installer standing in a parking lot can
   // act on: a file that will not open at all, and one too big to keep a copy of.
+  // Shown WHILE a PDF is being read, in place of "Stamping GPS & time…". A PDF
+  // gets the time and never a position — the watermark rule is about a photo
+  // taken at the wall — and this is the slowest wait on the capture sheet, so
+  // the wrong sentence would be the one an installer stares at longest.
+  "photo.readingPdf": { en: "Reading the PDF…", es: "Leyendo el PDF…" },
   "photo.pdfUnreadable": {
     en: "That PDF couldn't be opened — it may be password-protected or damaged. Try saving it again, or take a photo of the receipt.",
     es: "No se pudo abrir ese PDF — puede estar protegido con contraseña o dañado. Vuelve a guardarlo, o toma una foto del recibo.",

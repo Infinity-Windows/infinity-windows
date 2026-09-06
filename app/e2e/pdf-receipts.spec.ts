@@ -254,6 +254,32 @@ test("a PDF receipt files page one as its picture, then sends the original after
   await page.screenshot({ path: `${SHOTS}/receipt-sheet-pdf-390-dark.png` });
 });
 
+test("says it is READING the PDF, not stamping a position it never takes", async ({ page }) => {
+  await useSupabaseFixtures(page, { role: "installer" });
+  await stubGeolocationDenied(page);
+
+  // Holding the pdf.js import open is how a test gets to LOOK at a wait that is
+  // otherwise over in a blink. The dev server serves the module by its real
+  // path, so it is routable — and this import IS the slow half of the PDF path,
+  // which is exactly why the sentence over it matters.
+  await page.route("**/src/lib/install/pdf.ts*", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+    await route.continue();
+  });
+  await page.route("**/storage/v1/**", (route) => json(route, { Key: "x" }));
+
+  await page.goto("/photos?kind=receipt&capture=1");
+  await expect(page.getByRole("heading", { name: "Add a receipt" })).toBeVisible();
+  await receiptFileInput(page).setInputFiles(pdfFile("shell-invoice.pdf", 2));
+
+  // A PDF is stamped with the TIME ONLY and never a position — the watermark
+  // rule is about a photo taken at the wall, and whoever files an emailed
+  // invoice is not standing at one. The sheet must not claim otherwise while an
+  // installer waits on the longest pause it has.
+  await expect(page.getByText("Reading the PDF…")).toBeVisible();
+  await expect(page.getByText("Stamping GPS & time…")).toHaveCount(0);
+});
+
 test("a PDF that will not open says so by name, and files nothing", async ({ page }) => {
   await useSupabaseFixtures(page, { role: "installer" });
   await stubGeolocationDenied(page);
