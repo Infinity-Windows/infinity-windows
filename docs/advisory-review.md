@@ -75,15 +75,21 @@ policy.
 **Tests and vendored code are exempt.** A test asserts on the very shapes these
 rules forbid; vendored code is a port kept deliberately diffable.
 
-### The two escape hatches
+### The three escape hatches
 
-Both are one line, and both are the honest answer rather than a way round:
+Each is one line, and each is the honest answer rather than a way round:
 
 - `// i18n-same-on-purpose` on a catalog entry, or the line above it, when a
   word really is the same word in both languages (`PDF`, `English`, a job code).
+- `photo-input-on-purpose` on a file input, or in the comment above it, when a
+  second image input is deliberate — the camera fallback for a phone that will
+  not hand over `getUserMedia` is the case this was written for.
 - A table nothing in a browser may touch needs no policy, said out loud:
   `revoke all on <t> from anon, authenticated` and no grant back to
   `authenticated`.
+
+A rule with no hatch has only one way past it: editing the rule. That is how a
+check stops being believed.
 
 ### Running them yourself
 

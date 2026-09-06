@@ -275,6 +275,23 @@ run
 assert_rc 0
 assert_lacks "photo-file-input"
 
+new_case "a second image input marked on purpose is left alone"
+# #540 shipped a camera fallback rendered only where getUserMedia is refused.
+# It was deliberate, reviewed and merged, and the rule fired on it with no way
+# to be told otherwise.
+echo "export const x = 1;" >"$root/app/src/pages/Damage.tsx"
+base_commit
+cat >>"$root/app/src/pages/Damage.tsx" <<'TSX'
+/* The camera FALLBACK, and the only input here that asks for `capture`: with
+   no getUserMedia to drive, the phone's own camera app is the only shutter
+   left. Rendered only in that case. photo-input-on-purpose */
+<input type="file" accept="image/*" capture="environment" />
+TSX
+head_commit "Open the camera app when the browser will not give us the lens"
+run
+assert_rc 0
+assert_lacks "photo-file-input"
+
 # ---------------------------------------------------------------------------
 # Spanish that is English
 # ---------------------------------------------------------------------------

@@ -193,8 +193,16 @@ for f in $changed_files; do
       fi
     fi
 
+    # A deliberate second input says so on the line, or in the comment above
+    # it: `photo-input-on-purpose`. PhotoCaptureSheet.tsx shipped exactly that
+    # in #540 — a camera FALLBACK rendered only where getUserMedia is refused,
+    # with seven lines of comment explaining why — and the rule had no way to
+    # be told, so the only route past it was to edit the rule. The i18n rule
+    # got its hatch for the same reason; this one needed one too.
     case "$f" in app/src/lib/photo/usePhotoPicker.tsx) ;; *)
-      if printf '%s' "$text" | grep -q 'type="file"' && near "$f" "$ln" 6 'accept=.*image|capture='; then
+      if printf '%s' "$text" | grep -q 'type="file"' &&
+         near "$f" "$ln" 6 'accept=.*image|capture=' &&
+         ! near "$f" "$ln" 8 'photo-input-on-purpose'; then
         report "$f:$ln" photo-file-input \
           "A new file input that offers images, outside usePhotoPicker. That is how \"Upload files\" came to mean \"camera only\"." "$LAW_PHOTO"
       fi ;;
