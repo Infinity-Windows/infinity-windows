@@ -7,8 +7,10 @@
 // trace is a clean 4-point square — neither looks like a real building.
 // This spec replays Mad Moose's ACTUAL outline row (features.fitview.model,
 // captured live — see app/e2e/fixtures/madmoose-outline.json) against its
-// ACTUAL 4-page planset (docs/backups/.../08c60cce-.../1788206016569-MMV2_-
-// _LP.pdf, kind "building", page 1 = FLOOR PLAN - 1ST). The two things the
+// ACTUAL 4-page planset (.../08c60cce-.../1788206016569-MMV2_-_LP.pdf, kind
+// "building", page 1 = FLOOR PLAN - 1ST) — which is NOT in this repository:
+// see storageBackupPresent() in support/supabaseFixtures.ts, and the two
+// tests below that skip themselves without it. The two things the
 // synthetic fixture couldn't exercise:
 //   - The Ground story's trace has TWO polys — the exterior rectangle and a
 //     5-point interior partition — while the seeded Studio floor is a bare
@@ -22,9 +24,9 @@
 // pattern studio-plan-underlay.spec.ts's useUnderlayFixtures uses — so the
 // only thing that's different from a real Model Studio visit is which rows
 // come back for those two tables. The storage route mock is the DEFAULT one
-// useSupabaseFixtures already installs (reads docs/backups/…/plansets/<path
-// >): nothing to override there as long as the real PDF sits at the path
-// the fixture planset row names.
+// useSupabaseFixtures already installs (reads the storage backup's
+// plansets/<path>): nothing to override there as long as the real PDF sits at
+// the path the fixture planset row names.
 
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";

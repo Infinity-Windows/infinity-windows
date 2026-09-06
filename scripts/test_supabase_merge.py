@@ -6,9 +6,9 @@
 Stdlib only, on purpose: this has to run on a laptop with a Supabase token and
 nothing else installed.
 
-The fixture is the real pre-repair backup committed at
-docs/backups/2026-07-29T1200Z-czprjcskmzzagdztqonm-full.json — 374 rows of
-actual production data. Ammon's project is simulated by re-issuing UUIDs on that
+The fixture is the real pre-repair snapshot kept at
+scripts/fixtures/merge-sample-project.json — 374 rows of actual production data,
+with the crew's names replaced by placeholders. Ammon's project is simulated by re-issuing UUIDs on that
 same data, which is exactly the situation the merge has to survive: two
 databases holding the same real-world things under different ids.
 """
@@ -60,7 +60,7 @@ _compare_spec.loader.exec_module(supabase_compare)
 REPO = Path(__file__).resolve().parent.parent
 # A real snapshot of this project, taken 2026-07-29 and kept as a FIXTURE with
 # the crew's names replaced by placeholders. It used to be read straight out of
-# `docs/backups/`, where seven production dumps sat committed in a public
+# `docs/backups/`, where ten production dumps sat committed in a public
 # repository along with a crew member's signature. Those are gone; this is the
 # one file that was load-bearing, so it moved here and got scrubbed rather than
 # being replaced by something synthetic. The shape is the point — window types

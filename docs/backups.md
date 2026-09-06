@@ -131,10 +131,11 @@ everyone has to be re-invited afterwards. Read it before you need it.
 `docs/backups/` and `backups/` are both in `.gitignore`, and the backup scripts
 default to writing under `backups/`.
 
-That folder used to hold twenty-seven real files in this public repository:
-seven production database dumps, seven builder planset PDFs, a crew member's
-handwritten signature as a PNG, and the signed safety record it came from. They
-were removed on 2026-09-05. They are gone from the repository going forward, but
+That folder used to hold twenty-seven real files in this public repository: ten
+production database dumps (six of them carrying real crew email addresses), two
+summary notes, thirteen builder planset PDFs across two projects, a crew
+member's handwritten signature as a PNG, and the signed safety record it came
+from. They were removed on 2026-09-05. They are gone from the repository going forward, but
 anyone who cloned before that date still has them, so the removal is a stop to
 the bleeding rather than an undo.
 

@@ -3,7 +3,7 @@
 
     python3 scripts/supabase-compare.py docs/inventory/*.json
     python3 scripts/supabase-compare.py --json a.json b.json
-    python3 scripts/supabase-compare.py --backup docs/backups/*.json b.json
+    python3 scripts/supabase-compare.py --backup scripts/fixtures/*.json b.json
 
 The one thing this tool refuses to blur is the difference between a table that
 does not exist and a table that exists with no rows. Reading "0" for both is how

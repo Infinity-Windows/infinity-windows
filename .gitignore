@@ -33,11 +33,12 @@ app/.playwright/
 
 # Backups of the database and the storage buckets. NEVER COMMITTED.
 #
-# They used to be: seven production dumps, seven builder planset PDFs, a crew
-# member's signature and their signed toolbox record sat under docs/backups/ in
-# this repository, which is public. They were removed on 2026-09-05 and this
-# rule is what keeps them from coming back — every one of them arrived because
-# a script's default output path pointed at a folder git was watching.
+# They used to be: ten production database dumps (six carrying real crew email
+# addresses), thirteen builder planset PDFs, a crew member's signature and their
+# signed toolbox record — 27 files under docs/backups/ in this repository, which
+# is public. They were removed on 2026-09-05 and this rule is what keeps them
+# from coming back — every one of them arrived because a script's default output
+# path pointed at a folder git was watching.
 #
 # `backups/` is where scripts/backup_storage_objects.py, backup_project.py and
 # an unpacked nightly archive all write. See docs/backups.md.

@@ -27,8 +27,8 @@ const REPO_ROOT = resolve(HERE, "../../..");
 /**
  * Where the storage bucket's real objects are, if they are anywhere.
  *
- * They are NOT in this repository any more. Seven builder planset PDFs, a crew
- * member's signature and seven database dumps sat committed under
+ * They are NOT in this repository any more. Thirteen builder planset PDFs, a
+ * crew member's signature and ten database dumps sat committed under
  * `docs/backups/` in a repository that is public; they were removed on
  * 2026-09-05 and that folder is now ignored. So on a fresh clone neither of
  * these paths exists, and the specs that need a real drawing skip themselves
@@ -244,7 +244,8 @@ export function buildingPlansetFor(projectId: string): PlansetRow {
 }
 
 /**
- * The real planset PDF on disk, from the storage backup in `docs/backups`.
+ * The real planset PDF on disk, from whichever storage backup was found above,
+ * or null when it is not there.
  *
  * Deliberately NOT stubbed with a blank PDF: which pages are floor plans, and
  * therefore which page the map opens on, is decided by reading this file. A
