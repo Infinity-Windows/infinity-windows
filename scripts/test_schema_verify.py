@@ -1285,6 +1285,12 @@ class InstallerGalleryPolicyTest(unittest.TestCase):
 
     # --- the helpers are shaped the way a policy helper has to be ------------
 
+    @staticmethod
+    def _squashed(clause):
+        """Policy text with whitespace removed, so a reformatting does not read
+        as a rule change."""
+        return "".join(clause.split())
+
     def _definition(self, name):
         """The text of one create-function statement in this migration."""
         start = self.sql.index(f"create or replace function public.{name}(")
@@ -1330,6 +1336,35 @@ class InstallerGalleryPolicyTest(unittest.TestCase):
             self.assertIn(
                 f"grant execute on function {sig} to authenticated", self.sql,
                 f"{sig} is never granted to authenticated, so nothing can call it",
+            )
+
+    # --- the warehouse keeps its photo strip ---------------------------------
+
+    def test_a_package_only_row_stays_crew_wide(self):
+        """Receiving and put-away are rank-0 crew work (ADR-0007,
+        20260986000000). A yard hand has almost no shifts, no published
+        crew-board row and no unit sessions, and a Boneyard package has no job
+        at all — so scoping package photos by job would empty PackageSheet's
+        filmstrip for the person standing next to the box."""
+        using = self._squashed(self.policies["attachments_select"].using)
+        self.assertIn("package_idisnotnull", using)
+
+    def test_the_warehouse_carve_out_needs_every_other_target_null(self):
+        """Otherwise hanging a package id on a job photo would be a way out of
+        the job rule. Every column except package_id has to be null for a row
+        to count as warehouse rather than job work."""
+        using = self._squashed(self.policies["attachments_select"].using)
+        start = using.index("package_idisnotnull")
+        # Up to the carve-out's own closing paren: it has no inner brackets, so
+        # this is exactly the branch and none of the resolver call after it.
+        clause = using[start:using.index(")", start)]
+        for column in ATTACHMENT_TARGET_COLUMNS:
+            if column == "package_id":
+                continue
+            self.assertIn(
+                f"{column}isnull", clause,
+                f"the warehouse carve-out does not require {column} to be null, "
+                "so a job photo hung off a package would step around the rule",
             )
 
     # --- "mine" cannot be claimed by typing --------------------------------

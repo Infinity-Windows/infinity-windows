@@ -17851,7 +17851,11 @@ grant execute on function public.my_worked_project_ids() to authenticated, servi
 --                        (install_events has NO project_id of its own — it
 --                        never has; see 20260715120000)
 --   project_opening_id   project_openings.project_id
---   package_id           packages.project_id
+--   package_id           packages.project_id (the policy answers a package-ONLY
+--                        row before it gets here — see the warehouse carve-out
+--                        — so this branch is what a package row hung off a job
+--                        as well resolves through, and the safety net if that
+--                        carve-out is ever taken away)
 --   service_case_id      service_cases.project_id
 --
 -- SECURITY DEFINER for the same reason as above, plus a specific one:
@@ -18016,6 +18020,26 @@ create policy "attachments_select" on attachments
       -- The common shape, answered without resolving anything: the row names
       -- the job outright.
       or project_id in (select public.my_worked_project_ids())
+      -- A BOX IN THE YARD IS NOT A JOB. Warehouse work is crew work
+      -- (ADR-0007, 20260986000000): receiving, put-away and the package
+      -- sheet's photo strip are all rank-0 now, and a yard hand has almost no
+      -- shifts, no published crew-board row and no unit sessions. Scope the
+      -- package strip by job and it empties for the person standing next to
+      -- the box — and a Boneyard package has no job to scope it by at all
+      -- (`packages.project_id` is nullable, 20260814000000). So a row that
+      -- names ONLY a package keeps exactly the width it has today.
+      --
+      -- ONLY a package: every other target column must be null. A row that
+      -- names a job anywhere stays inside the job rule, so hanging a package
+      -- id on a job photo cannot be a way out of it.
+      or (
+        package_id is not null
+        and project_id is null
+        and window_id is null
+        and install_event_id is null
+        and project_opening_id is null
+        and service_case_id is null
+      )
       -- And every other way a row names a job. The result column is aliased
       -- to a name no table here has: calling it `project_id` would put a bare
       -- `project_id` inside a subquery that also sees the attachments row —

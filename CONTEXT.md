@@ -253,7 +253,14 @@ window, the install event (which carries no `project_id` of its own and goes by
 its opening), the opening, the package or the service case — because a photo
 naming only an unresolved column belongs to no job, and a row that belongs to
 no job DISAPPEARS below foreman rather than leaking: the crew who took it lose
-it, which is the mistake to watch for when a seventh target column is added. Two things this deliberately is not. It is not a change to
+it, which is the mistake to watch for when a seventh target column is added. One thing it deliberately is: a box in the yard is not a job. Warehouse work is
+crew work (ADR-0007), a yard hand has almost no shifts and a Boneyard package
+has no job at all, so a photo that names ONLY a package keeps the width it has
+today and PackageSheet's filmstrip stays whole. Only a package — a row naming a
+job anywhere stays inside the job rule, so a package id cannot be hung on a job
+photo as a way out of it.
+
+Two things this deliberately is not. It is not a change to
 writes: the day-one FOR ALL policy became four per-command ones, and the three
 write policies are restated at exactly the width they had. And it is not a
 scoping of the BYTES — `install-media` is still one bucket-wide crew policy
