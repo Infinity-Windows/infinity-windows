@@ -1,0 +1,196 @@
+# Drive the app in a real browser once a night.
+#
+# WHY THIS EXISTS. There are sixty Playwright specs in `app/e2e`, and until this
+# workflow not one of them had ever run in CI — no workflow mentioned Playwright
+# at all. They ran when somebody remembered to type `npm run e2e`, which meant
+# the checks covering the screens installers actually hold in their hands were
+# the only checks in this repository that nothing enforced.
+#
+# NOT A MERGE GATE, on purpose. The suite takes minutes rather than seconds, and
+# some of these specs are interaction-heavy enough to flake under a full run and
+# pass on their own. Putting that in front of every pull request would train
+# everyone to re-run a red check until it goes green, which is how a real
+# failure gets merged. So it runs at night, and a red result is a message to
+# read in the morning rather than a button to press again.
+#
+# THE FLAKE RULE, which is this repository's written one: a spec that fails in a
+# full run is re-run ON ITS OWN before it is called red, up to twice. A spec that
+# passes alone was fighting another spec for a port, a server or a clock, and
+# that is worth knowing but is not a broken app. Only specs that fail alone,
+# twice, reach Slack.
+#
+# NO CREDENTIALS, and none needed. `app/playwright.config.ts` starts the dev
+# server with a Supabase URL that does not resolve and a placeholder key, and
+# every request is answered from committed fixtures — so a request that escaped
+# the fixture router could not reach the real project even by accident. That is
+# also why the report can be uploaded as an artifact from this public
+# repository: it contains only the fixture rows that are already committed here,
+# never a row from production.
+#
+# The OTHER e2e suite — `npm run e2e:foreman`, playwright.foreman.config.ts — is
+# deliberately not run here. It signs in as a real foreman and writes to the
+# real database inside the sandbox job. Unattended writes to production every
+# night is a different decision from running a browser, and it is not this one.
+
+name: Nightly browser tests
+
+on:
+  schedule:
+    # 08:40 UTC, ahead of the nightly backup, so a morning reader finds both
+    # results side by side.
+    - cron: "40 8 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-nightly
+  cancel-in-progress: false
+
+env:
+  # A dedicated port, never 5173. The config's own default; set here so the log
+  # says which port the run used when something is already listening.
+  IW_MAP_PORT: "5183"
+
+jobs:
+  e2e:
+    name: Run the browser tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: app
+    outputs:
+      red: ${{ steps.run.outputs.red }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Chromium only: the app is a phone PWA and every spec runs at 390x844 in
+      # Chromium. Installing three browsers to use one is four minutes a night
+      # for nothing.
+      - name: Install the browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Run the suite, then re-run anything red on its own
+        id: run
+        run: |
+          set -uo pipefail
+          log="$RUNNER_TEMP/e2e.log"
+          npx playwright test --reporter=list,html > "$log" 2>&1
+          code=$?
+          grep -E "passed|failed|flaky|skipped" "$log" | tail -4 || true
+
+          if [ "$code" -eq 0 ]; then
+            echo "red=" >> "$GITHUB_OUTPUT"
+            echo "flaky=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Playwright lists each failure as "  1) e2e/thing.spec.ts:12:3 › ...",
+          # sometimes with a "[project] ›" in front. Everything before the first
+          # colon is the path, so stopping at the colon keeps the file name and
+          # nothing else — including when the test's own title mentions a spec.
+          fails="$(grep -oE '^[[:space:]]+[0-9]+\)[^:]*\.spec\.ts' "$log" \
+                   | grep -oE '[A-Za-z0-9_-]+\.spec\.ts' | sort -u)"
+          if [ -z "$fails" ]; then
+            echo "The run failed but named no spec — the harness itself broke."
+            tail -40 "$log"
+            echo "red=the harness did not start" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+          echo "Failed in the full run: $(echo $fails)"
+          red=""
+          flaky=""
+          for spec in $fails; do
+            if [ ! -f "e2e/$spec" ]; then
+              echo "no such spec file: e2e/$spec (read out of the log wrongly)"
+              continue
+            fi
+            passed=""
+            for attempt in 1 2; do
+              echo "--- re-running e2e/$spec on its own (attempt $attempt of 2)"
+              if npx playwright test "e2e/$spec" > "$RUNNER_TEMP/solo-$spec-$attempt.log" 2>&1; then
+                passed="yes"
+                break
+              fi
+              tail -20 "$RUNNER_TEMP/solo-$spec-$attempt.log"
+            done
+            if [ -n "$passed" ]; then
+              flaky="${flaky:+$flaky }$spec"
+            else
+              red="${red:+$red }$spec"
+            fi
+          done
+
+          {
+            echo "red=$red"
+            echo "flaky=$flaky"
+          } >> "$GITHUB_OUTPUT"
+
+          if [ -n "$red" ]; then
+            echo "::error title=Browser tests failed::$red failed in the full run and twice on its own."
+            exit 1
+          fi
+          echo "Everything that failed in the full run passed on its own — flaky, not broken."
+
+      # Kept whether the run passed or failed: the traces are how a flake gets
+      # diagnosed, and a flake that is never diagnosed becomes a spec somebody
+      # deletes.
+      - name: Keep the report and the traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            app/playwright-report
+            app/e2e/test-results
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Say what happened
+        if: always()
+        env:
+          RED: ${{ steps.run.outputs.red }}
+          FLAKY: ${{ steps.run.outputs.flaky }}
+        run: |
+          {
+            echo "### Nightly browser tests"
+            echo
+            if [ -n "${RED:-}" ]; then
+              echo "**Failing:** \`${RED}\` — each of these failed in the full run and twice again on its own."
+            else
+              echo "Nothing is failing."
+            fi
+            if [ -n "${FLAKY:-}" ]; then
+              echo
+              echo "**Flaky:** \`${FLAKY}\` — failed in the full run, passed alone. Not a broken app; worth a look at the traces in the artifact before it becomes one."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  notify-failure:
+    name: Tell Slack which screens broke
+    needs: e2e
+    if: failure()
+    uses: ./.github/workflows/notify-failure.yml
+    with:
+      workflow: ${{ github.workflow }}
+      cause: "Browser tests failed overnight: ${{ needs.e2e.outputs.red }}"
+      detail: >-
+        These specs failed in the full run and then twice more on their own, so
+        this is not flakiness. They drive the screens the crew use on their
+        phones, which means something on one of those screens is probably
+        broken in production right now.
+    secrets: inherit
