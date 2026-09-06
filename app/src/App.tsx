@@ -19,6 +19,7 @@ import {
   Routes,
   useParams,
 } from "react-router-dom";
+import { CrashMonitorRole } from "./components/CrashMonitorRole";
 import { Layout } from "./components/Layout";
 import { canAccess, roleRank, ROLE_NAV_V2, type RoutePath } from "./lib/nav";
 import type { CrewRole } from "./lib/install/types";
@@ -468,6 +469,8 @@ export default function App() {
       <ViewAsRoleProvider>
       <BrowserRouter basename={routerBasename(import.meta.env.BASE_URL)}>
         <ClockProvider>
+        {/* Renders nothing; puts the viewer's role on any crash report. */}
+        <CrashMonitorRole />
         <SectionAura />
         <Routes>
           {/* A partner's whole app — outside the crew Layout entirely, so no

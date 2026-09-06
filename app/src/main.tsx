@@ -6,8 +6,17 @@ import { PwaBanners } from "./components/pwa/PwaBanners";
 import { WrongProjectBanner } from "./components/WrongProjectBanner";
 import "./lib/mapPolyfill";
 import { installServiceWorkerGuard } from "./lib/serviceWorkerGuard";
+import { startCrashMonitoring } from "./lib/monitoring/sentry";
 import { installPushChangeListener } from "./lib/permissions/pushSubscribe";
 import { installPreloadRecovery } from "./lib/pwa/preloadRecovery";
+
+// Crash monitoring, started BEFORE anything mounts so a crash on the very first
+// paint is still caught. With VITE_SENTRY_DSN unset — the state this ships in —
+// this returns immediately and the SDK is never even fetched, so nothing about
+// the app changes. Deliberately not awaited: the first paint must not wait on a
+// monitoring chunk, and reportCrash awaits the same memoised promise, so a
+// crash that beats the SDK to it is still reported once it lands.
+void startCrashMonitoring();
 
 // DEV only: kill orphaned service workers so a cached bundle never masks hot
 // reload. Production keeps the vite-plugin-pwa worker. See serviceWorkerGuard.ts.

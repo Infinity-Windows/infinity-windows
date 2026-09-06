@@ -28,6 +28,12 @@
 #     Supabase, which is what scripts/verify-function-secrets.sh checks straight
 #     afterwards. Failing here would make every merge red for a state that is
 #     merely incomplete, and a permanently red check is one nobody reads.
+#   - It never warns about an OPTIONAL secret GitHub does not hold. Every
+#     optional name has a working default in code — the GC email falls back
+#     down a chain of addresses, the crash monitor stays off — so absence is a
+#     decision, not a gap, and a warning on every merge about a feature nobody
+#     asked for is how a warning stops being read. A REQUIRED secret GitHub
+#     does not hold is still said out loud, loudly.
 #   - It never renames. A GitHub secret is synced only to a Supabase secret of
 #     the SAME name. In particular VITE_VAPID_PUBLIC_KEY is NOT copied into
 #     VAPID_PUBLIC_KEY: those are two halves of a pair, and setting the public
@@ -97,6 +103,19 @@ if [ -z "$names" ]; then
   exit 1
 fi
 
+# The names the functions UNDERSTAND but do not need: the Resend key, the three
+# sender addresses, the Monday token, the crash monitor's DSN. Same source,
+# same derivation, one flag apart.
+#
+# These are pushed WHEN GITHUB HOLDS ONE and passed over in silence when it does
+# not — deliberately not added to `absent`, which the workflow turns into a
+# warning annotation per name. Absence is the documented default for every one
+# of them, so warning about it would be this pipeline telling the owner off for
+# not having configured a feature he has decided not to configure, on every
+# merge, forever. A check nobody reads is how the original missing key survived
+# a whole afternoon.
+optional_names="$(python3 scripts/function_secrets.py --optional-names)"
+
 present=()
 absent=()
 
@@ -139,6 +158,31 @@ for var in $names; do
   # one that is missing: every check would pass and the feature would fail with
   # an authentication error nobody expects. No key this repo uses looks like
   # that, so refuse rather than guess. Nothing about the value is printed.
+  case "$value" in
+    *\'* | *$'\n'*)
+      echo "FAIL: the value supplied for $var contains a quote or a newline." >&2
+      echo "Refusing to push it rather than risk writing a mangled value." >&2
+      echo "Nothing was pushed. Check how $var is stored in GitHub." >&2
+      exit 1
+      ;;
+  esac
+  present+=("$var")
+done
+
+# The optional pass. Identical handling of the value — same trimming, same
+# refusal to push something that cannot be written safely — and one difference:
+# a name GitHub does not hold is simply not mentioned.
+for var in $optional_names; do
+  value="${!var:-}"
+  [ -n "$value" ] || continue
+  trimmed="${value#"${value%%[![:space:]]*}"}"
+  trimmed="${trimmed%"${trimmed##*[![:space:]]}"}"
+  if [ "$trimmed" != "$value" ]; then
+    trimmed_names+=("$var")
+    value="$trimmed"
+  fi
+  [ -n "$value" ] || continue
+  printf -v "$var" '%s' "$value"
   case "$value" in
     *\'* | *$'\n'*)
       echo "FAIL: the value supplied for $var contains a quote or a newline." >&2
