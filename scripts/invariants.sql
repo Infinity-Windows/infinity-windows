@@ -65,12 +65,18 @@ select json_build_object(
   -- Every routine in public an anonymous caller may execute — definer or not,
   -- since 20260992000000 revoked all of them and the only ones allowed back
   -- are the judge's ANON_FUNCTIONS_ALLOWED. A grant to PUBLIC counts: that is
-  -- how has_function_privilege sees it, and how PostgREST does.
+  -- how has_function_privilege sees it, and how PostgREST does. Extension
+  -- members are excluded the way that migration excludes them: pgvector's 93
+  -- live in public, are arithmetic, and belong to the bootstrap superuser.
   'anon_functions', (
     select coalesce(json_agg(p.proname order by p.proname), '[]'::json)
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public'
       and has_function_privilege('anon', p.oid, 'EXECUTE')
+      and not exists (
+        select 1 from pg_depend d
+        where d.classid = 'pg_proc'::regclass and d.objid = p.oid and d.deptype = 'e'
+      )
   ),
   -- Whether the NEXT function postgres creates in public would be executable
   -- by anon. Those are the rules 20260992000000 altered; if they come back,

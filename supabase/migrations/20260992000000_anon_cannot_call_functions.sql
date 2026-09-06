@@ -41,6 +41,15 @@
 -- it to section 4 here AND to ANON_FUNCTIONS_ALLOWED in
 -- scripts/verify_invariants.py — the probe fails on anything else.
 --
+-- WHAT IS LEFT ALONE: the 93 functions of the `vector` extension, which
+-- 20260721020000 installed into public (no `with schema extensions`). They
+-- are pure arithmetic — distances, casts, the index handlers — executable by
+-- PUBLIC in every install of pgvector on earth, and owned by the bootstrap
+-- superuser because the extension is trusted, so postgres could not revoke on
+-- them if it wanted to. Every statement below skips anything that belongs to
+-- an extension (pg_depend, deptype 'e'), and the probe asks the same question
+-- with the same exclusion.
+--
 -- WHAT DOES NOT CHANGE: what authenticated and service_role can call.
 -- Stripping PUBLIC could take EXECUTE away from a role that only ever held it
 -- that way, so section 2 records who could run what, section 3 puts back by
@@ -61,22 +70,45 @@ begin;
 -- ---------------------------------------------------------------------------
 -- REVOKE needs the owner (or a member of it). Migrations run as postgres, and
 -- every function this repo creates is owned by postgres; a function owned by a
--- role postgres cannot act for would abort the blanket revoke half-way with a
--- cryptic 42501. Say which one instead, before anything is changed.
+-- role postgres cannot act for would abort the sweep half-way with a cryptic
+-- 42501. Say which one instead, before anything is changed. Extension members
+-- are the known case (see the header) and are not the sweep's business.
+create temp table _ours on commit drop as
+select p.oid, p.oid::regprocedure as sig, p.proname, p.proowner
+from pg_proc p
+join pg_namespace n on n.oid = p.pronamespace
+where n.nspname = 'public'
+  and not exists (
+    select 1 from pg_depend d
+    where d.classid = 'pg_proc'::regclass and d.objid = p.oid and d.deptype = 'e'
+  );
+
 do $$
 declare
   stranger text;
+  skipped text;
 begin
-  select string_agg(p.proname || ' (owner ' || pg_get_userbyid(p.proowner) || ')', ', ')
+  select string_agg(proname || ' (owner ' || pg_get_userbyid(proowner) || ')', ', ')
     into stranger
-  from pg_proc p
-  join pg_namespace n on n.oid = p.pronamespace
-  where n.nspname = 'public'
-    and not pg_has_role(current_user, p.proowner, 'USAGE');
+  from _ours
+  where not pg_has_role(current_user, proowner, 'USAGE');
   if stranger is not null then
     raise exception
       'refusing: function(s) in public owned by a role this migration cannot act for: %', stranger;
   end if;
+
+  select string_agg(e.extname || ' (' || cnt || ')', ', ')
+    into skipped
+  from (
+    select d.refobjid, count(*) as cnt
+    from pg_depend d
+    join pg_proc p on p.oid = d.objid
+    join pg_namespace n on n.oid = p.pronamespace
+    where d.classid = 'pg_proc'::regclass and d.deptype = 'e' and n.nspname = 'public'
+    group by d.refobjid
+  ) x
+  join pg_extension e on e.oid = x.refobjid;
+  raise notice 'extension functions in public left as they are: %', coalesce(skipped, 'none');
 end $$;
 
 -- ---------------------------------------------------------------------------
@@ -91,27 +123,28 @@ end $$;
 -- in public: this project has no auth hooks, and Supabase's own docs have a
 -- hook's migration grant that role by name.
 create temp table _exec_before on commit drop as
-select r.rolname, p.oid as fn_oid
+select r.rolname, o.oid as fn_oid
 from pg_roles r
-cross join pg_proc p
-join pg_namespace n on n.oid = p.pronamespace
-where n.nspname = 'public'
-  and r.rolname in ('authenticated', 'service_role')
-  and has_function_privilege(r.rolname, p.oid, 'EXECUTE');
+cross join _ours o
+where r.rolname in ('authenticated', 'service_role')
+  and has_function_privilege(r.rolname, o.oid, 'EXECUTE');
 
 -- ---------------------------------------------------------------------------
 -- 3. The revoke, and the re-grant that keeps it from hurting anyone else
 -- ---------------------------------------------------------------------------
--- ROUTINES covers functions, aggregates and procedures alike. PUBLIC has to go
--- as well as anon: has_function_privilege('anon', …) — and PostgREST — see a
--- grant to PUBLIC as a grant to anon.
-revoke execute on all routines in schema public from public, anon;
-
+-- One routine at a time rather than `all routines in schema public`, so the
+-- extension's are never touched. ROUTINE covers functions, aggregates and
+-- procedures alike. PUBLIC has to go as well as anon:
+-- has_function_privilege('anon', …) — and PostgREST — see a grant to PUBLIC
+-- as a grant to anon.
 do $$
 declare
   rec record;
   n int := 0;
 begin
+  for rec in select sig from _ours loop
+    execute format('revoke execute on routine %s from public, anon', rec.sig);
+  end loop;
   for rec in
     select b.rolname, b.fn_oid, b.fn_oid::regprocedure as sig
     from _exec_before b
@@ -166,12 +199,10 @@ declare
   lost text;
   default_still_grants boolean;
 begin
-  -- Nobody signed out can call anything.
-  select string_agg(p.proname, ', ' order by p.proname) into still_open
-  from pg_proc p
-  join pg_namespace n on n.oid = p.pronamespace
-  where n.nspname = 'public'
-    and has_function_privilege('anon', p.oid, 'EXECUTE');
+  -- Nobody signed out can call anything of ours.
+  select string_agg(proname, ', ' order by proname) into still_open
+  from _ours
+  where has_function_privilege('anon', oid, 'EXECUTE');
   if still_open is not null then
     raise exception 'anon can still execute: %', still_open;
   end if;
@@ -198,7 +229,7 @@ begin
       'a function created now is still executable by anon: the default privileges for role postgres still grant EXECUTE to anon or PUBLIC';
   end if;
 
-  raise notice 'EXECUTE revoked from anon and PUBLIC on every routine in schema public, and removed from the default for new functions';
+  raise notice 'EXECUTE revoked from anon and PUBLIC on every routine of ours in schema public, and removed from the default for new functions';
 end $$;
 
 commit;
