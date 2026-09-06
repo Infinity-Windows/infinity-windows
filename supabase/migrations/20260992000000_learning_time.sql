@@ -68,14 +68,17 @@
 -- for videos, one table down.
 --
 -- item_kind / item_key: the five places of the Learn section, and which one.
---   'tab'      — the Learn page itself; key is the open tab (daily/quiz/…)
+--   'tab'      — the Learn page itself; key is the open tab, one of
+--                daily / quiz / sequence / glossary / videos
 --   'term'     — one glossary term; key is the term id
 --   'quiz'     — the Quiz tab's round; key is 'round'
---   'sequence' — the Sequence tab's round; key is the branch (win/door)
+--   'sequence' — the Sequence tab's drill; key is 'round'
 --   'video'    — one lesson's card; key is the learning_videos id
 -- A kind outside that list is refused by the check AND by the RPC, so a typo
 -- in a future caller lands as a refusal rather than as a sixth silent bucket
--- nobody's report adds up.
+-- nobody's report adds up. The KEY is checked in the RPC too, against the list
+-- above — it is client-supplied text, and unchecked it is an unlimited supply
+-- of items nobody can name.
 create table if not exists learning_time (
   id uuid primary key default gen_random_uuid(),
   profile_id uuid not null references profiles(id) on delete cascade,
@@ -229,6 +232,39 @@ begin
   if coalesce(v_key, '') = '' then
     raise exception 'The app did not say which item this time belongs to.';
   end if;
+
+  -- WHICH ITEM, and it has to be one this app really has. The kind is checked
+  -- above; the key was free text of any length, which meant a caller could mint
+  -- unlimited distinct items per kind. The kind clock below stops those rows
+  -- adding up to more than the wall clock, but they would still land in the
+  -- owner's table as items nobody can name, each carrying its own visit count
+  -- beside a total it did not earn — and a key long enough would raise a btree
+  -- error off the unique index instead of a sentence a person can read.
+  --
+  -- A NEW TAB OF LEARN MEANS A NEW NAME ON THIS LINE. That is deliberate and it
+  -- is the same trade the kind check just above makes: a caller the app did not
+  -- ship lands as a refusal the client drops, rather than as a sixth silent
+  -- bucket nobody's report adds up.
+  if length(v_key) > 64 then
+    raise exception 'That is not an item this app records time for.';
+  end if;
+  if p_item_kind = 'tab'
+     and v_key not in ('daily', 'quiz', 'sequence', 'glossary', 'videos') then
+    raise exception 'That is not an item this app records time for.';
+  end if;
+  if p_item_kind in ('quiz', 'sequence') and v_key <> 'round' then
+    raise exception 'That is not an item this app records time for.';
+  end if;
+  -- Compared as text rather than cast to uuid: a key that is not a uuid at all
+  -- must come back as this sentence, not as a cast error nobody can act on.
+  if p_item_kind = 'video'
+     and not exists (select 1 from learning_videos lv where lv.id::text = v_key) then
+    raise exception 'That lesson is not in the library any more.';
+  end if;
+  -- 'term' gets the length cap and nothing more. The glossary is a constant in
+  -- the app (app/src/lib/glossary.ts), not a table, so there is nothing in this
+  -- database to check a term id against — and a wrong one costs a row named
+  -- after an id the owner's page prints as it stands, which is the truth.
 
   -- THE KIND CLOCK. The newest beat this person has banked on this KIND, from
   -- any visit and any item — see the note above this function for why the

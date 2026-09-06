@@ -290,3 +290,39 @@ describe("the server's own clamps on a heartbeat", () => {
     }
   });
 });
+
+describe("the server's own check on which item a beat names", () => {
+  it("only lets a 'tab' beat name a tab that exists", () => {
+    // The tab rows ARE the person's total on the owner's page
+    // (foldByPerson, learningTimeReport.ts). An unchecked key is an unlimited
+    // supply of them.
+    for (const sql of [MIGRATION, MIRROR]) {
+      expect(sql).toContain(
+        "and v_key not in ('daily', 'quiz', 'sequence', 'glossary', 'videos') then",
+      );
+      expect(sql).toContain("if p_item_kind in ('quiz', 'sequence') and v_key <> 'round' then");
+    }
+  });
+
+  it("makes a 'video' beat name a lesson the library really has", () => {
+    for (const sql of [MIGRATION, MIRROR]) {
+      expect(sql).toContain("from learning_videos lv where lv.id::text = v_key");
+    }
+  });
+
+  it("caps the length of any key, so a long one is a sentence not a btree error", () => {
+    for (const sql of [MIGRATION, MIRROR]) {
+      expect(sql).toContain("if length(v_key) > 64 then");
+    }
+  });
+
+  it("names the five tabs the app really ships", () => {
+    // Pinned against the Tab union in pages/Education.tsx: a tab added there
+    // and not here is time that silently stops being recorded.
+    const tabs = ["daily", "quiz", "sequence", "glossary", "videos"];
+    const page = readFileSync(resolve(REPO, "app/src/pages/Education.tsx"), "utf8");
+    expect(page).toContain(
+      `type Tab = ${tabs.map((t) => `"${t}"`).join(" | ")};`,
+    );
+  });
+});
