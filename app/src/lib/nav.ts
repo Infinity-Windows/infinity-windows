@@ -54,6 +54,10 @@ export type RoutePath =
   | "/warehouse"
   | "/clock"
   | "/learn"
+  // Learning time (2026-09-05): the owner's read of how long people spend in
+  // Learn and on what. Supervisor+, the same floor as /data — per-person time
+  // has been a supervisor+ read in this app since the Data tab was built.
+  | "/learning/time"
   | "/points"
   | "/safety"
   | "/scan"
@@ -253,6 +257,10 @@ export const NAV: NavDest[] = [
   // to foreman are the same power, so they must not have different doors.
   { id: "access", to: "/access", label: "Crew access", icon: "⚿", minRole: "supervisor" },
   { id: "cost-codes", to: "/cost-codes", label: "Cost codes", icon: "☷", minRole: "supervisor" },
+  // Learning time. Supervisor+, deliberately NOT foreman: a foreman's crew's
+  // study hours is a different question from a foreman's crew's work, and it is
+  // the owner's to answer, not this registry's to assume (see the PR body).
+  { id: "learning-time", to: "/learning/time", label: "Learning time", icon: "⏱", minRole: "supervisor" },
   // Wave P: the office receipts table — supervisor+ review (spec, settled).
   // Wave Z: or anyone the owner granted "Sees costs" — a bookkeeper who is
   // not a supervisor still has to reconcile the card statement.
@@ -502,6 +510,7 @@ const MENU_DEF: MenuSection[] = [
     Icon: BookOpen,
     items: [
       { to: "/learn", label: "Learn", Icon: BookOpen },
+      { to: "/learning/time", label: "Learning time", Icon: Clock },
       { to: "/points", label: "Points", Icon: Trophy },
       { to: "/review", label: "Memo review", Icon: ClipboardList },
       { to: "/safety", label: "Safety", Icon: ShieldCheck },

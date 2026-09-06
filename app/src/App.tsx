@@ -105,6 +105,7 @@ import { CostCodes } from "./pages/CostCodes";
 import { Costing } from "./pages/Costing";
 import { Receipts } from "./pages/Receipts";
 import { Education } from "./pages/Education";
+import { LearningTime } from "./pages/LearningTime";
 import { Photos } from "./pages/Photos";
 import { Points } from "./pages/Points";
 import { Safety } from "./pages/Safety";
@@ -753,6 +754,10 @@ export default function App() {
               element={<RequireRole path="/receipts"><Receipts /></RequireRole>}
             />
             <Route path="/learn" element={<Education />} />
+            <Route
+              path="/learning/time"
+              element={<RequireRole path="/learning/time"><LearningTime /></RequireRole>}
+            />
             <Route path="/points" element={<Points />} />
             <Route path="/safety" element={<Safety />} />
             <Route

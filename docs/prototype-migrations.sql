@@ -16353,3 +16353,206 @@ revoke all on function public.learning_video_heartbeat(uuid, uuid, numeric, nume
   from public, anon;
 grant execute on function public.learning_video_heartbeat(uuid, uuid, numeric, numeric, boolean)
   to authenticated;
+
+
+-- ---------------------------------------------------------------------------
+-- 6. L3 — learning_time_report: what the owner's table reads
+-- ---------------------------------------------------------------------------
+-- One row per (person, kind, item) inside a date window, already added up.
+--
+-- WHY AN RPC RATHER THAN A SELECT. Two reasons. The rows are per visit, so a
+-- month of one company's learning is thousands of them and a phone should not
+-- be summing that; and the totals have to be the same numbers whoever asks,
+-- which means the adding up belongs in one place rather than in every screen
+-- that ever wants it.
+--
+-- WHO SEES WHOSE. Supervisor and above see everybody. Anybody else sees exactly
+-- their own rows and nothing else — the same answer the table policy gives, so
+-- this function cannot become a way around it. A partner login is refused
+-- outright.
+--
+-- EVERY COLUMN REFERENCE BELOW IS QUALIFIED, on purpose: the OUT parameters of
+-- a `returns table` are in scope inside the query, so a bare `profile_id` here
+-- would silently mean the OUT parameter and not the column. Same family of bug
+-- as the 2026-09-02 finish_unit incident that bought scripts/migration_lint.py.
+create or replace function public.learning_time_report(
+  p_from timestamptz default null,
+  p_to timestamptz default null
+)
+returns table (
+  profile_id uuid,
+  display_name text,
+  item_kind text,
+  item_key text,
+  active_seconds bigint,
+  visits bigint,
+  last_seen_at timestamptz
+)
+language plpgsql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_me uuid := auth.uid();
+  v_all boolean;
+begin
+  if v_me is null then
+    raise exception 'Sign in to read learning time.' using errcode = '42501';
+  end if;
+  if public.is_partner_user() then
+    raise exception 'Not available for your account.' using errcode = '42501';
+  end if;
+  v_all := public.my_role_rank() >= 2;
+
+  return query
+  select t.profile_id,
+         coalesce(pr.display_name, 'Someone')::text,
+         t.item_kind,
+         t.item_key,
+         sum(t.active_seconds)::bigint,
+         count(distinct t.session_id)::bigint,
+         max(t.last_seen_at)
+    from learning_time t
+    join profiles pr on pr.id = t.profile_id
+   where (v_all or t.profile_id = v_me)
+     and (p_from is null or t.last_seen_at >= p_from)
+     and (p_to is null or t.last_seen_at < p_to)
+   group by t.profile_id, pr.display_name, t.item_kind, t.item_key;
+end;
+$$;
+
+comment on function public.learning_time_report(timestamptz, timestamptz) is
+  'Learning time added up per person, per kind, per item, inside a date window. Supervisor+ sees everybody; anybody else sees only their own (Learning time, L3).';
+
+revoke all on function public.learning_time_report(timestamptz, timestamptz)
+  from public, anon;
+grant execute on function public.learning_time_report(timestamptz, timestamptz)
+  to authenticated;
+
+
+-- ---------------------------------------------------------------------------
+-- 7. L3 — learning_video_report: per person, per lesson
+-- ---------------------------------------------------------------------------
+-- The four numbers the owner asked for, per person per lesson:
+--
+--   times_watched  — visits that got through 30 seconds. Not presses of play:
+--                    a card scrolled past eleven times is not a lesson watched
+--                    eleven times. The floor is stated on screen.
+--   best_seconds   — the best single visit's covered seconds.
+--   union_seconds  — every visit's ranges merged together, so somebody who
+--                    watched the first half on Monday and the second half on
+--                    Tuesday reads as having seen the whole lesson, which they
+--                    have.
+--   completed      — did any visit finish it.
+--
+-- THE UNION IS THE SAME RULE AS merge_watch_ranges, spelled as a window query
+-- because it folds across visits rather than into one row: sort every stretch
+-- by where it starts, and start a new island only where one begins AFTER the
+-- furthest end seen so far. Touching stretches merge, exactly as they do there.
+create or replace function public.learning_video_report(
+  p_from timestamptz default null,
+  p_to timestamptz default null
+)
+returns table (
+  profile_id uuid,
+  display_name text,
+  video_id uuid,
+  video_title text,
+  times_watched bigint,
+  best_seconds int,
+  union_seconds int,
+  duration_seconds int,
+  completed boolean,
+  last_watched_at timestamptz
+)
+language plpgsql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_me uuid := auth.uid();
+  v_all boolean;
+begin
+  if v_me is null then
+    raise exception 'Sign in to read what has been watched.' using errcode = '42501';
+  end if;
+  if public.is_partner_user() then
+    raise exception 'Not available for your account.' using errcode = '42501';
+  end if;
+  v_all := public.my_role_rank() >= 2;
+
+  return query
+  with scoped as (
+    select w.id as wid,
+           w.profile_id as pid,
+           w.video_id as vid,
+           w.watch_seconds as secs,
+           w.duration_seconds as dur,
+           w.completed as done,
+           w.last_seen_at as seen,
+           w.ranges as rs
+      from learning_video_watches w
+     where (v_all or w.profile_id = v_me)
+       and (p_from is null or w.last_seen_at >= p_from)
+       and (p_to is null or w.last_seen_at < p_to)
+  ),
+  segs as (
+    select sc.pid, sc.vid, (x->>0)::int as s0, (x->>1)::int as s1
+      from scoped sc, lateral jsonb_array_elements(sc.rs) x
+  ),
+  ordered as (
+    select sg.pid, sg.vid, sg.s0, sg.s1,
+           max(sg.s1) over (
+             partition by sg.pid, sg.vid
+             order by sg.s0, sg.s1
+             rows between unbounded preceding and 1 preceding
+           ) as prev_max
+      from segs sg
+  ),
+  islands as (
+    select od.pid, od.vid, od.s0, od.s1,
+           sum(case when od.prev_max is null or od.s0 > od.prev_max then 1 else 0 end)
+             over (
+               partition by od.pid, od.vid
+               order by od.s0, od.s1
+               rows between unbounded preceding and current row
+             ) as grp
+      from ordered od
+  ),
+  merged as (
+    select il.pid, il.vid, il.grp, min(il.s0) as g0, max(il.s1) as g1
+      from islands il
+     group by il.pid, il.vid, il.grp
+  ),
+  unioned as (
+    select mg.pid, mg.vid, sum(mg.g1 - mg.g0)::int as covered
+      from merged mg
+     group by mg.pid, mg.vid
+  )
+  select sc.pid,
+         coalesce(pr.display_name, 'Someone')::text,
+         sc.vid,
+         coalesce(lv.title, 'Lesson')::text,
+         count(*) filter (where sc.secs >= 30)::bigint,
+         coalesce(max(sc.secs), 0)::int,
+         coalesce(max(un.covered), 0)::int,
+         max(sc.dur)::int,
+         bool_or(sc.done),
+         max(sc.seen)
+    from scoped sc
+    join profiles pr on pr.id = sc.pid
+    join learning_videos lv on lv.id = sc.vid
+    left join unioned un on un.pid = sc.pid and un.vid = sc.vid
+   group by sc.pid, pr.display_name, sc.vid, lv.title;
+end;
+$$;
+
+comment on function public.learning_video_report(timestamptz, timestamptz) is
+  'Per person per lesson: how many visits got through 30 seconds, the best visit, every visit''s seconds merged together, whether it was ever finished, and when it was last watched. Supervisor+ sees everybody; anybody else sees only their own (Learning time, L3).';
+
+revoke all on function public.learning_video_report(timestamptz, timestamptz)
+  from public, anon;
+grant execute on function public.learning_video_report(timestamptz, timestamptz)
+  to authenticated;

@@ -2177,6 +2177,67 @@ export const CATALOG = {
     en: "Camera busy — close any other app using it, then tap Use camera again.",
     es: "Cámara ocupada — cierra la otra app que la esté usando y toca Usar cámara otra vez.",
   },
+
+  // ---- Learning time (2026-09-05) ----------------------------------------
+  // The owner's ask: "a timer that I can see as an owner how long they spend in
+  // the learning tab and on what item… as well as a timer for watching the
+  // YouTube videos, to see if they watch the whole thing and how many times."
+  //
+  // Everything this build says, in one block, both languages. The two sentences
+  // that MATTER most are `ltime.blurb` and `learn.time.why`: they are the same
+  // promise said to the two different people it is about — the owner reading
+  // the table, and the crew member being measured — and they have to agree with
+  // each other and with the migration's own header.
+  "ltime.section": { en: "Learning", es: "Aprendizaje" },
+  "ltime.title": { en: "Learning time", es: "Tiempo de aprendizaje" },
+  "ltime.back": { en: "Home", es: "Inicio" },
+  "ltime.blurb": {
+    en: "How long each person spends in Learn, and on what. Counted only while the screen is in front of them — never while the phone is locked or the app is in the background.",
+    es: "Cuánto tiempo pasa cada persona en Aprender, y en qué. Solo cuenta mientras la pantalla está frente a ellos — nunca con el teléfono bloqueado ni con la app en segundo plano.",
+  },
+  "ltime.range.aria": { en: "Time range", es: "Rango de fechas" },
+  "ltime.range.week": { en: "This week", es: "Esta semana" },
+  "ltime.range.fourWeeks": { en: "Last 4 weeks", es: "Últimas 4 semanas" },
+  "ltime.range.all": { en: "All time", es: "Todo el tiempo" },
+  "ltime.sort.time": { en: "Most time first", es: "Más tiempo primero" },
+  "ltime.sort.name": { en: "By name", es: "Por nombre" },
+  "ltime.loadError": {
+    en: "Couldn't load learning time",
+    es: "No se pudo cargar el tiempo de aprendizaje",
+  },
+  "ltime.empty.title": { en: "Nothing recorded yet", es: "Aún no hay nada registrado" },
+  "ltime.empty.body": {
+    en: "Time starts counting the next time somebody opens Learn.",
+    es: "El tiempo empieza a contar la próxima vez que alguien abra Aprender.",
+  },
+  "ltime.inLearn": { en: "in Learn", es: "en Aprender" },
+  "ltime.last": { en: "last {when}", es: "última vez {when}" },
+  "ltime.kind.term": { en: "Glossary terms", es: "Términos del glosario" },
+  "ltime.kind.quiz": { en: "Quiz", es: "Examen" },
+  "ltime.kind.sequence": { en: "Sequence", es: "Secuencia" },
+  "ltime.kind.video": { en: "Lessons playing", es: "Lecciones en reproducción" },
+  // Said plainly because the alternative is an owner adding the chips up and
+  // getting more than the total.
+  "ltime.breakdownNote": {
+    en: "These are part of the total above, not extra time on top of it.",
+    es: "Esto es parte del total de arriba, no tiempo adicional.",
+  },
+  "ltime.lessons": { en: "Lessons", es: "Lecciones" },
+  "ltime.timesWatched": { en: "watched {count}×", es: "visto {count}×" },
+  "ltime.percentAll": { en: "{percent}% watched", es: "{percent}% visto" },
+  "ltime.percentBest": { en: "best sitting {percent}%", es: "mejor sesión {percent}%" },
+  "ltime.lengthUnknown": {
+    en: "{time} played, length unknown",
+    es: "{time} reproducidos, duración desconocida",
+  },
+  "ltime.finished": { en: "Finished", es: "Terminado" },
+  "ltime.notFinished": { en: "Not finished", es: "Sin terminar" },
+  // The definition, on screen, because "watched 3×" means nothing until the
+  // reader knows what the app counts as a watch.
+  "ltime.watchNote": {
+    en: "A watch is one visit that got through at least 30 seconds. The percentage is how much of the lesson was actually played — skipping to the end can finish a video without watching it.",
+    es: "Una vista es una visita que pasó al menos 30 segundos. El porcentaje es cuánto de la lección se reprodujo de verdad — saltar al final puede terminar un video sin verlo.",
+  },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */

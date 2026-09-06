@@ -81,6 +81,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Admin (`/admin`)
 - Crew access (`/access`)
 - Cost codes (`/cost-codes`)
+- Learning time (`/learning/time`)
 - Receipts (`/receipts`)
 - Cost (`/costing`)
 - AI spend (`/ai-spend`)
@@ -178,6 +179,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Admin (`/admin`)
 - Crew access (`/access`)
 - Cost codes (`/cost-codes`)
+- Learning time (`/learning/time`)
 - Receipts (`/receipts`)
 - Cost (`/costing`)
 - AI spend (`/ai-spend`)
@@ -221,6 +223,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Roster (`/crew`)
 - Crew access (`/access`)
 - Learn (`/learn`)
+- Learning time (`/learning/time`)
 - Points (`/points`)
 - Memo review (`/review`)
 - Safety (`/safety`)
@@ -233,7 +236,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Catalog (`/catalog`)
 - Admin (`/admin`)
 
-**Can reach (all 48 allowed destinations):**
+**Can reach (all 49 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
@@ -280,6 +283,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Admin (`/admin`)
 - Crew access (`/access`)
 - Cost codes (`/cost-codes`)
+- Learning time (`/learning/time`)
 - Receipts (`/receipts`)
 - Photos & receipts (`/photos`)
 - Toolbox talk history (`/toolbox-history`)
@@ -329,6 +333,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Roster (`/crew`)
 - Crew access (`/access`)
 - Learn (`/learn`)
+- Learning time (`/learning/time`)
 - Points (`/points`)
 - Memo review (`/review`)
 - Safety (`/safety`)
@@ -343,7 +348,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Admin (`/admin`)
 - Builder logins (`/account/builders`)
 
-**Can reach (all 51 allowed destinations):**
+**Can reach (all 52 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
@@ -390,6 +395,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Admin (`/admin`)
 - Crew access (`/access`)
 - Cost codes (`/cost-codes`)
+- Learning time (`/learning/time`)
 - Receipts (`/receipts`)
 - Cost (`/costing`)
 - AI spend (`/ai-spend`)
