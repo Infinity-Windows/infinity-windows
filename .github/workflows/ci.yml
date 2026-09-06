@@ -163,6 +163,15 @@ jobs:
         shell: bash
         run: scripts/check-function-auth.sh
 
+      # The exact half of the advisory pull-request review. It is allowed to
+      # fail a pull request, which is exactly why every one of its rules has to
+      # be shown going red on a broken fixture and green on the shape this repo
+      # really writes. Offline: throwaway git repositories in a temp directory,
+      # and a stubbed gh.
+      - name: Test scripts/advisory-rules.sh
+        shell: bash
+        run: scripts/advisory-rules.test.sh
+
   supabase-tooling:
     name: Supabase merge tooling
     runs-on: ubuntu-latest
