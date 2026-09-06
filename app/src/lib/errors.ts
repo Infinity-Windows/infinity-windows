@@ -115,6 +115,13 @@ export function formatApiError(err: unknown, fallback = "Something went wrong. P
   if (code === "23502" || lower.includes("not-null")) {
     return "Something required is missing. Please fill in all fields.";
   }
+  // A check constraint: the app tried to write a row the database's own rules
+  // refuse. That is a bug in the app, never something the person can fix by
+  // retyping — and the raw sentence names internal constraints (2026-09-06:
+  // "movements_one_subject_ck" reached the owner's phone on a real job).
+  if (code === "23514" || lower.includes("violates check constraint")) {
+    return "The app tried to save something the database refuses. Nothing was saved. Tell a supervisor which screen this was.";
+  }
 
   // Toolbox / clock gates surfaced from the server keep their message if short.
   if (raw && raw.length <= 140 && !lower.includes("error:") && !/[{}]/.test(raw)) {
