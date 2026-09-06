@@ -347,3 +347,13 @@ $$;
 
 revoke execute on function create_placeholder_job(text) from public, anon;
 grant execute on function create_placeholder_job(text) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 4. The test-login fence
+-- ---------------------------------------------------------------------------
+-- storage_containers.project_id makes the table project-scoped
+-- (sandbox_scoped_tables, 20260967000000). Without this line a QA test login
+-- could write a bay box for ANY job rather than only its sandbox ones —
+-- scripts/test_sandbox_guard.py fails CI for exactly this omission.
+-- Idempotent: tables already guarded are left alone.
+select public.attach_sandbox_guards();
