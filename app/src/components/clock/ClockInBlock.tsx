@@ -8,9 +8,15 @@
 //
 // It does NOT fork the time logic: it calls the same clockIn RPC and the same
 // cost-code / recent-job reads the clock sheet uses, and hands OFF to the full
-// clock sheet (offline outbox, toolbox sign-off, injury flag on clock-out) for
-// everything that already lives there. The sheet stays the single owner of the
-// complex, safety-relevant flows — this block is the front door to them.
+// clock sheet (offline outbox, injury flag on clock-out, break, switch) for
+// everything that already lives there. The one thing it deliberately does NOT
+// hand off is the day's first punch (owner ask, 2026-09-06): the block used to
+// send an unsigned morning to the sheet, and the sheet — which knows nothing
+// of the picks made here — asked for the job and the cost code all over again
+// and then a second Start. So today's talk is signed IN the block, with the
+// same ToolboxSignCard the sheet mounts, and the signature triggers the
+// block's own clockIn with the picks already made. The sheet is still the
+// fallback when that punch is refused, and it now gets the picks carried in.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -26,6 +32,7 @@ import { captureGeoIfGranted, captureGeoSoft } from "../../lib/geo";
 import { farFromJob, type DeviceFix } from "../../lib/jobProximity";
 import { toastSuccess } from "../../lib/toast";
 import { openClockGlobally } from "../../lib/clockContext";
+import { ToolboxSignCard } from "./ToolboxSignCard";
 import {
   clockIn,
   elapsedWorkSeconds,
@@ -103,6 +110,12 @@ export function ClockInBlock() {
   // time_shifts.note column — clockIn has always carried it; the UI just never
   // offered a box for it until now.
   const [note, setNote] = useState("");
+  // Today's talk, revealed IN the block on the tap of the held button (owner
+  // ask, 2026-09-06). Hidden until then on purpose: the block sits at the top
+  // of three landings, and a person who already signed — or who is not about
+  // to clock in — must not scroll past a signature pad every morning.
+  const [showSign, setShowSign] = useState(false);
+  const signRef = useRef<HTMLDivElement>(null);
   const [now, setNow] = useState(Date.now());
   // The device's current fix, captured ONLY when geolocation is already
   // permitted — the advisory must never trigger its own permission prompt.
@@ -178,6 +191,14 @@ export function ClockInBlock() {
     void queryClient.invalidateQueries({ queryKey: ["myShifts"] });
     void queryClient.invalidateQueries({ queryKey: ["recentJobs"] });
   };
+
+  // The talk card appears below the pickers, off the bottom of a phone screen
+  // when the job list is open; bring it into view so the tap visibly did
+  // something. (Guarded: happy-dom has no scrollIntoView.)
+  useEffect(() => {
+    if (!showSign) return;
+    signRef.current?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+  }, [showSign]);
 
   // The chosen job's declared modes drive the mode step below and what the
   // shift records. A both-mode job asks; a single-mode job records its one mode
@@ -322,11 +343,13 @@ export function ClockInBlock() {
   const busy = doStart.isPending;
   const canStart = Boolean(pickProjectId && pickCostCodeId);
   // The server refuses the first clock-in of the day without today's signed
-  // toolbox talk. Hold the button only when we POSITIVELY know a talk exists
-  // today and isn't signed; if the talk itself couldn't load, fail OPEN and let
-  // the server (or the sheet) sort it out. Signing lives in the clock sheet's
-  // ToolboxSignCard, so a held button routes there rather than embedding a
-  // second copy of the sign-off here.
+  // toolbox talk (20260970000000_job_modes.sql, clock_in). Hold the button
+  // only when we POSITIVELY know a talk exists today and isn't signed; if the
+  // talk itself couldn't load, fail OPEN and let the server sort it out. A
+  // held button no longer routes to the sheet: the tap reveals today's talk
+  // right here (the sheet's own ToolboxSignCard, not a second copy of the
+  // sign-off), and signing it fires this block's clockIn with the job, cost
+  // code, note and mode already picked — one pass through the morning.
   const toolboxKnownUnsigned =
     todayTalk.isSuccess &&
     todayTalk.data !== null &&
@@ -597,18 +620,32 @@ export function ClockInBlock() {
       {showFarNote && <p className="clockin-note">{t("clockblock.notNearJob")}</p>}
 
       {toolboxKnownUnsigned ? (
-        <>
-          {/* SAFETY / toolbox — needs bilingual review. */}
-          <p className="clockin-note">{t("clockblock.signFirst")}</p>
-          <button
-            type="button"
-            className="clock-btn primary big"
-            disabled={!canStart}
-            onClick={openClockGlobally}
-          >
-            <Play size={18} aria-hidden /> {t("clockblock.signAndClockIn")}
-          </button>
-        </>
+        showSign && todayTalk.data ? (
+          /* The tap already happened: the talk takes the button's place, and
+             signing it IS the clock-in (onSigned → doStart with the picks
+             above). While the punch is in flight the signed branch below
+             renders, with its button held as "Clocking in…". */
+          <div ref={signRef}>
+            <ToolboxSignCard
+              profileId={profileId}
+              talk={todayTalk.data}
+              onSigned={() => doStart.mutate()}
+            />
+          </div>
+        ) : (
+          <>
+            {/* SAFETY / toolbox — needs bilingual review. */}
+            <p className="clockin-note">{t("clockblock.signFirst")}</p>
+            <button
+              type="button"
+              className="clock-btn primary big"
+              disabled={!canStart}
+              onClick={() => setShowSign(true)}
+            >
+              <Play size={18} aria-hidden /> {t("clockblock.signAndClockIn")}
+            </button>
+          </>
+        )
       ) : (
         <button
           type="button"
@@ -625,8 +662,8 @@ export function ClockInBlock() {
           )}
         </button>
       )}
-      {/* Everything the sheet does and this block doesn't (pick a different job
-          via search, sign the talk, go offline) is one tap away. */}
+      {/* Everything the sheet does and this block doesn't (break, switch, go
+          offline, start on a picked unit) is one tap away. */}
       <button type="button" className="clock-list-toggle" onClick={openClockGlobally}>
         {t("clockblock.moreOptions")}
       </button>

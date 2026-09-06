@@ -36,6 +36,21 @@ vi.mock("../../lib/timeclock", async (importOriginal) => {
 vi.mock("../../lib/costCodes", () => ({
   getClockCostCodesForProject: vi.fn(async () => costCodesHolder.current),
 }));
+// The talk is signed IN the block now (2026-09-06), through the real
+// ToolboxSignCard. Its write (two storage uploads + an insert) becomes a
+// resolved spy; the "did I sign today?" read stays unsigned so the card is
+// still mounted when its own onSuccess fires.
+const { submitSpy } = vi.hoisted(() => ({
+  submitSpy: vi.fn(async () => ({ id: "done1" }) as unknown),
+}));
+vi.mock("../../lib/toolbox", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../lib/toolbox")>();
+  return {
+    ...actual,
+    submitToolboxCompletion: submitSpy,
+    myTodayCompletion: vi.fn(async () => null),
+  };
+});
 
 import { ClockInBlock } from "./ClockInBlock";
 import type { TimeShift } from "../../lib/timeclock";
@@ -49,6 +64,7 @@ afterEach(() => {
   root = null;
   host = null;
   clockInSpy.mockClear();
+  submitSpy.mockClear();
 });
 
 interface Seed {
@@ -229,6 +245,164 @@ describe("the clock-in block", () => {
     expect(clockInSpy).not.toHaveBeenCalled();
   });
 
+  // ---- Sign the talk in the block (owner ask, 2026-09-06) -----------------
+  // The signature pad draws on a canvas, and happy-dom's getContext("2d")
+  // answers null — the pad then never marks itself dirty and the Sign button
+  // would stay held. A minimal context stub lets the real card run its own
+  // pointer handlers; nothing about the block or the card is mocked.
+  function stubCanvas() {
+    const ctx = {
+      setTransform() {},
+      fillRect() {},
+      beginPath() {},
+      moveTo() {},
+      lineTo() {},
+      stroke() {},
+    };
+    const proto = window.HTMLCanvasElement.prototype;
+    const getContext = vi
+      .spyOn(proto, "getContext")
+      .mockImplementation(() => ctx as unknown as CanvasRenderingContext2D);
+    const toDataURL = vi
+      .spyOn(proto, "toDataURL")
+      .mockImplementation(() => "data:image/png;base64,AAAA");
+    return () => {
+      getContext.mockRestore();
+      toDataURL.mockRestore();
+    };
+  }
+
+  function setValue(el: HTMLInputElement | HTMLTextAreaElement, value: string) {
+    const proto =
+      el instanceof HTMLTextAreaElement
+        ? window.HTMLTextAreaElement.prototype
+        : window.HTMLInputElement.prototype;
+    const nativeSet = Object.getOwnPropertyDescriptor(proto, "value")!.set!;
+    act(() => {
+      nativeSet.call(el, value);
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  }
+
+  /** Pledge, typed name, one drawn stroke — everything the card needs. */
+  function fillSignCard(el: HTMLElement) {
+    const pledge = el.querySelector<HTMLInputElement>(".ack-row input[type=checkbox]")!;
+    act(() => pledge.click());
+    setValue(el.querySelector<HTMLInputElement>('input[placeholder="Full name"]')!, "Dana Ortiz");
+    const canvas = el.querySelector<HTMLCanvasElement>("canvas.sig-canvas")!;
+    act(() => {
+      canvas.dispatchEvent(
+        new PointerEvent("pointerdown", { bubbles: true, clientX: 5, clientY: 5, pointerId: 1 }),
+      );
+      canvas.dispatchEvent(
+        new PointerEvent("pointermove", { bubbles: true, clientX: 40, clientY: 12, pointerId: 1 }),
+      );
+      canvas.dispatchEvent(
+        new PointerEvent("pointerup", { bubbles: true, clientX: 40, clientY: 12, pointerId: 1 }),
+      );
+    });
+  }
+
+  async function settle() {
+    for (let i = 0; i < 6; i++) {
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 0));
+      });
+    }
+  }
+
+  it("tapping the held button shows the talk in the block and does not open the sheet", () => {
+    const restore = stubCanvas();
+    const dispatch = vi.spyOn(window, "dispatchEvent");
+    try {
+      const el = mount({
+        costCodes: [CC],
+        recents: [recent("cc1")],
+        talk: { id: "t1", title: "Ladders", body: "Three points of contact.", talk_date: "2026-09-06" },
+        toolboxDone: null,
+      });
+      // Not a scroll-past every morning: the talk is hidden until the tap.
+      expect(el.textContent).not.toContain("Today's toolbox talk");
+      const big = el.querySelector<HTMLButtonElement>(".clock-btn.primary.big")!;
+      act(() => big.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+
+      // The talk is in the block, with the whole sign-off in it …
+      expect(el.querySelector(".clockin-block")!.textContent).toContain("Today's toolbox talk");
+      expect(el.textContent).toContain("Ladders");
+      expect(el.textContent).toContain("I read and understood today's talk");
+      expect(el.querySelector("canvas.sig-canvas")).toBeTruthy();
+      expect(byText(el, "Sign today's talk")).toBeTruthy();
+      // … the pickers made on the landing are still there, still chosen …
+      expect(el.querySelector(".clock-chip.current")?.textContent).toContain("BLACK22");
+      expect(el.querySelector(".clock-costcode-item.selected")).toBeTruthy();
+      // … and nothing asked the sheet to open.
+      const opened = dispatch.mock.calls.filter(
+        ([ev]) => (ev as Event).type === "infinity:open-clock",
+      );
+      expect(opened).toHaveLength(0);
+      expect(clockInSpy).not.toHaveBeenCalled();
+    } finally {
+      dispatch.mockRestore();
+      restore();
+    }
+  });
+
+  it("signing fires one clockIn with the block's job, cost code, note and mode", async () => {
+    const restore = stubCanvas();
+    try {
+      const el = mount({
+        costCodes: [CC],
+        recents: [recent("cc1")],
+        // A single-mode tracking job: the mode rides along silently.
+        projects: [
+          {
+            id: "p1",
+            job_code: "BLACK22",
+            name: "Black Desert",
+            address: null,
+            status: "active",
+            allowed_modes: ["tracking"],
+          },
+        ],
+        talk: { id: "t1", title: "Ladders", body: "Three points of contact.", talk_date: "2026-09-06" },
+        toolboxDone: null,
+      });
+      setValue(el.querySelector<HTMLTextAreaElement>("#clockin-block-note")!, "gate code 4411");
+      act(() =>
+        el
+          .querySelector<HTMLButtonElement>(".clock-btn.primary.big")!
+          .dispatchEvent(new MouseEvent("click", { bubbles: true })),
+      );
+      fillSignCard(el);
+      const sign = byText(el, "Sign today's talk")!;
+      expect(sign.disabled).toBe(false);
+      await clickAndFlush(sign);
+      await settle();
+
+      // The signature was recorded once, for this person and this talk …
+      expect(submitSpy).toHaveBeenCalledTimes(1);
+      expect((submitSpy.mock.calls[0] as unknown[])[0]).toMatchObject({
+        profileId: "me",
+        typedName: "Dana Ortiz",
+        talk: { id: "t1" },
+        // The stubbed canvas's export: proof the real pad's handlers ran.
+        signatureDataUrl: "data:image/png;base64,AAAA",
+      });
+      // … and the punch left on its own, exactly once, with everything the
+      // block already knew. No second picker, no second button.
+      expect(clockInSpy).toHaveBeenCalledTimes(1);
+      expect(clockInSpy.mock.calls[0]).toEqual([
+        "p1",
+        "cc1",
+        expect.anything(),
+        "gate code 4411",
+        "tracking",
+      ]);
+    } finally {
+      restore();
+    }
+  });
+
   it("offers the plain clock-in once the talk is signed", () => {
     const el = mount({
       costCodes: [CC],
@@ -258,6 +432,12 @@ describe("the clock-in block", () => {
       await Promise.resolve();
       await Promise.resolve();
     });
+  }
+
+  function byText(el: HTMLElement, text: string): HTMLButtonElement | undefined {
+    return Array.from(el.querySelectorAll<HTMLButtonElement>("button")).find((b) =>
+      b.textContent?.includes(text),
+    );
   }
 
   it("asks Install vs Tracking only when the job allows both", () => {
@@ -372,12 +552,6 @@ describe("the clock-in block", () => {
   });
 
   // ---- Quick tracking job / "need a job" (slice 5) -------------------------
-
-  function byText(el: HTMLElement, text: string): HTMLButtonElement | undefined {
-    return Array.from(el.querySelectorAll<HTMLButtonElement>("button")).find((b) =>
-      b.textContent?.includes(text),
-    );
-  }
 
   it("offers a foreman a quick tracking job, not the installer's ask", () => {
     const el = mount({ role: "foreman", costCodes: [CC], projects: [] });
