@@ -70,6 +70,7 @@ def healthy() -> dict:
         "rls_off": [],
         "anon_functions": [],
         "anon_default_execute": False,
+        "definer_unpinned": [],
     }
 
 
@@ -243,6 +244,36 @@ class NobodyCallsAnonymously(unittest.TestCase):
         del r["anon_functions"]
         failures, _, _ = vi.judge(r)
         self.assertTrue(any("anon_functions" in f for f in failures))
+
+
+class DefinerFunctionsPinSearchPath(unittest.TestCase):
+    # ADVISORY until production shows the list empty (20260997000000 is the
+    # sweep). The cases below pin that shape on purpose: the day it is
+    # promoted, the first two flip from advisories to failures and nothing
+    # else in this class moves.
+    def test_an_unpinned_definer_function_is_listed_by_signature(self):
+        r = healthy()
+        r["definer_unpinned"] = ["mint_packages(p_count integer)", "add_supply(p_name text, p_unit text)"]
+        failures, advisories, summary = vi.judge(r)
+        self.assertEqual(failures, [])
+        self.assertEqual(len(advisories), 1)
+        self.assertIn("mint_packages(p_count integer), add_supply(p_name text, p_unit text)", advisories[0])
+        self.assertIn("set search_path = public, pg_temp", advisories[0])
+        self.assertIn("20260997000000", advisories[0])
+        self.assertTrue(any("2 SECURITY DEFINER function(s) without a pinned search_path" in s for s in summary))
+
+    def test_an_empty_list_says_nothing(self):
+        failures, advisories, summary = vi.judge(healthy())
+        self.assertEqual(advisories, [])
+        self.assertTrue(any("0 SECURITY DEFINER function(s) without a pinned search_path" in s for s in summary))
+
+    def test_an_unmeasured_list_is_a_failure_not_a_pass(self):
+        # invariants.sql and this judge have to agree about the report's
+        # keys; a missing one is the two drifting apart, not a clean answer.
+        r = healthy()
+        del r["definer_unpinned"]
+        failures, _, _ = vi.judge(r)
+        self.assertTrue(any("definer_unpinned" in f for f in failures))
 
 
 class TheReportEnvelope(unittest.TestCase):

@@ -46,12 +46,12 @@ expect_contains() {
   esac
 }
 
-healthy_report='{"policies":[{"schema":"public","table":"packages","name":"p","cmd":"SELECT","roles":["authenticated"],"using":"(NOT is_partner_user())","check":""}],"profile_columns":[],"profile_truncate":{"anon":false,"authenticated":false},"fence_unguarded":[],"test_logins":2,"rls_off":[],"anon_functions":[],"anon_default_execute":false}'
+healthy_report='{"policies":[{"schema":"public","table":"packages","name":"p","cmd":"SELECT","roles":["authenticated"],"using":"(NOT is_partner_user())","check":""}],"profile_columns":[],"profile_truncate":{"anon":false,"authenticated":false},"fence_unguarded":[],"test_logins":2,"rls_off":[],"anon_functions":[],"anon_default_execute":false,"definer_unpinned":[]}'
 healthy="$(stub "[{\"report\":$healthy_report}]")"
 run "a healthy database passes" 0 "$healthy"
 expect_contains "  and says so in plain English" "OK: every security invariant holds"
 
-broken_report='{"policies":[{"schema":"public","table":"time_shifts","name":"open","cmd":"SELECT","roles":["authenticated"],"using":"true","check":""}],"profile_columns":[],"profile_truncate":{"anon":false,"authenticated":false},"fence_unguarded":[],"test_logins":2,"rls_off":[],"anon_functions":[],"anon_default_execute":false}'
+broken_report='{"policies":[{"schema":"public","table":"time_shifts","name":"open","cmd":"SELECT","roles":["authenticated"],"using":"true","check":""}],"profile_columns":[],"profile_truncate":{"anon":false,"authenticated":false},"fence_unguarded":[],"test_logins":2,"rls_off":[],"anon_functions":[],"anon_default_execute":false,"definer_unpinned":[]}'
 broken="$(stub "[{\"report\":$broken_report}]")"
 run "an unguarded crew table FAILS" 1 "$broken"
 expect_contains "  and names the table" "time_shifts"
