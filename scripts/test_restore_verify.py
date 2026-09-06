@@ -15,9 +15,13 @@ reassurance.
 """
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import os
+import shutil
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -88,8 +92,12 @@ MANIFEST = {
 }
 
 
-def runner(counts=None, functions=None, policies=None, spot=PROFILE_ROW):
-    """A fake psql. Answers the four shapes of query the verifier asks."""
+def runner(counts=None, functions=None, policies=None, spot=PROFILE_ROW, breaks=()):
+    """A fake psql. Answers the five shapes of query the verifier asks.
+
+    `breaks` names tables whose count query fails the way real psql fails, which
+    is by returning non-zero and taking the whole batched statement with it.
+    """
     counts = {("public", "profiles"): 2, ("public", "time_shifts"): 5} if counts is None else counts
     functions = (
         {("public", "finish_unit"), ("public", "my_pin_status")} if functions is None else functions
@@ -108,11 +116,24 @@ def runner(counts=None, functions=None, policies=None, spot=PROFILE_ROW):
             return "\n".join("\t".join(f) for f in sorted(functions))
         if "from pg_policies" in sql:
             return "\n".join("\t".join(p) for p in sorted(policies))
+        if "from pg_class" in sql:
+            # Only what really came back — the catalog is how a table that is
+            # missing gets named instead of blowing up a batch.
+            return "\n".join("\t".join(k) for k in sorted(counts))
+        if "count(*)" in sql and " as s," not in sql:
+            # The per-table retry: `select count(*) from "s"."t"`, one number.
+            schema = sql.split('from "')[1].split('"')[0]
+            table = sql.split('"."')[1].split('"')[0]
+            if (schema, table) in breaks:
+                raise RuntimeError('psql failed: relation "%s.%s" is broken' % (schema, table))
+            return str(counts[(schema, table)])
         if "count(*)" in sql:
             lines = []
             for part in sql.split(" union all "):
                 schema = part.split("select '")[1].split("'")[0]
                 table = part.split(" as s, '")[1].split("'")[0]
+                if (schema, table) in breaks:
+                    raise RuntimeError("psql failed: ON_ERROR_STOP killed the batch")
                 if (schema, table) in counts:
                     lines.append("%s\t%s\t%d" % (schema, table, counts[(schema, table)]))
             return "\n".join(lines)
@@ -142,11 +163,28 @@ class Case(unittest.TestCase):
         self.assertEqual(len(problems), 1)
         self.assertIn("time_shifts restored 3 row(s), the backup recorded 5", problems[0])
 
-    def test_a_table_that_did_not_come_back_at_all_fails(self):
+    def test_a_table_that_did_not_come_back_at_all_is_named_not_a_traceback(self):
+        # The batched count query runs under ON_ERROR_STOP=1, so one missing
+        # relation used to kill the whole statement, escape verify(), and leave
+        # no verdict file at all — Slack then said only "Restore test did not
+        # produce a verdict", with no cause in it.
         problems, _ = rv.verify(
             MANIFEST, SCHEMA_SQL, runner(counts={("public", "profiles"): 2})
         )
-        self.assertTrue(any("not in the restored database" in p for p in problems))
+        self.assertTrue(
+            any("public.time_shifts is in the backup manifest but not in the restored database" in p
+                for p in problems),
+            problems,
+        )
+
+    def test_a_table_that_cannot_be_counted_names_itself_and_spares_the_others(self):
+        problems, checks = rv.verify(
+            MANIFEST, SCHEMA_SQL, runner(breaks={("public", "time_shifts")})
+        )
+        self.assertEqual(len(problems), 1, problems)
+        self.assertIn("public.time_shifts", problems[0])
+        self.assertIn("could not be counted", problems[0])
+        self.assertIn("row counts: 1 of 2", checks[0], "the other table still answered")
 
     # 2. The dangerous one: every row present, nobody's privacy left.
     def test_a_missing_rls_policy_fails_and_explains_the_consequence(self):
@@ -259,6 +297,59 @@ class Case(unittest.TestCase):
         rv.verify(manifest, SCHEMA_SQL, run)
         lookups = [s for s in seen if "to_jsonb" in s]
         self.assertIn("t.id::text = 'p''1'", lookups[0])
+
+
+class Verdict(unittest.TestCase):
+    """Whatever happens, a verdict file gets written.
+
+    The workflow reads its first line and posts that to Slack as the cause. With
+    no file, the entire notification is "Restore test did not produce a verdict".
+    """
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.dir, True)
+        with open(os.path.join(self.dir, "MANIFEST.json"), "w") as fh:
+            json.dump(MANIFEST, fh)
+        with open(os.path.join(self.dir, "schema.sql"), "w") as fh:
+            fh.write(SCHEMA_SQL)
+        self.summary = os.path.join(self.dir, "verdict.txt")
+
+    def main(self):
+        return rv.main(
+            ["--backup", self.dir, "--db-url", "postgresql://nobody@localhost:1/x",
+             "--summary", self.summary]
+        )
+
+    def test_a_check_that_cannot_run_at_all_still_says_why(self):
+        def explode(_db_url):
+            def run(_sql):
+                raise RuntimeError("could not connect to server")
+
+            return run
+
+        prior, rv.psql_runner = rv.psql_runner, explode
+        try:
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                code = self.main()
+        finally:
+            rv.psql_runner = prior
+        self.assertEqual(code, 1)
+        with open(self.summary) as fh:
+            line = fh.readline()
+        self.assertIn("FAILED", line)
+        self.assertIn("could not connect to server", line)
+
+    def test_a_good_restore_writes_the_passing_line(self):
+        prior, rv.psql_runner = rv.psql_runner, lambda _db_url: runner()
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                code = self.main()
+        finally:
+            rv.psql_runner = prior
+        self.assertEqual(code, 0)
+        with open(self.summary) as fh:
+            self.assertIn("Restore test PASSED", fh.readline())
 
 
 if __name__ == "__main__":

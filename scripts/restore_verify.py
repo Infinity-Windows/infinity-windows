@@ -116,9 +116,44 @@ def declared_policies(schema_sql: str) -> List[Tuple[str, str, str]]:
 # Asking the restored database what it actually has.
 
 
-def live_counts(run: Callable[[str], str], tables: List[Dict[str, Any]]) -> Dict[Tuple[str, str], int]:
+def live_relations(run: Callable[[str], str]) -> set:
+    """Every table, view and matview the restored database has, by (schema, name).
+
+    Asked first so a relation that did not come back is REPORTED rather than
+    counted. Counting it would put an unknown relation into a batched query,
+    psql runs with ON_ERROR_STOP=1, and the whole batch — plus the verdict, plus
+    the reason Slack was going to be told — would die with it.
+    """
+    sql = (
+        "select n.nspname, c.relname from pg_class c "
+        "join pg_namespace n on n.oid = c.relnamespace "
+        "where c.relkind in ('r','p','v','m','f') "
+        "and n.nspname not in ('pg_catalog','information_schema')"
+    )
+    return {tuple(line.split("\t")) for line in run(sql).strip().splitlines() if line.strip()}
+
+
+def live_counts(
+    run: Callable[[str], str], tables: List[Dict[str, Any]]
+) -> Tuple[Dict[Tuple[str, str], int], Dict[Tuple[str, str], str]]:
+    """Row counts, and the tables that could not be counted with the reason why.
+
+    Batched 25 at a time because a query per table over a few hundred tables is
+    slow enough to matter in CI. A batch that errors is retried one table at a
+    time, so the report can name the table instead of losing 25 answers to one
+    unreadable relation.
+    """
     counts: Dict[Tuple[str, str], int] = {}
+    errors: Dict[Tuple[str, str], str] = {}
     batch: List[Dict[str, Any]] = []
+
+    def count_one(row: Dict[str, Any]) -> None:
+        key = (row["schema"], row["table"])
+        try:
+            text = run('select count(*) from "%s"."%s"' % key).strip()
+            counts[key] = int(text.splitlines()[0])
+        except Exception as exc:  # noqa: BLE001 - recorded per table, never silent
+            errors[key] = str(exc)[:200]
 
     def flush():
         if not batch:
@@ -128,7 +163,14 @@ def live_counts(run: Callable[[str], str], tables: List[Dict[str, Any]]) -> Dict
             % (row["schema"], row["table"], row["schema"], row["table"])
             for row in batch
         )
-        for line in run(union).strip().splitlines():
+        try:
+            out = run(union)
+        except Exception:  # noqa: BLE001 - retried one at a time just below
+            for row in batch:
+                count_one(row)
+            del batch[:]
+            return
+        for line in out.strip().splitlines():
             if not line.strip():
                 continue
             s, t, n = line.split("\t")
@@ -140,7 +182,7 @@ def live_counts(run: Callable[[str], str], tables: List[Dict[str, Any]]) -> Dict
         if len(batch) == 25:
             flush()
     flush()
-    return counts
+    return counts, errors
 
 
 def live_functions(run: Callable[[str], str]) -> set:
@@ -188,12 +230,21 @@ def verify(
 
     # 1. Row counts.
     tables = manifest.get("tables") or []
-    got = live_counts(run, tables)
+    present = live_relations(run) if tables else set()
+    got, count_errors = live_counts(
+        run, [r for r in tables if (r["schema"], r["table"]) in present]
+    )
     mismatched = 0
     for row in tables:
         key = (row["schema"], row["table"])
         actual = got.get(key)
-        if actual is None:
+        if key in count_errors:
+            problems.append(
+                "%s.%s is in the restored database but could not be counted: %s"
+                % (key[0], key[1], count_errors[key])
+            )
+            mismatched += 1
+        elif actual is None:
             problems.append(
                 "%s.%s is in the backup manifest but not in the restored database"
                 % key
@@ -289,7 +340,19 @@ def main(argv: Optional[List[str]] = None) -> int:
         with open(schema_path, errors="replace") as fh:
             schema_sql = fh.read()
 
-    problems, checks = verify(manifest, schema_sql, psql_runner(args.db_url))
+    try:
+        problems, checks = verify(manifest, schema_sql, psql_runner(args.db_url))
+    except Exception as exc:  # noqa: BLE001 - see below; never leave no verdict
+        # Whatever broke, the summary file has to exist. restore-test.yml reads
+        # its first line and hands that to Slack as the cause; when the file is
+        # missing, the whole notification is the words "Restore test did not
+        # produce a verdict" and somebody's Monday starts with no idea why.
+        headline = "Restore test FAILED: the check itself could not run — %s" % str(exc)[:300]
+        print(headline, file=sys.stderr)
+        if args.summary:
+            with open(args.summary, "w") as fh:
+                fh.write(headline + "\n")
+        return 1
 
     for line in checks:
         print("  ok  %s" % line)
