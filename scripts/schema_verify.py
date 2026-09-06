@@ -128,6 +128,17 @@ def dropped_objects(sql):
         ):
             out.append(('column', '%s.%s' % (table, migration_objects.qual(c.group(1)))))
 
+    # A function a migration drops — including one it creates and drops in the
+    # same file, the way 20260992000000 proves its default-privileges change by
+    # creating a throwaway function and looking at it. The extractor sees the
+    # create; without this it reported that function every night as declared
+    # and missing. Only the name is matched, the same vocabulary the extractor
+    # keeps for functions, so an overload dropped by signature counts too.
+    for m in re.finditer(
+        r'drop\s+function\s+(?:if\s+exists\s+)?([\w".]+)', sql, re.I,
+    ):
+        out.append(('function', migration_objects.qual(m.group(1))))
+
     return out
 
 
