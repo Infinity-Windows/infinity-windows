@@ -12,9 +12,12 @@
 
 import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { CheckCircle2, CloudOff, RefreshCw, TriangleAlert } from "lucide-react";
+import { CheckCircle2, CloudOff, RefreshCw, TriangleAlert, Wifi, WifiOff } from "lucide-react";
+import { useT } from "../../lib/i18n";
 import { useOutbox } from "../../lib/offline/useOutbox";
 import type { PillSummary, PillTone } from "../../lib/offline/outbox-core";
+import { withConnection } from "../../lib/offline/pillConnection";
+import { useConnection } from "../../lib/offline/useWeakSignal";
 import {
   failedInstallCount,
   pendingInstallCount,
@@ -87,16 +90,27 @@ function withInstalls(
 }
 
 export function SyncStatusPill() {
+  const t = useT();
   const { pill: outboxPill } = useOutbox();
   const installs = useInstallOutboxCount();
-  const pill = withInstalls(outboxPill, installs.pending, installs.failed);
+  const { online, weak } = useConnection();
+  const pill = withConnection(
+    withInstalls(outboxPill, installs.pending, installs.failed),
+    online,
+    weak,
+    t,
+  );
 
   const Icon =
     pill.tone === "attention"
       ? TriangleAlert
-      : pill.tone === "syncing"
-        ? CloudOff
-        : CheckCircle2;
+      : pill.tone === "offline"
+        ? WifiOff
+        : pill.tone === "weak"
+          ? Wifi
+          : pill.tone === "syncing"
+            ? CloudOff
+            : CheckCircle2;
 
   // The pill IS the indicator that something needs a person, so it is also the
   // door: tapping it opens the stuck-writes screen where a failed punch can be
@@ -106,6 +120,7 @@ export function SyncStatusPill() {
     <Link
       to="/stuck"
       className={`sync-pill sync-pill-${pill.tone}`}
+      data-tone={pill.tone}
       role="status"
       aria-live="polite"
       aria-label={`${pill.detail} — open stuck writes`}

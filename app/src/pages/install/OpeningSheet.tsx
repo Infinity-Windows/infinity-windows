@@ -1,4 +1,6 @@
 import { BackChip } from "../../components/BackChip";
+import { SavedCopyNotice } from "../../components/offline/SavedCopyNotice";
+import { useSavedCopy } from "../../lib/offline/useSavedCopy";
 import { useT } from "../../lib/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -376,6 +378,7 @@ export function OpeningSheet() {
     queryKey: ["opening", openingId],
     queryFn: () => getOpening(openingId),
   });
+  const savedCopy = useSavedCopy(opening, "opening");
 
   // Who's on the crew — only so a data-off flag can say whose it is by name
   // rather than by a uuid nobody recognises. Shared query key, so it rides
@@ -1446,6 +1449,7 @@ export function OpeningSheet() {
           Map
         </Link>
       </header>
+      <SavedCopyNotice reason={savedCopy} />
 
       {movedFrom && (
         <p className="muted">
