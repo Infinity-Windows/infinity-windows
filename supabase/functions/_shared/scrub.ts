@@ -24,6 +24,10 @@
 //     WORDS, so job_name and user_email go too
 //   - request and response bodies, headers, cookies, and the whole `user` object
 //   - stack-frame local variables, which can hold any of the above
+//   - the attribute values the SDK writes into a tap's breadcrumb — an
+//     aria-label, a title, an alt — which in this app are crew members' names,
+//     photo captions and the address of the house somebody is standing at
+//   - console breadcrumb messages, into which the SDK stringifies whole objects
 //
 // ONE IMPLEMENTATION, TWO RUNTIMES. This file lives under supabase/functions so
 // the edge functions can import it directly, and the app imports it from here
@@ -249,6 +253,45 @@ export interface ScrubbableEvent {
   [key: string]: unknown;
 }
 
+// The attribute pairs the SDK writes into a ui.* breadcrumb's message.
+//
+// A click breadcrumb's message is not text anybody wrote: the SDK builds it
+// from the element that was tapped, and its serializer inlines that element's
+// aria-label, title, alt, name and type VALUES for the element and five of its
+// ancestors. This app puts precisely the forbidden things in those attributes —
+// `Schedule <display_name> on Tuesday` on the crew board, `Remove <driver>` on
+// the vehicle picker, a photo's caption as its `alt`, and `Get directions to
+// <street address>` on the button an installer taps to find the house. Up to a
+// hundred breadcrumbs ride on one event, so a single crash on the crew board
+// would ship a list of who was on screen.
+//
+// So the pairs come off and the skeleton — tag, id, classes — stays, which is
+// the part that says WHICH control was tapped. ALL of them, not the five that
+// serializer inlines today: which attributes it reaches for is a decision in
+// somebody else's release, and this is not a rule that may be widened from
+// outside this repo.
+const DOM_ATTR_PAIR_RE = /\[[A-Za-z-]+="[^"]*"\]/g;
+
+/**
+ * The message a breadcrumb may carry out, or null when it may carry none.
+ *
+ * A message is the one part of a breadcrumb the app does not choose. Two of the
+ * SDK's own integrations fill it with whatever was lying around, so each is
+ * named here rather than trusted.
+ */
+function safeBreadcrumbMessage(category: string, message: string): string | null {
+  // A console line is whatever somebody decided to print, and the SDK
+  // JSON-STRINGIFIES every non-primitive argument into this string — so one
+  // `console.error("saving", row)` puts a whole install row, notes and photo
+  // captions and all, into the trail, which is the same leak the fetch
+  // breadcrumb's body already loses. lib/errors.ts prints raw Postgres text on
+  // every query fault, too. Nothing is lost that matters: the error itself
+  // still arrives with its own message and its own stack.
+  if (category === "console") return null;
+  if (category.startsWith("ui.")) return message.replace(DOM_ATTR_PAIR_RE, "");
+  return message;
+}
+
 /**
  * One breadcrumb, made safe. A fetch breadcrumb keeps its method, its status
  * and its route pattern — which is the whole reason breadcrumbs are worth
@@ -264,7 +307,11 @@ export function scrubBreadcrumb(
   if (crumb.level !== undefined) out.level = crumb.level;
   if (crumb.timestamp !== undefined) out.timestamp = crumb.timestamp;
   if (typeof crumb.message === "string") {
-    out.message = scrubText(crumb.message, MAX_BREADCRUMB_TEXT);
+    const message = safeBreadcrumbMessage(
+      typeof crumb.category === "string" ? crumb.category : "",
+      crumb.message,
+    );
+    if (message !== null) out.message = scrubText(message, MAX_BREADCRUMB_TEXT);
   }
 
   const data = crumb.data;

@@ -65,6 +65,17 @@ transport:
   `installer_email` and `crew_notes` all go too
 - **request and response bodies**, headers and cookies. A fetch breadcrumb keeps
   its method, its status and its route pattern, and loses everything else
+- **what a tapped control says about a person.** The SDK writes a tap's
+  breadcrumb itself, as a path to the element — and it inlines that element's
+  `aria-label`, `title`, `alt` and `name`, which on this app's screens are a
+  crew member's name (*"Schedule Maria Gomez on Tuesday"*), a photo's caption,
+  and the street address on the Directions button. The attribute values come
+  off; `button.cb-plus` is what survives, and it is the part that says which
+  control was tapped
+- **console breadcrumb messages**, whole. The SDK JSON-stringifies every
+  non-primitive argument into one, so a single `console.error("saving", row)`
+  would carry an install row's notes and captions out. The crash itself still
+  arrives with its own message and stack
 - **query strings**, whole. PostgREST puts the filter there, so
   `?opening_id=eq.<uuid>` and `?select=…,notes` both live in one
 - **the whole `user` object** — no id, no email, no IP address. `role` is the

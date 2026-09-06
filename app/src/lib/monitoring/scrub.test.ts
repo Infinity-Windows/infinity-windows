@@ -308,8 +308,65 @@ describe("scrubEvent", () => {
   });
 
   it("caps a breadcrumb message so a hundred of them cannot carry a screenful each", () => {
-    const out = scrubBreadcrumb({ category: "console", message: "y".repeat(900) });
+    const out = scrubBreadcrumb({ category: "ui.click", message: "y".repeat(900) });
     expect((out.message as string).length).toBeLessThanOrEqual(201);
+  });
+
+  // The SDK writes these itself, from the element that was tapped — see
+  // htmlTreeAsString in @sentry/core. Every string below is the real shape it
+  // produces for a control this app really renders.
+  it("a tap on the crew board keeps the control and loses whose row it was", () => {
+    const out = scrubBreadcrumb({
+      category: "ui.click",
+      message:
+        'button.cb-plus[aria-label="Schedule Maria Gomez on Tuesday"]' +
+        ' > div.cb-row[title="Maria Gomez"]',
+    });
+    expect(out.message).toBe("button.cb-plus > div.cb-row");
+    expect(JSON.stringify(out)).not.toContain("Maria Gomez");
+  });
+
+  it("a tap on Directions loses the house it was pointing at", () => {
+    const out = scrubBreadcrumb({
+      category: "ui.click",
+      message: 'button.directions-chip[aria-label="Get directions to 1428 Elm Street"]',
+    });
+    expect(out.message).toBe("button.directions-chip");
+    expect(JSON.stringify(out)).not.toContain("Elm Street");
+  });
+
+  it("a tap on a photo loses the caption somebody typed under it", () => {
+    const out = scrubBreadcrumb({
+      category: "ui.click",
+      message: 'img.photo-card[alt="Ben leaving the sill wet again"]',
+    });
+    expect(out.message).toBe("img.photo-card");
+  });
+
+  it("keeps a console breadcrumb but not what was printed into it", () => {
+    // The SDK JSON-stringifies every non-primitive console argument into this
+    // message, so one console.error("saving", row) would carry the whole row.
+    const out = scrubBreadcrumb({
+      category: "console",
+      level: "error",
+      message:
+        '[query fault] 42703 {"notes":"sill was wet","job_address":"1428 Elm Street"}',
+    });
+    expect(out.category).toBe("console");
+    expect(out.level).toBe("error");
+    expect(out.message).toBeUndefined();
+    expect(JSON.stringify(out)).not.toContain("Elm Street");
+    expect(JSON.stringify(out)).not.toContain("sill was wet");
+  });
+
+  it("drops a console breadcrumb's arguments as well as its message", () => {
+    const out = scrubBreadcrumb({
+      category: "console",
+      message: "saving",
+      data: { arguments: [{ caption: "before shot", lat: 30.267153 }], logger: "console" },
+    });
+    expect(out.data).toBeUndefined();
+    expect(JSON.stringify(out)).not.toContain("30.267153");
   });
 
   it("names the event by its route, not by the URL the SDK saw", () => {
