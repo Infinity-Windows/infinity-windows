@@ -320,9 +320,6 @@ export function Warehouse() {
         <button className="button-like" onClick={() => setMinting(true)}>
           Print blank stickers
         </button>
-        <Link className="button-like" to="/labels">
-          Slot labels
-        </Link>
       </div>
 
       {/* Per-job unit tallies (owner ask, 2026-08-26): "Mad Moose 20/22 ·

@@ -36,7 +36,7 @@ Settled 2026-08-17. The warehouse answers one question — *where is it* — and
 
 **Crate** — a container usually holding glass for units with no pre-assembled frame. A crate is a *place*, not a package: it holds packages and has a location of its own. Crates are broken down and rebuilt, so a crate's identity dies with the physical crate. A crate carries its dimensions and weight — some do not fit in any conex, and a forklift puts them on jobs whole.
 
-**Shelf** — an addressed spot in the warehouse: zone, rack, slot. A shelf is not a container and does not act like one. A package is in a container **or** on a shelf, never both, and the only thing that puts a package on a shelf is **Set aside**, which stages it on its own job's bay and always names that job. There is no general "put this anywhere" action for a shelf the way there is for a conex — for a package, a shelf is staging, not storage.
+**Bay** — a job's own box (kind `bay`), one per job, made with the job (ADR-0009, 2026-09-06). **Set aside** stores a package into its job's bay like any other box, so material waiting for a job is findable on the yard. The old rack-and-slot shelves held nothing and are retired; there is one location model.
 
 **Sticker** — an Infinity-printed label bound to exactly one package, for that package's whole life. Two ways one is born: printed blank in batches and bound at the truck, or minted pre-bound — job, window number, part N of M — when a foreman declares a window's package count, so receiving is sticking a label on rather than typing at a truck. Either way it binds once and is never reused — a reused sticker would make every earlier record point at the wrong physical thing. A ruined sticker is Burned or Reprinted; see both.
 
@@ -47,6 +47,8 @@ Settled 2026-08-17. The warehouse answers one question — *where is it* — and
 **Loose stock** — an on-hand package with no container and no shelf spot. The genuinely-cannot-find-it pile, and the number that says how much the warehouse is drifting.
 
 **Area** — roughly where inside its current box a package sits. Front / Middle / Back inside anything that moves — a conex has a door end, and the door end is the front wherever it is parked — and the compass plus Middle only inside the main warehouse, which never moves. Any crew member sets it (ADR-0007, superseding ADR-0006's "foreman and up" on this one point); every move clears it, because "Back" carried into a different box reads as an answer and is a lie. An area is a pointer, not an address: nothing points at it and no label prints for it (ADR-0006). The stopgap until slots are real.
+
+**Kind** — a unit is a window or a door; the fact lives on the mark (`project_marks.kind`), not on each piece (ADR-0009). A truck for a job the office has not built yet makes a real `NEW-` job on the spot (`create_placeholder_job`) rather than a typed name.
 
 **Boneyard** — the crew's word, and therefore the app's, for company stock no job owns yet. A boneyard package is tagged like any other — sticker, part fields, BONEYARD printed where the job code would go — but carries no window number, because a window number is a position on one job's plans. Not the same thing as a finished job's packages; those still belong to their job.
 

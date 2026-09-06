@@ -86,12 +86,12 @@ describe("minRoleForPath matches page-level gating", () => {
   });
 
   it("opens the warehouse's own routes to installers (ADR-0007)", () => {
-    // Warehouse actions are crew actions (owner call, 2026-09-04). /labels
-    // prints rack labels from the warehouse page's own fold; /receive and
-    // /storage are signposts onto /warehouse and /storage/tag, both of which
-    // an installer has always been able to open. A floor above the thing it
-    // points at is a door that says no to somebody already inside.
-    for (const path of ["/labels", "/receive", "/storage"]) {
+    // Warehouse actions are crew actions (owner call, 2026-09-04). /receive
+    // and /storage are signposts onto /warehouse and /storage/tag, both of
+    // which an installer has always been able to open. A floor above the
+    // thing it points at is a door that says no to somebody already inside.
+    // (/labels retired with the slot model, ADR-0009.)
+    for (const path of ["/receive", "/storage"]) {
       expect(minRoleForPath(path)).toBe("installer");
     }
   });

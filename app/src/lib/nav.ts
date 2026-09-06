@@ -90,7 +90,6 @@ export type RoutePath =
   | "/warehouse/3d"
   | "/projects/:projectId/model"
   | "/takeoffs"
-  | "/labels"
   | "/catalog"
   | "/supplies"
   | "/admin"
@@ -239,7 +238,6 @@ export const NAV: NavDest[] = [
   { id: "storage", to: "/storage", label: "Storage", icon: "▧", minRole: "installer" },
   // Slot labels live in the warehouse page's "Other tools" fold, which
   // ADR-0007 opened to everyone — printing a rack label is warehouse work.
-  { id: "labels", to: "/labels", label: "Slot labels", icon: "❏", minRole: "installer" },
   { id: "catalog", to: "/catalog", label: "Catalog", icon: "❒", minRole: "foreman" },
   // Installers, not foreman+: the whole point of ticket 07 is that an
   // installer finds the caulk and logs what they took, three taps, no list.

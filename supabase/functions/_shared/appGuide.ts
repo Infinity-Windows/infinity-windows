@@ -309,13 +309,6 @@ export const APP_GUIDE: AppGuideEntry[] = [
       "The old unit intake — retired. The address still works and walks you to where receiving lives now: labels plan and print from the job's Warehouse tab, and everything at the truck happens on Tag packages.",
   },
   {
-    path: "/labels",
-    label: "Slot labels",
-    minRole: "installer",
-    blurb:
-      "Print QR labels for warehouse slots. Use it when setting up or relabeling storage locations. Open to any crew member, from the Warehouse page's \"Other tools\" fold (ADR-0007).",
-  },
-  {
     path: "/catalog",
     label: "Catalog",
     minRole: "foreman",
