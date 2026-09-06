@@ -477,7 +477,11 @@ no ref) are set to `void` with a sentence in `void_reason` saying why. The
 history still says what happened and to whom. Nobody was handed replacement
 credit: the terms are all still there to be earned, by doing the quiz.
 Every reader that shows a total — the Points page, Home, the leaderboard —
-already counted confirmed rows only, which is why voiding was enough.
+already counted confirmed rows only, which is why voiding was enough. A
+person's own ledger asks the database to leave void rows out rather than
+filtering them in the browser: it reads the 200 most recent rows, and the
+voided ones would otherwise have crowded the very people the backfill was
+aimed at out of their own history.
 
 ## Video quizzes
 

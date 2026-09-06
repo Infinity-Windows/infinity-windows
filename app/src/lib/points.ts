@@ -148,11 +148,26 @@ export async function resolvePendingPoints(
   if (error) throw error;
 }
 
+/**
+ * One person's own ledger, newest first — what the Points page lists and what
+ * Home totals.
+ *
+ * Voided rows are left out at the database rather than in the browser. Every
+ * screen that reads this already ignores them (both filter to confirmed, and
+ * Points also sums pending), so nothing is hidden that was ever shown — but
+ * they were still spending the 200-row budget. That mattered the day this was
+ * written: the backfill in 20260991000000 voids hundreds of farmed quiz rows
+ * for two people, all filed inside one day, and left in they would have pushed
+ * those people's real install points off the end of the window. Their own
+ * Points page would then have read lower than the leaderboard showed for them,
+ * which reads no limit at all.
+ */
 export async function listLedger(profileId: string): Promise<LedgerRow[]> {
   const { data, error } = await supabase
     .from("points_ledger")
     .select("*")
     .eq("profile_id", profileId)
+    .neq("status", "void")
     .order("created_at", { ascending: false })
     .limit(200);
   if (error) throw error;

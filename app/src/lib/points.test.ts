@@ -7,14 +7,58 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const rpcCalls: { fn: string; args: unknown }[] = [];
 let rpcError: unknown = null;
 
+/**
+ * One read against a table: which table, and every filter that was chained
+ * onto it. Reads are allowed and recorded; a WRITE throws, because "no phone
+ * writes the ledger" is the rule this whole module exists to keep.
+ */
+interface TableRead {
+  table: string;
+  select?: string;
+  filters: string[];
+  limit?: number;
+}
+const tableReads: TableRead[] = [];
+let tableRows: unknown[] = [];
+
 vi.mock("./supabase", () => ({
   supabase: {
     rpc: (fn: string, args: unknown) => {
       rpcCalls.push({ fn, args });
       return Promise.resolve({ data: null, error: rpcError });
     },
-    from: () => {
-      throw new Error("points.ts must not write points_ledger directly");
+    from: (table: string) => {
+      const read: TableRead = { table, filters: [] };
+      tableReads.push(read);
+      const refuse = (op: string) => () => {
+        throw new Error(`points.ts must not ${op} ${table} directly`);
+      };
+      const builder = {
+        select: (cols: string) => {
+          read.select = cols;
+          return builder;
+        },
+        eq: (col: string, val: unknown) => {
+          read.filters.push(`eq:${col}=${String(val)}`);
+          return builder;
+        },
+        neq: (col: string, val: unknown) => {
+          read.filters.push(`neq:${col}=${String(val)}`);
+          return builder;
+        },
+        order: () => builder,
+        limit: (n: number) => {
+          read.limit = n;
+          return builder;
+        },
+        insert: refuse("insert"),
+        update: refuse("update"),
+        upsert: refuse("upsert"),
+        delete: refuse("delete"),
+        then: (resolve: (r: unknown) => unknown) =>
+          Promise.resolve({ data: tableRows, error: null }).then(resolve),
+      };
+      return builder;
     },
   },
 }));
@@ -22,6 +66,7 @@ vi.mock("./supabase", () => ({
 import {
   awardPoints,
   computeInstallPoints,
+  listLedger,
   POINT_KINDS,
   pointsByCategory,
   POINT_RULES,
@@ -267,5 +312,39 @@ describe("resolvePendingPoints", () => {
   it("voids the same way a callback does", async () => {
     await resolvePendingPoints("opening-9", "void");
     expect(rpcCalls[0].args).toEqual({ p_ref: "opening-9", p_status: "void" });
+  });
+});
+
+// A person's own ledger, and the 200-row window it reads through
+// ---------------------------------------------------------------------------
+// The backfill in 20260991000000 voids hundreds of farmed quiz rows for two
+// people, all filed inside one day. Left in the window they would have pushed
+// those same people's real install points off the end of it, so their own
+// Points page would have totalled less than the leaderboard — which reads the
+// table with no limit — showed for them. So the void rows are dropped at the
+// database, not in the browser.
+describe("listLedger", () => {
+  beforeEach(() => {
+    tableReads.length = 0;
+    tableRows = [];
+  });
+
+  it("asks the database to leave voided rows out of the window", async () => {
+    await listLedger("profile-1");
+    expect(tableReads).toHaveLength(1);
+    const read = tableReads[0];
+    expect(read.table).toBe("points_ledger");
+    expect(read.filters).toContain("eq:profile_id=profile-1");
+    expect(read.filters).toContain("neq:status=void");
+  });
+
+  it("still reads one person's rows, newest first, capped", async () => {
+    await listLedger("profile-1");
+    expect(tableReads[0].limit).toBe(200);
+  });
+
+  it("hands back what the table returned", async () => {
+    tableRows = [{ id: "a", kind: "install", points: 20, status: "confirmed" }];
+    await expect(listLedger("profile-1")).resolves.toEqual(tableRows);
   });
 });

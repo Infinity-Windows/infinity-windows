@@ -47,9 +47,18 @@ async function watchLedgerWrites(page: Page, rows: Json[] = []) {
     // read (confirmed rows only) and the ledger read see different things —
     // otherwise the mock would hand a voided row to a query that filtered it
     // out, and this test would pass for the wrong reason.
+    // Honour the status filter the way the real table would, both directions:
+    // the leaderboard asks for confirmed rows (`eq.`), and a person's own
+    // ledger asks for everything that is not void (`neq.`). A mock that
+    // ignored either would hand a query rows it had filtered out and hide the
+    // bug where a screen forgets to filter.
     const status = new URL(route.request().url()).searchParams.get("status") ?? "";
-    const wanted = status.startsWith("eq.") ? status.slice(3) : null;
-    const out = wanted ? rows.filter((r) => r.status === wanted) : rows;
+    let out = rows;
+    if (status.startsWith("eq.")) {
+      out = rows.filter((r) => r.status === status.slice(3));
+    } else if (status.startsWith("neq.")) {
+      out = rows.filter((r) => r.status !== status.slice(4));
+    }
     return json(route, out, out.length);
   });
   return writes;
@@ -236,10 +245,24 @@ test("the Points page totals confirmed rows and leaves the voided ones out", asy
     },
   ]);
 
+  const ledgerQueries: string[] = [];
+  page.on("request", (r) => {
+    if (r.url().includes("/rest/v1/points_ledger")) ledgerQueries.push(r.url());
+  });
+
   await page.goto("/points");
   await expect(page.locator(".points-total")).toHaveText("20");
   await expect(page.locator(".points-mini.warn strong")).toHaveText("15");
   await expect(page.getByText("9999")).toHaveCount(0);
+
+  // Void rows are dropped by the QUERY, not by the browser. The backfill voids
+  // hundreds of farmed quiz rows for two people in one day; inside the 200-row
+  // window they would push those same people's real install points off the
+  // end, and their own page would then total less than the leaderboard — which
+  // reads this table with no limit at all — shows for them.
+  const own = ledgerQueries.filter((u) => u.includes("profile_id=eq."));
+  expect(own.length).toBeGreaterThan(0);
+  expect(own.every((u) => u.includes("status=neq.void"))).toBe(true);
   // And the rule the page states is the rule the server now enforces.
   await expect(
     page.getByText("the first time you get a term right", { exact: false }),
