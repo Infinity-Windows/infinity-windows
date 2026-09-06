@@ -1,6 +1,6 @@
 # 03 — The yard: home page as a map of boxes
 
-Status: ready-for-agent
+Status: in-progress (slice A: yard home + Find glow + box thirds, PR pending; deferred: drag-to-arrange with saved positions, @xyflow map, the building's compass → thirds)
 Type: task
 Size: L
 

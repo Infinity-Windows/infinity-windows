@@ -560,7 +560,7 @@ export function UnitCard() {
               Photos &amp; full history
             </Link>
             {selected.container_id && containersById.get(selected.container_id) ? (
-              <Link className="link" to={`/storage/c/${selected.container_id}`}>
+              <Link className="link" to={`/storage/c/${selected.container_id}?piece=${selected.id}`}>
                 Open {containersById.get(selected.container_id)!.name}
               </Link>
             ) : null}
