@@ -73,8 +73,6 @@ const OFFLINE_KEYS = new Set([
   "deliveryPackages",
   "scheduledMarks",
   "issues",
-  "inventory",
-  "findableUnits",
   "windowTypes",
   "typeBrain",
   "plansets",

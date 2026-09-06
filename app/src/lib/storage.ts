@@ -12,7 +12,7 @@
 // no direct-write policies at all.
 
 import { supabase } from "./supabase";
-import { isMissingColumn, isMissingFunction, isMissingTable } from "./schemaErrors";
+import { isMissingColumn, isMissingTable } from "./schemaErrors";
 import { signedMedia } from "./photos";
 
 // minted: a pre-bound label for material that has not arrived (ticket 15).
@@ -232,6 +232,11 @@ export interface StoragePackage {
   bound_at: string | null;
   bound_by: string | null;
   created_at: string;
+  /** How this piece is tracked (wave 5, owner's copies ask): `serial` wears
+   * its own sticker; `pooled` is a copy that rides on the original's sticker
+   * ("×N"), moved by count, promotable to its own sticker later. Optional:
+   * rows read before the migration lack the key and are serial. */
+  tracking?: "serial" | "pooled" | null;
   /** Joined-in list of mark codes riding inside, when requested. */
   package_marks?: { mark_code: string }[];
 }
@@ -333,7 +338,6 @@ export interface PackageDelivery {
 // fallback for a database the migration hasn't reached yet. Once it lands
 // everywhere, the fallback and RawPackageMark's `mark_code` field can go.
 const PACKAGE_SELECT = "*, package_marks(mark:project_marks(mark_code))";
-const LEGACY_PACKAGE_SELECT = "*, package_marks(mark_code)";
 
 /**
  * Run a package read with the new select, falling back to the legacy shape
@@ -348,9 +352,9 @@ async function withMarkJoin(
   // the shape is asserted.
   run: (select: string) => PromiseLike<{ data: unknown; error: unknown }>,
 ): Promise<{ data: unknown; error: unknown }> {
-  const first = await run(PACKAGE_SELECT);
-  if (!first.error || !isMissingTable(first.error, "project_marks")) return first;
-  return run(LEGACY_PACKAGE_SELECT);
+  // project_marks has been live since 2026-08-17 (ticket 01); the pre-marks
+  // select this used to fall back to retired with wave 5.
+  return run(PACKAGE_SELECT);
 }
 
 // ---------------------------------------------------------------- reads
@@ -459,32 +463,16 @@ async function resolveActorNames(actorIds: (string | null)[]): Promise<Map<strin
 }
 
 export async function listPackageEvents(packageId: string): Promise<PackageEvent[]> {
-  // One log now: the package's timeline is its movements rows (ticket 05).
-  const modern = await supabase
+  // One log: the package's timeline is its movements rows (ticket 05). The
+  // package_events fallback retired with wave 5 — the fold-in has been live
+  // since 2026-08-17.
+  const { data, error } = await supabase
     .from("movements")
     .select("*")
     .eq("package_id", packageId)
     .order("created_at", { ascending: false });
-  if (!modern.error) {
-    const rows = ((modern.data ?? []) as MovementRow[]).map(movementToPackageEvent);
-    const nameById = await resolveActorNames(rows.map((r) => r.actor));
-    return rows.map((r) => ({ ...r, actor_name: r.actor ? (nameById.get(r.actor) ?? null) : null }));
-  }
-  // Deploy window: a database that predates the fold-in has no package_id on
-  // movements — the old table is still there, so read it as before.
-  if (
-    !isMissingColumn(modern.error, "package_id") &&
-    !isMissingTable(modern.error, "movements")
-  ) {
-    throw modern.error;
-  }
-  const legacy = await supabase
-    .from("package_events")
-    .select("*")
-    .eq("package_id", packageId)
-    .order("created_at", { ascending: false });
-  if (legacy.error) throw legacy.error;
-  const rows = (legacy.data ?? []) as PackageEvent[];
+  if (error) throw error;
+  const rows = ((data ?? []) as MovementRow[]).map(movementToPackageEvent);
   const nameById = await resolveActorNames(rows.map((r) => r.actor));
   return rows.map((r) => ({ ...r, actor_name: r.actor ? (nameById.get(r.actor) ?? null) : null }));
 }
@@ -523,10 +511,7 @@ export async function listContainerMovements(
     .order("created_at", { ascending: false })
     .limit(20);
   if (error) {
-    // Deploy window: a database that predates the fold-in has no container_id.
-    if (isMissingColumn(error, "container_id") || isMissingTable(error, "movements")) {
-      return [];
-    }
+    if (isMissingTable(error, "movements")) return [];
     throw error;
   }
   const rows = (data ?? []) as ContainerMovementRow[];
@@ -550,7 +535,7 @@ export async function listMovementsSince(iso: string): Promise<MovementRow[]> {
     .gte("created_at", iso)
     .order("created_at", { ascending: false });
   if (error) {
-    if (isMissingTable(error, "movements") || isMissingColumn(error, "package_id")) return [];
+    if (isMissingTable(error, "movements")) return [];
     throw error;
   }
   return (data ?? []) as MovementRow[];
@@ -798,12 +783,6 @@ export async function bindPackage(input: {
     p_marks: input.marks ?? null,
     p_delivery: input.deliveryId ?? null,
   };
-  const hasParts =
-    input.partIndex != null ||
-    input.partTotal != null ||
-    input.partType != null ||
-    Boolean(input.mfrMark?.trim());
-
   const { data, error } = await supabase.rpc("bind_package", {
     ...base,
     p_part_index: input.partIndex ?? null,
@@ -811,20 +790,8 @@ export async function bindPackage(input: {
     p_part_type: input.partType ?? null,
     p_mfr_mark: input.mfrMark ?? null,
   });
-  if (!error) return data as StoragePackage;
-
-  // Deploy window: the database still has an older signature. Retrying with
-  // fewer fields is only safe when there is nothing to lose — a tag WITH part
-  // data must fail loudly rather than silently shed it, and a BONEYARD tag
-  // must never fall back at all: an old database would refuse the null job
-  // with the wrong words, or worse.
-  if (isMissingFunction(error) && !hasParts && !input.boneyard) {
-    const { p_boneyard: _drop, ...legacyArgs } = base;
-    const legacy = await supabase.rpc("bind_package", legacyArgs);
-    if (legacy.error) throw legacy.error;
-    return legacy.data as StoragePackage;
-  }
-  throw error;
+  if (error) throw error;
+  return data as StoragePackage;
 }
 
 /** Fix a bound package's part number/label after the fact — the boxes'
@@ -1183,40 +1150,6 @@ export async function addPartTypeOption(name: string): Promise<string> {
   return (data as { name: string }).name;
 }
 
-export interface PendingDeliverySet {
-  id: string;
-  delivery_id: string;
-  job_name: string;
-  mark_code: string;
-  kind: string;
-  package_count: number;
-  crate_name: string | null;
-  crate_pieces: number | null;
-  materialized_at: string | null;
-}
-
-export async function listPendingDeliverySets(): Promise<PendingDeliverySet[]> {
-  const { data, error } = await supabase
-    .from("pending_delivery_sets")
-    .select(
-      "id, delivery_id, job_name, mark_code, kind, package_count, crate_name, crate_pieces, materialized_at",
-    )
-    .is("materialized_at", null)
-    .order("created_at");
-  if (error) throw error;
-  return (data ?? []) as PendingDeliverySet[];
-}
-
-export async function materializePendingSet(
-  setId: string,
-  projectId: string,
-): Promise<void> {
-  const { error } = await supabase.rpc("materialize_pending_set", {
-    p_set: setId,
-    p_project: projectId,
-  });
-  if (error) throw error;
-}
 
 export async function storePackages(packageIds: string[], containerId: string): Promise<number> {
   const { data, error } = await supabase.rpc("store_packages", {
@@ -1586,4 +1519,27 @@ export async function listMovementsForPackages(
     throw error;
   }
   return (data ?? []) as unknown as import("./warehouse/undo").MovementLine[];
+}
+
+/**
+ * Copy a unit N times (owner's ask, 2026-09-06): every part slot of the unit
+ * gets N more expected packages on the same job and window — the same
+ * interchangeable-pool idea as the delivery wizard's clone sets. `pooled`
+ * copies carry no sticker of their own; they ride on the original's "×N".
+ * Returns how many packages were minted.
+ */
+export async function copyUnit(input: {
+  projectId: string;
+  markCode: string;
+  times: number;
+  pooled: boolean;
+}): Promise<number> {
+  const { data, error } = await supabase.rpc("copy_unit", {
+    p_project: input.projectId,
+    p_mark: input.markCode,
+    p_times: input.times,
+    p_pooled: input.pooled,
+  });
+  if (error) throw error;
+  return (data as number) ?? 0;
 }

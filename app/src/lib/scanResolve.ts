@@ -1,7 +1,7 @@
 // Single source of truth for turning a scanned/typed QR payload into the thing
-// it points at — a physical window unit or a warehouse slot. Every scan surface
-// (Scan, CycleCount, WindowDetail, the project hub warehouse tab, and the
-// install OpeningSheet) resolved payloads inline with slightly different
+// it points at — a package sticker, a box poster, or a warehouse slot. Every
+// scan surface (the scan sheet, the hardware-scanner wedge, the install
+// OpeningSheet) used to resolve payloads inline with slightly different
 // branching; these helpers give them one shared, testable path.
 //
 // The lookups are injected so this module stays free of the Supabase client and

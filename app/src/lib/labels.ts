@@ -7,8 +7,6 @@ import {
   encodeLocationQr,
   encodeLocationSerialQr,
   encodePackageSerialQr,
-  encodeWindowQr,
-  encodeWindowSerialQr,
 } from "./qr";
 
 const LABEL_W = 288; // 4in * 72pt
@@ -95,38 +93,6 @@ async function buildLabelPdf(labels: LabelSpec[]): Promise<Uint8Array> {
 }
 
 const MUTED: [number, number, number] = [0.4, 0.4, 0.4];
-
-export async function windowLabelsPdf(
-  windows: {
-    window_id: string;
-    typeName: string;
-    short_code?: string | null;
-    serial?: string | null;
-    display_name?: string | null;
-  }[],
-): Promise<Uint8Array> {
-  return buildLabelPdf(
-    windows.map((w) => {
-      const lines: LabelLine[] = [];
-      // When a hand-writable code is the hero, the window_id becomes a line.
-      if (w.short_code) lines.push({ text: w.window_id, size: 13, bold: true });
-      if (w.display_name) lines.push({ text: w.display_name, size: 12 });
-      if (w.serial) lines.push({ text: w.serial, size: 10, color: MUTED });
-      lines.push({ text: w.typeName, size: 11, color: MUTED });
-      return {
-        // QR encodes the permanent serial so renames never break scans; fall
-        // back to the legacy window_id payload for rows without a serial yet.
-        qrPayload: w.serial
-          ? encodeWindowSerialQr(w.serial)
-          : encodeWindowQr(w.window_id),
-        hero: w.short_code
-          ? { text: w.short_code, maxSize: 40 }
-          : { text: w.window_id, maxSize: 22 },
-        lines,
-      };
-    }),
-  );
-}
 
 export async function locationLabelsPdf(
   locations: {

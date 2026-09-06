@@ -133,7 +133,6 @@ function mount(seed: Seed): HTMLElement {
   qc.setQueryData(["storageContainers"], seed.containers ?? [conex]);
   qc.setQueryData(["issues"], []);
   qc.setQueryData(["supplies"], []);
-  qc.setQueryData(["findableUnits"], []);
   qc.setQueryData(["scheduledMarks", JOBS.map((j) => j.id)], []);
   qc.setQueryData(["locations"], seed.locations);
 
