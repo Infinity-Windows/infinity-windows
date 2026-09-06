@@ -49,10 +49,14 @@ If the copy cannot fetch every file, the nightly **fails** and Slack says so.
 That includes hitting its 2 GiB ceiling: an incomplete backup is reported as a
 problem rather than as a green night with a note on a page nobody opens.
 
-The archive is still made and still goes off-site first, and only then is the
-run marked failed. An incomplete copy beats none, and throwing away a good
-database dump because some photos were missing would be the wrong trade on the
-one night it mattered.
+The same goes for a manifest that cannot be written or that describes nothing:
+the run fails, because a copy nothing can check is not one you should trust.
+
+In both cases the archive is still made and still goes off-site first, and only
+then is the run marked failed. An incomplete copy beats none, and throwing away
+a good database dump because some photos were missing — or because the API that
+counts rows was having a bad morning — would be the wrong trade on the one night
+it mattered.
 
 ## How sensitive the archive is
 

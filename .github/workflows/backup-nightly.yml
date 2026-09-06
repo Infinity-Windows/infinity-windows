@@ -194,14 +194,28 @@ jobs:
           exit 0
 
       - name: Write the manifest
+        id: manifest
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           DIR: ${{ steps.name.outputs.dir }}
           STARTED: ${{ steps.name.outputs.started_at }}
         run: |
+          # Same rule as the file copy above: a manifest that cannot describe
+          # the dump has to reach a person, but must not cost the dump. The
+          # counts come from the Management API and the dump came down the
+          # database connection, so the API failing says nothing about whether
+          # tonight's copy is good — and an unverified copy still beats none.
+          set +e
+          set -uo pipefail
           python3 scripts/backup_manifest.py \
             --ref "$SUPABASE_PROJECT_REF" --out "$DIR" --started-at "$STARTED" \
             --summary "$RUNNER_TEMP/backup-summary.md"
+          code=$?
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          if [ "$code" -ne 0 ]; then
+            echo "::warning title=Tonight's copy could not be described::The archive is still being made and sent. This job fails at the end so it is not lost."
+          fi
+          exit 0
 
       - name: Package it
         id: package
@@ -286,10 +300,24 @@ jobs:
       # the run red so notify-failure posts. Default `success()` gating, so a
       # night that already failed for another reason does not get a second,
       # more confusing error on top of the real one.
-      - name: Fail the run if files were missing
-        if: steps.files.outputs.code != '0'
+      - name: Fail the run if tonight's copy is not whole
+        # Both halves test non-empty as well as non-zero on purpose. An output
+        # that was never set reads as '', and '' != '0' is TRUE, which would
+        # fail the run for a step that simply did not get to write one.
+        if: >-
+          (steps.files.outputs.code != '' && steps.files.outputs.code != '0') ||
+          (steps.manifest.outputs.code != '' && steps.manifest.outputs.code != '0')
+        env:
+          FILES: ${{ steps.files.outputs.code }}
+          MANIFEST: ${{ steps.manifest.outputs.code }}
         run: |
-          echo "::error title=Tonight's backup is incomplete::Some stored files could not be copied. The archive that was made and sent is missing them — see the 'Copy the stored files' step for which, and docs/backups.md for the ceiling."
+          set -uo pipefail
+          if [ "${FILES:-0}" != "0" ]; then
+            echo "::error title=Tonight's backup is missing files::Some stored files could not be copied. The archive was still made and sent, but it is missing them — see the 'Copy the stored files' step, and docs/backups.md for the ceiling."
+          fi
+          if [ "${MANIFEST:-0}" != "0" ]; then
+            echo "::error title=Tonight's backup cannot be checked::MANIFEST.json is missing or describes nothing, so nothing can prove this copy holds what the database held. The archive was still made and sent. See the 'Write the manifest' step."
+          fi
           exit 1
 
   notify-failure:
@@ -299,7 +327,7 @@ jobs:
     uses: ./.github/workflows/notify-failure.yml
     with:
       workflow: ${{ github.workflow }}
-      cause: Last night's backup of the database did not run, or is missing files
+      cause: Last night's backup did not run, is missing files, or cannot be checked
       detail: >-
         Nothing users see is affected. What is affected is what happens if the
         database is lost today: the newest copy is now whatever the last
