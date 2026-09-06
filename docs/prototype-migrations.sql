@@ -16331,6 +16331,25 @@ create policy "learning_video_watches_select" on learning_video_watches
 -- intent in here. Once true it stays true: rewinding a lesson you finished
 -- does not unfinish it.
 --
+-- THE LENGTH IS NOT THIS PHONE'S TO DECIDE, and that is what makes the
+-- percentage worth printing. It is the denominator of every number on the
+-- owner's page, and it arrives from the same player that reports the play head:
+-- a client reporting forty seconds for a forty-minute lesson used to turn forty
+-- seconds of honest-looking beats into "100% watched · Finished", which is
+-- exactly the reading the percentage exists to make impossible.
+--
+-- So the length is resolved as the LONGEST any player has ever reported for
+-- that lesson, by anybody, and a beat can only raise it. learning_videos has no
+-- length of its own to check against — nothing in this app ever asks YouTube
+-- how long a video is — so the other people who watched it are the only second
+-- opinion there is, and one honest viewing pins the lesson for everyone.
+--
+-- The trade is deliberate: somebody could still report an absurdly LONG length
+-- and drive everybody's percentage down. That is vandalism against the whole
+-- crew's numbers and reads as one — every person on the lesson at 0% — where
+-- the short lie is quiet and flatters exactly one person. This feature exists
+-- to catch the quiet one.
+--
 -- The client sends p_position_s = the duration and p_playing = false when the
 -- player fires ENDED, which is what the check below is reading.
 create or replace function public.learning_video_heartbeat(
@@ -16351,6 +16370,10 @@ declare
   v_pos int := floor(greatest(coalesce(p_position_s, 0), 0))::int;
   v_dur int := floor(greatest(coalesce(p_duration_s, 0), 0))::int;
   v_known_dur int;
+  -- The longest length any player has ever reported for this lesson. See the
+  -- note above: it is the second opinion this table has instead of a length
+  -- column on learning_videos.
+  v_seen_dur int;
   v_elapsed int;
   v_delta int;
   v_window int := 0;
@@ -16376,13 +16399,25 @@ begin
     raise exception 'That lesson is not in the library any more.';
   end if;
 
+  -- What everybody else's player has said this lesson runs to. Read here, with
+  -- the other lookups, because nothing may run between the `select into` below
+  -- and its `not found` test — FOUND belongs to the last statement, and a
+  -- reader should not have to know which statements set it.
+  select max(w.duration_seconds) into v_seen_dur
+    from learning_video_watches w
+   where w.video_id = p_video_id;
+
+  -- The length, resolved: the longest anybody has reported, this beat included.
+  -- A phone can raise it and cannot lower it, so the forty seconds a tampered
+  -- client claims for a forty-minute lesson is simply ignored.
+  v_known_dur := nullif(greatest(coalesce(v_dur, 0), coalesce(v_seen_dur, 0)), 0);
+
   -- A position past the end of the lesson is a rounding artefact of the player,
-  -- not a discovery of extra video. Clamped BEFORE the read, deliberately:
-  -- nothing may run between a `select into` and its `not found` test, because
-  -- FOUND belongs to the last statement and a reader should not have to know
-  -- which statements set it.
-  if v_dur > 0 then
-    v_pos := least(v_pos, v_dur);
+  -- not a discovery of extra video — and against the resolved length rather
+  -- than the reported one, so claiming a short lesson does not also move the
+  -- play head to the end of it.
+  if v_known_dur is not null and v_known_dur > 0 then
+    v_pos := least(v_pos, v_known_dur);
   end if;
 
   select * into v_row
@@ -16400,22 +16435,24 @@ begin
     )
     values (
       v_me, p_video_id, p_session_id, 0, '[]'::jsonb,
-      nullif(v_dur, 0),
+      v_known_dur,
       -- An ENDED on the very first beat of a visit is somebody who opened the
       -- card at the end of the video. It is recorded as finished with nothing
-      -- watched, and the screens say exactly that.
-      (v_dur > 0 and v_pos >= v_dur - 1 and not coalesce(p_playing, false)),
+      -- watched, and the screens say exactly that. Against the resolved length,
+      -- so "I opened it at the end" has to mean the end everybody else saw.
+      (v_known_dur is not null and v_known_dur > 0
+       and v_pos >= v_known_dur - 1 and not coalesce(p_playing, false)),
       v_pos
     )
     returning * into v_row;
     return v_row;
   end if;
 
-  -- The length this beat did not report, remembered from the visit's first one.
-  v_known_dur := coalesce(nullif(v_dur, 0), v_row.duration_seconds);
-  if v_known_dur is not null and v_known_dur > 0 then
-    v_pos := least(v_pos, v_known_dur);
-  end if;
+  -- v_known_dur needs nothing more here. It was resolved above from the longest
+  -- length ANY watch of this lesson carries, and this visit's own row is one of
+  -- those — so the length the first beat of the visit stored is already in it,
+  -- and a later beat from a player that has not read its metadata yet reports
+  -- nothing and erases nothing.
 
   v_elapsed := greatest(0, floor(extract(epoch from (now() - v_row.last_seen_at)))::int);
   v_delta := v_pos - coalesce(v_row.last_position_s, v_pos);
@@ -16459,7 +16496,7 @@ end;
 $$;
 
 comment on function public.learning_video_heartbeat(uuid, uuid, numeric, numeric, boolean) is
-  'Record the seconds of one lesson a person has actually played in this visit. The server measures the elapsed time itself and credits only a window the wall clock and the play head both agree on, so a seek never counts as watching (Learning time, L2).';
+  'Record the seconds of one lesson a person has actually played in this visit. The server measures the elapsed time itself and credits only a window the wall clock and the play head both agree on, so a seek never counts as watching, and takes the lesson''s length to be the longest any player has ever reported for it, so a phone cannot shrink the number its own percentage is measured against (Learning time, L2).';
 
 revoke all on function public.learning_video_heartbeat(uuid, uuid, numeric, numeric, boolean)
   from public, anon;
@@ -16558,6 +16595,12 @@ grant execute on function public.learning_time_report(timestamptz, timestamptz)
 --                    have.
 --   completed      — did any visit finish it.
 --
+-- And the length underneath all three percentages, which comes from EVERY watch
+-- of the lesson rather than from the rows this reader can see. A length taken
+-- from one person's own rows is a denominator that person's phone can choose,
+-- and every percentage over it goes with it — see the note on
+-- learning_video_heartbeat.
+--
 -- THE UNION IS THE SAME RULE AS merge_watch_ranges, spelled as a window query
 -- because it folds across visits rather than into one row: sort every stretch
 -- by where it starts, and start a new island only where one begins AFTER the
@@ -16642,6 +16685,18 @@ begin
     select mg.pid, mg.vid, sum(mg.g1 - mg.g0)::int as covered
       from merged mg
      group by mg.pid, mg.vid
+  ),
+  -- How long each lesson runs, across EVERYBODY's watches — not just the rows
+  -- this reader is scoped to. The length is the denominator of every percentage
+  -- on the page, and a length taken only from one person's own rows is a
+  -- denominator that person can choose: see the note on learning_video_heartbeat
+  -- above. Scoped to the lessons actually on this page so the lookup stays on
+  -- the (video_id, last_seen_at desc) index.
+  lengths as (
+    select w.video_id as vid, max(w.duration_seconds) as dur
+      from learning_video_watches w
+     where w.video_id in (select distinct sc2.vid from scoped sc2)
+     group by w.video_id
   )
   select sc.pid,
          coalesce(pr.display_name, 'Someone')::text,
@@ -16650,13 +16705,14 @@ begin
          count(*) filter (where sc.secs >= 30)::bigint,
          coalesce(max(sc.secs), 0)::int,
          coalesce(max(un.covered), 0)::int,
-         max(sc.dur)::int,
+         max(ln.dur)::int,
          bool_or(sc.done),
          max(sc.seen)
     from scoped sc
     join profiles pr on pr.id = sc.pid
     join learning_videos lv on lv.id = sc.vid
     left join unioned un on un.pid = sc.pid and un.vid = sc.vid
+    left join lengths ln on ln.vid = sc.vid
    group by sc.pid, pr.display_name, sc.vid, lv.title;
 end;
 $$;

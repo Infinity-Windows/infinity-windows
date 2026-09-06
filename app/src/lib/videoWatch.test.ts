@@ -182,3 +182,37 @@ describe("the SQL twin says the same thing", () => {
     expect(MAX_BEAT_SECONDS).toBe(15);
   });
 });
+
+describe("the length a percentage is measured against", () => {
+  // The denominator is the whole reason the percentage is worth printing beside
+  // "Finished": dragging to the last second finishes a lesson, and "finished ·
+  // 4% watched" is the sentence that says so. It arrives from the same player
+  // that reports the play head, so it has to be resolved against other people's
+  // players rather than trusted from this one.
+  it("is the longest anybody has reported, and a beat can only raise it", () => {
+    for (const sql of [MIGRATION, MIRROR]) {
+      expect(sql).toContain("select max(w.duration_seconds) into v_seen_dur");
+      expect(sql).toContain(
+        "v_known_dur := nullif(greatest(coalesce(v_dur, 0), coalesce(v_seen_dur, 0)), 0);",
+      );
+      // And never the other way round: the old rule let the newest beat win.
+      expect(sql).not.toContain("coalesce(nullif(v_dur, 0), v_row.duration_seconds)");
+    }
+  });
+
+  it("is the same length for everybody on the owner's page", () => {
+    // Scoped per person, one tampered profile carries its own private length
+    // and reads 100% beside everybody else's honest number.
+    for (const sql of [MIGRATION, MIRROR]) {
+      expect(sql).toContain("left join lengths ln on ln.vid = sc.vid");
+      expect(sql).toContain("max(ln.dur)::int");
+      expect(sql).not.toContain("max(sc.dur)::int");
+    }
+  });
+
+  it("is what a finished-on-the-first-beat row is judged against too", () => {
+    for (const sql of [MIGRATION, MIRROR]) {
+      expect(sql).toContain("and v_pos >= v_known_dur - 1 and not coalesce(p_playing, false))");
+    }
+  });
+});
