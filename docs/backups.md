@@ -49,6 +49,11 @@ If the copy cannot fetch every file, the nightly **fails** and Slack says so.
 That includes hitting its 2 GiB ceiling: an incomplete backup is reported as a
 problem rather than as a green night with a note on a page nobody opens.
 
+The archive is still made and still goes off-site first, and only then is the
+run marked failed. An incomplete copy beats none, and throwing away a good
+database dump because some photos were missing would be the wrong trade on the
+one night it mattered.
+
 ## How sensitive the archive is
 
 As sensitive as the database. `data.sql` is dumped with `--schema '*'` and

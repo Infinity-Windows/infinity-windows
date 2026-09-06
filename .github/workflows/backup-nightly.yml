@@ -171,12 +171,27 @@ jobs:
       # backup_storage_objects.py is measured against the whole bucket here, not
       # against a day's new uploads — and that a run which hits it now fails.
       - name: Copy the stored files
+        id: files
         env:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           DIR: ${{ steps.name.outputs.dir }}
         run: |
+          # A file that would not copy, or a run that hit its ceiling, exits
+          # non-zero and has to reach a person. But NOT by ending the job here:
+          # that would throw away tonight's database dump because some photos
+          # were missing, which is a far worse trade. So the result is
+          # remembered and the job is failed at the very end, once the archive
+          # has been packaged and sent off-site.
+          set +e
+          set -uo pipefail
           python3 scripts/backup_storage_objects.py \
             --ref "$SUPABASE_PROJECT_REF" --out "$DIR"
+          code=$?
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          if [ "$code" -ne 0 ]; then
+            echo "::warning title=Files are missing from tonight's copy::The archive is still being made and sent. This job fails at the end so it is not lost."
+          fi
+          exit 0
 
       - name: Write the manifest
         env:
@@ -266,6 +281,17 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 
+      # Last, on purpose: everything above has run, the archive exists and has
+      # gone off-site, and the summary is written. All that is left is to make
+      # the run red so notify-failure posts. Default `success()` gating, so a
+      # night that already failed for another reason does not get a second,
+      # more confusing error on top of the real one.
+      - name: Fail the run if files were missing
+        if: steps.files.outputs.code != '0'
+        run: |
+          echo "::error title=Tonight's backup is incomplete::Some stored files could not be copied. The archive that was made and sent is missing them — see the 'Copy the stored files' step for which, and docs/backups.md for the ceiling."
+          exit 1
+
   notify-failure:
     name: Tell Slack if the backup did not happen
     needs: backup
@@ -273,7 +299,7 @@ jobs:
     uses: ./.github/workflows/notify-failure.yml
     with:
       workflow: ${{ github.workflow }}
-      cause: Last night's backup of the database did not run
+      cause: Last night's backup of the database did not run, or is missing files
       detail: >-
         Nothing users see is affected. What is affected is what happens if the
         database is lost today: the newest copy is now whatever the last
