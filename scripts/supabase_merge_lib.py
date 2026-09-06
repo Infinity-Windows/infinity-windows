@@ -693,13 +693,13 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     # -- reads a `projects` row whole. Same shape as project_financials above —
     # -- project_id IS the primary key, so it is the natural key too.
     "project_pipeline": ("project_id",),
-    # -- Learning time (20260992000000). The UNIQUE constraint IS the natural
+    # -- Learning time (20260993000000). The UNIQUE constraint IS the natural
     # -- key: one row per person per visit per item, so two databases holding
     # -- the same (person, visit, item) hold the same sitting, and a union that
     # -- kept both would double the minutes it reports about that person.
     "learning_time": ("profile_id", "session_id", "item_kind", "item_key"),
     # -- Which seconds of one lesson a person played in one visit (Learning
-    # -- time, L2, 20260992000000). Same shape and same reasoning as
+    # -- time, L2, 20260993000000). Same shape and same reasoning as
     # -- learning_time above: the UNIQUE constraint IS the natural key, and a
     # -- union that kept both sides' copy of one visit would report the lesson
     # -- as watched twice.

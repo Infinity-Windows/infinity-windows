@@ -9,7 +9,7 @@
 //
 // THIS FILE IS A TWIN. The real arithmetic runs in SQL
 // (`merge_watch_ranges` / `learning_video_heartbeat` in
-// 20260992000000_learning_time.sql), because the server is the only place a
+// 20260993000000_learning_time.sql), because the server is the only place a
 // phone cannot argue with. The copy here is what the app reads back and what
 // the tests exercise, and `TWIN_CASES` below is the shared worked example: the
 // same nine cases are written into the migration as a comment, and

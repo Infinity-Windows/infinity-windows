@@ -28,7 +28,7 @@ import {
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const MIGRATION = readFileSync(
-  resolve(REPO, "supabase/migrations/20260992000000_learning_time.sql"),
+  resolve(REPO, "supabase/migrations/20260993000000_learning_time.sql"),
   "utf8",
 );
 const MIRROR = readFileSync(resolve(REPO, "docs/prototype-migrations.sql"), "utf8");

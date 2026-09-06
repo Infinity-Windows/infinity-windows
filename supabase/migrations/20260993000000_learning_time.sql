@@ -11,7 +11,8 @@
 -- items. Nothing here pays anybody anything — it is a record an owner reads,
 -- not a currency a phone can mint.
 --
--- MERGE ORDER: this is 20260992000000 and it must land AFTER 20260991000000
+-- MERGE ORDER: this is 20260993000000 (renumbered from 20260992000000 on 2026-09-06,
+-- because 20260992000000_anon_cannot_call_functions landed first) and it must land AFTER 20260992000000
 -- (the points cap). They share no object — the cap touches points_ledger and
 -- the quiz round, this touches two new tables — so the order matters only
 -- because migration numbers deploy in sequence, one at a time.

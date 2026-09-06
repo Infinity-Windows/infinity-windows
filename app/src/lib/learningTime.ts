@@ -1,6 +1,6 @@
 // Learning time (owner's ask, 2026-09-05): how long somebody actually spends in
 // Learn, and on what. The server stamps every second — see
-// supabase/migrations/20260992000000_learning_time.sql. This file is the phone's
+// supabase/migrations/20260993000000_learning_time.sql. This file is the phone's
 // half: the gate that decides when time is real, and the beat that reports it.
 //
 // WHAT COUNTS. Only VISIBLE, FOCUSED, ATTENDED time. `document.visibilityState`
@@ -399,7 +399,7 @@ export async function getMyLearningTime(
       .eq("completed", true),
   ]);
 
-  // A database that has not had 20260992000000 yet answers "no such table" to
+  // A database that has not had 20260993000000 yet answers "no such table" to
   // both reads. That is not an error a crew member should ever see — the line
   // simply does not appear, and the rest of Learn is untouched. Anything else
   // is a real failure and is thrown, so it shows up where a developer looks.

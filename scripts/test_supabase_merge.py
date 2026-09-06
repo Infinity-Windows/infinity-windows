@@ -180,7 +180,7 @@ class TestSchemaParsing(unittest.TestCase):
         # +2: learning_time + learning_video_watches — seconds a person spent
         # on one named item of the Learn section during one visit, and which
         # seconds of one lesson they actually played (Learning time, L1/L2,
-        # 20260992000000).
+        # 20260993000000).
         self.assertEqual(len(SCHEMA.tables), 134)
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)

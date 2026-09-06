@@ -2,7 +2,7 @@
 // shaping the table needs.
 //
 // The adding up happens in SQL (learning_time_report / learning_video_report in
-// 20260992000000) so the totals are the same numbers whoever asks. What is here
+// 20260993000000) so the totals are the same numbers whoever asks. What is here
 // is the trip, the date windows, and the fold from "rows per item" into "one
 // person per line" — which is a rendering decision, not an arithmetic one.
 //
