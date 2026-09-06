@@ -219,13 +219,22 @@ gets switched off, and takes the checks that were right with it.
 | One batch | 200 KB | bigger diffs are sent in per-file batches, never trimmed |
 | One file | 200 KB | skipped, and **named in the comment** with the reason |
 | Runs per pull request per day | 5 | a branch pushed every four minutes is not re-reviewed every four minutes |
+| Spend per run | $1.50 | the four limits above bound how much text is SENT; this one bounds how long a model may sit re-reading it |
 
 Nothing is ever truncated in silence — the failure this was built to avoid.
+
+The spend ceiling (`ADVISORY_MAX_SPEND_USD`) is counted from the CLI's own
+`total_cost_usd`, so it is what was billed rather than what the table below
+estimated. It is a stop and not a refund: the answer that crosses the line has
+been paid for, and the next one does not happen.
 
 The daily count lives in the comment's own marker
 (`<!-- advisory-review runs=3 on=2026-09-06 -->`) rather than in the Actions
 API, so the workflow never has to ask for `actions: read` on a public
-repository for the sake of a number.
+repository for the sake of a number. The comment it reads that marker from has
+to have been written by a Bot — this repository is public, and matching on the
+marker alone let a stranger's comment be found, edited, and read as the day's
+run count.
 
 ## The credential: two ways in, both optional
 
