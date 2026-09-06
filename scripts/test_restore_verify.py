@@ -243,7 +243,16 @@ class Case(unittest.TestCase):
             ],
         )
 
-    # The floor. "0 of 0 declared exist" must never read as a pass.
+    # The floors. Nothing empty may come out the other end as a pass.
+    def test_a_manifest_with_no_tables_is_a_failure_not_a_clean_bill_of_health(self):
+        problems, _ = rv.verify({"tables": [], "spot_rows": []}, "", runner())
+        self.assertTrue(any("nothing to check" in p for p in problems), problems)
+
+    def test_a_manifest_of_zero_rows_is_a_failure_too(self):
+        manifest = dict(MANIFEST, total_rows=0)
+        problems, _ = rv.verify(manifest, SCHEMA_SQL, runner())
+        self.assertTrue(any("zero rows across every table" in p for p in problems), problems)
+
     def test_a_dump_this_file_cannot_read_fails_instead_of_passing_vacuously(self):
         problems, _ = rv.verify(MANIFEST, "CREATE TABLE nothing_it_understands();", runner())
         self.assertTrue(any("the dump was not read" in p for p in problems), problems)

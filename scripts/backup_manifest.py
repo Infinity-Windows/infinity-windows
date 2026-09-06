@@ -321,8 +321,32 @@ def main(argv: Optional[List[str]] = None) -> int:
             len(manifest["storage"].get("buckets", {}) or {}),
         )
     )
+    # Three floors, because everything downstream trusts this file. The weekly
+    # restore test measures the restored database against these numbers, so a
+    # manifest that counted nothing would let a restore of nothing pass: every
+    # loop in restore_verify.verify() would be empty and the verdict would be
+    # "PASSED". Anything that empties the catalog reads — a Management API
+    # response shape change, a permissions change — has to stop the run here,
+    # where it can still be read as "the backup did not work".
     if not manifest["dumps"]:
         print("no dump files in %s — the manifest describes nothing" % out, file=sys.stderr)
+        return 1
+    if not manifest["table_count"]:
+        print(
+            "no tables were found in project %s, which cannot be true of this "
+            "database. The catalog read came back empty, and a manifest of "
+            "nothing would let a restore of nothing pass the weekly check."
+            % args.ref,
+            file=sys.stderr,
+        )
+        return 1
+    if not manifest["total_rows"]:
+        print(
+            "every table came back with zero rows, which cannot be true of this "
+            "database. Something is wrong with the counts, and a manifest of "
+            "zeroes proves nothing about a restore.",
+            file=sys.stderr,
+        )
         return 1
     return 0
 

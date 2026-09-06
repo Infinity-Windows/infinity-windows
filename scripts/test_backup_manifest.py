@@ -13,6 +13,8 @@ random is a check that gets muted.
 """
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import os
 import shutil
@@ -266,6 +268,50 @@ class Case(unittest.TestCase):
         # A workflow summary on a public repository is public.
         self.assertNotIn("install_events", text)
         self.assertNotIn("profiles", text)
+
+    # A manifest that describes nothing must fail the backup, because the
+    # weekly restore check measures the restored database against these numbers
+    # and would happily pass a restore of nothing.
+    def run_main(self, catalog):
+        """bm.main() against a fake catalog, with no token and no network."""
+        global CATALOG
+        CATALOG, prior_catalog = catalog, CATALOG
+        prior_build = bm.build
+        bm.build = lambda ref, out, started, finished, query=None: prior_build(
+            ref, out, started, finished, fake_query
+        )
+        prior_token = os.environ.get("SUPABASE_ACCESS_TOKEN")
+        os.environ["SUPABASE_ACCESS_TOKEN"] = "sbp_not_a_real_token"
+        try:
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(
+                io.StringIO()
+            ) as err:
+                code = bm.main(["--ref", "testref", "--out", self.out])
+        finally:
+            CATALOG = prior_catalog
+            bm.build = prior_build
+            if prior_token is None:
+                os.environ.pop("SUPABASE_ACCESS_TOKEN", None)
+            else:
+                os.environ["SUPABASE_ACCESS_TOKEN"] = prior_token
+        return code, err.getvalue()
+
+    def test_a_backup_that_found_no_tables_refuses_to_call_itself_a_backup(self):
+        self.write_real_dumps()
+        code, err = self.run_main({})
+        self.assertEqual(code, 1)
+        self.assertIn("no tables were found", err)
+
+    def test_a_backup_where_every_table_is_empty_refuses_too(self):
+        self.write_real_dumps()
+        code, err = self.run_main({"public.profiles": [], "public.time_shifts": []})
+        self.assertEqual(code, 1)
+        self.assertIn("zero rows", err)
+
+    def test_a_real_backup_still_passes_those_floors(self):
+        self.write_real_dumps()
+        code, _ = self.run_main(dict(CATALOG))
+        self.assertEqual(code, 0)
 
     def test_the_git_sha_and_both_timestamps_are_recorded(self):
         os.environ["GITHUB_SHA"] = "0123456789abcdef0123456789abcdef01234567"

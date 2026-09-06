@@ -228,6 +228,23 @@ def verify(
     problems: List[str] = []
     checks: List[str] = []
 
+    # 0. A manifest with nothing in it must never come out the other end as a
+    # pass. With no tables and no spot rows every loop below is empty, no
+    # problem is ever appended, and the verdict reads "Restore test PASSED" —
+    # having checked nothing at all. That is the one way this file could do
+    # active harm, by turning "we do not know" into "we are covered".
+    if not (manifest.get("tables") or []):
+        problems.append(
+            "the backup manifest lists no tables, so there was nothing to check "
+            "and this run proves nothing about the restore"
+        )
+    elif not manifest.get("total_rows"):
+        problems.append(
+            "the backup manifest records zero rows across every table, which "
+            "cannot be true of this database — the counts it was going to be "
+            "measured against are not usable"
+        )
+
     # 1. Row counts.
     tables = manifest.get("tables") or []
     present = live_relations(run) if tables else set()
