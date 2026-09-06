@@ -113,8 +113,9 @@ export function ClockInBlock() {
   const [note, setNote] = useState("");
   // Today's talk, revealed IN the block on the tap of the held button (owner
   // ask, 2026-09-06). Hidden until then on purpose: the block sits at the top
-  // of three landings, and a person who already signed — or who is not about
-  // to clock in — must not scroll past a signature pad every morning.
+  // of every landing that mounts it (My Work, Home, Heartbeat, a job's Time
+  // tab), and a person who already signed — or who is not about to clock in —
+  // must not scroll past a signature pad every morning.
   const [showSign, setShowSign] = useState(false);
   const signRef = useRef<HTMLDivElement>(null);
   // Read by the sign card's onSigned at the moment the signature LANDS, not
