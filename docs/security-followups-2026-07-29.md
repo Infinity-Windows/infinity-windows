@@ -258,6 +258,25 @@ owner privileges. `alter function … set search_path = public` on each, written
 a loop rather than seven hard-coded names because this is the second time the
 list has gone stale, with an assertion that zero are left.
 
+> **Open again, and closed again, 2026-09-06** —
+> `20260997000000_definer_functions_pin_search_path.sql`. The loop's assertion
+> ran once, on its own day; by September the live count was **17**, and not one
+> of them was a function born without the pin. `create or replace function`
+> rewrites the whole definition, SET clauses included, so every migration since
+> that pasted a function back to change its body — `open_service_case` in
+> 20260982000000, `mint_packages` and `add_supply` in 20260986000000, fourteen
+> more — silently stripped the pin the loop had put on. The fix is
+> `alter function … set search_path = public, pg_temp` by name (ALTER touches
+> the parameter, not the body, so nothing is re-pasted), listed in the
+> migration so a reviewer can check each one, plus the thing the two loops
+> lacked: the same catalog question now runs on every pull request and every
+> night as `definer_unpinned` in `scripts/invariants.sql`. It is listed as an
+> advisory until the master run shows it empty, then promoted to a failure the
+> way the anon sweep was, so the next rebuild that drops the clause is red on
+> its own pull request. (Promoted the same day: the master run after #571
+> landed, 34047551150, read 0.) `pg_temp` is named last (the 2026-07 loops pinned
+> `public` alone); the ~200 functions they pinned are left as they are.
+
 **`_naive_probe` is gone** — with a correction to the earlier note, which said it
 held zero rows. It held one:
 

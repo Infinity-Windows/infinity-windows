@@ -95,6 +95,11 @@ const CASCADE_COVERED: Record<string, string> = {
   project_opening_pin_moves: "ON DELETE CASCADE from project_openings",
   package_events:
     "package survives (detached); its project_id is ON DELETE SET NULL on the final delete from projects",
+  // Wave 5 of the warehouse redesign (ADR-0009), 20260998000000. A job's bay
+  // is a box; project_id is ON DELETE SET NULL, so purging the job leaves an
+  // empty, unowned bay box on the yard rather than deleting a container that
+  // may still physically hold something. Somebody archives it from the yard.
+  storage_containers: "bay box survives (detached); project_id is ON DELETE SET NULL on the final delete from projects",
   // Wave Z (20260978000000): project_financials.project_id IS the primary key
   // and references projects ON DELETE CASCADE, so the final `delete from
   // projects` takes the row. Deliberately NOT on the detach list beside

@@ -34,7 +34,15 @@ the migration files:
                    152 of these; this keeps the next migration from adding
                    one back.
 
-All three of those started life as advisories — listed, never failing —
+  definer pins     every SECURITY DEFINER routine in public pins
+  search_path      `set search_path`. Two loop migrations (20260718090000,
+                   20260729210100) pinned everything that existed on their
+                   day, and `create or replace` rewrites the SET clauses
+                   with the body, so every rebuild since that forgot the
+                   clause silently lost the pin. 20260997000000 pinned the
+                   seventeen found on 2026-09-06; this fails on the next.
+
+All four of those started life as advisories — listed, never failing —
 because they were true of parts of this schema before anyone looked, and a
 gate that is red on its first run is a gate people learn to skip. Each was
 promoted the day production showed the list empty.
@@ -224,6 +232,24 @@ def judge(report: dict) -> tuple[list[str], list[str], list[str]]:
             "the next function created is callable signed-out. 20260992000000 section 5 is the fix."
         )
 
+    # --- definer functions pin search_path ------------------------------------
+    unpinned = report.get("definer_unpinned")
+    if unpinned is None:
+        failures.append(
+            "Could not list SECURITY DEFINER functions without a pinned search_path "
+            "(no definer_unpinned in the report)."
+        )
+    if unpinned:
+        failures.append(
+            f"{len(unpinned)} SECURITY DEFINER function(s) with no pinned search_path: "
+            + ", ".join(unpinned)
+            + ". Each runs as its owner and ignores row security, and with the path unpinned "
+            "the caller decides which schema an unqualified name resolves in. 20260997000000 "
+            "pinned every one that had slipped through; a new or rebuilt function carries "
+            "`set search_path = public, pg_temp` in its create statement (20260995000000 shows "
+            "the shape), because `create or replace` rewrites the SET clauses with the body."
+        )
+
     reads = sum(1 for p in policies if p["schema"] == "public" and _reads(p) and _client_facing(p.get("roles") or []))
     summary = [
         f"{reads} client-facing read policies on public tables checked against the partner wall",
@@ -233,6 +259,7 @@ def judge(report: dict) -> tuple[list[str], list[str], list[str]]:
         f"sandbox fence: {len(unguarded or [])} unguarded table(s); {logins} test login(s)",
         f"{len(rls_off or [])} reachable table(s) without RLS; "
         f"{len(anon_all or [])} anon-executable function(s) (allowed: {len(ANON_FUNCTIONS_ALLOWED)})",
+        f"{len(unpinned or [])} SECURITY DEFINER function(s) without a pinned search_path",
     ]
     return failures, advisories, summary
 

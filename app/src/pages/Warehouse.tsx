@@ -29,6 +29,7 @@ import { CardList } from "../components/warehouse/CardList";
 import { ContainerForm } from "../components/warehouse/ContainerForm";
 import { MintForm } from "../components/warehouse/MintForm";
 import { Yard } from "../components/warehouse/Yard";
+import { Bays } from "../components/warehouse/Bays";
 import { containerPostersPdf, downloadPdf } from "../lib/labels";
 import { listJobModelRows } from "../lib/modelstudio/projects";
 import { listIssues } from "../lib/issues";
@@ -38,12 +39,14 @@ import {
   listContainers,
   listDeliveries,
   listMovementsSince,
+  saveContainer,
   type StorageContainer,
 } from "../lib/storage";
 import { DayRecapCard } from "../components/warehouse/DayRecapCard";
 import { dayRecap, localMidnightIso } from "../lib/warehouse/dayRecap";
-import { jobTallies, tallyLine } from "../lib/warehouse/jobTally";
-import { scopeHref } from "../lib/warehouse/materialsScope";
+import { jobTallies } from "../lib/warehouse/jobTally";
+import { boxesForJob, jobChips } from "../lib/warehouse/jobStrip";
+import { JobStrip } from "../components/warehouse/JobStrip";
 import { partitionTestPackages, testProjectIds } from "../lib/warehouse/testPartition";
 import { filterSuppliesByName, listSupplies, lowStockFirst, onHandLabel } from "../lib/ops";
 import { listTakeoffs } from "../lib/takeoffs";
@@ -60,7 +63,7 @@ import { splitUnits } from "../lib/warehouse/splitUnits";
 import { useOutbox } from "../lib/offline/useOutbox";
 import { useScanWedge } from "../lib/warehouse/scanWedge";
 import type { FindAnswer } from "../lib/warehouse/find";
-import { glowFromHits, yardSummary, yardTiles } from "../lib/warehouse/yard";
+import { baysSummary, glowFromHits, splitYard, yardSummary, yardTiles, type YardTile } from "../lib/warehouse/yard";
 import { prefetchWarehousePack } from "../lib/queryClient";
 
 /** Stable empties, so a loading cache is not a new array every render. */
@@ -82,6 +85,10 @@ export function Warehouse() {
   const [newContainer, setNewContainer] = useState(false);
   const [minting, setMinting] = useState(false);
   const [answer, setAnswer] = useState<FindAnswer | null>(null);
+  // A tapped job chip lights up the boxes holding its material.
+  const [jobKey, setJobKey] = useState<string | null>(null);
+  // Two pictures of the yard (owner call 2026-09-06): the boxes, or the bays.
+  const [yardView, setYardView] = useState<"boxes" | "bays">("boxes");
 
   useEffect(() => {
     void prefetchWarehousePack();
@@ -165,10 +172,47 @@ export function Warehouse() {
     if (answer.kind === "package") return glowFromHits([answer.hit]);
     return new Set<string>();
   }, [answer]);
+  const chips = useMemo(() => jobChips(jobTallies(real, jobCode)), [real, jobCode]);
+  const lit = useMemo(() => {
+    const chip = chips.find((c) => c.key === jobKey);
+    if (!chip) return glow;
+    return new Set([...glow, ...boxesForJob(chip, real)]);
+  }, [chips, jobKey, glow, real]);
   const tiles = useMemo(
-    () => yardTiles(boxes, real, jobCode, new Date(), glow),
-    [boxes, real, jobCode, glow],
+    () => yardTiles(boxes, real, jobCode, new Date(), lit),
+    [boxes, real, jobCode, lit],
   );
+  const yard = useMemo(() => splitYard(tiles), [tiles]);
+  // The bays view lights the same way the boxes do: a job chip or a Find
+  // answer pointing at a bay flips the picture over so the glow is seen.
+  useEffect(() => {
+    if (yard.bays.some((b) => b.glow) && !yard.boxes.some((b) => b.glow)) setYardView("bays");
+  }, [yard]);
+
+  // Turning a bay off once the job's material has gone out. The rule (empty
+  // first) is checked by the button AND here, so a stale screen cannot
+  // archive a bay somebody just set material aside in.
+  const turnOff = useMutation({
+    mutationFn: async (bay: YardTile) => {
+      const row = byId.get(bay.id);
+      if (!row) throw new Error("That bay is not on the list any more. Reload and look again.");
+      if (real.some((p) => p.status === "stored" && p.container_id === bay.id)) {
+        throw new Error(`Something is still set aside in ${bay.name}. Move it out first.`);
+      }
+      // save_storage_container overwrites the whole row, so the untouched
+      // fields go back as they came — sending only `active` would wipe notes.
+      await saveContainer({
+        id: row.id,
+        name: row.name,
+        address: row.address,
+        accessCode: row.access_code,
+        notes: row.notes,
+        active: false,
+      });
+    },
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["storageContainers"] }),
+    onError: (e) => alert(formatApiError(e)),
+  });
 
   // The next truck: the soonest expected delivery that has not arrived.
   const nextTruck = useMemo(() => {
@@ -219,18 +263,51 @@ export function Warehouse() {
       {/* The yard. */}
       <section className="yard-section" aria-label="The yard">
         <div className="wh-row" style={{ marginBottom: 6 }}>
-          <span className="muted yard-summary">{ready ? yardSummary(tiles) : "Loading the yard…"}</span>
+          <div className="yard-views" role="group" aria-label="What to show">
+            <button
+              type="button"
+              className="yard-view"
+              aria-pressed={yardView === "boxes"}
+              onClick={() => setYardView("boxes")}
+            >
+              Boxes<b>{yard.boxes.length}</b>
+            </button>
+            <button
+              type="button"
+              className="yard-view"
+              aria-pressed={yardView === "bays"}
+              onClick={() => setYardView("bays")}
+            >
+              Bays<b>{yard.bays.length}</b>
+            </button>
+          </div>
           <div className="wh-actions">
             <button
               className="button-like"
               disabled={posters.isPending || boxes.length === 0}
-              onClick={() => posters.mutate(boxes)}
+              onClick={() =>
+                posters.mutate(
+                  boxes.filter((c) => (yardView === "bays") === ((c.kind ?? "conex") === "bay")),
+                )
+              }
+              title={yardView === "bays" ? "A poster for every bay" : "A poster for every box"}
             >
               All posters
             </button>
           </div>
         </div>
-        <Yard tiles={tiles} onAdd={() => setNewContainer(true)} />
+        <p className="muted yard-summary">
+          {!ready ? "Loading the yard…" : yardView === "bays" ? baysSummary(yard.bays) : yardSummary(yard.boxes)}
+        </p>
+        {yardView === "bays" ? (
+          <Bays
+            bays={yard.bays}
+            busyId={turnOff.isPending ? turnOff.variables?.id ?? null : null}
+            onTurnOff={(b) => turnOff.mutate(b)}
+          />
+        ) : (
+          <Yard tiles={yard.boxes} onAdd={() => setNewContainer(true)} />
+        )}
         {packages.isError && <p className="error">{formatApiError(packages.error)}</p>}
       </section>
 
@@ -320,42 +397,12 @@ export function Warehouse() {
         <button className="button-like" onClick={() => setMinting(true)}>
           Print blank stickers
         </button>
-        <Link className="button-like" to="/labels">
-          Slot labels
-        </Link>
       </div>
 
-      {/* Per-job unit tallies (owner ask, 2026-08-26): "Mad Moose 20/22 ·
-          2 remaining" — units are windows/doors, not boxes. Tapping a job
-          opens its materials ledger; waiting jobs included (wave M). */}
-      {packages.isSuccess &&
-        (() => {
-          const tallies = jobTallies(real, jobCode);
-          if (tallies.length === 0) return null;
-          return (
-            <div className="detail-card wh-card">
-              <h2 style={{ margin: "0 0 4px", fontSize: 15 }}>Jobs with material</h2>
-              <ul className="unit-list" style={{ margin: 0 }}>
-                {tallies.map((t) => (
-                  <li key={t.projectId ?? `pending:${t.label}`} className="wh-row">
-                    {t.projectId ? (
-                      <Link to={scopeHref({ projectId: t.projectId, pendingName: null })} className="link wh-row-title">
-                        {t.label}
-                      </Link>
-                    ) : (
-                      <Link to={scopeHref({ projectId: null, pendingName: t.label })} className="link wh-row-title">
-                        “{t.label}”
-                      </Link>
-                    )}
-                    <span className={t.remainingUnits === 0 ? "ok" : "warn-text"} style={{ fontVariantNumeric: "tabular-nums" }}>
-                      {tallyLine(t)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          );
-        })()}
+      {/* Jobs on the yard (owner ask 2026-09-06): the per-job unit tally,
+          drawn in the job's colour and tied to the picture — tap a job and
+          the boxes holding its material light up. */}
+      {packages.isSuccess && <JobStrip chips={chips} selected={jobKey} onSelect={setJobKey} />}
 
       <Explain id="wh-more" summary="More — today, out on jobs, supplies on the shelf" raw>
         {packages.isSuccess && movementsToday.isSuccess && deliveries.isSuccess && (

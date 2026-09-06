@@ -175,8 +175,8 @@ const INSTALLER: RoleFlow = {
         label: "The warehouse keys",
         lines: ["Where in the box, whose job,", "which window, home spots."],
         asks: "Say where in the conex you put it. Move Boneyard stock onto a job. Fix a window number that went on wrong. Give the caulk a home spot somebody else can find. Mint a window's labels on the job's Warehouse tab before the truck, and ask for a takeoff or fill one.",
-        wrong: "Only the ENDING actions belong to a foreman — burning a label, deleting a package or a delivery, starting a set over, retiring or renaming a rack slot. Everything above is yours, because you are the one holding the box (ADR-0007).",
-        doors: ["/warehouse", "/projects", "/labels", "/supplies", "/takeoffs"],
+        wrong: "Only the ENDING actions belong to a foreman — burning a label, deleting a package or a delivery, starting a set over. Everything above is yours, because you are the one holding the box (ADR-0007).",
+        doors: ["/warehouse", "/projects", "/supplies", "/takeoffs"],
       },
     ],
     [
@@ -240,7 +240,7 @@ const FOREMAN: RoleFlow = {
         label: "Ahead of the truck",
         lines: ["Declare the count, mint the", "labels, print the batch."],
         asks: "\"Window 16 arrives as 4 packages\" — the labels exist before the truck does, and receiving becomes sticking, not typing. Burn kills a label that never lived; Reprint keeps history.",
-        doors: ["/projects", "/storage", "/labels"],
+        doors: ["/projects", "/storage"],
       },
     ],
     [

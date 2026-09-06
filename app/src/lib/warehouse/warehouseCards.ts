@@ -65,6 +65,9 @@ export type CardCounts = Record<CardId, number>;
 export interface ScheduledMark {
   project_id: string;
   mark_code: string;
+  /** window | door — the unit's kind lives on the mark (wave 5). Optional
+   *  because a cached row from before the migration lacks it. */
+  kind?: "window" | "door" | null;
 }
 
 /**
@@ -84,7 +87,7 @@ export async function listScheduledMarks(
   if (activeProjectIds.length === 0) return [];
   const { data, error } = await supabase
     .from("project_marks")
-    .select("project_id, mark_code")
+    .select("project_id, mark_code, kind")
     .in("project_id", activeProjectIds);
   if (error) {
     // Before ticket 01's migration there is no such table — the card reads
