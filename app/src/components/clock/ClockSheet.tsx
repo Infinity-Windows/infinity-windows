@@ -318,14 +318,14 @@ export function ClockSheet({
       // records its one mode and a both-mode job records nothing — which is
       // what every sheet punch recorded before 2026-09-06, when this path
       // always sent null and a both-mode job clocked here lost its mode.
-      const mode =
+      const jobMode =
         initialPick?.mode ??
         effectiveClockInMode(
           (projects.data ?? []).find((p) => p.id === projectId)?.allowed_modes,
           null,
         );
       try {
-        await clockIn(projectId, costCodeId, geo, noteText, mode);
+        await clockIn(projectId, costCodeId, geo, noteText, jobMode);
         // Same tap starts the first window when one was picked. The clock-in
         // stands even if this part fails — a refused start must never un-ring
         // that bell, so the failure becomes a toast, not an error.
