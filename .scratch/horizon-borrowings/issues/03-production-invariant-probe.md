@@ -1,6 +1,6 @@
 # 03 — Production invariant probe on every PR
 
-Status: ready-for-agent
+Status: resolved
 Type: task
 Size: S
 
@@ -46,3 +46,22 @@ snapshot.
   the table.
 - The job is green on master and reads nothing but SELECTs (confirm with the
   pgq refusal in the test).
+
+## Comments
+
+2026-09-06 — Built. `.github/workflows/verify-invariants.yml` runs on every
+pull request, every push to master, nightly at 08:12 UTC and on demand:
+`scripts/invariants.sql` (SELECT-only, through `pgq.sh`) → `scripts/verify_invariants.py`.
+Asserts on the LIVE database: every client-facing read policy on a public
+table carries `is_partner_user()` (exempt list imported from
+`partner_wall_lib`, storage TODO list imported from `test_partner_wall`, so
+the live and file checks cannot disagree); the money doors still ask
+`can_see_costs()` / `can_see_pay()`; no read policy grants to anon or public;
+no client role can SELECT `profiles.pin/pin_hash/pin_salt` or TRUNCATE
+profiles; `sandbox_guard_census()` is empty and there are at most two test
+logins. Two advisories, listed but not failing until production shows them
+empty: tables reachable by a client role with RLS off, and SECURITY DEFINER
+functions anon may execute. Missing secret = red, fork PR = skip with a
+notice. One deliberate deviation: the staging-bay check stays on its schedule
+in `verify-warehouse.yml` rather than moving here — its own header says rows
+must not gate a pull request, and that reasoning still holds.
