@@ -2,11 +2,17 @@ import { MutationCache, QueryClient } from "@tanstack/react-query";
 import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
 import { getProjectWindows, listProjects } from "./api";
 import {
+  downloadPlanset,
+  findSpecsPlansetFor,
   getTypeBrainStats,
+  listElevationViews,
   listMarkSpecs,
   listOpenings,
+  listPlanOutlines,
   listPlansets,
 } from "./install/api";
+import type { Planset } from "./install/types";
+import { saveJobOffline, type JobPackProgress, type JobPackResult } from "./offline/jobPack";
 import { toastError } from "./toast";
 
 // offlineFirst: when there's no connection, queries resolve from the persisted
@@ -106,6 +112,11 @@ const OFFLINE_KEYS = new Set([
   // offline the installer got silence instead of a reason. An installer who
   // can read the spec checks it; one who cannot, guesses.
   "markSpecs",
+  // The flat map's two other reads (ticket 05, 2026-09-06): the traced
+  // building outline and the elevation views the pins hang off. The openings
+  // were cached and these were not, so the map offline drew pins on nothing.
+  "planOutlines",
+  "elevationViews",
   // Shelf and bin addresses. Without these a supply with a home spot degrades
   // to "home spot set" — which looks configured and tells nobody where to go,
   // in the conex where the answer matters most.
@@ -155,55 +166,52 @@ export function shouldPersistQueryState(
 }
 
 /**
- * Download a job's full data pack so the install flow works with no signal:
- * openings, unit list, demand, each type's brain (tips/times/dims), and the
- * per-mark specs the installer reads at the window.
+ * Put one job on the phone: openings, unit list, demand, each type's brain,
+ * the per-mark specs, the map's outlines and elevations, every planset PDF
+ * and every mark's picture. The order, the counting and the keep-going rule
+ * live in lib/offline/jobPack; this is where the real reads are plugged in.
+ *
+ * `fetchQuery` with staleTime 0, not prefetchQuery: a tap on "Refresh offline
+ * copy" has to actually refresh, and the data comes back so the runner can
+ * see which types and sheets the job has. Never rejects unless the code
+ * itself cannot load.
  */
-export async function prefetchJobPack(projectId: string): Promise<number> {
-  await Promise.all([
-    queryClient.prefetchQuery({ queryKey: ["projects"], queryFn: listProjects }),
-    // Keeping the key in OFFLINE_KEYS only preserves a spec list somebody has
-    // already opened. Downloading the job pack is the promise that the phone
-    // has the job on it BEFORE the truck leaves, so the specs have to ride
-    // along or the first unit of the day is the one with no card.
-    queryClient.prefetchQuery({
-      queryKey: ["markSpecs", projectId],
-      queryFn: () => listMarkSpecs(projectId),
-    }),
-    queryClient.prefetchQuery({
-      queryKey: ["openings", projectId],
-      queryFn: () => listOpenings(projectId),
-    }),
-    queryClient.prefetchQuery({
-      queryKey: ["projectWindows", projectId],
-      queryFn: () => getProjectWindows(projectId),
-    }),
-    queryClient.prefetchQuery({
-      queryKey: ["plansets", projectId],
-      queryFn: () => listPlansets(projectId),
-    }),
-  ]);
-
-  const openings =
-    queryClient.getQueryData<{ window_type_id: string | null }[]>([
-      "openings",
-      projectId,
-    ]) ?? [];
-  const typeIds = [
-    ...new Set(
-      openings.map((o) => o.window_type_id).filter((v): v is string => Boolean(v)),
-    ),
-  ];
-  await Promise.all(
-    typeIds.map((typeId) =>
-      queryClient.prefetchQuery({
-        queryKey: ["typeBrain", typeId],
-        queryFn: () => getTypeBrainStats(typeId),
-      }),
-    ),
+export async function prefetchJobPack(
+  projectId: string,
+  onProgress?: (p: JobPackProgress) => void,
+): Promise<JobPackResult> {
+  // No retry: a screen retries once so a blip does not show an error; here a
+  // failed read is counted and reported, and the button offers to refresh.
+  // Retrying 85 steps twice each turned a two-minute save into four.
+  const fetch = <T,>(queryKey: readonly unknown[], queryFn: () => Promise<T>) =>
+    queryClient.fetchQuery({ queryKey, queryFn, staleTime: 0, retry: 0 });
+  return saveJobOffline<Planset>(
+    projectId,
+    {
+      projects: () => fetch(["projects"], listProjects),
+      openings: (id) => fetch(["openings", id], () => listOpenings(id)),
+      markSpecs: (id) => fetch(["markSpecs", id], () => listMarkSpecs(id)),
+      plansets: (id) => fetch(["plansets", id], () => listPlansets(id)),
+      projectWindows: (id) => fetch(["projectWindows", id], () => getProjectWindows(id)),
+      elevationViews: (id) => fetch(["elevationViews", id], () => listElevationViews(id)),
+      planOutlines: (id) => fetch(["planOutlines", id], () => listPlanOutlines(id)),
+      typeBrain: (typeId) => fetch(["typeBrain", typeId], () => getTypeBrainStats(typeId)),
+      // downloadPlanset keeps the bytes on the phone as a side effect.
+      planset: (planset) => downloadPlanset(planset),
+      drawing: async (plansets, spec) => {
+        // pdf.js rides in its own chunk; only load it when there is a picture
+        // to cut.
+        const bbox = (await import("./install/markDrawing")).validateBbox(spec.image_bbox);
+        const planset = findSpecsPlansetFor(plansets, spec);
+        if (!bbox || spec.image_page == null || !planset || !spec.mark_code) return "none";
+        const { hasCachedCrop, markDrawingDataUrl } = await import("./install/drawingCrops");
+        const req = { planset, pageNumber: spec.image_page, bbox, markCode: spec.mark_code };
+        if (!(await hasCachedCrop(req))) await markDrawingDataUrl(req);
+        return "saved";
+      },
+    },
+    onProgress,
   );
-
-  return typeIds.length;
 }
 
 /**
