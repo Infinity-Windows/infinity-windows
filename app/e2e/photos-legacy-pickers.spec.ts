@@ -195,6 +195,35 @@ test("a package photo can come from the phone, and lands exactly where a camera 
   }
 });
 
+/**
+ * NEITHER door is the loud one.
+ *
+ * "Use camera" kept the `primary` class from the single "Add a photo" button it
+ * replaced — an accent fill, uppercase, in the display face — standing next to
+ * a plain outline. Two doors drawn like that are not two doors: the library one
+ * reads as the fallback, which is the exact impression this change exists to
+ * remove, and the reason the whole thing was worth doing. The capture sheet
+ * draws its pair as two identical tiles, and the missed-unit sheet as two
+ * identical chips.
+ */
+test("the package sheet's two photo doors are peers", async ({ page }) => {
+  await useSupabaseFixtures(page, { role: "foreman" });
+  await usePackageFixture(page);
+  await collectUploads(page);
+  await collectAttachments(page);
+
+  await page.goto(`/pkg/${PKG_SERIAL}`);
+  const card = page.locator(".photos-actions");
+  const camera = card.getByRole("button", { name: "Use camera" });
+  const library = card.getByRole("button", { name: "Upload files" });
+  await expect(camera).toBeVisible();
+
+  await expect(camera).not.toHaveClass(/\bprimary\b/);
+  // Drawn the same, not merely both un-primary — the two are the same control
+  // pointed at two places, so the same classes is the honest assertion.
+  expect(await camera.getAttribute("class")).toBe(await library.getAttribute("class"));
+});
+
 test("the package sheet shows both doors", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "dark" });
   await hideWrongProjectBanner(page);

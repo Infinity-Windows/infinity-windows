@@ -556,11 +556,18 @@ export function PackageSheet() {
             <h2 style={{ margin: 0, fontSize: 15 }}>Photos</h2>
             {/* Two buttons where there was one label-wrapped input. The
                 hidden pair they click lives in usePhotoPicker, and the class
-                on this wrapper is how the e2e spec tells the two apart. */}
+                on this wrapper is how the e2e spec tells the two apart.
+                PEERS, deliberately: neither is `primary`. The camera button
+                inherited that class from the single "Add a photo" it replaced,
+                which made it accent-filled, uppercase and set in the display
+                face beside a quiet outline — so the library door still read as
+                the lesser of the two, which is the exact impression the whole
+                change exists to undo. The capture sheet draws its pair as two
+                identical tiles for the same reason. */}
             <div className="wh-row photos-actions" style={{ minHeight: 0 }}>
               <button
                 type="button"
-                className="action-btn primary photos-add"
+                className="action-btn photos-add"
                 disabled={photoBusy}
                 onClick={picker.openCamera}
               >
