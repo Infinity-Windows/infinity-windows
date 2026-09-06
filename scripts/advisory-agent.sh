@@ -148,17 +148,26 @@ fi
 # ---------------------------------------------------------------------------
 # What changed
 # ---------------------------------------------------------------------------
-changed="$(git diff --name-only --diff-filter=d "$BASE" "$HEAD_REF" 2>/dev/null)"
-[ -n "$changed" ] || stop "This pull request changes no files that survive to its head."
+# NUL-delimited, and an array: `git diff --name-only` leaves a path containing
+# a space unquoted, and an unquoted `$list` in a `for` splits on it, so a file
+# named `bad name.ts` was dropped from the batches without a word. The same
+# fix as scripts/advisory-rules.sh, for the same reason.
+changed=()
+while IFS= read -r -d '' p; do changed+=("$p"); done < <(
+  git diff --name-only -z --diff-filter=d "$BASE" "$HEAD_REF" 2>/dev/null)
+[ "${#changed[@]}" -gt 0 ] || stop "This pull request changes no files that survive to its head."
 
 total=0
 : >"$WORK/skipped"
 : >"$WORK/files"
-for f in $changed; do
+for f in ${changed[@]+"${changed[@]}"}; do
   git diff "$BASE" "$HEAD_REF" -- "$f" >"$WORK/d.$$" 2>/dev/null
   n=$(wc -c <"$WORK/d.$$" | tr -d ' ')
   total=$((total + n))
-  safe="$(printf '%s' "$f" | tr '/' '_')"
+  # One scratch file per path. Anything that is not a plain filename character
+  # becomes `_`, so a path with a space or a quote in it cannot become two
+  # words on the way to `mv`.
+  safe="$(printf '%s' "$f" | tr -c 'A-Za-z0-9._-' '_')"
   mv "$WORK/d.$$" "$WORK/diff.$safe"
   printf '%s\t%s\t%s\n' "$f" "$n" "$WORK/diff.$safe" >>"$WORK/files"
 done

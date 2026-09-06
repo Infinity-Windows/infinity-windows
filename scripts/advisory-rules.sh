@@ -120,8 +120,25 @@ near() { # file line radius regex
   file_at_head "$1" | sed -n "${from},$(( $2 + $3 ))p" | grep -qE "$4"
 }
 
-changed_files="$(git diff --name-only --diff-filter=d "$BASE" "$HEAD_REF" 2>/dev/null)"
-new_files="$(git diff --name-only --diff-filter=A "$BASE" "$HEAD_REF" 2>/dev/null)"
+# The file lists, read NUL-DELIMITED and kept in arrays.
+#
+# WHY NOT `for f in $(git diff --name-only ...)`, which is what this was.
+# `git diff --name-only` does not quote a path that merely contains a SPACE,
+# and an unquoted `$list` in a `for` splits on one. So every exact rule skipped
+# `app/src/lib/bad name.ts` entirely — no finding, no note, and a summary line
+# that still counted it among the changed files. Silently dropping a file is
+# the exact failure this whole check exists to prevent, and it was happening on
+# the half that can block a merge. `-z` and `read -d ''` cannot split wrongly.
+#
+# `${arr[@]+"${arr[@]}"}` rather than `"${arr[@]}"` throughout: bash 3.2, which
+# is what a Mac still ships, treats the second as an unbound variable when the
+# array is empty and this script runs under `set -u`.
+changed_files=()
+while IFS= read -r -d '' p; do changed_files+=("$p"); done < <(
+  git diff --name-only -z --diff-filter=d "$BASE" "$HEAD_REF" 2>/dev/null)
+new_files=()
+while IFS= read -r -d '' p; do new_files+=("$p"); done < <(
+  git diff --name-only -z --diff-filter=A "$BASE" "$HEAD_REF" 2>/dev/null)
 
 # ---------------------------------------------------------------------------
 # The app rules, over added lines
@@ -158,7 +175,7 @@ schema_rule_exempt() {
   return 1
 }
 
-for f in $changed_files; do
+for f in ${changed_files[@]+"${changed_files[@]}"}; do
   case "$f" in app/src/*.ts|app/src/*.tsx) ;; *) continue ;; esac
   # A test asserts on the very things these rules forbid — it hands a fake
   # PGRST205 to the code under test, and renders the file inputs it is
@@ -220,7 +237,7 @@ done
 # ("English", "Español", a job code): mark those with i18n-same-on-purpose on
 # the entry or on the line above it.
 LAW_I18N='app/src/lib/i18n/catalog.ts — "every string ships in English AND Spanish from the start, never English alone". An es that repeats the en is an untranslated string that compiles.'
-for f in $changed_files; do
+for f in ${changed_files[@]+"${changed_files[@]}"}; do
   case "$f" in app/src/lib/i18n/*.ts) ;; *) continue ;; esac
   case "$f" in *.test.ts) continue ;; esac
   added="$(added_lines "$f" | cut -f1 | tr '\n' ' ')"
@@ -270,9 +287,9 @@ LAW_RLS='THE WALL (supabase/migrations/20260950000000, replayed by scripts/test_
 LAW_DEFINER='A SECURITY DEFINER function runs as the owner and ignores row security, so it pins `set search_path` — otherwise a table planted in another schema decides what it reads — and says who may execute it. See supabase/migrations/20260995000000 for the shape.'
 LAW_VERSION='supabase/migrations/20260995000000 — "Two files at one version is not a merge conflict: supabase db push reads the version, sees it applied, and skips the second file without a word." Check master AND every open PR branch before picking a number.'
 
-new_migrations=""
-for f in $new_files; do
-  case "$f" in supabase/migrations/*.sql) new_migrations="$new_migrations $f" ;; esac
+new_migrations=()
+for f in ${new_files[@]+"${new_files[@]}"}; do
+  case "$f" in supabase/migrations/*.sql) new_migrations+=("$f") ;; esac
 done
 
 # The functions master already has, so a REBUILD can be told from a birth.
@@ -291,7 +308,7 @@ done
 # the question of every definer function, rebuild or not.
 master_functions=""
 master_functions_readable=0
-if [ -n "$new_migrations" ] && git rev-parse --verify -q origin/master >/dev/null 2>&1; then
+if [ "${#new_migrations[@]}" -gt 0 ] && git rev-parse --verify -q origin/master >/dev/null 2>&1; then
   master_functions_readable=1
   master_functions="$(git grep -h -oiE 'create (or replace )?function +[a-z0-9_.]+ *\(' \
     origin/master -- 'supabase/migrations/*.sql' 2>/dev/null |
@@ -303,7 +320,7 @@ fi
 # under the cursor is a rebuild rather than a birth.
 already_on_master() { printf '%s\n' "$master_functions" | grep -qxF "$1"; }
 
-for f in $new_migrations; do
+for f in ${new_migrations[@]+"${new_migrations[@]}"}; do
   stmts="$(awk -f "$AWK_SQL" <(file_at_head "$f"))"
 
   # Every table a migration creates has to arrive with its door shut.
@@ -385,7 +402,7 @@ done
 # ---------------------------------------------------------------------------
 # The migration version rule — the collision that happened on 2026-09-06
 # ---------------------------------------------------------------------------
-if [ -n "$new_migrations" ]; then
+if [ "${#new_migrations[@]}" -gt 0 ]; then
   master_paths="$(git ls-tree -r --name-only origin/master supabase/migrations 2>/dev/null)"
   master_versions="$(printf '%s\n' "$master_paths" |
     sed -n 's#^supabase/migrations/\([0-9]\{14\}\)_.*#\1#p' | sort)"
@@ -423,7 +440,7 @@ if [ -n "$new_migrations" ]; then
     note "gh is not on the PATH here, so the open-branch half of the migration-version rule did not run. Master was still checked."
   fi
 
-  for f in $new_migrations; do
+  for f in ${new_migrations[@]+"${new_migrations[@]}"}; do
     v="$(printf '%s' "$f" | sed -n 's#^supabase/migrations/\([0-9]\{14\}\)_.*#\1#p')"
     if [ -z "$v" ]; then
       report "$f:1" migration-version-shape \
@@ -468,7 +485,7 @@ EOF
 
 # ---------------------------------------------------------------------------
 echo
-changed_count="$(printf '%s\n' "$changed_files" | grep -c .)"
+changed_count="${#changed_files[@]}"
 if [ "$hits" -eq 0 ]; then
   echo "House rules: nothing to report across $changed_count changed file(s), $notes note(s)."
   exit 0

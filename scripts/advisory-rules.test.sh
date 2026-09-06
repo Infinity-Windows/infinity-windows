@@ -292,6 +292,21 @@ run
 assert_rc 0
 assert_lacks "photo-file-input"
 
+new_case "a path with a space in it is read like any other"
+# `git diff --name-only` does not quote a path that merely contains a space,
+# and the loops used to split on one — so the file was skipped whole: no
+# finding, no note, and a count that still included it.
+echo "export const x = 1;" >"$root/app/src/lib/plain.ts"
+echo "export const y = 1;" >"$root/app/src/lib/bad name.ts"
+base_commit
+printf 'const m = String(err);\n' >>"$root/app/src/lib/plain.ts"
+printf 'const m = String(err);\n' >>"$root/app/src/lib/bad name.ts"
+head_commit "Show the reason a save did not go through"
+run
+assert_rc 1
+assert_has "app/src/lib/plain.ts:2"
+assert_has "app/src/lib/bad name.ts:2"
+
 # ---------------------------------------------------------------------------
 # Spanish that is English
 # ---------------------------------------------------------------------------
