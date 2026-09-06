@@ -56,6 +56,7 @@ import {
   resolveSender,
   type SenderSettings,
 } from "../_shared/emailSender.ts";
+import { withSentry } from "../_shared/sentry.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -133,7 +134,7 @@ function emailBody(job: string, brand: string, url: string): { subject: string; 
   };
 }
 
-Deno.serve(async (req) => {
+Deno.serve(withSentry("send-email", async (req) => {
   const cors = corsHeaders(req);
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -282,4 +283,4 @@ Deno.serve(async (req) => {
   // this builder just heard from — the question the office asks first when a
   // builder says he never got anything.
   return jsonResponse({ ok: true, to: link.sent_to_email, from: sender.address }, 200, cors);
-});
+}));

@@ -71,6 +71,7 @@ import {
   tombstoneEmail,
   UNKNOWN_RECORDS,
 } from "../_shared/purgeLogin.ts";
+import { reportCaughtError, withSentry } from "../_shared/sentry.ts";
 
 type ServiceClient = ReturnType<typeof createClient>;
 
@@ -372,7 +373,7 @@ async function purgeRefusal(
   return null;
 }
 
-Deno.serve(async (req) => {
+Deno.serve(withSentry("manage-crew-access", async (req) => {
   const cors = corsHeaders(req);
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
 
@@ -925,7 +926,12 @@ Deno.serve(async (req) => {
         );
     }
   } catch (err) {
+    // Reported as well as answered: withSentry only sees a throw that ESCAPES
+    // the handler, and this catch swallows every one. The answer is left as it
+    // was — this screen is the office's, and the message it already shows is
+    // the one they act on.
+    await reportCaughtError("manage-crew-access", req, err);
     const message = err instanceof Error ? err.message : "unknown error";
     return jsonResponse({ error: message }, 500, cors);
   }
-});
+}));

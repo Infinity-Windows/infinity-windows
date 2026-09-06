@@ -30,7 +30,14 @@ import secret_name_audit as audit  # noqa: E402
 REQUIRED = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "VAPID_PRIVATE_KEY", "VAPID_PUBLIC_KEY"]
 OPTIONAL = ["VAPID_SUBJECT"]
 
-# Every secret this repo really held on 2026-07-29, plus the misnamed one.
+# Every secret name this repository legitimately holds in GitHub Actions. This
+# doubles as the census of those names: nothing else in the repo lists them, and
+# every one of them has to be provably safe from being reported as a misspelling
+# of something else.
+#
+# Keep it current. A name added to Actions and not added here is a name nobody
+# has checked, and the first time a required key goes missing it becomes a
+# suggestion sent to an owner who is not an engineer.
 REAL_SECRETS = [
     "ANTHROPIC_API_KEY",
     "SLACK_CHANGELOG_WEBHOOK",
@@ -42,6 +49,27 @@ REAL_SECRETS = [
     "VITE_SUPABASE_ANON_KEY",
     "VITE_SUPABASE_URL",
     "VITE_VAPID_PUBLIC_KEY",
+    # The QA logins, and the token the misnamed-secret check reads names with.
+    # Held since 2026-07-30 and never listed here, which is how a census goes
+    # stale: nothing failed when they were left out.
+    "SECRET_NAME_AUDIT_TOKEN",
+    "TEST_FOREMAN_PASSWORD",
+    "TEST_INSTALLER_PASSWORD",
+    # OPTIONAL, added 2026-09-05 for the nightly backup's off-site copy. Absent
+    # is a valid state: .github/workflows/backup-nightly.yml checks for all
+    # three, and when any is missing it takes the backup anyway and says in its
+    # summary that nothing left the runner. See docs/backups.md.
+    "B2_APPLICATION_KEY",
+    "B2_BUCKET",
+    "B2_KEY_ID",
+    # Crash monitoring (2026-09-05). Two DSNs, stored side by side: the
+    # browser's VITE_SENTRY_DSN, which is public by design and compiled into
+    # the bundle, and the edge functions' SENTRY_DSN, which is a real secret.
+    # They differ by one word, which is exactly the shape that makes a "did you
+    # mean" line tempting — and both are OPTIONAL, so neither may ever be
+    # offered as a misspelling of a key the app really needs.
+    "SENTRY_DSN",
+    "VITE_SENTRY_DSN",
 ]
 
 passed = 0
@@ -184,6 +212,28 @@ check(
         ["EMAIL_FROM", "EMAIL_FROM_STG", "EMAIL_FROM_FORGE"],
         REQUIRED + ["EMAIL_FROM_STG"],
     ),
+    [],
+)
+
+# The crash monitor's two DSNs. Neither is required — with neither set the app
+# and the functions behave exactly as they do today — so setting one, or
+# neither, must produce no advice at all.
+for stored in ["SENTRY_DSN", "VITE_SENTRY_DSN"]:
+    for required in REQUIRED:
+        check(
+            "not flagged: %s is not a misspelling of %s" % (stored, required),
+            flags(required, stored),
+            False,
+        )
+
+check(
+    "the browser DSN is not offered as a misspelling of the functions' one",
+    flags("SENTRY_DSN", "VITE_SENTRY_DSN"),
+    False,
+)
+check(
+    "an optional DSN on its own produces no advice",
+    audit.audit(REQUIRED, ["SENTRY_DSN", "VITE_SENTRY_DSN"], REQUIRED + ["SENTRY_DSN"]),
     [],
 )
 

@@ -1,7 +1,7 @@
 # Deploy the Vite app to GitHub Pages (permanent live URL).
 # Env: VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY + VITE_VAPID_PUBLIC_KEY (repo
 # secrets), plus VITE_BUILD_ID (the commit sha, so the running app can tell it is
-# out of date).
+# out of date) and the optional VITE_SENTRY_DSN (crash monitoring; unset is off).
 # Site: https://infinity-windows.github.io/infinity-windows/
 
 name: Deploy GitHub Pages
@@ -57,6 +57,22 @@ jobs:
           # of sitting on a cached bundle until someone force-quits it. See
           # app/src/lib/pwa/updateCore.ts.
           VITE_BUILD_ID: ${{ github.sha }}
+          # Crash monitoring for the browser (2026-09-05). OPTIONAL, and unset
+          # is the shipping state: with no value here the SDK is never even
+          # fetched — it sits behind a dynamic import AND its chunk is left out
+          # of the service worker's precache list, which is the half that
+          # actually keeps it off a phone. vite.config.ts reads this same value
+          # to decide that, so the build follows the secret in both places. A repo secret that does not exist arrives
+          # as an empty string, which is precisely what "off" means — so
+          # nothing to guard, nothing that can fail.
+          #
+          # This DSN is PUBLIC by design. It is compiled into the bundle, which
+          # is served to anyone, and this repo is public: a browser DSN can only
+          # ever be used to SEND events, never to read them. The functions' DSN
+          # is a different value and a real secret — see deploy-backend.yml.
+          #
+          # docs/monitoring.md says what is sent and what is scrubbed.
+          VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
       - name: Write CNAME for the custom domain
         if: ${{ vars.PAGES_DOMAIN != '' }}
         run: printf '%s' "${{ vars.PAGES_DOMAIN }}" > dist/CNAME

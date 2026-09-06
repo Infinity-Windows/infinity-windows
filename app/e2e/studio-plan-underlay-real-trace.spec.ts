@@ -7,8 +7,10 @@
 // trace is a clean 4-point square — neither looks like a real building.
 // This spec replays Mad Moose's ACTUAL outline row (features.fitview.model,
 // captured live — see app/e2e/fixtures/madmoose-outline.json) against its
-// ACTUAL 4-page planset (docs/backups/.../08c60cce-.../1788206016569-MMV2_-
-// _LP.pdf, kind "building", page 1 = FLOOR PLAN - 1ST). The two things the
+// ACTUAL 4-page planset (.../08c60cce-.../1788206016569-MMV2_-_LP.pdf, kind
+// "building", page 1 = FLOOR PLAN - 1ST) — which is NOT in this repository:
+// see storageBackupPresent() in support/supabaseFixtures.ts, and the two
+// tests below that skip themselves without it. The two things the
 // synthetic fixture couldn't exercise:
 //   - The Ground story's trace has TWO polys — the exterior rectangle and a
 //     5-point interior partition — while the seeded Studio floor is a bare
@@ -22,15 +24,20 @@
 // pattern studio-plan-underlay.spec.ts's useUnderlayFixtures uses — so the
 // only thing that's different from a real Model Studio visit is which rows
 // come back for those two tables. The storage route mock is the DEFAULT one
-// useSupabaseFixtures already installs (reads docs/backups/…/plansets/<path
-// >): nothing to override there as long as the real PDF sits at the path
-// the fixture planset row names.
+// useSupabaseFixtures already installs (reads the storage backup's
+// plansets/<path>): nothing to override there as long as the real PDF sits at
+// the path the fixture planset row names.
 
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
-import { jobFixtures, useSupabaseFixtures } from "./support/supabaseFixtures";
+import {
+  jobFixtures,
+  NO_STORAGE_BACKUP_REASON,
+  storageBackupPresent,
+  useSupabaseFixtures,
+} from "./support/supabaseFixtures";
 import { json } from "./support/specHelpers";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -144,6 +151,9 @@ test.describe("Studio plan underlay, real Mad Moose trace (desktop)", () => {
   test("the real trace's exterior ring fits and paints under the real plan sheet", async ({
     page,
   }) => {
+    // The whole point of this spec is the REAL multi-page sheet, so it cannot
+    // stand in a placeholder when the file is not on this machine.
+    test.skip(!storageBackupPresent(), NO_STORAGE_BACKUP_REASON);
     // Owner role: this is the owner's own bug report, on the owner's job.
     await useSupabaseFixtures(page, { role: "owner" });
     await useMadMooseFixtures(page);
@@ -355,6 +365,7 @@ test.describe("Studio plan underlay, real Mad Moose trace (desktop)", () => {
   test("wall style: the real rectangle plus one free-standing wall classifies as 4 exterior + 1 interior", async ({
     page,
   }) => {
+    test.skip(!storageBackupPresent(), NO_STORAGE_BACKUP_REASON);
     await useSupabaseFixtures(page, { role: "owner" });
     await useMadMooseFixtures(page);
     await page.goto(`/studio/j/${BLACK22.projectId}`);

@@ -41,7 +41,7 @@ function pkg(over: Record<string, unknown>) {
   };
 }
 
-test("the ledger shows a waiting job's material, and set-level Edit… navigates to Rewrite this set", async ({
+test("the ledger shows a waiting job's material, and set-level Edit… opens the unit card", async ({
   page,
 }) => {
   await useSupabaseFixtures(page, { role: "foreman" });
@@ -75,11 +75,12 @@ test("the ledger shows a waiting job's material, and set-level Edit… navigates
     `/storage/d/${D}`,
   );
 
-  // Wave R: set-level Edit… navigates to Rewrite this set — one editor,
-  // reachable from both doors — instead of opening an inline editor here.
+  // Wave 1 of the warehouse redesign (ADR-0008): set-level Edit… opens the
+  // unit card — the one editor — which still links to Rewrite this set for
+  // declaring a set from scratch.
   await expect(page.getByRole("link", { name: "Edit set #5050" })).toHaveAttribute(
     "href",
-    `/storage/rewrite-set?pending=${encodeURIComponent(JOB_NAME)}&mark=5050`,
+    `/unit/waiting/5050?pending=${encodeURIComponent(JOB_NAME)}`,
   );
 });
 

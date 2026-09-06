@@ -118,12 +118,20 @@ database are genuinely new and safe to bring across.
 
 ### Who does what, in order
 
-**Step 0 — before anything (Taylor, 5 minutes).** Take a fresh row-level backup
-of production and commit it under `docs/backups/`. The existing
-`docs/backups/2026-07-29T1200Z-czprjcskmzzagdztqonm-full.json` was taken at 12:00
-UTC, *before* the 2026-07-29 schema repair wrote 26 migration rows and four small
-backfills. It is still the safety net for the data, but it is no longer a
-snapshot of the current state. Take a new one.
+**Step 0 — before anything (Taylor, 5 minutes).** Take a fresh backup of
+production and keep it OUTSIDE this repository — run the "Nightly backup"
+workflow by hand and take the archive it produces. See [`docs/backups.md`](./backups.md).
+
+Backups used to be committed under `docs/backups/`. They are not any more, and
+that folder is now ignored: this repository is public, and seven production
+dumps, seven builder planset PDFs and a crew member's signature were sitting in
+it. The dated file names quoted throughout this runbook were real files at the
+time; they are no longer in the repository.
+
+Note also that the July snapshot this runbook leans on was taken at 12:00 UTC,
+*before* the 2026-07-29 schema repair wrote 26 migration rows and four small
+backfills, so it was never a snapshot of the current state either. Take a new
+one.
 
 **Step 1 — decide the extraction question (Taylor).** See
 [section 3](#3-the-ordering-constraint-the-owner-needs-to-decide). This decision
@@ -324,8 +332,8 @@ wrong — Path B does not touch configuration.
 
 ## 5. Path B — rollback
 
-**Before starting.** Take a fresh row-level export of production and commit it
-under `docs/backups/` (Step 0 above). Then write down, somewhere outside the
+**Before starting.** Take a fresh export of production and keep it outside this
+repository (Step 0 above). Then write down, somewhere outside the
 database, the record ID of the Black Desert job before you create it, and the
 highest existing `locations.serial` (`SLOT-000042` today). Both are needed to
 undo cleanly.

@@ -4,7 +4,11 @@
 // columns (20260721002000) are not yet applied.
 
 import { supabase } from "./supabase";
-import { isMissingColumn as isMissingSchemaColumn, isMissingTable } from "./schemaErrors";
+import {
+  isMissingColumn as isMissingSchemaColumn,
+  isMissingFunction,
+  isMissingTable,
+} from "./schemaErrors";
 
 export interface FeedPhoto {
   id: string;
@@ -103,6 +107,47 @@ export async function listPhotos(
       projectId: r.project_id ?? null,
     })),
   );
+}
+
+// ---------------------------------------------------------------------------
+// The jobs a person has worked (20260995000000).
+// ---------------------------------------------------------------------------
+
+/** One job in the gallery's job filter. */
+export interface WorkedJob {
+  id: string;
+  jobCode: string;
+  name: string;
+}
+
+/**
+ * The jobs the signed-in person has worked — a shift, a published crew-board
+ * assignment, or a unit session on one of the job's openings.
+ *
+ * ONE SOURCE, and it is the server's. The picker has to offer exactly the set
+ * `attachments_select` will return, and both read `my_worked_project_ids()`;
+ * a list stitched together on the phone out of recent shifts and today's
+ * schedule would drift from the policy and offer jobs whose photos come back
+ * empty, which reads as a broken screen rather than as a rule.
+ *
+ * Returns `null` — not an empty list — on a database that does not have the
+ * function yet, because "we cannot tell" and "you have worked nothing" are
+ * different answers and the caller shows a different list for each. A phone
+ * running ahead of the migration falls back to the full jobs list, which is
+ * what it showed yesterday.
+ */
+export async function listMyWorkedJobs(): Promise<WorkedJob[] | null> {
+  const { data, error } = await supabase.rpc("list_my_worked_jobs");
+  if (error) {
+    if (isMissingFunction(error)) return null;
+    throw error;
+  }
+  const rows = (data ?? []) as { id: string; job_code: string | null; name: string | null }[];
+  return rows.map((r) => ({
+    id: r.id,
+    jobCode: r.job_code ?? "",
+    name: r.name ?? "",
+  }));
 }
 
 /** Prefer the true capture time; fall back to the server insert time. */

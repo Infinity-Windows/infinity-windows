@@ -203,8 +203,8 @@ jobs:
       # never used here — so anything set only in Supabase is left alone.
       # Re-setting a secret to the value it already holds changes nothing.
       #
-      # Every name below is one the functions actually need, listed under the
-      # SAME name in GitHub. A name that is not a repo secret arrives here as an
+      # Every name below is one the functions actually need or understand,
+      # listed under the SAME name in GitHub. A name that is not a repo secret arrives here as an
       # empty string and is skipped with a warning rather than clearing anything,
       # exactly like the credentials guard above. No value is printed, and none
       # is passed on a command line.
@@ -218,6 +218,20 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
           VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
+          # Crash monitoring for the edge functions (2026-09-05), and the one
+          # OPTIONAL name in this list. Every function wraps its handler in
+          # withSentry (supabase/functions/_shared/sentry.ts), which
+          # feature-detects this key, so nothing needs it and nothing fails
+          # without it. Unset in GitHub, it arrives here as an empty string and
+          # is passed over IN SILENCE — the sync script warns about a required
+          # key it cannot find, never an optional one, because a warning on
+          # every merge about a feature nobody has turned on is a warning
+          # nobody reads.
+          #
+          # This is a real secret, unlike the browser DSN the Pages build uses
+          # (VITE_SENTRY_DSN, which is compiled into a public bundle and can
+          # only send).
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         run: |
           set +e
           scripts/sync-function-secrets.sh >/tmp/secret-sync.log 2>&1

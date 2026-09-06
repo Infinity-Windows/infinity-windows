@@ -16,6 +16,7 @@ import { listJobModelRows } from "../../lib/modelstudio/projects";
 import { placeWhere, toLocationsById } from "../../lib/warehouse/containment";
 import { areaLabel, areaOptions, areaZoneOptions } from "../../lib/warehouse/areas";
 import { bindLine } from "../../lib/warehouse/markPlan";
+import { unitHref } from "../../lib/warehouse/materialsScope";
 import { listScheduledMarks } from "../../lib/warehouse/warehouseCards";
 // setPackageWindow rides the storage import below
 import { setPackageAreaOffline, setPackageNoteOffline } from "../../lib/warehouse/offlineWrites";
@@ -94,6 +95,18 @@ export function PackageSheet() {
   // Everything else here — the area, the job, the window — is ordinary
   // warehouse work and belongs to whoever is holding the package (ADR-0007).
   const lead = isForemanPlus(effectiveRole);
+  // The unit card is the one editor for anything about a piece's unit — its
+  // window, job, count, labels and removal (ADR-0008). A piece that belongs to
+  // a unit points there; a Boneyard or unmarked piece keeps its own doors.
+  const unitLink = (() => {
+    const row = pkg.data;
+    if (!row || row.status === "blank") return null;
+    const mark = row.package_marks?.[0]?.mark_code;
+    if (row.project_id && mark) return `${unitHref({ projectId: row.project_id }, mark)}?piece=${row.id}`;
+    if (!row.project_id && row.pending_job_name && row.mfr_mark)
+      return `${unitHref({ projectId: null, pendingName: row.pending_job_name }, row.mfr_mark)}&piece=${row.id}`;
+    return null;
+  })();
   const [newPartType, setNewPartType] = useState("");
   const [partWarn, setPartWarn] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -545,6 +558,11 @@ export function PackageSheet() {
               Marks inside: {(p.package_marks ?? []).map((m) => m.mark_code).join(", ")}
             </p>
           )}
+          {unitLink && (
+            <Link className="button-like active-pill" style={{ marginTop: 8 }} to={unitLink}>
+              Open unit
+            </Link>
+          )}
         </div>
       </header>
 
@@ -827,7 +845,13 @@ export function PackageSheet() {
               {assigning ? "Cancel assign" : "Assign to job…"}
             </button>
           )}
-          {p.status !== "blank" &&
+          {unitLink && (
+            <Link className="button-like" to={unitLink}>
+              Window, job, label, count, removal → unit card
+            </Link>
+          )}
+          {!unitLink &&
+            p.status !== "blank" &&
             p.project_id != null &&
             (p.package_marks ?? []).length <= 1 && (
               <button className="button-like" onClick={() => setSettingWindow((v) => !v)}>
@@ -839,7 +863,7 @@ export function PackageSheet() {
               </button>
             )}
         </div>
-        {settingWindow && p.project_id != null && (
+        {!unitLink && settingWindow && p.project_id != null && (
           <div className="detail-card wh-card">
             <p style={{ margin: 0, fontWeight: 600 }}>
               {(p.package_marks ?? []).length === 0
@@ -1084,6 +1108,9 @@ export function PackageSheet() {
         )}
       </PackageGroup>
 
+      {/* Burn and delete moved to the unit card for pieces that have one
+          (ADR-0008); a Boneyard or unmarked piece keeps them here. */}
+      {!unitLink && (
       <PackageGroup id="danger" title="Danger" defaultOpen={false}>
         {/* Burn: minted only — the server refuses anything with a life behind
             it, and this button does not even offer. Foreman+, two taps. */}
@@ -1141,6 +1168,7 @@ export function PackageSheet() {
           </ConfirmDanger>
         )}
       </PackageGroup>
+      )}
 
       <h2>History</h2>
       {events.isError && <p className="error">{formatApiError(events.error)}</p>}

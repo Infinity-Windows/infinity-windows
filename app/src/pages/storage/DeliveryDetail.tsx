@@ -47,7 +47,7 @@ import {
   type SlotRow,
   type TypeGroup,
 } from "../../lib/warehouse/deliveryReceiving";
-import { rewriteSetHref, scopeHref } from "../../lib/warehouse/materialsScope";
+import { scopeHref, unitHref } from "../../lib/warehouse/materialsScope";
 import { useScanWedge } from "../../lib/warehouse/scanWedge";
 import { STATION_COMING_IN } from "../../lib/warehouse/stations";
 
@@ -70,7 +70,9 @@ export function DeliveryDetail() {
   const [bundleTarget, setBundleTarget] = useState("");
   const [confirmMix, setConfirmMix] = useState(false);
   const [rowLabels, setRowLabels] = useState<Record<string, string>>({});
-  // Wave R: "Edit set…" navigates to the Rewrite view now — one editor
+  // "Edit set…" opens the unit card — the one editor (ADR-0008); Rewrite a
+  // set stays one link away from there for declaring a set from scratch.
+  // (Was: wave R's Rewrite view.) One editor
   // reachable from both doors — instead of opening an inline editor here.
   // Wave R, ticket R3: which collapsed type-groups are expanded to their
   // individual slots. Keyed by TypeGroup.key, which already carries the
@@ -655,7 +657,7 @@ export function DeliveryDetail() {
                       )}
                       <strong>{row.label}</strong>
                       <Link
-                        to={rewriteSetHref(
+                        to={unitHref(
                           { projectId: g.projectId, pendingName: g.pendingJobName },
                           row.mark,
                         )}
@@ -676,7 +678,7 @@ export function DeliveryDetail() {
                   <div className="wh-row">
                     <strong>{group.label}</strong>
                     <Link
-                      to={rewriteSetHref(
+                      to={unitHref(
                         { projectId: g.projectId, pendingName: g.pendingJobName },
                         group.mark,
                       )}

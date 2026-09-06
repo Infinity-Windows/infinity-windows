@@ -19,6 +19,7 @@ import {
   Routes,
   useParams,
 } from "react-router-dom";
+import { CrashMonitorRole } from "./components/CrashMonitorRole";
 import { Layout } from "./components/Layout";
 import { canAccess, roleRank, ROLE_NAV_V2, type RoutePath } from "./lib/nav";
 import type { CrewRole } from "./lib/install/types";
@@ -62,6 +63,7 @@ import { Diagnostics } from "./pages/Diagnostics";
 import { Suggestions } from "./pages/Suggestions";
 import { ArrivePackages } from "./pages/storage/ArrivePackages";
 import { PackageSheet } from "./pages/storage/PackageSheet";
+import { UnitCard } from "./pages/storage/UnitCard";
 import { Settings } from "./pages/Settings";
 import { SignIn } from "./pages/SignIn";
 import { OpeningReview } from "./pages/install/OpeningReview";
@@ -467,6 +469,8 @@ export default function App() {
       <ViewAsRoleProvider>
       <BrowserRouter basename={routerBasename(import.meta.env.BASE_URL)}>
         <ClockProvider>
+        {/* Renders nothing; puts the viewer's role on any crash report. */}
+        <CrashMonitorRole />
         <SectionAura />
         <Routes>
           {/* A partner's whole app — outside the crew Layout entirely, so no
@@ -563,6 +567,8 @@ export default function App() {
             <Route path="/warehouse/3d/:id" element={<ContainerViewer />} />
             <Route path="/takeoffs" element={<Takeoffs />} />
             <Route path="/pkg/:serial" element={<PackageSheet />} />
+            {/* The unit card: one editor for a window's pieces (wave 1). */}
+            <Route path="/unit/:projectId/:mark" element={<UnitCard />} />
             <Route
               path="/receive"
               element={<RequireRole path="/receive"><Receive /></RequireRole>}

@@ -32,8 +32,10 @@ no `--execute`. That is deliberate — see [§10](#10-why-there-is-no-execute).
 
 This is the project the app points at. As of 2026-07-29 it holds **374 rows
 across 18 tables**, with all 67 base tables present and all 70 migration files
-applied. The complete row-level state is committed at
-`docs/backups/2026-07-29T1200Z-czprjcskmzzagdztqonm-full.json`.
+applied. That row-level state is kept as a scrubbed fixture at
+`scripts/fixtures/merge-sample-project.json` — it used to be a committed
+production dump under `docs/backups/`, which is no longer in this public
+repository. See [`backups.md`](./backups.md).
 
 | Table | Rows | | Table | Rows |
 | --- | ---: | --- | --- | ---: |
@@ -740,9 +742,10 @@ Repeat for `attachments`, `toolbox_completions` and `trip_attachments`.
 
 ### Before you start
 
-1. **Take a fresh backup of the target.** The committed
-   `docs/backups/2026-07-29T1200Z-czprjcskmzzagdztqonm-full.json` is a
-   *pre-repair* snapshot: it predates the `SLOT-`/`WIN-` serial backfill, the
+1. **Take a fresh backup of the target.** Run the "Nightly backup" workflow by
+   hand and keep the archive; see [`backups.md`](./backups.md). The scrubbed
+   sample at `scripts/fixtures/merge-sample-project.json` is a *pre-repair*
+   snapshot: it predates the `SLOT-`/`WIN-` serial backfill, the
    `cost_codes.sort_order` backfill and the 31 tables added on 2026-07-29. It
    proves the 374 rows and their contents, and it is the right reference for
    *what data existed*. It is **not** a restorable dump of the current schema.

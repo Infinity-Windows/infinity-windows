@@ -14,6 +14,7 @@
     "sync": "bash ../scripts/sync.sh"
   },
   "dependencies": {
+    "@sentry/react": "10.73.0",
     "@supabase/supabase-js": "^2.110.6",
     "@tanstack/query-sync-storage-persister": "^5.101.2",
     "@tanstack/react-query": "^5.101.2",

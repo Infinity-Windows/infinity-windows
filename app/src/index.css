@@ -12284,3 +12284,54 @@ button.stage-chip {
   font-size: 12px;
   line-height: 1.5;
 }
+
+/* ---------------------------------------------------------------------------
+   The unit card (warehouse redesign wave 1, 2026-09-06): pieces as tiles,
+   every fact a chip. Colour says state before words do — the same three
+   tones Maps Interactive already teaches (green here, yellow expected,
+   red out). Targets stay at least 44px tall: gloves, sun, a moving truck.
+   --------------------------------------------------------------------------- */
+.unit-card .page-header { align-items: flex-start; }
+.unit-headline { font-size: 13px; padding: 6px 10px; border-radius: 999px; white-space: nowrap; }
+.unit-headline--ok { background: var(--stage-stored-soft); color: var(--stage-stored); }
+.unit-headline--warn { background: var(--stage-expected-soft); color: var(--stage-expected); }
+.unit-headline--muted { background: var(--surface-2, var(--surface)); color: var(--muted); }
+.unit-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 12px; }
+.unit-chips .chip,
+.unit-piece-card .chip {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 44px;
+  padding: 8px 14px; border-radius: 999px; border: 1.5px solid var(--border);
+  background: var(--surface); color: var(--text); font: inherit; font-size: 14px; cursor: pointer;
+}
+.unit-chips .chip--on, .unit-piece-card .chip--on { border-color: var(--accent); background: var(--accent-soft); }
+.unit-chips .chip:disabled { opacity: .55; cursor: default; }
+.chip-pen { font-size: 11px; color: var(--muted); }
+.unit-pieces { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+.unit-piece {
+  display: flex; flex-direction: column; align-items: center; gap: 3px; min-height: 84px;
+  padding: 10px 6px; border-radius: 12px; border: 1.5px solid var(--border);
+  background: var(--surface); color: var(--text); font: inherit; cursor: pointer; text-align: center;
+}
+.unit-piece--here { border-color: var(--stage-stored); background: var(--stage-stored-soft); }
+.unit-piece--soon { border-color: var(--stage-expected); background: var(--stage-expected-soft); }
+.unit-piece--out { border-color: var(--danger); background: color-mix(in oklab, var(--danger) 12%, transparent); }
+.unit-piece--ghost { border-style: dashed; color: var(--muted); }
+.unit-piece--selected { outline: 3px solid var(--accent); outline-offset: 1px; }
+.unit-piece-i { font-family: "Barlow Condensed", "Arial Narrow", sans-serif; font-weight: 700; font-size: 22px; line-height: 1; }
+.unit-piece-t { font-size: 12px; }
+.unit-piece-w { font-size: 11px; color: var(--muted); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.unit-hint { font-size: 12.5px; margin: 8px 0 0; }
+.unit-warn { margin: 10px 0 0; padding: 10px 12px; border-radius: 10px; background: var(--stage-expected-soft); color: var(--stage-expected); font-size: 13.5px; }
+.unit-editor { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+.unit-editor input, .unit-editor select { min-height: 44px; }
+.unit-inline-form { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+.unit-inline-form input, .unit-inline-form textarea { flex: 1; min-height: 44px; }
+.unit-piece-card { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.unit-piece-card .field-label { margin-top: 8px; }
+.unit-links { margin-top: 6px; }
+.unit-stepper { align-items: center; }
+.unit-stepper-n { font-family: "Barlow Condensed", "Arial Narrow", sans-serif; font-weight: 700; font-size: 34px; min-width: 48px; text-align: center; }
+.unit-history { margin-top: 18px; }
+.unit-line--undone .wh-row-title { text-decoration: line-through; color: var(--muted); }
+.unit-why { font-size: 12px; }
+.unit-card .mono { font-family: ui-monospace, Menlo, monospace; font-size: .92em; }

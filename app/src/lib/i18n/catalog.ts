@@ -2469,6 +2469,56 @@ export const CATALOG = {
     en: "A watch is one visit that got through at least 30 seconds. The percentage is how much of the lesson was actually played — skipping to the end can finish a video without watching it.",
     es: "Una vista es una visita que pasó al menos 30 segundos. El porcentaje es cuánto de la lección se reprodujo de verdad — saltar al final puede terminar un video sin verlo.",
   },
+
+  // ---- The crash screen, and the code the crew reads out (2026-09-05) ----
+  // Shown by components/ErrorBoundary.tsx when a screen crashes. It is the one
+  // screen an installer reaches with nothing else on it, so it is also the one
+  // where English-only copy would cost the most — a Spanish-reading installer
+  // has to understand that the work on the phone is safe and that there is a
+  // code worth reading out before anyone can help them.
+  //
+  // The boundary sits ABOVE LanguageProvider (main.tsx), and the crash it
+  // caught has just unmounted whatever provider was below it, so the screen
+  // cannot read the live language through useT(). It reads the per-device
+  // language cache instead — the same thing the very first paint uses before
+  // any query returns. See ErrorBoundary.tsx.
+  "crash.title": { en: "Something went wrong", es: "Algo salió mal" },
+  // The reassurance first, because the fear is "did I just lose the morning's
+  // installs?" — and the answer is no: the outbox is on the phone, untouched.
+  "crash.saved": {
+    en: "The screen crashed, but anything saved on this phone (installs and photos waiting to send) is still here.",
+    es: "La pantalla falló, pero todo lo guardado en este teléfono (instalaciones y fotos en espera de enviarse) sigue aquí.",
+  },
+  // The five-character code is printed beside this line, not inside it: it is
+  // the same characters in both languages and it must not be translated,
+  // re-ordered or wrapped away from the sentence that asks for it.
+  "crash.readCode": {
+    en: "If you call this in, read out this code:",
+    es: "Si llamas para reportarlo, di este código:",
+  },
+  "crash.tryAgain": { en: "Try again", es: "Intentar de nuevo" },
+  "crash.reload": { en: "Reload", es: "Recargar" },
+
+  // ---- The gallery an installer sees (2026-09-05) ----
+  // Below foreman, the photo feed is the jobs this person has worked plus the
+  // shots they took themselves — that is the attachments read policy
+  // (20260995000000), not a filter the screen applies. Two consequences have
+  // to be said out loud, or the screen lies by omission.
+  //
+  // 1. The "everything" option is not everything. A foreman picking it gets
+  //    every job; an installer gets every job of THEIRS, and the word "my" is
+  //    the whole difference between a list that looks broken and one that
+  //    looks deliberate.
+  "photos.filter.allJobs": { en: "All jobs", es: "Todos los trabajos" },
+  "photos.filter.allMyJobs": { en: "All my jobs", es: "Todos mis trabajos" },
+  // 2. An empty grid means "none of yours", not "nobody took any". Same
+  //    distinction feed.noReceiptsMineMsg already draws for receipts, and it
+  //    matters more here: photos are the thing a person goes looking for when
+  //    somebody asks what a wall looked like before the trim went on.
+  "feed.noPhotosMineMsg": {
+    en: "Photos from the jobs you've worked show here. Take one and it lands on this list.",
+    es: "Aquí aparecen las fotos de los trabajos en los que has trabajado. Toma una y se agrega a esta lista.",
+  },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */

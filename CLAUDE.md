@@ -46,6 +46,10 @@ cloning a bundle checks out the local one. `master` is protected on GitHub now
 (PRs required, no force-push, no deletion, admins included), so the checkpoint
 is the copy that covers what protection cannot: the machine, and this account.
 
+The checkpoint covers the CODE. The DATABASE is copied by a separate nightly
+workflow and put back by [`scripts/restore.md`](scripts/restore.md) — read
+[`docs/backups.md`](docs/backups.md) before touching either.
+
 `npm run build` typechecks `e2e/` too, so it fails when `@playwright/test` isn't
 installed. To check only shipped code: `npx tsc --noEmit -p tsconfig.app.json`.
 
@@ -109,6 +113,16 @@ must call `requireCaller` or `verifyCaller` from `_shared/auth.ts`, or be listed
 in `_shared/SYSTEM_ACTORS.md` with the reason it acts for the system (a cron
 target, a token-is-the-credential portal). `scripts/check-function-auth.sh`
 enforces it in CI, in both directions.
+
+**Anything that leaves in a crash report goes through one scrubber.** Error
+monitoring is optional and ships off (no DSN, nothing is even downloaded), but
+the moment it is on, every event and breadcrumb passes
+`supabase/functions/_shared/scrub.ts` — shared by the app and the functions,
+one implementation, tested. Never widen what it keeps without reading
+[`docs/monitoring.md`](docs/monitoring.md), which lists what is dropped and why.
+An edge function that catches its own errors must also REPORT them
+(`reportCaughtError` from `_shared/sentry.ts`) — `withSentry` only ever sees a
+throw that escapes the handler, and a caught one is invisible without it.
 
 **`tsconfig` has `noUnusedLocals`.** Removing the last use of an import breaks the
 build. Let `tsc` tell you which ones to drop.
