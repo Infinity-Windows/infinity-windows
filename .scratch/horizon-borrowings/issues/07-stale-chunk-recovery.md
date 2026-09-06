@@ -1,6 +1,6 @@
 # 07 — Auto-recover from a stale chunk after a deploy
 
-Status: ready-for-agent
+Status: resolved
 Type: task
 Size: S
 
@@ -36,3 +36,14 @@ studio and fit view are the heavy ones).
   unsaved work → toast not reload.
 - Manual: deploy, keep an old tab open, navigate to the map → one reload, no
   white screen.
+
+## Comments
+
+2026-09-06 — Built. `lib/pwa/preloadRecovery.ts` listens for Vite's
+`vite:preloadError`, cancels the throw, and reloads once with a 60 s
+sessionStorage guard; over unsaved work (the existing `unsavedWork` registry)
+it shows a sentence in the crew's language instead and leaves the reload to
+the person. Every branch logs a "reload" event to the diagnostics ring.
+Installed from `main.tsx` beside the other one-line installers. Five unit
+cases for the decision and five for the listener with fakes; no e2e, since a
+stale chunk cannot be produced by the dev server.
