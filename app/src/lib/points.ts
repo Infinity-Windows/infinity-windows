@@ -26,6 +26,8 @@ export interface LedgerRow {
   points: number;
   status: PointStatus;
   created_at: string;
+  /** Set only on a voided row: the sentence saying what happened to it. */
+  void_reason?: string | null;
 }
 
 export const POINT_RULES = {
@@ -82,35 +84,63 @@ export function pointsByCategory(
   return POINT_KINDS.map((kind) => ({ kind, points: totals.get(kind) ?? 0 }));
 }
 
+/**
+ * Award an install's points, through the server.
+ *
+ * WHY THIS IS AN RPC NOW (2026-09-05). points_ledger used to carry one policy —
+ * FOR ALL to authenticated — so any signed-in phone could insert any row it
+ * liked. The Education quiz tab proved how that ends: it wrote its own points
+ * from the browser after every round and put "Another round" underneath, and
+ * two profiles between them filed hundreds of rows in a single day. The table
+ * now takes no writes at all; award_install_points (20260991000000) is the
+ * install path's only door.
+ *
+ * The signature is unchanged so the offline outbox and its stored records keep
+ * working untouched. `_profileId` is no longer sent: the server reads the
+ * install event and pays coalesce(credited_to, installer_id) itself, which is
+ * the same person this argument always held — and unlike this argument, it
+ * cannot be swapped for somebody else on the way out of the phone.
+ *
+ * A resend is not an error. The outbox retries a whole install, so a second
+ * call for a ref that has already been paid returns quietly rather than
+ * throwing — the server ignores it, and the queue moves on to the media.
+ */
 export async function awardPoints(
-  profileId: string,
+  _profileId: string,
   entries: PointEntry[],
   ref?: string,
   status: PointStatus = "confirmed",
 ): Promise<void> {
   if (entries.length === 0) return;
-  const { error } = await supabase.from("points_ledger").insert(
-    entries.map((e) => ({
-      profile_id: profileId,
-      kind: e.kind,
-      points: e.points,
-      ref: ref ?? null,
-      status,
-    })),
-  );
+  if (!ref) {
+    // Nothing in the app awards install points without a unit to hang them on
+    // any more, and the server would refuse it anyway. Fail here, loudly, so a
+    // future caller finds out at once instead of losing points in silence.
+    throw new Error("Install points have to name the window they were earned on.");
+  }
+  const { error } = await supabase.rpc("award_install_points", {
+    p_ref: ref,
+    p_entries: entries,
+    p_status: status,
+  });
   if (error) throw error;
 }
 
-/** Confirm (QC pass) or void (callback) pending install points for a ref. */
+/**
+ * Confirm (QC pass) or void (callback) pending install points for a ref.
+ *
+ * Foreman+ only, and enforced on the server now rather than by which screen the
+ * button sits on: resolve_install_points touches nothing but rows whose ref is
+ * this one and whose status is still pending.
+ */
 export async function resolvePendingPoints(
   ref: string,
   status: "confirmed" | "void",
 ): Promise<void> {
-  const { error } = await supabase
-    .from("points_ledger")
-    .update({ status })
-    .eq("ref", ref)
-    .eq("status", "pending");
+  const { error } = await supabase.rpc("resolve_install_points", {
+    p_ref: ref,
+    p_status: status,
+  });
   if (error) throw error;
 }
 
