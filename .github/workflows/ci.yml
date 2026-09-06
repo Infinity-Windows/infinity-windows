@@ -205,6 +205,13 @@ jobs:
       - name: Test the backup manifest
         run: python3 scripts/test_backup_manifest.py
 
+      # And the check that decides whether a restore worked. A verifier that
+      # passes on a broken restore is worse than not having one: it turns an
+      # unknown into a false reassurance, which is exactly what "we take
+      # backups" was before any of this. Stubs psql; no Postgres, no dump.
+      - name: Test the restore verification
+        run: python3 scripts/test_restore_verify.py
+
       # The misnamed-key check gives ADVICE to a human, so crying wolf is its
       # real failure mode: one wrong suggestion and nobody reads it again. The
       # tests check every secret this repo actually holds against every name the

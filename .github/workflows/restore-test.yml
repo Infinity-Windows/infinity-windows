@@ -1,0 +1,265 @@
+# Put the backup back, every week, and check that what came back is the
+# database that went in.
+#
+# WHY THIS EXISTS. A backup nobody has ever restored is not a backup, it is a
+# hope. The failure this catches is the one that looks most like success: a
+# `pg_dump` that stops halfway still writes a file, still exits 0, still tars up
+# into an archive of a plausible size, and is discovered to be a third of the
+# company on the one morning it matters. Nothing about last night's archive tells
+# you which it is. Restoring it does.
+#
+# WHERE IT RESTORES TO. A Postgres started inside this runner and thrown away
+# when the job ends. NEVER Supabase. Nothing in this workflow can write to the
+# production project: the only credentials it holds read.
+#
+# The image is `supabase/postgres`, not stock `postgres`, because the schema
+# dump creates extensions — pg_cron, pg_net, pgsodium, pgjwt — that stock
+# Postgres has never heard of. Restoring into stock would fail those lines and
+# then cheerfully report that the tables came back. The tag is chosen from the
+# major version pg_dump wrote into the dump's own header, so nobody has to
+# remember what production runs. Only 15 and 17 are published lines; a dump from
+# anything else fails the job loudly rather than restoring into the wrong major.
+#
+# WHY psql's EXIT CODE IS NOT THE CHECK. Replaying a Supabase dump into a
+# Supabase image always produces some noise — the roles and extensions the image
+# already has come back as "already exists". Stopping on the first of those
+# would mean this job never runs; ignoring all of them would mean it never
+# fails. So the applies are allowed to be noisy and the VERDICT comes from
+# scripts/restore_verify.py, which asks the restored database directly: every
+# table's row count as recorded at dump time, every function and every
+# row-level-security policy the schema dump declares, and three spot rows looked
+# up by the ids the manifest wrote down and compared by hash.
+#
+# WHAT IT RESTORES. Last night's archive from Backblaze when B2_KEY_ID,
+# B2_APPLICATION_KEY and B2_BUCKET are set. When they are not there is no stored
+# archive to fetch (see backup-nightly.yml on why nothing is uploaded to a
+# public repository's artifacts), so this takes its own fresh dump and restores
+# that instead. That is a weaker check — it proves the dump-and-restore path
+# works, not that the copy you are keeping is good — and the summary says so.
+#
+# Scheduled and manual only: it holds credentials, and this repository is public.
+
+name: Restore test
+
+on:
+  schedule:
+    # Sundays at 10:40 UTC, after Sunday's nightly backup has finished.
+    - cron: "40 10 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: restore-test
+  cancel-in-progress: false
+
+env:
+  SUPABASE_PROJECT_REF: czprjcskmzzagdztqonm
+  SUPABASE_CLI_VERSION: 2.110.0
+  # Pinned, and deliberately not a floating tag: what a restore does is decided
+  # by the server it lands in, and a check whose meaning changes without a
+  # commit here is not a check. Bump these when production's major version
+  # changes; the job tells you when that has happened.
+  PG15_IMAGE: supabase/postgres:15.14.1.168
+  PG17_IMAGE: supabase/postgres:17.6.1.168
+
+jobs:
+  restore:
+    name: Restore last night's backup and check it
+    runs-on: ubuntu-latest
+    outputs:
+      result: ${{ steps.verify.outputs.result }}
+    steps:
+      - name: Check the credentials are present
+        env:
+          TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          missing=""
+          [ -z "$TOKEN" ] && missing="SUPABASE_ACCESS_TOKEN"
+          [ -z "$DB_PASSWORD" ] && missing="${missing:+$missing, }SUPABASE_DB_PASSWORD"
+          if [ -n "$missing" ]; then
+            echo "::error title=Restore not tested::$missing is missing."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: ${{ env.SUPABASE_CLI_VERSION }}
+
+      - name: Install the Postgres client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client
+
+      - name: Get a backup to restore
+        id: fetch
+        env:
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APPLICATION_KEY: ${{ secrets.B2_APPLICATION_KEY }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/restore"
+          mkdir -p "$dir"
+
+          if [ -n "$B2_KEY_ID" ] && [ -n "$B2_APPLICATION_KEY" ] && [ -n "$B2_BUCKET" ]; then
+            sudo apt-get install -y -qq rclone
+            export RCLONE_CONFIG_OFFSITE_TYPE=b2
+            export RCLONE_CONFIG_OFFSITE_ACCOUNT="$B2_KEY_ID"
+            export RCLONE_CONFIG_OFFSITE_KEY="$B2_APPLICATION_KEY"
+            # Paths are dated (YYYY/MM/DD/...), so the last line in sorted order
+            # is the newest copy.
+            newest="$(rclone lsf --files-only --recursive "offsite:$B2_BUCKET" | sort | tail -1)"
+            if [ -z "$newest" ]; then
+              echo "::error title=Nothing to restore::The off-site bucket is empty. Has the nightly backup ever succeeded?"
+              exit 1
+            fi
+            echo "Restoring $newest"
+            rclone copyto "offsite:$B2_BUCKET/$newest" "$RUNNER_TEMP/archive.tar.gz"
+            tar -xzf "$RUNNER_TEMP/archive.tar.gz" -C "$dir" --strip-components=1
+            echo "source=the off-site copy $newest" >> "$GITHUB_OUTPUT"
+            echo "stored=true" >> "$GITHUB_OUTPUT"
+          else
+            # No off-site copy exists yet, so there is no kept archive to test.
+            # Dumping fresh still proves the dump, the restore and the verifier
+            # all work end to end, which is most of the value and is the part
+            # that would otherwise go untested until the worst day.
+            started="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            supabase link --project-ref "$SUPABASE_PROJECT_REF"
+            supabase db dump --linked --role-only -f "$dir/roles.sql"
+            supabase db dump --linked            -f "$dir/schema.sql"
+            supabase db dump --linked --data-only --use-copy -f "$dir/data.sql"
+            python3 scripts/backup_manifest.py \
+              --ref "$SUPABASE_PROJECT_REF" --out "$dir" --started-at "$started"
+            echo "source=a dump taken just now (no off-site copy is configured)" >> "$GITHUB_OUTPUT"
+            echo "stored=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          for f in schema.sql data.sql MANIFEST.json; do
+            [ -s "$dir/$f" ] || { echo "::error::$f is missing or empty in the backup"; exit 1; }
+          done
+          echo "dir=$dir" >> "$GITHUB_OUTPUT"
+
+      - name: Start a throwaway Postgres of the same major version
+        id: pg
+        env:
+          DIR: ${{ steps.fetch.outputs.dir }}
+        run: |
+          set -euo pipefail
+          version="$(python3 -c "import json,os;print(json.load(open(os.path.join(os.environ['DIR'],'MANIFEST.json'))).get('postgres_version') or '')")"
+          major="${version%%.*}"
+          case "$major" in
+            15) image="$PG15_IMAGE" ;;
+            17) image="$PG17_IMAGE" ;;
+            *)
+              echo "::error title=No image for Postgres $version::The dump says Postgres '$version'. Only 15 and 17 are pinned in this workflow. Add the tag for $major to PG${major}_IMAGE and re-run — restoring into a different major version would not be a test of anything."
+              exit 1 ;;
+          esac
+          echo "Restoring a Postgres $version dump into $image"
+          docker run -d --name restore-target \
+            -e POSTGRES_PASSWORD=postgres \
+            -p 5432:5432 "$image" >/dev/null
+          for _ in $(seq 1 60); do
+            if docker exec restore-target pg_isready -U postgres >/dev/null 2>&1; then
+              break
+            fi
+            sleep 2
+          done
+          docker exec restore-target pg_isready -U postgres
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # Noise is expected and is not the verdict; see the header. What IS
+      # recorded is how much noise there was, because a jump in the error count
+      # is worth a look even on a week this passes.
+      - name: Replay the dump
+        id: apply
+        env:
+          DIR: ${{ steps.fetch.outputs.dir }}
+          PGPASSWORD: postgres
+        run: |
+          set -uo pipefail
+          url="postgresql://postgres@localhost:5432/postgres"
+          errors=0
+          for f in roles.sql schema.sql data.sql; do
+            [ -s "$DIR/$f" ] || continue
+            psql "$url" -X -q -f "$DIR/$f" 2>"$RUNNER_TEMP/$f.err" || true
+            n="$(grep -c '^ERROR' "$RUNNER_TEMP/$f.err" || true)"
+            echo "$f: $n error line(s) while applying"
+            errors=$((errors + n))
+          done
+          echo "errors=$errors" >> "$GITHUB_OUTPUT"
+
+      - name: Check what came back
+        id: verify
+        env:
+          DIR: ${{ steps.fetch.outputs.dir }}
+          PGPASSWORD: postgres
+        run: |
+          set -uo pipefail
+          python3 scripts/restore_verify.py \
+            --backup "$DIR" \
+            --db-url "postgresql://postgres@localhost:5432/postgres" \
+            --summary "$RUNNER_TEMP/verdict.txt"
+          code=$?
+          line="$(head -1 "$RUNNER_TEMP/verdict.txt" 2>/dev/null || echo 'Restore test did not produce a verdict')"
+          echo "result=$line" >> "$GITHUB_OUTPUT"
+          exit $code
+
+      - name: Say what happened
+        if: always()
+        env:
+          SOURCE: ${{ steps.fetch.outputs.source }}
+          STORED: ${{ steps.fetch.outputs.stored }}
+          IMAGE: ${{ steps.pg.outputs.image }}
+          VERSION: ${{ steps.pg.outputs.version }}
+          ERRORS: ${{ steps.apply.outputs.errors }}
+          RESULT: ${{ steps.verify.outputs.result }}
+        run: |
+          {
+            echo "### Restore test"
+            echo
+            echo "- Restored: ${SOURCE:-nothing — the job did not get that far}"
+            echo "- Into: \`${IMAGE:-?}\` (the dump says Postgres ${VERSION:-?})"
+            echo "- ${ERRORS:-?} error line(s) while replaying, which is normal: the image already has the roles and extensions the dump recreates"
+            echo "- **${RESULT:-No verdict — the check did not run}**"
+            if [ "${STORED:-}" != "true" ]; then
+              echo
+              echo "This week's test used a dump taken during this run, because no off-site"
+              echo "copy exists to fetch. It proves the dump and the restore work; it does"
+              echo "NOT prove a copy is being kept. Set B2_KEY_ID, B2_APPLICATION_KEY and"
+              echo "B2_BUCKET and this starts testing the copy you actually hold."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Throw the Postgres away
+        if: always()
+        run: docker rm -f restore-target >/dev/null 2>&1 || true
+
+  notify-failure:
+    name: Tell Slack if the backup would not come back
+    needs: restore
+    if: failure()
+    uses: ./.github/workflows/notify-failure.yml
+    with:
+      workflow: ${{ github.workflow }}
+      cause: ${{ needs.restore.outputs.result }}
+      detail: >-
+        The weekly restore test could not put the backup back and get the same
+        database out. Nothing users see is affected today. What it means is that
+        the copy being kept may not be one you could actually restore from, so
+        this is worth someone's Monday morning.
+    secrets: inherit
