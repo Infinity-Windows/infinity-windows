@@ -242,10 +242,11 @@ describe("Find on the real warehouse page", () => {
 describe("the doors that used to hide in Other tools (wave 3)", () => {
   // The fold is gone: slot labels are a chip under the yard, and scanning is
   // the floating Scan button the layout draws on every warehouse screen.
-  it("keeps the slot-label door on the page, and never dead-ends", () => {
+  it("never dead-ends on a retired door", () => {
+    // Slot labels went with the slot model (wave 5): a job's bay is a box now.
     const el = mount({ packages: [], locations: [bay] });
     const hrefs = [...el.querySelectorAll("a")].map((a) => a.getAttribute("href") ?? "");
-    expect(hrefs).toContain("/labels");
+    expect(hrefs).not.toContain("/labels");
     expect(hrefs).not.toContain("/warehouse/on-hand");
     expect(hrefs).not.toContain("/count");
   });

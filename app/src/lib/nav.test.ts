@@ -389,7 +389,6 @@ describe("every NAV destination has a door", () => {
     // under "Other tools"). They lost their menu rows, not their doors.
     "/storage",
     "/receive",
-    "/labels",
     "/supplies",
     // Ticket 08b: the arrival check is reached from the warehouse page's
     // Going out section. It is an occasional damage report, not a daily
