@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { SaveJobsStrip } from "../components/offline/SaveJobOffline";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Bell, MessagesSquare } from "lucide-react";
@@ -546,6 +547,9 @@ function HomeProjectsGrid({
   onRetry: () => void;
 }) {
   return (
+    <>
+    {/* Ticket 05: every landing offers to put its jobs on the phone. */}
+    <SaveJobsStrip projectIds={cards.map((p) => p.id)} />
     <div className="home-projects">
       {cards.map((p) => (
         <Link key={p.id} to={`/projects/${p.id}`} className="project-card home-project">
@@ -595,5 +599,6 @@ function HomeProjectsGrid({
         <p className="muted">No active jobs yet.</p>
       )}
     </div>
+    </>
   );
 }

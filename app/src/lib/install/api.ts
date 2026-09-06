@@ -1273,9 +1273,24 @@ export async function updatePlanset(
 
 export async function downloadPlanset(planset: Planset): Promise<ArrayBuffer> {
   const path = planset.converted_pdf_path ?? planset.storage_path;
+  // The phone's own copy first. "Save for offline" puts a job's sheets here
+  // (lib/offline/jobPack), and a sheet anyone has opened with signal lands
+  // here too, so the map and the spec cards keep drawing in a dead zone. A
+  // re-uploaded sheet is a new path, so an old copy is never served for a new
+  // file. The cache fails soft: a miss is just a download.
+  const { plansetBlobKey, readPlansetBytes, writePlansetBytes } = await import(
+    "../offline/plansetBlobCache"
+  );
+  const key = plansetBlobKey(planset.id, path);
+  const kept = await readPlansetBytes(key);
+  if (kept) return kept;
   const { data, error } = await supabase.storage.from("plansets").download(path);
   if (error) throw error;
-  return data.arrayBuffer();
+  const bytes = await data.arrayBuffer();
+  // Deliberately not awaited: the document is ready, and keeping it is a
+  // favour to the next visit, not part of showing it.
+  void writePlansetBytes(key, planset.id, bytes);
+  return bytes;
 }
 
 // --- Manual plan outlines ---
