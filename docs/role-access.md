@@ -30,7 +30,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Diagnostics (`/diagnostics`)
 - Settings (`/settings`)
 
-**Can reach (all 30 allowed destinations):**
+**Can reach (all 29 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
@@ -58,7 +58,6 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - My timecard (`/timecard`)
 - Receive (`/receive`)
 - Storage (`/storage`)
-- Slot labels (`/labels`)
 - Supplies (`/supplies`)
 - Photos & receipts (`/photos`)
 - Toolbox talk history (`/toolbox-history`)
@@ -130,7 +129,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Settings (`/settings`)
 - Catalog (`/catalog`)
 
-**Can reach (all 39 allowed destinations):**
+**Can reach (all 38 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
@@ -165,7 +164,6 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Roster (`/crew`)
 - Receive (`/receive`)
 - Storage (`/storage`)
-- Slot labels (`/labels`)
 - Catalog (`/catalog`)
 - Supplies (`/supplies`)
 - Scheduling (`/scheduling`)
@@ -241,7 +239,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Catalog (`/catalog`)
 - Admin (`/admin`)
 
-**Can reach (all 50 allowed destinations):**
+**Can reach (all 49 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
@@ -279,7 +277,6 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Roster (`/crew`)
 - Receive (`/receive`)
 - Storage (`/storage`)
-- Slot labels (`/labels`)
 - Catalog (`/catalog`)
 - Supplies (`/supplies`)
 - AI Knowledge (`/knowledge`)
@@ -355,7 +352,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Admin (`/admin`)
 - Builder logins (`/account/builders`)
 
-**Can reach (all 53 allowed destinations):**
+**Can reach (all 52 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
@@ -393,7 +390,6 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Roster (`/crew`)
 - Receive (`/receive`)
 - Storage (`/storage`)
-- Slot labels (`/labels`)
 - Catalog (`/catalog`)
 - Supplies (`/supplies`)
 - AI Knowledge (`/knowledge`)

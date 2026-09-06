@@ -30,6 +30,7 @@ import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import { isForemanPlus } from "../../lib/install/types";
 import { placeWhere, toLocationsById } from "../../lib/warehouse/containment";
 import { partsHeadline, unitParts } from "../../lib/warehouse/unitParts";
+import { listScheduledMarks } from "../../lib/warehouse/warehouseCards";
 import { rewriteSetHref, unitHref } from "../../lib/warehouse/materialsScope";
 import { canUndo, lineText, undoneIds, type MovementLine } from "../../lib/warehouse/undo";
 import { setPackageNoteOffline, writeToast } from "../../lib/warehouse/offlineWrites";
@@ -46,6 +47,7 @@ import {
   PART_LABELS,
   PART_TYPES,
   reassignPackage,
+  setMarkKind,
   setMarkPartTotal,
   setPackagePart,
   undoMovement,
@@ -91,6 +93,13 @@ export function UnitCard() {
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const projectsAll = useQuery({ queryKey: ["projectsAll"], queryFn: listProjectsAnyStatus });
   const partOptions = useQuery({ queryKey: ["partTypeOptions"], queryFn: listPartTypeOptions });
+  // The unit's kind lives on its mark (ADR-0009): window or door, one fact
+  // for the whole opening rather than a category on each piece.
+  const marks = useQuery({
+    queryKey: ["scheduledMarks", projectId ? [projectId] : []],
+    queryFn: () => listScheduledMarks(projectId ? [projectId] : []),
+    enabled: Boolean(projectId),
+  });
 
   const report = useMemo(
     () => unitParts(packages.data ?? [], projectId ?? "", mark, pendingName ?? undefined),
@@ -126,7 +135,23 @@ export function UnitCard() {
     void qc.invalidateQueries({ queryKey: ["scheduledMarks"] });
   };
 
-  const kind = report.rows.some((p) => p.category === "doors") ? "Door" : "Window";
+  const markRow = (marks.data ?? []).find((m) => m.mark_code === mark);
+  const kind =
+    markRow?.kind === "door" || (!markRow?.kind && report.rows.some((p) => p.category === "doors"))
+      ? "Door"
+      : "Window";
+
+  const flipKind = useMutation({
+    mutationFn: async () => {
+      if (!projectId) throw new Error("A waiting job has no schedule to mark.");
+      await setMarkKind(projectId, mark, kind === "Door" ? "window" : "door");
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["scheduledMarks"] });
+      pushToast(`${mark} is a ${kind === "Door" ? "window" : "door"} now.`);
+    },
+    onError: (e) => pushToast(formatApiError(e), "error"),
+  });
   const jobLabel = projectId ? (jobCode.get(projectId) ?? "…") : pendingName || "Boneyard";
   const headline = partsHeadline(report);
   const total = report.expectedTotal ?? report.rows.length;
@@ -339,6 +364,15 @@ export function UnitCard() {
           title="Move every piece to another job"
         >
           {jobLabel} <span className="chip-pen">✎</span>
+        </button>
+        <button
+          type="button"
+          className="chip"
+          onClick={() => flipKind.mutate()}
+          disabled={!projectId || flipKind.isPending}
+          title="Window or door? Tap to flip"
+        >
+          {kind} <span className="chip-pen">⇄</span>
         </button>
         <button
           type="button"

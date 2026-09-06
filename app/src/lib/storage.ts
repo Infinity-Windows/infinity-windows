@@ -1543,3 +1543,20 @@ export async function copyUnit(input: {
   if (error) throw error;
   return (data as number) ?? 0;
 }
+
+/**
+ * A truck for a job the office has not built yet makes a REAL job (wave 5):
+ * a NEW- code the office renames, instead of a typed name that lived on the
+ * packages. Same name typed twice hands back the same job.
+ */
+export async function createPlaceholderJob(name: string): Promise<{ id: string; job_code: string; name: string }> {
+  const { data, error } = await supabase.rpc("create_placeholder_job", { p_name: name });
+  if (error) throw error;
+  return data as { id: string; job_code: string; name: string };
+}
+
+/** A unit is a window or a door — a fact of the mark, not of each piece. */
+export async function setMarkKind(projectId: string, markCode: string, kind: "window" | "door"): Promise<void> {
+  const { error } = await supabase.rpc("set_mark_kind", { p_project: projectId, p_mark: markCode, p_kind: kind });
+  if (error) throw error;
+}

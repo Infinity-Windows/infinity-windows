@@ -47,7 +47,7 @@ import { STATION_OUT_DOOR } from "../../lib/warehouse/stations";
  */
 export function mismatchWarning(mode: "stage" | "out"): string {
   return mode === "stage"
-    ? "Double-check before it goes on this job's shelf."
+    ? "Double-check before it goes in this job's bay."
     : "Double-check before it leaves.";
 }
 
@@ -151,7 +151,7 @@ export function CheckoutPackages() {
       // to do instead of showing the raw refusal.
       pushToast(
         isMissingStagingBayError(e)
-          ? "This job has no staging bay yet. A foreman can add one from the job page, then try again."
+          ? "This job has no bay yet — try again; the app makes one on first use."
           : formatApiError(e),
         "error",
       );

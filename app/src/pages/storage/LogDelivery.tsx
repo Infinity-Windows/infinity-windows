@@ -18,7 +18,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { BackChip } from "../../components/BackChip";
 import { StationChip } from "../../components/warehouse/StationChip";
 import { listProjects } from "../../lib/api";
-import { createManualDelivery } from "../../lib/storage";
+import { createManualDelivery, createPlaceholderJob } from "../../lib/storage";
 import { STATION_COMING_IN } from "../../lib/warehouse/stations";
 import {
   DRAFT_KEY,
@@ -92,7 +92,16 @@ export function LogDelivery() {
     mutationFn: async () => {
       const problems = wizardProblems(entries);
       if (problems.length > 0) throw new Error(problems[0]);
-      return createManualDelivery(label, buildDeliveryPayload(entries));
+      // A job that isn't built yet becomes a real job first (wave 5): the
+      // packages land on a NEW- job the office renames, not on a typed name.
+      const built = await Promise.all(
+        entries.map(async (e) =>
+          e.project_id || !e.job_name.trim()
+            ? e
+            : { ...e, project_id: (await createPlaceholderJob(e.job_name.trim())).id },
+        ),
+      );
+      return createManualDelivery(label, buildDeliveryPayload(built));
     },
     onSuccess: (r) => {
       localStorage.removeItem(DRAFT_KEY);

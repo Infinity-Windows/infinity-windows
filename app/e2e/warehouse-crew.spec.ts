@@ -26,22 +26,7 @@ const PECAN14 = JOBS.find((j) => j.jobCode === "PECAN14")!;
 const C1 = "00000000-0000-4000-8000-00000000c001";
 const D1 = "00000000-0000-4000-8000-00000000d001";
 const SUPPLY = "00000000-0000-4000-8000-0000000005a1";
-const SLOT = "00000000-0000-4000-8000-000000005101";
 
-/** Two rack slots, so /labels has something to print and something to retire. */
-const SLOTS = [
-  {
-    id: SLOT,
-    zone: "S",
-    rack: "03",
-    slot: "B",
-    address: "S-03-B",
-    capacity: 4,
-    active: true,
-    serial: "LOC-000001",
-    display_name: null,
-  },
-];
 
 const CONTAINERS = [
   {
@@ -344,53 +329,6 @@ test("an installer rewrites a set but cannot start one over", async ({ page }) =
     page.getByText("Only a foreman or above can start a set over."),
   ).toBeVisible();
   expect(calls.filter((c) => SHUT_RPCS.includes(c.fn))).toEqual([]);
-});
-
-/** The rack-slot rows /labels prints from, plus a note of every write that
- *  reached the table. `locations` has no RPC in front of it — the only policy
- *  on it is the partner wall — so "did an installer write" is the question,
- *  and the page is the only place that can answer no. */
-async function useSlotFixtures(page: Page) {
-  const writes: string[] = [];
-  await page.route("**/rest/v1/locations**", (r) => {
-    const m = r.request().method();
-    if (m !== "GET" && m !== "HEAD") writes.push(m);
-    return json(r, SLOTS, SLOTS.length);
-  });
-  return writes;
-}
-
-test("an installer prints rack labels but cannot retire or rename a slot", async ({
-  page,
-}) => {
-  // /labels dropped to the installer floor with ADR-0007 because printing a
-  // rack label is warehouse work. Retiring a slot is not — and there is no
-  // server rank to fall back on, so this screen IS the wall.
-  await useSupabaseFixtures(page, { role: "installer" });
-  const calls = await useWarehouseFixtures(page);
-  const writes = await useSlotFixtures(page);
-  await page.goto("/labels");
-
-  await expect(page.getByRole("button", { name: "Print 1 labels" })).toBeVisible();
-  await page.getByLabel("Select S-03-B").check();
-  // The row is genuinely ticked — so the missing Delete is the rule, not an
-  // empty selection.
-  await expect(page.getByRole("button", { name: "Print 1 selected" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Delete 1 selected" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
-  expect(writes, "an installer wrote to locations").toEqual([]);
-  expect(calls.filter((c) => SHUT_RPCS.includes(c.fn))).toEqual([]);
-});
-
-test("a foreman on the same slot list gets Delete and Edit", async ({ page }) => {
-  await useSupabaseFixtures(page, { role: "foreman" });
-  await useWarehouseFixtures(page);
-  await useSlotFixtures(page);
-  await page.goto("/labels");
-
-  await page.getByLabel("Select S-03-B").check();
-  await expect(page.getByRole("button", { name: "Delete 1 selected" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Edit", exact: true })).toBeVisible();
 });
 
 const FRESH = pkg({

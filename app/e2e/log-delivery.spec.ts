@@ -62,11 +62,20 @@ test("hand-logging a delivery sends the skeleton in one call", async ({
   expect(entry.sets[0].crate).toMatchObject({ pieces: 4 });
 });
 
-test("a job that isn't built yet types through without blocking", async ({
+test("a job that isn't built yet becomes a real NEW- job on save (ADR-0009)", async ({
   page,
 }) => {
   await useSupabaseFixtures(page, { role: "foreman" });
   let payload: { p_entries: unknown[] } | null = null;
+  let placeholder: { p_name: string } | null = null;
+  await page.route("**/rest/v1/rpc/create_placeholder_job", async (route) => {
+    placeholder = route.request().postDataJSON() as typeof placeholder;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ id: "new-1", job_code: "NEW-SUNSETRI", name: "Sunset Ridge 4" }),
+    });
+  });
   await page.route("**/rest/v1/rpc/create_manual_delivery", async (route) => {
     payload = route.request().postDataJSON() as typeof payload;
     await route.fulfill({
@@ -87,9 +96,11 @@ test("a job that isn't built yet types through without blocking", async ({
   await expect(
     page.getByText(/belong to jobs that aren't built yet/),
   ).toBeVisible();
-  const entry = payload!.p_entries[0] as { project_id: null; job_name: string };
-  expect(entry.project_id).toBeNull();
-  expect(entry.job_name).toBe("Sunset Ridge 4");
+  // The typed name became a job first; the delivery lands on that job.
+  expect(placeholder).toEqual({ p_name: "Sunset Ridge 4" });
+  const entry = payload!.p_entries[0] as { project_id: string | null; job_name: string | null };
+  expect(entry.project_id).toBe("new-1");
+  expect(entry.job_name).toBeNull();
 });
 
 test("a refresh mid-list picks the draft back up", async ({ page }) => {

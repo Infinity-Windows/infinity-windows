@@ -37,12 +37,10 @@ import { AskMisses } from "./pages/AskMisses";
 import { Knowledge } from "./pages/Knowledge";
 import { AiSpend } from "./pages/AiSpend";
 import { Home } from "./pages/Home";
-import { Labels } from "./pages/Labels";
 import { Landing } from "./pages/Landing";
 import { Notifications } from "./pages/Notifications";
 import { Team } from "./pages/Team";
 import { Warehouse } from "./pages/Warehouse";
-import { LocationDetail } from "./pages/LocationDetail";
 import { ContainerViewer } from "./pages/storage/ContainerViewer";
 import { Takeoffs } from "./pages/Takeoffs";
 import { ProjectDetail } from "./pages/ProjectDetail";
@@ -772,11 +770,6 @@ export default function App() {
             <Route
               path="/qc"
               element={<RequireRole path="/qc"><Qc /></RequireRole>}
-            />
-            <Route path="/loc/:address" element={<LocationDetail />} />
-            <Route
-              path="/labels"
-              element={<RequireRole path="/labels"><Labels /></RequireRole>}
             />
 
             {/* Two real Horizon-menu destinations survive here; the eight
