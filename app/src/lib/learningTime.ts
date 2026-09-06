@@ -3,12 +3,19 @@
 // supabase/migrations/20260992000000_learning_time.sql. This file is the phone's
 // half: the gate that decides when time is real, and the beat that reports it.
 //
-// WHAT COUNTS. Only VISIBLE, FOCUSED time. `document.visibilityState` is
-// 'visible' and `document.hasFocus()` is true. A locked phone, a backgrounded
-// PWA, a tab behind another tab, a window behind the browser — none of them are
-// somebody learning, and none of them send anything. That is the whole
-// difference between a timer that measures study and one that measures leaving
-// a page open.
+// WHAT COUNTS. Only VISIBLE, FOCUSED, ATTENDED time. `document.visibilityState`
+// is 'visible', `document.hasFocus()` is true, AND somebody has touched the
+// screen inside the last ten minutes or has a lesson playing. A locked phone, a
+// backgrounded PWA, a tab behind another tab, a window behind the browser —
+// none of them are somebody learning, and none of them send anything.
+//
+// The third condition is the one that is easy to leave out and the one that
+// matters most. Visible and focused is the browser's answer to "is this window
+// on top", not to "is anybody there": a Learn tab parked on a second monitor
+// all day is both, and it is nobody. The server cannot save us from that
+// either, because a parked tab produces exactly the real seconds its clamps
+// allow. See IDLE_MS below. That is the whole difference between a timer that
+// measures study and one that measures leaving a page open.
 //
 // NO OUTBOX, DELIBERATELY. Every other write in this app that a person could
 // lose queues offline (install captures, punches, photos). Learning time does
@@ -127,9 +134,18 @@ export function startHeartbeats(opts: HeartbeatOptions): () => void {
       timer = setInterval(() => {
         // Re-checked at the moment of the beat, not only at the moment the
         // timer was armed: a phone can go to sleep without firing any event we
-        // subscribed to, and a beat sent from a sleeping phone is the one lie
+        // subscribed to, and somebody who simply stops touching the screen
+        // fires nothing by definition. A beat sent from either is the one lie
         // this whole design is built to avoid.
-        if (opts.isActive()) opts.onBeat(seconds);
+        if (opts.isActive()) {
+          opts.onBeat(seconds);
+        } else {
+          // Nothing told us, so nothing will tell us when it comes back either
+          // — drop the timer here and let the next sign of life arm a fresh
+          // whole interval. Otherwise a person returning after an hour away
+          // would be paid a full beat for the two seconds they have been back.
+          clear();
+        }
       }, intervalMs);
     } else if (!active) {
       clear();
@@ -146,24 +162,116 @@ export function startHeartbeats(opts: HeartbeatOptions): () => void {
   };
 }
 
-/** Is this screen genuinely in front of somebody? The browser's own answer. */
-export function screenIsActive(): boolean {
-  if (typeof document === "undefined") return false;
-  return document.visibilityState === "visible" && document.hasFocus();
+/**
+ * How long a screen may sit untouched and still count as somebody learning.
+ *
+ * WHY THERE IS AN IDLE GATE AT ALL. Visible and focused is the browser's answer
+ * to "is this window on top", not to "is anybody there". A Learn tab parked on a
+ * second monitor at seven in the morning is visible, focused, and nobody's; it
+ * banks a whole shift on the glossary, and the server cannot tell the two apart
+ * because an idle tab produces exactly the real seconds its clamps allow. The
+ * promise the crew is shown — "counted only while the screen is in front of
+ * you" — is this gate, not the visibility one.
+ *
+ * WHY TEN MINUTES. Long enough to read a term, work a question, or think, with
+ * no keyboard and no pointer; short enough that a forgotten tab costs ten
+ * minutes rather than eight hours. A lesson that is really playing is exempt —
+ * watching is the one kind of learning that looks exactly like an empty desk.
+ */
+export const IDLE_MS = 10 * 60_000;
+
+/** When somebody last did anything at all. Module scope: one page, one answer. */
+let lastInteractionAt = Date.now();
+
+/** How many lessons are playing right now. Ref-counted; see markLessonPlaying. */
+let lessonsPlaying = 0;
+
+/**
+ * Say a lesson has really started playing, and get back the way to say it
+ * stopped. Called by the video card, which is the only thing that knows.
+ *
+ * Ref-counted rather than a boolean because two cards could overlap for a
+ * moment, and released once so a double cleanup — React runs one in strict mode
+ * — cannot take the count below what is really playing.
+ */
+export function markLessonPlaying(): () => void {
+  lessonsPlaying += 1;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    lessonsPlaying = Math.max(0, lessonsPlaying - 1);
+    // The lesson just ended with somebody in front of it, so the idle clock
+    // starts now rather than from whenever they last touched the phone — which
+    // could be forty minutes ago and would stop the clock the instant a long
+    // lesson finished.
+    lastInteractionAt = Date.now();
+  };
 }
+
+/** Test seam: an untouched page, with nothing playing, as a fresh load is. */
+export function resetLearningActivity(at: number = Date.now()): void {
+  lastInteractionAt = at;
+  lessonsPlaying = 0;
+}
+
+/**
+ * Is this screen genuinely in front of somebody?
+ *
+ * Three things have to be true: the browser says the page is visible, the
+ * browser says it has focus, and somebody has either touched it inside the idle
+ * window or has a lesson playing. PURE — `now` is injected so the rule is
+ * tested rather than reasoned about.
+ */
+export function screenIsActive(now: number = Date.now()): boolean {
+  if (typeof document === "undefined") return false;
+  if (document.visibilityState !== "visible" || !document.hasFocus()) return false;
+  // Somebody watching a lesson is learning with their hands off the phone. It
+  // is the one case where doing nothing IS the activity.
+  if (lessonsPlaying > 0) return true;
+  return now - lastInteractionAt < IDLE_MS;
+}
+
+/**
+ * The events that mean a person is there. Passive and captured, so nothing in
+ * the app can stop them arriving and nothing here can delay a scroll.
+ */
+const INTERACTION_EVENTS = [
+  "pointerdown",
+  "keydown",
+  "wheel",
+  "touchstart",
+  "scroll",
+] as const;
 
 /** Everything that can change the answer above. */
 export function subscribeToScreenActivity(onChange: () => void): () => void {
   if (typeof document === "undefined") return () => {};
+
+  const noteActivity = () => {
+    const wasIdle = Date.now() - lastInteractionAt >= IDLE_MS;
+    lastInteractionAt = Date.now();
+    // Only wake the scheduler when the answer can actually have changed. These
+    // fire in bursts — a single flick of a thumb is a dozen scroll events — and
+    // the scheduler has nothing to do while its timer is already running.
+    if (wasIdle) onChange();
+  };
+
   document.addEventListener("visibilitychange", onChange);
   window.addEventListener("focus", onChange);
   window.addEventListener("blur", onChange);
   window.addEventListener("pagehide", onChange);
+  for (const ev of INTERACTION_EVENTS) {
+    window.addEventListener(ev, noteActivity, { passive: true, capture: true });
+  }
   return () => {
     document.removeEventListener("visibilitychange", onChange);
     window.removeEventListener("focus", onChange);
     window.removeEventListener("blur", onChange);
     window.removeEventListener("pagehide", onChange);
+    for (const ev of INTERACTION_EVENTS) {
+      window.removeEventListener(ev, noteActivity, { capture: true });
+    }
   };
 }
 

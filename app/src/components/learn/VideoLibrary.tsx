@@ -35,6 +35,7 @@ import {
   type LearningVideo,
 } from "../../lib/learnVideos";
 import {
+  markLessonPlaying,
   sendVideoWatchHeartbeat,
   VIDEO_HEARTBEAT_MS,
 } from "../../lib/learningTime";
@@ -240,6 +241,17 @@ function Player({ video }: { video: LearningVideo }) {
   // lesson counts as an item somebody is spending time on while it is playing,
   // and not while its card merely sits on a scrolled page with nine others.
   useLearningTime("video", playing ? video.id : null);
+
+  // And a playing lesson holds the idle gate open for the whole Learn page.
+  // Watching is the one kind of learning that looks exactly like an empty desk
+  // — no pointer, no keys, for forty minutes — so without this the page clock
+  // would stop ten minutes into a lesson somebody was sitting through. See
+  // screenIsActive in lib/learningTime.ts. Released on unmount as well as on
+  // pause, so a card scrolled away mid-play cannot leave the gate propped open.
+  useEffect(() => {
+    if (!playing) return;
+    return markLessonPlaying();
+  }, [playing]);
 
   useEffect(() => {
     let live = true;

@@ -1,3 +1,8 @@
+// @vitest-environment happy-dom
+//
+// The idle gate and the video exemption are DOM answers (visibility, focus),
+// so this file runs in happy-dom. Everything else in it is pure and would run
+// anywhere; the environment is here for screenIsActive alone.
 // The heartbeat scheduler is the whole honesty of learning time on the phone
 // side: the server clamps what it is told, but only this decides whether a
 // second in front of somebody's face happened at all. So the gating is tested
@@ -10,9 +15,13 @@ import { dirname, resolve } from "node:path";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import {
   HEARTBEAT_MS,
+  IDLE_MS,
   formatLearningTime,
   learningSessionId,
+  markLessonPlaying,
+  resetLearningActivity,
   resetLearningSession,
+  screenIsActive,
   startHeartbeats,
   startOfWeek,
 } from "./learningTime";
@@ -324,5 +333,93 @@ describe("the server's own check on which item a beat names", () => {
     expect(page).toContain(
       `type Tab = ${tabs.map((t) => `"${t}"`).join(" | ")};`,
     );
+  });
+});
+
+describe("screenIsActive", () => {
+  // The gate the crew is shown a promise about. happy-dom answers visible and
+  // focused for a test page, which is exactly the parked-tab case: everything
+  // below is about the third condition.
+  beforeEach(() => resetLearningActivity(1_000_000));
+
+  it("counts a screen somebody has just touched", () => {
+    expect(screenIsActive(1_000_000)).toBe(true);
+    expect(screenIsActive(1_000_000 + IDLE_MS - 1)).toBe(true);
+  });
+
+  it("stops counting a page nobody has touched for ten minutes", () => {
+    // A Learn tab parked on a second monitor at 7am. Visible, focused, nobody's
+    // — and before this gate existed it banked the whole shift on the glossary.
+    expect(screenIsActive(1_000_000 + IDLE_MS)).toBe(false);
+    expect(screenIsActive(1_000_000 + 8 * 60 * 60_000)).toBe(false);
+  });
+
+  it("counts a lesson that is playing, however long nobody touches anything", () => {
+    // Watching is the one kind of learning that looks like an empty desk.
+    const stop = markLessonPlaying();
+    expect(screenIsActive(1_000_000 + 45 * 60_000)).toBe(true);
+    stop();
+  });
+
+  it("gives the full ten minutes again when a lesson ends", () => {
+    const stop = markLessonPlaying();
+    vi.setSystemTime(new Date(2_000_000));
+    stop();
+    // The clock starts at the end of the lesson, not at the last time somebody
+    // touched the phone — which was before the lesson started.
+    expect(screenIsActive(2_000_000 + IDLE_MS - 1)).toBe(true);
+    expect(screenIsActive(2_000_000 + IDLE_MS)).toBe(false);
+  });
+
+  it("counts two overlapping lessons once, and lets go only when both do", () => {
+    const first = markLessonPlaying();
+    const second = markLessonPlaying();
+    first();
+    // Releasing one refreshes the idle clock but the second is still playing,
+    // so a long silence after that is still watching.
+    expect(screenIsActive(Date.now() + 60 * 60_000)).toBe(true);
+    second();
+  });
+
+  it("ignores a cleanup that runs twice, as React's strict mode does", () => {
+    const stop = markLessonPlaying();
+    stop();
+    stop();
+    const other = markLessonPlaying();
+    other();
+    expect(screenIsActive(Date.now() + IDLE_MS)).toBe(false);
+  });
+});
+
+describe("startHeartbeats and going idle", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("drops its timer when a beat finds nobody there, rather than spinning", () => {
+    // And the point of dropping it: coming back arms a FRESH whole interval, so
+    // somebody who returns after an hour is not paid fifteen seconds for the
+    // two they have been back.
+    const screen = fakeScreen(true);
+    const beats: number[] = [];
+    const stop = startHeartbeats({
+      isActive: screen.isActive,
+      subscribe: screen.subscribe,
+      onBeat: (s) => beats.push(s),
+    });
+
+    vi.advanceTimersByTime(HEARTBEAT_MS);
+    expect(beats).toEqual([15]);
+
+    screen.setSilently(false);
+    vi.advanceTimersByTime(HEARTBEAT_MS * 20);
+    expect(beats, "nothing banked while nobody was there").toEqual([15]);
+
+    // Back, and the fresh interval has to run its whole length first.
+    screen.set(true);
+    vi.advanceTimersByTime(HEARTBEAT_MS - 1);
+    expect(beats, "no payout for coming back").toEqual([15]);
+    vi.advanceTimersByTime(1);
+    expect(beats).toEqual([15, 15]);
+    stop();
   });
 });

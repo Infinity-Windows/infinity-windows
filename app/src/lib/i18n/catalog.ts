@@ -2191,9 +2191,12 @@ export const CATALOG = {
   "ltime.section": { en: "Learning", es: "Aprendizaje" },
   "ltime.title": { en: "Learning time", es: "Tiempo de aprendizaje" },
   "ltime.back": { en: "Home", es: "Inicio" },
+  // Says the idle gate out loud, in both places. A page left open on a desk
+  // stops counting after ten minutes, and an owner reading these numbers has to
+  // know that or they will read a parked tab as a long evening of study.
   "ltime.blurb": {
-    en: "How long each person spends in Learn, and on what. Counted only while the screen is in front of them — never while the phone is locked or the app is in the background.",
-    es: "Cuánto tiempo pasa cada persona en Aprender, y en qué. Solo cuenta mientras la pantalla está frente a ellos — nunca con el teléfono bloqueado ni con la app en segundo plano.",
+    en: "How long each person spends in Learn, and on what. Counted only while the screen is in front of them and they are using it — never while the phone is locked, the app is in the background, or the page has sat untouched for ten minutes.",
+    es: "Cuánto tiempo pasa cada persona en Aprender, y en qué. Solo cuenta mientras la pantalla está frente a ellos y la están usando — nunca con el teléfono bloqueado, con la app en segundo plano, ni con la página sin tocar por diez minutos.",
   },
   "ltime.range.aria": { en: "Time range", es: "Rango de fechas" },
   "ltime.range.week": { en: "This week", es: "Esta semana" },
@@ -2248,8 +2251,8 @@ export const CATALOG = {
   },
   "learn.time.none": { en: "nothing yet this week", es: "nada aún esta semana" },
   "learn.time.why": {
-    en: "Time in Learn is recorded so the company can see the effort you put in. It only counts while this screen is in front of you — never while your phone is locked or the app is in the background.",
-    es: "El tiempo en Aprender se registra para que la empresa vea el esfuerzo que pones. Solo cuenta mientras esta pantalla está frente a ti — nunca con el teléfono bloqueado ni con la app en segundo plano.",
+    en: "Time in Learn is recorded so the company can see the effort you put in. It only counts while this screen is in front of you and you are using it — never while your phone is locked or the app is in the background, and it stops if the page sits untouched for ten minutes. A lesson that is playing always counts.",
+    es: "El tiempo en Aprender se registra para que la empresa vea el esfuerzo que pones. Solo cuenta mientras esta pantalla está frente a ti y la estás usando — nunca con el teléfono bloqueado ni con la app en segundo plano, y se detiene si dejas la página sin tocar por diez minutos. Una lección que se está reproduciendo siempre cuenta.",
   },
   "ltime.watchNote": {
     en: "A watch is one visit that got through at least 30 seconds. The percentage is how much of the lesson was actually played — skipping to the end can finish a video without watching it.",
