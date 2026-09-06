@@ -44,9 +44,11 @@
 #
 # THE ARCHIVE IS NEVER UPLOADED AS A WORKFLOW ARTIFACT. This repository is
 # public, and anyone can download the artifacts of a public repository's
-# workflow run. An artifact here would publish every crew member's hours and
-# every builder's plans to the whole internet, nightly — a worse leak than the
-# committed backups this same change is removing. So the fallback when B2 is not
+# workflow run. An artifact here would publish every crew member's hours, every
+# builder's plans, and — because `data.sql` dumps `--schema '*'` and Supabase's
+# tool does not exclude `auth` — every crew member's email and bcrypt password
+# hash, to the whole internet, nightly. That is a worse leak than the committed
+# backups this same change is removing. So the fallback when B2 is not
 # configured is to make no copy off the runner at all, and to say so.
 #
 # Scheduled and manual only, for the same reason: nothing that holds a

@@ -24,10 +24,18 @@ one dated `.tar.gz` holding everything:
 | --- | --- |
 | `roles.sql` | the database roles |
 | `schema.sql` | every table, view, function, policy and extension |
-| `data.sql` | every row, as `COPY` statements |
+| `data.sql` | every row, as `COPY` statements — including Supabase's own `auth` and `storage` tables |
 | `storage/` | the actual bytes of every uploaded file |
 | `storage-manifest.json` | one line per file: bucket, path, size, checksum |
 | `MANIFEST.json` | the row count of every table, taken at the moment of the dump |
+
+**Treat this archive like the database itself.** `data.sql` is dumped with
+`--schema '*'`, and `auth` is not one of the schemas Supabase's dump tool
+excludes, so the file holds `auth.users` — every crew member's email and their
+bcrypt password hash — as well as the `storage` tables. That is good news for
+the restore (see Step 7) and it is the reason the B2 bucket must be private, the
+reason nothing is ever uploaded as a workflow artifact on this public
+repository, and the reason a copy on a laptop belongs on an encrypted disk.
 
 **Where the archive is.** In the Backblaze B2 bucket, under `YYYY/MM/DD/`, if
 `B2_KEY_ID`, `B2_APPLICATION_KEY` and `B2_BUCKET` are set in the repository's
@@ -135,7 +143,7 @@ python3 -c "import json;print(json.load(open('restore/storage-manifest.json'))['
 
 ## Step 6 — Point everything at the new project
 
-Five places, and missing one of them is the usual way a restore looks broken:
+Six places, and missing one of them is the usual way a restore looks broken:
 
 1. **Repository secrets** (Settings → Secrets and variables → Actions):
    `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`,
@@ -148,6 +156,18 @@ Five places, and missing one of them is the usual way a restore looks broken:
    function secrets from the repository's secrets and tells you what is missing.
 5. **Redeploy the frontend** — merge anything, or run "Deploy GitHub Pages"
    manually.
+6. **The migration history.** Supabase's dump tool deliberately skips the
+   `supabase_migrations` schema, so the new project has the whole schema and no
+   record of how it got there, and the next "Deploy backend" run would try to
+   apply all 200-odd migrations to a database that already has them. Tell the
+   CLI they are done:
+
+   ```bash
+   supabase link --project-ref <NEW_REF>
+   supabase migration repair --linked --status applied \
+     $(ls supabase/migrations/*.sql | xargs -n1 basename | cut -d_ -f1)
+   supabase migration list --linked   # local and remote should now agree
+   ```
 
 The app shows a red **"Wrong database"** banner whenever the frontend and the
 backend disagree about which project they are talking to. Trust it: if you see
@@ -155,15 +175,26 @@ it after a restore, step 6 is not finished.
 
 ## Step 7 — The people part
 
-Auth users are **not** in the backup. The dump covers the app's own schemas,
-not Supabase's `auth` schema, and password hashes are deliberately never
-captured anyway: holding every crew member's password hash in a file that gets
-copied around nightly is a bigger risk than re-inviting the crew.
+**Logins should come back with the data.** `data.sql` includes `auth.users`,
+password hashes and all, so once Step 3 has run, the crew's existing passwords
+should still work. Do not tell anyone to expect a new login until you have
+checked.
 
-So after a restore, nobody can sign in until they are re-invited. Their
-`profiles` row — name, role, skill level, everything the app knows about them —
-is restored; only the login is not. Use the Crew screen to send invites, and
-tell people in advance: their work is there, their login is new.
+Check it before you announce anything:
+
+```bash
+psql "$PGURL" -X -t -c 'select count(*) from auth.users'
+```
+
+Compare that against the crew you expect, then sign in as one real person.
+
+If the count is zero, or the `auth` part of `data.sql` errored on the way in —
+Supabase's own auth service moves its table shape between versions, and a new
+project may not accept an older dump's columns — then fall back to re-inviting.
+Everyone's `profiles` row (name, role, skill level, everything the app knows
+about them) is restored either way; only the login would be new. Use the Crew
+screen to send invites, and tell people plainly: their work is there, their
+login is not.
 
 ---
 

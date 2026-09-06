@@ -27,7 +27,7 @@ One dated `.tar.gz`:
 | --- | --- |
 | `roles.sql` | the database roles |
 | `schema.sql` | every table, view, function, policy and extension |
-| `data.sql` | every row, as `COPY` statements |
+| `data.sql` | every row, as `COPY` statements — including Supabase's own `auth` and `storage` tables |
 | `storage/` | the actual bytes of every object in every bucket |
 | `storage-manifest.json` | bucket, path, size, etag and checksum per file |
 | `MANIFEST.json` | row counts taken at dump time, three spot-row hashes, the git commit, the timestamps |
@@ -48,6 +48,18 @@ knowing before anyone sizes the job around it.
 If the copy cannot fetch every file, the nightly **fails** and Slack says so.
 That includes hitting its 2 GiB ceiling: an incomplete backup is reported as a
 problem rather than as a green night with a note on a page nobody opens.
+
+## How sensitive the archive is
+
+As sensitive as the database. `data.sql` is dumped with `--schema '*'` and
+`auth` is not one of the schemas Supabase's dump tool excludes, so every
+archive holds `auth.users`: the crew's email addresses and their bcrypt
+password hashes, alongside their hours and the builders' plans.
+
+Nothing here is a reason not to take the backup — it is the reason the bucket is
+private, the reason no archive is ever uploaded as a workflow artifact on this
+public repository, and the reason a copy pulled onto a laptop belongs on an
+encrypted disk and gets deleted afterwards.
 
 ## Where the copies go
 
@@ -196,8 +208,9 @@ npm --prefix app run e2e
   taken by the platform itself, which would sit behind this one and cover the
   case where GitHub Actions is also having a bad day. For a database that holds
   payroll it is worth the money.
-- **Auth users.** The dump covers the app's own schemas, not Supabase's `auth`
-  schema, and password hashes are deliberately never captured. After a restore
-  everyone's work is there and everyone's login has to be re-issued.
+- **Migration history.** Supabase's dump tool skips the `supabase_migrations`
+  schema, so a restored project has the whole schema and no record of how it got
+  there. `scripts/restore.md` step 6 has the one command that fixes it; until it
+  is run, the next backend deploy would try to re-apply every migration.
 - **Anything done since last night.** At worst a day's work is lost. The honest
   thing on the day is to say so and have the crew re-enter it.
