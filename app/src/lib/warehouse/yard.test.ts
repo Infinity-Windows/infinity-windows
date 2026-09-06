@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { StorageContainer, StoragePackage } from "../storage";
-import { glowFromHits, yardSummary, yardTiles } from "./yard";
+import { bayOffBlock, baysSummary, glowFromHits, splitYard, yardSummary, yardTiles } from "./yard";
 
 const NOW = new Date("2026-09-06T12:00:00Z");
 const box = (id: string, name: string, kind: string, parent: string | null = null): StorageContainer => ({
@@ -75,5 +75,37 @@ describe("the line under the yard", () => {
   });
   it("says so when there are no boxes", () => {
     expect(yardSummary([])).toMatch(/No boxes yet/);
+  });
+});
+
+describe("bays are their own picture", () => {
+  const containers = [
+    box("main", "Main warehouse", "building"),
+    box("c7", "Conex 7", "conex"),
+    box("b1", "BLACK22 bay", "bay"),
+    box("b2", "PECAN14 bay", "bay"),
+  ];
+  it("keeps bays out of the boxes and the boxes out of the bays", () => {
+    const { boxes, bays } = splitYard(yardTiles(containers, [], jobs, NOW));
+    expect(boxes.map((t) => t.name)).toEqual(["Main warehouse", "Conex 7"]);
+    expect(bays.map((t) => t.name)).toEqual(["BLACK22 bay", "PECAN14 bay"]);
+  });
+  it("says how many bays there are and how many hold something", () => {
+    const { bays } = splitYard(yardTiles(containers, [pkg("a", "b1", "j1"), pkg("b", "b1", "j1")], jobs, NOW));
+    expect(baysSummary(bays)).toBe("2 bays · 2 packages set aside in 1");
+    expect(baysSummary(splitYard(yardTiles(containers, [], jobs, NOW)).bays)).toBe("2 bays · nothing set aside right now");
+    expect(baysSummary([])).toContain("No bays");
+  });
+});
+
+describe("turning a bay off", () => {
+  const bay = (inside: number, children: string[] = []) => ({
+    name: "BLACK22 bay", inside, children: children.map((n) => ({ name: n })) as never,
+  });
+  it("is allowed only once the bay is empty", () => {
+    expect(bayOffBlock(bay(0))).toBeNull();
+    expect(bayOffBlock(bay(1))).toBe("1 package is still set aside in BLACK22 bay. Move it out first.");
+    expect(bayOffBlock(bay(3))).toBe("3 packages are still set aside in BLACK22 bay. Move them out first.");
+    expect(bayOffBlock(bay(0, ["Crate 9"]))).toContain("still holds Crate 9");
   });
 });

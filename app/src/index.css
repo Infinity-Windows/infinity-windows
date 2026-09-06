@@ -12435,6 +12435,18 @@ button.stage-chip {
 .yard-crate { font-size: 11px; padding: 2px 7px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); }
 .yard-crate--glow { border-color: var(--accent); color: var(--text); background: var(--accent-soft); }
 .yard-section { margin-top: 12px; }
+/* Two pictures of the yard: the boxes, and the bays (one per job). */
+.yard-views { display: inline-flex; gap: 2px; padding: 2px; border-radius: 999px; border: 1.5px solid var(--border); background: var(--surface); }
+.yard-view { min-height: 36px; padding: 4px 14px; border: none; border-radius: 999px; background: transparent; color: var(--muted); font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; }
+.yard-view[aria-pressed="true"] { background: var(--accent-soft); color: var(--text); }
+.yard-view:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.yard-view b { font-variant-numeric: tabular-nums; margin-left: 4px; font-weight: 700; }
+.yard-box--bay { border-style: dotted; }
+.yard-box--idle .yard-name { color: var(--muted); }
+.bay-name { color: inherit; text-decoration: none; }
+.bay-name:hover { text-decoration: underline; }
+.bay-off { align-self: flex-start; margin-top: 8px; min-height: 36px; font-size: 13px; }
+.bays-empty { margin: 8px 0; }
 .yard-summary { font-size: 13px; }
 .yard-truck { margin-top: 12px; }
 .yard-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }

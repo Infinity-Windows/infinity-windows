@@ -59,7 +59,7 @@ export function Yard({ tiles, onAdd }: { tiles: YardTile[]; onAdd: () => void })
       ))}
       <button type="button" className="yard-box yard-box--add" onClick={onAdd}>
         <span className="yard-name">+ New container</span>
-        <span className="yard-line">a conex, crate, truck or bay</span>
+        <span className="yard-line">a conex, crate or truck</span>
       </button>
     </div>
   );
