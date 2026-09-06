@@ -2,31 +2,9 @@
 // gate (P4). Same house style as daily-logs.spec.ts / opening-sheet.spec.ts:
 // mocked routes, real UI, assert the CAPTURED RPC PAYLOAD a tap actually
 // sends, not just that something rendered.
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { useSupabaseFixtures } from "./support/supabaseFixtures";
-
-/** A tiny (1x1) real PNG — small enough to inline, real enough for the
- * capture pipeline's canvas decode (createImageBitmap/Image) to succeed.
- * Same fixture opening-sheet.spec.ts uses for the same reason. */
-const TINY_PNG_BASE64 =
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
-
-function pngFile(name: string) {
-  return {
-    name,
-    mimeType: "image/png",
-    buffer: Buffer.from(TINY_PNG_BASE64, "base64"),
-  };
-}
-
-function json(route: Route, body: unknown, rows = 0) {
-  return route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    headers: { "content-range": `0-${Math.max(0, rows - 1)}/${rows}` },
-    body: JSON.stringify(body),
-  });
-}
+import { json, pngFile } from "./support/specHelpers";
 
 /** The receipt sheet's library input: the one WITHOUT `capture` on it. Both
  * inputs come from usePhotoPicker now, and `capture` is what tells them apart. */

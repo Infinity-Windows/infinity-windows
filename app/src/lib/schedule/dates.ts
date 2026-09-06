@@ -97,15 +97,6 @@ export function rangesOverlap(
   return daysBetween(aStart, bEnd) >= 0 && daysBetween(bStart, aEnd) >= 0;
 }
 
-/** Short "Mon 21" style label for a day header. */
-export function shortDayLabel(iso: string): string {
-  return new Date(isoToUtc(iso)).toLocaleDateString(undefined, {
-    weekday: "short",
-    day: "numeric",
-    timeZone: "UTC",
-  });
-}
-
 /** "Mon, Jul 21" agenda header. */
 export function agendaDayLabel(iso: string): string {
   return new Date(isoToUtc(iso)).toLocaleDateString(undefined, {

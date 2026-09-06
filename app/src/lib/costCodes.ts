@@ -181,27 +181,3 @@ export async function setProjectCostCodes(
   });
   if (error) throw error;
 }
-
-/** Add one code to a job's subset (foreman+). */
-export async function addProjectCostCode(
-  projectId: string,
-  costCodeId: string,
-): Promise<void> {
-  const { error } = await supabase.rpc("add_project_cost_code", {
-    p_project_id: projectId,
-    p_cost_code_id: costCodeId,
-  });
-  if (error) throw error;
-}
-
-/** Remove one code from a job's subset (foreman+). */
-export async function removeProjectCostCode(
-  projectId: string,
-  costCodeId: string,
-): Promise<void> {
-  const { error } = await supabase.rpc("remove_project_cost_code", {
-    p_project_id: projectId,
-    p_cost_code_id: costCodeId,
-  });
-  if (error) throw error;
-}

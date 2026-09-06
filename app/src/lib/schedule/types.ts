@@ -1,4 +1,3 @@
-import type { Profile } from "../install/types";
 import type { Project } from "../types";
 
 export type ScheduleStatus =
@@ -86,8 +85,3 @@ export interface AssignmentPatch {
 
 /** How far ahead the board schedules (months). */
 export const SCHEDULE_HORIZON_MONTHS = 6;
-
-/** Profiles eligible for a crew picker (active, foreman/installer floor). */
-export function eligibleCrew(profiles: Profile[]): Profile[] {
-  return profiles.filter((p) => p.active);
-}

@@ -19,11 +19,16 @@
 //
 // Geolocation is stubbed denied, the way opening-sheet.spec.ts does it, so the
 // capture pipeline's warm-fix never waits one out in headless Chromium.
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { TEST_USER, jobFixtures, useSupabaseFixtures } from "./support/supabaseFixtures";
+import {
+  json,
+  pngFile,
+  stubGeolocationDenied,
+} from "./support/specHelpers";
 
 const SHOTS = resolve(dirname(fileURLToPath(import.meta.url)), "__screenshots__/global-capture");
 
@@ -37,22 +42,6 @@ const PROJECT = {
   status: "active",
 };
 
-const TINY_PNG_BASE64 =
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
-
-function pngFile(name: string) {
-  return { name, mimeType: "image/png", buffer: Buffer.from(TINY_PNG_BASE64, "base64") };
-}
-
-function json(route: Route, body: unknown, rows = 0) {
-  return route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    headers: { "content-range": `0-${Math.max(0, rows - 1)}/${rows}` },
-    body: JSON.stringify(body),
-  });
-}
-
 async function useProjectFixture(page: Page) {
   await page.route("**/rest/v1/projects**", (r) => json(r, [PROJECT], 1));
 }
@@ -64,23 +53,6 @@ async function useCaptureStorage(page: Page) {
     const url = route.request().url();
     if (url.includes("/object/sign/")) return json(route, { signedURL: "/fixture.jpg" });
     return json(route, { Key: "install-media/x.jpg" });
-  });
-}
-
-/** Headless Chromium has no UI to grant or deny the real prompt, so make the
- *  outcome deterministic. Both doors: the one-shot lookup and the watch a
- *  capture surface starts on mount (lib/geoWatch.ts). */
-async function stubGeolocationDenied(page: Page) {
-  await page.addInitScript(() => {
-    if (!navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition = (_ok, err) => {
-      err?.({ code: 1, message: "denied" } as GeolocationPositionError);
-    };
-    navigator.geolocation.watchPosition = (_ok, err) => {
-      err?.({ code: 1, message: "denied", PERMISSION_DENIED: 1 } as GeolocationPositionError);
-      return 1;
-    };
-    navigator.geolocation.clearWatch = () => {};
   });
 }
 

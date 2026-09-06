@@ -13,6 +13,7 @@
 // DayPanel.test.tsx for the canSeeHours prop itself, pinned directly.
 import { expect, test, type Page, type Route } from "@playwright/test";
 import { jobFixtures, TEST_USER, useSupabaseFixtures } from "./support/supabaseFixtures";
+import { dayISO, json } from "./support/specHelpers";
 
 const BLACK22 = jobFixtures().find((j) => j.jobCode === "BLACK22")!;
 const OAKRIDGE = jobFixtures().find((j) => j.jobCode === "OAKRIDGE")!;
@@ -28,17 +29,6 @@ const CREW = [
   { id: "e2e-taylor", display_name: "Taylor", skill_level: 3, role: "installer", active: true },
 ];
 
-/** "N days ago" as a local YYYY-MM-DD, built the same way Scheduling.tsx's
- * own todayLocalISO() is (local getters, not UTC) — so the fixture's dates
- * land exactly where the app itself thinks "today minus N" is, whatever
- * day this actually runs. */
-function daysAgoISO(n: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  const pad = (x: number) => String(x).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
 /** A local instant on `iso` at `hour` — built from local calendar fields
  * (dayMemory.test.ts's same idiom), so a shift lands on the calendar day
  * it's supposed to regardless of the host's timezone. */
@@ -49,18 +39,9 @@ function localInstant(iso: string, hour: number): string {
 
 // A rich past day: crew assigned, crew worked (with an honest gap either
 // way), a unit finished, and a log filed.
-const TEST_DATE = daysAgoISO(3);
+const TEST_DATE = dayISO(-3);
 // A past day with crew assigned and nobody who ever punched in.
-const FALLBACK_DATE = daysAgoISO(5);
-
-function jsonRoute(route: Route, body: unknown, rows = 0) {
-  return route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    headers: { "content-range": `0-${Math.max(0, rows - 1)}/${rows}` },
-    body: JSON.stringify(body),
-  });
-}
+const FALLBACK_DATE = dayISO(-5);
 
 /** `?id=eq.<uuid>` → "<uuid>" — mirrors supabaseFixtures.ts's own private
  * helper (not exported), needed again here to override `profiles`. */
@@ -96,12 +77,12 @@ async function useCalendarFixtures(page: Page, role: "foreman" | "supervisor" | 
     const id = eqParam(url, "id");
     const rows = id ? all.filter((p) => p.id === id) : all;
     if (wantsSingleObject(route)) {
-      return jsonRoute(route, rows[0] ?? null, rows.length ? 1 : 0);
+      return json(route, rows[0] ?? null, rows.length ? 1 : 0);
     }
-    return jsonRoute(route, rows, rows.length);
+    return json(route, rows, rows.length);
   });
 
-  await page.route("**/rest/v1/projects**", (r) => jsonRoute(r, PROJECTS, PROJECTS.length));
+  await page.route("**/rest/v1/projects**", (r) => json(r, PROJECTS, PROJECTS.length));
 
   const assignments = [
     {
@@ -155,8 +136,8 @@ async function useCalendarFixtures(page: Page, role: "foreman" | "supervisor" | 
     // listDraftAssignments() asks for status=eq.draft — every fixture row
     // here is published, so that specific query is honestly empty rather
     // than mislabeling published rows as an unpublished-changes bar.
-    if (url.searchParams.get("status") === "eq.draft") return jsonRoute(route, [], 0);
-    return jsonRoute(route, assignments, assignments.length);
+    if (url.searchParams.get("status") === "eq.draft") return json(route, [], 0);
+    return json(route, assignments, assignments.length);
   });
 
   const shifts = [
@@ -179,7 +160,7 @@ async function useCalendarFixtures(page: Page, role: "foreman" | "supervisor" | 
       status: "approved",
     },
   ];
-  await page.route("**/rest/v1/time_shifts**", (route) => jsonRoute(route, shifts, shifts.length));
+  await page.route("**/rest/v1/time_shifts**", (route) => json(route, shifts, shifts.length));
 
   const sessions = [
     {
@@ -189,7 +170,7 @@ async function useCalendarFixtures(page: Page, role: "foreman" | "supervisor" | 
       opening: { project_id: BLACK22.projectId },
     },
   ];
-  await page.route("**/rest/v1/unit_sessions**", (route) => jsonRoute(route, sessions, sessions.length));
+  await page.route("**/rest/v1/unit_sessions**", (route) => json(route, sessions, sessions.length));
 
   const logs = [
     {
@@ -209,7 +190,7 @@ async function useCalendarFixtures(page: Page, role: "foreman" | "supervisor" | 
       filer: { display_name: "Ammon" },
     },
   ];
-  await page.route("**/rest/v1/daily_logs**", (route) => jsonRoute(route, logs, logs.length));
+  await page.route("**/rest/v1/daily_logs**", (route) => json(route, logs, logs.length));
 }
 
 /** Switch to Month view, step back however many calendar months separate

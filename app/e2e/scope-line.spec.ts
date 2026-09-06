@@ -4,8 +4,9 @@
 // every opening row on the phone — so what is asserted here is the sentence a
 // person reads, not a helper's return value.
 
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { useSupabaseFixtures } from "./support/supabaseFixtures";
+import { json } from "./support/specHelpers";
 
 const BIG_ID = "44444444-4444-4444-8444-444444444444";
 const TRACK_ID = "55555555-5555-4555-8555-555555555555";
@@ -63,15 +64,6 @@ const COUNTS = [
     unknown_units: 0,
   },
 ];
-
-function json(route: Route, body: unknown, rows = 0) {
-  return route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    headers: { "content-range": `0-${Math.max(0, rows - 1)}/${rows}` },
-    body: JSON.stringify(body),
-  });
-}
 
 // Registered AFTER useSupabaseFixtures so these win. The counts route answers
 // the whole list or one job, whichever the caller asked for.

@@ -25,15 +25,16 @@ import {
   useSupabaseFixtures,
   TEST_USER,
 } from "./support/supabaseFixtures";
+import {
+  pngFile,
+  str,
+  stubGeolocationDenied,
+} from "./support/specHelpers";
 
 const BLACK22 = jobFixtures().find((j) => j.jobCode === "BLACK22")!;
 
 type Json = Record<string, unknown>;
 const REAL_OPENINGS = openingsFor(BLACK22.projectId) as unknown as Json[];
-
-function str(v: unknown): string {
-  return v as string;
-}
 
 /** Sam is a real fixture installer, so the picker is offering a real name. */
 const SAM = "a59c174b-1d65-4f86-96cc-535c53e2213e";
@@ -41,17 +42,6 @@ const SAM_NAME = "Sam";
 
 function opening(index: number, overrides: Json = {}): Json {
   return { ...REAL_OPENINGS[index], ...overrides };
-}
-
-const TINY_PNG_BASE64 =
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
-
-function pngFile(name: string) {
-  return {
-    name,
-    mimeType: "image/png",
-    buffer: Buffer.from(TINY_PNG_BASE64, "base64"),
-  };
 }
 
 /** Serve `getOpening` for these rows by id (same idiom as opening-sheet.spec). */
@@ -76,16 +66,6 @@ async function routeOpenings(page: Page, rows: Json[]) {
   );
 }
 
-/** Geolocation denied immediately, so the photo pipeline never waits one out. */
-async function stubGeolocationDenied(page: Page) {
-  await page.addInitScript(() => {
-    if (!navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition = (_ok, err) => {
-      err?.({ code: 1, message: "denied" } as GeolocationPositionError);
-    };
-  });
-}
-
 /** Capture every finish_unit body the page sends. */
 async function routeFinish(page: Page): Promise<Json[]> {
   const finishes: Json[] = [];
@@ -106,7 +86,7 @@ test("Y2: finishing a unit on somebody else's list asks who installed it", async
   // A foreman, because a foreman is who ends up filing for the crew — and the
   // role the picker opens the whole roster to.
   await useSupabaseFixtures(page, { role: "foreman" });
-  await stubGeolocationDenied(page);
+  await stubGeolocationDenied(page, { watch: false });
   const o = opening(1, {
     status: "assigned",
     needs_flashing: false,
@@ -147,7 +127,7 @@ test("Y2: finishing my own unit asks nobody and sends the call it always sent", 
   // migration has no p_credited_to to send and no wider function to call, so
   // an ordinary finish must stay byte-for-byte the call it has always made.
   await useSupabaseFixtures(page, { role: "installer" });
-  await stubGeolocationDenied(page);
+  await stubGeolocationDenied(page, { watch: false });
   const o = opening(2, {
     status: "assigned",
     needs_flashing: false,
@@ -243,7 +223,7 @@ test("Y3: Record install for… reaches the real finish flow with the person pre
   page,
 }) => {
   await useSupabaseFixtures(page, { role: "foreman" });
-  await stubGeolocationDenied(page);
+  await stubGeolocationDenied(page, { watch: false });
   await useOutline(page);
   const unit = openingForMark("10");
   await routeOpenings(page, [

@@ -1166,25 +1166,6 @@ export async function setClearance(
   if (error) throw error;
 }
 
-/** Openings assigned to a given installer (their work list). */
-export async function listMyOpenings(
-  projectId: string,
-  profileId: string,
-): Promise<ProjectOpening[]> {
-  const { data, error } = await supabase
-    .from("project_openings")
-    .select(OPENING_SELECT)
-    .eq("project_id", projectId)
-    .eq("assigned_to", profileId)
-    .order("sequence", { ascending: true, nullsFirst: false })
-    .order("opening_code");
-  if (error) throw error;
-  // Wave D: a trashed job's own row is hidden by RLS, but this table isn't
-  // — its openings keep reading live for the whole 30-day trash window
-  // otherwise (see liveProjects.ts).
-  return filterToLiveProjects(data as ProjectOpening[]);
-}
-
 /** Every opening this installer is assigned across all active jobs. */
 export async function listMyOpeningsAllJobs(
   profileId: string,
@@ -2209,16 +2190,6 @@ export async function resetProjectPins(projectId: string): Promise<number> {
   const { data, error } = await supabase.rpc(
     "reset_project_pins_to_extracted",
     { p_project_id: projectId },
-  );
-  if (error) throw error;
-  return Number(data ?? 0);
-}
-
-/** Put ONE mark back where the plan put it. */
-export async function resetOpeningPin(openingId: string): Promise<number> {
-  const { data, error } = await supabase.rpc(
-    "reset_opening_pin_to_extracted",
-    { p_opening_id: openingId },
   );
   if (error) throw error;
   return Number(data ?? 0);

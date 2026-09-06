@@ -17,6 +17,12 @@ import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { useSupabaseFixtures } from "./support/supabaseFixtures";
+import {
+  TINY_PNG_BASE64,
+  hideWrongProjectBanner,
+  json,
+  stubGeolocationDenied,
+} from "./support/specHelpers";
 
 const SHOTS = resolve(dirname(fileURLToPath(import.meta.url)), "__screenshots__/pdf-receipts");
 
@@ -46,23 +52,8 @@ function tinyPdf(pageCount: number): Buffer {
   return Buffer.from(body, "latin1");
 }
 
-/** A tiny (1x1) real PNG, for the <img> that a signed thumbnail URL resolves
- * to — the fixture's own storage handler answers 404 (or worse) for anything
- * it cannot find on disk, and a broken thumbnail would sit in the screenshots. */
-const TINY_PNG_BASE64 =
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
-
 function pdfFile(name: string, pages = 2) {
   return { name, mimeType: "application/pdf", buffer: tinyPdf(pages) };
-}
-
-function json(route: Route, body: unknown, rows = 0) {
-  return route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    headers: { "content-range": `0-${Math.max(0, rows - 1)}/${rows}` },
-    body: JSON.stringify(body),
-  });
 }
 
 function servePng(route: Route) {
@@ -103,39 +94,6 @@ async function stubWindowOpen(page: Page) {
 /** The receipt sheet's library input: the one WITHOUT `capture` on it. */
 const receiptFileInput = (page: Page) =>
   page.locator('.jobphoto-actions input[type="file"]:not([capture])');
-
-/** Headless Chromium cannot answer the real permission prompt; make the
- * outcome deterministic. A PDF receipt asks for no fix anyway — that is the
- * point of the time-only stamp — but the sheet still warms one on mount. */
-async function stubGeolocationDenied(page: Page) {
-  await page.addInitScript(() => {
-    if (!navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition = (_ok, err) => {
-      err?.({ code: 1, message: "denied" } as GeolocationPositionError);
-    };
-    navigator.geolocation.watchPosition = (_ok, err) => {
-      err?.({ code: 1, message: "denied", PERMISSION_DENIED: 1 } as GeolocationPositionError);
-      return 1;
-    };
-    navigator.geolocation.clearWatch = () => {};
-  });
-}
-
-/** The fixture env points at a made-up Supabase host, so the app's own "Wrong
- * database" banner would cover the header in every screenshot. */
-async function hideWrongProjectBanner(page: Page) {
-  await page.addInitScript(() => {
-    document.addEventListener(
-      "DOMContentLoaded",
-      () => {
-        const style = document.createElement("style");
-        style.textContent = ".pwa-banner-wrong-project { display: none !important; }";
-        document.head.appendChild(style);
-      },
-      { once: true },
-    );
-  });
-}
 
 const DOC_PATH = "install-media/receipts/aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa.pdf";
 
