@@ -24,6 +24,7 @@ import {
   screenIsActive,
   startHeartbeats,
   startOfWeek,
+  subscribeToScreenActivity,
 } from "./learningTime";
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -421,5 +422,48 @@ describe("startHeartbeats and going idle", () => {
     vi.advanceTimersByTime(1);
     expect(beats).toEqual([15, 15]);
     stop();
+  });
+});
+
+describe("subscribeToScreenActivity", () => {
+  it("counts arriving on a Learn screen as the sign of life it is", () => {
+    // These listeners only exist while a Learn screen is mounted, so the tap
+    // that navigated here happened before any of them were listening. Without
+    // the seed, somebody who spent an hour on the dispatch board and then
+    // opened Learn would land already idle and bank nothing until they touched
+    // something again.
+    resetLearningActivity(Date.now() - 60 * 60_000);
+    expect(screenIsActive()).toBe(false);
+
+    const off = subscribeToScreenActivity(() => {});
+    expect(screenIsActive()).toBe(true);
+    off();
+  });
+
+  it("takes every listener back off the window when it is done", () => {
+    // A Learn page is mounted and unmounted all day. Leaking a capture-phase
+    // listener per mount would put a growing pile of them in front of every
+    // scroll in the app.
+    const before = (window as unknown as { __c?: number }).__c;
+    void before;
+    const seen: string[] = [];
+    const add = window.addEventListener.bind(window);
+    const remove = window.removeEventListener.bind(window);
+    window.addEventListener = ((type: string, ...rest: unknown[]) => {
+      seen.push(`+${type}`);
+      return (add as (...a: unknown[]) => void)(type, ...rest);
+    }) as typeof window.addEventListener;
+    window.removeEventListener = ((type: string, ...rest: unknown[]) => {
+      seen.push(`-${type}`);
+      return (remove as (...a: unknown[]) => void)(type, ...rest);
+    }) as typeof window.removeEventListener;
+
+    subscribeToScreenActivity(() => {})();
+
+    window.addEventListener = add;
+    window.removeEventListener = remove;
+    const added = seen.filter((s) => s.startsWith("+")).map((s) => s.slice(1)).sort();
+    const removed = seen.filter((s) => s.startsWith("-")).map((s) => s.slice(1)).sort();
+    expect(removed).toEqual(added);
   });
 });

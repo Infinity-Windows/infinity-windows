@@ -34,19 +34,28 @@ export function useLearningTime(
     const item = (key ?? "").trim();
     if (!item) return;
 
-    // One beat straight away, worth zero seconds, IF the screen is really in
-    // front of somebody. It opens the row, so a visit that ends before the
-    // first full interval still shows up as a visit rather than vanishing —
-    // the difference between "opened the glossary and left" and "never opened
-    // it", which is exactly the kind of difference the owner is asking about.
-    // Gated like every other beat: a screen mounted behind a locked phone was
-    // not opened by anybody.
-    if (screenIsActive()) void sendLearningHeartbeat(kind, item, 0);
-
-    return startHeartbeats({
+    // The scheduler goes FIRST, and the order matters: subscribing is what
+    // tells the idle clock somebody just arrived here (see
+    // subscribeToScreenActivity). Asking screenIsActive before that would ask
+    // it about a page nobody had touched since whatever they were doing an
+    // hour ago on another screen.
+    const stop = startHeartbeats({
       isActive: screenIsActive,
       subscribe: subscribeToScreenActivity,
       onBeat: (seconds) => void sendLearningHeartbeat(kind, item, seconds),
     });
+
+    // Then one beat straight away, worth zero seconds, IF the screen is really
+    // in front of somebody. It opens the row, so a visit that ends before the
+    // first full interval still shows up as a visit rather than vanishing —
+    // the difference between "opened the glossary and left" and "never opened
+    // it", which is exactly the kind of difference the owner is asking about.
+    // It is also the beat that plants the server's marker, so the first real
+    // one fifteen seconds later is credited in full.
+    // Gated like every other beat: a screen mounted behind a locked phone was
+    // not opened by anybody.
+    if (screenIsActive()) void sendLearningHeartbeat(kind, item, 0);
+
+    return stop;
   }, [kind, key]);
 }

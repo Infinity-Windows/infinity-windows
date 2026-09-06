@@ -220,8 +220,11 @@ export function resetLearningActivity(at: number = Date.now()): void {
  *
  * Three things have to be true: the browser says the page is visible, the
  * browser says it has focus, and somebody has either touched it inside the idle
- * window or has a lesson playing. PURE — `now` is injected so the rule is
- * tested rather than reasoned about.
+ * window or has a lesson playing.
+ *
+ * Not pure — it reads the document and the two module values above — but `now`
+ * is injected, which is what lets the ten minutes be tested rather than waited
+ * out. It has no side effects: asking does not reset anything.
  */
 export function screenIsActive(now: number = Date.now()): boolean {
   if (typeof document === "undefined") return false;
@@ -247,6 +250,15 @@ const INTERACTION_EVENTS = [
 /** Everything that can change the answer above. */
 export function subscribeToScreenActivity(onChange: () => void): () => void {
   if (typeof document === "undefined") return () => {};
+
+  // Arriving somewhere IS a sign of life, and it has to be counted as one:
+  // these listeners only exist while a Learn screen is mounted, so somebody who
+  // spent the last hour on the dispatch board and then taps through to Learn
+  // did the tap before anything here was listening. Without this seed they
+  // would land already idle and record nothing until they touched the screen
+  // again. It cannot reopen the parked-tab hole, because a tab that is parked
+  // subscribes once, when it is opened, and never again.
+  lastInteractionAt = Date.now();
 
   const noteActivity = () => {
     const wasIdle = Date.now() - lastInteractionAt >= IDLE_MS;
