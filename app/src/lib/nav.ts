@@ -66,6 +66,8 @@ export type RoutePath =
   | "/storage"
   | "/storage/tag"
   | "/storage/out"
+  | "/warehouse/send"
+  | "/warehouse/history"
   | "/storage/arrive"
   | "/ask"
   | "/knowledge"
@@ -172,6 +174,12 @@ export const NAV: NavDest[] = [
   // Reached from the warehouse page's sections, never as menu rows.
   { id: "storage-tag", to: "/storage/tag", label: "Tag packages", icon: "▧", minRole: "installer" },
   { id: "storage-out", to: "/storage/out", label: "Set aside / check out", icon: "▧", minRole: "installer" },
+  // A whole job to the job site, and the job's last page (owner ask
+  // 2026-09-06). Reached from a job chip on the warehouse page and the
+  // materials ledger; finalizing on it is foreman+ inside the page.
+  { id: "warehouse-send", to: "/warehouse/send", label: "Send a job to site", icon: "▧", minRole: "installer" },
+  // The finalized jobs — off the warehouse page, kept to read.
+  { id: "warehouse-history", to: "/warehouse/history", label: "Warehouse history", icon: "▧", minRole: "installer" },
   // The 3D map viewer (ticket 22). Reached from a package's sheet and a
   // container's page, never as a menu row.
   { id: "warehouse-3d", to: "/warehouse/3d", label: "Container in 3D", icon: "▧", minRole: "installer" },

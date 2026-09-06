@@ -40,6 +40,16 @@ export function JobStrip({
               </Link>
               <span className={c.ready ? "ok" : ""}>{c.line}</span>
             </span>
+            {c.projectId ? (
+              <Link
+                className="job-chip-send"
+                to={`/warehouse/send/${c.projectId}`}
+                onClick={(e) => e.stopPropagation()}
+                title="Send this job's material to the job site"
+              >
+                Send to site →
+              </Link>
+            ) : null}
             <span className="job-chip-bar" aria-hidden="true">
               <i style={{ width: `${c.total > 0 ? Math.round((c.here / c.total) * 100) : 0}%` }} />
             </span>

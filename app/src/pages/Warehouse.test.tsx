@@ -103,6 +103,8 @@ interface Seed {
   /** Defaults to foreman, which renders the whole page. Set "installer" to see
    * only what somebody at the truck sees. */
   role?: "installer" | "foreman";
+  /** Every non-trashed job, finalized stamps included; defaults to JOBS. */
+  projectsAll?: typeof JOBS;
   /** Defaults to the one conex. */
   containers?: StorageContainer[];
 }
@@ -139,7 +141,7 @@ function mount(seed: Seed): HTMLElement {
   qc.setQueryData(["projects"], JOBS);
   // The name map reads every job whatever its status (job lifecycle,
   // 2026-08-26) — same fixture list here, no finished jobs in these tests.
-  qc.setQueryData(["projectsAll"], JOBS);
+  qc.setQueryData(["projectsAll"], seed.projectsAll ?? JOBS);
   qc.setQueryData(["storagePackages"], seed.packages);
   qc.setQueryData(["storageContainers"], seed.containers ?? [conex]);
   qc.setQueryData(["issues"], []);
@@ -449,5 +451,23 @@ describe("the bays are their own picture (owner call 2026-09-06)", () => {
     click(chip);
     expect(viewButton(el, "Bays")?.getAttribute("aria-pressed")).toBe("true");
     expect(el.querySelector('[data-testid="bay"].yard-box--glow')?.textContent).toContain("BLACK22 bay");
+  });
+});
+
+describe("a finalized job is off the warehouse page (owner ask 2026-09-06)", () => {
+  it("hides its material from the yard and the job strip, and links each open job to Send to site", () => {
+    const p = packageRow({ status: "stored", container_id: "conex", project_id: "job-1", marks: ["16"] });
+    const before = mount({ packages: [p], locations: [], role: "installer" });
+    const chip = [...before.querySelectorAll("button.job-chip")].find((b) => b.textContent?.includes("BLACK22"));
+    expect(chip).toBeDefined();
+    expect(chip?.querySelector("a.job-chip-send")?.getAttribute("href")).toBe("/warehouse/send/job-1");
+    expect(before.querySelector('[data-testid="yard-box"] .yard-line')?.textContent).toContain("1 package");
+    expect([...before.querySelectorAll("a")].some((a) => a.getAttribute("href") === "/warehouse/history")).toBe(true);
+    act(() => root?.unmount());
+
+    const finalized = JOBS.map((j) => (j.id === "job-1" ? { ...j, materials_finalized_at: "2026-09-06T18:00:00Z" } : j));
+    const after = mount({ packages: [p], locations: [], role: "installer", projectsAll: finalized });
+    expect([...after.querySelectorAll("button.job-chip")].some((b) => b.textContent?.includes("BLACK22"))).toBe(false);
+    expect(after.querySelector('[data-testid="yard-box"] .yard-line')?.textContent).toContain("0 packages");
   });
 });

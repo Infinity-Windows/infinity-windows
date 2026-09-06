@@ -95,6 +95,13 @@ export interface Project {
    * data doesn't need to be touched; a real fetch always has it (not null
    * default false). */
   is_test?: boolean;
+  /** The job's material story is closed in the warehouse (owner ask
+   * 2026-09-06): stamped by finalize_job_materials, cleared by
+   * reopen_job_materials. The warehouse page hides the job's packages while
+   * this is set; the history page lists it. Warehouse-only — `status` is the
+   * office's and is not touched. Optional like the other later fields. */
+  materials_finalized_at?: string | null;
+  materials_finalized_by?: string | null;
   customer_name?: string | null;
   contact_phone?: string | null;
   contact_email?: string | null;

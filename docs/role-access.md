@@ -30,7 +30,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Diagnostics (`/diagnostics`)
 - Settings (`/settings`)
 
-**Can reach (all 29 allowed destinations):**
+**Can reach (all 31 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
@@ -41,6 +41,8 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Arrival check (`/storage/arrive`)
 - Tag packages (`/storage/tag`)
 - Set aside / check out (`/storage/out`)
+- Send a job to site (`/warehouse/send`)
+- Warehouse history (`/warehouse/history`)
 - Container in 3D (`/warehouse/3d`)
 - Walk the 3D model (`/projects/:projectId/model`)
 - Takeoffs (`/takeoffs`)
@@ -129,7 +131,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Settings (`/settings`)
 - Catalog (`/catalog`)
 
-**Can reach (all 38 allowed destinations):**
+**Can reach (all 40 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
@@ -140,6 +142,8 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Arrival check (`/storage/arrive`)
 - Tag packages (`/storage/tag`)
 - Set aside / check out (`/storage/out`)
+- Send a job to site (`/warehouse/send`)
+- Warehouse history (`/warehouse/history`)
 - Container in 3D (`/warehouse/3d`)
 - Walk the 3D model (`/projects/:projectId/model`)
 - Takeoffs (`/takeoffs`)
@@ -239,7 +243,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Catalog (`/catalog`)
 - Admin (`/admin`)
 
-**Can reach (all 49 allowed destinations):**
+**Can reach (all 51 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
@@ -250,6 +254,8 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Arrival check (`/storage/arrive`)
 - Tag packages (`/storage/tag`)
 - Set aside / check out (`/storage/out`)
+- Send a job to site (`/warehouse/send`)
+- Warehouse history (`/warehouse/history`)
 - Container in 3D (`/warehouse/3d`)
 - Walk the 3D model (`/projects/:projectId/model`)
 - Takeoffs (`/takeoffs`)
@@ -352,7 +358,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Admin (`/admin`)
 - Builder logins (`/account/builders`)
 
-**Can reach (all 52 allowed destinations):**
+**Can reach (all 54 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
@@ -363,6 +369,8 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Arrival check (`/storage/arrive`)
 - Tag packages (`/storage/tag`)
 - Set aside / check out (`/storage/out`)
+- Send a job to site (`/warehouse/send`)
+- Warehouse history (`/warehouse/history`)
 - Container in 3D (`/warehouse/3d`)
 - Walk the 3D model (`/projects/:projectId/model`)
 - Takeoffs (`/takeoffs`)
