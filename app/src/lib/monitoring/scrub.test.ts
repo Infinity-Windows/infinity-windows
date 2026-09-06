@@ -9,6 +9,9 @@
 // because a scrubber that deleted everything would pass a one-sided test and be
 // useless, and the point is a report that is still worth reading.
 
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   REDACTED,
@@ -77,9 +80,27 @@ describe("scrubText", () => {
     ).toBe("Could not email the receipt to [email]");
   });
 
-  it("masks a phone number without eating a build id", () => {
+  it("masks a phone number without eating a build id or a timestamp", () => {
     expect(scrubText("call 512-555-0117 back")).toBe("call [phone] back");
+    expect(scrubText("(512) 555-0117")).toBe("[phone]");
+    expect(scrubText("+1 512 555 0117 is the site")).toBe("[phone] is the site");
     expect(scrubText("build 31eb3cd5f9a2b1")).toBe("build 31eb3cd5f9a2b1");
+    expect(scrubText("stamped 1757116800000")).toBe("stamped 1757116800000");
+  });
+
+  it("uses no regex feature an older iPhone would refuse to parse", () => {
+    // A lookbehind is a PARSE error on Safari before 16.4, and this module is
+    // imported before the app mounts — so one here would white-screen the app
+    // rather than merely fail to mask something.
+    const source = readFileSync(
+      resolve(dirname(fileURLToPath(import.meta.url)), "../../../../supabase/functions/_shared/scrub.ts"),
+      "utf8",
+    );
+    const code = source
+      .split("\n")
+      .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
+      .join("\n");
+    expect(code).not.toMatch(/\(\?<[=!]/);
   });
 
   it("masks a lat/lng pair written into a message", () => {

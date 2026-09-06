@@ -109,10 +109,15 @@ const MAX_DEPTH = 6;
 const MAX_ENTRIES = 50;
 
 const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
-// Ten or more digits with the usual separators, and a boundary at each end so a
-// build id or a millisecond timestamp is not mistaken for somebody's number.
+// Ten digits with the usual separators, and a boundary at each end so a build
+// id or a millisecond timestamp is not mistaken for somebody's number.
+//
+// The leading boundary is a CAPTURED GROUP rather than a lookbehind, and that
+// is not a style choice: a regex literal with a lookbehind is a PARSE error on
+// Safari before 16.4, which would white-screen the whole app on an older
+// iPhone the moment this module is imported. Degrade, never crash.
 const PHONE_RE =
-  /(?<![\w.])(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}(?![\w.])/g;
+  /(^|[^\w.])((?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4})(?![\w.])/g;
 // A latitude/longitude pair as it appears in a message or a URL fragment.
 const COORD_PAIR_RE = /-?\d{1,3}\.\d{4,}\s*,\s*-?\d{1,3}\.\d{4,}/g;
 // A JWT, and Supabase's own key shapes. Never useful in a report, always awful.
@@ -152,7 +157,7 @@ export function scrubText(text: string, max: number = MAX_TEXT): string {
     .replace(SB_KEY_RE, "[token]")
     .replace(EMAIL_RE, "[email]")
     .replace(COORD_PAIR_RE, "[coords]")
-    .replace(PHONE_RE, "[phone]");
+    .replace(PHONE_RE, "$1[phone]");
   return masked.length > max ? `${masked.slice(0, max)}…` : masked;
 }
 
