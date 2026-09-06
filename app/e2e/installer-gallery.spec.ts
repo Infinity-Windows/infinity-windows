@@ -1,6 +1,6 @@
 // An installer's gallery is the jobs they have worked; a foreman's is not.
 //
-// The server is the real rule (20260993000000 narrows `attachments_select`),
+// The server is the real rule (20260995000000 narrows `attachments_select`),
 // and nothing here can prove RLS — that is scripts/test_schema_verify.py's job.
 // What this proves is the half a policy cannot: that the SCREEN agrees with the
 // rule. A picker still offering every job in the company would send an

@@ -44,7 +44,7 @@ describe("listMyWorkedJobs", () => {
   });
 
   // The degrade path: a phone on today's bundle against a database that has
-  // not had 20260993000000 applied yet. "We cannot tell" is not "you have
+  // not had 20260995000000 applied yet. "We cannot tell" is not "you have
   // worked nothing" — the page shows the full jobs list for the first and an
   // empty picker for the second, so the two answers must be distinguishable.
   it("answers null — not an empty list — when the function is missing", async () => {

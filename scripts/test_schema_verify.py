@@ -1134,11 +1134,11 @@ class TestPointsCapMigration(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# The installer gallery (20260993000000)
+# The installer gallery (20260995000000)
 # ---------------------------------------------------------------------------
 
 #: The migration that narrowed what an installer can read out of `attachments`.
-INSTALLER_GALLERY = "20260993000000_installer_gallery.sql"
+INSTALLER_GALLERY = "20260995000000_installer_gallery.sql"
 
 #: Every column an attachments row may hang off. The first five are
 #: `attachments_target`'s own list (20260989000000); `service_case_id`

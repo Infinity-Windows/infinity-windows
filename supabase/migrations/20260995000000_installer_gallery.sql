@@ -1,8 +1,20 @@
 -- An installer's gallery shows the jobs they have worked, and nothing else
 -- (owner's decision, 2026-09-05).
 --
--- APPLY AFTER 20260992000000 (learning time). Number order is the whole
--- ordering rule here; nothing in this file depends on that migration's shape.
+-- APPLY AFTER 20260994000000 (one place to fix a unit) — the highest number on
+-- master. Number order is the whole ordering rule here; nothing in this file
+-- depends on any other migration's shape.
+--
+-- IT WAS 20260993000000 UNTIL 2026-09-06, and that number was wrong: while this
+-- branch was open, 20260993000000_learning_time landed on master under it. Two
+-- files at one version is not a merge conflict — `supabase db push` reads the
+-- version, sees it applied, and skips the second file without a word. Here that
+-- would have left `attachments` on its day-one FOR ALL policy while the app
+-- shipped the narrowed picker: a gallery that looks scoped and is not.
+-- test_supabase_merge.py's duplicate-version test is what catches it, and the
+-- habit that avoids it is checking master AND every open PR branch before
+-- picking a number. 20260996000000 is claimed by an open PR today, so this file
+-- merges before that one or gets renumbered again.
 --
 -- WHAT WAS TRUE UNTIL NOW. `attachments` — every job photo, every voice memo,
 -- every package shot in the warehouse — carried exactly ONE policy since

@@ -2502,7 +2502,7 @@ export const CATALOG = {
   // ---- The gallery an installer sees (2026-09-05) ----
   // Below foreman, the photo feed is the jobs this person has worked plus the
   // shots they took themselves — that is the attachments read policy
-  // (20260993000000), not a filter the screen applies. Two consequences have
+  // (20260995000000), not a filter the screen applies. Two consequences have
   // to be said out loud, or the screen lies by omission.
   //
   // 1. The "everything" option is not everything. A foreman picking it gets

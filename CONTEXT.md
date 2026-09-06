@@ -240,7 +240,7 @@ openings — and it is a memory of work done rather than a roster of today: a jo
 somebody worked in March is still theirs to look up in September. A draft
 assignment does not count, because a draft is a supervisor thinking out loud
 and the person has not been shown it yet. The rule is RLS
-(`attachments_select`, 20260993000000), not screen furniture: the job picker
+(`attachments_select`, 20260995000000), not screen furniture: the job picker
 calls `list_my_worked_jobs()` so what it offers and what the server will return
 are the same list, both read off `my_worked_project_ids()`. Every column a
 photo can hang off has to resolve to a job — the job itself, or through the

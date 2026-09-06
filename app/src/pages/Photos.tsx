@@ -24,7 +24,7 @@ export function Photos() {
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
 
   // Below foreman the filter offers the jobs this person has worked, because
-  // that is all the photo feed's own RLS will hand back (20260993000000).
+  // that is all the photo feed's own RLS will hand back (20260995000000).
   // Asked for only at that rank: a foreman's list is every job, and one more
   // round trip to say so would be waste. `isLoading` is waited on so a role
   // that has not resolved yet does not spend a query as the wrong person.
