@@ -28,9 +28,17 @@
 --
 -- THE SERVER STAMPS THE TIME. Both writers take a duration or a position from
 -- the phone and refuse to believe it beyond a clamp, and both cross-check what
--- they are told against `now()` — a page that called the heartbeat in a tight
--- loop would still bank no more than the wall clock it has actually been open.
--- See the clamps in learning_heartbeat and learning_video_heartbeat.
+-- they are told against `now()`. The reference is deliberately NOT the row a
+-- beat names, because the phone chooses the row: learning_heartbeat credits no
+-- more than the seconds since this person last banked time on this KIND of
+-- item, so a loop of calls — or a thousand invented visit ids — banks the same
+-- nothing extra. See the clamps in learning_heartbeat and
+-- learning_video_heartbeat.
+--
+-- WHAT THE SERVER CANNOT SEE is whether anybody was looking. Real seconds are
+-- what these clamps bound; attention is what the phone's idle gate bounds
+-- (screenIsActive in app/src/lib/learningTime.ts). Both halves are needed and
+-- the file says so wherever it would otherwise overclaim.
 --
 -- IDEMPOTENT throughout (create ... if not exists / create or replace / drop
 -- policy if exists before create / on conflict), so re-running it changes
@@ -134,17 +142,45 @@ create policy "learning_time_select" on learning_time
 -- ---------------------------------------------------------------------------
 -- The page sends one of these every 15 seconds of VISIBLE, FOCUSED time. It
 -- never sends while the tab is hidden, the phone is locked, or the app is in
--- the background — that gate is in the client (useLearningTime), and this
--- clamp is what makes the gate's honesty not matter:
+-- the background — that gate is in the client (useLearningTime), and the
+-- clamps here are what make the gate's honesty not matter:
 --
 --   * p_seconds is clamped to [0, 30]. Twice the real cadence, so one late
 --     beat after a slow network still lands whole, and a phone that asked for
 --     an hour gets thirty seconds.
---   * active_seconds can never exceed the wall clock this row has existed for,
---     plus one beat. This is the clamp that matters. Without it a page could
---     call this in a loop — thirty seconds a call, a hundred calls a second —
---     and bank a day of "study" in a minute. With it, the only way to have sat
---     on the glossary for an hour is for an hour to have passed.
+--   * THE KIND CLOCK, and it is the clamp that matters. A beat may claim no
+--     more than the seconds that have passed since this person last banked
+--     time on this KIND of item — not since this ROW was made, and not since
+--     this row was last touched.
+--
+--     Why not per row: the row key carries a session id and an item key the
+--     PHONE chose, so a caller who wanted more rows could always have more
+--     rows. A fresh uuid per call is a fresh row, and a fresh row measured
+--     against itself brings a whole clean wall clock to spend — which is how
+--     a per-row ceiling turns "the tab was open for eight hours" into eight
+--     hours of study banked in the last minute of them, a thousand times over.
+--     Measured against the KIND, a person banks at most one second per second
+--     of it however many rows they mint.
+--
+--     And an honest phone loses nothing, because one row per kind at a time is
+--     exactly what it has: one open tab, one focused term, one playing lesson.
+--     Two devices signed in as the same person now split the second between
+--     them, which is right — two open tabs are not two people studying.
+--   * THE OPENING BEAT BANKS ZERO. A row is created worth nothing and grows
+--     only through the capped update below, so minting rows is not a way to
+--     mint seconds. The client's first beat is worth zero seconds anyway
+--     (useLearningTime), so the honest path never notices.
+--   * A SECOND BELT, per row: active_seconds can never exceed the wall clock
+--     that row has existed for. The kind clock already implies it; it is kept
+--     because it makes the claim in the table readable on its own.
+--
+-- WHAT THIS DOES NOT CLAIM, said plainly because the sentence above it used to
+-- claim it: these clamps bound banked seconds by REAL seconds. They do not know
+-- whether anybody was looking. A focused tab nobody is sitting at is
+-- indistinguishable from somebody reading, to a server. What answers that is
+-- the idle gate on the phone (screenIsActive in learningTime.ts), which stops
+-- the beats after ten minutes with no pointer, no key and nothing playing. The
+-- two halves are the honest answer together and neither one is it alone.
 --
 -- The row's own started_at is the reference, and it is set by `default now()`
 -- on insert, so the phone never supplies the beginning either.
@@ -164,7 +200,9 @@ set search_path = public, pg_temp
 as $$
 declare
   v_me uuid := auth.uid();
+  v_key text := btrim(p_item_key);
   v_add int := least(greatest(coalesce(p_seconds, 0), 0), 30);
+  v_kind_seen timestamptz;
 begin
   if v_me is null then
     raise exception 'Sign in before the app can record learning time.'
@@ -188,31 +226,61 @@ begin
      or p_item_kind not in ('tab', 'term', 'quiz', 'sequence', 'video') then
     raise exception 'That is not a part of Learn this app records time for.';
   end if;
-  if coalesce(btrim(p_item_key), '') = '' then
+  if coalesce(v_key, '') = '' then
     raise exception 'The app did not say which item this time belongs to.';
   end if;
 
-  -- Nothing to add is not an error: the client sends a first beat to open the
-  -- row so a visit that ends before the first full interval still shows up as
-  -- a visit. It just banks no seconds.
+  -- THE KIND CLOCK. The newest beat this person has banked on this KIND, from
+  -- any visit and any item — see the note above this function for why the
+  -- reference is the kind and not the row.
+  --
+  -- Bounded to the last day so the scan is bounded too: the lookup walks the
+  -- (profile_id, last_seen_at desc) index newest-first and stops, rather than
+  -- reading a year of somebody's rows to find a kind they never opened.
+  -- Somebody whose last beat on this kind is older than that starts a fresh
+  -- clock and pays the same opening beat as somebody who never had one.
+  select t.last_seen_at into v_kind_seen
+    from learning_time t
+   where t.profile_id = v_me
+     and t.item_kind = p_item_kind
+     and t.last_seen_at > now() - interval '1 day'
+   order by t.last_seen_at desc
+   limit 1;
+
+  -- No marker, no credit — the same rule learning_video_heartbeat uses for the
+  -- first beat of a visit, and for the same reason: nothing has been observed
+  -- yet, so the honest number is zero.
+  v_add := least(
+    v_add,
+    greatest(0, floor(extract(epoch from (now() - coalesce(v_kind_seen, now()))))::int)
+  );
+
+  -- The row is created worth NOTHING. The client sends a first beat to open it
+  -- so a visit that ends before the first full interval still shows up as a
+  -- visit, and that beat is worth zero seconds anyway — but the zero is written
+  -- here rather than trusted from there, because the insert path is reached by
+  -- every session id a caller cares to invent and a value in it would be thirty
+  -- seconds a call with no clock to answer to. Everything a row is worth is
+  -- added by the capped update below.
   insert into learning_time (
     profile_id, item_kind, item_key, session_id, active_seconds
   )
-  values (v_me, p_item_kind, btrim(p_item_key), p_session_id, v_add)
+  values (v_me, p_item_kind, v_key, p_session_id, 0)
   on conflict (profile_id, session_id, item_kind, item_key) do update
     set active_seconds = least(
           learning_time.active_seconds + v_add,
-          -- The wall-clock ceiling. floor(), not round(), so the ceiling is
-          -- never generous by half a second; + 30 is one whole beat of slack so
-          -- an honest first beat that lands late is not shaved.
-          floor(extract(epoch from (now() - learning_time.started_at)))::int + 30
+          -- The per-row belt. floor(), not round(), so it is never generous by
+          -- half a second, and no slack at all: the insert above banks nothing,
+          -- so an honest row's seconds and its age come out level and a beat
+          -- that lands late is paid for by an age that grew with it.
+          floor(extract(epoch from (now() - learning_time.started_at)))::int
         ),
         last_seen_at = now();
 end;
 $$;
 
 comment on function public.learning_heartbeat(uuid, text, text, int) is
-  'Add up to 30 seconds of visible, focused time to this person''s row for one Learn item in one visit. The server stamps the time and caps the row at the wall clock it has existed for, so a phone cannot inflate it (Learning time, L1).';
+  'Add up to 30 seconds of visible, focused time to this person''s row for one Learn item in one visit. The server stamps the time and credits no more than the seconds since this person last banked time on this kind of item, so minting fresh visits or fresh item keys mints no seconds (Learning time, L1).';
 
 revoke all on function public.learning_heartbeat(uuid, text, text, int) from public, anon;
 grant execute on function public.learning_heartbeat(uuid, text, text, int) to authenticated;

@@ -4,6 +4,9 @@
 // rather than reasoned about — a regression here is a report that says a person
 // studied all afternoon because they left a tab open.
 
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import {
   HEARTBEAT_MS,
@@ -13,6 +16,13 @@ import {
   startHeartbeats,
   startOfWeek,
 } from "./learningTime";
+
+const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+const MIGRATION = readFileSync(
+  resolve(REPO, "supabase/migrations/20260992000000_learning_time.sql"),
+  "utf8",
+);
+const MIRROR = readFileSync(resolve(REPO, "docs/prototype-migrations.sql"), "utf8");
 
 /** A fake screen: visible/focused is one boolean, and it publishes changes. */
 function fakeScreen(active = true) {
@@ -222,5 +232,61 @@ describe("startOfWeek", () => {
     const d = startOfWeek(new Date(2026, 8, 6, 9, 0));
     expect(d.getMonth()).toBe(7);
     expect(d.getDate()).toBe(31);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The clamps that live in SQL
+// ---------------------------------------------------------------------------
+// No Postgres runs in this suite, so these do not execute the rules — they PIN
+// them. Every line below is a defence somebody could delete while the app still
+// built, every test passed and the owner's page still drew a chart; what would
+// change is that a phone could write any number into it. A pin is the cheapest
+// thing that makes that deletion loud.
+//
+// The mirror is checked as well as the migration, because
+// docs/prototype-migrations.sql is what gets pasted into a fresh project and a
+// defence that is only in one of the two files is not a defence.
+
+describe("the server's own clamps on a heartbeat", () => {
+  it("finds the writer at all, so these tests are not vacuous", () => {
+    expect(MIGRATION).toContain("create or replace function public.learning_heartbeat");
+    expect(MIRROR).toContain("create or replace function public.learning_heartbeat");
+  });
+
+  it("opens a row worth nothing, so inventing visits invents no seconds", () => {
+    // The row key carries a session id the PHONE mints. If the insert credited
+    // the beat, a fresh uuid per call would be thirty seconds per call, as fast
+    // as a script could send them — with no clock anywhere to answer to.
+    for (const sql of [MIGRATION, MIRROR]) {
+      expect(sql).toContain("values (v_me, p_item_kind, v_key, p_session_id, 0)");
+    }
+  });
+
+  it("measures a beat against the KIND, not against the row it names", () => {
+    // The clamp that matters. A per-row ceiling is a clean wall clock per row,
+    // and rows are free — so the reference is the last time this person banked
+    // anything of this kind, from any visit and any item.
+    for (const sql of [MIGRATION, MIRROR]) {
+      expect(sql).toContain("and t.item_kind = p_item_kind");
+      expect(sql).toContain("order by t.last_seen_at desc");
+      expect(sql).toContain(
+        "greatest(0, floor(extract(epoch from (now() - coalesce(v_kind_seen, now()))))::int)",
+      );
+    }
+  });
+
+  it("keeps the per-row belt exact, with no beat of slack left in it", () => {
+    // The slack used to be `+ 30`, which let a burst of calls walk a row up to
+    // its whole age. With the insert banking nothing there is nothing to make
+    // room for, so the belt is level with the row's age.
+    for (const sql of [MIGRATION, MIRROR]) {
+      expect(sql).toContain(
+        "floor(extract(epoch from (now() - learning_time.started_at)))::int\n",
+      );
+      expect(sql).not.toContain(
+        "floor(extract(epoch from (now() - learning_time.started_at)))::int + 30",
+      );
+    }
   });
 });
