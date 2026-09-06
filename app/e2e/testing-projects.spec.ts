@@ -89,10 +89,11 @@ test("a supervisor sees testing material set apart from real on-hand counts", as
   await useTestingProjectFixtures(page);
   await page.goto("/warehouse");
 
-  // The on-hand card counts PECAN14's two packages only — BLACK22's three
-  // testing packages never show up as real inventory.
-  const onHand = page.locator(".stat-card", { hasText: "on hand" });
-  await expect(onHand.locator(".stat-num")).toHaveText("2");
+  // The on-hand chip counts PECAN14's two packages only — BLACK22's three
+  // testing packages never show up as real inventory. (A count card until
+  // wave 3 of the warehouse redesign; a chip under the yard since.)
+  const onHand = page.locator(".yard-chip", { hasText: "on hand" });
+  await expect(onHand.locator("b")).toHaveText("2");
 
   // The Testing section names the job and its package count, so the
   // material that came out of the count above is still findable somewhere.
