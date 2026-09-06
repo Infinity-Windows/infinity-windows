@@ -53,8 +53,9 @@
 -- them, so the history still says what happened and to whom. Nobody is handed
 -- replacement credit either: the terms are all still there to be earned, by
 -- doing the quiz.
+
 -- ---------------------------------------------------------------------------
--- 1. points_ledger: a reason column, and the duplicate-award backfill
+-- 1. points_ledger: a reason column, and the two backfills
 -- ---------------------------------------------------------------------------
 
 alter table points_ledger add column if not exists void_reason text;
@@ -64,6 +65,17 @@ comment on column points_ledger.void_reason is
   'Why a row was voided, in a sentence, when something other than a QC callback voided it. Written by the 2026-09-05 backfill in this migration and by resolve_install_points; null on every row that was never voided.';
 comment on column points_ledger.detail is
   'Free-form receipt for a row that stands for more than one thing — today only the Education quiz round, which carries {"keys": [...]}: the item keys that were newly credited and paid for in that round. Never read back for a total; points is the number that counts.';
+
+-- BACKFILL A (the incident). Every client-inserted Education quiz row — kind
+-- 'quiz' with a null ref — is voided. Video quiz rows carry a
+-- 'video_quiz:<id>' ref and are therefore not touched by this. Idempotent:
+-- after the first run nothing matches, because the rows are already void.
+update points_ledger
+   set status = 'void',
+       void_reason = 'education quiz rows before the new-content rule (2026-09-05)'
+ where kind = 'quiz'
+   and ref is null
+   and status <> 'void';
 
 -- BACKFILL B (making the index creatable, and correcting the same fault).
 -- The install path awards through an offline outbox that retries, and until
@@ -101,6 +113,7 @@ update points_ledger p
 create unique index if not exists points_ledger_one_award_per_ref_kind
   on points_ledger (profile_id, ref, kind)
   where ref is not null and status <> 'void';
+
 -- ---------------------------------------------------------------------------
 -- 2. points_ledger: reads stay, writes go
 -- ---------------------------------------------------------------------------
@@ -118,6 +131,7 @@ create policy "points_ledger read" on points_ledger
 -- Belt and braces: with no write POLICY a write already fails, but revoking
 -- the table-level grants means a phone cannot even ask.
 revoke insert, update, delete on table points_ledger from anon, authenticated;
+
 -- ---------------------------------------------------------------------------
 -- 3. education_items — the server's own list of what can pay
 -- ---------------------------------------------------------------------------
@@ -254,6 +268,7 @@ insert into education_items (key, kind, points) values
   ('term:punchlist', 'term', 10),
   ('seq:install', 'sequence', 10)
 on conflict (key) do nothing;
+
 -- ---------------------------------------------------------------------------
 -- 4. education_credits — what a person has already been paid for
 -- ---------------------------------------------------------------------------
@@ -287,6 +302,7 @@ create policy "own or lead read" on education_credits
   );
 
 revoke insert, update, delete on table education_credits from anon, authenticated;
+
 -- ---------------------------------------------------------------------------
 -- 5. award_install_points — the install path's only door
 -- ---------------------------------------------------------------------------
@@ -408,6 +424,7 @@ comment on function public.award_install_points(text, jsonb, text) is
 
 revoke all on function public.award_install_points(text, jsonb, text) from public, anon;
 grant execute on function public.award_install_points(text, jsonb, text) to authenticated;
+
 -- ---------------------------------------------------------------------------
 -- 6. resolve_install_points — QC's confirm / void
 -- ---------------------------------------------------------------------------
@@ -452,6 +469,7 @@ comment on function public.resolve_install_points(text, text) is
 
 revoke all on function public.resolve_install_points(text, text) from public, anon;
 grant execute on function public.resolve_install_points(text, text) to authenticated;
+
 -- ---------------------------------------------------------------------------
 -- 7. award_education_quiz — the Learn tab's only door
 -- ---------------------------------------------------------------------------
@@ -551,6 +569,7 @@ comment on function public.award_education_quiz(jsonb) is
 
 revoke all on function public.award_education_quiz(jsonb) from public, anon;
 grant execute on function public.award_education_quiz(jsonb) to authenticated;
+
 -- ---------------------------------------------------------------------------
 -- 8. my_education_progress — "Earned 12 of 105 terms"
 -- ---------------------------------------------------------------------------
@@ -591,6 +610,7 @@ comment on function public.my_education_progress() is
 
 revoke all on function public.my_education_progress() from public, anon;
 grant execute on function public.my_education_progress() to authenticated;
+
 -- ---------------------------------------------------------------------------
 -- 9. "Remove this login" has to count the new table too
 -- ---------------------------------------------------------------------------
