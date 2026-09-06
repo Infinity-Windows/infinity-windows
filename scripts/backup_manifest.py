@@ -231,7 +231,11 @@ def summary_markdown(manifest: Dict[str, Any]) -> str:
 def main(argv: Optional[List[str]] = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--ref", required=True)
-    ap.add_argument("--out", required=True, help="the dated backup folder")
+    ap.add_argument(
+        "--out",
+        default=None,
+        help="the dated backup folder (default: today's under backups/, which is gitignored)",
+    )
     ap.add_argument("--started-at", default="", help="ISO time the dump began")
     ap.add_argument(
         "--summary", default="", help="also write the job-summary markdown to this path"
@@ -246,7 +250,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         )
         return 2
 
-    out = args.out.rstrip("/")
+    from backup_storage_objects import default_out_dir  # noqa: PLC0415
+
+    out = (args.out or default_out_dir()).rstrip("/")
     import datetime
 
     now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")

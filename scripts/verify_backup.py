@@ -3,6 +3,8 @@
 
     scripts/verify_backup.py <project-ref> <out-dir> [date-stamp]
 
+`out-dir` is the same gitignored `backups/` folder the snapshot was written to.
+
 Re-counts every table directly against the project, re-lists the live catalog,
 re-checks auth/storage totals, and re-hashes every downloaded storage object.
 Exits non-zero on any mismatch. Read-only.

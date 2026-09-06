@@ -24,11 +24,50 @@ import type { Page, Route } from "@playwright/test";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FIXTURES = resolve(HERE, "../fixtures");
 const REPO_ROOT = resolve(HERE, "../../..");
-/** Where the storage bucket's real objects were backed up to. */
-const STORAGE_BACKUP = join(
-  REPO_ROOT,
-  "docs/backups/czprjcskmzzagdztqonm-storage",
-);
+/**
+ * Where the storage bucket's real objects are, if they are anywhere.
+ *
+ * They are NOT in this repository any more. Seven builder planset PDFs, a crew
+ * member's signature and seven database dumps sat committed under
+ * `docs/backups/` in a repository that is public; they were removed on
+ * 2026-09-05 and that folder is now ignored. So on a fresh clone neither of
+ * these paths exists, and the specs that need a real drawing skip themselves
+ * with a reason rather than failing.
+ *
+ * Two places are checked, newest arrangement first:
+ *
+ *   backups/latest/storage/           an unpacked nightly backup (docs/backups.md
+ *                                     says how to put one here)
+ *   docs/backups/<ref>-storage/       where the July copy used to live, and
+ *                                     still does on any clone that predates the
+ *                                     removal — including the owner's
+ */
+const STORAGE_BACKUP_CANDIDATES = [
+  join(REPO_ROOT, "backups/latest/storage"),
+  join(REPO_ROOT, "docs/backups/czprjcskmzzagdztqonm-storage"),
+];
+const STORAGE_BACKUP =
+  STORAGE_BACKUP_CANDIDATES.find((dir) => existsSync(dir)) ??
+  STORAGE_BACKUP_CANDIDATES[0];
+
+/**
+ * Whether the real planset PDFs are on this machine at all.
+ *
+ * A spec that measures the map against a real architectural sheet cannot do it
+ * without the sheet, and cannot fake it: which pages are floor plans is decided
+ * by reading the file, so a placeholder PDF would open PECAN14 on a page with no
+ * marks and the screenshot would be an empty building that still passed. So the
+ * honest states are "checked" and "skipped, and here is why" — never "passed".
+ */
+export function storageBackupPresent(): boolean {
+  return STORAGE_BACKUP_CANDIDATES.some((dir) => existsSync(dir));
+}
+
+/** What to tell someone whose run just skipped those specs. */
+export const NO_STORAGE_BACKUP_REASON =
+  "the real planset PDFs are not on this machine — they are no longer committed " +
+  "to this public repository. Unpack a nightly backup into backups/latest/ to run " +
+  "these; see docs/backups.md.";
 
 function fixture<T>(name: string): T {
   return JSON.parse(readFileSync(join(FIXTURES, name), "utf8")) as T;

@@ -229,11 +229,11 @@ jobs:
 
       # The dry run must stay runnable with no credentials. If it ever needs a
       # database to plan a merge, that is a bug.
-      - name: Dry run against the committed backup
+      - name: Dry run against the committed sample
         run: |
           scripts/supabase-merge.sh \
-            --source docs/backups/2026-07-29T1200Z-czprjcskmzzagdztqonm-full.json \
-            --target docs/backups/2026-07-29T1200Z-czprjcskmzzagdztqonm-full.json \
+            --source scripts/fixtures/merge-sample-project.json \
+            --target scripts/fixtures/merge-sample-project.json \
             >/dev/null 2>&1 && { echo "merging a project into itself should have been refused"; exit 1; } || true
           ! scripts/supabase-merge.sh --source a --target b --execute
 

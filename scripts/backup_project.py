@@ -8,6 +8,10 @@ applied migration history.
 
     scripts/backup_project.py <project-ref> <out-dir> [date-stamp]
 
+`out-dir` belongs under `backups/`, which .gitignore covers. Never write one
+into `docs/`: this repository is public, and that is how seven production
+dumps came to be published in it.
+
 Every statement it runs is a SELECT. It never writes to the project.
 
 The date stamp defaults to today (UTC). It used to be the literal string

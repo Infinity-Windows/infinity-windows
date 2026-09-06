@@ -58,7 +58,15 @@ supabase_compare = importlib.util.module_from_spec(_compare_spec)
 _compare_spec.loader.exec_module(supabase_compare)
 
 REPO = Path(__file__).resolve().parent.parent
-BACKUP = REPO / "docs" / "backups" / "2026-07-29T1200Z-czprjcskmzzagdztqonm-full.json"
+# A real snapshot of this project, taken 2026-07-29 and kept as a FIXTURE with
+# the crew's names replaced by placeholders. It used to be read straight out of
+# `docs/backups/`, where seven production dumps sat committed in a public
+# repository along with a crew member's signature. Those are gone; this is the
+# one file that was load-bearing, so it moved here and got scrubbed rather than
+# being replaced by something synthetic. The shape is the point — window types
+# and locations seeded twice under different ids is what the merge planner has
+# to get right, and no invented fixture reproduces that faithfully.
+BACKUP = REPO / "scripts" / "fixtures" / "merge-sample-project.json"
 
 SCHEMA = parse_migrations()
 RAW_BACKUP = json.loads(BACKUP.read_text())

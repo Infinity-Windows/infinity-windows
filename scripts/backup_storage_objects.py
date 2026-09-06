@@ -339,13 +339,28 @@ def _now() -> str:
     return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def default_out_dir() -> str:
+    """A dated folder under `backups/`, which .gitignore covers.
+
+    The default matters more than it looks. Every real file that ended up
+    committed in this public repository got there because a tool wrote its
+    output somewhere git was watching, and the person running it did not think
+    about the path at all.
+    """
+    import datetime
+
+    day = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+    return "backups/%s" % day
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--ref", required=True, help="Supabase project ref")
     ap.add_argument(
         "--out",
-        required=True,
-        help="folder to write storage/ and %s into (a dated folder)" % MANIFEST_NAME,
+        default=default_out_dir(),
+        help="folder to write storage/ and %s into (default: a dated folder "
+        "under backups/, which is gitignored)" % MANIFEST_NAME,
     )
     ap.add_argument(
         "--limit-bytes",

@@ -30,7 +30,12 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test, type Route } from "@playwright/test";
-import { jobFixtures, useSupabaseFixtures } from "./support/supabaseFixtures";
+import {
+  jobFixtures,
+  NO_STORAGE_BACKUP_REASON,
+  storageBackupPresent,
+  useSupabaseFixtures,
+} from "./support/supabaseFixtures";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const BLACK22 = jobFixtures().find((j) => j.jobCode === "BLACK22")!;
@@ -152,6 +157,9 @@ test.describe("Studio plan underlay, real Mad Moose trace (desktop)", () => {
   test("the real trace's exterior ring fits and paints under the real plan sheet", async ({
     page,
   }) => {
+    // The whole point of this spec is the REAL multi-page sheet, so it cannot
+    // stand in a placeholder when the file is not on this machine.
+    test.skip(!storageBackupPresent(), NO_STORAGE_BACKUP_REASON);
     // Owner role: this is the owner's own bug report, on the owner's job.
     await useSupabaseFixtures(page, { role: "owner" });
     await useMadMooseFixtures(page);
@@ -363,6 +371,7 @@ test.describe("Studio plan underlay, real Mad Moose trace (desktop)", () => {
   test("wall style: the real rectangle plus one free-standing wall classifies as 4 exterior + 1 interior", async ({
     page,
   }) => {
+    test.skip(!storageBackupPresent(), NO_STORAGE_BACKUP_REASON);
     await useSupabaseFixtures(page, { role: "owner" });
     await useMadMooseFixtures(page);
     await page.goto(`/studio/j/${BLACK22.projectId}`);
