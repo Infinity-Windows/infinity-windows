@@ -38,12 +38,21 @@ vi.mock("../../lib/costCodes", () => ({
 }));
 // The talk is signed IN the block now (2026-09-06), through the real
 // ToolboxSignCard. Its write (two storage uploads + an insert) becomes a
-// resolved spy; the "did I sign today?" read stays unsigned so the card is
-// still mounted when its own onSuccess fires.
-const { submitSpy, pushToastSpy } = vi.hoisted(() => ({
-  submitSpy: vi.fn(async () => ({ id: "done1" }) as unknown),
-  pushToastSpy: vi.fn(),
-}));
+// resolved spy that flips the "did I sign today?" read to the signed row —
+// the same order the server keeps — so a refetch after the sign sees a
+// signature, and a test that keeps the card mounted forever cannot pass by
+// accident (review, 2026-09-06).
+const { submitSpy, pushToastSpy, completionHolder } = vi.hoisted(() => {
+  const completionHolder = { current: null as unknown };
+  return {
+    completionHolder,
+    submitSpy: vi.fn(async () => {
+      completionHolder.current = { id: "done1" };
+      return { id: "done1" } as unknown;
+    }),
+    pushToastSpy: vi.fn(),
+  };
+});
 // The refused-punch hand-off says what happened; catch the sentence.
 vi.mock("../../lib/toast", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../lib/toast")>();
@@ -54,7 +63,7 @@ vi.mock("../../lib/toolbox", async (importOriginal) => {
   return {
     ...actual,
     submitToolboxCompletion: submitSpy,
-    myTodayCompletion: vi.fn(async () => null),
+    myTodayCompletion: vi.fn(async () => completionHolder.current),
   };
 });
 
@@ -69,6 +78,7 @@ afterEach(() => {
   host?.remove();
   root = null;
   host = null;
+  completionHolder.current = null;
   clockInSpy.mockClear();
   submitSpy.mockClear();
   pushToastSpy.mockClear();
@@ -405,6 +415,77 @@ describe("the clock-in block", () => {
         "gate code 4411",
         "tracking",
       ]);
+    } finally {
+      restore();
+    }
+  });
+
+  it("a second tap on Sign — during the sign or after it — cannot file a second signature or a second punch", async () => {
+    // The seconds between the signature landing and the punch landing are
+    // real on a phone: the punch waits on a GPS fix (up to 12.5 s) and then
+    // the network. In that window the card used to sit on screen with its
+    // Sign button live again, and a second tap filed a second signature AND a
+    // second clock_in — which auto-closes the shift the first one had just
+    // opened (review, 2026-09-06). Both halves of the window are driven here:
+    // the sign held open, then the punch held open.
+    const restore = stubCanvas();
+    let finishSign!: () => void;
+    let finishPunch!: () => void;
+    submitSpy.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishSign = () => {
+            completionHolder.current = { id: "done1" };
+            resolve({ id: "done1" });
+          };
+        }),
+    );
+    clockInSpy.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishPunch = () => resolve({});
+        }),
+    );
+    try {
+      const el = mount({
+        costCodes: [CC],
+        recents: [recent("cc1")],
+        projects: [proj(["tracking"])],
+        talk: { id: "t1", title: "Ladders", body: "Three points of contact.", talk_date: "2026-09-06" },
+        toolboxDone: null,
+      });
+      act(() =>
+        el
+          .querySelector<HTMLButtonElement>(".clock-btn.primary.big")!
+          .dispatchEvent(new MouseEvent("click", { bubbles: true })),
+      );
+      fillSignCard(el);
+      const sign = byText(el, "Sign today's talk")!;
+      await clickAndFlush(sign);
+      // settle(), not just a microtask flush: React Query paints "pending"
+      // through a setTimeout(0) notification, so the held label is only
+      // reliably on screen after a timer turn.
+      await settle();
+      // While the signature is uploading: held, and a tap on it does nothing.
+      expect(byText(el, "Signing…")?.disabled).toBe(true);
+      await clickAndFlush(byText(el, "Signing…")!);
+      expect(submitSpy).toHaveBeenCalledTimes(1);
+
+      await act(async () => finishSign());
+      await settle();
+      // The moment it lands: the card is gone from the block — no Sign button
+      // to tap twice — and the block's own button is held as the punch flies.
+      expect(el.querySelector("canvas.sig-canvas")).toBeNull();
+      expect(byText(el, "Sign today's talk")).toBeUndefined();
+      const big = el.querySelector<HTMLButtonElement>(".clock-btn.primary.big")!;
+      expect(big.textContent).toContain("Clocking in");
+      expect(big.disabled).toBe(true);
+      await clickAndFlush(big);
+
+      await act(async () => finishPunch());
+      await settle();
+      expect(submitSpy).toHaveBeenCalledTimes(1);
+      expect(clockInSpy).toHaveBeenCalledTimes(1);
     } finally {
       restore();
     }

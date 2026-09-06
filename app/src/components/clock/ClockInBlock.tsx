@@ -634,8 +634,11 @@ export function ClockInBlock() {
         showSign && todayTalk.data ? (
           /* The tap already happened: the talk takes the button's place, and
              signing it IS the clock-in (onSigned → doStart with the picks
-             above). While the punch is in flight the signed branch below
-             renders, with its button held as "Clocking in…". */
+             above). The card writes the signed row into the toolboxToday
+             cache before it calls onSigned, so this branch is gone in the
+             same render the punch starts and the signed branch below takes
+             over with its button held as "Clocking in…" — there is no window
+             for a second tap on Sign. */
           <div ref={signRef}>
             <ToolboxSignCard
               profileId={profileId}
