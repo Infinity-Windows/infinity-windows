@@ -150,6 +150,19 @@ jobs:
         shell: bash
         run: scripts/smoke-text-features.test.sh
 
+      # Every edge function runs on the service-role key, which bypasses row
+      # security, so each one must ask who is calling or be listed as a system
+      # actor with a reason. Twenty-three do today; this is what makes the
+      # twenty-fourth. The test proves the check can fail; the run proves the
+      # repo passes. Offline: throwaway functions in a temp directory.
+      - name: Test scripts/check-function-auth.sh
+        shell: bash
+        run: scripts/check-function-auth.test.sh
+
+      - name: Every edge function asks who is calling, or says why not
+        shell: bash
+        run: scripts/check-function-auth.sh
+
   supabase-tooling:
     name: Supabase merge tooling
     runs-on: ubuntu-latest

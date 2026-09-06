@@ -27,9 +27,10 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Photos & receipts (`/photos`)
 - Notifications (`/notifications`)
 - Stuck writes (`/stuck`)
+- Diagnostics (`/diagnostics`)
 - Settings (`/settings`)
 
-**Can reach (all 29 allowed destinations):**
+**Can reach (all 30 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
@@ -48,6 +49,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Ask (`/ask`)
 - Notifications (`/notifications`)
 - Stuck writes (`/stuck`)
+- Diagnostics (`/diagnostics`)
 - Suggestions (`/suggestions`)
 - Search (`/search`)
 - Memo review (`/review`)
@@ -124,10 +126,11 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Notifications (`/notifications`)
 - Suggestions (`/suggestions`)
 - Stuck writes (`/stuck`)
+- Diagnostics (`/diagnostics`)
 - Settings (`/settings`)
 - Catalog (`/catalog`)
 
-**Can reach (all 38 allowed destinations):**
+**Can reach (all 39 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
@@ -146,6 +149,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Ask (`/ask`)
 - Notifications (`/notifications`)
 - Stuck writes (`/stuck`)
+- Diagnostics (`/diagnostics`)
 - Suggestions (`/suggestions`)
 - Search (`/search`)
 - Memo review (`/review`)
@@ -232,6 +236,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Notifications (`/notifications`)
 - Suggestions (`/suggestions`)
 - Stuck writes (`/stuck`)
+- Diagnostics (`/diagnostics`)
 - Settings (`/settings`)
 - Catalog (`/catalog`)
 - Admin (`/admin`)
@@ -258,6 +263,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Ask (`/ask`)
 - Notifications (`/notifications`)
 - Stuck writes (`/stuck`)
+- Diagnostics (`/diagnostics`)
 - Suggestions (`/suggestions`)
 - Search (`/search`)
 - Memo review (`/review`)
@@ -343,6 +349,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Notifications (`/notifications`)
 - Suggestions (`/suggestions`)
 - Stuck writes (`/stuck`)
+- Diagnostics (`/diagnostics`)
 - Settings (`/settings`)
 - Catalog (`/catalog`)
 - Admin (`/admin`)
@@ -370,6 +377,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Ask (`/ask`)
 - Notifications (`/notifications`)
 - Stuck writes (`/stuck`)
+- Diagnostics (`/diagnostics`)
 - Suggestions (`/suggestions`)
 - Search (`/search`)
 - Memo review (`/review`)

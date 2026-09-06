@@ -2318,6 +2318,68 @@ export const CATALOG = {
   "offline.hoursAgo": { en: "{n} h ago", es: "hace {n} h" },
   "offline.daysAgo": { en: "{n} d ago", es: "hace {n} d" },
 
+  // --- Weak signal, saved copies, diagnostics (ticket 06, 2026-09-06) ------
+  "offline.savedCopy.offline": {
+    en: "Showing the last saved copy — no signal right now.",
+    es: "Mostrando la última copia guardada — sin señal ahora.",
+  },
+  "offline.savedCopy.weak": {
+    en: "Showing the last saved copy — the signal is weak.",
+    es: "Mostrando la última copia guardada — la señal es débil.",
+  },
+  "offline.savedCopy.failed": {
+    en: "Showing the last saved copy — the last refresh failed.",
+    es: "Mostrando la última copia guardada — la última actualización falló.",
+  },
+  "pill.noSignal": { en: "No signal", es: "Sin señal" },
+  "pill.noSignalDetail": {
+    en: "No signal. Changes are saved on this phone and send when it returns.",
+    es: "Sin señal. Los cambios se guardan en este teléfono y se envían cuando vuelva.",
+  },
+  "pill.weakSignal": { en: "Weak signal", es: "Señal débil" },
+  "pill.weakDetail": {
+    en: "Requests are timing out. Screens show the last saved copy.",
+    es: "Las solicitudes están tardando demasiado. Las pantallas muestran la última copia guardada.",
+  },
+  "diag.eyebrow": { en: "Support", es: "Soporte" },
+  "diag.title": { en: "Diagnostics", es: "Diagnóstico" },
+  "diag.back": { en: "Settings", es: "Ajustes" },
+  "diag.intro": {
+    en: "What this phone knows about its connection and its queues. Copy the report into a message when something didn't save.",
+    es: "Lo que este teléfono sabe de su conexión y sus colas. Copia el informe en un mensaje cuando algo no se guardó.",
+  },
+  "diag.copy": { en: "Copy report", es: "Copiar informe" },
+  "diag.copied": { en: "Copied", es: "Copiado" },
+  "diag.connection": { en: "Connection", es: "Conexión" },
+  "diag.online": { en: "Online", es: "En línea" },
+  "diag.offline": { en: "No signal", es: "Sin señal" },
+  "diag.weak": { en: "Weak signal", es: "Señal débil" },
+  "diag.lastOk": { en: "Last good request: {ago}", es: "Última solicitud correcta: {ago}" },
+  "diag.never": { en: "never this session", es: "nunca en esta sesión" },
+  "diag.queues": { en: "Waiting to send", es: "Pendiente de enviar" },
+  "diag.needAttention": { en: "{n} need attention", es: "{n} necesitan atención" },
+  "diag.savedJobs": { en: "Jobs saved on this phone", es: "Trabajos guardados en este teléfono" },
+  "diag.missing": { en: "{n} items missing", es: "faltan {n} elementos" },
+  "diag.none": { en: "None yet.", es: "Ninguno todavía." },
+  "diag.events": { en: "What the connection did this session", es: "Qué hizo la conexión en esta sesión" },
+  "diag.eventsSummary": {
+    en: "{timeouts} timeouts · {copies} saved-copy screens · {sent} items sent · {jobs} jobs saved",
+    es: "{timeouts} tiempos agotados · {copies} pantallas con copia guardada · {sent} elementos enviados · {jobs} trabajos guardados",
+  },
+  "diag.noEvents": { en: "Nothing yet.", es: "Nada todavía." },
+  "settings.diagnostics.heading": { en: "Diagnostics", es: "Diagnóstico" },
+  "settings.diagnostics.help": {
+    en: "When something didn't save, this page shows what the phone knows and gives you a report to send.",
+    es: "Cuando algo no se guardó, esta página muestra lo que sabe el teléfono y te da un informe para enviar.",
+  },
+  "settings.diagnostics.open": { en: "Open diagnostics", es: "Abrir diagnóstico" },
+
+  // --- Stale chunk after a deploy (ticket 07, 2026-09-06) --------------------
+  "pwa.staleChunk": {
+    en: "The app updated while you were working. Finish and save, then pull down to refresh.",
+    es: "La app se actualizó mientras trabajabas. Termina y guarda, luego desliza hacia abajo para actualizar.",
+  },
+
   // ---- Learning time (2026-09-05) ----------------------------------------
   // The owner's ask: "a timer that I can see as an owner how long they spend in
   // the learning tab and on what item… as well as a timer for watching the

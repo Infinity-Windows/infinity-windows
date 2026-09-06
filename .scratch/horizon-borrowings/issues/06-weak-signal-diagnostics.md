@@ -1,6 +1,6 @@
 # 06 — Weak-signal state, sync pill breakdown, offline diagnostics screen
 
-Status: ready-for-agent
+Status: resolved
 Type: task
 Size: M
 
@@ -48,3 +48,22 @@ and when an installer says "it didn't save" there is nothing to read.
 - Throttling to 3g in devtools shows "weak signal" within one failed request
   and the job list still renders from cache with the saved-copy line.
 - `/diagnostics` shows the same numbers the pill shows and copies cleanly.
+
+## Comments
+
+2026-09-06 — Built. A sync pill with queue depth by kind and a stuck-writes
+screen already existed; what was missing and now exists: (1) a deadline on
+every database and auth request (`lib/offline/weakSignal.ts`, handed to the
+Supabase client as its fetch; storage and functions deliberately exempt) —
+a request that misses it is aborted, marked "weak signal" for 20 s, and fails
+like a dropped connection so the cached data stays; (2) the pill shows "No
+signal" and "Weak signal" over the queue summary, keeping "needs attention"
+on top; (3) `SavedCopyNotice` + `useSavedCopy` on the Jobs list and the unit
+sheet — "Showing the last saved copy — no signal / the signal is weak / the
+last refresh failed"; (4) a 60-event ring (`lib/offline/telemetry.ts`) fed by
+timeouts, saved-copy screens, outbox flushes and job saves; (5) `/diagnostics`
+(any role; from Settings and the Account menu): connection, last good request,
+every queue's depth, jobs saved on this phone with age, the event ring, and
+"Copy report" (pure `diagnosticsReport.ts`, tested). Not done: the map's own
+saved-copy line — the map is a full-screen surface with no header to put a
+line in; it reads the same cached queries and the pill still says weak.
