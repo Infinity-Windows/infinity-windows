@@ -163,6 +163,39 @@ jobs:
         shell: bash
         run: scripts/check-function-auth.sh
 
+      # The exact half of the advisory pull-request review. It is allowed to
+      # fail a pull request, which is exactly why every one of its rules has to
+      # be shown going red on a broken fixture and green on the shape this repo
+      # really writes. Offline: throwaway git repositories in a temp directory,
+      # and a stubbed gh.
+      #
+      # THESE ARE NOT THE WHOLE PROOF, and it is worth knowing why. A fixture
+      # written beside a rule agrees with it: this suite was fully green while
+      # the rules were making 20 false claims about merged migrations. The
+      # acceptance test is running them across the last forty commits on
+      # master — docs/advisory-review.md says how, and it belongs in the hands
+      # of whoever changes a rule, not in CI, because it needs the history.
+      - name: Test scripts/advisory-rules.sh
+        shell: bash
+        run: scripts/advisory-rules.test.sh
+
+      # And the half that asks a model. What is worth proving here is that it
+      # never fails: a missing credential, a missing CLI, a model answering with
+      # prose and a CLI that crashed all have to end in a sentence and exit 0,
+      # because this must never stand between a fix and an auto-merge. Stubs the
+      # Claude Code CLI; no credential, no network, nothing spent.
+      - name: Test scripts/advisory-agent.sh
+        shell: bash
+        run: scripts/advisory-agent.test.sh
+
+      # And the piece that writes on a pull request. Its failure mode is
+      # spamming: post instead of update and a busy branch buries the human
+      # conversation under a day of robot comments. Stubs gh; touches no
+      # network and no token.
+      - name: Test scripts/advisory-comment.sh
+        shell: bash
+        run: scripts/advisory-comment.test.sh
+
   supabase-tooling:
     name: Supabase merge tooling
     runs-on: ubuntu-latest
