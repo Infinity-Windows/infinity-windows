@@ -186,6 +186,47 @@ assert_has "Nothing to push"
 assert_has "not a failure"
 assert_not_called
 
+# --- the optional secrets --------------------------------------------------
+#
+# The Resend key, the three sender addresses, the Monday token, the crash
+# monitor's DSN. Every one of them has a working default in code, so nothing may
+# fail or even warn over one — and when GitHub does hold one it belongs in the
+# project like any other, so that it has a backup and an owner.
+
+new_case "an optional secret GitHub holds is pushed like any other"
+run ANTHROPIC_API_KEY=sk-ant-fake SENTRY_DSN=https://abc@o1.ingest.sentry.io/42
+assert_rc 0
+assert_envfile_has "SENTRY_DSN"
+assert_has "pushed         SENTRY_DSN"
+
+new_case "an optional secret GitHub does not hold is passed over in SILENCE"
+# The difference that matters: a REQUIRED name GitHub does not hold is said out
+# loud, because nothing here could restore it. An optional one absent is a
+# decision somebody made, and a warning about it on every merge for the rest of
+# time is how warnings stop being read.
+run ANTHROPIC_API_KEY=sk-ant-fake
+assert_rc 0
+assert_lacks "SENTRY_DSN"
+assert_lacks "RESEND_API_KEY"
+assert_lacks "EMAIL_FROM"
+assert_has "not in GitHub  OPENAI_API_KEY"
+
+new_case "an optional secret alone is enough to push, with nothing required set"
+run SENTRY_DSN=https://abc@o1.ingest.sentry.io/42
+assert_rc 0
+assert_envfile_has "SENTRY_DSN"
+assert_envfile_lacks "ANTHROPIC_API_KEY"
+
+new_case "an optional secret is never reported to the workflow as unmanaged"
+# unmanaged_names becomes one warning annotation per name on the run page.
+run ANTHROPIC_API_KEY=sk-ant-fake
+assert_rc 0
+if grep -q "unmanaged_names=.*SENTRY_DSN" "$root/github_output" 2>/dev/null; then
+  bad "an optional secret must not be reported as unmanaged"
+else
+  ok
+fi
+
 # --- never destructive -----------------------------------------------------
 #
 # The safety case for running this unattended on every merge. `secrets unset`

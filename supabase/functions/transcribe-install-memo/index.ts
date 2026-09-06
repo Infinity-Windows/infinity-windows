@@ -20,6 +20,7 @@ import {
   reserveAiSpend,
   settleAiSpend,
 } from "../_shared/spendGuard.ts";
+import { UNEXPECTED_ERROR, reportCaughtError, withSentry } from "../_shared/sentry.ts";
 
 const TOPIC_KEYS = [
   "difficulty",
@@ -63,7 +64,7 @@ const TOPICS_SCHEMA = {
   },
 };
 
-Deno.serve(async (req) => {
+Deno.serve(withSentry("transcribe-install-memo", async (req) => {
   const cors = corsHeaders(req);
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: cors });
@@ -292,7 +293,11 @@ Deno.serve(async (req) => {
       cors,
     );
   } catch (e) {
-    console.error(e);
-    return jsonResponse({ error: String(e) }, 500, cors);
+    // withSentry only ever sees a throw that ESCAPES the handler, and this one
+    // never does — so report it here, or nobody finds out this has been failing
+    // since Tuesday. Then one plain sentence: String(e) hands whoever is
+    // holding the phone a Postgres constraint name (CLAUDE.md).
+    await reportCaughtError("transcribe-install-memo", req, e);
+    return jsonResponse({ error: UNEXPECTED_ERROR }, 500, cors);
   }
-});
+}));

@@ -2469,6 +2469,35 @@ export const CATALOG = {
     en: "A watch is one visit that got through at least 30 seconds. The percentage is how much of the lesson was actually played — skipping to the end can finish a video without watching it.",
     es: "Una vista es una visita que pasó al menos 30 segundos. El porcentaje es cuánto de la lección se reprodujo de verdad — saltar al final puede terminar un video sin verlo.",
   },
+
+  // ---- The crash screen, and the code the crew reads out (2026-09-05) ----
+  // Shown by components/ErrorBoundary.tsx when a screen crashes. It is the one
+  // screen an installer reaches with nothing else on it, so it is also the one
+  // where English-only copy would cost the most — a Spanish-reading installer
+  // has to understand that the work on the phone is safe and that there is a
+  // code worth reading out before anyone can help them.
+  //
+  // The boundary sits ABOVE LanguageProvider (main.tsx), and the crash it
+  // caught has just unmounted whatever provider was below it, so the screen
+  // cannot read the live language through useT(). It reads the per-device
+  // language cache instead — the same thing the very first paint uses before
+  // any query returns. See ErrorBoundary.tsx.
+  "crash.title": { en: "Something went wrong", es: "Algo salió mal" },
+  // The reassurance first, because the fear is "did I just lose the morning's
+  // installs?" — and the answer is no: the outbox is on the phone, untouched.
+  "crash.saved": {
+    en: "The screen crashed, but anything saved on this phone (installs and photos waiting to send) is still here.",
+    es: "La pantalla falló, pero todo lo guardado en este teléfono (instalaciones y fotos en espera de enviarse) sigue aquí.",
+  },
+  // The five-character code is printed beside this line, not inside it: it is
+  // the same characters in both languages and it must not be translated,
+  // re-ordered or wrapped away from the sentence that asks for it.
+  "crash.readCode": {
+    en: "If you call this in, read out this code:",
+    es: "Si llamas para reportarlo, di este código:",
+  },
+  "crash.tryAgain": { en: "Try again", es: "Intentar de nuevo" },
+  "crash.reload": { en: "Reload", es: "Recargar" },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */

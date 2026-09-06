@@ -20,6 +20,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import webpush from "npm:web-push@3.6.7";
 import { corsHeaders, jsonResponse } from "../_shared/openai.ts";
+import { withSentry } from "../_shared/sentry.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -36,7 +37,7 @@ interface DueHelper {
   neededAt: string;
 }
 
-Deno.serve(async (req) => {
+Deno.serve(withSentry("summon-warning-sweep", async (req) => {
   const cors = corsHeaders(req);
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -141,4 +142,4 @@ Deno.serve(async (req) => {
   }
 
   return jsonResponse({ due: due.length, warned }, 200, cors);
-});
+}));

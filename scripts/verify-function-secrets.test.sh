@@ -275,6 +275,39 @@ assert_lacks "EMAIL_FROM_STG"
 assert_lacks "EMAIL_FROM_FORGE"
 assert_lacks "emailing a job's GC"
 
+# Crash monitoring (2026-09-05). Every one of the 23 functions now wraps its
+# handler in withSentry, so every one of them knows the name SENTRY_DSN — and
+# not one of them requires it. A deploy that went red because nobody has created
+# a Sentry account would be this gate failing over a feature that is switched
+# off, on a project where switching it on is optional forever.
+new_case "the crash monitor's DSN never fails a deploy"
+live_state
+run
+assert_rc 1
+assert_lacks "SENTRY_DSN"
+# And the browser half, which is a Pages build variable and not an Edge
+# Function secret at all — it must not appear in this check's world.
+assert_lacks "VITE_SENTRY_DSN"
+
+new_case "a project with no crash monitoring at all still passes"
+# shellcheck disable=SC2086  # deliberate word splitting over the name list.
+write_stub_listing $REQUIRED
+run
+assert_rc 0
+assert_has "All required Edge Function secrets are set"
+assert_lacks "SENTRY_DSN"
+
+# The sentence a non-engineer reads first when the Anthropic key is missing.
+# It is a contract, and the census that builds it counts REAL functions — so
+# adding a required secret anywhere would move it. Crash monitoring added a
+# secret to all 23 functions and this sentence is untouched, which is the proof
+# that the secret it added is optional.
+new_case "the headline sentence is unmoved by the crash monitor"
+live_state
+run
+assert_rc 1
+assert_first_line_has "Ask Forge, placing windows on the plan and 9 other features need an API key"
+
 # And with everything genuinely required in place, a project holding none of
 # them passes outright — which is the shipping state of the whole feature.
 new_case "a project with no email settings at all still passes"
