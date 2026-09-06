@@ -227,14 +227,35 @@ neighbour's house.
 **The gallery** — `/photos`, the door back to what was captured, and new to an
 installer's menu with this change: the route has been open to installers since
 it was written but appeared in neither installer path list, so below foreman
-there was no door to photos or receipts anywhere in the app. What it shows is
-scoped by neither job nor person: `attachments` has a single policy —
-authenticated full access, behind the partner wall — so any crew member sees
-every job photo on every job. Receipts are the narrow one and behave
-differently: below supervisor, and without the cost-books grant, you see only
-the receipts you uploaded yourself (`receipts_select`, tightened from rank 1 to
-rank 2 by wave Z's money doors). Nothing here widened the photo policy; the
-Capture button is simply the first door to it.
+there was no door to photos or receipts anywhere in the app. Nothing about the
+Capture button widened a policy; it was simply the first door — and opening it
+is what forced the question below, one day later.
+
+**Who sees which photos** — settled 2026-09-05. Below foreman you see photos
+from the jobs you have WORKED, plus the ones you took yourself, wherever they
+were filed; foreman and above see everything, exactly as before. "Worked" is
+three signals OR'd together — a `time_shifts` row on the job, a PUBLISHED
+crew-board assignment you are a member of, or a unit session on one of its
+openings — and it is a memory of work done rather than a roster of today: a job
+somebody worked in March is still theirs to look up in September. A draft
+assignment does not count, because a draft is a supervisor thinking out loud
+and the person has not been shown it yet. The rule is RLS
+(`attachments_select`, 20260993000000), not screen furniture: the job picker
+calls `list_my_worked_jobs()` so what it offers and what the server will return
+are the same list, both read off `my_worked_project_ids()`. Every column a
+photo can hang off has to resolve to a job — the job itself, or through the
+window, the install event (which carries no `project_id` of its own and goes by
+its opening), the opening, the package or the service case — because a photo
+naming only an unresolved column would belong to no job and fall straight
+through the rule. Two things this deliberately is not. It is not a change to
+writes: the day-one FOR ALL policy became four per-command ones, and the three
+write policies are restated at exactly the width they had. And it is not a
+scoping of the BYTES — `install-media` is still one bucket-wide crew policy, so
+this closes the list an app hands out, not the bucket (20260988000000 says why
+that is still open). Receipts were already the narrow one and are untouched:
+below supervisor, and without the cost-books grant, you see only the receipts
+you uploaded yourself (`receipts_select`, tightened from rank 1 to rank 2 by
+wave Z's money doors).
 
 A photo and a Daily Log both REQUIRE a job and the sheet keeps asking until it
 has one, because neither server can take the write without it: `file_daily_log`
