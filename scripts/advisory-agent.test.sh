@@ -90,6 +90,10 @@ stub_cli() {
 #!/usr/bin/env bash
 if [ "\${1:-}" = "--help" ]; then cat "$root/help.txt"; exit 0; fi
 printf '%s\n' "\$*" >>"$root/argv.txt"
+{
+  [ -n "\${CLAUDE_CODE_OAUTH_TOKEN:-}" ] && echo OAUTH_PRESENT || echo OAUTH_ABSENT
+  [ -n "\${ANTHROPIC_API_KEY:-}" ] && echo APIKEY_PRESENT || echo APIKEY_ABSENT
+} >>"$root/creds.txt"
 cat >>"$root/prompt.txt"
 cat "$root/reply.txt"
 exit $STUB_RC
@@ -114,6 +118,29 @@ run() {
     echo "--- $current (rc=$RC)"
     echo "$OUT"
   fi
+}
+
+# The same runner, but with both credentials in the environment — the shape a
+# real run of this repository has, because ANTHROPIC_API_KEY is already a
+# repository secret for Ask Infinity.
+run_with_both() {
+  stub_cli
+  OUT="$(env PATH="$root/bin:$PATH" \
+    CLAUDE_BIN="claude" \
+    CLAUDE_CODE_OAUTH_TOKEN="stub-token-not-a-real-one" \
+    ANTHROPIC_API_KEY="stub-key-not-a-real-one" \
+    ADVISORY_REPO="$root" ADVISORY_BASE="origin/master" ADVISORY_HEAD="HEAD" \
+    bash "$SCRIPT" --checks-dir "$root/checks" 2>&1)"
+  RC=$?
+}
+
+# What the script says it would bill, given an environment. Prints one word and
+# never a value.
+credential_kind() { # oauth-value api-key-value
+  OUT="$(env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_API_KEY \
+    ${1:+CLAUDE_CODE_OAUTH_TOKEN="$1"} ${2:+ANTHROPIC_API_KEY="$2"} \
+    ADVISORY_REPO="$root" bash "$SCRIPT" --credential-kind 2>&1)"
+  RC=$?
 }
 
 ok() { passed=$((passed + 1)); }
@@ -315,6 +342,53 @@ assert_file_has "$root/prompt.txt" "----- DIFF -----"
 assert_file_has "$root/prompt.txt" "Marcar entrada"
 assert_file_has "$root/prompt.txt" "Judge the thing this check is about."
 assert_file_lacks "$root/prompt.txt" "stub-token-not-a-real-one"
+
+# ---------------------------------------------------------------------------
+# Which credential, and what it costs
+# ---------------------------------------------------------------------------
+new_case "the subscription token is what it reaches for"
+credential_kind "stub-token-not-a-real-one" ""
+assert_rc 0
+assert_has "oauth"
+assert_lacks "stub-token-not-a-real-one"
+
+new_case "an API key on its own is enough"
+credential_kind "" "stub-key-not-a-real-one"
+assert_rc 0
+assert_has "api-key"
+assert_lacks "stub-key-not-a-real-one"
+
+new_case "with both, the subscription wins"
+credential_kind "stub-token-not-a-real-one" "stub-key-not-a-real-one"
+assert_rc 0
+assert_has "oauth"
+
+new_case "with neither, it says so in one word"
+credential_kind "" ""
+assert_rc 0
+assert_has "none"
+
+new_case "the API key is taken out of the environment when the token is present"
+touch_catalog
+head_commit "Add the clock-in button to the phrasebook"
+run_with_both
+assert_rc 0
+assert_file_has "$root/creds.txt" "OAUTH_PRESENT"
+assert_file_has "$root/creds.txt" "APIKEY_ABSENT"
+assert_has "paid for by the Claude subscription"
+
+new_case "a run on the API key says which key is paying"
+touch_catalog
+head_commit "Add the clock-in button to the phrasebook"
+stub_cli
+OUT="$(env -u CLAUDE_CODE_OAUTH_TOKEN \
+  PATH="$root/bin:$PATH" CLAUDE_BIN="claude" ANTHROPIC_API_KEY="stub-key-not-a-real-one" \
+  ADVISORY_REPO="$root" ADVISORY_BASE="origin/master" ADVISORY_HEAD="HEAD" \
+  bash "$SCRIPT" --checks-dir "$root/checks" 2>&1)"
+RC=$?
+assert_rc 0
+assert_has "metered API billing"
+assert_lacks "stub-key-not-a-real-one"
 
 # ---------------------------------------------------------------------------
 echo

@@ -33,6 +33,7 @@
 # Usage:
 #   scripts/advisory-agent.sh --base <ref> --head <ref> [--out FILE]
 #                             [--checks-dir .checks] [--runs-today N]
+#   scripts/advisory-agent.sh --credential-kind    # prints oauth|api-key|none
 #
 # Env: CLAUDE_BIN, ADVISORY_REPO, ADVISORY_MAX_DIFF_BYTES,
 #      ADVISORY_CHUNK_BYTES, ADVISORY_MAX_RUNS, ADVISORY_MODEL_DEFAULT.
@@ -44,6 +45,7 @@ HEAD_REF="${ADVISORY_HEAD:-HEAD}"
 CHECKS_DIR=""
 OUT=""
 RUNS_TODAY=0
+CRED_ONLY=0
 CLAUDE_BIN="${CLAUDE_BIN:-claude}"
 MAX_TOTAL="${ADVISORY_MAX_DIFF_BYTES:-409600}"
 CHUNK="${ADVISORY_CHUNK_BYTES:-204800}"
@@ -61,6 +63,7 @@ while [ $# -gt 0 ]; do
     --repo) REPO="${2:-}"; shift 2 ;;
     --checks-dir) CHECKS_DIR="${2:-}"; shift 2 ;;
     --runs-today) RUNS_TODAY="${2:-0}"; shift 2 ;;
+    --credential-kind) CRED_ONLY=1; shift ;;
     -h|--help) sed -n '2,45p' "$0"; exit 0 ;;
     *) echo "advisory-agent: unknown argument $1" >&2; exit 2 ;;
   esac
@@ -80,6 +83,53 @@ stop() {
   emit "**The review by reading was not run.** $1"
   exit 0
 }
+
+# ---------------------------------------------------------------------------
+# The credential: two ways in, both optional, and one of them preferred
+# ---------------------------------------------------------------------------
+# CLAUDE_CODE_OAUTH_TOKEN is a one-year token from `claude setup-token`. The
+# Claude Code docs describe it as the CI credential — "For CI pipelines,
+# scripts, or other environments where interactive browser login isn't
+# available" — and it authenticates against a Claude subscription rather than
+# metered API billing (code.claude.com/docs/en/authentication, "Generate a
+# long-lived token"; code.claude.com/docs/en/github-actions, "Add an
+# authentication secret").
+#
+# WHY THE API KEY IS UNSET WHEN BOTH ARE PRESENT, which is not obvious and is
+# the whole reason this is a block of code rather than an if. The same page's
+# authentication precedence puts ANTHROPIC_API_KEY at position 3 and
+# CLAUDE_CODE_OAUTH_TOKEN at position 5, so a runner holding both quietly bills
+# the API key — and in THIS repository both will be present, because
+# ANTHROPIC_API_KEY is already a repository secret: deploy-backend.yml syncs it
+# into the Supabase function secrets for Ask Infinity. Leaving it in the
+# environment would spend the app's product budget on code review without ever
+# saying so.
+#
+# AND WHY --bare IS NEVER PASSED: the same docs say bare mode does not read
+# CLAUDE_CODE_OAUTH_TOKEN at all.
+#
+# NEITHER IS AN EDGE-FUNCTION SECRET. scripts/function_secrets.py enumerates
+# what supabase/functions/ reads; these two are read by a GitHub runner and
+# never reach a function, so nothing here belongs in that census.
+CRED_ENV=(env)
+if [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+  CRED_KIND="oauth"
+  CRED_WORDS="the Claude subscription, through CLAUDE_CODE_OAUTH_TOKEN"
+  CRED_ENV=(env -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN)
+elif [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+  CRED_KIND="api-key"
+  CRED_WORDS="metered API billing, through ANTHROPIC_API_KEY — the same key Ask Infinity uses"
+else
+  CRED_KIND="none"
+  CRED_WORDS="nothing"
+fi
+
+# Say which credential is in play without ever printing one. Used by the
+# workflow's header line, and by anyone debugging a run.
+if [ "$CRED_ONLY" = "1" ]; then
+  printf '%s\n' "$CRED_KIND"
+  exit 0
+fi
 
 # ---------------------------------------------------------------------------
 # What changed
@@ -104,6 +154,9 @@ done
 
 [ "$RUNS_TODAY" -lt "$MAX_RUNS" ] ||
   stop "It has already run $RUNS_TODAY times on this pull request today, which is the cap. The exact house rules still ran, and the next push tomorrow gets a fresh allowance."
+
+[ "$CRED_KIND" != "none" ] ||
+  stop "No Claude credential is set, so only the exact house rules ran. Add ONE repository secret and this half turns itself on: CLAUDE_CODE_OAUTH_TOKEN (a one-year token from \`claude setup-token\`, billed against the Claude subscription that already exists) or ANTHROPIC_API_KEY (metered API billing). See docs/advisory-review.md."
 
 # ---------------------------------------------------------------------------
 # The tool
@@ -133,12 +186,6 @@ if printf '%s' "$HELP" | grep -qE -- '--disallowedTools|--disallowed-tools'; the
   EXTRA_ARGS+=("$deny" "Bash,Write,Edit,MultiEdit,NotebookEdit,WebFetch,WebSearch,Task")
 fi
 
-# ---------------------------------------------------------------------------
-# The credential
-# ---------------------------------------------------------------------------
-if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] && [ -z "${ANTHROPIC_API_KEY:-}" ]; then
-  stop "No Claude credential is set, so only the exact house rules ran. Add a repository secret named CLAUDE_CODE_OAUTH_TOKEN (a one-year token from \`claude setup-token\`, billed against the existing Claude subscription) or ANTHROPIC_API_KEY (metered API billing), and this half turns on by itself. See docs/advisory-review.md."
-fi
 
 # ---------------------------------------------------------------------------
 # The preamble every check carries
@@ -339,7 +386,7 @@ for check in "$CHECKS_DIR"/*.md; do
 
     turn_args=()
     printf '%s' "$HELP" | grep -q -- '--max-turns' && turn_args=(--max-turns "$turns")
-    "$CLAUDE_BIN" -p \
+    "${CRED_ENV[@]}" "$CLAUDE_BIN" -p \
       --model "$model" \
       "$TOOLS_FLAG" "Read,Grep,Glob" \
       ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"} \
@@ -388,6 +435,11 @@ elif [ "$sections" -eq 0 ]; then
 elif [ "$total_findings" -eq 0 ]; then
   emit ""
   emit "_Nothing was raised as a finding; the notes above say what got in the way._"
+fi
+
+if [ "$ran" -gt 0 ]; then
+  emit ""
+  emit "_Asked $ran check(s), paid for by $CRED_WORDS._"
 fi
 
 if [ -s "$WORK/skipped" ]; then
