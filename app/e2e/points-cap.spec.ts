@@ -74,6 +74,20 @@ async function answerCorrectly(page: Page): Promise<string> {
   return `term:${term.id}`;
 }
 
+/** Answer one glossary question WRONG — pick any option but the right one. */
+async function answerWrong(page: Page): Promise<string> {
+  const prompt = (await page.locator(".detail-card p").first().innerText()).trim();
+  const term = TERM_BY_DESC.get(prompt);
+  if (!term) throw new Error(`no glossary term matches the prompt: ${prompt}`);
+  const options = page.locator(".action-list .action-btn");
+  const labels = await options.allInnerTexts();
+  const wrong = labels.findIndex((l) => l.trim() !== term.term);
+  if (wrong < 0) throw new Error(`no wrong option offered for: ${term.term}`);
+  await options.nth(wrong).click();
+  await page.getByRole("button", { name: "Next" }).click();
+  return `term:${term.id}`;
+}
+
 async function useLearnRoutes(
   page: Page,
   opts: {
@@ -149,6 +163,39 @@ test("a round of terms already earned pays nothing, and says so kindly", async (
     page.getByText("No new points — you'd already earned these. Keep practising."),
   ).toBeVisible();
   // Practising stays free: the button is still there, it just pays nothing.
+  await expect(page.getByRole("button", { name: "Another round" })).toBeVisible();
+  expect(ledgerWrites).toEqual([]);
+});
+
+test("a round with nothing right says that, not that you'd already earned it", async ({
+  page,
+}) => {
+  await useSupabaseFixtures(page, { role: "installer" });
+  const ledgerWrites = await watchLedgerWrites(page);
+  const awards: Json[] = [];
+  await useLearnRoutes(page, {
+    progress: { terms_earned: 0, terms_total: 105, sequence_done: false },
+    // Nothing right means nothing credited AND nothing already held — the
+    // server returns the two apart, and the screen has to say them apart.
+    // Telling somebody who missed all five "you'd already earned these" is
+    // simply untrue, and it is the opposite of the encouragement intended.
+    award: { points_awarded: 0, new_terms: 0, already_had: 0 },
+    onAward: (b) => awards.push(b),
+  });
+
+  await page.goto("/learn");
+  await page.getByRole("button", { name: "Quiz" }).click();
+  for (let i = 0; i < 5; i++) await answerWrong(page);
+
+  await expect.poll(() => awards.length).toBe(1);
+  const sent = awards[0].p_items as { key: string; correct: boolean }[];
+  expect(sent).toHaveLength(5);
+  expect(sent.every((i) => i.correct === false)).toBe(true);
+
+  await expect(
+    page.getByText("No new points this round — none of those were right. Keep practising."),
+  ).toBeVisible();
+  await expect(page.getByText("you'd already earned these")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Another round" })).toBeVisible();
   expect(ledgerWrites).toEqual([]);
 });

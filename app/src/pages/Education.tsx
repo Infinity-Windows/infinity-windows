@@ -346,6 +346,12 @@ function RoundOutcome({
       </p>
     );
   }
+  // Nothing new, for one of two quite different reasons. "You'd already earned
+  // these" is only true if some of them were right; a round where nothing was
+  // says so instead.
+  if (result.alreadyHad === 0) {
+    return <p className="muted">{t("learn.points.noneRight")}</p>;
+  }
   return <p className="muted">{t("learn.points.none")}</p>;
 }
 

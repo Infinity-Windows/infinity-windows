@@ -2208,6 +2208,14 @@ export const CATALOG = {
     en: "No new points — you'd already earned these. Keep practising.",
     es: "Sin puntos nuevos — ya los habías ganado. Sigue practicando.",
   },
+  // A round with nothing right is not the same round as one where every term
+  // was already earned, and telling somebody "you'd already earned these"
+  // after they missed all five is just untrue. The server returns the two
+  // apart — new_terms and already_had — so the screen says them apart too.
+  "learn.points.noneRight": {
+    en: "No new points this round — none of those were right. Keep practising.",
+    es: "Sin puntos nuevos en esta ronda — no acertaste ninguno. Sigue practicando.",
+  },
   "learn.points.sequenceEarned": {
     en: "+{points} points — you've earned the install sequence.",
     es: "+{points} puntos — ganaste la secuencia de instalación.",
