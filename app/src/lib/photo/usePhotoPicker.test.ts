@@ -18,7 +18,9 @@
 // this app have nothing to do with photos: a markdown import, a planset PDF, a
 // bank statement CSV, a catalog import, a training video, a spec sheet, a
 // travel attachment. None of them could live in a photo picker and none of them
-// can grow this bug. The rule is about inputs that offer IMAGES.
+// can grow this bug. The rule is about inputs that offer IMAGES — and an input
+// naming no `accept` offers them too, so two that name none on purpose are
+// listed by name below rather than left to slip through a pattern.
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -45,6 +47,21 @@ const LEGACY_CAMERA_PICKERS = [
   "components/install/AddMissedUnitSheet.tsx",
   "pages/storage/PackageSheet.tsx",
 ];
+
+/**
+ * The two inputs that name no `accept` on purpose, and so technically offer
+ * pictures without being picture pickers:
+ *
+ *   - the travel attachment ("Add file") — a toll receipt, a boarding pass, a
+ *     photo of a fuel slip; narrowing it would be narrowing it to nothing.
+ *   - the Knowledge vault FOLDER picker, which carries `webkitdirectory` and
+ *     picks a directory rather than a type.
+ *
+ * Neither carries `capture`, so neither can grow the incident. Listed EXACTLY,
+ * for the same reason the legacy pickers are: a third accept-less input cannot
+ * join them without somebody editing this test and saying why.
+ */
+const ACCEPT_LESS = ["components/travel/AttachmentsPanel.tsx", "pages/Knowledge.tsx"];
 
 function walk(dir: string): string[] {
   const out: string[] = [];
@@ -110,14 +127,34 @@ function fileInputs(source: string): string[] {
 }
 
 /**
+ * Does this input offer PICTURES?
+ *
+ * An input with NO `accept` offers everything, pictures included — which is why
+ * the absence of the attribute counts here rather than being waved through. The
+ * first cut of this file asked for the literal text `image/`, so an input that
+ * simply named no accept at all was invisible to every assertion below, and the
+ * header's "no other file input in the app may offer images" was not a rule the
+ * file actually enforced.
+ */
+function offersImages(attrs: string): boolean {
+  return !/\baccept=/.test(attrs) || /image\//.test(attrs);
+}
+
+/**
  * A picture input that can ONLY reach the camera — the shape of the incident.
+ *
+ * `capture` IS the trigger, and an explicit video accept is the only way out.
+ * Asking for `image/` instead would have missed the incident written without an
+ * accept at all — `<input type="file" capture="environment" />` opens the camera
+ * and offers nothing else, exactly as the original bug did, and named no MIME
+ * type while doing it.
  *
  * `capture` on a VIDEO input is a different door and not this rule's business:
  * the install sheet's walkthrough video is a thing you record, there is no
  * "video library" equivalent to lose, and no photo picker could serve it.
  */
 function isCameraOnlyPicture(attrs: string): boolean {
-  return /\bcapture=/.test(attrs) && /image\//.test(attrs);
+  return /\bcapture=/.test(attrs) && !/accept=["'][^"']*video\//.test(attrs);
 }
 
 const files = walk(srcRoot).map((full) => ({
@@ -133,10 +170,24 @@ describe("one place writes a picture picker", () => {
 
   it("has no file input offering images outside the hook", () => {
     const offenders = files
-      .filter((f) => f.path !== THE_HOOK && !LEGACY_CAMERA_PICKERS.includes(f.path))
-      .filter((f) => fileInputs(f.source).some((attrs) => /image\//.test(attrs)))
+      .filter(
+        (f) =>
+          f.path !== THE_HOOK &&
+          !LEGACY_CAMERA_PICKERS.includes(f.path) &&
+          !ACCEPT_LESS.includes(f.path),
+      )
+      .filter((f) => fileInputs(f.source).some(offersImages))
       .map((f) => f.path);
     expect(offenders).toEqual([]);
+  });
+
+  it("still has exactly the two inputs that name no accept, and no more", () => {
+    const acceptLess = files
+      .filter((f) => f.path !== THE_HOOK)
+      .filter((f) => fileInputs(f.source).some((attrs) => !/\baccept=/.test(attrs)))
+      .map((f) => f.path)
+      .sort();
+    expect(acceptLess).toEqual([...ACCEPT_LESS].sort());
   });
 
   it("has no PICTURE input asking for `capture` outside the hook", () => {
@@ -184,5 +235,46 @@ describe("the hook's two inputs are the camera one and the library one", () => {
     // for a receipt — so the assertion is about what must NOT be there.
     expect(libraryInput).not.toMatch(/\bcapture=/);
     expect(libraryInput).toMatch(/accept=\{accept\}/);
+  });
+});
+
+// THE RULES THEMSELVES, exercised on shapes the tree cannot supply because —
+// for now — nobody has written them. A scan of a clean tree is green whether
+// the rule is right or wrong; these are what catch a rule that has quietly
+// stopped covering the thing it is named after.
+describe("what counts as a camera-only picture", () => {
+  it("catches a `capture` input naming no accept at all — the incident, spelled shorter", () => {
+    // Offers the camera and nothing else, exactly as the original bug did, and
+    // names no MIME type while doing it. The first cut of this guard, which
+    // asked for the literal text `image/`, could not see this at all.
+    expect(isCameraOnlyPicture(' type="file" capture="environment" ')).toBe(true);
+  });
+
+  it("still catches the spelling the incident actually used", () => {
+    expect(isCameraOnlyPicture(' type="file" accept="image/*" capture="environment" ')).toBe(true);
+  });
+
+  it("leaves a video recorder alone — a different door, with no library to lose", () => {
+    expect(isCameraOnlyPicture(' type="file" accept="video/*" capture="environment" ')).toBe(false);
+  });
+
+  it("says nothing about an input that never asked for the camera", () => {
+    expect(isCameraOnlyPicture(' type="file" accept="image/*" multiple ')).toBe(false);
+  });
+});
+
+describe("what counts as offering pictures", () => {
+  it("counts an input with no accept, because one offers everything", () => {
+    expect(offersImages(' type="file" hidden ')).toBe(true);
+  });
+
+  it("counts the receipt picker, which offers pictures AND PDFs", () => {
+    expect(offersImages(' type="file" accept="image/*,application/pdf" ')).toBe(true);
+  });
+
+  it("leaves the CSV, planset and video pickers alone", () => {
+    expect(offersImages(' type="file" accept=".csv,text/csv" ')).toBe(false);
+    expect(offersImages(' type="file" accept=".pdf,application/pdf" ')).toBe(false);
+    expect(offersImages(' type="file" accept="video/*" ')).toBe(false);
   });
 });
