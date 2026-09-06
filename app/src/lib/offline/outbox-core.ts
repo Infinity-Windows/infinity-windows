@@ -28,7 +28,7 @@ export type OutboxOp =
   | "pin_reset_opening"
   // Warehouse ticket 10: a conex is a metal box with no bars. Nobody walks
   // outside to make the app happy — they do the work and skip the scan, and
-  // then the record is gone forever. These three queue instead.
+  // then the record is gone forever. These queue instead.
   | "store_packages"
   | "checkout_packages"
   | "take_supply"

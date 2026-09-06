@@ -4,7 +4,7 @@
 // Typed and scanned go down the same path. The answer is the CHAIN — unit ->
 // package -> crate -> conex — not a list of results to dig through.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { unitHref } from "../../lib/warehouse/materialsScope";
 import { Link } from "react-router-dom";
 import { ScanLine, X } from "lucide-react";
@@ -51,7 +51,10 @@ export function FindBar({
   locationsById,
   initialQuery,
   jobsWithModels,
+  onAnswer,
 }: {
+  /** The yard lights up the boxes an answer points at (wave 3). */
+  onAnswer?: (answer: FindAnswer | null) => void;
   packages: StoragePackage[];
   containers: StorageContainer[];
   projects: { id: string; job_code: string; name: string | null }[];
@@ -99,6 +102,11 @@ export function FindBar({
       markChoice,
     ],
   );
+
+  // The yard lights up whatever the answer points at (wave 3).
+  useEffect(() => {
+    onAnswer?.(answer);
+  }, [answer, onAnswer]);
 
   return (
     <div className="wh-find">

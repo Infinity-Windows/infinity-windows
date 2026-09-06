@@ -1,27 +1,22 @@
-// The one-page warehouse (ticket 08 — grill Q2/Q3/Q5, owner-confirmed).
+// The warehouse home is the yard (warehouse redesign wave 3, owner call
+// 2026-09-06): a picture of the boxes, one Find bar, the next truck, and the
+// problems that need a person — not a directory of buttons.
 //
-// Eight menu rows collapse to one page. The warehouse answers a single
-// question, so that question is PINNED at the top and never scrolls away;
-// everything below runs in the order the day runs — coming in, in storage,
-// going out, supplies, problems. Actions open over the page instead of
-// navigating, because the tab-switching was never the disease: two location
-// models were, and with one model a single screen can hold the whole job.
+// The audit that led here counted nineteen tappable destinations on this page
+// before any fold opened: a five-station strip, four count cards, a recap, job
+// tallies, five sections and an "Other tools" fold. Eight menu rows had become
+// nineteen buttons. The intended way to find a unit was to type its number and
+// read a sentence. Now: Find lights up the box, the box is a box, and every
+// door this page ever had is still here — as a chip under the yard, or inside
+// the one "More" fold — so nothing lost its address while waves 4 and 5
+// retire the screens behind them.
 //
-// One screen, one audience (ADR-0007, owner call 2026-09-04). The page used
-// to filter its sections by rank — an installer got Find, Going out and
-// Supplies; foreman+ got the rest. Warehouse work is crew work now, so every
-// section and every tool on this page is open to any crew member. The only
-// rank gate left is Testing (supervisor+), which is not a warehouse rule:
-// RLS hides testing jobs below supervisor, so the section would always be
-// empty. Destructive doors stay foreman+ on the sheets that own them.
-//
-// NOT in this ticket, deliberately: retiring the unit system's staged/loaded
-// statuses and per-window shelf spots. Those die with the screens that write
-// them (Receive / Scan / Cycle count), which is its own body of work — see
-// docs/warehouse-tickets.md ticket 08b. Until then those screens stay
-// reachable and working from the Operations section.
+// What stayed the same on purpose: every role condition on every door
+// (ADR-0007: the warehouse is crew work), the Find bar's logic, the count
+// definitions (lib/warehouse/warehouseCards.ts) now read as chips, and the
+// "N package · JOB ×n" tile wording.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { listLocations, listProjects, listProjectsAnyStatus } from "../lib/api";
@@ -29,24 +24,20 @@ import { formatApiError } from "../lib/errors";
 import { isSupervisorPlus } from "../lib/install/types";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { Explain } from "../components/ui/Explain";
-import { EmptyState } from "../components/ui/States";
-import { PackageMap } from "../components/warehouse/PackageMap";
 import { FindBar } from "../components/warehouse/FindBar";
 import { CardList } from "../components/warehouse/CardList";
-import { ContainerBadge } from "../components/warehouse/ContainerBadge";
 import { ContainerForm } from "../components/warehouse/ContainerForm";
 import { MintForm } from "../components/warehouse/MintForm";
+import { Yard } from "../components/warehouse/Yard";
 import { containerPostersPdf, downloadPdf } from "../lib/labels";
 import { listJobModelRows } from "../lib/modelstudio/projects";
 import { listIssues } from "../lib/issues";
 import {
-  agingDays,
   groupByJob,
   listActivePackages,
   listContainers,
   listDeliveries,
   listMovementsSince,
-  containerKind,
   type StorageContainer,
 } from "../lib/storage";
 import { DayRecapCard } from "../components/warehouse/DayRecapCard";
@@ -54,12 +45,7 @@ import { dayRecap, localMidnightIso } from "../lib/warehouse/dayRecap";
 import { jobTallies, tallyLine } from "../lib/warehouse/jobTally";
 import { scopeHref } from "../lib/warehouse/materialsScope";
 import { partitionTestPackages, testProjectIds } from "../lib/warehouse/testPartition";
-import {
-  filterSuppliesByName,
-  listSupplies,
-  lowStockFirst,
-  onHandLabel,
-} from "../lib/ops";
+import { filterSuppliesByName, listSupplies, lowStockFirst, onHandLabel } from "../lib/ops";
 import { listTakeoffs } from "../lib/takeoffs";
 import {
   cardLink,
@@ -69,34 +55,16 @@ import {
   warehouseCounts,
   type CardId,
 } from "../lib/warehouse/warehouseCards";
-import { placeChain, toLocationsById } from "../lib/warehouse/containment";
+import { toLocationsById } from "../lib/warehouse/containment";
 import { splitUnits } from "../lib/warehouse/splitUnits";
 import { useOutbox } from "../lib/offline/useOutbox";
 import { useScanWedge } from "../lib/warehouse/scanWedge";
-import {
-  STATION_COMING_IN,
-  STATION_FIX_MISTAKE,
-  STATION_OFF_TRUCK,
-  STATION_OUT_DOOR,
-  STATION_PUT_AWAY,
-} from "../lib/warehouse/stations";
+import type { FindAnswer } from "../lib/warehouse/find";
+import { glowFromHits, yardSummary, yardTiles } from "../lib/warehouse/yard";
+import { prefetchWarehousePack } from "../lib/queryClient";
 
-/** Sections run in the order the physical day runs. */
-interface Section {
-  id: string;
-  title: string;
-}
-
-// All five, for everyone (ADR-0007). Three carried an `everyone` flag and two
-// did not, which is how a person could tag a package at the truck and then be
-// unable to see the conex they had just put it in.
-const SECTIONS: Section[] = [
-  { id: "coming-in", title: "Coming in" },
-  { id: "in-storage", title: "In storage" },
-  { id: "going-out", title: "Going out" },
-  { id: "supplies", title: "Supplies" },
-  { id: "problems", title: "Problems" },
-];
+/** Stable empties, so a loading cache is not a new array every render. */
+const NO_BOXES: StorageContainer[] = [];
 
 export function Warehouse() {
   // Pick 30: a desk-mounted hardware scanner routes straight to the package
@@ -105,51 +73,33 @@ export function Warehouse() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { effectiveRole } = useEffectiveRole();
-  // Testing projects (owner-confirmed 2026-08-25) are invisible below
-  // supervisor by RLS, so an installer/foreman's `projects` list never has
-  // one in it — this is supervisor+ in its own right, and the only rank
-  // gate left on this page.
   const supervisor = isSupervisorPlus(effectiveRole);
   const { counts: outbox } = useOutbox();
-  // ?q= prefills Find (Studio 100x #15's door in) — read once; FindBar owns
-  // the input from here, the same way it already owns everything typed by
-  // hand or scanned.
   const [searchParams] = useSearchParams();
   const initialQuery = searchParams.get("q") ?? undefined;
-  // ?card= arrives from a tapped stat card (ticket 06) — absorbed from the
-  // Storage hub along with the containers below (ticket 18).
   const cardParam = searchParams.get("card");
-  const card = WAREHOUSE_CARDS.some((c) => c.id === cardParam)
-    ? (cardParam as CardId)
-    : null;
+  const card = WAREHOUSE_CARDS.some((c) => c.id === cardParam) ? (cardParam as CardId) : null;
   const [newContainer, setNewContainer] = useState(false);
   const [minting, setMinting] = useState(false);
-  // Job-building glow's door (#16): which jobs have a Studio model at all,
-  // so Find only offers "Show on the building" where there is one.
+  const [answer, setAnswer] = useState<FindAnswer | null>(null);
+
+  useEffect(() => {
+    void prefetchWarehousePack();
+  }, []);
+
   const studioJobModels = useQuery({ queryKey: ["studioJobModels"], queryFn: listJobModelRows });
   const jobsWithModels = useMemo(
-    () => new Set((studioJobModels.data ?? []).map((m) => m.project_id)),
+    () => new Set((studioJobModels.data ?? []).map((r) => r.project_id)),
     [studioJobModels.data],
   );
-
   const waiting = outbox.warehouse;
 
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
-  // Finished jobs keep naming their material (owner ask, 2026-08-26): name
-  // maps and Find read every job; anything that TAGS stays active-only.
   const projectsAll = useQuery({ queryKey: ["projectsAll"], queryFn: listProjectsAnyStatus });
   const packages = useQuery({ queryKey: ["storagePackages"], queryFn: listActivePackages });
   const containers = useQuery({ queryKey: ["storageContainers"], queryFn: listContainers });
-  // Racks and staging bays. Find needs these to say "staged for BLACK22"
-  // instead of "on a shelf" — without them a staged package is a slot address
-  // somebody has to decode. Same query key the other screens use, so it is a
-  // cache hit more often than a fetch.
   const locations = useQuery({ queryKey: ["locations"], queryFn: listLocations });
   const issues = useQuery({ queryKey: ["issues"], queryFn: listIssues });
-  // Day recap (pick 26): "today" is local midnight, recomputed every render
-  // but only actually changing value once a day — so the query key is
-  // naturally stable within a day and just as naturally refetches the one
-  // time it rolls over while the tab stays open.
   const todayIso = localMidnightIso(new Date());
   const movementsToday = useQuery({
     queryKey: ["movementsSince", todayIso],
@@ -159,29 +109,20 @@ export function Warehouse() {
   const supplies = useQuery({ queryKey: ["supplies"], queryFn: listSupplies });
   const takeoffs = useQuery({ queryKey: ["takeoffs"], queryFn: listTakeoffs });
   const openTakeoffs = (takeoffs.data ?? []).filter(
-    (t) => t.status !== "picked_up",
+    (t) => t.status === "requested" || t.status === "acknowledged" || t.status === "ready",
   ).length;
-  // The supply drawer (owner ask, 2026-08-18): folded away with a search bar
-  // inside, instead of six rows always spread on the page. No search = the
-  // lowest-stock supplies first (lowStockFirst ranks "not counted yet" as the
-  // average of what we do know); typing narrows the WHOLE catalog by name,
-  // not just what's showing.
+
   const [supplyQ, setSupplyQ] = useState("");
   const supplyMatches = useMemo(
-    () => filterSuppliesByName(lowStockFirst(supplies.data ?? []), supplyQ),
+    () => lowStockFirst(filterSuppliesByName(supplies.data ?? [], supplyQ)),
     [supplies.data, supplyQ],
   );
   const SUPPLY_ROWS_SHOWN = 12;
   const supplyPreview = supplyMatches.slice(0, SUPPLY_ROWS_SHOWN);
 
-  // Testing projects' marks are excluded here too, not just their packages:
-  // without this, a testing job's scheduled marks would never find a match
-  // in `real` (its packages all sort into `testing`) and would sit on the
-  // foreman-visible "not tagged" card forever, for a job a foreman can't
-  // even see to understand why.
   const testIds = testProjectIds(projects.data ?? []);
   const activeIds = useMemo(
-    () => (projects.data ?? []).filter((p) => !testIds.has(p.id)).map((p) => p.id),
+    () => (projects.data ?? []).map((p) => p.id).filter((id) => !testIds.has(id)),
     [projects.data, testIds],
   );
   const marks = useQuery({
@@ -191,57 +132,59 @@ export function Warehouse() {
   });
 
   const rows = packages.data ?? [];
-  const boxes = containers.data ?? [];
+  const boxes = containers.data ?? NO_BOXES;
   const byId = useMemo(() => new Map(boxes.map((c) => [c.id, c])), [boxes]);
-  const locsById = useMemo(
-    () => toLocationsById(locations.data ?? []),
-    [locations.data],
-  );
+  const locsById = useMemo(() => toLocationsById(locations.data ?? []), [locations.data]);
   const jobCode = useMemo(() => {
     const m = new Map<string, string>();
     for (const p of projectsAll.data ?? []) m.set(p.id, p.job_code);
     return m;
   }, [projectsAll.data]);
-
   const openDamage = (issues.data ?? []).filter(
     (i) => i.kind === "damage" && i.status === "open",
   );
-  // Testing projects' packages never count as real inventory (owner call,
-  // 2026-08-25) — every card, count and warning below reads `real`, never
-  // `rows`. FindBar is the one deliberate exception: it answers "where is
-  // it" for a SPECIFIC scanned or typed thing, and a testing package is a
-  // real physical object somebody may need to find, so it keeps `rows`.
+
   const { real, testing } = partitionTestPackages(rows, testIds);
   const counts = warehouseCounts(real, boxes, marks.data ?? [], openDamage.length);
   const ready = packages.isSuccess && containers.isSuccess;
-  // `real`, not `rows`, for the same reason every other count on this page
-  // does: a testing job's material is practice, never inventory.
   const recap = dayRecap(
     movementsToday.data ?? [],
     real,
     (deliveries.data ?? []).map((d) => ({ id: d.id, label: d.label ?? "a delivery" })),
   );
-
-  // Coming in: tagged today but not put away anywhere yet.
-  const needsPutaway = real.filter(
-    (p) => p.status === "received" && placeChain(p, byId).loose,
-  );
   const untagged = untaggedMarks(real, marks.data ?? []);
-  // Windows the warehouse holds in more than one place right now (ticket 19).
   const split = splitUnits(real, byId, locsById);
   const goingOut = real.filter((p) => p.status === "checked_out");
   const testingByJob = groupByJob(testing);
 
-  // Absorbed from the Storage hub (ticket 18): print every container's door
-  // poster in one PDF.
+  // What Find points at lights up on the yard.
+  const glow = useMemo(() => {
+    if (!answer) return new Set<string>();
+    if (answer.kind === "container") return glowFromHits(answer.hits, answer.container.id);
+    if ("hits" in answer) return glowFromHits(answer.hits);
+    if (answer.kind === "package") return glowFromHits([answer.hit]);
+    return new Set<string>();
+  }, [answer]);
+  const tiles = useMemo(
+    () => yardTiles(boxes, real, jobCode, new Date(), glow),
+    [boxes, real, jobCode, glow],
+  );
+
+  // The next truck: the soonest expected delivery that has not arrived.
+  const nextTruck = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    return (deliveries.data ?? [])
+      .filter((d) => !d.arrived_on && d.expected_at && d.expected_at.slice(0, 10) >= today)
+      .sort((a, b) => (a.expected_at ?? "").localeCompare(b.expected_at ?? ""))[0] ?? null;
+  }, [deliveries.data]);
+
   const posters = useMutation({
-    mutationFn: async (rows: StorageContainer[]) => {
-      const pdf = await containerPostersPdf(rows);
+    mutationFn: async (list: StorageContainer[]) => {
+      const pdf = await containerPostersPdf(list);
       downloadPdf(pdf, "container-posters.pdf");
     },
+    onError: (e) => alert(formatApiError(e)),
   });
-
-  const visible = SECTIONS;
 
   return (
     <div className="page wh-page">
@@ -262,6 +205,7 @@ export function Warehouse() {
         locationsById={locsById}
         initialQuery={initialQuery}
         jobsWithModels={jobsWithModels}
+        onAnswer={setAnswer}
       />
 
       {waiting > 0 && (
@@ -272,176 +216,118 @@ export function Warehouse() {
         </p>
       )}
 
-      <Explain id="warehouse-how" summary="How does tracking work?" raw>
-        <PackageMap />
-      </Explain>
-
-      {/* The warehouse funnel (wave F, grill Q5/Q6): five numbered stations,
-          in the order material actually moves — coming in, off the truck,
-          put away, out the door, fix a mistake. Replaces the old quick-link
-          row above AND the "Coming in" section's own nav links below (both
-          retire here), which is also where the "Deliveries — check trucks
-          in" link that used to sit in both places at once loses its
-          duplicate. Every button keeps the exact role condition it had
-          before the redesign — the strip only changes the geometry, never
-          who can tap what (see each card). Numbers and names come from
-          lib/warehouse/stations.ts, the same module every chipped
-          destination page reads, so the hub and the chips can't disagree.
-          Mobile-first per the spec: stacks vertically by default (the phone
-          in an installer's hand); .station-strip in index.css only lays
-          cards out horizontally at desktop widths. */}
-      <div className="station-strip">
-        <div className="station-card">
-          <div className="station-card-head">
-            <span className="station-num">{STATION_COMING_IN.number}</span>
-            <strong className="station-name">{STATION_COMING_IN.name}</strong>
-          </div>
-          <p className="muted station-when">{STATION_COMING_IN.when}</p>
-          {/* Checking trucks in and logging one both belong to whoever's at
-              the tailgate (S3) — open to everyone, same as before. */}
-          <div className="row-gap station-actions">
-            <Link className="button-like active-pill" to="/storage/deliveries">
-              Deliveries — check trucks in
-            </Link>
-            <Link className="button-like" to="/storage/log-delivery">
-              Log a delivery (truck)
-            </Link>
+      {/* The yard. */}
+      <section className="yard-section" aria-label="The yard">
+        <div className="wh-row" style={{ marginBottom: 6 }}>
+          <span className="muted yard-summary">{ready ? yardSummary(tiles) : "Loading the yard…"}</span>
+          <div className="wh-actions">
+            <button
+              className="button-like"
+              disabled={posters.isPending || boxes.length === 0}
+              onClick={() => posters.mutate(boxes)}
+            >
+              All posters
+            </button>
           </div>
         </div>
-        <span className="station-connector" aria-hidden="true">→</span>
+        <Yard tiles={tiles} onAdd={() => setNewContainer(true)} />
+        {packages.isError && <p className="error">{formatApiError(packages.error)}</p>}
+      </section>
 
-        <div className="station-card">
-          <div className="station-card-head">
-            <span className="station-num">{STATION_OFF_TRUCK.number}</span>
-            <strong className="station-name">{STATION_OFF_TRUCK.name}</strong>
+      {/* The next truck — checking one in and logging one both belong to
+          whoever is at the tailgate (S3), open to everyone. */}
+      <section className="detail-card wh-card yard-truck" aria-label="Next truck">
+        <div className="wh-row">
+          <div className="wh-row-main">
+            <span className="wh-row-title">
+              {nextTruck
+                ? `Truck ${nextTruck.expected_at!.slice(0, 10)} · ${nextTruck.label ?? "delivery"}`
+                : "No truck on the calendar"}
+            </span>
+            <span className="wh-row-sub">
+              {nextTruck ? "Check it against its list when it lands." : "Log one when it lands, or ahead of time."}
+            </span>
           </div>
-          <p className="muted station-when">{STATION_OFF_TRUCK.when}</p>
-          {/* Tag packages had no direct door on this hub before — Log a
-              delivery's "with QR stickers" choice was the only way in. A
-              direct link matches /storage/tag's own registry floor
-              (installer, nav.ts) and the S3 rule this page has followed
-              since ticket 08: whoever's at the tailgate tags, so it's open
-              to everyone, same as Arrival check already was. */}
-          <div className="row-gap station-actions">
-            <Link className="button-like active-pill" to="/storage/tag">
-              Tag packages
-            </Link>
-            <Link className="button-like" to="/storage/arrive">
-              Arrival check
-            </Link>
+          <div className="wh-actions">
+            {nextTruck ? (
+              <Link className="button-like active-pill" to={`/storage/d/${nextTruck.id}`}>
+                Open its list
+              </Link>
+            ) : null}
           </div>
         </div>
-        <span className="station-connector" aria-hidden="true">→</span>
-
-        <div className="station-card">
-          <div className="station-card-head">
-            <span className="station-num">{STATION_PUT_AWAY.number}</span>
-            <strong className="station-name">{STATION_PUT_AWAY.name}</strong>
-          </div>
-          <p className="muted station-when">{STATION_PUT_AWAY.when}</p>
-          {/* No new destination — "In storage" is already a section on this
-              page, below the strip, open to everyone now (ADR-0007), so this
-              button is too. */}
-          <div className="row-gap station-actions">
-            <a className="button-like" href="#in-storage">
-              See containers
-            </a>
-          </div>
+        <div className="row-gap" style={{ marginTop: 8 }}>
+          <Link className="button-like" to="/storage/deliveries">
+            Deliveries — check trucks in
+          </Link>
+          <Link className="button-like" to="/storage/log-delivery">
+            Log a delivery (truck)
+          </Link>
         </div>
-        <span className="station-connector" aria-hidden="true">→</span>
+      </section>
 
-        <div className="station-card">
-          <div className="station-card-head">
-            <span className="station-num">{STATION_OUT_DOOR.number}</span>
-            <strong className="station-name">{STATION_OUT_DOOR.name}</strong>
-          </div>
-          <p className="muted station-when">{STATION_OUT_DOOR.when}</p>
-          <div className="row-gap station-actions">
-            <Link className="button-like active-pill" to="/storage/out">
-              Set aside / check out
-            </Link>
-          </div>
-        </div>
-        <span className="station-connector" aria-hidden="true">→</span>
-
-        <div className="station-card">
-          <div className="station-card-head">
-            <span className="station-num">{STATION_FIX_MISTAKE.number}</span>
-            <strong className="station-name">{STATION_FIX_MISTAKE.name}</strong>
-          </div>
-          <p className="muted station-when">{STATION_FIX_MISTAKE.when}</p>
-          <div className="row-gap station-actions">
-            <Link className="button-like" to="/warehouse/materials">
-              Job materials
-            </Link>
-            {/* Rewrite this set (wave R) is deliberately NOT a button here:
-                its view needs a specific set (?job/&pending + &mark), and the
-                way to one is already this card — Job materials, pick the set,
-                Edit set…. A second hub door to the same place is exactly the
-                duplicate the wave-F audit killed. */}
-          </div>
-        </div>
-      </div>
-
-      {/* The four counts, for everyone (ADR-0007). They ARE the warehouse's
-          health, and the people moving the material are the ones who can do
-          something about "12 loose". */}
-      <div className="stat-grid">
+      {/* Problems that need a person. The counts ARE the warehouse's health
+          (lib/warehouse/warehouseCards.ts), for everyone (ADR-0007). */}
+      <div className="yard-chips" role="group" aria-label="Needs attention">
         {WAREHOUSE_CARDS.map((c) => (
           <Link
             key={c.id}
             to={cardLink(c.id)}
-            className={c.tone ? `stat-card ${c.tone}` : "stat-card"}
+            className={`yard-chip${c.tone && ready && counts[c.id] > 0 ? ` yard-chip--${c.tone}` : ""}${card === c.id ? " yard-chip--on" : ""}`}
           >
-            <span className="stat-num">{ready ? counts[c.id] : "-"}</span>
-            <span>{c.label}</span>
+            <b>{ready ? counts[c.id] : "–"}</b> {c.label}
           </Link>
         ))}
+        {split.length > 0 ? (
+          <span className="yard-chip yard-chip--warn" title={split.slice(0, 5).map((s) => `W${s.markCode}`).join(", ")}>
+            <b>{split.length}</b> split across places
+          </span>
+        ) : null}
+        {openDamage.length > 0 ? (
+          <Link to="/issues" className="yard-chip yard-chip--danger">
+            <b>{openDamage.length}</b> damage report{openDamage.length === 1 ? "" : "s"}
+          </Link>
+        ) : null}
       </div>
-      {/* raw because a <ul> may not sit inside Explain's quoted <p> —
-          React 19 logs a DOM-nesting error on every load without it.
-          The list carries the quoted-note styling itself instead. */}
-      <Explain id="warehouse-cards" summary="What do these numbers mean?" raw>
-        <ul
-          style={{
-            margin: "6px 0 0",
-            paddingLeft: 18,
-            color: "var(--muted)",
-            lineHeight: 1.5,
-            borderLeft: "2px solid var(--border)",
-          }}
-        >
-          {WAREHOUSE_CARDS.map((c) => (
-            <li key={c.id} style={{ marginBottom: 6 }}>
-              <strong>{c.label}</strong> — {c.blurb}
-            </li>
-          ))}
-          <li>
-            One thing to know about <strong>not tagged</strong>: a window mark
-            that shows up eight times on the plans counts once, because the
-            manufacturer&rsquo;s labels don&rsquo;t number the eight apart.
-          </li>
-        </ul>
-      </Explain>
-      {/* A tapped stat card drills in right here (ticket 06/18) — same rule
-          as the cards above: everyone sees the cards, so everyone can tap
-          one (ADR-0007). */}
-      {card && (
-        <CardList card={card} packages={real} containers={boxes} jobCode={jobCode} />
-      )}
+      {untagged.length > 0 ? (
+        <p className="muted" style={{ margin: "6px 0 0", fontSize: 13 }}>
+          <strong>{untagged.length}</strong> window{untagged.length === 1 ? "" : "s"} on the plans
+          with nothing tagged — <Link to={cardLink("not-tagged")}>see which</Link>.
+        </p>
+      ) : null}
+      {card && <CardList card={card} packages={real} containers={boxes} jobCode={jobCode} />}
 
-      {/* Pick 26: visible to every role — movements, packages and
-          deliveries are all open reads to any signed-in crew member, same
-          as the hub counts above. Waits on all three reads so a still-loading
-          page never flashes "Quiet so far" a moment before the real counts
-          land. */}
-      {packages.isSuccess && movementsToday.isSuccess && deliveries.isSuccess && (
-        <DayRecapCard recap={recap} />
-      )}
+      {/* Every other door, one row. Same role conditions as before: all crew. */}
+      <div className="row-gap yard-actions" role="group" aria-label="Warehouse actions">
+        <Link className="button-like" to="/storage/tag">
+          Tag packages
+        </Link>
+        <Link className="button-like" to="/storage/arrive">
+          Arrival check
+        </Link>
+        <Link className="button-like" to="/storage/out">
+          Set aside / check out
+        </Link>
+        <Link className="button-like" to="/warehouse/materials">
+          Job materials
+        </Link>
+        <Link className="button-like" to="/takeoffs">
+          Takeoffs{openTakeoffs > 0 ? ` · ${openTakeoffs} open` : ""}
+        </Link>
+        <Link className="button-like" to="/supplies">
+          Take supplies
+        </Link>
+        <button className="button-like" onClick={() => setMinting(true)}>
+          Print blank stickers
+        </button>
+        <Link className="button-like" to="/labels">
+          Slot labels
+        </Link>
+      </div>
 
       {/* Per-job unit tallies (owner ask, 2026-08-26): "Mad Moose 20/22 ·
           2 remaining" — units are windows/doors, not boxes. Tapping a job
-          opens its materials ledger. */}
+          opens its materials ledger; waiting jobs included (wave M). */}
       {packages.isSuccess &&
         (() => {
           const tallies = jobTallies(real, jobCode);
@@ -452,28 +338,16 @@ export function Warehouse() {
               <ul className="unit-list" style={{ margin: 0 }}>
                 {tallies.map((t) => (
                   <li key={t.projectId ?? `pending:${t.label}`} className="wh-row">
-                    {/* Wave M: EVERY row links now, waiting jobs included —
-                        the owner's whole live inventory is waiting-job
-                        material, and it used to render as a dead end here. */}
                     {t.projectId ? (
-                      <Link
-                        to={scopeHref({ projectId: t.projectId, pendingName: null })}
-                        className="link wh-row-title"
-                      >
+                      <Link to={scopeHref({ projectId: t.projectId, pendingName: null })} className="link wh-row-title">
                         {t.label}
                       </Link>
                     ) : (
-                      <Link
-                        to={scopeHref({ projectId: null, pendingName: t.label })}
-                        className="link wh-row-title"
-                      >
+                      <Link to={scopeHref({ projectId: null, pendingName: t.label })} className="link wh-row-title">
                         “{t.label}”
                       </Link>
                     )}
-                    <span
-                      className={t.remainingUnits === 0 ? "ok" : "warn-text"}
-                      style={{ fontVariantNumeric: "tabular-nums" }}
-                    >
+                    <span className={t.remainingUnits === 0 ? "ok" : "warn-text"} style={{ fontVariantNumeric: "tabular-nums" }}>
                       {tallyLine(t)}
                     </span>
                   </li>
@@ -483,256 +357,58 @@ export function Warehouse() {
           );
         })()}
 
-      {packages.isError && <p className="error">{formatApiError(packages.error)}</p>}
-
-      {visible.map((s) => (
-        <section key={s.id} id={s.id}>
-          <h2>{s.title}</h2>
-
-          {s.id === "coming-in" && (
-            <>
-              <Explain id="wh-coming-in">
-                Material off the truck. Stick a sticker on each package and say
-                which window it belongs to — until you do, nobody can be told
-                where it is. Then check it into a conex.
-              </Explain>
-              {/* Ticket 20: one front door for trucks. Log a delivery's
-                  "with QR stickers" choice IS the tag flow — the standalone
-                  Tag button retired, and "Check in" (-> the old Storage hub)
-                  retired with it, since New container / posters / minting
-                  all live right below now, in "In storage". Both nav links
-                  that used to live in this row moved into station 1 of the
-                  strip above (wave F) — minting stays here, untouched. */}
-              <div className="row-gap">
-                <button className="button-like" onClick={() => setMinting(true)}>
-                  Print blank stickers
-                </button>
-              </div>
-              {needsPutaway.length > 0 && (
-                <p className="muted" style={{ marginTop: 8, fontSize: 13 }}>
-                  <strong>{needsPutaway.length}</strong> tagged package
-                  {needsPutaway.length === 1 ? "" : "s"} with nowhere to be —{" "}
-                  <Link to={cardLink("loose")}>put them away</Link>.
-                </p>
-              )}
-              {split.length > 0 && (
-                <p className="muted" style={{ marginTop: 4, fontSize: 13 }}>
-                  <strong>{split.length}</strong> window
-                  {split.length === 1 ? "" : "s"} split across places —{" "}
-                  {split
-                    .slice(0, 3)
-                    .map((s) => `W${s.markCode}`)
-                    .join(", ")}
-                  {split.length > 3 ? ` and ${split.length - 3} more` : ""}.
-                  Ask Find for one to see where its parts sit.
-                </p>
-              )}
-              {untagged.length > 0 && (
-                <p className="muted" style={{ marginTop: 4, fontSize: 13 }}>
-                  <strong>{untagged.length}</strong> window
-                  {untagged.length === 1 ? "" : "s"} on the plans with nothing
-                  tagged — <Link to={cardLink("not-tagged")}>see which</Link>.
-                </p>
-              )}
-            </>
-          )}
-
-          {s.id === "in-storage" && (
-            <>
-              <Explain id="wh-in-storage">
-                Every conex and crate, and what is sitting in it. Moving a
-                container moves everything inside it in one action — you never
-                re-scan the contents.
-              </Explain>
-              {/* Absorbed from the Storage hub (ticket 18); open to every
-                  crew member since ADR-0007 — registering the conex that
-                  turned up and printing its door poster is warehouse work. */}
-              <div className="row-gap" style={{ marginBottom: 8 }}>
-                <button className="button-like" onClick={() => setNewContainer(true)}>
-                  New container
-                </button>
-                <button
-                  className="button-like"
-                  disabled={posters.isPending || boxes.length === 0}
-                  onClick={() => posters.mutate(boxes)}
-                >
-                  All posters
-                </button>
-              </div>
-              <div className="warehouse-grid">
-                {boxes
-                  .filter((c) => !c.parent_container_id)
-                  .map((c) => {
-                    // `real`, not `rows`: testing packages never count as
-                    // inventory anywhere on this page, and a tile that
-                    // counted them while its job breakdown (below) didn't
-                    // would just disagree with itself.
-                    const inside = real.filter(
-                      (p) => p.status === "stored" && p.container_id === c.id,
-                    );
-                    const nested = boxes.filter((n) => n.parent_container_id === c.id);
-                    const jobs = groupByJob(inside);
-                    const oldest = inside.reduce(
-                      (worst, p) => Math.max(worst, agingDays(p.bound_at, new Date()) ?? 0),
-                      0,
-                    );
-                    return (
-                      <Link key={c.id} to={`/storage/c/${c.id}`} className="warehouse-tile">
-                        <span className="row-gap" style={{ alignItems: "center" }}>
-                          <ContainerBadge name={c.name} serial={c.serial} />
-                          <strong>
-                            {c.name}
-                            {containerKind(c) !== "conex" && (
-                              <span className="muted" style={{ fontWeight: 400 }}>
-                                {" "}· {containerKind(c)}
-                              </span>
-                            )}
-                          </strong>
-                        </span>
-                        <span className="muted">
-                          <span className="wh-count">{inside.length}</span>{" "}
-                          <span className="wh-count-label">
-                            package{inside.length === 1 ? "" : "s"}
-                          </span>
-                          {inside.length > 0 &&
-                            ` · ${jobs
-                              .map(
-                                (g) =>
-                                  `${jobCode.get(g.projectId ?? "") ?? "?"} ×${g.packages.length}`,
-                              )
-                              .slice(0, 3)
-                              .join(", ")}`}
-                          {nested.length > 0 && ` · holding ${nested.length} crate${nested.length === 1 ? "" : "s"}`}
-                          {oldest > 0 ? ` · oldest ${oldest}d` : ""}
-                        </span>
-                      </Link>
-                    );
-                  })}
-                {boxes.length === 0 && (
-                  <EmptyState title="No containers yet — add one above." />
-                )}
-              </div>
-            </>
-          )}
-
-          {s.id === "going-out" && (
-            <>
-              <Explain id="wh-going-out">
-                Two steps, and the first is optional. <strong>Set aside</strong> puts a
-                job&rsquo;s packages on its own shelf so they go out together.{" "}
-                <strong>Check out</strong> takes them to the job — pick a reason;
-                taking a package tagged for another job is fine, it just warns you
-                and asks why so the borrow is on the record. When something arrives
-                broken, the <strong>arrival check</strong> raises an issue that names
-                the package.
-              </Explain>
-              <div className="row-gap">
-                <Link className="button-like active-pill" to="/storage/out">
-                  Set aside / check out
-                </Link>
-                <Link className="button-like" to="/storage/arrive">
-                  Arrival check
-                </Link>
-              </div>
-              {goingOut.length > 0 && (
-                <div className="home-projects" style={{ marginTop: 8 }}>
-                  {/* Group FIRST, then cap the cards. Slicing the packages
-                      before grouping made a job's "N out" count wrong (or hid
-                      the job entirely) once more than 40 were out, because the
-                      cut is ordered by when packages were TAGGED, not when
-                      they left. */}
-                  {groupByJob(goingOut).slice(0, 40).map((g) => (
-                    <div key={g.projectId ?? "none"} className="project-card home-project">
-                      <div className="home-project-head">
-                        <div className="wh-row-main">
-                          <div className="wh-row-title">
-                            {jobCode.get(g.projectId ?? "") ?? "No job"}
-                          </div>
-                          <div className="wh-row-sub">
-                            {g.packages.length} package
-                            {g.packages.length === 1 ? "" : "s"} out
-                          </div>
-                        </div>
-                      </div>
+      <Explain id="wh-more" summary="More — today, out on jobs, supplies on the shelf" raw>
+        {packages.isSuccess && movementsToday.isSuccess && deliveries.isSuccess && (
+          <DayRecapCard recap={recap} />
+        )}
+        {goingOut.length > 0 && (
+          <div className="home-projects" style={{ marginTop: 8 }}>
+            {groupByJob(goingOut).slice(0, 40).map((g) => (
+              <div key={g.projectId ?? "none"} className="project-card home-project">
+                <div className="home-project-head">
+                  <div className="wh-row-main">
+                    <div className="wh-row-title">{jobCode.get(g.projectId ?? "") ?? "No job"}</div>
+                    <div className="wh-row-sub">
+                      {g.packages.length} package{g.packages.length === 1 ? "" : "s"} out
                     </div>
-                  ))}
+                  </div>
                 </div>
-              )}
-            </>
-          )}
-
-          {s.id === "supplies" && (
-            <>
-              <Explain id="wh-supplies">
-                Caulk, screws, flashing. Each one has a home spot so you know
-                where to go, and the count is an estimate that only means
-                something with its last count date beside it.
-              </Explain>
-              <div className="row-gap" style={{ marginBottom: 6 }}>
-                <Link className="button-like active-pill" to="/takeoffs">
-                  Takeoffs{openTakeoffs > 0 ? ` · ${openTakeoffs} open` : ""}
-                </Link>
-                <Link className="button-like" to="/supplies">
-                  Take supplies
-                </Link>
               </div>
-              <Explain id="wh-supply-drawer" summary="Supplies on the shelf" raw>
-                <input
-                  type="search"
-                  placeholder="Search supplies — caulk, screws…"
-                  value={supplyQ}
-                  onChange={(e) => setSupplyQ(e.target.value)}
-                  style={{ width: "100%", margin: "6px 0" }}
-                  aria-label="Search supplies"
-                />
-                <ul className="unit-list" style={{ margin: 0 }}>
-                  {supplyPreview.map((s2) => (
-                    <li key={s2.id} className="find-row">
-                      <div style={{ minWidth: 0 }}>
-                        <strong>{s2.name}</strong>{" "}
-                        <span className="wh-row-sub">
-                          {onHandLabel(s2)}
-                        </span>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-                {supplyMatches.length === 0 && (
-                  <p className="muted" style={{ margin: "6px 0 0" }}>
-                    {supplyQ.trim()
-                      ? `Nothing named like “${supplyQ.trim()}”.`
-                      : "Nothing in the catalog yet — add supplies from Take supplies."}
-                  </p>
-                )}
-                {supplyMatches.length > SUPPLY_ROWS_SHOWN && (
-                  <p className="muted" style={{ margin: "6px 0 0", fontSize: 12 }}>
-                    Showing {SUPPLY_ROWS_SHOWN} of {supplyMatches.length} — type to
-                    narrow.
-                  </p>
-                )}
-              </Explain>
-            </>
+            ))}
+          </div>
+        )}
+        <div style={{ marginTop: 10 }}>
+          <input
+            type="search"
+            placeholder="Search supplies — caulk, screws…"
+            value={supplyQ}
+            onChange={(e) => setSupplyQ(e.target.value)}
+            style={{ width: "100%", margin: "6px 0" }}
+            aria-label="Search supplies"
+          />
+          <ul className="unit-list" style={{ margin: 0 }}>
+            {supplyPreview.map((s2) => (
+              <li key={s2.id} className="find-row">
+                <div style={{ minWidth: 0 }}>
+                  <strong>{s2.name}</strong> <span className="wh-row-sub">{onHandLabel(s2)}</span>
+                </div>
+              </li>
+            ))}
+          </ul>
+          {supplyMatches.length === 0 && (
+            <p className="muted" style={{ margin: "6px 0 0" }}>
+              {supplyQ.trim()
+                ? `Nothing named like “${supplyQ.trim()}”.`
+                : "Nothing in the catalog yet — add supplies from Take supplies."}
+            </p>
           )}
-
-          {s.id === "problems" && (
-            <>
-              <Explain id="wh-problems">
-                Things that need somebody to act: damage waiting on a
-                replacement, and packages that are tagged but have no place, so
-                the app cannot tell anyone where they are.
-              </Explain>
-              <div className="row-gap">
-                <Link className="button-like" to="/issues">
-                  Damage reports ({openDamage.length})
-                </Link>
-                <Link className="button-like" to={cardLink("loose")}>
-                  Loose packages ({counts.loose})
-                </Link>
-              </div>
-            </>
+          {supplyMatches.length > SUPPLY_ROWS_SHOWN && (
+            <p className="muted" style={{ margin: "6px 0 0", fontSize: 12 }}>
+              Showing {SUPPLY_ROWS_SHOWN} of {supplyMatches.length} — type to narrow.
+            </p>
           )}
-        </section>
-      ))}
+        </div>
+      </Explain>
 
       {/* Supervisor+ only — an installer or foreman's `projects` list never
           has a testing project in it (RLS), so this section would always be
@@ -751,13 +427,9 @@ export function Warehouse() {
                 <div key={g.projectId ?? "none"} className="project-card home-project">
                   <div className="home-project-head">
                     <div className="wh-row-main">
-                      <div className="wh-row-title">
-                        {jobCode.get(g.projectId ?? "") ?? "Testing"}
-                      </div>
+                      <div className="wh-row-title">{jobCode.get(g.projectId ?? "") ?? "Testing"}</div>
                       <div className="wh-row-sub">
-                        {`${g.packages.length} package${
-                          g.packages.length === 1 ? "" : "s"
-                        } — practice material, never counted as inventory`}
+                        {`${g.packages.length} package${g.packages.length === 1 ? "" : "s"} — practice material, never counted as inventory`}
                       </div>
                     </div>
                   </div>
@@ -769,8 +441,6 @@ export function Warehouse() {
           )}
         </section>
       )}
-
-      <Operations />
 
       {/* Absorbed from the Storage hub (ticket 18). */}
       {newContainer && (
@@ -794,39 +464,5 @@ export function Warehouse() {
         />
       )}
     </div>
-  );
-}
-
-/**
- * Occasional admin, folded away rather than given menu rows. The unit-system
- * screens that used to shelter here (Receive, Cycle count, the inventory
- * list) retired with the chain (ticket 21, ADR-0005).
- */
-function Operations() {
-  const [open, setOpen] = useState(false);
-  return (
-    <section>
-      <h2>
-        <button
-          className="link"
-          onClick={() => setOpen((v) => !v)}
-          style={{ font: "inherit", color: "inherit" }}
-        >
-          Other tools {open ? "▾" : "▸"}
-        </button>
-      </h2>
-      {open && (
-        <div className="warehouse-grid">
-          <Link to="/scan" className="warehouse-tile">
-            <strong>Scan</strong>
-            <span className="muted">Any sticker, poster or slot label</span>
-          </Link>
-          <Link to="/labels" className="warehouse-tile">
-            <strong>Slot labels</strong>
-            <span className="muted">Print rack/slot QR labels</span>
-          </Link>
-        </div>
-      )}
-    </section>
   );
 }

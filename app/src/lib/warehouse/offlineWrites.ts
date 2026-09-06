@@ -2,7 +2,7 @@
 //
 // A conex is a metal box with no bars. Nobody walks outside to make the app
 // happy — they do the work and skip the scan, and then the record is gone
-// forever. So the six writes somebody makes standing inside one try the
+// forever. So the warehouse writes somebody makes standing inside one try the
 // server first and fall back to the outbox when the failure was the network.
 //
 // The distinction matters: a REAL rejection ("that container is inactive",

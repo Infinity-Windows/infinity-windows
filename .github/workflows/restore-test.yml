@@ -110,6 +110,7 @@ jobs:
           B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
           B2_APPLICATION_KEY: ${{ secrets.B2_APPLICATION_KEY }}
           B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
         run: |
@@ -130,7 +131,21 @@ jobs:
               exit 1
             fi
             echo "Restoring $newest"
-            rclone copyto "offsite:$B2_BUCKET/$newest" "$RUNNER_TEMP/archive.tar.gz"
+            case "$newest" in
+              *.enc)
+                # Sealed archives (every night since the seal landed). A
+                # missing or wrong passphrase fails here, in words, rather than
+                # as a tar error further down.
+                rclone copyto "offsite:$B2_BUCKET/$newest" "$RUNNER_TEMP/archive.tar.gz.enc"
+                scripts/backup-seal.sh open "$RUNNER_TEMP/archive.tar.gz.enc" "$RUNNER_TEMP/archive.tar.gz"
+                ;;
+              *)
+                rclone copyto "offsite:$B2_BUCKET/$newest" "$RUNNER_TEMP/archive.tar.gz"
+                ;;
+            esac
+            # The same read-back the nightly job does before uploading, now
+            # against the copy that was actually kept.
+            python3 scripts/backup_verify.py "$RUNNER_TEMP/archive.tar.gz"
             tar -xzf "$RUNNER_TEMP/archive.tar.gz" -C "$dir" --strip-components=1
             echo "source=the off-site copy $newest" >> "$GITHUB_OUTPUT"
             echo "stored=true" >> "$GITHUB_OUTPUT"

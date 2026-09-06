@@ -1,15 +1,7 @@
 import { supabase } from "./supabase";
-import {
-  isMissingStagingBayError,
-  missingBayMessage,
-  missingStagingBayJobCode,
-  sharedShelfWarning,
-  type PutawaySuggestion,
-} from "./staging";
 import type {
   JobMode,
   Location,
-  Movement,
   Project,
   ProjectWindow,
   WindowType,
@@ -22,11 +14,6 @@ import { sortProjectsForList, type ReadyState } from "./pipeline";
 
 const WINDOW_SELECT =
   "*, window_types(*), locations(*), projects(*)";
-
-async function actor(): Promise<string | null> {
-  const { data } = await supabase.auth.getUser();
-  return data.user?.email ?? null;
-}
 
 export async function listWindowTypes(): Promise<WindowType[]> {
   const { data, error } = await supabase
@@ -774,25 +761,6 @@ export async function findWindowBySerial(
   return data;
 }
 
-/** Edit a window's friendly display name (foreman+ via the trusted-crew RLS). */
-export async function updateWindow(
-  id: string,
-  patch: { display_name?: string | null },
-): Promise<WindowUnit> {
-  const update: Record<string, string | null> = {};
-  if (patch.display_name !== undefined) {
-    update.display_name = patch.display_name?.trim() ? patch.display_name.trim() : null;
-  }
-  const { data, error } = await supabase
-    .from("windows")
-    .update(update)
-    .eq("id", id)
-    .select(WINDOW_SELECT)
-    .single();
-  if (error) throw error;
-  return data as WindowUnit;
-}
-
 export async function findWindowByCode(
   code: string,
 ): Promise<WindowUnit | null> {
@@ -873,24 +841,6 @@ export async function updateLocation(
   return data as Location;
 }
 
-/**
- * Retire a slot. Locations are soft-deleted (active = false) rather than hard
- * deleted: movements/cycle-count history and any windows still sitting in the
- * slot reference the row, so a hard delete would either break history or be
- * blocked by foreign keys. `listLocations` already only returns active slots,
- * so flipping the flag makes the slot disappear from every picker and label
- * list while keeping the audit trail intact. Same wall as `updateLocation`
- * above: the table itself only refuses a builder login, so foreman+ is the
- * calling screen's job.
- */
-export async function deleteLocation(id: string): Promise<void> {
-  const { error } = await supabase
-    .from("locations")
-    .update({ active: false })
-    .eq("id", id);
-  if (error) throw error;
-}
-
 /** Retire several slots in one round-trip (bulk "delete selected"). */
 export async function deleteLocations(ids: string[]): Promise<void> {
   if (ids.length === 0) return;
@@ -925,56 +875,6 @@ export async function searchUnits(query: string): Promise<WindowUnit[]> {
   return data;
 }
 
-export async function getMovements(windowUuid: string): Promise<Movement[]> {
-  const { data, error } = await supabase
-    .from("movements")
-    .select("*")
-    .eq("window_id", windowUuid)
-    .order("created_at", { ascending: false })
-    .limit(50);
-  if (error) throw error;
-  return data;
-}
-
-export async function receiveWindow(
-  typeId: string,
-  projectId: string | null,
-): Promise<WindowUnit> {
-  const { data, error } = await supabase.rpc("receive_window", {
-    p_type_id: typeId,
-    p_project_id: projectId,
-    p_actor: await actor(),
-  });
-  if (error) throw error;
-  return data as WindowUnit;
-}
-
-
-
-
-export async function moveWindow(
-  windowUuid: string,
-  locationId: string,
-  reason?: string,
-): Promise<WindowUnit> {
-  const { data, error } = await supabase.rpc("move_window", {
-    p_window_id: windowUuid,
-    p_location_id: locationId,
-    p_actor: await actor(),
-    p_reason: reason ?? null,
-  });
-  if (error) throw error;
-  return data as WindowUnit;
-}
-
-
-
-export interface UnloadResult {
-  unloaded: number;
-  damaged: number;
-}
-
-
 export interface ReorderNeed {
   window_type_id: string;
   type_name: string;
@@ -996,50 +896,6 @@ export async function listReorderNeeds(
   if (error) throw error;
   return (data ?? []) as ReorderNeed[];
 }
-
-
-/**
- * Where to put a unit away — and, just as importantly, whether that answer is
- * the job's own staging bay or a shared shelf.
- *
- * `projectId` is the unit's job (null for unassigned stock). It is what decides
- * whether a stock-zone answer is normal or is something the foreman has to be
- * told about; see app/src/lib/staging.ts. The database refuses outright when
- * the job has no bay at all, and that refusal is turned into a `missingBay`
- * suggestion here rather than thrown, so callers show the reason instead of
- * silently rendering nothing.
- */
-export async function suggestLocation(
-  windowUuid: string,
-  projectId: string | null = null,
-): Promise<PutawaySuggestion> {
-  const { data, error } = await supabase.rpc("suggest_location", {
-    p_window_id: windowUuid,
-  });
-  if (error) {
-    if (isMissingStagingBayError(error)) {
-      const jobCode = missingStagingBayJobCode(error);
-      return {
-        location: null,
-        warning: missingBayMessage(jobCode),
-        missingBay: true,
-        jobCode,
-      };
-    }
-    throw error;
-  }
-  const location = (data as Location | null)?.id ? (data as Location) : null;
-  return {
-    location,
-    warning: sharedShelfWarning(Boolean(projectId), location),
-    missingBay: false,
-    jobCode: null,
-  };
-}
-
-
-
-
 
 export interface CatalogImportResult {
   inserted: number;

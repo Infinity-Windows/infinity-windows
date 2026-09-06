@@ -48,7 +48,6 @@ import { Takeoffs } from "./pages/Takeoffs";
 import { ProjectDetail } from "./pages/ProjectDetail";
 import { Projects } from "./pages/Projects";
 import { JobHistory } from "./pages/JobHistory";
-import { Receive } from "./pages/Receive";
 import { Scan } from "./pages/Scan";
 import { ContainerDetail } from "./pages/storage/ContainerDetail";
 import { TagPackages } from "./pages/storage/TagPackages";
@@ -569,10 +568,8 @@ export default function App() {
             <Route path="/pkg/:serial" element={<PackageSheet />} />
             {/* The unit card: one editor for a window's pieces (wave 1). */}
             <Route path="/unit/:projectId/:mark" element={<UnitCard />} />
-            <Route
-              path="/receive"
-              element={<RequireRole path="/receive"><Receive /></RequireRole>}
-            />
+            {/* /receive was a two-link signpost; receiving IS the tailgate now (wave 5). */}
+            <Route path="/receive" element={<Navigate to="/storage/log-delivery" replace />} />
             <Route path="/search" element={<Navigate to="/warehouse" replace />} />
             <Route path="/projects" element={<Projects />} />
             <Route path="/jobs/history" element={<JobHistory />} />

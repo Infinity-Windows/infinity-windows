@@ -73,6 +73,8 @@ const OPENED = [
   // Wave 1 of the warehouse redesign (2026-09-06): moving a package to
   // another job or window is everyday warehouse work, same door as the rest.
   "reassign_package",
+  // Wave 5: copying a unit is minting labels, the same everyday work.
+  "copy_unit",
 ];
 
 /** Kept foreman+ by ADR-0007 — the actions that end something. */

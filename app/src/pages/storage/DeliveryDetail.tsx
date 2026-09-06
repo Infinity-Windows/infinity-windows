@@ -10,6 +10,7 @@ import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ScanLine } from "lucide-react";
 import { BackChip } from "../../components/BackChip";
+import { TailgateUnits } from "../../components/warehouse/TailgateUnits";
 import { ContainerBadge } from "../../components/warehouse/ContainerBadge";
 import { StageChip } from "../../components/warehouse/StageChip";
 import { StationChip } from "../../components/warehouse/StationChip";
@@ -503,6 +504,16 @@ export function DeliveryDetail() {
         </div>
         <BackChip fallback="/warehouse" label="Warehouse" />
       </header>
+
+      {/* Unit first (wave 4): one row per window, tap to arrive its pieces,
+          one button to put everything that arrived into the box used last.
+          The slot rows below stay for what a tick cannot say. */}
+      <TailgateUnits
+        groups={groups}
+        containers={containers.data ?? []}
+        jobTitle={(pid) => jobCode.get(pid) ?? null}
+        onChanged={refresh}
+      />
       <StationChip station={STATION_COMING_IN} />
 
       {message && <p className="scanner-hint">{message}</p>}
