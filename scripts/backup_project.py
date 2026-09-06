@@ -7,12 +7,27 @@ hashes), the storage inventory, the edge function and secret *names*, and the
 applied migration history.
 
     scripts/backup_project.py <project-ref> <out-dir>
+    scripts/backup_project.py --verify-only <out-dir>
 
 Every statement it runs is a SELECT. It never writes to the project.
+
+The first form writes one gzipped JSON snapshot plus a manifest.json carrying
+the sha256 of the file on disk and of the JSON inside it. The second form
+re-reads a directory the first form wrote, re-hashes every file, re-parses the
+snapshot and checks the row totals add up. The nightly workflow runs both, as
+separate steps, because a backup that has never been read back is not a backup
+— it is a file that was written once.
+
+An incomplete capture (a table the API refused to return) exits non-zero. A
+snapshot missing a table is not a backup either, and a green job over one would
+be worse than a red job over none.
 """
 from __future__ import annotations
 
+import gzip
+import hashlib
 import json
+import os
 import sys
 from datetime import datetime, timezone
 
@@ -436,7 +451,10 @@ def capture_migrations(ref: str) -> list[dict]:
 
 
 def main() -> None:
-    if len(sys.argv) != 3:
+    if len(sys.argv) == 3 and sys.argv[1] == "--verify-only":
+        _verify_cli(sys.argv[2].rstrip("/"))
+        return
+    if len(sys.argv) != 3 or sys.argv[1].startswith("-"):
         raise SystemExit(__doc__)
     ref, out_dir = sys.argv[1], sys.argv[2].rstrip("/")
 
@@ -515,19 +533,150 @@ def main() -> None:
     out["_edge_functions"] = capture_functions(ref)
     out["_migrations"] = capture_migrations(ref)
 
-    path = f"{out_dir}/2026-07-29-{ref}-full.json"
-    with open(path, "w") as fh:
-        json.dump(out, fh, indent=2, sort_keys=True, default=str)
-        fh.write("\n")
-    print(f"wrote {path}")
+    manifest = write_backup(out_dir, out, ref)
+    entry = manifest["files"][0]
+    summary = manifest["summary"]
+    print(f"wrote {out_dir}/{entry['name']} ({entry['bytes']} bytes, sha256 {entry['sha256'][:12]}…)")
     print(
-        f"  {out['_meta']['total_rows']} rows from "
-        f"{out['_meta']['non_empty_table_count']}/{out['_meta']['table_count']} tables, "
-        f"{out['_auth']['user_count']} auth users, "
-        f"{out['_storage']['object_count']} storage objects"
+        f"  {summary['total_rows']} rows from "
+        f"{summary['non_empty_table_count']}/{summary['table_count']} tables, "
+        f"{summary['auth_users']} auth users, "
+        f"{summary['storage_objects']} storage objects (inventory only)"
     )
     if failures:
         print("  CAPTURE FAILURES:", *failures, sep="\n    ")
+        raise SystemExit(
+            f"backup is INCOMPLETE: {len(failures)} table(s) could not be captured. "
+            "Refusing to call this a backup."
+        )
+
+
+def _sha256(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def write_backup(out_dir: str, snapshot: dict, ref: str, now: datetime | None = None) -> dict:
+    """Write the snapshot as <stamp>-<ref>-full.json.gz plus manifest.json.
+
+    Pure apart from the file writes, so the test suite can drive it with a
+    hand-built snapshot. The gzip header carries mtime 0 so two writes of the
+    same snapshot produce byte-identical files and the hash is meaningful.
+    """
+    now = now or datetime.now(timezone.utc)
+    stamp = now.strftime("%Y-%m-%dT%H%MZ")
+    os.makedirs(out_dir, exist_ok=True)
+    name = f"{stamp}-{ref}-full.json.gz"
+    raw = json.dumps(snapshot, indent=2, sort_keys=True, default=str).encode() + b"\n"
+    on_disk = gzip.compress(raw, mtime=0)
+    with open(os.path.join(out_dir, name), "wb") as fh:
+        fh.write(on_disk)
+    meta = snapshot.get("_meta", {})
+    manifest = {
+        "written_at": now.isoformat(timespec="seconds").replace("+00:00", "Z"),
+        "project_ref": ref,
+        "captured_by": "scripts/backup_project.py",
+        "files": [
+            {
+                "name": name,
+                "bytes": len(on_disk),
+                "sha256": _sha256(on_disk),
+                "uncompressed_bytes": len(raw),
+                "uncompressed_sha256": _sha256(raw),
+            }
+        ],
+        "summary": {
+            "table_count": meta.get("table_count", 0),
+            "non_empty_table_count": meta.get("non_empty_table_count", 0),
+            "total_rows": meta.get("total_rows", 0),
+            "capture_failures": len(meta.get("capture_failures", [])),
+            "auth_users": snapshot.get("_auth", {}).get("user_count", 0),
+            "storage_objects": snapshot.get("_storage", {}).get("object_count", 0),
+            "migrations": len(snapshot.get("_migrations", [])),
+        },
+    }
+    with open(os.path.join(out_dir, "manifest.json"), "w") as fh:
+        json.dump(manifest, fh, indent=2, sort_keys=True)
+        fh.write("\n")
+    return manifest
+
+
+def verify_backup(out_dir: str) -> list[str]:
+    """Re-read a backup directory from disk and return every problem found.
+
+    Empty list means: every file named in the manifest is present, the same
+    size, hashes the same inside and out, parses as JSON, names the same
+    project, captured nothing partially, and the row total in _meta equals the
+    rows actually stored.
+    """
+    problems: list[str] = []
+    try:
+        manifest = json.load(open(os.path.join(out_dir, "manifest.json")))
+    except (OSError, json.JSONDecodeError) as exc:
+        return [f"manifest.json unreadable: {exc}"]
+    files = manifest.get("files") or []
+    if not files:
+        problems.append("manifest lists no files")
+    for entry in files:
+        path = os.path.join(out_dir, entry.get("name", ""))
+        try:
+            on_disk = open(path, "rb").read()
+        except OSError as exc:
+            problems.append(f"{entry.get('name')}: missing ({exc})")
+            continue
+        if len(on_disk) != entry.get("bytes"):
+            problems.append(f"{entry['name']}: {len(on_disk)} bytes on disk, manifest says {entry.get('bytes')}")
+        if _sha256(on_disk) != entry.get("sha256"):
+            problems.append(f"{entry['name']}: sha256 on disk does not match the manifest")
+        try:
+            raw = gzip.decompress(on_disk)
+        except (OSError, EOFError) as exc:
+            problems.append(f"{entry['name']}: not a readable gzip file ({exc})")
+            continue
+        if _sha256(raw) != entry.get("uncompressed_sha256"):
+            problems.append(f"{entry['name']}: sha256 of the JSON inside does not match the manifest")
+        try:
+            snapshot = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            problems.append(f"{entry['name']}: JSON does not parse ({exc})")
+            continue
+        meta = snapshot.get("_meta", {})
+        if meta.get("project_ref") != manifest.get("project_ref"):
+            problems.append(
+                f"{entry['name']}: snapshot is for project {meta.get('project_ref')!r}, "
+                f"manifest says {manifest.get('project_ref')!r}"
+            )
+        if meta.get("capture_failures"):
+            problems.append(f"{entry['name']}: {len(meta['capture_failures'])} table(s) were not captured")
+        stored = 0
+        for t in meta.get("tables", []):
+            if not t.get("captured"):
+                continue
+            rows = snapshot.get(t.get("json_key"))
+            if not isinstance(rows, list):
+                problems.append(f"{entry['name']}: {t['schema']}.{t['table']} is marked captured but holds no rows")
+                continue
+            if len(rows) != t.get("row_count"):
+                problems.append(
+                    f"{entry['name']}: {t['schema']}.{t['table']} holds {len(rows)} rows, inventory says {t.get('row_count')}"
+                )
+            stored += len(rows)
+        if stored != meta.get("total_rows"):
+            problems.append(f"{entry['name']}: {stored} rows stored, _meta.total_rows says {meta.get('total_rows')}")
+    return problems
+
+
+def _verify_cli(out_dir: str) -> None:
+    problems = verify_backup(out_dir)
+    if problems:
+        print("backup FAILED verification:", *problems, sep="\n  ")
+        raise SystemExit(1)
+    manifest = json.load(open(os.path.join(out_dir, "manifest.json")))
+    summary = manifest["summary"]
+    print(
+        f"backup OK: {manifest['files'][0]['name']} re-read from disk, hashes match, "
+        f"{summary['total_rows']} rows across {summary['non_empty_table_count']} tables, "
+        f"{summary['auth_users']} auth users, {summary['migrations']} migrations recorded"
+    )
 
 
 if __name__ == "__main__":

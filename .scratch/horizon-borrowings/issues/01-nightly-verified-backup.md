@@ -1,6 +1,6 @@
 # 01 — Nightly verified off-site database backup
 
-Status: ready-for-agent
+Status: resolved
 Type: task
 Size: S
 
@@ -52,3 +52,21 @@ not the database.
 - A deliberately corrupted file makes the verify step fail (proven in the
   script test, not against production).
 - The next nightly run is green without anyone touching it.
+
+## Comments
+
+2026-09-05 — Built. `.github/workflows/backup.yml` runs nightly at 09:20 UTC and
+on demand: snapshot (SELECT-only, `scripts/backup_project.py`, now writes a
+date-stamped `.json.gz` plus `manifest.json` with inner and outer sha256),
+verify from disk in a separate step (`--verify-only`), seal
+(`scripts/backup-seal.sh`, AES-256 with `BACKUP_PASSPHRASE`), open the seal
+again and re-verify, upload 90 days, copy to R2 when its secrets exist, Slack
+on failure. Two deviations from the ticket, both because the repo is public:
+the artifact is encrypted rather than plain, and the passphrase is a new
+required secret (a copy belongs in the password manager, the runbook says
+why). The restore path is `docs/restore-from-backup.md` plus
+`scripts/restore_backup.py` (`--plan`, `--sql`), proven offline on the
+committed July snapshot in `scripts/test_restore_backup.py` — never against
+production. `docs/backups/README.md` says the July files are fixtures, not the
+backup. Owner actions before the first green run: add `BACKUP_PASSPHRASE`
+(and keep a copy), optionally the four R2 secrets.

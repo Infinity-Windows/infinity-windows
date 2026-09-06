@@ -201,6 +201,27 @@ jobs:
       - name: Test the misnamed-secret check
         run: python3 scripts/test_secret_name_audit.py
 
+      # The nightly backup. Its verify step is the only thing that turns "a
+      # file was written" into "a backup exists", so what gets tested is that
+      # the verify step notices damage: a truncated file, a flipped byte, a
+      # snapshot short a table. Offline: hand-built snapshots in a temp dir.
+      - name: Test the backup write-and-verify
+        run: python3 scripts/test_backup_project.py
+
+      # The restore side of the same job: parents before children, and every
+      # value round-tripping as itself. Runs the generator over the committed
+      # July snapshot too, so the real column types are exercised.
+      - name: Test the restore planner
+        run: python3 scripts/test_restore_backup.py
+
+      # The seal on the backup artifact. This repository is public, so the
+      # artifact is encrypted; what matters is that it opens again with the
+      # passphrase we hold and refuses the wrong one. Throwaway passphrase,
+      # throwaway files.
+      - name: Test scripts/backup-seal.sh
+        shell: bash
+        run: scripts/backup-seal.test.sh
+
       # The migration-history tool decides what gets deleted from
       # supabase_migrations.schema_migrations, and it used to refuse to run at
       # all whenever a committed count went stale — which was after roughly

@@ -1,0 +1,180 @@
+# A copy of the database, somewhere other than the database, every night.
+#
+# WHY. scripts/checkpoint.sh keeps a verified copy of the CODE on the owner's
+# machine after every merge. Nothing did the same for the DATA. Row-level
+# security decides who may read a row; it does nothing against a bad migration,
+# a wiped bucket, a deleted project or losing the Supabase account, because it
+# lives inside all four. The last copy anyone had taken by hand was from July.
+# This job takes one every night, and proves it can be read back before it
+# says so.
+#
+# WHAT IT HOLDS. Every row of every table (credential columns blanked, see
+# REDACTED_COLUMNS in scripts/backup_project.py), the schema, the auth roster
+# without password hashes, the storage inventory (names and sizes, not bytes),
+# edge-function and secret NAMES, and the applied migration history. Putting it
+# back is docs/restore-from-backup.md.
+#
+# WHERE IT GOES. The always-on destination is a workflow artifact, kept 90
+# days. This repository is public, and an artifact on a public repository can
+# be downloaded by anyone with a GitHub login, so the files are sealed with
+# BACKUP_PASSPHRASE first (scripts/backup-seal.sh) and the run proves the seal
+# opens again before uploading. The durable copy is Cloudflare R2, which turns
+# itself on the day the R2 secrets exist and skips cleanly until then.
+#
+# READ-ONLY. Every statement the backup runs is a SELECT, enforced by
+# scripts/mgmt_query.py, which refuses anything else. Tested in
+# scripts/test_backup_project.py.
+#
+# Required secrets:
+#   SUPABASE_ACCESS_TOKEN   the same management token deploy-backend.yml uses
+#   BACKUP_PASSPHRASE       a long random passphrase. Keep a second copy in the
+#                           owner's password manager: a passphrase that exists
+#                           only here is lost with the GitHub account, and with
+#                           it every backup this job ever took.
+# Optional, for the durable copy:
+#   R2_ACCOUNT_ID  R2_ACCESS_KEY_ID  R2_SECRET_ACCESS_KEY  R2_BUCKET
+
+name: Backup database
+
+on:
+  schedule:
+    # 09:20 UTC daily: after the vault sync (08:00) and the warehouse and
+    # staging-bay checks (08:10), so a night's problems are reported before the
+    # backup that would capture them is taken, and always before the crew's
+    # day starts in Mountain time.
+    - cron: "20 9 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup
+  cancel-in-progress: false
+
+jobs:
+  database:
+    name: Snapshot, verify, seal, upload
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PROJECT_REF: czprjcskmzzagdztqonm
+    steps:
+      # First, before checkout, so a missing credential is always the reported
+      # cause rather than something hidden behind a later step.
+      - name: Check the credentials are present
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          missing=0
+          if [ -z "$SUPABASE_ACCESS_TOKEN" ]; then
+            echo "::error::SUPABASE_ACCESS_TOKEN is not set. It is the management token deploy-backend.yml already uses; see that workflow's header for where to get one."
+            missing=1
+          fi
+          if [ -z "$BACKUP_PASSPHRASE" ]; then
+            echo "::error::BACKUP_PASSPHRASE is not set. Generate a long random passphrase, add it in Settings > Secrets and variables > Actions, and keep a copy in the password manager. Without it the backup cannot be sealed, and this repository is public."
+            missing=1
+          fi
+          [ "$missing" -eq 0 ]
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Take the snapshot (read-only)
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: python3 scripts/backup_project.py "$PROJECT_REF" backup-out
+
+      # A separate step, on purpose: it re-reads the files from disk and
+      # re-hashes them with no memory of the step that wrote them.
+      - name: Verify the snapshot from disk
+        run: python3 scripts/backup_project.py --verify-only backup-out
+
+      - name: Seal the snapshot
+        env:
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: scripts/backup-seal.sh seal backup-out backup-sealed
+
+      # Prove the seal opens with the passphrase we hold, and that what comes
+      # out still verifies. A sealed file nobody can open is not a backup.
+      - name: Open the seal again and re-verify
+        env:
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          scripts/backup-seal.sh open backup-sealed backup-reopened
+          python3 scripts/backup_project.py --verify-only backup-reopened
+          rm -rf backup-reopened
+
+      - name: Stamp
+        id: stamp
+        run: echo "stamp=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
+      - name: Summarise
+        run: |
+          {
+            echo "### Database backup, ${{ steps.stamp.outputs.stamp }}"
+            echo ''
+            echo '```json'
+            python3 -c "import json; m=json.load(open('backup-out/manifest.json')); print(json.dumps({'file': m['files'][0]['name'], 'bytes': m['files'][0]['bytes'], 'sha256': m['files'][0]['sha256'], **m['summary']}, indent=2))"
+            echo '```'
+            echo ''
+            echo "Sealed with BACKUP_PASSPHRASE. To open: \`BACKUP_PASSPHRASE=… scripts/backup-seal.sh open <downloaded dir> plain\`, then \`python3 scripts/backup_project.py --verify-only plain\`. Restore path: docs/restore-from-backup.md."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the sealed backup (90 days)
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-backup-${{ steps.stamp.outputs.stamp }}
+          path: backup-sealed/
+          retention-days: 90
+          if-no-files-found: error
+
+      # Durable copy. Skips cleanly until the R2 secrets are added, so the job
+      # stays green and the artifact above is still produced. Secrets cannot be
+      # read in an `if:`, so a step decides and the next one follows it.
+      - name: Check whether R2 is configured
+        id: r2
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          if [ -n "$R2_ACCOUNT_ID" ] && [ -n "$R2_ACCESS_KEY_ID" ] && [ -n "$R2_SECRET_ACCESS_KEY" ] && [ -n "$R2_BUCKET" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::R2 secrets not set — the durable copy is skipped; the 90-day artifact is the only copy. Add R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY and R2_BUCKET to turn it on."
+          fi
+
+      - name: Copy to Cloudflare R2
+        if: steps.r2.outputs.configured == 'true'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          aws s3 cp backup-sealed/ "s3://$R2_BUCKET/db/${{ steps.stamp.outputs.stamp }}/" \
+            --recursive --endpoint-url "https://$R2_ACCOUNT_ID.r2.cloudflarestorage.com"
+          echo "Durable copy: s3://$R2_BUCKET/db/${{ steps.stamp.outputs.stamp }}/" >> "$GITHUB_STEP_SUMMARY"
+
+  notify-failure:
+    name: Tell Slack the backup did not happen
+    needs: [database]
+    if: failure()
+    uses: ./.github/workflows/notify-failure.yml
+    with:
+      workflow: ${{ github.workflow }}
+      cause: "Last night's database backup did not complete, so the newest good copy is a day older than it should be."
+      detail: >-
+        Open the run to see which step failed: a missing secret, the Supabase
+        API refusing a table, or the verify step finding the file unreadable.
+    secrets: inherit
