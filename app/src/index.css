@@ -12447,6 +12447,26 @@ button.stage-chip {
 .bay-name:hover { text-decoration: underline; }
 .bay-off { align-self: flex-start; margin-top: 8px; min-height: 36px; font-size: 13px; }
 .bays-empty { margin: 8px 0; }
+
+/* A whole job to the job site, and warehouse history (owner ask 2026-09-06). */
+.job-chip-send { display: inline-block; margin-top: 4px; font-size: 12px; color: var(--accent); text-decoration: none; }
+.job-chip-send:hover { text-decoration: underline; }
+.send-title { font-family: var(--font-display); font-weight: 700; font-size: 18px; margin: 0; }
+.send-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.send-unit { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 8px 12px; border-radius: 12px; border: 1.5px solid var(--border); background: var(--surface); cursor: pointer; }
+.send-unit input { width: 22px; height: 22px; margin: 0; flex: none; }
+.send-unit--stays { border-style: dashed; color: var(--muted); }
+.send-unit-main { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.send-unit-name { font-weight: 700; }
+.send-unit-sub { font-size: 12px; color: var(--muted); }
+.send-unit-tag { font-family: ui-monospace, Menlo, monospace; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--ok, var(--stage-stored)); }
+.send-unit-tag--stays { color: var(--muted); }
+.send-bar { position: sticky; bottom: 8px; display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; padding: 10px 12px; border-radius: 14px; border: 1.5px solid var(--border); background: var(--card-raised); font-size: 13.5px; }
+.send-hint { font-size: 12px; margin-top: 8px; }
+.send-finish { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+.send-finalized { margin-bottom: 12px; display: flex; flex-direction: column; gap: 6px; }
+.send-finalized-head { margin: 0; font-weight: 700; }
+.history-list { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .yard-summary { font-size: 13px; }
 .yard-truck { margin-top: 12px; }
 .yard-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }

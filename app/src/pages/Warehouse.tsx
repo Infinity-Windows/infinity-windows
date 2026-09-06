@@ -48,6 +48,7 @@ import { jobTallies } from "../lib/warehouse/jobTally";
 import { boxesForJob, jobChips } from "../lib/warehouse/jobStrip";
 import { JobStrip } from "../components/warehouse/JobStrip";
 import { partitionTestPackages, testProjectIds } from "../lib/warehouse/testPartition";
+import { finalizedProjectIds, hideFinalized } from "../lib/warehouse/sendToSite";
 import { filterSuppliesByName, listSupplies, lowStockFirst, onHandLabel } from "../lib/ops";
 import { listTakeoffs } from "../lib/takeoffs";
 import {
@@ -151,7 +152,11 @@ export function Warehouse() {
     (i) => i.kind === "damage" && i.status === "open",
   );
 
-  const { real, testing } = partitionTestPackages(rows, testIds);
+  // A finalized job's material is off this page (owner ask 2026-09-06) and
+  // on /warehouse/history; the Boneyard is always here.
+  const finalized = useMemo(() => finalizedProjectIds(projectsAll.data ?? []), [projectsAll.data]);
+  const { real: realAll, testing } = partitionTestPackages(rows, testIds);
+  const real = useMemo(() => hideFinalized(realAll, finalized), [realAll, finalized]);
   const counts = warehouseCounts(real, boxes, marks.data ?? [], openDamage.length);
   const ready = packages.isSuccess && containers.isSuccess;
   const recap = dayRecap(
@@ -397,6 +402,9 @@ export function Warehouse() {
         <button className="button-like" onClick={() => setMinting(true)}>
           Print blank stickers
         </button>
+        <Link className="button-like" to="/warehouse/history">
+          History
+        </Link>
       </div>
 
       {/* Jobs on the yard (owner ask 2026-09-06): the per-job unit tally,

@@ -396,6 +396,11 @@ describe("every NAV destination has a door", () => {
     "/storage/arrive",
     "/storage/tag",
     "/storage/out",
+    // A whole job to the job site, and warehouse history (owner ask
+    // 2026-09-06): reached from a job chip on the warehouse page, the
+    // materials ledger and the History button — per-job doors, not menu rows.
+    "/warehouse/send",
+    "/warehouse/history",
     // The global capture button: Scan gave up the installer bar's centre slot
     // to Capture and is now the "Scan a unit" tile inside the capture sheet —
     // the same shape as the warehouse paths above, which lost their menu rows

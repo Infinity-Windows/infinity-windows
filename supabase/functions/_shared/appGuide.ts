@@ -358,6 +358,20 @@ export const APP_GUIDE: AppGuideEntry[] = [
       "Two endings for the same picker. Set aside puts a job's packages on its own shelf so they go out together; check out takes them to the job with a reason. Taking a package tagged for another job warns you and asks why.",
   },
   {
+    path: "/warehouse/send",
+    label: "Send a job to site",
+    minRole: "installer",
+    blurb:
+      "Every unit of one job that is here, ticked to go to the job site; untick one to keep it back. Moving writes the same checked-out line a check-out does. Under it, Unit Movement Finalized closes the job's material story once nothing is left in a box (foreman and up), with the Boneyard as the way past any leftovers.",
+  },
+  {
+    path: "/warehouse/history",
+    label: "Warehouse history",
+    minRole: "installer",
+    blurb:
+      "The jobs whose unit movement was finalized: off the warehouse page, kept here with every package and ledger line to read, and a foreman can reopen one if something comes back.",
+  },
+  {
     path: "/storage/arrive",
     label: "Arrival check",
     minRole: "installer",

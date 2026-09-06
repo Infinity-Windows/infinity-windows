@@ -751,6 +751,28 @@ export async function saveContainer(input: {
   return data as StorageContainer;
 }
 
+/** Close a job's material story in the warehouse (foreman+). The server
+ *  refuses while anything of the job is still in a box; the way past that is
+ *  boneyardJobLeftovers. Desk work, not conex work: no offline queue. */
+export async function finalizeJobMaterials(projectId: string): Promise<void> {
+  const { error } = await supabase.rpc("finalize_job_materials", { p_project: projectId });
+  if (error) throw error;
+}
+
+/** Bring a finalized job's material back onto the warehouse page (foreman+). */
+export async function reopenJobMaterials(projectId: string): Promise<void> {
+  const { error } = await supabase.rpc("reopen_job_materials", { p_project: projectId });
+  if (error) throw error;
+}
+
+/** Every piece of the job still in the warehouse becomes company stock —
+ *  one reassign_package line each, undoable one at a time. Any crew. */
+export async function boneyardJobLeftovers(projectId: string): Promise<number> {
+  const { data, error } = await supabase.rpc("boneyard_job_leftovers", { p_project: projectId });
+  if (error) throw error;
+  return (data as number | null) ?? 0;
+}
+
 export async function ensureDelivery(label: string): Promise<PackageDelivery> {
   const { data, error } = await supabase.rpc("ensure_package_delivery", {
     p_label: label,

@@ -54,6 +54,8 @@ import { DeliveryDetail } from "./pages/storage/DeliveryDetail";
 import { RewriteSet } from "./pages/storage/RewriteSet";
 import { DeliveriesList } from "./pages/storage/DeliveriesList";
 import { JobMaterials } from "./pages/storage/JobMaterials";
+import { SendToSite } from "./pages/storage/SendToSite";
+import { WarehouseHistory } from "./pages/storage/WarehouseHistory";
 import { CheckoutPackages } from "./pages/storage/CheckoutPackages";
 import { StuckWrites } from "./pages/StuckWrites";
 import { Diagnostics } from "./pages/Diagnostics";
@@ -555,6 +557,8 @@ export default function App() {
             <Route path="/storage/rewrite-set" element={<RewriteSet />} />
             <Route path="/storage/deliveries" element={<DeliveriesList />} />
             <Route path="/warehouse/materials" element={<JobMaterials />} />
+            <Route path="/warehouse/send/:projectId" element={<SendToSite />} />
+            <Route path="/warehouse/history" element={<WarehouseHistory />} />
             <Route path="/storage/tag" element={<TagPackages />} />
             <Route path="/storage/out" element={<CheckoutPackages />} />
             <Route path="/storage/arrive" element={<ArrivePackages />} />

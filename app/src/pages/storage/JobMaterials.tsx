@@ -221,6 +221,11 @@ export function JobMaterials() {
         </div>
         <BackChip fallback="/warehouse" label="Warehouse" />
       </header>
+      {scope.projectId ? (
+        <p className="muted" style={{ margin: "0 0 8px" }}>
+          <Link to={`/warehouse/send/${scope.projectId}`}>Send this job to the job site, or finalize it →</Link>
+        </p>
+      ) : null}
       <StationChip station={STATION_FIX_MISTAKE} />
 
       {/* One picker, two groups (wave M): a built job by id, or a waiting

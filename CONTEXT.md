@@ -42,7 +42,9 @@ Settled 2026-08-17. The warehouse answers one question — *where is it* — and
 
 **Tagged** — a package that has been bound to a sticker, to what it is (its part fields), and to a job — or to the Boneyard, when no job owns it yet. Until tagged, a package is untracked and cannot be found by anyone who didn't personally put it down.
 
-**Checkout** — a package leaving storage for a job, with a reason recorded. Checking out is per-package, never per-container: an installer takes the four packages they need and the crate stays where it is until it is empty.
+**Checkout** — a package leaving storage for a job, with a reason recorded. Checking out is per-package, never per-container: an installer takes the four packages they need and the crate stays where it is until it is empty. **On job site** is the same state seen from the job's side (owner call 2026-09-06): **Send to site** (`/warehouse/send/:job`) checks out every piece of a job that is here, minus the units a person unticks to keep back, with the reason "Sent to job site".
+
+**Finalized** — a job's material story is closed in the warehouse (`projects.materials_finalized_at`, foreman+, 2026-09-06). The job's packages leave the warehouse page and its counts and land in **Warehouse history** (`/warehouse/history`), where everything is still there to read. It refuses while any piece of the job is still in a box, naming the boxes; the way past is **Move leftovers to the Boneyard**, which reassigns each remaining piece to company stock (one undoable line each). Warehouse-only: the job's own status is the office's. A foreman can **reopen** a finalized job.
 
 **Loose stock** — an on-hand package with no container and no shelf spot. The genuinely-cannot-find-it pile, and the number that says how much the warehouse is drifting.
 
