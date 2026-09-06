@@ -22,6 +22,9 @@ import { setPackageAreaOffline, setPackageNoteOffline } from "../../lib/warehous
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import { isForemanPlus } from "../../lib/install/types";
 import { pushToast } from "../../lib/toast";
+import { useT } from "../../lib/i18n";
+import { usePhotoPicker } from "../../lib/photo/usePhotoPicker";
+import { imageFilesOnly } from "../../lib/photo/imageFiles";
 import { enqueueUpload, subscribeSynced } from "../../lib/offline/outbox";
 import {
   setPieceCount,
@@ -56,6 +59,7 @@ const EVENT_LABELS: Record<string, string> = {
 };
 
 export function PackageSheet() {
+  const t = useT();
   const { serial = "" } = useParams();
   const pkg = useQuery({
     queryKey: ["storagePackage", serial],
@@ -267,10 +271,21 @@ export function PackageSheet() {
     });
   }, [qc]);
 
-  const addPhotos = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files ?? []).filter((f) => f.type.startsWith("image/"));
-    e.target.value = "";
+  const addPhotos = async (picked: File[]) => {
+    // Still filtered, and it matters more now than it did: the library door
+    // reaches the Files app, which will happily hand back a PDF of a packing
+    // slip. The input's `accept` is a hint on a phone, not a promise. Shared
+    // with the missed-unit sheet, which meets the same door — see imageFiles.ts.
+    const files = imageFilesOnly(picked);
     const packageId = pkg.data?.id;
+    // Everything picked was thrown away. The hook never calls this with an
+    // empty list, so this is only ever "you picked something and it wasn't a
+    // photo" — and a silent return there looks exactly like a button that does
+    // nothing. Same sentence the capture sheet gives the same file.
+    if (files.length === 0 && picked.length > 0) {
+      setPhotoError(t("photo.fileUnreadable"));
+      return;
+    }
     if (files.length === 0 || !packageId) return;
     setPhotoBusy(true);
     setPhotoError(null);
@@ -300,6 +315,19 @@ export function PackageSheet() {
       setPhotoBusy(false);
     }
   };
+
+  // The app's ONE file-input pair (lib/photo/usePhotoPicker.tsx). This card
+  // wrote its own input until now, and that input carried `capture="environment"`
+  // — which tells iOS and Android to open the camera and offer nothing else. So
+  // the one button here could only ever take a NEW photo, and the shot somebody
+  // already took at the truck, before they had the app open, was unreachable
+  // from the package it belonged to. Two doors now, and neither can be mistaken
+  // for the other: the camera, and everything else on the phone.
+  //
+  // `multiple` stays on the library door only — the hook never multi-picks the
+  // camera — which is exactly what this card already did and why
+  // packagePhotoPath mints a random suffix per shot.
+  const picker = usePhotoPicker({ multiple: true, camera: true, onFiles: addPhotos });
 
   const containersById = useMemo(
     () => new Map((containers.data ?? []).map((c) => [c.id, c])),
@@ -526,19 +554,41 @@ export function PackageSheet() {
         <div className="detail-card wh-card">
           <div className="wh-row" style={{ justifyContent: "space-between" }}>
             <h2 style={{ margin: 0, fontSize: 15 }}>Photos</h2>
-            <label className="action-btn primary photos-add" style={{ cursor: "pointer" }}>
-              {photoBusy ? "Saving…" : "Add a photo"}
-              <input
-                type="file"
-                accept="image/*"
-                capture="environment"
-                multiple
+            {/* Two buttons where there was one label-wrapped input. The
+                hidden pair they click lives in usePhotoPicker, and the class
+                on this wrapper is how the e2e spec tells the two apart.
+                PEERS, deliberately: neither is `primary`. The camera button
+                inherited that class from the single "Add a photo" it replaced,
+                which made it accent-filled, uppercase and set in the display
+                face beside a quiet outline — so the library door still read as
+                the lesser of the two, which is the exact impression the whole
+                change exists to undo. The capture sheet draws its pair as two
+                identical tiles for the same reason. */}
+            <div className="wh-row photos-actions" style={{ minHeight: 0 }}>
+              <button
+                type="button"
+                className="action-btn photos-add"
                 disabled={photoBusy}
-                style={{ display: "none" }}
-                onChange={(e) => void addPhotos(e)}
-              />
-            </label>
+                onClick={picker.openCamera}
+              >
+                {t("photo.action.useCamera")}
+              </button>
+              <button
+                type="button"
+                className="action-btn photos-add"
+                disabled={photoBusy}
+                onClick={picker.openLibrary}
+              >
+                {t("photo.action.uploadFiles")}
+              </button>
+              {picker.inputs}
+            </div>
           </div>
+          {/* "Saving…" moved off the button when the button became two of them:
+              putting it on either one would name the wrong door. */}
+          {photoBusy && (
+            <p className="muted" style={{ fontSize: 12.5 }}>{t("photo.action.saving")}</p>
+          )}
           {photoError && <p className="error" style={{ fontSize: 12.5 }}>{photoError}</p>}
           {(photos.data ?? []).length === 0 ? (
             <p className="muted" style={{ fontSize: 12.5, marginBottom: 0 }}>

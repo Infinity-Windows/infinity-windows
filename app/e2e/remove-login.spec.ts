@@ -21,8 +21,9 @@
 // Every count is mocked, because the counts ARE the branch: a real database
 // would have whatever it has, and this has to prove both shapes.
 
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { useSupabaseFixtures, TEST_USER } from "./support/supabaseFixtures";
+import { json } from "./support/specHelpers";
 
 const ENRIQUE = "11111111-1111-4111-8111-111111111111";
 const EDUARDO = "22222222-2222-4222-8222-222222222222";
@@ -71,15 +72,6 @@ const ENRIQUE_COUNTS = {
 };
 /** Nothing anywhere — the "delete it outright" branch. */
 const NOTHING = {};
-
-function json(route: Route, body: unknown, rows = 0) {
-  return route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    headers: { "content-range": `0-${Math.max(0, rows - 1)}/${rows}` },
-    body: JSON.stringify(body),
-  });
-}
 
 /**
  * Answer manage-crew-access from fixtures and remember every call.

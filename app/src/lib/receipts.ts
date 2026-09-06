@@ -203,29 +203,6 @@ export async function getReceipt(id: string): Promise<Receipt | null> {
   return data ? mapRow(data as ReceiptRow) : null;
 }
 
-export interface FileReceiptInput {
-  /** Client-minted (crypto.randomUUID()) so the storage upload and this
-   * call can travel the offline outbox independently — see
-   * receiptPhotoPath below. */
-  id: string;
-  photoPath: string;
-  projectId?: string | null;
-  pendingJobName?: string | null;
-  note?: string | null;
-}
-
-export async function fileReceipt(input: FileReceiptInput): Promise<Receipt> {
-  const { data, error } = await supabase.rpc("file_receipt", {
-    p_id: input.id,
-    p_photo_path: input.photoPath,
-    p_project_id: input.projectId ?? null,
-    p_pending_job_name: input.pendingJobName ?? null,
-    p_note: input.note ?? null,
-  });
-  if (error) throw error;
-  return mapRow(data as ReceiptRow);
-}
-
 export interface UpdateReceiptInput {
   id: string;
   projectId: string | null;
@@ -292,23 +269,6 @@ export async function setCategory(id: string, value: ReceiptCategory | null): Pr
     isPassthrough: current.isPassthrough,
     note: current.note,
   });
-}
-
-/**
- * Which kind of purchase this receipt was. A narrow RPC, not a field on
- * update_receipt's full record — see set_receipt_cost_code's own comment in
- * 20260978000000 for why.
- */
-export async function setReceiptCostCode(
-  id: string,
-  costCodeId: string | null,
-): Promise<Receipt> {
-  const { data, error } = await supabase.rpc("set_receipt_cost_code", {
-    p_id: id,
-    p_cost_code_id: costCodeId,
-  });
-  if (error) throw error;
-  return mapRow(data as ReceiptRow);
 }
 
 export async function reviewReceipt(id: string, reviewed = true): Promise<Receipt> {

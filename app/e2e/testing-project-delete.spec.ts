@@ -4,8 +4,9 @@
 // fixture idiom as testing-projects.spec.ts: override `projects` to mix a
 // testing project into the fetch, registered after useSupabaseFixtures so it
 // wins.
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { jobFixtures, useSupabaseFixtures } from "./support/supabaseFixtures";
+import { json } from "./support/specHelpers";
 
 const BLACK22 = jobFixtures().find((j) => j.jobCode === "BLACK22")!;
 
@@ -17,15 +18,6 @@ const PROJECT = {
   status: "active",
   is_test: true,
 };
-
-function json(route: Route, body: unknown, rows = 0) {
-  return route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    headers: { "content-range": `0-${Math.max(0, rows - 1)}/${rows}` },
-    body: JSON.stringify(body),
-  });
-}
 
 async function useTestingProjectFixture(page: Page) {
   await page.route("**/rest/v1/projects**", (r) => json(r, [PROJECT], 1));

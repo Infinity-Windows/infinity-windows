@@ -19,50 +19,14 @@
 // 'installer' (rank stops mattering the moment is_partner is true), so the
 // ONLY thing that makes a fixture session a partner is is_partner_user()
 // answering true.
-import { expect, test, type Route } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { useSupabaseFixtures } from "./support/supabaseFixtures";
-
-function json(route: Route, body: unknown) {
-  return route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    body: JSON.stringify(body),
-  });
-}
-
-/**
- * The e2e fixture host (playwright.config.ts) legitimately and correctly
- * mismatches the real Supabase project, so WrongProjectBanner's real,
- * non-dismissable "Wrong database" alert (position: fixed, near the top of
- * the viewport, z-index 90 — above this compact page's own header) renders
- * on every page in this suite. It never appears in production. An
- * initScript, not a post-navigation style tag: it has to exist before the
- * app's own first paint, or the banner blocks a click before this script
- * would get a chance to run.
- */
-async function hideWrongProjectBanner(page: Parameters<typeof useSupabaseFixtures>[0]) {
-  await page.addInitScript(() => {
-    // Deferred to DOMContentLoaded, not appended immediately: an initScript
-    // runs at document_start, before the parser has created <html>/<head> —
-    // document.documentElement is still null there, so an immediate
-    // appendChild throws (silently, since Playwright doesn't surface an
-    // initScript's own exceptions) and the banner is never actually hidden.
-    document.addEventListener(
-      "DOMContentLoaded",
-      () => {
-        const style = document.createElement("style");
-        style.textContent = ".pwa-banner-wrong-project { display: none !important; }";
-        document.head.appendChild(style);
-      },
-      { once: true },
-    );
-  });
-}
+import { hideWrongProjectBanner, json } from "./support/specHelpers";
 
 /** Mocks is_partner_user() answering true — the ONE thing that makes a
  * fixture session read as a partner (never a FixtureOptions role). */
 async function mockIsPartnerUser(page: Parameters<typeof useSupabaseFixtures>[0]) {
-  await page.route("**/rest/v1/rpc/is_partner_user", (route) => json(route, true));
+  await page.route("**/rest/v1/rpc/is_partner_user", (route) => json(route, true, null));
 }
 
 test("a partner-role fixture visiting crew routes lands on /stg, with zero crew chrome", async ({ page }) => {
@@ -93,7 +57,7 @@ test("a crew (non-partner) fixture is never redirected away from its own routes"
   // Layout normally.
   await useSupabaseFixtures(page, { role: "foreman" });
   await hideWrongProjectBanner(page);
-  await page.route("**/rest/v1/projects**", (route) => json(route, []));
+  await page.route("**/rest/v1/projects**", (route) => json(route, [], null));
 
   await page.goto("/projects");
   await expect(page).toHaveURL(/\/projects$/);
@@ -114,8 +78,8 @@ test("stg_day's payload renders through exactly, and is asked for the tapped job
     window_start: "2026-08-01",
     window_end: "2026-08-20",
   };
-  await page.route("**/rest/v1/rpc/stg_job_list", (route) => json(route, [JOB]));
-  await page.route("**/rest/v1/rpc/stg_calendar", (route) => json(route, []));
+  await page.route("**/rest/v1/rpc/stg_job_list", (route) => json(route, [JOB], null));
+  await page.route("**/rest/v1/rpc/stg_calendar", (route) => json(route, [], null));
 
   const DAY_PAYLOAD = {
     worked: true,
@@ -127,7 +91,7 @@ test("stg_day's payload renders through exactly, and is asked for the tapped job
   let calledWith: Record<string, unknown> | null = null;
   await page.route("**/rest/v1/rpc/stg_day", async (route) => {
     calledWith = route.request().postDataJSON() as Record<string, unknown>;
-    await json(route, DAY_PAYLOAD);
+    await json(route, DAY_PAYLOAD, null);
   });
 
   await page.goto("/stg");
@@ -167,12 +131,12 @@ test("stg_day's log block falls back honestly when the RPC withholds it", async 
     window_start: null,
     window_end: null,
   };
-  await page.route("**/rest/v1/rpc/stg_job_list", (route) => json(route, [JOB]));
-  await page.route("**/rest/v1/rpc/stg_calendar", (route) => json(route, []));
+  await page.route("**/rest/v1/rpc/stg_job_list", (route) => json(route, [JOB], null));
+  await page.route("**/rest/v1/rpc/stg_calendar", (route) => json(route, [], null));
   // Worked, but the coverage gate (or the share toggle) kept log null —
   // this component must show the plain fallback, never guess why.
   await page.route("**/rest/v1/rpc/stg_day", (route) =>
-    json(route, { worked: true, crew_names: ["Jordan Lee"], total_hours: 8, units_finished: 0, log: null }),
+    json(route, { worked: true, crew_names: ["Jordan Lee"], total_hours: 8, units_finished: 0, log: null }, null),
   );
 
   await page.goto("/stg");

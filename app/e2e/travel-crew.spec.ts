@@ -22,11 +22,12 @@
 // human to eyeball. Those are throwaway, like every other screenshot this suite
 // writes — see __screenshots__/README.md.
 
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { TEST_USER, useSupabaseFixtures } from "./support/supabaseFixtures";
+import { json } from "./support/specHelpers";
 
 const SHOTS = resolve(dirname(fileURLToPath(import.meta.url)), "__screenshots__/travel-crew");
 
@@ -60,15 +61,6 @@ function profileRow(id: string, display_name: string, role: string) {
     created_at: "2026-01-01T00:00:00Z",
     updated_at: "2026-01-01T00:00:00Z",
   };
-}
-
-function json(route: Route, body: unknown, rows = 0) {
-  return route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    headers: { "content-range": `0-${Math.max(0, rows - 1)}/${rows}` },
-    body: JSON.stringify(body),
-  });
 }
 
 /** Registered AFTER useSupabaseFixtures so these win — Playwright favours the

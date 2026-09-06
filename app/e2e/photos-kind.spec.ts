@@ -7,24 +7,16 @@
 // the crew had bought for it. House style (receipts.spec.ts): mocked routes,
 // real UI, and assert the URL a tap actually writes, because the URL is what
 // survives a reload and what somebody pastes into the job chat.
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { jobFixtures, useSupabaseFixtures } from "./support/supabaseFixtures";
+import { hideWrongProjectBanner, json } from "./support/specHelpers";
 
 const SHOTS = resolve(dirname(fileURLToPath(import.meta.url)), "__screenshots__/photos");
 
 const BLACK22 = jobFixtures().find((j) => j.jobCode === "BLACK22")!;
-
-function json(route: Route, body: unknown, rows = 0) {
-  return route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    headers: { "content-range": `0-${Math.max(0, rows - 1)}/${rows}` },
-    body: JSON.stringify(body),
-  });
-}
 
 /** A drawn stand-in for the stored image, so a screenshot shows a feed rather
  * than a grid of broken-image icons. The sign request answers with a path this
@@ -98,23 +90,6 @@ async function useFeedRows(page: Page) {
   await page.route("**/rest/v1/receipts**", (r) =>
     json(r, [receiptRow(1, "Home Depot", 4212), receiptRow(2, "Shell", 6890)], 2),
   );
-}
-
-/** The fixture env points at a made-up Supabase host, so the app's own
- * "Wrong database" banner covers the header in every screenshot. Same trick
- * stg-partner-wall.spec.ts uses, and for the same reason. */
-async function hideWrongProjectBanner(page: Page) {
-  await page.addInitScript(() => {
-    document.addEventListener(
-      "DOMContentLoaded",
-      () => {
-        const style = document.createElement("style");
-        style.textContent = ".pwa-banner-wrong-project { display: none !important; }";
-        document.head.appendChild(style);
-      },
-      { once: true },
-    );
-  });
 }
 
 const tab = (page: Page, name: "Photos" | "Receipts") =>

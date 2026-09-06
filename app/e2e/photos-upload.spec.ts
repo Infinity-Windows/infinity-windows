@@ -9,25 +9,21 @@
 // The thing worth pinning forever is an ATTRIBUTE: `capture` on the upload
 // input is what told iOS and Android "camera only, no picker", and it is a
 // one-word regression that no screenshot would catch.
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { jobFixtures, useSupabaseFixtures } from "./support/supabaseFixtures";
+import {
+  hideWrongProjectBanner,
+  json,
+  pngFile,
+  stubGeolocationDenied,
+} from "./support/specHelpers";
 
 const SHOTS = resolve(dirname(fileURLToPath(import.meta.url)), "__screenshots__/photos");
 
 const BLACK22 = jobFixtures().find((j) => j.jobCode === "BLACK22")!;
-
-/** A tiny (1x1) real PNG — small enough to inline, real enough for the capture
- * pipeline's canvas decode (createImageBitmap/Image) to succeed. Same fixture
- * receipts.spec.ts uses for the same reason. */
-const TINY_PNG_BASE64 =
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
-
-function pngFile(name: string) {
-  return { name, mimeType: "image/png", buffer: Buffer.from(TINY_PNG_BASE64, "base64") };
-}
 
 /** What a phone hands over when the pick was not a photo: a real file, a name
  * that ends in .jpg, the mime type the OS guesses from that name — and bytes
@@ -35,15 +31,6 @@ function pngFile(name: string) {
  * half-synced download both arrive looking exactly like this. */
 function notAPhoto(name: string) {
   return { name, mimeType: "image/jpeg", buffer: Buffer.from("this is not a picture") };
-}
-
-function json(route: Route, body: unknown, rows = 0) {
-  return route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    headers: { "content-range": `0-${Math.max(0, rows - 1)}/${rows}` },
-    body: JSON.stringify(body),
-  });
 }
 
 /** Every capture "upload" succeeds, whatever bucket it targets — the sheet's
@@ -54,39 +41,6 @@ async function useCaptureStorage(page: Page) {
       return json(route, { signedURL: "/fixture.jpg" });
     }
     return json(route, { Key: "install-media/x.jpg" });
-  });
-}
-
-/** Headless Chromium has no UI to grant or deny the real prompt, so make the
- * outcome deterministic — the same stub global-capture.spec.ts uses. */
-async function stubGeolocationDenied(page: Page) {
-  await page.addInitScript(() => {
-    if (!navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition = (_ok, err) => {
-      err?.({ code: 1, message: "denied" } as GeolocationPositionError);
-    };
-    navigator.geolocation.watchPosition = (_ok, err) => {
-      err?.({ code: 1, message: "denied", PERMISSION_DENIED: 1 } as GeolocationPositionError);
-      return 1;
-    };
-    navigator.geolocation.clearWatch = () => {};
-  });
-}
-
-/** The fixture env points at a made-up Supabase host, so the app's own
- * "Wrong database" banner covers the header in every screenshot. Same trick
- * stg-partner-wall.spec.ts uses, and for the same reason. */
-async function hideWrongProjectBanner(page: Page) {
-  await page.addInitScript(() => {
-    document.addEventListener(
-      "DOMContentLoaded",
-      () => {
-        const style = document.createElement("style");
-        style.textContent = ".pwa-banner-wrong-project { display: none !important; }";
-        document.head.appendChild(style);
-      },
-      { once: true },
-    );
   });
 }
 

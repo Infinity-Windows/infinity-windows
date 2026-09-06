@@ -8,20 +8,12 @@
 // Same house style as flat-minimap.spec.ts / vision-placement.spec.ts:
 // override project_plan_outlines with a stateful mock, drive the real UI,
 // assert the CAPTURED write payload rather than just that something rendered.
-import { expect, test, type Route } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { jobFixtures, useSupabaseFixtures } from "./support/supabaseFixtures";
+import { json } from "./support/specHelpers";
 
 const BLACK22 = jobFixtures().find((j) => j.jobCode === "BLACK22")!;
 const OUTLINE_ID = "30000000-0000-4000-8000-00000000ab01";
-
-function json(route: Route, body: unknown, rows = 1) {
-  return route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    headers: { "content-range": `0-${Math.max(0, rows - 1)}/${rows}` },
-    body: JSON.stringify(body),
-  });
-}
 
 /** A tiny closed footprint plus a raw trace (plan-pixel polys + calibration)
  * — the shape a real tracer Submit already produces, so both the flat map
@@ -69,9 +61,9 @@ function mockOutline(
           const body = (req.postDataJSON() ?? {}) as Record<string, unknown>;
           writes.push(body);
           row = { ...row, ...body };
-          return json(route, row);
+          return json(route, row, 1);
         }
-        return json(route, [row]);
+        return json(route, [row], 1);
       });
     },
   };

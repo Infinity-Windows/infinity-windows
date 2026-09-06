@@ -9,17 +9,9 @@
 // A5: "Do NOT e2e the live model") — wave A2's tool-calling loop has its own
 // unit coverage (anthropicTools.test.ts, schedulingTools.test.ts) with a
 // mocked Anthropic; this file only proves the human-facing doors work.
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { useSupabaseFixtures } from "./support/supabaseFixtures";
-
-function json(route: Route, body: unknown, rows = 0) {
-  return route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    headers: { "content-range": `0-${Math.max(0, rows - 1)}/${rows}` },
-    body: JSON.stringify(body),
-  });
-}
+import { json } from "./support/specHelpers";
 
 const CHRIS = "88e9158c-c299-4abf-86e2-4d6c1134d0be"; // profiles.json — installer, active
 const DAVE = "0830d61d-3ed5-4a03-9efc-846dbfc3dce9"; // profiles.json — installer, active

@@ -8,8 +8,9 @@
 // unit_sessions/unit_redos all fall through to the shared fixture router's
 // own empty-array default — an empty draft is exactly right here, since
 // these tests are about the DIALOG's own behavior, not the draft's.
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { jobFixtures, useSupabaseFixtures } from "./support/supabaseFixtures";
+import { json } from "./support/specHelpers";
 
 const BLACK22 = jobFixtures().find((j) => j.jobCode === "BLACK22")!;
 
@@ -20,15 +21,6 @@ const PROJECT = {
   address: null,
   status: "active",
 };
-
-function json(route: Route, body: unknown, rows = 0) {
-  return route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    headers: { "content-range": `0-${Math.max(0, rows - 1)}/${rows}` },
-    body: JSON.stringify(body),
-  });
-}
 
 async function useProjectFixture(page: Page) {
   await page.route("**/rest/v1/projects**", (r) => json(r, [PROJECT], 1));
