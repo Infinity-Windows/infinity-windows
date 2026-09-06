@@ -172,7 +172,9 @@ class TestSchemaParsing(unittest.TestCase):
         # quote and the signed order that used to live only on the Monday item
         # (Monday files, F6, 20260988000000). The same migration adds columns to
         # monday_jobs and project_plansets, which are not new tables.
-        self.assertEqual(len(SCHEMA.tables), 130)
+        # +1: learning_time — seconds a person spent on one named item of the
+        # Learn section during one visit (Learning time, L1, 20260992000000).
+        self.assertEqual(len(SCHEMA.tables), 131)
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 
