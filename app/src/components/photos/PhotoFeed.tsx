@@ -297,9 +297,15 @@ export function PhotoFeed({
                 isLead
                 ? t("feed.noReceiptsMsg")
                 : t("feed.noReceiptsMineMsg")
-              : selectedJobCode
-                ? t("feed.noPhotosJobMsg")
-                : t("feed.noPhotosAllMsg")
+              : // Same reasoning one branch up, now true of photos too: below
+                // foreman the feed is the jobs this person has worked plus
+                // their own shots (20260993000000), so an empty grid must not
+                // read as "nobody photographed this job".
+                !isLead
+                ? t("feed.noPhotosMineMsg")
+                : selectedJobCode
+                  ? t("feed.noPhotosJobMsg")
+                  : t("feed.noPhotosAllMsg")
           }
           action={
             <button type="button" className="action-btn primary" onClick={() => setCapturing(true)}>

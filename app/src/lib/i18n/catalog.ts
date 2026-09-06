@@ -2498,6 +2498,27 @@ export const CATALOG = {
   },
   "crash.tryAgain": { en: "Try again", es: "Intentar de nuevo" },
   "crash.reload": { en: "Reload", es: "Recargar" },
+
+  // ---- The gallery an installer sees (2026-09-05) ----
+  // Below foreman, the photo feed is the jobs this person has worked plus the
+  // shots they took themselves — that is the attachments read policy
+  // (20260993000000), not a filter the screen applies. Two consequences have
+  // to be said out loud, or the screen lies by omission.
+  //
+  // 1. The "everything" option is not everything. A foreman picking it gets
+  //    every job; an installer gets every job of THEIRS, and the word "my" is
+  //    the whole difference between a list that looks broken and one that
+  //    looks deliberate.
+  "photos.filter.allJobs": { en: "All jobs", es: "Todos los trabajos" },
+  "photos.filter.allMyJobs": { en: "All my jobs", es: "Todos mis trabajos" },
+  // 2. An empty grid means "none of yours", not "nobody took any". Same
+  //    distinction feed.noReceiptsMineMsg already draws for receipts, and it
+  //    matters more here: photos are the thing a person goes looking for when
+  //    somebody asks what a wall looked like before the trim went on.
+  "feed.noPhotosMineMsg": {
+    en: "Photos from the jobs you've worked show here. Take one and it lands on this list.",
+    es: "Aquí aparecen las fotos de los trabajos en los que has trabajado. Toma una y se agrega a esta lista.",
+  },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */
