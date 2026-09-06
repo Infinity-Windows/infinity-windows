@@ -2166,6 +2166,17 @@ export const CATALOG = {
     en: "You only see receipts you added. Snap a gas or materials receipt — the job is optional.",
     es: "Solo ves los recibos que tú agregaste. Toma una foto de un recibo de gasolina o materiales — el trabajo es opcional.",
   },
+
+  // ---- Photos: the camera that is only busy, not gone (2026-09-05) ----
+  // Two different failures used to share one sentence. "Camera unavailable —
+  // use Upload files instead" is the truth when the permission was refused or
+  // the phone has no camera; it is wrong when another app simply had the lens
+  // for a moment, which is the everyday Android one. That case keeps the live
+  // shutter on the sheet, so the line has to say what to do to get it back.
+  "photo.cameraBusy": {
+    en: "Camera busy — close any other app using it, then tap Use camera again.",
+    es: "Cámara ocupada — cierra la otra app que la esté usando y toca Usar cámara otra vez.",
+  },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */

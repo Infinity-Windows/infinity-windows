@@ -110,6 +110,28 @@ const uploadInput = (page: Page) =>
   page.locator('.jobphoto-actions label:has-text("Upload files") input[type="file"]');
 const cameraInput = (page: Page) =>
   page.locator('.jobphoto-actions label:has-text("Use camera") input[type="file"]');
+/** The live-preview shutter: a real button, not the camera-app hand-off. */
+const cameraButton = (page: Page) =>
+  page.locator('.jobphoto-actions button:has-text("Use camera")');
+
+/** Make getUserMedia fail the way a given phone fails.
+ *
+ * `delayMs` is the gap between the tap and the answer — the permission prompt,
+ * which on a phone can sit there for as long as the person looks at it. */
+async function stubCameraFailure(page: Page, name: string, delayMs = 0) {
+  await page.addInitScript(
+    (opts: { name: string; delayMs: number }) => {
+      const media = {
+        getUserMedia: () =>
+          new Promise<MediaStream>((_ok, reject) => {
+            setTimeout(() => reject(new DOMException("stubbed", opts.name)), opts.delayMs);
+          }),
+      };
+      Object.defineProperty(navigator, "mediaDevices", { value: media, configurable: true });
+    },
+    { name, delayMs },
+  );
+}
 
 async function openTheSheet(page: Page) {
   await page.goto(`/photos?project=${BLACK22.projectId}`);
@@ -208,4 +230,77 @@ test("the capture sheet offers both doors: the camera, and everything else on th
 
   mkdirSync(SHOTS, { recursive: true });
   await page.screenshot({ path: `${SHOTS}/upload-390-after.png` });
+});
+
+test("a camera another app is holding does not cost the shutter for the rest of the sheet", async ({
+  page,
+}) => {
+  // The everyday Android failure: the OS camera app, or a video call, still has
+  // the lens. NotReadableError. The installer closes that app and taps again —
+  // which only works if the live-preview button is still there to tap. The
+  // delay is what leaves room to check the SECOND tap before it fails too.
+  await stubCameraFailure(page, "NotReadableError", 1200);
+  await useSupabaseFixtures(page, { role: "foreman" });
+  await useCaptureStorage(page);
+  await stubGeolocationDenied(page);
+
+  await openTheSheet(page);
+  await cameraButton(page).click();
+
+  await expect(
+    page.getByText("Camera busy — close any other app using it, then tap Use camera again."),
+  ).toBeVisible();
+  // Still a button, not the hand-off to the phone's camera app — and still the
+  // one file input the other specs address by that selector.
+  await expect(cameraButton(page)).toBeVisible();
+  await expect(cameraInput(page)).toHaveCount(0);
+  await expect(page.locator('.jobphoto-actions input[type="file"]')).toHaveCount(1);
+
+  // And a second tap clears the last complaint instead of leaving it under a
+  // shutter that is trying again.
+  await cameraButton(page).click();
+  await expect(page.getByText("Camera busy", { exact: false })).toHaveCount(0);
+});
+
+test("a refused camera permission hands the shutter to the phone's camera app", async ({
+  page,
+}) => {
+  // The one failure asking again cannot fix: the browser remembers a no.
+  await stubCameraFailure(page, "NotAllowedError");
+  await useSupabaseFixtures(page, { role: "foreman" });
+  await useCaptureStorage(page);
+  await stubGeolocationDenied(page);
+
+  await openTheSheet(page);
+  await cameraButton(page).click();
+
+  await expect(page.getByText("Camera unavailable — use Upload files instead.")).toBeVisible();
+  await expect(cameraInput(page)).toHaveAttribute("capture", "environment");
+  await expect(cameraButton(page)).toHaveCount(0);
+  // The upload input still never gets `capture`, even now.
+  expect(await uploadInput(page).getAttribute("capture")).toBeNull();
+});
+
+test("backing out while the permission prompt is up leaves the camera alone", async ({ page }) => {
+  // Tap "Use camera", think better of it, tap "Done" — and the prompt answers
+  // afterwards, against a stage nobody is looking at. That answer must not
+  // decide anything: the request was cancelled, not refused.
+  await stubCameraFailure(page, "NotAllowedError", 1500);
+  await useSupabaseFixtures(page, { role: "foreman" });
+  await useCaptureStorage(page);
+  await stubGeolocationDenied(page);
+
+  await openTheSheet(page);
+  await cameraButton(page).click();
+  await page
+    .getByRole("dialog", { name: "Add job photos" })
+    .getByRole("button", { name: "Done" })
+    .click();
+
+  // Well past the stubbed answer.
+  await page.waitForTimeout(2500);
+  await expect(cameraButton(page)).toBeVisible();
+  await expect(cameraInput(page)).toHaveCount(0);
+  await expect(page.getByText("Camera unavailable", { exact: false })).toHaveCount(0);
+  await expect(page.getByText("Camera busy", { exact: false })).toHaveCount(0);
 });
