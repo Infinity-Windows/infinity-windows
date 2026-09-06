@@ -87,6 +87,13 @@ a public one.
 
 ### Setting up Backblaze — about half an hour, once
 
+The steps below are also a script: `bash scripts/b2-backup-wizard.sh` opens each
+page for you, asks for the values with hidden typing, sets the three GitHub
+secrets, starts one backup by hand and watches it. It never writes a key to
+disk; it remembers only the bucket name. Use it for the first setup or the day
+you rotate the key. The list below is the same procedure for reading.
+
+
 Backblaze B2's free tier covers 10 GB of storage, which is far more than this
 project needs, and the paid rate beyond it is a few dollars a month.
 
