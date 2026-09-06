@@ -330,17 +330,31 @@ describe("the probe list covers the schema", () => {
  */
 describe("the SQL and the probe list agree", () => {
   const HERE = dirname(fileURLToPath(import.meta.url));
-  const MIGRATION = join(
-    HERE,
-    "../../../supabase/migrations/20260987000000_remove_login_start_fresh.sql",
-  );
+  const MIGRATIONS = join(HERE, "../../../supabase/migrations");
 
-  /** Every `'table.column',` key inside person_record_counts's jsonb object. */
+  /**
+   * Every `'table.column',` key inside person_record_counts's jsonb object, as
+   * of the LAST migration that defines it.
+   *
+   * It was defined once, in 20260987000000, and this read named that file. A
+   * later wave then had to add a table to the count (education_credits,
+   * 20260991000000) and restated the whole function, which is how `create or
+   * replace` is meant to be used — so the pin has to follow the definition the
+   * database actually ends up with, not the first one ever written. Migrations
+   * apply in name order, so the last file that defines it wins.
+   */
   function sqlKeys(): string[] {
-    const sql = readFileSync(MIGRATION, "utf8");
-    const body = sql.split("create or replace function public.person_record_counts")[1];
-    if (!body) throw new Error("person_record_counts is not in the migration");
-    const object = body.split("$$;")[0];
+    const files = readdirSync(MIGRATIONS)
+      .filter((f) => f.endsWith(".sql"))
+      .sort();
+    let object = "";
+    for (const file of files) {
+      const sql = readFileSync(join(MIGRATIONS, file), "utf8");
+      const parts = sql.split("create or replace function public.person_record_counts");
+      if (parts.length < 2) continue;
+      object = parts[parts.length - 1].split("$$;")[0];
+    }
+    if (!object) throw new Error("person_record_counts is in no migration");
     return [...object.matchAll(/'([a-z_]+\.[a-z_]+)'\s*,/g)].map((m) => m[1]);
   }
 

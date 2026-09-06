@@ -60,6 +60,10 @@ const OP_LABELS: Record<OutboxOp, string> = {
   issue_photo_upload: "Damage photo",
   receipt_capture: "Receipt",
   receipt_answer: "Receipt details",
+  // The original PDF, not the receipt itself — the receipt (page one, plus its
+  // amount and job) may already have landed, so this must not read as "Receipt"
+  // or a foreman would go looking for a receipt that is sitting on the table.
+  receipt_document_upload: "Receipt PDF",
   video_quiz_submit: "Quiz result",
 };
 

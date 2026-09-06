@@ -28,6 +28,11 @@ function json(route: Route, body: unknown, rows = 0) {
   });
 }
 
+/** The receipt sheet's library input: the one WITHOUT `capture` on it. Both
+ * inputs come from usePhotoPicker now, and `capture` is what tells them apart. */
+const receiptFileInput = (page: Page) =>
+  page.locator('.jobphoto-actions input[type="file"]:not([capture])');
+
 /** Every receipt photo "upload" (and its later sign request) succeeds,
  * whatever bucket/path it targets — the snap flow's own storage traffic,
  * not fixture data, so there is nothing to read from disk. Registered
@@ -82,9 +87,10 @@ test("an installer snaps a receipt: file_receipt fires, then the passthrough que
   await page.goto("/photos?kind=receipt&capture=1");
   await expect(page.getByRole("heading", { name: "Add a receipt" })).toBeVisible();
 
-  await page
-    .locator('input[type="file"][accept="image/*"]')
-    .setInputFiles(pngFile("receipt.png"));
+  // The receipt picker takes a PDF as well as a picture (2026-09-05), so its
+  // accept is no longer the bare "image/*" this used to address it by.
+  await expect(receiptFileInput(page)).toHaveAttribute("accept", "image/*,application/pdf");
+  await receiptFileInput(page).setInputFiles(pngFile("receipt.png"));
 
   await expect.poll(() => filed.length).toBe(1);
   expect(filed[0]).toMatchObject({

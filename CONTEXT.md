@@ -294,6 +294,21 @@ bills to the customer. ANYONE signed in may file one; the job is optional
 packages.pending_job_name already established: a real job, a typed name for
 one not built in the app yet, or neither.
 
+**PDF receipt** — one that arrived as a file rather than a slip of paper
+(2026-09-05): the emailed fuel invoice, the supply-house statement. The phone
+renders PAGE ONE with the pdf.js it already ships and files that image as the
+receipt's `photo_path`, so the machine read, the feed thumbnail and the office
+table need no new shape; the original follows on its own outbox entry to
+`document_path` (`receipts/<id>.pdf`), because page one is not the document a
+bookkeeper hands an auditor. Stamped TIME ONLY and labelled PDF — never GPS:
+the watermark rule is about a photo taken at the wall, and whoever files an
+emailed invoice is not standing at one. How many pages the original had goes
+in the note — after whatever the person typed, never instead of it, and only
+when there is more than one page. The path is checked at both ends: a receipt's
+original lives at `install-media/receipts/<id>.pdf` and nowhere else, so a row
+cannot aim the office's "Open original" (or the month-end zip) at some other
+object in the bucket.
+
 **Fill-missing-only** — THE LAW this wave exists to enforce: the machine
 never overwrites a human's typing, full stop, no exception. A null field
 takes a machine reading; anything already set — by a human or by an
@@ -424,6 +439,64 @@ about to become real openings ("Adds 2 new marks to this job: D-11, W-A")
 before it happens. Once confirmed, a custom mark is registered through the
 same paths a plan-placed one would use and glows/assigns/QCs identically —
 nothing downstream can tell an opening was born in Studio.
+
+## Points
+
+Settled 2026-09-05 (the owner's ask: "my crew is racking up points on
+repeating quizzes, we need to make sure there is a cap to these … if its
+real learning great, but it needs to be new content"). Two rules, and
+everything else about points is unchanged.
+
+**Server-only writes** — `points_ledger` is read by everybody and written
+by nobody. Until this date it carried a single policy, FOR ALL to
+authenticated, so any signed-in phone could insert any row it liked into
+the company's scoreboard — and the Learn tab did exactly that, from the
+browser, after every round. Three SECURITY DEFINER functions are the only
+doors now: `award_install_points` (the offline install outbox, after
+finish_unit), `resolve_install_points` (QC's pass or callback, foreman+),
+`award_education_quiz` (the Learn tab). Reads did not change: the team
+ranking is still assembled in the browser out of everyone's confirmed rows,
+because that is what a leaderboard is. Install points are always filed
+**pending**: only QC confirms them, and nothing a phone says can skip that
+step.
+
+**One payment per install, not per unit** — a unique index over
+(person, ref, kind) makes it structural rather than a promise, so a
+retrying outbox cannot pay twice, and a resend is ignored in silence rather
+than refused: the queue is not wrong to try again. A **redo** is a
+different thing from a resend. A unit sent back by QC, or undone, returns
+to the work list and is installed again — a second `install_events` row,
+by people who did the work twice — and it pays again. The ledger row
+carries the install event it paid for, and that is what tells the two
+apart. The index is scoped to the five install kinds on purpose: summon
+points share this table, and answering a summon you cancelled and re-joined
+is allowed to land on the same ref twice.
+
+**New content only** — a glossary term pays the FIRST time a person
+answers it correctly and never again; the install-sequence quiz pays once,
+at the same 4-of-5 bar a video quiz passes at. That is `education_credits`,
+one row per person per item, and it makes the ceiling arithmetic: 105 terms
+plus the sequence, ten points each, 1,060 points from the Learn tab in a
+lifetime. Practising is deliberately untouched — "Another round" is still
+there and still free — because the practice was never the problem. What
+can pay is a list the SERVER keeps (`education_items`), not one the phone
+sends, so a made-up key earns nothing and the ceiling is real. The app
+still cannot re-score these quizzes the way it re-scores a video one: they
+are generated in the browser from a client-side glossary, so it is the
+phone that says which terms it got right. The cap is what makes lying
+pointless rather than merely dishonest — a liar reaches 1,060 sooner and
+then stops, forever.
+
+**Void, never delete** — the rows farmed before the rule (kind `quiz`,
+no ref) are set to `void` with a sentence in `void_reason` saying why. The
+history still says what happened and to whom. Nobody was handed replacement
+credit: the terms are all still there to be earned, by doing the quiz.
+Every reader that shows a total — the Points page, Home, the leaderboard —
+already counted confirmed rows only, which is why voiding was enough. A
+person's own ledger asks the database to leave void rows out rather than
+filtering them in the browser: it reads the 200 most recent rows, and the
+voided ones would otherwise have crowded the very people the backfill was
+aimed at out of their own history.
 
 ## Video quizzes
 
