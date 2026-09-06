@@ -232,6 +232,19 @@ run
 assert_rc 0
 assert_lacks "inline-missing-table"
 
+new_case "the formatter that maps a code to plain English is doing its job"
+# `.checks/error-copy.md` has always listed these three under "What is NOT a
+# finding". The exact half did not, so adding one more code to OUR_FAULT_CODES
+# in errors.ts — the file's whole documented purpose — turned a branch red.
+mkdir -p "$root/app/src/lib"
+echo "export const x = 1;" >"$root/app/src/lib/errors.ts"
+base_commit
+printf 'const OUR_FAULT_CODES = new Set(["PGRST202", "PGRST204"]);\n' >>"$root/app/src/lib/errors.ts"
+head_commit "Tell an installer a stale schema cache is our problem, not theirs"
+run
+assert_rc 0
+assert_lacks "inline-missing-table"
+
 # ---------------------------------------------------------------------------
 # A second file input that offers pictures
 # ---------------------------------------------------------------------------

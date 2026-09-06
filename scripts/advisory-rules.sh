@@ -140,6 +140,24 @@ error_rule_exempt() {
   return 1
 }
 
+# The modules that are ALLOWED to name a Postgres code, and why each one is.
+#
+# `schemaErrors.ts` is the home the law names. The three formatters are the
+# other half of the same arrangement: their whole job is mapping a code to
+# plain English, so `PGRST202` appears in `errors.ts` as a line in
+# OUR_FAULT_CODES. Adding one more code to that list — the file's documented
+# purpose, per CLAUDE.md, "lib/errors.ts maps PostgREST codes to plain
+# English" — used to turn a pull request red. `.checks/error-copy.md` has
+# always exempted those three under "What is NOT a finding"; the exact half
+# disagreeing with the reading half meant one of them was wrong every time.
+schema_rule_exempt() {
+  case "$1" in
+    app/src/lib/schemaErrors.ts) return 0 ;;
+    app/src/lib/errors.ts|app/src/lib/install/errors.ts|app/src/lib/edgeErrors.ts) return 0 ;;
+  esac
+  return 1
+}
+
 for f in $changed_files; do
   case "$f" in app/src/*.ts|app/src/*.tsx) ;; *) continue ;; esac
   # A test asserts on the very things these rules forbid — it hands a fake
@@ -168,12 +186,12 @@ for f in $changed_files; do
       fi
     fi
 
-    case "$f" in app/src/lib/schemaErrors.ts) ;; *)
+    if ! schema_rule_exempt "$f"; then
       if printf '%s' "$text" | grep -qE 'PGRST20[245]|42P01|42703|42883|schema cache'; then
         report "$f:$ln" inline-missing-table \
           "A missing table, column or function is recognised by hand here. That check has one home." "$LAW_SCHEMA"
-      fi ;;
-    esac
+      fi
+    fi
 
     case "$f" in app/src/lib/photo/usePhotoPicker.tsx) ;; *)
       if printf '%s' "$text" | grep -q 'type="file"' && near "$f" "$ln" 6 'accept=.*image|capture='; then
