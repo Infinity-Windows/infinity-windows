@@ -130,6 +130,12 @@ create policy "points_ledger read" on points_ledger
 
 -- Belt and braces: with no write POLICY a write already fails, but revoking
 -- the table-level grants means a phone cannot even ask.
+--
+-- This does NOT shut the doors that are supposed to be open. A SECURITY
+-- DEFINER function runs as the function's owner, which owns this table, so
+-- submit_video_quiz (20260962000000) keeps writing its first-pass row exactly
+-- as it did, and so do the three functions below. The grant that just went
+-- away is the one a browser was using.
 revoke insert, update, delete on table points_ledger from anon, authenticated;
 
 -- ---------------------------------------------------------------------------
