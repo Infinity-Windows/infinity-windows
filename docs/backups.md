@@ -150,16 +150,28 @@ merge dry run are built on it. It lives on as
 `scripts/fixtures/merge-sample-project.json`, with the crew's names replaced by
 placeholders.
 
-### The four browser specs that need a real drawing
+### The browser specs that need a real drawing
 
-`job-map.spec.ts`, `data-off.spec.ts` and two tests in
-`studio-plan-underlay-real-trace.spec.ts` measure the map against a real
-architectural sheet, and they cannot use a placeholder: which pages are floor
-plans is decided by reading the PDF, so a stub would open PECAN14 on a page with
-no marks and the screenshot would be an empty building that still passed.
+Twelve tests across six spec files open the real architectural sheet, and none
+of them can use a placeholder: which pages are floor plans is decided by reading
+the PDF, so a stub would open PECAN14 on a page with no marks and the screenshot
+would be an empty building that still passed.
 
-On a machine without the sheets they skip themselves and say why. To run them,
-put a nightly backup's plansets where they look:
+| Spec | What it measures |
+| --- | --- |
+| `job-map.spec.ts` | is the map readable at 390px (3 jobs) |
+| `pin-accuracy.spec.ts` | does a dot land on the callout it belongs to (3 jobs) |
+| `data-off.spec.ts` | a data-off unit marked on the real map |
+| `vision-placement.spec.ts` | floor-plan-page detection against a real document (2 tests) |
+| `studio-plan-underlay-real-trace.spec.ts` | the real trace under the real sheet (2 of its 3 tests) |
+| `wave-n-true-north.spec.ts` | setting north in the tracer (1 of its 2 tests) |
+
+On a machine without the sheets they skip themselves and say why, so the nightly
+browser-test workflow currently runs about 250 tests and skips these twelve. On
+a machine that has them — the owner's clone, and any clone that predates
+2026-09-05 — they run exactly as before.
+
+To run them anywhere, put a nightly backup's plansets where they look:
 
 ```bash
 # from the repository root, with an archive unpacked into ./restore
