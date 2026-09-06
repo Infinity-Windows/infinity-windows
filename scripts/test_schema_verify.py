@@ -36,6 +36,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import migration_lint
+import partner_wall_lib
 import schema_verify
 
 REPO = Path(__file__).resolve().parent.parent
@@ -1130,6 +1131,275 @@ class TestPointsCapMigration(unittest.TestCase):
             "create or replace function public.person_record_counts(p_id uuid)", sql)
         self.assertIn("'education_credits.profile_id',", sql)
 
+
+
+# ---------------------------------------------------------------------------
+# The installer gallery (20260995000000)
+# ---------------------------------------------------------------------------
+
+#: The migration that narrowed what an installer can read out of `attachments`.
+INSTALLER_GALLERY = "20260995000000_installer_gallery.sql"
+
+#: Every column an attachments row may hang off. The first five are
+#: `attachments_target`'s own list (20260989000000); `service_case_id`
+#: (20260718070000) is not in that constraint and is a target column all the
+#: same — a row that carries one is about that case's job. Any column added to
+#: either list has to be resolvable, or a photo naming only that column reads
+#: as "belongs to no job" — which below foreman means invisible to everybody
+#: but its uploader, not visible to everybody. The risk of forgetting one is a
+#: photo of real work disappearing, not a leak.
+ATTACHMENT_TARGET_COLUMNS = [
+    "project_id",
+    "window_id",
+    "install_event_id",
+    "project_opening_id",
+    "package_id",
+    "service_case_id",
+]
+
+#: What each target column has to be resolved THROUGH, as a fragment of the
+#: resolver's SQL. install_events is the one that cannot be resolved directly:
+#: it has no project_id and never has (20260715120000), so it goes through its
+#: opening.
+TARGET_RESOLUTIONS = {
+    "project_id": "select p_project_id as pid",
+    "window_id": "from windows w",
+    "install_event_id": "from install_events ie",
+    "project_opening_id": "from project_openings po",
+    "package_id": "from packages pk",
+    "service_case_id": "from service_cases sc",
+}
+
+
+class InstallerGalleryPolicyTest(unittest.TestCase):
+    """An installer's photo gallery is the jobs they have worked.
+
+    `attachments` carried one policy from 20260715000000 until this migration —
+    "authenticated full access", FOR ALL, guarded only by the partner wall — so
+    every crew member could read every job photo. The Capture button (2026-09-05)
+    was the first door to it from an installer's phone, which is what made a
+    latent read into a real one.
+
+    These are shape tests, not a database. They assert the four things that
+    could each undo the change while everything still deploys clean: the read
+    narrowed, the writes did NOT, the partner wall survived, and every column a
+    photo can hang off actually resolves to a job.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.sql = (REPO / "supabase" / "migrations" / INSTALLER_GALLERY).read_text()
+        states, _unparsed = partner_wall_lib.replay_policies()
+        cls.policies = states["attachments"].policies
+
+    # --- the read narrowed --------------------------------------------------
+
+    def test_the_day_one_for_all_policy_is_gone(self):
+        """A permissive FOR ALL policy left in place would OR straight past the
+        narrow SELECT one and change nothing at all."""
+        self.assertNotIn("authenticated full access", self.policies)
+        self.assertEqual(
+            [n for n, p in self.policies.items() if p.command == "ALL"], [],
+            "a FOR ALL policy on attachments grants SELECT as well, so it "
+            "would make the narrow select policy decorative",
+        )
+
+    def test_the_select_policy_asks_all_four_questions(self):
+        p = self.policies["attachments_select"]
+        self.assertEqual(p.command, "SELECT")
+        self.assertIn("authenticated", p.roles)
+        for fragment in (
+            "my_role_rank() >= 1",          # foreman+ unchanged
+            "is_my_upload_name(created_by)",  # my own shot, wherever it was filed
+            "my_worked_project_ids()",      # the jobs I have worked
+            "attachment_project_ids(",      # ...however this row names one
+        ):
+            self.assertIn(
+                fragment.replace(" ", ""), p.using.replace(" ", "").replace("\n", ""),
+                f"attachments_select no longer asks about {fragment}",
+            )
+
+    def test_the_select_policy_keeps_the_partner_guard(self):
+        # test_partner_wall.py proves this mechanically for every table; pinned
+        # here too because this is the policy being rewritten.
+        self.assertIn("is_partner_user()", self.policies["attachments_select"].using)
+
+    # --- the writes did not --------------------------------------------------
+
+    def test_every_write_policy_is_exactly_as_wide_as_it_was(self):
+        """The old FOR ALL policy's write half was `not is_partner_user()` and
+        nothing else. Splitting it into three must not smuggle a rank check,
+        an ownership check or a job check into a write path."""
+        for name, command in (
+            ("attachments_insert", "INSERT"),
+            ("attachments_update", "UPDATE"),
+            ("attachments_delete", "DELETE"),
+        ):
+            p = self.policies[name]
+            self.assertEqual(p.command, command)
+            self.assertIn("authenticated", p.roles)
+            for clause in (p.using, p.check):
+                if not clause.strip():
+                    continue
+                self.assertEqual(
+                    clause.strip(), "not public.is_partner_user()",
+                    f"{name} is not the width it was before the split",
+                )
+
+    def test_insert_and_update_still_check_what_they_checked(self):
+        """A FOR ALL policy's WITH CHECK covered both INSERT and UPDATE. Losing
+        either one would let a partner blind-write the table."""
+        self.assertIn("is_partner_user()", self.policies["attachments_insert"].check)
+        self.assertIn("is_partner_user()", self.policies["attachments_update"].check)
+        self.assertIn("is_partner_user()", self.policies["attachments_update"].using)
+        self.assertIn("is_partner_user()", self.policies["attachments_delete"].using)
+
+    # --- every target column resolves ----------------------------------------
+
+    def test_the_policy_hands_the_resolver_every_target_column(self):
+        using = self.policies["attachments_select"].using
+        call = using[using.index("attachment_project_ids("):]
+        for column in ATTACHMENT_TARGET_COLUMNS:
+            self.assertIn(
+                column, call,
+                f"attachments.{column} is never passed to attachment_project_ids, "
+                "so a row that hangs off only that column belongs to no job and "
+                "falls out of the rule",
+            )
+
+    def test_the_resolver_resolves_every_target_column(self):
+        body = self.sql
+        for column, fragment in TARGET_RESOLUTIONS.items():
+            self.assertIn(
+                fragment, body,
+                f"attachment_project_ids has no branch resolving {column} "
+                f"(expected {fragment!r})",
+            )
+
+    def test_install_events_is_resolved_through_its_opening(self):
+        """install_events has no project_id — it has project_opening_id, and
+        has since 20260715120000. Reaching for the wrong one is the
+        2026-09-02 shape migration_lint exists to catch."""
+        self.assertIn("join project_openings po on po.id = ie.project_opening_id", self.sql)
+        self.assertNotIn("from install_events ie\n     where ie.project_id", self.sql)
+
+    # --- the helpers are shaped the way a policy helper has to be ------------
+
+    @staticmethod
+    def _squashed(clause):
+        """Policy text with whitespace removed, so a reformatting does not read
+        as a rule change."""
+        return "".join(clause.split())
+
+    def _definition(self, name):
+        """The text of one create-function statement in this migration."""
+        start = self.sql.index(f"create or replace function public.{name}(")
+        return self.sql[start:self.sql.index("$$;", start)]
+
+    def test_the_helpers_that_bypass_rls_are_security_definer_and_pinned(self):
+        for name in ("my_worked_project_ids", "attachment_project_ids"):
+            body = self._definition(name)
+            self.assertIn("security definer", body, f"{name} must be definer")
+            self.assertIn("stable", body, f"{name} must be stable")
+            self.assertIn(
+                "set search_path = public, pg_temp", body,
+                f"{name} is SECURITY DEFINER with an unpinned search_path",
+            )
+
+    def test_the_helpers_that_do_not_need_definer_do_not_have_it(self):
+        """The house rule: definer is for functions that MUST bypass RLS.
+        These two read only tables the caller can already read."""
+        for name in ("is_my_upload_name", "list_my_worked_jobs"):
+            body = self._definition(name)
+            self.assertNotIn("security definer", body, f"{name} does not need definer")
+            self.assertIn("set search_path = public, pg_temp", body)
+            self.assertIn("stable", body)
+
+    def test_the_id_resolver_answers_nothing_to_a_partner(self):
+        """It takes ids as ARGUMENTS, so without its own guard a builder login
+        could hand it a window id and learn which job that window is on — the
+        exact mapping the wall withholds."""
+        self.assertIn("not public.is_partner_user()", self._definition("attachment_project_ids"))
+
+    def test_every_new_function_is_revoked_from_public_and_anon(self):
+        for name, args in (
+            ("my_worked_project_ids", ""),
+            ("attachment_project_ids", "uuid, uuid, uuid, uuid, uuid, uuid"),
+            ("is_my_upload_name", "text"),
+            ("list_my_worked_jobs", ""),
+        ):
+            sig = f"public.{name}({args})"
+            self.assertIn(
+                f"revoke all on function {sig} from public, anon;", self.sql,
+                f"{sig} is not revoked from public and anon",
+            )
+            self.assertIn(
+                f"grant execute on function {sig} to authenticated", self.sql,
+                f"{sig} is never granted to authenticated, so nothing can call it",
+            )
+
+    # --- the warehouse keeps its photo strip ---------------------------------
+
+    def test_a_package_only_row_stays_crew_wide(self):
+        """Receiving and put-away are rank-0 crew work (ADR-0007,
+        20260986000000). A yard hand has almost no shifts, no published
+        crew-board row and no unit sessions, and a Boneyard package has no job
+        at all — so scoping package photos by job would empty PackageSheet's
+        filmstrip for the person standing next to the box."""
+        using = self._squashed(self.policies["attachments_select"].using)
+        self.assertIn("package_idisnotnull", using)
+
+    def test_the_warehouse_carve_out_needs_every_other_target_null(self):
+        """Otherwise hanging a package id on a job photo would be a way out of
+        the job rule. Every column except package_id has to be null for a row
+        to count as warehouse rather than job work."""
+        using = self._squashed(self.policies["attachments_select"].using)
+        start = using.index("package_idisnotnull")
+        # Up to the carve-out's own closing paren: it has no inner brackets, so
+        # this is exactly the branch and none of the resolver call after it.
+        clause = using[start:using.index(")", start)]
+        for column in ATTACHMENT_TARGET_COLUMNS:
+            if column == "package_id":
+                continue
+            self.assertIn(
+                f"{column}isnull", clause,
+                f"the warehouse carve-out does not require {column} to be null, "
+                "so a job photo hung off a package would step around the rule",
+            )
+
+    # --- "mine" cannot be claimed by typing --------------------------------
+
+    def test_ownership_is_the_signed_in_email_and_nothing_editable(self):
+        """`display_name` is a column every crew member may write on their own
+        profile row (20260729200000). Matching an upload against it would mean
+        an installer could read another person's photos, on every job in the
+        company, by renaming themselves to that person. The signed-in email is
+        in the SIGNED token, so it is the only spelling that can be trusted."""
+        body = self._definition("is_my_upload_name")
+        self.assertIn("auth.jwt() ->> 'email'", body)
+        for editable in ("display_name", "profiles"):
+            self.assertNotIn(
+                editable, body,
+                f"is_my_upload_name reads {editable}, which the person it is "
+                "asking about can edit — ownership must not be claimable",
+            )
+
+    def test_the_only_ownership_test_the_policy_runs_is_that_one(self):
+        """A second ownership branch written straight into the policy would
+        walk around the function and its test."""
+        using = self.policies["attachments_select"].using
+        self.assertNotIn("display_name", using)
+        self.assertEqual(using.count("is_my_upload_name("), 1)
+
+    def test_the_picker_and_the_policy_read_the_same_list(self):
+        """A picker built from a different query would offer jobs whose photos
+        come back empty, which reads as a broken screen rather than a rule."""
+        self.assertIn("my_worked_project_ids()", self._definition("list_my_worked_jobs"))
+
+    def test_the_migration_is_mirrored_into_the_prototype_file(self):
+        mirror = (REPO / "docs" / "prototype-migrations.sql").read_text()
+        self.assertIn(f"-- {INSTALLER_GALLERY} (mirrored)", mirror)
+        self.assertIn('create policy "attachments_select" on attachments', mirror)
 
 
 if __name__ == "__main__":

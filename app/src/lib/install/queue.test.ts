@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   deserializeUploadMeta,
+  needsAttachmentId,
   serializeUploadMeta,
   type QueuedUploadMeta,
 } from "./queue";
@@ -60,5 +61,25 @@ describe("upload queue serialization", () => {
     const out = deserializeUploadMeta(JSON.stringify(rest));
     expect(out).not.toBeNull();
     expect(typeof out!.createdAt).toBe("string");
+  });
+});
+
+// A write must not depend on a read rule. Asking PostgREST for the row back
+// makes an insert an INSERT ... RETURNING, and RETURNING is read under
+// attachments_select (20260995000000) — which counts a row as yours by the
+// signed-in email, a value that is null before sign-in resolves. A photo filed
+// on a job this person never worked would be saved and then refused on the way
+// out, and the queue would retry it forever.
+describe("which uploads need their row back", () => {
+  it("does not ask for a photo's row", () => {
+    expect(needsAttachmentId("photo")).toBe(false);
+  });
+
+  it("does not ask for a video's row", () => {
+    expect(needsAttachmentId("video")).toBe(false);
+  });
+
+  it("asks for a voice memo's row, which needs its id to be transcribed", () => {
+    expect(needsAttachmentId("voice_memo")).toBe(true);
   });
 });

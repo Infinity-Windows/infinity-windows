@@ -147,6 +147,28 @@ async function removeRecord(id: string): Promise<void> {
   db.close();
 }
 
+/**
+ * Does filing this upload need the `attachments` row handed back?
+ *
+ * WHY THIS IS A QUESTION AT ALL. PostgREST turns `.select()` on an insert into
+ * INSERT ... RETURNING, and a RETURNING clause is a READ: the row is checked
+ * against the SELECT policy on its way back out. So asking for the row makes
+ * `attachments_select` (20260995000000) load-bearing for a WRITE. That policy
+ * counts a photo as yours by the signed-in email in `created_by` — and
+ * `created_by` is null whenever sign-in has not resolved yet (signedInEmail's
+ * own contract) or a getUser() came back without an email. A shot filed on a
+ * job this person has never worked would then be written to the database and
+ * refused on the way back, the queue would treat that as a failure, and the
+ * photo would retry forever over a row that is already saved.
+ *
+ * A photo does not need its id. Exactly one kind does: a voice memo, to start
+ * its transcription — and even that has retryTranscriptions() behind it, which
+ * finds any memo still missing a transcript later.
+ */
+export function needsAttachmentId(kind: QueuedUploadMeta["kind"]): boolean {
+  return kind === "voice_memo";
+}
+
 let flushing = false;
 
 /**
@@ -195,18 +217,17 @@ export async function flushQueue(): Promise<{ sent: number; remaining: number }>
           accuracy_m: meta.accuracyM ?? null,
           taken_at: meta.takenAt ?? null,
         };
-        let ins = await supabase
-          .from("attachments")
-          .insert(geoRow)
-          .select("id")
-          .single();
+        // Ask for the row back only when something needs it — see
+        // needsAttachmentId for why that is not a micro-optimisation.
+        const wantsId = needsAttachmentId(meta.kind);
+        let ins = wantsId
+          ? await supabase.from("attachments").insert(geoRow).select("id").maybeSingle()
+          : await supabase.from("attachments").insert(geoRow);
         if (ins.error && isMissingColumn(ins.error)) {
           // Migration not applied — persist the base row without geo columns.
-          ins = await supabase
-            .from("attachments")
-            .insert(baseRow)
-            .select("id")
-            .single();
+          ins = wantsId
+            ? await supabase.from("attachments").insert(baseRow).select("id").maybeSingle()
+            : await supabase.from("attachments").insert(baseRow);
         }
         const { data: attachmentRow, error: rowErr } = ins;
         if (rowErr) throw rowErr;
