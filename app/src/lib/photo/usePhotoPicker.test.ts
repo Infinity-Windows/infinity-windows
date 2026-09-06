@@ -33,20 +33,19 @@ const srcRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const THE_HOOK = "lib/photo/usePhotoPicker.tsx";
 
 /**
- * The two hand-rolled camera-only pickers that predate the hook: a damage photo
- * at the truck (PackageSheet) and a photo of a missed unit at the wall
- * (AddMissedUnitSheet). Both carry `capture`, so both have the same "you cannot
- * pick one you already took" limitation the incident was about — they were left
- * alone here only because moving them is a change to two other screens, not to
- * receipts.
+ * The hand-rolled camera-only pickers that predate the hook. It carries
+ * `capture`, so it has the same "you cannot pick one you already took"
+ * limitation the incident was about.
  *
- * This list is asserted to be EXACTLY these two. It is a record of work left,
- * not a door: a new file cannot join it without somebody editing this test.
+ * The package sheet's "Add a photo" is off this list as of this commit — it
+ * goes through the hook and offers both doors. What is left is the photo of a
+ * missed unit at the wall.
+ *
+ * This list is asserted to be EXACTLY what it holds. It is a record of work
+ * left, not a door: a new file cannot join it without somebody editing this
+ * test.
  */
-const LEGACY_CAMERA_PICKERS = [
-  "components/install/AddMissedUnitSheet.tsx",
-  "pages/storage/PackageSheet.tsx",
-];
+const LEGACY_CAMERA_PICKERS = ["components/install/AddMissedUnitSheet.tsx"];
 
 /**
  * The two inputs that name no `accept` on purpose, and so technically offer
@@ -204,7 +203,7 @@ describe("one place writes a picture picker", () => {
     expect(fileInputs(sheet!.source)).toEqual([]);
   });
 
-  it("still has exactly the two legacy camera-only pickers, and no more", () => {
+  it("still has exactly the legacy camera-only pickers listed above, and no more", () => {
     const withCapture = files
       .filter((f) => f.path !== THE_HOOK)
       .filter((f) => fileInputs(f.source).some(isCameraOnlyPicture))
