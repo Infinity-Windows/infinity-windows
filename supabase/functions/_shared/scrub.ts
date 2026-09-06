@@ -229,6 +229,8 @@ export interface ScrubbableBreadcrumb {
 
 export interface ScrubbableEvent {
   message?: string;
+  transaction?: string;
+  culprit?: string;
   release?: string;
   environment?: string;
   tags?: Record<string, unknown>;
@@ -268,6 +270,11 @@ export function scrubBreadcrumb(
     // form of this that cannot be widened by somebody else's release.
     if (typeof data.method === "string") kept.method = data.method;
     if (typeof data.url === "string") kept.url = scrubUrl(data.url);
+    // A navigation breadcrumb's from/to: the screens somebody moved between,
+    // which is most of what a trail is worth. As route patterns, so the job
+    // ids in them do not come along.
+    if (typeof data.from === "string") kept.from = scrubUrl(data.from);
+    if (typeof data.to === "string") kept.to = scrubUrl(data.to);
     if (typeof data.status_code === "number") kept.status_code = data.status_code;
     if (typeof data.status_code === "string") kept.status_code = data.status_code;
     if (Object.keys(kept).length > 0) out.data = kept;
@@ -289,6 +296,10 @@ export function scrubEvent(event: ScrubbableEvent): ScrubbableEvent {
   delete out.server_name;
 
   if (typeof out.message === "string") out.message = scrubText(out.message);
+  // The SDK names the event after wherever it happened, and "wherever" is a
+  // real URL with real ids in it. Both become route patterns.
+  if (typeof out.transaction === "string") out.transaction = scrubUrl(out.transaction);
+  if (typeof out.culprit === "string") out.culprit = scrubUrl(out.culprit);
 
   if (out.request && typeof out.request === "object") {
     const req = out.request;

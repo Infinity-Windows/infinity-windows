@@ -291,6 +291,27 @@ describe("scrubEvent", () => {
     expect((out.message as string).length).toBeLessThanOrEqual(201);
   });
 
+  it("names the event by its route, not by the URL the SDK saw", () => {
+    const out = scrubEvent({
+      transaction: "/projects/2c1d0f3a-9b7e-4a55-9f2e-6d1c8b0a4e77/openings?sort=name",
+      culprit: "https://app.forgewd.com/gc/Ku7Rr3xQm1PdV8ZaN0sYtLbE",
+    }) as ScrubbableEvent;
+    expect(out.transaction).toBe("/projects/:id/openings");
+    expect(out.culprit).toBe("https://app.forgewd.com/gc/:id");
+  });
+
+  it("keeps a navigation breadcrumb's from and to, as route patterns", () => {
+    const out = scrubBreadcrumb({
+      category: "navigation",
+      data: {
+        from: "/projects/2c1d0f3a-9b7e-4a55-9f2e-6d1c8b0a4e77",
+        to: "/projects/2c1d0f3a-9b7e-4a55-9f2e-6d1c8b0a4e77/openings?note=wet",
+        extra: "whatever a library felt like attaching",
+      },
+    });
+    expect(out.data).toEqual({ from: "/projects/:id", to: "/projects/:id/openings" });
+  });
+
   it("leaves an event with nothing in it alone rather than inventing fields", () => {
     expect(scrubEvent({})).toEqual({});
   });
