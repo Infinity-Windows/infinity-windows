@@ -35,7 +35,7 @@ function pkg(over: Record<string, unknown>) {
   };
 }
 
-test("DeliveryDetail's Edit set… navigates to Rewrite this set", async ({ page }) => {
+test("DeliveryDetail's Edit set… opens the unit card", async ({ page }) => {
   await useSupabaseFixtures(page, { role: "foreman" });
 
   const rows = [pkg({ id: "p1" })];
@@ -56,11 +56,11 @@ test("DeliveryDetail's Edit set… navigates to Rewrite this set", async ({ page
   const editLink = page.getByRole("link", { name: "Edit set #8" });
   await expect(editLink).toHaveAttribute(
     "href",
-    `/storage/rewrite-set?pending=${encodeURIComponent(JOB_NAME)}&mark=8`,
+    `/unit/waiting/8?pending=${encodeURIComponent(JOB_NAME)}`,
   );
   await editLink.click();
-  await expect(page).toHaveURL(new RegExp(`/storage/rewrite-set\\?pending=Mad%20Moose&mark=8`));
-  await expect(page.getByRole("heading", { name: "The set, declared" })).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`/unit/waiting/8\\?pending=Mad%20Moose`));
+  await expect(page.getByRole("heading", { name: "Window 8" })).toBeVisible();
 });
 
 test("Make it match on a seeded set: the manifest's 16 untyped packages become 4 frame + 12 pieces of glass", async ({
