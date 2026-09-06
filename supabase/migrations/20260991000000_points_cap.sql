@@ -8,6 +8,28 @@
 -- in it depends on that migration; the number is simply later, and the
 -- migration runner applies these in name order.
 --
+-- THE DEPLOY GAP, said out loud. The frontend and the database ship from one
+-- merge through two independent workflows, so for a few minutes one is ahead
+-- of the other. The revoke below takes the ledger's write grant away at once,
+-- while the build still being served inserts into the table directly — so an
+-- install finished inside that gap loses its points, quietly, and the outbox
+-- will not retry it (it advances past the award on any failure, on purpose, so
+-- that a refused award never blocks the photos). Nothing shipped in this branch
+-- can repair that from the browser: the old build is already on the phones.
+-- Two things follow, and they are the deploy instruction for this PR.
+--
+--   * Watch the backend deploy actually finish. A merge is not a deploy here,
+--     and this one is the half that matters — while it is unapplied the Learn
+--     tab's new door does not exist yet either.
+--   * Expect a handful of installs finished in that window to show no points,
+--     and re-award them by hand from the ledger rather than asking anyone to
+--     re-submit — a redo pays, but it also files a second install event.
+--
+-- The Learn tab has a softer landing for the same gap: award_education_quiz
+-- missing is caught and shown as "not saved yet, try in a few minutes"
+-- (Education.tsx, learn.points.notReadyYet) rather than a failure, because
+-- there the person is standing in front of the screen waiting.
+--
 -- WHAT WENT WRONG. `points_ledger` has had exactly one policy since the day it
 -- was created (20260717004000, re-stated with the partner guard by THE WALL,
 -- 20260950000000): "authenticated full access", FOR ALL, `using (true)`. So
