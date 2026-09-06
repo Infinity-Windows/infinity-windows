@@ -13,9 +13,16 @@ import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { clockInSpy } = vi.hoisted(() => ({
+const { clockInSpy, enqueueSpy } = vi.hoisted(() => ({
   clockInSpy: vi.fn(async () => ({}) as unknown),
+  enqueueSpy: vi.fn(async () => "queued-1"),
 }));
+// The offline queue: a refused punch lands here instead of failing. Held as
+// a spy so the test can read exactly what was queued.
+vi.mock("../../lib/offline/outbox", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../lib/offline/outbox")>();
+  return { ...actual, enqueueClockIn: enqueueSpy };
+});
 vi.mock("../../lib/timeclock", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../lib/timeclock")>();
   return {
@@ -47,6 +54,7 @@ afterEach(() => {
   root = null;
   host = null;
   clockInSpy.mockClear();
+  enqueueSpy.mockClear();
 });
 
 const CC1 = { id: "cc1", code: "100", label: "Install", active: true };
@@ -165,6 +173,33 @@ describe("the clock sheet opened with a carried pick", () => {
     await flush();
     expect(clockInSpy).toHaveBeenCalledTimes(1);
     expect(clockInSpy.mock.calls[0]).toEqual(["p2", "cc2", expect.anything(), null, "tracking"]);
+  });
+
+  it("queues a carried pick's job, cost code and note when the punch fails offline — the mode does not ride the queue yet", async () => {
+    // The hand-off's reason for existing is the phone with no signal. The
+    // punch fails, the outbox takes it, and the carried picks must be what
+    // gets queued — not yesterday's job. The mode is NOT in the payload: no
+    // clock_in overload takes both the outbox's p_client_id and p_mode, so
+    // the replay would have nowhere to send it (stated limit, review
+    // 2026-09-06). When that overload lands, this is the assertion to widen.
+    clockInSpy.mockRejectedValueOnce(new Error("Failed to fetch"));
+    const el = mount({ projectId: "p2", costCodeId: "cc2", note: "gate 4411", mode: "tracking" });
+    await flush();
+    await act(async () => {
+      el.querySelector<HTMLButtonElement>(".clock-btn.primary.big")!.dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+    });
+    await flush();
+    expect(clockInSpy).toHaveBeenCalledTimes(1);
+    expect(enqueueSpy).toHaveBeenCalledTimes(1);
+    expect(enqueueSpy.mock.calls[0][0]).toEqual({
+      projectId: "p2",
+      costCodeId: "cc2",
+      lat: null,
+      lng: null,
+      note: "gate 4411",
+    });
   });
 
   it("drops the carried mode when the person taps a different job in the sheet", async () => {

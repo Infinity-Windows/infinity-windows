@@ -323,6 +323,13 @@ export function ClockSheet({
       // records nothing — which is what every sheet punch recorded before
       // 2026-09-06, when this path always sent null and a both-mode job
       // clocked here lost its mode.
+      //
+      // ONLINE punch only. The offline queue below carries job, cost code and
+      // note but not the mode: no clock_in overload takes both p_client_id
+      // (the outbox's dedupe key) and p_mode, so the replay has nothing to
+      // send it to and the shift records job_mode null. Closing that needs a
+      // migration and a handler change, neither of which this sheet owns
+      // (stated limit, review 2026-09-06).
       const jobsOwnMode = effectiveClockInMode(
         (projects.data ?? []).find((p) => p.id === projectId)?.allowed_modes,
         null,
