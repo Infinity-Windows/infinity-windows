@@ -15,7 +15,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const { clockInSpy, enqueueSpy } = vi.hoisted(() => ({
   clockInSpy: vi.fn(async () => ({}) as unknown),
-  enqueueSpy: vi.fn(async () => "queued-1"),
+  // Takes the queued input so the test can read it back typed.
+  enqueueSpy: vi.fn(async (_input: unknown) => "queued-1"),
 }));
 // The offline queue: a refused punch lands here instead of failing. Held as
 // a spy so the test can read exactly what was queued.
