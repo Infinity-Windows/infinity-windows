@@ -93,6 +93,13 @@ export const APP_GUIDE: AppGuideEntry[] = [
       "The window/door glossary and daily practice drills. Look up a term or a type, or run a quick quiz to sharpen up between jobs.",
   },
   {
+    path: "/learning/time",
+    label: "Learning time",
+    minRole: "supervisor",
+    blurb:
+      "How long each person has spent in Learn and on what, and which training videos they actually watched through. Read it to notice somebody going above and beyond; it counts only time the screen was in front of them.",
+  },
+  {
     path: "/points",
     label: "Points",
     minRole: "installer",

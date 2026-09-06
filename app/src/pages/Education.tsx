@@ -31,6 +31,8 @@ import { isMissingFunction } from "../lib/schemaErrors";
 import { useT, type TFn } from "../lib/i18n";
 import { SendRecordingButton } from "../components/learn/SendRecordingButton";
 import { VideoLibrary } from "../components/learn/VideoLibrary";
+import { useLearningTime } from "../lib/useLearningTime";
+import { YourLearningTime } from "../components/learn/YourLearningTime";
 
 type Tab = "daily" | "quiz" | "sequence" | "glossary" | "videos";
 
@@ -53,6 +55,17 @@ export function Education() {
   });
 
   const [tab, setTab] = useState<Tab>("daily");
+
+  // Learning time (owner's ask, 2026-09-05). Three clocks, all keyed off the
+  // open tab and nothing else, so this page's own state is the only thing they
+  // read. The 'tab' clock is the TOTAL — every minute in Learn lands on it —
+  // and the other two are the same minutes named more precisely, because the
+  // Quiz and Sequence tabs ARE their rounds. Anything summing kinds together
+  // would double-count; the owner's table adds up 'tab' and shows the rest as
+  // the breakdown inside it.
+  useLearningTime("tab", tab);
+  useLearningTime("quiz", tab === "quiz" ? "round" : null);
+  useLearningTime("sequence", tab === "sequence" ? "round" : null);
 
   const score = knowledgeScore(progress.data ?? []);
   const mastered = (progress.data ?? []).filter((p) => p.box >= 3).length;
@@ -122,6 +135,10 @@ export function Education() {
           }}
         />
       )}
+
+      {/* Learning time, L4: the person being measured reads the same number
+          the owner's table does, and one sentence saying why it is kept. */}
+      <YourLearningTime profileId={me.data?.id} />
     </div>
   );
 }
@@ -475,6 +492,9 @@ function SequenceOutcome({
 function Glossary({ lead, onFlag }: { lead: boolean; onFlag: (id: string) => void }) {
   const [cat, setCat] = useState(CATS[0].id);
   const [focusId, setFocusId] = useState<string | null>(null);
+  // Only an OPEN term is time spent on that term; scrolling the list is time on
+  // the glossary tab, which the page-level clock already has.
+  useLearningTime("term", focusId);
   const byId = useMemo(() => new Map(TERMS.map((t) => [t.id, t])), []);
   const focus = focusId ? byId.get(focusId) : null;
 

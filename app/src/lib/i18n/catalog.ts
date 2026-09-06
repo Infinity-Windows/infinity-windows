@@ -2379,6 +2379,96 @@ export const CATALOG = {
     en: "The app updated while you were working. Finish and save, then pull down to refresh.",
     es: "La app se actualizó mientras trabajabas. Termina y guarda, luego desliza hacia abajo para actualizar.",
   },
+
+  // ---- Learning time (2026-09-05) ----------------------------------------
+  // The owner's ask: "a timer that I can see as an owner how long they spend in
+  // the learning tab and on what item… as well as a timer for watching the
+  // YouTube videos, to see if they watch the whole thing and how many times."
+  //
+  // Everything this build says, in one block, both languages. The two sentences
+  // that MATTER most are `ltime.blurb` and `learn.time.why`: they are the same
+  // promise said to the two different people it is about — the owner reading
+  // the table, and the crew member being measured — and they have to agree with
+  // each other and with the migration's own header.
+  "ltime.section": { en: "Learning", es: "Aprendizaje" },
+  "ltime.title": { en: "Learning time", es: "Tiempo de aprendizaje" },
+  "ltime.back": { en: "Home", es: "Inicio" },
+  // Says the idle gate out loud, in both places. A page left open on a desk
+  // stops counting after ten minutes, and an owner reading these numbers has to
+  // know that or they will read a parked tab as a long evening of study.
+  "ltime.blurb": {
+    en: "How long each person spends in Learn, and on what. Counted only while the screen is in front of them and they are using it — never while the phone is locked, the app is in the background, or the page has sat untouched for ten minutes.",
+    es: "Cuánto tiempo pasa cada persona en Aprender, y en qué. Solo cuenta mientras la pantalla está frente a ellos y la están usando — nunca con el teléfono bloqueado, con la app en segundo plano, ni con la página sin tocar por diez minutos.",
+  },
+  "ltime.range.aria": { en: "Time range", es: "Rango de fechas" },
+  "ltime.range.week": { en: "This week", es: "Esta semana" },
+  "ltime.range.fourWeeks": { en: "Last 4 weeks", es: "Últimas 4 semanas" },
+  "ltime.range.all": { en: "All time", es: "Todo el tiempo" },
+  "ltime.sort.aria": { en: "Sort", es: "Ordenar" },
+  "ltime.sort.time": { en: "Most time first", es: "Más tiempo primero" },
+  "ltime.sort.name": { en: "By name", es: "Por nombre" },
+  "ltime.loadError": {
+    en: "Couldn't load learning time",
+    es: "No se pudo cargar el tiempo de aprendizaje",
+  },
+  "ltime.empty.title": { en: "Nothing recorded yet", es: "Aún no hay nada registrado" },
+  "ltime.empty.body": {
+    en: "Time starts counting the next time somebody opens Learn.",
+    es: "El tiempo empieza a contar la próxima vez que alguien abra Aprender.",
+  },
+  "ltime.inLearn": { en: "in Learn", es: "en Aprender" },
+  "ltime.last": { en: "last {when}", es: "última vez {when}" },
+  "ltime.kind.term": { en: "Glossary terms", es: "Términos del glosario" },
+  "ltime.kind.quiz": { en: "Quiz", es: "Examen" },
+  "ltime.kind.sequence": { en: "Sequence", es: "Secuencia" },
+  "ltime.kind.video": { en: "Lessons playing", es: "Lecciones en reproducción" },
+  // Said plainly because the alternative is an owner adding the chips up and
+  // getting more than the total.
+  "ltime.breakdownNote": {
+    en: "These are part of the total above, not extra time on top of it.",
+    es: "Esto es parte del total de arriba, no tiempo adicional.",
+  },
+  // The second half of the owner's question — "and on what item". The chips
+  // above these say how long on glossary terms; these say WHICH terms.
+  "ltime.items": { en: "What they were on", es: "En qué estuvieron" },
+  "ltime.visitsOne": { en: "1 visit", es: "1 visita" },
+  "ltime.visitsMany": { en: "{count} visits", es: "{count} visitas" },
+  "ltime.moreItems": {
+    en: "and {count} more",
+    es: "y {count} más",
+  },
+  "ltime.lessons": { en: "Lessons", es: "Lecciones" },
+  "ltime.timesWatched": { en: "watched {count}×", es: "visto {count}×" },
+  "ltime.percentAll": { en: "{percent}% watched", es: "{percent}% visto" },
+  "ltime.percentBest": { en: "best sitting {percent}%", es: "mejor sesión {percent}%" },
+  "ltime.lengthUnknown": {
+    en: "{time} played, length unknown",
+    es: "{time} reproducidos, duración desconocida",
+  },
+  "ltime.finished": { en: "Finished", es: "Terminado" },
+  "ltime.notFinished": { en: "Not finished", es: "Sin terminar" },
+  // The definition, on screen, because "watched 3×" means nothing until the
+  // reader knows what the app counts as a watch.
+  // The other half of the same promise, said to the person it is about — the
+  // footer at the bottom of Learn. `learn.time.why` and `ltime.blurb` are
+  // deliberately the same sentence from the two sides, and both agree with the
+  // migration's own header.
+  "learn.time.yours": { en: "Your learning time:", es: "Tu tiempo de aprendizaje:" },
+  "learn.time.week": { en: "{time} this week", es: "{time} esta semana" },
+  "learn.time.lessonsOne": { en: "1 lesson finished", es: "1 lección terminada" },
+  "learn.time.lessonsMany": {
+    en: "{count} lessons finished",
+    es: "{count} lecciones terminadas",
+  },
+  "learn.time.none": { en: "nothing yet this week", es: "nada aún esta semana" },
+  "learn.time.why": {
+    en: "Time in Learn is recorded so the company can see the effort you put in. It only counts while this screen is in front of you and you are using it — never while your phone is locked or the app is in the background, and it stops if the page sits untouched for ten minutes. A lesson that is playing always counts.",
+    es: "El tiempo en Aprender se registra para que la empresa vea el esfuerzo que pones. Solo cuenta mientras esta pantalla está frente a ti y la estás usando — nunca con el teléfono bloqueado ni con la app en segundo plano, y se detiene si dejas la página sin tocar por diez minutos. Una lección que se está reproduciendo siempre cuenta.",
+  },
+  "ltime.watchNote": {
+    en: "A watch is one visit that got through at least 30 seconds. The percentage is how much of the lesson was actually played — skipping to the end can finish a video without watching it.",
+    es: "Una vista es una visita que pasó al menos 30 segundos. El porcentaje es cuánto de la lección se reprodujo de verdad — saltar al final puede terminar un video sin verlo.",
+  },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */

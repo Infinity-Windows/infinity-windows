@@ -194,3 +194,29 @@ export function youtubeEmbedUrl(raw: string): string | null {
   if (!id || !/^[A-Za-z0-9_-]{6,20}$/.test(id)) return null;
   return `https://www.youtube-nocookie.com/embed/${id}`;
 }
+
+/**
+ * The same embed, with the IFrame Player API switched on. PURE — unit-tested.
+ *
+ * `enablejsapi=1` is what lets the page ask the player where the play head is,
+ * which is the whole of "did they watch the whole thing" (Learning time, L2).
+ * `origin` is YouTube's own requirement for that channel — it pins the
+ * postMessage conversation to this app's address — and `playsinline=1` keeps a
+ * lesson inside the page on an iPhone instead of throwing it into the fullscreen
+ * player, where the crew member loses the transcript underneath it.
+ *
+ * Returns null for exactly what youtubeEmbedUrl returns null for, so a caller
+ * can swap one for the other without a second validity check.
+ */
+export function youtubePlayerEmbedUrl(
+  raw: string,
+  origin?: string | null,
+): string | null {
+  const base = youtubeEmbedUrl(raw);
+  if (!base) return null;
+  const url = new URL(base);
+  url.searchParams.set("enablejsapi", "1");
+  url.searchParams.set("playsinline", "1");
+  if (origin) url.searchParams.set("origin", origin);
+  return url.toString();
+}

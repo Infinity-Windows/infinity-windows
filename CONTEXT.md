@@ -956,6 +956,83 @@ because a stored one is a list that 404s and a live unauthenticated link to
 another company's document sitting in a table a foreman can read.
 
 
+## Learning time
+
+Settled 2026-09-05 (the owner's own ask): "a timer that I can see as an owner
+how long they spend in the learning tab and on what item… as well as a timer
+for watching the YouTube videos, to see if they watch the whole thing and how
+many times." The honest companion to the points cap: points could be farmed by
+re-taking a round, and minutes cannot.
+
+**Learning time** — seconds spent on one named item of Learn during one visit.
+A *visit* is one page load: the app mints an id when Learn opens and throws it
+away when the page goes, which is what makes "five separate evenings" tell
+itself apart from "one long afternoon with the tab open", and what makes times
+watched countable at all. The named items are the five places of Learn — the
+tab itself, a glossary term, the quiz round, the sequence drill, a lesson that
+is playing. The TAB rows are the total; every other kind is the same minutes
+named more precisely, so the parts sit inside the whole and are never added to
+it.
+
+**What is not recorded.** Nothing while the screen is hidden, the phone is
+locked, or the app is in the background — the beat only fires while the page is
+visible AND has focus, and stops the moment either goes. No content, no answer,
+no keystroke, no location. Time is never queued offline either: a lost beat is
+fifteen seconds nobody reads to the second, and a replayed one would carry the
+phone's idea of when it happened, which is the thing the server-stamped cap
+exists to refuse.
+
+**Idle gate** — the third condition, and the one that carries the promise the
+crew is shown. Visible and focused is the browser's answer to *is this window on
+top*, not to *is anybody there*: a Learn tab parked on a second monitor all day
+is both and is nobody. So the beat also wants a sign of life — a tap, a key, a
+scroll — inside the last ten minutes. A lesson that is really playing is exempt
+while it plays, because watching is the one kind of learning that looks exactly
+like an empty desk, and the ten minutes start again when it ends.
+
+**The server stamps it.** A phone says "fifteen seconds"; the server clamps
+that to thirty and then to the **kind clock** — the seconds since that person
+last banked time on this *kind* of item, from any visit and any item. The
+reference is deliberately not the row a beat names, because the phone chooses
+the row: its key carries a visit id and an item key both minted in the browser,
+so a per-row ceiling is a fresh clean wall clock for every uuid a caller cares
+to invent. Against the kind, a person banks at most one second per second
+however many rows they mint, and an honest phone has one row per kind open at a
+time anyway. A row is also created worth nothing, and an item key has to name a
+part of Learn the app really ships.
+
+The rule holds for video too, where a beat may only claim seconds that the clock
+AND the play head both agree passed — a jump further forward than the clock can
+explain is a drag of the scrubber and counts as zero — and where the lesson's
+**length** is the longest any player has ever reported for it, by anybody. A
+length taken from the phone being measured is a denominator that phone can
+choose, and every percentage over it goes with it.
+
+What the server cannot see is whether anybody was looking. Real seconds are what
+its clamps bound; attention is what the idle gate bounds. Both halves are needed
+and neither is the answer alone.
+
+**Watched through** — ninety percent of a lesson covered, or the player itself
+saying the video ended. The second half is reachable by skipping to the end, so
+the percentage is shown BESIDE the verdict everywhere and never instead of it:
+"finished · 4% watched" is a sentence the app is willing to print. **Times
+watched** is visits that got through thirty seconds, and the screen says so —
+a card scrolled past eleven times is not a lesson watched eleven times.
+
+**What it says on screen.** The owner's page answers both halves of the ask: a
+person's total, the same minutes broken down by kind under it, and then the
+named items themselves — which glossary term, which lesson — busiest first,
+five deep with a count of the rest. A kind chip without its items answers "how
+long" and leaves "on what" unanswered.
+
+**Who can see it.** A person always sees their own, at the bottom of Learn,
+beside one sentence saying it is recorded so the company can see the effort
+they put in — the same promise the owner's page makes, said to the person it is
+about. Supervisor and above see everybody's, at `/learning/time`, the same
+floor per-person time already has on the Data tab. A foreman does not: that is
+a decision about people rather than a gap, and it is the owner's to make.
+A partner (builder) login never, by the wall.
+
 ## Open questions
 
 None right now — the next ones come from building.

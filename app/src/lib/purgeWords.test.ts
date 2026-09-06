@@ -223,6 +223,20 @@ describe("the probe list covers the schema", () => {
     // (purgeRefusal's is_partner check), so neither can ever be reached here.
     "calendar_feed_tokens.partner_profile_id",
     "partner_job_grants.partner_profile_id",
+    // Seconds spent looking at a Learn tab (20260993000000). Attention, not a
+    // record of work, money or safety — and the reason it is safe to say so is
+    // the shape of the feature this list serves: an account is only ever hard
+    // DELETED when it has no work of any kind, and every training record that
+    // does mean something (`learn_progress`, `learning_video_quiz_attempts`,
+    // `installer_clearance`, `capability_badges`) is counted above. Minutes
+    // logged against an account with none of those are the minutes of a
+    // mistyped login, and nobody will ever read them.
+    "learning_time.profile_id",
+    // And which seconds of a lesson they played (20260993000000). Same answer
+    // and the same reasoning as the line above: the lesson's own outcomes —
+    // the quiz attempt, the clearance it granted — are counted, and these are
+    // the measurements beside them.
+    "learning_video_watches.profile_id",
   ]);
 
   /** `references profiles(id)` across every migration, with its ON DELETE. */

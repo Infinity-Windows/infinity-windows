@@ -177,7 +177,11 @@ class TestSchemaParsing(unittest.TestCase):
         # been paid for (points cap, 20260991000000). The same migration
         # replaces points_ledger's FOR ALL policy and adds two columns to it,
         # which are not new tables.
-        self.assertEqual(len(SCHEMA.tables), 132)
+        # +2: learning_time + learning_video_watches — seconds a person spent
+        # on one named item of the Learn section during one visit, and which
+        # seconds of one lesson they actually played (Learning time, L1/L2,
+        # 20260993000000).
+        self.assertEqual(len(SCHEMA.tables), 134)
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 
