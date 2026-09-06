@@ -473,6 +473,14 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     "capability_badges": ("installer_id", "capability"),
     # Custom part labels are keyed by their lowercased name.
     "part_type_options": ("name",),
+    # The Learn tab's payable items are keyed by the key itself (the PK), and a
+    # person's credit for one is keyed by the pair the table is UNIQUE on. Both
+    # are the row's identity, so a merge that saw the same key twice is seeing
+    # the same thing twice — and for credits that matters: two rows for one
+    # person and one term would pay a term twice, which is the whole fault
+    # 20260991000000 exists to close.
+    "education_items": ("key",),
+    "education_credits": ("profile_id", "item_key"),
 
     "window_id_counters": ("window_type_id",),
     "project_openings": ("project_id", "opening_code"),

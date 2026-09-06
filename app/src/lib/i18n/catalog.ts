@@ -2209,6 +2209,81 @@ export const CATALOG = {
     en: "Couldn't open that PDF just now — check your signal and try again.",
     es: "No se pudo abrir ese PDF ahora — revisa tu señal e inténtalo otra vez.",
   },
+
+  // ---- Learn: points are for new content now (2026-09-05) ----
+  // The Quiz and Sequence tabs used to write their own points after every
+  // round, so "Another round" paid again for the same five terms, hundreds of
+  // times over between two profiles in a single day. A term now pays the
+  // first time it is answered correctly and never again, which means the
+  // screen has to say two different things: what a round earned, and why a
+  // round earned nothing. Neither is a telling-off — practising is still free
+  // and still encouraged, so the "keep practising" half is the point.
+  // The "How points work" line on the Points page. It used to read "+10 /
+  // correct", which stopped being true the day a term started paying once.
+  "points.rule.quiz": {
+    en: "Quiz: +{points} the first time you get a term right — once per term",
+    es: "Examen: +{points} la primera vez que aciertas un término — una vez por término",
+  },
+  "learn.points.progress": {
+    en: "Earned {earned} of {total} terms",
+    es: "Ganados {earned} de {total} términos",
+  },
+  "learn.points.newOne": {
+    en: "+{points} points — 1 new term.",
+    es: "+{points} puntos — 1 término nuevo.",
+  },
+  "learn.points.newMany": {
+    en: "+{points} points — {count} new terms.",
+    es: "+{points} puntos — {count} términos nuevos.",
+  },
+  "learn.points.none": {
+    en: "No new points — you'd already earned these. Keep practising.",
+    es: "Sin puntos nuevos — ya los habías ganado. Sigue practicando.",
+  },
+  // A round with nothing right is not the same round as one where every term
+  // was already earned, and telling somebody "you'd already earned these"
+  // after they missed all five is just untrue. The server returns the two
+  // apart — new_terms and already_had — so the screen says them apart too.
+  "learn.points.noneRight": {
+    en: "No new points this round — none of those were right. Keep practising.",
+    es: "Sin puntos nuevos en esta ronda — no acertaste ninguno. Sigue practicando.",
+  },
+  "learn.points.sequenceEarned": {
+    en: "+{points} points — you've earned the install sequence.",
+    es: "+{points} puntos — ganaste la secuencia de instalación.",
+  },
+  // The bar exists because the sequence is one procedure, not five facts: half
+  // of it in the right order is not knowing it. 4 of 5 is the same bar a video
+  // quiz passes at, so a crew member learns one number, not two.
+  "learn.points.sequenceBar": {
+    en: "Get 4 of 5 to earn the install sequence. Keep practising.",
+    es: "Acierta 4 de 5 para ganar la secuencia de instalación. Sigue practicando.",
+  },
+  "learn.points.sequenceHad": {
+    en: "No new points — you've already earned the install sequence. Keep practising.",
+    es: "Sin puntos nuevos — ya ganaste la secuencia de instalación. Sigue practicando.",
+  },
+  "learn.points.newContentOnly": {
+    en: "Points are for terms you haven't earned yet. Practise as much as you like.",
+    es: "Los puntos son por términos que aún no has ganado. Practica todo lo que quieras.",
+  },
+  "learn.points.saving": {
+    en: "Counting your points…",
+    es: "Contando tus puntos…",
+  },
+  // The deploy window. The frontend and the database ship from one merge
+  // through two independent workflows, so for a few minutes either can be
+  // ahead — and the round an installer just played is not the place to say so
+  // in red. Their answers are safe; the points land next time.
+  "learn.points.notReadyYet": {
+    en: "Points aren't ready yet — that round still counted as practice. Try again in a few minutes.",
+    es: "Los puntos aún no están listos — esa ronda contó como práctica. Intenta otra vez en unos minutos.",
+  },
+  "learn.points.failed": {
+    en: "Points didn't save: {reason}",
+    es: "Los puntos no se guardaron: {reason}",
+  },
+  "learn.points.anotherRound": { en: "Another round", es: "Otra ronda" },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */
