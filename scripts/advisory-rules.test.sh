@@ -9,9 +9,17 @@
 # WHAT IS WORTH PINNING DOWN, and why each case is here:
 #
 #   * every rule can FAIL. A check nobody has seen go red is not a check.
-#   * every rule can PASS on the shape the house actually writes, taken from
-#     real files in this repo. A rule that fires on correct code is worse than
-#     no rule: it gets switched off, and takes the other eight with it.
+#   * every rule can PASS on the shape the house actually writes. Where a case
+#     says so, the fixture is COPIED from a real migration here rather than
+#     written to satisfy the regex — a fixture invented alongside a rule agrees
+#     with it by construction, which is how the partner-guard rule came to be
+#     blind to 46 of the 81 migrations that create a policy while its own
+#     "written the house way" case passed. A rule that fires on correct code is
+#     worse than no rule: it gets switched off, and takes the others with it.
+#   * THESE TESTS ARE NOT THE ACCEPTANCE TEST. Run the rules across the last
+#     forty commits on master — everything there was reviewed and merged, so
+#     anything that fires is either real debt or a wrong rule. See
+#     docs/advisory-review.md, "The acceptance test".
 #   * the rules read ADDED LINES. A pull request that opens a file holding an
 #     old violation must stay green, or people learn to avoid the file.
 #   * a missing gh is a NOTE, not a failure. Half a check is not a red build.

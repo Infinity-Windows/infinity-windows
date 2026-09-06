@@ -68,9 +68,26 @@ the wrong file gets switched off.
 
 **Migrations are read whole**, because a table's row security is turned on ten
 lines below its `create table`. `scripts/lib/advisory-sql.awk` splits the file
-into statements first, tracking `$$` bodies, `'...'` literals and `--`
-comments — so a policy quoted inside a `comment on` string cannot stand in for a
-policy.
+into statements first, tracking `$$` bodies, `'...'` literals, `--` comments
+and `/* ... */` blocks — so a policy quoted inside a `comment on` string cannot
+stand in for a policy.
+
+What it can and cannot see is worth knowing before trusting an answer:
+
+- **A `do $$ ... $$;` block is read into.** That is how 49 migrations here
+  create their policies, so that a replay is a no-op. Blanking those bodies —
+  which is what the splitter did at first — made the partner-guard rule blind
+  to 46 of the 81 migrations that have ever created a policy, and it went red
+  on two merged ones that were correct.
+- **A `create function` body is still blanked whole.** Prose or dynamic SQL
+  inside one must not stand in for the real thing, and a differently-tagged
+  block (`$fn$ … $fn$`) nested inside a `do` block is skipped for the same
+  reason.
+- **`execute format('create policy …')` is invisible, and always will be.**
+  Four old migrations build their policies as strings. A text splitter cannot
+  honestly claim to read SQL that does not exist until run time, so those
+  files are simply not measured — which is a note's worth of information, not
+  a finding's.
 
 **Tests and vendored code are exempt.** A test asserts on the very shapes these
 rules forbid; vendored code is a port kept deliberately diffable.
@@ -102,6 +119,40 @@ scripts/advisory-rules.test.sh                         # the tests, offline
 `gh` is used for one half of one rule — whether another OPEN pull request has
 already claimed a migration number. Without `gh` that half prints a note and the
 rest still runs; a missing tool is never a red build.
+
+### The acceptance test
+
+The unit tests say each rule can go red and can stay green. They cannot say
+whether a rule is right about the code this repository actually contains — a
+fixture is written by the same person as the rule, and agrees with it. So the
+real acceptance test is the history:
+
+```bash
+for c in $(git log --format=%H -40 origin/master); do
+  scripts/advisory-rules.sh --base "$c^" --head "$c"
+done
+```
+
+Everything on `master` has been reviewed and merged, so anything that fires is
+either a genuine piece of debt or a rule that is wrong. Run it before changing
+a rule and again after.
+
+The first time it was run, it turned up **29 findings across 7 commits, and 20
+of them were false** — while every unit test passed. Two rules were the cause,
+and both are fixed here, each with a fixture copied from the migration that
+exposed it.
+
+It now reports **10 findings across 6 commits**, and every one is defensible:
+
+| What fires | How many | Is it right? |
+|---|---|---|
+| `spanish-copies-english` on `PDF`, `OSHA 10`, `No`, two brand names | 6 | Yes — they need `i18n-same-on-purpose`, which is the hatch working |
+| `photo-file-input` on #540's camera fallback | 1 | Yes now — that code predates `photo-input-on-purpose` and would carry it today |
+| `definer-without-search-path` on `mint_packages`, `add_supply`, `open_service_case` | 3 | **Yes, and this is real.** All three are SECURITY DEFINER with no pinned search path, on `master`, right now |
+
+That last row is the rules earning their place: three functions that ignore row
+security and let the schema search path be decided by whatever is in front of
+them. Worth a ticket, and this is how it was found.
 
 ### Making it required
 

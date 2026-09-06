@@ -168,6 +168,13 @@ jobs:
       # be shown going red on a broken fixture and green on the shape this repo
       # really writes. Offline: throwaway git repositories in a temp directory,
       # and a stubbed gh.
+      #
+      # THESE ARE NOT THE WHOLE PROOF, and it is worth knowing why. A fixture
+      # written beside a rule agrees with it: this suite was fully green while
+      # the rules were making 20 false claims about merged migrations. The
+      # acceptance test is running them across the last forty commits on
+      # master — docs/advisory-review.md says how, and it belongs in the hands
+      # of whoever changes a rule, not in CI, because it needs the history.
       - name: Test scripts/advisory-rules.sh
         shell: bash
         run: scripts/advisory-rules.test.sh
