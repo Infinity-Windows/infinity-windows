@@ -72,12 +72,15 @@ import type { TimeShift } from "../../lib/timeclock";
 
 let root: Root | null = null;
 let host: HTMLDivElement | null = null;
+/** The client behind the last mount, for reading what a sign wrote to it. */
+let lastQc: QueryClient | null = null;
 
 afterEach(() => {
   act(() => root?.unmount());
   host?.remove();
   root = null;
   host = null;
+  lastQc = null;
   completionHolder.current = null;
   clockInSpy.mockClear();
   submitSpy.mockClear();
@@ -132,6 +135,7 @@ function mount(seed: Seed = {}): HTMLElement {
   qc.setQueryData(["projects"], seed.projects ?? []);
   qc.setQueryData(["todayTalk"], seed.talk ?? null);
   qc.setQueryData(["toolboxToday", "me"], seed.toolboxDone ?? null);
+  lastQc = qc;
 
   host = document.createElement("div");
   document.body.appendChild(host);
@@ -487,6 +491,56 @@ describe("the clock-in block", () => {
       expect(submitSpy).toHaveBeenCalledTimes(1);
       expect(clockInSpy).toHaveBeenCalledTimes(1);
     } finally {
+      restore();
+    }
+  });
+
+  it("knows the talk is signed without a network read, so a punch refused offline still hands off with the picks", async () => {
+    // Signal drops between the signature landing and the punch: the refetch
+    // the sign kicks off never returns (offlineFirst pauses it), and the
+    // punch is refused. Before the cache write in ToolboxSignCard the block
+    // — and the sheet it hands off to — still read "unsigned" off the last
+    // fetched value, so the sheet opened with Start held and today's talk
+    // asking to be signed again: the punch could not even be queued
+    // (review, 2026-09-06).
+    const restore = stubCanvas();
+    const dispatch = vi.spyOn(window, "dispatchEvent");
+    submitSpy.mockImplementationOnce(async () => {
+      // From here on the "did I sign today?" read hangs forever.
+      completionHolder.current = new Promise(() => {});
+      return { id: "done1" } as unknown;
+    });
+    clockInSpy.mockRejectedValueOnce(new Error("Failed to fetch"));
+    try {
+      const el = mount({
+        costCodes: [CC],
+        recents: [recent("cc1")],
+        projects: [proj(["tracking"])],
+        talk: { id: "t1", title: "Ladders", body: "Three points of contact.", talk_date: "2026-09-06" },
+        toolboxDone: null,
+      });
+      act(() =>
+        el
+          .querySelector<HTMLButtonElement>(".clock-btn.primary.big")!
+          .dispatchEvent(new MouseEvent("click", { bubbles: true })),
+      );
+      fillSignCard(el);
+      await clickAndFlush(byText(el, "Sign today's talk")!);
+      await settle();
+
+      // The signed row is in the shared cache — the same key the sheet and
+      // the on-the-clock nag read — with no read having come back.
+      expect(lastQc!.getQueryData(["toolboxToday", "me"])).toEqual({ id: "done1" });
+      expect(el.querySelector("canvas.sig-canvas")).toBeNull();
+      // One punch tried, refused, and handed to the sheet with everything.
+      expect(clockInSpy).toHaveBeenCalledTimes(1);
+      const opened = dispatch.mock.calls
+        .map(([ev]) => ev as CustomEvent)
+        .filter((ev) => ev.type === "infinity:open-clock");
+      expect(opened).toHaveLength(1);
+      expect(opened[0].detail).toMatchObject({ projectId: "p1", costCodeId: "cc1", mode: "tracking" });
+    } finally {
+      dispatch.mockRestore();
       restore();
     }
   });

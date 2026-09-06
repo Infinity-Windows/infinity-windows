@@ -60,7 +60,7 @@ function todayLocalISO(): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-function mount(initialPick: ClockInPick | null): HTMLElement {
+function mount(initialPick: ClockInPick | null, opts: { talk?: unknown } = {}): HTMLElement {
   const qc = new QueryClient({
     defaultOptions: {
       queries: { retry: false, staleTime: Infinity, refetchOnMount: false, gcTime: Infinity },
@@ -77,7 +77,7 @@ function mount(initialPick: ClockInPick | null): HTMLElement {
   qc.setQueryData(["mySchedule", "me", today, today], [
     { id: "sched1", project_id: "p1", project: { job_code: "BLACK22", name: "Black Desert" } },
   ]);
-  qc.setQueryData(["todayTalk"], null);
+  qc.setQueryData(["todayTalk"], opts.talk ?? null);
   qc.setQueryData(["toolboxToday", "me"], { id: "done1" });
   qc.setQueryData(["myOpenings", "me"], []);
 
@@ -130,6 +130,24 @@ describe("the clock sheet opened with a carried pick", () => {
     // The schedule chip and the recent chip both name BLACK22, and neither is
     // the current one.
     expect(el.querySelector(".clock-chip.current")).toBeNull();
+    expect(el.querySelector<HTMLButtonElement>(".clock-btn.primary.big")!.disabled).toBe(false);
+  });
+
+  it("opens with Start live when the talk was signed on the landing a moment ago, even with no signal since", async () => {
+    // The hand-off's main case (review, 2026-09-06): the person signed in the
+    // block, the phone lost signal, the block's punch was refused. The sign
+    // card wrote the completion into the toolboxToday cache, and that — not a
+    // fresh read, which cannot happen offline — is what this sheet goes by.
+    // A talk exists today; the cache says it is signed; so no second sign
+    // card, and Start is the one tap left.
+    const el = mount(
+      { projectId: "p2", costCodeId: "cc2", note: null, mode: "tracking" },
+      { talk: { id: "t1", title: "Ladders", body: "Three points of contact.", talk_date: todayLocalISO() } },
+    );
+    await flush();
+    expect(el.querySelector("canvas.sig-canvas")).toBeNull();
+    expect(el.textContent).toContain("Today's toolbox talk is signed.");
+    expect(el.textContent).not.toContain("Sign today's toolbox talk above to clock in.");
     expect(el.querySelector<HTMLButtonElement>(".clock-btn.primary.big")!.disabled).toBe(false);
   });
 
