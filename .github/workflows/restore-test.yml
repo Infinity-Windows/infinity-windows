@@ -191,6 +191,9 @@ jobs:
           DIR: ${{ steps.fetch.outputs.dir }}
           PGPASSWORD: postgres
         run: |
+          # Noisy on purpose (see the header), so a failing psql must not end the
+          # step before the verifier gets to say what actually came back.
+          set +e
           set -uo pipefail
           url="postgresql://postgres@localhost:5432/postgres"
           errors=0
@@ -209,6 +212,10 @@ jobs:
           DIR: ${{ steps.fetch.outputs.dir }}
           PGPASSWORD: postgres
         run: |
+          # `set +e` deliberately: the step must survive a failing verifier long
+          # enough to record WHY it failed, or Slack gets a notification with no
+          # reason in it. The `exit $code` at the bottom is what fails the job.
+          set +e
           set -uo pipefail
           python3 scripts/restore_verify.py \
             --backup "$DIR" \

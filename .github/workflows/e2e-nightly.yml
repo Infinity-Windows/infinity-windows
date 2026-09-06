@@ -86,6 +86,11 @@ jobs:
       - name: Run the suite, then re-run anything red on its own
         id: run
         run: |
+          # `set +e` deliberately, and it matters: GitHub runs every step with
+          # `bash -e`, so without this the FIRST failing Playwright run would end
+          # the step and the isolated re-runs below — the entire point of this
+          # job — would never happen.
+          set +e
           set -uo pipefail
           log="$RUNNER_TEMP/e2e.log"
           npx playwright test --reporter=list,html > "$log" 2>&1
@@ -103,7 +108,7 @@ jobs:
           # colon is the path, so stopping at the colon keeps the file name and
           # nothing else — including when the test's own title mentions a spec.
           fails="$(grep -oE '^[[:space:]]+[0-9]+\)[^:]*\.spec\.ts' "$log" \
-                   | grep -oE '[A-Za-z0-9_-]+\.spec\.ts' | sort -u)"
+                   | grep -oE '[A-Za-z0-9_-]+\.spec\.ts' | sort -u || true)"
           if [ -z "$fails" ]; then
             echo "The run failed but named no spec — the harness itself broke."
             tail -40 "$log"
