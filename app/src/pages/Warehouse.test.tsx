@@ -372,3 +372,20 @@ describe("the yard (wave 3)", () => {
     }
   });
 });
+
+describe("jobs on the yard (the tally, reimagined)", () => {
+  it("tapping a job lights up the boxes holding its material", () => {
+    const p = packageRow({ status: "stored", container_id: "conex", project_id: "job-1", marks: ["16"] });
+    const el = mount({ packages: [p], locations: [], role: "installer" });
+    expect(el.textContent).toContain("Jobs with material");
+    expect(el.querySelector(".yard-box--glow")).toBeNull();
+    const chip = [...el.querySelectorAll("button.job-chip")].find((b) => b.textContent?.includes("BLACK22"));
+    click(chip);
+    expect(el.querySelector(".yard-box--glow")?.textContent).toContain("Conex 3");
+    // The job code is still the door to its materials ledger.
+    const link = chip?.querySelector("a");
+    expect(link?.getAttribute("href")).toContain("/warehouse/materials");
+    click(chip);
+    expect(el.querySelector(".yard-box--glow")).toBeNull();
+  });
+});

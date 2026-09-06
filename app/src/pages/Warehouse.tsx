@@ -42,8 +42,9 @@ import {
 } from "../lib/storage";
 import { DayRecapCard } from "../components/warehouse/DayRecapCard";
 import { dayRecap, localMidnightIso } from "../lib/warehouse/dayRecap";
-import { jobTallies, tallyLine } from "../lib/warehouse/jobTally";
-import { scopeHref } from "../lib/warehouse/materialsScope";
+import { jobTallies } from "../lib/warehouse/jobTally";
+import { boxesForJob, jobChips } from "../lib/warehouse/jobStrip";
+import { JobStrip } from "../components/warehouse/JobStrip";
 import { partitionTestPackages, testProjectIds } from "../lib/warehouse/testPartition";
 import { filterSuppliesByName, listSupplies, lowStockFirst, onHandLabel } from "../lib/ops";
 import { listTakeoffs } from "../lib/takeoffs";
@@ -82,6 +83,8 @@ export function Warehouse() {
   const [newContainer, setNewContainer] = useState(false);
   const [minting, setMinting] = useState(false);
   const [answer, setAnswer] = useState<FindAnswer | null>(null);
+  // A tapped job chip lights up the boxes holding its material.
+  const [jobKey, setJobKey] = useState<string | null>(null);
 
   useEffect(() => {
     void prefetchWarehousePack();
@@ -165,9 +168,15 @@ export function Warehouse() {
     if (answer.kind === "package") return glowFromHits([answer.hit]);
     return new Set<string>();
   }, [answer]);
+  const chips = useMemo(() => jobChips(jobTallies(real, jobCode)), [real, jobCode]);
+  const lit = useMemo(() => {
+    const chip = chips.find((c) => c.key === jobKey);
+    if (!chip) return glow;
+    return new Set([...glow, ...boxesForJob(chip, real)]);
+  }, [chips, jobKey, glow, real]);
   const tiles = useMemo(
-    () => yardTiles(boxes, real, jobCode, new Date(), glow),
-    [boxes, real, jobCode, glow],
+    () => yardTiles(boxes, real, jobCode, new Date(), lit),
+    [boxes, real, jobCode, lit],
   );
 
   // The next truck: the soonest expected delivery that has not arrived.
@@ -322,37 +331,10 @@ export function Warehouse() {
         </button>
       </div>
 
-      {/* Per-job unit tallies (owner ask, 2026-08-26): "Mad Moose 20/22 ·
-          2 remaining" — units are windows/doors, not boxes. Tapping a job
-          opens its materials ledger; waiting jobs included (wave M). */}
-      {packages.isSuccess &&
-        (() => {
-          const tallies = jobTallies(real, jobCode);
-          if (tallies.length === 0) return null;
-          return (
-            <div className="detail-card wh-card">
-              <h2 style={{ margin: "0 0 4px", fontSize: 15 }}>Jobs with material</h2>
-              <ul className="unit-list" style={{ margin: 0 }}>
-                {tallies.map((t) => (
-                  <li key={t.projectId ?? `pending:${t.label}`} className="wh-row">
-                    {t.projectId ? (
-                      <Link to={scopeHref({ projectId: t.projectId, pendingName: null })} className="link wh-row-title">
-                        {t.label}
-                      </Link>
-                    ) : (
-                      <Link to={scopeHref({ projectId: null, pendingName: t.label })} className="link wh-row-title">
-                        “{t.label}”
-                      </Link>
-                    )}
-                    <span className={t.remainingUnits === 0 ? "ok" : "warn-text"} style={{ fontVariantNumeric: "tabular-nums" }}>
-                      {tallyLine(t)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          );
-        })()}
+      {/* Jobs on the yard (owner ask 2026-09-06): the per-job unit tally,
+          drawn in the job's colour and tied to the picture — tap a job and
+          the boxes holding its material light up. */}
+      {packages.isSuccess && <JobStrip chips={chips} selected={jobKey} onSelect={setJobKey} />}
 
       <Explain id="wh-more" summary="More — today, out on jobs, supplies on the shelf" raw>
         {packages.isSuccess && movementsToday.isSuccess && deliveries.isSuccess && (
