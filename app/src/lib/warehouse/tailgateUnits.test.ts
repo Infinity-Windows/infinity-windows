@@ -73,7 +73,7 @@ describe("the truck as a whole", () => {
     expect(looseOnTruck(rows)).toEqual(["a"]);
   });
   it("says how much is here", () => {
-    expect(truckHeadline(rows)).toBe("2 of 3 arrived · 1 still missing");
+    expect(truckHeadline(rows)).toBe("2 of 3 pieces here · 1 still missing");
     expect(truckHeadline([])).toMatch(/Nothing expected/);
   });
 });

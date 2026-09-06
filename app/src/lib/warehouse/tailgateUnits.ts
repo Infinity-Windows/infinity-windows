@@ -106,5 +106,8 @@ export function truckHeadline(rows: readonly UnitRow[]): string {
   const here = rows.reduce((n, r) => n + r.arrived + r.stored, 0);
   const missing = total - here;
   if (total === 0) return "Nothing expected on this truck yet.";
-  return `${here} of ${total} arrived${missing > 0 ? ` · ${missing} still missing` : " · all here"}`;
+  // "pieces here", not "arrived": the delivery page's own header already
+  // says "N of M expected boxes arrived", and two lines saying the same
+  // words would read as a stutter (and trip a strict text match).
+  return `${here} of ${total} pieces here${missing > 0 ? ` · ${missing} still missing` : " · all here"}`;
 }

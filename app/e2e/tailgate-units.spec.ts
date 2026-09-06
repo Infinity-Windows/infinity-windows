@@ -58,7 +58,7 @@ test("tap a unit to arrive its pieces, then put everything away in one tap", asy
   });
 
   await page.goto(`/storage/d/${D}`);
-  await expect(page.getByText("0 of 5 arrived · 5 still missing")).toBeVisible();
+  await expect(page.getByText("0 of 5 pieces here · 5 still missing")).toBeVisible();
 
   // One row for the three identical 5050s, one for #8's two pieces.
   await expect(page.getByRole("button", { name: /Arrive Sunset Ridge 4 · #5050, 3 expected/ })).toBeVisible();
