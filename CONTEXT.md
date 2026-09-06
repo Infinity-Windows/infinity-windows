@@ -441,10 +441,21 @@ doors now: `award_install_points` (the offline install outbox, after
 finish_unit), `resolve_install_points` (QC's pass or callback, foreman+),
 `award_education_quiz` (the Learn tab). Reads did not change: the team
 ranking is still assembled in the browser out of everyone's confirmed rows,
-because that is what a leaderboard is. One payment per person per ref per
-kind is a unique index rather than a promise, so a retrying outbox cannot
-pay twice, and a resend is ignored in silence rather than refused — the
-queue is not wrong to try again.
+because that is what a leaderboard is. Install points are always filed
+**pending**: only QC confirms them, and nothing a phone says can skip that
+step.
+
+**One payment per install, not per unit** — a unique index over
+(person, ref, kind) makes it structural rather than a promise, so a
+retrying outbox cannot pay twice, and a resend is ignored in silence rather
+than refused: the queue is not wrong to try again. A **redo** is a
+different thing from a resend. A unit sent back by QC, or undone, returns
+to the work list and is installed again — a second `install_events` row,
+by people who did the work twice — and it pays again. The ledger row
+carries the install event it paid for, and that is what tells the two
+apart. The index is scoped to the five install kinds on purpose: summon
+points share this table, and answering a summon you cancelled and re-joined
+is allowed to land on the same ref twice.
 
 **New content only** — a glossary term pays the FIRST time a person
 answers it correctly and never again; the install-sequence quiz pays once,

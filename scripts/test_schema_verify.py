@@ -1012,6 +1012,64 @@ class TestPointsCapMigration(unittest.TestCase):
                 f"{fn} is never granted to the crew",
             )
 
+    def test_the_install_door_stores_one_spelling_of_the_window_id(self):
+        """points_ledger.ref is TEXT and Postgres reads 'A0EE…', '{a0ee…}' and
+        an unhyphenated uuid as the same window — three different strings. Held
+        raw, each spelling would miss the resend check, slip past the unique
+        index and pay the same install again, and QC (which looks a unit up by
+        the canonical id) would never reach the extra rows. So the function
+        casts once and uses the cast value for both the check and the write."""
+        body = _points_cap_sql().split(
+            "create or replace function public.award_install_points("
+        )[1].split("$$;")[0]
+        self.assertIn("v_ref := v_opening::text;", body)
+        self.assertIn("l.ref = v_ref", body)
+        self.assertNotIn("l.ref = p_ref", body, "the resend check still compares raw caller text")
+        insert = body.split("insert into points_ledger")[1].split(";")[0]
+        self.assertIn("v_ref", insert)
+        self.assertNotIn("p_ref", insert, "the ledger row still stores raw caller text")
+
+    def test_install_points_are_always_filed_pending(self):
+        """p_status came off a phone. 'confirmed' skipped QC outright and put
+        points on the leaderboard that a later callback could never take back,
+        because resolve_install_points only moves rows that are still pending.
+        The argument stays in the signature so an older build keeps working,
+        and its value is ignored."""
+        body = _points_cap_sql().split(
+            "create or replace function public.award_install_points("
+        )[1].split("$$;")[0]
+        insert = body.split("insert into points_ledger")[1].split(";")[0]
+        self.assertIn("'pending'", insert)
+        self.assertNotIn("p_status", insert, "the caller can still choose the status")
+
+    def test_a_unit_installed_again_after_an_undo_is_paid_again(self):
+        """undo_install and unsubmit_own_install void an opening's points and
+        send the unit back to the work list. Counting a voided row as
+        already-paid — with nothing to tell a retry from a redo — meant the
+        crew who installed it the second time earned nothing, silently and
+        permanently. The install event is what separates the two."""
+        body = _points_cap_sql().split(
+            "create or replace function public.award_install_points("
+        )[1].split("$$;")[0]
+        # The event id is loaded, written onto the row, and read back by the guard.
+        self.assertIn("e.voided_at is null", body,
+                      "points can still be paid against an install somebody took back")
+        self.assertIn("jsonb_build_object('event_id', v_event)", body)
+        self.assertIn("l.status <> 'void' or l.detail ->> 'event_id' = v_event::text", body)
+
+    def test_par_and_quality_have_to_have_been_earned(self):
+        """The amounts were always clamped, but nothing asked whether the rule
+        applied — so a bare install could claim all five kinds and 65 points.
+        These two the install event can answer, using the same comparisons
+        computeInstallPoints makes in the browser. 'photos' and 'teach'
+        deliberately cannot be checked here: the outbox awards points BEFORE it
+        uploads the media, so at that moment neither exists on the server."""
+        body = _points_cap_sql().split(
+            "create or replace function public.award_install_points("
+        )[1].split("$$;")[0]
+        self.assertIn("v_minutes <= v_estimate", body)
+        self.assertIn("v_grade >= 4", body)
+
     def test_qc_confirm_and_void_are_gated_at_foreman(self):
         body = _points_cap_sql().split(
             "create or replace function public.resolve_install_points("

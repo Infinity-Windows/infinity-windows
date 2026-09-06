@@ -15887,7 +15887,7 @@ alter table points_ledger add column if not exists detail jsonb;
 comment on column points_ledger.void_reason is
   'Why a row was voided, in a sentence, when something other than a QC callback voided it. Written by the 2026-09-05 backfill in this migration and by resolve_install_points; null on every row that was never voided.';
 comment on column points_ledger.detail is
-  'Free-form receipt for a row that stands for more than one thing — today only the Education quiz round, which carries {"keys": [...]}: the item keys that were newly credited and paid for in that round. Never read back for a total; points is the number that counts.';
+  'Free-form receipt for what a row stands for. An Education quiz round carries {"keys": [...]}, the item keys newly credited and paid for in that round. An install row carries {"event_id": "..."}, the install_events row it paid for — that is what lets award_install_points tell an outbox resend (same event, ignore it) from a unit undone and genuinely installed again (new event, pay it). Never read back for a total; points is the number that counts.';
 
 -- BACKFILL A (the incident). Every client-inserted Education quiz row — kind
 -- 'quiz' with a null ref — is voided. Video quiz rows carry a
@@ -16172,12 +16172,20 @@ revoke insert, update, delete on table education_credits from anon, authenticate
 -- Three things it will not do:
 --   * pay somebody who had nothing to do with the install — the caller has to
 --     be the person who filed the event or the person it was credited to;
---   * pay twice for one unit — a resend is ignored in silence, because the
---     outbox retries a whole install and the retry is not an error;
+--   * pay twice for one install — a resend is ignored in silence, because the
+--     outbox retries a whole install and the retry is not an error. "Twice for
+--     one install", not "twice for one unit": a unit that was undone and
+--     genuinely installed again is a NEW install_events row and is paid again.
+--     See the resend check below, which tells those two apart by event id;
 --   * pay more than the rule is worth — the amounts come off a phone, so each
 --     kind is clamped to POINT_RULES (app/src/lib/points.ts). SQL cannot import
 --     that TS constant, so it is kept in step by hand, the same arrangement
 --     submit_video_quiz already lives with.
+--
+-- p_status is a LEGACY ARGUMENT and its value is ignored. Install points are
+-- always filed pending; QC is the only thing that confirms them, through
+-- resolve_install_points, which is foreman-gated. It stayed in the signature
+-- so a phone still running the build that passes it keeps working.
 create or replace function public.award_install_points(
   p_ref text,
   p_entries jsonb,
@@ -16190,9 +16198,14 @@ set search_path = public, pg_temp
 as $$
 declare
   v_opening uuid;
+  v_ref text;
+  v_event uuid;
   v_filer uuid;
   v_credited uuid;
   v_payee uuid;
+  v_minutes int;
+  v_estimate int;
+  v_grade int;
   v_entry jsonb;
   v_kind text;
   v_points int;
@@ -16204,26 +16217,44 @@ begin
     raise exception 'Points are for the install crew.';
   end if;
 
-  if p_status is null or p_status not in ('pending', 'confirmed') then
-    raise exception 'Install points are filed as pending or confirmed.';
-  end if;
-
   begin
     v_opening := p_ref::uuid;
   exception when others then
     raise exception 'Install points have to name the window they were earned on.';
   end;
 
-  -- The most recent install filed on this opening, and the two people it can
-  -- possibly belong to. coalesce(credited_to, installer_id) is how every
+  -- ONE SPELLING OF THE ID, chosen here rather than taken from the caller.
+  -- points_ledger.ref is text, and Postgres accepts an upper-case, brace-
+  -- wrapped or hyphen-free uuid as the same value — so 'A0EE…', '{a0ee…}' and
+  -- 'a0ee…' all name this one window while comparing as three different
+  -- strings. Stored raw, each spelling would miss the resend check below,
+  -- slip past the unique index, and pay the same install again; the rows would
+  -- also be unreachable to QC, which looks a unit up by the canonical id.
+  -- uuid::text always renders lower-case and hyphenated, which is byte for
+  -- byte what the app has always written.
+  v_ref := v_opening::text;
+
+  -- The most recent LIVE install filed on this opening, and the two people it
+  -- can possibly belong to. coalesce(credited_to, installer_id) is how every
   -- per-person rollup in this database reads an install (20260982000000) —
   -- and it is exactly what the phone was computing for itself before today.
-  select e.installer_id, e.credited_to
-    into v_filer, v_credited
+  --
+  -- `voided_at is null` matters: undo_install and unsubmit_own_install keep the
+  -- event and stamp it voided rather than deleting it (20260718002000). An
+  -- outbox that comes back to life after an undo must not find that event and
+  -- pay for an install somebody took back.
+  select e.id, e.installer_id, e.credited_to,
+         e.minutes, e.estimate_minutes, e.quality_grade
+    into v_event, v_filer, v_credited, v_minutes, v_estimate, v_grade
     from install_events e
    where e.project_opening_id = v_opening
+     and e.voided_at is null
    order by e.created_at desc
    limit 1;
+
+  if v_event is null then
+    raise exception 'That window has no finished install to pay for yet.';
+  end if;
 
   if v_filer is null and v_credited is null then
     raise exception 'That window has no finished install to pay for yet.';
@@ -16258,18 +16289,54 @@ begin
       v_points := v_cap;
     end if;
 
-    -- A resend. Void rows count as already-paid on purpose: QC voiding a
-    -- callback's points must not be undone by the outbox trying again.
+    -- WAS IT ACTUALLY EARNED, for the two kinds the event can answer. The
+    -- amounts were already clamped; this asks the separate question of whether
+    -- the rule applies at all, so a bare install cannot claim the full set.
+    -- Both tests are the same ones computeInstallPoints makes in the browser
+    -- (app/src/lib/points.ts) against the same two numbers finish_unit stored,
+    -- so an honest phone is never paid less than before.
+    --
+    -- 'photos' and 'teach' are deliberately NOT checked here. The outbox
+    -- awards points BEFORE it hands the media to the upload queue
+    -- (installOutbox.ts: rpc → points → media), so at this moment the photos
+    -- and the voice memo genuinely do not exist yet on the server. Checking
+    -- them here would pay nothing for either, on every honest install.
+    if v_kind = 'par'
+       and not (v_minutes is not null and v_estimate is not null and v_minutes <= v_estimate)
+    then
+      continue;
+    end if;
+    if v_kind = 'quality' and not (v_grade is not null and v_grade >= 4) then
+      continue;
+    end if;
+
+    -- A RESEND, versus a redo. The outbox retries a whole install, so a second
+    -- call for an install already paid must be ignored in silence — including
+    -- when QC has since voided those points, which the retry must not undo.
+    -- But a unit that was sent back, fixed and finished again is a different
+    -- install: undo_install voids both the event and its points, and the crew
+    -- who did the work the second time have earned it.
+    --
+    -- The event id is what tells them apart. A row voided for an install that
+    -- is not this one no longer blocks payment; a row carrying THIS event id
+    -- does, whatever its status. Rows written before this migration carry no
+    -- event id, so a live one still blocks (a resend) and a voided one does
+    -- not (a redo) — which is the right answer in both cases.
     if exists (
       select 1 from points_ledger l
-       where l.profile_id = v_payee and l.ref = p_ref and l.kind = v_kind
+       where l.profile_id = v_payee
+         and l.ref = v_ref
+         and l.kind = v_kind
+         and (l.status <> 'void' or l.detail ->> 'event_id' = v_event::text)
     ) then
       v_skipped := v_skipped + 1;
       continue;
     end if;
 
-    insert into points_ledger (profile_id, kind, points, ref, status)
-    values (v_payee, v_kind, v_points, p_ref, p_status);
+    -- Always pending. QC confirms, and nothing a phone says can skip it.
+    insert into points_ledger (profile_id, kind, points, ref, status, detail)
+    values (v_payee, v_kind, v_points, v_ref, 'pending',
+            jsonb_build_object('event_id', v_event));
     v_written := v_written + 1;
   end loop;
 
@@ -16278,7 +16345,7 @@ end;
 $$;
 
 comment on function public.award_install_points(text, jsonb, text) is
-  'The install outbox''s only way to write points. p_ref is the opening id; the payee is coalesce(credited_to, installer_id) off the newest install_events row for it, and the caller must be one of those two people. Each kind pays at most once per opening (a resend is ignored silently — the outbox retries), and each amount is clamped to POINT_RULES. Returns {awarded, already_had}.';
+  'The install outbox''s only way to write points. p_ref is the opening id, stored in the one canonical spelling whatever spelling the caller used; the payee is coalesce(credited_to, installer_id) off the newest install_events row for it that has not been voided, and the caller must be one of those two people. Each kind pays at most once per INSTALL — a resend of the same install is ignored silently, a unit undone and installed again is a new event and pays again. Amounts are clamped to POINT_RULES, ''par'' and ''quality'' additionally have to have been earned, and every row is filed pending: p_status is a legacy argument and is ignored, because only QC confirms points. Returns {awarded, already_had}.';
 
 revoke all on function public.award_install_points(text, jsonb, text) from public, anon;
 grant execute on function public.award_install_points(text, jsonb, text) to authenticated;

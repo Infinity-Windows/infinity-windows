@@ -221,6 +221,16 @@ describe("awardPoints", () => {
     expect(JSON.stringify(args)).not.toContain("profile-1");
   });
 
+  // The server ignores this argument and files every install row pending, so a
+  // "confirmed" default here would be a caller saying something that does not
+  // happen — and on the build before this one it was a caller asking to skip
+  // QC entirely.
+  it("asks for pending when the caller does not say, because only QC confirms", async () => {
+    await awardPoints("profile-1", [{ kind: "install", points: 20 }], "opening-1");
+    const args = rpcCalls[0].args as Record<string, unknown>;
+    expect(args.p_status).toBe("pending");
+  });
+
   it("says nothing at all when there is nothing to award", async () => {
     await awardPoints("profile-1", [], "opening-1");
     expect(rpcCalls).toEqual([]);

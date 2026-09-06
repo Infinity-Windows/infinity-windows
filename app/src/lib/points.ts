@@ -109,7 +109,11 @@ export async function awardPoints(
   _profileId: string,
   entries: PointEntry[],
   ref?: string,
-  status: PointStatus = "confirmed",
+  // Pending, to match what the server does with this either way: it ignores
+  // the argument and files every install row pending, because QC is the only
+  // thing that confirms points. A "confirmed" default here would only be a
+  // lie about what happens next.
+  status: PointStatus = "pending",
 ): Promise<void> {
   if (entries.length === 0) return;
   if (!ref) {
