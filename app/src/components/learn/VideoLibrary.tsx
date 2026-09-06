@@ -103,7 +103,11 @@ function useWatchBeats(videoId: string) {
   );
 
   useEffect(() => stop, [stop]);
-  return { start, stop, beat };
+
+  // MEMOISED, and it matters: the player effect below depends on this object,
+  // and a fresh one every render would tear down and rebuild the YouTube player
+  // each time the card re-rendered — which it does the moment playback starts.
+  return useMemo(() => ({ start, stop, beat }), [start, stop, beat]);
 }
 
 /**

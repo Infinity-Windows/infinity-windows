@@ -95,10 +95,21 @@ export function LearningTime() {
         ))}
       </nav>
 
-      <div style={{ display: "flex", gap: 8, alignItems: "center", margin: "8px 0 12px" }}>
-        <button className="button-like" onClick={() => setByName((v) => !v)}>
-          {byName ? t("ltime.sort.name") : t("ltime.sort.time")}
-        </button>
+      {/* A select, not a toggle button: a button whose label is the CURRENT
+          sort reads as either a state or an action depending on who is looking
+          at it, and the rest of this app filters with selects (see Receipts). */}
+      <div className="filter-row" style={{ display: "flex", gap: 8, margin: "8px 0 12px" }}>
+        <select
+          // `select` is width:100% app-wide (it is a phone-first form control);
+          // one sort picker spanning a desktop page reads as a headline.
+          style={{ width: "auto", minWidth: 200, maxWidth: 280 }}
+          aria-label={t("ltime.sort.aria")}
+          value={byName ? "name" : "time"}
+          onChange={(e) => setByName(e.target.value === "name")}
+        >
+          <option value="time">{t("ltime.sort.time")}</option>
+          <option value="name">{t("ltime.sort.name")}</option>
+        </select>
       </div>
 
       {failed && (

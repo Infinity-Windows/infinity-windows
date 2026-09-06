@@ -16272,17 +16272,20 @@ begin
     raise exception 'That lesson is not in the library any more.';
   end if;
 
+  -- A position past the end of the lesson is a rounding artefact of the player,
+  -- not a discovery of extra video. Clamped BEFORE the read, deliberately:
+  -- nothing may run between a `select into` and its `not found` test, because
+  -- FOUND belongs to the last statement and a reader should not have to know
+  -- which statements set it.
+  if v_dur > 0 then
+    v_pos := least(v_pos, v_dur);
+  end if;
+
   select * into v_row
     from learning_video_watches
    where profile_id = v_me
      and video_id = p_video_id
      and session_id = p_session_id;
-
-  -- A position past the end of the lesson is a rounding artefact of the
-  -- player, not a discovery of extra video.
-  if v_dur > 0 then
-    v_pos := least(v_pos, v_dur);
-  end if;
 
   if not found then
     -- The opening beat of a visit. It banks no seconds — there is no marker to
@@ -16304,7 +16307,12 @@ begin
     return v_row;
   end if;
 
+  -- The length this beat did not report, remembered from the visit's first one.
   v_known_dur := coalesce(nullif(v_dur, 0), v_row.duration_seconds);
+  if v_known_dur is not null and v_known_dur > 0 then
+    v_pos := least(v_pos, v_known_dur);
+  end if;
+
   v_elapsed := greatest(0, floor(extract(epoch from (now() - v_row.last_seen_at)))::int);
   v_delta := v_pos - coalesce(v_row.last_position_s, v_pos);
 

@@ -14,6 +14,7 @@ import { dirname, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   COMPLETE_FRACTION,
+  MAX_BEAT_SECONDS,
   TWIN_CASES,
   WATCH_MIN_SECONDS,
   beatWindowSeconds,
@@ -173,5 +174,10 @@ describe("the SQL twin says the same thing", () => {
     expect(MIGRATION).toContain("least(15, v_elapsed, v_delta)");
     expect(MIGRATION).toContain(">= 0.9");
     expect(MIGRATION).toContain("v_elapsed * 2 + 2");
+    // And the floor the owner's page names on screen: a visit only counts as a
+    // watch once it got through half a minute.
+    expect(MIGRATION).toContain("filter (where sc.secs >= 30)");
+    expect(WATCH_MIN_SECONDS).toBe(30);
+    expect(MAX_BEAT_SECONDS).toBe(15);
   });
 });

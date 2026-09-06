@@ -2199,6 +2199,7 @@ export const CATALOG = {
   "ltime.range.week": { en: "This week", es: "Esta semana" },
   "ltime.range.fourWeeks": { en: "Last 4 weeks", es: "Últimas 4 semanas" },
   "ltime.range.all": { en: "All time", es: "Todo el tiempo" },
+  "ltime.sort.aria": { en: "Sort", es: "Ordenar" },
   "ltime.sort.time": { en: "Most time first", es: "Más tiempo primero" },
   "ltime.sort.name": { en: "By name", es: "Por nombre" },
   "ltime.loadError": {
