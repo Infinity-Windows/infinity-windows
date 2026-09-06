@@ -43,7 +43,7 @@ Infrastructure first, product features after, and 14 after 02.
 | 05 | "Download this job" offline preflight | resolved (PR pending) | M |
 | 06 | Weak-signal state, sync pill, diagnostics screen | resolved (PR pending) | M |
 | 07 | Auto-recover from a stale chunk after a deploy | resolved (PR pending) | S |
-| 08 | Every edge function must ask who is calling (CI check) | ready-for-agent | S |
+| 08 | Every edge function must ask who is calling (CI check) | resolved (PR pending) | S |
 | 09 | Generated Supabase types | ready-for-agent | M |
 | 10 | Lint checks that encode incidents | ready-for-agent | S |
 | 11 | Notification center with per-type preferences | needs-triage | M |

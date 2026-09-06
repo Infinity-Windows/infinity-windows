@@ -1,6 +1,6 @@
 # 08 — Every edge function must ask who is calling (CI check)
 
-Status: ready-for-agent
+Status: resolved
 Type: task
 Size: S
 
@@ -41,3 +41,18 @@ function do it. Sweeps (`pipeline-sweep`, `still-on-the-job-sweep`,
 - Removing the auth import from `extract-receipt` makes CI red with the file
   name and the sentence "add a caller check or list it as a system actor with
   a reason".
+
+## Comments
+
+2026-09-06 — Built. One correction to the ticket's premise: not all 23
+functions import `_shared/auth.ts` — five do not, on purpose: `gc-link` and
+`redeem-crew-invite` (the token / invite code is the credential) and the three
+sweeps (parameterless pg_cron targets with `verify_jwt = false`, every
+decision in a SQL claim). Those five are the first entries in
+`supabase/functions/_shared/SYSTEM_ACTORS.md`, each with its reason.
+`scripts/check-function-auth.sh` fails on a service-role function with no
+caller check and no entry, on a listed function that now checks (stale
+entry), on a listed function that no longer exists, and on a `verify_jwt =
+false` function off the list. Test with fixtures + a run against the real
+repo, both in `ci.yml`; `ci-runs-script-tests` counts it. CLAUDE.md gained
+one paragraph.
