@@ -87,9 +87,7 @@ export function BuildFactsPanel({
     onError: (e) => toastError(e),
   });
 
-  if (!isLead) return null;
-
-  const f = facts.data;
+  // Hooks before the early return below (rules-of-hooks).
   // Which pick-list answer is on screen for the two lists that have an
   // "Other" box. The save goes through the outbox, whose promise resolves
   // when the write is QUEUED, not when the server has it — so the refetch
@@ -98,6 +96,10 @@ export function BuildFactsPanel({
   // catches up the two agree.
   const [flashingChoice, setFlashingChoice] = useState<string | null>(null);
   const [fastenerChoice, setFastenerChoice] = useState<string | null>(null);
+
+  if (!isLead) return null;
+
+  const f = facts.data;
   const flashingShown = flashingChoice ?? f?.flashing_system ?? "";
   const fastenerShown = fastenerChoice ?? f?.fastener_type ?? "";
   // Remounts every input when the stored row actually changes (a seed from
