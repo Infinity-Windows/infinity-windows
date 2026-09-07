@@ -12580,3 +12580,24 @@ button.stage-chip {
 .green-light-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .green-light-label { font-size: 14px; }
 .green-light-who { font-size: 12px; color: var(--muted); }
+
+/* Job facts on the unit sheet (S5): a compact read-only report, not a form —
+   no inputs, so no 48px control minimum applies here. One row per fact:
+   label small and muted, value normal weight, both left-aligned. */
+.unit-facts-card { display: flex; flex-direction: column; gap: 2px; }
+.unit-facts-field { padding: 5px 0; }
+.unit-facts-field-label {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 1px;
+}
+.unit-facts-field-value {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  line-height: 1.4;
+}
+.unit-facts-wins { font-weight: 400; color: var(--muted); font-size: 13px; }
+.unit-facts-empty { margin-top: 4px; }

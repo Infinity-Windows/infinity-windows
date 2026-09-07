@@ -4481,6 +4481,25 @@ export const CATALOG = {
   "planPackages.howManyAria": { en: "How many packages for window {mark}", es: "Cuántos paquetes para la ventana {mark}" },
   "planPackages.suggestedFromModel": { en: "(suggested from the model)", es: "(sugerido por el modelo)" },
   "planPackages.mint": { en: "Mint", es: "Emitir" },
+  // Job facts on the unit sheet (S5, ADR-0011): the read-only card every
+  // crew role sees under the spec card. Field labels reuse buildFacts.field.*
+  // and the pick-list labels above — these are only what the write-side card
+  // never needed: the empty state, the elevation note's generic label (the
+  // specific buildFacts.field.note* labels are reused instead when the
+  // elevation can't be determined and every note has to be shown), the
+  // fastener spacing phrase, and the sentence for when a unit's own spec
+  // overrides the job's set depth.
+  "unitFacts.empty": {
+    en: "No job facts yet. Ask your foreman.",
+    es: "Todavía no hay datos del trabajo. Pregúntale a tu capataz.",
+  },
+  "unitFacts.showMe": { en: "Show me", es: "Muéstrame" },
+  "unitFacts.field.elevationNote": { en: "Elevation note", es: "Nota de la fachada" },
+  "unitFacts.fastener.every": { en: "every {spacing}", es: "cada {spacing}" },
+  "unitFacts.setDepth.specWins": {
+    en: "This unit's spec says {value}; it wins.",
+    es: "La ficha de esta unidad dice {value}; esa es la que vale.",
+  },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */
