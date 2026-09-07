@@ -245,12 +245,19 @@ describe("menuForRole (Horizon grouped menu)", () => {
     expect(ownerHome?.label).toBe("Home");
   });
 
-  it("always renders the Time tracking pill (clock action) for every role", () => {
-    for (const role of ["installer", "foreman", "supervisor", "owner"] as const) {
+  it("always renders the Time tracking pill (clock action) for every manager role", () => {
+    // S6 regrouped the installer drawer into Work/Me/Help — "My timecard"
+    // moved into Me and the standalone pill (with the open-clock action)
+    // came out, since the bottom bar's Clock tab already opens the same
+    // overlay for an installer (bottomBarForRole, `{ kind: "clock" }`) and a
+    // drawer that opened it too was one door doing the same job twice.
+    // Managers, who never got the S6 regroup, keep the pill unchanged.
+    for (const role of ["foreman", "supervisor", "owner"] as const) {
       const pill = menuForRole(role).find((s) => s.title === "Time tracking");
       expect(pill?.pill, `Time tracking pill missing for ${role}`).toBe(true);
       expect(pill?.items.some((i) => i.action === "open-clock")).toBe(true);
     }
+    expect(menuForRole("installer").find((s) => s.title === "Time tracking")).toBeUndefined();
   });
 
   it("hides the Business pill from installers but shows it to managers", () => {
@@ -276,13 +283,15 @@ describe("menuForRole (Horizon grouped menu)", () => {
     expect(flatten("owner").map((i) => i.to)).toContain("/admin");
   });
 
-  it("labels Ask canonically in the manager menu and drops it from the installer drawer", () => {
-    for (const role of ["foreman", "supervisor", "owner"] as const) {
+  it("labels Ask canonically everywhere, including the installer drawer's Help group (S6)", () => {
+    // Installers still reach Ask one tap away on the bottom bar too — the
+    // drawer's Help row (S6's regroup) is a second door to the same place,
+    // not a duplicate to prune, since somebody already in the drawer looking
+    // for help shouldn't have to back out to find it.
+    for (const role of ["installer", "foreman", "supervisor", "owner"] as const) {
       const ai = flatten(role).find((i) => i.to === "/ask");
       expect(ai?.label, `Ask missing for ${role}`).toBe("Ask");
     }
-    // Installers reach Ask on the bottom bar, so it's not duplicated in the drawer.
-    expect(flatten("installer").map((i) => i.to)).not.toContain("/ask");
   });
 
   it("surfaces My Work and Photos in the manager menu (drawer/bottom-bar parity)", () => {
@@ -291,15 +300,31 @@ describe("menuForRole (Horizon grouped menu)", () => {
     expect(tos).toContain("/photos");
   });
 
-  it("trims the installer drawer to a daily loop plus a collapsible More, minus Scan/Ask", () => {
+  it("groups the installer drawer into Work / Me / Help, minus Scan (S6)", () => {
     const sections = menuForRole("installer");
-    const tos = sections.flatMap((s) => s.items).map((i) => i.to);
-    expect(tos).not.toContain("/scan");
-    expect(tos).not.toContain("/ask");
-    const more = sections.find((s) => s.title === "More");
-    expect(more?.collapsible).toBe(true);
-    expect(more?.defaultOpen).toBe(false);
-    expect((more?.items.length ?? 0) > 0).toBe(true);
+    expect(sections.map((s) => s.title)).toEqual(["Work", "Me", "Help"]);
+    // Scan has no door anywhere in the drawer — it's a Capture-sheet tile.
+    expect(sections.flatMap((s) => s.items).map((i) => i.to)).not.toContain("/scan");
+
+    const byTitle = (title: string) =>
+      (sections.find((s) => s.title === title)?.items ?? []).map((i) => i.to);
+    expect(byTitle("Work")).toEqual(["/", "/projects", "/my-schedule", "/warehouse", "/supplies"]);
+    expect(byTitle("Me")).toEqual([
+      "/timecard",
+      "/points",
+      "/learn",
+      "/safety",
+      "/travel",
+      "/photos",
+    ]);
+    expect(byTitle("Help")).toEqual([
+      "/ask",
+      "/suggestions",
+      "/stuck",
+      "/diagnostics",
+      "/settings",
+      "/notifications",
+    ]);
   });
 
   it("renders the regrouped Horizon section names", () => {
@@ -384,12 +409,13 @@ describe("every NAV destination has a door", () => {
     // Warehouse ticket 08: the eight warehouse rows collapsed to one page.
     // These are NOT orphans — /warehouse links every one of them from the
     // section it belongs to (tagging and receiving under "Coming in", the
-    // containers under "In storage", check-out under "Going out", supplies
-    // and counting under their own sections, and the unit-system tools
-    // under "Other tools"). They lost their menu rows, not their doors.
+    // containers under "In storage", check-out under "Going out", and the
+    // unit-system tools under "Other tools"). They lost their menu rows, not
+    // their doors. (/supplies came off this list in S6: the installer Work
+    // group names it as its own row now — see INSTALLER_ONLY_ITEMS in
+    // nav.ts. Managers still reach it only through /warehouse.)
     "/storage",
     "/receive",
-    "/supplies",
     // Ticket 08b: the arrival check is reached from the warehouse page's
     // Going out section. It is an occasional damage report, not a daily
     // destination, and a menu row would oversell it.
