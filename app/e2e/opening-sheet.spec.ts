@@ -533,6 +533,8 @@ test("Redo: filing a redo fires press_redo, and the confirmation never wears the
   });
 
   await page.goto(`/projects/${str(o.project_id)}/opening/${str(o.id)}`);
+  // Redo lives under the sheet's "More" fold now (S7) — open it first.
+  await page.locator(".sheet-more > summary").click();
   await page.getByRole("button", { name: /Redo this window/ }).click();
   await page
     .getByPlaceholder(/failed inspection/)

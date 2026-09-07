@@ -47,8 +47,10 @@ test("Block: preset reason fires block_unit with the chain target", async ({
 
   await page.goto(`/projects/${BLACK22.projectId}/opening/${opening.id}`);
   // work_started_at means the timer is live; the stage tabs jump straight
-  // to the install stage where the Block exit lives.
+  // to the install stage where the Block exit lives. Block folds under
+  // "More" now (S7) — open it first.
   await page.getByRole("button", { name: "2. Install" }).click();
+  await page.locator(".sheet-more > summary").click();
   await expect(
     page.getByRole("button", { name: /Blocked — can't continue/ }),
   ).toBeVisible({ timeout: 30_000 });

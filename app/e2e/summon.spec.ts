@@ -81,6 +81,9 @@ test("a live summon renders on the sheet and Answer fires the RPC", async ({
   });
 
   await page.goto(`/projects/${BLACK22.projectId}/opening/${opening.id}`);
+  // The Check stage folds Call for hands / the summon panel under "More"
+  // now (S7) — open it first.
+  await page.locator(".sheet-more > summary").click();
   await expect(page.getByText(/Summon — 0\/3/)).toBeVisible({ timeout: 30_000 });
 
   await page.getByRole("button", { name: /Answer — help carry/ }).click();
@@ -218,6 +221,9 @@ test("Can't help fires the decline RPC and the name shows in the can't-come line
   });
 
   await page.goto(`/projects/${BLACK22.projectId}/opening/${opening.id}`);
+  // The Check stage folds Call for hands / the summon panel under "More"
+  // now (S7) — open it first.
+  await page.locator(".sheet-more > summary").click();
   await expect(page.getByText(/Summon — 0\/3/)).toBeVisible({ timeout: 30_000 });
 
   await page.getByRole("button", { name: "Can't help", exact: true }).click();
