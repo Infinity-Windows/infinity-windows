@@ -68,6 +68,7 @@ const OP_LABEL_KEY: Record<OutboxOp, TKey> = {
   // or a foreman would go looking for a receipt that is sitting on the table.
   receipt_document_upload: "stuck.op.receiptDocumentUpload",
   video_quiz_submit: "stuck.op.videoQuizSubmit",
+  save_build_facts: "stuck.op.saveBuildFacts",
 };
 
 /**

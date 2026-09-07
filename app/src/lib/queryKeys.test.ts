@@ -78,7 +78,11 @@ function usedRoots(): Map<string, string> {
 // assertion on OFFLINE_KEY_ROOTS ever fails, it means the registry changed
 // what the persister keeps — compare against this list to see whether that
 // was intended.
+//
+// +1 since then: "buildFacts" (S4, job facts) — the job facts card reads
+// offline the same as the rest of the unit sheet.
 const EXPECTED_OFFLINE_ROOTS = [
+  "buildFacts",
   "projects",
   "projectsAll",
   "openings",

@@ -1237,6 +1237,38 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
     }
   };
 
+  // S4 (job facts): one field of project_build_facts, saved through
+  // upsert_build_facts. The rank check and the column whitelist both live in
+  // the RPC body — this handler only has to get the patch there and translate
+  // a rejection into something a foreman standing at the truck can read.
+  const saveBuildFacts: OpHandler = async (entry) => {
+    const p = entry.payload;
+    const projectId = str(p.projectId);
+    const patch =
+      p.patch && typeof p.patch === "object" && !Array.isArray(p.patch)
+        ? (p.patch as Record<string, unknown>)
+        : null;
+    if (!projectId || !patch) {
+      throw tagPermanent(new Error("This job fact is missing its job or its field"));
+    }
+    const { error } = await supabase.rpc("upsert_build_facts", {
+      p_project_id: projectId,
+      p_patch: patch,
+    });
+    if (error) {
+      // "Only a foreman or above" / "has no field called" / "does not exist":
+      // a rank problem, a bad key, or a bad job id are never fixed by a retry.
+      if (
+        /only a foreman or above|has no field called|does not exist|is inset, outset|stucco, rock/i.test(
+          errorMessage(error),
+        )
+      ) {
+        throw tagPermanent(error as Error);
+      }
+      throw missingGuard(error, "job fact");
+    }
+  };
+
   return {
     clock_in: clockIn,
     clock_out: clockOut,
@@ -1263,6 +1295,7 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
     stage_packages: stagePackages,
     move_container: moveContainer,
     issue_photo_upload: issuePhoto,
+    save_build_facts: saveBuildFacts,
   } satisfies OpHandlers;
 }
 

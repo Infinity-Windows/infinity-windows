@@ -791,6 +791,39 @@ Forge, and the wrong name on an email is the kind of small wrong thing that
 makes somebody wonder who they are dealing with. The partner wall's own STG
 branding is a different thing and this wave does not touch it.
 
+## Job facts and the green-light checklist
+
+Settled 2026-09-06, S4 of the installer operating system
+(`.scratch/installer-os/installer-os-spec.md`, review recommendations 1 + 6).
+See ADR-0011.
+
+**Job facts** — the job-level build answers a foreman records once so nobody
+on the crew has to ask twice: exterior finish, set depth, flashing system,
+fasteners, sill pan, site rules, the GC's contact, and a note per elevation
+(`project_build_facts`, one row per job). Filled in over time, one field at a
+time, through `upsert_build_facts`. Every signed-in crew role reads it — an
+installer wants to know it's stucco and outset just as much as the foreman
+who filed it — and a partner login never does (THE WALL). Job facts is the
+job's DEFAULT answer; the per-unit spec (`project_mark_specs.extra`) stays
+authoritative for what actually gets installed at one opening, and a unit
+whose own spec disagrees says so and wins. The first write on a job with a GC
+check-in on file seeds set depth, the exterior note and the GC contact from
+it — the builder already told us once.
+
+**Green-light checklist** — the itemised list behind a job's ready state:
+six questions (`green_light_items`), computed fresh from the tables that
+already hold each answer rather than kept in a table of its own — a planset
+on file and extracted, exterior finish and set depth recorded, the materials
+ETA ahead of the crew's first day, the GC contact and site rules recorded, a
+crew and truck assigned for day one, and a toolbox talk pinned to that
+morning. WARNS, NEVER BLOCKS: the manual flip of `ready_state` to `ready` is
+refused while any item is open, in one plain sentence naming them, and
+nothing else about the job — clocking in, installing, filing a receipt — is
+gated by it. A supervisor's Home and Heartbeat both surface a job's open
+count under "Awaiting you". Not the same thing as `projects.green_light` (an
+older, unrelated supervisor-set go/no-go toggle shown on Heartbeat) — two
+different ideas that happen to share a word.
+
 ## Scope at a glance
 
 Settled 2026-09-03, wave X (transcripts program, Q1 — grilled and approved;

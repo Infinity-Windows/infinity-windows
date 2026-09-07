@@ -2570,6 +2570,7 @@ export const CATALOG = {
   },
   "signin.role.installer": { en: "Installer", es: "Instalador" },
   "signin.role.foreman": { en: "Foreman", es: "Capataz" },
+  // i18n-same-on-purpose: "supervisor" is the same word in Spanish.
   "signin.role.supervisor": { en: "Supervisor", es: "Supervisor" },
   "signin.submitting": { en: "Submitting...", es: "Enviando..." },
   "signin.submitRequest": { en: "Submit request", es: "Enviar solicitud" },
@@ -2682,6 +2683,8 @@ export const CATALOG = {
     en: "{count} packages — tap where they go",
     es: "{count} paquetes — toca dónde van",
   },
+  // i18n-same-on-purpose: "conex" is the crew's own word in both languages
+  // (CONTEXT.md) — a shipping container used as storage, not an English noun.
   "scan.conex": { en: "conex", es: "conex" },
   "scan.insideCount": { en: "{n} inside", es: "{n} adentro" },
   "scan.back": { en: "Back", es: "Atrás" },
@@ -2826,7 +2829,7 @@ export const CATALOG = {
   "timecard.previous": { en: "Previous", es: "Anterior" },
   "timecard.next": { en: "Next", es: "Siguiente" },
   "timecard.jumpToNow": { en: "Jump back to now", es: "Volver a hoy" },
-  "timecard.regular": { en: "Regular {h}", es: "Regular {h}" },
+  "timecard.regular": { en: "Regular {h}", es: "Regulares {h}" },
   "timecard.overtime": { en: "Overtime {h}", es: "Tiempo extra {h}" },
   "timecard.doubleTime": { en: "Double {h}", es: "Doble {h}" },
   "timecard.onBreaksExcluded": { en: "{h} on breaks (excluded)", es: "{h} en descansos (no cuentan)" },
@@ -2875,6 +2878,8 @@ export const CATALOG = {
   "timecard.someone": { en: "someone", es: "alguien" },
   "timecard.removedBy": { en: "Removed by {name}", es: "Eliminado por {name}" },
   "timecard.removed": { en: "Removed", es: "Eliminado" },
+  // i18n-same-on-purpose: punctuation around an interpolated value, no words
+  // of its own to translate.
   "timecard.removedReason": { en: ": “{reason}”", es: ": “{reason}”" },
   "timecard.restoring": { en: "Restoring…", es: "Restaurando…" },
   "timecard.restore": { en: "Restore", es: "Restaurar" },
@@ -3037,6 +3042,7 @@ export const CATALOG = {
   "travelLodging.noLodging": { en: "No lodging yet.", es: "Todavía no hay hospedaje." },
   "travelLodging.editLodging": { en: "Edit lodging", es: "Editar hospedaje" },
   "travelLodging.deleteLodging": { en: "Delete lodging", es: "Eliminar hospedaje" },
+  // i18n-same-on-purpose: "Wi-Fi" is the same brand term in Spanish.
   "travelLodging.wifi": { en: "Wi-Fi", es: "Wi-Fi" },
   "travelLodging.wifiPassword": { en: "Wi-Fi password", es: "Contraseña de Wi-Fi" },
   "travelLodging.doorLockboxCode": { en: "Door / lockbox code", es: "Código de puerta / caja de seguridad" },
@@ -3150,6 +3156,7 @@ export const CATALOG = {
   "suggestions.hideResolved": { en: "Hide resolved", es: "Ocultar resueltos" },
   "suggestions.showResolved": { en: "Show resolved", es: "Mostrar resueltos" },
   "suggestions.broken": { en: "Broken", es: "Roto" },
+  // i18n-same-on-purpose: "idea" is spelled the same in Spanish.
   "suggestions.idea": { en: "Idea", es: "Idea" },
   "suggestions.someone": { en: "someone", es: "alguien" },
   "suggestions.resolved": { en: "resolved", es: "resuelto" },
@@ -3312,6 +3319,10 @@ export const CATALOG = {
   "stuck.queuedHrAgo": { en: "Queued {hr} hr ago", es: "En espera desde hace {hr} h" },
   "stuck.queuedDayAgo": { en: "Queued 1 day ago", es: "En espera desde hace 1 día" },
   "stuck.queuedDaysAgo": { en: "Queued {days} days ago", es: "En espera desde hace {days} días" },
+  // Added post-merge with #583 (job facts / S4), which introduced this
+  // OutboxOp — OP_LABEL_KEY's exhaustive Record<OutboxOp, TKey> would not
+  // compile without an entry for it.
+  "stuck.op.saveBuildFacts": { en: "Job fact", es: "Dato del trabajo" },
   // ---- Supplies data helpers (installer-spanish-first-fourteen) --------
   // lib/ops.ts's onHandLabel/supplyHomeLabel are shared with Warehouse.tsx
   // (out of scope, on the allow-list) — `t` defaults to English so its
@@ -3408,6 +3419,8 @@ export const CATALOG = {
   "takeoffs.line.requested": { en: "Requested — waiting on the warehouse", es: "Solicitado — esperando al almacén" },
   "takeoffs.line.acknowledged": { en: "In the works", es: "En proceso" },
   "takeoffs.line.acknowledgedEta": { en: "In the works — {eta}{note}", es: "En proceso — {eta}{note}" },
+  // i18n-same-on-purpose: punctuation around an interpolated value, no words
+  // of its own to translate.
   "takeoffs.line.etaNote": { en: " ({note})", es: " ({note})" },
   "takeoffs.line.ready": { en: "Ready for pickup", es: "Listo para recoger" },
   "takeoffs.line.pickedUp": { en: "Picked up — supplies are on the job's tab", es: "Recogido — los suministros están en la cuenta del trabajo" },
@@ -3474,6 +3487,96 @@ export const CATALOG = {
   "takeoffs.requestIt": { en: "Request it", es: "Solicitarlo" },
   "takeoffs.itsBuiltMarkReady": { en: "It's built — mark ready", es: "Ya está armado — marcar listo" },
   "takeoffs.cancel": { en: "Cancel", es: "Cancelar" },
+
+  // ---- S4 — Job facts and the green-light checklist (2026-09-06) ----------
+  // The card lives on a job's Overview tab (foreman+) and reads through
+  // app/src/lib/install/buildFacts.ts. See docs/adr/0011.
+  "buildFacts.title": { en: "Job facts", es: "Datos del trabajo" },
+  "buildFacts.intro": {
+    en: "Record these once and the whole crew stops having to ask.",
+    es: "Anota esto una vez y el resto del equipo deja de tener que preguntar.",
+  },
+  "buildFacts.saved": { en: "Job facts saved.", es: "Datos del trabajo guardados." },
+  "buildFacts.saveError": {
+    en: "That field didn't save. It's queued and will try again with signal.",
+    es: "Ese campo no se guardó. Está en espera y se reintentará con señal.",
+  },
+  "buildFacts.empty": {
+    en: "No job facts yet. Tap a field below to add one.",
+    es: "Todavía no hay datos del trabajo. Toca un campo abajo para agregar uno.",
+  },
+
+  "buildFacts.field.exteriorFinish": { en: "Exterior finish", es: "Acabado exterior" },
+  "buildFacts.field.exteriorNote": { en: "Exterior note", es: "Nota del exterior" },
+  "buildFacts.exteriorFinish.stucco": { en: "Stucco", es: "Estuco" },
+  "buildFacts.exteriorFinish.rock": { en: "Rock", es: "Piedra" },
+  "buildFacts.exteriorFinish.siding": { en: "Siding", es: "Revestimiento" },
+  "buildFacts.exteriorFinish.brick": { en: "Brick", es: "Ladrillo" },
+  "buildFacts.exteriorFinish.other": { en: "Other", es: "Otro" },
+
+  "buildFacts.field.setDepth": { en: "Set depth", es: "Profundidad de colocación" },
+  "buildFacts.field.setDepthInches": { en: "Set depth (inches)", es: "Profundidad (pulgadas)" },
+  "buildFacts.setDepth.inset": { en: "Inset", es: "Empotrado (inset)" },
+  "buildFacts.setDepth.outset": { en: "Outset", es: "Sobrepuesto (outset)" },
+  "buildFacts.setDepth.unknown": { en: "Unknown", es: "No se sabe" },
+
+  "buildFacts.field.flashingSystem": { en: "Flashing system", es: "Sistema de tapajuntas" },
+  "buildFacts.field.flashingNote": { en: "Flashing note", es: "Nota de tapajuntas" },
+  "buildFacts.flashingSystem.butylTape": { en: "Butyl tape", es: "Cinta de butilo" },
+  "buildFacts.flashingSystem.paperFlashing": { en: "Paper flashing", es: "Papel de tapajuntas" },
+  "buildFacts.flashingSystem.fluidApplied": { en: "Fluid-applied", es: "Aplicado en líquido" },
+  "buildFacts.flashingSystem.other": { en: "Other", es: "Otro" },
+
+  "buildFacts.field.fastenerType": { en: "Fastener", es: "Sujetador" },
+  "buildFacts.field.fastenerLength": { en: "Fastener length (in)", es: "Largo del sujetador (pulg)" },
+  "buildFacts.field.fastenerSpacing": { en: "Fastener spacing (in)", es: "Espaciado del sujetador (pulg)" },
+  "buildFacts.field.fastenerNote": { en: "Fastener note", es: "Nota de sujetadores" },
+  "buildFacts.fastenerType.flangeScrew": { en: "Flange screw", es: "Tornillo de aleta" },
+  "buildFacts.fastenerType.jambScrew": { en: "Jamb screw", es: "Tornillo de jamba" },
+  "buildFacts.fastenerType.concreteScrew": { en: "Concrete screw", es: "Tornillo para concreto" },
+  "buildFacts.fastenerType.other": { en: "Other", es: "Otro" },
+
+  "buildFacts.field.sillPan": { en: "Sill pan", es: "Bandeja del antepecho" },
+  "buildFacts.field.sillPanType": { en: "Sill pan type", es: "Tipo de bandeja" },
+  "buildFacts.sillPan.required": { en: "Required", es: "Se requiere" },
+  "buildFacts.sillPan.notRequired": { en: "Not required", es: "No se requiere" },
+  "buildFacts.sillPan.unknown": { en: "Unknown", es: "No se sabe" },
+  // i18n-same-on-purpose: "metal" is the same word in Spanish.
+  "buildFacts.sillPanType.metal": { en: "Metal", es: "Metal" },
+  // i18n-same-on-purpose: PVC is the same acronym in Spanish.
+  "buildFacts.sillPanType.pvc": { en: "PVC", es: "PVC" },
+  "buildFacts.sillPanType.fluid": { en: "Fluid-applied", es: "Aplicado en líquido" },
+  "buildFacts.sillPanType.tape": { en: "Tape", es: "Cinta" },
+  "buildFacts.sillPanType.none": { en: "None", es: "Ninguno" },
+
+  "buildFacts.field.siteRules": { en: "Site rules", es: "Reglas del sitio" },
+  "buildFacts.field.gcContactName": { en: "GC contact", es: "Contacto del GC" },
+  "buildFacts.field.gcContactPhone": { en: "GC phone", es: "Teléfono del GC" },
+  "buildFacts.field.noteNorth": { en: "North elevation note", es: "Nota de la fachada norte" },
+  "buildFacts.field.noteSouth": { en: "South elevation note", es: "Nota de la fachada sur" },
+  "buildFacts.field.noteEast": { en: "East elevation note", es: "Nota de la fachada este" },
+  "buildFacts.field.noteWest": { en: "West elevation note", es: "Nota de la fachada oeste" },
+
+  // The green-light checklist (supervisor+, above the fields). Item labels
+  // themselves come back from the server (green_light_items.label_en) since
+  // the six sources live in SQL — only the chrome around the list is here.
+  "buildFacts.checklist.title": { en: "Green light checklist", es: "Lista de luz verde" },
+  "buildFacts.checklist.intro": {
+    en: "Warns, never blocks — the job runs either way.",
+    es: "Advierte, nunca bloquea — el trabajo sigue de todas formas.",
+  },
+  "buildFacts.checklist.who": { en: "Who answers: {who}", es: "Quién responde: {who}" },
+  "buildFacts.checklist.answered": { en: "Answered", es: "Contestado" },
+  "buildFacts.checklist.open": { en: "Open", es: "Pendiente" },
+  "buildFacts.who.foreman": { en: "foreman", es: "capataz" },
+  // i18n-same-on-purpose: "supervisor" is the same word in Spanish.
+  "buildFacts.who.supervisor": { en: "supervisor", es: "supervisor" },
+
+  // The supervisor's "Awaiting you" row on Home and Heartbeat (S4).
+  "home.awaitingYou.greenLight": {
+    en: "{job} · {count} green-light items open",
+    es: "{job} · {count} elementos de luz verde pendientes",
+  },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */
