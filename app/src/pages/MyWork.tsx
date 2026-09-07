@@ -440,6 +440,11 @@ export function MyWork() {
       )}
 
       <LogTodayChip />
+      {/* Wave U, U2: the end-of-day door for the clocked-in installer — the
+          person who just filmed a unit going in is standing on this screen.
+          Above the fold while a shift is open (S6 gate red 2026-09-07 caught
+          it hidden in the More fold); folds away when nobody is on the clock. */}
+      {Boolean(openShift.data) && <SendRecordingButton />}
 
       {Boolean(openShift.data) && todayAssignment && (
         <div className="today-strip home-card">
@@ -729,13 +734,17 @@ export function MyWork() {
           <RoleMaps />
         </div>
 
-        <div className="mywork-more-section">
-          <h2>{t("mywork.more.sendRecording")}</h2>
-          {/* Wave U, U2: on the job screen, where somebody who just filmed a
-              unit going in is standing. It names the job they are clocked
-              into. */}
-          <SendRecordingButton />
-        </div>
+        {/* Wave U, U2: "Send a recording" is the end-of-day door, so while a
+            shift is open it sits above the fold with the on-the-clock strip
+            (see above) and is NOT repeated here. Off the clock it is a rare
+            action and folds away with the rest. e2e recordings-by-link.spec
+            pins the on-the-clock placement. */}
+        {!openShift.data && (
+          <div className="mywork-more-section">
+            <h2>{t("mywork.more.sendRecording")}</h2>
+            <SendRecordingButton />
+          </div>
+        )}
 
         <div className="mywork-more-section">
           <h2>{t("mywork.more.saveOffline")}</h2>
