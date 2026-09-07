@@ -2683,8 +2683,7 @@ export const CATALOG = {
     en: "{count} packages — tap where they go",
     es: "{count} paquetes — toca dónde van",
   },
-  // i18n-same-on-purpose: "conex" is the crew's own word in both languages
-  // (CONTEXT.md) — a shipping container used as storage, not an English noun.
+  // i18n-same-on-purpose: "conex" is the crew's own word in both languages (CONTEXT.md).
   "scan.conex": { en: "conex", es: "conex" },
   "scan.insideCount": { en: "{n} inside", es: "{n} adentro" },
   "scan.back": { en: "Back", es: "Atrás" },
@@ -2878,8 +2877,7 @@ export const CATALOG = {
   "timecard.someone": { en: "someone", es: "alguien" },
   "timecard.removedBy": { en: "Removed by {name}", es: "Eliminado por {name}" },
   "timecard.removed": { en: "Removed", es: "Eliminado" },
-  // i18n-same-on-purpose: punctuation around an interpolated value, no words
-  // of its own to translate.
+  // i18n-same-on-purpose: punctuation around an interpolated value, no words of its own.
   "timecard.removedReason": { en: ": “{reason}”", es: ": “{reason}”" },
   "timecard.restoring": { en: "Restoring…", es: "Restaurando…" },
   "timecard.restore": { en: "Restore", es: "Restaurar" },
@@ -3419,8 +3417,7 @@ export const CATALOG = {
   "takeoffs.line.requested": { en: "Requested — waiting on the warehouse", es: "Solicitado — esperando al almacén" },
   "takeoffs.line.acknowledged": { en: "In the works", es: "En proceso" },
   "takeoffs.line.acknowledgedEta": { en: "In the works — {eta}{note}", es: "En proceso — {eta}{note}" },
-  // i18n-same-on-purpose: punctuation around an interpolated value, no words
-  // of its own to translate.
+  // i18n-same-on-purpose: punctuation around an interpolated value, no words of its own.
   "takeoffs.line.etaNote": { en: " ({note})", es: " ({note})" },
   "takeoffs.line.ready": { en: "Ready for pickup", es: "Listo para recoger" },
   "takeoffs.line.pickedUp": { en: "Picked up — supplies are on the job's tab", es: "Recogido — los suministros están en la cuenta del trabajo" },
