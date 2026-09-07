@@ -77,7 +77,6 @@ import { SpecsTab } from "../components/project/SpecsTab";
 import { CallForHandsPanel } from "../components/install/CallForHandsPanel";
 import { MissedUnitButton } from "../components/install/MissedUnitButton";
 import { JobDocuments } from "../components/projects/JobDocuments";
-import { JobCostCodesPanel } from "../components/project/JobCostCodesPanel";
 import { JobModeBadge } from "../components/JobModeBadge";
 import { GcPanel } from "../components/projects/GcPanel";
 import { BuildFactsPanel } from "../components/projects/BuildFactsPanel";
@@ -664,11 +663,6 @@ function OverviewTab({
       )}
 
       <ScheduledCrewPanel projectId={projectId} isLead={isLead} />
-
-      {/* Which cost codes crew can pick when clocking into THIS job (slice 3).
-          Foreman+ curate the subset; the tab-gating idiom, with the real gate
-          on the set_project_cost_codes RPC. */}
-      {isLead && <JobCostCodesPanel projectId={projectId} />}
 
       <WhoOnJobPanel projectId={projectId} />
 

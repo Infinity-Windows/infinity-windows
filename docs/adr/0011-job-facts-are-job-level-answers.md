@@ -74,3 +74,33 @@ open.
 - A supervisor's Home and Heartbeat both surface a job's open green-light
   count under "Awaiting you" — the same warning, wherever a supervisor
   actually lands.
+
+## Amended 2026-09-07 — the owner's first look at the card
+
+After one look at the live card, Isaac changed four things, shipped as
+migration `20261002000000_job_facts_lines.sql`:
+
+1. **Exterior finish and set depth are a list, not two columns.** A house is
+   brick on the front and stucco on the sides; the crew hits both. Each
+   *exterior situation* is a finish, its set depth, the inch, and a note, in
+   `project_build_facts.exterior_lines` (jsonb, replaced whole on every save,
+   at most 20). Decision 1 above still holds — one row per job — the row
+   just carries a list. Decision 2 changes shape: the unit's spec now "wins"
+   only when it names a set depth that no recorded situation uses; a unit on
+   the stucco side whose spec says inset agrees with the stucco line.
+2. **"Other" is a box, not a dead end.** `flashing_system_other` and
+   `fastener_type_other` hold the real name when the pick-list has no word
+   for it, and that name is what the unit sheet shows.
+3. **No sill pan.** A sill pan is a fact about a unit, and the unit spec is
+   where it belongs. The two columns are dropped.
+4. **One elevation-notes box** replaces the four per-side notes; the side is
+   written into the text when it matters.
+
+The GC's name and number stay on the row (the handshake seeds the name and
+the green-light checklist reads it) but are shown and edited on the GC card
+at the top of the job, beside the rest of the GC's information — the owner's
+call was about where they live on the page, not in the database.
+
+In the same breath, the per-job cost-code subset (`project_cost_codes`,
+migration 20260973000000) was retired: every clock-in offers the whole active
+library. The table and its RPC stay in the database, unread.

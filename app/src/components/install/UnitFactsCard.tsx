@@ -3,14 +3,16 @@
 // is where a foreman writes these answers; this card is where every crew
 // role — installers included — reads them back, one screen down, on the
 // exact unit they're standing at. No editing here, and no data-flow change:
-// same buildFacts/elevationViews query keys the rest of the app already
-// warms, so this card is never the first thing to ask the network for
-// anything.
+// same buildFacts query key the rest of the app already warms, so this card
+// is never the first thing to ask the network for anything.
 //
-// Shows only answered fields, in the order ADR-0011 settled on. When the
-// unit's own spec (project_mark_specs.extra.inset_outset) disagrees with the
-// job's set depth, the spec's value is shown and wins — job facts are a
-// DEFAULT, never an override.
+// Shows only answered fields. The exterior situations come first, one row
+// each ("Brick · Outset 1"", "Stucco · Inset 1¼" · sides"), because a house
+// is more than one finish and an installer needs the one for the wall in
+// front of them. When the unit's own spec (project_mark_specs.extra
+// .inset_outset) names a set depth that NO recorded situation uses, the
+// spec's value is shown and wins — job facts are a DEFAULT, never an
+// override.
 
 import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
@@ -20,46 +22,28 @@ import {
   FASTENER_TYPE_KEYS,
   FLASHING_SYSTEM_KEYS,
   SET_DEPTH_KEYS,
-  SILL_PAN_KEYS,
-  SILL_PAN_TYPE_KEYS,
   buildFactsKey,
   getBuildFacts,
+  isBlankExteriorLine,
+  pickListLabel,
 } from "../../lib/install/buildFacts";
-import { listElevationViews } from "../../lib/install/api";
 import { formatInches } from "../../lib/install/specs";
 import { telHref } from "../../lib/travel/links";
 import {
-  deriveUnitElevation,
-  elevationNotesFor,
   formatSetDepthValue,
   hasAnyUnitFact,
   joinFactLine,
-  resolveSetDepthLine,
   specInsetOutsetOf,
-  type Elevation,
+  specOverrideLine,
 } from "../../lib/install/unitFactsCard";
 import { useT } from "../../lib/i18n";
-import type { TKey } from "../../lib/i18n/catalog";
 
 interface UnitFactsCardProps {
   projectId: string | null | undefined;
-  /** This unit's own code, e.g. "1A" or a chained "1A-2" — normalized to its
-   * base mark before looking anything up, same as the spec card. */
-  openingCode: string | null | undefined;
   /** The unit's own spec `extra`, straight off the spec card's spec — read
    * for inset_outset only. */
   specExtra: Record<string, unknown> | null | undefined;
 }
-
-/** Existing per-elevation field labels (buildFacts.field.note*) — reused
- * as the row label whenever the unit's own side can't be determined and
- * every non-empty note has to be shown, each named. */
-const ELEVATION_LABEL_KEYS: Record<Elevation, TKey> = {
-  north: "buildFacts.field.noteNorth",
-  south: "buildFacts.field.noteSouth",
-  east: "buildFacts.field.noteEast",
-  west: "buildFacts.field.noteWest",
-};
 
 interface FactRow {
   key: string;
@@ -67,20 +51,12 @@ interface FactRow {
   value: ReactNode;
 }
 
-export function UnitFactsCard({ projectId, openingCode, specExtra }: UnitFactsCardProps) {
+export function UnitFactsCard({ projectId, specExtra }: UnitFactsCardProps) {
   const t = useT();
 
   const facts = useQuery({
     queryKey: buildFactsKey(projectId ?? ""),
     queryFn: () => getBuildFacts(projectId as string),
-    enabled: Boolean(projectId),
-  });
-
-  // Same key ProjectMap/MarkElevationCrop already warm for this job — this
-  // card rides their cache instead of asking the network again.
-  const elevationViews = useQuery({
-    queryKey: ["elevationViews", projectId],
-    queryFn: () => listElevationViews(projectId as string),
     enabled: Boolean(projectId),
   });
 
@@ -91,9 +67,8 @@ export function UnitFactsCard({ projectId, openingCode, specExtra }: UnitFactsCa
   if (facts.isLoading) return null;
 
   const f = facts.data ?? null;
-  const elevation = deriveUnitElevation(openingCode, elevationViews.data ?? []);
 
-  if (!f || !hasAnyUnitFact(f, elevation)) {
+  if (!f || !hasAnyUnitFact(f)) {
     return (
       <div className="detail-card unit-facts-card">
         <h2 className="field-label" style={{ margin: 0 }}>
@@ -109,43 +84,50 @@ export function UnitFactsCard({ projectId, openingCode, specExtra }: UnitFactsCa
     );
   }
 
-  const specInsetOutset = specInsetOutsetOf(specExtra);
   const rows: FactRow[] = [];
 
-  const exteriorLabel = f.exterior_finish ? t(EXTERIOR_FINISH_KEYS[f.exterior_finish]) : null;
-  const exteriorValue = joinFactLine([exteriorLabel, f.exterior_note]);
-  if (exteriorValue) {
-    rows.push({ key: "exterior", label: t("buildFacts.field.exteriorFinish"), value: exteriorValue });
-  }
+  f.exterior_lines.forEach((line, i) => {
+    if (isBlankExteriorLine(line)) return;
+    const finishLabel = line.exterior_finish ? t(EXTERIOR_FINISH_KEYS[line.exterior_finish]) : null;
+    const depthLabel = line.set_depth
+      ? formatSetDepthValue(t(SET_DEPTH_KEYS[line.set_depth]), line.set_depth_inches)
+      : formatInches(line.set_depth_inches);
+    const value = joinFactLine([finishLabel, depthLabel, line.exterior_note]);
+    if (value) {
+      rows.push({ key: `exterior-${i}`, label: t("buildFacts.field.exteriorFinish"), value });
+    }
+  });
 
-  const setDepthLine = resolveSetDepthLine(f.set_depth, specInsetOutset);
-  if (setDepthLine) {
-    const depthLabel = t(SET_DEPTH_KEYS[setDepthLine.value]);
-    const displayValue = formatSetDepthValue(depthLabel, f.set_depth_inches);
+  const override = specOverrideLine(f.exterior_lines, specInsetOutsetOf(specExtra));
+  if (override) {
+    const depthLabel = t(SET_DEPTH_KEYS[override.value]);
     rows.push({
       key: "setDepth",
       label: t("buildFacts.field.setDepth"),
       value: (
         <>
-          {displayValue}
-          {setDepthLine.disagrees && (
-            <span className="unit-facts-wins">
-              {" "}
-              {t("unitFacts.setDepth.specWins", { value: depthLabel })}
-            </span>
-          )}
+          {depthLabel}
+          <span className="unit-facts-wins"> {t("unitFacts.setDepth.specWins", { value: depthLabel })}</span>
         </>
       ),
     });
   }
 
-  const flashingLabel = f.flashing_system ? t(FLASHING_SYSTEM_KEYS[f.flashing_system]) : null;
+  const flashingLabel = pickListLabel(
+    f.flashing_system ? t(FLASHING_SYSTEM_KEYS[f.flashing_system]) : null,
+    f.flashing_system,
+    f.flashing_system_other,
+  );
   const flashingValue = joinFactLine([flashingLabel, f.flashing_note]);
   if (flashingValue) {
     rows.push({ key: "flashing", label: t("buildFacts.field.flashingSystem"), value: flashingValue });
   }
 
-  const fastenerTypeLabel = f.fastener_type ? t(FASTENER_TYPE_KEYS[f.fastener_type]) : null;
+  const fastenerTypeLabel = pickListLabel(
+    f.fastener_type ? t(FASTENER_TYPE_KEYS[f.fastener_type]) : null,
+    f.fastener_type,
+    f.fastener_type_other,
+  );
   const fastenerLength = formatInches(f.fastener_length_in);
   const fastenerSpacing = formatInches(f.fastener_spacing_in);
   const spacingPhrase = fastenerSpacing
@@ -156,26 +138,8 @@ export function UnitFactsCard({ projectId, openingCode, specExtra }: UnitFactsCa
     rows.push({ key: "fasteners", label: t("buildFacts.field.fastenerType"), value: fastenerValue });
   }
 
-  const sillPanLabel = f.sill_pan ? t(SILL_PAN_KEYS[f.sill_pan]) : null;
-  const sillPanTypeLabel = f.sill_pan_type ? t(SILL_PAN_TYPE_KEYS[f.sill_pan_type]) : null;
-  const sillPanValue = joinFactLine([sillPanLabel, sillPanTypeLabel]);
-  if (sillPanValue) {
-    rows.push({ key: "sillPan", label: t("buildFacts.field.sillPan"), value: sillPanValue });
-  }
-
-  const elevationNotes = elevationNotesFor(f, elevation);
-  if (elevation) {
-    for (const n of elevationNotes) {
-      rows.push({ key: "elevationNote", label: t("unitFacts.field.elevationNote"), value: n.note });
-    }
-  } else {
-    for (const n of elevationNotes) {
-      rows.push({
-        key: `elevationNote-${n.elevation}`,
-        label: t(ELEVATION_LABEL_KEYS[n.elevation]),
-        value: n.note,
-      });
-    }
+  if (f.elevation_notes && f.elevation_notes.trim() !== "") {
+    rows.push({ key: "elevationNotes", label: t("buildFacts.field.elevationNotes"), value: f.elevation_notes });
   }
 
   if (f.site_rules && f.site_rules.trim() !== "") {
