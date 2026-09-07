@@ -156,13 +156,9 @@ const BUILD_FACTS_COLS =
   "gc_contact_name, gc_contact_phone, note_north, note_south, note_east, note_west, " +
   "updated_by, updated_at";
 
-export function buildFactsKey(projectId: string): unknown[] {
-  return ["buildFacts", projectId];
-}
+export const buildFactsKey = (projectId: string) => ["buildFacts", projectId] as const;
 
-export function greenLightItemsKey(projectId: string): unknown[] {
-  return ["greenLightItems", projectId];
-}
+export const greenLightItemsKey = (projectId: string) => ["greenLightItems", projectId] as const;
 
 /** One job's build facts, or null when nobody has recorded any yet (or the
  * migration hasn't reached this database — the two look identical to a
