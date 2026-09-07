@@ -14,8 +14,10 @@ import {
 } from "../../lib/storage";
 import { listLocations } from "../../lib/api";
 import { placeWhere, toLocationsById } from "../../lib/warehouse/containment";
+import { useT } from "../../lib/i18n";
 
 export function JobPackagesPanel({ projectId }: { projectId: string }) {
+  const t = useT();
   const packages = useQuery({ queryKey: ["storagePackages"], queryFn: listActivePackages });
   const containers = useQuery({ queryKey: ["storageContainers"], queryFn: listContainers });
   const locations = useQuery({ queryKey: ["locations"], queryFn: listLocations });
@@ -30,18 +32,18 @@ export function JobPackagesPanel({ projectId }: { projectId: string }) {
   // "Conex 3 ×4 · staged for BLACK22 ×2" — where the held material sits.
   const placeCounts = new Map<string, number>();
   for (const p of held) {
-    const w = placeWhere(p, byId, locsById);
+    const w = placeWhere(p, byId, locsById, t);
     placeCounts.set(w, (placeCounts.get(w) ?? 0) + 1);
   }
 
   return (
     <section className="detail-card" style={{ marginBottom: 16 }}>
-      <h2 style={{ margin: 0 }}>This job&rsquo;s packages</h2>
+      <h2 style={{ margin: 0 }}>{t("jobPackages.title")}</h2>
       <p className="muted" style={{ margin: "6px 0 8px", fontSize: 13.5 }}>
-        {held.length} on hand
-        {onTheWay.length > 0 ? ` · ${onTheWay.length} on the way` : ""}
-        {out.length > 0 ? ` · ${out.length} checked out` : ""}
-        {mine.length === 0 ? "Nothing tagged for this job yet." : ""}
+        {t("jobPackages.onHand", { n: held.length })}
+        {onTheWay.length > 0 ? ` · ${t("jobPackages.onTheWay", { n: onTheWay.length })}` : ""}
+        {out.length > 0 ? ` · ${t("jobPackages.checkedOut", { n: out.length })}` : ""}
+        {mine.length === 0 ? t("jobPackages.nothingTagged") : ""}
       </p>
       {placeCounts.size > 0 && (
         <p className="muted" style={{ margin: "0 0 8px", fontSize: 12.5 }}>
@@ -54,10 +56,10 @@ export function JobPackagesPanel({ projectId }: { projectId: string }) {
       )}
       <div className="row-gap" style={{ flexWrap: "wrap" }}>
         <Link className="button-like" to="/storage/out">
-          Set aside / check out
+          {t("jobPackages.setAsideCheckOut")}
         </Link>
         <Link className="button-like" to="/storage/arrive">
-          Arrival check
+          {t("jobPackages.arrivalCheck")}
         </Link>
       </div>
     </section>

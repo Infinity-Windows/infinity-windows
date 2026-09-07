@@ -4432,6 +4432,50 @@ export const CATALOG = {
   },
   "jobModel.assigned.one": { en: "{n} unit assigned.", es: "{n} unidad asignada." },
   "jobModel.assigned.many": { en: "{n} units assigned.", es: "{n} unidades asignadas." },
+
+  // components/warehouse/JobPackagesPanel.tsx (job page's Warehouse tab).
+  "jobPackages.title": { en: "This job's packages", es: "Los paquetes de este trabajo" },
+  "jobPackages.onHand": { en: "{n} on hand", es: "{n} en existencia" },
+  "jobPackages.onTheWay": { en: "{n} on the way", es: "{n} en camino" },
+  "jobPackages.checkedOut": { en: "{n} checked out", es: "{n} sacados" },
+  "jobPackages.nothingTagged": { en: "Nothing tagged for this job yet.", es: "Todavía no hay nada etiquetado para este trabajo." },
+  "jobPackages.setAsideCheckOut": { en: "Set aside / check out", es: "Apartar / sacar" },
+  "jobPackages.arrivalCheck": { en: "Arrival check", es: "Revisión de llegada" },
+
+  // components/warehouse/PlanPackagesPanel.tsx (job page's Warehouse tab).
+  "planPackages.burned.one": { en: "{n} label burned. Destroy the paper — anything still wearing one scans as nothing.", es: "{n} etiqueta quemada. Destruye el papel — cualquier cosa que todavía la lleve puesta escanea como nada." },
+  "planPackages.burned.many": { en: "{n} labels burned. Destroy the paper — anything still wearing one scans as nothing.", es: "{n} etiquetas quemadas. Destruye el papel — cualquier cosa que todavía las lleve puestas escanea como nada." },
+  "planPackages.alreadyHasAll": { en: "Window {mark} already has all {total} labels.", es: "La ventana {mark} ya tiene las {total} etiquetas." },
+  "planPackages.minted.one": { en: "{n} label minted for window {mark}.", es: "{n} etiqueta emitida para la ventana {mark}." },
+  "planPackages.minted.many": { en: "{n} labels minted for window {mark}.", es: "{n} etiquetas emitidas para la ventana {mark}." },
+  "planPackages.title": { en: "Plan packages & labels", es: "Planear paquetes y etiquetas" },
+  "planPackages.printAll": { en: "Print all on-the-way labels ({n})", es: "Imprimir todas las etiquetas en camino ({n})" },
+  "planPackages.cancelBurn": { en: "Cancel burn", es: "Cancelar quema" },
+  "planPackages.burnLabels": { en: "Burn labels…", es: "Quemar etiquetas…" },
+  "planPackages.explain": {
+    en: "Say how many packages a window arrives as, and the labels exist before the truck does — already carrying the job, the window and “2 of 4”. At the truck, receiving is sticking the label on and tapping Arrived. If the maker's own label says a different count, the maker wins — a foreman burns the wrong stickers, then anybody mints the right number.",
+    es: "Di en cuántos paquetes llega una ventana, y las etiquetas existen antes que el camión — ya con el trabajo, la ventana y “2 de 4”. En el camión, recibir es pegar la etiqueta y tocar Llegó. Si la etiqueta del fabricante dice un número distinto, gana el fabricante — un capataz quema las etiquetas incorrectas, y luego cualquiera emite el número correcto.",
+  },
+  "planPackages.burnKills": { en: "Burning kills a label for good.", es: "Quemar mata una etiqueta para siempre." },
+  "planPackages.burnExplain": {
+    en: "Only labels whose material never arrived can burn. The serial dies, the part slot reopens for a fresh label, and the paper must be destroyed — anything still wearing a burned sticker will scan as nothing. A sticker on a real package gets a Reprint instead, from its package page.",
+    es: "Solo se pueden quemar etiquetas cuyo material nunca llegó. El número de serie muere, el espacio de la pieza se abre de nuevo para una etiqueta nueva, y el papel debe destruirse — cualquier cosa que todavía lleve una etiqueta quemada escaneará como nada. Una etiqueta en un paquete real recibe una Reimpresión en su lugar, desde su página.",
+  },
+  "planPackages.burning": { en: "Burning…", es: "Quemando…" },
+  "planPackages.burnN.one": { en: "Burn {n} label — no way back", es: "Quemar {n} etiqueta — sin vuelta atrás" },
+  "planPackages.burnN.many": { en: "Burn {n} labels — no way back", es: "Quemar {n} etiquetas — sin vuelta atrás" },
+  "planPackages.noWindows": {
+    en: "No windows on this job's schedule yet — they come from the plans at spec review.",
+    es: "Todavía no hay ventanas en el horario de este trabajo — vienen de los planos en la revisión de spec.",
+  },
+  "planPackages.disagree": { en: "labels disagree on the count — settle that first", es: "las etiquetas no coinciden en el número — resuelve eso primero" },
+  "planPackages.noCountYet": { en: "no package count declared yet", es: "todavía sin número de paquetes declarado" },
+  "planPackages.arrivesAs": { en: "arrives as {declared} · {here} here", es: "llega en {declared} · {here} aquí" },
+  "planPackages.onTheWay": { en: "{n} on the way", es: "{n} en camino" },
+  "planPackages.howMany": { en: "How many?", es: "¿Cuántos?" },
+  "planPackages.howManyAria": { en: "How many packages for window {mark}", es: "Cuántos paquetes para la ventana {mark}" },
+  "planPackages.suggestedFromModel": { en: "(suggested from the model)", es: "(sugerido por el modelo)" },
+  "planPackages.mint": { en: "Mint", es: "Emitir" },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */
