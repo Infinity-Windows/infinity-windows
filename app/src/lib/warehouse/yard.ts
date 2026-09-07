@@ -6,6 +6,11 @@
 // picture is testable without a screen.
 
 import { containerHue, groupByJob, type StorageContainer, type StoragePackage } from "../storage";
+import { CATALOG } from "../i18n/catalog";
+import { translate, type Lang } from "../i18n/translate";
+import type { TFn } from "../i18n/context";
+
+const englishT: TFn = (key, vars) => translate(CATALOG, "en" as Lang, key, vars);
 
 export type YardKind = "building" | "conex" | "bay" | "truck" | "trailer" | "crate";
 
@@ -70,6 +75,7 @@ export function yardTiles(
   jobCodeById: Map<string, string>,
   now: Date,
   glowIds: ReadonlySet<string> = new Set(),
+  t: TFn = englishT,
 ): YardTile[] {
   const active = containers.filter((c) => c.active !== false);
   const stored = packages.filter((p) => p.status === "stored" && p.container_id);
@@ -78,7 +84,7 @@ export function yardTiles(
     const inside = stored.filter((p) => p.container_id === c.id);
     const jobs: YardJobStripe[] = groupByJob(inside)
       .map((g) => {
-        const code = g.projectId ? (jobCodeById.get(g.projectId) ?? "?") : "Boneyard";
+        const code = g.projectId ? (jobCodeById.get(g.projectId) ?? "?") : t("warehouse.job.boneyard");
         return { projectId: g.projectId, jobCode: code, count: g.packages.length, hue: containerHue(code) };
       })
       .sort((a, b) => b.count - a.count || a.jobCode.localeCompare(b.jobCode));
@@ -124,25 +130,29 @@ export function splitYard(tiles: readonly YardTile[]): { boxes: YardTile[]; bays
 }
 
 /** One line over the bays: how many there are and how many hold anything. */
-export function baysSummary(bays: readonly YardTile[]): string {
-  if (bays.length === 0) return "No bays — a job gets its own the first time something is set aside for it.";
+export function baysSummary(bays: readonly YardTile[], t: TFn = englishT): string {
+  if (bays.length === 0) return t("warehouse.yard.bays.none");
   const holding = bays.filter((b) => b.inside > 0).length;
   const inside = bays.reduce((n, b) => n + b.inside, 0);
-  const head = `${bays.length} bay${bays.length === 1 ? "" : "s"}`;
-  if (holding === 0) return `${head} · nothing set aside right now`;
-  return `${head} · ${inside} package${inside === 1 ? "" : "s"} set aside in ${holding}`;
+  const head = t(bays.length === 1 ? "warehouse.yard.bays.headOne" : "warehouse.yard.bays.headMany", { n: bays.length });
+  if (holding === 0) return `${head} · ${t("warehouse.yard.bays.nothingSetAside")}`;
+  return `${head} · ${t(inside === 1 ? "warehouse.yard.bays.setAsideOne" : "warehouse.yard.bays.setAsideMany", { n: inside, holding })}`;
 }
 
 /** Why a bay cannot be turned off right now, or null when it can: the same
  *  rule a box has for the archive — empty first. */
-export function bayOffBlock(bay: Pick<YardTile, "name" | "inside" | "children">): string | null {
+export function bayOffBlock(bay: Pick<YardTile, "name" | "inside" | "children">, t: TFn = englishT): string | null {
   if (bay.inside > 0) {
-    return bay.inside === 1
-      ? `1 package is still set aside in ${bay.name}. Move it out first.`
-      : `${bay.inside} packages are still set aside in ${bay.name}. Move them out first.`;
+    return t(bay.inside === 1 ? "warehouse.yard.bayOffBlock.one" : "warehouse.yard.bayOffBlock.many", {
+      n: bay.inside,
+      name: bay.name,
+    });
   }
   if (bay.children.length > 0) {
-    return `${bay.name} still holds ${bay.children.map((c) => c.name).join(", ")}. Move that out first.`;
+    return t("warehouse.yard.bayOffBlock.holds", {
+      name: bay.name,
+      children: bay.children.map((c) => c.name).join(", "),
+    });
   }
   return null;
 }
@@ -160,17 +170,24 @@ export function glowFromHits(
 }
 
 /** One line under the yard: how much is here and how many boxes hold it. */
-export function yardSummary(tiles: readonly YardTile[]): string {
+export function yardSummary(tiles: readonly YardTile[], t: TFn = englishT): string {
   const boxes = tiles.length;
   const inside = tiles.reduce(
-    (n, t) => n + t.inside + t.children.reduce((m, c) => m + c.inside, 0),
+    (n, tile) => n + tile.inside + tile.children.reduce((m, c) => m + c.inside, 0),
     0,
   );
   const jobs = new Set<string>();
-  for (const t of tiles) {
-    for (const j of t.jobs) jobs.add(j.jobCode);
-    for (const c of t.children) for (const j of c.jobs) jobs.add(j.jobCode);
+  for (const tile of tiles) {
+    for (const j of tile.jobs) jobs.add(j.jobCode);
+    for (const c of tile.children) for (const j of c.jobs) jobs.add(j.jobCode);
   }
-  if (boxes === 0) return "No boxes yet — add the first conex to start the yard.";
-  return `${inside} package${inside === 1 ? "" : "s"} in ${boxes} box${boxes === 1 ? "" : "es"}${jobs.size > 0 ? ` · ${jobs.size} job${jobs.size === 1 ? "" : "s"}` : ""}`;
+  if (boxes === 0) return t("warehouse.yard.summary.none");
+  const base = t(inside === 1 ? "warehouse.yard.summary.oneBox" : "warehouse.yard.summary.manyBox", {
+    n: inside,
+    boxes,
+    boxWord: t(boxes === 1 ? "warehouse.yard.summary.box.one" : "warehouse.yard.summary.box.many"),
+  });
+  return jobs.size > 0
+    ? `${base} · ${t(jobs.size === 1 ? "warehouse.yard.summary.job.one" : "warehouse.yard.summary.job.many", { n: jobs.size })}`
+    : base;
 }

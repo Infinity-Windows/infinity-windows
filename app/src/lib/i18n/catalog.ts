@@ -3842,6 +3842,88 @@ export const CATALOG = {
   },
   "warehouse.card.nothingHere": { en: "Nothing here — good.", es: "No hay nada aquí — bien." },
   "warehouse.card.clearFilter": { en: "Clear filter", es: "Quitar filtro" },
+
+  // components/warehouse/Yard.tsx
+  "warehouse.yard.ariaLabel": { en: "The yard", es: "El patio" },
+  "warehouse.yard.kind.crate": { en: "crate", es: "crate" },
+  "warehouse.yard.kind.truck": { en: "truck", es: "camión" },
+  "warehouse.yard.kind.trailer": { en: "trailer", es: "remolque" },
+  "warehouse.yard.kind.building": { en: "building", es: "edificio" },
+  "warehouse.yard.kind.bay": { en: "bay", es: "bahía" },
+  "warehouse.yard.packages.one": { en: "{n} package", es: "{n} paquete" },
+  "warehouse.yard.packages.many": { en: "{n} packages", es: "{n} paquetes" },
+  "warehouse.yard.holding.one": { en: "holding {n} crate", es: "con {n} crate" },
+  "warehouse.yard.holding.many": { en: "holding {n} crates", es: "con {n} crates" },
+  "warehouse.yard.oldest": { en: "oldest {n}d", es: "el más viejo {n}d" },
+  "warehouse.yard.newContainer": { en: "+ New container", es: "+ Nueva caja" },
+  "warehouse.yard.newContainerHint": { en: "a conex, crate or truck", es: "un conex, crate o camión" },
+
+  // lib/warehouse/yard.ts — bay/box summaries (Warehouse.tsx, Bays.tsx).
+  "warehouse.yard.bays.none": {
+    en: "No bays — a job gets its own the first time something is set aside for it.",
+    es: "Sin bahías — un trabajo recibe la suya la primera vez que se aparta algo para él.",
+  },
+  "warehouse.yard.bays.headOne": { en: "{n} bay", es: "{n} bahía" },
+  "warehouse.yard.bays.headMany": { en: "{n} bays", es: "{n} bahías" },
+  "warehouse.yard.bays.nothingSetAside": { en: "nothing set aside right now", es: "nada apartado ahora mismo" },
+  "warehouse.yard.bays.setAsideOne": { en: "{n} package set aside in {holding}", es: "{n} paquete apartado en {holding}" },
+  "warehouse.yard.bays.setAsideMany": { en: "{n} packages set aside in {holding}", es: "{n} paquetes apartados en {holding}" },
+  "warehouse.yard.bayOffBlock.one": {
+    en: "1 package is still set aside in {name}. Move it out first.",
+    es: "Todavía hay 1 paquete apartado en {name}. Sácalo primero.",
+  },
+  "warehouse.yard.bayOffBlock.many": {
+    en: "{n} packages are still set aside in {name}. Move them out first.",
+    es: "Todavía hay {n} paquetes apartados en {name}. Sácalos primero.",
+  },
+  "warehouse.yard.bayOffBlock.holds": {
+    en: "{name} still holds {children}. Move that out first.",
+    es: "{name} todavía tiene {children}. Sácalo primero.",
+  },
+  "warehouse.yard.summary.none": {
+    en: "No boxes yet — add the first conex to start the yard.",
+    es: "Todavía no hay cajas — agrega el primer conex para empezar el patio.",
+  },
+  "warehouse.yard.summary.oneBox": { en: "{n} package in {boxes} {boxWord}", es: "{n} paquete en {boxes} {boxWord}" },
+  "warehouse.yard.summary.manyBox": { en: "{n} packages in {boxes} {boxWord}", es: "{n} paquetes en {boxes} {boxWord}" },
+  "warehouse.yard.summary.box.one": { en: "box", es: "caja" },
+  "warehouse.yard.summary.box.many": { en: "boxes", es: "cajas" },
+  "warehouse.yard.summary.job.one": { en: "{n} job", es: "{n} trabajo" },
+  "warehouse.yard.summary.job.many": { en: "{n} jobs", es: "{n} trabajos" },
+
+  // components/warehouse/Bays.tsx
+  "warehouse.bays.empty": {
+    en: "No bays yet. A job gets its own the first time something is set aside for it.",
+    es: "Todavía no hay bahías. Un trabajo recibe la suya la primera vez que se aparta algo para él.",
+  },
+  "warehouse.bays.ariaLabel": { en: "The bays", es: "Las bahías" },
+  "warehouse.bays.nothingSetAside": { en: "Nothing set aside", es: "Nada apartado" },
+  "warehouse.bays.line.one": { en: "{n} package set aside{oldest}", es: "{n} paquete apartado{oldest}" },
+  "warehouse.bays.line.many": { en: "{n} packages set aside{oldest}", es: "{n} paquetes apartados{oldest}" },
+  "warehouse.bays.turnOffHint": { en: "Turn this bay off — its material has gone out", es: "Apaga esta bahía — su material ya salió" },
+  "warehouse.bays.turningOff": { en: "Turning off…", es: "Apagando…" },
+  "warehouse.bays.turnOff": { en: "Turn off", es: "Apagar" },
+
+  // components/warehouse/DayRecapCard.tsx
+  "warehouse.recap.title": { en: "Today", es: "Hoy" },
+  "warehouse.recap.quiet": { en: "Quiet so far — nothing moved today.", es: "Tranquilo por ahora — nada se ha movido hoy." },
+  "warehouse.recap.checkedIn": { en: "checked in", es: "recibidos" },
+  "warehouse.recap.stored": { en: "stored", es: "guardados" },
+  "warehouse.recap.checkedOut": { en: "checked out", es: "sacados" },
+  "warehouse.recap.stillMissing": { en: "still missing from {label}", es: "todavía faltan de {label}" },
+
+  // lib/warehouse/jobStrip.ts + components/warehouse/JobStrip.tsx
+  "warehouse.jobStrip.toCome": { en: "{here}/{total} · {remaining} to come", es: "{here}/{total} · {remaining} por llegar" },
+  "warehouse.jobStrip.ariaLabel": { en: "Jobs with material", es: "Trabajos con material" },
+  "warehouse.jobStrip.title": { en: "Jobs with material", es: "Trabajos con material" },
+  "warehouse.jobStrip.tapAgain": { en: "Tap again to stop highlighting", es: "Toca de nuevo para dejar de resaltar" },
+  "warehouse.jobStrip.tapToLight": { en: "Tap to light up this job's boxes", es: "Toca para iluminar las cajas de este trabajo" },
+  "warehouse.jobStrip.sendHint": { en: "Send this job's material to the job site", es: "Enviar el material de este trabajo al sitio" },
+  "warehouse.jobStrip.sendToSite": { en: "Send to site →", es: "Enviar al sitio →" },
+  "warehouse.jobStrip.hint": {
+    en: "Units here of units expected. Tap a job to light up its boxes; tap the code for its materials.",
+    es: "Unidades aquí de las unidades esperadas. Toca un trabajo para iluminar sus cajas; toca el código para ver sus materiales.",
+  },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */
