@@ -260,10 +260,15 @@ export default defineConfig({
           // the phone BEFORE the crash in the dead zone that needs it.
           ...(monitoringOn ? [] : ['assets/monitoring-*.js']),
         ],
-        // The app-shell JS bundle is >2 MB, above workbox's default precache
-        // ceiling. Raise it so the whole shell is precached — offline-first
-        // (the outbox feature) depends on the shell loading with no signal.
-        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
+        // Route-level code splitting (App.tsx) broke the old >2.8 MB app-shell
+        // bundle into one small entry chunk plus per-route chunks, so nothing
+        // built today is anywhere near workbox's 2 MB default ceiling — the
+        // biggest single file is the pdf.js worker at ~1.2 MB. Left at the
+        // default on purpose: offline-first (the outbox feature) still needs
+        // every chunk precached, and the default already covers all of them
+        // with room to spare, so there's no reason to widen what workbox will
+        // accept. Raise this again only if a real chunk starts failing to
+        // precache — check `dist/assets` sizes before bumping it blindly.
       },
       devOptions: {
         // Keep DEV free of a sticky SW — serviceWorkerGuard purges orphans.

@@ -2,7 +2,7 @@ import { BackChip } from "../components/BackChip";
 import { PlanPackagesPanel } from "../components/warehouse/PlanPackagesPanel";
 import { JobPackagesPanel } from "../components/warehouse/JobPackagesPanel";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { DirectionsButton } from "../components/maps/DirectionsButton";
 import {
@@ -55,7 +55,16 @@ import { listTrips } from "../lib/travel/api";
 import { listRoster } from "../lib/chat/api";
 import { mergeJobPeople } from "../lib/whoOnJob";
 import { CalendarClock, Plane, Truck, Users } from "lucide-react";
-import { MapsInteractive } from "./install/MapsInteractive";
+import { SkeletonCard } from "../components/ui/States";
+
+// Lazy: the Maps Interactive tab pulls in pdf.js (via ProjectMap/PlansPanel,
+// for the planset sheets it overlays) — a phone opening this job's overview
+// or dispatch board should not pay for that until someone actually taps the
+// tab. ProjectDetail itself stays a static import (it's the job hub, part
+// of the 6-AM shell); only this one heavy tab is split out.
+const MapsInteractive = lazy(() =>
+  import("./install/MapsInteractive").then((m) => ({ default: m.MapsInteractive })),
+);
 import { DispatchBoard } from "./install/DispatchBoard";
 import { SignatureEstimates } from "../components/install/SignatureEstimates";
 import { ScrollTabs } from "../components/nav/ScrollTabs";
@@ -439,7 +448,11 @@ export function ProjectDetail() {
         />
       )}
 
-      {tab === "maps-interactive" && project && <MapsInteractive project={project} />}
+      {tab === "maps-interactive" && project && (
+        <Suspense fallback={<SkeletonCard height={320} />}>
+          <MapsInteractive project={project} />
+        </Suspense>
+      )}
 
       {tab === "exceptions" && isLead && <ExceptionsTab projectId={projectId} />}
 
