@@ -3845,6 +3845,7 @@ export const CATALOG = {
 
   // components/warehouse/Yard.tsx
   "warehouse.yard.ariaLabel": { en: "The yard", es: "El patio" },
+  // i18n-same-on-purpose: "crate" is the crew's own word in both languages (CONTEXT.md), same as "conex".
   "warehouse.yard.kind.crate": { en: "crate", es: "crate" },
   "warehouse.yard.kind.truck": { en: "truck", es: "camión" },
   "warehouse.yard.kind.trailer": { en: "trailer", es: "remolque" },
@@ -3933,6 +3934,7 @@ export const CATALOG = {
   "warehouse.containerForm.name": { en: "Name", es: "Nombre" },
   "warehouse.containerForm.namePlaceholder": { en: "Conex 7 / Glass crate 12", es: "Conex 7 / Crate de vidrio 12" },
   "warehouse.containerForm.kind": { en: "What kind of box", es: "Qué tipo de caja" },
+  // i18n-same-on-purpose: "Conex" and "Crate" are the crew's own words in both languages (CONTEXT.md).
   "warehouse.containerForm.kind.conex": { en: "Conex", es: "Conex" },
   "warehouse.containerForm.kind.crate": { en: "Crate", es: "Crate" },
   "warehouse.containerForm.kind.truck": { en: "Truck", es: "Camión" },
@@ -4005,7 +4007,7 @@ export const CATALOG = {
   "warehouse.page.arrivalCheck": { en: "Arrival check", es: "Revisión de llegada" },
   "warehouse.page.setAsideCheckOut": { en: "Set aside / check out", es: "Apartar / sacar" },
   "warehouse.page.jobMaterials": { en: "Job materials", es: "Materiales del trabajo" },
-  "warehouse.page.takeoffs": { en: "Takeoffs", es: "Takeoffs" },
+  "warehouse.page.takeoffs": { en: "Takeoffs", es: "Conteos" },
   "warehouse.page.openCount": { en: "{n} open", es: "{n} pendientes" },
   "warehouse.page.takeSupplies": { en: "Take supplies", es: "Tomar suministros" },
   "warehouse.page.moreFold": { en: "More — today, out on jobs, supplies on the shelf", es: "Más — hoy, en trabajos, suministros en el estante" },
@@ -4227,6 +4229,7 @@ export const CATALOG = {
   "storage.sendToSite.finalizedOn": { en: "Unit movement finalized on {date}.", es: "Movimiento de unidades finalizado el {date}." },
   "storage.sendToSite.hiddenListed.pre": { en: "Hidden from the warehouse page; listed in ", es: "Oculto de la página del almacén; aparece en el " },
   "storage.sendToSite.hiddenListed.link": { en: "warehouse history", es: "historial del almacén" },
+  // i18n-same-on-purpose: punctuation around an interpolated value, no words of its own.
   "storage.sendToSite.hiddenListed.post": { en: ".", es: "." },
   "storage.sendToSite.onSiteCount.one": { en: "{n} piece on the job site.", es: "{n} pieza en el sitio del trabajo." },
   "storage.sendToSite.onSiteCount.many": { en: "{n} pieces on the job site.", es: "{n} piezas en el sitio del trabajo." },
@@ -4335,6 +4338,7 @@ export const CATALOG = {
   "storage.logDelivery.whichJobs": { en: "Which jobs are on this truck?", es: "¿Qué trabajos vienen en este camión?" },
   "storage.logDelivery.restored.pre": { en: "Picked your unsaved delivery back up (from ", es: "Se recuperó tu entrega sin guardar (de las " },
   "storage.logDelivery.restored.mid": { en: ") — keep going, or ", es: ") — sigue, o " },
+  // i18n-same-on-purpose: punctuation around an interpolated value, no words of its own.
   "storage.logDelivery.restored.post": { en: ".", es: "." },
   "storage.logDelivery.startFresh": { en: "start fresh", es: "empezar de nuevo" },
   "storage.logDelivery.deliveryName": { en: "Delivery name (optional)", es: "Nombre de la entrega (opcional)" },
