@@ -5,6 +5,15 @@
 import { supabase } from "./supabase";
 import { isMissingTable } from "./schemaErrors";
 import type { Supply } from "./ops";
+import { CATALOG, type TKey } from "./i18n/catalog";
+import { translate, type Lang } from "./i18n/translate";
+import type { TFn } from "./i18n/context";
+
+// Only Takeoffs.tsx reads the label/line helpers below (Warehouse.tsx, the
+// other importer of this module, only reads listTakeoffs — no strings), so
+// they carry `t` straight through with no other-screen carve-out to worry
+// about. `t` defaults to English so takeoffs.test.ts needs no changes.
+const englishT: TFn = (key, vars) => translate(CATALOG, "en" as Lang, key, vars);
 
 export type TakeoffStatus = "requested" | "acknowledged" | "ready" | "picked_up";
 export type TakeoffEta = "30min" | "today" | "tomorrow" | "this_week";
@@ -26,33 +35,49 @@ export interface Takeoff {
   takeoff_items?: { id: string; supply_id: string; qty: number }[];
 }
 
-export const ETA_LABELS: Record<TakeoffEta, string> = {
-  "30min": "about 30 minutes",
-  today: "later today",
-  tomorrow: "tomorrow",
-  this_week: "this week",
+/** Every ETA a person can pick, in the order the buttons show them. */
+export const ETA_ORDER: TakeoffEta[] = ["30min", "today", "tomorrow", "this_week"];
+
+const ETA_LABEL_KEY: Record<TakeoffEta, TKey> = {
+  "30min": "takeoffs.eta.thirtyMin",
+  today: "takeoffs.eta.today",
+  tomorrow: "takeoffs.eta.tomorrow",
+  this_week: "takeoffs.eta.thisWeek",
 };
 
-export const TAKEOFF_STATUS_LABELS: Record<TakeoffStatus, string> = {
-  requested: "Requested",
-  acknowledged: "In the works",
-  ready: "Ready for pickup",
-  picked_up: "Picked up",
+/** "about 30 minutes" / "later today" / … — the rough-when a person picks. */
+export function etaLabel(eta: TakeoffEta, t: TFn = englishT): string {
+  return t(ETA_LABEL_KEY[eta]);
+}
+
+const TAKEOFF_STATUS_LABEL_KEY: Record<TakeoffStatus, TKey> = {
+  requested: "takeoffs.status.requested",
+  acknowledged: "takeoffs.status.acknowledged",
+  ready: "takeoffs.status.ready",
+  picked_up: "takeoffs.status.pickedUp",
 };
+
+/** "Requested" / "In the works" / "Ready for pickup" / "Picked up". */
+export function takeoffStatusLabel(status: TakeoffStatus, t: TFn = englishT): string {
+  return t(TAKEOFF_STATUS_LABEL_KEY[status]);
+}
 
 /** The one-line story of where a takeoff stands, for its row. */
-export function takeoffStatusLine(t: Takeoff): string {
-  switch (t.status) {
+export function takeoffStatusLine(takeoff: Takeoff, t: TFn = englishT): string {
+  switch (takeoff.status) {
     case "requested":
-      return "Requested — waiting on the warehouse";
+      return t("takeoffs.line.requested");
     case "acknowledged":
-      return t.eta
-        ? `In the works — ${ETA_LABELS[t.eta]}${t.eta_note ? ` (${t.eta_note})` : ""}`
-        : "In the works";
+      return takeoff.eta
+        ? t("takeoffs.line.acknowledgedEta", {
+            eta: etaLabel(takeoff.eta, t),
+            note: takeoff.eta_note ? t("takeoffs.line.etaNote", { note: takeoff.eta_note }) : "",
+          })
+        : t("takeoffs.line.acknowledged");
     case "ready":
-      return "Ready for pickup";
+      return t("takeoffs.line.ready");
     case "picked_up":
-      return "Picked up — supplies are on the job's tab";
+      return t("takeoffs.line.pickedUp");
   }
 }
 
@@ -64,6 +89,7 @@ export function takeoffStatusLine(t: Takeoff): string {
 export function shortageLines(
   items: { supply_id: string; qty: number }[],
   supplies: Supply[],
+  t: TFn = englishT,
 ): string[] {
   const byId = new Map(supplies.map((s) => [s.id, s]));
   const out: string[] = [];
@@ -71,9 +97,9 @@ export function shortageLines(
     const s = byId.get(it.supply_id);
     if (!s) continue;
     if (s.on_hand == null) {
-      out.push(`${s.name} — never counted, so nobody knows if ${it.qty} is there`);
+      out.push(t("takeoffs.shortage.neverCounted", { name: s.name, qty: it.qty }));
     } else if (s.on_hand < it.qty) {
-      out.push(`${s.name} — wants ${it.qty}, about ${s.on_hand} on hand`);
+      out.push(t("takeoffs.shortage.wantsHas", { name: s.name, qty: it.qty, onHand: s.on_hand }));
     }
   }
   return out;

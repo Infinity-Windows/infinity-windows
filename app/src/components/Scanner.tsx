@@ -5,9 +5,17 @@ import { parseQr, type QrPayload } from "../lib/qr";
 interface ScannerProps {
   onScan: (payload: QrPayload) => void;
   hint?: string;
+  /**
+   * Default true. The scan sheet (ScanSheet.tsx) passes false: it stacked
+   * this box directly over its own typed-entry box, the same lookup
+   * reachable two ways on one screen (audit 2026-08-17 item C) — its own box
+   * stays as the SINGLE typed entry there. Every other caller (FindBar,
+   * OpeningSheet, TagPackages) is unaffected by this prop's default.
+   */
+  showManualEntry?: boolean;
 }
 
-export function Scanner({ onScan, hint }: ScannerProps) {
+export function Scanner({ onScan, hint, showManualEntry = true }: ScannerProps) {
   const containerId = useRef(
     `qr-scanner-${Math.random().toString(36).slice(2)}`,
   );
@@ -89,15 +97,17 @@ export function Scanner({ onScan, hint }: ScannerProps) {
       <div id={containerId.current} className="scanner-viewport" />
       {hint && <p className="scanner-hint">{hint}</p>}
       {error && <p className="error">{error}</p>}
-      <div className="manual-entry">
-        <input
-          value={manual}
-          onChange={(e) => setManual(e.target.value)}
-          placeholder="Or type ID: W-CAS3050-0042 / S-03-B"
-          onKeyDown={(e) => e.key === "Enter" && submitManual()}
-        />
-        <button onClick={submitManual}>Go</button>
-      </div>
+      {showManualEntry && (
+        <div className="manual-entry">
+          <input
+            value={manual}
+            onChange={(e) => setManual(e.target.value)}
+            placeholder="Or type ID: W-CAS3050-0042 / S-03-B"
+            onKeyDown={(e) => e.key === "Enter" && submitManual()}
+          />
+          <button onClick={submitManual}>Go</button>
+        </div>
+      )}
     </div>
   );
 }

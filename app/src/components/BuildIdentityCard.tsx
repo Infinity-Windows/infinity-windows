@@ -3,6 +3,7 @@ import { Check, Copy, Database, GitCommitHorizontal } from "lucide-react";
 import { BUILD_ID, BUILT_AT } from "../lib/pwa/buildInfo";
 import { fetchPublishedVersion } from "../lib/pwa/checkForUpdate";
 import { buildIdentity } from "../lib/buildIdentity";
+import { useT } from "../lib/i18n";
 
 /**
  * Settings section: "Which app am I on?".
@@ -18,6 +19,7 @@ import { buildIdentity } from "../lib/buildIdentity";
  * component only fetches the published build id and renders the result.
  */
 export function BuildIdentityCard() {
+  const t = useT();
   const [published, setPublished] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -59,15 +61,18 @@ export function BuildIdentityCard() {
   }
 
   return (
-    <section className="build-id" aria-label="Which app am I on">
+    <section className="build-id" aria-label={t("buildId.ariaLabel")}>
       <div className="build-id-head">
         <div>
-          <h2 className="perm-settings-title">Which app am I on?</h2>
+          <h2 className="perm-settings-title">{t("buildId.heading")}</h2>
           <p className="muted perm-settings-sub">
-            Compare this line with someone else. If they match, you are both
-            looking at the same app and the same data.
+            {t("buildId.explain")}
           </p>
         </div>
+        {/* The verdict label/hint below (lib/buildIdentity.ts) stay English —
+            a pure diagnostic module shared with Diagnostics.tsx (out of this
+            sweep's scope), and developer-troubleshooting copy ("copy
+            app/.env.example…") rather than field-facing text. */}
         <span className={`perm-badge perm-badge-${identity.verdict.tone}`}>
           {identity.verdict.label}
         </span>
@@ -79,10 +84,10 @@ export function BuildIdentityCard() {
           type="button"
           className="button-like build-id-copy"
           onClick={() => void copy()}
-          aria-label="Copy this line"
+          aria-label={t("buildId.copyLine")}
         >
           {copied ? <Check size={15} aria-hidden /> : <Copy size={15} aria-hidden />}
-          {copied ? "Copied" : "Copy"}
+          {copied ? t("buildId.copied") : t("buildId.copy")}
         </button>
       </div>
 
@@ -91,24 +96,24 @@ export function BuildIdentityCard() {
       <dl className="build-id-rows">
         <div className="build-id-row">
           <dt>
-            <GitCommitHorizontal size={15} aria-hidden /> Code
+            <GitCommitHorizontal size={15} aria-hidden /> {t("buildId.code")}
           </dt>
           <dd>
-            <code>{identity.build.commit ?? identity.build.raw ?? "unknown"}</code>
-            {identity.build.dirty && " with uncommitted changes"}
+            <code>{identity.build.commit ?? identity.build.raw ?? t("buildId.unknown")}</code>
+            {identity.build.dirty && ` ${t("buildId.uncommittedChanges")}`}
             {BUILT_AT && (
-              <span className="muted"> · built {formatBuiltAt(BUILT_AT)}</span>
+              <span className="muted"> · {t("buildId.built", { time: formatBuiltAt(BUILT_AT) })}</span>
             )}
           </dd>
         </div>
         <div className="build-id-row">
           <dt>
-            <Database size={15} aria-hidden /> Database
+            <Database size={15} aria-hidden /> {t("buildId.database")}
           </dt>
           <dd>
-            <code>{identity.database.ref ?? "none"}</code>
+            <code>{identity.database.ref ?? t("buildId.none")}</code>
             {!identity.database.shared && (
-              <span className="muted"> · shared one is {identity.database.expected}</span>
+              <span className="muted"> · {t("buildId.sharedOneIs", { ref: identity.database.expected })}</span>
             )}
           </dd>
         </div>

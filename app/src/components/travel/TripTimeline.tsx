@@ -3,6 +3,7 @@ import { Bed, Car, Clock, PlaneLanding, PlaneTakeoff } from "lucide-react";
 import type { TimelineItem, TimelineKind } from "../../lib/travel/timeline";
 import { formatDayInZone, formatTimeWithZone } from "../../lib/travel/dates";
 import { TimelineActionButton } from "./TimelineActionButton";
+import { useT } from "../../lib/i18n";
 
 type IconComponent = ComponentType<{ className?: string; size?: number }>;
 
@@ -25,8 +26,9 @@ export function TripTimeline({
   items: TimelineItem[];
   nextUpId?: string | null;
 }) {
+  const t = useT();
   if (items.length === 0) {
-    return <p className="muted travel-empty-note">No scheduled times yet.</p>;
+    return <p className="muted travel-empty-note">{t("travelTimeline.noScheduledTimes")}</p>;
   }
   return (
     <ol className="travel-timeline">

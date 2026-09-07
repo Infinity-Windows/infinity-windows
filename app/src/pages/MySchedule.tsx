@@ -16,6 +16,7 @@ import { visibleTrips } from "../lib/travel/visibility";
 import { isSupervisorPlus } from "../lib/install/types";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { DirectionsButton } from "../components/maps/DirectionsButton";
+import { useT } from "../lib/i18n";
 
 function todayLocalISO(): string {
   const d = new Date();
@@ -24,6 +25,7 @@ function todayLocalISO(): string {
 }
 
 export function MySchedule() {
+  const t = useT();
   const today = todayLocalISO();
   const [weeks, setWeeks] = useState(6);
   const to = addDaysISO(today, weeks * 7);
@@ -81,19 +83,19 @@ export function MySchedule() {
     <div className="page sched-mine">
       <header className="page-header">
         <div>
-          <h1>My Schedule</h1>
+          <h1>{t("mySchedule.title")}</h1>
           <p className="muted" style={{ margin: 0 }}>
-            Your published jobs, day by day.
+            {t("mySchedule.subtitle")}
           </p>
         </div>
-        <BackChip fallback="/" label="Home" />
+        <BackChip fallback="/" label={t("mySchedule.home")} />
       </header>
 
       {schedule.isError && (
         <QueryError
           error={schedule.error}
           onRetry={() => void schedule.refetch()}
-          label="Couldn't load your schedule"
+          label={t("mySchedule.loadError")}
         />
       )}
       {schedule.isLoading || me.isLoading ? (
@@ -101,15 +103,15 @@ export function MySchedule() {
       ) : agenda.length === 0 ? (
         <EmptyState
           icon={<CalendarClock size={22} />}
-          title="Nothing scheduled yet"
-          message="When your crew lead publishes a schedule, your jobs show up here."
+          title={t("mySchedule.emptyTitle")}
+          message={t("mySchedule.emptyMessage")}
         />
       ) : (
         <div className="sched-agenda">
           {agenda.map((day) => (
             <section key={day.day} className={`sched-agenda-day${day.day === today ? " is-today" : ""}`}>
               <h2 className="sched-agenda-date">
-                {day.day === today ? "Today · " : ""}
+                {day.day === today ? t("mySchedule.todayPrefix") : ""}
                 {agendaDayLabel(day.day)}
               </h2>
               {day.entries.map((entry) => {
@@ -130,8 +132,8 @@ export function MySchedule() {
                     <div className="sched-agenda-main">
                       <strong>
                         {a.kind === "delivery"
-                          ? `Meet the truck — ${a.delivery?.label ?? "delivery"}`
-                          : (a.project?.name ?? a.project?.job_code ?? "Job")}
+                          ? t("mySchedule.meetTruck", { label: a.delivery?.label ?? t("mySchedule.deliveryFallback") })
+                          : (a.project?.name ?? a.project?.job_code ?? t("mySchedule.jobFallback"))}
                       </strong>
                       {a.project?.address && (
                         <span className="sched-agenda-addr">
@@ -146,7 +148,7 @@ export function MySchedule() {
                       <DirectionsButton address={a.project?.address} />
                       {mates.length > 0 && (
                         <span className="sched-agenda-crew">
-                          <Users size={13} aria-hidden /> with {mates.join(", ")}
+                          <Users size={13} aria-hidden /> {t("mySchedule.withCrew", { names: mates.join(", ") })}
                         </span>
                       )}
                       {vehicleByAssignment.get(a.id) && (
@@ -156,7 +158,8 @@ export function MySchedule() {
                       )}
                       {a.project_id && tripByProject.get(a.project_id) && (
                         <span className="sched-agenda-crew">
-                          <Plane size={13} aria-hidden /> Travel: {tripByProject.get(a.project_id)!.label}
+                          <Plane size={13} aria-hidden />{" "}
+                          {t("mySchedule.travelLabel", { label: tripByProject.get(a.project_id)!.label })}
                         </span>
                       )}
                     </div>
@@ -166,12 +169,16 @@ export function MySchedule() {
                           <Clock size={13} aria-hidden /> {formatStartTime(a.start_time)}
                         </span>
                       )}
-                      {!entry.isFirstDay && <span className="muted" style={{ fontSize: 11 }}>cont.</span>}
+                      {!entry.isFirstDay && (
+                        <span className="muted" style={{ fontSize: 11 }}>
+                          {t("mySchedule.cont")}
+                        </span>
+                      )}
                     </div>
                   </Link>
                   {isToday && (
                     <Link to="/" className="button-like sched-start-work">
-                      Start work ›
+                      {t("mySchedule.startWork")}
                     </Link>
                   )}
                   </Fragment>
@@ -180,7 +187,7 @@ export function MySchedule() {
             </section>
           ))}
           <button className="button-like" style={{ marginTop: 12 }} onClick={() => setWeeks((w) => w + 6)}>
-            Show more
+            {t("mySchedule.showMore")}
           </button>
         </div>
       )}

@@ -7,8 +7,25 @@ import {
   listMemosToConfirm,
 } from "../lib/install/api";
 import { MEMO_TOPICS, type InstallEvent, type MemoTopics } from "../lib/install/types";
+import { useT, type TKey } from "../lib/i18n";
+
+// MEMO_TOPICS is shared with OpeningSheet.tsx and TypeBrainCard.tsx (both
+// out of this sweep's scope) and its own `prompt` strings are English-only —
+// this maps each topic's key to a translated label for THIS screen only,
+// without touching the shared constant or its other two callers.
+const TOPIC_KEY: Record<keyof MemoTopics, TKey> = {
+  difficulty: "memoReview.topic.difficulty",
+  went_well: "memoReview.topic.wentWell",
+  went_poorly: "memoReview.topic.wentPoorly",
+  obstacles: "memoReview.topic.obstacles",
+  tools_helped: "memoReview.topic.toolsHelped",
+  time_vs_estimate: "memoReview.topic.timeVsEstimate",
+  safety_notes: "memoReview.topic.safetyNotes",
+  do_again: "memoReview.topic.doAgain",
+};
 
 function MemoRow({ event, onDone }: { event: InstallEvent; onDone: () => void }) {
+  const t = useT();
   const [fields, setFields] = useState<Partial<MemoTopics>>({
     difficulty: event.difficulty,
     went_well: event.went_well,
@@ -27,16 +44,15 @@ function MemoRow({ event, onDone }: { event: InstallEvent; onDone: () => void })
   return (
     <li className="detail-card">
       <p className="muted" style={{ marginTop: 0 }}>
-        {event.created_at.slice(0, 10)} · AI-filled from your voice memo — fix
-        anything, then confirm.
+        {t("memoReview.aiFilled", { date: event.created_at.slice(0, 10) })}
       </p>
-      {MEMO_TOPICS.map((t) => (
-        <div key={t.key}>
-          <label className="field-label">{t.prompt}</label>
+      {MEMO_TOPICS.map((topic) => (
+        <div key={topic.key}>
+          <label className="field-label">{t(TOPIC_KEY[topic.key])}</label>
           <input
-            value={fields[t.key] ?? ""}
+            value={fields[topic.key] ?? ""}
             onChange={(e) =>
-              setFields({ ...fields, [t.key]: e.target.value || null })
+              setFields({ ...fields, [topic.key]: e.target.value || null })
             }
           />
         </div>
@@ -46,13 +62,14 @@ function MemoRow({ event, onDone }: { event: InstallEvent; onDone: () => void })
         disabled={confirm.isPending}
         onClick={() => confirm.mutate()}
       >
-        {confirm.isPending ? "Saving…" : "Confirm memo"}
+        {confirm.isPending ? t("memoReview.saving") : t("memoReview.confirmMemo")}
       </button>
     </li>
   );
 }
 
 export function MemoReview() {
+  const t = useT();
   const queryClient = useQueryClient();
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const memos = useQuery({
@@ -70,23 +87,20 @@ export function MemoReview() {
     <div className="page">
       <header className="page-header">
         <div>
-          <h1>Review AI memos</h1>
+          <h1>{t("memoReview.title")}</h1>
           <p className="muted" style={{ margin: 0 }}>
-            Confirm fields so the brain gets smarter.
+            {t("memoReview.subtitle")}
           </p>
         </div>
-        <BackChip fallback="/" label="My work" />
+        <BackChip fallback="/" label={t("memoReview.myWork")} />
       </header>
-      <p className="muted">
-        The AI split your voice memos into fields. A quick confirm makes the
-        brain smarter for the next installer.
-      </p>
+      <p className="muted">{t("memoReview.explain")}</p>
       <ul className="unit-list">
         {(memos.data ?? []).map((e) => (
           <MemoRow key={e.id} event={e} onDone={refresh} />
         ))}
         {memos.data?.length === 0 && (
-          <p className="muted">Nothing to review — all caught up.</p>
+          <p className="muted">{t("memoReview.allCaughtUp")}</p>
         )}
       </ul>
     </div>

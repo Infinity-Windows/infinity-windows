@@ -5,6 +5,21 @@
 //
 // The runtime (permissionEnv.ts / usePermissions.ts) wires this core to the real
 // Notification / Geolocation / navigator.permissions APIs behind a thin adapter.
+//
+// settingsView's copy is bilingual (installer-spanish-first-fourteen): it
+// takes a plain translate function rather than importing TFn from lib/i18n's
+// context.ts, which pulls in React — this file's "NO React" rule stays true
+// even though it now speaks two languages. Its own catalog + translate
+// imports are pure (no DOM/React either), and `t` defaults to English so the
+// existing unit tests below need no changes.
+
+import { CATALOG, type TKey } from "../i18n/catalog";
+import { translate, type Lang, type TVars } from "../i18n/translate";
+
+/** A minimal translate-function shape — deliberately NOT TFn from context.ts,
+ *  which imports React. */
+type T = (key: TKey, vars?: TVars) => string;
+const englishT: T = (key, vars) => translate(CATALOG, "en" as Lang, key, vars);
 
 /** The two permissions this wizard primes. */
 export type PermissionKind = "notifications" | "location";
@@ -149,65 +164,73 @@ export interface SettingsView {
   needsSiteSettings: boolean;
 }
 
-const KIND_NOUN: Record<PermissionKind, string> = {
-  notifications: "Notifications",
-  location: "Location",
+const KIND_NOUN: Record<PermissionKind, TKey> = {
+  notifications: "permSettings.kind.notifications",
+  location: "permSettings.kind.location",
+};
+const KIND_NOUN_LOWER: Record<PermissionKind, TKey> = {
+  notifications: "permSettings.kindLower.notifications",
+  location: "permSettings.kindLower.location",
 };
 
 /**
  * Derive the Settings UI descriptor for one permission. Pure so the copy and
- * the "can we offer a button?" decision are unit-testable.
+ * the "can we offer a button?" decision are unit-testable. `t` defaults to
+ * English, same as everywhere else in the app a pure module speaks for a
+ * screen it has no React access to.
  */
 export function settingsView(
   kind: PermissionKind,
   status: PermissionStatus,
+  t: T = englishT,
 ): SettingsView {
-  const noun = KIND_NOUN[kind];
+  const noun = t(KIND_NOUN[kind]);
+  const nounLower = t(KIND_NOUN_LOWER[kind]);
   switch (status) {
     case "granted":
       return {
-        label: "On",
+        label: t("permSettings.on"),
         tone: "ok",
         hint:
           kind === "notifications"
-            ? "You'll get alerts for the things that need you."
-            : "Clock-ins and on-site reminders can use your location.",
+            ? t("permSettings.hint.grantedNotifications")
+            : t("permSettings.hint.grantedLocation"),
         canRequest: false,
         needsSiteSettings: false,
       };
     case "denied":
       return {
-        label: "Blocked",
+        label: t("permSettings.blocked"),
         tone: "warn",
-        hint: `${noun} are blocked for this site. To turn them back on, open your browser's site settings for this page and allow ${noun.toLowerCase()}, then reload.`,
+        hint: t("permSettings.hint.denied", { noun, nounLower }),
         canRequest: false,
         needsSiteSettings: true,
       };
     case "prompt":
     case "dismissed":
       return {
-        label: "Off",
+        label: t("permSettings.off"),
         tone: "info",
         hint:
           kind === "notifications"
-            ? "Turn on to get alerted for schedule changes, timecard approvals, and today's toolbox talk."
-            : "Turn on for accurate clock-in/out stamps and on-site reminders.",
+            ? t("permSettings.hint.offNotifications")
+            : t("permSettings.hint.offLocation"),
         canRequest: true,
         needsSiteSettings: false,
       };
     case "unsupported":
       return {
-        label: "Not supported",
+        label: t("permSettings.notSupported"),
         tone: "muted",
-        hint: `This device or browser doesn't support ${noun.toLowerCase()}.`,
+        hint: t("permSettings.hint.unsupported", { nounLower }),
         canRequest: false,
         needsSiteSettings: false,
       };
     case "insecure-context":
       return {
-        label: "Unavailable",
+        label: t("permSettings.unavailable"),
         tone: "muted",
-        hint: `${noun} need a secure (https) connection. They'll be available once the app is served over https.`,
+        hint: t("permSettings.hint.insecure", { noun }),
         canRequest: false,
         needsSiteSettings: false,
       };

@@ -1,4 +1,9 @@
 import { supabase } from "./supabase";
+import { CATALOG } from "./i18n/catalog";
+import { translate, type Lang } from "./i18n/translate";
+import type { TFn } from "./i18n/context";
+
+const englishT: TFn = (key, vars) => translate(CATALOG, "en" as Lang, key, vars);
 
 // --- Safety ---
 export interface TalkSections {
@@ -252,13 +257,14 @@ export function filterSuppliesByName(
  */
 export function onHandLabel(
   s: Pick<Supply, "on_hand" | "last_counted_at">,
+  t: TFn = englishT,
 ): string {
-  if (s.on_hand == null || !s.last_counted_at) return "not counted yet";
+  if (s.on_hand == null || !s.last_counted_at) return t("ops.notCountedYet");
   const when = new Date(s.last_counted_at).toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
   });
-  return `about ${s.on_hand} on hand · last counted ${when}`;
+  return t("ops.onHand", { n: s.on_hand, when });
 }
 
 /**
@@ -309,15 +315,16 @@ export function supplyHomeLabel(
   s: Pick<Supply, "home_container_id" | "home_note" | "home_location_id">,
   containerName: Map<string, string>,
   locationAddress: Map<string, string>,
+  t: TFn = englishT,
 ): string {
   const box = s.home_container_id
-    ? (containerName.get(s.home_container_id) ?? "a container")
+    ? (containerName.get(s.home_container_id) ?? t("ops.aContainer"))
     : null;
   const slot = s.home_location_id
     ? (locationAddress.get(s.home_location_id) ?? null)
     : null;
   const place = box ?? slot;
-  if (!place) return s.home_note ? s.home_note : "no home spot yet";
+  if (!place) return s.home_note ? s.home_note : t("ops.noHomeSpotYet");
   return s.home_note ? `${place} — ${s.home_note}` : place;
 }
 

@@ -9,8 +9,10 @@ import { getOpenShift, listCostCodes } from "../lib/timeclock";
 import { listProjects } from "../lib/api";
 import { TimecardPanel } from "../components/timecard/TimecardPanel";
 import { SignMyTimecardCard } from "../components/timecard/SignOffCard";
+import { useT } from "../lib/i18n";
 
 export function Timecard() {
+  const t = useT();
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const costCodes = useQuery({ queryKey: ["costCodes"], queryFn: listCostCodes });
@@ -25,10 +27,10 @@ export function Timecard() {
     <div className="page">
       <header className="page-header">
         <div>
-          <h1>My timecard</h1>
-          <p className="muted" style={{ margin: 0 }}>Your hours</p>
+          <h1>{t("timecard.pageTitle")}</h1>
+          <p className="muted" style={{ margin: 0 }}>{t("timecard.pageSubtitle")}</p>
         </div>
-        <BackChip fallback="/" label="Home" />
+        <BackChip fallback="/" label={t("timecard.home")} />
       </header>
       {me.data?.id && <SignMyTimecardCard profileId={me.data.id} />}
       {me.data?.id && (

@@ -16,8 +16,10 @@ import { isAutoFiledCrashReport } from "../lib/crashReport";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { isOwner } from "../lib/install/types";
 import { listProfiles } from "../lib/install/api";
+import { useT } from "../lib/i18n";
 
 export function Suggestions() {
+  const t = useT();
   const qc = useQueryClient();
   const { effectiveRole } = useEffectiveRole();
   const owner = isOwner(effectiveRole);
@@ -34,7 +36,7 @@ export function Suggestions() {
     mutationFn: () => submitAppFeedback(kind, body.trim()),
     onSuccess: () => {
       setBody("");
-      setMessage("Sent — it's on the owners' list.");
+      setMessage(t("suggestions.sent"));
       void qc.invalidateQueries({ queryKey: ["appFeedback"] });
     },
     onError: (e) => setMessage(formatApiError(e)),
@@ -61,29 +63,26 @@ export function Suggestions() {
     <div className="page">
       <header className="page-header">
         <div>
-          <p className="home-greeting">{owner ? "App issues" : "Suggestions"}</p>
-          <h1>Make the app better</h1>
+          <p className="home-greeting">{owner ? t("suggestions.appIssues") : t("suggestions.title")}</p>
+          <h1>{t("suggestions.heading")}</h1>
         </div>
-        <BackChip fallback="/" label="Home" />
+        <BackChip fallback="/" label={t("suggestions.home")} />
       </header>
 
-      <p className="muted">
-        Something broken? Something the app should do? Say it here — every
-        report goes straight to the owners.
-      </p>
+      <p className="muted">{t("suggestions.explain")}</p>
 
       <div className="row-gap" style={{ marginBottom: 6 }}>
         <button
           className={kind === "bug" ? "button-like active-pill" : "button-like"}
           onClick={() => setKind("bug")}
         >
-          Something's broken
+          {t("suggestions.somethingBroken")}
         </button>
         <button
           className={kind === "idea" ? "button-like active-pill" : "button-like"}
           onClick={() => setKind("idea")}
         >
-          An idea
+          {t("suggestions.anIdea")}
         </button>
       </div>
       <textarea
@@ -91,13 +90,13 @@ export function Suggestions() {
         onChange={(e) => setBody(e.target.value)}
         placeholder={
           kind === "bug"
-            ? "What happened, and what were you doing when it happened?"
-            : "What should the app do?"
+            ? t("suggestions.bugPlaceholder")
+            : t("suggestions.ideaPlaceholder")
         }
         rows={3}
         maxLength={2000}
         style={{ width: "100%", maxWidth: 560 }}
-        aria-label="Your report"
+        aria-label={t("suggestions.yourReport")}
       />
       <div className="row-gap" style={{ marginTop: 6 }}>
         <button
@@ -105,17 +104,17 @@ export function Suggestions() {
           disabled={!body.trim() || submit.isPending}
           onClick={() => submit.mutate()}
         >
-          {submit.isPending ? "Sending…" : "Send to the owners"}
+          {submit.isPending ? t("suggestions.sending") : t("suggestions.sendToOwners")}
         </button>
       </div>
       {message && <p className="scanner-hint">{message}</p>}
 
       <div className="row-between" style={{ alignItems: "center", marginTop: 16 }}>
         <h2 style={{ margin: 0 }}>
-          {owner ? `App issues (${rows.length})` : "Your reports"}
+          {owner ? t("suggestions.appIssuesCount", { n: rows.length }) : t("suggestions.yourReports")}
         </h2>
         <button className="link" onClick={() => setShowResolved((v) => !v)}>
-          {showResolved ? "Hide resolved" : "Show resolved"}
+          {showResolved ? t("suggestions.hideResolved") : t("suggestions.showResolved")}
         </button>
       </div>
       <ul className="unit-list">
@@ -123,11 +122,11 @@ export function Suggestions() {
           <li key={f.id} className="opening-review-row">
             <div className="row-gap" style={{ alignItems: "center", flexWrap: "wrap" }}>
               <span className={f.kind === "bug" ? "warn-text" : "ok"}>
-                {f.kind === "bug" ? "Broken" : "Idea"}
+                {f.kind === "bug" ? t("suggestions.broken") : t("suggestions.idea")}
               </span>
               {owner && (
                 <span className="muted">
-                  {f.author ? (nameOf.get(f.author) ?? "someone") : "someone"}
+                  {f.author ? (nameOf.get(f.author) ?? t("suggestions.someone")) : t("suggestions.someone")}
                 </span>
               )}
               <span className="muted">
@@ -136,14 +135,14 @@ export function Suggestions() {
                   day: "numeric",
                 })}
               </span>
-              {f.status === "resolved" && <span className="ok">resolved</span>}
+              {f.status === "resolved" && <span className="ok">{t("suggestions.resolved")}</span>}
               {owner && f.status === "open" && (
                 <button
                   className="link"
                   disabled={resolve.isPending}
                   onClick={() => resolve.mutate(f.id)}
                 >
-                  Resolve
+                  {t("suggestions.resolve")}
                 </button>
               )}
             </div>
@@ -153,7 +152,7 @@ export function Suggestions() {
       </ul>
       {rows.length === 0 && (
         <p className="muted">
-          {owner ? "Nothing open. The app is perfect — for now." : "Nothing yet."}
+          {owner ? t("suggestions.nothingOpen") : t("suggestions.nothingYet")}
         </p>
       )}
     </div>
