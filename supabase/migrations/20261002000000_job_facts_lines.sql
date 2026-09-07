@@ -29,8 +29,9 @@
 --   shown: on the GC card at the top of the job, not down in Job facts.
 --
 -- Rows in project_build_facts are hours old, so the carry-over below is
--- belt-and-braces: a single finish/set depth becomes the first line, and
--- any elevation notes fold into the one box with their side written in.
+-- belt-and-braces: a single finish/set depth becomes the first line, any
+-- elevation notes fold into the one box with their side written in, and a
+-- sill pan already typed becomes words in the flashing note.
 --
 -- Same signatures on upsert_build_facts and green_light_items, so CREATE OR
 -- REPLACE is enough — no overload is created (the 20260929 trap). Idempotent
@@ -67,6 +68,20 @@ begin
        where exterior_lines = '[]'::jsonb
          and (exterior_finish is not null or exterior_note is not null
               or set_depth is not null or set_depth_inches is not null)
+    $q$;
+    -- A sill pan already typed on a real row (the owner filed one the day
+    -- this shipped) folds into the flashing note as words before the
+    -- columns go. Dropping the FIELD was his call; losing the VALUE was not.
+    -- Guarded on the marker text so a re-run never appends it twice.
+    execute $q$
+      update project_build_facts
+         set flashing_note = concat_ws(E'\n', nullif(btrim(coalesce(flashing_note, '')), ''),
+               'Sill pan: ' || coalesce(sill_pan_type, 'type not recorded')
+               || case sill_pan when 'required' then ' (required)'
+                                when 'not_required' then ' (not required)'
+                                else '' end)
+       where (sill_pan_type is not null or sill_pan in ('required', 'not_required'))
+         and coalesce(flashing_note, '') not ilike '%Sill pan:%'
     $q$;
     execute $q$
       update project_build_facts
