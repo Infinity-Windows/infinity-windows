@@ -13,6 +13,11 @@
 
 import type { StorageContainer, StoragePackage } from "../storage";
 import { piecesWhere, type PlaceLocation } from "./containment";
+import { CATALOG } from "../i18n/catalog";
+import { translate, type Lang } from "../i18n/translate";
+import type { TFn } from "../i18n/context";
+
+const englishT: TFn = (key, vars) => translate(CATALOG, "en" as Lang, key, vars);
 
 export interface UnitPartsReport {
   /** Every non-blank package tagged with this mark on this job, reading order:
@@ -135,48 +140,54 @@ export type PartsTone = "ok" | "warn" | "muted";
  * is accounted for; amber when something is knowably absent or the labels
  * fight; muted when there is nothing to judge against.
  */
-export function partsHeadline(r: UnitPartsReport): { text: string; tone: PartsTone } {
+export function partsHeadline(r: UnitPartsReport, t: TFn = englishT): { text: string; tone: PartsTone } {
   if (r.rows.length === 0) {
-    return { text: "Nothing tagged for this window yet", tone: "muted" };
+    return { text: t("warehouse.parts.nothingTagged"), tone: "muted" };
   }
   if (r.totalsDisagree) {
-    return {
-      text: "The labels disagree on how many parts this window has — a foreman should settle it",
-      tone: "warn",
-    };
+    return { text: t("warehouse.parts.disagree"), tone: "warn" };
   }
   if (r.makerSays != null) {
     return {
-      text: `Ours say ${r.expectedTotal}, the maker's label says ${r.makerSays} — the maker wins: burn the wrong labels and mint ${r.makerSays}`,
+      text: t("warehouse.parts.makerSays", { ours: r.expectedTotal ?? "?", maker: r.makerSays }),
       tone: "warn",
     };
   }
   if (r.expectedTotal === null) {
     const n = r.rows.length;
     return {
-      text: `${n} package${n === 1 ? "" : "s"} here · labels carry no part numbers`,
+      text: t(n === 1 ? "warehouse.parts.noNumbers.one" : "warehouse.parts.noNumbers.many", { n }),
       tone: "muted",
     };
   }
   if (r.complete) {
-    return { text: `${r.expectedTotal} of ${r.expectedTotal} · all here`, tone: "ok" };
+    return { text: t("warehouse.parts.allHere", { total: r.expectedTotal }), tone: "ok" };
   }
   // Labels exist for everything that is not here: the declared-and-waiting
   // state, normal before a delivery. Muted, not amber — the alarm belongs to
   // parts NOBODY has printed a label for.
   if (r.missingIndexes.length === 0 && r.onTheWayIndexes.length > 0) {
     return {
-      text: `${r.presentIndexes.length} of ${r.expectedTotal} here · ${r.onTheWayIndexes.length} on the way`,
+      text: t("warehouse.parts.onTheWayOnly", {
+        present: r.presentIndexes.length,
+        total: r.expectedTotal,
+        onWay: r.onTheWayIndexes.length,
+      }),
       tone: "muted",
     };
   }
   const missing = r.missingIndexes.join(", ");
+  const base = t(r.missingIndexes.length === 1 ? "warehouse.parts.missing.one" : "warehouse.parts.missing.many", {
+    present: r.presentIndexes.length,
+    total: r.expectedTotal,
+    missing,
+  });
   return {
     text:
-      `${r.presentIndexes.length} of ${r.expectedTotal} here · no label yet for part${
-        r.missingIndexes.length === 1 ? "" : "s"
-      } ${missing}` +
-      (r.onTheWayIndexes.length > 0 ? ` · ${r.onTheWayIndexes.length} on the way` : ""),
+      base +
+      (r.onTheWayIndexes.length > 0
+        ? ` · ${t("warehouse.parts.onTheWayCount", { n: r.onTheWayIndexes.length })}`
+        : ""),
     tone: "warn",
   };
 }
@@ -193,9 +204,10 @@ export function unitPackageLine(
   report: UnitPartsReport,
   containersById: Map<string, StorageContainer>,
   locationsById: Map<string, PlaceLocation>,
+  t: TFn = englishT,
 ): string | null {
   if (report.rows.length === 0) return null;
-  const headline = partsHeadline(report).text;
-  const where = piecesWhere(report.rows, containersById, locationsById);
+  const headline = partsHeadline(report, t).text;
+  const where = piecesWhere(report.rows, containersById, locationsById, t);
   return where ? `${headline} — ${where}` : headline;
 }

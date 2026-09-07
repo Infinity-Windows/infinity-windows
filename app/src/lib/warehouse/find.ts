@@ -16,6 +16,11 @@
 import type { StorageContainer, StoragePackage } from "../storage";
 import { placeWhere, type PlaceLocation } from "./containment";
 import { partsHeadline, unitParts, type UnitPartsReport } from "./unitParts";
+import { CATALOG } from "../i18n/catalog";
+import { translate, type Lang } from "../i18n/translate";
+import type { TFn } from "../i18n/context";
+
+const englishT: TFn = (key, vars) => translate(CATALOG, "en" as Lang, key, vars);
 
 export interface FindInputs {
   packages: StoragePackage[];
@@ -105,13 +110,14 @@ function describe(
   pkg: StoragePackage,
   containersById: Map<string, StorageContainer>,
   locationsById: Map<string, PlaceLocation>,
+  t: TFn = englishT,
 ): PackageHit {
-  if (pkg.status === "checked_out") return { pkg, where: "checked out to a job" };
+  if (pkg.status === "checked_out") return { pkg, where: t("warehouse.find.checkedOut") };
   // A minted label's material has not arrived. Without this branch it falls
   // through to "loose — no container, no slot", which sends somebody hunting
   // the warehouse for a package that is still on a truck somewhere (ticket 15).
-  if (pkg.status === "minted") return { pkg, where: "on the way — not arrived yet" };
-  return { pkg, where: placeWhere(pkg, containersById, locationsById) };
+  if (pkg.status === "minted") return { pkg, where: t("warehouse.find.onTheWay") };
+  return { pkg, where: placeWhere(pkg, containersById, locationsById, t) };
 }
 
 /**
@@ -125,6 +131,7 @@ export function findInWarehouse(
    * lands straight on that job's window. A waiting job is picked by its
    * typed name instead of an id. */
   opts?: { markProjectId?: string; markPendingName?: string },
+  t: TFn = englishT,
 ): FindAnswer | null {
   // "#16" and "16" are the same question — the sticker prints the number
   // with the hash, so people type it that way (owner ask, 2026-08-18).
@@ -153,12 +160,12 @@ export function findInWarehouse(
       p.serial.toUpperCase() === query ||
       (p.short_code ?? "").toUpperCase() === query,
   );
-  if (pkg) return { kind: "package", hit: describe(pkg, byId, locationsById) };
+  if (pkg) return { kind: "package", hit: describe(pkg, byId, locationsById, t) };
   const mfrMatches = packages.filter(
     (p) => (p.mfr_mark ?? "").toUpperCase() === query,
   );
   if (mfrMatches.length === 1) {
-    return { kind: "package", hit: describe(mfrMatches[0], byId, locationsById) };
+    return { kind: "package", hit: describe(mfrMatches[0], byId, locationsById, t) };
   }
 
   // 2. A container, by serial or by name ("conex 3").
@@ -168,7 +175,7 @@ export function findInWarehouse(
   if (container) {
     const hits = packages
       .filter((p) => p.status === "stored" && p.container_id === container.id)
-      .map((p) => describe(p, byId, locationsById));
+      .map((p) => describe(p, byId, locationsById, t));
     return { kind: "container", container, hits };
   }
 
@@ -187,7 +194,7 @@ export function findInWarehouse(
       address: slot.address ?? query,
       hits: packages
         .filter((p) => p.status !== "checked_out" && p.location_id === slotId)
-        .map((p) => describe(p, byId, locationsById)),
+        .map((p) => describe(p, byId, locationsById, t)),
     };
   }
 
@@ -196,7 +203,7 @@ export function findInWarehouse(
   if (project) {
     const hits = packages
       .filter((p) => p.project_id === project.id)
-      .map((p) => describe(p, byId, locationsById));
+      .map((p) => describe(p, byId, locationsById, t));
     return { kind: "job", projectId: project.id, jobCode: project.job_code, hits };
   }
 
@@ -214,7 +221,7 @@ export function findInWarehouse(
     if (named) {
       const hits = packages
         .filter((p) => p.project_id === named.id)
-        .map((p) => describe(p, byId, locationsById));
+        .map((p) => describe(p, byId, locationsById, t));
       return { kind: "job", projectId: named.id, jobCode: named.job_code, hits };
     }
     const pendingName = packages.find(
@@ -225,7 +232,7 @@ export function findInWarehouse(
     if (pendingName) {
       const hits = packages
         .filter((p) => p.project_id == null && p.pending_job_name === pendingName)
-        .map((p) => describe(p, byId, locationsById));
+        .map((p) => describe(p, byId, locationsById, t));
       return { kind: "pending-job", name: pendingName, hits };
     }
   }
@@ -287,8 +294,8 @@ export function findInWarehouse(
         projectId: markProject,
         jobCode: jobCodeOf.get(markProject) ?? "?",
         report,
-        headline: partsHeadline(report).text,
-        hits: report.rows.map((p) => describe(p, byId, locationsById)),
+        headline: partsHeadline(report, t).text,
+        hits: report.rows.map((p) => describe(p, byId, locationsById, t)),
       };
     }
     const [pendingName] = pendingOwners;
@@ -299,8 +306,8 @@ export function findInWarehouse(
       projectId: null,
       jobCode: pendingName,
       report,
-      headline: partsHeadline(report).text,
-      hits: report.rows.map((p) => describe(p, byId, locationsById)),
+      headline: partsHeadline(report, t).text,
+      hits: report.rows.map((p) => describe(p, byId, locationsById, t)),
     };
   }
   if (ownerCount > 1) {
@@ -310,26 +317,26 @@ export function findInWarehouse(
       ...[...markProjectIds].map((projectId) => {
         const report = unitParts(packages, projectId, query);
         const first = report.rows[0]
-          ? describe(report.rows[0], byId, locationsById)
+          ? describe(report.rows[0], byId, locationsById, t)
           : null;
         return {
           projectId: projectId as string | null,
           pendingName: null as string | null,
           jobCode: jobCodeOf.get(projectId) ?? "?",
-          headline: partsHeadline(report).text,
+          headline: partsHeadline(report, t).text,
           where: first?.where ?? null,
         };
       }),
       ...[...pendingOwners].map((pendingName) => {
         const report = unitParts(packages, "", query, pendingName);
         const first = report.rows[0]
-          ? describe(report.rows[0], byId, locationsById)
+          ? describe(report.rows[0], byId, locationsById, t)
           : null;
         return {
           projectId: null as string | null,
           pendingName: pendingName as string | null,
           jobCode: pendingName,
-          headline: partsHeadline(report).text,
+          headline: partsHeadline(report, t).text,
           where: first?.where ?? null,
         };
       }),
@@ -345,7 +352,7 @@ export function findInWarehouse(
     supplies.find((s) => s.name.toUpperCase().includes(query));
   if (supply && query.length >= 3) {
     const box = supply.home_container_id
-      ? (byId.get(supply.home_container_id)?.name ?? "a container")
+      ? (byId.get(supply.home_container_id)?.name ?? t("warehouse.find.aContainer"))
       : null;
     const slot = supply.home_location_id
       ? (locationsById.get(supply.home_location_id)?.address ?? null)
@@ -355,7 +362,7 @@ export function findInWarehouse(
       ? supply.home_note
         ? `${place} — ${supply.home_note}`
         : place
-      : (supply.home_note ?? "no home spot yet");
+      : (supply.home_note ?? t("warehouse.find.noHomeSpot"));
     return {
       kind: "supply",
       name: supply.name,
@@ -368,31 +375,43 @@ export function findInWarehouse(
   return {
     kind: "miss",
     query: raw.trim(),
-    suggestion:
-      "No sticker, window, shelf, conex or job by that name. If the material is here, tag it at the truck — until a sticker goes on, nobody can be told where it is.",
+    suggestion: t("warehouse.find.missSuggestion"),
   };
 }
 
-/** The one-line answer, for the collapsed state and for screen readers. */
-export function answerHeadline(a: FindAnswer): string {
+/** The one-line answer, for the collapsed state and for screen readers. A
+ * caller with no `t` gets the same English text as before (S3b). */
+export function answerHeadline(a: FindAnswer, t: TFn = englishT): string {
   switch (a.kind) {
     case "unit":
-      return `Window ${a.markCode} · ${a.jobCode} — ${a.headline}`;
+      return t("warehouse.find.headline.unit", { mark: a.markCode, job: a.jobCode, headline: a.headline });
     case "mark-choices":
-      return `Window ${a.markCode} — ${a.choices.length} jobs have one`;
+      return t("warehouse.find.headline.markChoices", { mark: a.markCode, n: a.choices.length });
     case "package":
       return `${a.hit.pkg.short_code ?? a.hit.pkg.serial} — ${a.hit.where}`;
     case "container":
-      return `${a.container.name} — ${a.hits.length} package${a.hits.length === 1 ? "" : "s"} inside`;
+      return t(a.hits.length === 1 ? "warehouse.find.headline.container.one" : "warehouse.find.headline.container.many", {
+        name: a.container.name,
+        n: a.hits.length,
+      });
     case "job":
-      return `${a.jobCode} — ${a.hits.length} package${a.hits.length === 1 ? "" : "s"} tagged`;
+      return t(a.hits.length === 1 ? "warehouse.find.headline.job.one" : "warehouse.find.headline.job.many", {
+        job: a.jobCode,
+        n: a.hits.length,
+      });
     case "pending-job":
-      return `“${a.name}” (job not built yet) — ${a.hits.length} package${a.hits.length === 1 ? "" : "s"} tagged`;
+      return t(a.hits.length === 1 ? "warehouse.find.headline.pendingJob.one" : "warehouse.find.headline.pendingJob.many", {
+        name: a.name,
+        n: a.hits.length,
+      });
     case "slot":
-      return `${a.address} — ${a.hits.length} package${a.hits.length === 1 ? "" : "s"}`;
+      return t(a.hits.length === 1 ? "warehouse.find.headline.slot.one" : "warehouse.find.headline.slot.many", {
+        address: a.address,
+        n: a.hits.length,
+      });
     case "supply":
       return `${a.name} — ${a.home}`;
     case "miss":
-      return `Nothing found for “${a.query}”`;
+      return t("warehouse.find.headline.miss", { query: a.query });
   }
 }

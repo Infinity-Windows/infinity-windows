@@ -14,6 +14,11 @@
 import { hasPartNumber, type StorageContainer, type StoragePackage } from "../storage";
 import type { PlaceLocation } from "./containment";
 import { placeWhere } from "./containment";
+import { CATALOG } from "../i18n/catalog";
+import { translate, type Lang } from "../i18n/translate";
+import type { TFn } from "../i18n/context";
+
+const englishT: TFn = (key, vars) => translate(CATALOG, "en" as Lang, key, vars);
 
 /** One place, as a comparable key: the box, the shelf, or loose. */
 function placeKey(p: StoragePackage): string {
@@ -27,9 +32,12 @@ const ON_HAND = new Set(["received", "stored"]);
 /** "at Conex 3" / "loose" / "in more than one place" — placeWhere hands back
  * bare names, and "at loose — no container" is not a sentence. Shared by
  * both directions of the split warning. */
-function spotPhrase(places: string[]): string {
-  if (places.length > 1) return "in more than one place";
-  return places[0].startsWith("loose") ? "loose" : `at ${places[0]}`;
+function spotPhrase(places: string[], t: TFn): string {
+  if (places.length > 1) return t("warehouse.split.morePlaces");
+  const loose = t("warehouse.place.loose");
+  return places[0].startsWith("loose") || places[0].startsWith(loose)
+    ? t("warehouse.split.looseShort")
+    : t("warehouse.split.at", { place: places[0] });
 }
 
 export interface SplitUnit {
@@ -50,6 +58,7 @@ export function splitUnits(
   packages: StoragePackage[],
   containersById: Map<string, StorageContainer>,
   locationsById: Map<string, PlaceLocation>,
+  t: TFn = englishT,
 ): SplitUnit[] {
   const byUnit = new Map<string, StoragePackage[]>();
   for (const p of packages) {
@@ -67,7 +76,7 @@ export function splitUnits(
     const keys = new Set(rows.map(placeKey));
     if (keys.size < 2) continue;
     const [projectId, markCode] = key.split("|");
-    const places = [...new Set(rows.map((p) => placeWhere(p, containersById, locationsById)))];
+    const places = [...new Set(rows.map((p) => placeWhere(p, containersById, locationsById, t)))];
     out.push({
       projectId: projectId === "boneyard" ? null : projectId,
       markCode,
@@ -90,6 +99,7 @@ export function splitLines(
   packages: StoragePackage[],
   containersById: Map<string, StorageContainer>,
   locationsById: Map<string, PlaceLocation>,
+  t: TFn = englishT,
 ): string[] {
   const marksTouched = new Map<string, { projectId: string | null; mark: string }>();
   for (const p of packages) {
@@ -115,11 +125,17 @@ export function splitLines(
     const taking = siblings.length - staying.length;
     if (staying.length === 0 || taking === 0) continue;
 
-    const where = [...new Set(staying.map((p) => placeWhere(p, containersById, locationsById)))];
+    const where = [...new Set(staying.map((p) => placeWhere(p, containersById, locationsById, t)))];
     lines.push(
-      `Window ${unit.mark} — taking ${taking} of its ${siblings.length} part${
-        siblings.length === 1 ? "" : "s"
-      } here; the other ${staying.length} stay${staying.length === 1 ? "s" : ""} ${spotPhrase(where)}.`,
+      t("warehouse.split.line.stay", {
+        mark: unit.mark,
+        taking,
+        total: siblings.length,
+        partWord: t(siblings.length === 1 ? "warehouse.split.part.one" : "warehouse.split.part.many"),
+        staying: staying.length,
+        stayWord: t(staying.length === 1 ? "warehouse.split.stays.one" : "warehouse.split.stays.many"),
+        spot: spotPhrase(where, t),
+      }),
     );
     void key;
   }
@@ -145,6 +161,7 @@ export function splitLinesOnStore(
   destContainerId: string,
   containersById: Map<string, StorageContainer>,
   locationsById: Map<string, PlaceLocation>,
+  t: TFn = englishT,
 ): string[] {
   const marksTouched = new Map<string, { projectId: string | null; mark: string }>();
   for (const p of packages) {
@@ -189,12 +206,16 @@ export function splitLinesOnStore(
     // window number just because it wasn't counted as on-hand a moment ago.
     const incoming = packages.filter((p) => incomingIds.has(p.id) && sameUnit(p));
     const piece = incoming.find(hasPartNumber);
-    const label = piece ? `Part ${piece.part_index} of ${piece.part_total}` : `Window ${unit.mark}`;
-    const where = [...new Set(elsewhere.map((p) => placeWhere(p, containersById, locationsById)))];
+    const label = piece
+      ? t("warehouse.split.partLabel", { index: piece.part_index, total: piece.part_total })
+      : t("warehouse.split.windowLabel", { mark: unit.mark });
+    const where = [...new Set(elsewhere.map((p) => placeWhere(p, containersById, locationsById, t)))];
     lines.push(
-      `${label} — the other ${elsewhere.length} part${elsewhere.length === 1 ? "" : "s"} ${
-        elsewhere.length === 1 ? "is" : "are"
-      } ${spotPhrase(where)}.`,
+      t(elsewhere.length === 1 ? "warehouse.split.line.otherIs" : "warehouse.split.line.otherAre", {
+        label,
+        n: elsewhere.length,
+        spot: spotPhrase(where, t),
+      }),
     );
   }
   return lines;

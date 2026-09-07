@@ -5,14 +5,16 @@
 // lib/warehouse/stations.ts, the same module the hub's strip reads, so a
 // chip can never name a station the hub doesn't.
 import { Link } from "react-router-dom";
-import { STATION_HUB_ROUTE, stationNumeral, type Station } from "../../lib/warehouse/stations";
+import { STATION_HUB_ROUTE, stationLabel, stationNumeral, type Station } from "../../lib/warehouse/stations";
+import { useT } from "../../lib/i18n";
 
 export function StationChip({ station }: { station: Station }) {
+  const t = useT();
   // No aria-hidden on the numeral: a screen reader user should hear the same
   // station number a sighted user sees, not just the name.
   return (
     <Link to={STATION_HUB_ROUTE} className="station-chip">
-      {stationNumeral(station.number)} {station.name}
+      {stationNumeral(station.number)} {stationLabel(station, t)}
     </Link>
   );
 }

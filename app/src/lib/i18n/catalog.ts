@@ -3574,6 +3574,182 @@ export const CATALOG = {
     en: "{job} · {count} green-light items open",
     es: "{job} · {count} elementos de luz verde pendientes",
   },
+
+  // ---- S3b — Spanish on Warehouse, storage/*, Ask (2026-09-07) ------------
+  // The rest of the floor test's allow-list: Warehouse.tsx, the storage/*
+  // detail screens it fans out to, AskInfinity.tsx, JobModelViewer.tsx, and
+  // the shared components/warehouse/* pieces those pages render. Vocabulary
+  // matches CONTEXT.md and the existing scan.*/supplies.* keys (conex, bay,
+  // package, checked out, finalized, on site).
+
+  // storage/WarehouseHistory.tsx
+  "storage.history.warehouse": { en: "Warehouse", es: "Almacén" },
+  "storage.history.title": { en: "History", es: "Historial" },
+  "storage.history.subtitle": {
+    en: "Jobs whose unit movement was finalized. Off the warehouse page, kept here to read; a foreman can reopen one.",
+    es: "Trabajos cuyo movimiento de unidades fue finalizado. No aparecen en la página del almacén, pero quedan aquí para leerlos; un capataz puede reabrir uno.",
+  },
+  "storage.history.loading": { en: "Loading…", es: "Cargando…" },
+  "storage.history.emptyTitle": { en: "No finalized jobs yet", es: "Todavía no hay trabajos finalizados" },
+  "storage.history.emptyMessage": {
+    en: "When a job's material has all gone out, a foreman taps Unit Movement Finalized on its page and it lands here.",
+    es: "Cuando todo el material de un trabajo ya salió, un capataz toca Movimiento de unidades finalizado en su página y aparece aquí.",
+  },
+  "storage.history.finalizedJobs": { en: "Finalized jobs", es: "Trabajos finalizados" },
+  "storage.history.materials": { en: "Materials", es: "Materiales" },
+  "storage.history.open": { en: "Open", es: "Abrir" },
+  "storage.history.summary.oneOne": {
+    en: "Finalized {date} · 1 unit · 1 piece on the job site",
+    es: "Finalizado el {date} · 1 unidad · 1 pieza en el sitio del trabajo",
+  },
+  "storage.history.summary.oneMany": {
+    en: "Finalized {date} · 1 unit · {onSite} pieces on the job site",
+    es: "Finalizado el {date} · 1 unidad · {onSite} piezas en el sitio del trabajo",
+  },
+  "storage.history.summary.manyOne": {
+    en: "Finalized {date} · {units} units · 1 piece on the job site",
+    es: "Finalizado el {date} · {units} unidades · 1 pieza en el sitio del trabajo",
+  },
+  "storage.history.summary.manyMany": {
+    en: "Finalized {date} · {units} units · {onSite} pieces on the job site",
+    es: "Finalizado el {date} · {units} unidades · {onSite} piezas en el sitio del trabajo",
+  },
+
+  // lib/warehouse/stations.ts — the five-stage funnel (components/warehouse/StationChip.tsx).
+  "warehouse.station.comingIn": { en: "Coming in", es: "Llegando" },
+  "warehouse.station.comingIn.when": {
+    en: "A truck is scheduled or just pulled up.",
+    es: "Un camión está programado o acaba de llegar.",
+  },
+  "warehouse.station.offTruck": { en: "Off the truck", es: "Bajando del camión" },
+  "warehouse.station.offTruck.when": {
+    en: "You're unloading — scan and tag as it comes off.",
+    es: "Estás descargando — escanea y etiqueta según va bajando.",
+  },
+  "warehouse.station.putAway": { en: "Put away", es: "Guardar" },
+  "warehouse.station.putAway.when": {
+    en: "It's inside — give it a home.",
+    es: "Ya está adentro — dale un lugar.",
+  },
+  "warehouse.station.outDoor": { en: "Out the door", es: "Saliendo" },
+  "warehouse.station.outDoor.when": {
+    en: "Material is leaving for a job.",
+    es: "El material está saliendo para un trabajo.",
+  },
+  "warehouse.station.fixMistake": { en: "Fix a mistake", es: "Corregir un error" },
+  "warehouse.station.fixMistake.when": {
+    en: "The paperwork doesn't match the truth.",
+    es: "El papeleo no coincide con la realidad.",
+  },
+
+  // lib/warehouse/areas.ts — where inside the box (ContainerViewer.tsx, package sentences).
+  "warehouse.area.front": { en: "Front (door end)", es: "Frente (lado de la puerta)" },
+  "warehouse.area.short.front": { en: "front", es: "frente" },
+  "warehouse.area.middle": { en: "Middle", es: "Medio" },
+  "warehouse.area.back": { en: "Back", es: "Fondo" },
+  "warehouse.area.frontLeft": { en: "Front Left", es: "Frente Izquierda" },
+  "warehouse.area.frontRight": { en: "Front Right", es: "Frente Derecha" },
+  "warehouse.area.middleLeft": { en: "Middle Left", es: "Medio Izquierda" },
+  "warehouse.area.middleRight": { en: "Middle Right", es: "Medio Derecha" },
+  "warehouse.area.backLeft": { en: "Back Left", es: "Fondo Izquierda" },
+  "warehouse.area.backRight": { en: "Back Right", es: "Fondo Derecha" },
+  "warehouse.area.north": { en: "North", es: "Norte" },
+  "warehouse.area.northeast": { en: "NorthEast", es: "Noreste" },
+  "warehouse.area.east": { en: "East", es: "Este" },
+  "warehouse.area.southeast": { en: "SouthEast", es: "Sureste" },
+  "warehouse.area.south": { en: "South", es: "Sur" },
+  "warehouse.area.southwest": { en: "SouthWest", es: "Suroeste" },
+  "warehouse.area.west": { en: "West", es: "Oeste" },
+  "warehouse.area.northwest": { en: "NorthWest", es: "Noroeste" },
+
+  // lib/warehouse/containment.ts — "where is it, really" (FindBar, CardList,
+  // JobPackagesPanel).
+  "warehouse.place.insideParent": { en: "{container} — inside {parent}", es: "{container} — dentro de {parent}" },
+  "warehouse.place.stagedFor": { en: "staged for {job} — {address}", es: "apartado para {job} — {address}" },
+  "warehouse.place.aJob": { en: "a job", es: "un trabajo" },
+  "warehouse.place.onAddress": { en: "on {address}", es: "en {address}" },
+  "warehouse.place.onShelf": { en: "on a shelf", es: "en un estante" },
+  "warehouse.place.loose": { en: "loose — no container, no slot", es: "suelto — sin caja, sin espacio" },
+  "warehouse.place.nPlaces": { en: "{n} places", es: "{n} lugares" },
+
+  // lib/warehouse/unitParts.ts — the completeness verdict (FindBar,
+  // JobModelViewer.tsx tap-info card, CardList).
+  "warehouse.parts.nothingTagged": { en: "Nothing tagged for this window yet", es: "Todavía no hay nada etiquetado para esta ventana" },
+  "warehouse.parts.disagree": {
+    en: "The labels disagree on how many parts this window has — a foreman should settle it",
+    es: "Las etiquetas no coinciden en cuántas piezas tiene esta ventana — un capataz debe resolverlo",
+  },
+  "warehouse.parts.makerSays": {
+    en: "Ours say {ours}, the maker's label says {maker} — the maker wins: burn the wrong labels and mint {maker}",
+    es: "Las nuestras dicen {ours}, la etiqueta del fabricante dice {maker} — gana el fabricante: quema las etiquetas incorrectas y emite {maker}",
+  },
+  "warehouse.parts.noNumbers.one": { en: "{n} package here · labels carry no part numbers", es: "{n} paquete aquí · las etiquetas no traen número de parte" },
+  "warehouse.parts.noNumbers.many": { en: "{n} packages here · labels carry no part numbers", es: "{n} paquetes aquí · las etiquetas no traen número de parte" },
+  "warehouse.parts.allHere": { en: "{total} of {total} · all here", es: "{total} de {total} · todo aquí" },
+  "warehouse.parts.onTheWayOnly": {
+    en: "{present} of {total} here · {onWay} on the way",
+    es: "{present} de {total} aquí · {onWay} en camino",
+  },
+  "warehouse.parts.onTheWayCount": { en: "{n} on the way", es: "{n} en camino" },
+  "warehouse.parts.missing.one": {
+    en: "{present} of {total} here · no label yet for part {missing}",
+    es: "{present} de {total} aquí · todavía sin etiqueta para la parte {missing}",
+  },
+  "warehouse.parts.missing.many": {
+    en: "{present} of {total} here · no label yet for parts {missing}",
+    es: "{present} de {total} aquí · todavía sin etiqueta para las partes {missing}",
+  },
+
+  // lib/warehouse/find.ts — "where is it" (FindBar.tsx).
+  "warehouse.find.checkedOut": { en: "checked out to a job", es: "sacado para un trabajo" },
+  "warehouse.find.onTheWay": { en: "on the way — not arrived yet", es: "en camino — todavía no llega" },
+  "warehouse.find.aContainer": { en: "a container", es: "una caja" },
+  "warehouse.find.noHomeSpot": { en: "no home spot yet", es: "todavía sin lugar asignado" },
+  "warehouse.find.missSuggestion": {
+    en: "No sticker, window, shelf, conex or job by that name. If the material is here, tag it at the truck — until a sticker goes on, nobody can be told where it is.",
+    es: "No hay ninguna etiqueta, ventana, estante, conex o trabajo con ese nombre. Si el material ya está aquí, etiquétalo en el camión — hasta que lleve una etiqueta, nadie puede saber dónde está.",
+  },
+  "warehouse.find.headline.unit": { en: "Window {mark} · {job} — {headline}", es: "Ventana {mark} · {job} — {headline}" },
+  "warehouse.find.headline.markChoices": { en: "Window {mark} — {n} jobs have one", es: "Ventana {mark} — {n} trabajos tienen una" },
+  "warehouse.find.headline.container.one": { en: "{name} — {n} package inside", es: "{name} — {n} paquete adentro" },
+  "warehouse.find.headline.container.many": { en: "{name} — {n} packages inside", es: "{name} — {n} paquetes adentro" },
+  "warehouse.find.headline.job.one": { en: "{job} — {n} package tagged", es: "{job} — {n} paquete etiquetado" },
+  "warehouse.find.headline.job.many": { en: "{job} — {n} packages tagged", es: "{job} — {n} paquetes etiquetados" },
+  "warehouse.find.headline.pendingJob.one": {
+    en: "“{name}” (job not built yet) — {n} package tagged",
+    es: "“{name}” (trabajo aún no creado) — {n} paquete etiquetado",
+  },
+  "warehouse.find.headline.pendingJob.many": {
+    en: "“{name}” (job not built yet) — {n} packages tagged",
+    es: "“{name}” (trabajo aún no creado) — {n} paquetes etiquetados",
+  },
+  "warehouse.find.headline.slot.one": { en: "{address} — {n} package", es: "{address} — {n} paquete" },
+  "warehouse.find.headline.slot.many": { en: "{address} — {n} packages", es: "{address} — {n} paquetes" },
+  "warehouse.find.headline.miss": { en: "Nothing found for “{query}”", es: "No se encontró nada para “{query}”" },
+
+  // lib/warehouse/splitUnits.ts — the split-across-places warning
+  // (Warehouse.tsx chip, CheckoutPackages.tsx confirm lines).
+  "warehouse.split.morePlaces": { en: "in more than one place", es: "en más de un lugar" },
+  "warehouse.split.looseShort": { en: "loose", es: "suelto" },
+  "warehouse.split.at": { en: "at {place}", es: "en {place}" },
+  "warehouse.split.part.one": { en: "part", es: "parte" },
+  "warehouse.split.part.many": { en: "parts", es: "partes" },
+  "warehouse.split.stays.one": { en: "stays", es: "se queda" },
+  "warehouse.split.stays.many": { en: "stay", es: "se quedan" },
+  "warehouse.split.line.stay": {
+    en: "Window {mark} — taking {taking} of its {total} {partWord} here; the other {staying} {stayWord} {spot}.",
+    es: "Ventana {mark} — llevando {taking} de sus {total} {partWord} de aquí; las otras {staying} {stayWord} {spot}.",
+  },
+  "warehouse.split.partLabel": { en: "Part {index} of {total}", es: "Parte {index} de {total}" },
+  "warehouse.split.windowLabel": { en: "Window {mark}", es: "Ventana {mark}" },
+  "warehouse.split.line.otherIs": {
+    en: "{label} — the other {n} part is {spot}.",
+    es: "{label} — la otra {n} parte está {spot}.",
+  },
+  "warehouse.split.line.otherAre": {
+    en: "{label} — the other {n} parts are {spot}.",
+    es: "{label} — las otras {n} partes están {spot}.",
+  },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */
