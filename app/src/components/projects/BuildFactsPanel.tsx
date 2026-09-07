@@ -90,6 +90,16 @@ export function BuildFactsPanel({
   if (!isLead) return null;
 
   const f = facts.data;
+  // Which pick-list answer is on screen for the two lists that have an
+  // "Other" box. The save goes through the outbox, whose promise resolves
+  // when the write is QUEUED, not when the server has it — so the refetch
+  // that follows can still read the old value, and the "Which one?" box has
+  // to open off what the foreman just chose, not off the row. Once the row
+  // catches up the two agree.
+  const [flashingChoice, setFlashingChoice] = useState<string | null>(null);
+  const [fastenerChoice, setFastenerChoice] = useState<string | null>(null);
+  const flashingShown = flashingChoice ?? f?.flashing_system ?? "";
+  const fastenerShown = fastenerChoice ?? f?.fastener_type ?? "";
   // Remounts every input when the stored row actually changes (a seed from
   // the GC handshake, another tab's save) without fighting the field
   // somebody is mid-edit in — defaultValue only reads its initial value once
@@ -136,13 +146,16 @@ export function BuildFactsPanel({
         <Select
           keyBase={`flash-${revision}`}
           label={t("buildFacts.field.flashingSystem")}
-          value={f?.flashing_system ?? ""}
+          value={flashingShown}
           options={FLASHING_SYSTEMS}
           optionKeys={FLASHING_SYSTEM_KEYS}
           t={t}
-          onCommit={(v) => commit("flashing_system", v)}
+          onCommit={(v) => {
+            setFlashingChoice(v);
+            commit("flashing_system", v);
+          }}
         />
-        {f?.flashing_system === "other" && (
+        {flashingShown === "other" && (
           <TextField
             keyBase={`flash-other-${revision}`}
             label={t("buildFacts.field.otherWhich")}
@@ -160,13 +173,16 @@ export function BuildFactsPanel({
         <Select
           keyBase={`fast-${revision}`}
           label={t("buildFacts.field.fastenerType")}
-          value={f?.fastener_type ?? ""}
+          value={fastenerShown}
           options={FASTENER_TYPES}
           optionKeys={FASTENER_TYPE_KEYS}
           t={t}
-          onCommit={(v) => commit("fastener_type", v)}
+          onCommit={(v) => {
+            setFastenerChoice(v);
+            commit("fastener_type", v);
+          }}
         />
-        {f?.fastener_type === "other" && (
+        {fastenerShown === "other" && (
           <TextField
             keyBase={`fast-other-${revision}`}
             label={t("buildFacts.field.otherWhich")}

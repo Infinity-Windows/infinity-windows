@@ -1259,7 +1259,7 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
       // "Only a foreman or above" / "has no field called" / "does not exist":
       // a rank problem, a bad key, or a bad job id are never fixed by a retry.
       if (
-        /only a foreman or above|has no field called|does not exist|is inset, outset|stucco, rock/i.test(
+        /only a foreman or above|has no field called|does not exist|is inset, outset|stucco, rock|must be a list|at most 20|must be a number|must be a finish/i.test(
           errorMessage(error),
         )
       ) {
