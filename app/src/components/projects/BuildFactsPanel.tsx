@@ -1,49 +1,58 @@
 // The Job facts card on a job's Overview (S4, .scratch/installer-os): the
 // build answers a foreman records once so nobody on the crew has to ask
-// twice — exterior finish, set depth, flashing, fasteners, sill pan, site
-// rules, the GC's contact, and a note per elevation.
+// twice — the exterior situations (one line per finish on the house),
+// flashing, fasteners, site rules, and one box of elevation notes.
 //
 // Foreman+ only here. An installer's read-only view lives on the unit sheet
 // instead (S5) — this card is where the answers get WRITTEN, and writing is
-// foreman+ both here and on the server (upsert_build_facts).
+// foreman+ both here and on the server (upsert_build_facts). The GC's name
+// and number are written on the GC card up top (GcContactFields), not here.
 //
 // Every field saves on its own, on blur (text/number) or change (select),
 // through the offline outbox — a foreman standing at the site fills these in
-// with whatever signal the job has. Supervisor+ additionally sees the six
-// green-light items above the fields, open ones first, each naming who is
-// expected to answer it (S4, warn-never-block).
+// with whatever signal the job has. The exterior situations are one list
+// saved whole on every change, for the same reason (owner, 2026-09-07: a
+// house is brick on the front and stucco on the sides, and the crew hits
+// both). Supervisor+ additionally sees the six green-light items above the
+// fields, open ones first, each naming who is expected to answer it (S4,
+// warn-never-block).
 //
 // Degrades rather than crashes on a database ahead of the migration:
 // getBuildFacts/listGreenLightItems both answer empty instead of throwing, so
 // the card still renders — just with nothing recorded yet.
 
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  EMPTY_EXTERIOR_LINE,
   EXTERIOR_FINISHES,
   EXTERIOR_FINISH_KEYS,
   FASTENER_TYPES,
   FASTENER_TYPE_KEYS,
   FLASHING_SYSTEMS,
   FLASHING_SYSTEM_KEYS,
+  MAX_EXTERIOR_LINES,
   SET_DEPTHS,
   SET_DEPTH_KEYS,
-  SILL_PAN_REQUIREMENTS,
-  SILL_PAN_KEYS,
-  SILL_PAN_TYPES,
-  SILL_PAN_TYPE_KEYS,
   WHO_KEYS,
   buildFactsKey,
   getBuildFacts,
   greenLightItemsKey,
+  isBlankExteriorLine,
   listGreenLightItems,
   saveBuildFact,
   type BuildFactsField,
   type BuildFactsPatch,
+  type ExteriorFinish,
+  type ExteriorLine,
   type GreenLightItem,
+  type SetDepth,
 } from "../../lib/install/buildFacts";
 import { useT } from "../../lib/i18n";
 import type { TKey } from "../../lib/i18n/catalog";
 import { pushToast, toastError } from "../../lib/toast";
+
+type Translate = (key: TKey, vars?: Record<string, string | number>) => string;
 
 export function BuildFactsPanel({
   projectId,
@@ -81,8 +90,8 @@ export function BuildFactsPanel({
   if (!isLead) return null;
 
   const f = facts.data;
-  // Remounts every text input when the stored row actually changes (a seed
-  // from the GC handshake, another tab's save) without fighting the field
+  // Remounts every input when the stored row actually changes (a seed from
+  // the GC handshake, another tab's save) without fighting the field
   // somebody is mid-edit in — defaultValue only reads its initial value once
   // per mount, so this is the whole refresh mechanism.
   const revision = f?.updated_at ?? "new";
@@ -114,39 +123,16 @@ export function BuildFactsPanel({
         <GreenLightChecklist items={checklist.data ?? []} loading={checklist.isLoading} t={t} />
       )}
 
+      {!facts.isLoading && (
+        <ExteriorLinesEditor
+          key={`lines-${revision}`}
+          initial={f?.exterior_lines ?? []}
+          t={t}
+          onSave={(lines) => save.mutate({ exterior_lines: lines })}
+        />
+      )}
+
       <div className="build-facts-grid">
-        <Select
-          keyBase={`ext-${revision}`}
-          label={t("buildFacts.field.exteriorFinish")}
-          value={f?.exterior_finish ?? ""}
-          options={EXTERIOR_FINISHES}
-          optionKeys={EXTERIOR_FINISH_KEYS}
-          t={t}
-          onCommit={(v) => commit("exterior_finish", v)}
-        />
-        <TextField
-          keyBase={`ext-note-${revision}`}
-          label={t("buildFacts.field.exteriorNote")}
-          value={f?.exterior_note ?? ""}
-          onCommit={(v) => commit("exterior_note", v)}
-        />
-
-        <Select
-          keyBase={`depth-${revision}`}
-          label={t("buildFacts.field.setDepth")}
-          value={f?.set_depth ?? ""}
-          options={SET_DEPTHS}
-          optionKeys={SET_DEPTH_KEYS}
-          t={t}
-          onCommit={(v) => commit("set_depth", v)}
-        />
-        <NumberField
-          keyBase={`depth-in-${revision}`}
-          label={t("buildFacts.field.setDepthInches")}
-          value={f?.set_depth_inches ?? null}
-          onCommit={(v) => commitNumber("set_depth_inches", v)}
-        />
-
         <Select
           keyBase={`flash-${revision}`}
           label={t("buildFacts.field.flashingSystem")}
@@ -156,6 +142,14 @@ export function BuildFactsPanel({
           t={t}
           onCommit={(v) => commit("flashing_system", v)}
         />
+        {f?.flashing_system === "other" && (
+          <TextField
+            keyBase={`flash-other-${revision}`}
+            label={t("buildFacts.field.otherWhich")}
+            value={f?.flashing_system_other ?? ""}
+            onCommit={(v) => commit("flashing_system_other", v)}
+          />
+        )}
         <TextField
           keyBase={`flash-note-${revision}`}
           label={t("buildFacts.field.flashingNote")}
@@ -172,6 +166,14 @@ export function BuildFactsPanel({
           t={t}
           onCommit={(v) => commit("fastener_type", v)}
         />
+        {f?.fastener_type === "other" && (
+          <TextField
+            keyBase={`fast-other-${revision}`}
+            label={t("buildFacts.field.otherWhich")}
+            value={f?.fastener_type_other ?? ""}
+            onCommit={(v) => commit("fastener_type_other", v)}
+          />
+        )}
         <NumberField
           keyBase={`fast-len-${revision}`}
           label={t("buildFacts.field.fastenerLength")}
@@ -191,38 +193,6 @@ export function BuildFactsPanel({
           onCommit={(v) => commit("fastener_note", v)}
         />
 
-        <Select
-          keyBase={`sill-${revision}`}
-          label={t("buildFacts.field.sillPan")}
-          value={f?.sill_pan ?? ""}
-          options={SILL_PAN_REQUIREMENTS}
-          optionKeys={SILL_PAN_KEYS}
-          t={t}
-          onCommit={(v) => commit("sill_pan", v)}
-        />
-        <Select
-          keyBase={`sill-type-${revision}`}
-          label={t("buildFacts.field.sillPanType")}
-          value={f?.sill_pan_type ?? ""}
-          options={SILL_PAN_TYPES}
-          optionKeys={SILL_PAN_TYPE_KEYS}
-          t={t}
-          onCommit={(v) => commit("sill_pan_type", v)}
-        />
-
-        <TextField
-          keyBase={`gc-name-${revision}`}
-          label={t("buildFacts.field.gcContactName")}
-          value={f?.gc_contact_name ?? ""}
-          onCommit={(v) => commit("gc_contact_name", v)}
-        />
-        <TextField
-          keyBase={`gc-phone-${revision}`}
-          label={t("buildFacts.field.gcContactPhone")}
-          value={f?.gc_contact_phone ?? ""}
-          onCommit={(v) => commit("gc_contact_phone", v)}
-        />
-
         <TextArea
           keyBase={`rules-${revision}`}
           label={t("buildFacts.field.siteRules")}
@@ -231,31 +201,125 @@ export function BuildFactsPanel({
         />
 
         <TextArea
-          keyBase={`n-${revision}`}
-          label={t("buildFacts.field.noteNorth")}
-          value={f?.note_north ?? ""}
-          onCommit={(v) => commit("note_north", v)}
-        />
-        <TextArea
-          keyBase={`s-${revision}`}
-          label={t("buildFacts.field.noteSouth")}
-          value={f?.note_south ?? ""}
-          onCommit={(v) => commit("note_south", v)}
-        />
-        <TextArea
-          keyBase={`e-${revision}`}
-          label={t("buildFacts.field.noteEast")}
-          value={f?.note_east ?? ""}
-          onCommit={(v) => commit("note_east", v)}
-        />
-        <TextArea
-          keyBase={`w-${revision}`}
-          label={t("buildFacts.field.noteWest")}
-          value={f?.note_west ?? ""}
-          onCommit={(v) => commit("note_west", v)}
+          keyBase={`elev-${revision}`}
+          label={t("buildFacts.field.elevationNotes")}
+          value={f?.elevation_notes ?? ""}
+          onCommit={(v) => commit("elevation_notes", v)}
         />
       </div>
     </section>
+  );
+}
+
+/**
+ * The exterior situations: one line per finish on the house. Local state is
+ * the draft; every committed change (a select, a blur) saves the WHOLE list.
+ * Blank lines are dropped before saving so a stray "Add" never stores an
+ * empty row — but they stay on screen until the foreman fills them in or
+ * removes them. Remounted by the parent (key on the row's revision) whenever
+ * the stored row changes underneath it.
+ */
+function ExteriorLinesEditor({
+  initial,
+  t,
+  onSave,
+}: {
+  initial: ExteriorLine[];
+  t: Translate;
+  onSave: (lines: ExteriorLine[]) => void;
+}) {
+  // Each draft line carries its own id so React keys survive a removal —
+  // the inputs are uncontrolled (defaultValue), and a key that shifted with
+  // the index would leave the third line showing the second line's text.
+  const [rows, setRows] = useState<{ id: number; line: ExteriorLine }[]>(() =>
+    initial.map((line, i) => ({ id: i, line })),
+  );
+  const [nextId, setNextId] = useState(initial.length);
+
+  const persist = (next: { id: number; line: ExteriorLine }[]) => {
+    setRows(next);
+    onSave(next.map((r) => r.line).filter((l) => !isBlankExteriorLine(l)));
+  };
+  const update = (id: number, patch: Partial<ExteriorLine>) => {
+    persist(rows.map((r) => (r.id === id ? { ...r, line: { ...r.line, ...patch } } : r)));
+  };
+  const remove = (id: number) => {
+    persist(rows.filter((r) => r.id !== id));
+  };
+  const add = () => {
+    if (rows.length >= MAX_EXTERIOR_LINES) return;
+    // Adding an empty line changes nothing on the server; no save until the
+    // foreman fills something in.
+    setRows([...rows, { id: nextId, line: { ...EMPTY_EXTERIOR_LINE } }]);
+    setNextId(nextId + 1);
+  };
+
+  return (
+    <div className="build-facts-lines">
+      <h3 style={{ margin: "12px 0 2px" }}>{t("buildFacts.lines.title")}</h3>
+      <p className="muted" style={{ margin: "0 0 8px" }}>
+        {t("buildFacts.lines.intro")}
+      </p>
+      {rows.length === 0 && (
+        <p className="muted" style={{ margin: "0 0 8px" }}>
+          {t("buildFacts.lines.empty")}
+        </p>
+      )}
+      {rows.map(({ id, line }, i) => (
+        <div className="build-facts-line" key={id}>
+          <Select
+            keyBase={`line-${id}-finish`}
+            label={t("buildFacts.field.exteriorFinish")}
+            value={line.exterior_finish ?? ""}
+            options={EXTERIOR_FINISHES}
+            optionKeys={EXTERIOR_FINISH_KEYS}
+            t={t}
+            onCommit={(v) => update(id, { exterior_finish: v === "" ? null : (v as ExteriorFinish) })}
+          />
+          <Select
+            keyBase={`line-${id}-depth`}
+            label={t("buildFacts.field.setDepth")}
+            value={line.set_depth ?? ""}
+            options={SET_DEPTHS}
+            optionKeys={SET_DEPTH_KEYS}
+            t={t}
+            onCommit={(v) => update(id, { set_depth: v === "" ? null : (v as SetDepth) })}
+          />
+          <NumberField
+            keyBase={`line-${id}-inches`}
+            label={t("buildFacts.field.setDepthInches")}
+            value={line.set_depth_inches}
+            onCommit={(raw) => {
+              const value = raw.trim();
+              const n = Number(value);
+              update(id, { set_depth_inches: value === "" || !Number.isFinite(n) ? null : n });
+            }}
+          />
+          <TextField
+            keyBase={`line-${id}-note`}
+            label={t("buildFacts.field.exteriorNote")}
+            value={line.exterior_note ?? ""}
+            onCommit={(v) => update(id, { exterior_note: v.trim() === "" ? null : v.trim() })}
+          />
+          <button
+            type="button"
+            className="link build-facts-line-remove"
+            onClick={() => remove(id)}
+            aria-label={t("buildFacts.lines.removeLabel", { n: i + 1 })}
+          >
+            {t("buildFacts.lines.remove")}
+          </button>
+        </div>
+      ))}
+      <button
+        type="button"
+        className="action-btn build-facts-line-add"
+        onClick={add}
+        disabled={rows.length >= MAX_EXTERIOR_LINES}
+      >
+        {t("buildFacts.lines.add")}
+      </button>
+    </div>
   );
 }
 
@@ -266,7 +330,7 @@ function GreenLightChecklist({
 }: {
   items: GreenLightItem[];
   loading: boolean;
-  t: (key: TKey, vars?: Record<string, string | number>) => string;
+  t: Translate;
 }) {
   if (loading || items.length === 0) return null;
   // Open ones first — the server already returns a fixed order, so this is

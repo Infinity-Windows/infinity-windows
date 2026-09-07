@@ -748,32 +748,6 @@ export const CATALOG = {
     es: "{job} ahora es un trabajo de datos completo. Sube sus planos para empezar.",
   },
 
-  // ---- Per-job cost codes (foreman+ editor, slice 3) --------------------
-  "jobcost.title": {
-    en: "Cost codes for this job",
-    es: "Códigos de costo para este trabajo",
-  },
-  "jobcost.help": {
-    en: "Crew pick from these when they clock into this job. Leave every code off to show the full company list.",
-    es: "La cuadrilla elige entre estos al marcar entrada en este trabajo. Deja todos apagados para mostrar la lista completa de la empresa.",
-  },
-  "jobcost.loading": { en: "Loading…", es: "Cargando…" },
-  "jobcost.empty": {
-    en: "No cost codes in the library yet.",
-    es: "Aún no hay códigos de costo en la biblioteca.",
-  },
-  "jobcost.allShown": {
-    en: "Showing the full company list — no per-job subset.",
-    es: "Mostrando la lista completa de la empresa — sin subconjunto por trabajo.",
-  },
-  "jobcost.subsetCount": {
-    en: "{n} of {total} codes chosen for this job.",
-    es: "{n} de {total} códigos elegidos para este trabajo.",
-  },
-  "jobcost.save": { en: "Save cost codes", es: "Guardar códigos de costo" },
-  "jobcost.saving": { en: "Saving…", es: "Guardando…" },
-  "jobcost.saved": { en: "Cost codes saved.", es: "Códigos de costo guardados." },
-
   // ---- Per-job / per-cost-code time report (foreman+, slice 3) ----------
   "timereport.title": {
     en: "Time by job & cost code",
@@ -2561,6 +2535,25 @@ export const CATALOG = {
 
   "buildFacts.field.exteriorFinish": { en: "Exterior finish", es: "Acabado exterior" },
   "buildFacts.field.exteriorNote": { en: "Exterior note", es: "Nota del exterior" },
+  // The exterior situations (owner, 2026-09-07): a house is brick on the
+  // front and stucco on the sides, so the finish + set depth is a LIST, one
+  // line per situation, saved whole through app/src/lib/install/buildFacts.ts.
+  "buildFacts.lines.title": { en: "Exterior situations", es: "Situaciones del exterior" },
+  "buildFacts.lines.intro": {
+    en: "One line for each finish on the house — brick outset an inch, stucco inset an inch and a quarter.",
+    es: "Una línea por cada acabado de la casa — ladrillo sobrepuesto una pulgada, estuco empotrado una pulgada y cuarto.",
+  },
+  "buildFacts.lines.empty": {
+    en: "No situations recorded yet.",
+    es: "Todavía no hay situaciones anotadas.",
+  },
+  "buildFacts.lines.add": { en: "Add a situation", es: "Agregar una situación" },
+  "buildFacts.lines.remove": { en: "Remove", es: "Quitar" },
+  "buildFacts.lines.removeLabel": { en: "Remove situation {n}", es: "Quitar la situación {n}" },
+  // Shown beside a pick-list the moment "Other" is chosen, so the foreman can
+  // name the real thing instead of leaving "Other" on every unit sheet.
+  "buildFacts.field.otherWhich": { en: "Which one?", es: "¿Cuál?" },
+  "buildFacts.field.elevationNotes": { en: "Elevation notes", es: "Notas de las fachadas" },
   "buildFacts.exteriorFinish.stucco": { en: "Stucco", es: "Estuco" },
   "buildFacts.exteriorFinish.rock": { en: "Rock", es: "Piedra" },
   "buildFacts.exteriorFinish.siding": { en: "Siding", es: "Revestimiento" },
@@ -2589,26 +2582,9 @@ export const CATALOG = {
   "buildFacts.fastenerType.concreteScrew": { en: "Concrete screw", es: "Tornillo para concreto" },
   "buildFacts.fastenerType.other": { en: "Other", es: "Otro" },
 
-  "buildFacts.field.sillPan": { en: "Sill pan", es: "Bandeja del antepecho" },
-  "buildFacts.field.sillPanType": { en: "Sill pan type", es: "Tipo de bandeja" },
-  "buildFacts.sillPan.required": { en: "Required", es: "Se requiere" },
-  "buildFacts.sillPan.notRequired": { en: "Not required", es: "No se requiere" },
-  "buildFacts.sillPan.unknown": { en: "Unknown", es: "No se sabe" },
-  // i18n-same-on-purpose: "metal" is the same word in Spanish.
-  "buildFacts.sillPanType.metal": { en: "Metal", es: "Metal" },
-  // i18n-same-on-purpose: PVC is the same acronym in Spanish.
-  "buildFacts.sillPanType.pvc": { en: "PVC", es: "PVC" },
-  "buildFacts.sillPanType.fluid": { en: "Fluid-applied", es: "Aplicado en líquido" },
-  "buildFacts.sillPanType.tape": { en: "Tape", es: "Cinta" },
-  "buildFacts.sillPanType.none": { en: "None", es: "Ninguno" },
-
   "buildFacts.field.siteRules": { en: "Site rules", es: "Reglas del sitio" },
   "buildFacts.field.gcContactName": { en: "GC contact", es: "Contacto del GC" },
   "buildFacts.field.gcContactPhone": { en: "GC phone", es: "Teléfono del GC" },
-  "buildFacts.field.noteNorth": { en: "North elevation note", es: "Nota de la fachada norte" },
-  "buildFacts.field.noteSouth": { en: "South elevation note", es: "Nota de la fachada sur" },
-  "buildFacts.field.noteEast": { en: "East elevation note", es: "Nota de la fachada este" },
-  "buildFacts.field.noteWest": { en: "West elevation note", es: "Nota de la fachada oeste" },
 
   // The green-light checklist (supervisor+, above the fields). Item labels
   // themselves come back from the server (green_light_items.label_en) since
@@ -2634,17 +2610,13 @@ export const CATALOG = {
   // Job facts on the unit sheet (S5, ADR-0011): the read-only card every
   // crew role sees under the spec card. Field labels reuse buildFacts.field.*
   // and the pick-list labels above — these are only what the write-side card
-  // never needed: the empty state, the elevation note's generic label (the
-  // specific buildFacts.field.note* labels are reused instead when the
-  // elevation can't be determined and every note has to be shown), the
-  // fastener spacing phrase, and the sentence for when a unit's own spec
-  // overrides the job's set depth.
+  // never needed: the empty state, the fastener spacing phrase, and the
+  // sentence for when a unit's own spec overrides the job's set depth.
   "unitFacts.empty": {
     en: "No job facts yet. Ask your foreman.",
     es: "Todavía no hay datos del trabajo. Pregúntale a tu capataz.",
   },
   "unitFacts.showMe": { en: "Show me", es: "Muéstrame" },
-  "unitFacts.field.elevationNote": { en: "Elevation note", es: "Nota de la fachada" },
   "unitFacts.fastener.every": { en: "every {spacing}", es: "cada {spacing}" },
   "unitFacts.setDepth.specWins": {
     en: "This unit's spec says {value}; it wins.",

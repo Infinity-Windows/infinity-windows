@@ -155,7 +155,6 @@ describe("the crew flow reads fully in Spanish (slice 7)", () => {
 
   it("resolves the newly-wrapped keys to real Spanish, distinct from English", () => {
     const samples: Array<[keyof typeof CATALOG, string, string]> = [
-      ["jobcost.loading", "Loading…", "Cargando…"],
       ["buildout.thisJob", "this job", "este trabajo"],
       ["feed.trash", "Trash", "Papelera"],
       ["feed.photoTrashed",

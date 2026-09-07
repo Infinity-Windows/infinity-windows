@@ -1529,7 +1529,6 @@ export function OpeningSheet() {
           here can be edited from the sheet. */}
       <UnitFactsCard
         projectId={projectId}
-        openingCode={opening.data?.opening_code}
         specExtra={openingSpec?.extra ?? null}
       />
 
