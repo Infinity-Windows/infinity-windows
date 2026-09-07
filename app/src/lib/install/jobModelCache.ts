@@ -23,6 +23,11 @@
 
 import { keysToEvict } from "./cropCache";
 import type { JobModel } from "../modelstudio/projects";
+import { CATALOG } from "../i18n/catalog";
+import { translate, type Lang } from "../i18n/translate";
+import type { TFn } from "../i18n/context";
+
+const englishT: TFn = (key, vars) => translate(CATALOG, "en" as Lang, key, vars);
 
 /** Total bytes we'll keep across every job's cached model. A few MB is a
  * handful of real buildings' worth of floors + windows. */
@@ -83,14 +88,14 @@ export function resolveJobModel(args: {
 /** How long ago this phone cached its copy, for the offline hint — "just
  * now", "12 min ago", "3 hr ago", "2 days ago". PURE (same style as
  * Travel.tsx's syncedLabel). */
-export function describeAge(cachedAtMs: number, nowMs: number = Date.now()): string {
+export function describeAge(cachedAtMs: number, nowMs: number = Date.now(), t: TFn = englishT): string {
   const mins = Math.round((nowMs - cachedAtMs) / 60000);
-  if (mins <= 0) return "just now";
-  if (mins < 60) return `${mins} min ago`;
+  if (mins <= 0) return t("jobModel.age.justNow");
+  if (mins < 60) return t("jobModel.age.minAgo", { n: mins });
   const hrs = Math.round(mins / 60);
-  if (hrs < 24) return `${hrs} hr ago`;
+  if (hrs < 24) return t("jobModel.age.hrAgo", { n: hrs });
   const days = Math.round(hrs / 24);
-  return `${days} day${days === 1 ? "" : "s"} ago`;
+  return t(days === 1 ? "jobModel.age.dayAgo.one" : "jobModel.age.dayAgo.many", { n: days });
 }
 
 // --- IndexedDB backend -----------------------------------------------------

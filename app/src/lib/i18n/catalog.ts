@@ -4394,6 +4394,44 @@ export const CATALOG = {
   "ask.sources": { en: "Sources: {list}", es: "Fuentes: {list}" },
   "ask.inputPlaceholder": { en: "Ask about a window, a term, or how-to…", es: "Pregunta sobre una ventana, un término, o cómo hacer algo…" },
   "ask.send": { en: "Send", es: "Enviar" },
+
+  // lib/install/jobModelCache.ts — describeAge (JobModelViewer.tsx).
+  "jobModel.age.justNow": { en: "just now", es: "justo ahora" },
+  "jobModel.age.minAgo": { en: "{n} min ago", es: "hace {n} min" },
+  "jobModel.age.hrAgo": { en: "{n} hr ago", es: "hace {n} h" },
+  "jobModel.age.dayAgo.one": { en: "{n} day ago", es: "hace {n} día" },
+  "jobModel.age.dayAgo.many": { en: "{n} days ago", es: "hace {n} días" },
+
+  // pages/install/JobModelViewer.tsx
+  "jobModel.unitFallback": { en: "Unit", es: "Unidad" },
+  "jobModel.jobFallback": { en: "Job", es: "Trabajo" },
+  "jobModel.modelFallback": { en: "3D model", es: "modelo 3D" },
+  "jobModel.title": { en: "{name} in 3D", es: "{name} en 3D" },
+  "jobModel.glowsBelow": { en: "Window {code} glows below", es: "La ventana {code} se ilumina abajo" },
+  "jobModel.loading": { en: "Loading the model…", es: "Cargando el modelo…" },
+  "jobModel.noModelYet": { en: "No 3D model yet", es: "Todavía no hay modelo 3D" },
+  "jobModel.noModelYetExplain": {
+    en: "This job doesn't have a saved Studio model yet. A supervisor builds one from the job's Maps Interactive tab, and it opens here for the whole crew to walk through.",
+    es: "Este trabajo todavía no tiene un modelo de Studio guardado. Un supervisor construye uno desde la pestaña de Mapas Interactivos del trabajo, y se abre aquí para que todo el equipo lo recorra.",
+  },
+  "jobModel.noSignal": { en: "No signal — showing this phone's saved copy", es: "Sin señal — mostrando la copia guardada de este teléfono" },
+  "jobModel.noSignalFrom": { en: ", from {age}", es: ", de hace {age}" },
+  "jobModel.assignOn": { en: "Assign: on", es: "Asignar: activado" },
+  "jobModel.assign": { en: "Assign", es: "Asignar" },
+  "jobModel.picked": { en: "{n} picked", es: "{n} elegidos" },
+  "jobModel.installer": { en: "Installer", es: "Instalador" },
+  "jobModel.chooseInstaller": { en: "Choose an installer…", es: "Elige un instalador…" },
+  "jobModel.assigning": { en: "Assigning…", es: "Asignando…" },
+  "jobModel.findInWarehouse": { en: "Find it in the warehouse", es: "Encontrarlo en el almacén" },
+  "jobModel.installAlt": { en: "Install", es: "Instalación" },
+  "jobModel.seeOnRecord": { en: "See all on the Unit Record", es: "Ver todo en el registro de la unidad" },
+  "jobModel.assignHint": { en: "Tap units to pick them, in order · then choose an installer and Assign.", es: "Toca las unidades para elegirlas, en orden · luego elige un instalador y Asignar." },
+  "jobModel.orbitHint": {
+    en: "Drag to orbit · pinch or scroll to zoom · tap a window or door for its size. Nothing here can be moved — this is the map, not the pen.",
+    es: "Arrastra para girar · pellizca o desplázate para acercar · toca una ventana o puerta para ver su tamaño. Nada aquí se puede mover — esto es el mapa, no el lápiz.",
+  },
+  "jobModel.assigned.one": { en: "{n} unit assigned.", es: "{n} unidad asignada." },
+  "jobModel.assigned.many": { en: "{n} units assigned.", es: "{n} unidades asignadas." },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */
