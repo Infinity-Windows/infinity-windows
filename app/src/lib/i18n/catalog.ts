@@ -3924,6 +3924,46 @@ export const CATALOG = {
     en: "Units here of units expected. Tap a job to light up its boxes; tap the code for its materials.",
     es: "Unidades aquí de las unidades esperadas. Toca un trabajo para iluminar sus cajas; toca el código para ver sus materiales.",
   },
+
+  // components/warehouse/ContainerForm.tsx
+  "warehouse.containerForm.updated": { en: "Container updated.", es: "Caja actualizada." },
+  "warehouse.containerForm.added": { en: "{name} added.", es: "{name} agregado." },
+  "warehouse.containerForm.editTitle": { en: "Edit {name}", es: "Editar {name}" },
+  "warehouse.containerForm.newTitle": { en: "New container", es: "Nueva caja" },
+  "warehouse.containerForm.name": { en: "Name", es: "Nombre" },
+  "warehouse.containerForm.namePlaceholder": { en: "Conex 7 / Glass crate 12", es: "Conex 7 / Crate de vidrio 12" },
+  "warehouse.containerForm.kind": { en: "What kind of box", es: "Qué tipo de caja" },
+  "warehouse.containerForm.kind.conex": { en: "Conex", es: "Conex" },
+  "warehouse.containerForm.kind.crate": { en: "Crate", es: "Crate" },
+  "warehouse.containerForm.kind.truck": { en: "Truck", es: "Camión" },
+  "warehouse.containerForm.crateHint": {
+    en: "Size and weight, so anyone can tell whether it fits in a conex and what the forklift is picking up. Centimeters and kilograms; leave blank until it's measured.",
+    es: "Tamaño y peso, para que cualquiera sepa si cabe en un conex y qué está levantando el montacargas. Centímetros y kilogramos; déjalo en blanco hasta medirlo.",
+  },
+  "warehouse.containerForm.length": { en: "Length (cm)", es: "Largo (cm)" },
+  "warehouse.containerForm.width": { en: "Width (cm)", es: "Ancho (cm)" },
+  "warehouse.containerForm.height": { en: "Height (cm)", es: "Alto (cm)" },
+  "warehouse.containerForm.weight": { en: "Weight (kg)", es: "Peso (kg)" },
+  "warehouse.containerForm.address": { en: "Address", es: "Dirección" },
+  "warehouse.containerForm.addressPlaceholder": { en: "Where it sits", es: "Dónde está" },
+  "warehouse.containerForm.accessCode": { en: "Gate / lock code", es: "Código de portón / candado" },
+  "warehouse.containerForm.notes": { en: "Notes", es: "Notas" },
+  "warehouse.containerForm.saving": { en: "Saving…", es: "Guardando…" },
+  "warehouse.containerForm.save": { en: "Save", es: "Guardar" },
+  "warehouse.containerForm.cancel": { en: "Cancel", es: "Cancelar" },
+
+  // components/warehouse/MintForm.tsx
+  "warehouse.mintForm.ready": { en: "{n} blank stickers ready to print.", es: "{n} etiquetas en blanco listas para imprimir." },
+  "warehouse.mintForm.title": { en: "Print blank stickers", es: "Imprimir etiquetas en blanco" },
+  "warehouse.mintForm.hint": {
+    en: "Each sticker gets a permanent serial the moment it prints — batches are 1–500 at a time.",
+    es: "Cada etiqueta recibe un número de serie permanente en el momento en que se imprime — los lotes son de 1 a 500 a la vez.",
+  },
+  "warehouse.mintForm.howMany": { en: "How many", es: "Cuántas" },
+  "warehouse.mintForm.invalid": { en: "Pick a number from 1 to 500.", es: "Elige un número del 1 al 500." },
+  "warehouse.mintForm.printing": { en: "Printing…", es: "Imprimiendo…" },
+  "warehouse.mintForm.print": { en: "Print {n} stickers", es: "Imprimir {n} etiquetas" },
+  "warehouse.mintForm.cancel": { en: "Cancel", es: "Cancelar" },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */
