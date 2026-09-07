@@ -11,6 +11,7 @@
 // "elevation" from the spec drawing above). Skipped in compact form — a
 // dense list is no place to mount a 3D render.
 
+import { lazy, Suspense } from "react";
 import {
   checkSpecSize,
   PRINTED_SIZE_EXTRA_KEYS,
@@ -18,7 +19,18 @@ import {
 import type { MarkSpec } from "../../lib/install/specs";
 import { formatSize } from "../../lib/install/specs";
 import { MarkDrawing } from "./MarkDrawing";
-import { MarkElevationCrop } from "./MarkElevationCrop";
+
+// Lazy: MarkElevationCrop pulls in the Studio render engine (three.js) via
+// lib/modelstudio/elevationRender.ts to make its synthetic wall photo. This
+// card renders on the opening sheet and My Work — both part of the 6-AM
+// shell — so a static import here would put three.js on every phone's first
+// load for a picture most marks don't even have yet. Suspense fallback is
+// `null`: that's exactly what the crop itself renders before it has
+// anything to show (see MarkElevationCrop's own effect), so there is no
+// visible loading flicker to add.
+const MarkElevationCrop = lazy(() =>
+  import("./MarkElevationCrop").then((m) => ({ default: m.MarkElevationCrop })),
+);
 
 interface SpecCardProps {
   spec: MarkSpec;
@@ -151,7 +163,11 @@ export function SpecCard({
       </div>
 
       {hasDrawing && <MarkDrawing spec={spec} projectId={projectId} />}
-      {projectId && <MarkElevationCrop markCode={spec.mark_code} projectId={projectId} />}
+      {projectId && (
+        <Suspense fallback={null}>
+          <MarkElevationCrop markCode={spec.mark_code} projectId={projectId} />
+        </Suspense>
+      )}
 
       <Field label="Style" value={spec.style} />
       <Field label="Glass" value={spec.glass} />

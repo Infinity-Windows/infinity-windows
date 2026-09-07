@@ -29,6 +29,12 @@ jobs:
       - name: Build
         run: npm run build
 
+      # A phone opening the app for the first time downloads the entry chunk
+      # before it can render anything, no matter which route it lands on —
+      # see scripts/check-bundle-budget.mjs for why this checks only that file.
+      - name: Check the entry-chunk size budget
+        run: npm run budget
+
       - name: Lint
         run: npm run lint
 
