@@ -4111,7 +4111,7 @@ export const CATALOG = {
   "storage.tag.windowNumber": { en: "Window # (mark)", es: "N.º de ventana (marca)" },
   "storage.tag.windowNumberPlaceholder": { en: "e.g. 16", es: "ej. 16" },
   "storage.tag.windowNumberAria": { en: "Window number", es: "Número de ventana" },
-  "storage.tag.notOnSchedule": { en: "Window {mark} isn't on this job's schedule yet.", es: "La ventana {mark} todavía no está en el horario de este trabajo." },
+  "storage.tag.notOnSchedule": { en: "Window {mark} isn’t on this job’s schedule yet.", es: "La ventana {mark} todavía no está en el horario de este trabajo." },
   "storage.tag.addingMark": { en: "Adding…", es: "Agregando…" },
   "storage.tag.addMarkToSchedule": { en: "Add window {mark} to the schedule", es: "Agregar ventana {mark} al horario" },
   "storage.tag.howManyPieces": { en: "How many pieces?", es: "¿Cuántas piezas?" },
