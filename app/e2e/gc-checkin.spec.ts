@@ -106,8 +106,15 @@ function useGcFixtures(
 
 test.use({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
 
+// A heading match, not a text-substring match: S4's Job facts card (right
+// below this one on Overview) has its own "GC contact" / "GC phone" fields,
+// so `hasText: "GC"` + `.last()` stopped resolving to this card the moment
+// that card existed. The GC card's own h2 is exactly "GC" (gc.heading, an
+// aria-hidden icon beside it), which nothing else on the page can be.
 const gcCard = (page: Page) =>
-  page.locator("section.detail-card").filter({ hasText: "GC" }).last();
+  page
+    .locator("section.detail-card")
+    .filter({ has: page.getByRole("heading", { name: "GC", exact: true }) });
 
 test("a job nobody has called about says so, on both cards", async ({ page }) => {
   await useSupabaseFixtures(page, { role: "foreman" });
