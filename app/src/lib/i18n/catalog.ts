@@ -2594,7 +2594,9 @@ export const CATALOG = {
   "buildFacts.sillPan.required": { en: "Required", es: "Se requiere" },
   "buildFacts.sillPan.notRequired": { en: "Not required", es: "No se requiere" },
   "buildFacts.sillPan.unknown": { en: "Unknown", es: "No se sabe" },
+  // i18n-same-on-purpose: "metal" is the same word in Spanish.
   "buildFacts.sillPanType.metal": { en: "Metal", es: "Metal" },
+  // i18n-same-on-purpose: PVC is the same acronym in Spanish.
   "buildFacts.sillPanType.pvc": { en: "PVC", es: "PVC" },
   "buildFacts.sillPanType.fluid": { en: "Fluid-applied", es: "Aplicado en líquido" },
   "buildFacts.sillPanType.tape": { en: "Tape", es: "Cinta" },
@@ -2620,6 +2622,7 @@ export const CATALOG = {
   "buildFacts.checklist.answered": { en: "Answered", es: "Contestado" },
   "buildFacts.checklist.open": { en: "Open", es: "Pendiente" },
   "buildFacts.who.foreman": { en: "foreman", es: "capataz" },
+  // i18n-same-on-purpose: "supervisor" is the same word in Spanish.
   "buildFacts.who.supervisor": { en: "supervisor", es: "supervisor" },
 
   // The supervisor's "Awaiting you" row on Home and Heartbeat (S4).
