@@ -1,8 +1,13 @@
 // The scan sheet (warehouse redesign wave 2): one scan leads with the next
 // verb; a box scanned first swallows everything after it; no sticker means
-// type the code or pick the piece. Headless Chromium has no camera, so the
-// Scanner shows its typed-entry box and every "scan" here is typed — the same
-// path a hand confirmation takes on a phone.
+// type the code or pick the piece. Headless Chromium has no camera, so every
+// "scan" here is typed — the same path a hand confirmation takes on a phone.
+// Types into the sheet's OWN typed-entry box (aria-label "Code"), not
+// Scanner's — Scanner's manual box is suppressed inside ScanSheet
+// (showManualEntry={false}) as of the installer-spanish-first-fourteen sweep,
+// which folded the sheet's two duplicate typed boxes into one
+// (audit 2026-08-17 item C, previously fixed once already for the old Scan
+// page in 8ed8393 and reintroduced by this sheet's wave-2 rebuild).
 import { expect, test } from "@playwright/test";
 import { json } from "./support/specHelpers";
 import { jobFixtures, useSupabaseFixtures } from "./support/supabaseFixtures";
@@ -49,7 +54,7 @@ async function scanFixtures(page: import("@playwright/test").Page, rows: unknown
 }
 
 async function typeCode(page: import("@playwright/test").Page, code: string) {
-  const box = page.getByPlaceholder(/Or type ID/);
+  const box = page.getByLabel("Code", { exact: true });
   await box.fill(code);
   await box.press("Enter");
 }

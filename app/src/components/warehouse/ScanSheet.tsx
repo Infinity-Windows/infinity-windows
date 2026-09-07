@@ -23,6 +23,8 @@ import { parseQr, type QrPayload } from "../../lib/qr";
 import { playErrorTone, playSuccessTone } from "../../lib/sound";
 import { pushToast } from "../../lib/toast";
 import { showUndoToast } from "../../lib/undoToast";
+import { useT } from "../../lib/i18n";
+import type { TFn } from "../../lib/i18n";
 import { Scanner } from "../Scanner";
 import { placeWhere, toLocationsById } from "../../lib/warehouse/containment";
 import { unitHref } from "../../lib/warehouse/materialsScope";
@@ -48,6 +50,7 @@ type Step = "scan" | "box" | "hand";
 const NO_ROWS: StoragePackage[] = [];
 
 export function ScanSheet({ onClose }: { onClose: () => void }) {
+  const t = useT();
   const qc = useQueryClient();
   const navigate = useNavigate();
   const packages = useQuery({ queryKey: ["storagePackages"], queryFn: listActivePackages });
@@ -90,7 +93,9 @@ export function ScanSheet({ onClose }: { onClose: () => void }) {
   }, [projectsAll.data]);
   const picked = pickedIds.map((id) => byId.get(id)).filter((p): p is StoragePackage => Boolean(p));
   const verbs: ScanVerb[] =
-    picked.length === 1 ? scanVerbs(picked[0], all, containersById) : verbsForMany(picked);
+    picked.length === 1
+      ? scanVerbs(picked[0], all, containersById, t)
+      : verbsForMany(picked, t);
 
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ["storagePackages"] });
@@ -130,7 +135,10 @@ export function ScanSheet({ onClose }: { onClose: () => void }) {
       refresh();
       feedback(true);
       const ids = rows.map((p) => p.id);
-      const done = `${rows.length === 1 ? "1 package" : `${rows.length} packages`} put in ${into.name}.`;
+      const done =
+        rows.length === 1
+          ? t("scan.putIn.one", { place: into.name })
+          : t("scan.putIn.many", { count: rows.length, place: into.name });
       if (r.queued) pushToast(writeToast(r, done));
       else showUndoToast({ message: done, undo: () => undoStores(ids) });
       setPickedIds([]);
@@ -150,7 +158,12 @@ export function ScanSheet({ onClose }: { onClose: () => void }) {
       const r = await receiveMintedOffline(rows.map((p) => p.id));
       refresh();
       feedback(true);
-      pushToast(writeToast(r, `${rows.length === 1 ? "Arrived." : `${rows.length} arrived.`} Now put ${rows.length === 1 ? "it" : "them"} away.`));
+      pushToast(
+        writeToast(
+          r,
+          rows.length === 1 ? t("scan.arrived.one") : t("scan.arrived.many", { count: rows.length }),
+        ),
+      );
     } catch (e) {
       feedback(false);
       setMsg(formatApiError(e));
@@ -188,7 +201,7 @@ export function ScanSheet({ onClose }: { onClose: () => void }) {
             : await getPackageByShortCode(payload.code));
         if (!p) {
           feedback(false);
-          setMsg(`No package found for ${query}.`);
+          setMsg(t("scan.noPackageFound", { query }));
           return;
         }
         await addPackage(p);
@@ -199,7 +212,7 @@ export function ScanSheet({ onClose }: { onClose: () => void }) {
         const c = cached ?? (await getContainerBySerial(payload.serial));
         if (!c) {
           feedback(false);
-          setMsg(`No box found for ${payload.serial}.`);
+          setMsg(t("scan.noBoxFound", { serial: payload.serial }));
           return;
         }
         if (picked.length > 0) {
@@ -214,8 +227,8 @@ export function ScanSheet({ onClose }: { onClose: () => void }) {
       feedback(false);
       setMsg(
         payload.kind === "location" || payload.kind === "locationSerial"
-          ? "That's a slot label. Scan a package sticker or a box poster."
-          : "That's an old unit label — stickers replaced these. Scan the sticker instead.",
+          ? t("scan.slotLabel")
+          : t("scan.oldLabel"),
       );
     } catch (e) {
       feedback(false);
@@ -264,35 +277,45 @@ export function ScanSheet({ onClose }: { onClose: () => void }) {
   const title = (p: StoragePackage) => packageTitle(p, jobCode);
   const where = (p: StoragePackage) =>
     p.status === "minted"
-      ? "expected — not arrived yet"
+      ? t("scan.state.expected")
       : p.status === "checked_out"
-        ? "out on a job"
+        ? t("scan.state.checkedOut")
         : p.status === "blank"
-          ? "blank sticker — not on a package yet"
+          ? t("scan.state.blank")
           : placeWhere(p, containersById, locationsById);
 
   return (
-    <div className="scan-sheet" role="dialog" aria-modal="true" aria-label="Scan">
+    <div className="scan-sheet" role="dialog" aria-modal="true" aria-label={t("scan.title")}>
       <div className="scan-sheet-top">
-        <span>{box ? `Putting away into ${box.name}` : picked.length > 0 ? `${picked.length} selected` : "Scanning"}</span>
+        <span>
+          {box
+            ? t("scan.puttingAwayInto", { place: box.name })
+            : picked.length > 0
+              ? t("scan.selectedCount", { count: picked.length })
+              : t("scan.scanning")}
+        </span>
         <div style={{ display: "flex", gap: 6 }}>
           {box ? (
             <button type="button" onClick={() => setBox(null)}>
-              Leave box
+              {t("scan.leaveBox")}
             </button>
           ) : null}
-          <button type="button" onClick={onClose} aria-label="Close">
+          <button type="button" onClick={onClose} aria-label={t("scan.close")}>
             ✕
           </button>
         </div>
       </div>
       {box ? (
         <div className="scan-sheet-box">
-          Scan stickers — each one goes straight into <b>{box.name}</b>. Scan another poster to switch boxes.
+          {t("scan.boxBanner.before")} <b>{box.name}</b>. {t("scan.boxBanner.after")}
         </div>
       ) : null}
       <div className="scan-sheet-camera">
-        <Scanner onScan={(p) => void handlePayload(p)} hint="Point at any sticker or box poster" />
+        <Scanner
+          onScan={(p) => void handlePayload(p)}
+          hint={t("scan.hint")}
+          showManualEntry={false}
+        />
       </div>
 
       <div className="scan-panel">
@@ -301,9 +324,11 @@ export function ScanSheet({ onClose }: { onClose: () => void }) {
 
         {step === "box" ? (
           <>
-            <div className="scan-panel-title">Which box?</div>
+            <div className="scan-panel-title">{t("scan.whichBox")}</div>
             <div className="scan-panel-sub">
-              {picked.length === 1 ? title(picked[0]) : `${picked.length} packages`} — tap where {picked.length === 1 ? "it" : "they"} go
+              {picked.length === 1
+                ? t("scan.tapWhereOne", { item: title(picked[0]) })
+                : t("scan.tapWhereMany", { count: picked.length })}
             </div>
             <div className="scan-boxes">
               {(containers.data ?? [])
@@ -315,18 +340,19 @@ export function ScanSheet({ onClose }: { onClose: () => void }) {
                     <button key={c.id} type="button" className="scan-box" disabled={busy} onClick={() => void store(picked, c)}>
                       <b>{c.name}</b>
                       <span>
-                        {c.kind ?? "conex"} · {n} inside
+                        {c.kind ?? t("scan.conex")} · {t("scan.insideCount", { n })}
                       </span>
                     </button>
                   );
                 })}
             </div>
             <button type="button" className="button-like" style={{ marginTop: 10 }} onClick={() => setStep("scan")}>
-              Back
+              {t("scan.back")}
             </button>
           </>
         ) : step === "hand" ? (
           <HandPick
+            t={t}
             all={all}
             projects={projects.data ?? []}
             onPick={(p) => {
@@ -337,9 +363,11 @@ export function ScanSheet({ onClose }: { onClose: () => void }) {
           />
         ) : picked.length === 0 ? (
           <>
-            <div className="scan-panel-title">{box ? `Scan what goes into ${box.name}` : "Scan a sticker to see what to do next"}</div>
-            <div className="scan-panel-sub">Scan a box poster first and everything after it goes into that box.</div>
-            <HandEntry onPayload={(p) => void handlePayload(p)} onPick={() => setStep("hand")} />
+            <div className="scan-panel-title">
+              {box ? t("scan.scanIntoBox", { place: box.name }) : t("scan.scanToSeeNext")}
+            </div>
+            <div className="scan-panel-sub">{t("scan.scanBoxFirst")}</div>
+            <HandEntry t={t} onPayload={(p) => void handlePayload(p)} onPick={() => setStep("hand")} />
           </>
         ) : (
           <>
@@ -347,17 +375,21 @@ export function ScanSheet({ onClose }: { onClose: () => void }) {
               <>
                 <div className="scan-panel-title">{title(picked[0])}</div>
                 <div className="scan-panel-sub">
-                  {partLabel(picked[0]) ?? "no part number on label"} · {where(picked[0])} · {picked[0].short_code ?? picked[0].serial}
+                  {partLabel(picked[0]) ?? t("scan.noPartNumber")} · {where(picked[0])} · {picked[0].short_code ?? picked[0].serial}
                 </div>
               </>
             ) : (
               <>
-                <div className="scan-panel-title">{picked.length} packages selected</div>
+                <div className="scan-panel-title">{t("scan.multiSelected", { count: picked.length })}</div>
                 <div className="scan-picked">
                   {picked.map((p) => (
                     <span key={p.id} className="chip">
                       {p.short_code ?? p.serial}
-                      <button type="button" aria-label={`Remove ${p.short_code ?? p.serial}`} onClick={() => setPickedIds((ids) => ids.filter((x) => x !== p.id))}>
+                      <button
+                        type="button"
+                        aria-label={t("scan.removeChip", { code: p.short_code ?? p.serial })}
+                        onClick={() => setPickedIds((ids) => ids.filter((x) => x !== p.id))}
+                      >
                         ✕
                       </button>
                     </span>
@@ -374,12 +406,15 @@ export function ScanSheet({ onClose }: { onClose: () => void }) {
               ))}
               {verbs.length === 0 ? (
                 <p className="muted" style={{ fontSize: 13 }}>
-                  These are in different states — scan them in smaller groups.
+                  {t("scan.differentStates")}
                 </p>
               ) : null}
             </div>
             <div className="scan-panel-sub" style={{ marginTop: 10 }}>
-              Keep scanning to select several. <button type="button" className="link" onClick={() => setPickedIds([])}>Clear</button>
+              {t("scan.keepScanning")}{" "}
+              <button type="button" className="link" onClick={() => setPickedIds([])}>
+                {t("scan.clear")}
+              </button>
             </div>
           </>
         )}
@@ -388,8 +423,25 @@ export function ScanSheet({ onClose }: { onClose: () => void }) {
   );
 }
 
-/** No sticker? Type the code off the label. */
-function HandEntry({ onPayload, onPick }: { onPayload: (p: QrPayload) => void; onPick: () => void }) {
+/**
+ * No sticker? Type the code off the label. The ONE typed-entry box on this
+ * sheet (audit 2026-08-17 item C found two — this one and the manual box
+ * built into Scanner, stacked on top of each other and wired to the exact
+ * same lookup). Scanner's own box is now suppressed here (showManualEntry
+ * prop) and this is what remains: a single box that takes the 6-character
+ * short code OR a full serial, same parseQr → handlePayload path either way,
+ * so the fallback lookup (getPackageBySerial / getPackageByShortCode in
+ * handlePayload) is unchanged.
+ */
+function HandEntry({
+  t,
+  onPayload,
+  onPick,
+}: {
+  t: TFn;
+  onPayload: (p: QrPayload) => void;
+  onPick: () => void;
+}) {
   const [text, setText] = useState("");
   const [bad, setBad] = useState(false);
   const submit = () => {
@@ -402,23 +454,23 @@ function HandEntry({ onPayload, onPick }: { onPayload: (p: QrPayload) => void; o
   };
   return (
     <div className="scan-hand">
-      <div className="field-label">No sticker? Type or pick</div>
+      <div className="field-label">{t("scan.noStickerLabel")}</div>
       <div className="row">
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder="Code on the label, e.g. AB7QLM or PKG-000214"
-          aria-label="Code"
+          placeholder={t("scan.codePlaceholder")}
+          aria-label={t("scan.codeAria")}
           autoCapitalize="characters"
           onKeyDown={(e) => e.key === "Enter" && submit()}
         />
         <button type="button" className="button-like" onClick={submit}>
-          Go
+          {t("scan.go")}
         </button>
       </div>
-      {bad ? <p className="scan-msg">Not a code we know. Six letters and digits, or PKG- / CTR- and a number.</p> : null}
+      {bad ? <p className="scan-msg">{t("scan.badCode")}</p> : null}
       <button type="button" className="button-like" onClick={onPick}>
-        Pick it by job and window…
+        {t("scan.pickByJobWindow")}
       </button>
     </div>
   );
@@ -426,11 +478,13 @@ function HandEntry({ onPayload, onPick }: { onPayload: (p: QrPayload) => void; o
 
 /** Job → window → piece. The maker's "#16 2/3" is a unique ID on a job. */
 function HandPick({
+  t,
   all,
   projects,
   onPick,
   onBack,
 }: {
+  t: TFn;
   all: StoragePackage[];
   projects: { id: string; job_code: string; name: string }[];
   onPick: (p: StoragePackage) => void;
@@ -452,9 +506,9 @@ function HandPick({
   );
   return (
     <div className="scan-hand">
-      <div className="field-label">Pick the piece</div>
-      <select value={job} onChange={(e) => { setJob(e.target.value); setMark(""); }} aria-label="Job">
-        <option value="">Job…</option>
+      <div className="field-label">{t("scan.pickPiece")}</div>
+      <select value={job} onChange={(e) => { setJob(e.target.value); setMark(""); }} aria-label={t("scan.jobAria")}>
+        <option value="">{t("scan.jobPlaceholder")}</option>
         {projects.map((p) => (
           <option key={p.id} value={p.id}>
             {p.job_code} — {p.name}
@@ -462,11 +516,11 @@ function HandPick({
         ))}
       </select>
       {job ? (
-        <select value={mark} onChange={(e) => setMark(e.target.value)} aria-label="Window">
-          <option value="">Window…</option>
+        <select value={mark} onChange={(e) => setMark(e.target.value)} aria-label={t("scan.windowAria")}>
+          <option value="">{t("scan.windowPlaceholder")}</option>
           {marks.map((m) => (
             <option key={m} value={m}>
-              Window {m}
+              {t("scan.windowOption", { mark: m })}
             </option>
           ))}
         </select>
@@ -475,15 +529,15 @@ function HandPick({
         <div className="pieces">
           {pieces.map((p) => (
             <button key={p.id} type="button" onClick={() => onPick(p)}>
-              {p.part_index ?? "?"} of {p.part_total ?? "?"}
+              {t("scan.pieceOf", { index: p.part_index ?? "?", total: p.part_total ?? "?" })}
               {p.part_type ? ` · ${p.part_type}` : ""} · {p.short_code ?? p.serial}
             </button>
           ))}
-          {pieces.length === 0 ? <p className="muted">No pieces tagged to window {mark} yet.</p> : null}
+          {pieces.length === 0 ? <p className="muted">{t("scan.noPieces", { mark })}</p> : null}
         </div>
       ) : null}
       <button type="button" className="button-like" onClick={onBack}>
-        Back
+        {t("scan.back")}
       </button>
     </div>
   );

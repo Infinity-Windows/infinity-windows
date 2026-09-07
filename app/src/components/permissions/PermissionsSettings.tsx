@@ -7,6 +7,7 @@ import {
   type PermissionKind,
   type PermissionStatus,
 } from "../../lib/permissions/permissionCore";
+import { useT, type TFn } from "../../lib/i18n";
 
 /**
  * Settings section: "Notifications & location". Shows the live status of each
@@ -15,15 +16,16 @@ import {
  * Re-opening the full priming wizard is also offered.
  */
 export function PermissionsSettings() {
+  const t = useT();
   const perms = usePermissions();
 
   return (
-    <section className="perm-settings" aria-label="Notifications and location">
+    <section className="perm-settings" aria-label={t("permSettings.ariaLabel")}>
       <div className="perm-settings-head">
         <div>
-          <h2 className="perm-settings-title">Notifications &amp; location</h2>
+          <h2 className="perm-settings-title">{t("permSettings.heading")}</h2>
           <p className="muted perm-settings-sub">
-            Control the alerts and location access this app can use.
+            {t("permSettings.subheading")}
           </p>
         </div>
         <button
@@ -31,7 +33,7 @@ export function PermissionsSettings() {
           className="button-like perm-rewizard"
           onClick={openOnboardingWizard}
         >
-          <RotateCcw size={15} aria-hidden /> Setup guide
+          <RotateCcw size={15} aria-hidden /> {t("permSettings.setupGuide")}
         </button>
       </div>
 
@@ -39,12 +41,12 @@ export function PermissionsSettings() {
         <PermissionRow
           kind="notifications"
           Icon={Bell}
-          name="Notifications"
+          name={t("permSettings.kind.notifications")}
           status={perms.notifications}
           onEnable={perms.enableNotifications}
           extraHint={
             perms.notifications === "granted" && perms.pushReason === "ios-not-installed"
-              ? "Add Forge Windows to your home screen to get alerts when the app is closed."
+              ? t("permSettings.iosHomeScreenHint")
               : undefined
           }
           onDisable={
@@ -54,7 +56,7 @@ export function PermissionsSettings() {
         <PermissionRow
           kind="location"
           Icon={MapPin}
-          name="Location"
+          name={t("permSettings.kind.location")}
           status={perms.location}
           onEnable={perms.enableLocation}
         />
@@ -82,7 +84,8 @@ function PermissionRow({
   /** When provided, shows a "Turn off on this device" action (web push off). */
   onDisable?: () => Promise<void>;
 }) {
-  const view = settingsView(kind, status);
+  const t: TFn = useT();
+  const view = settingsView(kind, status, t);
 
   return (
     <div className="perm-row">
@@ -101,9 +104,9 @@ function PermissionRow({
             type="button"
             className="button-like perm-row-off"
             onClick={() => void onDisable()}
-            aria-label={`Turn off ${name} on this device`}
+            aria-label={t("permSettings.turnOffAria", { name })}
           >
-            Turn off on this device
+            {t("permSettings.turnOffDevice")}
           </button>
         )}
       </div>
@@ -113,7 +116,7 @@ function PermissionRow({
           className="wizard-btn primary perm-row-action"
           onClick={() => void onEnable()}
         >
-          Turn on
+          {t("permSettings.turnOn")}
         </button>
       )}
     </div>

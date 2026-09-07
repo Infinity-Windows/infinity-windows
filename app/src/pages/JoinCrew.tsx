@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { formatApiError } from "../lib/errors";
 import { supabase } from "../lib/supabase";
 import { peekCrewInvite, redeemCrewInvite, type InvitePreview } from "../lib/crewAccess";
+import { usePreAuthT } from "../lib/i18n";
 import {
   formatInviteCode,
   looksLikeInviteCode,
@@ -34,6 +35,9 @@ export function JoinCrew({
   code: string | null;
   onGiveUp: () => void;
 }) {
+  // Pre-login, same as SignIn — reads whatever language this device (or this
+  // same person, on the Sign in screen a minute ago) already picked.
+  const { t } = usePreAuthT();
   const [code, setCode] = useState(initialCode ?? "");
   const [typed, setTyped] = useState(initialCode ?? "");
   const [preview, setPreview] = useState<InvitePreview | null>(null);
@@ -80,7 +84,7 @@ export function JoinCrew({
   const submitCode = () => {
     const clean = normalizeInviteCode(typed);
     if (!looksLikeInviteCode(clean)) {
-      setError("That code isn't right. It's 10 letters and numbers.");
+      setError(t("joinCrew.badCode"));
       return;
     }
     setError(null);
@@ -90,7 +94,7 @@ export function JoinCrew({
   const finish = async () => {
     const check = validateInvitePassword(password, confirm);
     if (!check.ok) {
-      setError(check.error ?? "Check your password.");
+      setError(check.error ?? t("joinCrew.checkPassword"));
       return;
     }
     setBusy(true);
@@ -105,8 +109,24 @@ export function JoinCrew({
     }
   };
 
+  // Role names in the invite preview come from the shared edge-function
+  // vocabulary (ROLE_TITLES), which is English only — translate the three
+  // crew roles this screen can ever show rather than widening that shared
+  // module for one caller.
+  const ROLE_WORD_KEY = {
+    installer: "joinCrew.role.installer",
+    foreman: "joinCrew.role.foreman",
+    supervisor: "joinCrew.role.supervisor",
+    owner: "joinCrew.role.owner",
+  } as const;
+  const roleKey = ROLE_WORD_KEY[preview?.role as CrewRoleName];
+  // An unrecognized role can only reach here if the server ever adds a fifth
+  // invitable role before this table catches up — fall back to the shared
+  // (English-only) title rather than showing nothing.
   const roleWord = preview
-    ? ROLE_TITLES[preview.role as CrewRoleName] ?? preview.role
+    ? roleKey
+      ? t(roleKey)
+      : (ROLE_TITLES[preview.role as CrewRoleName] ?? preview.role)
     : "";
   const firstName = preview?.display_name?.trim().split(/\s+/)[0] ?? "";
 
@@ -115,15 +135,14 @@ export function JoinCrew({
       <div className="signin-brand">
         <h1>FORGE</h1>
         <div className="signin-rule">
-          <span>Windows &amp; Doors</span>
+          <span>{t("signin.tagline")}</span>
         </div>
       </div>
 
       {signedInAs && (
         <div className="detail-card" style={{ marginBottom: 4 }}>
           <p style={{ margin: 0, fontSize: 13, lineHeight: 1.55 }}>
-            This phone is already signed in as <strong>{signedInAs}</strong>.
-            Setting up a new person here will sign that account out.
+            {t("joinCrew.alreadySignedIn", { email: signedInAs })}
           </p>
           <div className="row-gap" style={{ marginTop: 10 }}>
             <button
@@ -133,10 +152,10 @@ export function JoinCrew({
                 setSignedInAs(null);
               }}
             >
-              Sign that account out
+              {t("joinCrew.signThatOut")}
             </button>
             <button className="link" onClick={onGiveUp}>
-              Stay signed in
+              {t("joinCrew.staySignedIn")}
             </button>
           </div>
         </div>
@@ -145,10 +164,9 @@ export function JoinCrew({
       {/* --- No code yet: they typed the app in by hand ------------------- */}
       {!code || (!preview && !checking && error) ? (
         <>
-          <p className="signin-kicker">Enter your code</p>
+          <p className="signin-kicker">{t("joinCrew.enterCode")}</p>
           <p className="muted" style={{ margin: 0, lineHeight: 1.55 }}>
-            Whoever added you sent you a 10-character code. Type it here —
-            capitals, dashes and spaces don't matter.
+            {t("joinCrew.enterCodeHelp")}
           </p>
           <input
             placeholder="ABCDE-23456"
@@ -165,43 +183,43 @@ export function JoinCrew({
             onClick={submitCode}
             disabled={!typed.trim()}
           >
-            Continue
+            {t("joinCrew.continue")}
           </button>
           <button className="link" onClick={onGiveUp}>
-            I already have a login
+            {t("joinCrew.haveLogin")}
           </button>
         </>
       ) : checking ? (
-        <p className="muted">Checking your code…</p>
+        <p className="muted">{t("joinCrew.checkingCode")}</p>
       ) : preview ? (
         <>
           <p className="signin-kicker">
-            {firstName ? `Hi ${firstName}` : "You're being set up"}
+            {firstName ? t("joinCrew.hiName", { name: firstName }) : t("joinCrew.beingSetUp")}
           </p>
           <p className="muted" style={{ margin: 0, lineHeight: 1.55 }}>
             {preview.existing_account
-              ? `Pick a new password for your ${roleWord} login. That's the only step.`
-              : `You've been added to Forge Windows as a ${roleWord}. Pick a password and you're in — there's no email to check.`}
+              ? t("joinCrew.pickPasswordExisting", { role: roleWord })
+              : t("joinCrew.pickPasswordNew", { role: roleWord })}
           </p>
 
           <label className="field-label" htmlFor="join-password">
-            Pick a password
+            {t("joinCrew.pickPassword")}
           </label>
           <input
             id="join-password"
             type={reveal ? "text" : "password"}
-            placeholder={`At least ${MIN_PASSWORD_LENGTH} characters`}
+            placeholder={t("joinCrew.minChars", { n: MIN_PASSWORD_LENGTH })}
             value={password}
             autoComplete="new-password"
             onChange={(e) => setPassword(e.target.value)}
           />
           <label className="field-label" htmlFor="join-confirm">
-            Type it again
+            {t("joinCrew.typeAgain")}
           </label>
           <input
             id="join-confirm"
             type={reveal ? "text" : "password"}
-            placeholder="Same password"
+            placeholder={t("joinCrew.samePassword")}
             value={confirm}
             autoComplete="new-password"
             onChange={(e) => setConfirm(e.target.value)}
@@ -210,7 +228,7 @@ export function JoinCrew({
           {/* Typing a password twice on a cracked screen with gloves on is where
               this flow gets abandoned. Letting them see it is the fix. */}
           <button className="link" onClick={() => setReveal((v) => !v)}>
-            {reveal ? "Hide password" : "Show password"}
+            {reveal ? t("joinCrew.hidePassword") : t("joinCrew.showPassword")}
           </button>
 
           {error && <p className="error">{error}</p>}
@@ -219,17 +237,17 @@ export function JoinCrew({
             onClick={() => void finish()}
             disabled={busy || !password || !confirm}
           >
-            {busy ? "Setting you up…" : "Start working"}
+            {busy ? t("joinCrew.settingUp") : t("joinCrew.startWorking")}
           </button>
           <p className="signin-footnote">
-            Code {formatInviteCode(code)} · works once
+            {t("joinCrew.codeWorksOnce", { code: formatInviteCode(code) })}
           </p>
         </>
       ) : (
         <>
           {error && <p className="error">{error}</p>}
           <button className="link" onClick={onGiveUp}>
-            Back to sign in
+            {t("joinCrew.backToSignIn")}
           </button>
         </>
       )}

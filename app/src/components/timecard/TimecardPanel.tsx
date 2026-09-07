@@ -9,6 +9,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Coffee, Download } from "lucide-react";
 import { QueryError, SkeletonList } from "../ui/States";
+import { useT } from "../../lib/i18n";
 import { listInstallEventsForProfile } from "../../lib/install/api";
 import {
   addDays,
@@ -80,6 +81,7 @@ export function TimecardPanel({
   costCodes,
   openShift,
 }: TimecardPanelProps) {
+  const t = useT();
   const qc = useQueryClient();
   const [mode, setMode] = useState<TimecardRangeMode>("week");
   const [anchor, setAnchor] = useState<Date>(() => new Date());
@@ -137,10 +139,14 @@ export function TimecardPanel({
       return args.ids.length;
     },
     onSuccess: () => {
+      // The push renders in the SUPERVISOR's own language (t here), not
+      // necessarily the punch owner's — the profile a push is bound for isn't
+      // loaded on this screen. Same gap as everywhere else pushes are built
+      // client-side; not new to this sweep.
       void sendPush({
         profileIds: [personId],
-        title: "Week approval reverted",
-        body: `Your approved week was reverted: ${unapproveReason.trim()}. Check My timecard — it needs re-approval.`,
+        title: t("timecard.push.revertedTitle"),
+        body: t("timecard.push.revertedBody", { reason: unapproveReason.trim() }),
         tag: `timecard-unapproved-${personId}-${range.startIso.slice(0, 10)}`,
         url: "/timecard",
       });
@@ -234,7 +240,11 @@ export function TimecardPanel({
     paidRows.length > 0 && paidRows.every((s) => s.status === "approved");
 
   const totalLabel =
-    mode === "day" ? "Total today" : mode === "pay" ? "Total this pay period" : "Total this week";
+    mode === "day"
+      ? t("timecard.totalToday")
+      : mode === "pay"
+        ? t("timecard.totalPayPeriod")
+        : t("timecard.totalWeek");
 
   // T7: shiftsToExportRows (lib/timeclock.ts) is the one shared mapping —
   // see its comment for why it lives there instead of timecardExport.ts.
@@ -264,15 +274,16 @@ export function TimecardPanel({
         <div className={`tcx-hero${onBreak ? " break" : ""}`}>
           <div>
             <div className="tcx-label">
-              {onBreak ? "On break" : "On the clock"}
+              {onBreak ? t("timecard.onBreak") : t("timecard.onClock")}
               {openShift.projects?.job_code && ` · ${openShift.projects.job_code}`}
             </div>
             {openNeedsRealFinish ? (
               <>
-                <div className="tcx-hero-timer">Not clocked out</div>
+                <div className="tcx-hero-timer">{t("timecard.notClockedOut")}</div>
                 <div className="muted" style={{ fontSize: 11.5 }}>
-                  On the clock {describeDuration(openGuard!.sinceClockInSeconds)} — too
-                  long to total up. Needs a real finish time.
+                  {t("timecard.tooLongToTotal", {
+                    duration: describeDuration(openGuard!.sinceClockInSeconds),
+                  })}
                 </div>
               </>
             ) : (
@@ -281,9 +292,9 @@ export function TimecardPanel({
                   {formatClock(elapsedWorkSeconds(openShift))}
                 </div>
                 <div className="muted" style={{ fontSize: 11.5 }}>
-                  since {fmtTime(openShift.clock_in_at)}
+                  {t("timecard.since", { time: fmtTime(openShift.clock_in_at) })}
                   {currentBreakSeconds(openShift) > 0 &&
-                    ` · ${fmtHours(currentBreakSeconds(openShift) / 3600)} on breaks`}
+                    ` · ${t("timecard.onBreaksHours", { h: fmtHours(currentBreakSeconds(openShift) / 3600) })}`}
                 </div>
               </>
             )}
@@ -293,7 +304,7 @@ export function TimecardPanel({
       )}
 
       {/* Range tabs */}
-      <div className="seg tcx-tabs" role="tablist" aria-label="Timecard range">
+      <div className="seg tcx-tabs" role="tablist" aria-label={t("timecard.rangeAria")}>
         {(["day", "week", "pay"] as const).map((m) => (
           <button
             key={m}
@@ -302,7 +313,7 @@ export function TimecardPanel({
             className={mode === m ? "active-pill button-like" : "button-like"}
             onClick={() => setMode(m)}
           >
-            {m === "day" ? "Day" : m === "week" ? "Week" : "Pay period"}
+            {m === "day" ? t("timecard.tab.day") : m === "week" ? t("timecard.tab.week") : t("timecard.tab.pay")}
           </button>
         ))}
       </div>
@@ -312,7 +323,7 @@ export function TimecardPanel({
         <button
           className="button-like"
           onClick={() => setAnchor((d) => addDays(d, -stepDays))}
-          aria-label="Previous"
+          aria-label={t("timecard.previous")}
         >
           <ChevronLeft size={18} />
         </button>
@@ -320,14 +331,14 @@ export function TimecardPanel({
           className="button-like"
           style={{ flex: 1 }}
           onClick={() => setAnchor(new Date())}
-          title="Jump back to now"
+          title={t("timecard.jumpToNow")}
         >
           {range.label}
         </button>
         <button
           className="button-like"
           onClick={() => setAnchor((d) => addDays(d, stepDays))}
-          aria-label="Next"
+          aria-label={t("timecard.next")}
         >
           <ChevronRight size={18} />
         </button>
@@ -339,15 +350,15 @@ export function TimecardPanel({
           <div className="tcx-label">{totalLabel}</div>
           <div className="tcx-total-num">{fmtTotal(total)}</div>
           <div className="tcx-split">
-            Regular {fmtHours(split.regular)}
+            {t("timecard.regular", { h: fmtHours(split.regular) })}
             <span className={split.overtime > 0 ? "tcx-ot" : ""}>
-              {" "}· Overtime {fmtHours(split.overtime)}
+              {" "}· {t("timecard.overtime", { h: fmtHours(split.overtime) })}
             </span>
-            {split.doubleTime > 0 && ` · Double ${fmtHours(split.doubleTime)}`}
+            {split.doubleTime > 0 && ` · ${t("timecard.doubleTime", { h: fmtHours(split.doubleTime) })}`}
           </div>
           {breakHours > 0 && (
             <div className="tcx-breakline">
-              <Coffee size={12} aria-hidden /> {fmtHours(breakHours)} on breaks (excluded)
+              <Coffee size={12} aria-hidden /> {t("timecard.onBreaksExcluded", { h: fmtHours(breakHours) })}
             </div>
           )}
         </div>
@@ -359,13 +370,13 @@ export function TimecardPanel({
               onClick={() => approveWeek.mutate(submittedIds)}
             >
               {approveWeek.isPending
-                ? "Approving…"
-                : `Approve week (${submittedIds.length})`}
+                ? t("timecard.approving")
+                : t("timecard.approveWeek", { n: submittedIds.length })}
             </button>
           ) : weekApproved ? (
             <span className="row-gap" style={{ alignItems: "center", flexWrap: "wrap" }}>
               <span className="tcx-week-ok">
-                <CheckCircle2 size={15} aria-hidden /> Week approved
+                <CheckCircle2 size={15} aria-hidden /> {t("timecard.weekApproved")}
               </span>
               {isSup && (
                 <button
@@ -373,7 +384,7 @@ export function TimecardPanel({
                   style={{ fontSize: 12 }}
                   onClick={() => setUnapproving((v) => !v)}
                 >
-                  {unapproving ? "Keep approved" : "Unapprove week"}
+                  {unapproving ? t("timecard.keepApproved") : t("timecard.unapproveWeek")}
                 </button>
               )}
             </span>
@@ -382,15 +393,13 @@ export function TimecardPanel({
         {unapproving && isSup && weekApproved && (
           <div style={{ marginTop: 8, flexBasis: "100%" }}>
             <p className="muted" style={{ margin: "0 0 6px", fontSize: 12 }}>
-              The hours stay exactly as they are — only the approval is taken
-              back. {personName} gets notified with your reason, and the week
-              can be re-approved after the fix.
+              {t("timecard.unapproveExplain", { name: personName })}
             </p>
             <div className="row-gap">
               <input
                 type="text"
                 style={{ flex: 1 }}
-                placeholder="Why is this approval being reverted?"
+                placeholder={t("timecard.unapproveReasonPlaceholder")}
                 value={unapproveReason}
                 onChange={(e) => setUnapproveReason(e.target.value)}
               />
@@ -401,7 +410,7 @@ export function TimecardPanel({
                   unapproveWeek.mutate({ ids: approvedIds, reason: unapproveReason.trim() })
                 }
               >
-                {unapproveWeek.isPending ? "Reverting…" : "Revert approval"}
+                {unapproveWeek.isPending ? t("timecard.reverting") : t("timecard.revertApproval")}
               </button>
             </div>
           </div>
@@ -416,14 +425,14 @@ export function TimecardPanel({
 
       {/* Entries strip */}
       <div className="tcx-entries-strip">
-        <span className="tcx-label">Entries</span>
+        <span className="tcx-label">{t("timecard.entries")}</span>
         <div className="row-gap" style={{ marginLeft: "auto", position: "relative" }}>
           <button
             className="button-like"
             onClick={() => setExportOpen((v) => !v)}
             disabled={paidRows.length === 0}
           >
-            <Download size={14} aria-hidden /> Export <ChevronDown size={12} aria-hidden />
+            <Download size={14} aria-hidden /> {t("timecard.export")} <ChevronDown size={12} aria-hidden />
           </button>
           {exportOpen && (
             <div className="tcx-menu" onClick={() => setExportOpen(false)}>
@@ -437,7 +446,7 @@ export function TimecardPanel({
                   )
                 }
               >
-                Export CSV
+                {t("timecard.exportCsv")}
               </button>
               <button
                 className="button-like"
@@ -445,7 +454,7 @@ export function TimecardPanel({
                   void navigator.clipboard.writeText(buildTimecardTsv(exportPayload()))
                 }
               >
-                Copy for Sheets
+                {t("timecard.copyForSheets")}
               </button>
               <button
                 className="button-like"
@@ -458,7 +467,7 @@ export function TimecardPanel({
                   })
                 }
               >
-                Print · PDF
+                {t("timecard.printPdf")}
               </button>
             </div>
           )}
@@ -467,7 +476,7 @@ export function TimecardPanel({
               className="button-like active-pill"
               onClick={() => setAdding((v) => (v == null ? "now" : null))}
             >
-              {adding != null ? "Close" : "+ Add entry"}
+              {adding != null ? t("timecard.close") : t("timecard.addEntry")}
             </button>
           )}
         </div>
@@ -480,7 +489,7 @@ export function TimecardPanel({
             checked={showRemoved}
             onChange={(e) => setShowRemoved(e.target.checked)}
           />
-          Show removed entries
+          {t("timecard.showRemoved")}
         </label>
       )}
 
@@ -500,7 +509,7 @@ export function TimecardPanel({
         <QueryError
           error={shifts.error}
           onRetry={() => void shifts.refetch()}
-          label="Couldn't load the timecard"
+          label={t("timecard.loadError")}
         />
       )}
       {shifts.isLoading && <SkeletonList rows={3} />}
@@ -550,7 +559,9 @@ export function TimecardPanel({
                 <div className="tcx-day-body">
                   {evs.length > 0 && (
                     <p className="muted" style={{ fontSize: 11.5, margin: "0 0 6px" }}>
-                      {evs.length} window{evs.length === 1 ? "" : "s"} installed:{" "}
+                      {evs.length === 1
+                        ? t("timecard.windowsInstalled.one")
+                        : t("timecard.windowsInstalled.many", { count: evs.length })}{" "}
                       {evs
                         .map(
                           (ev) =>
@@ -574,14 +585,14 @@ export function TimecardPanel({
                   ))}
                   {list.length === 0 && (
                     <p className="muted" style={{ fontSize: 12, margin: 0 }}>
-                      No entries
+                      {t("timecard.noEntries")}
                       {canEdit && (
                         <button
                           className="button-like"
                           style={{ marginLeft: 8, fontSize: 11.5, padding: "2px 8px" }}
                           onClick={() => setAdding(`${day}T07:00:00`)}
                         >
-                          + Add
+                          {t("timecard.add")}
                         </button>
                       )}
                     </p>

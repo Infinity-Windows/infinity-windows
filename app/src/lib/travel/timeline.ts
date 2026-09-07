@@ -1,6 +1,11 @@
 import type { Flight, GroundTransport, Lodging, TripDetail } from "./types";
 import { arriveByISO, leaveByISO } from "./dates";
 import { flightsForViewer } from "./visibility";
+import { CATALOG } from "../i18n/catalog";
+import { translate, type Lang } from "../i18n/translate";
+import type { TFn } from "../i18n/context";
+
+const englishT: TFn = (key, vars) => translate(CATALOG, "en" as Lang, key, vars);
 
 export type TimelineKind =
   | "leave_by"
@@ -32,15 +37,15 @@ export interface TimelineItem {
   sensitive: boolean;
 }
 
-function flightLabel(f: Flight): string {
+function flightLabel(f: Flight, t: TFn): string {
   const parts = [f.airline, f.flight_number].filter(Boolean).join(" ");
   const route = [f.depart_airport, f.arrive_airport].filter(Boolean).join(" → ");
-  return [parts, route].filter(Boolean).join(" · ") || "Flight";
+  return [parts, route].filter(Boolean).join(" · ") || t("travelTimeline.flightFallback");
 }
 
-function flightItems(f: Flight): TimelineItem[] {
+function flightItems(f: Flight, t: TFn): TimelineItem[] {
   const out: TimelineItem[] = [];
-  const label = flightLabel(f);
+  const label = flightLabel(f, t);
 
   // "Leave by" wins when we can compute it (needs a drive estimate); otherwise
   // fall back to the "be at the airport by" instant.
@@ -56,8 +61,8 @@ function flightItems(f: Flight): TimelineItem[] {
       kind: "leave_by",
       at: leaveBy,
       timezone: f.depart_timezone,
-      title: "Leave for the airport",
-      subtitle: `for ${label}`,
+      title: t("travelTimeline.leaveForAirport"),
+      subtitle: t("travelTimeline.forLabel", { label }),
       action: dirAction,
       sensitive: false,
     });
@@ -67,8 +72,8 @@ function flightItems(f: Flight): TimelineItem[] {
       kind: "airport_by",
       at: airportBy,
       timezone: f.depart_timezone,
-      title: "Be at the airport",
-      subtitle: `for ${label}`,
+      title: t("travelTimeline.beAtAirport"),
+      subtitle: t("travelTimeline.forLabel", { label }),
       action: dirAction,
       sensitive: false,
     });
@@ -80,7 +85,7 @@ function flightItems(f: Flight): TimelineItem[] {
       kind: "flight_depart",
       at: f.depart_at,
       timezone: f.depart_timezone,
-      title: `Departs ${f.depart_airport ?? ""}`.trim(),
+      title: t("travelTimeline.departs", { place: f.depart_airport ?? "" }).trim(),
       subtitle: label,
       action: null,
       sensitive: false,
@@ -92,7 +97,7 @@ function flightItems(f: Flight): TimelineItem[] {
       kind: "flight_arrive",
       at: f.arrive_at,
       timezone: f.arrive_timezone,
-      title: `Arrives ${f.arrive_airport ?? ""}`.trim(),
+      title: t("travelTimeline.arrives", { place: f.arrive_airport ?? "" }).trim(),
       subtitle: label,
       action: null,
       sensitive: false,
@@ -101,16 +106,18 @@ function flightItems(f: Flight): TimelineItem[] {
   return out;
 }
 
-function groundItems(g: GroundTransport): TimelineItem[] {
+function groundItems(g: GroundTransport, t: TFn): TimelineItem[] {
   const out: TimelineItem[] = [];
-  const label = [g.type, g.provider].filter(Boolean).join(" · ") || "Ground transport";
+  const label = [g.type, g.provider].filter(Boolean).join(" · ") || t("travelTimeline.groundFallback");
   if (g.pickup_at) {
     out.push({
       id: `ground-${g.id}-pickup`,
       kind: "ground_pickup",
       at: g.pickup_at,
       timezone: g.pickup_timezone,
-      title: g.pickup_location ? `Pickup — ${g.pickup_location}` : "Pickup",
+      title: g.pickup_location
+        ? t("travelTimeline.pickupAt", { place: g.pickup_location })
+        : t("travelTimeline.pickup"),
       subtitle: label,
       action: g.pickup_location ? { type: "directions", address: g.pickup_location } : null,
       sensitive: false,
@@ -122,7 +129,9 @@ function groundItems(g: GroundTransport): TimelineItem[] {
       kind: "ground_dropoff",
       at: g.dropoff_at,
       timezone: g.dropoff_timezone,
-      title: g.dropoff_location ? `Drop-off — ${g.dropoff_location}` : "Drop-off",
+      title: g.dropoff_location
+        ? t("travelTimeline.dropoffAt", { place: g.dropoff_location })
+        : t("travelTimeline.dropoff"),
       subtitle: label,
       action: g.dropoff_location ? { type: "directions", address: g.dropoff_location } : null,
       sensitive: false,
@@ -131,9 +140,9 @@ function groundItems(g: GroundTransport): TimelineItem[] {
   return out;
 }
 
-function lodgingItems(l: Lodging, codesVisible: boolean): TimelineItem[] {
+function lodgingItems(l: Lodging, codesVisible: boolean, t: TFn): TimelineItem[] {
   const out: TimelineItem[] = [];
-  const name = l.name ?? "Lodging";
+  const name = l.name ?? t("travelTimeline.lodgingFallback");
   if (l.check_in_at) {
     const hasCode = codesVisible && Boolean(l.door_code);
     out.push({
@@ -141,10 +150,10 @@ function lodgingItems(l: Lodging, codesVisible: boolean): TimelineItem[] {
       kind: "lodging_checkin",
       at: l.check_in_at,
       timezone: l.timezone,
-      title: `Check in — ${name}`,
-      subtitle: hasCode ? "Door code ready to copy" : l.address,
+      title: t("travelTimeline.checkIn", { name }),
+      subtitle: hasCode ? t("travelTimeline.doorCodeReady") : l.address,
       action: hasCode
-        ? { type: "copy", label: "Door code", value: l.door_code as string }
+        ? { type: "copy", label: t("travelTimeline.doorCode"), value: l.door_code as string }
         : l.address
           ? { type: "directions", address: l.address }
           : null,
@@ -157,7 +166,7 @@ function lodgingItems(l: Lodging, codesVisible: boolean): TimelineItem[] {
       kind: "lodging_checkout",
       at: l.check_out_at,
       timezone: l.timezone,
-      title: `Check out — ${name}`,
+      title: t("travelTimeline.checkOut", { name }),
       subtitle: l.checkout_tasks ?? null,
       action: null,
       sensitive: false,
@@ -177,12 +186,16 @@ export interface TimelineOptions {
  * → checkout → return), filtered to the viewer's flights (their own + whole
  * crew). Items with no time are dropped; the rest are sorted by instant.
  */
-export function buildTimeline(detail: TripDetail, opts: TimelineOptions): TimelineItem[] {
+export function buildTimeline(
+  detail: TripDetail,
+  opts: TimelineOptions,
+  t: TFn = englishT,
+): TimelineItem[] {
   const items: TimelineItem[] = [];
   const flights = flightsForViewer(detail.flights, opts.profileId);
-  for (const f of flights) items.push(...flightItems(f));
-  for (const g of detail.ground) items.push(...groundItems(g));
-  for (const l of detail.lodging) items.push(...lodgingItems(l, opts.codesVisible));
+  for (const f of flights) items.push(...flightItems(f, t));
+  for (const g of detail.ground) items.push(...groundItems(g, t));
+  for (const l of detail.lodging) items.push(...lodgingItems(l, opts.codesVisible, t));
   return items.sort((a, b) => a.at.localeCompare(b.at));
 }
 

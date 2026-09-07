@@ -1,6 +1,7 @@
 import { Pencil, Phone, Plus, Trash2, Users } from "lucide-react";
 import type { TripContact } from "../../lib/travel/types";
 import { telHref } from "../../lib/travel/links";
+import { useT } from "../../lib/i18n";
 
 export function ContactsSection({
   contacts,
@@ -15,19 +16,20 @@ export function ContactsSection({
   onEdit: (c: TripContact) => void;
   onDelete: (c: TripContact) => void;
 }) {
+  const t = useT();
   return (
     <section className="travel-section">
       <div className="travel-section-head">
-        <h3><Users size={16} aria-hidden /> Contacts</h3>
+        <h3><Users size={16} aria-hidden /> {t("travelDetail.tab.contacts")}</h3>
         {canEdit && (
           <button className="travel-add-btn" onClick={onAdd}>
-            <Plus size={15} aria-hidden /> Add contact
+            <Plus size={15} aria-hidden /> {t("travelContacts.addContact")}
           </button>
         )}
       </div>
 
       {contacts.length === 0 ? (
-        <p className="muted travel-empty-note">No contacts yet.</p>
+        <p className="muted travel-empty-note">{t("travelContacts.noContacts")}</p>
       ) : (
         <div className="travel-contacts">
           {contacts.map((c) => {
@@ -43,13 +45,13 @@ export function ContactsSection({
                 <div className="travel-contact-actions">
                   {href && (
                     <a className="travel-call" href={href}>
-                      <Phone size={14} aria-hidden /> <span>Call</span>
+                      <Phone size={14} aria-hidden /> <span>{t("travelTimeline.call")}</span>
                     </a>
                   )}
                   {canEdit && (
                     <span className="travel-card-tools">
-                      <button aria-label="Edit contact" onClick={() => onEdit(c)}><Pencil size={14} /></button>
-                      <button aria-label="Delete contact" onClick={() => onDelete(c)}><Trash2 size={14} /></button>
+                      <button aria-label={t("travelContacts.editContact")} onClick={() => onEdit(c)}><Pencil size={14} /></button>
+                      <button aria-label={t("travelContacts.deleteContact")} onClick={() => onDelete(c)}><Trash2 size={14} /></button>
                     </span>
                   )}
                 </div>

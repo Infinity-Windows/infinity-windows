@@ -6,6 +6,12 @@
 // Everything is a pure function of its inputs (no Date.now, no DOM), so the
 // arithmetic and the DST-correct rendering are directly unit-testable.
 
+import { CATALOG } from "../i18n/catalog";
+import { translate, type Lang } from "../i18n/translate";
+import type { TFn } from "../i18n/context";
+
+const englishT: TFn = (key, vars) => translate(CATALOG, "en" as Lang, key, vars);
+
 const MIN_MS = 60 * 1000;
 
 /** Default airport buffer: 120 min domestic, 180 min international. */
@@ -219,14 +225,17 @@ export function utcToZonedWallTime(
 export function humanizeCountdown(
   iso: string | null | undefined,
   nowMs: number,
+  t: TFn = englishT,
 ): string | null {
   const delta = msUntil(iso, nowMs);
   if (delta == null || delta < 0) return null;
   const mins = Math.round(delta / MIN_MS);
-  if (mins <= 1) return "now";
-  if (mins < 60) return `in ${mins} min`;
+  if (mins <= 1) return t("travelTimeline.countdownNow");
+  if (mins < 60) return t("travelTimeline.countdownMin", { mins });
   const hrs = Math.round(mins / 60);
-  if (hrs < 24) return `in ${hrs} hr`;
+  if (hrs < 24) return t("travelTimeline.countdownHr", { hrs });
   const days = Math.round(hrs / 24);
-  return `in ${days} day${days === 1 ? "" : "s"}`;
+  return days === 1
+    ? t("travelTimeline.countdownDay", { days })
+    : t("travelTimeline.countdownDays", { days });
 }
