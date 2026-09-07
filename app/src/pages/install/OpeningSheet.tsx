@@ -5,9 +5,8 @@ import { useT } from "../../lib/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { Ban, Link2, RotateCcw } from "lucide-react";
-import { PhotoCaptureSheet, type BeforeAfterValue } from "../../components/PhotoCaptureSheet";
-import { Scanner } from "../../components/Scanner";
+import { Link2 } from "lucide-react";
+import { type BeforeAfterValue } from "../../components/PhotoCaptureSheet";
 import {
   findWindowByCode,
   findWindowBySerial,
@@ -37,12 +36,8 @@ import {
   generateHowto,
   listProfiles,
 } from "../../lib/install/api";
-import {
-  formatAssignMeta,
-  rankAssignCandidates,
-} from "../../lib/install/assignRank";
+import { rankAssignCandidates } from "../../lib/install/assignRank";
 import { pickNextOpening } from "../../lib/install/nextOpening";
-import { movedAgoLabel } from "../../lib/install/pinHistory";
 import { submitBlockersLine } from "../../lib/install/submitGate";
 import { autoOpenBeforeSlot } from "../../lib/install/beforePhotoGate";
 import {
@@ -53,14 +48,11 @@ import {
 } from "../../lib/install/credit";
 import {
   flashingOutstanding,
-  formatPhaseClock,
   listOpeningPhases,
-  phaseElapsedSeconds,
   setOpeningNeedsFlashing,
 } from "../../lib/install/phases";
 import { computeInstallPoints } from "../../lib/points";
 import {
-  BLOCK_REASONS,
   blockedUnits,
   laborBreakdown,
   listOpeningSessions,
@@ -71,10 +63,6 @@ import {
   reattributeSession,
   startUnitSession,
 } from "../../lib/install/sessions";
-import { SummonPanel } from "../../components/install/SummonPanel";
-import { CallForHandsPanel } from "../../components/install/CallForHandsPanel";
-import { UnitRecordCard } from "../../components/install/UnitRecordCard";
-import { InstallChip } from "../../components/install/InstallChip";
 import { checkFit, isInstallReadyStatus, readyToInstall, smallest } from "../../lib/install/fit";
 import {
   framingIssueNote,
@@ -116,14 +104,11 @@ import {
   retryTranscriptions,
 } from "../../lib/install/queue";
 import {
-  MEMO_TOPICS,
   isForemanPlus,
   isSupervisorPlus,
   openingStatusLabel,
   type MemoTopics,
 } from "../../lib/install/types";
-import { DataOffCard } from "../../components/install/DataOffCard";
-import { MissedUnitActions } from "../../components/install/MissedUnitActions";
 import type { DataOffKind } from "../../lib/install/dataOff";
 import { claimUnsavedWork } from "../../lib/pwa/unsavedWork";
 import { indexSpecsByMark, specForOpeningCode } from "../../lib/install/specs";
@@ -142,6 +127,12 @@ import { formatApiError } from "../../lib/install/errors";
 import { pushToast } from "../../lib/toast";
 import { showUndoToast } from "../../lib/undoToast";
 import { sendPush } from "../../lib/permissions/pushServer";
+import { Sheet } from "../../components/ui/Sheet";
+import { CheckStage } from "./sheet/CheckStage";
+import { InstallStage } from "./sheet/InstallStage";
+import { CaptureStage } from "./sheet/CaptureStage";
+import { SheetMore, type SheetMoreProps } from "./sheet/SheetMore";
+import { sheetStageLabel, SHEET_STAGES, type SheetStage } from "../../lib/install/sheetStages";
 
 const windowLookups = { getWindowByWindowId, findWindowByCode, findWindowBySerial };
 
@@ -155,110 +146,11 @@ function pickAudioMime(): string {
   return "";
 }
 
-/**
- * The teach-by-picture for each rough-opening check: the opening as a frame,
- * with the measurement drawn the way you'd make it - X across the diagonals
- * for square, top/bottom lines for width, left/right lines for height.
- */
-function RoDiagram({ kind }: { kind: RoCheckId }) {
-  const frame = (
-    <rect x="7" y="5" width="34" height="52" rx="2" fill="none"
-      stroke="currentColor" strokeOpacity="0.45" strokeWidth="2" />
-  );
-  return (
-    <svg
-      className="ro-diagram"
-      viewBox="0 0 48 62"
-      width="44"
-      height="57"
-      aria-hidden
-    >
-      {frame}
-      {kind === "square" && (
-        <g stroke="#ff9a6a" strokeWidth="2.5" strokeLinecap="round">
-          <line x1="9" y1="7" x2="39" y2="55" />
-          <line x1="39" y1="7" x2="9" y2="55" />
-        </g>
-      )}
-      {kind === "width" && (
-        <g stroke="#ff9a6a" strokeWidth="2.5" strokeLinecap="round">
-          <line x1="9" y1="12" x2="39" y2="12" />
-          <line x1="9" y1="50" x2="39" y2="50" />
-        </g>
-      )}
-      {kind === "height" && (
-        <g stroke="#ff9a6a" strokeWidth="2.5" strokeLinecap="round">
-          <line x1="13" y1="7" x2="13" y2="55" />
-          <line x1="35" y1="7" x2="35" y2="55" />
-        </g>
-      )}
-    </svg>
-  );
-}
-
-/**
- * Placeholder for one height input slot. `roH` is `[left, ...mids, right]`
- * (roCheck.ts) - length tells us how many mid points are showing, position
- * tells us which one this is. A 2-slot array (every saved check before this
- * feature, and every narrow opening since) reads exactly as it always did.
- */
-function heightLabel(index: number, length: number): string {
-  if (length <= 2) return index === 0 ? "left" : "right";
-  if (index === 0) return "left";
-  if (index === length - 1) return "right";
-  if (length === 3) return "mid";
-  return index === 1 ? "mid-left" : "mid-right";
-}
-
 const READY_LABEL: Record<string, string> = {
   ready: "READY TO INSTALL",
   blocked: "DO NOT INSTALL",
   incomplete: "CHECKS INCOMPLETE",
 };
-
-/**
- * The two real ways past a unit that still owes flashing.
- *
- * There used to be a DISABLED button here reading "Flash this opening first",
- * which is the exact thing the owner reported on 2026-09-02 as "the button
- * doesn't register": it named an action and did nothing, and nothing else on
- * the sheet said where that action lives. Flashing is its own pass on the
- * flash run, and a foreman can decide this unit was never going to be flashed
- * — so those are the two things this offers, both as controls that actually do
- * something. Shown wherever the flashing gate stops someone.
- */
-function FlashingWayOut({
-  projectId,
-  openingCode,
-  canClear,
-  clearing,
-  onClear,
-}: {
-  projectId: string;
-  openingCode: string;
-  canClear: boolean;
-  clearing: boolean;
-  onClear: () => void;
-}) {
-  return (
-    <div className="detail-card wh-card" style={{ textAlign: "left" }}>
-      <p className="wh-row-sub" style={{ margin: 0 }}>
-        Flashing is its own pass, not part of this install. Open the flash run
-        and pick {openingCode} from its list.
-      </p>
-      <div className="row-gap" style={{ flexWrap: "wrap", marginTop: 8 }}>
-        <Link className="action-btn" to={`/projects/${projectId}/flash-run`}>
-          Go to the flash run
-        </Link>
-        {canClear && (
-          <button className="action-btn" disabled={clearing} onClick={onClear}>
-            Doesn't need flashing
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
 
 /**
  * A status line for the user, carrying its own tone instead of one guessed
@@ -310,7 +202,7 @@ export function OpeningSheet() {
 
   const [photos, setPhotos] = useState<BeforeAfterValue>({ before: null, after: null });
   const [video, setVideo] = useState<File | null>(null);
-  const [stage, setStage] = useState<"check" | "install" | "capture">("check");
+  const [stage, setStage] = useState<SheetStage>("check");
   // The hand-typed minutes era ended with sessions (spec .scratch/sessions);
   // these stay only to feed recordedMinutes' points estimate untouched-mode.
   const [minutes] = useState("");
@@ -1389,6 +1281,118 @@ export function OpeningSheet() {
   const tips = brain.data?.tips ?? [];
   const watchOuts = brain.data?.watchOuts ?? [];
 
+  // --- The stage's one pinned button (installer-os-spec.md S7, item 3) -----
+  // Same enable/disable rules and reasons the inline buttons always used —
+  // only relocated, and consolidated into one fixed label + a reason line
+  // above it when disabled, instead of the label itself changing meaning.
+  const beforePhotoMissing = !startedAt && photos.before === null;
+  const clockNotEligible = !startedAt && eligibility.status === "blocked";
+  const checkStartReason = startedAt
+    ? null
+    : ready.status === "blocked"
+      ? t("opening.action.resolveBlockers")
+      : beforePhotoMissing
+        ? t("opening.action.beforePhotoToStart")
+        : clockNotEligible
+          ? t("opening.action.clockInFirst")
+          : flashingBlocked
+            ? t("opening.action.flashingOwed")
+            : null;
+  const checkStartDisabled =
+    ready.status === "blocked" ||
+    beginInstall.isPending ||
+    beforePhotoMissing ||
+    (!startedAt && !canStartInstall(eligibility.status)) ||
+    (!startedAt && flashingBlocked);
+  const checkStartLabel = startedAt
+    ? t("opening.action.backToInstall")
+    : beginInstall.isPending
+      ? t("opening.action.starting")
+      : t("opening.action.startInstall");
+
+  const submitDisabled =
+    submit.isPending || recording || ready.status === "blocked" || submitBlockedBy !== null;
+
+  // --- Shared "More" fold content (installer-os-spec.md S7, item 4) --------
+  // One object, reused by every stage's own SheetMore mount and by the
+  // installed-state mount — the content and its gates are identical either
+  // way; only which stage's extras show (SummonPanel/CallForHands, Block,
+  // site note) depends on which fold this is (SheetMore's own `stage` prop).
+  const moreProps: Omit<SheetMoreProps, "stage" | "installed"> = {
+    now,
+    notes: openingNotes.data ?? [],
+    noteText,
+    onNoteTextChange: setNoteText,
+    onAddNote: () => addNote.mutate(noteText.trim()),
+    addingNote: addNote.isPending,
+    dataOff: {
+      opening: o,
+      flaggedByName: o.flagged_by
+        ? (crew.data ?? []).find((p) => p.id === o.flagged_by)?.display_name ?? null
+        : null,
+      canClear: isForemanPlus(effectiveRole),
+      busy: flag.isPending || clearFlag.isPending,
+      onFlag: (kind, note) => flag.mutate({ kind, note }),
+      onClear: () => clearFlag.mutate(),
+    },
+    missedUnit: o.field_added
+      ? {
+          opening: o,
+          openings: jobOpenings.data ?? [],
+          canAct: isSupervisorPlus(effectiveRole),
+          onDone: (msg) => {
+            setMessage({ text: msg, tone: "ok" });
+            refresh();
+          },
+          onError: (e) => setMessage({ text: formatApiError(e), tone: "error" }),
+        }
+      : null,
+    openingId,
+    flashing,
+    undoHistory: undoHistory.data ?? [],
+    redo: {
+      open: redoSheetOpen,
+      onOpen: () => setRedoSheetOpen(true),
+      reason: redoReason,
+      onReasonChange: setRedoReason,
+      onSubmit: () => doRedo.mutate(),
+      onCancel: () => {
+        setRedoSheetOpen(false);
+        setRedoReason("");
+      },
+      pending: doRedo.isPending,
+    },
+    siteNote: {
+      jobNoteText,
+      onJobNoteChange: setJobNoteText,
+      onSendJobNote: () => postJobNote.mutate(jobNoteText.trim()),
+      sendingJobNote: postJobNote.isPending,
+      complicationText,
+      onComplicationChange: setComplicationText,
+      onSendComplication: () => complication.mutate(complicationText.trim()),
+      sendingComplication: complication.isPending,
+    },
+    summon: {
+      projectId,
+      openingId,
+      openingCode: o.opening_code,
+      widthIn: o.window_types?.width_in ?? openingSpec?.width_in ?? null,
+      heightIn: o.window_types?.height_in ?? openingSpec?.height_in ?? null,
+      myProfileId: myProfile.data?.id ?? null,
+      myName: myProfile.data?.display_name ?? null,
+      effectiveRole: effectiveRole ?? "installer",
+    },
+    block: {
+      open: blockOpen,
+      onToggle: () => setBlockOpen((v) => !v),
+      other: blockOther,
+      onOtherChange: setBlockOther,
+      onReason: (reason) => doBlock.mutate(reason),
+      pending: doBlock.isPending,
+      nextOpeningCode: nextOpening?.opening_code ?? null,
+    },
+  };
+
   return (
     <div className="page">
       {/* The chain banner: the clock is already on this window; for five
@@ -1441,15 +1445,37 @@ export function OpeningSheet() {
         </div>
       )}
 
-      <header className="page-header">
-        <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+      {/* Sticky stage header (installer-os-spec.md S7, item 2): back chip,
+          unit code, the type label, and — while working — the stepper.
+          Sticky under the safe-area inset only; no hover state anywhere in
+          here, so it can never change height on hover. */}
+      <div className="sheet-head">
+        <div className="sheet-head-top">
           <BackChip fallback={`/projects/${projectId}?tab=map`} label="Back to map" />
-          <h1 className="opening-code-title">{o.opening_code}</h1>
+          <h1 className="opening-code-title sheet-head-code">{o.opening_code}</h1>
+          {o.window_types?.type_code && (
+            <span className="ui-status-chip" data-tone="mute">{o.window_types.type_code}</span>
+          )}
+          <Link to={`/projects/${projectId}?tab=map`} className="button-like">
+            Map
+          </Link>
         </div>
-        <Link to={`/projects/${projectId}?tab=map`} className="button-like">
-          Map
-        </Link>
-      </header>
+        {!installed && (
+          <nav className="hub-tabs" aria-label="Install steps">
+            {SHEET_STAGES.map((s) => (
+              <button
+                key={s}
+                type="button"
+                className={stage === s ? "hub-tab active" : "hub-tab"}
+                onClick={() => setStage(s)}
+              >
+                {sheetStageLabel(s)}
+              </button>
+            ))}
+          </nav>
+        )}
+      </div>
+
       <SavedCopyNotice reason={savedCopy} />
 
       {movedFrom && (
@@ -1575,22 +1601,6 @@ export function OpeningSheet() {
         </div>
       )}
 
-      {/* --- Stage stepper (installer critical path) --- */}
-      {!installed && (
-        <nav className="hub-tabs" aria-label="Install steps">
-          {(["check", "install", "capture"] as const).map((s, i) => (
-            <button
-              key={s}
-              type="button"
-              className={stage === s ? "hub-tab active" : "hub-tab"}
-              onClick={() => setStage(s)}
-            >
-              {i + 1}. {s === "check" ? "Check" : s === "install" ? "Install" : "Capture"}
-            </button>
-          ))}
-        </nav>
-      )}
-
       {/* --- INSTALLED: the done card, and the honest way back --- */}
       {installed && (
         <div className="detail-card">
@@ -1660,1170 +1670,245 @@ export function OpeningSheet() {
         </div>
       )}
 
-      {/* REDO (CONTEXT.md): the install was REAL but the window needs doing
-          again — different truth than undo, so a different button. Any
-          installer, reason required; the foreman is notified, never asked.
-          The original record stands; the window goes back in play. */}
-      {installed && (
-        <div className="detail-card">
-          {!redoSheetOpen ? (
-            <button className="button-like" onClick={() => setRedoSheetOpen(true)}>
-              <RotateCcw
-                size={15}
-                aria-hidden
-                style={{ verticalAlign: "middle", marginRight: 6 }}
-              />
-              Redo this window — it needs doing again
-            </button>
-          ) : (
-            <>
-              <label className="field-label">
-                Why does it need redoing? (required — your foreman gets pinged,
-                the window goes back on the list)
-              </label>
-              <textarea
-                rows={2}
-                maxLength={500}
-                value={redoReason}
-                placeholder="e.g. failed inspection / glass fogged / wrong unit went in"
-                onChange={(e) => setRedoReason(e.target.value)}
-              />
-              <div className="row-gap" style={{ marginTop: 8 }}>
-                <button
-                  className="button-like active-pill"
-                  disabled={doRedo.isPending || redoReason.trim() === ""}
-                  onClick={() => doRedo.mutate()}
-                >
-                  {doRedo.isPending ? "Filing…" : "Redo — put it back in play"}
-                </button>
-                <button
-                  className="button-like"
-                  disabled={doRedo.isPending}
-                  onClick={() => {
-                    setRedoSheetOpen(false);
-                    setRedoReason("");
-                  }}
-                >
-                  Cancel
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      )}
-
-      {/* The Record (CONTEXT.md): the full story of this window, read back
-          from what the crew saved. Every role sees it — raw facts about one
-          window are history, not comparison. Shows on any status once the
-          window has a story (sent-back windows keep theirs). */}
-      <UnitRecordCard openingId={openingId} flashing={flashing} />
-
-      {/* Past undos stay visible on ANY status — the why is the point. */}
-      {(undoHistory.data?.length ?? 0) > 0 && (
-        <div className="detail-card">
-          <span className="field-label">Previously sent back</span>
-          <ul className="unit-list" style={{ marginTop: 4 }}>
-            {(undoHistory.data ?? []).map((u) => (
-              <li key={u.id} className="wh-row-sub">
-                {u.voided_at &&
-                  new Date(u.voided_at).toLocaleDateString(undefined, {
-                    month: "short",
-                    day: "numeric",
-                  })}{" "}
-                · {u.voider?.display_name ?? "lead"} — “{u.void_reason ?? "no reason recorded"}”
-                {u.minutes != null && ` · ${u.minutes}m install kept on file`}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {/* Notes: a free-form record on this opening (owner ask, settled
-          2026-08-21) - the point is explaining why one window took much
-          longer than expected than the estimate. Visible on every stage;
-          like the Record above, nothing here is ever edited or removed
-          once posted. */}
-      <div className="detail-card">
-        <h2>Notes</h2>
-        {(openingNotes.data?.length ?? 0) > 0 ? (
-          <ul className="unit-list" style={{ marginTop: 4 }}>
-            {(openingNotes.data ?? []).map((n) => (
-              <li key={n.id} style={{ fontSize: 13 }}>
-                <strong>{n.author_profile?.display_name ?? "Unknown"}</strong>{" "}
-                <span className="muted">{movedAgoLabel(n.created_at, now)}</span>
-                <div>{n.body}</div>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="muted" style={{ margin: "2px 0 8px" }}>
-            No notes yet.
-          </p>
-        )}
-        <textarea
-          rows={3}
-          maxLength={2000}
-          value={noteText}
-          onChange={(e) => setNoteText(e.target.value)}
-          placeholder="Out of the ordinary? Say what happened — why this one took the time it took."
-        />
-        <button
-          className="action-btn"
-          disabled={!noteText.trim() || addNote.isPending}
-          onClick={() => addNote.mutate(noteText.trim())}
-        >
-          {addNote.isPending ? "Adding…" : "Add note"}
-        </button>
-      </div>
-
-      {/* --- READY-TO-INSTALL GATE (always visible while working) --- */}
-      {!installed && (
-        <div className={`ready-banner ready-${ready.status}`}>
-          <InstallChip state={ready.status}>{READY_LABEL[ready.status]}</InstallChip>
-          <ul>
-            {ready.reasons.map((r) => (
-              <li key={r}>{r}</li>
-            ))}
-          </ul>
-          {/* Any crew can clear this one, on purpose. Readiness now requires a
-              checked opening, and the bulk review screen is foreman+ — without
-              a path here, an installer at an unreviewed window would have to go
-              find a foreman before starting, which is exactly the friction that
-              gets a safety check switched back off. The person standing at the
-              window is the one who can compare it to the drawing. */}
-          {o.confirmed === false && (
-            <button
-              className="button-like"
-              disabled={confirmSpecs.isPending}
-              onClick={() => confirmSpecs.mutate()}
-            >
-              {confirmSpecs.isPending
-                ? "Saving…"
-                : "I checked this against the plans"}
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* ===================== STAGE 1: CHECK ===================== */}
-      {!installed && stage === "check" && (
-        <>
-          {/* Pre-install briefing (north-star screen) */}
-          {o.window_types && (
-            <div className="briefing">
-              <div className="briefing-stats">
-                <span>
-                  <strong>
-                    {brain.data?.medianMinutes != null
-                      ? `${Math.round(brain.data.medianMinutes)}m`
-                      : "—"}
-                  </strong>
-                  target
-                </span>
-                <span>
-                  <strong>
-                    {brain.data?.p90Minutes != null
-                      ? `${Math.round(brain.data.p90Minutes)}m`
-                      : "—"}
-                  </strong>
-                  slow case
-                  {/* Pick 8 (wave I-2): this used to live only in this
-                      span's title= tooltip — invisible on a phone with no
-                      hover. wh-row-sub is the app's small-muted-line style;
-                      the resets undo what .briefing-stats span imposes on
-                      every span in it (10px uppercase, tracked out), which
-                      would otherwise apply here too since it's a plain
-                      descendant selector. */}
-                  <span
-                    className="wh-row-sub"
-                    style={{
-                      display: "block",
-                      textTransform: "none",
-                      letterSpacing: "normal",
-                      fontWeight: 400,
-                    }}
-                  >
-                    9 out of 10 installs of this type finish faster than this
-                  </span>
-                </span>
-                <span>
-                  <strong>
-                    {(() => {
-                      const d = brain.data?.outcomeDifficulty ?? o.window_types.difficulty_rating;
-                      return d ? "★".repeat(d) : "—";
-                    })()}
-                  </strong>
-                  difficulty
-                </span>
-                <span>
-                  <strong>
-                    {brain.data?.failRate != null ? `${brain.data.failRate}%` : "—"}
-                  </strong>
-                  fail rate
-                </span>
-              </div>
-              {tips.length > 0 && (
-                <div className="briefing-tips">
-                  <span className="field-label">Top tips</span>
-                  <ol>
-                    {tips.slice(0, 5).map((t) => (
-                      <li key={t}>{t}</li>
-                    ))}
-                  </ol>
-                </div>
-              )}
-              {watchOuts.length > 0 && (
-                <div className="briefing-tips watch-callout">
-                  <span className="field-label" style={{ color: "var(--warn)", margin: 0 }}>Watch-outs</span>
-                  <ul className="watch" style={{ margin: "6px 0 0", paddingLeft: 18 }}>
-                    {watchOuts.slice(0, 5).map((w) => (
-                      <li key={w}>{w}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {brain.data?.videos?.[0]?.signedUrl ? (
-                <video controls src={brain.data.videos[0].signedUrl} className="golden-video" />
-              ) : o.window_types.tutorial_url ? (
-                <a href={o.window_types.tutorial_url} className="suggest">
-                  Tutorial video →
-                </a>
-              ) : null}
-              <Link to={`/brain/${o.window_types.id}`} className="muted brain-more">
-                Full type brain →
-              </Link>
-            </div>
-          )}
-
-          {/* Assign inventory unit */}
-          <h2>Physical window</h2>
-          {o.assigned_window_id && o.windows ? (
-        <p>
-          <Link to={`/w/${encodeURIComponent(o.windows.window_id)}`}>
-            <strong>{o.windows.window_id}</strong>
-          </Link>{" "}
-          {typeMatches ? (
-            <span className="ok">assigned</span>
-          ) : (
-            <span className="error">wrong type!</span>
-          )}
-        </p>
-      ) : installed ? (
-        <p className="muted">Installed without a tracked unit.</p>
+      {installed ? (
+        // Everything exceptional — Redo, Record, History, Notes, Data off,
+        // Missed unit — lives in the same fold the stages use; there is no
+        // active stage once a unit is installed, so this is the one place it
+        // has to be reachable from directly (installer-os-spec.md S7, item 4).
+        <SheetMore stage={null} installed {...moreProps} />
       ) : (
         <>
-          <p className="muted">
-            Scan the QR on the window you're putting in this opening, or search.
-          </p>
-          <button className="big" onClick={() => setScanOpen(!scanOpen)}>
-            {scanOpen ? "Close scanner" : "Scan window QR"}
-          </button>
-          {scanOpen && (
-            <Scanner
-              hint="Scan the window's QR — or type its short code below."
-              onScan={(payload) => void assignFromScan(payload)}
-            />
-          )}
-          <label className="field-label">Type the window code</label>
-          <div className="manual-entry">
-            <input
-              value={codeInput}
-              onChange={(e) => setCodeInput(e.target.value)}
-              placeholder="6-char code or serial, e.g. K7M2QX"
-              autoCapitalize="characters"
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  void assignByCode(codeInput);
-                  setCodeInput("");
-                }
-              }}
-            />
-            <button
-              disabled={!codeInput.trim() || assign.isPending}
-              onClick={() => {
-                void assignByCode(codeInput);
-                setCodeInput("");
-              }}
-            >
-              Assign
-            </button>
-          </div>
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search W-… or type code"
-          />
-          {search.trim().length >= 2 && (
-            <ul className="unit-list">
-              {rankedSearch.map((u) => (
-                <li key={u.id} className="find-row">
-                  <div>
-                    <strong>{u.window_id}</strong>{" "}
-                    <span className="muted">{u.window_types?.type_code}</span>
-                    <div className="wh-row-sub">
-                      {formatAssignMeta(u)}
-                      {u.project_id === projectId ? " · this job" : ""}
-                    </div>
-                  </div>
-                  <button
-                    className="link wh-actions"
-                    onClick={() => assign.mutate(u.id)}
-                  >
-                    Assign
-                  </button>
-                </li>
+          {/* --- READY-TO-INSTALL GATE (always visible while working) --- */}
+          <div className={`ready-banner ready-${ready.status}`}>
+            <span className="ui-status-chip" data-tone={ready.status === "ready" ? "ok" : ready.status === "blocked" ? "danger" : "warn"}>
+              {READY_LABEL[ready.status]}
+            </span>
+            <ul>
+              {ready.reasons.map((r) => (
+                <li key={r}>{r}</li>
               ))}
-              {rankedSearch.length === 0 && (
-                <p className="muted">No matching units (type filter applied).</p>
-              )}
             </ul>
-          )}
-        </>
-      )}
-
-      {/* --- FIT CHECK (rough opening) --- */}
-      {!installed && (
-        <>
-          <h2>Rough opening</h2>
-          <p className="muted">
-            Check in order: square, then width, then height. Tap Good or Bad,
-            then put the tape on it — the numbers are judged against this
-            window ({"\u2265"}1/8" and {"\u2264"}1/2" over the unit), and a
-            failed check files a framing issue by itself.
-          </p>
-
-          {([
-            {
-              id: "square" as RoCheckId,
-              title: "Square?",
-              how: "Measure both diagonals of the X — they should match.",
-              inputs: (
-                <div className="ro-row">
-                  {roDiag.map((v, i) => (
-                    <input
-                      key={i}
-                      type="number"
-                      inputMode="decimal"
-                      step="0.0625"
-                      value={v}
-                      placeholder={["diagonal 1", "diagonal 2"][i]}
-                      onChange={(e) => {
-                        const next = [...roDiag];
-                        next[i] = e.target.value;
-                        setRoDiag(next);
-                      }}
-                    />
-                  ))}
-                </div>
-              ),
-            },
-            {
-              id: "width" as RoCheckId,
-              title: "Width?",
-              how: "Across the top and bottom (and middle) — smallest wins.",
-              inputs: (
-                <div className="ro-row">
-                  {roW.map((v, i) => (
-                    <input
-                      key={i}
-                      type="number"
-                      inputMode="decimal"
-                      step="0.0625"
-                      value={v}
-                      placeholder={["top", "mid", "bot"][i]}
-                      onChange={(e) => {
-                        const next = [...roW];
-                        next[i] = e.target.value;
-                        setRoW(next);
-                      }}
-                    />
-                  ))}
-                </div>
-              ),
-            },
-            {
-              id: "height" as RoCheckId,
-              title: "Height?",
-              how:
-                requiredMids > 0
-                  ? `Down the left and right sides, plus ${requiredMids === 1 ? "mid-span" : "both third-points"} — smallest wins. Wide opening — that catches a bowed header.`
-                  : "Down the left and right sides — smallest wins.",
-              inputs: (
-                <div className="ro-row">
-                  {roH.map((v, i) => (
-                    <input
-                      key={i}
-                      type="number"
-                      inputMode="decimal"
-                      step="0.0625"
-                      value={v}
-                      placeholder={heightLabel(i, roH.length)}
-                      onChange={(e) => {
-                        const next = [...roH];
-                        next[i] = e.target.value;
-                        setRoH(next);
-                      }}
-                    />
-                  ))}
-                </div>
-              ),
-            },
-          ]).map((row) => {
-            const verdict = roChecklist.find((v) => v.check === row.id);
-            const judged = roJudge[row.id];
-            const disagree = judged === "good" && verdict?.measured === "bad";
-            return (
-              <div key={row.id} className="ro-check">
-                <div className="ro-check-head">
-                  <RoDiagram kind={row.id} />
-                  <div className="ro-check-title">
-                    <strong>{row.title}</strong>
-                    <span className="muted">{row.how}</span>
-                  </div>
-                  <div className="ro-judge" role="group" aria-label={row.title}>
-                    <button
-                      type="button"
-                      className={judged === "good" ? "ro-pill good on" : "ro-pill good"}
-                      onClick={() =>
-                        setRoJudge((j) => ({ ...j, [row.id]: j[row.id] === "good" ? null : "good" }))
-                      }
-                    >
-                      Good ✓
-                    </button>
-                    <button
-                      type="button"
-                      className={judged === "bad" ? "ro-pill bad on" : "ro-pill bad"}
-                      onClick={() =>
-                        setRoJudge((j) => ({ ...j, [row.id]: j[row.id] === "bad" ? null : "bad" }))
-                      }
-                    >
-                      Bad ✕
-                    </button>
-                  </div>
-                </div>
-                {judged !== null && (
-                  <>
-                    {row.inputs}
-                    {verdict?.detail && (
-                      <p
-                        className={
-                          verdict.measured === "bad" ? "ro-verdict bad" : "ro-verdict"
-                        }
-                      >
-                        {verdict.measured === "bad" ? "✕ " : verdict.measured === "good" ? "✓ " : ""}
-                        {verdict.detail}
-                        {disagree && " — the tape disagrees with your Good; this files as framing."}
-                      </p>
-                    )}
-                  </>
-                )}
-              </div>
-            );
-          })}
-
-          <div className="ro-save-row">
-            <button
-              className="action-btn"
-              disabled={saveRo.isPending}
-              onClick={() => saveRo.mutate()}
-            >
-              {saveRo.isPending
-                ? "Saving…"
-                : roFailures(roChecklist, roJudge).length > 0
-                  ? "Save — files a framing issue for this window"
-                  : "Save rough opening"}
-            </button>
-            {/* Hidden once numbers are on file: they outrank a quick check, so
-                offering one there would only invite somebody to overwrite a
-                measurement with a thumb. */}
-            {!hasRoNumbers && (
+            {/* Any crew can clear this one, on purpose. Readiness now requires a
+                checked opening, and the bulk review screen is foreman+ — without
+                a path here, an installer at an unreviewed window would have to go
+                find a foreman before starting, which is exactly the friction that
+                gets a safety check switched back off. The person standing at the
+                window is the one who can compare it to the drawing. */}
+            {o.confirmed === false && (
               <button
-                type="button"
-                className="action-btn secondary"
-                disabled={quickCheckRo.isPending || roHasBadTap}
-                onClick={() => quickCheckRo.mutate()}
+                className="button-like"
+                disabled={confirmSpecs.isPending}
+                onClick={() => confirmSpecs.mutate()}
               >
-                {quickCheckRo.isPending ? "Saving…" : "Quick check: all good"}
+                {confirmSpecs.isPending
+                  ? "Saving…"
+                  : "I checked this against the plans"}
               </button>
             )}
           </div>
-          {!hasRoNumbers && roHasBadTap && (
-            <p className="muted ro-quick-why">
-              Clear the Bad marks first, or save the numbers.
-            </p>
-          )}
-          <div className={`fit-verdict fit-${fit.verdict}`}>
-            {hasRoNumbers ? (
-              <>
-                <strong>Rough opening {o.ro_width_in}×{o.ro_height_in}"</strong> — {fit.message}
-              </>
-            ) : o.ro_quick_ok ? (
-              <>
-                <strong>Quick check: all good</strong>
-                {quickCheckWho && ` — ${quickCheckWho}`}
-              </>
-            ) : (
-              <span className="muted">{fit.message}</span>
-            )}
-          </div>
-        </>
-      )}
 
-      {/* --- CONDITION / DAMAGE CHECK --- */}
-      {!installed && o.assigned_window_id && (
-        <>
-          <h2>Condition on arrival</h2>
-          <div className="grade-row">
-            <button
-              className={o.condition === "ok" ? "grade-btn selected" : "grade-btn"}
-              onClick={() =>
+          {stage === "check" && (
+            <CheckStage
+              projectId={projectId}
+              opening={o}
+              typeMatches={typeMatches}
+              fit={fit}
+              hasRoNumbers={hasRoNumbers}
+              roHasBadTap={roHasBadTap}
+              quickCheckWho={quickCheckWho}
+              brain={brain.data}
+              tips={tips}
+              watchOuts={watchOuts}
+              scanOpen={scanOpen}
+              onToggleScan={() => setScanOpen((v) => !v)}
+              codeInput={codeInput}
+              onCodeInputChange={setCodeInput}
+              onAssignByCode={(v) => void assignByCode(v)}
+              onAssignFromScan={(payload) => void assignFromScan(payload)}
+              search={search}
+              onSearchChange={setSearch}
+              rankedSearch={rankedSearch}
+              onAssignUnit={(id) => assign.mutate(id)}
+              assignPending={assign.isPending}
+              roW={roW}
+              roH={roH}
+              roDiag={roDiag}
+              roJudge={roJudge}
+              onRoWChange={setRoW}
+              onRoHChange={setRoH}
+              onRoDiagChange={setRoDiag}
+              onRoJudgeToggle={(id, value) =>
+                setRoJudge((j) => ({ ...j, [id]: j[id] === value ? null : value }))
+              }
+              requiredMids={requiredMids}
+              roChecklist={roChecklist}
+              saveRoPending={saveRo.isPending}
+              onSaveRo={() => saveRo.mutate()}
+              quickCheckRoPending={quickCheckRo.isPending}
+              onQuickCheckRo={() => quickCheckRo.mutate()}
+              conditionNote={conditionNote}
+              onConditionNoteChange={setConditionNote}
+              onSaveCondition={(condition) =>
                 saveCondition.mutate({
-                  condition: "ok",
+                  condition,
                   priorCondition: o.condition,
                   priorNote: o.condition_note,
                 })
               }
-              disabled={saveCondition.isPending}
-            >
-              OK
-            </button>
-            <button
-              className={o.condition === "damaged" ? "grade-btn selected danger" : "grade-btn"}
-              onClick={() =>
-                saveCondition.mutate({
-                  condition: "damaged",
-                  priorCondition: o.condition,
-                  priorNote: o.condition_note,
-                })
-              }
-              disabled={saveCondition.isPending}
-            >
-              Damaged
-            </button>
-          </div>
-          <input
-            value={conditionNote}
-            onChange={(e) => setConditionNote(e.target.value)}
-            placeholder="Damage note (optional)"
-          />
-          {o.condition === "damaged" && (
-            <>
-              <p className="error">
-                Unit flagged damaged. Don't install — swap the unit and re-check.
-                Your foreman has been notified.
-              </p>
-              <button
-                className="action-btn"
-                disabled={skip.isPending}
-                onClick={() => skip.mutate()}
-              >
-                {skip.isPending ? "Skipping…" : "Skip for now — go to my work"}
-              </button>
-            </>
-          )}
-        </>
-      )}
-
-          {/* Before photo — captured HERE, while "before" still exists. By the
-              old flow's step 3 the original window was already in the dumpster
-              and every "before" was really a "during".
-
-              It has no show/hide condition, and that is the fix. It used to be
-              `!startedAt`, which on the app's DEFAULT loop was never true: a
-              chained unit's session is started server-side by the previous
-              unit's finish_unit, so the sheet opened with the clock already
-              running and the card simply never rendered — every unit after the
-              first filed with no before photo. Keying it on the photo instead
-              brought the card back and then hid it again the instant the shot
-              landed, taking the only Retake button on the sheet with it (step 3
-              offers the after slot alone), so a black frame or a pocket shot —
-              likelier now the camera opens itself on a chain — was filed with
-              no way to replace it. Step 1 keeps its before photo, filled or
-              empty, for as long as the unit is unfiled. The unit's own gates
-              stay on its sheet and Finish still never stops the clock; nothing
-              here is a new Submit requirement. */}
-          <h2 style={{ marginBottom: 2 }}>Before photo</h2>
-          <p className="muted" style={{ marginTop: 0 }}>
-            {photos.before
-              ? t("opening.before.taken")
-              : startedAt
-                ? t("opening.before.clockRunning")
-                : t("opening.before.requiredToStart")}
-          </p>
-          <PhotoCaptureSheet
-            mode="beforeAfter"
-            slots={["before"]}
-            autoOpen={beforeCardAutoOpen}
-            onAutoOpened={() => {
-              beforeAutoOpenSpent.current = true;
-            }}
-            value={photos}
-            onChange={setPhotos}
-            label={o.opening_code}
-          />
-
-
-          {/* Flashing is the FLASH RUN's job now (owner, 2026-08-14): the
-              sheet only reports status — the clock, photo and submit live
-              on the dispatched run. The install gate below still holds. */}
-          {o.needs_flashing === true && (
-            <div className="detail-card wh-card">
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span className="field-label" style={{ margin: 0 }}>Flashing</span>
-                {flashing?.status === "submitted" ? (
-                  <span className="ok" style={{ fontSize: 12.5 }}>
-                    ✓ done · {flashing.submitter?.display_name ?? "crew"}
-                    {flashing.minutes != null && ` · ${flashing.minutes}m`}
-                  </span>
-                ) : flashing ? (
-                  <span className="warn-text" style={{ fontSize: 12.5, fontVariantNumeric: "tabular-nums" }}>
-                    {flashing.paused_at ? "paused" : "flashing"} ·{" "}
-                    {formatPhaseClock(phaseElapsedSeconds(flashing, now))}
-                    {flashing.starter?.display_name && ` · ${flashing.starter.display_name}`}
-                  </span>
-                ) : (
-                  <span className="wh-row-sub">required before install</span>
-                )}
-                {isForemanPlus(effectiveRole) && flashing?.status !== "submitted" && (
-                  <button
-                    className="link wh-actions"
-                    style={{ fontSize: 12 }}
-                    disabled={toggleNeedsFlashing.isPending}
-                    onClick={() => toggleNeedsFlashing.mutate(false)}
-                  >
-                    Doesn't need flashing
-                  </button>
-                )}
-              </div>
-              {/* No "your foreman dispatches it" line any more: it was a dead
-                  end on a screen whose only flashing control was a disabled
-                  button. FlashingWayOut below says where the run is and takes
-                  you there. */}
-            </div>
-          )}
-          {o.needs_flashing === false && isForemanPlus(effectiveRole) && (
-            <p className="wh-row-sub">
-              No flashing required here.{" "}
-              <button className="link" onClick={() => toggleNeedsFlashing.mutate(true)}>
-                Require it
-              </button>
-            </p>
+              saveConditionPending={saveCondition.isPending}
+              onSkip={() => skip.mutate()}
+              skipPending={skip.isPending}
+              photos={photos}
+              onPhotosChange={setPhotos}
+              beforeCardAutoOpen={beforeCardAutoOpen}
+              onBeforeAutoOpened={() => {
+                beforeAutoOpenSpent.current = true;
+              }}
+              flashing={flashing}
+              now={now}
+              canManageFlashing={isForemanPlus(effectiveRole)}
+              toggleFlashingPending={toggleNeedsFlashing.isPending}
+              onToggleFlashing={(needs) => toggleNeedsFlashing.mutate(needs)}
+              flashingBlocked={flashingBlocked}
+              startedAt={startedAt}
+              onBackToInstall={() => setStage("install")}
+              more={moreProps}
+            />
           )}
 
-          {/* A live summon shows HERE too: helpers answering the ring land
-              on this stage, not the caller's install screen. */}
-          <SummonPanel
-            projectId={projectId}
-            openingId={openingId}
-            openingCode={o.opening_code}
-            widthIn={o.window_types?.width_in ?? openingSpec?.width_in ?? null}
-            heightIn={o.window_types?.height_in ?? openingSpec?.height_in ?? null}
-            myProfileId={myProfile.data?.id ?? null}
-            myName={myProfile.data?.display_name ?? null}
-            effectiveRole={effectiveRole ?? "installer"}
-            installRunning={false}
-          />
+          {stage === "install" && (
+            <InstallStage
+              timer={timer}
+              startedAt={startedAt}
+              tips={tips}
+              onOpenClock={clock.openClock}
+              beginInstallPending={beginInstall.isPending}
+              onBeginInstall={() => beginInstall.mutate()}
+              summon={moreProps.summon}
+              more={moreProps}
+            />
+          )}
 
-          {/* A GENERAL call for hands on the whole job, alongside the
-              per-window summon above (job-level-summons slice 4): sometimes
-              the help you need isn't for this one window. Rings the crew
-              clocked into the job, not just this opening's neighbours. */}
-          <CallForHandsPanel projectId={projectId} />
+          {stage === "capture" && (
+            <CaptureStage
+              projectId={projectId}
+              openingCode={o.opening_code}
+              hasAssignedUnit={Boolean(o.assigned_window_id)}
+              photos={photos}
+              onPhotosChange={setPhotos}
+              video={video}
+              onVideoChange={setVideo}
+              recording={recording}
+              onStartRecording={() => void startRecording()}
+              onStopRecording={stopRecording}
+              audioBlob={audioBlob}
+              audioUrl={audioUrl}
+              topics={topics}
+              onTopicsChange={setTopics}
+              timerMinutes={timer.minutes}
+              showCreditPicker={showCreditPicker}
+              creditPeople={creditPeople}
+              creditedTo={creditedTo}
+              myId={myId}
+              onCreditedToChange={setCreditedTo}
+              grade={grade}
+              onGradeChange={setGrade}
+              ready={ready}
+              submitBlockedBy={submitBlockedBy}
+              flashingBlocked={flashingBlocked}
+              canManageFlashing={isForemanPlus(effectiveRole)}
+              toggleFlashingPending={toggleNeedsFlashing.isPending}
+              onToggleFlashing={(needs) => toggleNeedsFlashing.mutate(needs)}
+              more={moreProps}
+            />
+          )}
 
-          {/* The flashing gate is the one blocker with somewhere to go, so it
-              gets controls instead of a dead button. A unit whose clock is
-              already running keeps its way back into the install stage — the
-              gate is on FILING the install, and the sheet still refuses that
-              at Submit. */}
-          {flashingBlocked ? (
-            <>
-              <FlashingWayOut
-                projectId={projectId}
-                openingCode={o.opening_code}
-                canClear={isForemanPlus(effectiveRole)}
-                clearing={toggleNeedsFlashing.isPending}
-                onClear={() => toggleNeedsFlashing.mutate(false)}
-              />
-              {startedAt && (
-                <button className="button-like" onClick={() => setStage("install")}>
-                  {t("opening.action.backToInstall")}
+          {/* The stage's one pinned primary button (installer-os-spec.md S7,
+              item 3), above the tab bar. Check's flashing-blocked FlashingWayOut
+              stays inline in CheckStage; this button additionally disables and
+              names the reason so a thumb never finds a dead Submit. */}
+          <div className="sheet-pinned">
+            {stage === "check" && (
+              <>
+                {checkStartReason && <p className="sheet-pinned-reason">{checkStartReason}</p>}
+                <button
+                  className="primary big"
+                  disabled={checkStartDisabled}
+                  onClick={() => (startedAt ? setStage("install") : beginInstall.mutate())}
+                >
+                  {checkStartLabel}
                 </button>
-              )}
-            </>
-          ) : (
-            /* The deliberate act. This is the moment the clock starts — and the
-               moment the lead board sees this window as in progress. */
-            <button
-              className="primary big"
-              disabled={
-                ready.status === "blocked" ||
-                beginInstall.isPending ||
-                (!startedAt && photos.before === null) ||
-                (!startedAt && !canStartInstall(eligibility.status))
-              }
-              onClick={() => (startedAt ? setStage("install") : beginInstall.mutate())}
-            >
-              {/* "already started" is checked FIRST, matching the order the
-                  disable logic above uses. It used to sit below the clock-in
-                  check, so somebody returning to a window they started
-                  yesterday read "Clock in first to start" on a live button that
-                  took them straight into the install — the label simply lied. */}
-              {ready.status === "blocked"
-                ? t("opening.action.resolveBlockers")
-                : startedAt
-                  ? t("opening.action.backToInstall")
-                  : photos.before === null
-                    ? t("opening.action.beforePhotoToStart")
-                    : eligibility.status === "blocked"
-                      ? t("opening.action.clockInFirst")
-                      : beginInstall.isPending
-                        ? t("opening.action.starting")
-                        : t("opening.action.startInstall")}
-            </button>
-          )}
-        </>
-      )}
-
-      {/*
-        Data off (wave E). OUTSIDE the `!installed && stage !== "install"` gate
-        below on purpose: the flag is about the RECORD, not the work, so it can
-        be raised while installing and it stays readable — and clearable —
-        after the window is in and QC has passed. It never blocks Finish.
-      */}
-      <DataOffCard
-        opening={o}
-        flaggedByName={
-          o.flagged_by
-            ? (crew.data ?? []).find((p) => p.id === o.flagged_by)?.display_name ?? null
-            : null
-        }
-        canClear={isForemanPlus(effectiveRole)}
-        busy={flag.isPending || clearFlag.isPending}
-        onFlag={(kind, note) => flag.mutate({ kind, note })}
-        onClear={() => clearFlag.mutate()}
-      />
-
-      {/* --- Missed unit: what a supervisor does with one (wave E) --- */}
-      {o.field_added && (
-        <MissedUnitActions
-          opening={o}
-          openings={jobOpenings.data ?? []}
-          canAct={isSupervisorPlus(effectiveRole)}
-          onDone={(message) => {
-            setMessage({ text: message, tone: "ok" });
-            refresh();
-          }}
-          onError={(e) => setMessage({ text: formatApiError(e), tone: "error" })}
-        />
-      )}
-
-      {/* --- Exceptions: site note (not during install screen) --- */}
-      {!installed && stage !== "install" && (
-        <details className="more-actions">
-          <summary className="muted">Site note / complication</summary>
-
-          <label className="field-label">Site note for the lead (optional)</label>
-          <input
-            value={jobNoteText}
-            onChange={(e) => setJobNoteText(e.target.value)}
-            placeholder="General note about this job/site"
-          />
-          <button
-            className="action-btn"
-            disabled={!jobNoteText.trim() || postJobNote.isPending}
-            onClick={() => postJobNote.mutate(jobNoteText.trim())}
-          >
-            Send site note
-          </button>
-
-          <label className="field-label">Hit a complication?</label>
-          <p className="muted">
-            Something needs your foreman's attention now — this opens an urgent
-            issue on the cross-job Issues board.
-          </p>
-          <input
-            value={complicationText}
-            onChange={(e) => setComplicationText(e.target.value)}
-            placeholder="e.g. rotten framing, needs a decision"
-          />
-          <button
-            className="action-btn"
-            disabled={!complicationText.trim() || complication.isPending}
-            onClick={() => complication.mutate(complicationText.trim())}
-          >
-            I have a complication — notify foreman
-          </button>
-        </details>
-      )}
-
-      {/* ===================== STAGE 2: INSTALL =====================
-          Four distinct states, and only one of them counts. Landing on this
-          step is not starting: the clock runs when they say it does. */}
-      {!installed && stage === "install" && (
-        <div className="install-timer">
-          {timer.status === "running" || timer.status === "stale" ? (
-            <>
-              <div className="install-pulse" aria-hidden>
-                ●
-              </div>
-              <p className="next-label" style={{ margin: 0 }}>Installing</p>
-              {timer.status === "running" ? (
-                <>
-                  <p className="next-code">
-                    {timer.minutes}
-                    <span style={{ fontSize: 28 }}> min</span>
-                  </p>
-                  <p className="muted" style={{ margin: 0 }}>
-                    Timer running. Plumb, level, square — then capture it.
-                  </p>
-                </>
-              ) : (
-                /* There is no minutes box to type in any more — minutes come
-                   from this unit's sessions, server-side (spec
-                   .scratch/sessions). The old copy still sent people looking
-                   for a field that was removed with the hand-typed era. */
-                <p className="muted" style={{ margin: 0 }}>
-                  This has been open since{" "}
-                  {startedAt ? new Date(startedAt).toLocaleString() : "a while ago"},
-                  so the stopwatch stopped counting. Your time still comes from
-                  your clocked sessions — nothing to type. Carry on and capture
-                  it.
-                </p>
-              )}
-              {tips.length > 0 && (
-                <ol className="tip-list" style={{ textAlign: "left", width: "100%" }}>
-                  {tips.slice(0, 3).map((t) => (
-                    <li key={t}>{t}</li>
-                  ))}
-                </ol>
-              )}
-              <SummonPanel
-                projectId={projectId}
-                openingId={openingId}
-                openingCode={o.opening_code}
-                widthIn={o.window_types?.width_in ?? openingSpec?.width_in ?? null}
-                heightIn={o.window_types?.height_in ?? openingSpec?.height_in ?? null}
-                myProfileId={myProfile.data?.id ?? null}
-                myName={myProfile.data?.display_name ?? null}
-                effectiveRole={effectiveRole ?? "installer"}
-                installRunning
-              />
+              </>
+            )}
+            {stage === "install" && (timer.status === "running" || timer.status === "stale") && (
               <button className="primary big" onClick={() => setStage("capture")}>
                 {t("opening.action.doneCapture")}
               </button>
-              {/* BLOCK: the first-class exit — stuck through no fault of
-                  yours. Reason required; the blocker issue files itself;
-                  the clock hands off exactly like Finish. */}
-              <button
-                className="button-like"
-                style={{ marginTop: 8 }}
-                onClick={() => setBlockOpen((v) => !v)}
-              >
-                <Ban
-                  size={15}
-                  aria-hidden
-                  style={{ verticalAlign: "middle", marginRight: 6 }}
-                />
-                Blocked — can't continue
-              </button>
-              {blockOpen && (
-                <div className="detail-card wh-card" style={{ textAlign: "left" }}>
-                  <span className="field-label">What's stopping you?</span>
-                  <div className="row-gap" style={{ flexWrap: "wrap", marginTop: 6 }}>
-                    {BLOCK_REASONS.map((r) => (
-                      <button
-                        key={r}
-                        className="button-like studio-mini"
-                        disabled={doBlock.isPending}
-                        onClick={() => doBlock.mutate(r)}
-                      >
-                        {r}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="row-gap" style={{ marginTop: 8 }}>
-                    <input
-                      style={{ flex: 1, minWidth: 0 }}
-                      placeholder="Something else — say what"
-                      value={blockOther}
-                      onChange={(e) => setBlockOther(e.target.value)}
-                    />
-                    <button
-                      className="button-like"
-                      disabled={doBlock.isPending || !blockOther.trim()}
-                      onClick={() => doBlock.mutate(blockOther.trim())}
-                    >
-                      Block
-                    </button>
-                  </div>
-                  {nextOpening && (
-                    <p className="wh-row-sub" style={{ margin: "6px 0 0" }}>
-                      The clock hands off to {nextOpening.opening_code} — same as
-                      finishing.
-                    </p>
-                  )}
-                </div>
-              )}
-            </>
-          ) : timer.status === "blocked" ? (
-            <>
-              <p className="next-label" style={{ margin: 0 }}>Not started</p>
-              <p className="muted" style={{ margin: 0 }}>
-                Nothing is being timed. Clock in and sign today's toolbox talk,
-                then start this window.
-              </p>
-              <button className="primary big" onClick={clock.openClock}>
-                {t("opening.action.clockIn")}
-              </button>
-            </>
-          ) : timer.status === "unknown" ? (
-            <p className="muted" style={{ margin: 0 }}>Checking your clock…</p>
-          ) : (
-            <>
-              <p className="next-label" style={{ margin: 0 }}>Ready when you are</p>
-              <p className="muted" style={{ margin: 0 }}>
-                Nothing is being timed yet. Tap start when you actually begin
-                fitting this one.
-              </p>
+            )}
+            {stage === "capture" && (
               <button
                 className="primary big"
-                disabled={beginInstall.isPending}
-                onClick={() => beginInstall.mutate()}
+                disabled={submitDisabled}
+                onClick={() => submit.mutate()}
               >
-                {beginInstall.isPending ? t("opening.action.starting") : t("opening.action.startTimer")}
+                {submit.isPending ? t("opening.action.saving") : t("opening.action.submitInstall")}
               </button>
-            </>
-          )}
-        </div>
-      )}
-
-      {/* ===================== STAGE 3: CAPTURE ===================== */}
-      {!installed && stage === "capture" && (
-        <>
-          <h2>Photos</h2>
-          {/* The before was captured in step 1 (owner, 2026-08-14: no
-              double-ask) — this stage only takes the after, lined up over
-              the ghosted before. The caption said so unconditionally, which
-              on a chained unit was a promise the app had stopped keeping:
-              there was no before, and the sentence pointed at a step that
-              never happened. It says whichever is true. */}
-          <p className="muted">
-            {photos.before
-              ? t("opening.capture.afterOverBefore")
-              : t("opening.capture.afterOnly")}
-          </p>
-          <PhotoCaptureSheet
-            mode="beforeAfter"
-            slots={["after"]}
-            value={photos}
-            onChange={setPhotos}
-            label={o.opening_code}
-          />
-
-          <label className="field-label">Walkthrough video (optional)</label>
-          <label className="action-btn" style={{ cursor: "pointer" }}>
-            {video ? `${video.name} — replace` : "Add a short video"}
-            <input
-              type="file"
-              accept="video/*"
-              capture="environment"
-              style={{ display: "none" }}
-              onChange={(e) => {
-                setVideo(e.target.files?.[0] ?? null);
-                e.target.value = "";
-              }}
-            />
-          </label>
-
-          <h2>Install memo</h2>
-          <p className="muted">
-            Record once and talk it through — AI fills the fields from your voice
-            and photos. Edit anything after.
-          </p>
-          <button
-            className={recording ? "big record-btn recording" : "big record-btn"}
-            onClick={recording ? stopRecording : startRecording}
-          >
-            {recording ? "■ Stop recording" : audioBlob ? "● Re-record memo" : "● Record memo"}
-          </button>
-          {audioUrl && !recording && (
-            <audio controls src={audioUrl} className="audio-preview" />
-          )}
-
-          <ol className="topic-prompts">
-            {MEMO_TOPICS.map((t) => (
-              <li key={t.key} className={recording ? "active" : ""}>
-                {t.prompt}
-              </li>
-            ))}
-          </ol>
-
-          <details className="topic-fields">
-            <summary className="muted">Type notes instead (optional)</summary>
-            {MEMO_TOPICS.map((t) => (
-              <div key={t.key}>
-                <label className="field-label">{t.prompt}</label>
-                <input
-                  value={topics[t.key] ?? ""}
-                  onChange={(e) =>
-                    setTopics({ ...topics, [t.key]: e.target.value || null })
-                  }
-                />
-              </div>
-            ))}
-          </details>
-
-          {/* The hand-typed era is over (spec .scratch/sessions): minutes
-              are derived server-side from this window's sessions — breaks
-              and lunches never count, and nobody argues with a stopwatch. */}
-          <p className="wh-row-sub" style={{ margin: "4px 0 0" }}>
-            Time records itself from your sessions
-            {timer.minutes != null ? ` — about ${timer.minutes} min so far` : ""}.
-            Breaks never count.
-          </p>
-
-          {/* Wave Y (Y2): this unit is on somebody else's list, so the sheet
-              asks rather than assuming. The person picked gets the install on
-              their record; the SESSION stays with whoever is standing here,
-              because sessions follow the human (CONTEXT.md). */}
-          {showCreditPicker && (
-            <div className="detail-card" style={{ marginTop: 10 }}>
-              <span className="field-label">{t("credit.who")}</span>
-              <p className="muted" style={{ margin: "2px 0 8px", fontSize: 12.5 }}>
-                {t("credit.help")}
-              </p>
-              <div className="row-gap" style={{ flexWrap: "wrap" }}>
-                {creditPeople.map((person) => (
-                  <button
-                    key={person.id}
-                    type="button"
-                    className={
-                      creditedTo === person.id ? "button-like active-pill" : "button-like"
-                    }
-                    aria-pressed={creditedTo === person.id}
-                    data-credit-id={person.id}
-                    onClick={() => setCreditedTo(person.id)}
-                  >
-                    {person.id === myId ? t("credit.me") : person.name}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <label className="field-label">Quality grade</label>
-          <div className="grade-row">
-            {[1, 2, 3, 4, 5].map((g) => (
-              <button
-                key={g}
-                className={grade === g ? "grade-btn selected" : "grade-btn"}
-                onClick={() => setGrade(g)}
-              >
-                {g}
-              </button>
-            ))}
+            )}
           </div>
-
-          {ready.status === "blocked" && (
-            <p className="error">
-              This opening is blocked ({ready.reasons.join(" ")}). Resolve before
-              recording the install.
-            </p>
-          )}
-
-          {submitBlockedBy && (
-            <p className="muted" role="status">{submitBlockedBy}</p>
-          )}
-
-          {/* Saying "this needs flashing" and leaving them on a dead Submit is
-              how the 2026-09-02 report started. The way out goes here, at the
-              button they actually tapped. */}
-          {flashingBlocked && (
-            <FlashingWayOut
-              projectId={projectId}
-              openingCode={o.opening_code}
-              canClear={isForemanPlus(effectiveRole)}
-              clearing={toggleNeedsFlashing.isPending}
-              onClear={() => toggleNeedsFlashing.mutate(false)}
-            />
-          )}
-
-          <button
-            className="primary big"
-            disabled={
-              submit.isPending ||
-              recording ||
-              ready.status === "blocked" ||
-              submitBlockedBy !== null
-            }
-            onClick={() => submit.mutate()}
-          >
-            {submit.isPending ? t("opening.action.saving") : t("opening.action.submitInstall")}
-          </button>
-          {!o.assigned_window_id && (
-            <p className="muted">
-              No unit linked yet — you can still submit; the memo attaches to
-              the opening and type.
-            </p>
-          )}
         </>
       )}
 
       {/* ===== POST-INSTALL SPAM-THROUGH MODAL (installers) ===== */}
-      {doneModal && (
-        <div className="modal-backdrop" role="dialog" aria-modal="true">
-          <div className="modal-card done-modal">
-            <p className="done-check" aria-hidden>✓</p>
-            <h2 style={{ margin: 0 }}>Nice — window done.</h2>
-            <p className="muted" style={{ margin: "4px 0 0" }}>
-              {nextOpening
-                ? "Straight to the next one, or take a break."
-                : "That's your last assigned window — nice work."}
-            </p>
-            {pending > 0 && (
-              <p className="wh-row-sub" style={{ margin: "8px 0 0" }}>
-                {pending} file(s) uploading in the background.
-              </p>
-            )}
+      <Sheet open={doneModal} onClose={() => setDoneModal(false)} label="Nice — window done.">
+        <p className="done-check" aria-hidden>✓</p>
+        <h2 style={{ margin: 0 }}>Nice — window done.</h2>
+        <p className="muted" style={{ margin: "4px 0 0" }}>
+          {nextOpening
+            ? "Straight to the next one, or take a break."
+            : "That's your last assigned window — nice work."}
+        </p>
+        {pending > 0 && (
+          <p className="wh-row-sub" style={{ margin: "8px 0 0" }}>
+            {pending} file(s) uploading in the background.
+          </p>
+        )}
 
-            <button
-              className="primary big"
-              onClick={() => {
-                setDoneModal(false);
-                goToNext(nextOpening ? new Date().toISOString() : null);
-              }}
-            >
-              {nextOpening ? (
-                <>
-                  Next one →{" "}
-                  <span style={{ opacity: 0.85 }}>
-                    {nextOpening.opening_code} — clock's already on it
-                  </span>
-                </>
-              ) : (
-                "All caught up — my work"
-              )}
-            </button>
+        <button
+          className="primary big"
+          onClick={() => {
+            setDoneModal(false);
+            goToNext(nextOpening ? new Date().toISOString() : null);
+          }}
+        >
+          {nextOpening ? (
+            <>
+              Next one →{" "}
+              <span style={{ opacity: 0.85 }}>
+                {nextOpening.opening_code} — clock's already on it
+              </span>
+            </>
+          ) : (
+            "All caught up — my work"
+          )}
+        </button>
 
-            <div className="modal-actions">
-              <button
-                className="big"
-                disabled={takeBreak.isPending}
-                onClick={() => takeBreak.mutate("lunch")}
-              >
-                {t("opening.action.lunch")}
-              </button>
-              <button
-                className="big"
-                disabled={takeBreak.isPending}
-                onClick={() => takeBreak.mutate("rest")}
-              >
-                {t("opening.action.break")}
-              </button>
-            </div>
-          </div>
+        <div className="modal-actions">
+          <button
+            className="big"
+            disabled={takeBreak.isPending}
+            onClick={() => takeBreak.mutate("lunch")}
+          >
+            {t("opening.action.lunch")}
+          </button>
+          <button
+            className="big"
+            disabled={takeBreak.isPending}
+            onClick={() => takeBreak.mutate("rest")}
+          >
+            {t("opening.action.break")}
+          </button>
         </div>
-      )}
+      </Sheet>
     </div>
   );
 }
