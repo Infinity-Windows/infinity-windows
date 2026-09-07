@@ -141,6 +141,11 @@ const CASCADE_COVERED: Record<string, string> = {
   // which is the half purge_project's hand-written bucket list would otherwise
   // have missed.
   project_documents: "ON DELETE CASCADE from projects, on the final delete from projects",
+  // S4 (job facts), 20261001000000. project_id IS the primary key and
+  // references projects ON DELETE CASCADE, exactly like project_pipeline and
+  // project_financials above — the row means nothing without the job, so the
+  // final `delete from projects` takes it.
+  project_build_facts: "ON DELETE CASCADE from projects (the pk is the FK)",
 };
 
 function purgeBody(): string {

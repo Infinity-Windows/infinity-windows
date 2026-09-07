@@ -11,9 +11,11 @@ import { openingReadiness } from "../lib/install/fit";
 import { isInstallInProgress } from "../lib/install/installTimer";
 import { getMyProfile, listMyOpeningsAllJobs, listMemosToConfirm, listOpenings } from "../lib/install/api";
 import { flashingAlarm, listOpeningPhases } from "../lib/install/phases";
-import { isOwner, ROLE_LABELS, type CrewRole } from "../lib/install/types";
+import { isOwner, isSupervisorPlus, ROLE_LABELS, type CrewRole } from "../lib/install/types";
 import { roleRank } from "../lib/nav";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
+import { listGreenLightItems, openGreenLightItems } from "../lib/install/buildFacts";
+import { useT } from "../lib/i18n";
 import { RoleMaps } from "../components/RoleMaps";
 import { ClockInBlock } from "../components/clock/ClockInBlock";
 import { LogTodayChip } from "../components/dailyLogs/LogTodayChip";
@@ -54,6 +56,7 @@ function termOfDay(): (typeof TERMS)[number] {
 }
 
 export function Home() {
+  const t = useT();
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const { effectiveRole: role } = useEffectiveRole();
   const boss = isOwner(role);
@@ -61,6 +64,11 @@ export function Home() {
   // Exactly foreman (not supervisor/owner): lead their Home with what's awaiting
   // them + today's crews instead of the installer-first content.
   const foreman = roleRank(role) === 1;
+  // S4: the green-light checklist is supervisor+ (effectiveRole, so "view as
+  // installer" stays faithful). Home is a foreman's landing, not a
+  // supervisor's (Heartbeat is), but a supervisor still reaches this page —
+  // both get the same row.
+  const supervisorPlus = isSupervisorPlus(role);
   const profileId = me.data?.id;
 
   const openShift = useQuery({
@@ -89,6 +97,28 @@ export function Home() {
     enabled: Boolean(profileId),
   });
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
+
+  // S4: one row per active job with open green-light items. N calls, one per
+  // active job — the same shape as flashAlarms below, and the company runs a
+  // handful of active jobs at a time, not hundreds. Degrades to nothing on a
+  // database ahead of the migration (listGreenLightItems answers []).
+  const greenLightOpen = useQuery({
+    queryKey: ["homeGreenLightOpen", (projects.data ?? []).map((p) => p.id).join(",")],
+    enabled: supervisorPlus && (projects.data ?? []).length > 0,
+    queryFn: async () =>
+      (
+        await Promise.all(
+          (projects.data ?? []).map(async (p) => {
+            const items = await listGreenLightItems(p.id);
+            return {
+              projectId: p.id,
+              jobLabel: p.name?.trim() || p.job_code,
+              openCount: openGreenLightItems(items).length,
+            };
+          }),
+        )
+      ).filter((r) => r.openCount > 0),
+  });
   const unread = useUnreadCounts();
 
   // Foreman-only "Awaiting you" + "Today's crews" sources. These reuse the exact
@@ -388,6 +418,37 @@ export function Home() {
         <>
       {manager && (
         <>
+          {/* S4: the green-light checklist, supervisor+ only. Foreman lands on
+              this page too (the `foreman` branch above), but that branch has
+              its own "Awaiting you" already and never reaches here. */}
+          {supervisorPlus && (greenLightOpen.data?.length ?? 0) > 0 && (
+            <>
+              <div className="home-section-head">
+                <h2 style={{ margin: 0 }}>Awaiting you</h2>
+              </div>
+              <div className="notif-list">
+                {(greenLightOpen.data ?? []).map((row) => (
+                  <Link
+                    key={row.projectId}
+                    to={`/projects/${row.projectId}?tab=overview`}
+                    className="notif-row"
+                  >
+                    <i className="dot-warn" />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 600 }}>
+                        {t("home.awaitingYou.greenLight", {
+                          job: row.jobLabel,
+                          count: row.openCount,
+                        })}
+                      </div>
+                    </div>
+                    <span className="muted">›</span>
+                  </Link>
+                ))}
+              </div>
+            </>
+          )}
+
           <div className="home-section-head">
             <h2 style={{ margin: 0 }}>Active projects</h2>
             <Link to="/projects" className="muted home-seeall">

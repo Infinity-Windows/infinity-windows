@@ -693,6 +693,11 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     # -- reads a `projects` row whole. Same shape as project_financials above —
     # -- project_id IS the primary key, so it is the natural key too.
     "project_pipeline": ("project_id",),
+    # -- One row per job: the build answers a foreman records once (S4,
+    # -- 20261001000000) — exterior finish, set depth, flashing, fasteners,
+    # -- sill pan, site rules, GC contact, notes per elevation. Same shape as
+    # -- project_pipeline above — project_id IS the primary key.
+    "project_build_facts": ("project_id",),
     # -- Learning time (20260993000000). The UNIQUE constraint IS the natural
     # -- key: one row per person per visit per item, so two databases holding
     # -- the same (person, visit, item) hold the same sitting, and a union that

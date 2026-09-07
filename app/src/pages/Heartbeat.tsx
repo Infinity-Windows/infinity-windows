@@ -28,6 +28,7 @@ import {
   todayLocalDay,
 } from "../lib/credentials";
 import { isForemanPlus } from "../lib/install/types";
+import { listGreenLightItems, openGreenLightItems } from "../lib/install/buildFacts";
 
 /** "32 min" / "45s" for a duration in seconds. */
 function fmtDur(sec: number): string {
@@ -79,6 +80,29 @@ export function Heartbeat() {
 
   const hb = useQuery({ queryKey: ["heartbeat"], queryFn: getHeartbeat });
   useRealtimeAllOpenings(true);
+
+  // S4: one row per active job with open green-light items — the same
+  // "Awaiting you" row Home shows a supervisor who lands there instead.
+  // Heartbeat's own project list is the active-job source, so this reuses it
+  // rather than a second read. Degrades to nothing ahead of the migration.
+  const projectIds = (hb.data?.projects ?? []).map((p) => p.id);
+  const greenLightOpen = useQuery({
+    queryKey: ["heartbeatGreenLightOpen", projectIds.join(",")],
+    enabled: canWrite && projectIds.length > 0,
+    queryFn: async () =>
+      (
+        await Promise.all(
+          (hb.data?.projects ?? []).map(async (p) => {
+            const items = await listGreenLightItems(p.id);
+            return {
+              projectId: p.id,
+              jobLabel: p.name?.trim() || p.jobCode,
+              openCount: openGreenLightItems(items).length,
+            };
+          }),
+        )
+      ).filter((r) => r.openCount > 0),
+  });
 
   // Owners only (L5 spec) — the trust number wave S's later reviewer gate
   // will read at a 70% bar; foremen and supervisors don't see it here.
@@ -166,6 +190,39 @@ export function Heartbeat() {
         <p className="muted" style={{ fontWeight: 650 }}>
           {coverageLine(weeklyCoverage.data)}
         </p>
+      )}
+
+      {/* S4: the green-light checklist, supervisor+ only — the same
+          "Awaiting you" row Home shows a supervisor who lands there instead.
+          Not to be confused with the per-job green-light TOGGLE below
+          (projects.green_light): that is a supervisor's own go/no-go call on
+          a job; this is the itemised checklist behind readiness. */}
+      {canWrite && (greenLightOpen.data?.length ?? 0) > 0 && (
+        <>
+          <div className="home-section-head">
+            <h2 style={{ margin: 0, fontSize: 16 }}>Awaiting you</h2>
+          </div>
+          <div className="notif-list">
+            {(greenLightOpen.data ?? []).map((row) => (
+              <Link
+                key={row.projectId}
+                to={`/projects/${row.projectId}?tab=overview`}
+                className="notif-row"
+              >
+                <i className="dot-warn" />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600 }}>
+                    {t("home.awaitingYou.greenLight", {
+                      job: row.jobLabel,
+                      count: row.openCount,
+                    })}
+                  </div>
+                </div>
+                <span className="muted">›</span>
+              </Link>
+            ))}
+          </div>
+        </>
       )}
 
       {greenLight.isError && <p className="error">{formatApiError(greenLight.error)}</p>}

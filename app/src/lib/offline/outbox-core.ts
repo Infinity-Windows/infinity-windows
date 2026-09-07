@@ -89,7 +89,14 @@ export type OutboxOp =
   // submitVideoQuiz, the offlineWrites.ts pattern) so an installer sees
   // their score immediately when there is signal — this op only exists for
   // the fallback, when that direct call fails with a network-shaped error.
-  | "video_quiz_submit";
+  | "video_quiz_submit"
+  // S4 (job facts, 20261001000000): a single job-facts field, saved on blur.
+  // A foreman fills these in standing at the site with whatever signal the
+  // job has, one field at a time, so every save has to survive the same dead
+  // zones a photo does. upsert_build_facts is idempotent on (project, field)
+  // — saving the same value twice lands on the same row — so a resend is
+  // harmless.
+  | "save_build_facts";
 
 /**
  * queued   — waiting to be sent (respecting nextAttemptAt backoff)
@@ -613,6 +620,7 @@ const OP_REGISTRY = {
   receipt_answer: true,
   receipt_document_upload: true,
   video_quiz_submit: true,
+  save_build_facts: true,
 } as const satisfies Record<OutboxOp, true>;
 
 /** Every op the queue can carry — the single list tests enumerate. */

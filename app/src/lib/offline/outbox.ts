@@ -744,6 +744,21 @@ export function enqueueSetPackageNote(input: {
 }
 
 /**
+ * Queue one field of a job's build facts (S4). upsert_build_facts merges by
+ * column name and is idempotent on the same value, so a resend after a lost
+ * reply lands on the same row rather than a second write.
+ */
+export function enqueueSaveBuildFacts(input: {
+  projectId: string;
+  patch: Record<string, unknown>;
+}): Promise<string> {
+  return enqueue({
+    op: "save_build_facts",
+    payload: { projectId: input.projectId, patch: input.patch },
+  });
+}
+
+/**
  * Queue a damage report's photo (ticket 11). The issue itself is written by
  * the direct arrivePackages() call in lib/storage.ts, which already knows
  * this exact bucket/path — see damagePhotoPath — before this is ever queued.
