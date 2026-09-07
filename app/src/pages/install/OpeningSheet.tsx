@@ -130,6 +130,7 @@ import { indexSpecsByMark, specForOpeningCode } from "../../lib/install/specs";
 import { SpecCard } from "../../components/install/SpecCard";
 import { PartsPanel } from "../../components/install/PartsPanel";
 import { MissingSpecNotice } from "../../components/install/MissingSpecNotice";
+import { UnitFactsCard } from "../../components/install/UnitFactsCard";
 import { OpeningMoved } from "../../components/install/OpeningMoved";
 import { rememberOpening } from "../../lib/install/staleOpening";
 import { useRealtimeOpenings } from "../../lib/useRealtimeOpenings";
@@ -1520,6 +1521,17 @@ export function OpeningSheet() {
           />
         )
       )}
+
+      {/* Job facts (S5, ADR-0011): the job's own default answers — exterior
+          finish, set depth, flashing, fasteners, sill pan, this unit's
+          elevation note, site rules, GC contact — read-only here for every
+          role. The unit's own spec still wins its own disagreement; nothing
+          here can be edited from the sheet. */}
+      <UnitFactsCard
+        projectId={projectId}
+        openingCode={opening.data?.opening_code}
+        specExtra={openingSpec?.extra ?? null}
+      />
 
       {/* Parts: every package tagged for this window and where it sits — the
           "do I have everything?" answer, read off the manufacturer's labels
