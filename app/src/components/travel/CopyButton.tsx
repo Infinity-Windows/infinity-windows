@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { pushToast, toastError } from "../../lib/toast";
+import { useT } from "../../lib/i18n";
 
 /**
  * One-tap copy chip for wifi passwords, door/lockbox codes, confirmation codes.
@@ -15,6 +16,7 @@ export function CopyButton({
   label?: string;
   className?: string;
 }) {
+  const t = useT();
   const [copied, setCopied] = useState(false);
   const copy = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -22,10 +24,10 @@ export function CopyButton({
     try {
       await navigator.clipboard.writeText(value);
       setCopied(true);
-      pushToast(`${label ?? "Copied"} copied`, "success");
+      pushToast(t("travelCopy.copiedToast", { label: label ?? t("travelCopy.copied") }), "success");
       setTimeout(() => setCopied(false), 1500);
     } catch (err) {
-      toastError(err, "Could not copy");
+      toastError(err, t("travelCopy.couldNotCopy"));
     }
   };
   return (
@@ -33,10 +35,10 @@ export function CopyButton({
       type="button"
       className={className}
       onClick={copy}
-      aria-label={`Copy ${label ?? value}`}
+      aria-label={t("travelCopy.copyAria", { label: label ?? value })}
     >
       {copied ? <Check size={14} aria-hidden /> : <Copy size={14} aria-hidden />}
-      <span>{copied ? "Copied" : "Copy"}</span>
+      <span>{copied ? t("travelCopy.copied") : t("travelCopy.copy")}</span>
     </button>
   );
 }

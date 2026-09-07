@@ -23,48 +23,51 @@ import {
   retryFailedInstall,
   subscribeSyncListeners,
 } from "../lib/install/installOutbox";
+import { useT, CATALOG, translate, type TFn, type TKey, type Lang } from "../lib/i18n";
+
+const englishT: TFn = (key, vars) => translate(CATALOG, "en" as Lang, key, vars);
 
 /**
  * Plain words for what a write WAS, not the op code it's stored under. Typed
- * as Record<OutboxOp, string> on purpose: adding a new op to OutboxOp without
+ * as Record<OutboxOp, TKey> on purpose: adding a new op to OutboxOp without
  * adding it here is a compile error, so this screen can never show a foreman
  * a raw code word like "checkout_packages".
  */
-const OP_LABELS: Record<OutboxOp, string> = {
-  clock_in: "Clock in",
-  clock_out: "Clock out",
-  break_start: "Break started",
-  break_stop: "Break ended",
+const OP_LABEL_KEY: Record<OutboxOp, TKey> = {
+  clock_in: "stuck.op.clockIn",
+  clock_out: "stuck.op.clockOut",
+  break_start: "stuck.op.breakStart",
+  break_stop: "stuck.op.breakStop",
   // Reachable for real since 2026-09-05: fileDailyLog queues on no signal.
   // Before that this op had no callers at all, so this label was a placeholder
   // for a row that could never appear.
-  daily_log: "Daily log",
-  photo_upload: "Photo",
-  receipt_upload: "Receipt",
+  daily_log: "stuck.op.dailyLog",
+  photo_upload: "stuck.op.photoUpload",
+  receipt_upload: "stuck.op.receiptUpload",
   // All three pin ops read the same to a foreman — a mark got moved back —
   // the difference (one mark vs. the whole job) doesn't change what to do
   // about it here.
-  pin_undo: "Plan pin change",
-  pin_reset_project: "Plan pin change",
-  pin_reset_opening: "Plan pin change",
-  store_packages: "Packages checked in",
-  checkout_packages: "Packages checked out",
-  take_supply: "Supplies taken",
-  bind_package: "Package tagged",
-  stage_packages: "Packages set aside",
-  move_container: "Container moved",
-  set_package_area: "Package pointed at",
-  set_package_note: "Package note",
-  receive_minted: "Delivery confirmed",
-  pickup_takeoff: "Takeoff picked up",
-  issue_photo_upload: "Damage photo",
-  receipt_capture: "Receipt",
-  receipt_answer: "Receipt details",
+  pin_undo: "stuck.op.pinChange",
+  pin_reset_project: "stuck.op.pinChange",
+  pin_reset_opening: "stuck.op.pinChange",
+  store_packages: "stuck.op.storePackages",
+  checkout_packages: "stuck.op.checkoutPackages",
+  take_supply: "stuck.op.takeSupply",
+  bind_package: "stuck.op.bindPackage",
+  stage_packages: "stuck.op.stagePackages",
+  move_container: "stuck.op.moveContainer",
+  set_package_area: "stuck.op.setPackageArea",
+  set_package_note: "stuck.op.setPackageNote",
+  receive_minted: "stuck.op.receiveMinted",
+  pickup_takeoff: "stuck.op.pickupTakeoff",
+  issue_photo_upload: "stuck.op.issuePhotoUpload",
+  receipt_capture: "stuck.op.receiptCapture",
+  receipt_answer: "stuck.op.receiptAnswer",
   // The original PDF, not the receipt itself — the receipt (page one, plus its
   // amount and job) may already have landed, so this must not read as "Receipt"
   // or a foreman would go looking for a receipt that is sitting on the table.
-  receipt_document_upload: "Receipt PDF",
-  video_quiz_submit: "Quiz result",
+  receipt_document_upload: "stuck.op.receiptDocumentUpload",
+  video_quiz_submit: "stuck.op.videoQuizSubmit",
 };
 
 /**
@@ -105,22 +108,25 @@ function fmtWhen(ms: number): string {
  * server, where the world actually is. Here, the person decides.
  *
  * Wording matches the rest of the app's "last seen" copy (vehicles, pin
- * history): just now / N min / N hr / N days.
+ * history): just now / N min / N hr / N days. `t` defaults to English so the
+ * plain function keeps a stable, testable identity even though the page now
+ * calls it with the live language.
  */
-export function queuedAgoLabel(when: number, nowMs: number): string {
+export function queuedAgoLabel(when: number, nowMs: number, t: TFn = englishT): string {
   // Install rows carry a text timestamp that can be missing, and 0 would draw
   // a confident "1/1/1970" — worse than admitting we don't know.
-  if (!Number.isFinite(when) || when <= 0) return "Queued — no time recorded";
+  if (!Number.isFinite(when) || when <= 0) return t("stuck.queuedNoTime");
   const min = Math.floor(Math.max(0, nowMs - when) / 60_000);
-  if (min < 1) return "Queued just now";
-  if (min < 60) return `Queued ${min} min ago`;
+  if (min < 1) return t("stuck.queuedJustNow");
+  if (min < 60) return t("stuck.queuedMinAgo", { min });
   const hr = Math.floor(min / 60);
-  if (hr < 24) return `Queued ${hr} hr ago`;
+  if (hr < 24) return t("stuck.queuedHrAgo", { hr });
   const days = Math.floor(hr / 24);
-  return days === 1 ? "Queued 1 day ago" : `Queued ${days} days ago`;
+  return days === 1 ? t("stuck.queuedDayAgo") : t("stuck.queuedDaysAgo", { days });
 }
 
 export function StuckWrites() {
+  const t = useT();
   const queryClient = useQueryClient();
   const failedQ = useQuery({ queryKey: ["failedWrites"], queryFn: listFailed });
   // A stuck INSTALL is the worst case on this screen — it is the record that a
@@ -181,7 +187,7 @@ export function StuckWrites() {
   const entries: StuckRow[] = [
     ...(failedQ.data ?? []).map((e) => ({
       id: e.id,
-      label: OP_LABELS[e.op],
+      label: t(OP_LABEL_KEY[e.op]),
       when: e.createdAt,
       detail: e.lastError,
       source: "write" as const,
@@ -191,8 +197,8 @@ export function StuckWrites() {
       // Name the window, not the record: "Window W1 finished" is what the
       // person actually did.
       label: r.payload.openingCode
-        ? `Window ${r.payload.openingCode} finished`
-        : "Window finished",
+        ? t("stuck.windowFinished", { code: r.payload.openingCode })
+        : t("stuck.windowFinishedNoCode"),
       when: Date.parse(r.payload.createdAt ?? "") || 0,
       detail: r.lastError,
       source: "install" as const,
@@ -203,44 +209,34 @@ export function StuckWrites() {
     <div className="page">
       <header className="page-header">
         <div>
-          <p className="home-greeting">Offline writes</p>
-          <h1>Stuck writes</h1>
+          <p className="home-greeting">{t("stuck.offlineWrites")}</p>
+          <h1>{t("stuck.title")}</h1>
         </div>
-        <BackChip label="Back" />
+        <BackChip label={t("stuck.back")} />
       </header>
 
-      <p className="muted">
-        These are saves that never made it to the server — a clock punch, a
-        photo, a plan change. Nothing here was thrown away on its own; each
-        one is waiting for you to try it again or throw it away yourself.
-      </p>
-      <p className="muted">
-        Try again sends a write exactly as it was written, with the details
-        from the moment it was made. Check how long one has been waiting
-        before you send it — an old write may not match what is there now.
-      </p>
+      <p className="muted">{t("stuck.explain1")}</p>
+      <p className="muted">{t("stuck.explain2")}</p>
 
-      {(failedQ.isLoading || installsQ.isLoading) && <p className="muted">Checking for stuck writes…</p>}
+      {(failedQ.isLoading || installsQ.isLoading) && <p className="muted">{t("stuck.checking")}</p>}
       {failedQ.isError && (
         <p className="error">
-          {formatApiError(failedQ.error, "Couldn't check for stuck writes. Try again shortly.")}
+          {formatApiError(failedQ.error, t("stuck.checkError"))}
         </p>
       )}
       {retry.isError && (
         <p className="error">
-          {formatApiError(retry.error, "Couldn't try that write again. Try again shortly.")}
+          {formatApiError(retry.error, t("stuck.retryError"))}
         </p>
       )}
       {discard.isError && (
         <p className="error">
-          {formatApiError(discard.error, "Couldn't throw that away. Try again shortly.")}
+          {formatApiError(discard.error, t("stuck.discardError"))}
         </p>
       )}
 
       {!failedQ.isLoading && !failedQ.isError && entries.length === 0 && (
-        <p className="muted">
-          Nothing stuck. Every save has made it to the server.
-        </p>
+        <p className="muted">{t("stuck.nothingStuck")}</p>
       )}
 
       {entries.length > 0 && (
@@ -255,7 +251,7 @@ export function StuckWrites() {
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <div style={{ fontWeight: 600 }}>{e.label}</div>
                     <div className="muted" style={{ fontSize: 12.5 }}>
-                      {queuedAgoLabel(e.when, now)}
+                      {queuedAgoLabel(e.when, now, t)}
                       {e.when > 0 ? ` · ${fmtWhen(e.when)}` : ""}
                     </div>
                     {e.detail && (
@@ -277,7 +273,7 @@ export function StuckWrites() {
                       retry.mutate(e);
                     }}
                   >
-                    {busyRetry ? "Trying again…" : "Try again"}
+                    {busyRetry ? t("stuck.tryingAgain") : t("stuck.tryAgain")}
                   </button>
                   <button
                     type="button"
@@ -293,10 +289,10 @@ export function StuckWrites() {
                     }}
                   >
                     {busyDiscard
-                      ? "Throwing away…"
+                      ? t("stuck.throwingAway")
                       : confirming
-                        ? "Sure? this deletes it"
-                        : "Throw away"}
+                        ? t("stuck.sureDeletes")
+                        : t("stuck.throwAway")}
                   </button>
                 </div>
               </li>

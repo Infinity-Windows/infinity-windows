@@ -7,6 +7,7 @@ import {
   uploadTripAttachment,
 } from "../../lib/travel/api";
 import { toastError, toastSuccess } from "../../lib/toast";
+import { useT } from "../../lib/i18n";
 
 /**
  * Private attachments (boarding passes, reservations, screenshots). Files open
@@ -25,12 +26,13 @@ export function AttachmentsPanel({
   scope?: { flightId?: string | null; lodgingId?: string | null };
   onChanged: () => void;
 }) {
+  const t = useT();
   const [busy, setBusy] = useState(false);
 
   const open = async (att: TripAttachment) => {
     const url = await signedAttachmentUrl(att.storage_path);
     if (url) window.open(url, "_blank", "noopener,noreferrer");
-    else toastError(null, "Couldn't open that file");
+    else toastError(null, t("travelAttach.couldNotOpen"));
   };
 
   const onUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -45,10 +47,10 @@ export function AttachmentsPanel({
         flightId: scope?.flightId ?? null,
         lodgingId: scope?.lodgingId ?? null,
       });
-      toastSuccess("Attachment added");
+      toastSuccess(t("travelAttach.added"));
       onChanged();
     } catch (err) {
-      toastError(err, "Upload failed — apply the migration first?");
+      toastError(err, t("travelAttach.uploadFailed"));
     } finally {
       setBusy(false);
     }
@@ -73,13 +75,13 @@ export function AttachmentsPanel({
       {attachments.map((att) => (
         <span key={att.id} className="travel-attach-chip">
           <button type="button" className="travel-attach-open" onClick={() => open(att)}>
-            <Paperclip size={13} aria-hidden /> {att.label ?? "Attachment"}
+            <Paperclip size={13} aria-hidden /> {att.label ?? t("travelAttach.attachment")}
           </button>
           {canEdit && (
             <button
               type="button"
               className="travel-attach-del"
-              aria-label="Remove attachment"
+              aria-label={t("travelAttach.removeAttachment")}
               disabled={busy}
               onClick={() => remove(att)}
             >
@@ -90,7 +92,7 @@ export function AttachmentsPanel({
       ))}
       {canEdit && (
         <label className="travel-attach-add">
-          <Paperclip size={13} aria-hidden /> {busy ? "Uploading…" : "Add file"}
+          <Paperclip size={13} aria-hidden /> {busy ? t("travelAttach.uploading") : t("travelAttach.addFile")}
           <input type="file" hidden onChange={onUpload} disabled={busy} />
         </label>
       )}
