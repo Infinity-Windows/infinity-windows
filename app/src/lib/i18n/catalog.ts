@@ -3934,8 +3934,9 @@ export const CATALOG = {
   "warehouse.containerForm.name": { en: "Name", es: "Nombre" },
   "warehouse.containerForm.namePlaceholder": { en: "Conex 7 / Glass crate 12", es: "Conex 7 / Crate de vidrio 12" },
   "warehouse.containerForm.kind": { en: "What kind of box", es: "Qué tipo de caja" },
-  // i18n-same-on-purpose: "Conex" and "Crate" are the crew's own words in both languages (CONTEXT.md).
+  // i18n-same-on-purpose: "Conex" is the crew's own word in both languages (CONTEXT.md).
   "warehouse.containerForm.kind.conex": { en: "Conex", es: "Conex" },
+  // i18n-same-on-purpose: "Crate" is the crew's own word in both languages (CONTEXT.md).
   "warehouse.containerForm.kind.crate": { en: "Crate", es: "Crate" },
   "warehouse.containerForm.kind.truck": { en: "Truck", es: "Camión" },
   "warehouse.containerForm.crateHint": {
