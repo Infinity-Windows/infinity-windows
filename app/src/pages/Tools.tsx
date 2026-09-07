@@ -4,6 +4,7 @@ import { useState } from "react";
 import { getMyProfile, listProfiles } from "../lib/install/api";
 import { isForemanPlus } from "../lib/install/types";
 import { addTool, listTools, setToolHolder } from "../lib/ops";
+import { useT } from "../lib/i18n";
 
 function dueSoon(date: string | null): boolean {
   if (!date) return false;
@@ -12,6 +13,7 @@ function dueSoon(date: string | null): boolean {
 }
 
 export function Tools() {
+  const t = useT();
   const queryClient = useQueryClient();
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const lead = isForemanPlus(me.data?.role);
@@ -31,24 +33,27 @@ export function Tools() {
     <div className="page">
       <header className="page-header">
         <div>
-          <h1>Tools</h1>
+          <h1>{t("tools.title")}</h1>
           <p className="muted" style={{ margin: 0 }}>
-            Who has what — and what's due for calibration.
+            {t("tools.subtitle")}
           </p>
         </div>
-        <BackChip fallback="/" label="Home" />
+        <BackChip fallback="/" label={t("tools.home")} />
       </header>
 
       <ul className="unit-list work-list">
-        {(tools.data ?? []).map((t) => (
-          <li key={t.id} className="find-row">
+        {(tools.data ?? []).map((tool) => (
+          <li key={tool.id} className="find-row">
             <div>
-              <strong>{t.name}</strong>
+              <strong>{tool.name}</strong>
               <div className="muted" style={{ fontSize: 12 }}>
-                {t.profiles?.display_name ? `With ${t.profiles.display_name}` : "In the shop"}
-                {t.calibration_due && (
-                  <span className={dueSoon(t.calibration_due) ? "warn-text" : ""}>
-                    {" "}· calib due {t.calibration_due}
+                {tool.profiles?.display_name
+                  ? t("tools.withPerson", { name: tool.profiles.display_name })
+                  : t("tools.inShop")}
+                {tool.calibration_due && (
+                  <span className={dueSoon(tool.calibration_due) ? "warn-text" : ""}>
+                    {" "}
+                    {t("tools.calibDue", { date: tool.calibration_due })}
                   </span>
                 )}
               </div>
@@ -56,26 +61,26 @@ export function Tools() {
             {lead && (
               <select
                 style={{ marginLeft: "auto", maxWidth: "45vw", marginBottom: 0 }}
-                value={t.holder_id ?? ""}
-                onChange={(e) => setHolder.mutate({ id: t.id, holder: e.target.value || null })}
+                value={tool.holder_id ?? ""}
+                onChange={(e) => setHolder.mutate({ id: tool.id, holder: e.target.value || null })}
               >
-                <option value="">Shop</option>
+                <option value="">{t("tools.shop")}</option>
                 {(crew.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.display_name}</option>)}
               </select>
             )}
           </li>
         ))}
-        {tools.data?.length === 0 && <p className="muted">No tools tracked yet.</p>}
+        {tools.data?.length === 0 && <p className="muted">{t("tools.noneTracked")}</p>}
       </ul>
 
       {lead && (
         <>
-          <h2>Add a tool</h2>
+          <h2>{t("tools.addToolHeading")}</h2>
           <div className="detail-card">
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Tool name" />
-            <label className="field-label">Calibration due (optional)</label>
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("tools.toolName")} />
+            <label className="field-label">{t("tools.calibrationDue")}</label>
             <input type="date" value={due} onChange={(e) => setDue(e.target.value)} />
-            <button className="primary big" disabled={add.isPending || !name.trim()} onClick={() => add.mutate()}>Add tool</button>
+            <button className="primary big" disabled={add.isPending || !name.trim()} onClick={() => add.mutate()}>{t("tools.addTool")}</button>
           </div>
         </>
       )}

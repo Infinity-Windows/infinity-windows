@@ -1,4 +1,9 @@
 import type { TripPhase } from "./types";
+import { CATALOG } from "../i18n/catalog";
+import { translate, type Lang } from "../i18n/translate";
+import type { TFn } from "../i18n/context";
+
+const englishT: TFn = (key, vars) => translate(CATALOG, "en" as Lang, key, vars);
 
 /**
  * Lifecycle phase from a trip's [start_date, end_date] against today (all
@@ -15,14 +20,14 @@ export function tripPhase(
   return "in_progress";
 }
 
-export function phaseLabel(phase: TripPhase): string {
+export function phaseLabel(phase: TripPhase, t: TFn = englishT): string {
   switch (phase) {
     case "upcoming":
-      return "Upcoming";
+      return t("travel.phase.upcoming");
     case "in_progress":
-      return "In progress";
+      return t("travel.phase.inProgress");
     case "past":
-      return "Past";
+      return t("travel.phase.past");
   }
 }
 

@@ -7,7 +7,8 @@ import {
   resetEmailRefusal,
 } from "../lib/passwordReset";
 import { supabase, supabaseConfigured } from "../lib/supabase";
-import { submitAccessRequest } from "../lib/install/api";
+import { submitAccessRequest, setMyLanguage } from "../lib/install/api";
+import { usePreAuthT } from "../lib/i18n";
 
 /**
  * There is no "create your own account" here any more.
@@ -37,6 +38,12 @@ export function SignIn({
    */
   onHaveInviteCode?: () => void;
 }) {
+  // No LanguageProvider exists yet at this point — it only mounts once there
+  // is a session (App.tsx). usePreAuthT reads the same per-device cache the
+  // provider uses, so the very first thing on this screen respects a choice
+  // made here before, or on another pre-login screen (JoinCrew).
+  const { lang, t, setLang: pickLang, hadNoChoice } = usePreAuthT();
+
   const [mode, setMode] = useState<Mode>(initialMode);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -59,7 +66,15 @@ export function SignIn({
       email,
       password,
     });
-    if (error) setError(error.message);
+    if (error) {
+      setError(error.message);
+    } else if (hadNoChoice) {
+      // First time this device has ever recorded a language pick — write it
+      // to the profile now, the same RPC Settings uses, so the choice isn't
+      // lost the instant the LanguageProvider mounts and the profile (which
+      // always carries SOME value, defaulting to English) wins the resolve.
+      void setMyLanguage(lang).catch(() => {});
+    }
     setBusy(false);
   };
 
@@ -78,7 +93,7 @@ export function SignIn({
     setError(null);
     setInfo(null);
     if (!email.trim()) {
-      setError("Enter your email first, then reset password.");
+      setError(t("signin.enterEmailFirst"));
       setBusy(false);
       return;
     }
@@ -106,7 +121,7 @@ export function SignIn({
         setError(resetError.message);
       }
     } else {
-      setInfo("Password reset email sent — check your inbox, then Sign in.");
+      setInfo(t("signin.resetSent"));
       setResetWait(RESET_EMAIL_COOLDOWN_SEC);
     }
     setBusy(false);
@@ -135,16 +150,35 @@ export function SignIn({
       <div className="signin-brand">
         <h1>FORGE</h1>
         <div className="signin-rule">
-          <span>Windows &amp; Doors</span>
+          <span>{t("signin.tagline")}</span>
         </div>
       </div>
 
-      {!supabaseConfigured && (
-        <p className="error">
-          Supabase is not configured. Set VITE_SUPABASE_URL and
-          VITE_SUPABASE_ANON_KEY.
-        </p>
-      )}
+      {/* Usable before login and with no JavaScript beyond a plain click
+          handler — a segmented control, not a dropdown or a CSS trick. Above
+          the form on purpose: a person's first choice on this screen is what
+          language everything below it reads in. */}
+      <div
+        role="group"
+        aria-label={t("settings.language.heading")}
+        className="signin-lang-switch"
+        style={{ display: "flex", gap: 8, margin: "0 0 16px" }}
+      >
+        {(["en", "es"] as const).map((l) => (
+          <button
+            key={l}
+            type="button"
+            className={lang === l ? "button-like active-pill" : "button-like"}
+            style={{ flex: 1, minHeight: 48, fontSize: 16 }}
+            aria-pressed={lang === l}
+            onClick={() => pickLang(l)}
+          >
+            {l === "en" ? t("picker.english") : t("picker.spanish")}
+          </button>
+        ))}
+      </div>
+
+      {!supabaseConfigured && <p className="error">{t("signin.notConfigured")}</p>}
 
       {mode === "request" ? (
         requested ? (
@@ -154,14 +188,13 @@ export function SignIn({
               className="ok"
               style={{ margin: 0, fontWeight: 600, fontSize: 16 }}
             >
-              Request submitted
+              {t("signin.requestSubmitted.title")}
             </p>
             <p
               className="muted"
               style={{ margin: 0, fontSize: 13, lineHeight: 1.6 }}
             >
-              You're in the approval queue. An admin will review it — you'll be
-              able to sign in once you're approved.
+              {t("signin.requestSubmitted.body")}
             </p>
             <button
               className="secondary"
@@ -170,17 +203,16 @@ export function SignIn({
                 setRequested(false);
               }}
             >
-              Back to start
+              {t("signin.backToStart")}
             </button>
           </div>
         ) : (
           <>
             <p className="muted" style={{ margin: 0, lineHeight: 1.55 }}>
-              Submit your info — an admin approves new accounts before you can
-              sign in.
+              {t("signin.requestIntro")}
             </p>
             <input
-              placeholder="Full name"
+              placeholder={t("signin.fullName")}
               value={reqName}
               onChange={(e) => setReqName(e.target.value)}
             />
@@ -189,23 +221,23 @@ export function SignIn({
                 approvals used to end in nothing happening. */}
             <input
               type="email"
-              placeholder="Email"
+              placeholder={t("signin.email")}
               value={reqEmail}
               onChange={(e) => setReqEmail(e.target.value)}
             />
             <input
-              placeholder="Cell phone (optional)"
+              placeholder={t("signin.phone")}
               value={reqPhone}
               onChange={(e) => setReqPhone(e.target.value)}
             />
-            <label className="field-label">Role you're joining as</label>
+            <label className="field-label">{t("signin.roleLabel")}</label>
             <select
               value={reqRole}
               onChange={(e) => setReqRole(e.target.value)}
             >
-              <option value="installer">Installer</option>
-              <option value="foreman">Foreman</option>
-              <option value="supervisor">Supervisor</option>
+              <option value="installer">{t("signin.role.installer")}</option>
+              <option value="foreman">{t("signin.role.foreman")}</option>
+              <option value="supervisor">{t("signin.role.supervisor")}</option>
             </select>
             {error && <p className="error">{error}</p>}
             <button
@@ -213,7 +245,7 @@ export function SignIn({
               onClick={submitRequest}
               disabled={busy || !reqName.trim() || !reqEmail.trim()}
             >
-              {busy ? "Submitting..." : "Submit request"}
+              {busy ? t("signin.submitting") : t("signin.submitRequest")}
             </button>
             <button
               className="link"
@@ -222,23 +254,23 @@ export function SignIn({
                 setError(null);
               }}
             >
-              Back to sign in
+              {t("signin.backToSignIn")}
             </button>
           </>
         )
       ) : (
         <>
-          <p className="signin-kicker">Sign in to your portal</p>
+          <p className="signin-kicker">{t("signin.kicker")}</p>
           <input
             type="email"
-            placeholder="Email"
+            placeholder={t("signin.email")}
             value={email}
             autoComplete="email"
             onChange={(e) => setEmail(e.target.value)}
           />
           <input
             type="password"
-            placeholder="Password"
+            placeholder={t("signin.password")}
             value={password}
             autoComplete="current-password"
             onChange={(e) => setPassword(e.target.value)}
@@ -247,11 +279,11 @@ export function SignIn({
           {error && <p className="error">{error}</p>}
           {info && <p className="muted">{info}</p>}
           <button className="primary big" onClick={signIn} disabled={busy}>
-            {busy ? "Signing in..." : "Sign in"}
+            {busy ? t("signin.signingIn") : t("signin.signIn")}
           </button>
           {onHaveInviteCode && (
             <button className="link" onClick={onHaveInviteCode}>
-              I was given a code
+              {t("signin.haveCode")}
             </button>
           )}
           <button
@@ -260,8 +292,8 @@ export function SignIn({
             disabled={busy || resetWait > 0}
           >
             {resetWait > 0
-              ? `Reset password — wait ${cooldownLabel(resetWait)}`
-              : "Reset password"}
+              ? t("signin.resetWait", { wait: cooldownLabel(resetWait) })
+              : t("signin.resetPassword")}
           </button>
           <button
             className="link"
@@ -271,11 +303,9 @@ export function SignIn({
               setInfo(null);
             }}
           >
-            Request access
+            {t("signin.requestAccess")}
           </button>
-          <p className="signin-footnote">
-            New crew members need admin approval before their first sign-in.
-          </p>
+          <p className="signin-footnote">{t("signin.footnote")}</p>
         </>
       )}
     </div>

@@ -23,17 +23,20 @@ import { supabase } from "../lib/supabase";
 import {
   acknowledgeTakeoff,
   createTakeoff,
-  ETA_LABELS,
+  ETA_ORDER,
+  etaLabel,
   listTakeoffs,
   readyTakeoff,
   shortageLines,
-  TAKEOFF_STATUS_LABELS,
+  takeoffStatusLabel,
   takeoffStatusLine,
   type Takeoff,
   type TakeoffEta,
 } from "../lib/takeoffs";
+import { useT } from "../lib/i18n";
 
 export function Takeoffs() {
+  const t = useT();
   const qc = useQueryClient();
   const { effectiveRole } = useEffectiveRole();
   // ADR-0007: building a takeoff, answering one with a rough when, and
@@ -86,14 +89,19 @@ export function Takeoffs() {
         eta: input.eta,
         etaNote: input.note || null,
       }),
+    // Pushes here and below render in the CALLER's language, not necessarily
+    // the recipient's — same gap as the timecard revert push (TimecardPanel).
     onSuccess: (row, input) => {
-      pushToast("Answered.");
+      pushToast(t("takeoffs.answered"));
       refresh();
       if (row.created_by) {
         void sendPush({
           profileIds: [row.created_by],
-          title: `Takeoff for ${jobCode.get(row.project_id) ?? "your job"}: ${ETA_LABELS[input.eta]}`,
-          body: input.note || "The warehouse has your list.",
+          title: t("takeoffs.push.answeredTitle", {
+            job: jobCode.get(row.project_id) ?? t("takeoffs.yourJob"),
+            eta: etaLabel(input.eta, t),
+          }),
+          body: input.note || t("takeoffs.push.answeredBody"),
           tag: `takeoff-${row.id}`,
           url: "/takeoffs",
         });
@@ -103,15 +111,15 @@ export function Takeoffs() {
   });
 
   const ready = useMutation({
-    mutationFn: (t: Takeoff) => readyTakeoff(t.id),
+    mutationFn: (row: Takeoff) => readyTakeoff(row.id),
     onSuccess: (row) => {
-      pushToast("Marked ready — they know.");
+      pushToast(t("takeoffs.markedReady"));
       refresh();
       if (row.for_profile_id) {
         void sendPush({
           profileIds: [row.for_profile_id],
-          title: `Your takeoff for ${jobCode.get(row.project_id) ?? "your job"} is ready`,
-          body: "Pick it up at the warehouse.",
+          title: t("takeoffs.push.readyTitle", { job: jobCode.get(row.project_id) ?? t("takeoffs.yourJob") }),
+          body: t("takeoffs.push.readyBody"),
           tag: `takeoff-${row.id}`,
           url: "/takeoffs",
         });
@@ -121,18 +129,18 @@ export function Takeoffs() {
   });
 
   const pickup = useMutation({
-    mutationFn: (t: Takeoff) => pickupTakeoffOffline(t.id),
-    onSuccess: (r, t) => {
+    mutationFn: (row: Takeoff) => pickupTakeoffOffline(row.id),
+    onSuccess: (r, row) => {
       pushToast(
-        writeToast(r, "Picked up — the supplies are on the job's tab now."),
+        writeToast(r, t("takeoffs.pickedUpToast")),
       );
       refresh();
       void qc.invalidateQueries({ queryKey: ["supplies"] });
-      if (t.created_by && t.created_by !== me.data) {
+      if (row.created_by && row.created_by !== me.data) {
         void sendPush({
-          profileIds: [t.created_by],
-          title: `Takeoff for ${jobCode.get(t.project_id) ?? "a job"} picked up`,
-          tag: `takeoff-${t.id}`,
+          profileIds: [row.created_by],
+          title: t("takeoffs.push.pickedUpTitle", { job: jobCode.get(row.project_id) ?? t("takeoffs.aJob") }),
+          tag: `takeoff-${row.id}`,
           url: "/takeoffs",
         });
       }
@@ -148,16 +156,13 @@ export function Takeoffs() {
     <div className="page">
       <header className="page-header">
         <div>
-          <BackChip fallback="/warehouse" label="Warehouse" />
-          <p className="home-greeting">Warehouse</p>
-          <h1>Takeoffs</h1>
+          <BackChip fallback="/warehouse" label={t("takeoffs.warehouse")} />
+          <p className="home-greeting">{t("takeoffs.warehouse")}</p>
+          <h1>{t("takeoffs.title")}</h1>
         </div>
       </header>
       <Explain id="wh-takeoffs">
-        A takeoff is a job&rsquo;s supplies, bundled by the warehouse for a
-        named person. Anyone on the crew can ask for one; whoever is filling
-        it answers with a rough when, marks it ready, and picking it up logs
-        every line against the job — pickup <em>is</em> the take.
+        {t("takeoffs.explain")}
       </Explain>
 
       <button
@@ -165,42 +170,42 @@ export function Takeoffs() {
         style={{ marginBottom: 10 }}
         onClick={() => setCreating(true)}
       >
-        New takeoff
+        {t("takeoffs.newTakeoff")}
       </button>
 
       <div className="home-projects">
-        {active.map((t) => (
+        {active.map((row) => (
           <TakeoffRow
-            key={t.id}
-            t={t}
-            open={open === t.id}
-            onToggle={() => setOpen(open === t.id ? null : t.id)}
+            key={row.id}
+            t={row}
+            open={open === row.id}
+            onToggle={() => setOpen(open === row.id ? null : row.id)}
             jobCode={jobCode}
             personName={personName}
             supplyById={supplyById}
             lead={lead}
             meId={me.data ?? null}
-            onAck={(eta, note) => ack.mutate({ t, eta, note })}
-            onReady={() => ready.mutate(t)}
-            onPickup={() => pickup.mutate(t)}
+            onAck={(eta, note) => ack.mutate({ t: row, eta, note })}
+            onReady={() => ready.mutate(row)}
+            onPickup={() => pickup.mutate(row)}
             busy={ack.isPending || ready.isPending || pickup.isPending}
           />
         ))}
         {active.length === 0 && (
-          <p className="muted">Nothing waiting. New takeoffs land here.</p>
+          <p className="muted">{t("takeoffs.nothingWaiting")}</p>
         )}
       </div>
 
       {done.length > 0 && (
         <>
-          <h2>Picked up</h2>
+          <h2>{t("takeoffs.pickedUpHeading")}</h2>
           <div className="home-projects">
-            {done.map((t) => (
+            {done.map((row) => (
               <TakeoffRow
-                key={t.id}
-                t={t}
-                open={open === t.id}
-                onToggle={() => setOpen(open === t.id ? null : t.id)}
+                key={row.id}
+                t={row}
+                open={open === row.id}
+                onToggle={() => setOpen(open === row.id ? null : row.id)}
                 jobCode={jobCode}
                 personName={personName}
                 supplyById={supplyById}
@@ -225,17 +230,17 @@ export function Takeoffs() {
             if (wasReady && created.for_profile_id) {
               void sendPush({
                 profileIds: [created.for_profile_id],
-                title: `Your takeoff for ${jobCode.get(created.project_id) ?? "your job"} is ready`,
-                body: "Pick it up at the warehouse.",
+                title: t("takeoffs.push.readyTitle", { job: jobCode.get(created.project_id) ?? t("takeoffs.yourJob") }),
+                body: t("takeoffs.push.readyBody"),
                 tag: `takeoff-${created.id}`,
                 url: "/takeoffs",
               });
             } else if (!wasReady && foremanIds.length > 0) {
               void sendPush({
                 profileIds: foremanIds,
-                title: `Supply request — ${jobCode.get(created.project_id) ?? "a job"}`,
+                title: t("takeoffs.push.requestTitle", { job: jobCode.get(created.project_id) ?? t("takeoffs.aJob") }),
                 // Not "a foreman" any more: anyone on the crew can ask.
-                body: "Somebody needs a takeoff built.",
+                body: t("takeoffs.push.requestBody"),
                 tag: `takeoff-${created.id}`,
                 url: "/takeoffs",
               });
@@ -274,12 +279,14 @@ function TakeoffRow({
   onPickup: () => void;
   busy: boolean;
 }) {
+  const tr = useT();
   const [eta, setEta] = useState<TakeoffEta>("today");
   const [etaNote, setEtaNote] = useState("");
   const items = t.takeoff_items ?? [];
   const shortages = shortageLines(
     items,
     [...supplyById.entries()].map(([id, s]) => ({ id, ...s }) as never),
+    tr,
   );
   const canPickup = t.status === "ready" && (t.for_profile_id === meId || lead);
 
@@ -288,17 +295,22 @@ function TakeoffRow({
       <div className="home-project-head" onClick={onToggle}>
         <div style={{ minWidth: 0 }}>
           <div style={{ fontWeight: 600 }}>
-            {jobCode.get(t.project_id) ?? "?"} · for{" "}
-            {t.for_profile_id ? (personName.get(t.for_profile_id) ?? "?") : "?"}
+            {tr("takeoffs.jobFor", {
+              job: jobCode.get(t.project_id) ?? "?",
+              name: t.for_profile_id ? (personName.get(t.for_profile_id) ?? "?") : "?",
+            })}
             <span className="muted" style={{ fontWeight: 400 }}>
-              {" "}· {items.length} line{items.length === 1 ? "" : "s"}
+              {" "}·{" "}
+              {items.length === 1
+                ? tr("takeoffs.lineCount.one")
+                : tr("takeoffs.lineCount.many", { count: items.length })}
             </span>
           </div>
           <div className="muted" style={{ fontSize: 12 }}>
-            {takeoffStatusLine(t)}
+            {takeoffStatusLine(t, tr)}
           </div>
         </div>
-        <span className="muted">{TAKEOFF_STATUS_LABELS[t.status]}</span>
+        <span className="muted">{takeoffStatusLabel(t.status, tr)}</span>
       </div>
 
       {open && (
@@ -330,30 +342,30 @@ function TakeoffRow({
 
           {t.status === "requested" && (
             <div style={{ marginTop: 8 }}>
-              <label className="field-label">Roughly when?</label>
+              <label className="field-label">{tr("takeoffs.roughlyWhen")}</label>
               <div className="row-gap" style={{ flexWrap: "wrap" }}>
-                {(Object.keys(ETA_LABELS) as TakeoffEta[]).map((k) => (
+                {ETA_ORDER.map((k) => (
                   <button
                     key={k}
                     className={eta === k ? "button-like active-pill" : "button-like"}
                     onClick={() => setEta(k)}
                   >
-                    {ETA_LABELS[k]}
+                    {etaLabel(k, tr)}
                   </button>
                 ))}
               </div>
               <input
-                placeholder="note (optional) — e.g. waiting on the caulk order"
+                placeholder={tr("takeoffs.etaNotePlaceholder")}
                 value={etaNote}
                 onChange={(e) => setEtaNote(e.target.value)}
                 style={{ marginTop: 6 }}
               />
               <div className="row-gap" style={{ marginTop: 6 }}>
                 <button className="button-like" disabled={busy} onClick={() => onAck(eta, etaNote)}>
-                  Got it — send the when
+                  {tr("takeoffs.gotItSendWhen")}
                 </button>
                 <button className="button-like active-pill" disabled={busy} onClick={onReady}>
-                  It&rsquo;s ready now
+                  {tr("takeoffs.readyNow")}
                 </button>
               </div>
             </div>
@@ -365,7 +377,7 @@ function TakeoffRow({
               disabled={busy}
               onClick={onReady}
             >
-              Mark ready — tell them
+              {tr("takeoffs.markReadyTellThem")}
             </button>
           )}
           {canPickup && (
@@ -375,7 +387,7 @@ function TakeoffRow({
               disabled={busy}
               onClick={onPickup}
             >
-              Picked up — put it on the job&rsquo;s tab
+              {tr("takeoffs.pickedUpPutOnTab")}
             </button>
           )}
         </div>
@@ -391,6 +403,7 @@ function CreateTakeoffSheet({
   onClose: () => void;
   onDone: (t: Takeoff, ready: boolean) => void;
 }) {
+  const t = useT();
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const profiles = useQuery({ queryKey: ["profiles"], queryFn: listProfiles });
   const supplies = useQuery({ queryKey: ["supplies"], queryFn: listSupplies });
@@ -410,14 +423,14 @@ function CreateTakeoffSheet({
         note: note || null,
         ready,
       }).then((t) => ({ t, ready })),
-    onSuccess: ({ t, ready }) => {
-      pushToast(ready ? "Takeoff ready — they know." : "Request sent to the warehouse.");
-      onDone(t, ready);
+    onSuccess: ({ t: created, ready }) => {
+      pushToast(ready ? t("takeoffs.readyTheyKnow") : t("takeoffs.requestSent"));
+      onDone(created, ready);
     },
     onError: (e) => pushToast(formatApiError(e), "error"),
   });
 
-  const shortages = shortageLines(lines, supplies.data ?? []);
+  const shortages = shortageLines(lines, supplies.data ?? [], t);
   const addLine = () => {
     const qty = Number(lineQty);
     if (!lineSupply || !Number.isFinite(qty) || qty <= 0) return;
@@ -437,19 +450,19 @@ function CreateTakeoffSheet({
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
       <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-        <p style={{ margin: 0, fontWeight: 700 }}>New takeoff</p>
-        <label className="field-label">Job</label>
+        <p style={{ margin: 0, fontWeight: 700 }}>{t("takeoffs.newTakeoff")}</p>
+        <label className="field-label">{t("takeoffs.job")}</label>
         <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-          <option value="">Pick the job…</option>
+          <option value="">{t("takeoffs.pickTheJob")}</option>
           {(projects.data ?? []).map((p) => (
             <option key={p.id} value={p.id}>
               {p.job_code} — {p.name}
             </option>
           ))}
         </select>
-        <label className="field-label">For</label>
+        <label className="field-label">{t("takeoffs.for")}</label>
         <select value={forId} onChange={(e) => setForId(e.target.value)}>
-          <option value="">Myself</option>
+          <option value="">{t("takeoffs.myself")}</option>
           {(profiles.data ?? [])
             .filter((p) => p.active)
             .map((p) => (
@@ -458,14 +471,14 @@ function CreateTakeoffSheet({
               </option>
             ))}
         </select>
-        <label className="field-label">Lines</label>
+        <label className="field-label">{t("takeoffs.lines")}</label>
         <div className="row-gap">
           <select
             value={lineSupply}
             onChange={(e) => setLineSupply(e.target.value)}
             style={{ flex: 1 }}
           >
-            <option value="">Pick a supply…</option>
+            <option value="">{t("takeoffs.pickASupply")}</option>
             {(supplies.data ?? []).map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name}
@@ -477,10 +490,10 @@ function CreateTakeoffSheet({
             value={lineQty}
             onChange={(e) => setLineQty(e.target.value)}
             style={{ width: 64, marginBottom: 0 }}
-            aria-label="How many"
+            aria-label={t("takeoffs.howMany")}
           />
           <button className="button-like" onClick={addLine}>
-            Add
+            {t("takeoffs.add")}
           </button>
         </div>
         <ul className="unit-list" style={{ margin: "6px 0 0" }}>
@@ -494,7 +507,7 @@ function CreateTakeoffSheet({
                   setLines((prev) => prev.filter((x) => x.supply_id !== l.supply_id))
                 }
               >
-                remove
+                {t("takeoffs.remove")}
               </button>
             </li>
           ))}
@@ -507,11 +520,11 @@ function CreateTakeoffSheet({
               </p>
             ))}
             <p className="muted" style={{ margin: "2px 0 0", fontSize: 12 }}>
-              A warning, not a stop — short lines get filled when stock lands.
+              {t("takeoffs.warningNotStop")}
             </p>
           </div>
         )}
-        <label className="field-label">Note (optional)</label>
+        <label className="field-label">{t("takeoffs.noteOptional")}</label>
         <input value={note} onChange={(e) => setNote(e.target.value)} />
         <div className="row-gap" style={{ marginTop: 10 }}>
           <button
@@ -519,17 +532,17 @@ function CreateTakeoffSheet({
             disabled={!projectId || lines.length === 0 || save.isPending}
             onClick={() => save.mutate(false)}
           >
-            Request it
+            {t("takeoffs.requestIt")}
           </button>
           <button
             className="button-like active-pill"
             disabled={!projectId || lines.length === 0 || save.isPending}
             onClick={() => save.mutate(true)}
           >
-            It&rsquo;s built — mark ready
+            {t("takeoffs.itsBuiltMarkReady")}
           </button>
           <button className="button-like" onClick={onClose}>
-            Cancel
+            {t("takeoffs.cancel")}
           </button>
         </div>
       </div>

@@ -2,6 +2,7 @@
 // wants `LanguageProvider`; the picker and settings toggle want `useLanguage`.
 export { LanguageProvider } from "./LanguageProvider";
 export { useT, useLanguage, type TFn } from "./context";
+export { usePreAuthT, type PreAuthLanguage } from "./usePreAuthT";
 export { CATALOG, SAFETY_KEYS, type TKey } from "./catalog";
 export {
   isLang,

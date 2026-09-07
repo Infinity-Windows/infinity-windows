@@ -50,10 +50,10 @@ export function Settings() {
     <div className="page">
       <header className="page-header">
         <div>
-          <p className="home-greeting">Settings</p>
-          <h1>Settings</h1>
+          <p className="home-greeting">{t("settings.pageTitle")}</p>
+          <h1>{t("settings.pageTitle")}</h1>
         </div>
-        <BackChip label="Back" />
+        <BackChip label={t("settings.back")} />
       </header>
 
       <section className="detail-card" style={{ marginBottom: 12 }}>
@@ -77,32 +77,34 @@ export function Settings() {
       </section>
 
       <section className="detail-card" style={{ marginBottom: 12 }}>
-        <h2 style={{ marginTop: 0, fontSize: 18 }}>Appearance</h2>
+        <h2 style={{ marginTop: 0, fontSize: 18 }}>{t("settings.appearance.heading")}</h2>
         <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
-          Light reads best in the sun; dark is easy on the eyes indoors.
-          System follows your phone.
+          {t("settings.appearance.help")}
         </p>
         <div className="row-gap">
-          {(["system", "light", "dark"] as const).map((t) => (
+          {(["system", "light", "dark"] as const).map((choice) => (
             <button
-              key={t}
-              className={theme === t ? "button-like active-pill" : "button-like"}
+              key={choice}
+              className={theme === choice ? "button-like active-pill" : "button-like"}
               onClick={() => {
-                setTheme(t);
-                applyTheme(t);
+                setTheme(choice);
+                applyTheme(choice);
               }}
             >
-              {t === "system" ? "System" : t === "light" ? "Light" : "Dark"}
+              {choice === "system"
+                ? t("settings.appearance.system")
+                : choice === "light"
+                  ? t("settings.appearance.light")
+                  : t("settings.appearance.dark")}
             </button>
           ))}
         </div>
       </section>
 
       <section className="detail-card" style={{ marginBottom: 12 }}>
-        <h2 style={{ marginTop: 0, fontSize: 18 }}>Warehouse sounds</h2>
+        <h2 style={{ marginTop: 0, fontSize: 18 }}>{t("settings.sounds.heading")}</h2>
         <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
-          A soft tick on a scan or check-in that goes through, a buzz on one
-          that doesn't. Off by default.
+          {t("settings.sounds.help")}
         </p>
         <button
           className={sounds ? "button-like active-pill" : "button-like"}
@@ -116,7 +118,7 @@ export function Settings() {
             if (next) playSuccessTone();
           }}
         >
-          {sounds ? "On" : "Off"}
+          {sounds ? t("settings.sounds.on") : t("settings.sounds.off")}
         </button>
       </section>
 

@@ -47,16 +47,18 @@ import { LodgingEditor } from "../components/travel/LodgingEditor";
 import { GroundEditor } from "../components/travel/GroundEditor";
 import { ProcedureEditor } from "../components/travel/ProcedureEditor";
 import { ContactEditor } from "../components/travel/ContactEditor";
+import { useT, type TKey } from "../lib/i18n";
 
 type Tab = "timeline" | "flights" | "lodging" | "ground" | "rules" | "contacts";
-const TABS: { id: Tab; label: string }[] = [
-  { id: "timeline", label: "Timeline" },
-  { id: "flights", label: "Flights" },
-  { id: "lodging", label: "Lodging" },
-  { id: "ground", label: "Getting around" },
-  { id: "rules", label: "House rules" },
-  { id: "contacts", label: "Contacts" },
-];
+const TAB_KEY: Record<Tab, TKey> = {
+  timeline: "travelDetail.tab.timeline",
+  flights: "travelDetail.tab.flights",
+  lodging: "travelDetail.tab.lodging",
+  ground: "travelDetail.tab.ground",
+  rules: "travelDetail.tab.rules",
+  contacts: "travelDetail.tab.contacts",
+};
+const TAB_IDS: Tab[] = ["timeline", "flights", "lodging", "ground", "rules", "contacts"];
 
 type EditorState =
   | { kind: "trip" }
@@ -80,6 +82,7 @@ function tripUrl(id: string): string {
 }
 
 export function TripDetail() {
+  const t = useT();
   const { tripId = "" } = useParams();
   const qc = useQueryClient();
   const navigate = useNavigate();
@@ -113,8 +116,8 @@ export function TripDetail() {
     : true;
 
   const timeline = useMemo(
-    () => (detail ? buildTimeline(detail, { profileId: myId, codesVisible }) : []),
-    [detail, myId, codesVisible],
+    () => (detail ? buildTimeline(detail, { profileId: myId, codesVisible }, t) : []),
+    [detail, myId, codesVisible, t],
   );
   const nextUp = useMemo(() => selectNextUp(timeline, nowMs), [timeline, nowMs]);
 
@@ -171,7 +174,7 @@ export function TripDetail() {
   });
 
   const nameOf = (id: string) =>
-    detail?.trip.crew.find((m) => m.profile_id === id)?.display_name ?? "Crew";
+    detail?.trip.crew.find((m) => m.profile_id === id)?.display_name ?? t("travelDetail.crewFallback");
 
   const doPublish = async () => {
     setPublishing(true);
@@ -192,7 +195,7 @@ export function TripDetail() {
   if (detailQ.isError) {
     return (
       <div className="page travel-detail">
-        <QueryError error={detailQ.error} onRetry={() => void detailQ.refetch()} label="Couldn't load this trip" />
+        <QueryError error={detailQ.error} onRetry={() => void detailQ.refetch()} label={t("travelDetail.loadError")} />
       </div>
     );
   }
@@ -206,7 +209,11 @@ export function TripDetail() {
   if (!detail || !mayOpen) {
     return (
       <div className="page travel-detail">
-        <EmptyState title="Trip not found" message="It may have been removed." action={<Link className="button-like" to="/travel">Back to Travel</Link>} />
+        <EmptyState
+          title={t("travelDetail.notFoundTitle")}
+          message={t("travelDetail.notFoundMessage")}
+          action={<Link className="button-like" to="/travel">{t("travelDetail.backToTravel")}</Link>}
+        />
       </div>
     );
   }
@@ -228,26 +235,28 @@ export function TripDetail() {
         <div>
           <div className="travel-detail-titlerow">
             <h1>{trip.destination || trip.name}</h1>
-            <span className={`travel-chip travel-chip-${phase}`}>{phaseLabel(phase)}</span>
-            {canEdit && trip.status === "draft" && <span className="travel-chip travel-chip-draft">Draft</span>}
+            <span className={`travel-chip travel-chip-${phase}`}>{phaseLabel(phase, t)}</span>
+            {canEdit && trip.status === "draft" && <span className="travel-chip travel-chip-draft">{t("travel.draft")}</span>}
           </div>
           <p className="muted" style={{ margin: 0 }}>
             <CalendarDays size={13} aria-hidden /> {trip.start_date} → {trip.end_date}
             {" · "}
-            <Users size={13} aria-hidden /> {trip.crew.map((m) => m.display_name).filter(Boolean).join(", ") || `${trip.crew.length} crew`}
+            <Users size={13} aria-hidden />{" "}
+            {trip.crew.map((m) => m.display_name).filter(Boolean).join(", ") ||
+              t("travel.crewCount", { n: trip.crew.length })}
           </p>
         </div>
-        <BackChip fallback="/travel" label="Back to Travel" />
+        <BackChip fallback="/travel" label={t("travelDetail.backToTravel")} />
       </header>
 
       {canEdit && (
         <div className="travel-toolbar">
           <button className="button-like" onClick={() => setEditor({ kind: "trip" })}>
-            <Pencil size={15} aria-hidden /> Edit trip
+            <Pencil size={15} aria-hidden /> {t("travelDetail.editTrip")}
           </button>
           {trip.status === "draft" && (
             <button className="button-like active-pill" style={{ marginLeft: "auto" }} onClick={doPublish} disabled={publishing}>
-              <Send size={15} aria-hidden /> {publishing ? "Publishing…" : "Publish to crew"}
+              <Send size={15} aria-hidden /> {publishing ? t("travelDetail.publishing") : t("travelDetail.publishToCrew")}
             </button>
           )}
         </div>
@@ -257,43 +266,43 @@ export function TripDetail() {
 
       {trip.project?.address && (
         <div className="travel-jobsite">
-          <MapPin size={14} aria-hidden /> <span>{trip.project.job_code ?? "Jobsite"}</span>
-          <DirectionsButton address={trip.project.address} label="Jobsite" />
+          <MapPin size={14} aria-hidden /> <span>{trip.project.job_code ?? t("travelDetail.jobsite")}</span>
+          <DirectionsButton address={trip.project.address} label={t("travelDetail.jobsite")} />
           {trip.project.id && (
             <Link to={`/projects/${trip.project.id}`} className="button-like">
-              Open job
+              {t("travelDetail.openJob")}
             </Link>
           )}
         </div>
       )}
       {trip.project?.id && !trip.project.address && (
         <div className="travel-jobsite">
-          <MapPin size={14} aria-hidden /> <span>{trip.project.job_code ?? "Job"}</span>
+          <MapPin size={14} aria-hidden /> <span>{trip.project.job_code ?? t("travelDetail.job")}</span>
           <Link to={`/projects/${trip.project.id}`} className="button-like">
-            Open job
+            {t("travelDetail.openJob")}
           </Link>
         </div>
       )}
 
       {targets.length > 0 && (
         <div className="travel-quickdir">
-          <span className="muted">Directions:</span>
-          {targets.map((t) => (
-            <DirectionsButton key={t.key} address={t.address} label={t.label} />
+          <span className="muted">{t("travelDetail.directions")}</span>
+          {targets.map((tg) => (
+            <DirectionsButton key={tg.key} address={tg.address} label={tg.label} />
           ))}
         </div>
       )}
 
       <nav className="travel-tabs" role="tablist">
-        {TABS.map((t) => (
+        {TAB_IDS.map((id) => (
           <button
-            key={t.id}
+            key={id}
             role="tab"
-            aria-selected={tab === t.id}
-            className={`travel-tab${tab === t.id ? " is-active" : ""}`}
-            onClick={() => setTab(t.id)}
+            aria-selected={tab === id}
+            className={`travel-tab${tab === id ? " is-active" : ""}`}
+            onClick={() => setTab(id)}
           >
-            {t.label}
+            {t(TAB_KEY[id])}
           </button>
         ))}
       </nav>
@@ -304,7 +313,7 @@ export function TripDetail() {
           <TripTimeline items={timeline} nextUpId={nextUp?.id} />
           {tripAttachments.length > 0 || canEdit ? (
             <section className="travel-section">
-              <div className="travel-section-head"><h3>Trip files</h3></div>
+              <div className="travel-section-head"><h3>{t("travelDetail.tripFiles")}</h3></div>
               <AttachmentsPanel tripId={trip.id} attachments={tripAttachments} canEdit={canEdit} onChanged={refresh} />
             </section>
           ) : null}

@@ -27,6 +27,7 @@ import {
   listOrders,
   listSupplies,
   listSupplyTakes,
+  lowStockFirst,
   onHandLabel,
   setOrderStatus,
   setSupplyHome,
@@ -34,8 +35,15 @@ import {
   type Supply,
   type SupplyTake,
 } from "../lib/ops";
+import { useT, type TKey } from "../lib/i18n";
 
 const STATUSES = ["needed", "ordered", "picked", "used"];
+const STATUS_LABEL_KEY: Record<string, TKey> = {
+  needed: "supplies.status.needed",
+  ordered: "supplies.status.ordered",
+  picked: "supplies.status.picked",
+  used: "supplies.status.used",
+};
 
 /**
  * The units the catalog already speaks (ticket D7).
@@ -69,6 +77,7 @@ export function newSupplyUnitInvalid(preset: string, other: string): boolean {
 const LAST_JOB_KEY = "infinity.storage.lastJob";
 
 export function Supplies() {
+  const t = useT();
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
@@ -82,7 +91,10 @@ export function Supplies() {
   // list, typing narrows it by name. Order stays as the API gives it (by
   // name), so the shelf reads like the shelf.
   const [shelfQ, setShelfQ] = useState("");
-  const shelf = filterSuppliesByName(supplies.data ?? [], shelfQ);
+  // Audit 2026-08-17 item I: running-low-first, not alphabetical — the same
+  // ranking Warehouse.tsx's preview already uses (lowStockFirst, lib/ops.ts),
+  // reused rather than inventing a second definition of "low".
+  const shelf = lowStockFirst(filterSuppliesByName(supplies.data ?? [], shelfQ));
   const [newName, setNewName] = useState("");
   const [newUnit, setNewUnit] = useState<string>(SUPPLY_UNIT_PRESETS[0]);
   const [newUnitOther, setNewUnitOther] = useState("");
@@ -134,32 +146,27 @@ export function Supplies() {
     <div className="page">
       <header className="page-header">
         <div>
-          <h1>Supplies</h1>
+          <h1>{t("supplies.title")}</h1>
           <p className="muted" style={{ margin: 0 }}>
-            Find it, take it, log it — three taps.
+            {t("supplies.subtitle")}
           </p>
         </div>
-        <BackChip fallback="/warehouse" label="Warehouse" />
+        <BackChip fallback="/warehouse" label={t("supplies.warehouse")} />
       </header>
 
       <Explain id="supplies-how">
-        Every supply has one home spot, so you always know where to go. Tap Take,
-        say how many and which job — that&rsquo;s the whole log. The count is an
-        estimate, not a promise: it drops when people take, and counting the shelf
-        is what sets it right. Foremen can still request material for a job ahead
-        of time under Request, and a take that matches a request ticks it off on
-        its own.
+        {t("supplies.howItWorks")}
       </Explain>
 
-      <h2>On the shelf</h2>
+      <h2>{t("supplies.onTheShelf")}</h2>
       {supplies.isError && <p className="error">{formatApiError(supplies.error)}</p>}
       <input
         type="search"
-        placeholder="Search supplies — caulk, screws…"
+        placeholder={t("supplies.searchPlaceholder")}
         value={shelfQ}
         onChange={(e) => setShelfQ(e.target.value)}
         style={{ width: "100%", margin: "0 0 8px" }}
-        aria-label="Search supplies"
+        aria-label={t("supplies.searchAria")}
       />
       <ul className="unit-list" style={{ margin: 0 }}>
         {shelf.map((s) => (
@@ -167,9 +174,9 @@ export function Supplies() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <strong>{s.name}</strong>{" "}
               <span className="muted" style={{ fontSize: 12 }}>
-                {supplyHomeLabel(s, containerName, locationAddress)}
+                {supplyHomeLabel(s, containerName, locationAddress, t)}
                 {" · "}
-                {onHandLabel(s)}
+                {onHandLabel(s, t)}
               </span>
             </div>
             <div className="row-gap" style={{ flexWrap: "wrap" }}>
@@ -177,31 +184,31 @@ export function Supplies() {
                 className="button-like active-pill"
                 onClick={() => setTaking(s)}
               >
-                Take
+                {t("supplies.take")}
               </button>
               <button className="button-like" onClick={() => setCounting(s)}>
-                Count
+                {t("supplies.count")}
               </button>
               {/* ADR-0007: a home spot is "where the caulk lives" — the
                   person who put it there is the one who knows. */}
               <button className="button-like" onClick={() => setHoming(s)}>
-                Home
+                {t("supplies.home")}
               </button>
               <button className="button-like" onClick={() => setViewingHistory(s)}>
-                History
+                {t("supplies.history")}
               </button>
             </div>
           </li>
         ))}
         {shelf.length === 0 &&
           (shelfQ.trim() ? (
-            <p className="muted">Nothing named like &ldquo;{shelfQ.trim()}&rdquo;.</p>
+            <p className="muted">{t("supplies.nothingNamedLike", { q: shelfQ.trim() })}</p>
           ) : (
-            <p className="muted">Nothing in the catalog yet — add supplies below.</p>
+            <p className="muted">{t("supplies.catalogEmpty")}</p>
           ))}
       </ul>
 
-      <h2>Request for a job (ahead of time)</h2>
+      <h2>{t("supplies.requestForJob")}</h2>
       <div className="job-chip-row">
         {(projects.data ?? []).map((p) => (
           <button
@@ -218,18 +225,18 @@ export function Supplies() {
       {proj && (
         <>
           <div className="detail-card">
-            <label className="field-label">Add to the request list</label>
+            <label className="field-label">{t("supplies.addToRequestList")}</label>
             <select value={supplyId} onChange={(e) => setSupplyId(e.target.value)}>
-              <option value="">— supply —</option>
+              <option value="">{t("supplies.supplyPlaceholder")}</option>
               {(supplies.data ?? []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
-            <input type="number" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="Qty" />
+            <input type="number" value={qty} onChange={(e) => setQty(e.target.value)} placeholder={t("supplies.qty")} />
             <button className="action-btn primary" disabled={add.isPending || !supplyId} onClick={() => add.mutate()}>
-              Add to job
+              {t("supplies.addToJob")}
             </button>
           </div>
 
-          <h2>Requested</h2>
+          <h2>{t("supplies.requested")}</h2>
           <ul className="unit-list work-list">
             {(orders.data ?? []).map((o) => (
               <li key={o.id} className="find-row">
@@ -242,11 +249,11 @@ export function Supplies() {
                   value={o.status}
                   onChange={(e) => setStatus.mutate({ id: o.id, status: e.target.value })}
                 >
-                  {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                  {STATUSES.map((s) => <option key={s} value={s}>{t(STATUS_LABEL_KEY[s])}</option>)}
                 </select>
               </li>
             ))}
-            {orders.data?.length === 0 && <p className="muted">Nothing requested yet.</p>}
+            {orders.data?.length === 0 && <p className="muted">{t("supplies.nothingRequested")}</p>}
           </ul>
         </>
       )}
@@ -256,15 +263,15 @@ export function Supplies() {
           folds "Caulk", "caulk" and "CAULK" into one row — the duplicate
           guard is what protects the list, not the rank that used to sit
           in front of it. */}
-      <h2>Add to catalog</h2>
+      <h2>{t("supplies.addToCatalog")}</h2>
       <div className="detail-card">
         {/* The unit is asked for here or it is wrong forever: there is no
             screen that edits it afterwards, and it is the word every
             installer reads on the Take form ("How many (roll)"). */}
         <div className="manual-entry" style={{ flexWrap: "wrap" }}>
-          <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="New supply type" />
+          <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder={t("supplies.newSupplyType")} />
           <select
-            aria-label="Unit"
+            aria-label={t("supplies.unit")}
             value={newUnit}
             style={{ marginBottom: 0 }}
             onChange={(e) => setNewUnit(e.target.value)}
@@ -274,14 +281,14 @@ export function Supplies() {
                 {u}
               </option>
             ))}
-            <option value="other">other…</option>
+            <option value="other">{t("supplies.otherEllipsis")}</option>
           </select>
           {newUnit === "other" && (
             <input
-              aria-label="Other unit"
+              aria-label={t("supplies.otherUnit")}
               value={newUnitOther}
               style={{ marginBottom: 0 }}
-              placeholder="spool, sheet, box…"
+              placeholder={t("supplies.otherUnitPlaceholder")}
               onChange={(e) => setNewUnitOther(e.target.value)}
             />
           )}
@@ -294,12 +301,11 @@ export function Supplies() {
             }
             onClick={() => addCat.mutate()}
           >
-            Add
+            {t("supplies.add")}
           </button>
         </div>
         <p className="muted" style={{ margin: "6px 0 0", fontSize: 12 }}>
-          How it is counted on the shelf — a roll of tape, a tube of
-          sealant. Pick <em>other…</em> to type your own.
+          {t("supplies.unitHelp")} <em>{t("supplies.otherEllipsis")}</em> {t("supplies.unitHelpEnd")}
         </p>
       </div>
 
@@ -352,6 +358,7 @@ function TakeForm({
   onClose: () => void;
   onDone: () => void;
 }) {
+  const t = useT();
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const [projectId, setProjectId] = useState<string>(
     () => localStorage.getItem(LAST_JOB_KEY) ?? "",
@@ -377,7 +384,7 @@ function TakeForm({
       localStorage.setItem(LAST_JOB_KEY, projectId);
       // Offline the server never answered, so there is no corrected count to
       // quote — say what was taken and be honest about where it got to.
-      pushToast(writeToast(r, `Took ${n} ${supply.name}.`));
+      pushToast(writeToast(r, t("supplies.took", { n, name: supply.name })));
       onDone();
     },
     onError: (e) => pushToast(formatApiError(e), "error"),
@@ -386,8 +393,8 @@ function TakeForm({
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
       <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-        <p style={{ margin: 0, fontWeight: 700 }}>Take {supply.name}</p>
-        <label className="field-label">How many ({supply.unit})</label>
+        <p style={{ margin: 0, fontWeight: 700 }}>{t("supplies.takeName", { name: supply.name })}</p>
+        <label className="field-label">{t("supplies.howMany", { unit: supply.unit })}</label>
         <input
           type="number"
           min={1}
@@ -396,9 +403,9 @@ function TakeForm({
           onChange={(e) => setQty(e.target.value)}
           autoFocus
         />
-        <label className="field-label">For which job</label>
+        <label className="field-label">{t("supplies.forWhichJob")}</label>
         <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-          <option value="">Pick the job…</option>
+          <option value="">{t("supplies.pickTheJob")}</option>
           {(projects.data ?? []).map((p) => (
             <option key={p.id} value={p.id}>
               {p.job_code} — {p.name}
@@ -411,10 +418,10 @@ function TakeForm({
             disabled={invalid || !projectId || take.isPending}
             onClick={() => take.mutate()}
           >
-            {take.isPending ? "Logging…" : "Take it"}
+            {take.isPending ? t("supplies.logging") : t("supplies.takeIt")}
           </button>
           <button className="button-like" onClick={onClose}>
-            Cancel
+            {t("supplies.cancel")}
           </button>
         </div>
       </div>
@@ -433,6 +440,7 @@ function CountForm({
   onClose: () => void;
   onDone: () => void;
 }) {
+  const t = useT();
   const [counted, setCounted] = useState(
     supply.on_hand != null ? String(supply.on_hand) : "",
   );
@@ -442,7 +450,7 @@ function CountForm({
   const count = useMutation({
     mutationFn: () => countSupply(supply.id, n),
     onSuccess: () => {
-      pushToast(`${supply.name}: counted ${n}.`);
+      pushToast(t("supplies.countedToast", { name: supply.name, n }));
       onDone();
     },
     onError: (e) => pushToast(formatApiError(e), "error"),
@@ -451,12 +459,11 @@ function CountForm({
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
       <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-        <p style={{ margin: 0, fontWeight: 700 }}>Count {supply.name}</p>
+        <p style={{ margin: 0, fontWeight: 700 }}>{t("supplies.countName", { name: supply.name })}</p>
         <p className="muted" style={{ margin: "4px 0 0", fontSize: 12.5 }}>
-          What&rsquo;s physically on the shelf right now. This replaces the
-          estimate — it doesn&rsquo;t add to it.
+          {t("supplies.countHelp")}
         </p>
-        <label className="field-label">Counted ({supply.unit})</label>
+        <label className="field-label">{t("supplies.counted", { unit: supply.unit })}</label>
         <input
           type="number"
           min={0}
@@ -471,10 +478,10 @@ function CountForm({
             disabled={invalid || count.isPending}
             onClick={() => count.mutate()}
           >
-            {count.isPending ? "Saving…" : "Save count"}
+            {count.isPending ? t("supplies.savingEllipsis") : t("supplies.saveCount")}
           </button>
           <button className="button-like" onClick={onClose}>
-            Cancel
+            {t("supplies.cancel")}
           </button>
         </div>
       </div>
@@ -494,6 +501,7 @@ function HomeForm({
   onClose: () => void;
   onDone: () => void;
 }) {
+  const t = useT();
   const containers = useQuery({ queryKey: ["storageContainers"], queryFn: listContainers });
   const [containerId, setContainerId] = useState(supply.home_container_id ?? "");
   const [note, setNote] = useState(supply.home_note ?? "");
@@ -506,7 +514,7 @@ function HomeForm({
         note: note || null,
       }),
     onSuccess: () => {
-      pushToast(`${supply.name} lives at its new spot.`);
+      pushToast(t("supplies.livesAtNewSpot", { name: supply.name }));
       onDone();
     },
     onError: (e) => pushToast(formatApiError(e), "error"),
@@ -515,13 +523,13 @@ function HomeForm({
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
       <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-        <p style={{ margin: 0, fontWeight: 700 }}>Where does {supply.name} live?</p>
-        <label className="field-label">Which box</label>
+        <p style={{ margin: 0, fontWeight: 700 }}>{t("supplies.whereDoesLive", { name: supply.name })}</p>
+        <label className="field-label">{t("supplies.whichBox")}</label>
         {/* The same crates, conexes and warehouse packages live in — one set
             of places for everything (owner ask, 2026-08-18). Slots come when
             the reorganization wakes them. */}
         <select value={containerId} onChange={(e) => setContainerId(e.target.value)}>
-          <option value="">— nowhere yet —</option>
+          <option value="">{t("supplies.nowhereYet")}</option>
           {(containers.data ?? [])
             .filter((c) => c.active)
             .map((c) => (
@@ -531,9 +539,9 @@ function HomeForm({
               </option>
             ))}
         </select>
-        <label className="field-label">Where in it (optional)</label>
+        <label className="field-label">{t("supplies.whereInIt")}</label>
         <input
-          placeholder="e.g. north wall, blue bins"
+          placeholder={t("supplies.whereInItPlaceholder")}
           value={note}
           onChange={(e) => setNote(e.target.value)}
         />
@@ -543,10 +551,10 @@ function HomeForm({
             disabled={save.isPending}
             onClick={() => save.mutate()}
           >
-            {save.isPending ? "Saving…" : "Save"}
+            {save.isPending ? t("supplies.savingEllipsis") : t("supplies.save")}
           </button>
           <button className="button-like" onClick={onClose}>
-            Cancel
+            {t("supplies.cancel")}
           </button>
         </div>
       </div>
@@ -557,6 +565,7 @@ function HomeForm({
 /** History: once a supply leaves the stores, the owner wants to know who
  * took it and where it went — read-only, nothing to save here. */
 function HistoryForm({ supply, onClose }: { supply: Supply; onClose: () => void }) {
+  const t = useT();
   // Same queryKey the rest of the page already fetches projects under, so
   // this rides the existing cache instead of firing a second network call.
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
@@ -565,31 +574,36 @@ function HistoryForm({ supply, onClose }: { supply: Supply; onClose: () => void 
     queryFn: () => listSupplyTakes(supply.id),
   });
   const jobCode = (id: string | null) =>
-    (projects.data ?? []).find((p) => p.id === id)?.job_code ?? "no job on file";
-  const takeLine = (t: SupplyTake) => {
-    const when = new Date(t.created_at).toLocaleDateString("en-US", {
+    (projects.data ?? []).find((p) => p.id === id)?.job_code ?? t("supplies.noJobOnFile");
+  const takeLine = (take: SupplyTake) => {
+    const when = new Date(take.created_at).toLocaleDateString("en-US", {
       month: "short",
       day: "numeric",
     });
-    return `${t.actor_name ?? t.actor} took ${t.qty ?? "?"} · ${jobCode(t.project_id)} · ${when}`;
+    return t("supplies.takeLine", {
+      actor: take.actor_name ?? take.actor,
+      qty: take.qty ?? "?",
+      job: jobCode(take.project_id),
+      when,
+    });
   };
 
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
       <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-        <p style={{ margin: 0, fontWeight: 700 }}>{supply.name}: who took it</p>
+        <p style={{ margin: 0, fontWeight: 700 }}>{t("supplies.whoTookIt", { name: supply.name })}</p>
         {takes.isError && <p className="error">{formatApiError(takes.error)}</p>}
         <ul className="unit-list" style={{ margin: "8px 0 0" }}>
-          {(takes.data ?? []).map((t) => (
-            <li key={t.id} className="find-row">
-              <span>{takeLine(t)}</span>
+          {(takes.data ?? []).map((take) => (
+            <li key={take.id} className="find-row">
+              <span>{takeLine(take)}</span>
             </li>
           ))}
         </ul>
-        {takes.data?.length === 0 && <p className="muted">Nothing taken yet.</p>}
+        {takes.data?.length === 0 && <p className="muted">{t("supplies.nothingTakenYet")}</p>}
         <div className="row-gap" style={{ marginTop: 10 }}>
           <button className="button-like" onClick={onClose}>
-            Close
+            {t("supplies.close")}
           </button>
         </div>
       </div>

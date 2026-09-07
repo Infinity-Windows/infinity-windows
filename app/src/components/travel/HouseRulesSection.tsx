@@ -1,5 +1,6 @@
 import { ListChecks, Pencil, Plus, Trash2 } from "lucide-react";
 import type { Procedure } from "../../lib/travel/types";
+import { useT } from "../../lib/i18n";
 
 export function HouseRulesSection({
   procedures,
@@ -14,19 +15,20 @@ export function HouseRulesSection({
   onEdit: (p: Procedure) => void;
   onDelete: (p: Procedure) => void;
 }) {
+  const t = useT();
   return (
     <section className="travel-section">
       <div className="travel-section-head">
-        <h3><ListChecks size={16} aria-hidden /> House rules & living</h3>
+        <h3><ListChecks size={16} aria-hidden /> {t("travelRules.heading")}</h3>
         {canEdit && (
           <button className="travel-add-btn" onClick={onAdd}>
-            <Plus size={15} aria-hidden /> Add rule
+            <Plus size={15} aria-hidden /> {t("travelRules.addRule")}
           </button>
         )}
       </div>
 
       {procedures.length === 0 ? (
-        <p className="muted travel-empty-note">No procedures yet.</p>
+        <p className="muted travel-empty-note">{t("travelRules.noProcedures")}</p>
       ) : (
         <div className="travel-rules">
           {procedures.map((p) => {
@@ -35,11 +37,11 @@ export function HouseRulesSection({
               <article key={p.id} className="travel-rule">
                 <div className="travel-card-head">
                   <strong>{p.title}</strong>
-                  {isTemplate && <span className="travel-badge travel-badge-crew">Company</span>}
+                  {isTemplate && <span className="travel-badge travel-badge-crew">{t("travelRules.company")}</span>}
                   {canEdit && !isTemplate && (
                     <span className="travel-card-tools">
-                      <button aria-label="Edit rule" onClick={() => onEdit(p)}><Pencil size={14} /></button>
-                      <button aria-label="Delete rule" onClick={() => onDelete(p)}><Trash2 size={14} /></button>
+                      <button aria-label={t("travelRules.editRule")} onClick={() => onEdit(p)}><Pencil size={14} /></button>
+                      <button aria-label={t("travelRules.deleteRule")} onClick={() => onDelete(p)}><Trash2 size={14} /></button>
                     </span>
                   )}
                 </div>
