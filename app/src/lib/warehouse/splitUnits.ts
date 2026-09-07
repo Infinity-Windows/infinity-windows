@@ -207,7 +207,7 @@ export function splitLinesOnStore(
     const incoming = packages.filter((p) => incomingIds.has(p.id) && sameUnit(p));
     const piece = incoming.find(hasPartNumber);
     const label = piece
-      ? t("warehouse.split.partLabel", { index: piece.part_index, total: piece.part_total })
+      ? t("warehouse.split.partLabel", { index: piece.part_index!, total: piece.part_total! })
       : t("warehouse.split.windowLabel", { mark: unit.mark });
     const where = [...new Set(elsewhere.map((p) => placeWhere(p, containersById, locationsById, t)))];
     lines.push(
