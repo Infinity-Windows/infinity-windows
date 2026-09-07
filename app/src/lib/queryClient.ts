@@ -13,6 +13,7 @@ import {
 } from "./install/api";
 import type { Planset } from "./install/types";
 import { saveJobOffline, type JobPackProgress, type JobPackResult } from "./offline/jobPack";
+import { OFFLINE_KEY_ROOTS } from "./queryKeys";
 import { toastError } from "./toast";
 
 // offlineFirst: when there's no connection, queries resolve from the persisted
@@ -46,91 +47,20 @@ export const persister =
       })
     : undefined;
 
-/** Queries worth keeping offline. Excludes heavy/binary and volatile searches. */
-const OFFLINE_KEYS = new Set([
-  "projects",
-  // Every job, whatever its status. The unit sheet sits behind a guard that
-  // asks this list whether the job is tracking-only (RequireDataJob in
-  // App.tsx), and a guard that cannot answer holds a loading screen. Offline
-  // that read never resolves — with no connection react-query PAUSES the retry
-  // instead of failing it, so the query stays pending for as long as the phone
-  // has no signal — and the sheet the whole install loop runs on sat at
-  // "Loading…" the entire time. Found by the offline e2e spec, 2026-09-04.
-  "projectsAll",
-  "openings",
-  "scopeCounts",
-  "projectWindows",
-  // "Where is it?" from the last good read. A conex is a metal box with no
-  // bars, and the harder half of working in one is READING — you have to find
-  // things in there, not just record what you took (ticket 10). The hub's
-  // numbers moved off `inventory` onto packages in ticket 06, so these four
-  // are what the Find bar and the cards actually need.
-  "storagePackages",
-  "storageContainers",
-  // The tailgate in a yard with no signal (wave 4): what truck is coming
-  // and what is on its list read from the last good copy.
-  "deliveries",
-  "deliveryPackages",
-  "scheduledMarks",
-  "issues",
-  "windowTypes",
-  "typeBrain",
-  "plansets",
-  "opening",
-  "myOpenings",
-  "myProfile",
-  // New modules — keep the installer's day usable in dead spots.
-  "openShift",
-  "myShifts",
-  "costCodes",
-  "learnProgress",
-  "priorityTerms",
-  "ledger",
-  "pointsLeaderboard",
-  "tools",
-  "supplies",
-  "todayTalk",
-  // The talk itself was cached but not whether YOU signed it, so after an
-  // offline reload the app could see a talk exists and not that the gate was
-  // already cleared — every Start install silently refused, with no message,
-  // for as long as there was no signal. That is the exact situation the
-  // offline work exists for (installer audit, 2026-08-17).
-  "toolboxToday",
-  "toolboxHistory",
-  // Same shape of bug as toolboxToday, found on review 2026-09-02: the
-  // OPENING was cached (so `needs_flashing = true` came back after an offline
-  // reload) and the flashing phase row that CLEARS it was not. A unit whose
-  // flashing was already done then read as still owing it, Submit went dead
-  // with no way out, and the install could not even be queued for later. The
-  // fact that clears a gate has to be as offline-durable as the fact that
-  // raises it.
-  "openingPhases",
-  // The same law, one step on (installer research item 2, 2026-09-04): the
-  // fact that says WHAT to install has to be as durable as the facts that
-  // clear the gates around it. The spec card — sizes, hardware, the OXXO
-  // layout, the paperwork somebody reads standing at the opening — was the one
-  // thing the unit sheet could not show with no signal, and the "no spec sheet
-  // for this mark" notice is itself gated on the spec list being non-empty, so
-  // offline the installer got silence instead of a reason. An installer who
-  // can read the spec checks it; one who cannot, guesses.
-  "markSpecs",
-  // The flat map's two other reads (ticket 05, 2026-09-06): the traced
-  // building outline and the elevation views the pins hang off. The openings
-  // were cached and these were not, so the map offline drew pins on nothing.
-  "planOutlines",
-  "elevationViews",
-  // Shelf and bin addresses. Without these a supply with a home spot degrades
-  // to "home spot set" — which looks configured and tells nobody where to go,
-  // in the conex where the answer matters most.
-  "locations",
-  // Travel Info — assigned trips must be viewable in transit / dead zones.
-  "trips",
-  "trip",
-]);
-
+/**
+ * Queries worth keeping offline. Excludes heavy/binary and volatile searches.
+ *
+ * This used to be a hand-kept list here, with the incident that justified
+ * each entry in a comment beside it. It is now derived from
+ * `QUERY_KEY_ROOTS` in `lib/queryKeys.ts` — that registry has one row for
+ * every query-key root in the app, `offline: true` for exactly the roots
+ * that were in this list, and the incident comments moved over as each
+ * row's `why`. Add a root there, not here; `queryKeys.test.ts` fails on any
+ * root used in the app that isn't registered.
+ */
 export function shouldPersistQuery(queryKey: readonly unknown[]): boolean {
   const root = queryKey[0];
-  return typeof root === "string" && OFFLINE_KEYS.has(root);
+  return typeof root === "string" && OFFLINE_KEY_ROOTS.has(root);
 }
 
 /**
