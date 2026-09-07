@@ -2630,6 +2630,42 @@ export const CATALOG = {
     en: "{job} · {count} green-light items open",
     es: "{job} · {count} elementos de luz verde pendientes",
   },
+
+  // ---- Tomorrow line + week chips (S6) -----------------------------------
+  // The next PUBLISHED assignment after today, on all three landings. The
+  // one/many split for "others" and units is the same trick as
+  // mywork.newUnits.one/.many — the framework interpolates {n} but has no
+  // plural rule, so the caller picks the key by count.
+  "tomorrow.kicker": { en: "Tomorrow", es: "Mañana" },
+  "tomorrow.notScheduled": {
+    en: "Tomorrow: not scheduled yet",
+    es: "Mañana: aún sin turno asignado",
+  },
+  "tomorrow.field.starts": { en: "Starts", es: "Empieza" },
+  "tomorrow.field.truck": { en: "Truck", es: "Camión" },
+  "tomorrow.withOthers.one": { en: "with {n} other", es: "con {n} compañero más" },
+  "tomorrow.withOthers.many": { en: "with {n} others", es: "con {n} compañeros más" },
+  "tomorrow.units.one": { en: "{n} unit", es: "{n} unidad" },
+  "tomorrow.units.many": { en: "{n} units", es: "{n} unidades" },
+  "tomorrow.weekAria": { en: "This week", es: "Esta semana" },
+
+  // ---- Today, rebuilt (S6) ------------------------------------------------
+  "mywork.more.summary": { en: "More", es: "Más" },
+  "mywork.more.doneToday": { en: "Done today", es: "Hechas hoy" },
+  "mywork.more.doneToday.empty": { en: "Nothing yet", es: "Nada todavía" },
+  "mywork.more.points": { en: "Points & badges", es: "Puntos e insignias" },
+  "mywork.more.howYourDayWorks": { en: "How your day works", es: "Cómo funciona tu día" },
+  "mywork.more.sendRecording": { en: "Send a recording", es: "Enviar una grabación" },
+  "mywork.more.saveOffline": { en: "Save jobs offline", es: "Guardar trabajos sin conexión" },
+  "mywork.counts.line": {
+    en: "{assigned} assigned · {ready} ready · {done} done",
+    es: "{assigned} asignadas · {ready} listas · {done} hechas",
+  },
+
+  // ---- Installer drawer regroup (S6) --------------------------------------
+  "nav.group.work": { en: "Work", es: "Trabajo" },
+  "nav.group.me": { en: "Me", es: "Yo" },
+  "nav.group.help": { en: "Help", es: "Ayuda" },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */

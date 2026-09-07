@@ -1,15 +1,21 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { SaveJobsStrip } from "../components/offline/SaveJobOffline";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { AlertTriangle, CheckCircle2, Plane, Truck } from "lucide-react";
 import { EmptyState, QueryError, SkeletonList } from "../components/ui/States";
+import { ListRow } from "../components/ui/ListRow";
+import { StatusChip } from "../components/ui/StatusChip";
 import { RoleMaps } from "../components/RoleMaps";
 import { ClockInBlock } from "../components/clock/ClockInBlock";
+import { CoreValuesStrip } from "../components/CoreValuesStrip";
 import { LiveSummonsStrip } from "../components/install/LiveSummonsStrip";
 import { LogTodayChip } from "../components/dailyLogs/LogTodayChip";
 import { SendRecordingButton } from "../components/learn/SendRecordingButton";
 import { DirectionsButton } from "../components/maps/DirectionsButton";
+import { TomorrowStrip } from "../components/schedule/TomorrowStrip";
+import { roleRank } from "../lib/nav";
+import { useEffectiveRole } from "../lib/useEffectiveRole";
 import {
   getMyProfile,
   listMarkSpecs,
@@ -67,8 +73,18 @@ function todayLocalISO(): string {
 
 export function MyWork() {
   const navigate = useNavigate();
+  const location = useLocation();
   const t = useT();
   const queryClient = useQueryClient();
+  // S6: the core values strip moves to the bottom of THIS page and stops
+  // rotating while a shift is open — but only when this render IS the
+  // installer's own landing ("/"). A foreman opening My Work from their menu
+  // (a different route, "/my-work") still gets the ordinary top-mounted
+  // strip Layout renders for everyone else, so this component only owns the
+  // bottom placement when both are true.
+  const { effectiveRole } = useEffectiveRole();
+  const isInstallerLanding =
+    roleRank(effectiveRole) === 0 && location.pathname === "/";
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const openings = useQuery({
     queryKey: ["myOpenings", me.data?.id],
@@ -333,21 +349,21 @@ export function MyWork() {
   const readinessTag = (o: ProjectOpening) => {
     if (blocks.has(o.id)) {
       return (
-        <span className="error">
+        <StatusChip tone="error">
           blocked{blocks.get(o.id) ? ` — ${blocks.get(o.id)}` : ""}
-        </span>
+        </StatusChip>
       );
     }
     const r = openingReadiness(o);
     const inProgress = isInstallInProgress(o);
-    const cls = inProgress
-      ? "warn-text"
+    const tone = inProgress
+      ? "accent"
       : r.status === "ready"
         ? "ok"
         : r.status === "blocked"
           ? "error"
-          : "warn-text";
-    return <span className={cls}>{inProgress ? "in progress" : r.status}</span>;
+          : "warn";
+    return <StatusChip tone={tone}>{inProgress ? "in progress" : r.status}</StatusChip>;
   };
 
   const captureHint = (o: ProjectOpening) => {
@@ -399,21 +415,31 @@ export function MyWork() {
           <h1>{t("mywork.title")}</h1>
         </div>
       </header>
-      {/* The jobs this person's units are on, saved on this phone before the
-          day starts (ticket 05). Every landing carries it, per the role-maps
-          rule; here the list is the installer's own jobs, which are exactly
-          the ones that should be in their pocket. */}
-      <SaveJobsStrip projectIds={(openings.data ?? []).map((o) => o.project_id)} />
+      {/* S6: the first minute, in order — the live-summons ring (if any), the
+          one-tap clock-in hero, and (when a unit is already running) the
+          card that takes its place. Everything that isn't "what do I do
+          right now" moved down, most of it into the More fold below. */}
       <LiveSummonsStrip />
       <ClockInBlock />
+
+      {activeInstall && (
+        <button
+          className="next-card resume-card"
+          onClick={() => go(activeInstall)}
+        >
+          <span className="next-label">{t("mywork.continueInstall")}</span>
+          <span className="next-code">{activeInstall.opening_code}</span>
+          <span className="next-meta">
+            {activeInstall.window_types?.type_code ?? t("mywork.typeUnknown")} ·{" "}
+            {activeInstall.projects?.job_code ?? ""} · {areaKey(activeInstall)}
+          </span>
+          <span className="next-capture">
+            {t("mywork.startedThisOne")}
+          </span>
+        </button>
+      )}
+
       <LogTodayChip />
-      {/* Wave U, U2: on the job screen, where somebody who just filmed a unit
-          going in is standing. It names the job they are clocked into. */}
-      <SendRecordingButton style={{ margin: "8px 0" }} />
-      <p className="muted">
-        {me.data?.display_name ? `${me.data.display_name} — ` : ""}
-        {t("mywork.hint")}
-      </p>
 
       {Boolean(openShift.data) && todayAssignment && (
         <div className="today-strip home-card">
@@ -488,22 +514,7 @@ export function MyWork() {
         </div>
       )}
 
-      {activeInstall && (
-        <button
-          className="next-card resume-card"
-          onClick={() => go(activeInstall)}
-        >
-          <span className="next-label">{t("mywork.continueInstall")}</span>
-          <span className="next-code">{activeInstall.opening_code}</span>
-          <span className="next-meta">
-            {activeInstall.window_types?.type_code ?? t("mywork.typeUnknown")} ·{" "}
-            {activeInstall.projects?.job_code ?? ""} · {areaKey(activeInstall)}
-          </span>
-          <span className="next-capture">
-            {t("mywork.startedThisOne")}
-          </span>
-        </button>
-      )}
+      <TomorrowStrip />
 
       {!activeInstall && !next && active.length === 0 && (
         <EmptyState
@@ -581,31 +592,8 @@ export function MyWork() {
         </button>
       )}
 
-      {/* Stats + secondary tasks live BELOW the do-this-now cards (grilled
-          Q1): the first screenful is clock in → your window, nothing else. */}
-      <div className="stat-grid">
-        <div className="stat-card">
-          <span className="stat-num">{active.length}</span>
-          <span>{t("mywork.stat.assigned")}</span>
-        </div>
-        <div className="stat-card accent">
-          <span className="stat-num">{readyCount}</span>
-          <span>{t("mywork.stat.readyNow")}</span>
-        </div>
-        <div className="stat-card">
-          <span className="stat-num">{done.length}</span>
-          <span>{t("mywork.stat.doneToday")}</span>
-        </div>
-      </div>
-
-      {(toConfirm.data?.length ?? 0) > 0 && (
-        <Link to="/review" className="action-btn">
-          Review {toConfirm.data!.length} AI-filled memo(s) →
-        </Link>
-      )}
-
       {/* Flash runs I'm dispatched on (owner, 2026-08-14: the run is its
-          own task) — one card per job, straight into the run screen. */}
+          own task) — kept above the per-job lists, same as before. */}
       {(myFlashRuns.data ?? []).map((r) => (
         <Link
           key={r.id}
@@ -623,86 +611,145 @@ export function MyWork() {
             {job.code} <span className="muted">· {job.items.length} to go</span>
           </h2>
           <ul className="unit-list work-list">
-            {job.items.map((o) => (
-              <li
-                key={o.id}
-                className="find-row"
-                onClick={() => go(o)}
-                style={{ cursor: "pointer" }}
-              >
-                <span
-                  className="order-badge"
-                  aria-label={`Order number ${orderNumbers.get(o.id)} of ${totalOrder}`}
-                >
-                  #{orderNumbers.get(o.id)}
-                </span>
-                <div>
-                  <strong>{o.opening_code}</strong>{" "}
-                  <span className="muted">{o.window_types?.type_code}</span>
-                  <div className="muted" style={{ fontSize: 12 }}>
-                    {areaKey(o)} · {captureHint(o)}
-                  </div>
-                  {(() => {
-                    const s = specFor(o);
-                    return s ? (
-                      <SpecCard spec={s} projectId={o.project_id} compact />
-                    ) : null;
-                  })()}
-                </div>
-                <span style={{ marginLeft: "auto" }}>{readinessTag(o)}</span>
-              </li>
-            ))}
+            {job.items.map((o) => {
+              const s = specFor(o);
+              return (
+                <li key={o.id}>
+                  <ListRow
+                    badge={<span className="order-badge" aria-hidden>#{orderNumbers.get(o.id)}</span>}
+                    aria-label={`Order number ${orderNumbers.get(o.id)} of ${totalOrder}, ${o.opening_code}`}
+                    title={
+                      <>
+                        <strong>{o.opening_code}</strong>{" "}
+                        <span className="muted">{o.window_types?.type_code}</span>
+                      </>
+                    }
+                    subtitle={
+                      <>
+                        {areaKey(o)} · {captureHint(o)}
+                        {s && <SpecCard spec={s} projectId={o.project_id} compact />}
+                      </>
+                    }
+                    trailing={readinessTag(o)}
+                    onClick={() => go(o)}
+                  />
+                </li>
+              );
+            })}
           </ul>
         </div>
       ))}
 
-      {done.length > 0 && (
-        <>
-          <h2>{t("mywork.doneTodayCount", { count: done.length })}</h2>
-          <ul className="unit-list work-list">
-            {done.map((o) => (
-              <li key={o.id} className="find-row">
-                <strong>{o.opening_code}</strong>{" "}
-                <span className="muted">{o.window_types?.type_code}</span>{" "}
-                <span className="ok" style={{ marginLeft: "auto" }}>{t("mywork.installed")}</span>
-                <button
-                  type="button"
-                  className="button-like"
-                  onClick={() => {
-                    setUnsubmitReason("");
-                    setUnsubmitError(null);
-                    setUnsubmit(o);
-                  }}
-                >
-                  {t("mywork.unsubmit")}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </>
+      {/* S6: one line replacing the stat grid — the first minute is above
+          this, so a count line is enough here. */}
+      <p className="mywork-counts-line">
+        {t("mywork.counts.line", {
+          assigned: active.length,
+          ready: readyCount,
+          done: done.length,
+        })}
+      </p>
+
+      {(toConfirm.data?.length ?? 0) > 0 && (
+        <Link to="/review" className="action-btn">
+          Review {toConfirm.data!.length} AI-filled memo(s) →
+        </Link>
       )}
 
-      {me.data?.id && (
-        <SkillTree
-          profileId={me.data.id}
-          badges={(myBadges.data ?? [])
-            .filter((b) => b.installer_id === me.data!.id)
-            .map((b) => b.capability as Capability)}
-          clearanceCount={
-            (myClearances.data ?? []).filter((c) => c.installer_id === me.data!.id).length
-          }
-          certifications={myCerts.data ?? []}
-          isSelf
-          // Read-only about myself: nobody checks their own card, whatever the
-          // UI offered — set_certification refuses it in SQL.
-          canManage={false}
-          onChanged={() =>
-            queryClient.invalidateQueries({ queryKey: ["certifications"] })
-          }
-        />
-      )}
+      {/* S6: everything that isn't "what do I do right now" folds here,
+          closed by default — Done today, Points & badges, How your day
+          works, Send a recording, Save jobs offline, in that order. */}
+      <details className="mywork-more">
+        <summary>{t("mywork.more.summary")}</summary>
 
-      <RoleMaps />
+        <div className="mywork-more-section">
+          <h2>{t("mywork.more.doneToday")}</h2>
+          {done.length > 0 ? (
+            <ul className="unit-list work-list">
+              {done.map((o) => (
+                <li key={o.id}>
+                  <ListRow
+                    title={
+                      <>
+                        <strong>{o.opening_code}</strong>{" "}
+                        <span className="muted">{o.window_types?.type_code}</span>
+                      </>
+                    }
+                    trailing={
+                      <>
+                        <StatusChip tone="ok">{t("mywork.installed")}</StatusChip>
+                        <button
+                          type="button"
+                          className="button-like"
+                          onClick={() => {
+                            setUnsubmitReason("");
+                            setUnsubmitError(null);
+                            setUnsubmit(o);
+                          }}
+                        >
+                          {t("mywork.unsubmit")}
+                        </button>
+                      </>
+                    }
+                  />
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="muted">{t("mywork.more.doneToday.empty")}</p>
+          )}
+        </div>
+
+        <div className="mywork-more-section">
+          <h2>{t("mywork.more.points")}</h2>
+          {me.data?.id && (
+            <SkillTree
+              profileId={me.data.id}
+              badges={(myBadges.data ?? [])
+                .filter((b) => b.installer_id === me.data!.id)
+                .map((b) => b.capability as Capability)}
+              clearanceCount={
+                (myClearances.data ?? []).filter((c) => c.installer_id === me.data!.id).length
+              }
+              certifications={myCerts.data ?? []}
+              isSelf
+              // Read-only about myself: nobody checks their own card, whatever the
+              // UI offered — set_certification refuses it in SQL.
+              canManage={false}
+              onChanged={() =>
+                queryClient.invalidateQueries({ queryKey: ["certifications"] })
+              }
+            />
+          )}
+        </div>
+
+        <div className="mywork-more-section">
+          <h2>{t("mywork.more.howYourDayWorks")}</h2>
+          <RoleMaps />
+        </div>
+
+        <div className="mywork-more-section">
+          <h2>{t("mywork.more.sendRecording")}</h2>
+          {/* Wave U, U2: on the job screen, where somebody who just filmed a
+              unit going in is standing. It names the job they are clocked
+              into. */}
+          <SendRecordingButton />
+        </div>
+
+        <div className="mywork-more-section">
+          <h2>{t("mywork.more.saveOffline")}</h2>
+          {/* The jobs this person's units are on, saved on this phone before
+              the day starts (ticket 05). */}
+          <SaveJobsStrip projectIds={(openings.data ?? []).map((o) => o.project_id)} />
+        </div>
+      </details>
+
+      {/* S6: bottom of Today for installers only — every other landing keeps
+          Layout's ordinary top-mounted strip. Stops rotating (one line,
+          held) while a shift is open. */}
+      {isInstallerLanding && (
+        <CoreValuesStrip pathname="/" staticMode={Boolean(openShift.data)} />
+      )}
 
       {unsubmit && (
         <div
