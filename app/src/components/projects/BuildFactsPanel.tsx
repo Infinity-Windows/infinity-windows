@@ -21,7 +21,7 @@
 // getBuildFacts/listGreenLightItems both answer empty instead of throwing, so
 // the card still renders — just with nothing recorded yet.
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   EMPTY_EXTERIOR_LINE,
@@ -135,8 +135,7 @@ export function BuildFactsPanel({
 
       {!facts.isLoading && (
         <ExteriorLinesEditor
-          key={`lines-${revision}`}
-          initial={f?.exterior_lines ?? []}
+          serverLines={f?.exterior_lines ?? []}
           t={t}
           onSave={(lines) => save.mutate({ exterior_lines: lines })}
         />
@@ -232,27 +231,49 @@ export function BuildFactsPanel({
  * the draft; every committed change (a select, a blur) saves the WHOLE list.
  * Blank lines are dropped before saving so a stray "Add" never stores an
  * empty row — but they stay on screen until the foreman fills them in or
- * removes them. Remounted by the parent (key on the row's revision) whenever
- * the stored row changes underneath it.
+ * removes them.
+ *
+ * Once the foreman has touched the list on this mount, the server's copy is
+ * NOT read back into it. Each save round-trips through the outbox and comes
+ * back as a fresh row, and a row that arrives between two quick edits
+ * (finish, then set depth) would otherwise replace the draft with a list
+ * that predates the second edit — the exact race a browser test caught. The
+ * server's list is adopted only while nothing has been edited here (first
+ * load, another tab's save on an untouched card).
  */
+type DraftRow = { id: number; line: ExteriorLine };
+
 function ExteriorLinesEditor({
-  initial,
+  serverLines,
   t,
   onSave,
 }: {
-  initial: ExteriorLine[];
+  serverLines: ExteriorLine[];
   t: Translate;
   onSave: (lines: ExteriorLine[]) => void;
 }) {
   // Each draft line carries its own id so React keys survive a removal —
   // the inputs are uncontrolled (defaultValue), and a key that shifted with
   // the index would leave the third line showing the second line's text.
-  const [rows, setRows] = useState<{ id: number; line: ExteriorLine }[]>(() =>
-    initial.map((line, i) => ({ id: i, line })),
-  );
-  const [nextId, setNextId] = useState(initial.length);
+  const nextIdRef = useRef(0);
+  const toRows = (lines: ExteriorLine[]): DraftRow[] =>
+    lines.map((line) => ({ id: nextIdRef.current++, line }));
+  const [rows, setRows] = useState<DraftRow[]>(() => toRows(serverLines));
+  const editedRef = useRef(false);
+  const serverKey = JSON.stringify(serverLines);
+  const seenRef = useRef(serverKey);
 
-  const persist = (next: { id: number; line: ExteriorLine }[]) => {
+  useEffect(() => {
+    if (editedRef.current || seenRef.current === serverKey) return;
+    seenRef.current = serverKey;
+    setRows(toRows(serverLines));
+    // toRows and serverLines are both derived from serverKey; listing the
+    // string is what makes this run once per distinct server list.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverKey]);
+
+  const persist = (next: DraftRow[]) => {
+    editedRef.current = true;
     setRows(next);
     onSave(next.map((r) => r.line).filter((l) => !isBlankExteriorLine(l)));
   };
@@ -266,8 +287,8 @@ function ExteriorLinesEditor({
     if (rows.length >= MAX_EXTERIOR_LINES) return;
     // Adding an empty line changes nothing on the server; no save until the
     // foreman fills something in.
-    setRows([...rows, { id: nextId, line: { ...EMPTY_EXTERIOR_LINE } }]);
-    setNextId(nextId + 1);
+    editedRef.current = true;
+    setRows([...rows, { id: nextIdRef.current++, line: { ...EMPTY_EXTERIOR_LINE } }]);
   };
 
   return (

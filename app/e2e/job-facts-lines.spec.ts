@@ -117,8 +117,14 @@ test("a foreman adds a second exterior situation and the whole list goes over in
   await second.getByLabel("Set depth (inches)").fill("1");
   await second.getByLabel("Set depth (inches)").blur();
 
-  await expect.poll(() => calls.length, { timeout: 45_000 }).toBeGreaterThan(0);
-  const last = calls[calls.length - 1] as { exterior_lines: Record<string, unknown>[] };
+  // Every change saves the whole list, so three edits are three RPCs; the
+  // one that matters is the last, once the inch has gone over.
+  type Patch = { exterior_lines?: Record<string, unknown>[] };
+  const lastPatch = () => calls[calls.length - 1] as Patch | undefined;
+  await expect
+    .poll(() => lastPatch()?.exterior_lines?.[1]?.set_depth_inches ?? null, { timeout: 45_000 })
+    .toBe(1);
+  const last = lastPatch() as { exterior_lines: Record<string, unknown>[] };
   expect(last.exterior_lines).toHaveLength(2);
   expect(last.exterior_lines[0]).toMatchObject({ exterior_finish: "stucco", set_depth: "inset", set_depth_inches: 1.25 });
   expect(last.exterior_lines[1]).toMatchObject({ exterior_finish: "brick", set_depth: "outset", set_depth_inches: 1 });
