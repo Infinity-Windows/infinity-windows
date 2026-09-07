@@ -665,6 +665,42 @@ export function MyWork() {
       {/* S6: everything that isn't "what do I do right now" folds here,
           closed by default — Done today, Points & badges, How your day
           works, Send a recording, Save jobs offline, in that order. */}
+      {/* Wave O (credentials) and ticket 05 (save for offline) are landing
+          doors that e2e pins visible on My Work (credentials.spec: .skill-tree
+          and "Add my card"; save-job-offline.spec: save-jobs-strip). The S6
+          gate went red twice for doors folded under More (2026-09-07), so
+          these two stay above the fold in every state. Folding them is a
+          product call for the owner, made in a PR that also changes the
+          specs — not a layout tidy. */}
+        <div className="mywork-door">
+          <h2>{t("mywork.more.points")}</h2>
+          {me.data?.id && (
+            <SkillTree
+              profileId={me.data.id}
+              badges={(myBadges.data ?? [])
+                .filter((b) => b.installer_id === me.data!.id)
+                .map((b) => b.capability as Capability)}
+              clearanceCount={
+                (myClearances.data ?? []).filter((c) => c.installer_id === me.data!.id).length
+              }
+              certifications={myCerts.data ?? []}
+              isSelf
+              // Read-only about myself: nobody checks their own card, whatever the
+              // UI offered — set_certification refuses it in SQL.
+              canManage={false}
+              onChanged={() =>
+                queryClient.invalidateQueries({ queryKey: ["certifications"] })
+              }
+            />
+          )}
+        </div>
+
+        <div className="mywork-door">
+          <h2>{t("mywork.more.saveOffline")}</h2>
+          {/* The jobs this person's units are on, saved on this phone before
+              the day starts (ticket 05). */}
+          <SaveJobsStrip projectIds={(openings.data ?? []).map((o) => o.project_id)} />
+        </div>
       <details className="mywork-more">
         <summary>{t("mywork.more.summary")}</summary>
 
@@ -707,29 +743,6 @@ export function MyWork() {
         </div>
 
         <div className="mywork-more-section">
-          <h2>{t("mywork.more.points")}</h2>
-          {me.data?.id && (
-            <SkillTree
-              profileId={me.data.id}
-              badges={(myBadges.data ?? [])
-                .filter((b) => b.installer_id === me.data!.id)
-                .map((b) => b.capability as Capability)}
-              clearanceCount={
-                (myClearances.data ?? []).filter((c) => c.installer_id === me.data!.id).length
-              }
-              certifications={myCerts.data ?? []}
-              isSelf
-              // Read-only about myself: nobody checks their own card, whatever the
-              // UI offered — set_certification refuses it in SQL.
-              canManage={false}
-              onChanged={() =>
-                queryClient.invalidateQueries({ queryKey: ["certifications"] })
-              }
-            />
-          )}
-        </div>
-
-        <div className="mywork-more-section">
           <h2>{t("mywork.more.howYourDayWorks")}</h2>
           <RoleMaps />
         </div>
@@ -746,12 +759,6 @@ export function MyWork() {
           </div>
         )}
 
-        <div className="mywork-more-section">
-          <h2>{t("mywork.more.saveOffline")}</h2>
-          {/* The jobs this person's units are on, saved on this phone before
-              the day starts (ticket 05). */}
-          <SaveJobsStrip projectIds={(openings.data ?? []).map((o) => o.project_id)} />
-        </div>
       </details>
 
       {/* S6: bottom of Today for installers only — every other landing keeps

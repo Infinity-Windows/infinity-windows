@@ -12732,3 +12732,10 @@ button.stage-chip {
 }
 .unit-facts-wins { font-weight: 400; color: var(--muted); font-size: 13px; }
 .unit-facts-empty { margin-top: 4px; }
+
+/* S6 gate (2026-09-07): two landing doors e2e pins visible on My Work — the
+   skill tree ("Add my card", wave O) and the save-for-offline strip — sit
+   above the More fold in every state, styled like a fold section so the page
+   reads as one list. */
+.mywork-door { margin-top: var(--space-3); }
+.mywork-door h2 { font-size: var(--text-md); margin: 0 0 var(--space-1); }
