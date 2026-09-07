@@ -533,12 +533,13 @@ export function MyWork() {
           it never disappears them — so !next here does not mean nothing is
           assigned. Before this, an installer with e.g. 3 windows all waiting
           on hardware saw the exact same "nothing assigned, browse jobs" card
-          as someone with zero windows, while the stat grid below still said
-          "3 assigned" and each reason was listed further down the page. That
-          contradiction sent people off to another job instead of making the
-          one call that clears the block. If we're here with active windows,
-          every one of them is blocked (that's the only way `next` comes up
-          empty) — so say that plainly and point at the fix, not "browse jobs". */}
+          as someone with zero windows, while the counts line further down
+          still said "3 assigned" and each reason was listed even further
+          down the page. That contradiction sent people off to another job
+          instead of making the one call that clears the block. If we're here
+          with active windows, every one of them is blocked (that's the only
+          way `next` comes up empty) — so say that plainly and point at the
+          fix, not "browse jobs". */}
       {!activeInstall && !next && active.length > 0 && (
         <EmptyState
           icon={<AlertTriangle size={22} />}
