@@ -32,42 +32,95 @@ import { ViewAsRoleProvider } from "./lib/viewAsRole";
 import { useEffectiveRole } from "./lib/useEffectiveRole";
 import { supabase } from "./lib/supabase";
 import { rememberSignedIn } from "./lib/signedIn";
-import { AskInfinity } from "./pages/AskInfinity";
-import { AskMisses } from "./pages/AskMisses";
-import { Knowledge } from "./pages/Knowledge";
-import { AiSpend } from "./pages/AiSpend";
 import { Home } from "./pages/Home";
 import { Landing } from "./pages/Landing";
-import { Notifications } from "./pages/Notifications";
-import { Team } from "./pages/Team";
 import { Warehouse } from "./pages/Warehouse";
-import { ContainerViewer } from "./pages/storage/ContainerViewer";
-import { Takeoffs } from "./pages/Takeoffs";
 import { ProjectDetail } from "./pages/ProjectDetail";
 import { Projects } from "./pages/Projects";
-import { JobHistory } from "./pages/JobHistory";
-import { Scan } from "./pages/Scan";
-import { ContainerDetail } from "./pages/storage/ContainerDetail";
-import { TagPackages } from "./pages/storage/TagPackages";
-import { LogDelivery } from "./pages/storage/LogDelivery";
-import { DeliveryDetail } from "./pages/storage/DeliveryDetail";
-import { RewriteSet } from "./pages/storage/RewriteSet";
-import { DeliveriesList } from "./pages/storage/DeliveriesList";
-import { JobMaterials } from "./pages/storage/JobMaterials";
-import { SendToSite } from "./pages/storage/SendToSite";
-import { WarehouseHistory } from "./pages/storage/WarehouseHistory";
-import { CheckoutPackages } from "./pages/storage/CheckoutPackages";
 import { StuckWrites } from "./pages/StuckWrites";
 import { Diagnostics } from "./pages/Diagnostics";
-import { Suggestions } from "./pages/Suggestions";
-import { ArrivePackages } from "./pages/storage/ArrivePackages";
-import { PackageSheet } from "./pages/storage/PackageSheet";
-import { UnitCard } from "./pages/storage/UnitCard";
 import { Settings } from "./pages/Settings";
 import { SignIn } from "./pages/SignIn";
-import { OpeningReview } from "./pages/install/OpeningReview";
 import { OpeningSheetRoute } from "./pages/install/OpeningSheet";
-import { MapsTrace } from "./pages/install/MapsTrace";
+import { JoinCrew } from "./pages/JoinCrew";
+import { readCodeFromUrl } from "../../supabase/functions/_shared/crewInvites";
+import { MyWork } from "./pages/MyWork";
+import { Heartbeat } from "./pages/Heartbeat";
+import { PinGate } from "./components/PinGate";
+import { LanguageProvider } from "./lib/i18n";
+import { FirstRunLanguagePicker } from "./components/LanguagePicker";
+import { ensureMyProfile } from "./lib/install/api";
+import { SkeletonCard } from "./components/ui/States";
+import { useIsPartnerUser } from "./lib/stg";
+import "./index.css";
+
+/**
+ * Route-level code splitting (owner-approved plan, step 1): a phone opening
+ * this app at 6 AM should download the shell it actually needs — the "/"
+ * landing, the opening sheet, the project hub, the warehouse, sign-in/join,
+ * settings and the two write-recovery screens (StuckWrites, Diagnostics) —
+ * and nothing else. Every other route below is `React.lazy`, so its chunk
+ * (and whatever it pulls in — pdf.js for the plan viewer, three.js and the
+ * Draco decoders for the 3D model tools) only downloads once someone
+ * actually navigates there. One shared Suspense boundary (RouteFallback)
+ * wraps the whole <Routes> tree below; the service worker still precaches
+ * every one of these chunks in the background (vite.config.ts), so offline
+ * use is unaffected once the first background sync finishes.
+ */
+const AskInfinity = lazy(() => import("./pages/AskInfinity").then((m) => ({ default: m.AskInfinity })));
+const AskMisses = lazy(() => import("./pages/AskMisses").then((m) => ({ default: m.AskMisses })));
+const Knowledge = lazy(() => import("./pages/Knowledge").then((m) => ({ default: m.Knowledge })));
+const AiSpend = lazy(() => import("./pages/AiSpend").then((m) => ({ default: m.AiSpend })));
+const Notifications = lazy(() => import("./pages/Notifications").then((m) => ({ default: m.Notifications })));
+const Team = lazy(() => import("./pages/Team").then((m) => ({ default: m.Team })));
+const ContainerViewer = lazy(() =>
+  import("./pages/storage/ContainerViewer").then((m) => ({ default: m.ContainerViewer })),
+);
+const Takeoffs = lazy(() => import("./pages/Takeoffs").then((m) => ({ default: m.Takeoffs })));
+const JobHistory = lazy(() => import("./pages/JobHistory").then((m) => ({ default: m.JobHistory })));
+const Scan = lazy(() => import("./pages/Scan").then((m) => ({ default: m.Scan })));
+const ContainerDetail = lazy(() =>
+  import("./pages/storage/ContainerDetail").then((m) => ({ default: m.ContainerDetail })),
+);
+const TagPackages = lazy(() =>
+  import("./pages/storage/TagPackages").then((m) => ({ default: m.TagPackages })),
+);
+const LogDelivery = lazy(() =>
+  import("./pages/storage/LogDelivery").then((m) => ({ default: m.LogDelivery })),
+);
+const DeliveryDetail = lazy(() =>
+  import("./pages/storage/DeliveryDetail").then((m) => ({ default: m.DeliveryDetail })),
+);
+const RewriteSet = lazy(() =>
+  import("./pages/storage/RewriteSet").then((m) => ({ default: m.RewriteSet })),
+);
+const DeliveriesList = lazy(() =>
+  import("./pages/storage/DeliveriesList").then((m) => ({ default: m.DeliveriesList })),
+);
+const JobMaterials = lazy(() =>
+  import("./pages/storage/JobMaterials").then((m) => ({ default: m.JobMaterials })),
+);
+const SendToSite = lazy(() =>
+  import("./pages/storage/SendToSite").then((m) => ({ default: m.SendToSite })),
+);
+const WarehouseHistory = lazy(() =>
+  import("./pages/storage/WarehouseHistory").then((m) => ({ default: m.WarehouseHistory })),
+);
+const CheckoutPackages = lazy(() =>
+  import("./pages/storage/CheckoutPackages").then((m) => ({ default: m.CheckoutPackages })),
+);
+const Suggestions = lazy(() => import("./pages/Suggestions").then((m) => ({ default: m.Suggestions })));
+const ArrivePackages = lazy(() =>
+  import("./pages/storage/ArrivePackages").then((m) => ({ default: m.ArrivePackages })),
+);
+const PackageSheet = lazy(() =>
+  import("./pages/storage/PackageSheet").then((m) => ({ default: m.PackageSheet })),
+);
+const UnitCard = lazy(() => import("./pages/storage/UnitCard").then((m) => ({ default: m.UnitCard })));
+const OpeningReview = lazy(() =>
+  import("./pages/install/OpeningReview").then((m) => ({ default: m.OpeningReview })),
+);
+const MapsTrace = lazy(() => import("./pages/install/MapsTrace").then((m) => ({ default: m.MapsTrace })));
 const StudioList = lazy(() =>
   import("./pages/install/StudioList").then((m) => ({ default: m.StudioList })),
 )
@@ -77,52 +130,71 @@ const StudioJobRoute = lazy(() =>
 const StudioProjectRoute = lazy(() =>
   import("./pages/install/StudioList").then((m) => ({ default: m.StudioProjectRoute })),
 );
-import { FlashRun } from "./pages/install/FlashRun";
-import { JobModelViewer } from "./pages/install/JobModelViewer";
-import { PlansetUpload } from "./pages/install/PlansetUpload";
-import { TypeBrainCard } from "./pages/install/TypeBrainCard";
-import { CatalogImport } from "./pages/CatalogImport";
-import { Crew } from "./pages/Crew";
-import { CrewAccess } from "./pages/CrewAccess";
-import { GcPage } from "./pages/GcPage";
-import { JoinCrew } from "./pages/JoinCrew";
-import { readCodeFromUrl } from "../../supabase/functions/_shared/crewInvites";
-import { MyWork } from "./pages/MyWork";
-import { Issues } from "./pages/Issues";
-import { Service } from "./pages/Service";
-import { Heartbeat } from "./pages/Heartbeat";
-import { Analytics } from "./pages/Analytics";
-import { MemoReview } from "./pages/MemoReview";
-import { Admin } from "./pages/Admin";
-import { Timecard } from "./pages/Timecard";
-import { TeamTimecards } from "./pages/TeamTimecards";
-import { Scheduling } from "./pages/Scheduling";
-import { MySchedule } from "./pages/MySchedule";
-import { Travel } from "./pages/Travel";
-import { TripDetail } from "./pages/TripDetail";
-import { Vehicles } from "./pages/Vehicles";
-import { VehicleDetail } from "./pages/VehicleDetail";
-import { FleetMap } from "./pages/FleetMap";
-import { CostCodes } from "./pages/CostCodes";
-import { Costing } from "./pages/Costing";
-import { Receipts } from "./pages/Receipts";
-import { Education } from "./pages/Education";
-import { LearningTime } from "./pages/LearningTime";
-import { Photos } from "./pages/Photos";
-import { Points } from "./pages/Points";
-import { Safety } from "./pages/Safety";
-import { ToolboxHistory } from "./pages/ToolboxHistory";
-import { Supplies } from "./pages/Supplies";
-import { Qc } from "./pages/Qc";
-import { PinGate } from "./components/PinGate";
-import { LanguageProvider } from "./lib/i18n";
-import { FirstRunLanguagePicker } from "./components/LanguagePicker";
-import { ensureMyProfile } from "./lib/install/api";
-import "./index.css";
-import { DataHub } from "./pages/DataHub";
-import { StgApp } from "./pages/stg/StgApp";
-import { useIsPartnerUser } from "./lib/stg";
-import { AccountBuilders } from "./pages/AccountBuilders";
+const FlashRun = lazy(() => import("./pages/install/FlashRun").then((m) => ({ default: m.FlashRun })));
+const JobModelViewer = lazy(() =>
+  import("./pages/install/JobModelViewer").then((m) => ({ default: m.JobModelViewer })),
+);
+const PlansetUpload = lazy(() =>
+  import("./pages/install/PlansetUpload").then((m) => ({ default: m.PlansetUpload })),
+);
+const TypeBrainCard = lazy(() =>
+  import("./pages/install/TypeBrainCard").then((m) => ({ default: m.TypeBrainCard })),
+);
+const CatalogImport = lazy(() => import("./pages/CatalogImport").then((m) => ({ default: m.CatalogImport })));
+const Crew = lazy(() => import("./pages/Crew").then((m) => ({ default: m.Crew })));
+const CrewAccess = lazy(() => import("./pages/CrewAccess").then((m) => ({ default: m.CrewAccess })));
+const GcPage = lazy(() => import("./pages/GcPage").then((m) => ({ default: m.GcPage })));
+const Issues = lazy(() => import("./pages/Issues").then((m) => ({ default: m.Issues })));
+const Service = lazy(() => import("./pages/Service").then((m) => ({ default: m.Service })));
+const Analytics = lazy(() => import("./pages/Analytics").then((m) => ({ default: m.Analytics })));
+const MemoReview = lazy(() => import("./pages/MemoReview").then((m) => ({ default: m.MemoReview })));
+const Admin = lazy(() => import("./pages/Admin").then((m) => ({ default: m.Admin })));
+const Timecard = lazy(() => import("./pages/Timecard").then((m) => ({ default: m.Timecard })));
+const TeamTimecards = lazy(() =>
+  import("./pages/TeamTimecards").then((m) => ({ default: m.TeamTimecards })),
+);
+const Scheduling = lazy(() => import("./pages/Scheduling").then((m) => ({ default: m.Scheduling })));
+const MySchedule = lazy(() => import("./pages/MySchedule").then((m) => ({ default: m.MySchedule })));
+const Travel = lazy(() => import("./pages/Travel").then((m) => ({ default: m.Travel })));
+const TripDetail = lazy(() => import("./pages/TripDetail").then((m) => ({ default: m.TripDetail })));
+const Vehicles = lazy(() => import("./pages/Vehicles").then((m) => ({ default: m.Vehicles })));
+const VehicleDetail = lazy(() =>
+  import("./pages/VehicleDetail").then((m) => ({ default: m.VehicleDetail })),
+);
+const FleetMap = lazy(() => import("./pages/FleetMap").then((m) => ({ default: m.FleetMap })));
+const CostCodes = lazy(() => import("./pages/CostCodes").then((m) => ({ default: m.CostCodes })));
+const Costing = lazy(() => import("./pages/Costing").then((m) => ({ default: m.Costing })));
+const Receipts = lazy(() => import("./pages/Receipts").then((m) => ({ default: m.Receipts })));
+const Education = lazy(() => import("./pages/Education").then((m) => ({ default: m.Education })));
+const LearningTime = lazy(() =>
+  import("./pages/LearningTime").then((m) => ({ default: m.LearningTime })),
+);
+const Photos = lazy(() => import("./pages/Photos").then((m) => ({ default: m.Photos })));
+const Points = lazy(() => import("./pages/Points").then((m) => ({ default: m.Points })));
+const Safety = lazy(() => import("./pages/Safety").then((m) => ({ default: m.Safety })));
+const ToolboxHistory = lazy(() =>
+  import("./pages/ToolboxHistory").then((m) => ({ default: m.ToolboxHistory })),
+);
+const Supplies = lazy(() => import("./pages/Supplies").then((m) => ({ default: m.Supplies })));
+const Qc = lazy(() => import("./pages/Qc").then((m) => ({ default: m.Qc })));
+const DataHub = lazy(() => import("./pages/DataHub").then((m) => ({ default: m.DataHub })));
+const StgApp = lazy(() => import("./pages/stg/StgApp").then((m) => ({ default: m.StgApp })));
+const AccountBuilders = lazy(() =>
+  import("./pages/AccountBuilders").then((m) => ({ default: m.AccountBuilders })),
+);
+
+/** Shared fallback for every lazy route below — a neutral skeleton, not a
+ *  spinner, so a slow chunk on bad signal reads as "the page is coming",
+ *  not "something is wrong". */
+function RouteFallback() {
+  return (
+    <div className="page">
+      <SkeletonCard height={120} />
+      <SkeletonCard height={72} />
+      <SkeletonCard height={72} />
+    </div>
+  );
+}
 
 /**
  * Role-aware landing: installers land on My Work, foremen on the Infinity day
@@ -381,7 +453,13 @@ export default function App() {
   // sit there for a while. He is not signing in, so he does not wait for the
   // answer. Everything this page shows comes from the gc-link edge function on
   // the service role; the token grants no table access at all.
-  if (gcToken) return <GcPage token={gcToken} />;
+  if (gcToken) {
+    return (
+      <Suspense fallback={<div className="page" style={{ padding: 24, textAlign: "center" }}><p className="muted">Connecting…</p></div>}>
+        <GcPage token={gcToken} />
+      </Suspense>
+    );
+  }
 
   if (!ready) {
     return (
@@ -471,6 +549,7 @@ export default function App() {
         {/* Renders nothing; puts the viewer's role on any crash report. */}
         <CrashMonitorRole />
         <SectionAura />
+        <Suspense fallback={<RouteFallback />}>
         <Routes>
           {/* A partner's whole app — outside the crew Layout entirely, so no
               crew chrome (nav, bottom bar, values strip) can ever mount for
@@ -814,6 +893,7 @@ export default function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>
+        </Suspense>
         </ClockProvider>
       </BrowserRouter>
       </ViewAsRoleProvider>
