@@ -16,6 +16,8 @@ import { listProjects } from "../../lib/api";
 import { normalizeMarkCode } from "../../lib/fitview/adapter";
 import type { StorageContainer, StoragePackage } from "../../lib/storage";
 import {
+  cardBlurb,
+  cardLabel,
   cardPackages,
   listMarkSpecTypes,
   listOpeningRefs,
@@ -25,6 +27,7 @@ import {
   type CardId,
 } from "../../lib/warehouse/warehouseCards";
 import { PackageRowText } from "./PackageRowText";
+import { useT } from "../../lib/i18n";
 
 export function CardList({
   card,
@@ -37,6 +40,7 @@ export function CardList({
   containers: StorageContainer[];
   jobCode: Map<string, string>;
 }) {
+  const t = useT();
   const def = WAREHOUSE_CARDS.find((c) => c.id === card)!;
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   // Excludes testing projects, same reason as the Warehouse page: otherwise
@@ -85,9 +89,9 @@ export function CardList({
 
   return (
     <>
-      <h2 style={{ textTransform: "capitalize" }}>{def.label}</h2>
+      <h2 style={{ textTransform: "capitalize" }}>{cardLabel(def.id, t)}</h2>
       <p className="muted" style={{ margin: "0 0 8px", fontSize: 13 }}>
-        {def.blurb}
+        {cardBlurb(def.id, t)}
       </p>
 
       {card === "not-tagged" ? (
@@ -99,7 +103,7 @@ export function CardList({
               <div className="home-project-head">
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontWeight: 600 }}>
-                    Window {m.mark_code}
+                    {t("warehouse.card.window", { mark: m.mark_code })}
                     {type && (
                       <span className="muted" style={{ fontWeight: 400 }}>
                         {" "}· {type}
@@ -107,10 +111,8 @@ export function CardList({
                     )}
                   </div>
                   <div className="muted" style={{ fontSize: 12 }}>
-                    {jobCode.get(m.project_id) ?? "?"} · nothing tagged yet
-                    {!opening && openings.isSuccess
-                      ? " · no spec page yet — spec review adds it"
-                      : ""}
+                    {jobCode.get(m.project_id) ?? "?"} · {t("warehouse.card.nothingTagged")}
+                    {!opening && openings.isSuccess ? ` · ${t("warehouse.card.noSpecPage")}` : ""}
                   </div>
                 </div>
                 {opening && <span className="muted">›</span>}
@@ -133,11 +135,7 @@ export function CardList({
               </div>
             );
           })}
-          {missing.length === 0 && (
-            <p className="muted">
-              Every window on every active job has at least one package tagged.
-            </p>
-          )}
+          {missing.length === 0 && <p className="muted">{t("warehouse.card.allTagged")}</p>}
         </div>
       ) : (
         <div className="home-projects">
@@ -149,11 +147,11 @@ export function CardList({
               </div>
             </Link>
           ))}
-          {rows.length === 0 && <p className="muted">Nothing here — good.</p>}
+          {rows.length === 0 && <p className="muted">{t("warehouse.card.nothingHere")}</p>}
         </div>
       )}
       <Link className="button-like" to="/warehouse">
-        Clear filter
+        {t("warehouse.card.clearFilter")}
       </Link>
     </>
   );

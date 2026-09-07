@@ -132,6 +132,7 @@ export interface StorageContainer {
 export function jobLabel(
   p: Pick<StoragePackage, "project_id" | "status" | "pending_job_name">,
   jobCodeById: Map<string, string>,
+  t: TFn = englishT,
 ): string {
   if (p.status === "blank") return "";
   if (p.project_id == null) {
@@ -139,9 +140,9 @@ export function jobLabel(
     // the owner saw "Boneyard" on waiting glass and read it as ownerless
     // (2026-08-26). Its job name is the headline (packageTitle); this word
     // is the small honest tag beside it.
-    return p.pending_job_name ? "waiting on job" : "Boneyard";
+    return p.pending_job_name ? t("warehouse.job.waitingOnJob") : t("warehouse.job.boneyard");
   }
-  return jobCodeById.get(p.project_id) ?? "job not listed";
+  return jobCodeById.get(p.project_id) ?? t("warehouse.job.notListed");
 }
 
 /**
@@ -165,6 +166,7 @@ export function packageTitle(
     | "serial"
   > & { package_marks?: { mark_code: string }[] },
   jobCodeById: Map<string, string>,
+  t: TFn = englishT,
 ): string {
   const jobLine = p.project_id
     ? (jobCodeById.get(p.project_id) ?? null)
@@ -173,7 +175,10 @@ export function packageTitle(
   if (!mark) return jobLine ?? p.serial;
   const part =
     p.piece_count != null
-      ? `${p.piece_count} pc ${p.part_type ?? "glass"}`
+      ? t("warehouse.pieceCount", {
+          n: p.piece_count,
+          kind: (p.part_type ? partTypeLabel(p.part_type as PartType, t) : t("warehouse.partType.glass")).toLowerCase(),
+        })
       : p.part_index != null && p.part_total != null
         ? `${p.part_index}/${p.part_total}`
         : null;

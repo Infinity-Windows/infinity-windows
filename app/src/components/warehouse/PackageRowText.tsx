@@ -9,13 +9,14 @@
 // "waiting on job · PKG-000311 · YHGD7N · 1d stored"   <- muted
 
 import {
-  CATEGORY_LABELS,
+  categoryLabel,
   jobLabel,
   packageTitle,
-  PART_LABELS,
+  partTypeLabel,
   type PartType,
   type StoragePackage,
 } from "../../lib/storage";
+import { useT } from "../../lib/i18n";
 
 export function PackageRowText({
   p,
@@ -27,19 +28,20 @@ export function PackageRowText({
   /** Where it sits / how long it has — the tail of the small line. */
   extra?: string | null;
 }) {
-  const name = packageTitle(p, jobCode);
+  const t = useT();
+  const name = packageTitle(p, jobCode, t);
   // The pool line ("5 pc glass") already names the kind inside the title,
   // and a crate's name IS the word crate ("Mad Moose #CRATE 1") — repeating
   // either after the dot would stutter.
   const kind =
     p.piece_count == null && p.part_type !== "crate"
       ? p.part_type
-        ? (PART_LABELS[p.part_type as PartType] ?? p.part_type)
+        ? partTypeLabel(p.part_type as PartType, t)
         : p.category
-          ? CATEGORY_LABELS[p.category]
+          ? categoryLabel(p.category, t)
           : null
       : null;
-  const owner = jobLabel(p, jobCode);
+  const owner = jobLabel(p, jobCode, t);
   return (
     <div className="wh-row-main">
       <div className="wh-row-title">

@@ -3800,6 +3800,48 @@ export const CATALOG = {
   "warehouse.find.taggedForJob.one": { en: "{n} package tagged for this job", es: "{n} paquete etiquetado para este trabajo" },
   "warehouse.find.taggedForJob.many": { en: "{n} packages tagged for this job", es: "{n} paquetes etiquetados para este trabajo" },
   "warehouse.find.open": { en: "Open {name}", es: "Abrir {name}" },
+
+  // lib/storage.ts — jobLabel/packageTitle (PackageRowText.tsx and every
+  // list row built on them).
+  "warehouse.job.waitingOnJob": { en: "waiting on job", es: "esperando trabajo" },
+  // i18n-same-on-purpose: "Boneyard" is the crew's own word (CONTEXT.md), kept as-is.
+  "warehouse.job.boneyard": { en: "Boneyard", es: "Boneyard" },
+  "warehouse.job.notListed": { en: "job not listed", es: "trabajo no registrado" },
+  "warehouse.pieceCount": { en: "{n} pc {kind}", es: "{n} pza {kind}" },
+
+  // lib/warehouse/warehouseCards.ts — the four hub cards (Warehouse.tsx
+  // chips, CardList.tsx).
+  "warehouse.card.onHand.label": { en: "on hand", es: "en existencia" },
+  "warehouse.card.onHand.blurb": {
+    en: "Every package we are still holding — tagged and not yet taken out to a job. This is the warehouse's whole load.",
+    es: "Todo paquete que todavía tenemos — etiquetado y aún no sacado para un trabajo. Esta es toda la carga del almacén.",
+  },
+  "warehouse.card.notTagged.label": { en: "not tagged", es: "sin etiquetar" },
+  "warehouse.card.notTagged.blurb": {
+    en: "Windows on an active job's plans with no package tagged yet. Either the material hasn't arrived, or it's here and nobody stuck a sticker on it — and until somebody does, nobody can be told where it is. Tag things as you touch them and this number only goes down.",
+    es: "Ventanas en los planos de un trabajo activo sin ningún paquete etiquetado todavía. O el material no ha llegado, o ya está aquí y nadie le puso una etiqueta — y hasta que alguien lo haga, nadie puede saber dónde está. Etiqueta las cosas conforme las tocas y este número solo baja.",
+  },
+  "warehouse.card.loose.label": { en: "loose", es: "suelto" },
+  "warehouse.card.loose.blurb": {
+    en: "Tagged, so we know it exists — but in no conex, no crate and no shelf spot, so the app can't tell anyone where. Scan these into a container and they stop being lost.",
+    es: "Etiquetado, así que sabemos que existe — pero sin conex, sin crate y sin lugar en un estante, así que la app no le puede decir a nadie dónde está. Escanéalos hacia una caja y dejan de estar perdidos.",
+  },
+  "warehouse.card.damaged.label": { en: "damaged", es: "dañado" },
+  "warehouse.card.damaged.blurb": {
+    en: "Open damage reports — material that arrived broken or got broken here. Each one needs a replacement ordered before that window can be finished. Tap through to the issue to see the note, the photo when one was taken, and who reported it.",
+    es: "Reportes de daño abiertos — material que llegó roto o se rompió aquí. Cada uno necesita un reemplazo pedido antes de que esa ventana se pueda terminar. Toca para ver el reporte con la nota, la foto cuando se tomó una, y quién lo reportó.",
+  },
+
+  // components/warehouse/CardList.tsx
+  "warehouse.card.window": { en: "Window {mark}", es: "Ventana {mark}" },
+  "warehouse.card.nothingTagged": { en: "nothing tagged yet", es: "nada etiquetado todavía" },
+  "warehouse.card.noSpecPage": { en: "no spec page yet — spec review adds it", es: "todavía sin página de spec — la revisión de spec la agrega" },
+  "warehouse.card.allTagged": {
+    en: "Every window on every active job has at least one package tagged.",
+    es: "Toda ventana de todo trabajo activo tiene al menos un paquete etiquetado.",
+  },
+  "warehouse.card.nothingHere": { en: "Nothing here — good.", es: "No hay nada aquí — bien." },
+  "warehouse.card.clearFilter": { en: "Clear filter", es: "Quitar filtro" },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */
