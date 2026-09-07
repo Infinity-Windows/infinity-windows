@@ -27,16 +27,18 @@ import { playErrorTone, playSuccessTone } from "../../lib/sound";
 import { STATION_OFF_TRUCK } from "../../lib/warehouse/stations";
 import {
   arrivePackages,
-  CATEGORY_LABELS,
+  categoryLabel,
   damagePhotoPath,
   ISSUE_PHOTOS_BUCKET,
   listActivePackages,
   partLabel,
 } from "../../lib/storage";
+import { useT } from "../../lib/i18n";
 
 type Verdict = "ok" | "damaged";
 
 export function ArrivePackages() {
+  const t = useT();
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [params] = useSearchParams();
@@ -122,12 +124,15 @@ export function ArrivePackages() {
       playSuccessTone();
       pushToast(
         damaged.length > 0
-          ? `Arrival logged — ${damaged.length} flagged damaged, ${damaged.length === 1 ? "an issue is" : "issues are"} open.`
-          : `Arrival logged — ${ok.length} package${ok.length === 1 ? "" : "s"} good.`,
+          ? t(damaged.length === 1 ? "storage.arrive.logged.damagedOne" : "storage.arrive.logged.damagedMany", { n: damaged.length })
+          : t(ok.length === 1 ? "storage.arrive.logged.goodOne" : "storage.arrive.logged.goodMany", { n: ok.length }),
       );
       if (photoFailures.length > 0) {
         pushToast(
-          `${photoFailures.length} ${photoFailures.length === 1 ? "photo" : "photos"} couldn't be saved, but the damage report went through — ${photoFailures[0]}`,
+          t(photoFailures.length === 1 ? "storage.arrive.photoFail.one" : "storage.arrive.photoFail.many", {
+            n: photoFailures.length,
+            reason: photoFailures[0],
+          }),
           "error",
         );
       }
@@ -149,24 +154,17 @@ export function ArrivePackages() {
       <header className="page-header">
         <div>
           <BackChip />
-          <p className="home-greeting">Storage</p>
-          <h1>Arrival check</h1>
+          <p className="home-greeting">{t("storage.arrive.storage")}</p>
+          <h1>{t("storage.arrive.title")}</h1>
         </div>
       </header>
       <StationChip station={STATION_OFF_TRUCK} />
 
-      <Explain id="arrival-check">
-        Only worth doing when something looks wrong. Tick anything that arrived
-        broken and it raises an urgent issue naming that package, so a
-        replacement gets ordered today instead of on the day somebody tries to
-        install it. Add a photo if you can — it's optional, and the issue
-        opens either way. Skipping this changes nothing — the material is
-        already at the job either way.
-      </Explain>
+      <Explain id="arrival-check">{t("storage.arrive.explain")}</Explain>
 
-      <h2>Which job</h2>
+      <h2>{t("storage.arrive.whichJob")}</h2>
       <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-        <option value="">Pick the job…</option>
+        <option value="">{t("storage.arrive.pickJob")}</option>
         {(projects.data ?? []).map((p) => (
           <option key={p.id} value={p.id}>
             {p.job_code} — {p.name}
@@ -176,7 +174,7 @@ export function ArrivePackages() {
 
       {projectId && (
         <>
-          <h2>What turned up ({outForJob.length} out)</h2>
+          <h2>{t("storage.arrive.whatTurnedUp", { n: outForJob.length })}</h2>
           <div className="home-projects">
             {outForJob.map((p) => {
               const v = verdicts.get(p.id);
@@ -188,10 +186,10 @@ export function ArrivePackages() {
                         {p.short_code ?? p.serial}
                       </div>
                       <div className="wh-row-sub">
-                        {partLabel(p) ?? "no part number"}
-                        {p.category ? ` · ${CATEGORY_LABELS[p.category]}` : ""}
+                        {partLabel(p, t) ?? t("storage.arrive.noPartNumber")}
+                        {p.category ? ` · ${categoryLabel(p.category, t)}` : ""}
                         {(p.package_marks ?? []).length > 0 &&
-                          ` · marks ${(p.package_marks ?? []).map((m) => m.mark_code).join(", ")}`}
+                          ` · ${t("storage.arrive.marks", { marks: (p.package_marks ?? []).map((m) => m.mark_code).join(", ") })}`}
                       </div>
                     </div>
                     <div className="row-gap">
@@ -199,13 +197,13 @@ export function ArrivePackages() {
                         className={v === "ok" ? "button-like active-pill" : "button-like"}
                         onClick={() => set(p.id, "ok")}
                       >
-                        Good
+                        {t("storage.arrive.good")}
                       </button>
                       <button
                         className={v === "damaged" ? "button-like active-pill" : "button-like"}
                         onClick={() => set(p.id, "damaged")}
                       >
-                        Damaged
+                        {t("storage.arrive.damaged")}
                       </button>
                     </div>
                   </div>
@@ -216,7 +214,7 @@ export function ArrivePackages() {
                         value={photos.get(p.id) ?? null}
                         onChange={(file) => setPhoto(p.id, file)}
                         label={p.short_code ?? p.serial}
-                        prompt="Photo of the damage (optional)"
+                        prompt={t("storage.arrive.photoPrompt")}
                       />
                     </div>
                   )}
@@ -225,14 +223,14 @@ export function ArrivePackages() {
             })}
             {outForJob.length === 0 && (
               <p className="muted">
-                Nothing is checked out to {jobCode.get(projectId) ?? "this job"} right now.
+                {t("storage.arrive.nothingCheckedOut", { job: jobCode.get(projectId) ?? t("storage.arrive.thisJob") })}
               </p>
             )}
           </div>
 
-          <label className="field-label">Note (optional)</label>
+          <label className="field-label">{t("storage.arrive.noteOptional")}</label>
           <input
-            placeholder="e.g. corner crushed on the truck"
+            placeholder={t("storage.arrive.notePlaceholder")}
             value={note}
             onChange={(e) => setNote(e.target.value)}
           />
@@ -244,8 +242,8 @@ export function ArrivePackages() {
               onClick={() => submit.mutate()}
             >
               {submit.isPending
-                ? "Logging…"
-                : `Log ${verdicts.size} · ${damaged.length} damaged`}
+                ? t("storage.arrive.logging")
+                : t("storage.arrive.logButton", { total: verdicts.size, damaged: damaged.length })}
             </button>
           </div>
         </>
