@@ -16,6 +16,7 @@ import type { Issue } from "../lib/issues";
 import type { ScheduleAssignment } from "../lib/schedule/types";
 import type { ScheduleVehicleLink, VehicleWithMeta } from "../lib/vehicles/types";
 import type { Trip } from "../lib/travel/types";
+import { useT } from "../lib/i18n";
 
 interface ChatMsg {
   who: "me" | "infinity";
@@ -118,15 +119,11 @@ function brainMessage(outcome: BrainOutcome, note?: string): ChatMsg {
 }
 
 export function AskInfinity() {
+  const t = useT();
   const [input, setInput] = useState("");
   const [catalog, setCatalog] = useState<CatalogType[]>(() => currentCatalog().types);
   const [messages, setMessages] = useState<ChatMsg[]>([
-    {
-      who: "infinity",
-      text:
-        "Hey — ask me anything about a window type, a term, or how we install. " +
-        "Answers come from our own notes, on this phone, so they work with no signal.",
-    },
+    { who: "infinity", text: t("ask.greeting") },
   ]);
   const [thinking, setThinking] = useState(false);
   const profile = queryClient.getQueryData<Profile>(["myProfile"]);
@@ -161,16 +158,21 @@ export function AskInfinity() {
     threadEnd.current?.scrollIntoView({ block: "end" });
   }, [messages]);
 
+  // The label is shown translated; the query sent to send() stays the
+  // original English phrase — the brain's keyword index (lib/brain,
+  // lib/knowledge.ts) is English-only content, so a Spanish query would
+  // simply fail to match. Translating the corpus itself is a separate,
+  // much bigger effort than this UI sweep (see the S3b report).
   const suggestions = useMemo(
     () => [
-      "Single hung tips",
-      "What is flashing?",
-      "Do I caulk the bottom?",
-      "Which side does the drain face?",
-      "What's on our schedule?",
-      "My next unit",
+      { label: t("ask.suggestion.singleHung"), query: "Single hung tips" },
+      { label: t("ask.suggestion.flashing"), query: "What is flashing?" },
+      { label: t("ask.suggestion.caulkBottom"), query: "Do I caulk the bottom?" },
+      { label: t("ask.suggestion.drainSide"), query: "Which side does the drain face?" },
+      { label: t("ask.suggestion.schedule"), query: "What's on our schedule?" },
+      { label: t("ask.suggestion.nextUnit"), query: "My next unit" },
     ],
-    [],
+    [t],
   );
 
   const send = (text: string) => {
@@ -228,7 +230,7 @@ export function AskInfinity() {
       .catch(() =>
         setMessages((m) => [
           ...m,
-          { who: "infinity", text: "Something went wrong. Try again." },
+          { who: "infinity", text: t("ask.somethingWentWrong") },
         ]),
       )
       .finally(() => setThinking(false));
@@ -241,9 +243,9 @@ export function AskInfinity() {
           <p className="home-greeting ai-eyebrow">
             <Sparkles size={13} /> Forge
           </p>
-          <h1>Company brain</h1>
+          <h1>{t("ask.title")}</h1>
         </div>
-        <BackChip label="Back" />
+        <BackChip label={t("ask.back")} />
       </header>
 
       <div className="ask-thread">
@@ -267,12 +269,12 @@ export function AskInfinity() {
               {m.text}
             </div>
             {m.hits && m.hits.length > 0 && (
-              <p className="ask-sources muted">From: {m.hits[0].entry.source}</p>
+              <p className="ask-sources muted">{t("ask.from", { source: m.hits[0].entry.source })}</p>
             )}
             {m.hits && m.hits.length > 1 && (
               <div className="ask-alternates">
                 <p className="muted" style={{ margin: "4px 0 2px", fontSize: 12 }}>
-                  Also written down:
+                  {t("ask.alsoWrittenDown")}
                 </p>
                 {m.hits.slice(1).map((hit) => (
                   <details key={hit.entry.id} className="ask-alternate">
@@ -287,7 +289,7 @@ export function AskInfinity() {
             )}
             {m.sources && m.sources.length > 0 && (
               <p className="ask-sources muted">
-                Sources: {m.sources.map((s) => s.title).join(", ")}
+                {t("ask.sources", { list: m.sources.map((s) => s.title).join(", ") })}
               </p>
             )}
           </div>
@@ -302,20 +304,20 @@ export function AskInfinity() {
 
       <div className="ask-suggestions">
         {suggestions.map((s) => (
-          <button key={s} type="button" className="chip" onClick={() => send(s)}>
-            {s}
+          <button key={s.query} type="button" className="chip" onClick={() => send(s.query)}>
+            {s.label}
           </button>
         ))}
       </div>
 
       <div className="ask-input">
         <input
-          placeholder="Ask about a window, a term, or how-to…"
+          placeholder={t("ask.inputPlaceholder")}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && send(input)}
         />
-        <button type="button" className="ask-send" onClick={() => send(input)} aria-label="Send">
+        <button type="button" className="ask-send" onClick={() => send(input)} aria-label={t("ask.send")}>
           ↑
         </button>
       </div>

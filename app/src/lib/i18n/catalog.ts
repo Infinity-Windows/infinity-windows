@@ -4371,6 +4371,29 @@ export const CATALOG = {
   "storage.logDelivery.removeSet": { en: "Remove set", es: "Quitar set" },
   "storage.logDelivery.anotherSet": { en: "+ Another set ({n}/{max})", es: "+ Otro set ({n}/{max})" },
   "storage.logDelivery.nextReview": { en: "Next: review", es: "Siguiente: revisión" },
+
+  // pages/AskInfinity.tsx — the UI chrome only. The knowledge base itself
+  // (lib/knowledge.ts, lib/brain/*) and its written answers stay English:
+  // translating a keyword-matched install-knowledge corpus is a separate,
+  // much bigger effort than this UI sweep.
+  "ask.greeting": {
+    en: "Hey — ask me anything about a window type, a term, or how we install. Answers come from our own notes, on this phone, so they work with no signal.",
+    es: "Hola — pregúntame lo que sea sobre un tipo de ventana, un término, o cómo instalamos. Las respuestas vienen de nuestras propias notas, en este teléfono, así que funcionan sin señal.",
+  },
+  "ask.suggestion.singleHung": { en: "Single hung tips", es: "Consejos de single hung" },
+  "ask.suggestion.flashing": { en: "What is flashing?", es: "¿Qué es el flashing?" },
+  "ask.suggestion.caulkBottom": { en: "Do I caulk the bottom?", es: "¿Sello la parte de abajo?" },
+  "ask.suggestion.drainSide": { en: "Which side does the drain face?", es: "¿Hacia qué lado va el drenaje?" },
+  "ask.suggestion.schedule": { en: "What's on our schedule?", es: "¿Qué hay en nuestro horario?" },
+  "ask.suggestion.nextUnit": { en: "My next unit", es: "Mi próxima unidad" },
+  "ask.somethingWentWrong": { en: "Something went wrong. Try again.", es: "Algo salió mal. Intenta de nuevo." },
+  "ask.title": { en: "Company brain", es: "Cerebro de la empresa" },
+  "ask.back": { en: "Back", es: "Atrás" },
+  "ask.from": { en: "From: {source}", es: "De: {source}" },
+  "ask.alsoWrittenDown": { en: "Also written down:", es: "También anotado:" },
+  "ask.sources": { en: "Sources: {list}", es: "Fuentes: {list}" },
+  "ask.inputPlaceholder": { en: "Ask about a window, a term, or how-to…", es: "Pregunta sobre una ventana, un término, o cómo hacer algo…" },
+  "ask.send": { en: "Send", es: "Enviar" },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */
