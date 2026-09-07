@@ -11,6 +11,12 @@
 // numbering. Three loose packages say 3 of 3, and the crate row says
 // "4 pieces of glass in Crate 1". One crate serves one job but many marks.
 
+import { CATALOG } from "../i18n/catalog";
+import { translate, type Lang } from "../i18n/translate";
+import type { TFn } from "../i18n/context";
+
+const englishT: TFn = (key, vars) => translate(CATALOG, "en" as Lang, key, vars);
+
 export interface WizardCrate {
   name: string;
   pieces: number;
@@ -57,53 +63,53 @@ export function normalizeMark(raw: string): string {
 }
 
 /** Every problem that would make the save refuse, in plain words. */
-export function wizardProblems(entries: WizardEntry[]): string[] {
+export function wizardProblems(entries: WizardEntry[], t: TFn = englishT): string[] {
   const problems: string[] = [];
-  if (entries.length === 0) problems.push("Log at least one job's material.");
+  if (entries.length === 0) problems.push(t("storage.logDelivery.problem.needOneJob"));
   if (entries.length > MAX_PROJECTS)
-    problems.push(`A delivery covers at most ${MAX_PROJECTS} jobs.`);
+    problems.push(t("storage.logDelivery.problem.tooManyJobs", { max: MAX_PROJECTS }));
   entries.forEach((entry, ei) => {
     const label = entry.project_id
-      ? `Job ${ei + 1}`
+      ? t("storage.logDelivery.problem.jobN", { n: ei + 1 })
       : entry.job_name.trim()
         ? `"${entry.job_name.trim()}"`
-        : `Job ${ei + 1}`;
+        : t("storage.logDelivery.problem.jobN", { n: ei + 1 });
     if (!entry.project_id && !entry.job_name.trim()) {
-      problems.push(`${label}: pick a job or type its name.`);
+      problems.push(t("storage.logDelivery.problem.pickOrType", { label }));
     }
     if (entry.sets.length === 0) {
-      problems.push(`${label}: add at least one set.`);
+      problems.push(t("storage.logDelivery.problem.addOneSet", { label }));
     }
     if (entry.sets.length > MAX_SETS) {
-      problems.push(`${label}: at most ${MAX_SETS} sets in one delivery.`);
+      problems.push(t("storage.logDelivery.problem.atMostSets", { label, max: MAX_SETS }));
     }
     const seen = new Set<string>();
     entry.sets.forEach((set, si) => {
       const mark = normalizeMark(set.mark);
       if (!mark) {
-        problems.push(`${label}, set ${si + 1}: every set needs a mark (like 16 or 13A).`);
+        problems.push(t("storage.logDelivery.problem.needsMark", { label, n: si + 1 }));
       } else if (seen.has(mark)) {
-        problems.push(`${label}: mark #${mark} is listed twice.`);
+        problems.push(t("storage.logDelivery.problem.listedTwice", { label, mark }));
       } else {
         seen.add(mark);
       }
       if (set.quantity < 1 || set.quantity > MAX_CLONES) {
         problems.push(
-          `${label}, #${mark || si + 1}: identical clones go 1 to ${MAX_CLONES} at a time.`,
+          t("storage.logDelivery.problem.clonesRange", { label, mark: mark || si + 1, max: MAX_CLONES }),
         );
       }
       if (set.package_count < 1 || set.package_count > MAX_PACKAGES) {
         problems.push(
-          `${label}, #${mark || si + 1}: a set arrives as 1 to ${MAX_PACKAGES} packages.`,
+          t("storage.logDelivery.problem.packagesRange", { label, mark: mark || si + 1, max: MAX_PACKAGES }),
         );
       }
       if (set.crate) {
         if (!set.crate.name.trim()) {
-          problems.push(`${label}, #${mark || si + 1}: name the crate (like Crate 1).`);
+          problems.push(t("storage.logDelivery.problem.nameCrate", { label, mark: mark || si + 1 }));
         }
         if (set.crate.pieces < 1 || set.crate.pieces > MAX_CRATE_PIECES) {
           problems.push(
-            `${label}, #${mark || si + 1}: crate pieces are 1 to ${MAX_CRATE_PIECES}.`,
+            t("storage.logDelivery.problem.cratePiecesRange", { label, mark: mark || si + 1, max: MAX_CRATE_PIECES }),
           );
         }
       }
@@ -134,13 +140,26 @@ export function buildDeliveryPayload(entries: WizardEntry[]): unknown[] {
 }
 
 /** One line the review screen shows per set. */
-export function describeSet(set: WizardSet): string {
+export function describeSet(set: WizardSet, t: TFn = englishT): string {
   const mark = normalizeMark(set.mark) || "?";
-  const clones = set.quantity > 1 ? ` · ×${set.quantity} identical` : "";
-  const each = set.quantity > 1 ? " each" : "";
-  const base = `#${mark} · ${set.kind === "door" ? "Door" : "Window"}${clones} · ${set.package_count} package${set.package_count === 1 ? "" : "s"}${each}`;
+  const clones = set.quantity > 1 ? t("storage.logDelivery.describe.clones", { n: set.quantity }) : "";
+  const each = set.quantity > 1 ? t("storage.logDelivery.describe.each") : "";
+  const kind = t(set.kind === "door" ? "storage.logDelivery.describe.door" : "storage.logDelivery.describe.window");
+  const base = t(set.package_count === 1 ? "storage.logDelivery.describe.base.one" : "storage.logDelivery.describe.base.many", {
+    mark,
+    kind,
+    clones,
+    n: set.package_count,
+    each,
+  });
   if (!set.crate) return base;
-  return `${base} + ${set.crate.pieces} piece${set.crate.pieces === 1 ? "" : "s"} of ${set.crate.part_type || "glass"}${each} in ${set.crate.name.trim() || "a crate"}`;
+  return t(set.crate.pieces === 1 ? "storage.logDelivery.describe.crate.one" : "storage.logDelivery.describe.crate.many", {
+    base,
+    n: set.crate.pieces,
+    partType: set.crate.part_type || t("warehouse.partType.glass").toLowerCase(),
+    each,
+    crateName: set.crate.name.trim() || t("storage.logDelivery.describe.aCrate"),
+  });
 }
 
 // ---------------------------------------------------------------- drafts

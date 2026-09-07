@@ -28,6 +28,7 @@ import {
   listContainers,
 } from "../../lib/storage";
 import { areaLabel } from "../../lib/warehouse/areas";
+import { useT } from "../../lib/i18n";
 
 /** The floor-plan footprint of the loaded model, from its serialized corners. */
 export function modelBounds(serialized: string): {
@@ -103,6 +104,7 @@ export function zoneRect(
 }
 
 export function ContainerViewer() {
+  const t = useT();
   const { id = "" } = useParams();
   const [params] = useSearchParams();
   const glowSerial = params.get("pkg");
@@ -230,39 +232,33 @@ export function ContainerViewer() {
       <header className="page-header">
         <div>
           <BackChip />
-          <p className="home-greeting">Warehouse</p>
-          <h1>{container?.name ?? "Container"} in 3D</h1>
+          <p className="home-greeting">{t("storage.container3d.warehouse")}</p>
+          <h1>{t("storage.container3d.title", { name: container?.name ?? t("storage.container3d.containerFallback") })}</h1>
           {glowSerial && (
             <p className="muted" style={{ margin: 0, fontSize: 13 }}>
               {glowPkg.data
                 ? area
-                  ? `${glowSerial} — the ${areaLabel(area).toLowerCase()} zone glows`
-                  : `${glowSerial} — no area recorded; a foreman can point at it from the package page`
+                  ? t("storage.container3d.zoneGlows", { serial: glowSerial, zone: areaLabel(area, t).toLowerCase() })
+                  : t("storage.container3d.noArea", { serial: glowSerial })
                 : glowSerial}
             </p>
           )}
         </div>
       </header>
       {!container?.studio_project_id && containers.isSuccess && (
-        <p className="muted">
-          This container has no 3D shell yet — a supervisor creates one from
-          its page.
-        </p>
+        <p className="muted">{t("storage.container3d.noShell")}</p>
       )}
       <div
         ref={hostRef}
         style={{ flex: 1, minHeight: 420, borderRadius: 12, overflow: "hidden" }}
       />
       <p className="muted" style={{ fontSize: 12, margin: "8px 0 0" }}>
-        {kind === "building"
-          ? "Compass zones: north is the back-left of the drawing."
-          : "The door end is the front."}
-        {" "}Drag to orbit · pinch or scroll to zoom. Nothing here can be moved —
-        this is the map, not the pen.
+        {kind === "building" ? t("storage.container3d.compassZones") : t("storage.container3d.doorEndFront")}
+        {" "}{t("storage.container3d.orbitHint")}
       </p>
       {container && (
         <Link className="button-like" style={{ marginTop: 8 }} to={`/storage/c/${container.id}`}>
-          Open {container.name}
+          {t("storage.container3d.open", { name: container.name })}
         </Link>
       )}
     </div>
