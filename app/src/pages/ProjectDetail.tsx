@@ -71,6 +71,7 @@ import { JobDocuments } from "../components/projects/JobDocuments";
 import { JobCostCodesPanel } from "../components/project/JobCostCodesPanel";
 import { JobModeBadge } from "../components/JobModeBadge";
 import { GcPanel } from "../components/projects/GcPanel";
+import { BuildFactsPanel } from "../components/projects/BuildFactsPanel";
 import { ScopeLine } from "../components/projects/ScopeLine";
 import { storiesToShow } from "../lib/scope";
 import { PipelinePanel } from "../components/projects/PipelinePanel";
@@ -376,6 +377,7 @@ export function ProjectDetail() {
           canStudio={isSupervisorPlus(effectiveRole)}
           canFlagTesting={isSupervisorPlus(effectiveRole)}
           canDeleteTesting={isOwner(effectiveRole)}
+          canSeeGreenLight={isSupervisorPlus(effectiveRole)}
           project={project}
           trackingOnly={trackingOnly}
           />
@@ -558,6 +560,7 @@ function OverviewTab({
   canStudio,
   canFlagTesting,
   canDeleteTesting,
+  canSeeGreenLight,
   project,
   trackingOnly,
 }: {
@@ -575,6 +578,7 @@ function OverviewTab({
   canStudio: boolean;
   canFlagTesting: boolean;
   canDeleteTesting: boolean;
+  canSeeGreenLight: boolean;
   project?: Project;
   trackingOnly: boolean;
 }) {
@@ -612,6 +616,17 @@ function OverviewTab({
           time" and "what did the builder say about it" — and reading one
           without the other is how the office ends up guessing. */}
       {project && <GcPanel projectId={projectId} project={project} isLead={isLead} />}
+
+      {/* S4: job facts, foreman+ only here — an installer's read-only view
+          lives on the unit sheet instead (S5). Supervisor+ additionally sees
+          the green-light checklist inside this card. */}
+      {isLead && (
+        <BuildFactsPanel
+          projectId={projectId}
+          isLead={isLead}
+          isSupervisorPlus={canSeeGreenLight}
+        />
+      )}
 
       {project && <JobDetailsPanel project={project} isLead={isLead} />}
 

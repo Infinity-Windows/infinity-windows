@@ -65,6 +65,7 @@ const OP_LABELS: Record<OutboxOp, string> = {
   // or a foreman would go looking for a receipt that is sitting on the table.
   receipt_document_upload: "Receipt PDF",
   video_quiz_submit: "Quiz result",
+  save_build_facts: "Job fact",
 };
 
 /**

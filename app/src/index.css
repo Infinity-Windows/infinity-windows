@@ -12535,3 +12535,48 @@ button.stage-chip {
 .job-chip-bar i { display: block; height: 100%; background: var(--stage-stored); }
 .job-chip--waiting .job-chip-bar i { background: var(--stage-expected); }
 .job-strip-hint { font-size: 12.5px; margin: 6px 0 0; }
+
+/* Job facts (S4): the build-answers card on a job's Overview. Every field is
+   its own input, saved on blur/change — 48px tap targets on every control,
+   the same law every day-flow button on this section holds. */
+.build-facts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
+  gap: 12px 16px;
+  margin-top: 10px;
+}
+.build-facts-field { display: flex; flex-direction: column; gap: 4px; }
+.build-facts-field--wide { grid-column: 1 / -1; }
+.build-facts-field input,
+.build-facts-field select,
+.build-facts-field textarea {
+  min-height: 48px;
+  border-radius: 10px;
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  padding: 8px 10px;
+}
+.build-facts-field textarea { min-height: 64px; resize: vertical; }
+
+/* The green-light checklist (supervisor+): open items first, a check or an
+   open circle, and who is expected to answer it. Warns, never blocks — there
+   is no button on this list, only a read. */
+.green-light-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.green-light-row {
+  display: flex; align-items: flex-start; gap: 10px;
+  min-height: 48px; padding: 8px 10px;
+  border-radius: 10px; border: 1.5px solid var(--border); background: var(--surface);
+}
+.green-light-row.is-answered { opacity: 0.7; }
+.green-light-mark {
+  flex: 0 0 auto; width: 22px; height: 22px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 13px; font-weight: 700;
+  border: 1.5px solid var(--border);
+}
+.green-light-row.is-answered .green-light-mark { background: var(--stage-stored, var(--accent)); color: #fff; border-color: transparent; }
+.green-light-row.is-open .green-light-mark { color: var(--muted); }
+.green-light-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.green-light-label { font-size: 14px; }
+.green-light-who { font-size: 12px; color: var(--muted); }

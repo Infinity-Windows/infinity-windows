@@ -189,7 +189,9 @@ class TestSchemaParsing(unittest.TestCase):
         # on one named item of the Learn section during one visit, and which
         # seconds of one lesson they actually played (Learning time, L1/L2,
         # 20260993000000).
-        self.assertEqual(len(SCHEMA.tables), 134)
+        # +1: project_build_facts — one row per job of the site answers a
+        # foreman records once (S4, job facts, 20261001000000).
+        self.assertEqual(len(SCHEMA.tables), 135)
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 
