@@ -107,7 +107,7 @@ export function BuildFactsPanel({
         <h2 style={{ margin: 0 }}>{t("buildFacts.title")}</h2>
       </div>
       <p className="muted" style={{ marginTop: 4 }}>
-        {t("buildFacts.intro")}
+        {!facts.isLoading && !f ? t("buildFacts.empty") : t("buildFacts.intro")}
       </p>
 
       {isSupervisorPlus && (
