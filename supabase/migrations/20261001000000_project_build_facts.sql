@@ -454,7 +454,15 @@ begin
   end if;
 
   if p_ready_state = 'ready' then
-    select array_agg(g.label_en order by g.item_key)
+    -- Checklist order (1-6), the same order the card shows the items in —
+    -- not alphabetical, which put "day one crew" ahead of "plan set".
+    select array_agg(
+             g.label_en
+             order by array_position(
+               array['plan_set', 'build_facts', 'materials_eta', 'gc_site', 'day_one_crew', 'toolbox'],
+               g.item_key
+             )
+           )
       into v_open
       from public.green_light_items(p_project_id) g
      where not g.answered;
