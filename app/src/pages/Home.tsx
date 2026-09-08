@@ -20,6 +20,7 @@ import { RoleMaps } from "../components/RoleMaps";
 import { ClockInBlock } from "../components/clock/ClockInBlock";
 import { LogTodayChip } from "../components/dailyLogs/LogTodayChip";
 import { LiveSummonsStrip } from "../components/install/LiveSummonsStrip";
+import { TomorrowStrip } from "../components/schedule/TomorrowStrip";
 import { TERMS } from "../lib/glossary";
 import { listMyProgress } from "../lib/learn";
 import { listLedger } from "../lib/points";
@@ -280,6 +281,10 @@ export function Home() {
       <LiveSummonsStrip />
 
       <ClockInBlock />
+
+      {/* S6: the same Tomorrow line + week chips as My Work — reads the
+          signed-in person's own schedule, per the three-landings rule. */}
+      <TomorrowStrip />
 
       <ToolboxTalkNagBanner profileId={profileId} clockedIn={isOnTheClock(openShift.data)} />
 

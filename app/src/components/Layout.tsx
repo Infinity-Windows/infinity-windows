@@ -330,7 +330,15 @@ export function Layout() {
         </aside>
 
         <main className="app-main">
-          <CoreValuesStrip pathname={location.pathname} />
+          {/* S6: My Work mounts its own copy at the bottom of the page, held
+              on one line while a shift is open — skip the ordinary
+              top-mounted one only there, only for the installer's own
+              landing. Home and Heartbeat (and "/my-work" for anyone else)
+              are untouched. */}
+          <CoreValuesStrip
+            pathname={location.pathname}
+            hidden={isInstaller && location.pathname === "/"}
+          />
           {/* Phones only (hidden from 860px up, where the rail carries it).
               In the page flow rather than floating over it, so it can never
               land on top of a job title. */}

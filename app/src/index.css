@@ -12559,6 +12559,137 @@ button.stage-chip {
 .green-light-label { font-size: 14px; }
 .green-light-who { font-size: 12px; color: var(--muted); }
 
+/* Kit (S6, item G): ListRow, StatusChip, Field — one file each under
+   components/ui/, one shape each, appended together here. Not scoped under
+   [data-section="install"]: that attribute only stamps on /projects,
+   /install, /studio, /summon routes (App.tsx's SectionAura), and these three
+   render on My Work, Home and Heartbeat ("/", "/heartbeat"), none of which
+   match — scoping them there would just be dead CSS. Plain classes instead,
+   the same way `.next-card` and `.stat-grid` already are. */
+.kit-list-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 48px;
+  padding: var(--space-2) 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+}
+.kit-list-row--tappable { cursor: pointer; }
+.kit-list-row-badge { flex: none; }
+.kit-list-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.kit-list-row-title { font-weight: 600; }
+.kit-list-row-sub { color: var(--muted); font-size: var(--text-xs); }
+.kit-list-row-trailing { flex: none; margin-left: auto; display: flex; align-items: center; gap: var(--space-2); }
+
+.kit-status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 650;
+  line-height: 1.5;
+  white-space: nowrap;
+  font-family: var(--font-body);
+}
+.kit-status-chip[data-tone="ok"] { background: var(--ok-bg); color: var(--ok); }
+.kit-status-chip[data-tone="warn"] { background: color-mix(in oklab, var(--warn) 16%, var(--card)); color: var(--warn); }
+.kit-status-chip[data-tone="error"] { background: color-mix(in oklab, var(--danger) 16%, var(--card)); color: var(--danger); }
+.kit-status-chip[data-tone="accent"] { background: var(--accent-bg); color: var(--accent); }
+.kit-status-chip[data-tone="muted"] { background: var(--card-hot); color: var(--muted); }
+
+.kit-field { display: inline-flex; flex-direction: column; gap: 1px; }
+.kit-field-label { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.kit-field-value { font-weight: 600; font-size: var(--text-sm); }
+.kit-field--inline { flex-direction: row; align-items: baseline; gap: 4px; }
+.kit-field--inline .kit-field-label { font-size: var(--text-sm); text-transform: none; letter-spacing: normal; }
+
+/* Tomorrow line + week chips (S6): the next published assignment after
+   today, on all three landings. */
+.tomorrow-strip { margin: 0 0 var(--space-3); }
+.tomorrow-line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 52px;
+  padding: var(--space-2) var(--space-3);
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.tomorrow-line-main { flex: 1; min-width: 0; }
+.tomorrow-line-kicker {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 12.5px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 600;
+}
+.tomorrow-line-text {
+  display: block;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tomorrow-line-text.muted { color: var(--muted); font-weight: 400; }
+.tomorrow-line-arrow { flex: none; color: var(--faint); font-size: 20px; }
+
+.week-chips { display: flex; gap: var(--space-1); margin: 0 0 var(--space-3); }
+.week-chip {
+  flex: 1;
+  min-height: 34px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  color: var(--muted);
+}
+.week-chip--today { border-color: var(--accent); color: var(--accent); }
+.week-chip-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
+
+/* Today, rebuilt (S6): the More fold and the counts line that replaced the
+   stat grid. `<details>` is native disclosure — no JS, closed by default
+   because it carries no `open` attribute. */
+.mywork-more { border-top: 1px solid var(--border); padding-top: var(--space-1); margin-top: var(--space-2); }
+.mywork-more > summary {
+  list-style: none;
+  cursor: pointer;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font: 600 15px var(--font-body);
+  color: var(--text-secondary);
+}
+.mywork-more > summary::-webkit-details-marker { display: none; }
+.mywork-more > summary::after { content: "›"; font-size: 22px; color: var(--faint); transition: transform var(--motion); }
+.mywork-more[open] > summary::after { transform: rotate(90deg); }
+.mywork-more-section { margin-top: var(--space-3); }
+.mywork-more-section h2 { font-size: var(--text-md); margin: 0 0 var(--space-1); }
+
+.mywork-counts-line { color: var(--muted); font-size: var(--text-sm); padding: 2px var(--space-1) var(--space-2); margin: 0; }
 /* Job facts on the unit sheet (S5): a compact read-only report, not a form —
    no inputs, so no 48px control minimum applies here. One row per fact:
    label small and muted, value normal weight, both left-aligned. */
@@ -12579,3 +12710,10 @@ button.stage-chip {
 }
 .unit-facts-wins { font-weight: 400; color: var(--muted); font-size: 13px; }
 .unit-facts-empty { margin-top: 4px; }
+
+/* S6 gate (2026-09-07): two landing doors e2e pins visible on My Work — the
+   skill tree ("Add my card", wave O) and the save-for-offline strip — sit
+   above the More fold in every state, styled like a fold section so the page
+   reads as one list. */
+.mywork-door { margin-top: var(--space-3); }
+.mywork-door h2 { font-size: var(--text-md); margin: 0 0 var(--space-1); }

@@ -133,6 +133,7 @@ export const QUERY_KEY_ROOTS: QueryKeyRootEntry[] = [
   { root: "myReadyCount", offline: false },
   { root: "myRealProfile", offline: false },
   { root: "mySchedule", offline: false },
+  { root: "myScheduleTomorrow", offline: true, why: "S6: the Tomorrow line sits right under the clock-in hero, the first minute of the day — a phone with no signal yet still needs to say which job, which truck, and how many units are coming, the same as the Today strip beside it." },
   { root: "myScheduleVehicles", offline: false },
   { root: "myShifts", offline: true, why: "New modules — keep the installer's day usable in dead spots." },
   { root: "myTimecardEdits", offline: false },

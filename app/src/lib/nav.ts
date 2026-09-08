@@ -19,7 +19,7 @@ import {
   KeyRound,
   LayoutGrid,
   ListChecks,
-  MoreHorizontal,
+  Package,
   PenTool,
   Plane,
   Receipt as ReceiptIcon,
@@ -566,33 +566,56 @@ for (const section of MENU_DEF) {
 }
 
 /**
- * Installer-first: the phone bottom bar already carries the whole job loop
- * (Today / Capture / Clock / Ask), so the installer drawer drops the duplicate
- * Ask row and shows only the short daily loop up top. Everything else an
- * installer can reach folds under a collapsible "More". Managers keep the full
- * grouped menu. Action items (e.g. clock) always show.
+ * Installer-first, regrouped into three named sections (S6): Work (the daily
+ * loop), Me (personal — timecard, points, learning, travel, photos), Help
+ * (support doors, Ask included — the bottom bar's one-tap Ask stays too, this
+ * is just a second door for someone already in the drawer). Replaces the
+ * earlier loop-plus-collapsible-More shape: every destination an installer
+ * could reach is still reachable, just under a header that says what kind of
+ * thing it is instead of a flat "More" catch-all. Managers keep the full
+ * grouped menu untouched. Action items (e.g. clock) always show.
  */
-const INSTALLER_LOOP_PATHS: RoutePath[] = ["/", "/warehouse", "/my-schedule"];
-const INSTALLER_MORE_PATHS: RoutePath[] = [
-  "/travel",
-  "/learn",
-  "/points",
-  "/review",
-  "/safety",
+const INSTALLER_WORK_PATHS: RoutePath[] = [
+  "/",
+  "/projects",
+  "/my-schedule",
+  "/warehouse",
   "/supplies",
+];
+const INSTALLER_ME_PATHS: RoutePath[] = [
+  "/timecard",
+  "/points",
+  "/learn",
+  "/safety",
+  "/travel",
   // The gallery the Capture sheet's own tiles land on. /photos has been
   // minRole "installer" since it was written and its route carries no guard,
   // but it appeared in neither installer path list — so an installer could
   // not reach photos or receipts by any door in the app. The capture sheet
   // opens the camera; this is the door back to what was captured.
   "/photos",
-  "/notifications",
+];
+const INSTALLER_HELP_PATHS: RoutePath[] = [
+  "/ask",
+  "/suggestions",
   // An installer's own stranded punch lives on their own phone; the drawer is
   // the only way they would ever reach it.
   "/stuck",
   "/diagnostics",
   "/settings",
+  "/notifications",
 ];
+
+// Ticket 08 folded Supplies into the Warehouse page for managers ("one row",
+// nav.test.ts's "the warehouse is one row" suite), so it never got its own
+// MenuItem in MENU_DEF and MENU_ITEM_BY_PATH doesn't know it. The installer
+// Work group names it as its own row regardless (an installer finds the
+// supply and logs what they took far more often than they open the whole
+// warehouse page) — this is the one item installerMenu can't source from the
+// manager registry.
+const INSTALLER_ONLY_ITEMS: Partial<Record<RoutePath, MenuItem>> = {
+  "/supplies": { to: "/supplies", label: "Supplies", Icon: Package },
+};
 
 function installerMenu(
   role: CrewRole | string | null | undefined,
@@ -600,31 +623,17 @@ function installerMenu(
 ): MenuSection[] {
   const pick = (paths: RoutePath[]): MenuItem[] =>
     paths
-      .map((p) => MENU_ITEM_BY_PATH.get(p))
+      .map((p) => MENU_ITEM_BY_PATH.get(p) ?? INSTALLER_ONLY_ITEMS[p])
       .filter((it): it is MenuItem => Boolean(it?.to) && canAccess(role, it!.to!, grants))
       .map((it) => (it.to === "/" ? { ...it, label: "My Work" } : it));
 
-  const out: MenuSection[] = [{ items: pick(INSTALLER_LOOP_PATHS) }];
-
-  // Keep the Time tracking pill (clock in/out) — installers clock in daily.
-  const timePill = MENU_DEF.find((s) => s.title === "Time tracking");
-  if (timePill) {
-    const items = timePill.items.filter((it) => !it.to || canAccess(role, it.to, grants));
-    if (items.length) out.push({ ...timePill, items });
-  }
-
-  const more = pick(INSTALLER_MORE_PATHS);
-  if (more.length) {
-    // Reuse the collapsible pill so "More" folds with a chevron and no new CSS.
-    out.push({
-      title: "More",
-      pill: true,
-      collapsible: true,
-      defaultOpen: false,
-      Icon: MoreHorizontal,
-      items: more,
-    });
-  }
+  const out: MenuSection[] = [];
+  const work = pick(INSTALLER_WORK_PATHS);
+  if (work.length) out.push({ title: "Work", items: work });
+  const me = pick(INSTALLER_ME_PATHS);
+  if (me.length) out.push({ title: "Me", items: me });
+  const help = pick(INSTALLER_HELP_PATHS);
+  if (help.length) out.push({ title: "Help", items: help });
   return out;
 }
 

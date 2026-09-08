@@ -79,10 +79,12 @@ function usedRoots(): Map<string, string> {
 // what the persister keeps — compare against this list to see whether that
 // was intended.
 //
-// +1 since then: "buildFacts" (S4, job facts) — the job facts card reads
-// offline the same as the rest of the unit sheet.
+// +2 since then: "buildFacts" (S4, job facts) — the job facts card reads
+// offline the same as the rest of the unit sheet; "myScheduleTomorrow" (S6,
+// the Tomorrow line) — same reasoning, one step earlier in the day.
 const EXPECTED_OFFLINE_ROOTS = [
   "buildFacts",
+  "myScheduleTomorrow",
   "projects",
   "projectsAll",
   "openings",
