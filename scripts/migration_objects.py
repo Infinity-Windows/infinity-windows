@@ -101,7 +101,8 @@ def extract(sql: str):
                 part = part.strip()
                 if not part:
                     continue
-                first = part.split()[0].strip('"').lower()
+                # SQL permits UNIQUE(a,b) and CHECK(...) without a space.
+                first = re.split(r'[\s(]', part, maxsplit=1)[0].strip('"').lower()
                 if first in CONSTRAINT_KW:
                     continue
                 objs.append(('column', f'{table}.{first}'))
