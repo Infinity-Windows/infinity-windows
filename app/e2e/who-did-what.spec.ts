@@ -354,6 +354,11 @@ test("Y5: the unit Record reads back who it was handed to", async ({ page }) => 
   );
 
   await page.goto(`/projects/${str(o.project_id)}/opening/${str(o.id)}`);
+  // S7 (2026-09-07): the unit Record lives under the sheet's "More" fold now
+  // (grill Q8: history is a rare action). Open the fold first, same as
+  // opening-sheet / sessions / summon do — `.sheet-more > summary`, not a
+  // descendant match, because Data off nests its own <summary> inside.
+  await page.locator(".sheet-more > summary").click();
   await page
     .getByRole("button", { name: /Record — everything saved on this window/ })
     .click();
