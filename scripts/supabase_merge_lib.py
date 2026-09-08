@@ -458,6 +458,15 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     "knowledge_docs": ("source", "path"),
     "vehicles": ("vin",),
     "trips": ("name", "start_date"),
+    # A plan's name/dates cannot identify it; never infer connected plans.
+    # Snapshot JSON carries its original identities and needs explicit review
+    # when moving between databases that remap parent IDs.
+    "workflow_plans": None,
+    "workflow_plan_assignments": ("assignment_id",),
+    "workflow_plan_trips": ("trip_id",),
+    "workflow_plan_revisions": ("plan_id", "revision"),
+    "workflow_publish_requests": ("request_id",),
+    "workflow_notice_outbox": ("plan_id", "revision", "profile_id"),
     "learn_priority_terms": ("term_id",),
     "push_subscriptions": ("endpoint",),
     # -- Child rows identified by their parent plus a position or code.
