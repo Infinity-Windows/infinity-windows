@@ -1,120 +1,42 @@
 // Job facts on the unit sheet (S5, .scratch/installer-os/installer-os-spec.md).
 // The read-only card an installer sees under the spec card is a REPORT, not a
-// form — every value here is either the job's own answer (project_build_facts,
-// S4) or, when the unit's own spec disagrees, the spec's answer instead. This
-// file holds the pure logic behind that report: which of the four elevation
-// notes is THIS unit's, and which of the two set-depth answers wins. Both are
-// unit-tested directly (unitFactsCard.test.ts) because a wrong elevation or a
-// silently-dropped disagreement sends a crew to install the wrong way.
+// form — every value here is the job's own answer (project_build_facts, S4),
+// and when the unit's own spec disagrees with every exterior situation the
+// job recorded, the spec's answer is shown instead. This file holds the pure
+// logic behind that report, unit-tested directly (unitFactsCard.test.ts)
+// because a silently-dropped disagreement sends a crew to install the wrong
+// way.
 //
 // ADR-0011: job facts are the job's DEFAULT answer; project_mark_specs.extra
 // stays authoritative for what actually gets installed at one opening.
 
-import { markBase } from "./extract";
-import {
-  parseViewTitle,
-  pickElevationViews,
-  type ElevationViewLike,
-} from "./elevationViews";
 import { formatInches } from "./specs";
-import type { BuildFacts, SetDepth } from "./buildFacts";
+import { isBlankExteriorLine, type BuildFacts, type ExteriorLine, type SetDepth } from "./buildFacts";
 
-export type Elevation = "north" | "south" | "east" | "west";
-
-const COMPASS_TO_ELEVATION: Record<string, Elevation> = {
-  NORTH: "north",
-  SOUTH: "south",
-  EAST: "east",
-  WEST: "west",
-};
-
-/**
- * Which side of the building one unit is drawn on, read off the mark's
- * elevation-reference captions (project_mark_elevation_views.view_name) — the
- * same captions MarkElevationCrop parses to find the picture. `pickElevationViews`
- * does the same de-duplication and ranking a foreman relies on there: two
- * captions naming the same face collapse to one, and a straight elevation with
- * a compass bearing outranks a property view of the same wall. Null when
- * nothing on file names a compass side for this unit — a chained unit
- * ("1-2") is normalized to its base mark ("1") the same way the spec card
- * looks up its own spec. PURE.
- */
-export function deriveUnitElevation(
-  openingCode: string | null | undefined,
-  views: readonly ElevationViewLike[],
-): Elevation | null {
-  if (!openingCode) return null;
-  const wanted = markBase(openingCode).toUpperCase();
-  const mine = views.filter((v) => v.mark_code.trim().toUpperCase() === wanted);
-  const best = pickElevationViews(mine)[0];
-  if (!best?.view_name) return null;
-  const title = parseViewTitle(best.view_name);
-  if (!title?.compass) return null;
-  return COMPASS_TO_ELEVATION[title.compass] ?? null;
-}
-
-export interface ElevationNote {
-  elevation: Elevation;
-  note: string;
-}
-
-const ELEVATION_NOTE_FIELD: Record<Elevation, keyof BuildFacts> = {
-  north: "note_north",
-  south: "note_south",
-  east: "note_east",
-  west: "note_west",
-};
-
-const ELEVATIONS: readonly Elevation[] = ["north", "south", "east", "west"];
-
-/**
- * The elevation note(s) worth showing on a unit sheet: the ONE note for the
- * unit's own side of the building when that side is known, or every
- * non-empty note (each labelled with its side) when it isn't — so a unit
- * with no elevation reference on file doesn't lose the north note just
- * because nobody can say it's the north one. PURE.
- */
-export function elevationNotesFor(
-  facts: BuildFacts,
-  elevation: Elevation | null,
-): ElevationNote[] {
-  const nonEmpty = (e: Elevation): ElevationNote | null => {
-    const note = facts[ELEVATION_NOTE_FIELD[e]] as string | null;
-    return note && note.trim() !== "" ? { elevation: e, note } : null;
-  };
-  if (elevation) {
-    const note = nonEmpty(elevation);
-    return note ? [note] : [];
-  }
-  return ELEVATIONS.map(nonEmpty).filter((n): n is ElevationNote => n != null);
-}
-
-export interface SetDepthLine {
-  /** The set-depth value to display — the unit's own spec value when it
-   * disagrees and wins, the job fact's own value otherwise. */
+export interface SpecOverride {
+  /** The unit's own inset/outset call, shown with "it wins". */
   value: SetDepth;
-  /** True when the unit's own spec carries an inset/outset that differs
-   * from the job's set_depth — the disagreement sentence renders only then. */
-  disagrees: boolean;
 }
 
 /**
- * Resolve which set-depth value the sheet should show, and whether the
- * unit's own spec is overriding the job's answer. Null when the job hasn't
- * recorded a set depth at all — an unanswered job fact stays hidden
- * regardless of what one unit's spec says (ADR-0011: job facts are a
- * DEFAULT; a unit with no default to override shows nothing here, same as
- * every other unanswered field on this card). PURE.
+ * Whether the unit's own spec overrides what the job recorded. The job now
+ * carries a LIST of situations (brick outset, stucco inset), so the spec
+ * disagrees only when it names a set depth that NO recorded line uses — a
+ * unit on the stucco side whose spec says inset agrees with the stucco
+ * line, and nothing is said. Null when the spec has no call, or when the
+ * job hasn't answered a set depth anywhere yet (an unanswered job fact stays
+ * hidden regardless of what one unit's spec says — ADR-0011: job facts are a
+ * DEFAULT; a unit with no default to override shows nothing here). PURE.
  */
-export function resolveSetDepthLine(
-  jobSetDepth: SetDepth | null,
+export function specOverrideLine(
+  lines: readonly ExteriorLine[],
   specInsetOutset: "inset" | "outset" | null,
-): SetDepthLine | null {
-  if (!jobSetDepth) return null;
-  if (specInsetOutset && specInsetOutset !== jobSetDepth) {
-    return { value: specInsetOutset, disagrees: true };
-  }
-  return { value: jobSetDepth, disagrees: false };
+): SpecOverride | null {
+  if (!specInsetOutset) return null;
+  const answered = lines.filter((l) => l.set_depth != null);
+  if (answered.length === 0) return null;
+  if (answered.some((l) => l.set_depth === specInsetOutset)) return null;
+  return { value: specInsetOutset };
 }
 
 /**
@@ -158,29 +80,24 @@ export function joinFactLine(
 /**
  * True when at least one job-fact field this card can show is actually
  * answered. Drives the empty state: "No job facts yet" only when every
- * field — including every elevation note — is blank. PURE.
+ * field — including every exterior situation — is blank. PURE.
  */
-export function hasAnyUnitFact(
-  facts: BuildFacts | null,
-  elevation: Elevation | null,
-): boolean {
+export function hasAnyUnitFact(facts: BuildFacts | null): boolean {
   if (!facts) return false;
+  if (facts.exterior_lines.some((l) => !isBlankExteriorLine(l))) return true;
   const plain: (string | number | null)[] = [
-    facts.exterior_finish,
-    facts.exterior_note,
-    facts.set_depth,
     facts.flashing_system,
+    facts.flashing_system_other,
     facts.flashing_note,
     facts.fastener_type,
+    facts.fastener_type_other,
     facts.fastener_length_in,
     facts.fastener_spacing_in,
     facts.fastener_note,
-    facts.sill_pan,
-    facts.sill_pan_type,
     facts.site_rules,
     facts.gc_contact_name,
     facts.gc_contact_phone,
+    facts.elevation_notes,
   ];
-  if (plain.some((v) => v != null && v !== "")) return true;
-  return elevationNotesFor(facts, elevation).length > 0;
+  return plain.some((v) => v != null && v !== "");
 }
