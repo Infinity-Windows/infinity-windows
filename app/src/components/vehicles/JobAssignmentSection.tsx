@@ -1,3 +1,6 @@
+import { useEffectiveRole } from "../../lib/useEffectiveRole";
+import { isSupervisorPlus } from "../../lib/install/types";
+import { useT } from "../../lib/i18n";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Briefcase, X } from "lucide-react";
@@ -12,6 +15,9 @@ export function JobAssignmentSection({ vehicle }: { vehicle: VehicleWithMeta }) 
 
   const projects = useQuery({ queryKey: ["projects"], queryFn: listAssignableProjects });
   const current = vehicle.assignment;
+  const { effectiveRole } = useEffectiveRole();
+  const t = useT();
+  const canRemove = !current?.assignment_id || isSupervisorPlus(effectiveRole);
 
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["vehicle", vehicle.id] });
@@ -54,9 +60,9 @@ export function JobAssignmentSection({ vehicle }: { vehicle: VehicleWithMeta }) 
             <Briefcase size={14} aria-hidden /> {currentLabel}
           </span>
           {current.note && <p className="muted" style={{ margin: "4px 0 0" }}>{current.note}</p>}
-          <button className="button-like danger-outline" onClick={() => unassign.mutate()} disabled={unassign.isPending}>
+          {canRemove ? <button className="button-like danger-outline" onClick={() => unassign.mutate()} disabled={unassign.isPending}>
             <X size={14} aria-hidden /> {unassign.isPending ? "Removing…" : "Remove from job"}
-          </button>
+          </button> : <p className="muted">{t("vehicles.scheduledBySupervisor")}</p>}
         </div>
       ) : (
         <div className="veh-assign-form">

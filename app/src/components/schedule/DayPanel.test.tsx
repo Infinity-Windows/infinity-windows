@@ -1,4 +1,4 @@
-// Wave C, C3: canSeeHours is the ONE role-gating switch DayPanel owns —
+// Wave C, C3: canSeeHours controls the time-data boundary —
 // Foreman+ sees per-person hours and the Logs tab-through, installers see
 // names only. Pinned directly here (static markup, no router-guard/auth
 // stack) because /scheduling's own route guard (minRole "foreman",
@@ -11,6 +11,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 import { DayPanel } from "./DayPanel";
+import type { ScheduleAssignment } from "../../lib/schedule/types";
 import type { DayMemory } from "../../lib/schedule/dayMemory";
 
 const WITH_LOG: DayMemory = {
@@ -103,4 +104,17 @@ describe("DayPanel", () => {
     expect(html).toContain("Pulling up that day");
     expect(html).not.toContain("No day record.");
   });
+});
+
+it("keeps a foreman's day record readable without offering schedule mutations", () => {
+  const html = renderToStaticMarkup(<MemoryRouter><DayPanel
+    date="2026-08-24" memory={WITH_LOG} loading={false} canSeeHours
+    assignmentFor={() => ({ id: "a", project_id: "j-1", color: null } as ScheduleAssignment)}
+    onClose={() => {}}
+  /></MemoryRouter>);
+  expect(html).toContain("Ammon — 8h");
+  expect(html).toContain("Good day");
+  expect(html).not.toContain("Edit crew");
+  expect(html).not.toContain("Schedule crew");
+  expect(html).toContain("Close");
 });

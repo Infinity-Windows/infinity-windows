@@ -84,6 +84,9 @@ const SCRIMS = new Set([
   ".sched-sheet-backdrop",
   ".travel-sheet-backdrop",
   ".wizard-backdrop",
+  // ui/Sheet.tsx (S7): the generic bottom-sheet primitive's own scrim — same
+  // shape as .capture-backdrop above, just reusable instead of one-off.
+  ".ui-sheet-backdrop",
 ]);
 
 /** Which token a given overlay is meant to get its ceiling from. */

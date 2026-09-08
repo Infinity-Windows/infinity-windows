@@ -1,7 +1,7 @@
 # Publish one connected plan
 
-Status: needs-triage
-Blocked by: 03
+Status: ready-for-agent
+Blocked by: Permission migration 03 must be reviewed and applied before production rollout
 
 ## Scope
 
@@ -14,3 +14,7 @@ The publication verification matrix in spec.md passes against sandbox records; b
 ## Comments
 
 Created from the owner-requested busybusy review and iPhone web requirement.
+
+## Prerequisite update
+
+The database permission contract and isolated execution harness are implemented in draft under 03. Build linked publication on that contract; do not treat the frontend publication buttons or local fallback as an atomic server acknowledgment.

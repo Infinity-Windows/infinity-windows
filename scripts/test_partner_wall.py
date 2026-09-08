@@ -162,8 +162,6 @@ class TestTheWall(unittest.TestCase):
 # What this catches is the next NEW bucket that forgets the guard.
 STORAGE_WALL_TODO: frozenset[str] = frozenset({
     "authenticated toolbox records",     # 20260718003000
-    "trip attachments read",             # 20260723020000
-    "trip attachments write",            # 20260723020000
     "authenticated learning videos",     # 20260816000000
     "authenticated issue photos",        # 20260922000000
 })

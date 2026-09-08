@@ -226,6 +226,14 @@ jobs:
         shell: bash
         run: scripts/advisory-comment.test.sh
 
+  forge-permissions:
+    name: Forge database permission boundaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test real PostgreSQL roles with synthetic records
+        run: scripts/test-forge-permissions.sh
+
   supabase-tooling:
     name: Supabase merge tooling
     runs-on: ubuntu-latest

@@ -14,11 +14,9 @@
  * PERMISSION MIRROR (a1-ai-scheduler-spec.md, settled, cite-not-redecide):
  * "the AI holds exactly the caller's power. Scheduling tools refuse below
  * supervisor rank with a plain sentence. No new power enters through the chat
- * door." schedule_assignments' own RLS is wide open to any authenticated user
- * (20260721010000_crew_scheduling.sql — the app enforces edit-vs-read in the
- * route guard, same as Scheduling.tsx's own canEdit = isSupervisorPlus), so
- * this gate is the ONLY thing standing between a foreman's chat message and a
- * DRAFT write. It is checked identically by all three tools.
+ * door." Direct Schedule writes are now manager-only under migration
+ * 20261003000000. This edge function can use a service-role client that bypasses
+ * RLS, so the caller gate remains mandatory for all three tools.
  */
 
 import type { AnthropicToolDef } from "./anthropicTools.ts";

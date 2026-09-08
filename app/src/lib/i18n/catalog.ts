@@ -4527,6 +4527,18 @@ export const CATALOG = {
   "schedule.conflict": { en: "Scheduling conflict", es: "Conflicto de horario" },
   "schedule.job": { en: "Job", es: "Trabajo" },
   "schedule.delivery": { en: "Delivery", es: "Entrega" },
+
+  // Unit sheet as three steps (S7): the sticky header's stepper, the "More"
+  // fold every stage now holds its exceptional actions in, and the new
+  // reason line the Check stage's pinned Start button shows when flashing
+  // is what's holding it back (the other reasons already had keys — see
+  // opening.action.resolveBlockers / beforePhotoToStart / clockInFirst).
+  "sheet.more": { en: "More", es: "Más" },
+  "opening.action.flashingOwed": {
+    en: "This unit needs flashing before you can start",
+    es: "Esta unidad necesita calafateo antes de poder empezar",
+  },
+  "vehicles.scheduledBySupervisor": { en: "This vehicle is booked on the crew schedule. Ask a supervisor to change it.", es: "Este vehículo está reservado en el horario del equipo. Pídele a un supervisor que lo cambie." },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */

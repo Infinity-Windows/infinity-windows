@@ -111,10 +111,13 @@ describe("the warehouse's doors that stayed shut (ADR-0007)", () => {
   });
 
   it.each(STILL_SUPERVISOR)("%s is still supervisor and up", (fn) => {
-    // Both spell it the same way: the role is read, and installer OR foreman
-    // is refused. Pinning the shape, not just the words, so a rewrite that
-    // quietly drops one of the two names fails here.
     const body = currentBody(fn);
-    expect(body).toContain("v_role in ('installer', 'foreman')");
+    if (fn === "schedule_delivery") {
+      // The Forge permission migration also refuses unknown/partner roles.
+      // Real role execution and delivery regression tests run in Docker CI.
+      expect(body).toContain("public.is_partner_user() or v_role is null or v_role not in ('supervisor', 'owner', 'admin', 'big_boss')");
+    } else {
+      expect(body).toContain("v_role in ('installer', 'foreman')");
+    }
   });
 });

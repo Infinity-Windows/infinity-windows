@@ -154,6 +154,11 @@ export function Scheduling() {
   // Foremen can open the board and read the week; moving people stays a
   // supervisor call (owner decision, 2026-08-11).
   const canEdit = isSupervisorPlus(effectiveRole);
+  const openAssignment = (assignment: ScheduleAssignment) => {
+    if (canEdit) setEditor({ assignment });
+    else if (assignment.kind === "delivery" && assignment.delivery_id) navigate(`/storage/d/${assignment.delivery_id}`);
+    else if (assignment.project_id) navigate(`/projects/${assignment.project_id}`);
+  };
   // Coverage looks 21 days out regardless of the visible range.
   const coverageWindow = useQuery({
     queryKey: ["scheduleCoverage", today],
@@ -722,12 +727,12 @@ export function Scheduling() {
                   <strong>{nameOf(c.profileId)}</strong> — {jobLabelOf(c.aId)} &amp;{" "}
                   {jobLabelOf(c.bId)}, {clashRangeLabel(c.overlap.start, c.overlap.end)}
                 </span>
-                <button
+                {canEdit && <button
                   className="button-like sched-conflict-banner-fix"
                   onClick={() => fixConflict(c)}
                 >
                   Fix
-                </button>
+                </button>}
               </li>
             ))}
           </ul>
@@ -803,12 +808,12 @@ export function Scheduling() {
             </button>
           ))}
         </div>
-        <button
+        {canEdit && <button
           className="button-like active-pill sched-new"
           onClick={() => setEditor({ assignment: null, defaults: { start_date: anchor } })}
         >
           <Plus size={16} aria-hidden /> New
-        </button>
+        </button>}
         {canEdit && (
           <button
             className="button-like sched-plan-ai"
@@ -865,7 +870,7 @@ export function Scheduling() {
         );
       })()}
 
-      {tray.length > 0 && (
+      {canEdit && tray.length > 0 && (
         <div className="sched-tray">
           <span className="sched-tray-label">Unassigned</span>
           <div className="sched-tray-chips">
@@ -902,11 +907,7 @@ export function Scheduling() {
       ) : view === "agenda" ? (
         <AgendaView day={anchor} weekStart={range.from} assignments={loaded}
           conflictIds={conflictIds} vehicleLabels={vehicleLabelByAssignment} onDay={setAnchor}
-          onOpen={a => {
-            if (canEdit) setEditor({ assignment: a });
-            else if (a.kind === "delivery" && a.delivery_id) navigate(`/storage/d/${a.delivery_id}`);
-            else if (a.project_id) navigate(`/projects/${a.project_id}`);
-          }}
+          onOpen={openAssignment}
           onCreate={canEdit ? day => setEditor({ assignment: null, defaults: { start_date: day } }) : undefined}
         />
       ) : view === "board" ? (
@@ -959,8 +960,8 @@ export function Scheduling() {
           assignments={loaded}
           conflictIds={conflictIds}
           vehicleLabels={vehicleLabelByAssignment}
-          onOpen={(a) => setEditor({ assignment: a })}
-          onCreate={(day) => setEditor({ assignment: null, defaults: { start_date: day } })}
+          onOpen={openAssignment}
+          onCreate={canEdit ? (day) => setEditor({ assignment: null, defaults: { start_date: day } }) : undefined}
         />
       ) : view === "month" ? (
         <MonthView
@@ -978,11 +979,11 @@ export function Scheduling() {
           todayISO={today}
           assignments={loaded}
           conflictIds={conflictIds}
-          onOpen={(a) => setEditor({ assignment: a })}
+          onOpen={openAssignment}
         />
       )}
 
-      {draftList.length > 0 && (
+      {canEdit && draftList.length > 0 && (
         <div className="sched-publishbar">
           <div>
             <strong>
@@ -1000,7 +1001,7 @@ export function Scheduling() {
         </div>
       )}
 
-      {quickCreate && (
+      {canEdit && quickCreate && (
         <div className="modal-backdrop" role="dialog" aria-modal="true" onClick={() => setQuickCreate(null)}>
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
             <p style={{ margin: 0, fontWeight: 700 }}>
@@ -1038,7 +1039,7 @@ export function Scheduling() {
         </div>
       )}
 
-      {seedProposals && (
+      {canEdit && seedProposals && (
         <div className="modal-backdrop" role="dialog" aria-modal="true" onClick={() => setSeedProposals(null)}>
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
             <p style={{ margin: 0, fontWeight: 700 }}>{seedLabel}</p>
@@ -1105,20 +1106,20 @@ export function Scheduling() {
           loading={memoryLoading}
           canSeeHours={isForemanPlus(effectiveRole)}
           assignmentFor={(projectId) => assignmentForDayPanel.get(projectId) ?? null}
-          onEditAssignment={(a) => {
+          onEditAssignment={canEdit ? (a) => {
             setDayPanelDate(null);
             setEditor({ assignment: a });
-          }}
-          onScheduleCrew={() => {
+          } : undefined}
+          onScheduleCrew={canEdit ? () => {
             const startDate = dayPanelDate;
             setDayPanelDate(null);
             setEditor({ assignment: null, defaults: { start_date: startDate } });
-          }}
+          } : undefined}
           onClose={() => setDayPanelDate(null)}
         />
       )}
 
-      {editor && (
+      {canEdit && editor && (
         <AssignmentEditor
           assignment={editor.assignment}
           defaults={editor.defaults}
@@ -1157,7 +1158,7 @@ export function Scheduling() {
         />
       )}
 
-      {publishOpen && (
+      {canEdit && publishOpen && (
         <div className="sched-sheet-backdrop" role="dialog" aria-modal="true">
           <div className="sched-sheet">
             <div className="sched-sheet-head">

@@ -82,6 +82,15 @@ for (const role of ["supervisor", "foreman"] as const) {
     await expect(cards.last()).toContainText("LATE");
     await expect(cards.first()).toContainText("Fixture crew member");
     await expect(page.getByRole("button", { name: /Plan work on/ })).toHaveCount(role === "supervisor" ? 1 : 0);
+    if (role === "foreman") {
+      await expect(page.getByRole("button", { name: "New", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Fix", exact: true })).toHaveCount(0);
+      await expect(page.locator(".sched-publishbar")).toHaveCount(0);
+      await page.getByRole("tab", { name: "Week", exact: true }).click();
+      await expect(page.getByRole("button", { name: /Add crew on/ })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "+ crew", exact: true })).toHaveCount(0);
+      await page.getByRole("tab", { name: "Agenda", exact: true }).click();
+    }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     for (const card of await cards.all()) expect((await card.boundingBox())!.height).toBeGreaterThanOrEqual(44);
     await page.screenshot({ path: `e2e/test-results/agenda-${role}-390.png`, fullPage: true,

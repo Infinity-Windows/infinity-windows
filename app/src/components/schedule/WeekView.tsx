@@ -16,7 +16,7 @@ interface Props {
   /** assignment id → short vehicle label to show on the block. */
   vehicleLabels?: Map<string, string>;
   onOpen: (a: ScheduleAssignment) => void;
-  onCreate: (day: string) => void;
+  onCreate?: (day: string) => void;
 }
 
 export function WeekView({
@@ -41,13 +41,13 @@ export function WeekView({
           <div key={day} className={`sched-week-col${isToday ? " is-today" : ""}`} role="listitem">
             <div className="sched-week-head">
               <span>{agendaDayLabel(day)}</span>
-              <button
+              {onCreate && <button
                 className="icon-button"
                 aria-label={`Add crew on ${day}`}
                 onClick={() => onCreate(day)}
               >
                 <Plus size={15} />
-              </button>
+              </button>}
             </div>
             <div className="sched-week-body">
               {dayItems.map((a) => (
@@ -72,7 +72,7 @@ export function WeekView({
                   )}
                 </button>
               ))}
-              {dayItems.length === 0 && (
+              {dayItems.length === 0 && onCreate && (
                 <button className="sched-week-empty" onClick={() => onCreate(day)}>
                   + crew
                 </button>

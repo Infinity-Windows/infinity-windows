@@ -12720,6 +12720,138 @@ button.stage-chip {
 .unit-facts-wins { font-weight: 400; color: var(--muted); font-size: 13px; }
 .unit-facts-empty { margin-top: 4px; }
 
+/* =====================================================================   Unit sheet as three steps (S7, installer-os-spec.md). OpeningSheet.tsx
+   split into pages/install/sheet/{CheckStage,InstallStage,CaptureStage,
+   SheetMore}.tsx with OpeningSheet.tsx as the stage router; this block is
+   everything the split needed that didn't already exist. Scoped under
+   [data-section="install"] where it should only ever apply on a job screen
+   — the unit sheet lives under /projects, which carries that section.
+   ========================================================================= */
+
+/* Sticky stage header: back chip, unit code, the type chip, the stepper.
+   Same pattern .wh-find (warehouse) already uses for "never a scroll away" —
+   sticky under the safe-area inset, its own background so page content
+   scrolling underneath never shows through. min-height only, no hover
+   transform anywhere in this block, so it never changes height on hover. */
+.sheet-head {
+  position: sticky;
+  top: calc(var(--safe-top) + 8px);
+  z-index: 20;
+  background: var(--bg);
+  padding: 8px 0 4px;
+  margin-bottom: 4px;
+}
+.sheet-head-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.sheet-head-code {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sheet-head .hub-tabs {
+  margin: 8px 0 0;
+}
+
+/* The stage's one primary action, pinned above the tab bar — same anchor
+   the clock/capture sheets use (--above-tabbar), with a fade so content
+   scrolling under it never looks clipped. */
+.sheet-pinned {
+  position: sticky;
+  bottom: var(--above-tabbar);
+  z-index: 15;
+  padding: 10px 0 12px;
+  background: linear-gradient(to top, var(--bg) 65%, transparent);
+}
+.sheet-pinned-reason {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: var(--warn, var(--muted));
+  text-align: center;
+}
+
+/* The More fold: one <details> per stage screen, closed by default —
+   everything exceptional lives here now instead of always being on the
+   page (installer-os-spec.md S7, item 4). Reuses .more-actions' box; this
+   only adds the spacing between the rows it now holds. */
+.sheet-more-item {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.sheet-more-item:first-of-type {
+  margin-top: 8px;
+  padding-top: 0;
+  border-top: none;
+}
+
+/* ---- ui kit: Sheet (bottom sheet primitive, components/ui/Sheet.tsx) ---- */
+.ui-sheet-backdrop {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: var(--above-tabbar);
+  z-index: 60;
+  background: oklch(0.08 0.012 35 / 0.62);
+}
+.ui-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: var(--above-tabbar);
+  z-index: 61;
+  background: var(--card-raised);
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-top-left-radius: 18px;
+  border-top-right-radius: 18px;
+  box-shadow: var(--shadow-soft);
+  max-height: var(--sheet-max-h-above-tabbar);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 16px 22px;
+}
+.ui-sheet-grip {
+  width: 40px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--faint);
+  margin: 8px auto 10px;
+}
+
+@media (min-width: 860px) {
+  .ui-sheet-backdrop {
+    bottom: 0;
+  }
+  .ui-sheet {
+    left: 50%;
+    right: auto;
+    top: 50%;
+    bottom: auto;
+    width: min(520px, calc(100vw - 64px));
+    border-radius: 18px;
+    max-height: min(34rem, var(--sheet-max-h-above-tabbar));
+  }
+  .ui-sheet .ui-sheet-grip {
+    display: none;
+  }
+}
+
+/* 48px targets on the unit sheet — the stepper and the More summary are the
+   two controls this split added that weren't already covered by pick 9's
+   list (index.css, wave I-2). Same reasoning: min-height only, so nothing
+   here can move on :hover. */
+:root[data-section="install"] .hub-tab,
+:root[data-section="install"] .sheet-more summary,
+:root[data-section="install"] .ui-row {
+  min-height: 48px;
+}
 /* S6 gate (2026-09-07): two landing doors e2e pins visible on My Work — the
    skill tree ("Add my card", wave O) and the save-for-offline strip — sit
    above the More fold in every state, styled like a fold section so the page

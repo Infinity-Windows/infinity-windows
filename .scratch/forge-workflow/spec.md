@@ -60,3 +60,7 @@ Draft PR #591. The first GitHub CI browser run passed all nine targeted checks. 
 Based on master 6ecbb59 after #586 and #590 merged. Auto/Phone/Desktop preference, phone scheduling agenda and editor presentation are implemented for draft review, preserving the first trip-sheet slice. This is presentation work; it does not add shared publication.
 
 Live schema access is available. The read-only audit found database permission and privacy prerequisites; `docs/forge-publication-contract.md` records the evidence, concrete contract and release gate. Tickets 04 and the remaining connected-plan work are still incomplete. Physical iPhone Safari validation remains outstanding.
+
+## Third-slice implementation
+
+Integrated master 32b0620, preserving Claude's #592 three-step window sheet. The verified Schedule/Travel permission prerequisite is now a draft migration with real PostgreSQL role tests in an isolated Docker container. Foreman controls across schedule views match read-only permissions; existing crew job-level vehicle assignment remains available. Full app suite: 5,367 passing tests across 385 files; 15 browser tests pass. Database policy tests and migration replay checks pass. No production migration has been applied. Ticket 04 (linked atomic publication) is the next implementation stage.
