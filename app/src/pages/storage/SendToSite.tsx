@@ -25,6 +25,7 @@ import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import { scopeHref } from "../../lib/warehouse/materialsScope";
 import { checkoutPackagesOffline, writeToast } from "../../lib/warehouse/offlineWrites";
 import { idsToSend, leftoverBlock, sendSummary, siteUnits } from "../../lib/warehouse/sendToSite";
+import { useT } from "../../lib/i18n";
 
 export const SENT_TO_SITE_REASON = "Sent to job site";
 
@@ -32,6 +33,7 @@ export const SENT_TO_SITE_REASON = "Sent to job site";
 const NO_ROWS: StoragePackage[] = [];
 
 export function SendToSite() {
+  const t = useT();
   const { projectId = "" } = useParams();
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -48,7 +50,7 @@ export function SendToSite() {
     [containers.data],
   );
   const rows = packages.data ?? NO_ROWS;
-  const units = useMemo(() => siteUnits(rows, projectId, boxesById), [rows, projectId, boxesById]);
+  const units = useMemo(() => siteUnits(rows, projectId, boxesById, t), [rows, projectId, boxesById, t]);
   const onSite = rows.filter((p) => p.project_id === projectId && p.status === "checked_out").length;
   const block = leftoverBlock(rows, projectId, boxesById);
 
@@ -72,7 +74,7 @@ export function SendToSite() {
   const send = useMutation({
     mutationFn: () => checkoutPackagesOffline(going, SENT_TO_SITE_REASON, projectId),
     onSuccess: (r) => {
-      pushToast(writeToast(r, `${r.count} package${r.count === 1 ? "" : "s"} on the job site.`));
+      pushToast(writeToast(r, t(r.count === 1 ? "storage.sendToSite.onSite.one" : "storage.sendToSite.onSite.many", { n: r.count }), t));
       refresh();
       setStaying(new Set());
     },
@@ -81,7 +83,7 @@ export function SendToSite() {
   const boneyard = useMutation({
     mutationFn: () => boneyardJobLeftovers(projectId),
     onSuccess: (n) => {
-      pushToast(`${n} package${n === 1 ? "" : "s"} moved to the Boneyard.`);
+      pushToast(t(n === 1 ? "storage.sendToSite.movedBoneyard.one" : "storage.sendToSite.movedBoneyard.many", { n }));
       refresh();
     },
     onError: (e) => pushToast(formatApiError(e), "error"),
@@ -94,7 +96,7 @@ export function SendToSite() {
       await finalizeJobMaterials(projectId);
     },
     onSuccess: () => {
-      pushToast(`${job?.job_code ?? "Job"} finalized. It now lives in warehouse history.`);
+      pushToast(t("storage.sendToSite.finalized", { job: job?.job_code ?? t("storage.sendToSite.jobFallback") }));
       refresh();
       navigate("/warehouse/history");
     },
@@ -103,7 +105,7 @@ export function SendToSite() {
   const reopen = useMutation({
     mutationFn: () => reopenJobMaterials(projectId),
     onSuccess: () => {
-      pushToast(`${job?.job_code ?? "Job"} is back on the warehouse page.`);
+      pushToast(t("storage.sendToSite.reopened", { job: job?.job_code ?? t("storage.sendToSite.jobFallback") }));
       refresh();
     },
     onError: (e) => pushToast(formatApiError(e), "error"),
@@ -113,7 +115,7 @@ export function SendToSite() {
     return (
       <div className="page">
         <BackChip />
-        <p className="muted">Job not found.</p>
+        <p className="muted">{t("storage.sendToSite.notFound")}</p>
       </div>
     );
   }
@@ -127,49 +129,51 @@ export function SendToSite() {
       <header className="page-header">
         <div>
           <p className="home-greeting">{job?.name ?? ""}</p>
-          <h1>{code} → job site</h1>
+          <h1>{t("storage.sendToSite.h1", { job: code })}</h1>
         </div>
       </header>
 
       {finalizedAt ? (
-        <section className="detail-card wh-card send-finalized" aria-label="Finalized">
+        <section className="detail-card wh-card send-finalized" aria-label={t("storage.sendToSite.finalizedAria")}>
           <p className="send-finalized-head">
-            Unit movement finalized on {finalizedAt.slice(0, 10)}.
+            {t("storage.sendToSite.finalizedOn", { date: finalizedAt.slice(0, 10) })}
           </p>
           <p className="muted">
-            Hidden from the warehouse page; listed in <Link to="/warehouse/history">warehouse history</Link>.
-            {onSite > 0 ? ` ${onSite} piece${onSite === 1 ? "" : "s"} on the job site.` : ""}
+            {t("storage.sendToSite.hiddenListed.pre")}
+            <Link to="/warehouse/history">{t("storage.sendToSite.hiddenListed.link")}</Link>
+            {t("storage.sendToSite.hiddenListed.post")}
+            {onSite > 0 ? ` ${t(onSite === 1 ? "storage.sendToSite.onSiteCount.one" : "storage.sendToSite.onSiteCount.many", { n: onSite })}` : ""}
           </p>
           {lead ? (
             <button className="button-like" disabled={reopen.isPending} onClick={() => reopen.mutate()}>
-              {reopen.isPending ? "Reopening…" : "Reopen in the warehouse"}
+              {reopen.isPending ? t("storage.sendToSite.reopening") : t("storage.sendToSite.reopenButton")}
             </button>
           ) : (
-            <p className="muted">A foreman can reopen it if something comes back.</p>
+            <p className="muted">{t("storage.sendToSite.foremanReopens")}</p>
           )}
         </section>
       ) : null}
 
-      <section aria-label="Units here">
+      <section aria-label={t("storage.sendToSite.unitsHereAria")}>
         <div className="wh-row">
-          <h2 className="send-title">Here, ready to go</h2>
+          <h2 className="send-title">{t("storage.sendToSite.readyToGo")}</h2>
           {units.length > 0 ? (
             <div className="wh-actions">
               <button
                 className="button-like"
                 onClick={() => setStaying(staying.size === units.length ? new Set() : new Set(units.map((u) => u.key)))}
               >
-                {staying.size === units.length ? "Send all" : "Keep all"}
+                {staying.size === units.length ? t("storage.sendToSite.sendAll") : t("storage.sendToSite.keepAll")}
               </button>
             </div>
           ) : null}
         </div>
         {loading ? (
-          <p className="muted">Loading…</p>
+          <p className="muted">{t("storage.sendToSite.loading")}</p>
         ) : units.length === 0 ? (
           <p className="muted">
-            Nothing of {code} is in the warehouse right now.
-            {onSite > 0 ? ` ${onSite} piece${onSite === 1 ? "" : "s"} already on the job site.` : ""}
+            {t("storage.sendToSite.nothingHere", { job: code })}
+            {onSite > 0 ? ` ${t(onSite === 1 ? "storage.sendToSite.alreadyOnSite.one" : "storage.sendToSite.alreadyOnSite.many", { n: onSite })}` : ""}
           </p>
         ) : (
           <ul className="send-list">
@@ -182,16 +186,16 @@ export function SendToSite() {
                       type="checkbox"
                       checked={goes}
                       onChange={() => toggle(u.key)}
-                      aria-label={`${u.label} goes to the job site`}
+                      aria-label={t("storage.sendToSite.goesToSite", { label: u.label })}
                     />
                     <span className="send-unit-main">
                       <span className="send-unit-name">{u.label}</span>
                       <span className="send-unit-sub">
-                        {u.here} piece{u.here === 1 ? "" : "s"} · {u.places.join(", ")}
+                        {t(u.here === 1 ? "storage.sendToSite.piece.one" : "storage.sendToSite.piece.many", { n: u.here })} · {u.places.join(", ")}
                       </span>
                     </span>
                     <span className={`send-unit-tag${goes ? "" : " send-unit-tag--stays"}`}>
-                      {goes ? "goes" : "stays"}
+                      {goes ? t("storage.sendToSite.goes") : t("storage.sendToSite.stays")}
                     </span>
                   </label>
                 </li>
@@ -201,47 +205,46 @@ export function SendToSite() {
         )}
         {units.length > 0 ? (
           <div className="send-bar">
-            <span>{sendSummary(units, staying)}</span>
+            <span>{sendSummary(units, staying, t)}</span>
             <button
               className="button-like active-pill"
               disabled={going.length === 0 || send.isPending}
               onClick={() => send.mutate()}
             >
-              {send.isPending ? "Moving…" : "Move to job site"}
+              {send.isPending ? t("storage.sendToSite.moving") : t("storage.sendToSite.moveToSite")}
             </button>
           </div>
         ) : null}
         <p className="muted send-hint">
-          Untick a unit to keep it here. Moving writes the same "checked out" line
-          a check-out does, with the reason "{SENT_TO_SITE_REASON}"; each line can be undone from the unit card.
+          {t("storage.sendToSite.hint", { reason: SENT_TO_SITE_REASON })}
         </p>
       </section>
 
       {!finalizedAt ? (
-        <section className="detail-card wh-card send-finish" aria-label="Finish up">
-          <h2 className="send-title">Finish up</h2>
+        <section className="detail-card wh-card send-finish" aria-label={t("storage.sendToSite.finishUpAria")}>
+          <h2 className="send-title">{t("storage.sendToSite.finishUp")}</h2>
           <p className="muted">
-            {onSite} piece{onSite === 1 ? "" : "s"} on the job site.{" "}
-            {block ?? `Nothing of ${code} is left in the warehouse.`}
+            {t(onSite === 1 ? "storage.sendToSite.onSiteCount.one" : "storage.sendToSite.onSiteCount.many", { n: onSite })}{" "}
+            {block ?? t("storage.sendToSite.nothingLeft", { job: code })}
           </p>
           <div className="wh-actions">
             {block ? (
               <button className="button-like" disabled={boneyard.isPending} onClick={() => boneyard.mutate()}>
-                {boneyard.isPending ? "Moving…" : "Move leftovers to the Boneyard"}
+                {boneyard.isPending ? t("storage.sendToSite.moving") : t("storage.sendToSite.moveToBoneyard")}
               </button>
             ) : null}
             <button
               className="button-like active-pill"
               disabled={!!block || !lead || finalize.isPending || loading}
-              title={block ?? (lead ? "Close this job's material story; it moves to warehouse history" : "A foreman or above finalizes")}
+              title={block ?? (lead ? t("storage.sendToSite.finalizeHintLead") : t("storage.sendToSite.finalizeHintNotLead"))}
               onClick={() => finalize.mutate()}
             >
-              {finalize.isPending ? "Finalizing…" : "Unit Movement Finalized"}
+              {finalize.isPending ? t("storage.sendToSite.finalizing") : t("storage.sendToSite.finalizeButton")}
             </button>
           </div>
-          {!lead ? <p className="muted">A foreman or above finalizes a job.</p> : null}
+          {!lead ? <p className="muted">{t("storage.sendToSite.foremanFinalizes")}</p> : null}
           <p className="muted">
-            <Link to={scopeHref({ projectId, pendingName: null })}>Open {code}'s materials ledger</Link>
+            <Link to={scopeHref({ projectId, pendingName: null })}>{t("storage.sendToSite.openLedger", { job: code })}</Link>
           </p>
         </section>
       ) : null}

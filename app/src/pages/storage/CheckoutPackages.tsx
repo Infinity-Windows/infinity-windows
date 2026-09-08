@@ -34,6 +34,11 @@ import {
 } from "../../lib/storage";
 import { isMissingStagingBayError } from "../../lib/staging";
 import { STATION_OUT_DOOR } from "../../lib/warehouse/stations";
+import { useT, type TFn } from "../../lib/i18n";
+import { CATALOG } from "../../lib/i18n/catalog";
+import { translate, type Lang } from "../../lib/i18n/translate";
+
+const englishT: TFn = (key, vars) => translate(CATALOG, "en" as Lang, key, vars);
 
 /**
  * The mismatch warning, per mode — because the two modes do different things
@@ -45,13 +50,12 @@ import { STATION_OUT_DOOR } from "../../lib/warehouse/stations";
  * gated: staging is undone by re-staging or by scanning the package back into
  * a conex, so a warning is the whole cost of getting it wrong.
  */
-export function mismatchWarning(mode: "stage" | "out"): string {
-  return mode === "stage"
-    ? "Double-check before it goes in this job's bay."
-    : "Double-check before it leaves.";
+export function mismatchWarning(mode: "stage" | "out", t: TFn = englishT): string {
+  return t(mode === "stage" ? "storage.checkout.mismatch.stage" : "storage.checkout.mismatch.out");
 }
 
 export function CheckoutPackages() {
+  const t = useT();
   const qc = useQueryClient();
   const navigate = useNavigate();
   const containers = useQuery({ queryKey: ["storageContainers"], queryFn: listContainers });
@@ -104,8 +108,9 @@ export function CheckoutPackages() {
         packages.data ?? [],
         new Map((containers.data ?? []).map((c) => [c.id, c])),
         toLocationsById(locations.data ?? []),
+        t,
       ),
-    [picked, packages.data, containers.data, locations.data],
+    [picked, packages.data, containers.data, locations.data, t],
   );
   const isOther = reason === "Other";
   const finalReason = isOther && otherNote.trim() ? `Other — ${otherNote.trim()}` : reason;
@@ -139,7 +144,8 @@ export function CheckoutPackages() {
       pushToast(
         writeToast(
           r,
-          `${r.count} package${r.count === 1 ? "" : "s"} set aside for the job`,
+          t(r.count === 1 ? "storage.checkout.setAside.one" : "storage.checkout.setAside.many", { n: r.count }),
+          t,
         ),
       );
       setPicked(new Set());
@@ -150,9 +156,7 @@ export function CheckoutPackages() {
       // The server refuses rather than using a shared stock shelf — say what
       // to do instead of showing the raw refusal.
       pushToast(
-        isMissingStagingBayError(e)
-          ? "This job has no bay yet — try again; the app makes one on first use."
-          : formatApiError(e),
+        isMissingStagingBayError(e) ? t("storage.checkout.noBayYet") : formatApiError(e),
         "error",
       );
     },
@@ -162,7 +166,7 @@ export function CheckoutPackages() {
     mutationFn: () => checkoutPackagesOffline([...picked], finalReason, projectId),
     onSuccess: (r) => {
       pushToast(
-        writeToast(r, `${r.count} package${r.count === 1 ? "" : "s"} checked out.`),
+        writeToast(r, t(r.count === 1 ? "storage.checkout.checkedOut.one" : "storage.checkout.checkedOut.many", { n: r.count }), t),
       );
       void qc.invalidateQueries({ queryKey: ["storagePackages"] });
       navigate("/warehouse");
@@ -175,8 +179,8 @@ export function CheckoutPackages() {
       <header className="page-header">
         <div>
           <BackChip />
-          <p className="home-greeting">Storage</p>
-          <h1>{mode === "stage" ? "Set aside for a job" : "Check out"}</h1>
+          <p className="home-greeting">{t("storage.checkout.storage")}</p>
+          <h1>{mode === "stage" ? t("storage.checkout.setAsideTitle") : t("storage.checkout.checkOutTitle")}</h1>
         </div>
       </header>
       <StationChip station={STATION_OUT_DOOR} />
@@ -186,27 +190,25 @@ export function CheckoutPackages() {
           className={mode === "stage" ? "button-like active-pill" : "button-like"}
           onClick={() => setMode("stage")}
         >
-          Set aside (staging)
+          {t("storage.checkout.setAsideStaging")}
         </button>
         <button
           className={mode === "out" ? "button-like active-pill" : "button-like"}
           onClick={() => setMode("out")}
         >
-          Check out
+          {t("storage.checkout.checkOutButton")}
         </button>
       </div>
       <p className="muted" style={{ margin: "6px 0 0", fontSize: 13 }}>
-        {mode === "stage"
-          ? "Puts them on this job's own shelf so they go out together. Still ours, still on hand — check one back into a conex any time."
-          : "Takes them out of storage to the job. This is the end of the trail; the history stays forever."}
+        {mode === "stage" ? t("storage.checkout.stageHint") : t("storage.checkout.outHint")}
       </p>
 
-      <h2>1 · Packages ({picked.size} picked)</h2>
+      <h2>{t("storage.checkout.step1", { n: picked.size })}</h2>
       <select
         value={containerFilter}
         onChange={(e) => setContainerFilter(e.target.value)}
       >
-        <option value="">All containers</option>
+        <option value="">{t("storage.checkout.allContainers")}</option>
         {(containers.data ?? []).map((c) => (
           <option key={c.id} value={c.id}>{c.name}</option>
         ))}
@@ -216,7 +218,7 @@ export function CheckoutPackages() {
           const on = picked.has(p.id);
           const where =
             (containers.data ?? []).find((c) => c.id === p.container_id)?.name ??
-            "not stored yet";
+            t("storage.checkout.notStoredYet");
           return (
             <button
               key={p.id}
@@ -238,12 +240,12 @@ export function CheckoutPackages() {
             </button>
           );
         })}
-        {available.length === 0 && <p className="muted">Nothing in storage.</p>}
+        {available.length === 0 && <p className="muted">{t("storage.checkout.nothingInStorage")}</p>}
       </div>
 
       {mode === "out" && (
         <>
-      <h2>2 · Why</h2>
+      <h2>{t("storage.checkout.step2Why")}</h2>
       <div className="row-gap">
         {(reasons.data ?? []).map((r) => (
           <button
@@ -257,7 +259,7 @@ export function CheckoutPackages() {
       </div>
       {isOther && (
         <input
-          placeholder="Say why"
+          placeholder={t("storage.checkout.sayWhy")}
           value={otherNote}
           onChange={(e) => setOtherNote(e.target.value)}
         />
@@ -266,12 +268,12 @@ export function CheckoutPackages() {
         </>
       )}
 
-      <h2>{mode === "out" ? "3 · To what job" : "2 · Which job"}</h2>
+      <h2>{mode === "out" ? t("storage.checkout.step3ToJob") : t("storage.checkout.step2WhichJob")}</h2>
       <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
         <option value="">
           {suggestedProject
-            ? `Pick the job… (most picked are ${jobCode.get(suggestedProject) ?? "?"})`
-            : "Pick the job…"}
+            ? t("storage.checkout.pickJobSuggested", { job: jobCode.get(suggestedProject) ?? "?" })
+            : t("storage.checkout.pickJob")}
         </option>
         {(projects.data ?? []).map((p) => (
           <option key={p.id} value={p.id}>
@@ -285,19 +287,20 @@ export function CheckoutPackages() {
           style={{ marginTop: 6 }}
           onClick={() => setProjectId(suggestedProject)}
         >
-          Use {jobCode.get(suggestedProject)}
+          {t("storage.checkout.use", { job: jobCode.get(suggestedProject) ?? "?" })}
         </button>
       )}
 
       {mismatched.length > 0 && (
         <p className="warn" style={{ color: "#b8860b", fontSize: 13 }}>
-          ⚠ {mismatched.length} of these {mismatched.length === 1 ? "was" : "were"} tagged
-          for a different job (
-          {mismatched
-            .map((p) => `${p.serial}→${jobCode.get(p.project_id ?? "") ?? "?"}`)
-            .slice(0, 4)
-            .join(", ")}
-          ). {mismatchWarning(mode)}
+          ⚠ {t(mismatched.length === 1 ? "storage.checkout.mismatched.one" : "storage.checkout.mismatched.many", {
+            n: mismatched.length,
+            list: mismatched
+              .map((p) => `${p.serial}→${jobCode.get(p.project_id ?? "") ?? "?"}`)
+              .slice(0, 4)
+              .join(", "),
+          })}{" "}
+          {mismatchWarning(mode, t)}
         </p>
       )}
 
@@ -309,7 +312,7 @@ export function CheckoutPackages() {
             </p>
           ))}
           <p className="muted" style={{ margin: "4px 0 0", fontSize: 12.5 }}>
-            Sometimes that&rsquo;s the job — this is a heads-up, not a stop.
+            {t("storage.checkout.splitHint")}
           </p>
         </div>
       )}
@@ -321,7 +324,7 @@ export function CheckoutPackages() {
             disabled={picked.size === 0 || !projectId || stage.isPending}
             onClick={() => stage.mutate()}
           >
-            {stage.isPending ? "Setting aside…" : `Set aside ${picked.size}`}
+            {stage.isPending ? t("storage.checkout.settingAside") : t("storage.checkout.setAsideN", { n: picked.size })}
           </button>
         ) : (
           <button
@@ -335,7 +338,7 @@ export function CheckoutPackages() {
             }
             onClick={() => submit.mutate()}
           >
-            {submit.isPending ? "Checking out…" : `Check out ${picked.size}`}
+            {submit.isPending ? t("storage.checkout.checkingOut") : t("storage.checkout.checkOutN", { n: picked.size })}
           </button>
         )}
       </div>

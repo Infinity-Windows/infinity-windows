@@ -16,6 +16,11 @@ import { supabase } from "../supabase";
 import { isMissingTable } from "../schemaErrors";
 import type { StorageContainer, StoragePackage } from "../storage";
 import { placeChain } from "./containment";
+import { CATALOG } from "../i18n/catalog";
+import { translate, type Lang } from "../i18n/translate";
+import type { TFn } from "../i18n/context";
+
+const englishT: TFn = (key, vars) => translate(CATALOG, "en" as Lang, key, vars);
 
 export type CardId = "on-hand" | "not-tagged" | "loose" | "damaged";
 export type CardTone = "ok" | "warn" | "danger" | undefined;
@@ -58,6 +63,31 @@ export const WAREHOUSE_CARDS: CardDef[] = [
       "Open damage reports — material that arrived broken or got broken here. Each one needs a replacement ordered before that window can be finished. Tap through to the issue to see the note, the photo when one was taken, and who reported it.",
   },
 ];
+
+// Translated label/blurb, keyed by card id (S3b) — `label`/`blurb` on
+// WAREHOUSE_CARDS itself stay the stable English default; CardList.tsx and
+// Warehouse.tsx read through these instead when they have a live `t`.
+const CARD_LABEL_KEYS: Record<CardId, string> = {
+  "on-hand": "warehouse.card.onHand.label",
+  "not-tagged": "warehouse.card.notTagged.label",
+  loose: "warehouse.card.loose.label",
+  damaged: "warehouse.card.damaged.label",
+};
+
+const CARD_BLURB_KEYS: Record<CardId, string> = {
+  "on-hand": "warehouse.card.onHand.blurb",
+  "not-tagged": "warehouse.card.notTagged.blurb",
+  loose: "warehouse.card.loose.blurb",
+  damaged: "warehouse.card.damaged.blurb",
+};
+
+export function cardLabel(id: CardId, t: TFn = englishT): string {
+  return t(CARD_LABEL_KEYS[id] as Parameters<TFn>[0]);
+}
+
+export function cardBlurb(id: CardId, t: TFn = englishT): string {
+  return t(CARD_BLURB_KEYS[id] as Parameters<TFn>[0]);
+}
 
 export type CardCounts = Record<CardId, number>;
 

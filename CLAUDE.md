@@ -209,6 +209,8 @@ keeping:
   "Stop windows showing as being installed for days on end". Not conventional commits
 - Degrade instead of crashing: a missing table or an offline phone should empty a
   screen, never white-screen it
+- Every installer-floor page calls `useT()` — most of the crew reads Spanish more
+  comfortably than English. `lib/i18n/installerFloor.test.ts` fails otherwise.
 
 ## Agent skills
 

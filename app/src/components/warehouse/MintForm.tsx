@@ -11,6 +11,7 @@ import { formatApiError } from "../../lib/errors";
 import { pushToast } from "../../lib/toast";
 import { downloadPdf, packageLabelsPdf } from "../../lib/labels";
 import { mintPackages } from "../../lib/storage";
+import { useT } from "../../lib/i18n";
 
 export function MintForm({
   onClose,
@@ -19,6 +20,7 @@ export function MintForm({
   onClose: () => void;
   onMinted: (n: number) => void;
 }) {
+  const t = useT();
   const [count, setCount] = useState("50");
   const n = parseInt(count, 10);
   const invalid = !Number.isFinite(n) || n < 1 || n > 500;
@@ -34,7 +36,7 @@ export function MintForm({
       return rows.length;
     },
     onSuccess: (made) => {
-      pushToast(`${made} blank stickers ready to print.`);
+      pushToast(t("warehouse.mintForm.ready", { n: made }));
       onMinted(made);
     },
     onError: (e) => pushToast(formatApiError(e), "error"),
@@ -43,12 +45,11 @@ export function MintForm({
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
       <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-        <p style={{ margin: 0, fontWeight: 700 }}>Print blank stickers</p>
+        <p style={{ margin: 0, fontWeight: 700 }}>{t("warehouse.mintForm.title")}</p>
         <p className="muted" style={{ margin: "4px 0 0", fontSize: 12.5 }}>
-          Each sticker gets a permanent serial the moment it prints — batches
-          are 1&ndash;500 at a time.
+          {t("warehouse.mintForm.hint")}
         </p>
-        <label className="field-label">How many</label>
+        <label className="field-label">{t("warehouse.mintForm.howMany")}</label>
         <input
           type="number"
           min={1}
@@ -60,7 +61,7 @@ export function MintForm({
         />
         {invalid && count.trim() !== "" && (
           <p className="error" style={{ fontSize: 12, margin: "4px 0 0" }}>
-            Pick a number from 1 to 500.
+            {t("warehouse.mintForm.invalid")}
           </p>
         )}
         <div className="row-gap" style={{ marginTop: 10 }}>
@@ -69,10 +70,10 @@ export function MintForm({
             disabled={invalid || mint.isPending}
             onClick={() => mint.mutate()}
           >
-            {mint.isPending ? "Printing…" : `Print ${invalid ? "" : n} stickers`}
+            {mint.isPending ? t("warehouse.mintForm.printing") : t("warehouse.mintForm.print", { n: invalid ? "" : n })}
           </button>
           <button className="button-like" onClick={onClose}>
-            Cancel
+            {t("warehouse.mintForm.cancel")}
           </button>
         </div>
       </div>

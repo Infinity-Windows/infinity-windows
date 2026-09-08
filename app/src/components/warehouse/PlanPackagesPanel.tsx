@@ -33,6 +33,7 @@ import { listStudioUnits } from "../../lib/modelstudio/units";
 import { catalogByMarkFrom, resolveMarkConfig } from "../../lib/modelstudio/fromProject";
 import { isForemanPlus } from "../../lib/install/types";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
+import { useT } from "../../lib/i18n";
 
 export function PlanPackagesPanel({
   projectId,
@@ -41,6 +42,7 @@ export function PlanPackagesPanel({
   projectId: string;
   jobCode: string | null;
 }) {
+  const t = useT();
   const qc = useQueryClient();
   // The only rank left on this panel: burning is a door that ends something.
   const { effectiveRole } = useEffectiveRole();
@@ -70,9 +72,7 @@ export function PlanPackagesPanel({
   const burn = useMutation({
     mutationFn: () => burnPackages([...burning]),
     onSuccess: (n) => {
-      pushToast(
-        `${n} label${n === 1 ? "" : "s"} burned. Destroy the paper — anything still wearing one scans as nothing.`,
-      );
+      pushToast(t(n === 1 ? "planPackages.burned.one" : "planPackages.burned.many", { n }));
       setBurning(new Set());
       setBurnMode(false);
       void qc.invalidateQueries({ queryKey: ["storagePackages"] });
@@ -85,11 +85,14 @@ export function PlanPackagesPanel({
       mintMarkPackages({ projectId, markCode: input.markCode, total: input.total }),
     onSuccess: (minted, input) => {
       if (minted.length === 0) {
-        pushToast(`Window ${input.markCode} already has all ${input.total} labels.`, "info");
+        pushToast(t("planPackages.alreadyHasAll", { mark: input.markCode, total: input.total }), "info");
         return;
       }
       pushToast(
-        `${minted.length} label${minted.length === 1 ? "" : "s"} minted for window ${input.markCode}.`,
+        t(minted.length === 1 ? "planPackages.minted.one" : "planPackages.minted.many", {
+          n: minted.length,
+          mark: input.markCode,
+        }),
       );
       void qc.invalidateQueries({ queryKey: ["storagePackages"] });
       // Straight to paper: minting without printing leaves stickers that
@@ -133,11 +136,11 @@ export function PlanPackagesPanel({
   return (
     <section className="detail-card" style={{ marginBottom: 16 }}>
       <div className="row-between">
-        <h2 style={{ margin: 0 }}>Plan packages & labels</h2>
+        <h2 style={{ margin: 0 }}>{t("planPackages.title")}</h2>
         {mintedRows.length > 0 && (
           <div className="row-gap">
             <button className="action-btn" onClick={() => void printLabels(mintedRows)}>
-              Print all on-the-way labels ({mintedRows.length})
+              {t("planPackages.printAll", { n: mintedRows.length })}
             </button>
             {canBurn && (
               <button
@@ -147,42 +150,29 @@ export function PlanPackagesPanel({
                   setBurning(new Set());
                 }}
               >
-                {burnMode ? "Cancel burn" : "Burn labels…"}
+                {burnMode ? t("planPackages.cancelBurn") : t("planPackages.burnLabels")}
               </button>
             )}
           </div>
         )}
       </div>
-      <Explain id="wh-plan-packages">
-        Say how many packages a window arrives as, and the labels exist before
-        the truck does — already carrying the job, the window and &ldquo;2 of
-        4&rdquo;. At the truck, receiving is sticking the label on and tapping
-        Arrived. If the maker&rsquo;s own label says a different count, the
-        maker wins — a foreman burns the wrong stickers, then anybody mints
-        the right number.
-      </Explain>
+      <Explain id="wh-plan-packages">{t("planPackages.explain")}</Explain>
 
       {canBurn && burnMode && (
         <div
           className="detail-card"
           style={{ borderLeft: "3px solid var(--danger)", margin: "10px 0" }}
         >
-          <p style={{ margin: 0, fontWeight: 600 }}>
-            Burning kills a label for good.
-          </p>
+          <p style={{ margin: 0, fontWeight: 600 }}>{t("planPackages.burnKills")}</p>
           <p className="muted" style={{ margin: "4px 0 8px", fontSize: 13 }}>
-            Only labels whose material never arrived can burn. The serial dies,
-            the part slot reopens for a fresh label, and the paper must be
-            destroyed — anything still wearing a burned sticker will scan as
-            nothing. A sticker on a real package gets a Reprint instead, from
-            its package page.
+            {t("planPackages.burnExplain")}
           </p>
           <div className="row-gap" style={{ flexWrap: "wrap" }}>
             {mintedRows.map((p) => {
               const mark = (p.package_marks ?? [])[0]?.mark_code ?? "?";
               const part =
                 p.part_index != null && p.part_total != null
-                  ? ` · ${p.part_index} of ${p.part_total}`
+                  ? ` · ${t("storage.tag.ofTotal", { index: p.part_index, total: p.part_total })}`
                   : "";
               const on = burning.has(p.id);
               return (
@@ -209,19 +199,14 @@ export function PlanPackagesPanel({
               onClick={() => burn.mutate()}
             >
               {burn.isPending
-                ? "Burning…"
-                : `Burn ${burning.size} label${burning.size === 1 ? "" : "s"} — no way back`}
+                ? t("planPackages.burning")
+                : t(burning.size === 1 ? "planPackages.burnN.one" : "planPackages.burnN.many", { n: burning.size })}
             </button>
           )}
         </div>
       )}
 
-      {rows.length === 0 && (
-        <p className="muted">
-          No windows on this job&rsquo;s schedule yet — they come from the
-          plans at spec review.
-        </p>
-      )}
+      {rows.length === 0 && <p className="muted">{t("planPackages.noWindows")}</p>}
 
       <div className="home-projects">
         {rows.map((r) => {
@@ -243,31 +228,31 @@ export function PlanPackagesPanel({
             <div key={r.markCode} className="project-card home-project">
               <div className="row-between" style={{ gap: 10, flexWrap: "wrap" }}>
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: 600 }}>Window {r.markCode}</div>
+                  <div style={{ fontWeight: 600 }}>{t("warehouse.card.window", { mark: r.markCode })}</div>
                   <div className="muted" style={{ fontSize: 12.5 }}>
                     {r.totalsDisagree
-                      ? "labels disagree on the count — settle that first"
+                      ? t("planPackages.disagree")
                       : r.declared == null
-                        ? "no package count declared yet"
-                        : `arrives as ${r.declared} · ${r.here} here` +
-                          (r.onTheWay > 0 ? ` · ${r.onTheWay} on the way` : "")}
+                        ? t("planPackages.noCountYet")
+                        : t("planPackages.arrivesAs", { declared: r.declared, here: r.here }) +
+                          (r.onTheWay > 0 ? ` · ${t("planPackages.onTheWay", { n: r.onTheWay })}` : "")}
                   </div>
                 </div>
                 <div className="row-gap" style={{ alignItems: "center" }}>
                   <span style={{ display: "grid", gap: 2 }}>
                     <input
                       inputMode="numeric"
-                      placeholder={r.declared != null ? String(r.declared) : "How many?"}
+                      placeholder={r.declared != null ? String(r.declared) : t("planPackages.howMany")}
                       value={typed}
                       onChange={(e) =>
                         setCounts({ ...counts, [r.markCode]: e.target.value })
                       }
                       style={{ width: 90 }}
-                      aria-label={`How many packages for window ${r.markCode}`}
+                      aria-label={t("planPackages.howManyAria", { mark: r.markCode })}
                     />
                     {showSuggestion && (
                       <span className="muted" style={{ fontSize: 10.5 }}>
-                        (suggested from the model)
+                        {t("planPackages.suggestedFromModel")}
                       </span>
                     )}
                   </span>
@@ -276,7 +261,7 @@ export function PlanPackagesPanel({
                     disabled={!valid || r.totalsDisagree || mint.isPending}
                     onClick={() => mint.mutate({ markCode: r.markCode, total: n })}
                   >
-                    Mint
+                    {t("planPackages.mint")}
                   </button>
                 </div>
               </div>

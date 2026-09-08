@@ -7,6 +7,7 @@
 import { Fragment } from "react";
 import { EmptyState } from "../ui/States";
 import { isRecapQuiet, type DayRecap } from "../../lib/warehouse/dayRecap";
+import { useT } from "../../lib/i18n";
 
 interface Part {
   key: string;
@@ -16,29 +17,30 @@ interface Part {
 }
 
 export function DayRecapCard({ recap }: { recap: DayRecap }) {
+  const t = useT();
   if (isRecapQuiet(recap)) {
     return (
       <section className="wh-day-recap">
-        <h2>Today</h2>
-        <EmptyState title="Quiet so far — nothing moved today." />
+        <h2>{t("warehouse.recap.title")}</h2>
+        <EmptyState title={t("warehouse.recap.quiet")} />
       </section>
     );
   }
 
   const parts: Part[] = [
     recap.checkedIn > 0
-      ? { key: "in", count: recap.checkedIn, label: "checked in", colorVar: "var(--stage-arrived)" }
+      ? { key: "in", count: recap.checkedIn, label: t("warehouse.recap.checkedIn"), colorVar: "var(--stage-arrived)" }
       : null,
     recap.stored > 0
-      ? { key: "stored", count: recap.stored, label: "stored", colorVar: "var(--stage-stored)" }
+      ? { key: "stored", count: recap.stored, label: t("warehouse.recap.stored"), colorVar: "var(--stage-stored)" }
       : null,
     recap.checkedOut > 0
-      ? { key: "out", count: recap.checkedOut, label: "checked out", colorVar: "var(--stage-out)" }
+      ? { key: "out", count: recap.checkedOut, label: t("warehouse.recap.checkedOut"), colorVar: "var(--stage-out)" }
       : null,
     ...recap.missingByDelivery.map((m) => ({
       key: `missing-${m.label}`,
       count: m.count,
-      label: `still missing from ${m.label}`,
+      label: t("warehouse.recap.stillMissing", { label: m.label }),
       colorVar: "var(--stage-expected)",
     })),
   ].filter((p): p is Part => p !== null);
@@ -46,7 +48,7 @@ export function DayRecapCard({ recap }: { recap: DayRecap }) {
   return (
     <section className="wh-day-recap">
       <div className="detail-card wh-card">
-        <h2 style={{ margin: "0 0 6px" }}>Today</h2>
+        <h2 style={{ margin: "0 0 6px" }}>{t("warehouse.recap.title")}</h2>
         <p style={{ margin: 0 }}>
           {parts.map((p, i) => (
             <Fragment key={p.key}>

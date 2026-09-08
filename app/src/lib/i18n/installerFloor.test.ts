@@ -97,30 +97,18 @@ const ROUTE_FILES: Partial<Record<string, string[]>> = {
 };
 
 /**
- * Files this sweep (installer-spanish-first-fourteen) measured as still
- * English-only, and the task list explicitly allowed leaving that way:
- * Warehouse.tsx and the warehouse/storage detail screens it fans out to
- * (ArrivePackages, TagPackages, CheckoutPackages, SendToSite,
+ * Empty since S3b (installer-spanish-warehouse, 2026-09-07), which finished
+ * the sweep S3 left open: Warehouse.tsx and the storage/* screens it fans
+ * out to (ArrivePackages, TagPackages, CheckoutPackages, SendToSite,
  * WarehouseHistory, ContainerViewer, LogDelivery), AskInfinity.tsx, and
- * JobModelViewer.tsx. Every other installer-floor screen measured with at
- * least one `useT(` call already — Photos.tsx included, so it did NOT need
- * listing here (a earlier draft of this task guessed it might).
+ * JobModelViewer.tsx all now call `useT(`. Every installer-floor screen
+ * speaks Spanish.
  *
- * Shrink this list as each file gets translated; never grow it without also
- * widening the task that translates it.
+ * The mechanism stays: a future English-only installer page still fails
+ * this test rather than silently widening the gap this list used to track.
+ * Never add a file back without also widening the task that untranslates it.
  */
-const ALLOW_LIST: string[] = [
-  "pages/Warehouse.tsx",
-  "pages/AskInfinity.tsx",
-  "pages/install/JobModelViewer.tsx",
-  "pages/storage/ArrivePackages.tsx",
-  "pages/storage/TagPackages.tsx",
-  "pages/storage/CheckoutPackages.tsx",
-  "pages/storage/SendToSite.tsx",
-  "pages/storage/WarehouseHistory.tsx",
-  "pages/storage/ContainerViewer.tsx",
-  "pages/storage/LogDelivery.tsx",
-];
+const ALLOW_LIST: string[] = [];
 
 const INSTALLER_ROUTES = NAV.filter((d) => d.minRole === "installer");
 
@@ -158,7 +146,11 @@ describe("installer-floor screens speak Spanish (at least a little)", () => {
   });
 });
 
-describe("the allow-list may only shrink", () => {
+// it.each([]) errors as an empty suite in vitest, so this only registers
+// once ALLOW_LIST has entries again — the guard it existed for (a listed
+// file quietly regaining useT( without the list being trimmed) has nothing
+// to check while the list is empty.
+describe.skipIf(ALLOW_LIST.length === 0)("the allow-list may only shrink", () => {
   it.each(ALLOW_LIST)("%s is still English-only (trim it from ALLOW_LIST once translated)", (relPath) => {
     expect(
       hasUseT(relPath),

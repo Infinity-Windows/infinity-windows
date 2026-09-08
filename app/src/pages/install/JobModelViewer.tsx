@@ -58,6 +58,11 @@ import { isForemanPlus } from "../../lib/install/types";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import { pushToast } from "../../lib/toast";
 import { formatApiError } from "../../lib/install/errors";
+import { useT, type TFn } from "../../lib/i18n";
+import { CATALOG } from "../../lib/i18n/catalog";
+import { translate, type Lang } from "../../lib/i18n/translate";
+
+const englishT: TFn = (key, vars) => translate(CATALOG, "en" as Lang, key, vars);
 
 /**
  * Mark + size for the tap info line — pure, so it's testable without
@@ -69,8 +74,9 @@ export function unitTapInfo(
   metadata: { itemName?: string; unitConfig?: UnitConfig } | null | undefined,
   fallbackWidthCm: number,
   fallbackHeightCm: number,
+  t: TFn = englishT,
 ): { mark: string; dims: string } {
-  const mark = metadata?.itemName?.trim() || "Unit";
+  const mark = metadata?.itemName?.trim() || t("jobModel.unitFallback");
   const cfg = metadata?.unitConfig;
   if (cfg?.panels?.length) {
     const widthMm = cfg.panels.reduce((total, p) => total + p.widthMm, 0);
@@ -136,6 +142,7 @@ function disposeBadgeSprite(sprite: THREE.Sprite): void {
 }
 
 export function JobModelViewer() {
+  const t = useT();
   const { projectId = "" } = useParams();
   const [searchParams] = useSearchParams();
 
@@ -531,7 +538,7 @@ export function JobModelViewer() {
       const metadata = hit?.metadata as
         | { itemName?: string; unitConfig?: UnitConfig }
         | undefined;
-      setTap(hit ? unitTapInfo(metadata ?? null, hit.getWidth(), hit.getHeight()) : null);
+      setTap(hit ? unitTapInfo(metadata ?? null, hit.getWidth(), hit.getHeight(), t) : null);
       setTapMark(hit ? metadata?.itemName?.trim() || null : null);
     };
     el.addEventListener("pointerdown", onDown);
@@ -540,7 +547,7 @@ export function JobModelViewer() {
       el.removeEventListener("pointerdown", onDown);
       el.removeEventListener("pointerup", onUp);
     };
-  }, [booted]);
+  }, [booted, t]);
 
   // Where's-my-glass tap-through (#15/#18): on demand, for whichever unit
   // was just tapped — the SAME unitPackageLine wording ModelStudio.tsx
@@ -552,8 +559,8 @@ export function JobModelViewer() {
   );
   const tapPackageLine = useMemo(
     () =>
-      tapPartsReport ? unitPackageLine(tapPartsReport, containersById, locationsById) : null,
-    [tapPartsReport, containersById, locationsById],
+      tapPartsReport ? unitPackageLine(tapPartsReport, containersById, locationsById, t) : null,
+    [tapPartsReport, containersById, locationsById, t],
   );
 
   // Photo pins (#7): the tapped unit's own opening (twin-aware, same
@@ -612,7 +619,7 @@ export function JobModelViewer() {
       try {
         await assignOpeningsInOrder(openingsRef.current ?? [], ids, selectedInstaller);
         await queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
-        pushToast(`${n} unit${n === 1 ? "" : "s"} assigned.`);
+        pushToast(t(n === 1 ? "jobModel.assigned.one" : "jobModel.assigned.many", { n }));
         setPicked([]);
         pickedItemsRef.current.clear();
         setSelectedInstaller("");
@@ -629,33 +636,29 @@ export function JobModelViewer() {
       <header className="page-header">
         <div>
           <BackChip />
-          <p className="home-greeting">{project?.job_code ?? "Job"}</p>
-          <h1>{project?.name ?? "3D model"} in 3D</h1>
+          <p className="home-greeting">{project?.job_code ?? t("jobModel.jobFallback")}</p>
+          <h1>{t("jobModel.title", { name: project?.name ?? t("jobModel.modelFallback") })}</h1>
           {glowCode && (
             <p className="muted" style={{ margin: 0, fontSize: 13 }}>
-              Window {glowCode} glows below
+              {t("jobModel.glowsBelow", { code: glowCode })}
             </p>
           )}
         </div>
       </header>
 
       {stillWorking ? (
-        <p className="muted">Loading the model…</p>
+        <p className="muted">{t("jobModel.loading")}</p>
       ) : !savedSerialized ? (
         <div className="empty-state">
-          <h3>No 3D model yet</h3>
-          <p className="muted">
-            This job doesn't have a saved Studio model yet. A supervisor
-            builds one from the job's Maps Interactive tab, and it opens
-            here for the whole crew to walk through.
-          </p>
+          <h3>{t("jobModel.noModelYet")}</h3>
+          <p className="muted">{t("jobModel.noModelYetExplain")}</p>
         </div>
       ) : (
         <>
           {resolved.fromCache && (
             <p className="muted" style={{ margin: "0 0 8px", fontSize: 13 }}>
-              No signal — showing this phone's saved copy
-              {cached ? `, from ${describeAge(cached.cachedAt)}` : ""}.
+              {t("jobModel.noSignal")}
+              {cached ? t("jobModel.noSignalFrom", { age: describeAge(cached.cachedAt, undefined, t) }) : ""}.
             </p>
           )}
           {/* Tap-to-assign in 3D (Studio 100x #8) — foreman+ only, same
@@ -668,7 +671,7 @@ export function JobModelViewer() {
               style={{ marginBottom: 8, alignSelf: "flex-start" }}
               onClick={toggleAssignMode}
             >
-              {assignMode ? "Assign: on" : "Assign"}
+              {assignMode ? t("jobModel.assignOn") : t("jobModel.assign")}
             </button>
           )}
           <div
@@ -684,14 +687,14 @@ export function JobModelViewer() {
                 background: "var(--card-raised, rgba(255,255,255,0.06))",
               }}
             >
-              <b>{picked.length} picked</b>
+              <b>{t("jobModel.picked", { n: picked.length })}</b>
               <label style={{ display: "block", marginTop: 8 }}>
-                <span className="field-label">Installer</span>
+                <span className="field-label">{t("jobModel.installer")}</span>
                 <select
                   value={selectedInstaller}
                   onChange={(e) => setSelectedInstaller(e.target.value)}
                 >
-                  <option value="">Choose an installer…</option>
+                  <option value="">{t("jobModel.chooseInstaller")}</option>
                   {activeCrew.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.display_name}
@@ -707,7 +710,7 @@ export function JobModelViewer() {
                 disabled={picked.length === 0 || !selectedInstaller || assigning}
                 onClick={handleAssign}
               >
-                {assigning ? "Assigning…" : "Assign"}
+                {assigning ? t("jobModel.assigning") : t("jobModel.assign")}
               </button>
             </div>
           )}
@@ -727,7 +730,7 @@ export function JobModelViewer() {
                     style={{ marginTop: 4 }}
                     to={`/warehouse?q=${encodeURIComponent(tapMarkKey ?? "")}`}
                   >
-                    Find it in the warehouse
+                    {t("jobModel.findInWarehouse")}
                   </Link>
                 </>
               )}
@@ -741,7 +744,7 @@ export function JobModelViewer() {
                       <a key={m.id} href={m.signedUrl!} target="_blank" rel="noreferrer">
                         <img
                           src={m.signedUrl!}
-                          alt="Install"
+                          alt={t("jobModel.installAlt")}
                           style={{ height: 56, borderRadius: 6 }}
                         />
                       </a>
@@ -752,7 +755,7 @@ export function JobModelViewer() {
                       to={`/projects/${projectId}/opening/${tapOpeningId}`}
                       style={{ fontSize: 12 }}
                     >
-                      See all on the Unit Record
+                      {t("jobModel.seeOnRecord")}
                     </Link>
                   )}
                 </div>
@@ -760,9 +763,7 @@ export function JobModelViewer() {
             </div>
           )}
           <p className="muted" style={{ fontSize: 12, margin: "8px 0 0" }}>
-            {assignMode
-              ? "Tap units to pick them, in order · then choose an installer and Assign."
-              : "Drag to orbit · pinch or scroll to zoom · tap a window or door for its size. Nothing here can be moved — this is the map, not the pen."}
+            {assignMode ? t("jobModel.assignHint") : t("jobModel.orbitHint")}
           </p>
         </>
       )}

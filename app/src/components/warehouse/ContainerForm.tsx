@@ -7,6 +7,7 @@ import { useMutation } from "@tanstack/react-query";
 import { formatApiError } from "../../lib/errors";
 import { pushToast } from "../../lib/toast";
 import { containerKind, saveContainer, type StorageContainer } from "../../lib/storage";
+import { useT } from "../../lib/i18n";
 
 export function ContainerForm({
   initial,
@@ -17,6 +18,7 @@ export function ContainerForm({
   onClose: () => void;
   onSaved: (c: StorageContainer) => void;
 }) {
+  const t = useT();
   const [name, setName] = useState(initial?.name ?? "");
   const [address, setAddress] = useState(initial?.address ?? "");
   const [accessCode, setAccessCode] = useState(initial?.access_code ?? "");
@@ -51,7 +53,7 @@ export function ContainerForm({
         weightKg: dim(dims.weight),
       }),
     onSuccess: (c) => {
-      pushToast(initial ? "Container updated." : `${c.name} added.`);
+      pushToast(initial ? t("warehouse.containerForm.updated") : t("warehouse.containerForm.added", { name: c.name }));
       onSaved(c);
     },
     onError: (e) => pushToast(formatApiError(e), "error"),
@@ -60,63 +62,61 @@ export function ContainerForm({
     <div className="modal-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
       <div className="modal-card" onClick={(e) => e.stopPropagation()}>
         <p style={{ margin: 0, fontWeight: 700 }}>
-          {initial ? `Edit ${initial.name}` : "New container"}
+          {initial ? t("warehouse.containerForm.editTitle", { name: initial.name }) : t("warehouse.containerForm.newTitle")}
         </p>
-        <label className="field-label">Name</label>
+        <label className="field-label">{t("warehouse.containerForm.name")}</label>
         <input
-          placeholder="Conex 7 / Glass crate 12"
+          placeholder={t("warehouse.containerForm.namePlaceholder")}
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
-        <label className="field-label">What kind of box</label>
+        <label className="field-label">{t("warehouse.containerForm.kind")}</label>
         {/* Locked after creation — the kind rules every move it has ever made. */}
         <select value={kind} disabled={!!initial} onChange={(e) => setKind(e.target.value)}>
-          <option value="conex">Conex</option>
-          <option value="crate">Crate</option>
-          <option value="truck">Truck</option>
+          <option value="conex">{t("warehouse.containerForm.kind.conex")}</option>
+          <option value="crate">{t("warehouse.containerForm.kind.crate")}</option>
+          <option value="truck">{t("warehouse.containerForm.kind.truck")}</option>
         </select>
         {kind === "crate" && (
           <>
             <p className="muted" style={{ fontSize: 12.5, margin: "6px 0 0" }}>
-              Size and weight, so anyone can tell whether it fits in a conex and
-              what the forklift is picking up. Centimeters and kilograms; leave
-              blank until it's measured.
+              {t("warehouse.containerForm.crateHint")}
             </p>
             <div className="row-gap">
               <div style={{ flex: 1 }}>
-                <label className="field-label">Length (cm)</label>
+                <label className="field-label">{t("warehouse.containerForm.length")}</label>
                 <input inputMode="decimal" value={dims.length}
                   onChange={(e) => setDims({ ...dims, length: e.target.value })} />
               </div>
               <div style={{ flex: 1 }}>
-                <label className="field-label">Width (cm)</label>
+                <label className="field-label">{t("warehouse.containerForm.width")}</label>
                 <input inputMode="decimal" value={dims.width}
                   onChange={(e) => setDims({ ...dims, width: e.target.value })} />
               </div>
             </div>
             <div className="row-gap">
               <div style={{ flex: 1 }}>
-                <label className="field-label">Height (cm)</label>
+                <label className="field-label">{t("warehouse.containerForm.height")}</label>
                 <input inputMode="decimal" value={dims.height}
                   onChange={(e) => setDims({ ...dims, height: e.target.value })} />
               </div>
               <div style={{ flex: 1 }}>
-                <label className="field-label">Weight (kg)</label>
+                <label className="field-label">{t("warehouse.containerForm.weight")}</label>
                 <input inputMode="decimal" value={dims.weight}
                   onChange={(e) => setDims({ ...dims, weight: e.target.value })} />
               </div>
             </div>
           </>
         )}
-        <label className="field-label">Address</label>
+        <label className="field-label">{t("warehouse.containerForm.address")}</label>
         <input
-          placeholder="Where it sits"
+          placeholder={t("warehouse.containerForm.addressPlaceholder")}
           value={address}
           onChange={(e) => setAddress(e.target.value)}
         />
-        <label className="field-label">Gate / lock code</label>
+        <label className="field-label">{t("warehouse.containerForm.accessCode")}</label>
         <input value={accessCode} onChange={(e) => setAccessCode(e.target.value)} />
-        <label className="field-label">Notes</label>
+        <label className="field-label">{t("warehouse.containerForm.notes")}</label>
         <input value={notes} onChange={(e) => setNotes(e.target.value)} />
         <div className="row-gap" style={{ marginTop: 10 }}>
           <button
@@ -124,10 +124,10 @@ export function ContainerForm({
             disabled={!name.trim() || save.isPending}
             onClick={() => save.mutate()}
           >
-            {save.isPending ? "Saving…" : "Save"}
+            {save.isPending ? t("warehouse.containerForm.saving") : t("warehouse.containerForm.save")}
           </button>
           <button className="button-like" onClick={onClose}>
-            Cancel
+            {t("warehouse.containerForm.cancel")}
           </button>
         </div>
       </div>

@@ -24,6 +24,22 @@ export interface LanguageContextValue {
 
 export const LanguageContext = createContext<LanguageContextValue | null>(null);
 
+// The no-provider fallbacks, module-level so their identity is STABLE across
+// renders and across calls. An inline `(key, vars) => …` returned fresh from
+// inside the hook looks harmless in isolation, but S3b started passing `t`
+// into `useMemo`/`useEffect` dependency arrays (FindBar's `answer`,
+// Warehouse's `tiles`/`chips`) — a fresh function every render there means
+// "changed every render," which turned one `useEffect([answer], …)` that
+// calls `setAnswer` into an infinite render loop the instant a test (or any
+// tree) renders one of these components with no LanguageProvider above it.
+const fallbackT: TFn = (key, vars) => translate(CATALOG, "en", key, vars);
+const fallbackLanguageValue: LanguageContextValue = {
+  lang: "en",
+  t: fallbackT,
+  setLang: () => {},
+  needsChoice: false,
+};
+
 /**
  * The everyday hook: `const t = useT()`. Works even with NO provider above it —
  * an isolated component in a unit test still renders real English copy rather
@@ -32,20 +48,13 @@ export const LanguageContext = createContext<LanguageContextValue | null>(null);
  */
 export function useT(): TFn {
   const ctx = useContext(LanguageContext);
-  if (ctx) return ctx.t;
-  return (key, vars) => translate(CATALOG, "en", key, vars);
+  return ctx ? ctx.t : fallbackT;
 }
 
 /** The full context, for the picker and the settings toggle. */
 export function useLanguage(): LanguageContextValue {
   const ctx = useContext(LanguageContext);
-  if (ctx) return ctx;
   // A benign default so a component under test without a provider still mounts;
   // the real screens that call this are always inside the provider.
-  return {
-    lang: "en",
-    t: (key, vars) => translate(CATALOG, "en", key, vars),
-    setLang: () => {},
-    needsChoice: false,
-  };
+  return ctx ?? fallbackLanguageValue;
 }
