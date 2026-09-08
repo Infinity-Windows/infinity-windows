@@ -265,12 +265,15 @@ export function AssignmentEditor({
 
         <div className="sched-row-2">
           <div>
-            <label className="field-label">Start time (optional)</label>
+            <label className="field-label" htmlFor="assignment-start-time">Crew start time (optional)</label>
             <input
+              id="assignment-start-time"
+              aria-describedby="assignment-start-help"
               type="time"
               value={startTime}
               onChange={(e) => setStartTime(e.target.value)}
             />
+            <p id="assignment-start-help" className="muted" style={{ fontSize: 12, margin: "6px 0 0" }}>Shown with this project on the crew’s home screen after you publish.</p>
           </div>
           <div>
             <label className="field-label">Quick length</label>

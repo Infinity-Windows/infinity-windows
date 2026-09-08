@@ -12935,3 +12935,28 @@ button.stage-chip {
   :root:not([data-theme="light"]) .workflow-review, :root:not([data-theme="light"]) .workflow-hub { color-scheme: dark; }
 }
 :root[data-theme="dark"] .workflow-review, :root[data-theme="dark"] .workflow-hub { color-scheme: dark; }
+
+/* The crew's start instructions stay visible before clock-in. */
+.crew-start-bar {
+  margin: 0 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.crew-start-heading, .crew-start-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 10px 12px;
+  color: inherit;
+  text-decoration: none;
+}
+.crew-start-heading { font-size: 13px; }
+.crew-start-heading > span { margin-left: auto; text-decoration: underline; }
+.crew-start-row { border-top: 1px solid var(--border); flex-wrap: wrap; }
+.crew-start-time { font-size: 16px; font-variant-numeric: tabular-nums; }
+.crew-start-project { flex: 1 1 150px; min-width: 0; overflow-wrap: anywhere; font-size: 14px; }
+.crew-start-message { margin: 0; padding: 10px 12px; font-size: 13px; }
+button.crew-start-message { min-height: 44px; width: 100%; text-align: left; color: inherit; }

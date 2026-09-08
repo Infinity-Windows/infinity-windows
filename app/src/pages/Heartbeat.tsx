@@ -1,3 +1,4 @@
+import { CrewStartBar } from "../components/schedule/CrewStartBar";
 import { BackChip } from "../components/BackChip";
 import { SaveJobsStrip } from "../components/offline/SaveJobOffline";
 import { RoleMaps } from "../components/RoleMaps";
@@ -167,6 +168,7 @@ export function Heartbeat() {
         <BackChip fallback="/projects" label="Back" />
       </header>
 
+      <CrewStartBar />
       <ClockInBlock />
 
       {/* S6: the same Tomorrow line + week chips as My Work — reads the

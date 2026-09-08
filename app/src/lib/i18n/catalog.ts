@@ -3556,6 +3556,13 @@ export const CATALOG = {
   // one/many split for "others" and units is the same trick as
   // mywork.newUnits.one/.many — the framework interpolates {n} but has no
   // plural rule, so the caller picks the key by count.
+  "crewStart.label": { en: "Your schedule", es: "Tu horario" },
+  "crewStart.view": { en: "View schedule", es: "Ver horario" },
+  "crewStart.starts": { en: "Start", es: "Entrada" },
+  "crewStart.noTime": { en: "Time not set", es: "Hora sin definir" },
+  "crewStart.loading": { en: "Loading your schedule…", es: "Cargando tu horario…" },
+  "crewStart.empty": { en: "No published work in the next 7 days.", es: "No hay trabajo publicado en los próximos 7 días." },
+  "crewStart.retry": { en: "Couldn’t refresh your schedule. Tap to retry.", es: "No se pudo actualizar tu horario. Toca para reintentar." },
   "tomorrow.kicker": { en: "Tomorrow", es: "Mañana" },
   "tomorrow.notScheduled": {
     en: "Tomorrow: not scheduled yet",
