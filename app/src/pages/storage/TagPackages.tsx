@@ -24,12 +24,13 @@ import { addProjectMark, listScheduledMarks } from "../../lib/warehouse/warehous
 import { useScanWedge } from "../../lib/warehouse/scanWedge";
 import { STATION_OFF_TRUCK } from "../../lib/warehouse/stations";
 import {
+  categoryLabel,
   CATEGORY_LABELS,
   defaultDeliveryLabel,
   ensureDelivery,
   listActivePackages,
   listBlankPackages,
-  PART_LABELS,
+  partTypeLabel,
   PART_TYPES,
   type PackageCategory,
   type PartType,
@@ -42,6 +43,7 @@ import {
   lineLabel,
   type TagLine,
 } from "../../lib/warehouse/tagBatch";
+import { useT, type TFn } from "../../lib/i18n";
 
 const LAST_JOB_KEY = "infinity.storage.lastJob";
 /** The job dropdown's value for company stock. Not a uuid on purpose. */
@@ -127,13 +129,12 @@ function writeSpent(list: SpentSticker[]): SpentSticker[] {
 }
 
 /** The line above the spent pills. Says where the write got to, nothing more. */
-function waitingLine(n: number): string {
-  return n === 1
-    ? "1 sticker is assigned and saved on this phone, not sent yet. It goes up on its own when you have signal."
-    : `${n} stickers are assigned and saved on this phone, not sent yet. They go up on their own when you have signal.`;
+function waitingLine(n: number, t: TFn): string {
+  return t(n === 1 ? "storage.tag.waitingLine.one" : "storage.tag.waitingLine.many", { n });
 }
 
 export function TagPackages() {
+  const t = useT();
   // Pick 30: a desk-mounted hardware scanner routes straight to the package
   // or container it reads, same as the camera flow — a second input path
   // alongside the camera Scanner already on this page, not a replacement.
@@ -149,7 +150,7 @@ export function TagPackages() {
     mutationFn: () => receiveMintedOffline([...arriving]),
     onSuccess: (r) => {
       pushToast(
-        writeToast(r, `${r.count} package${r.count === 1 ? "" : "s"} received.`),
+        writeToast(r, t(r.count === 1 ? "storage.tag.received.one" : "storage.tag.received.many", { n: r.count })),
       );
       setArriving(new Set());
       void qc.invalidateQueries({ queryKey: ["storagePackages"] });
@@ -270,7 +271,7 @@ export function TagPackages() {
   const addMark = useMutation({
     mutationFn: () => addProjectMark(projectId, markTyped),
     onSuccess: () => {
-      pushToast(`Window ${markTyped} added to the schedule.`);
+      pushToast(t("storage.tag.addedToSchedule", { mark: markTyped }));
       void qc.invalidateQueries({ queryKey: ["scheduledMarks"] });
     },
     onError: (e) => pushToast(formatApiError(e), "error"),
@@ -334,7 +335,7 @@ export function TagPackages() {
 
   const submit = useMutation({
     mutationFn: async () => {
-      if (!projectId) throw new Error("Pick a job first");
+      if (!projectId) throw new Error(t("storage.tag.pickJobFirst"));
       const mark = markCode.trim().toUpperCase();
 
       // Growing the count is one deliberate act, done BEFORE any bind so the
@@ -394,10 +395,18 @@ export function TagPackages() {
       localStorage.setItem(LAST_JOB_KEY, projectId);
       const queued = done.filter((d) => d.queued).length;
       const mark = markCode.trim();
+      const forMark = mark ? t("storage.tag.forMark", { mark }) : "";
       pushToast(
         queued > 0
-          ? `${done.length} package${done.length === 1 ? "" : "s"} tagged${mark ? ` for #${mark}` : ""} — ${queued} saved on this phone, not sent yet.`
-          : `${done.length} package${done.length === 1 ? "" : "s"} tagged${mark ? ` for #${mark}` : ""}.`,
+          ? t(done.length === 1 ? "storage.tag.tagged.queuedOne" : "storage.tag.tagged.queuedMany", {
+              n: done.length,
+              forMark,
+              queued,
+            })
+          : t(done.length === 1 ? "storage.tag.tagged.sentOne" : "storage.tag.tagged.sentMany", {
+              n: done.length,
+              forMark,
+            }),
       );
       setTagged((n) => n + done.length);
       // The next window: category and the count usually repeat down a truck;
@@ -414,7 +423,7 @@ export function TagPackages() {
 
   const onScan = (payload: QrPayload) => {
     if (payload.kind !== "packageSerial") {
-      pushToast("That's not a package sticker.", "error");
+      pushToast(t("storage.tag.notAPackageSticker"), "error");
       return;
     }
     // The scanner is a door onto the roll, so it gets the same answers.
@@ -422,15 +431,15 @@ export function TagPackages() {
     if (held) {
       pushToast(
         held.queued
-          ? `${payload.serial} is already assigned — saved on this phone and not sent yet.`
-          : `${payload.serial} is already assigned.`,
+          ? t("storage.tag.alreadyAssignedQueued", { serial: payload.serial })
+          : t("storage.tag.alreadyAssigned", { serial: payload.serial }),
         "error",
       );
       return;
     }
     const hit = roll.find((b) => b.serial === payload.serial);
     if (!hit) {
-      pushToast(`${payload.serial} is already assigned or unknown.`, "error");
+      pushToast(t("storage.tag.assignedOrUnknown", { serial: payload.serial }), "error");
       return;
     }
     // Physical reality wins: the sticker in hand lands on the GLOWING line
@@ -438,11 +447,11 @@ export function TagPackages() {
     // code. Peel any sticker, scan it, stick it on that box.
     const target = selected ?? lines[0];
     if (!target) {
-      pushToast("Set how many pieces first.", "error");
+      pushToast(t("storage.tag.setHowManyFirst"), "error");
       return;
     }
     if (lines.some((l) => l.sticker?.id === hit.id && l.key !== target.key)) {
-      pushToast(`${payload.serial} is already on another line.`, "error");
+      pushToast(t("storage.tag.alreadyOnAnotherLine", { serial: payload.serial }), "error");
       return;
     }
     patchLine(target.key, { sticker: hit });
@@ -454,11 +463,11 @@ export function TagPackages() {
       <header className="page-header">
         <div>
           <BackChip />
-          <p className="home-greeting">Storage</p>
-          <h1>Tag packages</h1>
+          <p className="home-greeting">{t("storage.tag.storage")}</p>
+          <h1>{t("storage.tag.title")}</h1>
           <p className="muted" style={{ margin: 0, fontSize: 13 }}>
             {defaultDeliveryLabel(new Date())}
-            {tagged > 0 ? ` · ${tagged} tagged this session` : ""}
+            {tagged > 0 ? ` · ${t("storage.tag.taggedThisSession", { n: tagged })}` : ""}
           </p>
         </div>
       </header>
@@ -473,21 +482,14 @@ export function TagPackages() {
           const mark = (p.package_marks ?? [])[0]?.mark_code ?? "?";
           const part =
             p.part_index != null && p.part_total != null
-              ? ` · ${p.part_index} of ${p.part_total}`
+              ? ` · ${t("storage.tag.ofTotal", { index: p.part_index, total: p.part_total })}`
               : "";
           return `W${mark}${part}`;
         };
         return (
           <>
-            <h2>Pre-labeled — off the truck</h2>
-            <Explain id="wh-receive-minted">
-              These labels were printed before the truck. Stick each one on its
-              package, tap it here, and hit Arrived. If the maker&rsquo;s own
-              label says a different count than the sticker (&ldquo;2 of
-              3&rdquo; against our &ldquo;2 of 4&rdquo;), the maker wins —
-              tell a foreman so the wrong stickers get burned and the count
-              fixed. Nothing here blocks the truck.
-            </Explain>
+            <h2>{t("storage.tag.preLabeled")}</h2>
+            <Explain id="wh-receive-minted">{t("storage.tag.preLabeledExplain")}</Explain>
             <div className="row-gap">
               {expected.slice(0, 30).map((p) => {
                 const on = arriving.has(p.id);
@@ -515,28 +517,28 @@ export function TagPackages() {
                 onClick={() => receive.mutate()}
               >
                 {receive.isPending
-                  ? "Receiving…"
-                  : `Arrived — receive ${arriving.size}`}
+                  ? t("storage.tag.receiving")
+                  : t("storage.tag.arrivedReceive", { n: arriving.size })}
               </button>
             )}
           </>
         );
       })()}
 
-      <h2>1 · The window</h2>
-      <label className="field-label">Job</label>
+      <h2>{t("storage.tag.step1")}</h2>
+      <label className="field-label">{t("storage.tag.job")}</label>
       <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-        <option value="">Pick the job…</option>
+        <option value="">{t("storage.tag.pickJob")}</option>
         {/* The crew's word, kept on purpose (ticket 17). Company stock gets
             tagged like anything else — it just belongs to nobody yet. */}
-        <option value={BONEYARD}>Boneyard — company stock, no job yet</option>
+        <option value={BONEYARD}>{t("storage.tag.boneyardOption")}</option>
         {(projects.data ?? []).map((p) => (
           <option key={p.id} value={p.id}>
             {p.job_code} — {p.name}
           </option>
         ))}
       </select>
-      <label className="field-label">Category — holds for every piece below</label>
+      <label className="field-label">{t("storage.tag.category")}</label>
       <div className="row-gap">
         {(Object.keys(CATEGORY_LABELS) as PackageCategory[]).map((c) => (
           <button
@@ -544,20 +546,20 @@ export function TagPackages() {
             className={category === c ? "button-like active-pill" : "button-like"}
             onClick={() => setCategory(c)}
           >
-            {CATEGORY_LABELS[c]}
+            {categoryLabel(c, t)}
           </button>
         ))}
       </div>
       {!boneyard && (
         <>
-          <label className="field-label">Window # (mark)</label>
+          <label className="field-label">{t("storage.tag.windowNumber")}</label>
           <input
-            placeholder="e.g. 16"
+            placeholder={t("storage.tag.windowNumberPlaceholder")}
             value={markCode}
             onChange={(e) => setMarkCode(e.target.value)}
             list="tag-mark-options"
             style={{ width: 120 }}
-            aria-label="Window number"
+            aria-label={t("storage.tag.windowNumberAria")}
           />
           <datalist id="tag-mark-options">
             {markOptions.map((m) => (
@@ -566,7 +568,7 @@ export function TagPackages() {
           </datalist>
           {markUnscheduled && (
             <p className="wh-pending" style={{ marginTop: 4 }}>
-              Window {markTyped} isn&rsquo;t on this job&rsquo;s schedule yet.{" "}
+              {t("storage.tag.notOnSchedule", { mark: markTyped })}{" "}
               {/* The handle, not a note about who holds it (ADR-0007): the
                   person at the truck with a package in their hand is the one
                   who found the window the plans missed. */}
@@ -576,9 +578,7 @@ export function TagPackages() {
                 disabled={addMark.isPending}
                 onClick={() => addMark.mutate()}
               >
-                {addMark.isPending
-                  ? "Adding…"
-                  : `Add window ${markTyped} to the schedule`}
+                {addMark.isPending ? t("storage.tag.addingMark") : t("storage.tag.addMarkToSchedule", { mark: markTyped })}
               </button>
             </p>
           )}
@@ -586,7 +586,7 @@ export function TagPackages() {
       )}
       <div className="wh-row" style={{ marginTop: 6 }}>
         <label className="field-label" style={{ margin: 0 }}>
-          How many pieces?
+          {t("storage.tag.howManyPieces")}
         </label>
         <input
           type="number"
@@ -596,26 +596,24 @@ export function TagPackages() {
           value={countText}
           onChange={(e) => setCountText(e.target.value)}
           style={{ width: 70, marginBottom: 0 }}
-          aria-label="How many pieces"
+          aria-label={t("storage.tag.howManyPiecesAria")}
         />
       </div>
       {growth && (
         <p className="wh-pending" style={{ marginTop: 6 }}>
-          Window {markCode.trim().toUpperCase()} already has {growth.have} part
-          {growth.have === 1 ? "" : "s"}
-          {growth.oldTotal != null ? ` (of ${growth.oldTotal})` : ""}. These{" "}
-          {lines.length} continue at {startIndex} — on submit, every label for
-          this window becomes &ldquo;of {growth.newTotal}&rdquo;.
+          {t(growth.have === 1 ? "storage.tag.growth.one" : "storage.tag.growth.many", {
+            mark: markCode.trim().toUpperCase(),
+            have: growth.have,
+            ofOld: growth.oldTotal != null ? t("storage.tag.growth.ofOld", { total: growth.oldTotal }) : "",
+            lines: lines.length,
+            start: startIndex,
+            newTotal: growth.newTotal,
+          })}
         </p>
       )}
 
-      <h2>2 · The pieces</h2>
-      <Explain id="wh-tag-worksheet">
-        One line per piece, matched to the maker&rsquo;s own numbers — the box
-        printed &ldquo;1/3&rdquo; gets the line that says 1/3, and that
-        line&rsquo;s sticker goes on it. Tap a line and it glows: the piece
-        buttons below, and any sticker you scan, land on the glowing line.
-      </Explain>
+      <h2>{t("storage.tag.step2")}</h2>
+      <Explain id="wh-tag-worksheet">{t("storage.tag.worksheetExplain")}</Explain>
       <div data-worksheet style={{ display: "grid", gap: 6 }}>
         {lines.map((line) => {
           const on = selectedKey === line.key;
@@ -638,19 +636,19 @@ export function TagPackages() {
                 <div className="wh-row-main">
                   <strong>{lineLabel(boneyard ? "" : markCode, line.partIndex, partTotal)}</strong>
                   <span className="wh-row-sub">
-                    {" "}· {line.partType ? PART_LABELS[line.partType as PartType] : "which piece? — tap to set"}
+                    {" "}· {line.partType ? partTypeLabel(line.partType as PartType, t) : t("storage.tag.whichPiece")}
                   </span>
                 </div>
                 <div className="wh-row">
                   <span className="muted" style={{ fontFamily: "monospace", fontSize: 12.5 }}>
                     {line.sticker
                       ? (line.sticker.short_code ?? line.sticker.serial)
-                      : "no sticker — roll is dry"}
+                      : t("storage.tag.rollDry")}
                   </span>
                   {lines.length > 1 && (
                     <span
                       role="button"
-                      aria-label={`Remove line ${line.partIndex}`}
+                      aria-label={t("storage.tag.removeLine", { n: line.partIndex })}
                       className="muted"
                       onClick={(e) => {
                         e.stopPropagation();
@@ -671,28 +669,26 @@ export function TagPackages() {
       {selected && (
         <div style={{ marginTop: 8 }}>
           <label className="field-label">
-            Which piece is {lineLabel(boneyard ? "" : markCode, selected.partIndex, partTotal)}?
+            {t("storage.tag.whichPieceIs", { line: lineLabel(boneyard ? "" : markCode, selected.partIndex, partTotal) })}
           </label>
           <div className="row-gap">
-            {PART_TYPES.map((t) => (
+            {PART_TYPES.map((pt) => (
               <button
-                key={t}
-                className={selected.partType === t ? "button-like active-pill" : "button-like"}
+                key={pt}
+                className={selected.partType === pt ? "button-like active-pill" : "button-like"}
                 onClick={() =>
                   patchLine(selected.key, {
-                    partType: selected.partType === t ? null : t,
+                    partType: selected.partType === pt ? null : pt,
                   })
                 }
               >
-                {PART_LABELS[t]}
+                {partTypeLabel(pt, t)}
               </button>
             ))}
           </div>
-          <label className="field-label">
-            Their # for this piece (only if it differs from ours)
-          </label>
+          <label className="field-label">{t("storage.tag.theirNumber")}</label>
           <input
-            placeholder="e.g. A-2216"
+            placeholder={t("storage.tag.theirNumberPlaceholder")}
             value={selected.mfrMark}
             onChange={(e) => patchLine(selected.key, { mfrMark: e.target.value })}
             style={{ width: 160 }}
@@ -702,16 +698,16 @@ export function TagPackages() {
 
       <div className="wh-row" style={{ marginTop: 8 }}>
         <button className="button-like" onClick={() => setScanning((v) => !v)}>
-          {scanning ? "Stop scanning" : "Scan a sticker onto the glowing line"}
+          {scanning ? t("storage.tag.stopScanning") : t("storage.tag.scanOntoGlowing")}
         </button>
       </div>
       {scanning && <Scanner onScan={onScan} />}
 
       {waiting.length > 0 && (
         <div data-roll="waiting">
-          <p className="wh-pending">{waitingLine(waiting.length)}</p>
+          <p className="wh-pending">{waitingLine(waiting.length, t)}</p>
           <p className="muted" style={{ margin: "6px 0 0", fontSize: 12 }}>
-            Off the roll for good — a sticker only ever belongs to one package.
+            {t("storage.tag.offRollForGood")}
           </p>
           <div className="row-gap" style={{ marginTop: 6 }}>
             {waiting.slice(0, 12).map((s) => (
@@ -719,14 +715,14 @@ export function TagPackages() {
                 key={s.id}
                 className="button-like"
                 disabled
-                title="Assigned — saved on this phone and not sent yet."
+                title={t("storage.tag.assignedNotSent")}
               >
                 {s.code}
               </button>
             ))}
             {waiting.length > 12 && (
               <span className="muted" style={{ fontSize: 12, alignSelf: "center" }}>
-                and {waiting.length - 12} more
+                {t("storage.tag.andNMore", { n: waiting.length - 12 })}
               </span>
             )}
           </div>
@@ -734,14 +730,14 @@ export function TagPackages() {
       )}
       {roll.length === 0 && (
         <p className="muted" style={{ marginTop: 6 }}>
-          No blank stickers left — print a batch from the Storage page.
+          {t("storage.tag.noBlankStickers")}
         </p>
       )}
 
-      <h2>3 · Send it</h2>
-      <label className="field-label">Note (optional, rides every piece)</label>
+      <h2>{t("storage.tag.step3")}</h2>
+      <label className="field-label">{t("storage.tag.noteOptional")}</label>
       <input
-        placeholder="e.g. glass crate, fragile"
+        placeholder={t("storage.tag.notePlaceholder")}
         value={note}
         onChange={(e) => setNote(e.target.value)}
       />
@@ -752,14 +748,14 @@ export function TagPackages() {
           onClick={() => submit.mutate()}
         >
           {submit.isPending
-            ? "Tagging…"
+            ? t("storage.tag.tagging")
             : !projectId
-              ? "Pick a job first"
+              ? t("storage.tag.pickJobFirst")
               : !boneyard && markCode.trim() === ""
-                ? "Type the window number first"
+                ? t("storage.tag.typeWindowFirst")
                 : linesReady.length !== lines.length
-                  ? "A line has no sticker — the roll is dry"
-                  : `Tag ${lines.length} package${lines.length === 1 ? "" : "s"}`}
+                  ? t("storage.tag.lineNoSticker")
+                  : t(lines.length === 1 ? "storage.tag.submit.one" : "storage.tag.submit.many", { n: lines.length })}
         </button>
       </div>
     </div>

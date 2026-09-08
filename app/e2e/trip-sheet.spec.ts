@@ -11,8 +11,8 @@ async function tripFixture(page: Page, status = "published") {
     trip_crew: [{ profile_id: TEST_USER.id, role: "crew", profiles: { display_name: "Fixture crew" } }],
   }, 1));
   await page.route("**/rest/v1/flights**", r => json(r, [
-    { id: "mine", trip_id: TRIP_ID, profile_id: TEST_USER.id, airline: "Crew airline", flight_number: "123", sort_order: 0 },
-    { id: "other", trip_id: TRIP_ID, profile_id: "someone-else", airline: "Private airline", flight_number: "456", sort_order: 1 },
+    { id: "mine", trip_id: TRIP_ID, profile_id: TEST_USER.id, airline: "Crew airline", flight_number: "123", minutes_before_departure: 120, sort_order: 0 },
+    { id: "other", trip_id: TRIP_ID, profile_id: "someone-else", airline: "Private airline", flight_number: "456", minutes_before_departure: 120, sort_order: 1 },
   ], 2));
   await page.route("**/rest/v1/lodging**", r => json(r, [{
     id: "house", trip_id: TRIP_ID, name: "Crew house", address: "123 Fixture Road",
@@ -51,7 +51,10 @@ for (const width of [375, 1280]) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     const sizes = await jumps.getByRole("link").evaluateAll(els => els.map(el => el.getBoundingClientRect().height));
     expect(sizes.every(h => h >= 44)).toBe(true);
-    await page.screenshot({ path: `e2e/test-results/trip-sheet-${width}.png`, fullPage: true });
+    // The fixture-only host intentionally triggers this production safeguard.
+    // Hide it for the screenshot only; leave it active during every interaction.
+    await page.screenshot({ path: `e2e/test-results/trip-sheet-${width}.png`, fullPage: true,
+      style: ".pwa-banner-wrong-project { visibility: hidden !important; }" });
   });
 }
 
@@ -64,7 +67,7 @@ test("Spanish trip navigation and the crew draft boundary", async ({ page }) => 
   await expect(page).toHaveURL(/#trip-lodging$/);
   await tripFixture(page, "draft");
   await page.reload();
-  await expect(page.locator(".travel-detail")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "No se encontró el viaje" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Secciones del viaje" })).toHaveCount(0);
   await expect(page.getByText("Crew house", { exact: true })).toHaveCount(0);
 });
@@ -76,5 +79,11 @@ test("a supervisor can review and edit lodging from the continuous draft", async
   await expect(page.locator("#trip-publish").getByRole("button", { name: "Publish to crew" })).toBeVisible();
   await page.locator("#trip-lodging").getByRole("button", { name: /edit lodging/i }).click();
   await expect(page.locator(".travel-sheet")).toBeVisible();
-  await expect(page.locator('.travel-sheet input[value="Crew house"]')).toBeVisible();
+  const editor = page.getByRole("dialog", { name: "Edit lodging" });
+  await expect(editor.getByLabel("Name", { exact: true })).toHaveValue("Crew house");
+  await editor.getByLabel("Name", { exact: true }).fill("Unsaved house edit");
+  await editor.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(editor).toHaveCount(0);
+  await expect(page.locator("#trip-lodging")).toContainText("Crew house");
+  await expect(page.locator("#trip-lodging")).not.toContainText("Unsaved house edit");
 });

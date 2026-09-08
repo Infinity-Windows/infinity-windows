@@ -6,6 +6,7 @@
 // fresh bay on its own the next time something is set aside for it.
 import { Link } from "react-router-dom";
 import { bayOffBlock, type YardTile } from "../../lib/warehouse/yard";
+import { useT } from "../../lib/i18n";
 
 export function Bays({
   bays,
@@ -17,17 +18,14 @@ export function Bays({
   busyId: string | null;
   onTurnOff: (bay: YardTile) => void;
 }) {
+  const t = useT();
   if (bays.length === 0) {
-    return (
-      <p className="muted bays-empty">
-        No bays yet. A job gets its own the first time something is set aside for it.
-      </p>
-    );
+    return <p className="muted bays-empty">{t("warehouse.bays.empty")}</p>;
   }
   return (
-    <div className="yard bays" role="list" aria-label="The bays">
+    <div className="yard bays" role="list" aria-label={t("warehouse.bays.ariaLabel")}>
       {bays.map((b) => {
-        const block = bayOffBlock(b);
+        const block = bayOffBlock(b, t);
         return (
           <div
             key={b.id}
@@ -40,8 +38,11 @@ export function Bays({
             </Link>
             <span className="yard-line">
               {b.inside === 0
-                ? "Nothing set aside"
-                : `${b.inside} package${b.inside === 1 ? "" : "s"} set aside${b.oldestDays > 0 ? ` · oldest ${b.oldestDays}d` : ""}`}
+                ? t("warehouse.bays.nothingSetAside")
+                : t(b.inside === 1 ? "warehouse.bays.line.one" : "warehouse.bays.line.many", {
+                    n: b.inside,
+                    oldest: b.oldestDays > 0 ? ` · ${t("warehouse.yard.oldest", { n: b.oldestDays })}` : "",
+                  })}
             </span>
             {b.inside > 0 ? (
               <span className="yard-stripe" aria-hidden="true">
@@ -60,10 +61,10 @@ export function Bays({
               type="button"
               className="button-like bay-off"
               disabled={!!block || busyId === b.id}
-              title={block ?? "Turn this bay off — its material has gone out"}
+              title={block ?? t("warehouse.bays.turnOffHint")}
               onClick={() => onTurnOff(b)}
             >
-              {busyId === b.id ? "Turning off…" : "Turn off"}
+              {busyId === b.id ? t("warehouse.bays.turningOff") : t("warehouse.bays.turnOff")}
             </button>
           </div>
         );

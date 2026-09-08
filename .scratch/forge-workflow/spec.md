@@ -6,6 +6,16 @@ Status: implementation in progress
 
 Implement the busybusy review in Forge. Design every role for iPhone web use first, with an optional computer layout. Source: `docs/busybusy-design-review.md`.
 
+## Live-app coordination requirement
+
+The owner explicitly requires preserving the live app and Claude Code's work.
+Keep changes isolated and PRs in draft until checks and review are complete.
+Reconcile with current master without discarding either agent's changes.
+Do not merge or deploy without the owner's approval. No test writes to live
+business records. No automatic notification to Claude is implied by this spec;
+use the shared repository and PR state for coordination until a direct channel
+is explicitly authorized.
+
 ## Product contract
 
 The daily loop is plan → publish instructions → work and capture → review. Draft plans, published instructions, actual time, and report revisions are separate states linked by durable identifiers. Preserve installation sessions, unit records, warehouse workflows, travel/lodging fields, existing permission grants, English/Spanish, and foreground-only location policy.
@@ -40,3 +50,7 @@ Publication additionally needs: duplicate clicks, retry after commit, concurrent
 Source and isolated local tests are available. Live schema/management test verification is an explicit dependency of the publication contract. No new Supabase project. No Gmail, Drive, Backblaze or Docker connector required for this slice. No merge/deployment is implied by a passing local test.
 
 The review is fully incorporated into the tracked workflow; the product program is complete only when every implementation ticket's acceptance checks are satisfied. An individual slice must report what remains.
+
+## First-slice verification
+
+Draft PR #591. The first GitHub CI browser run passed all nine targeted checks. The latest master integration preserves the Spanish changes from #590 and passes 5,360 unit/component tests across 384 files. Physical iPhone Safari verification remains outstanding. The display toggle and shared publication are not implemented by this PR.

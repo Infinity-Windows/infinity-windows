@@ -10,8 +10,10 @@ import { listProjectsAnyStatus } from "../../lib/api";
 import { listActivePackages } from "../../lib/storage";
 import { scopeHref } from "../../lib/warehouse/materialsScope";
 import { historyRows } from "../../lib/warehouse/sendToSite";
+import { useT } from "../../lib/i18n";
 
 export function WarehouseHistory() {
+  const t = useT();
   const projects = useQuery({ queryKey: ["projectsAll"], queryFn: listProjectsAnyStatus });
   const packages = useQuery({ queryKey: ["storagePackages"], queryFn: listActivePackages });
   const rows = historyRows(projects.data ?? [], packages.data ?? []);
@@ -22,22 +24,20 @@ export function WarehouseHistory() {
       <BackChip />
       <header className="page-header">
         <div>
-          <p className="home-greeting">Warehouse</p>
-          <h1>History</h1>
+          <p className="home-greeting">{t("storage.history.warehouse")}</p>
+          <h1>{t("storage.history.title")}</h1>
         </div>
       </header>
-      <p className="muted">
-        Jobs whose unit movement was finalized. Off the warehouse page, kept here to read; a foreman can reopen one.
-      </p>
+      <p className="muted">{t("storage.history.subtitle")}</p>
       {!ready ? (
-        <p className="muted">Loading…</p>
+        <p className="muted">{t("storage.history.loading")}</p>
       ) : rows.length === 0 ? (
         <EmptyState
-          title="No finalized jobs yet"
-          message="When a job's material has all gone out, a foreman taps Unit Movement Finalized on its page and it lands here."
+          title={t("storage.history.emptyTitle")}
+          message={t("storage.history.emptyMessage")}
         />
       ) : (
-        <ul className="history-list" aria-label="Finalized jobs">
+        <ul className="history-list" aria-label={t("storage.history.finalizedJobs")}>
           {rows.map((r) => (
             <li key={r.projectId} className="detail-card wh-card history-row">
               <div className="wh-row">
@@ -47,15 +47,21 @@ export function WarehouseHistory() {
                     {r.name && r.name !== r.jobCode ? <span className="muted"> · {r.name}</span> : null}
                   </span>
                   <span className="wh-row-sub">
-                    Finalized {r.finalizedAt.slice(0, 10)} · {r.units} unit{r.units === 1 ? "" : "s"} · {r.onSite} piece{r.onSite === 1 ? "" : "s"} on the job site
+                    {r.units === 1 && r.onSite === 1
+                      ? t("storage.history.summary.oneOne", { date: r.finalizedAt.slice(0, 10) })
+                      : r.units === 1
+                        ? t("storage.history.summary.oneMany", { date: r.finalizedAt.slice(0, 10), onSite: r.onSite })
+                        : r.onSite === 1
+                          ? t("storage.history.summary.manyOne", { date: r.finalizedAt.slice(0, 10), units: r.units })
+                          : t("storage.history.summary.manyMany", { date: r.finalizedAt.slice(0, 10), units: r.units, onSite: r.onSite })}
                   </span>
                 </div>
                 <div className="wh-actions">
                   <Link className="button-like" to={scopeHref({ projectId: r.projectId, pendingName: null })}>
-                    Materials
+                    {t("storage.history.materials")}
                   </Link>
                   <Link className="button-like" to={`/warehouse/send/${r.projectId}`}>
-                    Open
+                    {t("storage.history.open")}
                   </Link>
                 </div>
               </div>

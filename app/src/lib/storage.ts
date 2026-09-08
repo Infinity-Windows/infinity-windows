@@ -14,6 +14,11 @@
 import { supabase } from "./supabase";
 import { isMissingColumn, isMissingTable } from "./schemaErrors";
 import { signedMedia } from "./photos";
+import { CATALOG } from "./i18n/catalog";
+import { translate, type Lang } from "./i18n/translate";
+import type { TFn } from "./i18n/context";
+
+const englishT: TFn = (key, vars) => translate(CATALOG, "en" as Lang, key, vars);
 
 // minted: a pre-bound label for material that has not arrived (ticket 15).
 // It can be found, printed and burned — and nothing else. Every door that
@@ -60,6 +65,35 @@ export const PART_LABELS: Record<PartType, string> = {
   other: "Other",
 };
 
+// Catalog keys parallel to PART_LABELS/CATEGORY_LABELS (S3b) — the maps
+// above stay the English default every existing caller reads directly;
+// screens with a live `t` call these instead.
+const PART_LABEL_KEYS: Record<PartType, string> = {
+  frame: "warehouse.partType.frame",
+  glass: "warehouse.partType.glass",
+  panel: "warehouse.partType.panel",
+  threshold: "warehouse.partType.threshold",
+  hardware: "warehouse.partType.hardware",
+  screen: "warehouse.partType.screen",
+  other: "warehouse.partType.other",
+};
+
+export function partTypeLabel(type: PartType, t: TFn = englishT): string {
+  return t(PART_LABEL_KEYS[type] as Parameters<TFn>[0]);
+}
+
+const CATEGORY_LABEL_KEYS: Record<PackageCategory, string> = {
+  windows: "warehouse.category.windows",
+  doors: "warehouse.category.doors",
+  frames: "warehouse.category.frames",
+  hardware: "warehouse.category.hardware",
+  other: "warehouse.category.other",
+};
+
+export function categoryLabel(category: PackageCategory, t: TFn = englishT): string {
+  return t(CATEGORY_LABEL_KEYS[category] as Parameters<TFn>[0]);
+}
+
 export interface StorageContainer {
   id: string;
   serial: string;
@@ -98,6 +132,7 @@ export interface StorageContainer {
 export function jobLabel(
   p: Pick<StoragePackage, "project_id" | "status" | "pending_job_name">,
   jobCodeById: Map<string, string>,
+  t: TFn = englishT,
 ): string {
   if (p.status === "blank") return "";
   if (p.project_id == null) {
@@ -105,9 +140,9 @@ export function jobLabel(
     // the owner saw "Boneyard" on waiting glass and read it as ownerless
     // (2026-08-26). Its job name is the headline (packageTitle); this word
     // is the small honest tag beside it.
-    return p.pending_job_name ? "waiting on job" : "Boneyard";
+    return p.pending_job_name ? t("warehouse.job.waitingOnJob") : t("warehouse.job.boneyard");
   }
-  return jobCodeById.get(p.project_id) ?? "job not listed";
+  return jobCodeById.get(p.project_id) ?? t("warehouse.job.notListed");
 }
 
 /**
@@ -131,6 +166,7 @@ export function packageTitle(
     | "serial"
   > & { package_marks?: { mark_code: string }[] },
   jobCodeById: Map<string, string>,
+  t: TFn = englishT,
 ): string {
   const jobLine = p.project_id
     ? (jobCodeById.get(p.project_id) ?? null)
@@ -139,7 +175,10 @@ export function packageTitle(
   if (!mark) return jobLine ?? p.serial;
   const part =
     p.piece_count != null
-      ? `${p.piece_count} pc ${p.part_type ?? "glass"}`
+      ? t("warehouse.pieceCount", {
+          n: p.piece_count,
+          kind: (p.part_type ? partTypeLabel(p.part_type as PartType, t) : t("warehouse.partType.glass")).toLowerCase(),
+        })
       : p.part_index != null && p.part_total != null
         ? `${p.part_index}/${p.part_total}`
         : null;
@@ -1387,11 +1426,9 @@ export function pieceLine(
   return [where, kind].filter(Boolean).join(" · ") || null;
 }
 
-export function partLabel(p: PartLike): string | null {
-  const num = hasPartNumber(p) ? `Part ${p.part_index} of ${p.part_total}` : null;
-  const kind = p.part_type
-    ? (PART_LABELS[p.part_type as PartType] ?? p.part_type)
-    : null;
+export function partLabel(p: PartLike, t: TFn = englishT): string | null {
+  const num = hasPartNumber(p) ? t("warehouse.partOf", { index: p.part_index!, total: p.part_total! }) : null;
+  const kind = p.part_type ? partTypeLabel(p.part_type as PartType, t) : null;
   if (num && kind) return `${num} · ${kind}`;
   return num ?? kind;
 }

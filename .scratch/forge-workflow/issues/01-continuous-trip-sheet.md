@@ -1,6 +1,6 @@
 # Continuous trip sheet
 
-Status: in-progress
+Status: implemented; awaiting review
 Blocked by: None
 
 ## Scope
@@ -14,3 +14,5 @@ All sections are readable in one scroll; jump links work by touch/keyboard; crew
 ## Comments
 
 Created from the owner-requested busybusy review and iPhone web requirement.
+
+PR #591 contains the implementation. Nine fixture browser checks passed on the first run; unit/component coverage passes. Keep draft pending final validation and owner review. No merge/deploy authorization.

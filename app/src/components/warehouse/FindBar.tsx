@@ -19,6 +19,7 @@ import {
   type PackageHit,
   type FindInputs,
 } from "../../lib/warehouse/find";
+import { useT, type TFn } from "../../lib/i18n";
 
 /** Pull a searchable string out of any scanned payload. */
 function payloadQuery(p: QrPayload): string | null {
@@ -72,6 +73,7 @@ export function FindBar({
    * a job with nothing to show. */
   jobsWithModels?: Set<string>;
 }) {
+  const t = useT();
   const [query, setQuery] = useState(initialQuery ?? "");
   const [scanning, setScanning] = useState(false);
   /** The job picked when one mark belonged to more than one job — a real
@@ -90,6 +92,7 @@ export function FindBar({
           markProjectId: markChoice?.projectId ?? undefined,
           markPendingName: markChoice?.pendingName ?? undefined,
         },
+        t,
       ),
     [
       query,
@@ -100,6 +103,7 @@ export function FindBar({
       supplies,
       locationsById,
       markChoice,
+      t,
     ],
   );
 
@@ -112,14 +116,14 @@ export function FindBar({
     <div className="wh-find">
       <div className="locate-search">
         <input
-          placeholder="Find: 16, PKG-000123, S-01-A, Conex 3, BLACK22…"
+          placeholder={t("warehouse.find.placeholder")}
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);
             // A new search means the old job pick is about something else.
             setMarkChoice(null);
           }}
-          aria-label="Find anything in the warehouse"
+          aria-label={t("warehouse.find.ariaFind")}
         />
         {query ? (
           <button
@@ -128,7 +132,7 @@ export function FindBar({
               setQuery("");
               setMarkChoice(null);
             }}
-            aria-label="Clear"
+            aria-label={t("warehouse.find.clear")}
           >
             <X size={18} />
           </button>
@@ -136,7 +140,7 @@ export function FindBar({
           <button
             className="locate-go"
             onClick={() => setScanning((v) => !v)}
-            aria-label="Scan"
+            aria-label={t("warehouse.find.scan")}
           >
             <ScanLine size={20} />
           </button>
@@ -160,20 +164,21 @@ export function FindBar({
           answer={answer}
           onPickMarkJob={setMarkChoice}
           jobsWithModels={jobsWithModels}
+          t={t}
         />
       )}
     </div>
   );
 }
 
-function Rows({ hits }: { hits: PackageHit[] }) {
+function Rows({ hits, t }: { hits: PackageHit[]; t: TFn }) {
   if (hits.length === 0) return null;
   return (
     <ul className="unit-list" style={{ margin: "6px 0 0" }}>
       {hits.map(({ pkg, where }) => (
         <li key={pkg.id} className="find-row">
           <Link to={`/pkg/${pkg.serial}`} style={{ minWidth: 0 }}>
-            <strong>{partLabel(pkg) ?? (pkg.short_code ?? pkg.serial)}</strong>{" "}
+            <strong>{partLabel(pkg, t) ?? (pkg.short_code ?? pkg.serial)}</strong>{" "}
             <span className="muted" style={{ fontSize: 12 }}>
               {pkg.short_code ?? pkg.serial} · {where}
             </span>
@@ -188,15 +193,17 @@ function Answer({
   answer,
   onPickMarkJob,
   jobsWithModels,
+  t,
 }: {
   answer: FindAnswer;
   onPickMarkJob: (pick: { projectId: string | null; pendingName: string | null }) => void;
   jobsWithModels?: Set<string>;
+  t: TFn;
 }) {
   if (answer.kind === "miss") {
     return (
       <div className="wh-answer">
-        <strong>Nothing found for “{answer.query}”</strong>
+        <strong>{t("warehouse.find.headline.miss", { query: answer.query })}</strong>
         <p className="muted" style={{ margin: "4px 0 0", fontSize: 13 }}>
           {answer.suggestion}
         </p>
@@ -213,18 +220,16 @@ function Answer({
           : undefined;
     return (
       <div className={`wh-answer${tone ? ` tone-${tone}` : ""}`}>
-        <strong>
-          Window {answer.markCode} · {answer.jobCode}
-        </strong>
+        <strong>{t("warehouse.find.unitTitle", { mark: answer.markCode, job: answer.jobCode })}</strong>
         <p style={{ margin: "2px 0 0", fontSize: 13 }}>{answer.headline}</p>
         <Link
           className="button-like"
           style={{ marginTop: 8 }}
           to={unitHref({ projectId: answer.projectId, pendingName: answer.projectId ? null : answer.jobCode }, answer.markCode)}
         >
-          Open unit
+          {t("warehouse.find.openUnit")}
         </Link>
-        <Rows hits={answer.hits} />
+        <Rows hits={answer.hits} t={t} />
         {/* Job-building glow (#16's door): only when this job actually has
             a Studio model to show it on — a waiting job never does. */}
         {answer.projectId != null && jobsWithModels?.has(answer.projectId) && (
@@ -233,7 +238,7 @@ function Answer({
             style={{ marginTop: 8 }}
             to={`/projects/${answer.projectId}/model?mark=${encodeURIComponent(answer.markCode)}`}
           >
-            Show on the building
+            {t("warehouse.find.showOnBuilding")}
           </Link>
         )}
       </div>
@@ -243,10 +248,9 @@ function Answer({
   if (answer.kind === "mark-choices") {
     return (
       <div className="wh-answer tone-warn">
-        <strong>Window {answer.markCode} — more than one job has one</strong>
+        <strong>{t("warehouse.find.markMulti.title", { mark: answer.markCode })}</strong>
         <p className="muted" style={{ margin: "2px 0 0", fontSize: 13 }}>
-          Window numbers come off the plans, so they start over on every job.
-          Pick the job you are on.
+          {t("warehouse.find.markMulti.hint")}
         </p>
         <ul className="unit-list" style={{ margin: "6px 0 0" }}>
           {answer.choices.map((c) => (
@@ -263,7 +267,7 @@ function Answer({
                 {c.pendingName ? (
                   <span className="muted" style={{ fontSize: 12 }}>
                     {" "}
-                    (job not built yet)
+                    ({t("warehouse.find.jobNotBuilt")})
                   </span>
                 ) : null}{" "}
                 <span className="muted" style={{ fontSize: 12 }}>
@@ -285,11 +289,11 @@ function Answer({
         <p style={{ margin: "2px 0 0", fontSize: 13 }}>{answer.home}</p>
         <p className="muted" style={{ margin: "2px 0 0", fontSize: 12.5 }}>
           {answer.onHand != null
-            ? `about ${answer.onHand} ${answer.unit} on hand`
-            : "never counted"}
+            ? t("warehouse.find.onHand", { n: answer.onHand, unit: answer.unit })
+            : t("warehouse.find.neverCounted")}
         </p>
         <Link className="button-like" style={{ marginTop: 8 }} to="/supplies">
-          Take some
+          {t("warehouse.find.takeSome")}
         </Link>
       </div>
     );
@@ -303,10 +307,12 @@ function Answer({
         <strong>{answer.address}</strong>
         <p className="muted" style={{ margin: "2px 0 0", fontSize: 13 }}>
           {answer.hits.length === 0
-            ? "Nothing on this shelf right now"
-            : `${answer.hits.length} package${answer.hits.length === 1 ? "" : "s"} here`}
+            ? t("warehouse.find.slotEmpty")
+            : t(answer.hits.length === 1 ? "warehouse.find.slotCount.one" : "warehouse.find.slotCount.many", {
+                n: answer.hits.length,
+              })}
         </p>
-        <Rows hits={answer.hits} />
+        <Rows hits={answer.hits} t={t} />
       </div>
     );
   }
@@ -317,10 +323,10 @@ function Answer({
       <div className="wh-answer">
         <strong>{pkg.short_code ?? pkg.serial}</strong>
         <p style={{ margin: "2px 0 0", fontSize: 13 }}>
-          {partLabel(pkg) ?? "No part number on label"} — {where}
+          {partLabel(pkg, t) ?? t("warehouse.find.noPartNumber")} — {where}
         </p>
         <Link className="button-like" style={{ marginTop: 8 }} to={`/pkg/${pkg.serial}`}>
-          Open its history
+          {t("warehouse.find.openHistory")}
         </Link>
       </div>
     );
@@ -337,23 +343,27 @@ function Answer({
       ? // "— at BLACK22" is the address field, which ticket 13 made an honest
         // answer: changing it writes history now, so saying it out loud here
         // no longer repeats a silent edit as fact.
-        `${answer.hits.length} package${answer.hits.length === 1 ? "" : "s"} inside` +
-        (answer.container.address ? ` — at ${answer.container.address}` : "")
+        t(answer.hits.length === 1 ? "warehouse.find.inside.one" : "warehouse.find.inside.many", { n: answer.hits.length }) +
+        (answer.container.address ? ` — ${t("warehouse.find.atAddress", { address: answer.container.address })}` : "")
       : answer.kind === "pending-job"
-        ? `${answer.hits.length} package${answer.hits.length === 1 ? "" : "s"} waiting — job not built in the app yet`
-        : `${answer.hits.length} package${answer.hits.length === 1 ? "" : "s"} tagged for this job`;
+        ? t(answer.hits.length === 1 ? "warehouse.find.pendingWaiting.one" : "warehouse.find.pendingWaiting.many", {
+            n: answer.hits.length,
+          })
+        : t(answer.hits.length === 1 ? "warehouse.find.taggedForJob.one" : "warehouse.find.taggedForJob.many", {
+            n: answer.hits.length,
+          });
   return (
     <div className="wh-answer">
       <strong>{title}</strong>
       <p className="muted" style={{ margin: "2px 0 0", fontSize: 13 }}>{sub}</p>
-      <Rows hits={answer.hits.slice(0, 12)} />
+      <Rows hits={answer.hits.slice(0, 12)} t={t} />
       {answer.kind === "container" && (
         <Link
           className="button-like"
           style={{ marginTop: 8 }}
           to={`/storage/c/${answer.container.id}`}
         >
-          Open {answer.container.name}
+          {t("warehouse.find.open", { name: answer.container.name })}
         </Link>
       )}
     </div>

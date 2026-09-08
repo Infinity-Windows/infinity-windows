@@ -37,10 +37,12 @@ import {
   type WizardSet,
 } from "../../lib/warehouse/deliveryWizard";
 import { formatApiError } from "../../lib/install/errors";
+import { useT } from "../../lib/i18n";
 
 type Stage = "mode" | "jobs" | "sets" | "review" | "done";
 
 export function LogDelivery() {
+  const t = useT();
   const navigate = useNavigate();
   // Ticket 20: this page is the ONE front door for trucks, open to whoever's
   // at the tailgate — and since ADR-0007 the hand-entry wizard below is too.
@@ -90,7 +92,7 @@ export function LogDelivery() {
 
   const save = useMutation({
     mutationFn: async () => {
-      const problems = wizardProblems(entries);
+      const problems = wizardProblems(entries, t);
       if (problems.length > 0) throw new Error(problems[0]);
       // A job that isn't built yet becomes a real job first (wave 5): the
       // packages land on a NEW- job the office renames, not on a typed name.
@@ -115,37 +117,33 @@ export function LogDelivery() {
     },
   });
 
-  const problems = wizardProblems(entries);
+  const problems = wizardProblems(entries, t);
 
   if (stage === "mode") {
     return (
       <div className="page">
         <header className="page-header">
           <div>
-            <p className="home-greeting">Warehouse</p>
-            <h1>Log a delivery</h1>
+            <p className="home-greeting">{t("storage.logDelivery.warehouse")}</p>
+            <h1>{t("storage.logDelivery.title")}</h1>
           </div>
-          <BackChip fallback="/warehouse" label="Warehouse" />
+          <BackChip fallback="/warehouse" label={t("storage.logDelivery.warehouse")} />
         </header>
         <StationChip station={STATION_COMING_IN} />
-        <p className="muted">How will this truck be tracked?</p>
+        <p className="muted">{t("storage.logDelivery.howTracked")}</p>
         <div className="row-gap" style={{ flexDirection: "column", maxWidth: 460 }}>
           <button
             className="primary big"
             onClick={() => navigate("/storage/tag")}
           >
-            With QR stickers — scan and tag at the tailgate
+            {t("storage.logDelivery.withStickers")}
           </button>
           {/* Both ways in are open to every crew member (ADR-0007) — the
               person meeting the truck decides how the truck gets tracked. */}
           <button className="button-like big" onClick={() => setStage("jobs")}>
-            Without stickers — prepare the list, check the truck against it
+            {t("storage.logDelivery.withoutStickers")}
           </button>
-          <p className="muted">
-            Entering by hand builds a standby list of expected packages, each
-            with its own ID. At the truck you check material off against the
-            list; labels print whenever the printer shows up.
-          </p>
+          <p className="muted">{t("storage.logDelivery.withoutStickersHint")}</p>
         </div>
       </div>
     );
@@ -156,32 +154,30 @@ export function LogDelivery() {
       <div className="page">
         <header className="page-header">
           <div>
-            <p className="home-greeting">Warehouse</p>
-            <h1>Delivery logged</h1>
+            <p className="home-greeting">{t("storage.logDelivery.warehouse")}</p>
+            <h1>{t("storage.logDelivery.loggedTitle")}</h1>
           </div>
-          <BackChip fallback="/warehouse" label="Warehouse" />
+          <BackChip fallback="/warehouse" label={t("storage.logDelivery.warehouse")} />
         </header>
         <StationChip station={STATION_COMING_IN} />
         <p>
-          The standby list is saved — {result?.created ?? 0} expected package
-          {(result?.created ?? 0) === 1 ? "" : "s"}.
-          {result?.unfiled
-            ? ` ${result.unfiled} belong to jobs that aren't built yet — they still check in and store like everything else, and a supervisor has the job on the Issues list.`
-            : ""}
+          {t(
+            (result?.created ?? 0) === 1
+              ? "storage.logDelivery.standbySaved.one"
+              : "storage.logDelivery.standbySaved.many",
+            { n: result?.created ?? 0 },
+          )}
+          {result?.unfiled ? ` ${t("storage.logDelivery.unfiled", { n: result.unfiled })}` : ""}
         </p>
-        <p className="muted">
-          When the truck shows up, open the delivery and check the material
-          off against this list — what arrived, what's missing, and where
-          each box went.
-        </p>
+        <p className="muted">{t("storage.logDelivery.whenTruckShowsUp")}</p>
         <div className="row-gap">
           {result?.delivery_id && (
             <Link className="primary big" to={`/storage/d/${result.delivery_id}`}>
-              Open the delivery — check the truck against it
+              {t("storage.logDelivery.openDelivery")}
             </Link>
           )}
           <Link className="button-like" to="/warehouse">
-            Back to the warehouse
+            {t("storage.logDelivery.backToWarehouse")}
           </Link>
           <button
             className="button-like"
@@ -192,7 +188,7 @@ export function LogDelivery() {
               setStage("jobs");
             }}
           >
-            Log another delivery
+            {t("storage.logDelivery.logAnother")}
           </button>
         </div>
       </div>
@@ -204,10 +200,10 @@ export function LogDelivery() {
       <div className="page">
         <header className="page-header">
           <div>
-            <p className="home-greeting">Log a delivery · review</p>
-            <h1>{label.trim() || "Hand-logged delivery"}</h1>
+            <p className="home-greeting">{t("storage.logDelivery.reviewGreeting")}</p>
+            <h1>{label.trim() || t("storage.logDelivery.handLogged")}</h1>
           </div>
-          <BackChip fallback="/warehouse" label="Warehouse" />
+          <BackChip fallback="/warehouse" label={t("storage.logDelivery.warehouse")} />
         </header>
         <StationChip station={STATION_COMING_IN} />
         {entries.map((entry, ei) => {
@@ -217,11 +213,11 @@ export function LogDelivery() {
               <h2>
                 {job
                   ? (job.job_code ?? job.name)
-                  : `${entry.job_name.trim()} (job not built yet — a supervisor will get it)`}
+                  : t("storage.logDelivery.jobNotBuiltYet", { name: entry.job_name.trim() })}
               </h2>
               <ul className="unit-list">
                 {entry.sets.map((set, si) => (
-                  <li key={si}>{describeSet(set)}</li>
+                  <li key={si}>{describeSet(set, t)}</li>
                 ))}
               </ul>
             </section>
@@ -231,14 +227,14 @@ export function LogDelivery() {
         {problems.length > 0 && <p className="error">{problems[0]}</p>}
         <div className="row-gap">
           <button className="button-like" onClick={() => setStage("sets")}>
-            Back
+            {t("storage.logDelivery.back")}
           </button>
           <button
             className="primary big"
             disabled={save.isPending || problems.length > 0}
             onClick={() => save.mutate()}
           >
-            {save.isPending ? "Saving…" : "Save the delivery"}
+            {save.isPending ? t("storage.logDelivery.saving") : t("storage.logDelivery.saveDelivery")}
           </button>
         </div>
       </div>
@@ -250,20 +246,20 @@ export function LogDelivery() {
       <div className="page">
         <header className="page-header">
           <div>
-            <p className="home-greeting">Log a delivery · step 1 of 3</p>
-            <h1>Which jobs are on this truck?</h1>
+            <p className="home-greeting">{t("storage.logDelivery.step1Greeting")}</p>
+            <h1>{t("storage.logDelivery.whichJobs")}</h1>
           </div>
-          <BackChip fallback="/warehouse" label="Warehouse" />
+          <BackChip fallback="/warehouse" label={t("storage.logDelivery.warehouse")} />
         </header>
         <StationChip station={STATION_COMING_IN} />
         {restoredFrom && (
           <p className="scanner-hint">
-            Picked your unsaved delivery back up (from{" "}
+            {t("storage.logDelivery.restored.pre")}
             {new Date(restoredFrom).toLocaleTimeString([], {
               hour: "numeric",
               minute: "2-digit",
             })}
-            ) — keep going, or{" "}
+            {t("storage.logDelivery.restored.mid")}
             <button
               className="link"
               onClick={() => {
@@ -273,19 +269,19 @@ export function LogDelivery() {
                 setLabel("");
               }}
             >
-              start fresh
+              {t("storage.logDelivery.startFresh")}
             </button>
-            .
+            {t("storage.logDelivery.restored.post")}
           </p>
         )}
         <label className="field-label" htmlFor="delivery-label">
-          Delivery name (optional)
+          {t("storage.logDelivery.deliveryName")}
         </label>
         <input
           id="delivery-label"
           value={label}
           onChange={(e) => setLabel(e.target.value)}
-          placeholder="e.g. Tech Ridge truck, Aug 22"
+          placeholder={t("storage.logDelivery.deliveryNamePlaceholder")}
           style={{ maxWidth: 420 }}
         />
         {entries.map((entry, ei) => (
@@ -298,7 +294,7 @@ export function LogDelivery() {
                 })
               }
             >
-              <option value="">— job not in the app yet —</option>
+              <option value="">{t("storage.logDelivery.jobNotInApp")}</option>
               {(projects.data ?? []).map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.job_code ?? p.name}
@@ -309,7 +305,7 @@ export function LogDelivery() {
               <input
                 value={entry.job_name}
                 onChange={(e) => patchEntry(ei, { job_name: e.target.value })}
-                placeholder="Type the job's name"
+                placeholder={t("storage.logDelivery.typeJobName")}
               />
             )}
             {entries.length > 1 && (
@@ -319,7 +315,7 @@ export function LogDelivery() {
                   setEntries((prev) => prev.filter((_, i) => i !== ei))
                 }
               >
-                Remove
+                {t("storage.logDelivery.remove")}
               </button>
             )}
           </div>
@@ -330,15 +326,14 @@ export function LogDelivery() {
             disabled={entries.length >= MAX_PROJECTS}
             onClick={() => setEntries((prev) => [...prev, emptyEntry()])}
           >
-            + Another job ({entries.length}/{MAX_PROJECTS})
+            {t("storage.logDelivery.anotherJob", { n: entries.length, max: MAX_PROJECTS })}
           </button>
           <button className="primary" onClick={() => setStage("sets")}>
-            Next: the sets
+            {t("storage.logDelivery.nextSets")}
           </button>
         </div>
         <p className="muted" style={{ marginTop: 8 }}>
-          A job that isn't in the app yet doesn't stop the unload — type its
-          name, keep going, and a supervisor gets an Issue to build it.
+          {t("storage.logDelivery.jobNotInAppHint")}
         </p>
       </div>
     );
@@ -349,25 +344,18 @@ export function LogDelivery() {
     <div className="page">
       <header className="page-header">
         <div>
-          <p className="home-greeting">Log a delivery · step 2 of 3</p>
-          <h1>Sets on the truck</h1>
+          <p className="home-greeting">{t("storage.logDelivery.step2Greeting")}</p>
+          <h1>{t("storage.logDelivery.setsOnTruck")}</h1>
         </div>
-        <BackChip fallback="/warehouse" label="Warehouse" />
+        <BackChip fallback="/warehouse" label={t("storage.logDelivery.warehouse")} />
       </header>
       <StationChip station={STATION_COMING_IN} />
-      <p className="muted">
-        A set is everything for one window or door — its frame, glass,
-        hardware. Count its packages; if some pieces ride in a crate, say how
-        many and name the crate. Six identical windows? Turn on Clones and
-        say how many — every unit gets the same packages and crate pieces.
-        Which box is which part gets labeled later, when you can read the
-        boxes.
-      </p>
+      <p className="muted">{t("storage.logDelivery.setsExplain")}</p>
       {entries.map((entry, ei) => {
         const job = projects.data?.find((p) => p.id === entry.project_id);
         return (
           <section key={ei} style={{ marginBottom: 16 }}>
-            <h2>{job ? (job.job_code ?? job.name) : entry.job_name.trim() || `Job ${ei + 1}`}</h2>
+            <h2>{job ? (job.job_code ?? job.name) : entry.job_name.trim() || t("storage.logDelivery.problem.jobN", { n: ei + 1 })}</h2>
             {entry.sets.map((set, si) => (
               <div
                 key={si}
@@ -377,9 +365,9 @@ export function LogDelivery() {
                 <input
                   value={set.mark}
                   onChange={(e) => patchSet(ei, si, { mark: e.target.value })}
-                  placeholder="Mark, e.g. 16"
+                  placeholder={t("storage.logDelivery.markPlaceholder")}
                   style={{ width: 110 }}
-                  aria-label="Mark"
+                  aria-label={t("storage.logDelivery.markAria")}
                 />
                 <select
                   value={set.kind}
@@ -387,18 +375,18 @@ export function LogDelivery() {
                     patchSet(ei, si, { kind: e.target.value as WizardSet["kind"] })
                   }
                 >
-                  <option value="window">Window</option>
-                  <option value="door">Door</option>
+                  <option value="window">{t("storage.logDelivery.describe.window")}</option>
+                  <option value="door">{t("storage.logDelivery.describe.door")}</option>
                 </select>
                 <label className="field-label" style={{ margin: 0 }}>
-                  Packages
+                  {t("storage.logDelivery.packages")}
                 </label>
                 <select
                   value={set.package_count}
                   onChange={(e) =>
                     patchSet(ei, si, { package_count: Number(e.target.value) })
                   }
-                  aria-label="How many packages"
+                  aria-label={t("storage.logDelivery.howManyPackages")}
                 >
                   {Array.from({ length: MAX_PACKAGES }, (_, n) => (
                     <option key={n + 1} value={n + 1}>
@@ -409,14 +397,14 @@ export function LogDelivery() {
                 {set.quantity > 1 ? (
                   <>
                     <label className="field-label" style={{ margin: 0 }}>
-                      Identical
+                      {t("storage.logDelivery.identical")}
                     </label>
                     <select
                       value={set.quantity}
                       onChange={(e) =>
                         patchSet(ei, si, { quantity: Number(e.target.value) })
                       }
-                      aria-label="How many identical"
+                      aria-label={t("storage.logDelivery.howManyIdentical")}
                     >
                       {Array.from({ length: MAX_CLONES - 1 }, (_, n) => (
                         <option key={n + 2} value={n + 2}>
@@ -428,7 +416,7 @@ export function LogDelivery() {
                       className="link"
                       onClick={() => patchSet(ei, si, { quantity: 1 })}
                     >
-                      Clones off
+                      {t("storage.logDelivery.clonesOff")}
                     </button>
                   </>
                 ) : (
@@ -436,7 +424,7 @@ export function LogDelivery() {
                     className="link"
                     onClick={() => patchSet(ei, si, { quantity: 2 })}
                   >
-                    + Clones (identical units)
+                    {t("storage.logDelivery.addClones")}
                   </button>
                 )}
                 {set.crate ? (
@@ -448,12 +436,12 @@ export function LogDelivery() {
                           crate: { ...set.crate!, name: e.target.value },
                         })
                       }
-                      placeholder="Crate name, e.g. Crate 1"
+                      placeholder={t("storage.logDelivery.crateNamePlaceholder")}
                       style={{ width: 150 }}
-                      aria-label="Crate name"
+                      aria-label={t("storage.logDelivery.crateNameAria")}
                     />
                     <label className="field-label" style={{ margin: 0 }}>
-                      Pieces in it
+                      {t("storage.logDelivery.piecesInIt")}
                     </label>
                     <input
                       type="number"
@@ -466,13 +454,13 @@ export function LogDelivery() {
                         })
                       }
                       style={{ width: 70 }}
-                      aria-label="Pieces in the crate"
+                      aria-label={t("storage.logDelivery.piecesInCrateAria")}
                     />
                     <button
                       className="link"
                       onClick={() => patchSet(ei, si, { crate: null })}
                     >
-                      No crate
+                      {t("storage.logDelivery.noCrate")}
                     </button>
                   </>
                 ) : (
@@ -484,7 +472,7 @@ export function LogDelivery() {
                       })
                     }
                   >
-                    + Pieces in a crate
+                    {t("storage.logDelivery.addPiecesInCrate")}
                   </button>
                 )}
                 {entry.sets.length > 1 && (
@@ -496,7 +484,7 @@ export function LogDelivery() {
                       })
                     }
                   >
-                    Remove set
+                    {t("storage.logDelivery.removeSet")}
                   </button>
                 )}
               </div>
@@ -508,17 +496,17 @@ export function LogDelivery() {
                 patchEntry(ei, { sets: [...entry.sets, emptySet()] })
               }
             >
-              + Another set ({entry.sets.length}/{MAX_SETS})
+              {t("storage.logDelivery.anotherSet", { n: entry.sets.length, max: MAX_SETS })}
             </button>
           </section>
         );
       })}
       <div className="row-gap">
         <button className="button-like" onClick={() => setStage("jobs")}>
-          Back
+          {t("storage.logDelivery.back")}
         </button>
         <button className="primary" onClick={() => setStage("review")}>
-          Next: review
+          {t("storage.logDelivery.nextReview")}
         </button>
       </div>
     </div>

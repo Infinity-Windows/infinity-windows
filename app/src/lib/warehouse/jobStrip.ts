@@ -5,6 +5,11 @@
 
 import { containerHue, type StoragePackage } from "../storage";
 import type { JobTally } from "./jobTally";
+import { CATALOG } from "../i18n/catalog";
+import { translate, type Lang } from "../i18n/translate";
+import type { TFn } from "../i18n/context";
+
+const englishT: TFn = (key, vars) => translate(CATALOG, "en" as Lang, key, vars);
 
 export interface JobChip {
   key: string;
@@ -21,20 +26,24 @@ export interface JobChip {
   line: string;
 }
 
-export function jobChips(tallies: readonly JobTally[]): JobChip[] {
-  return tallies.map((t) => ({
-    key: t.projectId ?? `pending:${t.label}`,
-    projectId: t.projectId,
-    pendingName: t.projectId ? null : t.label,
-    label: t.label,
-    hue: containerHue(t.label),
-    here: t.loggedUnits,
-    total: t.totalUnits,
-    ready: t.remainingUnits === 0,
+export function jobChips(tallies: readonly JobTally[], t: TFn = englishT): JobChip[] {
+  return tallies.map((tally) => ({
+    key: tally.projectId ?? `pending:${tally.label}`,
+    projectId: tally.projectId,
+    pendingName: tally.projectId ? null : tally.label,
+    label: tally.label,
+    hue: containerHue(tally.label),
+    here: tally.loggedUnits,
+    total: tally.totalUnits,
+    ready: tally.remainingUnits === 0,
     line:
-      t.remainingUnits === 0
-        ? `${t.totalUnits}/${t.totalUnits}`
-        : `${t.loggedUnits}/${t.totalUnits} · ${t.remainingUnits} to come`,
+      tally.remainingUnits === 0
+        ? `${tally.totalUnits}/${tally.totalUnits}`
+        : t("warehouse.jobStrip.toCome", {
+            here: tally.loggedUnits,
+            total: tally.totalUnits,
+            remaining: tally.remainingUnits,
+          }),
   }));
 }
 
