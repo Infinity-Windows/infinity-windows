@@ -4512,6 +4512,21 @@ export const CATALOG = {
     en: "Review the crew, dates, and travel details above before sharing this trip.",
     es: "Revisa el equipo, las fechas y los detalles del viaje antes de compartirlo.",
   },
+  "display.heading": { en: "Display view", es: "Vista de pantalla" },
+  "display.auto": { en: "Auto", es: "Automática" },
+  "display.phone": { en: "Phone", es: "Teléfono" },
+  "display.desktop": { en: "Desktop", es: "Computadora" },
+  "display.help": { en: "Auto follows your screen size. Phone keeps a compact layout; Desktop opens the planning board. Saved on this device.", es: "Automática se adapta al tamaño de pantalla. Teléfono usa un diseño compacto; Computadora abre el tablero de planificación. Se guarda en este dispositivo." },
+  // i18n-same-on-purpose: "agenda" is the same word in Spanish.
+  "schedule.agenda": { en: "Agenda", es: "Agenda" },
+  "schedule.addDay": { en: "Plan work on {date}", es: "Planificar trabajo para {date}" },
+  "schedule.emptyDay": { en: "No work scheduled this day", es: "No hay trabajo programado para este día" },
+  "schedule.crewCount": { en: "{n} crew", es: "{n} integrantes" },
+  "schedule.draft": { en: "Draft", es: "Borrador" },
+  "schedule.published": { en: "Published", es: "Publicado" },
+  "schedule.conflict": { en: "Scheduling conflict", es: "Conflicto de horario" },
+  "schedule.job": { en: "Job", es: "Trabajo" },
+  "schedule.delivery": { en: "Delivery", es: "Entrega" },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */

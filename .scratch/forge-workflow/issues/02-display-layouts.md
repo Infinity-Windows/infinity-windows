@@ -1,7 +1,7 @@
 # Auto, Phone and Desktop layouts
 
-Status: ready-for-agent
-Blocked by: None; refresh shared-shell ownership
+Status: implemented; draft review and physical iPhone verification pending
+Blocked by: None; based on master 6ecbb59, preserving #586/#590
 
 ## Scope
 
@@ -14,3 +14,7 @@ Reload persists an explicit choice; blocked storage still permits current-sessio
 ## Comments
 
 Created from the owner-requested busybusy review and iPhone web requirement.
+
+## Implemented
+
+Auto/Phone/Desktop preference in Settings and Scheduling; phone shell on laptop, day agenda by default on phones, desktop board by default, preserved editor state, 44px agenda/view controls and full-height phone editor. Small screens keep reachable navigation in Desktop mode. Specialized app screens keep their existing responsive components. Browser checks cover persistence, resize, blocked storage, unsaved drafts, role scope, long job names and date filtering. Actual iPhone Safari verification remains outstanding.

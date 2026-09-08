@@ -1,3 +1,7 @@
+import { AgendaView } from "../components/schedule/AgendaView";
+import { DisplayModePicker } from "../components/DisplayModePicker";
+import { useDisplayMode, type DisplayLayout } from "../lib/displayMode";
+import { useT } from "../lib/i18n";
 import { BackChip } from "../components/BackChip";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -73,7 +77,7 @@ import { TripEditor } from "../components/travel/TripEditor";
 import { sendPush } from "../lib/permissions/pushServer";
 import { notifyLocal } from "../lib/permissions/notifyLocal";
 
-type View = "board" | "week" | "month" | "timeline";
+type View = "agenda" | "board" | "week" | "month" | "timeline";
 
 function todayLocalISO(): string {
   const d = new Date();
@@ -100,7 +104,11 @@ export function Scheduling() {
   const today = todayLocalISO();
   const horizon = useMemo(() => horizonRange(today), [today]);
 
-  const [view, setView] = useState<View>("board");
+  const t = useT();
+  const { layout } = useDisplayMode();
+  const [viewChoices, setViewChoices] = useState<Partial<Record<DisplayLayout, View>>>({});
+  const view = viewChoices[layout] ?? (layout === "phone" ? "agenda" : "board");
+  const setView = (next: View) => setViewChoices(choices => ({ ...choices, [layout]: next }));
   /** Quick-create target from an empty board cell. */
   const [quickCreate, setQuickCreate] = useState<{ personId: string; day: string } | null>(null);
   const [quickJob, setQuickJob] = useState("");
@@ -118,7 +126,7 @@ export function Scheduling() {
   const [dayPanelDate, setDayPanelDate] = useState<string | null>(null);
 
   const range = useMemo(() => {
-    if (view === "week" || view === "board") {
+    if (view === "agenda" || view === "week" || view === "board") {
       const from = startOfWeekISO(anchor);
       return { from, to: addDaysISO(from, 6), label: rangeLabel(from, addDaysISO(from, 6)) };
     }
@@ -155,7 +163,7 @@ export function Scheduling() {
   const vehicleLinks = useQuery({ queryKey: ["vehicleLinks"], queryFn: listAllVehicleLinks });
 
   const loaded = useMemo(() => assignments.data ?? [], [assignments.data]);
-  const conflictIds = useMemo(() => conflictingAssignmentIds(loaded), [loaded]);
+  const conflictIds = useMemo(() => conflictingAssignmentIds(loaded.filter(a => a.status !== "canceled")), [loaded]);
 
   // ---- Calendar memory (C2/C3): Month view's worked-chips + day panel ---
   // Month-only, gated on `view` so Board/Week/Timeline never pay for data
@@ -598,7 +606,7 @@ export function Scheduling() {
 
   const conflictInput = useMemo(
     () =>
-      [...knownById.values()].map((a) => ({
+      [...knownById.values()].filter(a => a.status !== "canceled").map((a) => ({
         id: a.id,
         start_date: a.start_date,
         end_date: a.end_date,
@@ -780,9 +788,10 @@ export function Scheduling() {
         </p>
       )}
 
+      <DisplayModePicker />
       <div className="sched-toolbar">
         <div className="sched-viewswitch" role="tablist">
-          {(["board", "week", "month", "timeline"] as View[]).map((v) => (
+          {(["agenda", "board", "week", "month", "timeline"] as View[]).map((v) => (
             <button
               key={v}
               role="tab"
@@ -790,7 +799,7 @@ export function Scheduling() {
               className={`sched-viewtab${view === v ? " is-active" : ""}`}
               onClick={() => setView(v)}
             >
-              {v === "board" ? "Board" : v === "week" ? "Week" : v === "month" ? "Month" : "Calendar"}
+              {v === "agenda" ? t("schedule.agenda") : v === "board" ? "Board" : v === "week" ? "Week" : v === "month" ? "Month" : "Calendar"}
             </button>
           ))}
         </div>
@@ -884,11 +893,21 @@ export function Scheduling() {
       )}
       {assignments.isLoading ? (
         <SkeletonList rows={4} />
-      ) : loaded.length === 0 && view !== "timeline" && view !== "board" && view !== "month" ? (
+      ) : loaded.length === 0 && view !== "agenda" && view !== "timeline" && view !== "board" && view !== "month" ? (
         <EmptyState
           icon={<CalendarDays size={22} />}
           title="Nothing scheduled here yet"
           message="Tap a day or “New” to put a crew on a job."
+        />
+      ) : view === "agenda" ? (
+        <AgendaView day={anchor} weekStart={range.from} assignments={loaded}
+          conflictIds={conflictIds} vehicleLabels={vehicleLabelByAssignment} onDay={setAnchor}
+          onOpen={a => {
+            if (canEdit) setEditor({ assignment: a });
+            else if (a.kind === "delivery" && a.delivery_id) navigate(`/storage/d/${a.delivery_id}`);
+            else if (a.project_id) navigate(`/projects/${a.project_id}`);
+          }}
+          onCreate={canEdit ? day => setEditor({ assignment: null, defaults: { start_date: day } }) : undefined}
         />
       ) : view === "board" ? (
         <>

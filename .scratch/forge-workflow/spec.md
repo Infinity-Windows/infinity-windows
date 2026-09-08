@@ -24,9 +24,9 @@ Use Auto / Phone / Desktop as a per-device display preference. Shared URLs, perm
 
 ## Delivery and ownership
 
-Baseline: master baacc2e, fetched September 8, 2026. Working branch: codex/iphone-workflow. This is an isolated checkout, not the user's Downloads checkout.
+Baseline: master 6ecbb59, refreshed September 7, 2026 (America/Denver). Working branch: codex/iphone-workflow. This is an isolated checkout, not the user's Downloads checkout.
 
-First slice: TripDetail.tsx, its scoped CSS, two translated strings, browser coverage, and this workflow. PR #586 owns Today/Tomorrow/navigation and PR #590 covers Spanish; they were open at the check. Preserve those changes and refresh ownership before touching their files. Shared catalog/CSS changes should remain small and additive. No live session handshake with Claude is implied.
+First slice: TripDetail.tsx, its scoped CSS, two translated strings, browser coverage, and this workflow. PR #586 supplied Today/Tomorrow/navigation and PR #590 supplied Spanish; both are now merged into the integrated baseline. Preserve those changes and refresh ownership before touching their files. Shared catalog/CSS changes should remain small and additive. No live session handshake with Claude is implied.
 
 ## Ordered implementation tickets
 
@@ -53,4 +53,10 @@ The review is fully incorporated into the tracked workflow; the product program 
 
 ## First-slice verification
 
-Draft PR #591. The first GitHub CI browser run passed all nine targeted checks. The latest master integration preserves the Spanish changes from #590 and passes 5,360 unit/component tests across 384 files. Physical iPhone Safari verification remains outstanding. The display toggle and shared publication are not implemented by this PR.
+Draft PR #591. The first GitHub CI browser run passed all nine targeted checks. The latest master integration preserves the Spanish changes from #590 and passes 5,360 unit/component tests across 384 files. Physical iPhone Safari verification remains outstanding. The second slice below adds the display toggle; shared publication remains unimplemented.
+
+## Second-slice implementation
+
+Based on master 6ecbb59 after #586 and #590 merged. Auto/Phone/Desktop preference, phone scheduling agenda and editor presentation are implemented for draft review, preserving the first trip-sheet slice. This is presentation work; it does not add shared publication.
+
+Live schema access is available. The read-only audit found database permission and privacy prerequisites; `docs/forge-publication-contract.md` records the evidence, concrete contract and release gate. Tickets 04 and the remaining connected-plan work are still incomplete. Physical iPhone Safari validation remains outstanding.

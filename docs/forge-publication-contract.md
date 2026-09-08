@@ -1,0 +1,28 @@
+# Forge publication contract — verified prerequisites
+
+Read-only catalog inspection: September 7, 2026 (America/Denver), production project `czprjcskmzzagdztqonm`. Repository baseline `6ecbb59`. No business rows read or changed; no production mutation probe. Sources: `information_schema.columns`, `pg_policies`, `pg_class.relrowsecurity/relacl`, `pg_constraint`, `pg_proc`, and the eight latest migration-history entries. This is an implementation contract, not a deployed feature.
+
+## Verified state
+
+- `schedule_assignments`, `schedule_assignment_members`, `schedule_events`, and `vehicle_project_assignments` have RLS enabled, authenticated write grants, and an ALL policy whose only restriction is `NOT is_partner_user()`. The UI's supervisor-only editing rule is therefore not enforced by these table policies for ordinary internal crew.
+- `trips` and its child records restrict writes using `travel_is_supervisor()`. Trip and lodging read policies allow trip members without checking published status. Flight read policies allow any member of that trip without filtering the passenger. The UI's published-only and personal-flight filters must not be mistaken for server-enforced privacy.
+- No assignment-to-trip foreign key exists in the inspected tables. `vehicle_project_assignments.assignment_id` already exists; reuse it instead of inventing a second vehicle booking store.
+- No Schedule/Travel publication RPC appeared among public function names containing publish, schedule, or trip. `schedule_delivery` is an existing atomic delivery path; preserve it.
+- Schedule publication updates selected assignment statuses, then writes best-effort events; Travel publication is separate. The missing-table Schedule fallback can mark a local record published. This cannot satisfy a server-acknowledged connected-plan contract.
+- My Schedule associates one visible trip per project using a map. Project identity alone cannot identify the correct rotation when two trips serve one job.
+- Latest observed migration-history identifier is `20261002000000` (`job_facts_lines`). These identifiers include non-calendar sequences. Refresh both master and deployed history immediately before allocating a migration; no number is reserved by this document.
+
+## Required implementation order
+
+1. Enforce existing product permissions at the database boundary. Separate SELECT from supervisor-plus mutation policies for schedule, membership, events and vehicle links. Preserve the partner wall, delivery RPC behavior, documented service-role jobs and foreman read access. Restrict draft trip details to supervisors; published crew access remains membership-based. Restrict passenger-specific flights to that passenger or supervisors, with whole-crew flights available to all assigned members. Audit attachment storage policy as well as metadata policy before claiming file privacy.
+2. Add durable plan identity and explicit links. A plan contains selected assignment IDs and explicit trip IDs; a joining table permits multiple travel rotations per job. Never infer or backfill links from project/date proximity. Existing unlinked records keep their existing screens and require explicit selection to join a plan. Work dates and travel dates remain separate.
+3. Introduce immutable publication revisions. Use a server revision counter on the plan, not client timestamps. Draft edits live apart from the crew's last published snapshot. Expected revision covers membership, trip children and vehicle reservations as well as the parent records. Removing crew revokes future instruction access; historical time and reports retain their original authorship.
+4. Publish through one transaction with `plan_id`, `expected_revision`, and a unique request ID. Verify real authenticated role and partner exclusion inside the RPC. Lock plan and affected resources in deterministic order; validate membership, dates and vehicle conflicts; write selected revision, audit event and notification-outbox items atomically. A retry with the same request and payload returns the prior result; a reused request with different content or a stale revision fails clearly. Unrelated drafts remain untouched. A missing RPC or offline connection must leave a draft unsent.
+5. Deliver notifications separately. Unique recipient/revision/channel keys prevent duplicates. Record pending/sent/failed delivery independently of published status. Retry delivery without republishing. Do not promise notification delivery merely because the database commit succeeded.
+6. Connect both schedule and travel review entry points to this same revision preview. Show work days, travel days, crew, vehicles and changes since the prior revision. Preserve unsaved review state across layout changes. Refresh registered query roots for schedule, trips, My Schedule, vehicles and affected job views after acknowledged commit.
+
+## Release gate
+
+Prove policies with installer, foreman, supervisor, owner, partner and anonymous roles in a disposable local database or isolated authorized test environment; catalog inspection alone is not an execution test. Do not test writes against live crew records. Include draft privacy, personal flight privacy, removed crew, attachment URLs, duplicate clicks, retry after commit, concurrent child edits, two trips for one job, rotations, weekend/timezone boundaries, conflicts, cancellation, unrelated drafts and offline recovery. Exercise existing delivery creation as a regression test. No migration should be deployed as part of the presentation-only PR.
+
+The display preference, day agenda and continuous trip sheet can be reviewed independently. Connected publication remains gated on this database work and its behavioral tests.

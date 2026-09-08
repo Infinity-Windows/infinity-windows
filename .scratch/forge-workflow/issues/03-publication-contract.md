@@ -1,7 +1,7 @@
 # Verify linked-publication contract
 
-Status: ready-for-agent
-Blocked by: Existing project schema and authorized test access
+Status: inspected; database hardening and behavioral verification required
+Blocked by: Isolated database test setup for policy and publication mutations
 
 ## Scope
 
@@ -14,3 +14,7 @@ Read-only evidence and a concrete schema/RPC contract are recorded; ambiguity is
 ## Comments
 
 Created from the owner-requested busybusy review and iPhone web requirement.
+
+## Read-only findings
+
+See `docs/forge-publication-contract.md`. Existing schema access works. Current Schedule policies do not enforce the supervisor-only write boundary; trip draft and passenger privacy are partly client-side. Durable assignment/trip links and atomic revision publication are absent. Vehicle schedule links already exist and must be reused. No production data writes or migration deployment performed. Allocate a migration only after refreshing master/history at implementation time.

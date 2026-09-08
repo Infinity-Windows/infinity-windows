@@ -12726,3 +12726,57 @@ button.stage-chip {
    reads as one list. */
 .mywork-door { margin-top: var(--space-3); }
 .mywork-door h2 { font-size: var(--text-md); margin: 0 0 var(--space-1); }
+
+/* Explicit phone presentation is usable on a laptop without changing roles.
+   Small physical screens retain reachable navigation even in Desktop mode. */
+:root[data-display-layout="phone"] .app-rail { display: none; }
+:root[data-display-layout="phone"] .app-main {
+  padding-bottom: calc(106px + var(--overlay-gap) + var(--safe-bottom));
+}
+:root[data-display-layout="phone"] .page {
+  max-width: 640px; padding: 12px max(16px, var(--safe-right)) 16px max(16px, var(--safe-left));
+}
+:root[data-display-layout="phone"] .tabbar {
+  display: grid; max-width: 640px; margin-inline: auto;
+}
+:root[data-display-layout="phone"] .sync-strip { display: flex; }
+:root[data-display-layout="phone"] .ask-fab { bottom: calc(var(--above-tabbar) + 14px); }
+:root[data-display-layout="phone"] .sched-sheet-backdrop { padding: 0; align-items: stretch; }
+:root[data-display-layout="phone"] .sched-sheet {
+  max-width: 640px; border-radius: 0; max-height: 100dvh; height: 100dvh;
+  padding-top: max(16px, var(--safe-top));
+}
+.display-mode-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
+.display-mode-picker > span { font-weight: 600; }
+.display-mode-picker select { width: auto; min-height: 44px; margin: 0; flex: 0 1 180px; }
+.sched-agenda-days { display: flex; flex-wrap: wrap; gap: 6px; }
+.sched-agenda-days button { min-height: 44px; flex: 1 0 70px; padding: 8px; }
+.sched-agenda h2 { font-size: 18px; margin: 18px 0 12px; }
+.sched-agenda-items { display: grid; gap: 10px; margin-bottom: 16px; }
+.sched-agenda-item {
+  --sched-color: oklch(var(--job-bar-l) var(--job-bar-c) var(--job-hue, 260));
+  display: flex; flex-direction: column; align-items: flex-start; gap: 7px;
+  width: 100%; padding: 14px; text-align: left; color: var(--text);
+  background: var(--card); border: 1px solid var(--border);
+  border-left: 4px solid var(--sched-color, var(--accent)); border-radius: 12px;
+  white-space: normal; overflow-wrap: anywhere; cursor: pointer;
+}
+.sched-agenda-item > span { font-size: 14px; }
+.sched-agenda-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+.sched-agenda-item.delivery { --sched-color: var(--muted); border-left-style: double; border-left-width: 6px; }
+
+:root[data-display-layout="phone"] .sched-viewswitch { flex-wrap: wrap; border-radius: 20px; }
+:root[data-display-layout="phone"] .sched-viewtab { min-height: 44px; padding-inline: 12px; }
+:root[data-display-layout="phone"] .sched-publishbar {
+  position: static; flex-wrap: wrap; border-radius: 16px;
+}
+:root[data-display-layout="phone"] .sched-sheet input,
+:root[data-display-layout="phone"] .sched-sheet select,
+:root[data-display-layout="phone"] .sched-sheet textarea { font-size: 16px; }
+
+@media (max-width: 859px) {
+  .sched-publishbar { position: static; flex-wrap: wrap; border-radius: 16px; }
+  .sched-viewswitch { flex-wrap: wrap; border-radius: 20px; }
+  .sched-viewtab { min-height: 44px; padding-inline: 12px; }
+}

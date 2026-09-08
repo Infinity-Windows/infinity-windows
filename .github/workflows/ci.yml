@@ -42,7 +42,7 @@ jobs:
         run: npm test
 
   trip-browser:
-    name: Trip workflow on phone and desktop
+    name: Forge workflow on phone and desktop
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -57,7 +57,7 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       # Uses the existing fixture-only server, never the shared database.
-      - run: npm run e2e -- trip-sheet.spec.ts travel-crew.spec.ts
+      - run: npm run e2e -- display-layout.spec.ts trip-sheet.spec.ts travel-crew.spec.ts
       - uses: actions/upload-artifact@v4
         if: always()
         with:
