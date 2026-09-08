@@ -49,8 +49,8 @@ import { ProcedureEditor } from "../components/travel/ProcedureEditor";
 import { ContactEditor } from "../components/travel/ContactEditor";
 import { useT, type TKey } from "../lib/i18n";
 
-type Tab = "timeline" | "flights" | "lodging" | "ground" | "rules" | "contacts";
-const TAB_KEY: Record<Tab, TKey> = {
+type TripSection = "timeline" | "flights" | "lodging" | "ground" | "rules" | "contacts";
+const SECTION_KEY: Record<TripSection, TKey> = {
   timeline: "travelDetail.tab.timeline",
   flights: "travelDetail.tab.flights",
   lodging: "travelDetail.tab.lodging",
@@ -58,7 +58,7 @@ const TAB_KEY: Record<Tab, TKey> = {
   rules: "travelDetail.tab.rules",
   contacts: "travelDetail.tab.contacts",
 };
-const TAB_IDS: Tab[] = ["timeline", "flights", "lodging", "ground", "rules", "contacts"];
+const SECTION_IDS: TripSection[] = ["timeline", "flights", "lodging", "ground", "rules", "contacts"];
 
 type EditorState =
   | { kind: "trip" }
@@ -99,7 +99,6 @@ export function TripDetail() {
     enabled: Boolean(tripId),
   });
 
-  const [tab, setTab] = useState<Tab>("timeline");
   const [editor, setEditor] = useState<EditorState>(null);
   const [publishing, setPublishing] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -254,11 +253,6 @@ export function TripDetail() {
           <button className="button-like" onClick={() => setEditor({ kind: "trip" })}>
             <Pencil size={15} aria-hidden /> {t("travelDetail.editTrip")}
           </button>
-          {trip.status === "draft" && (
-            <button className="button-like active-pill" style={{ marginLeft: "auto" }} onClick={doPublish} disabled={publishing}>
-              <Send size={15} aria-hidden /> {publishing ? t("travelDetail.publishing") : t("travelDetail.publishToCrew")}
-            </button>
-          )}
         </div>
       )}
 
@@ -293,34 +287,27 @@ export function TripDetail() {
         </div>
       )}
 
-      <nav className="travel-tabs" role="tablist">
-        {TAB_IDS.map((id) => (
-          <button
-            key={id}
-            role="tab"
-            aria-selected={tab === id}
-            className={`travel-tab${tab === id ? " is-active" : ""}`}
-            onClick={() => setTab(id)}
-          >
-            {t(TAB_KEY[id])}
-          </button>
+      <nav className="travel-jumps" aria-label={t("travelDetail.sections")}>
+        {SECTION_IDS.map((id) => (
+          <a key={id} className="travel-jump" href={`#trip-${id}`}>
+            {t(SECTION_KEY[id])}
+          </a>
         ))}
+        {(tripAttachments.length > 0 || canEdit) && (
+          <a className="travel-jump" href="#trip-files">{t("travelDetail.tripFiles")}</a>
+        )}
+        {canEdit && trip.status === "draft" && (
+          <a className="travel-jump" href="#trip-publish">{t("travelDetail.publishToCrew")}</a>
+        )}
       </nav>
 
-      {tab === "timeline" && (
-        <>
-          {trip.notes && <p className="travel-notes travel-trip-notes">{trip.notes}</p>}
-          <TripTimeline items={timeline} nextUpId={nextUp?.id} />
-          {tripAttachments.length > 0 || canEdit ? (
-            <section className="travel-section">
-              <div className="travel-section-head"><h3>{t("travelDetail.tripFiles")}</h3></div>
-              <AttachmentsPanel tripId={trip.id} attachments={tripAttachments} canEdit={canEdit} onChanged={refresh} />
-            </section>
-          ) : null}
-        </>
-      )}
+      <section id="trip-timeline" className="travel-sheet-section" tabIndex={-1} aria-labelledby="trip-timeline-title">
+        <h2 id="trip-timeline-title">{t("travelDetail.tab.timeline")}</h2>
+        {trip.notes && <p className="travel-notes travel-trip-notes">{trip.notes}</p>}
+        <TripTimeline items={timeline} nextUpId={nextUp?.id} />
+      </section>
 
-      {tab === "flights" && (
+      <div id="trip-flights" className="travel-sheet-section" tabIndex={-1}>
         <FlightsSection
           tripId={trip.id}
           flights={shownFlights}
@@ -333,9 +320,9 @@ export function TripDetail() {
           onDelete={(f) => removeEntity.mutate(() => deleteFlight(trip.id, f.id))}
           onAttachmentsChanged={refresh}
         />
-      )}
+      </div>
 
-      {tab === "lodging" && (
+      <div id="trip-lodging" className="travel-sheet-section" tabIndex={-1}>
         <LodgingSection
           tripId={trip.id}
           lodging={detail.lodging}
@@ -347,9 +334,9 @@ export function TripDetail() {
           onDelete={(l) => removeEntity.mutate(() => deleteLodging(trip.id, l.id))}
           onAttachmentsChanged={refresh}
         />
-      )}
+      </div>
 
-      {tab === "ground" && (
+      <div id="trip-ground" className="travel-sheet-section" tabIndex={-1}>
         <GettingAroundSection
           ground={detail.ground}
           canEdit={canEdit}
@@ -358,9 +345,9 @@ export function TripDetail() {
           onEdit={(g) => setEditor({ kind: "ground", entity: g })}
           onDelete={(g) => removeEntity.mutate(() => deleteGround(trip.id, g.id))}
         />
-      )}
+      </div>
 
-      {tab === "rules" && (
+      <div id="trip-rules" className="travel-sheet-section" tabIndex={-1}>
         <HouseRulesSection
           procedures={detail.procedures}
           canEdit={canEdit}
@@ -368,9 +355,9 @@ export function TripDetail() {
           onEdit={(p) => setEditor({ kind: "procedure", entity: p })}
           onDelete={(p) => removeEntity.mutate(() => deleteProcedure(trip.id, p.id))}
         />
-      )}
+      </div>
 
-      {tab === "contacts" && (
+      <div id="trip-contacts" className="travel-sheet-section" tabIndex={-1}>
         <ContactsSection
           contacts={detail.contacts}
           canEdit={canEdit}
@@ -378,6 +365,23 @@ export function TripDetail() {
           onEdit={(c) => setEditor({ kind: "contact", entity: c })}
           onDelete={(c) => removeEntity.mutate(() => deleteContact(trip.id, c.id))}
         />
+      </div>
+
+      {(tripAttachments.length > 0 || canEdit) && (
+        <section id="trip-files" className="travel-sheet-section" tabIndex={-1} aria-labelledby="trip-files-title">
+          <h2 id="trip-files-title">{t("travelDetail.tripFiles")}</h2>
+          <AttachmentsPanel tripId={trip.id} attachments={tripAttachments} canEdit={canEdit} onChanged={refresh} />
+        </section>
+      )}
+
+      {canEdit && trip.status === "draft" && (
+        <section id="trip-publish" className="travel-sheet-section" tabIndex={-1} aria-labelledby="trip-publish-title">
+          <h2 id="trip-publish-title">{t("travelDetail.publishToCrew")}</h2>
+          <p className="muted">{t("travelDetail.reviewTrip")}</p>
+          <button className="button-like active-pill" onClick={doPublish} disabled={publishing}>
+            <Send size={15} aria-hidden /> {publishing ? t("travelDetail.publishing") : t("travelDetail.publishToCrew")}
+          </button>
+        </section>
       )}
 
       {editor?.kind === "trip" && (

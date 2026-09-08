@@ -223,3 +223,12 @@ The five canonical roles, default strings (`needs-triage`, `needs-info`, `ready-
 ### Domain docs
 
 Single-context: `CONTEXT.md` at the repo root is the shared vocabulary — read it before exploring, and use its terms rather than synonyms. ADRs live in `docs/adr/`. See `docs/agents/domain.md`.
+
+## Forge workflow program
+
+For work on Today, crew tools, Scheduling or Travel, read
+[the iPhone workflow spec](.scratch/forge-workflow/spec.md) and its numbered
+implementation tickets. The owner's direction is iPhone-first web design with
+optional computer layouts, using the [busybusy review](docs/busybusy-design-review.md).
+Track completed slices separately from planned work; preserve concurrent installer
+changes and the existing timekeeping/permission boundaries.

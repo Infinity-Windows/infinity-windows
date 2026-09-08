@@ -3601,6 +3601,11 @@ export const CATALOG = {
     en: "This unit's spec says {value}; it wins.",
     es: "La ficha de esta unidad dice {value}; esa es la que vale.",
   },
+  "travelDetail.sections": { en: "Trip sections", es: "Secciones del viaje" },
+  "travelDetail.reviewTrip": {
+    en: "Review the crew, dates, and travel details above before sharing this trip.",
+    es: "Revisa el equipo, las fechas y los detalles del viaje antes de compartirlo.",
+  },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */

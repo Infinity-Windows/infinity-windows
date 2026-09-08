@@ -8828,18 +8828,27 @@ body {
 }
 .travel-quickdir { margin-bottom: 14px; }
 
-/* Tabs */
-.travel-tabs {
-  display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px;
-  margin-bottom: 14px; scrollbar-width: none;
+/* One trip sheet: jump links wrap within the phone instead of hiding sections. */
+.travel-jumps {
+  display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 20px;
 }
-.travel-tabs::-webkit-scrollbar { display: none; }
-.travel-tab {
-  flex: 0 0 auto; padding: 7px 14px; border-radius: 999px;
+.travel-jump {
+  display: inline-flex; align-items: center; min-height: 44px;
+  padding: 8px 14px; border-radius: 999px;
   border: 1px solid var(--border); background: var(--card);
-  color: var(--text-secondary); font-size: 13px; font-weight: 600; cursor: pointer;
+  color: var(--text-secondary); font-size: 14px; font-weight: 600;
+  text-decoration: none; overflow-wrap: anywhere; max-width: 100%;
 }
-.travel-tab.is-active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.travel-jump:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.travel-sheet-section {
+  scroll-margin-top: 100px; padding-top: 18px; margin-bottom: 24px;
+  border-top: 1px solid var(--border); min-width: 0; overflow-wrap: anywhere;
+}
+.travel-sheet-section > h2 { font-size: 18px; margin: 0 0 14px; }
+.travel-sheet-section:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.travel-detail .travel-card-tools button,
+.travel-detail .travel-add-btn,
+.travel-detail .travel-call { min-width: 44px; min-height: 44px; }
 
 /* Timeline */
 .travel-timeline { list-style: none; margin: 0; padding: 0; }

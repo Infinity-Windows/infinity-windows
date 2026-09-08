@@ -41,6 +41,30 @@ jobs:
       - name: Test
         run: npm test
 
+  trip-browser:
+    name: Trip workflow on phone and desktop
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      # Uses the existing fixture-only server, never the shared database.
+      - run: npm run e2e -- trip-sheet.spec.ts travel-crew.spec.ts
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trip-workflow-browser-results
+          path: app/e2e/test-results/
+          retention-days: 7
+
   verify-script:
     name: Deploy-verification script tests
     runs-on: ubuntu-latest
