@@ -9,6 +9,12 @@
 // StationChip import the same numbers and names and can never drift apart
 // from each other. Cosmetic reordering happens here, once, or not at all.
 
+import { CATALOG } from "../i18n/catalog";
+import { translate, type Lang } from "../i18n/translate";
+import type { TFn } from "../i18n/context";
+
+const englishT: TFn = (key, vars) => translate(CATALOG, "en" as Lang, key, vars);
+
 /** 1-indexed position in the flow — stable, never reused or reordered. */
 export type StationNumber = 1 | 2 | 3 | 4 | 5;
 
@@ -74,6 +80,34 @@ const CIRCLED_NUMBERS = ["①", "②", "③", "④", "⑤"] as const;
 
 export function stationNumeral(n: StationNumber): string {
   return CIRCLED_NUMBERS[n - 1];
+}
+
+// `station.name`/`.when` stay the stable English identity stations.test.ts
+// checks — these two functions are what the chip and the hub actually
+// display, translated (S3b). A caller with no `t` gets the same English text
+// as before.
+const STATION_NAME_KEYS: Record<StationNumber, string> = {
+  1: "warehouse.station.comingIn",
+  2: "warehouse.station.offTruck",
+  3: "warehouse.station.putAway",
+  4: "warehouse.station.outDoor",
+  5: "warehouse.station.fixMistake",
+};
+
+const STATION_WHEN_KEYS: Record<StationNumber, string> = {
+  1: "warehouse.station.comingIn.when",
+  2: "warehouse.station.offTruck.when",
+  3: "warehouse.station.putAway.when",
+  4: "warehouse.station.outDoor.when",
+  5: "warehouse.station.fixMistake.when",
+};
+
+export function stationLabel(station: Station, t: TFn = englishT): string {
+  return t(STATION_NAME_KEYS[station.number] as Parameters<TFn>[0]);
+}
+
+export function stationWhen(station: Station, t: TFn = englishT): string {
+  return t(STATION_WHEN_KEYS[station.number] as Parameters<TFn>[0]);
 }
 
 /** Every station chip taps back here — the hub, where the whole flow shows. */

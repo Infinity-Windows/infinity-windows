@@ -9,6 +9,11 @@
 
 import { containerKind, type StorageContainer, type StoragePackage } from "../storage";
 import { areaSuffix } from "./areas";
+import { CATALOG } from "../i18n/catalog";
+import { translate, type Lang } from "../i18n/translate";
+import type { TFn } from "../i18n/context";
+
+const englishT: TFn = (key, vars) => translate(CATALOG, "en" as Lang, key, vars);
 
 /** Where a package physically is, spelled out link by link. */
 export interface PlaceChain {
@@ -67,10 +72,11 @@ export function placeChain(
   };
 }
 
-/** "Crate 7 — inside Conex 3" — the chain as one human line. */
-export function placeLabel(chain: PlaceChain): string {
+/** "Crate 7 — inside Conex 3" — the chain as one human line. A caller with
+ * no `t` gets the same English text as before (S3b). */
+export function placeLabel(chain: PlaceChain, t: TFn = englishT): string {
   if (chain.container && chain.parent) {
-    return `${chain.container.name} — inside ${chain.parent.name}`;
+    return t("warehouse.place.insideParent", { container: chain.container.name, parent: chain.parent.name });
   }
   if (chain.container) return chain.container.name;
   const loc = chain.location;
@@ -78,11 +84,11 @@ export function placeLabel(chain: PlaceChain): string {
   // for character (see 20260729220000). Naming the job is the whole point of
   // staging — "on J-BLACK22-A" makes somebody decode it.
   if (loc?.zone === "J") {
-    return `staged for ${loc.rack ?? "a job"} — ${loc.address}`;
+    return t("warehouse.place.stagedFor", { job: loc.rack ?? t("warehouse.place.aJob"), address: loc.address });
   }
-  if (loc) return `on ${loc.address}`;
-  if (chain.locationId) return "on a shelf";
-  return "loose — no container, no slot";
+  if (loc) return t("warehouse.place.onAddress", { address: loc.address });
+  if (chain.locationId) return t("warehouse.place.onShelf");
+  return t("warehouse.place.loose");
 }
 
 /**
@@ -100,12 +106,13 @@ export function placeWhere(
   pkg: Pick<StoragePackage, "container_id" | "location_id" | "area">,
   containersById: Map<string, StorageContainer>,
   locationsById: Map<string, PlaceLocation>,
+  t: TFn = englishT,
 ): string {
   // "In Conex 7 — front": the area rides the same sentence everywhere,
   // because a pointer nobody can read might as well not exist (ticket 14).
   return (
-    placeLabel(placeChain(pkg, containersById, locationsById)) +
-    (pkg.container_id ? areaSuffix(pkg.area) : "")
+    placeLabel(placeChain(pkg, containersById, locationsById), t) +
+    (pkg.container_id ? areaSuffix(pkg.area, t) : "")
   );
 }
 
@@ -134,12 +141,13 @@ export function piecesWhere(
   rows: readonly Pick<StoragePackage, "status" | "container_id" | "location_id" | "area">[],
   containersById: Map<string, StorageContainer>,
   locationsById: Map<string, PlaceLocation>,
+  t: TFn = englishT,
 ): string | null {
   const held = rows.filter((p) => p.status === "received" || p.status === "stored");
   if (held.length === 0) return null;
-  const sentences = held.map((p) => placeWhere(p, containersById, locationsById));
+  const sentences = held.map((p) => placeWhere(p, containersById, locationsById, t));
   const distinct = [...new Set(sentences)];
-  return distinct.length === 1 ? distinct[0] : `${distinct.length} places`;
+  return distinct.length === 1 ? distinct[0] : t("warehouse.place.nPlaces", { n: distinct.length });
 }
 
 /**

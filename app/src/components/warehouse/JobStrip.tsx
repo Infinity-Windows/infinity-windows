@@ -6,6 +6,7 @@
 import { Link } from "react-router-dom";
 import type { JobChip } from "../../lib/warehouse/jobStrip";
 import { scopeHref } from "../../lib/warehouse/materialsScope";
+import { useT } from "../../lib/i18n";
 
 export function JobStrip({
   chips,
@@ -16,11 +17,12 @@ export function JobStrip({
   selected: string | null;
   onSelect: (key: string | null) => void;
 }) {
+  const t = useT();
   if (chips.length === 0) return null;
   return (
-    <section aria-label="Jobs with material">
-      <h2 className="job-strip-title">Jobs with material</h2>
-      <div className="job-strip" role="group" aria-label="Jobs with material">
+    <section aria-label={t("warehouse.jobStrip.ariaLabel")}>
+      <h2 className="job-strip-title">{t("warehouse.jobStrip.title")}</h2>
+      <div className="job-strip" role="group" aria-label={t("warehouse.jobStrip.ariaLabel")}>
         {chips.map((c) => (
           <button
             key={c.key}
@@ -29,7 +31,7 @@ export function JobStrip({
             style={{ borderLeftColor: `oklch(0.62 0.15 ${c.hue})` }}
             onClick={() => onSelect(selected === c.key ? null : c.key)}
             aria-pressed={selected === c.key}
-            title={selected === c.key ? "Tap again to stop highlighting" : "Tap to light up this job's boxes"}
+            title={selected === c.key ? t("warehouse.jobStrip.tapAgain") : t("warehouse.jobStrip.tapToLight")}
           >
             <span className="job-chip-head">
               <Link
@@ -45,9 +47,9 @@ export function JobStrip({
                 className="job-chip-send"
                 to={`/warehouse/send/${c.projectId}`}
                 onClick={(e) => e.stopPropagation()}
-                title="Send this job's material to the job site"
+                title={t("warehouse.jobStrip.sendHint")}
               >
-                Send to site →
+                {t("warehouse.jobStrip.sendToSite")}
               </Link>
             ) : null}
             <span className="job-chip-bar" aria-hidden="true">
@@ -56,9 +58,7 @@ export function JobStrip({
           </button>
         ))}
       </div>
-      <p className="muted job-strip-hint">
-        Units here of units expected. Tap a job to light up its boxes; tap the code for its materials.
-      </p>
+      <p className="muted job-strip-hint">{t("warehouse.jobStrip.hint")}</p>
     </section>
   );
 }

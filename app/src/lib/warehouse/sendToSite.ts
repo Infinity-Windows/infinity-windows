@@ -7,6 +7,11 @@
 // the server (finalize_job_materials, 20260999000000): nothing may still be
 // in a box.
 import type { StorageContainer, StoragePackage } from "../storage";
+import { CATALOG } from "../i18n/catalog";
+import { translate, type Lang } from "../i18n/translate";
+import type { TFn } from "../i18n/context";
+
+const englishT: TFn = (key, vars) => translate(CATALOG, "en" as Lang, key, vars);
 
 /** A piece that is physically in the warehouse: arrived or in a box. */
 export function isHere(p: Pick<StoragePackage, "status">): boolean {
@@ -43,6 +48,7 @@ export function siteUnits(
   packages: readonly StoragePackage[],
   projectId: string,
   boxesById: ReadonlyMap<string, Pick<StorageContainer, "name">>,
+  t: TFn = englishT,
 ): SiteUnit[] {
   const units = new Map<string, SiteUnit>();
   for (const p of packages) {
@@ -51,12 +57,14 @@ export function siteUnits(
     const key = mark ?? LOOSE;
     const u = units.get(key) ?? {
       key,
-      label: mark ? `Window ${mark}` : "Loose pieces (no window number)",
+      label: mark ? t("warehouse.sendToSite.windowMark", { mark }) : t("warehouse.sendToSite.loosePieces"),
       pieces: [],
       here: 0,
       places: [],
     };
-    const where = p.container_id ? (boxesById.get(p.container_id)?.name ?? "a box") : "not in a box yet";
+    const where = p.container_id
+      ? (boxesById.get(p.container_id)?.name ?? t("warehouse.sendToSite.aBox"))
+      : t("warehouse.sendToSite.notInBoxYet");
     const pooled = p.tracking === "pooled" ? Math.max(1, p.piece_count ?? 1) : null;
     u.pieces.push({ id: p.id, serial: p.serial, where, pieces: pooled });
     u.here += pooled ?? 1;
@@ -78,20 +86,34 @@ export function idsToSend(units: readonly SiteUnit[], staying: ReadonlySet<strin
 }
 
 /** "Move 24 units (61 pieces) to the job site · 2 units stay". */
-export function sendSummary(units: readonly SiteUnit[], staying: ReadonlySet<string>): string {
+export function sendSummary(units: readonly SiteUnit[], staying: ReadonlySet<string>, t: TFn = englishT): string {
   const going = units.filter((u) => !staying.has(u.key));
   const pieces = going.reduce((n, u) => n + u.here, 0);
   const named = going.filter((u) => u.key !== LOOSE).length;
   const stay = units.length - going.length;
-  if (going.length === 0) return "Nothing picked to go.";
-  const head = named > 0
-    ? `Move ${named} unit${named === 1 ? "" : "s"} (${pieces} piece${pieces === 1 ? "" : "s"}) to the job site`
-    : `Move ${pieces} loose piece${pieces === 1 ? "" : "s"} to the job site`;
-  return stay > 0 ? `${head} · ${stay} stay${stay === 1 ? "s" : ""}` : head;
+  if (going.length === 0) return t("warehouse.sendToSite.nothingPicked");
+  const head =
+    named > 0
+      ? t(named === 1 ? "warehouse.sendToSite.moveUnit.one" : "warehouse.sendToSite.moveUnit.many", {
+          n: named,
+          pieces,
+          pieceWord: t(pieces === 1 ? "warehouse.sendToSite.pieceWord.one" : "warehouse.sendToSite.pieceWord.many"),
+        })
+      : t(pieces === 1 ? "warehouse.sendToSite.moveLoose.one" : "warehouse.sendToSite.moveLoose.many", { pieces });
+  return stay > 0
+    ? `${head} · ${t(stay === 1 ? "warehouse.sendToSite.stay.one" : "warehouse.sendToSite.stay.many", { n: stay })}`
+    : head;
 }
 
-/** Why the job cannot be finalized yet, or null when it can. Same words the
- *  server refuses with, so a stale screen and a fresh one agree. */
+/**
+ * Why the job cannot be finalized yet, or null when it can. Deliberately
+ * English-only, always — this is "the same words the server refuses with"
+ * (finalize_job_materials, 20260999000000): a stale screen and a fresh one
+ * must read identically, and the server's own error text is not bilingual.
+ * Translating one side would make them disagree, which is the one thing
+ * this function exists to prevent. Revisit together if the RPC's message
+ * ever grows a Spanish half.
+ */
 export function leftoverBlock(
   packages: readonly StoragePackage[],
   projectId: string,

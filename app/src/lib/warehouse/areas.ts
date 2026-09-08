@@ -7,6 +7,11 @@
 // the building — the one container that never moves — earns the compass.
 
 import { containerKind, type StorageContainer } from "../storage";
+import { CATALOG } from "../i18n/catalog";
+import { translate, type Lang } from "../i18n/translate";
+import type { TFn } from "../i18n/context";
+
+const englishT: TFn = (key, vars) => translate(CATALOG, "en" as Lang, key, vars);
 
 /** Options for a box that travels: door-relative, park it any way you like. */
 export const MOVABLE_AREAS = ["front", "middle", "back"] as const;
@@ -48,6 +53,29 @@ const LABELS: Record<string, string> = {
   northwest: "NorthWest",
 };
 
+/** Same values, keyed by catalog key (S3b) — read through `t` when a caller
+ * has one, so `areaLabel`'s English default (used by tests and by every
+ * caller that predates this) never changes. */
+const LABEL_KEYS: Record<string, string> = {
+  front: "warehouse.area.front",
+  middle: "warehouse.area.middle",
+  back: "warehouse.area.back",
+  "front-left": "warehouse.area.frontLeft",
+  "front-right": "warehouse.area.frontRight",
+  "middle-left": "warehouse.area.middleLeft",
+  "middle-right": "warehouse.area.middleRight",
+  "back-left": "warehouse.area.backLeft",
+  "back-right": "warehouse.area.backRight",
+  north: "warehouse.area.north",
+  northeast: "warehouse.area.northeast",
+  east: "warehouse.area.east",
+  southeast: "warehouse.area.southeast",
+  south: "warehouse.area.south",
+  southwest: "warehouse.area.southwest",
+  west: "warehouse.area.west",
+  northwest: "warehouse.area.northwest",
+};
+
 /** The choices a foreman gets for a package sitting in this container. */
 export function areaOptions(
   container: Pick<StorageContainer, "kind"> | null | undefined,
@@ -67,12 +95,18 @@ export function areaZoneOptions(
 }
 
 /** "front" -> "Front (door end)". Unknown values pass through rather than
- * crash — a row written by a newer bundle still reads as itself. */
-export function areaLabel(area: string): string {
-  return LABELS[area] ?? area;
+ * crash — a row written by a newer bundle still reads as itself. A caller
+ * with no `t` gets the same English text as before. */
+export function areaLabel(area: string, t: TFn = englishT): string {
+  const key = LABEL_KEYS[area];
+  return key ? t(key as Parameters<TFn>[0]) : (LABELS[area] ?? area);
 }
 
-/** The short form for a place sentence: "Conex 7 — front". */
-export function areaSuffix(area: string | null | undefined): string {
-  return area ? ` — ${areaLabel(area).toLowerCase().replace(" (door end)", "")}` : "";
+/** The short form for a place sentence: "Conex 7 — front". "front" gets its
+ * own key rather than stripping English's "(door end)" punctuation out of
+ * `areaLabel`, which would leave a Spanish parenthetical behind untouched. */
+export function areaSuffix(area: string | null | undefined, t: TFn = englishT): string {
+  if (!area) return "";
+  const short = area === "front" ? t("warehouse.area.short.front") : areaLabel(area, t).toLowerCase();
+  return ` — ${short}`;
 }

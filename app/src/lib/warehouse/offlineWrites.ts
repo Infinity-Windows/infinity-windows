@@ -40,6 +40,11 @@ import {
 } from "../storage";
 import { takeSupply } from "../ops";
 import { pickupTakeoff } from "../takeoffs";
+import { CATALOG } from "../i18n/catalog";
+import { translate, type Lang } from "../i18n/translate";
+import type { TFn } from "../i18n/context";
+
+const englishT: TFn = (key, vars) => translate(CATALOG, "en" as Lang, key, vars);
 
 /** What happened: it reached the server, or it is waiting for signal. */
 export interface WriteResult {
@@ -332,8 +337,8 @@ export function takeSupplyOffline(input: {
 }
 
 /** The line a screen shows after a write — honest about where it got to. */
-export function writeToast(r: WriteResult, done: string): string {
-  return r.queued ? `${done} — not sent yet, no signal in here.` : done;
+export function writeToast(r: WriteResult, done: string, t: TFn = englishT): string {
+  return r.queued ? t("warehouse.offline.notSentYet", { done }) : done;
 }
 
 /**

@@ -52,6 +52,7 @@ import { finalizedProjectIds, hideFinalized } from "../lib/warehouse/sendToSite"
 import { filterSuppliesByName, listSupplies, lowStockFirst, onHandLabel } from "../lib/ops";
 import { listTakeoffs } from "../lib/takeoffs";
 import {
+  cardLabel,
   cardLink,
   listScheduledMarks,
   untaggedMarks,
@@ -66,6 +67,7 @@ import { useScanWedge } from "../lib/warehouse/scanWedge";
 import type { FindAnswer } from "../lib/warehouse/find";
 import { baysSummary, glowFromHits, splitYard, yardSummary, yardTiles, type YardTile } from "../lib/warehouse/yard";
 import { prefetchWarehousePack } from "../lib/queryClient";
+import { useT } from "../lib/i18n";
 
 /** Stable empties, so a loading cache is not a new array every render. */
 const NO_BOXES: StorageContainer[] = [];
@@ -74,6 +76,7 @@ export function Warehouse() {
   // Pick 30: a desk-mounted hardware scanner routes straight to the package
   // or container it reads, same as the camera flow.
   useScanWedge();
+  const t = useT();
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { effectiveRole } = useEffectiveRole();
@@ -162,10 +165,10 @@ export function Warehouse() {
   const recap = dayRecap(
     movementsToday.data ?? [],
     real,
-    (deliveries.data ?? []).map((d) => ({ id: d.id, label: d.label ?? "a delivery" })),
+    (deliveries.data ?? []).map((d) => ({ id: d.id, label: d.label ?? t("warehouse.page.aDelivery") })),
   );
   const untagged = untaggedMarks(real, marks.data ?? []);
-  const split = splitUnits(real, byId, locsById);
+  const split = splitUnits(real, byId, locsById, t);
   const goingOut = real.filter((p) => p.status === "checked_out");
   const testingByJob = groupByJob(testing);
 
@@ -177,15 +180,15 @@ export function Warehouse() {
     if (answer.kind === "package") return glowFromHits([answer.hit]);
     return new Set<string>();
   }, [answer]);
-  const chips = useMemo(() => jobChips(jobTallies(real, jobCode)), [real, jobCode]);
+  const chips = useMemo(() => jobChips(jobTallies(real, jobCode), t), [real, jobCode, t]);
   const lit = useMemo(() => {
     const chip = chips.find((c) => c.key === jobKey);
     if (!chip) return glow;
     return new Set([...glow, ...boxesForJob(chip, real)]);
   }, [chips, jobKey, glow, real]);
   const tiles = useMemo(
-    () => yardTiles(boxes, real, jobCode, new Date(), lit),
-    [boxes, real, jobCode, lit],
+    () => yardTiles(boxes, real, jobCode, new Date(), lit, t),
+    [boxes, real, jobCode, lit, t],
   );
   const yard = useMemo(() => splitYard(tiles), [tiles]);
   // The bays view lights the same way the boxes do: a job chip or a Find
@@ -200,9 +203,9 @@ export function Warehouse() {
   const turnOff = useMutation({
     mutationFn: async (bay: YardTile) => {
       const row = byId.get(bay.id);
-      if (!row) throw new Error("That bay is not on the list any more. Reload and look again.");
+      if (!row) throw new Error(t("warehouse.page.bayGone"));
       if (real.some((p) => p.status === "stored" && p.container_id === bay.id)) {
-        throw new Error(`Something is still set aside in ${bay.name}. Move it out first.`);
+        throw new Error(t("warehouse.page.bayStillHolds", { name: bay.name }));
       }
       // save_storage_container overwrites the whole row, so the untouched
       // fields go back as they came — sending only `active` would wipe notes.
@@ -239,8 +242,8 @@ export function Warehouse() {
     <div className="page wh-page">
       <header className="page-header">
         <div>
-          <p className="home-greeting">Warehouse</p>
-          <h1>Where is it</h1>
+          <p className="home-greeting">{t("warehouse.page.title")}</p>
+          <h1>{t("warehouse.page.h1")}</h1>
         </div>
       </header>
 
@@ -259,23 +262,21 @@ export function Warehouse() {
 
       {waiting > 0 && (
         <p className="wh-pending">
-          {waiting} warehouse {waiting === 1 ? "change is" : "changes are"} saved on
-          this phone and not sent yet — they go up on their own when you have
-          signal.
+          {t(waiting === 1 ? "warehouse.page.pending.one" : "warehouse.page.pending.many", { n: waiting })}
         </p>
       )}
 
       {/* The yard. */}
-      <section className="yard-section" aria-label="The yard">
+      <section className="yard-section" aria-label={t("warehouse.yard.ariaLabel")}>
         <div className="wh-row" style={{ marginBottom: 6 }}>
-          <div className="yard-views" role="group" aria-label="What to show">
+          <div className="yard-views" role="group" aria-label={t("warehouse.page.whatToShow")}>
             <button
               type="button"
               className="yard-view"
               aria-pressed={yardView === "boxes"}
               onClick={() => setYardView("boxes")}
             >
-              Boxes<b>{yard.boxes.length}</b>
+              {t("warehouse.page.boxes")}<b>{yard.boxes.length}</b>
             </button>
             <button
               type="button"
@@ -283,7 +284,7 @@ export function Warehouse() {
               aria-pressed={yardView === "bays"}
               onClick={() => setYardView("bays")}
             >
-              Bays<b>{yard.bays.length}</b>
+              {t("warehouse.page.baysLabel")}<b>{yard.bays.length}</b>
             </button>
           </div>
           <div className="wh-actions">
@@ -295,14 +296,14 @@ export function Warehouse() {
                   boxes.filter((c) => (yardView === "bays") === ((c.kind ?? "conex") === "bay")),
                 )
               }
-              title={yardView === "bays" ? "A poster for every bay" : "A poster for every box"}
+              title={yardView === "bays" ? t("warehouse.page.postersBay") : t("warehouse.page.postersBox")}
             >
-              All posters
+              {t("warehouse.page.allPosters")}
             </button>
           </div>
         </div>
         <p className="muted yard-summary">
-          {!ready ? "Loading the yard…" : yardView === "bays" ? baysSummary(yard.bays) : yardSummary(yard.boxes)}
+          {!ready ? t("warehouse.page.loadingYard") : yardView === "bays" ? baysSummary(yard.bays, t) : yardSummary(yard.boxes, t)}
         </p>
         {yardView === "bays" ? (
           <Bays
@@ -318,92 +319,93 @@ export function Warehouse() {
 
       {/* The next truck — checking one in and logging one both belong to
           whoever is at the tailgate (S3), open to everyone. */}
-      <section className="detail-card wh-card yard-truck" aria-label="Next truck">
+      <section className="detail-card wh-card yard-truck" aria-label={t("warehouse.page.nextTruck")}>
         <div className="wh-row">
           <div className="wh-row-main">
             <span className="wh-row-title">
               {nextTruck
-                ? `Truck ${nextTruck.expected_at!.slice(0, 10)} · ${nextTruck.label ?? "delivery"}`
-                : "No truck on the calendar"}
+                ? t("warehouse.page.truckLine", { date: nextTruck.expected_at!.slice(0, 10), label: nextTruck.label ?? t("warehouse.page.delivery") })
+                : t("warehouse.page.noTruck")}
             </span>
             <span className="wh-row-sub">
-              {nextTruck ? "Check it against its list when it lands." : "Log one when it lands, or ahead of time."}
+              {nextTruck ? t("warehouse.page.checkAgainstList") : t("warehouse.page.logWhenLands")}
             </span>
           </div>
           <div className="wh-actions">
             {nextTruck ? (
               <Link className="button-like active-pill" to={`/storage/d/${nextTruck.id}`}>
-                Open its list
+                {t("warehouse.page.openItsList")}
               </Link>
             ) : null}
           </div>
         </div>
         <div className="row-gap" style={{ marginTop: 8 }}>
           <Link className="button-like" to="/storage/deliveries">
-            Deliveries — check trucks in
+            {t("warehouse.page.deliveriesCheckIn")}
           </Link>
           <Link className="button-like" to="/storage/log-delivery">
-            Log a delivery (truck)
+            {t("warehouse.page.logDelivery")}
           </Link>
         </div>
       </section>
 
       {/* Problems that need a person. The counts ARE the warehouse's health
           (lib/warehouse/warehouseCards.ts), for everyone (ADR-0007). */}
-      <div className="yard-chips" role="group" aria-label="Needs attention">
+      <div className="yard-chips" role="group" aria-label={t("warehouse.page.needsAttention")}>
         {WAREHOUSE_CARDS.map((c) => (
           <Link
             key={c.id}
             to={cardLink(c.id)}
             className={`yard-chip${c.tone && ready && counts[c.id] > 0 ? ` yard-chip--${c.tone}` : ""}${card === c.id ? " yard-chip--on" : ""}`}
           >
-            <b>{ready ? counts[c.id] : "–"}</b> {c.label}
+            <b>{ready ? counts[c.id] : "–"}</b> {cardLabel(c.id, t)}
           </Link>
         ))}
         {split.length > 0 ? (
           <span className="yard-chip yard-chip--warn" title={split.slice(0, 5).map((s) => `W${s.markCode}`).join(", ")}>
-            <b>{split.length}</b> split across places
+            <b>{split.length}</b> {t("warehouse.page.splitAcross")}
           </span>
         ) : null}
         {openDamage.length > 0 ? (
           <Link to="/issues" className="yard-chip yard-chip--danger">
-            <b>{openDamage.length}</b> damage report{openDamage.length === 1 ? "" : "s"}
+            <b>{openDamage.length}</b> {t(openDamage.length === 1 ? "warehouse.page.damageReport.one" : "warehouse.page.damageReport.many")}
           </Link>
         ) : null}
       </div>
       {untagged.length > 0 ? (
         <p className="muted" style={{ margin: "6px 0 0", fontSize: 13 }}>
-          <strong>{untagged.length}</strong> window{untagged.length === 1 ? "" : "s"} on the plans
-          with nothing tagged — <Link to={cardLink("not-tagged")}>see which</Link>.
+          <strong>{untagged.length}</strong>{" "}
+          {t(untagged.length === 1 ? "warehouse.page.untagged.one" : "warehouse.page.untagged.many")}
+          {" "}— <Link to={cardLink("not-tagged")}>{t("warehouse.page.seeWhich")}</Link>.
         </p>
       ) : null}
       {card && <CardList card={card} packages={real} containers={boxes} jobCode={jobCode} />}
 
       {/* Every other door, one row. Same role conditions as before: all crew. */}
-      <div className="row-gap yard-actions" role="group" aria-label="Warehouse actions">
+      <div className="row-gap yard-actions" role="group" aria-label={t("warehouse.page.actions")}>
         <Link className="button-like" to="/storage/tag">
-          Tag packages
+          {t("warehouse.page.tagPackages")}
         </Link>
         <Link className="button-like" to="/storage/arrive">
-          Arrival check
+          {t("warehouse.page.arrivalCheck")}
         </Link>
         <Link className="button-like" to="/storage/out">
-          Set aside / check out
+          {t("warehouse.page.setAsideCheckOut")}
         </Link>
         <Link className="button-like" to="/warehouse/materials">
-          Job materials
+          {t("warehouse.page.jobMaterials")}
         </Link>
         <Link className="button-like" to="/takeoffs">
-          Takeoffs{openTakeoffs > 0 ? ` · ${openTakeoffs} open` : ""}
+          {t("warehouse.page.takeoffs")}{openTakeoffs > 0 ? ` · ${t("warehouse.page.openCount", { n: openTakeoffs })}` : ""}
         </Link>
         <Link className="button-like" to="/supplies">
-          Take supplies
+          {t("warehouse.page.takeSupplies")}
         </Link>
         <button className="button-like" onClick={() => setMinting(true)}>
-          Print blank stickers
+          {t("warehouse.mintForm.title")}
         </button>
         <Link className="button-like" to="/warehouse/history">
-          History
+          {t("storage.history.title")}
         </Link>
       </div>
 
@@ -412,7 +414,7 @@ export function Warehouse() {
           the boxes holding its material light up. */}
       {packages.isSuccess && <JobStrip chips={chips} selected={jobKey} onSelect={setJobKey} />}
 
-      <Explain id="wh-more" summary="More — today, out on jobs, supplies on the shelf" raw>
+      <Explain id="wh-more" summary={t("warehouse.page.moreFold")} raw>
         {packages.isSuccess && movementsToday.isSuccess && deliveries.isSuccess && (
           <DayRecapCard recap={recap} />
         )}
@@ -422,9 +424,9 @@ export function Warehouse() {
               <div key={g.projectId ?? "none"} className="project-card home-project">
                 <div className="home-project-head">
                   <div className="wh-row-main">
-                    <div className="wh-row-title">{jobCode.get(g.projectId ?? "") ?? "No job"}</div>
+                    <div className="wh-row-title">{jobCode.get(g.projectId ?? "") ?? t("warehouse.page.noJob")}</div>
                     <div className="wh-row-sub">
-                      {g.packages.length} package{g.packages.length === 1 ? "" : "s"} out
+                      {t(g.packages.length === 1 ? "warehouse.page.packagesOut.one" : "warehouse.page.packagesOut.many", { n: g.packages.length })}
                     </div>
                   </div>
                 </div>
@@ -435,11 +437,11 @@ export function Warehouse() {
         <div style={{ marginTop: 10 }}>
           <input
             type="search"
-            placeholder="Search supplies — caulk, screws…"
+            placeholder={t("supplies.searchPlaceholder")}
             value={supplyQ}
             onChange={(e) => setSupplyQ(e.target.value)}
             style={{ width: "100%", margin: "6px 0" }}
-            aria-label="Search supplies"
+            aria-label={t("supplies.searchAria")}
           />
           <ul className="unit-list" style={{ margin: 0 }}>
             {supplyPreview.map((s2) => (
@@ -452,14 +454,12 @@ export function Warehouse() {
           </ul>
           {supplyMatches.length === 0 && (
             <p className="muted" style={{ margin: "6px 0 0" }}>
-              {supplyQ.trim()
-                ? `Nothing named like “${supplyQ.trim()}”.`
-                : "Nothing in the catalog yet — add supplies from Take supplies."}
+              {supplyQ.trim() ? t("supplies.nothingNamedLike", { q: supplyQ.trim() }) : t("warehouse.page.catalogEmpty")}
             </p>
           )}
           {supplyMatches.length > SUPPLY_ROWS_SHOWN && (
             <p className="muted" style={{ margin: "6px 0 0", fontSize: 12 }}>
-              Showing {SUPPLY_ROWS_SHOWN} of {supplyMatches.length} — type to narrow.
+              {t("warehouse.page.showingOf", { shown: SUPPLY_ROWS_SHOWN, total: supplyMatches.length })}
             </p>
           )}
         </div>
@@ -470,21 +470,17 @@ export function Warehouse() {
           empty for them; showing it anyway would just be confusing clutter. */}
       {supervisor && (
         <section id="testing">
-          <h2>Testing</h2>
-          <Explain id="wh-testing">
-            Fake data for practice or QA. Flag a job as testing from its Job
-            details panel — its material shows up here instead of in the
-            counts above, and never counts as real inventory.
-          </Explain>
+          <h2>{t("warehouse.page.testing")}</h2>
+          <Explain id="wh-testing">{t("warehouse.page.testingBlurb")}</Explain>
           {testingByJob.length > 0 ? (
             <div className="home-projects">
               {testingByJob.map((g) => (
                 <div key={g.projectId ?? "none"} className="project-card home-project">
                   <div className="home-project-head">
                     <div className="wh-row-main">
-                      <div className="wh-row-title">{jobCode.get(g.projectId ?? "") ?? "Testing"}</div>
+                      <div className="wh-row-title">{jobCode.get(g.projectId ?? "") ?? t("warehouse.page.testing")}</div>
                       <div className="wh-row-sub">
-                        {`${g.packages.length} package${g.packages.length === 1 ? "" : "s"} — practice material, never counted as inventory`}
+                        {t(g.packages.length === 1 ? "warehouse.page.testPackages.one" : "warehouse.page.testPackages.many", { n: g.packages.length })}
                       </div>
                     </div>
                   </div>
@@ -492,7 +488,7 @@ export function Warehouse() {
               ))}
             </div>
           ) : (
-            <p className="muted">No testing packages right now.</p>
+            <p className="muted">{t("warehouse.page.noTestPackages")}</p>
           )}
         </section>
       )}
