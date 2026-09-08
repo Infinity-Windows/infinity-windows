@@ -8,7 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { getMyProfile, listMyOpeningsAllJobs } from "../../lib/install/api";
 import { listMyPublished } from "../../lib/schedule/api";
-import { addDaysISO, formatStartTime } from "../../lib/schedule/dates";
+import { addDaysISO, formatScheduleTime } from "../../lib/schedule/dates";
 import {
   nextPublishedAfter,
   tomorrowLineParts,
@@ -91,7 +91,7 @@ export function TomorrowStrip() {
         n: parts.unitCount,
       })
     : null;
-  const startLabel = parts?.startTime ? formatStartTime(parts.startTime) : null;
+  const startLabel = parts?.startTime ? formatScheduleTime(parts.startTime, parts.endTime) : null;
 
   return (
     <section className="tomorrow-strip" aria-label={t("tomorrow.kicker")}>

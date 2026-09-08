@@ -3,7 +3,7 @@ import {
   addDaysISO,
   agendaDayLabel,
   enumerateDays,
-  formatStartTime,
+  formatScheduleTime,
 } from "../../lib/schedule/dates";
 import { calendarColorStyle } from "../../lib/schedule/jobHue";
 import type { ScheduleAssignment } from "../../lib/schedule/types";
@@ -62,7 +62,7 @@ export function WeekView({
                   </span>
                   <span className="sched-block-sub">
                     {a.members.length} crew
-                    {a.start_time ? ` · ${formatStartTime(a.start_time)}` : ""}
+                    {a.start_time ? ` · ${formatScheduleTime(a.start_time, a.end_time)}` : ""}
                     {a.start_date === day && a.end_date > day ? " · starts" : ""}
                   </span>
                   {vehicleLabels?.get(a.id) && (

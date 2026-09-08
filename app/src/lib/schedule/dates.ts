@@ -203,3 +203,11 @@ export function formatStartTime(time: string | null | undefined): string | null 
     timeZone: "UTC",
   });
 }
+
+/** Planned hours within each scheduled day; old assignments may only have a start. */
+export function formatScheduleTime(start: string | null | undefined, end?: string | null): string | null {
+  const from = formatStartTime(start);
+  if (!from) return null;
+  const to = formatStartTime(end);
+  return to ? `${from}–${to}` : from;
+}

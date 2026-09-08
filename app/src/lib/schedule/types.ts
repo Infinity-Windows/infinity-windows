@@ -30,6 +30,7 @@ export interface ScheduleAssignment {
   start_date: string;
   end_date: string;
   start_time: string | null;
+  end_time?: string | null;
   status: ScheduleStatus;
   color: string | null;
   note: string | null;
@@ -68,6 +69,7 @@ export interface NewAssignmentInput {
   start_date: string;
   end_date: string;
   start_time?: string | null;
+  end_time?: string | null;
   color?: string | null;
   note?: string | null;
   members: AssignmentMember[];
@@ -77,6 +79,7 @@ export interface AssignmentPatch {
   start_date?: string;
   end_date?: string;
   start_time?: string | null;
+  end_time?: string | null;
   color?: string | null;
   note?: string | null;
   status?: ScheduleStatus;

@@ -25,6 +25,7 @@ export interface EditorResult {
   start_date: string;
   end_date: string;
   start_time: string | null;
+  end_time: string | null;
   color: string | null;
   note: string | null;
   members: AssignmentMember[];
@@ -99,6 +100,8 @@ export function AssignmentEditor({
   const [startTime, setStartTime] = useState(
     assignment ? (assignment.start_time ?? "") : "06:30",
   );
+  const [endTime, setEndTime] = useState(assignment?.end_time?.slice(0, 5) ?? "");
+  const validTimes = !endTime || (!!startTime && endTime > startTime.slice(0, 5));
   const [color, setColor] = useState(assignment?.color ?? "");
   const [note, setNote] = useState(assignment?.note ?? "");
   const [vehicleId, setVehicleId] = useState(currentVehicleId ?? "");
@@ -179,7 +182,7 @@ export function AssignmentEditor({
     return conflictingMembersFor(target, others);
   }, [assignment?.id, startDate, normalizedEnd, members, others]);
 
-  const canSave = projectId !== "" && members.length > 0 && Boolean(startDate);
+  const canSave = projectId !== "" && members.length > 0 && Boolean(startDate) && validTimes;
 
   const vehicleClash = useMemo(() => {
     if (!vehicleId) return false;
@@ -210,6 +213,7 @@ export function AssignmentEditor({
       start_date: startDate,
       end_date: normalizedEnd,
       start_time: startTime.trim() ? startTime : null,
+      end_time: endTime || null,
       color: color || null,
       note: note.trim() ? note.trim() : null,
       members,
@@ -276,6 +280,14 @@ export function AssignmentEditor({
             <p id="assignment-start-help" className="muted" style={{ fontSize: 12, margin: "6px 0 0" }}>Shown with this project on the crew’s home screen after you publish.</p>
           </div>
           <div>
+            <label className="field-label" htmlFor="assignment-end-time">Crew end time (optional)</label>
+            <input id="assignment-end-time" type="time" value={endTime} onChange={e => setEndTime(e.target.value)} aria-describedby="assignment-time-range-help" />
+          </div>
+        </div>
+        <p id="assignment-time-range-help" className="muted" style={{ fontSize: 12, margin: "6px 0 12px" }}>
+          {validTimes ? "Planned start and end times apply to each scheduled day. Actual hours come from the time clock." : "Choose a start time and an end time later that day."}
+        </p>
+          <div>
             <label className="field-label">Quick length</label>
             <div className="row-gap">
               {[1, 3, 5].map((d) => (
@@ -290,7 +302,6 @@ export function AssignmentEditor({
               ))}
             </div>
           </div>
-        </div>
 
         <label className="field-label">Foremen</label>
         <div className="sched-chips">

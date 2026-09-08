@@ -9,7 +9,7 @@ for (const role of ["installer", "foreman", "supervisor"] as const) {
     await hideWrongProjectBanner(page);
     const today = new Date().toLocaleDateString("en-CA");
     const row = (id: string, start_time: string | null, status = "published") => ({
-      id, project_id: "fixture-job", kind: "install", status, start_date: today, end_date: today, start_time,
+      id, project_id: "fixture-job", kind: "install", status, start_date: today, end_date: today, start_time, end_time: "15:00",
       projects: { id: "fixture-job", job_code: id, name: "A long project name that must remain readable on an iPhone" },
       schedule_assignment_members: [{ profile_id: TEST_USER.id, role: "installer", profiles: { display_name: "Fixture crew" } }],
     });
@@ -19,7 +19,7 @@ for (const role of ["installer", "foreman", "supervisor"] as const) {
     await page.goto("/");
     const bar = page.getByRole("region", { name: "Your schedule" });
     await expect(bar).toBeVisible();
-    await expect(bar.locator(".crew-start-row").first()).toContainText("Start 6:30 AM");
+    await expect(bar.locator(".crew-start-row").first()).toContainText("Start 6:30 AM–3:00 PM");
     await expect(bar.locator(".crew-start-row").first()).toContainText("EARLY");
     await expect(bar.locator(".crew-start-row")).toHaveCount(2);
     await expect(bar).not.toContainText("DRAFT");
@@ -27,7 +27,7 @@ for (const role of ["installer", "foreman", "supervisor"] as const) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     if (role === "installer") await page.screenshot({ path: "/tmp/forge-crew-start-phone.png" });
     start = "07:15";
-    await expect(bar.locator(".crew-start-row").first()).toContainText("Start 7:15 AM", { timeout: 22000 });
+    await expect(bar.locator(".crew-start-row").first()).toContainText("Start 7:15 AM–3:00 PM", { timeout: 22000 });
     await bar.getByRole("link", { name: /View schedule/ }).click();
     await expect(page).toHaveURL(/my-schedule/);
   });
