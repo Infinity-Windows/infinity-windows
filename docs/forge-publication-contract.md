@@ -60,3 +60,27 @@ The existing account-removal history count includes plan authorship, revision ac
 ### Rollout remains gated
 
 Refresh master, migration history, competing PRs and backend drift immediately before rollout. Deploy the permission migration first, then the connected-plan migration and notification function, and validate an authorized isolated plan before enabling this for live crews. The owner must approve merge/deployment. Existing live security drift from the unapplied permission migration is not waived by these tests. Draft PR #591 contains the reviewable implementation; nothing in this section authorizes a production mutation.
+
+
+### Remove one day from an unlinked assignment
+
+Scheduling now lives under People. In Edit assignment → Remove, the default is
+**One day only** with a date picker (prefilled from Agenda, Week, or the day
+panel). **All days in this assignment** remains a separate explicit choice.
+A middle-day removal splits the assignment into two blocks; edge removal trims
+its range. Both remaining blocks retain status, publication time, crew roles,
+notes, start time, color, AI origin, and their vehicle bookings. The selected
+day is removed for everyone on that assignment. Other assignments and trips
+are untouched. Connected plans continue through their existing review boundary;
+this command cannot bypass it or edit delivery appointments.
+
+Migration `20261005000000_remove_schedule_day.sql` adds an invoker RPC using the
+existing manager/partner policies, connected-plan guards and publication lock.
+Date changes, member/vehicle copies and audit commit together. A stale timestamp
+is rejected; retrying an already removed day does not remove another day. There
+is no client-side multi-write or local-storage fallback. Install the migration
+after the existing permission/publication prerequisites before exposing the UI.
+Existing best-effort schedule-change notifications remain separate from the
+transaction. Synthetic PostgreSQL tests cover split/trim/delete, retry, stale
+edits, role denial and audit-failure rollback; browser fixtures exercise both
+removal choices and visible errors at 375px and 1280px.

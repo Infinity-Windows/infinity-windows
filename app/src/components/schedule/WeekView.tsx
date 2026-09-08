@@ -15,7 +15,7 @@ interface Props {
   conflictIds: Set<string>;
   /** assignment id → short vehicle label to show on the block. */
   vehicleLabels?: Map<string, string>;
-  onOpen: (a: ScheduleAssignment) => void;
+  onOpen: (a: ScheduleAssignment, day: string) => void;
   onCreate?: (day: string) => void;
 }
 
@@ -55,7 +55,7 @@ export function WeekView({
                   key={a.id}
                   className={blockClass(a, conflictIds)}
                   style={blockStyle(a)}
-                  onClick={() => onOpen(a)}
+                  onClick={() => onOpen(a, day)}
                 >
                   <span className="sched-block-title">
                     {a.project?.job_code ?? "Job"} · {a.project?.name ?? ""}

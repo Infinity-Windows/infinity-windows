@@ -59,6 +59,7 @@ import {
 import {
   createAssignment,
   deleteAssignment,
+  removeAssignmentDay,
   horizonRange,
   listAssignments,
   listDraftAssignments,
@@ -160,9 +161,11 @@ export function Scheduling() {
   const [planId, setPlanId] = useState<string | null>(null);
   const planLinks = useQuery({ queryKey: ["workflowLinks"], queryFn: loadPlanLinks, enabled: canEdit });
   const linkedPlan = (id: string) => planLinks.data?.assignments.find(l => l.assignment_id === id)?.plan_id;
-  const openAssignment = (assignment: ScheduleAssignment) => {
+  const openAssignment = (assignment: ScheduleAssignment, day?: string) => {
+    remove.reset();
+    save.reset();
     if (canEdit && linkedPlan(assignment.id)) setPlanId(linkedPlan(assignment.id)!);
-    else if (canEdit) setEditor({ assignment });
+    else if (canEdit) setEditor({ assignment, defaults: { start_date: day } });
     else if (assignment.kind === "delivery" && assignment.delivery_id) navigate(`/storage/d/${assignment.delivery_id}`);
     else if (assignment.project_id) navigate(`/projects/${assignment.project_id}`);
   };
@@ -484,6 +487,10 @@ export function Scheduling() {
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["scheduleAssignments"] });
     qc.invalidateQueries({ queryKey: ["scheduleDrafts"] });
+    qc.invalidateQueries({ queryKey: ["scheduleCoverage"] });
+    qc.invalidateQueries({ queryKey: ["mySchedule"] });
+    qc.invalidateQueries({ queryKey: ["myScheduleVehicles"] });
+    qc.invalidateQueries({ queryKey: ["projectSchedule"] });
     qc.invalidateQueries({ queryKey: ["vehicleLinks"] });
   };
 
@@ -537,18 +544,19 @@ export function Scheduling() {
   });
 
   const remove = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (day?: string) => {
       const existing = editor?.assignment;
       if (!existing) return;
       const affected =
         existing.status === "published"
           ? existing.members.map((m) => m.profile_id)
           : [];
-      await deleteAssignment(existing.id);
+      if (day) await removeAssignmentDay(existing, day);
+      else await deleteAssignment(existing.id);
       if (affected.length > 0) {
         await fanOut(affected, {
           title: "Schedule updated",
-          body: "A job was removed from your schedule. Tap to check.",
+          body: day ? "A day was removed from your schedule. Tap to check." : "A job was removed from your schedule. Tap to check.",
         });
       }
     },
@@ -918,7 +926,7 @@ export function Scheduling() {
       ) : view === "agenda" ? (
         <AgendaView day={anchor} weekStart={range.from} assignments={loaded}
           conflictIds={conflictIds} vehicleLabels={vehicleLabelByAssignment} onDay={setAnchor}
-          onOpen={openAssignment}
+          onOpen={a => openAssignment(a, anchor)}
           onCreate={canEdit ? day => setEditor({ assignment: null, defaults: { start_date: day } }) : undefined}
         />
       ) : view === "board" ? (
@@ -1119,7 +1127,7 @@ export function Scheduling() {
           assignmentFor={(projectId) => assignmentForDayPanel.get(projectId) ?? null}
           onEditAssignment={canEdit ? (a) => {
             setDayPanelDate(null);
-            openAssignment(a);
+            openAssignment(a, dayPanelDate);
           } : undefined}
           onScheduleCrew={canEdit ? () => {
             const startDate = dayPanelDate;
@@ -1151,7 +1159,9 @@ export function Scheduling() {
           }
           saving={save.isPending || remove.isPending}
           onSave={(result) => save.mutate(result)}
-          onDelete={editor.assignment ? () => remove.mutate() : undefined}
+          onDelete={editor.assignment ? (day) => remove.mutate(day) : undefined}
+          error={remove.error ?? save.error}
+          selectedDay={editor.defaults?.start_date}
           onClose={() => setEditor(null)}
         />
       )}

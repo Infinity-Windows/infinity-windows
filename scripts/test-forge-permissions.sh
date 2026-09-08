@@ -34,4 +34,6 @@ SECOND_PUBLISH=$!
 wait "$FIRST_PUBLISH"
 wait "$SECOND_PUBLISH"
 run_sql "$REPO/scripts/tests/forge-publication/concurrency-assertions.sql"
+run_sql "$REPO/supabase/migrations/20261005000000_remove_schedule_day.sql"
+run_sql "$REPO/scripts/tests/forge-publication/remove-day.sql"
 printf 'Forge database permission checks passed (disposable PostgreSQL 16).\n'

@@ -1,3 +1,4 @@
+import { formatApiError } from "../../lib/errors";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Plane, Trash2, Truck, X } from "lucide-react";
 import type { Profile } from "../../lib/install/types";
@@ -53,7 +54,9 @@ interface Props {
   onPlanTravel?: () => void;
   saving?: boolean;
   onSave: (result: EditorResult) => void;
-  onDelete?: () => void;
+  onDelete?: (day?: string) => void;
+  selectedDay?: string;
+  error?: unknown;
   onClose: () => void;
 }
 
@@ -76,6 +79,8 @@ export function AssignmentEditor({
   saving,
   onSave,
   onDelete,
+  selectedDay,
+  error,
   onClose,
 }: Props) {
   const highlightSet = useMemo(
@@ -109,6 +114,12 @@ export function AssignmentEditor({
   const [members, setMembers] = useState<AssignmentMember[]>(
     assignment?.members.map((m) => ({ ...m })) ?? [],
   );
+  const [removeScope, setRemoveScope] = useState<"day" | "all">(assignment?.kind === "delivery" ? "all" : "day");
+  const [removeDay, setRemoveDay] = useState(
+    selectedDay && assignment && selectedDay >= assignment.start_date && selectedDay <= assignment.end_date
+      ? selectedDay : assignment?.start_date ?? "",
+  );
+  const validRemoveDay = !!assignment && !!removeDay && removeDay >= assignment.start_date && removeDay <= assignment.end_date;
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const confirmRef = useRef<HTMLDivElement>(null);
@@ -211,7 +222,7 @@ export function AssignmentEditor({
       <div className="sched-sheet">
         <div className="sched-sheet-head">
           <h2 style={{ margin: 0 }}>{assignment ? "Edit assignment" : "New assignment"}</h2>
-          <button className="icon-button sched-sheet-close" onClick={onClose} aria-label="Close">
+          <button className="icon-button sched-sheet-close" onClick={onClose} disabled={saving} aria-label="Close">
             <X size={20} strokeWidth={2.5} />
           </button>
         </div>
@@ -403,6 +414,7 @@ export function AssignmentEditor({
           onChange={(e) => setNote(e.target.value)}
         />
 
+        {error && !confirmingDelete ? <p role="alert">{formatApiError(error)}</p> : null}
         <div className="sched-sheet-actions">
           {assignment && onDelete && (
             <button
@@ -439,22 +451,42 @@ export function AssignmentEditor({
           <div className="sched-sheet" ref={confirmRef}>
             <div className="sched-sheet-head">
               <h2 id="sched-remove-title" style={{ margin: 0 }}>
-                {warning.title}
+                Remove scheduled work?
               </h2>
             </div>
+            {assignment.kind !== "delivery" && (
+              <label className="field-label">
+                Remove
+                <select value={removeScope} onChange={e => setRemoveScope(e.target.value as "day" | "all")} disabled={saving}>
+                  <option value="day">One day only</option>
+                  <option value="all">All days in this assignment</option>
+                </select>
+              </label>
+            )}
+            {removeScope === "day" && (
+              <label className="field-label">
+                Day to remove
+                <input type="date" value={removeDay} min={assignment.start_date} max={assignment.end_date}
+                  onChange={e => setRemoveDay(e.target.value)} disabled={saving} />
+              </label>
+            )}
+            <p>{removeScope === "day"
+              ? "Only this day will be removed for everyone on this assignment. Other days, crew details, and vehicle bookings will stay."
+              : `This removes the entire assignment from ${assignment.start_date} through ${assignment.end_date}.`}</p>
             <div
               className={`sched-conflict-inline${warning.published ? " is-emphasized" : ""}`}
               role="alert"
             >
               <AlertTriangle size={16} aria-hidden />
               <div>
-                {warning.lines.map((line, i) => (
+                {(removeScope === "day" ? ["This cannot be undone." + (warning.published ? " Crew will be notified of the schedule change." : "")] : warning.lines).map((line, i) => (
                   <p key={i} style={{ margin: i === 0 ? 0 : "6px 0 0" }}>
                     {line}
                   </p>
                 ))}
               </div>
             </div>
+            {error ? <p role="alert">{formatApiError(error)}</p> : null}
             <div className="sched-sheet-actions">
               <button className="button-like" onClick={cancelDelete} disabled={saving}>
                 Cancel
@@ -462,11 +494,11 @@ export function AssignmentEditor({
               <button
                 className="button-like danger-outline"
                 style={{ marginLeft: "auto" }}
-                onClick={onDelete}
-                disabled={saving}
+                onClick={() => onDelete(removeScope === "day" ? removeDay : undefined)}
+                disabled={saving || (removeScope === "day" && !validRemoveDay)}
               >
                 <Trash2 size={15} aria-hidden />{" "}
-                {saving ? "Removing…" : warning.confirmLabel}
+                {saving ? "Removing…" : removeScope === "day" ? "Remove this day" : "Remove all days"}
               </button>
             </div>
           </div>

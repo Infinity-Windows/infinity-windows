@@ -3,6 +3,8 @@
 -- committed migrations, not copies of the proposed replacement policies.
 create table public.package_deliveries (id uuid primary key, label text, expected_at timestamptz);
 alter table schedule_assignments alter column project_id drop not null;
+alter table schedule_assignments add column created_via text;
+alter table vehicle_project_assignments add column assigned_at timestamptz default now();
 alter table schedule_assignments add column kind text default 'install';
 alter table schedule_assignments add column delivery_id uuid references package_deliveries(id);
 alter table vehicle_project_assignments add foreign key (assignment_id) references schedule_assignments(id) on delete cascade;

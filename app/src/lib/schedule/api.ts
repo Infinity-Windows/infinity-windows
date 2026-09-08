@@ -6,7 +6,7 @@
 
 import { supabase } from "../supabase";
 import { filterToLiveProjects } from "../liveProjects";
-import { isMissingTable } from "../schemaErrors";
+import { isMissingFunction, isMissingTable } from "../schemaErrors";
 import { addDaysISO } from "./dates";
 import { filterMyPublished } from "./myPublished";
 import type {
@@ -370,6 +370,19 @@ export async function updateAssignment(
   if (patch.members) await replaceMembers(id, patch.members);
   const [row] = await listById([id]);
   return row;
+}
+
+/** Server transaction: never fall back to local storage or several partial writes. */
+export async function removeAssignmentDay(assignment: ScheduleAssignment, day: string): Promise<void> {
+  const { error } = await supabase.rpc("schedule_remove_day", {
+    p_assignment_id: assignment.id,
+    p_day: day,
+    p_expected_updated_at: assignment.updated_at,
+  });
+  if (error) {
+    if (isMissingFunction(error)) throw new Error("Removing individual days is not available until the scheduling update is installed. No days were removed.");
+    throw error;
+  }
 }
 
 export async function deleteAssignment(id: string): Promise<void> {
