@@ -1,16 +1,20 @@
+// One pill component for a status word (kit item G, S6) — readiness on a My
+// Work row, or on the Next card. Mirrors the solid/soft pair StageChip
+// already draws for storage stages (index.css `.stage-chip[data-stage]`),
+// but keyed by a tone rather than a stage, since readiness isn't a stage.
 import type { ReactNode } from "react";
 
-export type StatusTone = "ok" | "warn" | "danger" | "soft" | "mute";
+export type StatusTone = "ok" | "warn" | "error" | "muted" | "accent";
 
-/**
- * A small state pill — same idea as `StageChip` (warehouse) and `InstallChip`
- * (install), generalized for the rest of the kit instead of adding a fourth
- * one-off. See ListRow.tsx for why this lives here instead of importing S6's
- * own kit.
- */
-export function StatusChip({ tone, children }: { tone: StatusTone; children: ReactNode }) {
+export function StatusChip({
+  tone,
+  children,
+}: {
+  tone: StatusTone;
+  children: ReactNode;
+}) {
   return (
-    <span className="ui-status-chip" data-tone={tone}>
+    <span className="kit-status-chip" data-tone={tone}>
       {children}
     </span>
   );

@@ -1,27 +1,25 @@
+// One shape for a label/value pair (kit item G, S6): a small caption over —
+// or, `inline`, beside — its value. Pulled out of the Tomorrow strip, which
+// repeats it for "Starts" and "Truck"; this file owns that shape alone, the
+// same rule ListRow and StatusChip hold for theirs. Not a form field — no
+// input here, just a labelled read.
 import type { ReactNode } from "react";
 
-/**
- * A labeled slot for one control or one fact — the `field-label` + input
- * pattern repeated by hand across every install form, given a name so new
- * screens can reach for it instead of retyping the label markup. Existing
- * `field-label` spans are left exactly as they are; this is additive, not a
- * migration. See ListRow.tsx for why this lives here instead of importing
- * S6's own kit.
- */
 export function Field({
   label,
-  hint,
-  children,
+  value,
+  inline = false,
 }: {
-  label: ReactNode;
-  hint?: ReactNode;
-  children: ReactNode;
+  label: string;
+  value: ReactNode;
+  /** Label and value share one line (a strip's meta row) instead of
+   * stacking (a card's spec grid). */
+  inline?: boolean;
 }) {
   return (
-    <label className="ui-field">
-      <span className="ui-field-label">{label}</span>
-      {children}
-      {hint && <span className="ui-field-hint">{hint}</span>}
-    </label>
+    <span className={`kit-field${inline ? " kit-field--inline" : ""}`}>
+      <span className="kit-field-label">{label}</span>
+      <span className="kit-field-value">{value}</span>
+    </span>
   );
 }

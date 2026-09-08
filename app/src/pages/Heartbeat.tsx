@@ -3,6 +3,7 @@ import { SaveJobsStrip } from "../components/offline/SaveJobOffline";
 import { RoleMaps } from "../components/RoleMaps";
 import { ClockInBlock } from "../components/clock/ClockInBlock";
 import { LogTodayChip } from "../components/dailyLogs/LogTodayChip";
+import { TomorrowStrip } from "../components/schedule/TomorrowStrip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
@@ -167,6 +168,10 @@ export function Heartbeat() {
       </header>
 
       <ClockInBlock />
+
+      {/* S6: the same Tomorrow line + week chips as My Work — reads the
+          signed-in person's own schedule, per the three-landings rule. */}
+      <TomorrowStrip />
 
       <LogTodayChip />
 

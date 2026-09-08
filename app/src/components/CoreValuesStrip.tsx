@@ -28,12 +28,27 @@ const ROTATE_MS = 8000;
  * day starts, not on top of a tape measure. */
 const LANDING_PATHS = new Set(["/", "/my-work", "/heartbeat"]);
 
-export function CoreValuesStrip({ pathname }: { pathname: string }) {
+export function CoreValuesStrip({
+  pathname,
+  hidden = false,
+  staticMode = false,
+}: {
+  pathname: string;
+  /** S6: Layout skips its own top-mounted strip on the installer's landing
+   * ("/" while signed in as an installer) — My Work mounts its own copy at
+   * the bottom instead. Home and Heartbeat never pass this. */
+  hidden?: boolean;
+  /** S6: My Work's bottom copy holds one line, unrotating, while a shift is
+   * open — a crossfade behind an installer's thumb mid-task is the kind of
+   * motion the motion policy (index.css) exists to rule out. */
+  staticMode?: boolean;
+}) {
+  if (hidden) return null;
   if (!LANDING_PATHS.has(pathname)) return null;
-  return <CoreValuesStripInner />;
+  return <CoreValuesStripInner staticMode={staticMode} />;
 }
 
-function CoreValuesStripInner() {
+function CoreValuesStripInner({ staticMode }: { staticMode: boolean }) {
   const [i, setI] = useState(() => {
     // Start on a different value each day so the same one doesn't own every
     // morning meeting — day-of-year modulo keeps it deterministic per day.
@@ -50,6 +65,8 @@ function CoreValuesStripInner() {
   );
 
   useEffect(() => {
+    // S6: held on one value, no rotation, while a shift is open.
+    if (staticMode) return;
     const tick = setInterval(() => {
       if (reduced.current) {
         setI((v) => (v + 1) % CORE_VALUES.length);
@@ -62,7 +79,7 @@ function CoreValuesStripInner() {
       }, 300);
     }, ROTATE_MS);
     return () => clearInterval(tick);
-  }, []);
+  }, [staticMode]);
 
   const v = CORE_VALUES[i];
   return (
