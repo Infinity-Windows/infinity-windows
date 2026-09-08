@@ -1,3 +1,4 @@
+import { CrewStartBar } from "../components/schedule/CrewStartBar";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { SaveJobsStrip } from "../components/offline/SaveJobOffline";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -416,10 +417,11 @@ export function MyWork() {
         </div>
       </header>
       {/* S6: the first minute, in order — the live-summons ring (if any), the
-          one-tap clock-in hero, and (when a unit is already running) the
+          personal start instructions, one-tap clock-in hero, and (when a unit is already running) the
           card that takes its place. Everything that isn't "what do I do
           right now" moved down, most of it into the More fold below. */}
       <LiveSummonsStrip />
+      <CrewStartBar />
       <ClockInBlock />
 
       {activeInstall && (

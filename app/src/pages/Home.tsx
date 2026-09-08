@@ -1,3 +1,4 @@
+import { CrewStartBar } from "../components/schedule/CrewStartBar";
 import { useQuery } from "@tanstack/react-query";
 import { SaveJobsStrip } from "../components/offline/SaveJobOffline";
 import { useEffect, useMemo, useState } from "react";
@@ -280,6 +281,7 @@ export function Home() {
 
       <LiveSummonsStrip />
 
+      <CrewStartBar />
       <ClockInBlock />
 
       {/* S6: the same Tomorrow line + week chips as My Work — reads the
