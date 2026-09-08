@@ -5900,54 +5900,6 @@ button.clock-out {
 }
 .clock-costcode-desc { font-size: 12px; color: var(--muted); white-space: normal; }
 
-/* Per-job cost-code checklist (JobCostCodesPanel, standard-tracking-jobs).
-   A bare checkbox inherits the global full-width 52px `input` box, so every
-   box landed at a different width and the codes zig-zagged down the page.
-   Reset the box and lay each row out as [box] [code] [label] so the checkboxes
-   line up in one left column and the codes read as a table.
-   (tracking-jobs polish, 2026-09-03) */
-.jobcost-list {
-  list-style: none;
-  padding: 0;
-  margin: 8px 0 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.jobcost-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  text-align: left;
-  border-radius: 12px;
-  border: 1px solid var(--border);
-  background: var(--card-raised);
-  padding: 10px 14px;
-  min-height: 48px;
-  cursor: pointer;
-  color: var(--text);
-}
-.jobcost-row:hover { border-color: var(--accent-line); }
-.jobcost-row input[type="checkbox"] {
-  flex: none;
-  width: 20px;
-  height: 20px;
-  margin: 0;
-}
-.jobcost-code {
-  flex: none;
-  min-width: 3.5ch;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-variant-numeric: tabular-nums;
-  font-weight: 700;
-  font-size: 13.5px;
-}
-.jobcost-label {
-  min-width: 0;
-  font-size: 13.5px;
-  color: var(--text);
-}
-
 /* Optional worker note at clock-in. */
 .clock-note-input {
   width: 100%;
@@ -12559,6 +12511,32 @@ button.stage-chip {
   padding: 8px 10px;
 }
 .build-facts-field textarea { min-height: 64px; resize: vertical; }
+
+/* The exterior situations (owner, 2026-09-07): one bordered line per
+   finish on the house — finish, set depth, the inch, a note, and Remove —
+   above the rest of the grid. Add sits under the list at 48px. */
+.build-facts-lines { margin-top: 10px; }
+.build-facts-line {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr));
+  gap: 8px 12px;
+  align-items: end;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card-raised);
+}
+.build-facts-line-remove { min-height: 48px; justify-self: start; }
+.build-facts-line-add { min-height: 48px; }
+
+/* The GC's name and number, up top on the GC card (GcContactFields). */
+.gc-contact-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
+  gap: 8px 16px;
+  margin: 8px 0 4px;
+}
 
 /* The green-light checklist (supervisor+): open items first, a check or an
    open circle, and who is expected to answer it. Warns, never blocks — there

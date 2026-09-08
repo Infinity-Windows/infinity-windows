@@ -1,27 +1,23 @@
-// Pure logic behind the S5 unit-sheet job-facts card (ADR-0011): which
-// elevation note belongs to THIS unit, and which set-depth answer wins when
-// the unit's own spec disagrees with the job's default.
+// Pure logic behind the S5 unit-sheet job-facts card (ADR-0011): when the
+// unit's own spec overrides the job's exterior situations, and when the card
+// has anything to say at all.
 
 import { describe, expect, it } from "vitest";
 import {
-  deriveUnitElevation,
-  elevationNotesFor,
   formatSetDepthValue,
   hasAnyUnitFact,
   joinFactLine,
-  resolveSetDepthLine,
   specInsetOutsetOf,
+  specOverrideLine,
 } from "./unitFactsCard";
-import type { BuildFacts } from "./buildFacts";
-import type { ElevationViewLike } from "./elevationViews";
+import type { BuildFacts, ExteriorLine } from "./buildFacts";
 
-function view(mark: string, viewName: string | null, overrides: Partial<ElevationViewLike> = {}): ElevationViewLike {
+function line(overrides: Partial<ExteriorLine> = {}): ExteriorLine {
   return {
-    mark_code: mark,
-    page_number: 1,
-    region_index: 0,
-    view_name: viewName,
-    planset_id: "planset-1",
+    exterior_finish: null,
+    exterior_note: null,
+    set_depth: null,
+    set_depth_inches: null,
     ...overrides,
   };
 }
@@ -29,106 +25,49 @@ function view(mark: string, viewName: string | null, overrides: Partial<Elevatio
 function emptyFacts(overrides: Partial<BuildFacts> = {}): BuildFacts {
   return {
     project_id: "project-1",
-    exterior_finish: null,
-    exterior_note: null,
-    set_depth: null,
-    set_depth_inches: null,
+    exterior_lines: [],
     flashing_system: null,
+    flashing_system_other: null,
     flashing_note: null,
     fastener_type: null,
+    fastener_type_other: null,
     fastener_length_in: null,
     fastener_spacing_in: null,
     fastener_note: null,
-    sill_pan: null,
-    sill_pan_type: null,
     site_rules: null,
     gc_contact_name: null,
     gc_contact_phone: null,
-    note_north: null,
-    note_south: null,
-    note_east: null,
-    note_west: null,
+    elevation_notes: null,
     updated_by: null,
     updated_at: null,
     ...overrides,
   };
 }
 
-describe("deriveUnitElevation", () => {
-  it("reads the compass off the mark's elevation caption", () => {
-    const views = [view("1", "FRONT ELEVATION - SOUTH")];
-    expect(deriveUnitElevation("1", views)).toBe("south");
+const brickOutset = line({ exterior_finish: "brick", set_depth: "outset", set_depth_inches: 1 });
+const stuccoInset = line({ exterior_finish: "stucco", set_depth: "inset", set_depth_inches: 1.25 });
+
+describe("specOverrideLine", () => {
+  it("is null when the unit's spec makes no call", () => {
+    expect(specOverrideLine([brickOutset], null)).toBeNull();
   });
 
-  it("normalizes a chained opening code to its base mark", () => {
-    const views = [view("1", "REAR ELEVATION - NORTH")];
-    expect(deriveUnitElevation("1-2", views)).toBe("north");
+  it("is null when the job hasn't answered a set depth anywhere, regardless of the spec", () => {
+    expect(specOverrideLine([], "inset")).toBeNull();
+    expect(specOverrideLine([line({ exterior_finish: "brick" })], "inset")).toBeNull();
   });
 
-  it("is null when nothing names a compass side for this mark", () => {
-    const views = [view("1", "FRONT PROPERTY VIEW"), view("2", "REAR ELEVATION - NORTH")];
-    expect(deriveUnitElevation("1", views)).toBeNull();
+  it("says nothing when some recorded situation already uses the spec's set depth", () => {
+    expect(specOverrideLine([brickOutset, stuccoInset], "inset")).toBeNull();
+    expect(specOverrideLine([brickOutset, stuccoInset], "outset")).toBeNull();
   });
 
-  it("is null with no opening code or no views", () => {
-    expect(deriveUnitElevation(null, [])).toBeNull();
-    expect(deriveUnitElevation("1", [])).toBeNull();
+  it("shows the spec's value when no recorded situation uses it", () => {
+    expect(specOverrideLine([brickOutset], "inset")).toEqual({ value: "inset" });
   });
 
-  it("prefers a straight elevation with a compass bearing over a property view of the same wall", () => {
-    const views = [
-      view("9", "FRONT PROPERTY VIEW", { region_index: 0 }),
-      view("9", "FRONT ELEVATION - SOUTH", { region_index: 1 }),
-    ];
-    expect(deriveUnitElevation("9", views)).toBe("south");
-  });
-});
-
-describe("elevationNotesFor", () => {
-  it("returns only the unit's own note when the elevation is known", () => {
-    const facts = emptyFacts({ note_south: "Stucco patched here", note_north: "Ignore this one" });
-    expect(elevationNotesFor(facts, "south")).toEqual([{ elevation: "south", note: "Stucco patched here" }]);
-  });
-
-  it("returns nothing when the known elevation's own note is blank, even if others are set", () => {
-    const facts = emptyFacts({ note_north: "Has a note" });
-    expect(elevationNotesFor(facts, "south")).toEqual([]);
-  });
-
-  it("returns every non-empty note, labelled, when the elevation can't be determined", () => {
-    const facts = emptyFacts({ note_north: "N note", note_east: "  ", note_west: "W note" });
-    expect(elevationNotesFor(facts, null)).toEqual([
-      { elevation: "north", note: "N note" },
-      { elevation: "west", note: "W note" },
-    ]);
-  });
-
-  it("returns nothing when no elevation is known and every note is blank", () => {
-    expect(elevationNotesFor(emptyFacts(), null)).toEqual([]);
-  });
-});
-
-describe("resolveSetDepthLine", () => {
-  it("is null when the job hasn't answered set depth, regardless of the spec", () => {
-    expect(resolveSetDepthLine(null, "inset")).toBeNull();
-  });
-
-  it("shows the job's own value when the spec agrees", () => {
-    expect(resolveSetDepthLine("outset", "outset")).toEqual({ value: "outset", disagrees: false });
-  });
-
-  it("shows the job's own value when the spec says nothing", () => {
-    expect(resolveSetDepthLine("outset", null)).toEqual({ value: "outset", disagrees: false });
-  });
-
-  it("shows the spec's value and flags the disagreement when it differs", () => {
-    expect(resolveSetDepthLine("inset", "outset")).toEqual({ value: "outset", disagrees: true });
-  });
-
-  it("does not disagree with itself when the job says unknown and the spec has a real call", () => {
-    // "unknown" is a real answer distinct from "outset" — the spec's own
-    // call is a genuine disagreement here, same as inset vs outset.
-    expect(resolveSetDepthLine("unknown", "outset")).toEqual({ value: "outset", disagrees: true });
+  it("treats a job that only says unknown as answered, so a real spec call wins over it", () => {
+    expect(specOverrideLine([line({ set_depth: "unknown" })], "outset")).toEqual({ value: "outset" });
   });
 });
 
@@ -138,7 +77,7 @@ describe("formatSetDepthValue", () => {
   });
 
   it("appends a fraction when the inch isn't whole", () => {
-    expect(formatSetDepthValue("Inset", 0.5)).toBe('Inset 0½"');
+    expect(formatSetDepthValue("Inset", 1.25)).toBe('Inset 1¼"');
   });
 
   it("is the bare label when no inch is recorded", () => {
@@ -149,44 +88,48 @@ describe("formatSetDepthValue", () => {
 describe("specInsetOutsetOf", () => {
   it("reads a valid value", () => {
     expect(specInsetOutsetOf({ inset_outset: "inset" })).toBe("inset");
+    expect(specInsetOutsetOf({ inset_outset: "outset" })).toBe("outset");
   });
 
   it("is null for anything else", () => {
-    expect(specInsetOutsetOf(null)).toBeNull();
-    expect(specInsetOutsetOf(undefined)).toBeNull();
+    expect(specInsetOutsetOf({ inset_outset: "flush" })).toBeNull();
     expect(specInsetOutsetOf({})).toBeNull();
-    expect(specInsetOutsetOf({ inset_outset: "sideways" })).toBeNull();
+    expect(specInsetOutsetOf(null)).toBeNull();
   });
 });
 
 describe("joinFactLine", () => {
   it("joins non-empty parts with the card separator", () => {
-    expect(joinFactLine(["Flange screw", "2½\"", "every 12\""])).toBe("Flange screw · 2½\" · every 12\"");
+    expect(joinFactLine(["Flange screw", '2½"', 'every 12"'])).toBe('Flange screw · 2½" · every 12"');
   });
 
   it("drops blank, null and undefined parts without doubling the separator", () => {
-    expect(joinFactLine(["Stucco", null, "  ", undefined, "north side"])).toBe("Stucco · north side");
+    expect(joinFactLine(["Brick", "", null, undefined, "  ", "front only"])).toBe("Brick · front only");
   });
 
   it("is null when nothing survives", () => {
-    expect(joinFactLine([null, "  ", undefined])).toBeNull();
+    expect(joinFactLine(["", null, "  "])).toBeNull();
   });
 });
 
 describe("hasAnyUnitFact", () => {
   it("is false for a null row", () => {
-    expect(hasAnyUnitFact(null, null)).toBe(false);
+    expect(hasAnyUnitFact(null)).toBe(false);
   });
 
-  it("is false when every field and every reachable note is blank", () => {
-    expect(hasAnyUnitFact(emptyFacts(), "south")).toBe(false);
+  it("is false when every field is blank and every line is empty", () => {
+    expect(hasAnyUnitFact(emptyFacts({ exterior_lines: [line()] }))).toBe(false);
   });
 
   it("is true when a plain field is answered", () => {
-    expect(hasAnyUnitFact(emptyFacts({ exterior_finish: "stucco" }), null)).toBe(true);
+    expect(hasAnyUnitFact(emptyFacts({ site_rules: "Hard hats." }))).toBe(true);
   });
 
-  it("is true when only an elevation note is answered", () => {
-    expect(hasAnyUnitFact(emptyFacts({ note_east: "Watch the GC's fence line" }), "east")).toBe(true);
+  it("is true when only an exterior situation is answered", () => {
+    expect(hasAnyUnitFact(emptyFacts({ exterior_lines: [brickOutset] }))).toBe(true);
+  });
+
+  it("is true when only the named 'other' flashing is on file", () => {
+    expect(hasAnyUnitFact(emptyFacts({ flashing_system_other: "FlexWrap" }))).toBe(true);
   });
 });

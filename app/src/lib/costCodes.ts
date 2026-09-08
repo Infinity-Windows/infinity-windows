@@ -8,16 +8,10 @@
 // picker and the library list.
 import { supabase } from "./supabase";
 import { planCostCodeSwap } from "./costCodeOrder";
-import { isMissingTable } from "./schemaErrors";
 import { listCostCodes, type CostCode } from "./timeclock";
-import { resolveClockCostCodes, sortClockCostCodes } from "./clockCostCodes";
+import { sortClockCostCodes } from "./clockCostCodes";
 
 export type { CostCode };
-
-// Explicit column list for cost_codes reads through the embed (no select *):
-// the same fields the CostCode type carries, so the per-job subset joins back
-// exactly what listCostCodes returns.
-const COST_CODE_COLS = "id, code, label, description, active, sort_order, is_general";
 
 export interface CostCodeInput {
   code: string;
@@ -126,58 +120,22 @@ export async function moveCostCode(
 }
 
 // ---------------------------------------------------------------------------
-// Per-job cost codes (standard-tracking-jobs slice 3): a job's OPTIONAL pickable
-// subset of the library. project_cost_codes + the foreman+ RPCs live in
-// migration 20260973000000. Writes go only through the RPCs (the table's direct
-// write grants are revoked); reads degrade to empty on a database that hasn't
-// applied the migration, the house rule for a feature that ships ahead of it.
+// The clock-in picker (standard-tracking-jobs slice 3). The per-job subset
+// (project_cost_codes + set_project_cost_codes, migration 20260973000000) was
+// retired on 2026-09-07 — the owner's call: a job does not pick its own cost
+// codes, every clock-in offers the whole active library. The table and RPC
+// stay in the database, unread; nothing here writes them any more.
 // ---------------------------------------------------------------------------
 
-interface ProjectCostCodeRow {
-  // Supabase types an embedded relation as an array; normalize below.
-  cost_codes: CostCode | CostCode[] | null;
-}
-
-/** The active cost codes assigned to a job (its subset), or [] if none / not migrated. */
-export async function listProjectCostCodes(projectId: string): Promise<CostCode[]> {
-  const { data, error } = await supabase
-    .from("project_cost_codes")
-    .select(`cost_codes(${COST_CODE_COLS})`)
-    .eq("project_id", projectId);
-  if (isMissingTable(error, "project_cost_codes")) return [];
-  if (error) throw error;
-  const rows = (data ?? []) as unknown as ProjectCostCodeRow[];
-  const codes: CostCode[] = [];
-  for (const r of rows) {
-    const cc = Array.isArray(r.cost_codes) ? r.cost_codes[0] : r.cost_codes;
-    if (cc && cc.active) codes.push(cc);
-  }
-  return sortClockCostCodes(codes);
-}
-
 /**
- * The cost codes a worker may pick when clocking into this job — the job's
- * subset if it has one, else the whole active library, always including the
- * general fallback, common codes first (Horizon getClockCostCodesForProject).
- * A null project (clocking in with no job yet) is the whole active library.
+ * The cost codes a worker may pick when clocking into a job: the whole
+ * active library, general fallback first, common codes next (Horizon
+ * getClockCostCodesForProject, minus the subset). The job is still named
+ * because every caller keys its query per job and a null project (clocking
+ * in with no job yet) is a real case; the list is the same either way.
  */
 export async function getClockCostCodesForProject(
-  projectId: string | null,
+  _projectId: string | null,
 ): Promise<CostCode[]> {
-  const allActive = await listCostCodes();
-  if (!projectId) return sortClockCostCodes(allActive);
-  const jobCodes = await listProjectCostCodes(projectId);
-  return resolveClockCostCodes(jobCodes, allActive);
-}
-
-/** Replace a job's whole subset (foreman+). An empty list clears it. */
-export async function setProjectCostCodes(
-  projectId: string,
-  costCodeIds: string[],
-): Promise<void> {
-  const { error } = await supabase.rpc("set_project_cost_codes", {
-    p_project_id: projectId,
-    p_cost_code_ids: costCodeIds,
-  });
-  if (error) throw error;
+  return sortClockCostCodes(await listCostCodes());
 }

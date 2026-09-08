@@ -798,17 +798,34 @@ Settled 2026-09-06, S4 of the installer operating system
 See ADR-0011.
 
 **Job facts** — the job-level build answers a foreman records once so nobody
-on the crew has to ask twice: exterior finish, set depth, flashing system,
-fasteners, sill pan, site rules, the GC's contact, and a note per elevation
+on the crew has to ask twice: the **exterior situations**, flashing system,
+fasteners, site rules, the GC's contact, and one box of elevation notes
 (`project_build_facts`, one row per job). Filled in over time, one field at a
 time, through `upsert_build_facts`. Every signed-in crew role reads it — an
 installer wants to know it's stucco and outset just as much as the foreman
 who filed it — and a partner login never does (THE WALL). Job facts is the
 job's DEFAULT answer; the per-unit spec (`project_mark_specs.extra`) stays
 authoritative for what actually gets installed at one opening, and a unit
-whose own spec disagrees says so and wins. The first write on a job with a GC
-check-in on file seeds set depth, the exterior note and the GC contact from
-it — the builder already told us once.
+whose own spec names a set depth no situation uses says so and wins. The
+first write on a job with a GC check-in on file seeds the first situation
+(the GC's set preference, the material as its note) and the GC contact from
+it — the builder already told us once. The GC's name and number are shown and
+edited on the GC card, not the Job facts card. A sill pan is NOT a job fact
+(owner, 2026-09-07): it belongs to a unit, and the unit spec is where it lives.
+
+**Exterior situation** — one line of a job's facts: a finish (stucco, rock,
+siding, brick, other), the set depth that goes with it (inset, outset), the
+inch, and a note. A house carries several — brick outset an inch on the
+front, stucco inset an inch and a quarter on the sides — which is why this is
+a list (`project_build_facts.exterior_lines`, jsonb, at most 20) and not one
+finish per job (owner, 2026-09-07). "Other" on the flashing or fastener
+pick-lists opens a box to name the real thing, and that name is what every
+unit sheet shows.
+
+**Cost codes at clock-in** — every clock-in offers the whole active company
+library, general code first. A job does not pick its own subset (owner,
+2026-09-07; the earlier per-job checklist and its `project_cost_codes` table
+are retired and unread).
 
 **Green-light checklist** — the itemised list behind a job's ready state:
 six questions (`green_light_items`), computed fresh from the tables that
