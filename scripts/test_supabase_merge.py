@@ -191,7 +191,8 @@ class TestSchemaParsing(unittest.TestCase):
         # 20260993000000).
         # +1: project_build_facts — one row per job of the site answers a
         # foreman records once (S4, job facts, 20261001000000).
-        self.assertEqual(len(SCHEMA.tables), 135)
+        # +6: connected plan identity, links, revisions, requests and outbox.
+        self.assertEqual(len(SCHEMA.tables), 141)
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 

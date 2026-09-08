@@ -25,8 +25,8 @@ interface DayPanelProps {
   /** The published/draft install assignment behind one job entry, if any —
    * "Edit crew" opens the real editor on it rather than re-deriving one. */
   assignmentFor: (projectId: string) => ScheduleAssignment | null;
-  onEditAssignment: (assignment: ScheduleAssignment) => void;
-  onScheduleCrew: () => void;
+  onEditAssignment?: (assignment: ScheduleAssignment) => void;
+  onScheduleCrew?: () => void;
   onClose: () => void;
 }
 
@@ -90,9 +90,9 @@ export function DayPanel({
         )}
 
         <div className="sched-sheet-actions">
-          <button type="button" className="button-like active-pill" onClick={onScheduleCrew}>
+          {onScheduleCrew && <button type="button" className="button-like active-pill" onClick={onScheduleCrew}>
             Schedule crew
-          </button>
+          </button>}
           <button type="button" className="button-like" onClick={onClose}>
             Close
           </button>
@@ -111,7 +111,7 @@ function DayMemoryJobCard({
   entry: DayMemoryJobEntry;
   canSeeHours: boolean;
   assignment: ScheduleAssignment | null;
-  onEditAssignment: (a: ScheduleAssignment) => void;
+  onEditAssignment?: (a: ScheduleAssignment) => void;
 }) {
   const style = calendarColorStyle({ project_id: entry.projectId, color: assignment?.color });
   return (
@@ -121,7 +121,7 @@ function DayMemoryJobCard({
           {entry.jobCode}
           {entry.jobName ? ` — ${entry.jobName}` : ""}
         </strong>
-        {assignment && (
+        {assignment && onEditAssignment && (
           <button
             type="button"
             className="button-like"

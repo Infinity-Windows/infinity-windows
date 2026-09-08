@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
+import { DisplayModeProvider } from "./components/DisplayModeProvider";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { PwaBanners } from "./components/pwa/PwaBanners";
 import { WrongProjectBanner } from "./components/WrongProjectBanner";
@@ -35,7 +36,7 @@ installPreloadRecovery();
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ErrorBoundary>
-      <App />
+      <DisplayModeProvider><App /></DisplayModeProvider>
       <WrongProjectBanner />
       <PwaBanners />
     </ErrorBoundary>

@@ -497,7 +497,6 @@ const MENU_DEF: MenuSection[] = [
     collapsible: true,
     Icon: Truck,
     items: [
-      { to: "/scheduling", label: "Scheduling", Icon: CalendarDays },
       { to: "/vehicles", label: "Vehicles", Icon: Truck },
       { to: "/my-schedule", label: "My Schedule", Icon: CalendarClock },
       { to: "/travel", label: "Travel", Icon: Plane },
@@ -509,6 +508,7 @@ const MENU_DEF: MenuSection[] = [
     collapsible: true,
     Icon: Users,
     items: [
+      { to: "/scheduling", label: "Scheduling", Icon: CalendarDays },
       { to: "/team", label: "Team", Icon: Users },
       { to: "/crew", label: "Roster", Icon: Users },
       { to: "/access", label: "Crew access", Icon: KeyRound },

@@ -218,6 +218,9 @@ export const WORK_HISTORY_PROBES: readonly HistoryProbe[] = [
     one: "job on the schedule",
     many: "jobs on the schedule",
   },
+  { table: "workflow_plans", column: "created_by", one: "connected plan", many: "connected plans" },
+  { table: "workflow_plan_revisions", column: "actor", one: "published plan revision", many: "published plan revisions" },
+  { table: "workflow_notice_outbox", column: "profile_id", one: "plan notice", many: "plan notices" },
   { table: "trip_crew", column: "profile_id", one: "trip", many: "trips" },
   {
     table: "vehicle_drivers",

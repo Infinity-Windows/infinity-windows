@@ -28,7 +28,7 @@
 // this loop automatically and fails until purge_project handles it.
 
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -36,10 +36,7 @@ import { describe, expect, it } from "vitest";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, "../../..");
 const SCRIPTS_DIR = join(REPO_ROOT, "scripts");
-const MIGRATION = join(
-  REPO_ROOT,
-  "supabase/migrations/20260974000000_job_deletion_supervisor.sql",
-);
+const MIGRATIONS = join(REPO_ROOT, "supabase/migrations");
 
 /**
  * The project-scoped census, read at runtime from the ONE static replay of
@@ -149,7 +146,8 @@ const CASCADE_COVERED: Record<string, string> = {
 };
 
 function purgeBody(): string {
-  const sql = readFileSync(MIGRATION, "utf8");
+  // Follow the last deployed definition, as the history-count test does.
+  const sql = readdirSync(MIGRATIONS).filter(f => f.endsWith(".sql")).sort().map(f => readFileSync(join(MIGRATIONS, f), "utf8")).filter(s => s.includes("create or replace function public.purge_project")).at(-1)!;
   const start = sql.indexOf("create or replace function public.purge_project");
   expect(start).toBeGreaterThan(-1);
   const end = sql.indexOf("$$;", start);

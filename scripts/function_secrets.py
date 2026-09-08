@@ -101,6 +101,7 @@ FEATURE_NAMES = {
     'redeem-crew-invite': 'setting up a new crew login from a code',
     'send-email': 'emailing a job\'s GC',
     'send-push': 'push notifications',
+    'deliver-workflow-notices': 'connected plan notifications',
     'still-on-the-job-sweep': 'the evening still-on-the-job nudge',
     'studio-assist': 'the Model Studio AI assistant',
     'summarize-learning-video': 'video summaries and quizzes',

@@ -8828,18 +8828,27 @@ body {
 }
 .travel-quickdir { margin-bottom: 14px; }
 
-/* Tabs */
-.travel-tabs {
-  display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px;
-  margin-bottom: 14px; scrollbar-width: none;
+/* One trip sheet: jump links wrap within the phone instead of hiding sections. */
+.travel-jumps {
+  display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 20px;
 }
-.travel-tabs::-webkit-scrollbar { display: none; }
-.travel-tab {
-  flex: 0 0 auto; padding: 7px 14px; border-radius: 999px;
+.travel-jump {
+  display: inline-flex; align-items: center; min-height: 44px;
+  padding: 8px 14px; border-radius: 999px;
   border: 1px solid var(--border); background: var(--card);
-  color: var(--text-secondary); font-size: 13px; font-weight: 600; cursor: pointer;
+  color: var(--text-secondary); font-size: 14px; font-weight: 600;
+  text-decoration: none; overflow-wrap: anywhere; max-width: 100%;
 }
-.travel-tab.is-active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.travel-jump:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.travel-sheet-section {
+  scroll-margin-top: 100px; padding-top: 18px; margin-bottom: 24px;
+  border-top: 1px solid var(--border); min-width: 0; overflow-wrap: anywhere;
+}
+.travel-sheet-section > h2 { font-size: 18px; margin: 0 0 14px; }
+.travel-sheet-section:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.travel-detail .travel-card-tools button,
+.travel-detail .travel-add-btn,
+.travel-detail .travel-call { min-width: 44px; min-height: 44px; }
 
 /* Timeline */
 .travel-timeline { list-style: none; margin: 0; padding: 0; }
@@ -12849,3 +12858,80 @@ button.stage-chip {
    reads as one list. */
 .mywork-door { margin-top: var(--space-3); }
 .mywork-door h2 { font-size: var(--text-md); margin: 0 0 var(--space-1); }
+
+/* Explicit phone presentation is usable on a laptop without changing roles.
+   Small physical screens retain reachable navigation even in Desktop mode. */
+:root[data-display-layout="phone"] .app-rail { display: none; }
+:root[data-display-layout="phone"] .app-main {
+  padding-bottom: calc(106px + var(--overlay-gap) + var(--safe-bottom));
+}
+:root[data-display-layout="phone"] .page {
+  max-width: 640px; padding: 12px max(16px, var(--safe-right)) 16px max(16px, var(--safe-left));
+}
+:root[data-display-layout="phone"] .tabbar {
+  display: grid; max-width: 640px; margin-inline: auto;
+}
+:root[data-display-layout="phone"] .sync-strip { display: flex; }
+:root[data-display-layout="phone"] .ask-fab { bottom: calc(var(--above-tabbar) + 14px); }
+:root[data-display-layout="phone"] .sched-sheet-backdrop { padding: 0; align-items: stretch; }
+:root[data-display-layout="phone"] .sched-sheet {
+  max-width: 640px; border-radius: 0; max-height: 100dvh; height: 100dvh;
+  padding-top: max(16px, var(--safe-top));
+}
+.display-mode-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
+.display-mode-picker > span { font-weight: 600; }
+.display-mode-picker select { width: auto; min-height: 44px; margin: 0; flex: 0 1 180px; }
+.sched-agenda-days { display: flex; flex-wrap: wrap; gap: 6px; }
+.sched-agenda-days button { min-height: 44px; flex: 1 0 70px; padding: 8px; }
+.sched-agenda h2 { font-size: 18px; margin: 18px 0 12px; }
+.sched-agenda-items { display: grid; gap: 10px; margin-bottom: 16px; }
+.sched-agenda-item {
+  --sched-color: oklch(var(--job-bar-l) var(--job-bar-c) var(--job-hue, 260));
+  display: flex; flex-direction: column; align-items: flex-start; gap: 7px;
+  width: 100%; padding: 14px; text-align: left; color: var(--text);
+  background: var(--card); border: 1px solid var(--border);
+  border-left: 4px solid var(--sched-color, var(--accent)); border-radius: 12px;
+  white-space: normal; overflow-wrap: anywhere; cursor: pointer;
+}
+.sched-agenda-item > span { font-size: 14px; }
+.sched-agenda-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+.sched-agenda-item.delivery { --sched-color: var(--muted); border-left-style: double; border-left-width: 6px; }
+
+:root[data-display-layout="phone"] .sched-viewswitch { flex-wrap: wrap; border-radius: 20px; }
+:root[data-display-layout="phone"] .sched-viewtab { min-height: 44px; padding-inline: 12px; }
+:root[data-display-layout="phone"] .sched-publishbar {
+  position: static; flex-wrap: wrap; border-radius: 16px;
+}
+:root[data-display-layout="phone"] .sched-sheet input,
+:root[data-display-layout="phone"] .sched-sheet select,
+:root[data-display-layout="phone"] .sched-sheet textarea { font-size: 16px; }
+
+@media (max-width: 859px) {
+  .sched-publishbar { position: static; flex-wrap: wrap; border-radius: 16px; }
+  .sched-viewswitch { flex-wrap: wrap; border-radius: 20px; }
+  .sched-viewtab { min-height: 44px; padding-inline: 12px; }
+}
+
+/* Connected plan review: one continuous sheet with phone-sized controls. */
+.workflow-review { width: min(100%, 760px); overflow-wrap: anywhere; }
+.workflow-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
+.workflow-fields > label, .workflow-fields .detail-card > label { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; }
+.workflow-fields input:not([type="checkbox"]), .workflow-fields textarea, .workflow-fields select { width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; min-height: 44px; font-size: 16px; padding: 10px; }
+.workflow-fields textarea { min-height: 90px; resize: vertical; }
+.workflow-crew { min-width: 0; margin: 14px 0; border: 1px solid var(--border); border-radius: 8px; }
+.workflow-crew label, .workflow-check { display: flex; align-items: center; gap: 10px; min-height: 44px; }
+.workflow-crew input, .workflow-check input { flex: 0 0 auto; width: 20px; height: 20px; }
+.workflow-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
+.workflow-hub .button-like, .workflow-review .button-like, .workflow-review summary, .workflow-trip-link { min-height: 44px; white-space: normal; }
+.workflow-review summary { display: flex; align-items: center; cursor: pointer; text-decoration: underline; }
+.workflow-plan-link, .workflow-trip-link { display: flex; margin: 8px 0; gap: 8px; overflow-wrap: anywhere; }
+:root[data-display-layout="phone"] .workflow-review { border-radius: 0; width: 100%; max-height: 100dvh; padding-bottom: max(24px, var(--safe-bottom)); }
+.workflow-fields input:not([type="checkbox"]), .workflow-fields textarea, .workflow-fields select {
+  font-family: var(--font-body); color: var(--text); background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-md);
+}
+.workflow-review, .workflow-hub { color-scheme: light; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .workflow-review, :root:not([data-theme="light"]) .workflow-hub { color-scheme: dark; }
+}
+:root[data-theme="dark"] .workflow-review, :root[data-theme="dark"] .workflow-hub { color-scheme: dark; }

@@ -1,3 +1,10 @@
+import { WorkflowHub } from "../components/workflow/WorkflowHub";
+import { PlanReview } from "../components/workflow/PlanReview";
+import { loadPlanLinks } from "../lib/workflow/api";
+import { AgendaView } from "../components/schedule/AgendaView";
+import { DisplayModePicker } from "../components/DisplayModePicker";
+import { useDisplayMode, type DisplayLayout } from "../lib/displayMode";
+import { useT } from "../lib/i18n";
 import { BackChip } from "../components/BackChip";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -52,6 +59,7 @@ import {
 import {
   createAssignment,
   deleteAssignment,
+  removeAssignmentDay,
   horizonRange,
   listAssignments,
   listDraftAssignments,
@@ -73,7 +81,7 @@ import { TripEditor } from "../components/travel/TripEditor";
 import { sendPush } from "../lib/permissions/pushServer";
 import { notifyLocal } from "../lib/permissions/notifyLocal";
 
-type View = "board" | "week" | "month" | "timeline";
+type View = "agenda" | "board" | "week" | "month" | "timeline";
 
 function todayLocalISO(): string {
   const d = new Date();
@@ -100,7 +108,11 @@ export function Scheduling() {
   const today = todayLocalISO();
   const horizon = useMemo(() => horizonRange(today), [today]);
 
-  const [view, setView] = useState<View>("board");
+  const t = useT();
+  const { layout } = useDisplayMode();
+  const [viewChoices, setViewChoices] = useState<Partial<Record<DisplayLayout, View>>>({});
+  const view = viewChoices[layout] ?? (layout === "phone" ? "agenda" : "board");
+  const setView = (next: View) => setViewChoices(choices => ({ ...choices, [layout]: next }));
   /** Quick-create target from an empty board cell. */
   const [quickCreate, setQuickCreate] = useState<{ personId: string; day: string } | null>(null);
   const [quickJob, setQuickJob] = useState("");
@@ -118,7 +130,7 @@ export function Scheduling() {
   const [dayPanelDate, setDayPanelDate] = useState<string | null>(null);
 
   const range = useMemo(() => {
-    if (view === "week" || view === "board") {
+    if (view === "agenda" || view === "week" || view === "board") {
       const from = startOfWeekISO(anchor);
       return { from, to: addDaysISO(from, 6), label: rangeLabel(from, addDaysISO(from, 6)) };
     }
@@ -146,6 +158,17 @@ export function Scheduling() {
   // Foremen can open the board and read the week; moving people stays a
   // supervisor call (owner decision, 2026-08-11).
   const canEdit = isSupervisorPlus(effectiveRole);
+  const [planId, setPlanId] = useState<string | null>(null);
+  const planLinks = useQuery({ queryKey: ["workflowLinks"], queryFn: loadPlanLinks, enabled: canEdit });
+  const linkedPlan = (id: string) => planLinks.data?.assignments.find(l => l.assignment_id === id)?.plan_id;
+  const openAssignment = (assignment: ScheduleAssignment, day?: string) => {
+    remove.reset();
+    save.reset();
+    if (canEdit && linkedPlan(assignment.id)) setPlanId(linkedPlan(assignment.id)!);
+    else if (canEdit) setEditor({ assignment, defaults: { start_date: day } });
+    else if (assignment.kind === "delivery" && assignment.delivery_id) navigate(`/storage/d/${assignment.delivery_id}`);
+    else if (assignment.project_id) navigate(`/projects/${assignment.project_id}`);
+  };
   // Coverage looks 21 days out regardless of the visible range.
   const coverageWindow = useQuery({
     queryKey: ["scheduleCoverage", today],
@@ -155,7 +178,7 @@ export function Scheduling() {
   const vehicleLinks = useQuery({ queryKey: ["vehicleLinks"], queryFn: listAllVehicleLinks });
 
   const loaded = useMemo(() => assignments.data ?? [], [assignments.data]);
-  const conflictIds = useMemo(() => conflictingAssignmentIds(loaded), [loaded]);
+  const conflictIds = useMemo(() => conflictingAssignmentIds(loaded.filter(a => a.status !== "canceled")), [loaded]);
 
   // ---- Calendar memory (C2/C3): Month view's worked-chips + day panel ---
   // Month-only, gated on `view` so Board/Week/Timeline never pay for data
@@ -464,6 +487,10 @@ export function Scheduling() {
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["scheduleAssignments"] });
     qc.invalidateQueries({ queryKey: ["scheduleDrafts"] });
+    qc.invalidateQueries({ queryKey: ["scheduleCoverage"] });
+    qc.invalidateQueries({ queryKey: ["mySchedule"] });
+    qc.invalidateQueries({ queryKey: ["myScheduleVehicles"] });
+    qc.invalidateQueries({ queryKey: ["projectSchedule"] });
     qc.invalidateQueries({ queryKey: ["vehicleLinks"] });
   };
 
@@ -517,18 +544,19 @@ export function Scheduling() {
   });
 
   const remove = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (day?: string) => {
       const existing = editor?.assignment;
       if (!existing) return;
       const affected =
         existing.status === "published"
           ? existing.members.map((m) => m.profile_id)
           : [];
-      await deleteAssignment(existing.id);
+      if (day) await removeAssignmentDay(existing, day);
+      else await deleteAssignment(existing.id);
       if (affected.length > 0) {
         await fanOut(affected, {
           title: "Schedule updated",
-          body: "A job was removed from your schedule. Tap to check.",
+          body: day ? "A day was removed from your schedule. Tap to check." : "A job was removed from your schedule. Tap to check.",
         });
       }
     },
@@ -557,7 +585,7 @@ export function Scheduling() {
   }
 
   async function doPublish() {
-    const draftList = drafts.data ?? [];
+    const draftList = (drafts.data ?? []).filter(a => !linkedPlan(a.id));
     if (draftList.length === 0) return;
     setPublishing(true);
     try {
@@ -586,7 +614,7 @@ export function Scheduling() {
     }
   }
 
-  const draftList = useMemo(() => drafts.data ?? [], [drafts.data]);
+  const draftList = useMemo(() => (drafts.data ?? []).filter(a => !planLinks.data?.assignments.some(l => l.assignment_id === a.id)), [drafts.data, planLinks.data]);
 
   // Everything currently in play (loaded window + all drafts), deduped. Drives
   // the conflict banner, the red outlines and the pre-publish summary alike.
@@ -598,7 +626,7 @@ export function Scheduling() {
 
   const conflictInput = useMemo(
     () =>
-      [...knownById.values()].map((a) => ({
+      [...knownById.values()].filter(a => a.status !== "canceled").map((a) => ({
         id: a.id,
         start_date: a.start_date,
         end_date: a.end_date,
@@ -634,7 +662,8 @@ export function Scheduling() {
           ? a.start_date > b.start_date ? a : b
           : (a.updated_at ?? "") >= (b.updated_at ?? "") ? a : b;
     if (!pick) return;
-    setEditor({ assignment: pick, highlightMemberIds: [entry.profileId] });
+    if (linkedPlan(pick.id)) setPlanId(linkedPlan(pick.id)!);
+    else setEditor({ assignment: pick, highlightMemberIds: [entry.profileId] });
   }
 
   const tray = useMemo(() => {
@@ -714,12 +743,12 @@ export function Scheduling() {
                   <strong>{nameOf(c.profileId)}</strong> — {jobLabelOf(c.aId)} &amp;{" "}
                   {jobLabelOf(c.bId)}, {clashRangeLabel(c.overlap.start, c.overlap.end)}
                 </span>
-                <button
+                {canEdit && <button
                   className="button-like sched-conflict-banner-fix"
                   onClick={() => fixConflict(c)}
                 >
                   Fix
-                </button>
+                </button>}
               </li>
             ))}
           </ul>
@@ -780,9 +809,10 @@ export function Scheduling() {
         </p>
       )}
 
+      <DisplayModePicker />
       <div className="sched-toolbar">
         <div className="sched-viewswitch" role="tablist">
-          {(["board", "week", "month", "timeline"] as View[]).map((v) => (
+          {(["agenda", "board", "week", "month", "timeline"] as View[]).map((v) => (
             <button
               key={v}
               role="tab"
@@ -790,16 +820,16 @@ export function Scheduling() {
               className={`sched-viewtab${view === v ? " is-active" : ""}`}
               onClick={() => setView(v)}
             >
-              {v === "board" ? "Board" : v === "week" ? "Week" : v === "month" ? "Month" : "Calendar"}
+              {v === "agenda" ? t("schedule.agenda") : v === "board" ? "Board" : v === "week" ? "Week" : v === "month" ? "Month" : "Calendar"}
             </button>
           ))}
         </div>
-        <button
+        {canEdit && <button
           className="button-like active-pill sched-new"
           onClick={() => setEditor({ assignment: null, defaults: { start_date: anchor } })}
         >
           <Plus size={16} aria-hidden /> New
-        </button>
+        </button>}
         {canEdit && (
           <button
             className="button-like sched-plan-ai"
@@ -856,7 +886,7 @@ export function Scheduling() {
         );
       })()}
 
-      {tray.length > 0 && (
+      {canEdit && tray.length > 0 && (
         <div className="sched-tray">
           <span className="sched-tray-label">Unassigned</span>
           <div className="sched-tray-chips">
@@ -875,6 +905,9 @@ export function Scheduling() {
         </div>
       )}
 
+      {canEdit && <WorkflowHub onOpen={setPlanId} />}
+      {canEdit && planId && <PlanReview key={planId} id={planId} onClose={() => setPlanId(null)} />}
+
       {assignments.isError && (
         <QueryError
           error={assignments.error}
@@ -884,11 +917,17 @@ export function Scheduling() {
       )}
       {assignments.isLoading ? (
         <SkeletonList rows={4} />
-      ) : loaded.length === 0 && view !== "timeline" && view !== "board" && view !== "month" ? (
+      ) : loaded.length === 0 && view !== "agenda" && view !== "timeline" && view !== "board" && view !== "month" ? (
         <EmptyState
           icon={<CalendarDays size={22} />}
           title="Nothing scheduled here yet"
           message="Tap a day or “New” to put a crew on a job."
+        />
+      ) : view === "agenda" ? (
+        <AgendaView day={anchor} weekStart={range.from} assignments={loaded}
+          conflictIds={conflictIds} vehicleLabels={vehicleLabelByAssignment} onDay={setAnchor}
+          onOpen={a => openAssignment(a, anchor)}
+          onCreate={canEdit ? day => setEditor({ assignment: null, defaults: { start_date: day } }) : undefined}
         />
       ) : view === "board" ? (
         <>
@@ -921,15 +960,15 @@ export function Scheduling() {
             profileById={profileById}
             conflictIds={conflictIds}
             canEdit={canEdit}
-            onMoveChip={(m) => moveChip.mutate(m)}
-            onRemoveChip={(c) => removeChip.mutate(c)}
+            onMoveChip={(m) => { const id = linkedPlan(m.chip.assignmentId); if (id) setPlanId(id); else moveChip.mutate(m); }}
+            onRemoveChip={(c) => { const id = linkedPlan(c.assignmentId); if (id) setPlanId(id); else removeChip.mutate(c); }}
             onCreateAt={(personId, day) => {
               setQuickJob("");
               setQuickCreate({ personId, day });
             }}
             onOpenAssignment={(id) => {
               const a = loaded.find((x) => x.id === id);
-              if (a && canEdit) setEditor({ assignment: a });
+              if (a) openAssignment(a);
             }}
           />
         </>
@@ -940,8 +979,8 @@ export function Scheduling() {
           assignments={loaded}
           conflictIds={conflictIds}
           vehicleLabels={vehicleLabelByAssignment}
-          onOpen={(a) => setEditor({ assignment: a })}
-          onCreate={(day) => setEditor({ assignment: null, defaults: { start_date: day } })}
+          onOpen={openAssignment}
+          onCreate={canEdit ? (day) => setEditor({ assignment: null, defaults: { start_date: day } }) : undefined}
         />
       ) : view === "month" ? (
         <MonthView
@@ -959,11 +998,11 @@ export function Scheduling() {
           todayISO={today}
           assignments={loaded}
           conflictIds={conflictIds}
-          onOpen={(a) => setEditor({ assignment: a })}
+          onOpen={openAssignment}
         />
       )}
 
-      {draftList.length > 0 && (
+      {canEdit && draftList.length > 0 && (
         <div className="sched-publishbar">
           <div>
             <strong>
@@ -981,7 +1020,7 @@ export function Scheduling() {
         </div>
       )}
 
-      {quickCreate && (
+      {canEdit && quickCreate && (
         <div className="modal-backdrop" role="dialog" aria-modal="true" onClick={() => setQuickCreate(null)}>
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
             <p style={{ margin: 0, fontWeight: 700 }}>
@@ -1019,7 +1058,7 @@ export function Scheduling() {
         </div>
       )}
 
-      {seedProposals && (
+      {canEdit && seedProposals && (
         <div className="modal-backdrop" role="dialog" aria-modal="true" onClick={() => setSeedProposals(null)}>
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
             <p style={{ margin: 0, fontWeight: 700 }}>{seedLabel}</p>
@@ -1086,20 +1125,20 @@ export function Scheduling() {
           loading={memoryLoading}
           canSeeHours={isForemanPlus(effectiveRole)}
           assignmentFor={(projectId) => assignmentForDayPanel.get(projectId) ?? null}
-          onEditAssignment={(a) => {
+          onEditAssignment={canEdit ? (a) => {
             setDayPanelDate(null);
-            setEditor({ assignment: a });
-          }}
-          onScheduleCrew={() => {
+            openAssignment(a, dayPanelDate);
+          } : undefined}
+          onScheduleCrew={canEdit ? () => {
             const startDate = dayPanelDate;
             setDayPanelDate(null);
             setEditor({ assignment: null, defaults: { start_date: startDate } });
-          }}
+          } : undefined}
           onClose={() => setDayPanelDate(null)}
         />
       )}
 
-      {editor && (
+      {canEdit && editor && (!editor.assignment || !linkedPlan(editor.assignment.id)) && (
         <AssignmentEditor
           assignment={editor.assignment}
           defaults={editor.defaults}
@@ -1120,7 +1159,9 @@ export function Scheduling() {
           }
           saving={save.isPending || remove.isPending}
           onSave={(result) => save.mutate(result)}
-          onDelete={editor.assignment ? () => remove.mutate() : undefined}
+          onDelete={editor.assignment ? (day) => remove.mutate(day) : undefined}
+          error={remove.error ?? save.error}
+          selectedDay={editor.defaults?.start_date}
           onClose={() => setEditor(null)}
         />
       )}
@@ -1138,7 +1179,7 @@ export function Scheduling() {
         />
       )}
 
-      {publishOpen && (
+      {canEdit && publishOpen && (
         <div className="sched-sheet-backdrop" role="dialog" aria-modal="true">
           <div className="sched-sheet">
             <div className="sched-sheet-head">

@@ -35,6 +35,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import migration_objects
 import migration_lint
 import partner_wall_lib
 import schema_verify
@@ -73,6 +74,12 @@ class Fixture:
 
 
 class SchemaVerifyTest(unittest.TestCase):
+    def test_compact_constraints_are_not_phantom_columns(self):
+        sql = "create table notices (id uuid, plan_id uuid, revision int, unique(plan_id,revision), check(revision > 0));"
+        columns = {key for kind, key in migration_objects.extract(sql)[0] if kind == 'column'}
+        self.assertEqual(columns, {'notices.id', 'notices.plan_id', 'notices.revision'})
+
+
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.fx = Fixture(Path(self._tmp.name))

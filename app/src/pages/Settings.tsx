@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { DisplayModePicker } from "../components/DisplayModePicker";
 import { BackChip } from "../components/BackChip";
 import { Link } from "react-router-dom";
 import { BuildIdentityCard } from "../components/BuildIdentityCard";
@@ -55,6 +56,11 @@ export function Settings() {
         </div>
         <BackChip label={t("settings.back")} />
       </header>
+
+      <section className="detail-card" style={{ marginBottom: 12 }}>
+        <DisplayModePicker />
+        <p className="muted">{t("display.help")}</p>
+      </section>
 
       <section className="detail-card" style={{ marginBottom: 12 }}>
         <h2 style={{ marginTop: 0, fontSize: 18 }}>{t("settings.language.heading")}</h2>

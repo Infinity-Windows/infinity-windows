@@ -1,3 +1,6 @@
+import { WorkflowHub } from "../components/workflow/WorkflowHub";
+import { PlanReview } from "../components/workflow/PlanReview";
+import { loadPlanLinks } from "../lib/workflow/api";
 import { BackChip } from "../components/BackChip";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -49,8 +52,8 @@ import { ProcedureEditor } from "../components/travel/ProcedureEditor";
 import { ContactEditor } from "../components/travel/ContactEditor";
 import { useT, type TKey } from "../lib/i18n";
 
-type Tab = "timeline" | "flights" | "lodging" | "ground" | "rules" | "contacts";
-const TAB_KEY: Record<Tab, TKey> = {
+type TripSection = "timeline" | "flights" | "lodging" | "ground" | "rules" | "contacts";
+const SECTION_KEY: Record<TripSection, TKey> = {
   timeline: "travelDetail.tab.timeline",
   flights: "travelDetail.tab.flights",
   lodging: "travelDetail.tab.lodging",
@@ -58,7 +61,7 @@ const TAB_KEY: Record<Tab, TKey> = {
   rules: "travelDetail.tab.rules",
   contacts: "travelDetail.tab.contacts",
 };
-const TAB_IDS: Tab[] = ["timeline", "flights", "lodging", "ground", "rules", "contacts"];
+const SECTION_IDS: TripSection[] = ["timeline", "flights", "lodging", "ground", "rules", "contacts"];
 
 type EditorState =
   | { kind: "trip" }
@@ -90,7 +93,11 @@ export function TripDetail() {
 
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const { effectiveRole: role } = useEffectiveRole();
-  const canEdit = isSupervisorPlus(role);
+  const manager = isSupervisorPlus(role);
+  const [planId, setPlanId] = useState<string | null>(null);
+  const planLinks = useQuery({ queryKey: ["workflowLinks"], queryFn: loadPlanLinks, enabled: manager });
+  const connected = planLinks.data?.trips.some(l => l.trip_id === tripId) ?? false;
+  const canEdit = manager && !connected && !planLinks.isPending && !planLinks.isError;
   const myId = me.data?.id ?? null;
 
   const detailQ = useQuery({
@@ -99,7 +106,6 @@ export function TripDetail() {
     enabled: Boolean(tripId),
   });
 
-  const [tab, setTab] = useState<Tab>("timeline");
   const [editor, setEditor] = useState<EditorState>(null);
   const [publishing, setPublishing] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -145,6 +151,7 @@ export function TripDetail() {
   };
 
   async function notifyCrew(msg: { title: string; body: string }) {
+    if (connected) return;
     const ids = (detail?.trip.crew ?? []).map((m) => m.profile_id);
     for (const pid of ids) {
       void sendPush({ profileIds: [pid], title: msg.title, body: msg.body, tag: `travel-${tripId}`, url: tripUrl(tripId) });
@@ -156,7 +163,7 @@ export function TripDetail() {
 
   const publish = useMutation({
     mutationFn: async () => {
-      if (!detail) return;
+      if (!detail || !canEdit) return;
       await publishTrip(detail.trip.id);
       await notifyCrew(tripPublishMessage(detail.trip.name));
     },
@@ -205,7 +212,7 @@ export function TripDetail() {
   // announced. Same helper the Travel list already filters with.
   const mayOpen =
     !detail ||
-    canOpenTrip(detail.trip, { profileId: myId, isSupervisor: canEdit });
+    canOpenTrip(detail.trip, { profileId: myId, isSupervisor: manager });
   if (!detail || !mayOpen) {
     return (
       <div className="page travel-detail">
@@ -220,7 +227,7 @@ export function TripDetail() {
 
   const { trip } = detail;
   const phase = tripPhase(trip.start_date, trip.end_date, today);
-  const shownFlights = canEdit ? detail.flights : flightsForViewer(detail.flights, myId);
+  const shownFlights = manager ? detail.flights : flightsForViewer(detail.flights, myId);
   const tripAttachments = detail.attachments.filter((a) => !a.flight_id && !a.lodging_id);
   const targets = directionsTargets(detail);
 
@@ -249,16 +256,13 @@ export function TripDetail() {
         <BackChip fallback="/travel" label={t("travelDetail.backToTravel")} />
       </header>
 
+      {manager && <WorkflowHub tripId={tripId} onOpen={setPlanId} />}
+      {manager && planId && <PlanReview key={planId} id={planId} onClose={() => setPlanId(null)} />}
       {canEdit && (
         <div className="travel-toolbar">
           <button className="button-like" onClick={() => setEditor({ kind: "trip" })}>
             <Pencil size={15} aria-hidden /> {t("travelDetail.editTrip")}
           </button>
-          {trip.status === "draft" && (
-            <button className="button-like active-pill" style={{ marginLeft: "auto" }} onClick={doPublish} disabled={publishing}>
-              <Send size={15} aria-hidden /> {publishing ? t("travelDetail.publishing") : t("travelDetail.publishToCrew")}
-            </button>
-          )}
         </div>
       )}
 
@@ -293,34 +297,27 @@ export function TripDetail() {
         </div>
       )}
 
-      <nav className="travel-tabs" role="tablist">
-        {TAB_IDS.map((id) => (
-          <button
-            key={id}
-            role="tab"
-            aria-selected={tab === id}
-            className={`travel-tab${tab === id ? " is-active" : ""}`}
-            onClick={() => setTab(id)}
-          >
-            {t(TAB_KEY[id])}
-          </button>
+      <nav className="travel-jumps" aria-label={t("travelDetail.sections")}>
+        {SECTION_IDS.map((id) => (
+          <a key={id} className="travel-jump" href={`#trip-${id}`}>
+            {t(SECTION_KEY[id])}
+          </a>
         ))}
+        {(tripAttachments.length > 0 || canEdit) && (
+          <a className="travel-jump" href="#trip-files">{t("travelDetail.tripFiles")}</a>
+        )}
+        {canEdit && trip.status === "draft" && (
+          <a className="travel-jump" href="#trip-publish">{t("travelDetail.publishToCrew")}</a>
+        )}
       </nav>
 
-      {tab === "timeline" && (
-        <>
-          {trip.notes && <p className="travel-notes travel-trip-notes">{trip.notes}</p>}
-          <TripTimeline items={timeline} nextUpId={nextUp?.id} />
-          {tripAttachments.length > 0 || canEdit ? (
-            <section className="travel-section">
-              <div className="travel-section-head"><h3>{t("travelDetail.tripFiles")}</h3></div>
-              <AttachmentsPanel tripId={trip.id} attachments={tripAttachments} canEdit={canEdit} onChanged={refresh} />
-            </section>
-          ) : null}
-        </>
-      )}
+      <section id="trip-timeline" className="travel-sheet-section" tabIndex={-1} aria-labelledby="trip-timeline-title">
+        <h2 id="trip-timeline-title">{t("travelDetail.tab.timeline")}</h2>
+        {trip.notes && <p className="travel-notes travel-trip-notes">{trip.notes}</p>}
+        <TripTimeline items={timeline} nextUpId={nextUp?.id} />
+      </section>
 
-      {tab === "flights" && (
+      <div id="trip-flights" className="travel-sheet-section" tabIndex={-1}>
         <FlightsSection
           tripId={trip.id}
           flights={shownFlights}
@@ -333,9 +330,9 @@ export function TripDetail() {
           onDelete={(f) => removeEntity.mutate(() => deleteFlight(trip.id, f.id))}
           onAttachmentsChanged={refresh}
         />
-      )}
+      </div>
 
-      {tab === "lodging" && (
+      <div id="trip-lodging" className="travel-sheet-section" tabIndex={-1}>
         <LodgingSection
           tripId={trip.id}
           lodging={detail.lodging}
@@ -347,9 +344,9 @@ export function TripDetail() {
           onDelete={(l) => removeEntity.mutate(() => deleteLodging(trip.id, l.id))}
           onAttachmentsChanged={refresh}
         />
-      )}
+      </div>
 
-      {tab === "ground" && (
+      <div id="trip-ground" className="travel-sheet-section" tabIndex={-1}>
         <GettingAroundSection
           ground={detail.ground}
           canEdit={canEdit}
@@ -358,9 +355,9 @@ export function TripDetail() {
           onEdit={(g) => setEditor({ kind: "ground", entity: g })}
           onDelete={(g) => removeEntity.mutate(() => deleteGround(trip.id, g.id))}
         />
-      )}
+      </div>
 
-      {tab === "rules" && (
+      <div id="trip-rules" className="travel-sheet-section" tabIndex={-1}>
         <HouseRulesSection
           procedures={detail.procedures}
           canEdit={canEdit}
@@ -368,9 +365,9 @@ export function TripDetail() {
           onEdit={(p) => setEditor({ kind: "procedure", entity: p })}
           onDelete={(p) => removeEntity.mutate(() => deleteProcedure(trip.id, p.id))}
         />
-      )}
+      </div>
 
-      {tab === "contacts" && (
+      <div id="trip-contacts" className="travel-sheet-section" tabIndex={-1}>
         <ContactsSection
           contacts={detail.contacts}
           canEdit={canEdit}
@@ -378,9 +375,26 @@ export function TripDetail() {
           onEdit={(c) => setEditor({ kind: "contact", entity: c })}
           onDelete={(c) => removeEntity.mutate(() => deleteContact(trip.id, c.id))}
         />
+      </div>
+
+      {(tripAttachments.length > 0 || canEdit) && (
+        <section id="trip-files" className="travel-sheet-section" tabIndex={-1} aria-labelledby="trip-files-title">
+          <h2 id="trip-files-title">{t("travelDetail.tripFiles")}</h2>
+          <AttachmentsPanel tripId={trip.id} attachments={tripAttachments} canEdit={canEdit} onChanged={refresh} />
+        </section>
       )}
 
-      {editor?.kind === "trip" && (
+      {canEdit && trip.status === "draft" && (
+        <section id="trip-publish" className="travel-sheet-section" tabIndex={-1} aria-labelledby="trip-publish-title">
+          <h2 id="trip-publish-title">{t("travelDetail.publishToCrew")}</h2>
+          <p className="muted">{t("travelDetail.reviewTrip")}</p>
+          <button className="button-like active-pill" onClick={doPublish} disabled={publishing}>
+            <Send size={15} aria-hidden /> {publishing ? t("travelDetail.publishing") : t("travelDetail.publishToCrew")}
+          </button>
+        </section>
+      )}
+
+      {canEdit && editor?.kind === "trip" && (
         <TripEditor
           trip={trip}
           onClose={() => setEditor(null)}
@@ -396,19 +410,19 @@ export function TripDetail() {
           }}
         />
       )}
-      {editor?.kind === "flight" && (
+      {canEdit && editor?.kind === "flight" && (
         <FlightEditor tripId={trip.id} crew={trip.crew} flight={editor.entity} onClose={() => setEditor(null)} onSaved={onEditedSection} />
       )}
-      {editor?.kind === "lodging" && (
+      {canEdit && editor?.kind === "lodging" && (
         <LodgingEditor tripId={trip.id} lodging={editor.entity} onClose={() => setEditor(null)} onSaved={onEditedSection} />
       )}
-      {editor?.kind === "ground" && (
+      {canEdit && editor?.kind === "ground" && (
         <GroundEditor tripId={trip.id} ground={editor.entity} onClose={() => setEditor(null)} onSaved={onEditedSection} />
       )}
-      {editor?.kind === "procedure" && (
+      {canEdit && editor?.kind === "procedure" && (
         <ProcedureEditor tripId={trip.id} procedure={editor.entity} onClose={() => setEditor(null)} onSaved={onEditedSection} />
       )}
-      {editor?.kind === "contact" && (
+      {canEdit && editor?.kind === "contact" && (
         <ContactEditor tripId={trip.id} contact={editor.entity} onClose={() => setEditor(null)} onSaved={onEditedSection} />
       )}
     </div>

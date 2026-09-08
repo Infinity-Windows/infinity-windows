@@ -273,7 +273,9 @@ class FunctionSecretsTest(unittest.TestCase):
         # function and no required secret — SENTRY_DSN is optional for all 23
         # (test_the_crash_monitor_is_optional_for_every_function), so the
         # headline sentence does not move a third time.
-        self.assertEqual(len(names), 23)
+        # Connected publication adds one worker, reusing the existing VAPID keys.
+        self.assertEqual(len(names), 24)
+        self.assertIn("deliver-workflow-notices", names)
         self.assertIn("ask", names)
         self.assertIn("studio-assist", names)
         # Creates accounts on the service-role key, and needs no secret of its

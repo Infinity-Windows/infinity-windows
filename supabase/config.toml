@@ -85,3 +85,6 @@ verify_jwt = true
 # link, the body is written inside the function, and the caller's own JWT is
 # what my_role_rank() and the projects RLS read (Wave H, H2).
 verify_jwt = true
+
+[functions.deliver-workflow-notices]
+verify_jwt = true
