@@ -67,7 +67,7 @@ test("Spanish trip navigation and the crew draft boundary", async ({ page }) => 
   await expect(page).toHaveURL(/#trip-lodging$/);
   await tripFixture(page, "draft");
   await page.reload();
-  await expect(page.getByRole("heading", { name: "No se encontró el viaje" })).toBeVisible();
+  await expect(page.getByText("No se encontró el viaje", { exact: true })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Secciones del viaje" })).toHaveCount(0);
   await expect(page.getByText("Crew house", { exact: true })).toHaveCount(0);
 });
