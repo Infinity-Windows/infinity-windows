@@ -178,7 +178,6 @@ export const QUERY_KEY_ROOTS: QueryKeyRootEntry[] = [
   { root: "profilesAll", offline: false },
   { root: "profilesIncludingRemoved", offline: false },
   { root: "projectAssignments", offline: false },
-  { root: "projectCostCodes", offline: false },
   { root: "projectExceptions", offline: false },
   { root: "projectIssues", offline: false },
   { root: "projectMessages", offline: false },
