@@ -3556,6 +3556,7 @@ export const CATALOG = {
   // one/many split for "others" and units is the same trick as
   // mywork.newUnits.one/.many — the framework interpolates {n} but has no
   // plural rule, so the caller picks the key by count.
+  "workflow.endTime": { en: "End time", es: "Hora de salida" },
   "crewStart.label": { en: "Your schedule", es: "Tu horario" },
   "crewStart.view": { en: "View schedule", es: "Ver horario" },
   "crewStart.starts": { en: "Start", es: "Entrada" },

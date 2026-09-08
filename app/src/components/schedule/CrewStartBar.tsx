@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { Clock } from "lucide-react";
 import { getMyProfile } from "../../lib/install/api";
 import { listMyPublished } from "../../lib/schedule/api";
-import { addDaysISO, agendaDayLabel, formatStartTime } from "../../lib/schedule/dates";
+import { addDaysISO, agendaDayLabel, formatScheduleTime } from "../../lib/schedule/dates";
 import { useT } from "../../lib/i18n";
 
 function localDay() {
@@ -57,7 +57,7 @@ export function CrewStartBar() {
         <p className="crew-start-message">{t("crewStart.empty")}</p>
       ) : next.map(a => (
         <Link key={a.id} className="crew-start-row" to="/my-schedule">
-          <strong className="crew-start-time">{a.start_time ? `${t("crewStart.starts")} ${formatStartTime(a.start_time)}` : t("crewStart.noTime")}</strong>
+          <strong className="crew-start-time">{a.start_time ? `${t("crewStart.starts")} ${formatScheduleTime(a.start_time, a.end_time)}` : t("crewStart.noTime")}</strong>
           <span className="crew-start-project">{a.project?.job_code && `${a.project.job_code} · `}{a.project?.name ?? a.delivery?.label ?? t("mywork.jobToday")}</span>
         </Link>
       ))}

@@ -14,6 +14,7 @@ export function planChanges(before: PlanDraft, after: PlanDraft, person: (id: st
     const old = before.assignments.find(b => b.id === a.id); if (!old) continue;
     add(a.id, "workflow.start", old.start_date, a.start_date); add(a.id, "workflow.end", old.end_date, a.end_date);
     add(a.id, "workflow.startTime", old.start_time?.slice(0,5), a.start_time?.slice(0,5));
+    add(a.id, "workflow.endTime", old.end_time?.slice(0,5), a.end_time?.slice(0,5));
     add(a.id, "workflow.notes", old.note, a.note); add(a.id, "workflow.crew", crew(old.members), crew(a.members));
   }
   for (const a of after.trips) {

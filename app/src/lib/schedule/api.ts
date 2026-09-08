@@ -78,6 +78,7 @@ const localStore = {
       start_date: input.start_date,
       end_date: input.end_date,
       start_time: input.start_time ?? null,
+      ...(input.end_time !== undefined ? { end_time: input.end_time } : {}),
       status: "draft",
       color: input.color ?? null,
       note: input.note ?? null,
@@ -100,6 +101,7 @@ const localStore = {
       ...("start_date" in patch ? { start_date: patch.start_date! } : {}),
       ...("end_date" in patch ? { end_date: patch.end_date! } : {}),
       ...("start_time" in patch ? { start_time: patch.start_time ?? null } : {}),
+      ...("end_time" in patch ? { end_time: patch.end_time ?? null } : {}),
       ...("color" in patch ? { color: patch.color ?? null } : {}),
       ...("note" in patch ? { note: patch.note ?? null } : {}),
       ...("status" in patch ? { status: patch.status! } : {}),
@@ -142,6 +144,7 @@ interface RawAssignmentRow {
   start_date: string;
   end_date: string;
   start_time: string | null;
+  end_time?: string | null;
   status: string;
   color: string | null;
   note: string | null;
@@ -177,6 +180,7 @@ function mapRow(row: RawAssignmentRow): ScheduleAssignment {
     start_date: row.start_date,
     end_date: row.end_date,
     start_time: row.start_time,
+    end_time: row.end_time ?? null,
     status: (row.status as ScheduleAssignment["status"]) ?? "draft",
     color: row.color,
     note: row.note,
@@ -329,6 +333,7 @@ export async function createAssignment(
       start_date: input.start_date,
       end_date: input.end_date,
       start_time: input.start_time ?? null,
+      ...(input.end_time !== undefined ? { end_time: input.end_time } : {}),
       color: input.color ?? null,
       note: input.note ?? null,
       status: "draft",
@@ -355,6 +360,7 @@ export async function updateAssignment(
   if ("start_date" in patch) columnPatch.start_date = patch.start_date;
   if ("end_date" in patch) columnPatch.end_date = patch.end_date;
   if ("start_time" in patch) columnPatch.start_time = patch.start_time ?? null;
+  if ("end_time" in patch) columnPatch.end_time = patch.end_time ?? null;
   if ("color" in patch) columnPatch.color = patch.color ?? null;
   if ("note" in patch) columnPatch.note = patch.note ?? null;
   if ("status" in patch) columnPatch.status = patch.status;

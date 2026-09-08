@@ -53,7 +53,7 @@ import {
 } from "../lib/install/types";
 import { getOpenShift } from "../lib/timeclock";
 import { listMyPublished } from "../lib/schedule/api";
-import { formatStartTime } from "../lib/schedule/dates";
+import { formatScheduleTime } from "../lib/schedule/dates";
 import { listVehicleLinksForAssignments } from "../lib/vehicles/api";
 import { vehicleTitle } from "../lib/vehicles/display";
 import { listTrips } from "../lib/travel/api";
@@ -454,7 +454,7 @@ export function MyWork() {
             <span className="next-label">{t("mywork.today")}</span>
             {todayAssignment.start_time && (
               <span className="muted" style={{ fontSize: 12 }}>
-                {formatStartTime(todayAssignment.start_time)}
+                {formatScheduleTime(todayAssignment.start_time, todayAssignment.end_time)}
               </span>
             )}
           </div>

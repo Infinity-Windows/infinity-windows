@@ -6,7 +6,7 @@ import { Link } from "react-router-dom";
 import { CalendarClock, Clock, MapPin, Plane, Truck, Users } from "lucide-react";
 import { getMyProfile } from "../lib/install/api";
 import { EmptyState, QueryError, SkeletonList } from "../components/ui/States";
-import { addDaysISO, agendaDayLabel, formatStartTime } from "../lib/schedule/dates";
+import { addDaysISO, agendaDayLabel, formatScheduleTime } from "../lib/schedule/dates";
 import { buildAgenda, crewmateNames } from "../lib/schedule/grouping";
 import { assignmentColor } from "../lib/schedule/color";
 import { listMyPublished } from "../lib/schedule/api";
@@ -169,7 +169,7 @@ export function MySchedule() {
                     <div className="sched-agenda-meta">
                       {a.start_time && (
                         <span className="sched-agenda-time">
-                          <Clock size={13} aria-hidden /> {formatStartTime(a.start_time)}
+                          <Clock size={13} aria-hidden /> {formatScheduleTime(a.start_time, a.end_time)}
                         </span>
                       )}
                       {!entry.isFirstDay && (

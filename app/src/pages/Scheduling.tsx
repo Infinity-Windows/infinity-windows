@@ -521,7 +521,8 @@ export function Scheduling() {
       const scheduleChanged =
         existing.start_date !== result.start_date ||
         existing.end_date !== result.end_date ||
-        (existing.start_time ?? null) !== result.start_time;
+        (existing.start_time ?? null) !== result.start_time ||
+        (existing.end_time ?? null) !== result.end_time;
       await updateAssignment(existing.id, result);
       await syncVehicleLink(result, existing.id);
       // Re-notify only affected people when editing an already-published block.

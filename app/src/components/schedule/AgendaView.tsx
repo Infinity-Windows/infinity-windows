@@ -1,6 +1,6 @@
 import { AlertTriangle, Plus, Truck } from "lucide-react";
 import { useLanguage } from "../../lib/i18n";
-import { addDaysISO, enumerateDays, formatStartTime } from "../../lib/schedule/dates";
+import { addDaysISO, enumerateDays, formatScheduleTime } from "../../lib/schedule/dates";
 import { calendarColorStyle } from "../../lib/schedule/jobHue";
 import type { ScheduleAssignment } from "../../lib/schedule/types";
 
@@ -32,7 +32,7 @@ export function AgendaView({ day, weekStart, assignments, conflictIds, vehicleLa
           <button key={a.id} className={`sched-agenda-item${a.kind === "delivery" ? " delivery" : ""}`} style={calendarColorStyle(a)} onClick={() => onOpen(a)}>
             <strong>{a.kind === "delivery" ? a.delivery?.label ?? t("schedule.delivery") :
               [a.project?.job_code, a.project?.name].filter(Boolean).join(" · ") || t("schedule.job")}</strong>
-            <span>{a.start_time ? formatStartTime(a.start_time) : "—"} · {t("schedule.crewCount", { n: a.members.length })}</span>
+            <span>{a.start_time ? formatScheduleTime(a.start_time, a.end_time) : "—"} · {t("schedule.crewCount", { n: a.members.length })}</span>
             <span>{a.members.map(m => m.display_name).filter(Boolean).join(", ")}</span>
             {vehicleLabels.get(a.id) && <span><Truck size={14} aria-hidden /> {vehicleLabels.get(a.id)}</span>}
             {a.status === "draft" && <span className="travel-chip travel-chip-draft">{t("schedule.draft")}</span>}

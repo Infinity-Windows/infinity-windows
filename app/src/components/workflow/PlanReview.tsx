@@ -84,6 +84,7 @@ function ReviewBody({ initial, onClose }: { initial: Review; onClose: () => void
         <label>{t("workflow.start")}<input type="date" value={a.start_date} onChange={e => change(d => { d.assignments[i].start_date = e.target.value; })} /></label>
         <label>{t("workflow.end")}<input type="date" value={a.end_date} onChange={e => change(d => { d.assignments[i].end_date = e.target.value; })} /></label>
         <label>{t("workflow.startTime")}<input type="time" value={a.start_time ?? ""} onChange={e => change(d => { d.assignments[i].start_time = e.target.value || null; })} /></label>
+        <label>{t("workflow.endTime")}<input type="time" value={a.end_time ?? ""} onChange={e => change(d => { d.assignments[i].end_time = e.target.value || null; })} /></label>
         <label>{t("workflow.notes")}<textarea value={a.note ?? ""} onChange={e => change(d => { d.assignments[i].note = e.target.value; })} /></label>
         {crewPicker(a.members, members => change(d => { d.assignments[i].members = members as typeof a.members; }), true)}
         </fieldset>

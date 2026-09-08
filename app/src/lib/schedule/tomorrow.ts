@@ -68,6 +68,7 @@ export interface TomorrowLineParts {
   /** Raw "HH:MM[:SS]" — the component formats it with the same helper the
    * Today strip already uses (formatStartTime). */
   startTime: string | null;
+  endTime?: string | null;
   truckLabel: string | null;
   /** Crew on the assignment, not counting the viewer themself. */
   othersCount: number;
@@ -84,6 +85,7 @@ export function tomorrowLineParts(
     projectId: assignment.project_id,
     jobLabel: assignment.project?.name ?? assignment.project?.job_code ?? "",
     startTime: assignment.start_time,
+    ...(assignment.end_time ? { endTime: assignment.end_time } : {}),
     truckLabel,
     othersCount: assignment.members.filter((m) => m.profile_id !== profileId)
       .length,
