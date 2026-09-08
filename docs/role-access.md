@@ -15,20 +15,22 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 **Menu drawer:**
 
 - My Work (`/`)
-- Warehouse (`/warehouse`)
+- Jobs (`/projects`)
 - My Schedule (`/my-schedule`)
-- Clock in / out (action)
+- Warehouse (`/warehouse`)
+- Supplies (`/supplies`)
 - My timecard (`/timecard`)
-- Travel (`/travel`)
-- Learn (`/learn`)
 - Points (`/points`)
-- Memo review (`/review`)
+- Learn (`/learn`)
 - Safety (`/safety`)
+- Travel (`/travel`)
 - Photos & receipts (`/photos`)
-- Notifications (`/notifications`)
+- Ask (`/ask`)
+- Suggestions (`/suggestions`)
 - Stuck writes (`/stuck`)
 - Diagnostics (`/diagnostics`)
 - Settings (`/settings`)
+- Notifications (`/notifications`)
 
 **Can reach (all 31 allowed destinations):**
 

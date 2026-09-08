@@ -2,6 +2,20 @@ import { useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { ChevronRight, LogOut } from "lucide-react";
 import type { MenuAction, MenuItem, MenuSection } from "../../lib/nav";
+import { useT, type TKey } from "../../lib/i18n";
+
+// S6: the installer drawer's three new group headers are the first section
+// titles in this menu that need Spanish — everything else here (Time
+// tracking, Business, Warehouse…) is still English-only, a gap the rest of
+// the installer path is closing screen by screen (S3/S3b), not fixed in one
+// pass here. Keyed by the plain-English title nav.ts hands back, so
+// installerMenu's return value (and every test asserting against it) stays
+// untouched; only what actually renders on screen changes.
+const GROUP_TITLE_KEYS: Record<string, TKey> = {
+  Work: "nav.group.work",
+  Me: "nav.group.me",
+  Help: "nav.group.help",
+};
 
 interface AppMenuProps {
   sections: MenuSection[];
@@ -29,6 +43,7 @@ export function AppMenu({
   isActionActive,
   onSignOut,
 }: AppMenuProps) {
+  const t = useT();
   return (
     <div className="app-menu">
       {sections.map((section, i) =>
@@ -42,7 +57,13 @@ export function AppMenu({
           />
         ) : (
           <div className="menu-group" key={section.title ?? `group-${i}`}>
-            {section.title && <p className="menu-section-title">{section.title}</p>}
+            {section.title && (
+              <p className="menu-section-title">
+                {section.title in GROUP_TITLE_KEYS
+                  ? t(GROUP_TITLE_KEYS[section.title])
+                  : section.title}
+              </p>
+            )}
             <ul className="menu-list">
               {section.items.map((item) => (
                 <MenuRow
