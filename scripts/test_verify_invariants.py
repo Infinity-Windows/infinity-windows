@@ -55,7 +55,7 @@ def healthy() -> dict:
             policy("pay_rates", "pay_rates_select", using="(NOT is_partner_user()) AND can_see_pay(auth.uid())"),
             policy("objects", "authenticated plansets", schema="storage",
                    using="(bucket_id = 'plansets') AND (NOT is_partner_user())"),
-            policy("objects", "trip attachments read", schema="storage", using="(bucket_id = 'trips')"),
+            policy("objects", "trip attachments read", schema="storage", using="(bucket_id = 'trip-attachments') AND (NOT is_partner_user())"),
             policy("packages", "service writes", cmd="INSERT", roles=("service_role",), check="true"),
         ],
         "profile_columns": [
@@ -88,7 +88,21 @@ class TheHealthyShapePasses(unittest.TestCase):
         self.assertEqual(vi.PARTNER_WALL_EXEMPT_TABLES, frozenset({"projects", "daily_logs"}))
 
     def test_storage_todo_list_is_shared_with_the_static_test(self):
-        self.assertIn("trip attachments read", vi.STORAGE_WALL_TODO)
+        from test_partner_wall import STORAGE_WALL_TODO
+        self.assertEqual(vi.STORAGE_WALL_TODO, STORAGE_WALL_TODO)
+        self.assertNotIn("trip attachments read", vi.STORAGE_WALL_TODO)
+        self.assertNotIn("trip attachments write", vi.STORAGE_WALL_TODO)
+
+    def test_trip_attachments_no_longer_have_a_partner_wall_exemption(self):
+        for name, command in (("trip attachments read", "SELECT"), ("trip attachments write", "ALL")):
+            with self.subTest(policy=name):
+                report = healthy()
+                report["policies"] = [p for p in report["policies"] if p["name"] != "trip attachments read"]
+                report["policies"].append(policy("objects", name, cmd=command, schema="storage",
+                                                  using="(bucket_id = 'trip-attachments')"))
+                failures, _, _ = vi.judge(report)
+                self.assertEqual(len(failures), 1)
+                self.assertIn(name, failures[0])
 
 
 class TheWall(unittest.TestCase):
