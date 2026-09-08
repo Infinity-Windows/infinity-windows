@@ -4581,7 +4581,7 @@ export const CATALOG = {
   "workflow.retryNotices": { en: "Retry pending notifications", es: "Reintentar notificaciones pendientes" },
   "workflow.planActions": { en: "Plan actions", es: "Acciones del plan" },
   "workflow.disconnect": { en: "Disconnect unpublished plan", es: "Desconectar plan sin publicar" },
-  "workflow.cancelConfirm": { en: "Cancel all work and travel in this plan and notify affected crew.", es: "Cancelar todo el trabajo y los viajes de este plan y notificar al equipo afectado." },
+  "workflow.cancelConfirm": { en: "Withdraw this plan’s work and travel instructions and notify crew. Booked flights and lodging must be canceled with their providers.", es: "Retirar las instrucciones de trabajo y viaje de este plan y notificar al equipo. Los vuelos y alojamientos reservados deben cancelarse con sus proveedores." },
   "workflow.cancel": { en: "Cancel published plan", es: "Cancelar plan publicado" },
   "workflow.plans": { en: "Connected work and travel", es: "Trabajo y viajes conectados" },
   "workflow.connectedHelp": { en: "This trip belongs to a connected plan. Use its review to save changes and publish work and travel together.", es: "Este viaje pertenece a un plan conectado. Usa su revisión para guardar cambios y publicar el trabajo y los viajes juntos." },

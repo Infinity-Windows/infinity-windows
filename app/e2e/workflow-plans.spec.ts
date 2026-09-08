@@ -141,7 +141,7 @@ test("a lost cancellation response retries cancellation without republishing", a
   });
   const dialog = await openReview(page);
   await dialog.getByText("Plan actions", { exact: true }).click();
-  await dialog.getByRole("checkbox", { name: /Cancel all work/ }).check();
+  await dialog.getByRole("checkbox", { name: /Withdraw this plan/ }).check();
   await dialog.getByRole("button", { name: "Cancel published plan", exact: true }).click();
   await expect(dialog.getByRole("alert")).toBeVisible();
   await dialog.getByRole("button", { name: "Retry the same action", exact: true }).click();
