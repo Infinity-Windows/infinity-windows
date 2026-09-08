@@ -43,6 +43,7 @@ import {
   type MintedGcLink,
 } from "../../lib/gc";
 import { gcLinkUrl } from "../../lib/gcToken";
+import { GcContactFields } from "./GcContactFields";
 import { shortDay } from "../../lib/pipeline";
 import type { Project } from "../../lib/types";
 
@@ -158,6 +159,11 @@ export function GcPanel({
           </button>
         )}
       </div>
+
+      {/* The GC's name and number live here, by the rest of the GC's
+          information (owner, 2026-09-07) — stored on the job's build facts,
+          shown and edited on this card. */}
+      <GcContactFields projectId={projectId} isLead={isLead} />
 
       {saved && <p className="wh-row-sub">{t("gc.saved")}</p>}
 
