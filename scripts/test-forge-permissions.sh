@@ -23,4 +23,15 @@ run_sql "$REPO/supabase/migrations/20261003000000_forge_workflow_permissions.sql
 # The deploy path can be retried. Applying twice must retain the same boundary.
 run_sql "$REPO/supabase/migrations/20261003000000_forge_workflow_permissions.sql"
 run_sql "$FIXTURES/assertions.sql"
+run_sql "$REPO/scripts/tests/forge-publication/history-fixtures.sql"
+run_sql "$REPO/supabase/migrations/20261004000000_connected_workflow_plans.sql"
+run_sql "$REPO/scripts/tests/forge-publication/assertions.sql"
+run_sql "$REPO/scripts/tests/forge-publication/concurrency-setup.sql"
+run_sql "$REPO/scripts/tests/forge-publication/concurrent-publish.sql" &
+FIRST_PUBLISH=$!
+run_sql "$REPO/scripts/tests/forge-publication/concurrent-publish.sql" &
+SECOND_PUBLISH=$!
+wait "$FIRST_PUBLISH"
+wait "$SECOND_PUBLISH"
+run_sql "$REPO/scripts/tests/forge-publication/concurrency-assertions.sql"
 printf 'Forge database permission checks passed (disposable PostgreSQL 16).\n'

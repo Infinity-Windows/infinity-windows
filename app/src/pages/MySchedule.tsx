@@ -1,3 +1,4 @@
+import { myPlanTripLinks } from "../lib/workflow/api";
 import { BackChip } from "../components/BackChip";
 import { Fragment, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -53,6 +54,7 @@ export function MySchedule() {
     queryFn: () => listVehicleLinksForAssignments(assignmentIds),
     enabled: assignmentIds.length > 0,
   });
+  const connectedTrips = useQuery({ queryKey: ["workflowMyTrips", myId], queryFn: myPlanTripLinks, enabled: Boolean(myId) });
   const trips = useQuery({ queryKey: ["trips"], queryFn: listTrips });
   const { effectiveRole } = useEffectiveRole();
   const viewer = useMemo(
@@ -91,6 +93,7 @@ export function MySchedule() {
         <BackChip fallback="/" label={t("mySchedule.home")} />
       </header>
 
+      {connectedTrips.error && <QueryError error={connectedTrips.error} onRetry={() => void connectedTrips.refetch()} label={t("workflow.tripLinksError")} />}
       {schedule.isError && (
         <QueryError
           error={schedule.error}
@@ -156,7 +159,7 @@ export function MySchedule() {
                           <Truck size={13} aria-hidden /> {vehicleByAssignment.get(a.id)}
                         </span>
                       )}
-                      {a.project_id && tripByProject.get(a.project_id) && (
+                      {!connectedTrips.data?.some(l => l.assignment_id === a.id) && a.project_id && tripByProject.get(a.project_id) && (
                         <span className="sched-agenda-crew">
                           <Plane size={13} aria-hidden />{" "}
                           {t("mySchedule.travelLabel", { label: tripByProject.get(a.project_id)!.label })}
@@ -176,6 +179,7 @@ export function MySchedule() {
                       )}
                     </div>
                   </Link>
+                  {(connectedTrips.data ?? []).filter(l => l.assignment_id === a.id).map(l => <Link key={l.trip_id} to={`/travel/${l.trip_id}`} className="button-like workflow-trip-link"><Plane size={16} aria-hidden />{l.name} · {l.start_date} – {l.end_date}</Link>)}
                   {isToday && (
                     <Link to="/" className="button-like sched-start-work">
                       {t("mySchedule.startWork")}

@@ -31,6 +31,7 @@ function renderTrip(status: "draft" | "published", role = "installer", lang: Lan
     ground: [], procedures: [], contacts: [{ id: "host", trip_id: "trip", name: "Fixture host", label: "Host", phone: "8015550123", notes: null, sort_order: 0 }],
     attachments: [],
   };
+  client.setQueryData(["workflowLinks"], { available: false, assignments: [], trips: [] });
   client.setQueryData(["myProfile"], { id: "me" });
   client.setQueryData(["trip", "trip"], detail);
   const html = renderToStaticMarkup(

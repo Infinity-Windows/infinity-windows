@@ -66,6 +66,9 @@ test("Spanish trip navigation and the crew draft boundary", async ({ page }) => 
   await page.getByRole("link", { name: "Hospedaje", exact: true }).click();
   await expect(page).toHaveURL(/#trip-lodging$/);
   await tripFixture(page, "draft");
+  // This assertion exercises a fresh server response, separately from the
+  // existing transit cache (30s freshness does not schedule a refetch timer).
+  await page.evaluate(() => localStorage.removeItem("wops-query-cache"));
   await page.reload();
   await expect(page.getByText("No se encontró el viaje", { exact: true })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Secciones del viaje" })).toHaveCount(0);

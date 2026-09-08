@@ -1,3 +1,6 @@
+import { WorkflowHub } from "../components/workflow/WorkflowHub";
+import { PlanReview } from "../components/workflow/PlanReview";
+import { loadPlanLinks } from "../lib/workflow/api";
 import { AgendaView } from "../components/schedule/AgendaView";
 import { DisplayModePicker } from "../components/DisplayModePicker";
 import { useDisplayMode, type DisplayLayout } from "../lib/displayMode";
@@ -154,8 +157,12 @@ export function Scheduling() {
   // Foremen can open the board and read the week; moving people stays a
   // supervisor call (owner decision, 2026-08-11).
   const canEdit = isSupervisorPlus(effectiveRole);
+  const [planId, setPlanId] = useState<string | null>(null);
+  const planLinks = useQuery({ queryKey: ["workflowLinks"], queryFn: loadPlanLinks, enabled: canEdit });
+  const linkedPlan = (id: string) => planLinks.data?.assignments.find(l => l.assignment_id === id)?.plan_id;
   const openAssignment = (assignment: ScheduleAssignment) => {
-    if (canEdit) setEditor({ assignment });
+    if (canEdit && linkedPlan(assignment.id)) setPlanId(linkedPlan(assignment.id)!);
+    else if (canEdit) setEditor({ assignment });
     else if (assignment.kind === "delivery" && assignment.delivery_id) navigate(`/storage/d/${assignment.delivery_id}`);
     else if (assignment.project_id) navigate(`/projects/${assignment.project_id}`);
   };
@@ -570,7 +577,7 @@ export function Scheduling() {
   }
 
   async function doPublish() {
-    const draftList = drafts.data ?? [];
+    const draftList = (drafts.data ?? []).filter(a => !linkedPlan(a.id));
     if (draftList.length === 0) return;
     setPublishing(true);
     try {
@@ -599,7 +606,7 @@ export function Scheduling() {
     }
   }
 
-  const draftList = useMemo(() => drafts.data ?? [], [drafts.data]);
+  const draftList = useMemo(() => (drafts.data ?? []).filter(a => !planLinks.data?.assignments.some(l => l.assignment_id === a.id)), [drafts.data, planLinks.data]);
 
   // Everything currently in play (loaded window + all drafts), deduped. Drives
   // the conflict banner, the red outlines and the pre-publish summary alike.
@@ -647,7 +654,8 @@ export function Scheduling() {
           ? a.start_date > b.start_date ? a : b
           : (a.updated_at ?? "") >= (b.updated_at ?? "") ? a : b;
     if (!pick) return;
-    setEditor({ assignment: pick, highlightMemberIds: [entry.profileId] });
+    if (linkedPlan(pick.id)) setPlanId(linkedPlan(pick.id)!);
+    else setEditor({ assignment: pick, highlightMemberIds: [entry.profileId] });
   }
 
   const tray = useMemo(() => {
@@ -889,6 +897,9 @@ export function Scheduling() {
         </div>
       )}
 
+      {canEdit && <WorkflowHub onOpen={setPlanId} />}
+      {canEdit && planId && <PlanReview key={planId} id={planId} onClose={() => setPlanId(null)} />}
+
       {assignments.isError && (
         <QueryError
           error={assignments.error}
@@ -941,15 +952,15 @@ export function Scheduling() {
             profileById={profileById}
             conflictIds={conflictIds}
             canEdit={canEdit}
-            onMoveChip={(m) => moveChip.mutate(m)}
-            onRemoveChip={(c) => removeChip.mutate(c)}
+            onMoveChip={(m) => { const id = linkedPlan(m.chip.assignmentId); if (id) setPlanId(id); else moveChip.mutate(m); }}
+            onRemoveChip={(c) => { const id = linkedPlan(c.assignmentId); if (id) setPlanId(id); else removeChip.mutate(c); }}
             onCreateAt={(personId, day) => {
               setQuickJob("");
               setQuickCreate({ personId, day });
             }}
             onOpenAssignment={(id) => {
               const a = loaded.find((x) => x.id === id);
-              if (a && canEdit) setEditor({ assignment: a });
+              if (a) openAssignment(a);
             }}
           />
         </>
@@ -1108,7 +1119,7 @@ export function Scheduling() {
           assignmentFor={(projectId) => assignmentForDayPanel.get(projectId) ?? null}
           onEditAssignment={canEdit ? (a) => {
             setDayPanelDate(null);
-            setEditor({ assignment: a });
+            openAssignment(a);
           } : undefined}
           onScheduleCrew={canEdit ? () => {
             const startDate = dayPanelDate;
@@ -1119,7 +1130,7 @@ export function Scheduling() {
         />
       )}
 
-      {canEdit && editor && (
+      {canEdit && editor && (!editor.assignment || !linkedPlan(editor.assignment.id)) && (
         <AssignmentEditor
           assignment={editor.assignment}
           defaults={editor.defaults}

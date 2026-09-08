@@ -64,3 +64,7 @@ Live schema access is available. The read-only audit found database permission a
 ## Third-slice implementation
 
 Integrated master 32b0620, preserving Claude's #592 three-step window sheet. The verified Schedule/Travel permission prerequisite is now a draft migration with real PostgreSQL role tests in an isolated Docker container. Foreman controls across schedule views match read-only permissions; existing crew job-level vehicle assignment remains available. Full app suite: 5,367 passing tests across 385 files; 15 browser tests pass. Database policy tests and migration replay checks pass. No production migration has been applied. Ticket 04 (linked atomic publication) is the next implementation stage.
+
+## Fourth-slice implementation
+
+Draft connected-plan publication is implemented on master 32b0620. Schedule and Travel share one review, explicit links and server revision, with independent work/travel dates, conflict checks, cancellation and a separate notification queue. My Schedule supports multiple named rotations. The first version edits parent instructions and crew; detailed travel rows/files and vehicle identity freeze after connection. See the publication contract for these limits, purged-job/history handling and the remaining rollout validation. Tickets 05–08 and full detailed working-copy authoring remain incomplete. No production migration or deployment occurred.

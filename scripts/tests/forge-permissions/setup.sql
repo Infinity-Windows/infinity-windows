@@ -7,7 +7,7 @@ create schema auth;
 create function auth.uid() returns uuid language sql stable as $$
   select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid;
 $$;
-create table public.profiles (id uuid primary key, role text, is_partner boolean default false);
+create table public.profiles (id uuid primary key, role text, active boolean default true, is_partner boolean default false);
 create table public.projects (id uuid primary key);
 create function public.is_partner_user() returns boolean language sql stable security definer
 set search_path = public, pg_temp as $$
@@ -24,3 +24,5 @@ create table public.vehicle_project_assignments (
 alter table public.vehicle_project_assignments enable row level security;
 create policy "authenticated full access" on public.vehicle_project_assignments for all to authenticated
 using (not public.is_partner_user()) with check (not public.is_partner_user());
+
+create function public.attach_sandbox_guards() returns void language sql as $$ select; $$;

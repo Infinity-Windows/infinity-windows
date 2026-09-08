@@ -1,3 +1,6 @@
+import { WorkflowHub } from "../components/workflow/WorkflowHub";
+import { PlanReview } from "../components/workflow/PlanReview";
+import { loadPlanLinks } from "../lib/workflow/api";
 import { BackChip } from "../components/BackChip";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -90,7 +93,11 @@ export function TripDetail() {
 
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const { effectiveRole: role } = useEffectiveRole();
-  const canEdit = isSupervisorPlus(role);
+  const manager = isSupervisorPlus(role);
+  const [planId, setPlanId] = useState<string | null>(null);
+  const planLinks = useQuery({ queryKey: ["workflowLinks"], queryFn: loadPlanLinks, enabled: manager });
+  const connected = planLinks.data?.trips.some(l => l.trip_id === tripId) ?? false;
+  const canEdit = manager && !connected && !planLinks.isPending && !planLinks.isError;
   const myId = me.data?.id ?? null;
 
   const detailQ = useQuery({
@@ -144,6 +151,7 @@ export function TripDetail() {
   };
 
   async function notifyCrew(msg: { title: string; body: string }) {
+    if (connected) return;
     const ids = (detail?.trip.crew ?? []).map((m) => m.profile_id);
     for (const pid of ids) {
       void sendPush({ profileIds: [pid], title: msg.title, body: msg.body, tag: `travel-${tripId}`, url: tripUrl(tripId) });
@@ -155,7 +163,7 @@ export function TripDetail() {
 
   const publish = useMutation({
     mutationFn: async () => {
-      if (!detail) return;
+      if (!detail || !canEdit) return;
       await publishTrip(detail.trip.id);
       await notifyCrew(tripPublishMessage(detail.trip.name));
     },
@@ -204,7 +212,7 @@ export function TripDetail() {
   // announced. Same helper the Travel list already filters with.
   const mayOpen =
     !detail ||
-    canOpenTrip(detail.trip, { profileId: myId, isSupervisor: canEdit });
+    canOpenTrip(detail.trip, { profileId: myId, isSupervisor: manager });
   if (!detail || !mayOpen) {
     return (
       <div className="page travel-detail">
@@ -219,7 +227,7 @@ export function TripDetail() {
 
   const { trip } = detail;
   const phase = tripPhase(trip.start_date, trip.end_date, today);
-  const shownFlights = canEdit ? detail.flights : flightsForViewer(detail.flights, myId);
+  const shownFlights = manager ? detail.flights : flightsForViewer(detail.flights, myId);
   const tripAttachments = detail.attachments.filter((a) => !a.flight_id && !a.lodging_id);
   const targets = directionsTargets(detail);
 
@@ -248,6 +256,8 @@ export function TripDetail() {
         <BackChip fallback="/travel" label={t("travelDetail.backToTravel")} />
       </header>
 
+      {manager && <WorkflowHub tripId={tripId} onOpen={setPlanId} />}
+      {manager && planId && <PlanReview key={planId} id={planId} onClose={() => setPlanId(null)} />}
       {canEdit && (
         <div className="travel-toolbar">
           <button className="button-like" onClick={() => setEditor({ kind: "trip" })}>
@@ -384,7 +394,7 @@ export function TripDetail() {
         </section>
       )}
 
-      {editor?.kind === "trip" && (
+      {canEdit && editor?.kind === "trip" && (
         <TripEditor
           trip={trip}
           onClose={() => setEditor(null)}
@@ -400,19 +410,19 @@ export function TripDetail() {
           }}
         />
       )}
-      {editor?.kind === "flight" && (
+      {canEdit && editor?.kind === "flight" && (
         <FlightEditor tripId={trip.id} crew={trip.crew} flight={editor.entity} onClose={() => setEditor(null)} onSaved={onEditedSection} />
       )}
-      {editor?.kind === "lodging" && (
+      {canEdit && editor?.kind === "lodging" && (
         <LodgingEditor tripId={trip.id} lodging={editor.entity} onClose={() => setEditor(null)} onSaved={onEditedSection} />
       )}
-      {editor?.kind === "ground" && (
+      {canEdit && editor?.kind === "ground" && (
         <GroundEditor tripId={trip.id} ground={editor.entity} onClose={() => setEditor(null)} onSaved={onEditedSection} />
       )}
-      {editor?.kind === "procedure" && (
+      {canEdit && editor?.kind === "procedure" && (
         <ProcedureEditor tripId={trip.id} procedure={editor.entity} onClose={() => setEditor(null)} onSaved={onEditedSection} />
       )}
-      {editor?.kind === "contact" && (
+      {canEdit && editor?.kind === "contact" && (
         <ContactEditor tripId={trip.id} contact={editor.entity} onClose={() => setEditor(null)} onSaved={onEditedSection} />
       )}
     </div>

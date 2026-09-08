@@ -36,3 +36,27 @@ Migration `20261003000000_forge_workflow_permissions.sql` follows the September 
 Limit: this is PostgreSQL policy verification, not a restored full Supabase environment or Storage HTTP integration test. Already issued signed URLs remain usable until expiration (the current app requests one hour); downloaded/offline copies cannot be retracted by RLS. Do not describe removal as immediately revoking existing bearer links.
 
 The durable plan links, immutable revisions, atomic publish RPC and notification outbox remain subsequent work under ticket 04. Refresh migration history and check competing branches again before deploying this draft.
+
+## Connected-plan implementation in draft (September 8)
+
+Migration `20261004000000_connected_workflow_plans.sql` adds explicit plan identity and assignment/trip links, a separate versioned JSON working copy, immutable publication revisions, request fingerprints, and a notification outbox. Initial linking only accepts selected, existing install drafts and trip drafts for one job. There is no project/date backfill and no effect on unlinked drafts. Work dates and travel dates are independent.
+
+Schedule and Travel open the same phone review. A manager can edit work dates/time/notes/crew and travel name/destination/dates/timezone/notes/crew, inspect the existing travel pack, compare changes since publication, save a private draft, review conflicts, and publish the selected plan. Scheduled vehicle dates follow their work block. Vehicle conflicts block publication; crew overlaps require explicit acknowledgment. Expected revisions and a review token reject stale drafts or changed conflicts. Publishing materializes parent fields and membership, writes history/audit, and queues the union of old/new recipients in one transaction. Reusing the same request and fingerprint returns the committed result. Cancellation is another audited transaction, with its own retry identity.
+
+Ordinary Schedule/Travel writes to linked records are guarded, including attachment storage mutations. The old standalone Schedule publish bar excludes linked assignments. My Schedule receives explicit named trip links, including multiple rotations; no link is inferred from proximity. New workflow query roots are not persisted offline. Missing schema hides connection controls, and new mutation RPCs have no local-success fallback. Existing unlinked workflows and their legacy fallback behavior remain intact.
+
+`deliver-workflow-notices` is a separately deployed, authenticated manager-only Edge Function. It claims at most 20 committed notices per call, uses expiring leases, and records push acceptance separately from publication. Publication attempts delivery; the review exposes pending/failed counts and manual retry. It does not contain a background schedule. Push is at least once after an uncertain network outcome, with a stable notification tag; it is not proof a person read the instructions. A device without a subscription remains failed/pending. No real notices were sent during development.
+
+The existing account-removal history count includes plan authorship, revision actors and notice recipients. The existing job-purge function retains its authorization and detach/purge order, first releasing plan links and detaching/canceling the plan. Immutable revisions remain available to managers; notices for a purged job are not claimable. No purge or account-removal operation was run against production.
+
+### Deliberate first-version limits
+
+- Flight, lodging, ground transport, trip-specific instructions, contacts, files and vehicle identity are read-only after connecting. Complete them in their existing editors before linking. A never-published plan can be disconnected to edit them; a published plan cannot. Full working-copy authoring for these details remains future work. Shared company-wide procedure templates continue their existing independent lifecycle.
+- All trips in an explicitly selected plan are linked to each selected work block; membership limits which links a crew member receives. The model does not infer per-person rotations or automatically assign a specific trip to a subset of work blocks. Select plans accordingly.
+- New table/function permissions are tested in isolated PostgreSQL, not through a restored production Supabase stack. Storage SQL guards are exercised; Storage HTTP behavior and real-device push delivery still require rollout validation. Existing downloaded copies and signed URLs retain the limitation above.
+- Source rows changed through administrator/definer access outside the plan cause publication to stop for reconciliation. The review does not offer an automatic overwrite or a source-reconciliation tool.
+- A short advisory lock serializes Schedule/Travel writes, publication and storage metadata changes. Conflict SQL disables JIT for its bounded JSON review. Production load behavior has not been benchmarked.
+
+### Rollout remains gated
+
+Refresh master, migration history, competing PRs and backend drift immediately before rollout. Deploy the permission migration first, then the connected-plan migration and notification function, and validate an authorized isolated plan before enabling this for live crews. The owner must approve merge/deployment. Existing live security drift from the unapplied permission migration is not waived by these tests. Draft PR #591 contains the reviewable implementation; nothing in this section authorizes a production mutation.

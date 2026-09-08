@@ -33,6 +33,10 @@ export interface QueryKeyRootEntry {
  * beside the hand-kept offline list now live in each row's `why`.
  */
 export const QUERY_KEY_ROOTS: QueryKeyRootEntry[] = [
+  { root: "workflowLinks", offline: false },
+  { root: "workflowMyTrips", offline: false },
+  { root: "workflowPlans", offline: false },
+  { root: "workflowReview", offline: false },
   { root: "accessRequests", offline: false },
   { root: "aiSpendOverview", offline: false },
   { root: "allActiveCostCodes", offline: false },

@@ -12912,3 +12912,26 @@ button.stage-chip {
   .sched-viewswitch { flex-wrap: wrap; border-radius: 20px; }
   .sched-viewtab { min-height: 44px; padding-inline: 12px; }
 }
+
+/* Connected plan review: one continuous sheet with phone-sized controls. */
+.workflow-review { width: min(100%, 760px); overflow-wrap: anywhere; }
+.workflow-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
+.workflow-fields > label, .workflow-fields .detail-card > label { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; }
+.workflow-fields input:not([type="checkbox"]), .workflow-fields textarea, .workflow-fields select { width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; min-height: 44px; font-size: 16px; padding: 10px; }
+.workflow-fields textarea { min-height: 90px; resize: vertical; }
+.workflow-crew { min-width: 0; margin: 14px 0; border: 1px solid var(--border); border-radius: 8px; }
+.workflow-crew label, .workflow-check { display: flex; align-items: center; gap: 10px; min-height: 44px; }
+.workflow-crew input, .workflow-check input { flex: 0 0 auto; width: 20px; height: 20px; }
+.workflow-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
+.workflow-hub .button-like, .workflow-review .button-like, .workflow-review summary, .workflow-trip-link { min-height: 44px; white-space: normal; }
+.workflow-review summary { display: flex; align-items: center; cursor: pointer; text-decoration: underline; }
+.workflow-plan-link, .workflow-trip-link { display: flex; margin: 8px 0; gap: 8px; overflow-wrap: anywhere; }
+:root[data-display-layout="phone"] .workflow-review { border-radius: 0; width: 100%; max-height: 100dvh; padding-bottom: max(24px, var(--safe-bottom)); }
+.workflow-fields input:not([type="checkbox"]), .workflow-fields textarea, .workflow-fields select {
+  font-family: var(--font-body); color: var(--text); background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-md);
+}
+.workflow-review, .workflow-hub { color-scheme: light; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .workflow-review, :root:not([data-theme="light"]) .workflow-hub { color-scheme: dark; }
+}
+:root[data-theme="dark"] .workflow-review, :root[data-theme="dark"] .workflow-hub { color-scheme: dark; }
