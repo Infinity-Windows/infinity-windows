@@ -4507,6 +4507,17 @@ export const CATALOG = {
     en: "This unit's spec says {value}; it wins.",
     es: "La ficha de esta unidad dice {value}; esa es la que vale.",
   },
+
+  // Unit sheet as three steps (S7): the sticky header's stepper, the "More"
+  // fold every stage now holds its exceptional actions in, and the new
+  // reason line the Check stage's pinned Start button shows when flashing
+  // is what's holding it back (the other reasons already had keys — see
+  // opening.action.resolveBlockers / beforePhotoToStart / clockInFirst).
+  "sheet.more": { en: "More", es: "Más" },
+  "opening.action.flashingOwed": {
+    en: "This unit needs flashing before you can start",
+    es: "Esta unidad necesita calafateo antes de poder empezar",
+  },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */
