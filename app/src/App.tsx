@@ -153,6 +153,7 @@ const Timecard = lazy(() => import("./pages/Timecard").then((m) => ({ default: m
 const TeamTimecards = lazy(() =>
   import("./pages/TeamTimecards").then((m) => ({ default: m.TeamTimecards })),
 );
+const ProposalWorkflow = lazy(() => import("./pages/proposals/Workflow").then(m => ({ default: m.Workflow })));
 const Scheduling = lazy(() => import("./pages/Scheduling").then((m) => ({ default: m.Scheduling })));
 const MySchedule = lazy(() => import("./pages/MySchedule").then((m) => ({ default: m.MySchedule })));
 const Travel = lazy(() => import("./pages/Travel").then((m) => ({ default: m.Travel })));
@@ -794,6 +795,7 @@ export default function App() {
               path="/team-timecards"
               element={<RequireRole path="/team-timecards"><TeamTimecards /></RequireRole>}
             />
+            <Route path="/workflow" element={<RequireRole path="/workflow"><ProposalWorkflow /></RequireRole>} />
             <Route
               path="/scheduling"
               element={<RequireRole path="/scheduling"><Scheduling /></RequireRole>}

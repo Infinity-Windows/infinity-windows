@@ -63,6 +63,7 @@ export function guideRank(role?: string | null): number {
  * what a role can actually reach in the UI.
  */
 export const APP_GUIDE: AppGuideEntry[] = [
+  { path: "/workflow", label: "Workflow", minRole: "supervisor", blurb: "Track proposals, bid revisions, acceptance evidence, private job files, rates and follow-ups. Email sending is not connected yet." },
   // ---- Open to everyone (installer floor): the daily job loop -------------
   {
     path: "/",

@@ -461,6 +461,12 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     # A plan's name/dates cannot identify it; never infer connected plans.
     # Snapshot JSON carries its original identities and needs explicit review
     # when moving between databases that remap parent IDs.
+    # Proposal evidence and rates retain their identities across restores.
+    "proposal_jobs": None,
+    "proposal_bids": ("job_id", "contractor", "number", "revision"),
+    "proposal_documents": ("storage_path",),
+    "proposal_rates": None,
+    "proposal_activity": None,
     "workflow_plans": None,
     "workflow_plan_assignments": ("assignment_id",),
     "workflow_plan_trips": ("trip_id",),

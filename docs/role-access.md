@@ -68,6 +68,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 
 **Blocked:**
 
+- Workflow (`/workflow`)
 - Job history (`/jobs/history`)
 - Studio (`/studio`)
 - Data (`/data`)
@@ -178,6 +179,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 
 **Blocked:**
 
+- Workflow (`/workflow`)
 - Job history (`/jobs/history`)
 - Studio (`/studio`)
 - Data (`/data`)
@@ -216,6 +218,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - My timecard (`/timecard`)
 - Team timecards (`/team-timecards`)
 - Cost codes (`/cost-codes`)
+- Workflow (`/workflow`)
 - Analytics (`/analytics`)
 - Heartbeat (`/heartbeat`)
 - Receipts (`/receipts`)
@@ -245,8 +248,9 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Catalog (`/catalog`)
 - Admin (`/admin`)
 
-**Can reach (all 51 allowed destinations):**
+**Can reach (all 52 allowed destinations):**
 
+- Workflow (`/workflow`)
 - Home (`/`)
 - Time (`/clock`)
 - Learn (`/learn`)
@@ -328,6 +332,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - My timecard (`/timecard`)
 - Team timecards (`/team-timecards`)
 - Cost codes (`/cost-codes`)
+- Workflow (`/workflow`)
 - Cost (`/costing`)
 - Analytics (`/analytics`)
 - Heartbeat (`/heartbeat`)
@@ -360,8 +365,9 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Admin (`/admin`)
 - Builder logins (`/account/builders`)
 
-**Can reach (all 54 allowed destinations):**
+**Can reach (all 55 allowed destinations):**
 
+- Workflow (`/workflow`)
 - Home (`/`)
 - Time (`/clock`)
 - Learn (`/learn`)
