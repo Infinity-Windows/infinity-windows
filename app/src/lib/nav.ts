@@ -78,6 +78,7 @@ export type RoutePath =
   | "/team"
   | "/timecard"
   | "/team-timecards"
+  | "/workflow"
   | "/scheduling"
   | "/vehicles"
   | "/my-schedule"
@@ -157,6 +158,7 @@ export interface MoneyGrants {
  * only surface as tabs where a role layout places them (see *_LAYOUT below).
  */
 export const NAV: NavDest[] = [
+  { id: "workflow", to: "/workflow", label: "Workflow", icon: "▤", minRole: "supervisor" },
   // Open to everyone (installer floor) — execution + shared surfaces.
   { id: "home", to: "/", label: "Home", icon: "⌂", minRole: "installer" },
   { id: "clock", to: "/clock", label: "Time", icon: "⏱", minRole: "installer" },
@@ -456,6 +458,7 @@ const MENU_DEF: MenuSection[] = [
     collapsible: true,
     Icon: DollarSign,
     items: [
+      { to: "/workflow", label: "Workflow", Icon: ListChecks },
       { to: "/costing", label: "Cost", Icon: DollarSign },
       { to: "/analytics", label: "Analytics", Icon: BarChart3 },
       { to: "/heartbeat", label: "Heartbeat", Icon: Activity },

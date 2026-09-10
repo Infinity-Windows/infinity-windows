@@ -33,6 +33,8 @@ export interface QueryKeyRootEntry {
  * beside the hand-kept offline list now live in each row's `why`.
  */
 export const QUERY_KEY_ROOTS: QueryKeyRootEntry[] = [
+  { root: "proposalWorkflow", offline: false },
+  { root: "proposalJob", offline: false },
   { root: "workflowLinks", offline: false },
   { root: "workflowMyTrips", offline: false },
   { root: "workflowPlans", offline: false },
@@ -224,6 +226,8 @@ export const QUERY_KEY_ROOTS: QueryKeyRootEntry[] = [
   { root: "stgCalendar", offline: false },
   { root: "stgDay", offline: false },
   { root: "stgJobList", offline: false },
+  { root: "stgWorkflow", offline: false },
+  { root: "proposalSharing", offline: false },
   { root: "storageBlanks", offline: false },
   { root: "storageContainers", offline: true, why: "\"Where is it?\" from the last good read. Same reason as storagePackages — ticket 10's conex reading problem, ticket 06's move off `inventory`." },
   { root: "storagePackage", offline: false },

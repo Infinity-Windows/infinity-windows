@@ -1,5 +1,5 @@
 // Wave S, S4: the STG Windows & Doors shell — a builder/GC login's entire
-// app. Clean on purpose (THE WALL #5 + spec): a text wordmark, two tabs,
+// app. Clean on purpose (THE WALL #5 + spec): a text wordmark, three tabs,
 // nothing else. No values strip, no bottom crew bar, no menu drawer — a
 // partner never sees a single crew-facing word anywhere in here, including
 // the internal company name (this file, and everything under pages/stg/,
@@ -9,12 +9,14 @@ import { LogOut } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { ScrollTabs } from "../../components/nav/ScrollTabs";
 import { StgJobProgress } from "./StgJobProgress";
+import { StgWorkflow } from "./StgWorkflow";
 import { StgCalendarTab } from "./StgCalendarTab";
 
-type StgTab = "progress" | "calendar";
+type StgTab = "progress" | "calendar" | "workflow";
 const TABS: { id: StgTab; label: string }[] = [
   { id: "progress", label: "Job progress" },
   { id: "calendar", label: "Calendar" },
+  { id: "workflow", label: "Workflow" },
 ];
 
 export function StgApp() {
@@ -23,7 +25,9 @@ export function StgApp() {
   return (
     <div className="page stg-app">
       <header className="row-between" style={{ marginBottom: 18 }}>
-        <h1 style={{ fontSize: 19, margin: 0, fontWeight: 700 }}>STG Windows &amp; Doors</h1>
+        <h1 style={{ fontSize: 19, margin: 0, fontWeight: 700 }}>
+          STG Windows &amp; Doors
+        </h1>
         <button
           type="button"
           className="capture-close"
@@ -53,7 +57,13 @@ export function StgApp() {
       </ScrollTabs>
 
       <div style={{ marginTop: 16 }}>
-        {tab === "progress" ? <StgJobProgress /> : <StgCalendarTab />}
+        {tab === "progress" ? (
+          <StgJobProgress />
+        ) : tab === "calendar" ? (
+          <StgCalendarTab />
+        ) : (
+          <StgWorkflow />
+        )}
       </div>
     </div>
   );

@@ -223,6 +223,8 @@ describe("the probe list covers the schema", () => {
     // (purgeRefusal's is_partner check), so neither can ever be reached here.
     "calendar_feed_tokens.partner_profile_id",
     "partner_job_grants.partner_profile_id",
+    // Access only; proposal documents, acceptance, and activity survive removal.
+    "proposal_partner_shares.partner_profile_id",
     // Seconds spent looking at a Learn tab (20260993000000). Attention, not a
     // record of work, money or safety — and the reason it is safe to say so is
     // the shape of the feature this list serves: an account is only ever hard

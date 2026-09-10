@@ -53,7 +53,9 @@ const THE_HOOK = "lib/photo/usePhotoPicker.tsx";
  * for the same reason the legacy pickers are: a third accept-less input cannot
  * join them without somebody editing this test and saying why.
  */
-const ACCEPT_LESS = ["components/travel/AttachmentsPanel.tsx", "pages/Knowledge.tsx"];
+// Workflow accepts arbitrary original documents (CAD, email, PDF, photos) like
+// Travel. It must never invoke the camera or compress signed/source files.
+const ACCEPT_LESS = ["components/travel/AttachmentsPanel.tsx", "pages/Knowledge.tsx", "pages/proposals/Workflow.tsx"];
 
 function walk(dir: string): string[] {
   const out: string[] = [];
@@ -168,7 +170,7 @@ describe("one place writes a picture picker", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("still has exactly the two inputs that name no accept, and no more", () => {
+  it("has exactly the documented general-file inputs without accept", () => {
     const acceptLess = files
       .filter((f) => f.path !== THE_HOOK)
       .filter((f) => fileInputs(f.source).some((attrs) => !/\baccept=/.test(attrs)))
