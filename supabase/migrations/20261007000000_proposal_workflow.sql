@@ -77,7 +77,11 @@ create policy "proposal bids internal read" on public.proposal_bids for select t
 create policy "proposal documents internal read" on public.proposal_documents for select to authenticated using(not public.is_partner_user() and public.proposal_manager());
 create policy "proposal rates internal read" on public.proposal_rates for select to authenticated using(not public.is_partner_user() and public.proposal_manager());
 create policy "proposal activity internal read" on public.proposal_activity for select to authenticated using(not public.is_partner_user() and public.proposal_manager());
-revoke all on public.proposal_jobs,public.proposal_bids,public.proposal_documents,public.proposal_rates,public.proposal_activity from anon,authenticated;
+revoke all on table public.proposal_jobs from anon,authenticated;
+revoke all on table public.proposal_bids from anon,authenticated;
+revoke all on table public.proposal_documents from anon,authenticated;
+revoke all on table public.proposal_rates from anon,authenticated;
+revoke all on table public.proposal_activity from anon,authenticated;
 grant select on public.proposal_jobs,public.proposal_bids,public.proposal_documents,public.proposal_rates,public.proposal_activity to authenticated;
 grant all on public.proposal_jobs,public.proposal_bids,public.proposal_documents,public.proposal_rates,public.proposal_activity to service_role;
 

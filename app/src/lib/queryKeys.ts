@@ -226,6 +226,7 @@ export const QUERY_KEY_ROOTS: QueryKeyRootEntry[] = [
   { root: "stgCalendar", offline: false },
   { root: "stgDay", offline: false },
   { root: "stgJobList", offline: false },
+  { root: "stgWorkflow", offline: false },
   { root: "storageBlanks", offline: false },
   { root: "storageContainers", offline: true, why: "\"Where is it?\" from the last good read. Same reason as storagePackages — ticket 10's conex reading problem, ticket 06's move off `inventory`." },
   { root: "storagePackage", offline: false },

@@ -462,6 +462,7 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     # Snapshot JSON carries its original identities and needs explicit review
     # when moving between databases that remap parent IDs.
     # Proposal evidence and rates retain their identities across restores.
+    "proposal_partner_shares": ("job_id", "partner_profile_id"),
     "proposal_jobs": None,
     "proposal_bids": ("job_id", "contractor", "number", "revision"),
     "proposal_documents": ("storage_path",),

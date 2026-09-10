@@ -1,3 +1,4 @@
+import { Sharing } from "./Sharing";
 import {
   useState,
   useEffect,
@@ -608,7 +609,7 @@ function JobDetail({
         </select>
       </div>
       <nav className="pw-tabs" aria-label="Job sections">
-        {["overview", "bids", "files", "activity"].map((s) => (
+        {["overview", "bids", "files", "activity", "sharing"].map((s) => (
           <button
             key={s}
             aria-pressed={tab === s}
@@ -624,6 +625,9 @@ function JobDetail({
           {formatApiError(q.error)}{" "}
           <button onClick={() => void q.refetch()}>Retry</button>
         </p>
+      )}
+      {tab === "sharing" && (
+        <Sharing job={job} bids={bids} files={q.data?.files ?? []} />
       )}
       {tab === "overview" && <Overview job={job} work={work} busy={busy} />}
       {tab === "bids" && (

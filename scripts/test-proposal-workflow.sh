@@ -9,4 +9,7 @@ run(){ docker exec -i "$BOX" psql -X -U postgres -v ON_ERROR_STOP=1 -q < "$1"; }
 run "$ROOT/scripts/tests/forge-permissions/setup.sql"
 run "$ROOT/supabase/migrations/20261007000000_proposal_workflow.sql"
 run "$ROOT/scripts/tests/proposal-workflow/assertions.sql"
+run "$ROOT/scripts/tests/proposal-workflow/partner-setup.sql"
+run "$ROOT/supabase/migrations/20261008000000_proposal_partner_sharing.sql"
+run "$ROOT/scripts/tests/proposal-workflow/partner-assertions.sql"
 echo 'Proposal Workflow PostgreSQL checks passed.'
