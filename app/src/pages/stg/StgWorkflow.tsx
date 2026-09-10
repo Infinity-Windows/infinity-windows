@@ -101,7 +101,21 @@ function SharedCard({ job }: { job: SharedJob }) {
         <label>
           Response for {job.name}
           <textarea
-            style={{ display: "block", width: "100%", boxSizing: "border-box", minHeight: 100, marginTop: 8, marginBottom: 12, padding: 12, font: "inherit", color: "inherit", background: "var(--surface, #fff)", border: "1px solid var(--border, #ddd)", borderRadius: 10, resize: "vertical" }}
+            style={{
+              display: "block",
+              width: "100%",
+              boxSizing: "border-box",
+              minHeight: 100,
+              marginTop: 8,
+              marginBottom: 12,
+              padding: 12,
+              font: "inherit",
+              color: "inherit",
+              background: "var(--surface, #fff)",
+              border: "1px solid var(--border, #ddd)",
+              borderRadius: 10,
+              resize: "vertical",
+            }}
             value={note}
             required
             maxLength={4000}

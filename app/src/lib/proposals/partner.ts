@@ -73,3 +73,17 @@ export async function sharedFileUrl(file: SharedJob["files"][number]) {
   if (error) throw error;
   return data.signedUrl;
 }
+
+export interface PartnerShare {
+  email: string;
+  bid_ids: string[];
+  document_ids: string[];
+}
+export async function sharingList(jobId: string): Promise<PartnerShare[]> {
+  const { data, error } = await supabase.rpc("proposal_sharing_list", {
+    p_job: jobId,
+  });
+  if (isMissingFunction(error)) return [];
+  if (error) throw error;
+  return data ?? [];
+}

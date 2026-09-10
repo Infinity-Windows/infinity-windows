@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { shareJob } from "../../lib/proposals/partner";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { shareJob, sharingList } from "../../lib/proposals/partner";
 import type { Job, Bid, JobFile } from "../../lib/proposals/model";
 import { formatApiError } from "../../lib/errors";
 export function Sharing({
@@ -13,7 +13,12 @@ export function Sharing({
   files: JobFile[];
 }) {
   const client = useQueryClient();
+  const shares = useQuery({
+    queryKey: ["proposalSharing", job.id],
+    queryFn: () => sharingList(job.id),
+  });
   const [email, setEmail] = useState("");
+  const [version,setVersion]=useState(job.version);
   const [bidIds, setBids] = useState<string[]>([]);
   const [fileIds, setFiles] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
@@ -26,7 +31,8 @@ export function Sharing({
     setError("");
     setMessage("");
     try {
-      await shareJob(job, email, bidIds, fileIds, remove);
+      await shareJob({...job,version}, email, bidIds, fileIds, remove);
+      setVersion(v=>v+1);
       setMessage(
         remove
           ? "Access removed. Previously downloaded files remain with the recipient."
@@ -34,6 +40,7 @@ export function Sharing({
       );
       await Promise.all([
         client.invalidateQueries({ queryKey: ["proposalWorkflow"] }),
+        client.invalidateQueries({ queryKey: ["proposalSharing", job.id] }),
         client.invalidateQueries({ queryKey: ["proposalJob", job.id] }),
       ]);
     } catch (e) {
@@ -51,6 +58,35 @@ export function Sharing({
       }}
     >
       <h3>Share with a partner</h3>
+      {shares.isLoading && <p>Loading current access…</p>}
+      {shares.error && (
+        <p role="alert">
+          {formatApiError(shares.error)}{" "}
+          <button type="button" onClick={() => void shares.refetch()}>
+            Retry
+          </button>
+        </p>
+      )}
+      {(shares.data ?? []).length > 0 && (
+        <div>
+          <p>Currently shared with:</p>
+          {shares.data?.map((s) => (
+            <button
+              type="button"
+              key={s.email}
+              disabled={busy}
+              onClick={() => {
+                setEmail(s.email);
+                setBids(s.bid_ids);
+                setFiles(s.document_ids);
+                setMessage("");
+              }}
+            >
+              {s.email}
+            </button>
+          ))}
+        </div>
+      )}
       <p>
         The partner sees this job’s name, location, stage, and start timing,
         plus only the revisions and files selected below. Internal notes and
@@ -63,7 +99,15 @@ export function Sharing({
           required
           value={email}
           disabled={busy}
-          onChange={(e) => setEmail(e.target.value)}
+          onChange={(e) => {
+            const value = e.target.value;
+            setEmail(value);
+            const existing = shares.data?.find(
+              (s) => s.email.toLowerCase() === value.trim().toLowerCase(),
+            );
+            setBids(existing?.bid_ids ?? []);
+            setFiles(existing?.document_ids ?? []);
+          }}
         />
       </label>
       <p>
@@ -102,7 +146,9 @@ export function Sharing({
           ))}
       </fieldset>
       <div className="pw-actions">
-        <button disabled={busy}>Save sharing</button>
+        <button disabled={busy || shares.isLoading || !!shares.error}>
+          Save sharing
+        </button>
         <button
           type="button"
           disabled={busy || !email.trim()}

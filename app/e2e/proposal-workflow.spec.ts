@@ -48,7 +48,11 @@ async function setup(
     const { p_action, p_data } = r.request().postDataJSON();
     writes.push({ action: p_action, ...p_data });
     if (p_action === "create") {
-      job = { ...initial(), ...p_data, id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" };
+      job = {
+        ...initial(),
+        ...p_data,
+        id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      };
       return json(r, job);
     }
     if (p_action === "edit" || p_action === "stage")
@@ -181,36 +185,82 @@ test("new-job dialog captures a service call and supports cancellation", async (
   await expect(page.getByLabel("Work type")).toHaveValue("service_call");
 });
 
-test('partner Workflow shows shared proposals and approves the exact start date', async ({page}) => {
- await configureSupabaseFixtures(page,{role:'installer'});
- await hideWrongProjectBanner(page);
- await page.route('**/rest/v1/rpc/is_partner_user',r=>json(r,true));
- const job={...initial(),start_precision:'date',target_start:'2026-12-01',bids:[{id:'bid1',number:'P-101',revision:1,amount:500,scope:'Install phase A',accepted_at:null}],files:[]};
- await page.route('**/rest/v1/rpc/stg_workflow',r=>json(r,[job]));
- let sent:Record<string,unknown>|undefined;
- await page.route('**/rest/v1/rpc/stg_workflow_reply',r=>{sent=r.request().postDataJSON();return json(r,null);});
- await page.goto('/stg');
- await page.getByRole('button',{name:'Workflow',exact:true}).click();
- await expect(page.getByRole('heading',{name:'Mesa Heights'})).toBeVisible();
- await page.getByText('Proposals (1)',{exact:true}).click();
- await expect(page.getByText('P-101 · revision 1 · $500.00')).toBeVisible();
- await page.getByLabel('Response for Mesa Heights').fill('December 1 works. Access will be ready.');
- await page.getByRole('button',{name:'Approve start 2026-12-01'}).click();
- await expect(page.getByRole('status')).toHaveText('Response saved.');
- expect(sent).toMatchObject({p_job:ID,p_version:1,p_confirm_date:true,p_note:'December 1 works. Access will be ready.'});
- await expect(page.getByRole('link',{name:'Warehouse'})).toHaveCount(0);
- await page.screenshot({path:'../../../outputs/STG_Workflow_Phone_Preview.png',fullPage:true});
+test("partner Workflow shows shared proposals and approves the exact start date", async ({
+  page,
+}) => {
+  await configureSupabaseFixtures(page, { role: "installer" });
+  await hideWrongProjectBanner(page);
+  await page.route("**/rest/v1/rpc/is_partner_user", (r) => json(r, true));
+  const job = {
+    ...initial(),
+    start_precision: "date",
+    target_start: "2026-12-01",
+    bids: [
+      {
+        id: "bid1",
+        number: "P-101",
+        revision: 1,
+        amount: 500,
+        scope: "Install phase A",
+        accepted_at: null,
+      },
+    ],
+    files: [],
+  };
+  await page.route("**/rest/v1/rpc/stg_workflow", (r) => json(r, [job]));
+  let sent: Record<string, unknown> | undefined;
+  await page.route("**/rest/v1/rpc/stg_workflow_reply", (r) => {
+    sent = r.request().postDataJSON();
+    return json(r, null);
+  });
+  await page.goto("/stg");
+  await page.getByRole("button", { name: "Workflow", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Mesa Heights" }),
+  ).toBeVisible();
+  await page.getByText("Proposals (1)", { exact: true }).click();
+  await expect(page.getByText("P-101 · revision 1 · $500.00")).toBeVisible();
+  await page
+    .getByLabel("Response for Mesa Heights")
+    .fill("December 1 works. Access will be ready.");
+  await page.getByRole("button", { name: "Approve start 2026-12-01" }).click();
+  await expect(page.getByRole("status")).toHaveText("Response saved.");
+  expect(sent).toMatchObject({
+    p_job: ID,
+    p_version: 1,
+    p_confirm_date: true,
+    p_note: "December 1 works. Access will be ready.",
+  });
+  await expect(page.getByRole("link", { name: "Warehouse" })).toHaveCount(0);
+  await page.screenshot({
+    path: "../../../outputs/STG_Workflow_Phone_Preview.png",
+    fullPage: true,
+  });
 });
 
-test('supervisor shares a job with a named partner without sending email',async ({page})=>{
- await setup(page);
- let sent:Record<string,unknown>|undefined;
- await page.route('**/rest/v1/rpc/proposal_share',r=>{sent=r.request().postDataJSON();return json(r,null);});
- await page.goto('/workflow');
- await page.getByRole('button',{name:'Mesa Heights',exact:true}).click();
- await page.getByRole('button',{name:'Sharing',exact:true}).click();
- await page.getByLabel('Partner login email').fill('partner@example.test');
- await page.getByRole('button',{name:'Save sharing',exact:true}).click();
- await expect(page.getByText('Sharing saved. No email was sent.',{exact:true})).toBeVisible();
- expect(sent).toMatchObject({p_job:ID,p_version:1,p_email:'partner@example.test',p_bids:[],p_documents:[],p_remove:false});
+test("supervisor shares a job with a named partner without sending email", async ({
+  page,
+}) => {
+  await setup(page);
+  let sent: Record<string, unknown> | undefined;
+  await page.route("**/rest/v1/rpc/proposal_share", (r) => {
+    sent = r.request().postDataJSON();
+    return json(r, null);
+  });
+  await page.goto("/workflow");
+  await page.getByRole("button", { name: "Mesa Heights", exact: true }).click();
+  await page.getByRole("button", { name: "Sharing", exact: true }).click();
+  await page.getByLabel("Partner login email").fill("partner@example.test");
+  await page.getByRole("button", { name: "Save sharing", exact: true }).click();
+  await expect(
+    page.getByText("Sharing saved. No email was sent.", { exact: true }),
+  ).toBeVisible();
+  expect(sent).toMatchObject({
+    p_job: ID,
+    p_version: 1,
+    p_email: "partner@example.test",
+    p_bids: [],
+    p_documents: [],
+    p_remove: false,
+  });
 });

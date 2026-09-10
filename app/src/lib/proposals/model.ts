@@ -152,7 +152,12 @@ export function latestBids(bids: Bid[]) {
   }
   return [...groups.values()];
 }
-export function startLabel(job: Pick<Job, "confirmed_start" | "target_start" | "target_end" | "start_precision">) {
+export function startLabel(
+  job: Pick<
+    Job,
+    "confirmed_start" | "target_start" | "target_end" | "start_precision"
+  >,
+) {
   if (job.confirmed_start) return `Confirmed ${job.confirmed_start}`;
   if (!job.target_start || job.start_precision === "unknown")
     return "Start not set";

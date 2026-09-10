@@ -82,3 +82,12 @@ begin
 end $$;
 revoke all on function public.stg_workflow_reply(uuid,integer,text,boolean) from public,anon;
 grant execute on function public.stg_workflow_reply(uuid,integer,text,boolean) to authenticated;
+
+create function public.proposal_sharing_list(p_job uuid) returns jsonb language plpgsql stable security definer set search_path=public,pg_temp as $$
+begin
+ if not public.proposal_manager() then raise exception 'Only supervisors and owners can inspect sharing.' using errcode='42501';end if;
+ return (select coalesce(jsonb_agg(jsonb_build_object('email',u.email,'bid_ids',s.bid_ids,'document_ids',s.document_ids) order by u.email),'[]')
+ from public.proposal_partner_shares s join auth.users u on u.id=s.partner_profile_id where s.job_id=p_job);
+end $$;
+revoke all on function public.proposal_sharing_list(uuid) from public,anon;
+grant execute on function public.proposal_sharing_list(uuid) to authenticated;
