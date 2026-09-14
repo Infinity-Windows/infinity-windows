@@ -1038,8 +1038,29 @@ returns boolean language sql stable security definer set search_path = public, p
 $$;
 revoke all on function public.stg_warehouse_file_upload(text,text) from public,anon;
 grant execute on function public.stg_warehouse_file_upload(text,text) to authenticated;
+-- Workflow can land independently. Resolve its narrow authorization helper at
+-- call time so either deployment order works without granting bucket access.
+create or replace function public.stg_partner_file_read(p_bucket text,p_name text)
+returns boolean language plpgsql stable security definer set search_path = public, pg_temp as $$
+declare v_allowed boolean;
+begin
+  if not public.is_partner_user() or not exists(select 1 from profiles where id=auth.uid() and active) then
+    return false;
+  end if;
+  if p_bucket = 'install-media' then
+    return public.stg_warehouse_file_read(p_bucket,p_name);
+  end if;
+  if p_bucket = 'proposal-files' and to_regprocedure('public.proposal_partner_file(text)') is not null then
+    execute 'select public.proposal_partner_file($1)' into v_allowed using p_name;
+    return coalesce(v_allowed,false);
+  end if;
+  return false;
+end;
+$$;
+revoke all on function public.stg_partner_file_read(text,text) from public,anon;
+grant execute on function public.stg_partner_file_read(text,text) to authenticated;
 create policy "partner scoped storage read" on storage.objects as restrictive for select to authenticated
-  using (not public.is_partner_user() or public.stg_warehouse_file_read(bucket_id,name));
+  using (not public.is_partner_user() or public.stg_partner_file_read(bucket_id,name));
 create policy "partner scoped storage insert" on storage.objects as restrictive for insert to authenticated
   with check (not public.is_partner_user() or public.stg_warehouse_file_upload(bucket_id,name));
 create policy "partner no storage overwrite" on storage.objects as restrictive for update to authenticated
@@ -1067,6 +1088,9 @@ create or replace function public.stg_attach_warehouse_photo(p_project uuid,p_pa
 returns void language plpgsql security definer set search_path = public, pg_temp as $$
 begin
   perform stg_private.require_job(p_project);
+  -- Serialize the existence check and insert when two tabs retry one photo.
+  perform pg_advisory_xact_lock(hashtextextended('stg-photo:' || coalesce(p_path,''),0));
+  perform 1 from projects where id=p_project for share;
   perform 1 from packages where id=p_package and project_id=p_project for share;
   if not found or not public.stg_warehouse_file_upload('install-media',p_path)
     or split_part(p_path,'/',2) <> p_package::text then

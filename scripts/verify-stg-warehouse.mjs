@@ -81,6 +81,8 @@ await user(2);
 const photoPath=`packages/${id(40)}/stg/${id(2)}/${id(75)}.jpg`;
 await db.query("insert into storage.objects(bucket_id,name) values('install-media',$1)",[photoPath]);checks++;
 await db.query('select stg_attach_warehouse_photo($1,$2,$3)',[id(10),id(40),photoPath]);checks++;
+await db.query('select stg_attach_warehouse_photo($1,$2,$3)',[id(10),id(40),photoPath]);
+assert.equal((await db.query('select * from stg_warehouse_photos($1,$2)',[id(10),id(40)])).rows.length,1);checks++;
 assert.equal((await db.query('select * from storage.objects')).rows.length,1);checks++;
 await denied(()=>db.query("insert into storage.objects(bucket_id,name) values('install-media',$1)",[`packages/${id(41)}/stg/${id(2)}/${id(76)}.jpg`]));
 await denied(()=>db.query('select stg_attach_warehouse_photo($1,$2,$3)',[id(10),id(41),photoPath]));
@@ -139,5 +141,43 @@ await db.exec('reset role');
 assert.equal((await db.query('select on_hand from supplies where id=$1',[id(50)])).rows[0].on_hand,'18');checks++;
 await db.query('delete from partner_job_grants where partner_profile_id=$1',[id(2)]);
 await user(2);await denied(()=>view());
+// PR #595's exact file helper, with only its two required tables in this fixture.
+// Verify Warehouse first, then Workflow, including revocation and fail-closed
+// behavior if Workflow is absent. No proposal sharing is inferred from job grants.
+await db.exec('reset role');
+await db.exec(`
+create table proposal_partner_shares(partner_profile_id uuid,job_id uuid,document_ids uuid[]);
+create table proposal_documents(id uuid,job_id uuid,ready boolean,storage_path text);
+insert into storage.objects(bucket_id,name) values('proposal-files','shared.pdf'),('proposal-files','private.pdf'),('proposal-files','draft.pdf');
+`);
+await db.query('insert into proposal_documents values($1,$2,true,$3),($4,$2,true,$5),($6,$2,false,$7)',[id(80),id(90),'shared.pdf',id(81),'private.pdf',id(82),'draft.pdf']);
+await db.query('insert into proposal_partner_shares values($1,$2,$3)',[id(2),id(90),[id(80),id(82)]]);
+await user(2);
+assert.equal((await db.query("select * from storage.objects where bucket_id='proposal-files'")).rows.length,0);checks++;
+await db.exec('reset role');
+await db.exec(`
+create function public.proposal_partner_file(p_path text) returns boolean language sql stable security definer set search_path=public,pg_temp as $$
+ select public.is_partner_user() and exists(select 1 from public.profiles p where p.id=auth.uid() and p.active)
+ and exists(select 1 from public.proposal_partner_shares s join public.proposal_documents d on d.job_id=s.job_id and d.id=any(s.document_ids)
+ where s.partner_profile_id=auth.uid() and d.ready and d.storage_path=p_path);
+$$;
+revoke all on function public.proposal_partner_file(text) from public,anon;
+grant execute on function public.proposal_partner_file(text) to authenticated;
+create policy "proposal shared file read" on storage.objects for select to authenticated
+using(bucket_id='proposal-files' and public.is_partner_user() and public.proposal_partner_file(name));
+`);
+await user(2);
+assert.deepEqual((await db.query("select name from storage.objects where bucket_id='proposal-files'")).rows,[{name:'shared.pdf'}]);checks++;
+await denied(()=>db.query("insert into storage.objects(bucket_id,name) values('proposal-files','partner-upload.pdf')"));
+await user(3);
+assert.equal((await db.query("select * from storage.objects where bucket_id='proposal-files'")).rows.length,0);checks++;
+await db.exec('reset role');await db.query('update profiles set active=false where id=$1',[id(2)]);await user(2);
+assert.equal((await db.query("select * from storage.objects where bucket_id='proposal-files'")).rows.length,0);checks++;
+await db.exec('reset role');
+await db.query('update profiles set active=true where id=$1',[id(2)]);
+await db.exec('delete from proposal_partner_shares');await user(2);
+assert.equal((await db.query("select * from storage.objects where bucket_id='proposal-files'")).rows.length,0);checks++;
+await user(1);
+assert.equal((await db.query("select * from storage.objects where bucket_id='proposal-files'")).rows.length,3);checks++;
 console.log(`${checks} isolated partner warehouse checks passed. Production was not contacted.`);
 await db.close();

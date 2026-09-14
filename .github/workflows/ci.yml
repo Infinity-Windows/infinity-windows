@@ -57,7 +57,7 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       # Uses the existing fixture-only server, never the shared database.
-      - run: npm run e2e -- display-layout.spec.ts trip-sheet.spec.ts travel-crew.spec.ts workflow-plans.spec.ts schedule-remove-day.spec.ts crew-start-bar.spec.ts crew-end-time.spec.ts
+      - run: npm run e2e -- display-layout.spec.ts trip-sheet.spec.ts travel-crew.spec.ts workflow-plans.spec.ts schedule-remove-day.spec.ts crew-start-bar.spec.ts crew-end-time.spec.ts stg-warehouse.spec.ts stg-partner-wall.spec.ts
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -233,6 +233,21 @@ jobs:
       - uses: actions/checkout@v4
       - name: Test real PostgreSQL roles with synthetic records
         run: scripts/test-forge-permissions.sh
+
+  stg-warehouse-permissions:
+    name: STG warehouse permission boundaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Install disposable PostgreSQL runtime
+        run: npm install --prefix "$RUNNER_TEMP/stg-db" --no-save --ignore-scripts @electric-sql/pglite@0.5.8
+      - name: Check scoped commands and file access with synthetic records
+        env:
+          PGLITE_MODULE: ${{ runner.temp }}/stg-db/node_modules/@electric-sql/pglite/dist/index.js
+        run: node scripts/verify-stg-warehouse.mjs
 
   supabase-tooling:
     name: Supabase merge tooling

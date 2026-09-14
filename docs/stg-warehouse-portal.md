@@ -18,7 +18,7 @@ All partner reads use explicit projection fields. Mutations verify the real call
 
 The private `stg_private` schema is not an API schema and has no client usage or execution grants. It holds copies of the existing warehouse transaction bodies, with source migration provenance, behind a single scoped command gate. Future crew business-rule changes must update the corresponding private implementation too. Legacy public warehouse functions get an early partner refusal so calling them directly cannot bypass that gate.
 
-Storage has restrictive partner policies: existing broad bucket policies no longer allow partners to read arbitrary objects. Only photos attached solely to an authorized package can be signed. Partner uploads are constrained to their own package/actor path; overwrite and delete are blocked. Signed URLs last 60 seconds; an already issued URL can remain valid until expiry after a grant is revoked.
+Storage has restrictive partner policies: existing broad bucket policies no longer allow partners to read arbitrary objects. Package-photo access requires an attachment solely to an authorized package. When Workflow is installed, proposal-file access delegates to its explicit per-login, ready-file sharing helper; without that helper, proposal files remain denied. Partner uploads are constrained to their own package/actor path; overwrite and delete are blocked. Signed URLs last 60 seconds; an already issued URL can remain valid until expiry after a grant is revoked.
 
 ## Warehouse coverage
 
@@ -55,13 +55,13 @@ Storage has restrictive partner policies: existing broad bucket policies no long
 1. Review the draft and resolve the remaining action scope. Keep production unchanged during review.
 2. Recheck current master and migration reservations. This branch reserves `20261010000000_stg_warehouse_portal.sql`, after master through `20261004000000`; it expects the existing partner wall, projections, current package/attachment/supply schema, bays and finalization functions.
 3. Coordinate with PR #596 without changing its labor/stage implementation. Shared changes here: two lines in App.tsx for identity errors; three query roots; two additive merge-registry entries and the schema table-count expectation. No `nav.ts` change. Combined table count must include both branches' new tables.
-4. PR #595 is open/draft and contains a separate Workflow tab. Keep both Warehouse and Workflow when integrating StgApp. Its proposal-file authorization must be combined with the new restrictive storage policy; deploying both unchanged would deny otherwise shared proposal files. Also merge additions to `person_record_counts` and `purge_project` from other branches instead of overwriting those bodies.
+4. PR #595 is open/draft and contains a separate Workflow tab. Keep both Warehouse and Workflow when integrating StgApp. The storage restriction now composes with its explicit proposal-file authorization, resolving that helper at request time so either feature can be installed first. Also merge additions to `person_record_counts` and `purge_project` from other branches instead of overwriting those bodies.
 5. After normal migration review/backup and release authorization, deploy the backend migration before the frontend. The frontend intentionally reports missing setup if deployed first. The shared production project remains `czprjcskmzzagdztqonm`; no replacement project is needed.
 6. An owner configures the intended real partner login, job grants and capabilities. Verify that actual login on phone and desktop, including an unauthorized direct API attempt, before calling the portal live.
 
 ## Validation
 
-Passed locally: 5,378 unit tests; 30 partner/crew Playwright scenarios; 64 isolated database checks; Node 22 build and bundle budget; lint with 25 existing warnings; 11 partner-wall, 41 sandbox, 54 merge-tool and 101 schema checks. Phone/desktop screenshots were inspected. The current commit/PR are recorded in the local handoff alongside the screenshots. Core commands:
+Passed locally: 5,378 unit tests; 30 partner/crew Playwright scenarios; 72 isolated database checks; Node 22 build and bundle budget; lint with 25 existing warnings; 11 partner-wall, 41 sandbox, 54 merge-tool and 101 schema checks. Phone/desktop screenshots were inspected. The current commit/PR are recorded in the local handoff alongside the screenshots. Core commands:
 
 ```sh
 # Node 22, from app/
@@ -77,3 +77,9 @@ python3 scripts/test_sandbox_guard.py
 python3 scripts/test_supabase_merge.py
 python3 scripts/test_schema_verify.py
 ```
+
+## Follow-up hardening
+
+The storage integration fix is covered by executable SQL checks for absent Workflow, explicitly shared ready files, unshared and draft files, another login, disabled login, revoked sharing, denied partner uploads, and retained owner access. The fixture uses the file helper from PR #595 commit `323f8c0`; it does not replay that entire proposal migration. Photo attachment retries serialize the existence check and insert, and take a job lock before checking finalization. Repeated attachment submission is tested; true multi-connection concurrency is not exercised by PGlite.
+
+CI now runs the 72 STG database checks in disposable PostgreSQL and includes the STG warehouse/partner browser scenarios on each PR. Production credentials are not used by these checks. Existing UI/build validation above remains applicable; this follow-up changes SQL authorization, tests, CI and documentation only.
