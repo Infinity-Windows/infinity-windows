@@ -94,7 +94,7 @@ export function JobExecutionPanel({ projectId, completed }: { projectId: string;
           <progress aria-label="Labor hours used toward goal" max={target.goal_hours} value={Math.min(report.totalHours, target.goal_hours)} />
           <p>{hours(Math.abs(target.goal_hours - report.totalHours))} {report.totalHours <= target.goal_hours ? "remaining to goal" : "over goal"}</p>
         </>}
-        {completed && variance !== null && <p>{Math.abs(variance).toFixed(1)}% {variance <= 0 ? "under" : "over"} projected hours (recorded time).</p>}
+        {completed && report.totalHours > 0 && variance !== null && <p>{Math.abs(variance).toFixed(1)}% {variance <= 0 ? "under" : "over"} projected hours (recorded time).</p>}
         <p className="muted">{report.workers.reduce((n, p) => n + p.openShifts, 0)} open shifts · {report.workers.reduce((n, p) => n + p.needsReview, 0)} shifts needing review. Bonus points are not awarded automatically.</p>
         {isSupervisorPlus(effectiveRole) && (editing ? <LaborEditor key={projectId} projectId={projectId} target={target} close={() => setEditing(false)} /> : <button type="button" onClick={() => setEditing(true)}>Set / edit labor targets</button>)}
       </>}
