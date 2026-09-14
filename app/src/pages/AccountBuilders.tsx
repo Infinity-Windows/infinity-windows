@@ -7,6 +7,7 @@
 // everyone else who reaches the URL.
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { PartnerWarehousePermissions } from "../components/PartnerWarehousePermissions";
 import { BackChip } from "../components/BackChip";
 import { isOwner } from "../lib/install/types";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
@@ -164,6 +165,7 @@ export function AccountBuilders() {
         logins.data.map((login) => (
           <div key={login.id} className="detail-card" style={{ marginBottom: 12 }}>
             <p style={{ fontWeight: 650, margin: "0 0 8px" }}>{login.display_name}</p>
+            <PartnerWarehousePermissions partner={login.id} />
             {jobs.isLoading && <SkeletonList rows={2} />}
             {jobs.isSuccess && jobs.data.length === 0 && (
               <p className="muted" style={{ fontSize: 13 }}>

@@ -51,6 +51,7 @@ import { LanguageProvider } from "./lib/i18n";
 import { FirstRunLanguagePicker } from "./components/LanguagePicker";
 import { ensureMyProfile } from "./lib/install/api";
 import { SkeletonCard } from "./components/ui/States";
+import { QueryError } from "./components/ui/States";
 import { useIsPartnerUser } from "./lib/stg";
 import "./index.css";
 
@@ -271,6 +272,7 @@ function RequirePartnerElsewhere({ children }: { children: ReactNode }) {
   if (isPartner.isLoading) {
     return <div className="page"><p className="muted">Loading…</p></div>;
   }
+  if (isPartner.isError) return <div className="page"><QueryError error={isPartner.error} label="Could not check your login" onRetry={() => isPartner.refetch()} /></div>;
   if (isPartner.data) return <Navigate to="/stg" replace />;
   return <>{children}</>;
 }

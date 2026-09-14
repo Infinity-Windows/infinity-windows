@@ -1,0 +1,13 @@
+.stg-warehouse { display: grid; gap: 14px; }
+.stg-warehouse h2, .stg-warehouse h3 { margin: 0 0 10px; }
+.stg-warehouse label { display: grid; gap: 6px; }
+.stg-warehouse input:not([type=checkbox]), .stg-warehouse select, .stg-warehouse textarea { width: 100%; box-sizing: border-box; min-height: 44px; }
+.stg-warehouse button { min-height: 44px; padding: 8px 12px; }
+.stg-package-list { display: grid; gap: 8px; }
+.stg-warehouse .stg-package { display: flex; gap: 12px; align-items: center; border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+.stg-package input { width: 20px; height: 20px; flex-shrink: 0; accent-color: var(--accent); }
+.stg-package span { display: grid; gap: 4px; overflow-wrap: anywhere; }
+.stg-actions, .stg-form { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; align-items: end; }
+.stg-form label { flex: 1 1 180px; }
+.stg-warehouse summary { cursor: pointer; min-height: 32px; font-weight: 650; }
+@media (min-width: 800px) { .stg-package-list { grid-template-columns: repeat(2,minmax(0,1fr)); } }
