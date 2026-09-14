@@ -33,8 +33,12 @@ create table public.project_execution_history (
 alter table public.project_labor_targets enable row level security;
 alter table public.project_stage_progress enable row level security;
 alter table public.project_execution_history enable row level security;
-revoke all on public.project_labor_targets, public.project_stage_progress, public.project_execution_history from public, anon, authenticated;
-grant select on public.project_labor_targets, public.project_stage_progress, public.project_execution_history to authenticated;
+revoke all on public.project_labor_targets from public, anon, authenticated;
+revoke all on public.project_stage_progress from public, anon, authenticated;
+revoke all on public.project_execution_history from public, anon, authenticated;
+grant select on public.project_labor_targets to authenticated;
+grant select on public.project_stage_progress to authenticated;
+grant select on public.project_execution_history to authenticated;
 
 create policy labor_targets_read on public.project_labor_targets for select to authenticated
 using (not public.is_partner_user() and public._is_lead(auth.uid()) and exists (select 1 from public.projects p where p.id = project_id and p.deleted_at is null));
