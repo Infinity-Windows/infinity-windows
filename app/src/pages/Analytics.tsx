@@ -11,6 +11,7 @@ import {
 import { formatHours, variance } from "../lib/estimate";
 import { isForemanPlus } from "../lib/install/types";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
+import { LaborStats } from "../components/timecard/LaborStats";
 
 export function Analytics() {
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
@@ -48,6 +49,8 @@ export function Analytics() {
         </div>
         <BackChip fallback="/" label="Home" />
       </header>
+
+      <LaborStats />
 
       <h2>Installer leaderboard</h2>
       <p className="muted">Speed and quality from real installs.</p>

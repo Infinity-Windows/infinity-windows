@@ -33,6 +33,11 @@ export interface QueryKeyRootEntry {
  * beside the hand-kept offline list now live in each row's `why`.
  */
 export const QUERY_KEY_ROOTS: QueryKeyRootEntry[] = [
+  { root: "laborStatsJobs", offline: false },
+  { root: "jobLaborTargets", offline: false },
+  { root: "jobExecutionStages", offline: false },
+  { root: "laborStatsRoster", offline: false },
+  { root: "laborStatsShifts", offline: false },
   { root: "workflowLinks", offline: false },
   { root: "workflowMyTrips", offline: false },
   { root: "workflowPlans", offline: false },
@@ -295,4 +300,3 @@ export const OFFLINE_KEY_ROOTS: ReadonlySet<string> = new Set(
 export function qk(root: string, ...parts: unknown[]): readonly unknown[] {
   return [root, ...parts];
 }
-

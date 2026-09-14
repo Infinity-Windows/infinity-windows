@@ -1,4 +1,5 @@
 import { BackChip } from "../components/BackChip";
+import { JobExecutionPanel } from "../components/projects/JobExecutionPanel";
 import { PlanPackagesPanel } from "../components/warehouse/PlanPackagesPanel";
 import { JobPackagesPanel } from "../components/warehouse/JobPackagesPanel";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -621,6 +622,7 @@ function OverviewTab({
       {/* Wave J (J1): the pipeline card. Above Job details on purpose — the
           question "is this job going to happen on time" is the one somebody
           opens a job to answer, and the customer's phone number is not. */}
+      {project && isLead && <JobExecutionPanel key={projectId} projectId={projectId} completed={project.status === "completed"} />}
       {project && <PipelinePanel project={project} isLead={isLead} />}
 
       {/* Wave H (H1/H2): the GC card, directly under Pipeline. The two answer
