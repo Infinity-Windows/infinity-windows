@@ -1,0 +1,10 @@
+.labor-stats { margin: 24px 0; }
+.labor-stats progress { width: 100%; height: 8px; accent-color: var(--accent, #e6532e); }
+.labor-stats .detail-card { margin-top: 12px; }
+.labor-people { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.labor-person { width: 100%; text-align: left; color: inherit; cursor: pointer; }
+.labor-person > span { display: flex; gap: 12px; margin: 4px 0; }
+.labor-person strong, .labor-code span { overflow-wrap: anywhere; }
+.labor-code { margin: 14px 0; }
+.labor-code .row-between { gap: 16px; }
+@media (max-width: 600px) { .labor-people { grid-template-columns: 1fr; } }

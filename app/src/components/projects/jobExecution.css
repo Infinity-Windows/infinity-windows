@@ -1,0 +1,15 @@
+.job-execution { margin: 14px 0; }
+.execution-stages { display: flex; list-style: none; padding: 8px 0 16px; margin: 0; overflow-x: auto; gap: 4px; }
+.execution-stages li { min-width: 0; flex: 1; border-top: 3px solid var(--border); }
+.execution-stages button { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 6px; background: transparent; border: 0; color: inherit; font-size: 12px; padding: 8px; }
+.execution-stages .done { border-color: #258056; }
+.execution-stages .done .stage-dot { color: #258056; }
+.execution-stages .current { border-color: var(--accent, #d33f13); }
+.stage-dot { font-size: 24px; }
+.execution-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 12px 0; }
+.execution-fields dd { margin: 4px 0; font-size: 20px; font-weight: 700; }
+.job-execution label { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.job-execution input, .job-execution textarea { width: 100%; min-width: 0; }
+.job-execution progress { width: 100%; accent-color: var(--accent, #d33f13); }
+.stage-editor { padding-top: 10px; border-top: 1px solid var(--border); }
+@media (max-width: 600px) { .execution-fields { grid-template-columns: 1fr; } .execution-stages li { min-width: 104px; } }

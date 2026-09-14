@@ -707,6 +707,11 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     # -- sill pan, site rules, GC contact, notes per elevation. Same shape as
     # -- project_pipeline above — project_id IS the primary key.
     "project_build_facts": ("project_id",),
+    # Whole-job targets and stage state each have a natural per-job key.
+    "project_labor_targets": ("project_id",),
+    "project_stage_progress": ("project_id", "stage_key"),
+    # Separate changes remain separate audit events, even with identical notes.
+    "project_execution_history": None,
     # -- Learning time (20260993000000). The UNIQUE constraint IS the natural
     # -- key: one row per person per visit per item, so two databases holding
     # -- the same (person, visit, item) hold the same sitting, and a union that
