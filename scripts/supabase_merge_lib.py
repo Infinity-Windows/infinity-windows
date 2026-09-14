@@ -679,6 +679,9 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     # One grant per (partner, job) — the UNIQUE constraint IS the natural
     # key (Wave S, S1 the partner wall, 20260950000000).
     "partner_job_grants": ("partner_profile_id", "project_id"),
+    "partner_warehouse_permissions": ("partner_profile_id",),
+    # Retry IDs identify distinct warehouse actions, never dedup by job or input.
+    "partner_warehouse_commands": None,
     # Email IS the primary key — an invite is identified by the address it
     # was sent to (Wave S, S1, 20260950000000).
     "partner_invites": ("email",),

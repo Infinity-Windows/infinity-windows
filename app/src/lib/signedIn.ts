@@ -22,10 +22,11 @@
 /** The shape this module needs from a Supabase session. Structural on purpose:
  *  `Session | null` satisfies it, and the tests need no SDK. */
 export interface SignedInSession {
-  user?: { email?: string | null } | null;
+  user?: { id?: string; email?: string | null } | null;
 }
 
 let email: string | null = null;
+let profileId: string | null = null;
 
 /**
  * Remember who is signed in. Called by App's auth plumbing — the boot
@@ -37,6 +38,7 @@ let email: string | null = null;
  */
 export function rememberSignedIn(session: SignedInSession | null): void {
   email = session?.user?.email ?? null;
+  profileId = session?.user?.id ?? null;
 }
 
 /**
@@ -47,3 +49,6 @@ export function rememberSignedIn(session: SignedInSession | null): void {
 export function signedInEmail(): string | null {
   return email;
 }
+
+/** Identity for actor-bound offline commands; supplied only by App auth state. */
+export function signedInId(): string | null { return profileId; }
