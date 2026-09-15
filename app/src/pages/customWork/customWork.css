@@ -227,6 +227,8 @@
 .cw-editor input,
 .cw-editor select {
   height: 48px;
+  min-height: 48px;
+  margin: 0;
 }
 .cw-editor :is(input, select, textarea):focus-visible,
 .cw-editor summary:focus-visible {
