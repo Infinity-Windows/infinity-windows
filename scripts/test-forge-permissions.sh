@@ -10,10 +10,20 @@ trap cleanup EXIT
 # The image is also used in CI; a local cached copy works without network.
 docker run --detach --name "$CONTAINER" --network none --tmpfs /var/lib/postgresql/data \
   -e POSTGRES_PASSWORD=disposable-fixture-password postgres:16-alpine >/dev/null
+ready=false
 for attempt in $(seq 1 60); do
-  if docker exec "$CONTAINER" pg_isready -U postgres >/dev/null 2>&1; then break; fi
+  # The image briefly starts a socket-only server during initialization. Wait
+  # for TCP so we cannot race that temporary server's shutdown.
+  if docker exec "$CONTAINER" pg_isready -h 127.0.0.1 -U postgres >/dev/null 2>&1; then
+    ready=true
+    break
+  fi
   sleep 1
 done
+if [ "$ready" != true ]; then
+  echo "Disposable PostgreSQL did not finish starting within 60 seconds." >&2
+  exit 1
+fi
 run_sql() { docker exec -i "$CONTAINER" psql -X -U postgres -v ON_ERROR_STOP=1 -q < "$1"; }
 run_sql "$FIXTURES/setup.sql"
 run_sql "$REPO/supabase/migrations/20260721010000_crew_scheduling.sql"
