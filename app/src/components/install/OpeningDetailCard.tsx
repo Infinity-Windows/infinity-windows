@@ -162,6 +162,7 @@ export function OpeningDetailCard({
         <p className="map-detail-card__notes">{detail.notes.join(" · ")}</p>
       )}
       <div className="map-detail-card__actions">
+        <Link className="button-like" to={`/current-work?job=${projectId}&opening=${o.id}`}>Work on this unit</Link>
         <Link
           to={openingFullSheetPath(projectId, o.id)}
           className="button-like"

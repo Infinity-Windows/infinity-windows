@@ -1,4 +1,5 @@
 import { BackChip } from "../components/BackChip";
+import { CustomData } from "./customWork/CustomData";
 import { JobExecutionPanel } from "../components/projects/JobExecutionPanel";
 import { PlanPackagesPanel } from "../components/warehouse/PlanPackagesPanel";
 import { JobPackagesPanel } from "../components/warehouse/JobPackagesPanel";
@@ -203,6 +204,8 @@ export function ProjectDetail() {
   const modesPending = tabPendingModes(tabParam, projects.isLoading);
   const tabLabel = (id: HubTabId): string => {
     switch (id) {
+      case "custom-data":
+        return "Custom Data";
       case "dispatch":
         return "Dispatch";
       case "logs":
@@ -359,6 +362,7 @@ export function ProjectDetail() {
           project row resolves in the same tick its own queries do. */}
       {!modesPending && (
       <>
+      {tab === "custom-data" && <CustomData key={projectId} projectId={projectId} />}
       {tab === "overview" && (
         <>
           {/* Call for hands on the whole job (job-level-summons slice 4). A

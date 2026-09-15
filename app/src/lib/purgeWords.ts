@@ -78,6 +78,11 @@ export interface HistoryProbe {
  * named, so the heaviest, most recognisable records come first.
  */
 export const WORK_HISTORY_PROBES: readonly HistoryProbe[] = [
+  { table: "custom_work_units", column: "created_by", one: "custom work record", many: "custom work records" },
+  { table: "custom_work_sessions", column: "profile_id", one: "custom work record", many: "custom work records" },
+  { table: "custom_work_history", column: "actor_id", one: "custom work record", many: "custom work records" },
+  { table: "custom_work_commands", column: "profile_id", one: "custom work record", many: "custom work records" },
+
   // Time and money.
   { table: "time_shifts", column: "profile_id", one: "punch", many: "punches" },
   {

@@ -32,9 +32,10 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Settings (`/settings`)
 - Notifications (`/notifications`)
 
-**Can reach (all 31 allowed destinations):**
+**Can reach (all 32 allowed destinations):**
 
 - Home (`/`)
+- Current Work (`/current-work`)
 - Time (`/clock`)
 - Learn (`/learn`)
 - Points (`/points`)
@@ -105,6 +106,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 **Menu drawer:**
 
 - Home (`/`)
+- Current Work (`/current-work`)
 - My Work (`/my-work`)
 - Jobs (`/projects`)
 - Photos & receipts (`/photos`)
@@ -133,9 +135,10 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Settings (`/settings`)
 - Catalog (`/catalog`)
 
-**Can reach (all 40 allowed destinations):**
+**Can reach (all 41 allowed destinations):**
 
 - Home (`/`)
+- Current Work (`/current-work`)
 - Time (`/clock`)
 - Learn (`/learn`)
 - Points (`/points`)
@@ -206,6 +209,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 **Menu drawer:**
 
 - Home (`/`)
+- Current Work (`/current-work`)
 - My Work (`/my-work`)
 - Jobs (`/projects`)
 - Job history (`/jobs/history`)
@@ -245,9 +249,10 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Catalog (`/catalog`)
 - Admin (`/admin`)
 
-**Can reach (all 51 allowed destinations):**
+**Can reach (all 52 allowed destinations):**
 
 - Home (`/`)
+- Current Work (`/current-work`)
 - Time (`/clock`)
 - Learn (`/learn`)
 - Points (`/points`)
@@ -318,6 +323,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 **Menu drawer:**
 
 - Home (`/`)
+- Current Work (`/current-work`)
 - My Work (`/my-work`)
 - Jobs (`/projects`)
 - Job history (`/jobs/history`)
@@ -360,9 +366,10 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Admin (`/admin`)
 - Builder logins (`/account/builders`)
 
-**Can reach (all 54 allowed destinations):**
+**Can reach (all 55 allowed destinations):**
 
 - Home (`/`)
+- Current Work (`/current-work`)
 - Time (`/clock`)
 - Learn (`/learn`)
 - Points (`/points`)

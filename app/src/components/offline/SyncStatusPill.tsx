@@ -10,9 +10,22 @@
 // caller: a queued install was invisible everywhere, so closing the app
 // mid-flight looked identical to a finished submit. Fold its count in here.
 
+import { useClock } from "../../lib/clockContext";
+import {
+  readWorkQueue,
+  syncWork,
+  WORK_QUEUE_EVENT,
+} from "../../lib/customWork/queue";
 import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { CheckCircle2, CloudOff, RefreshCw, TriangleAlert, Wifi, WifiOff } from "lucide-react";
+import {
+  CheckCircle2,
+  CloudOff,
+  RefreshCw,
+  TriangleAlert,
+  Wifi,
+  WifiOff,
+} from "lucide-react";
 import { useT } from "../../lib/i18n";
 import { useOutbox } from "../../lib/offline/useOutbox";
 import type { PillSummary, PillTone } from "../../lib/offline/outbox-core";
@@ -63,10 +76,13 @@ function withInstalls(
 ): PillSummary {
   if (installsFailed > 0) {
     const failedLabel =
-      installsFailed === 1 ? "1 install needs you" : `${installsFailed} installs need you`;
+      installsFailed === 1
+        ? "1 install needs you"
+        : `${installsFailed} installs need you`;
     return {
       tone: "attention",
-      label: pill.tone === "synced" ? failedLabel : `${pill.label} · ${failedLabel}`,
+      label:
+        pill.tone === "synced" ? failedLabel : `${pill.label} · ${failedLabel}`,
       detail:
         installsFailed === 1
           ? "An install stopped trying to send. Open this to try it again."
@@ -75,13 +91,18 @@ function withInstalls(
   }
   if (installsPending === 0) return pill;
   const installsLabel =
-    installsPending === 1 ? "1 install queued" : `${installsPending} installs queued`;
+    installsPending === 1
+      ? "1 install queued"
+      : `${installsPending} installs queued`;
   const installsSentence =
     installsPending === 1 ? "1 install" : `${installsPending} installs`;
   const tone: PillTone = pill.tone === "attention" ? "attention" : "syncing";
   return {
     tone,
-    label: pill.tone === "synced" ? installsLabel : `${pill.label} · ${installsLabel}`,
+    label:
+      pill.tone === "synced"
+        ? installsLabel
+        : `${pill.label} · ${installsLabel}`,
     detail:
       pill.tone === "synced"
         ? `${installsSentence} saved and waiting to sync.`
@@ -89,17 +110,76 @@ function withInstalls(
   };
 }
 
+function useCustomWorkCount() {
+  const { profileId } = useClock();
+  const [state, setState] = useState({ pending: 0, failed: 0 });
+  useEffect(() => {
+    const read = () => {
+      try {
+        const rows = profileId ? readWorkQueue(profileId) : [];
+        setState({
+          pending: rows.length,
+          failed: rows.filter((r) => r.error).length,
+        });
+      } catch {
+        setState({ pending: 1, failed: 1 });
+      }
+    };
+    const sync = () => {
+      read();
+      if (profileId && navigator.onLine) {
+        try {
+          if (readWorkQueue(profileId).length)
+            void syncWork(profileId).catch(() =>
+              setState({ pending: 1, failed: 1 }),
+            );
+        } catch {
+          setState({ pending: 1, failed: 1 });
+        }
+      }
+    };
+    sync();
+    window.addEventListener(WORK_QUEUE_EVENT, read);
+    window.addEventListener("storage", read);
+    window.addEventListener("online", sync);
+    window.addEventListener("focus", sync);
+    const retry = setInterval(sync, 30000);
+    return () => {
+      window.removeEventListener(WORK_QUEUE_EVENT, read);
+      window.removeEventListener("storage", read);
+      window.removeEventListener("online", sync);
+      window.removeEventListener("focus", sync);
+      clearInterval(retry);
+    };
+  }, [profileId]);
+  return state;
+}
+
 export function SyncStatusPill() {
   const t = useT();
   const { pill: outboxPill } = useOutbox();
   const installs = useInstallOutboxCount();
+  const custom = useCustomWorkCount();
+  const basePill = withInstalls(outboxPill, installs.pending, installs.failed);
+  const workLabel = custom.failed
+    ? "Work needs review"
+    : `${custom.pending} work changes queued`;
+  const combined: PillSummary = custom.pending
+    ? {
+        tone:
+          custom.failed || basePill.tone === "attention"
+            ? "attention"
+            : "syncing",
+        label:
+          basePill.tone === "synced"
+            ? workLabel
+            : `${basePill.label} · ${workLabel}`,
+        detail:
+          "Custom work is saved on this device and waiting to sync. Open Current Work to review it.",
+      }
+    : basePill;
   const { online, weak } = useConnection();
-  const pill = withConnection(
-    withInstalls(outboxPill, installs.pending, installs.failed),
-    online,
-    weak,
-    t,
-  );
+  const pill = withConnection(combined, online, weak, t);
 
   const Icon =
     pill.tone === "attention"
@@ -118,12 +198,12 @@ export function SyncStatusPill() {
   // write to be acted on, which is why one could sit invisible forever.
   return (
     <Link
-      to="/stuck"
+      to={custom.pending ? "/current-work" : "/stuck"}
       className={`sync-pill sync-pill-${pill.tone}`}
       data-tone={pill.tone}
       role="status"
       aria-live="polite"
-      aria-label={`${pill.detail} — open stuck writes`}
+      aria-label={`${pill.detail} — ${custom.pending ? "open Current Work" : "open stuck writes"}`}
       title={pill.detail}
     >
       <span className="sync-pill-icon" aria-hidden>

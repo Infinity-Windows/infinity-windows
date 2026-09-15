@@ -33,6 +33,14 @@ export interface QueryKeyRootEntry {
  * beside the hand-kept offline list now live in each row's `why`.
  */
 export const QUERY_KEY_ROOTS: QueryKeyRootEntry[] = [
+  { root: "customWorkUnits", offline: true, why: "Keep field work available during a signal loss." },
+  { root: "customWorkSessions", offline: true, why: "Keep field work available during a signal loss." },
+  { root: "customWorkTypes", offline: true, why: "Keep field work available during a signal loss." },
+  { root: "customWorkHistory", offline: false },
+  { root: "customWorkOpening", offline: true, why: "Keep field work available during a signal loss." },
+  { root: "customWorkRoster", offline: true, why: "Keep field work available during a signal loss." },
+  { root: "customWorkRosterAll", offline: false },
+
   { root: "laborStatsJobs", offline: false },
   { root: "jobLaborTargets", offline: false },
   { root: "jobExecutionStages", offline: false },

@@ -387,8 +387,9 @@ export function ClockSheet({
       }
       if (!r.queued) refresh();
       if (r.startedOpening && pickedOpening) {
-        navigate(`/projects/${pickedOpening.project_id}/opening/${r.startedOpening}`);
+        navigate(`/current-work?job=${pickedOpening.project_id}&opening=${r.startedOpening}`);
       }
+      if (!r.startedOpening) navigate("/current-work");
       onClose();
     },
     onError: (e) => toastError(e),
@@ -419,6 +420,7 @@ export function ClockSheet({
     },
     onSuccess: (r) => {
       toastSuccess(r.queued ? t("clock.toast.switchedQueued") : t("clock.toast.switched"));
+      navigate("/current-work");
       if (!r.queued) refresh();
       onClose();
     },

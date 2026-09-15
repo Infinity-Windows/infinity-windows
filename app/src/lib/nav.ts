@@ -49,6 +49,7 @@ export { roleRank };
 export type RoutePath =
   | "/"
   | "/my-work"
+  | "/current-work"
   | "/projects"
   | "/jobs/history"
   | "/warehouse"
@@ -159,6 +160,7 @@ export interface MoneyGrants {
 export const NAV: NavDest[] = [
   // Open to everyone (installer floor) — execution + shared surfaces.
   { id: "home", to: "/", label: "Home", icon: "⌂", minRole: "installer" },
+  { id: "current-work", to: "/current-work", label: "Current Work", icon: "⏱", minRole: "installer" },
   { id: "clock", to: "/clock", label: "Time", icon: "⏱", minRole: "installer" },
   { id: "learn", to: "/learn", label: "Learn", icon: "★", minRole: "installer" },
   { id: "points", to: "/points", label: "Points", icon: "✦", minRole: "installer" },
@@ -429,6 +431,7 @@ const MENU_DEF: MenuSection[] = [
     // foremen who still install (installers reach it via the landing "/").
     items: [
       { to: "/", label: "Home", Icon: LayoutGrid },
+      { to: "/current-work", label: "Current Work", Icon: Clock },
       { to: "/my-work", label: "My Work", Icon: ListChecks },
       { to: "/projects", label: "Jobs", Icon: LayoutGrid },
       // canAccess gates this to supervisor+ (owner ask, 2026-08-26).

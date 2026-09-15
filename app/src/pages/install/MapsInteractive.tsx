@@ -331,7 +331,7 @@ export function MapsInteractive({ project }: { project: Project }) {
           // after this tab is gone yanks the user off whatever page they're on.
           navTimerRef.current = window.setTimeout(() => {
             navTimerRef.current = null;
-            navigate(`/projects/${projectId}/opening/${match.id}`);
+            navigate(`/current-work?job=${projectId}&opening=${match.id}`);
           }, 0);
         },
         // Assign mode (owner, 2026-08-14: "click on an installer, then multi
