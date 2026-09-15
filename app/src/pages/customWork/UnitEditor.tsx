@@ -60,7 +60,7 @@ export function UnitEditor({
     number = false,
   ) => (
     <label key={key}>
-      {title}
+      <span>{title}</span>
       {options ? (
         <select
           value={facts[key] ?? ""}
@@ -100,101 +100,91 @@ export function UnitEditor({
       start,
     );
   return (
-    <section className="cw-card" aria-label="Unit details">
-      <h2>{unit ? "Edit unit" : "Start a unit"}</h2>
-      <p className="muted">
-        A number and type are enough. Missing details can be filled in later.
-      </p>
-      <div className="cw-grid">
-        <label>
-          Unit number / name
-          <input
-            autoFocus
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="16 — or leave for a temporary name"
-            maxLength={120}
-          />
-        </label>
-        <label>
-          Type
-          <input
-            list="work-types"
-            value={type}
-            onChange={(e) => setType(e.target.value)}
-            placeholder="Choose or type your own"
-            maxLength={100}
-          />
-          <datalist id="work-types">
-            {types
-              .filter((t) => !t.archived)
-              .map((t) => (
-                <option key={t.id} value={t.label} />
+    <section className="cw-card cw-editor" aria-label="Unit details">
+      <header className="cw-editor-heading">
+        <h2>{unit ? "Edit unit" : "Start a unit"}</h2>
+        <p className="muted">Capture what you know. You can fill in more later.</p>
+      </header>
+      <section className="cw-editor-section" aria-label="Necessary information">
+        <div className="cw-section-heading">
+          <span className="cw-section-number" aria-hidden="true">
+            1
+          </span>
+          <h3>Necessary information</h3>
+        </div>
+        <div className="cw-editor-grid cw-editor-identity">
+          <label>
+            <span>Unit number / name</span>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. 16"
+              maxLength={120}
+            />
+          </label>
+          <label>
+            <span>Type</span>
+            <input
+              list="work-types"
+              value={type}
+              onChange={(e) => setType(e.target.value)}
+              placeholder="Choose or type your own"
+              maxLength={100}
+            />
+            <datalist id="work-types">
+              {types
+                .filter((t) => !t.archived)
+                .map((t) => (
+                  <option key={t.id} value={t.label} />
+                ))}
+            </datalist>
+          </label>
+          <label>
+            <span>Job</span>
+            <select
+              value={job}
+              onChange={(e) => setJob(e.target.value)}
+              disabled={!!unit?.opening_id || !!openingId}
+            >
+              <option value="">Assign job later</option>
+              {projects.data?.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
               ))}
-          </datalist>
-        </label>
-        <label>
-          Job
-          <select
-            value={job}
-            onChange={(e) => setJob(e.target.value)}
-            disabled={!!unit?.opening_id || !!openingId}
-          >
-            <option value="">Assign job later</option>
-            {projects.data?.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      {(unit?.project_id ?? null) !== (job || null) && unit && (
-        <label>
-          Assignment reason
-          <input
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            placeholder="Correct job / linking field capture"
-          />
-        </label>
-      )}
-      {!unit &&
-        existingUnits?.some(
-          (u) =>
-            u.project_id === (job || null) &&
-            u.label.toLowerCase() === name.trim().toLowerCase(),
-        ) && (
-          <p className="cw-notice">
-            A unit with this number already exists on this job. If it is the
-            same window, cancel and choose Start / Join on its existing record.
-            If this is a different window, add its building or floor to the
-            name.
+            </select>
+          </label>
+        </div>
+        {(unit?.project_id ?? null) !== (job || null) && unit && (
+          <label>
+            Assignment reason
+            <input
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Correct job / linking field capture"
+            />
+          </label>
+        )}
+        {!unit &&
+          existingUnits?.some(
+            (u) =>
+              u.project_id === (job || null) &&
+              u.label.toLowerCase() === name.trim().toLowerCase(),
+          ) && (
+            <p className="cw-notice">
+              A unit with this number already exists on this job. If it is the
+              same window, cancel and choose Start / Join on its existing record.
+              If this is a different window, add its building or floor to the
+              name.
+            </p>
+          )}
+        {defaults && !unit && (
+          <p className="muted">
+            Available type and dimensions came from the selected map unit. Confirm
+            or change them here; the office record stays unchanged.
           </p>
         )}
-      {defaults && !unit && (
-        <p className="muted">
-          Available type and dimensions came from the selected map unit. Confirm
-          or change them here; the office record stays unchanged.
-        </p>
-      )}
-      <details open={!!unit}>
-        <summary>Size, location, helpers, and conditions</summary>
-        <div className="cw-grid">
-          {field("width_in", "Outside-frame width (inches)", undefined, true)}
-          {field("height_in", "Outside-frame height (inches)", undefined, true)}
-          {field("area_source", "Measurement source", [
-            "Measured",
-            "From plans",
-            "Estimated",
-          ])}
-          {field(
-            "installation_complete",
-            "Entire unit installation complete (all visits)",
-            ["Yes", "No"],
-          )}
-          {field("story", "Story / floor (1, 2, 3, basement…)")}
-          {field("location", "Building / area / location")}
+        <div className="cw-editor-grid cw-editor-facts">
           {field("material", "Frame material", [
             "Vinyl",
             "Aluminum",
@@ -204,51 +194,82 @@ export function UnitEditor({
             "Mixed",
             "Other",
           ])}
-          {field("weight_lb", "Approximate unit weight (lb)", undefined, true)}
+          {field("story", "Floor / story")}
+          {field("width_in", "Frame width (inches)", undefined, true)}
+          {field("height_in", "Frame height (inches)", undefined, true)}
           {field("electrical", "Electrical components", ["Yes", "No"])}
-          {field("complexity", "Complexity", ["Simple", "Custom"])}
+          {field("equipment_needed", "Machinery needed", ["Yes", "No"])}
           {field("access", "Access", ["Easy", "Difficult"])}
-          {field("equipment_needed", "Vehicle / equipment needed", [
-            "Yes",
-            "No",
-          ])}
-          {field("equipment", "Vehicle / equipment description")}
-          {field(
-            "equipment_minutes",
-            "Equipment use (minutes for this unit)",
-            undefined,
-            true,
-          )}
+          {field("complexity", "Complexity", ["Simple", "Custom"])}
         </div>
-        <label>
-          People helping — names
-          <input
-            list="work-crew"
-            value={facts.named_helpers ?? ""}
-            onChange={(e) => set("named_helpers", e.target.value)}
-            placeholder="Select or type names; separate with commas"
-          />
-          <datalist id="work-crew">
-            {crew.data?.map((p) => (
-              <option key={p.id} value={p.display_name ?? ""} />
-            ))}
-          </datalist>
-        </label>
-        <p className="muted">
-          Names are notes. Each helper taps Join on this unit to record their
-          own time.
+        <p className="cw-field-hint">
+          Measure the outside of the frame. Ground floor is story 1.
         </p>
-        <label>
-          Unit description / access details
-          <textarea
-            value={facts.note ?? ""}
-            onChange={(e) => set("note", e.target.value)}
-            placeholder="What makes this window or door different?"
-            maxLength={4000}
-          />
-        </label>
+      </section>
+      <details className="cw-editor-helpful">
+        <summary>
+          <span className="cw-section-number" aria-hidden="true">
+            2
+          </span>
+          <span className="cw-helpful-title">
+            <span>Helpful information</span>
+            <span className="cw-field-hint">
+              Optional · location, helpers, machinery time & notes
+            </span>
+          </span>
+          <span className="cw-section-chevron" aria-hidden="true" />
+        </summary>
+        <div className="cw-helpful-body">
+          <div className="cw-editor-grid">
+            {field("location", "Building / area / location")}
+            {field("weight_lb", "Approximate weight (lb)", undefined, true)}
+            {field("area_source", "Measurement source", [
+              "Measured",
+              "From plans",
+              "Estimated",
+            ])}
+            {field(
+              "installation_complete",
+              "Installation complete (all visits)",
+              ["Yes", "No"],
+            )}
+            {field("equipment", "Machinery / vehicle description")}
+            {field(
+              "equipment_minutes",
+              "Machinery use (minutes)",
+              undefined,
+              true,
+            )}
+          </div>
+          <label>
+            People helping — names
+            <input
+              list="work-crew"
+              value={facts.named_helpers ?? ""}
+              onChange={(e) => set("named_helpers", e.target.value)}
+              placeholder="Select or type names; separate with commas"
+            />
+            <datalist id="work-crew">
+              {crew.data?.map((p) => (
+                <option key={p.id} value={p.display_name ?? ""} />
+              ))}
+            </datalist>
+          </label>
+          <p className="cw-field-hint">
+            Each helper taps Join on this unit to record their own time.
+          </p>
+          <label>
+            Unit description / access details
+            <textarea
+              value={facts.note ?? ""}
+              onChange={(e) => set("note", e.target.value)}
+              placeholder="What makes this window or door different?"
+              maxLength={4000}
+            />
+          </label>
+        </div>
       </details>
-      <div className="cw-actions">
+      <div className="cw-actions cw-editor-actions">
         <button
           className="primary"
           disabled={busy}

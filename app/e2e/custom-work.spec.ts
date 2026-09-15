@@ -119,9 +119,42 @@ for (const role of ["installer", "foreman", "supervisor", "owner"] as const) {
         fullPage: true,
       });
     await active.getByRole("button", { name: "Edit unit details" }).click();
-    await page.getByLabel("Outside-frame width (inches)").fill("48");
-    await page.getByLabel("Outside-frame height (inches)").fill("60");
-    await page.getByLabel("Story / floor (1, 2, 3, basement…)").fill("12");
+    await page.getByLabel("Frame width (inches)").fill("48");
+    await page.getByLabel("Frame height (inches)").fill("60");
+    await page.getByLabel("Floor / story").fill("12");
+    if (role === "foreman") {
+      const editor = page.getByRole("region", {
+        name: "Unit details",
+        exact: true,
+      });
+      // Capture the form alone; fixed app chrome would cover a tall element image.
+      const formImage = {
+        style: ".tabbar, .sync-strip, .ask-fab { visibility: hidden !important; }",
+      };
+      await editor.getByLabel("Frame material").selectOption("Aluminum");
+      await editor.getByLabel("Electrical components").selectOption("No");
+      await editor.getByLabel("Machinery needed").selectOption("Yes");
+      await editor
+        .getByRole("combobox", { name: "Access", exact: true })
+        .selectOption("Difficult");
+      await editor.getByLabel("Complexity").selectOption("Custom");
+      await expect(editor.getByLabel("Machinery use (minutes)")).toBeHidden();
+      await editor.getByRole("heading", { name: "Necessary information" }).click();
+      await editor.screenshot({ ...formImage, path: "e2e/test-results/unit-form-phone.png" });
+      await page.evaluate(() => document.documentElement.setAttribute("data-theme", "dark"));
+      await editor.screenshot({ ...formImage, path: "e2e/test-results/unit-form-phone-dark.png" });
+      await page.setViewportSize({ width: 1280, height: 1000 });
+      await editor.screenshot({ ...formImage, path: "e2e/test-results/unit-form-desktop.png" });
+      await page.setViewportSize({ width: 375, height: 812 });
+      await editor.getByText("Helpful information", { exact: true }).click();
+      await editor.getByLabel("Machinery use (minutes)").fill("25");
+      await editor.screenshot({ ...formImage, path: "e2e/test-results/unit-form-helpful-phone.png" });
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth),
+      ).toBeLessThanOrEqual(375);
+      await editor.getByText("Helpful information", { exact: true }).click();
+      await page.setViewportSize({ width: 390, height: 844 });
+    }
     await page
       .getByRole("button", { name: "Save details", exact: true })
       .click();
@@ -164,6 +197,7 @@ for (const role of ["installer", "foreman", "supervisor", "owner"] as const) {
       page.getByText("Set the frame and adjusted the slider.", { exact: true }),
     ).toBeVisible();
     expect(data.units[0].facts.story).toBe("12");
+    if (role === "foreman") expect(data.units[0].facts.equipment_minutes).toBe(25);
     if (role === "installer")
       await expect(
         page.getByText("Manage reusable unit types", { exact: true }),

@@ -173,6 +173,147 @@
 .cw-stage {
   max-width: 320px;
 }
+
+/* Keep the field form compact and aligned without changing the other cards. */
+.cw-editor .cw-editor-heading h2,
+.cw-editor .cw-section-heading h3 {
+  font-family: inherit;
+  text-transform: none;
+  letter-spacing: normal;
+}
+.cw-editor .cw-editor-heading h2 {
+  font-size: 1.25rem;
+  margin-bottom: 0.35rem;
+}
+.cw-editor-heading p {
+  margin: 0 0 1.5rem;
+  font-size: 0.9rem;
+}
+.cw-section-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-bottom: 1rem;
+}
+.cw-editor .cw-section-heading h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+.cw-section-number {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+.cw-editor-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end;
+  gap: 1rem 0.85rem;
+}
+.cw-editor label {
+  min-width: 0;
+  margin: 0;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  line-height: 1.35;
+}
+.cw-editor input,
+.cw-editor select {
+  height: 48px;
+}
+.cw-editor :is(input, select, textarea):focus-visible,
+.cw-editor summary:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+}
+.cw-editor-identity {
+  grid-template-columns: 1fr;
+  padding-bottom: 1.25rem;
+}
+.cw-editor-facts {
+  border-top: 1px solid var(--border);
+  padding-top: 1.25rem;
+}
+.cw-field-hint {
+  display: block;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  font-weight: 400;
+  margin: 0.65rem 0 0;
+}
+.cw-editor-helpful {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin-top: 1.25rem;
+}
+.cw-editor-helpful > summary {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 10px;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 1rem;
+  list-style: none;
+}
+.cw-editor-helpful > summary::-webkit-details-marker {
+  display: none;
+}
+.cw-editor-helpful .cw-section-number {
+  background: var(--bg);
+  color: var(--muted);
+}
+.cw-helpful-title {
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+.cw-helpful-title .cw-field-hint {
+  margin-top: 0.15rem;
+}
+.cw-section-chevron {
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+}
+.cw-editor-helpful[open] .cw-section-chevron {
+  transform: rotate(225deg);
+}
+.cw-helpful-body {
+  padding: 1rem;
+  border-top: 1px solid var(--border);
+}
+.cw-helpful-body > label {
+  margin-top: 1rem;
+}
+.cw-editor-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  padding-top: 1.15rem;
+  margin: 1.25rem 0 0;
+  border-top: 1px solid var(--border);
+}
+.cw-editor-actions .primary {
+  grid-column: 1 / -1;
+}
+@media (min-width: 640px) {
+  .cw-editor-identity {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .cw-editor-facts {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .cw-editor-actions {
+    display: flex;
+  }
+}
 @media (max-width: 500px) {
   .cw-card {
     padding: 0.9rem;
