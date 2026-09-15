@@ -84,8 +84,15 @@ alter table public.custom_work_units enable row level security;
 alter table public.custom_work_sessions enable row level security;
 alter table public.custom_work_history enable row level security;
 alter table public.custom_work_commands enable row level security;
-revoke all on public.custom_work_types, public.custom_work_units, public.custom_work_sessions, public.custom_work_history, public.custom_work_commands from public, anon, authenticated;
-grant select on public.custom_work_types, public.custom_work_units, public.custom_work_sessions, public.custom_work_history to authenticated;
+revoke all on public.custom_work_types from public, anon, authenticated;
+revoke all on public.custom_work_units from public, anon, authenticated;
+revoke all on public.custom_work_sessions from public, anon, authenticated;
+revoke all on public.custom_work_history from public, anon, authenticated;
+revoke all on public.custom_work_commands from public, anon, authenticated;
+grant select on public.custom_work_types to authenticated;
+grant select on public.custom_work_units to authenticated;
+grant select on public.custom_work_sessions to authenticated;
+grant select on public.custom_work_history to authenticated;
 create policy custom_types_read on public.custom_work_types for select to authenticated using(not public.is_partner_user() and public.custom_work_internal());
 create policy custom_units_read on public.custom_work_units for select to authenticated using(not public.is_partner_user() and public.custom_work_internal() and (
   (project_id is null and (created_by=auth.uid() or public._is_lead(auth.uid()))) or
