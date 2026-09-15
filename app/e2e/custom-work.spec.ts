@@ -203,6 +203,15 @@ test("a map unit keeps its identity when creating and joining custom work", asyn
     .click();
   await expect.poll(() => data.units.length).toBe(1);
   expect(data.units[0].opening_id).toBe(opening.id);
+  // Saving the unit and starting its timer are separate durable commands.
+  // A full navigation must wait for the timer, not just the unit response.
+  await expect.poll(() => data.sessions.length).toBe(1);
+  await expect(
+    page.getByRole("region", { name: "Current activity" }).getByRole("heading", {
+      name: `Unit ${opening.opening_code}`,
+      exact: true,
+    }),
+  ).toBeVisible();
   await page.goto(`/current-work?job=${projectId}&opening=${opening.id}`);
   await page
     .getByRole("button", { name: "Join as helper", exact: true })
