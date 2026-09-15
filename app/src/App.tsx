@@ -67,6 +67,7 @@ import "./index.css";
  * every one of these chunks in the background (vite.config.ts), so offline
  * use is unaffected once the first background sync finishes.
  */
+const CurrentWork = lazy(() => import("./pages/customWork/CurrentWork").then(m => ({default:m.CurrentWork})));
 const AskInfinity = lazy(() => import("./pages/AskInfinity").then((m) => ({ default: m.AskInfinity })));
 const AskMisses = lazy(() => import("./pages/AskMisses").then((m) => ({ default: m.AskMisses })));
 const Knowledge = lazy(() => import("./pages/Knowledge").then((m) => ({ default: m.Knowledge })));
@@ -205,6 +206,9 @@ function RouteFallback() {
  */
 function RoleLanding() {
   const { effectiveRole: role, isLoading } = useEffectiveRole();
+  const clock = useClock();
+  if (clock.loading) return <div className="page">Loading current work…</div>;
+  if (clock.shift?.status === "open") return <CurrentWork />;
   if (!ROLE_NAV_V2) return <Home />;
   if (isLoading) return <div className="page"><p className="muted">Loading…</p></div>;
   const rank = roleRank(role);
@@ -559,6 +563,7 @@ export default function App() {
           <Route path="/stg/*" element={<StgApp />} />
           <Route element={<RequirePartnerElsewhere><Layout /></RequirePartnerElsewhere>}>
             <Route path="/" element={<RoleLanding />} />
+            <Route path="/current-work" element={<RequireRole path="/current-work"><CurrentWork /></RequireRole>} />
             <Route path="/warehouse" element={<Warehouse />} />
             {/* One list per hub number: /warehouse/on-hand, /putaway, /staged,
                 /damaged. Anything else redirects back to the hub. */}

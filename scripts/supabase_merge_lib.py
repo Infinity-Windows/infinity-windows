@@ -708,6 +708,11 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     # -- project_pipeline above — project_id IS the primary key.
     "project_build_facts": ("project_id",),
     # Whole-job targets and stage state each have a natural per-job key.
+    "custom_work_types": ("label",),
+    "custom_work_units": None,
+    "custom_work_sessions": None,
+    "custom_work_history": None,
+    "custom_work_commands": None,
     "project_labor_targets": ("project_id",),
     "project_stage_progress": ("project_id", "stage_key"),
     # Separate changes remain separate audit events, even with identical notes.

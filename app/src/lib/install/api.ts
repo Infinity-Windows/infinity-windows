@@ -1660,6 +1660,7 @@ export async function getOpening(id: string): Promise<ProjectOpening | null> {
  * acceptable during a routine re-extract, so any opening named here is kept.
  */
 const OPENING_REFERENCE_TABLES: { table: string; column: string }[] = [
+  { table: "custom_work_units", column: "opening_id" },
   { table: "install_events", column: "project_opening_id" },
   { table: "qc_checks", column: "project_opening_id" },
   { table: "issues", column: "opening_id" },

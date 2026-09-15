@@ -99,6 +99,7 @@ describe("hubTabsFor — a data job is unchanged, a tracking job is lighter", ()
       hubTabsFor({ trackingOnly: false, isLead: true, warehouseStaged: false }),
     ).toEqual<HubTabId[]>([
       "overview",
+      "custom-data",
       "dispatch",
       "logs",
       "warehouse",
@@ -112,6 +113,7 @@ describe("hubTabsFor — a data job is unchanged, a tracking job is lighter", ()
       hubTabsFor({ trackingOnly: false, isLead: false, warehouseStaged: false }),
     ).toEqual<HubTabId[]>([
       "overview",
+      "custom-data",
       "warehouse",
       "chat",
       "photos",
@@ -125,6 +127,7 @@ describe("hubTabsFor — a data job is unchanged, a tracking job is lighter", ()
       hubTabsFor({ trackingOnly: true, isLead: true, warehouseStaged: true }),
     ).toEqual<HubTabId[]>([
       "overview",
+      "custom-data",
       "specs",
       "logs",
       "photos",
@@ -134,7 +137,7 @@ describe("hubTabsFor — a data job is unchanged, a tracking job is lighter", ()
     ]);
     expect(
       hubTabsFor({ trackingOnly: true, isLead: false, warehouseStaged: false }),
-    ).toEqual<HubTabId[]>(["overview", "specs", "photos", "chat", "time"]);
+    ).toEqual<HubTabId[]>(["overview", "custom-data", "specs", "photos", "chat", "time"]);
   });
 
   it("a TRACKING job never shows the data-heavy tabs", () => {
@@ -190,7 +193,7 @@ describe("tabPendingModes — hold a data-only tab until the job's mode is known
   });
 
   it("never holds a shared tab — a data job's normal load is untouched", () => {
-    for (const shared of ["overview", "specs", "time", "photos", "chat", "warehouse", "logs", "bogus", "", null, undefined]) {
+    for (const shared of ["overview", "custom-data", "specs", "time", "photos", "chat", "warehouse", "logs", "bogus", "", null, undefined]) {
       expect(tabPendingModes(shared, true)).toBe(false);
     }
   });
@@ -211,7 +214,7 @@ describe("tabPendingModes — hold a data-only tab until the job's mode is known
       expect(resolveHubTab(t, trk)).toBe("overview");
     }
     // ...and a tab the tracking job DOES show is never held.
-    for (const t of ["overview", "specs", "time", "photos", "chat", "warehouse", "logs"]) {
+    for (const t of ["overview", "custom-data", "specs", "time", "photos", "chat", "warehouse", "logs"]) {
       expect(tabPendingModes(t, true)).toBe(false);
     }
   });

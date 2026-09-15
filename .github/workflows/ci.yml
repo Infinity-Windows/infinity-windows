@@ -41,6 +41,17 @@ jobs:
       - name: Test
         run: npm test
 
+  custom-work-sql:
+    name: Custom work database invariants
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: npm install --prefix "$RUNNER_TEMP/custom-work-db" --no-save @electric-sql/pglite@0.5.8
+      - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-custom-work.mjs
+
   trip-browser:
     name: Forge workflow on phone and desktop
     runs-on: ubuntu-latest
@@ -57,7 +68,7 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       # Uses the existing fixture-only server, never the shared database.
-      - run: npm run e2e -- display-layout.spec.ts trip-sheet.spec.ts travel-crew.spec.ts workflow-plans.spec.ts schedule-remove-day.spec.ts crew-start-bar.spec.ts crew-end-time.spec.ts
+      - run: npm run e2e -- display-layout.spec.ts trip-sheet.spec.ts travel-crew.spec.ts workflow-plans.spec.ts schedule-remove-day.spec.ts crew-start-bar.spec.ts crew-end-time.spec.ts custom-work.spec.ts
       - uses: actions/upload-artifact@v4
         if: always()
         with:

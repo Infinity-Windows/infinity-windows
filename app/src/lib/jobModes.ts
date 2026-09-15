@@ -127,6 +127,7 @@ export function modeBadgeKey(
  * transient values a legacy ?tab= link carries before it is redirected; the
  * rest are real tabs. `specs` and `time` are the tracking-only additions. */
 export type HubTabId =
+  | "custom-data"
   | "overview"
   | "warehouse"
   | "map"
@@ -165,6 +166,7 @@ export function hubTabsFor(opts: HubTabOpts): HubTabId[] {
   if (trackingOnly) {
     return [
       "overview",
+      "custom-data",
       "specs",
       ...(isLead ? (["logs"] as HubTabId[]) : []),
       "photos",
@@ -175,6 +177,7 @@ export function hubTabsFor(opts: HubTabOpts): HubTabId[] {
   }
   return [
     "overview",
+    "custom-data",
     ...(isLead ? (["dispatch", "logs"] as HubTabId[]) : []),
     "warehouse",
     "chat",
@@ -207,6 +210,7 @@ export function resolveHubTab(
     return visible.includes(t as HubTabId) ? (t as HubTabId) : "overview";
   }
   const accept: string[] = [
+    "custom-data",
     "warehouse",
     "map",
     "model-studio",

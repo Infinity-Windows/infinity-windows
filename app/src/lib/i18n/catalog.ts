@@ -65,6 +65,16 @@ export const SAFETY_KEYS = [
 ] as const;
 
 export const CATALOG = {
+  "currentWork.title": { en: "Current Work", es: "Trabajo actual" },
+  "currentWork.startUnit": { en: "+ Start unit", es: "+ Iniciar unidad" },
+  "currentWork.idle": { en: "Idle time", es: "Tiempo entre unidades" },
+  "currentWork.map": { en: "Open map", es: "Abrir mapa" },
+  "currentWork.stop": { en: "Stop activity", es: "Detener actividad" },
+  "currentWork.clock": { en: "Clock in / resume", es: "Registrar entrada / continuar" },
+  "currentWork.manageClock": { en: "Job clock / break", es: "Reloj del trabajo / descanso" },
+  "currentWork.finishIdle": { en: "Finish → Idle time", es: "Terminar → Tiempo entre unidades" },
+  "currentWork.editUnit": { en: "Edit unit details", es: "Editar detalles de la unidad" },
+
   // ---- First-login language picker -------------------------------------
   "picker.heading": { en: "Choose your language", es: "Elige tu idioma" },
   "picker.help": {

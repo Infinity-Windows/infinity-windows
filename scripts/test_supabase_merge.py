@@ -193,7 +193,7 @@ class TestSchemaParsing(unittest.TestCase):
         # foreman records once (S4, job facts, 20261001000000).
         # +6: connected plan identity, links, revisions, requests and outbox.
         # +3: whole-job labor targets, named stages, and their change history.
-        self.assertEqual(len(SCHEMA.tables), 144)
+        self.assertEqual(len(SCHEMA.tables), 149)
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 
