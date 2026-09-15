@@ -63,6 +63,7 @@ export function guideRank(role?: string | null): number {
  * what a role can actually reach in the UI.
  */
 export const APP_GUIDE: AppGuideEntry[] = [
+  { path: "/current-work", label: "Current Work", minRole: "installer", blurb: "Start custom units or idle time on your current job. Join helpers and capture dimensions, conditions, and accomplishments. Each job has a Custom Data tab." },
   // ---- Open to everyone (installer floor): the daily job loop -------------
   {
     path: "/",
