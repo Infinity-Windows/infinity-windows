@@ -125,3 +125,63 @@ for (const width of [390, 1280]) {
     await expect(page.getByText(/Share with builder/)).toHaveCount(0);
   });
 }
+
+// A saved headline must never replace the report's description, and neither
+// the card nor editor may hide the end of a long report on a crew phone.
+for (const width of [390, 1280]) {
+  test(`a long saved report is fully readable and editable at ${width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.emulateMedia({ colorScheme: width === 390 ? "dark" : "light" });
+    await useSupabaseFixtures(page, { role: "installer" });
+    await useProjectFixture(page);
+    const headline = "6 units installed: one frame, four sliding doors and two windows, with hardware checked and the work area cleaned.";
+    const notes = "Everything went smoothly today. We set the frame on the second floor, installed four sliding doors, and finished both windows on the west side.\n\nAll doors and windows were checked for operation, alignment, and sealant coverage. The crew protected the finished surfaces and moved the remaining material to the staging area.\n\nTomorrow: complete the exterior trim, verify the final measurements with the foreman, and walk the finished openings with the customer. Final detail: the spare hardware is labeled and stored by the west entrance.";
+    const log = {
+      id: "readable-log", project_id: BLACK22.projectId, log_date: "2026-09-15",
+      headline, notes, day_flow: "smooth", reflection: null, weather: "Clear, 88°, breezy",
+      customer_visible: false, filer: { display_name: "Test installer" },
+    };
+    await page.route("**/rest/v1/daily_logs**", route => json(route, [log]));
+    const calls: Record<string, unknown>[] = [];
+    await page.route("**/rest/v1/rpc/file_daily_log", route => {
+      calls.push(route.request().postDataJSON());
+      return json(route, log);
+    });
+    await page.goto(`/projects/${BLACK22.projectId}?tab=logs`);
+    const report = page.locator(".daily-log-report");
+    await expect(report.getByText(headline, { exact: true })).toBeVisible();
+    await expect(report.locator(".daily-log-description")).toHaveText(notes);
+    expect(await report.locator(".daily-log-description").evaluate(el => ({
+      unclipped: el.scrollHeight <= el.clientHeight + 1,
+      wraps: getComputedStyle(el).whiteSpace === "pre-wrap",
+    }))).toEqual({ unclipped: true, wraps: true });
+    // The fixture database warning is not part of the production layout.
+    const screenshotStyle = ".pwa-banner-wrong-project { visibility: hidden; }";
+    await report.screenshot({ path: testInfo.outputPath(`report-${width}.png`), style: screenshotStyle });
+    await report.getByRole("button", { name: "Edit the log", exact: true }).click();
+    const dialog = page.getByRole("dialog");
+    const noteField = dialog.getByLabel("Notes", { exact: true });
+    await expect(noteField).toHaveValue(notes);
+    await expect(dialog.getByLabel("Headline", { exact: true })).toHaveValue(headline);
+    const assertFits = async () => {
+      for (const name of ["Headline", "Notes"]) {
+        const field = dialog.getByLabel(name, { exact: true });
+        expect(await field.evaluate(el => el.scrollHeight <= el.clientHeight + 1)).toBe(true);
+      }
+      expect(await dialog.locator(".daily-log-editor-body").evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+      await expect(dialog.getByRole("button", { name: "Save", exact: true })).toBeInViewport();
+    };
+    await assertFits();
+    await page.screenshot({ path: testInfo.outputPath(`editor-${width}.png`), style: screenshotStyle });
+    const moreNotes = `${notes}\n\n${notes}`;
+    await noteField.fill(moreNotes);
+    await assertFits();
+    // Rotation/reflow should resize existing text without requiring another keystroke.
+    await page.setViewportSize({ width: 320, height: 740 });
+    await expect.poll(() => noteField.evaluate(el => el.scrollHeight - el.clientHeight)).toBeLessThanOrEqual(1);
+    await assertFits();
+    await dialog.getByRole("button", { name: "Save", exact: true }).click();
+    await expect.poll(() => calls.length).toBe(1);
+    expect(calls[0]).toMatchObject({ p_headline: headline, p_notes: moreNotes, p_weather: log.weather });
+  });
+}

@@ -6,7 +6,10 @@
 //     (editing = the same upsert, never a freshly recomputed draft that
 //     could silently overwrite what a foreman actually wrote), else
 //   - seed from buildDraftForJobDay's factual, fully-editable starting point.
-import { Fragment, useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
+import { X } from "lucide-react";
+import { LogTextArea } from "./LogTextArea";
+import "./dailyLogs.css";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useT, type TKey } from "../../lib/i18n";
 import { formatApiError } from "../../lib/errors";
@@ -53,6 +56,7 @@ export function DailyLogDialog({
   onSaved?: (log: DailyLog) => void;
 }) {
   const t = useT();
+  const titleId = useId();
   const queryClient = useQueryClient();
   const existing = useQuery({
     queryKey: ["dailyLog", projectId, logDate],
@@ -130,88 +134,102 @@ export function DailyLogDialog({
   const crewLine = existing.data == null ? draft.data?.crewLine : null;
 
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
-      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-        <p style={{ margin: 0, fontWeight: 700 }}>
-          {existing.data ? t("dailyLog.title.edit") : t("dailyLog.title.new")} — {jobLabel}
-        </p>
-        <p className="muted" style={{ margin: "2px 0 10px", fontSize: 12.5 }}>
-          {formatLogDateLabel(logDate)}
-        </p>
+    <div className="modal-backdrop daily-log-backdrop" role="dialog" aria-modal="true" aria-labelledby={titleId} onClick={onClose}>
+      <div className="modal-card daily-log-editor" onClick={(e) => e.stopPropagation()}>
+        <header className="daily-log-editor-header">
+          <div>
+            <h2 id={titleId}>{existing.data ? t("dailyLog.title.edit") : t("dailyLog.title.new")}</h2>
+            <p className="daily-log-job">{jobLabel}</p>
+            <p className="daily-log-date">{formatLogDateLabel(logDate)}</p>
+          </div>
+          <button type="button" className="daily-log-close" aria-label={t("dailyLog.action.close")} onClick={onClose}>
+            <X size={20} aria-hidden="true" />
+          </button>
+        </header>
 
-        <p className="muted" style={{ fontSize: 12.5 }}>{t("dailyLog.shared")}</p>
+        <div className="daily-log-editor-body">
+          <p className="daily-log-shared">{t("dailyLog.shared")}</p>
+          {loading ? (
+            <p className="muted">{t("dailyLog.loading")}</p>
+          ) : (
+            <>
+              {cannotCheck && <p className="muted">{t("dailyLog.cannotCheck")}</p>}
+              <label className="daily-log-field">
+                <span>{t("dailyLog.field.headline")}</span>
+                <LogTextArea
+                  aria-label={t("dailyLog.a11y.headline")}
+                  rows={2}
+                  value={headline}
+                  onChange={(e) => setHeadline(e.target.value)}
+                />
+              </label>
+              {crewLine && <p className="daily-log-crew muted">{crewLine}</p>}
 
-        {loading ? (
-          <p className="muted">{t("dailyLog.loading")}</p>
-        ) : (
-          <>
-            {cannotCheck && <p className="muted">{t("dailyLog.cannotCheck")}</p>}
-            <label className="field-label">{t("dailyLog.field.headline")}</label>
-            <input
-              aria-label={t("dailyLog.a11y.headline")}
-              value={headline}
-              onChange={(e) => setHeadline(e.target.value)}
-            />
-            {crewLine && (
-              <p className="muted" style={{ margin: "2px 0 8px", fontSize: 12 }}>
-                {crewLine}
-              </p>
-            )}
+              <label className="daily-log-field daily-log-notes-field">
+                <span>{t("dailyLog.field.notes")}</span>
+                <LogTextArea
+                  aria-label={t("dailyLog.a11y.notes")}
+                  rows={7}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder={t("dailyLog.field.notesPlaceholder")}
+                />
+              </label>
 
-            <label className="field-label">{t("dailyLog.field.dayFlow")}</label>
-            <div className="grade-row">
-              {(["smooth", "fine", "stuck"] as const).map((f) => (
-                <button
-                  key={f}
-                  type="button"
-                  className={
-                    dayFlow === f
-                      ? `grade-btn selected${f === "fine" ? " warn" : f === "stuck" ? " danger" : ""}`
-                      : "grade-btn"
-                  }
-                  onClick={() => setDayFlow((cur) => (cur === f ? null : f))}
-                >
-                  {f === "smooth"
-                    ? t("dailyLog.flow.smooth")
-                    : f === "fine"
-                      ? t("dailyLog.flow.fine")
-                      : t("dailyLog.flow.stuck")}
-                </button>
-              ))}
-            </div>
-
-            {showReflection &&
-              REFLECTION_FIELDS.map(({ key, labelKey }) => (
-                <Fragment key={key}>
-                  <label className="field-label">{t(labelKey)}</label>
+              <div className="daily-log-conditions">
+                <fieldset className="daily-log-flow">
+                  <legend>{t("dailyLog.field.dayFlow")}</legend>
+                  <div className="grade-row">
+                    {(["smooth", "fine", "stuck"] as const).map((f) => (
+                      <button
+                        key={f}
+                        type="button"
+                        aria-pressed={dayFlow === f}
+                        className={dayFlow === f
+                          ? `grade-btn selected${f === "fine" ? " warn" : f === "stuck" ? " danger" : ""}`
+                          : "grade-btn"}
+                        onClick={() => setDayFlow((cur) => (cur === f ? null : f))}
+                      >
+                        {f === "smooth" ? t("dailyLog.flow.smooth")
+                          : f === "fine" ? t("dailyLog.flow.fine") : t("dailyLog.flow.stuck")}
+                      </button>
+                    ))}
+                  </div>
+                </fieldset>
+                <label className="daily-log-field">
+                  <span>{t("dailyLog.field.weather")}</span>
                   <input
-                    aria-label={t(labelKey)}
-                    value={reflection[key] ?? ""}
-                    onChange={(e) =>
-                      setReflection((cur) => ({ ...cur, [key]: e.target.value }))
-                    }
+                    aria-label={t("dailyLog.a11y.weather")}
+                    value={weather}
+                    onChange={(e) => setWeather(e.target.value)}
+                    placeholder={t("dailyLog.field.weatherPlaceholder")}
                   />
-                </Fragment>
-              ))}
+                </label>
+              </div>
 
-            <label className="field-label">{t("dailyLog.field.notes")}</label>
-            <textarea
-              aria-label={t("dailyLog.a11y.notes")}
-              rows={5}
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder={t("dailyLog.field.notesPlaceholder")}
-            />
+              {showReflection && (
+                <div className="daily-log-reflections">
+                  {REFLECTION_FIELDS.map(({ key, labelKey }) => (
+                    <label className="daily-log-field" key={key}>
+                      <span>{t(labelKey)}</span>
+                      <LogTextArea
+                        aria-label={t(labelKey)}
+                        rows={3}
+                        value={reflection[key] ?? ""}
+                        onChange={(e) => setReflection((cur) => ({ ...cur, [key]: e.target.value }))}
+                      />
+                    </label>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
 
-            <label className="field-label">{t("dailyLog.field.weather")}</label>
-            <input
-              aria-label={t("dailyLog.a11y.weather")}
-              value={weather}
-              onChange={(e) => setWeather(e.target.value)}
-              placeholder={t("dailyLog.field.weatherPlaceholder")}
-            />
-
-            <div className="row-gap" style={{ marginTop: 10, alignItems: "center" }}>
+        {!loading && (
+          <footer className="daily-log-editor-footer">
+            {!notes.trim() && <p className="muted">{t("dailyLog.notesGate")}</p>}
+            <div className="daily-log-editor-actions">
               <button
                 className="button-like active-pill"
                 disabled={!notes.trim() || save.isPending}
@@ -219,16 +237,9 @@ export function DailyLogDialog({
               >
                 {save.isPending ? t("dailyLog.action.saving") : t("dailyLog.action.save")}
               </button>
-              <button className="button-like" onClick={onClose}>
-                {t("dailyLog.action.cancel")}
-              </button>
-              {!notes.trim() && (
-                <span className="muted" style={{ fontSize: 12.5 }}>
-                  {t("dailyLog.notesGate")}
-                </span>
-              )}
+              <button className="button-like" onClick={onClose}>{t("dailyLog.action.cancel")}</button>
             </div>
-          </>
+          </footer>
         )}
       </div>
     </div>

@@ -1,0 +1,58 @@
+/* Reports need room for the whole day's story; no line clamps or inner text scrollbars. */
+.daily-log-list-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-3); margin: var(--space-5) 0 var(--space-4); }
+.daily-log-list-header h2 { margin: 0; font-size: 18px; }
+.daily-log-list { list-style: none; padding: 0; margin: 0; display: grid; gap: var(--space-5); }
+.daily-log-report { min-width: 0; padding: var(--space-6); border: 1px solid var(--border); border-radius: 18px; background: var(--card-raised); box-shadow: var(--shadow-soft); }
+.daily-log-report-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-3); margin-bottom: var(--space-4); }
+.daily-log-report-header time { font-size: var(--text-sm); font-weight: 600; color: var(--muted); }
+.daily-log-headline { margin: 0 0 var(--space-3); font-size: var(--text-lg); line-height: 1.4; font-weight: 650; }
+.daily-log-description { margin: 0; font-size: var(--text-md); line-height: 1.75; color: var(--text); }
+.daily-log-headline, .daily-log-description, .daily-log-details dd { white-space: pre-wrap; overflow-wrap: anywhere; }
+.daily-log-details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-5); margin: var(--space-5) 0 0; padding-top: var(--space-5); border-top: 1px solid var(--border); }
+.daily-log-details dt { margin-bottom: var(--space-1); font-size: var(--text-sm); color: var(--muted); }
+.daily-log-details dd { margin: 0; font-size: var(--text-md); line-height: 1.6; }
+.daily-log-report-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-5); padding-top: var(--space-4); border-top: 1px solid var(--border); }
+.daily-log-report-footer p { margin: 0; color: var(--muted); font-size: var(--text-sm); overflow-wrap: anywhere; }
+.daily-log-report-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); margin-left: auto; }
+.daily-log-edit { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); min-height: 44px; }
+
+.daily-log-backdrop { padding: calc(var(--safe-top) + var(--overlay-gap)) calc(var(--safe-right) + var(--overlay-gap)) calc(var(--safe-bottom) + var(--overlay-gap)) calc(var(--safe-left) + var(--overlay-gap)); }
+.modal-card.daily-log-editor { display: flex; flex-direction: column; width: 100%; max-width: 960px; max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 2 * var(--overlay-gap)); overflow: hidden; padding: 0; border-color: var(--border); border-radius: 20px; }
+.daily-log-editor-header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); padding: var(--space-6) var(--space-7) var(--space-5); border-bottom: 1px solid var(--border); flex: 0 0 auto; }
+.daily-log-editor-header > div { min-width: 0; }
+.daily-log-editor-header h2 { margin: 0 0 var(--space-2); color: var(--text); font-size: var(--text-xl); letter-spacing: 0.02em; }
+.daily-log-job { margin: 0 0 var(--space-1); font-size: var(--text-md); font-weight: 600; overflow-wrap: anywhere; }
+.daily-log-date { margin: 0; color: var(--muted); font-size: var(--text-sm); }
+.daily-log-close { display: grid; place-items: center; flex: 0 0 44px; width: 44px; height: 44px; padding: 0; }
+.daily-log-editor-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: var(--space-5) var(--space-7) var(--space-6); }
+.daily-log-shared { margin: 0 0 var(--space-5); color: var(--muted); font-size: var(--text-sm); line-height: 1.5; }
+.daily-log-field { display: grid; gap: var(--space-2); min-width: 0; margin: 0; }
+.daily-log-field > span, .daily-log-flow legend { font-size: var(--text-sm); font-weight: 600; color: var(--text-secondary); line-height: 1.5; }
+.daily-log-field textarea, .daily-log-field input { display: block; box-sizing: border-box; width: 100%; min-width: 0; max-width: 100%; margin: 0; padding: var(--space-3) var(--space-4); border: 1px solid var(--border); border-radius: 12px; background: var(--card-raised); color: var(--text); font-family: var(--font-body); font-size: var(--text-md); line-height: 1.6; }
+.daily-log-field textarea { resize: none; overflow: hidden; }
+.daily-log-field textarea::placeholder, .daily-log-field input::placeholder { color: var(--muted); opacity: 1; }
+.daily-log-field textarea:focus-visible, .daily-log-field input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.daily-log-notes-field { margin-top: var(--space-5); }
+.daily-log-crew { margin: var(--space-2) 0 0; font-size: var(--text-sm); }
+.daily-log-conditions, .daily-log-reflections { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-5); margin-top: var(--space-6); }
+.daily-log-flow { min-width: 0; margin: 0; padding: 0; border: 0; }
+.daily-log-flow legend { padding: 0; margin-bottom: var(--space-2); }
+.daily-log-flow .grade-row { margin: 0; }
+.daily-log-flow .grade-btn { min-width: 0; min-height: 52px; padding: var(--space-3) var(--space-2); font-size: var(--text-md); }
+.daily-log-reflections { padding-top: var(--space-5); border-top: 1px solid var(--border); }
+.daily-log-editor-footer { flex: 0 0 auto; padding: var(--space-4) var(--space-7); border-top: 1px solid var(--border); background: var(--surface); }
+.daily-log-editor-footer > p { margin: 0 0 var(--space-3); font-size: var(--text-sm); line-height: 1.5; }
+.daily-log-editor-actions { display: flex; gap: var(--space-3); }
+.daily-log-editor-actions button { min-height: 48px; min-width: 120px; }
+
+@media (max-width: 600px) {
+  .daily-log-report { padding: var(--space-4); border-radius: 14px; }
+  .daily-log-details, .daily-log-conditions, .daily-log-reflections { grid-template-columns: minmax(0, 1fr); }
+  .daily-log-headline { font-size: 18px; }
+  .modal-card.daily-log-editor { border-radius: 16px; }
+  .daily-log-editor-header { padding: var(--space-4); }
+  .daily-log-editor-header h2 { font-size: 23px; }
+  .daily-log-editor-body { padding: var(--space-4); }
+  .daily-log-editor-footer { padding: var(--space-3) var(--space-4); }
+  .daily-log-editor-actions button { min-width: 0; flex: 1; }
+}

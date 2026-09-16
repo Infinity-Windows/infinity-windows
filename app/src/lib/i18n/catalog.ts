@@ -2155,6 +2155,7 @@ export const CATALOG = {
   "dailyLog.a11y.notes": { en: "Notes", es: "Notas" },
   "dailyLog.a11y.weather": { en: "Weather", es: "Clima" },
   "dailyLog.field.weatherPlaceholder": { en: "Clear, 88°, breezy", es: "Despejado, 88°, con brisa" },
+  "dailyLog.action.close": { en: "Close daily log", es: "Cerrar el registro diario" },
   "dailyLog.action.save": { en: "Save", es: "Guardar" },
   "dailyLog.action.saving": { en: "Saving…", es: "Guardando…" },
   "dailyLog.action.cancel": { en: "Cancel", es: "Cancelar" },
