@@ -114,6 +114,7 @@ describe("hubTabsFor — a data job is unchanged, a tracking job is lighter", ()
     ).toEqual<HubTabId[]>([
       "overview",
       "custom-data",
+      "logs",
       "warehouse",
       "chat",
       "photos",
@@ -137,7 +138,7 @@ describe("hubTabsFor — a data job is unchanged, a tracking job is lighter", ()
     ]);
     expect(
       hubTabsFor({ trackingOnly: true, isLead: false, warehouseStaged: false }),
-    ).toEqual<HubTabId[]>(["overview", "custom-data", "specs", "photos", "chat", "time"]);
+    ).toEqual<HubTabId[]>(["overview", "custom-data", "specs", "logs", "photos", "chat", "time"]);
   });
 
   it("a TRACKING job never shows the data-heavy tabs", () => {
@@ -161,6 +162,7 @@ describe("resolveHubTab — the choke point the URL guards share", () => {
 
   it("a non-lead can't reach a lead-only tab by URL", () => {
     const data = { trackingOnly: false, isLead: false, warehouseStaged: false };
+    expect(resolveHubTab("logs", data)).toBe("logs");
     expect(resolveHubTab("dispatch", data)).toBe("overview");
     expect(resolveHubTab("exceptions", data)).toBe("overview");
     expect(resolveHubTab("maps-interactive", data)).toBe("maps-interactive");

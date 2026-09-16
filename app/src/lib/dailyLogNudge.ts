@@ -11,8 +11,7 @@
 //
 //   * It never blocks clocking out. The punch is already done and refreshed
 //     before this is dispatched; nothing here can fail a clock-out.
-//   * Foreman and above only. An installer cannot read a daily log at all
-//     (Q7, RLS), so offering them one would be an offer that leads nowhere.
+//   * Internal crew, including installers. Partner logins cannot file logs.
 //   * Once per job per day. A foreman who clocks in and out of the same job
 //     three times gets asked once. A nudge that comes back every time is a
 //     nudge people learn to dismiss without reading.

@@ -2090,8 +2090,7 @@ export const CATALOG = {
   "capture.photo.seeGallery": { en: "See it in the gallery", es: "Verla en la galería" },
   "capture.photo.another": { en: "Take another", es: "Tomar otra" },
 
-  // The offer that appears once, when a foreman clocks off a job nobody has
-  // logged today. Never for installers — they cannot read a log at all.
+  // Offered once when a crew member clocks off a job nobody has logged today.
   "dailyLog.nudge.ask": { en: "Log today for {job}?", es: "¿Anotar el día de {job}?" },
   "dailyLog.nudge.write": { en: "Write it", es: "Anotarlo" },
   "dailyLog.nudge.dismiss": { en: "Not now", es: "Ahora no" },
@@ -2102,10 +2101,16 @@ export const CATALOG = {
   },
 
   // ---- The daily log dialog ---------------------------------------------
-  // Foreman-and-up only (Q7), but plenty of foremen on this crew read Spanish
-  // first, and this is the one screen where somebody writes several sentences
-  // in their own words. It was hardcoded English until now; the English below
-  // is exactly what it said before.
+  // Available to installers and above, in English and Spanish.
+  "dailyLog.tab": { en: "Logs", es: "Registros" },
+  "dailyLog.listTitle": { en: "Daily logs", es: "Registros diarios" },
+  "dailyLog.addToday": { en: "+ Log today", es: "+ Anotar el día" },
+  "dailyLog.empty": { en: "No logs filed yet — the first one starts here.", es: "Todavía no hay registros — crea el primero aquí." },
+  "dailyLog.filedBy": { en: "Filed by {name}", es: "Registrado por {name}" },
+  "dailyLog.todayCount": { en: "Log today · {count}", es: "Anotar el día · {count}" },
+  "dailyLog.whichJob": { en: "Which job?", es: "¿Qué trabajo?" },
+  "dailyLog.jobsWithoutLog": { en: "These jobs had work today with no log filed yet.", es: "Estos trabajos tuvieron actividad hoy y todavía no tienen registro." },
+  "dailyLog.shared": { en: "One shared report per job per day. Your crew can read and update it.", es: "Un informe compartido por trabajo por día. Tu cuadrilla puede leerlo y actualizarlo." },
   "dailyLog.title.edit": { en: "Edit the log", es: "Editar el registro" },
   "dailyLog.title.new": { en: "Log today", es: "Anotar el día" },
   "dailyLog.loading": {

@@ -209,7 +209,7 @@ export function ProjectDetail() {
       case "dispatch":
         return "Dispatch";
       case "logs":
-        return "Logs";
+        return t("dailyLog.tab");
       case "warehouse":
         return "Warehouse";
       case "chat":
@@ -420,7 +420,7 @@ export function ProjectDetail() {
 
       {tab === "dispatch" && isLead && <DispatchBoard projectId={projectId} />}
 
-      {tab === "logs" && isLead && (
+      {tab === "logs" && (
         <DailyLogsTab
           projectId={projectId}
           jobLabel={project?.job_code ?? project?.name ?? "this job"}

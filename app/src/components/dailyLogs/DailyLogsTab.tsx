@@ -1,8 +1,5 @@
-// The job page's Logs tab (wave L, L3). Mounted from ProjectDetail.tsx only
-// when isLead (foreman+) — the same tab-gating idiom the Dispatch tab uses.
-// That's UI convenience only: the real gate is daily_logs' RLS policy
-// (Q7) — an installer whose session somehow reached this component would
-// still get an empty list back, never a peek at another role's notes.
+// One shared daily report per job, available to the internal crew.
+import { useT } from "../../lib/i18n";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { QueryError, SkeletonList } from "../ui/States";
@@ -21,6 +18,7 @@ export function DailyLogsTab({
   projectId: string;
   jobLabel: string;
 }) {
+  const t = useT();
   const logs = useQuery({
     queryKey: ["dailyLogs", projectId],
     queryFn: () => listDailyLogs(projectId),
@@ -32,20 +30,20 @@ export function DailyLogsTab({
   return (
     <div className="daily-logs-tab">
       <div className="row-between">
-        <h2 style={{ fontSize: 16 }}>Daily logs</h2>
+        <h2 style={{ fontSize: 16 }}>{t("dailyLog.listTitle")}</h2>
         <button
           type="button"
           className="button-like active-pill"
           onClick={() => setOpenFor(localDateISO())}
         >
-          + Log today
+          {t("dailyLog.addToday")}
         </button>
       </div>
 
       {logs.isLoading && <SkeletonList rows={3} />}
       {logs.isError && <QueryError error={logs.error} />}
       {logs.isSuccess && logs.data.length === 0 && (
-        <p className="muted">No logs filed yet — the first one starts here.</p>
+        <p className="muted">{t("dailyLog.empty")}</p>
       )}
       {logs.isSuccess && logs.data.length > 0 && (
         <ul className="unit-list work-list">
@@ -68,7 +66,7 @@ export function DailyLogsTab({
                 </p>
                 {log.filer?.display_name && (
                   <p className="muted" style={{ margin: "2px 0 0", fontSize: 11.5 }}>
-                    Filed by {log.filer.display_name}
+                    {t("dailyLog.filedBy", { name: log.filer.display_name })}
                   </p>
                 )}
               </div>

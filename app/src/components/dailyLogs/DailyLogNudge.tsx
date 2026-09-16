@@ -1,4 +1,4 @@
-// "Log today for <job>?" — the one offer a foreman gets when the day ends.
+// "Log today for <job>?" — offered to the crew when the day ends.
 //
 // Mounted once in Layout, beside the other app-shell overlays, and listens for
 // the clock-out event ClockSheet fires. Everything about when it may appear
@@ -11,7 +11,7 @@
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { X } from "lucide-react";
-import { isForemanPlus } from "../../lib/install/types";
+import { canUseDailyLogs } from "../../lib/dailyLogAccess";
 import type { CrewRole } from "../../lib/install/types";
 import { jobsNeedingLogToday, type JobNeedingLog } from "../../lib/dailyLogs";
 import { localDateISO } from "../../lib/dailyLogDay";
@@ -27,7 +27,7 @@ import { DailyLogDialog } from "./DailyLogDialog";
 export function DailyLogNudge({ role }: { role: CrewRole | string | null | undefined }) {
   const t = useT();
   const queryClient = useQueryClient();
-  const canLog = isForemanPlus(role);
+  const canLog = canUseDailyLogs(role);
   const [askedFor, setAskedFor] = useState<string | null>(null);
   // The whole job, not its id. The dialog below is mounted from THIS and never
   // from the live query: `jobsNeedingLog` refetches on window focus and on
@@ -83,7 +83,7 @@ export function DailyLogNudge({ role }: { role: CrewRole | string | null | undef
     );
   }
 
-  // Nothing to say: not a foreman, no clock-out yet, the answer has not come
+  // Nothing to say: not crew, no clock-out yet, the answer has not come
   // back, or that job's log is already filed.
   if (!canLog || !job) return null;
 

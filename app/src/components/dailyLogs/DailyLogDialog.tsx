@@ -139,6 +139,8 @@ export function DailyLogDialog({
           {formatLogDateLabel(logDate)}
         </p>
 
+        <p className="muted" style={{ fontSize: 12.5 }}>{t("dailyLog.shared")}</p>
+
         {loading ? (
           <p className="muted">{t("dailyLog.loading")}</p>
         ) : (
