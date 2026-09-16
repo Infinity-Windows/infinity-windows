@@ -764,16 +764,33 @@ export const CATALOG = {
     es: "Tiempo por trabajo y código de costo",
   },
   "timereport.help": {
-    en: "This pay period's hours, split by job and the cost code charged — the basis for billing service work.",
-    es: "Las horas de este período de pago, divididas por trabajo y código de costo — la base para facturar el trabajo de servicio.",
+    en: "All crew hours for these dates, less breaks. Total includes finished shifts and running clocks. Removed punches are excluded; unit timers are not added twice.",
+    es: "Horas de todo el equipo para estas fechas, menos descansos. El total incluye turnos terminados y relojes en curso. Excluye registros eliminados y no duplica los tiempos de unidades.",
   },
   "timereport.empty": {
-    en: "No hours in this pay period yet.",
-    es: "Aún no hay horas en este período de pago.",
+    en: "No time recorded for these dates.",
+    es: "No hay tiempo registrado para estas fechas.",
   },
   "timereport.total": { en: "Total", es: "Total" },
   "timereport.noJob": { en: "No job", es: "Sin trabajo" },
   "timereport.noCode": { en: "No cost code", es: "Sin código de costo" },
+  "timereport.allTime": { en: "All time", es: "Todo el tiempo" },
+  "timereport.refresh": { en: "Refresh hours", es: "Actualizar horas" },
+  "timereport.error": { en: "Could not load all hours. Please refresh.", es: "No se pudieron cargar todas las horas. Actualiza la página." },
+  "timereport.coverage": { en: "{people} people · {shifts} finished shifts · {running} running shifts", es: "{people} personas · {shifts} turnos terminados · {running} turnos en curso" },
+  "timereport.split": { en: "{closed} finished + {live} running (still changing)", es: "{closed} terminadas + {live} en curso (aún cambian)" },
+  "timereport.unresolved": { en: "{n} shifts need a finish time before their hours can be counted.", es: "{n} turnos necesitan una hora de salida para poder contar sus horas." },
+  "timereport.allTimeReview": { en: "All saved dates. Choose Week or Pay period to approve hours. Opening a person starts with the current pay period.", es: "Todas las fechas guardadas. Elige Semana o Período de pago para aprobar horas. Al abrir una persona se muestra el período de pago actual." },
+  "timereport.rosterHelp": { en: "Crew rows and payroll exports show finished hours. The job totals below also include running clocks, shown separately.", es: "Las filas del equipo y las exportaciones de nómina muestran horas terminadas. Los totales por trabajo también incluyen relojes en curso, indicados por separado." },
+  "timereport.completed": { en: "Finished", es: "Terminado" },
+  "timereport.cancelled": { en: "Cancelled", es: "Cancelado" },
+  "timereport.active": { en: "Active", es: "Activo" },
+  "timereport.manageJob": { en: "Open job / manage status", es: "Abrir trabajo / cambiar estado" },
+  "timereport.codes": { en: "Cost-code breakdown", es: "Desglose por código de costo" },
+  "timereport.ledgerRange": { en: "Job hours date range", es: "Fechas de horas por trabajo" },
+  "timereport.history": { en: "Job history", es: "Historial de trabajos" },
+  "timereport.historyHelp": { en: "Every job, including finished jobs and jobs with no hours yet. To finish or reopen a job, open it and use the job status controls. Finished jobs stay in Job history with their hours.", es: "Todos los trabajos, incluidos los terminados y los que aún no tienen horas. Para terminar o reabrir un trabajo, ábrelo y usa los controles de estado. Los trabajos terminados conservan sus horas en el historial." },
+
 
   // ---- The job Photos tab (the photo/receipt feed, tracking-jobs slice 7) ----
   // PhotoFeed was English-only by convention until this slice; these wrap the

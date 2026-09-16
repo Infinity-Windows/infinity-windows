@@ -48,6 +48,10 @@ on:
         description: "Dry-run the sandbox-guard migration and roll it back. Creates nothing."
         type: boolean
         default: false
+      restore_access_only:
+        description: "Owner-authorized: restore the existing off-site test foreman login, without reseeding jobs or changing its password."
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -76,6 +80,7 @@ jobs:
           SUPABASE_PROJECT_REF: czprjcskmzzagdztqonm
           REMOVE: ${{ inputs.remove }}
           CHECK_ONLY: ${{ inputs.check_migration_only }}
+          RESTORE_ONLY: ${{ inputs.restore_access_only }}
         run: |
           if [ -z "$SUPABASE_ACCESS_TOKEN" ]; then
             echo "::error title=No test foreman was created::SUPABASE_ACCESS_TOKEN is not set, so nothing could be created. It is the same secret deploy-backend.yml uses, so if that workflow works, this one has lost its copy."
@@ -94,6 +99,10 @@ jobs:
           if [ -z "$TEST_FOREMAN_PASSWORD" ]; then
             echo "::error title=No test foreman was created::TEST_FOREMAN_PASSWORD is not set, so this run had no password to give the account. Generate one locally and add it with: gh secret set TEST_FOREMAN_PASSWORD. See docs/test-account.md."
             exit 1
+          fi
+          if [ "$RESTORE_ONLY" = "true" ]; then
+            scripts/provision-test-foreman.py --restore-access-only
+            exit $?
           fi
           scripts/provision-test-foreman.py
 

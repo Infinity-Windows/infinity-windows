@@ -27,7 +27,7 @@ export function json(route: Route, body: unknown, rows: number | null = 0) {
     contentType: "application/json",
     ...(rows === null
       ? {}
-      : { headers: { "content-range": `0-${Math.max(0, rows - 1)}/${rows}` } }),
+      : { headers: { "content-range": `0-${Math.max(0, rows - 1)}/${rows}`, "access-control-expose-headers": "content-range" } }),
     body: JSON.stringify(body),
   });
 }

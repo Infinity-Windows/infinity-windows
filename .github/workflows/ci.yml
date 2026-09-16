@@ -69,7 +69,7 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       # Uses the existing fixture-only server, never the shared database.
-      - run: npm run e2e -- display-layout.spec.ts trip-sheet.spec.ts travel-crew.spec.ts workflow-plans.spec.ts schedule-remove-day.spec.ts crew-start-bar.spec.ts crew-end-time.spec.ts custom-work.spec.ts timecard-weekly.spec.ts
+      - run: npm run e2e -- display-layout.spec.ts trip-sheet.spec.ts travel-crew.spec.ts workflow-plans.spec.ts schedule-remove-day.spec.ts crew-start-bar.spec.ts crew-end-time.spec.ts custom-work.spec.ts timecard-weekly.spec.ts project-hours.spec.ts
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -87,6 +87,9 @@ jobs:
       # scripts/verify-functions.sh is what decides whether a backend deploy
       # really happened, so it gets tested like anything else. The tests stub
       # curl and never touch the network.
+      - name: Test explicit test-account recovery
+        run: python3 scripts/test_foreman_access_recovery.py
+
       - name: Test scripts/verify-functions.sh
         shell: bash
         run: scripts/verify-functions.test.sh
