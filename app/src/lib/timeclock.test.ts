@@ -352,8 +352,8 @@ describe("listTeamShifts", () => {
   it("keeps reading until it has every punch the count says exist", async () => {
     range
       .mockResolvedValueOnce({ data: page(1000, 0), error: null, count: 2037 })
-      .mockResolvedValueOnce({ data: page(1000, 1000), error: null, count: null })
-      .mockResolvedValueOnce({ data: page(37, 2000), error: null, count: null });
+      .mockResolvedValueOnce({ data: page(1000, 1000), error: null, count: 2037 })
+      .mockResolvedValueOnce({ data: page(37, 2000), error: null, count: 2037 });
 
     const rows = await listTeamShifts("2026-08-24T00:00:00Z", "2026-09-07T00:00:00Z");
 
@@ -374,8 +374,8 @@ describe("listTeamShifts", () => {
     // what settles it.
     range
       .mockResolvedValueOnce({ data: page(500, 0), error: null, count: 1012 })
-      .mockResolvedValueOnce({ data: page(500, 500), error: null, count: null })
-      .mockResolvedValueOnce({ data: page(12, 1000), error: null, count: null });
+      .mockResolvedValueOnce({ data: page(500, 500), error: null, count: 1012 })
+      .mockResolvedValueOnce({ data: page(12, 1000), error: null, count: 1012 });
 
     const rows = await listTeamShifts("2026-08-24T00:00:00Z", "2026-09-07T00:00:00Z");
 
@@ -399,13 +399,18 @@ describe("listTeamShifts", () => {
     expect(range).toHaveBeenCalledTimes(1);
   });
 
-  it("falls back to the short-page rule when a database gives no count", async () => {
+  it("refuses a count-free result instead of calling a capped page the total", async () => {
     range.mockResolvedValueOnce({ data: page(6), error: null });
+    await expect(listTeamShifts(null, null)).rejects.toThrow("could not be counted");
+  });
 
-    const rows = await listTeamShifts("2026-08-24T00:00:00Z", "2026-08-31T00:00:00Z");
-
-    expect(rows).toHaveLength(6);
-    expect(range).toHaveBeenCalledTimes(1);
+  it("refuses a partial read and changed or duplicated pages", async () => {
+    range.mockResolvedValueOnce({ data: page(2), count: 4 }).mockResolvedValueOnce({ data: [], count: 4 });
+    await expect(listTeamShifts(null, null)).rejects.toThrow("incomplete");
+    range.mockResolvedValueOnce({ data: page(2), count: 4 }).mockResolvedValueOnce({ data: page(2, 2), count: 5 });
+    await expect(listTeamShifts(null, null)).rejects.toThrow("changed");
+    range.mockResolvedValueOnce({ data: page(2), count: 4 }).mockResolvedValueOnce({ data: page(2), count: 4 });
+    await expect(listTeamShifts(null, null)).rejects.toThrow("changed");
   });
 
   it("throws the raw error so formatApiError can speak for it upstream", async () => {

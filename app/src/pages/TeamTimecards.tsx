@@ -110,12 +110,15 @@ export function TeamTimecards() {
   const [zeroReason, setZeroReason] = useState("");
 
   // K5: the page used to be hard-wired to "this week", which is not the shape
-  // payroll is paid in. Week or pay period, with a stepper — the same two
-  // buckets and the same stepper TimecardPanel gives one person.
-  const [rangeMode, setRangeMode] = useState<"week" | "pay">("week");
+  // payroll is paid in. Week/pay-period review shares its punches with the
+  // project totals; All time is the complete history, without bulk approval.
+  const [rangeMode, setRangeMode] = useState<"week" | "pay" | "all">("week");
   const [anchor, setAnchor] = useState<Date>(() => new Date());
-  const week = useMemo(() => timecardRange(rangeMode, anchor), [rangeMode, anchor]);
+  const week = useMemo(() => timecardRange(rangeMode === "all" ? "pay" : rangeMode, anchor), [rangeMode, anchor]);
   const stepDays = rangeMode === "pay" ? 14 : 7;
+  const rangeStart = rangeMode === "all" ? null : week.startIso;
+  const rangeEnd = rangeMode === "all" ? null : week.endIso;
+  const rangeLabel = rangeMode === "all" ? t("timereport.allTime") : week.label;
   // Its OWN cache key — see UnitRecordCard for the whole reason. The app shell
   // (Layout) holds ["profiles"] with listProfiles on every route, so under the
   // shared key this list would lose the removed people whenever that observer
@@ -129,9 +132,10 @@ export function TeamTimecards() {
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const costCodes = useQuery({ queryKey: ["costCodes"], queryFn: listCostCodes });
   const teamShifts = useQuery({
-    queryKey: ["teamShifts", week.startIso, week.endIso],
-    queryFn: () => listTeamShifts(week.startIso, week.endIso),
+    queryKey: ["teamShifts", rangeStart, rangeEnd],
+    queryFn: () => listTeamShifts(rangeStart, rangeEnd),
     enabled: isLead,
+    refetchInterval: 30_000,
   });
   // The overtime rules — company default plus any per-person override. Only
   // the exports use them; the roster still shows plain worked hours.
@@ -294,7 +298,7 @@ export function TeamTimecards() {
 
   const clockedCount = roster.filter((r) => r.open).length;
   /** "8.0h wk" / "8.0h pay" — the roster total follows the range on show. */
-  const hoursSuffix = rangeMode === "pay" ? "pay" : "wk";
+  const hoursSuffix = rangeMode === "all" ? t("timereport.allTime") : rangeMode === "pay" ? "pay" : "wk";
   // `sum`, not `t` — `t` is the translator on this component now.
   const pendingCount = new Set((teamShifts.data ?? [])
     .filter((s) => s.status === "submitted" && canApproveTimecard(effectiveRole, crew.data?.find((p) => p.id === s.profile_id)?.role))
@@ -325,7 +329,7 @@ export function TeamTimecards() {
   }, [teamShifts.data, otRules.data]);
 
   const teamPayload = () => ({
-    periodLabel: week.label,
+    periodLabel: rangeLabel,
     shifts: shiftsToExportRows(teamShifts.data ?? []),
     overtime: overtimeLines.map(({ employee, regular, overtime, doubleTime }) => ({
       employee,
@@ -390,8 +394,8 @@ export function TeamTimecards() {
           isSup={isSup}
           canEdit={canEditTimecard(effectiveRole, me.data?.id, selectedRole, selectedId)}
           canApprove={canApproveTimecard(effectiveRole, selectedRole)}
-          initialRangeMode={rangeMode}
-          initialAnchor={anchor}
+          initialRangeMode={rangeMode === "all" ? "pay" : rangeMode}
+          initialAnchor={rangeMode === "all" ? new Date() : anchor}
           projects={projects.data ?? []}
           costCodes={costCodes.data ?? []}
           openShift={selectedOpen}
@@ -416,7 +420,7 @@ export function TeamTimecards() {
 
       {/* K5: which stretch of time this whole page is about. */}
       <div className="seg tcx-tabs" role="tablist" aria-label={t("tcx.range.aria")}>
-        {(["week", "pay"] as const).map((m) => (
+        {(["week", "pay", "all"] as const).map((m) => (
           <button
             key={m}
             role="tab"
@@ -424,11 +428,11 @@ export function TeamTimecards() {
             className={rangeMode === m ? "active-pill button-like" : "button-like"}
             onClick={() => setRangeMode(m)}
           >
-            {m === "week" ? t("tcx.range.week") : t("tcx.range.pay")}
+            {m === "all" ? t("timereport.allTime") : m === "week" ? t("tcx.range.week") : t("tcx.range.pay")}
           </button>
         ))}
       </div>
-      <div className="row-gap" style={{ alignItems: "center" }}>
+      {rangeMode !== "all" && <div className="row-gap" style={{ alignItems: "center" }}>
         <button
           className="button-like"
           onClick={() => setAnchor((d) => addDays(d, -stepDays))}
@@ -451,7 +455,8 @@ export function TeamTimecards() {
         >
           <ChevronRight size={18} />
         </button>
-      </div>
+      </div>}
+      {rangeMode === "all" && <p className="muted">{t("timereport.allTimeReview")}</p>}
 
       <div className="row-gap" style={{ alignItems: "center", flexWrap: "wrap" }}>
         <button
@@ -459,11 +464,11 @@ export function TeamTimecards() {
           onClick={() =>
             downloadText(
               buildTimecardCsv(teamPayload()),
-              `team-timecard-${week.startIso.slice(0, 10)}.csv`,
+              `team-timecard-${rangeMode === "all" ? "all-time" : week.startIso.slice(0, 10)}.csv`,
               "text/csv;charset=utf-8",
             )
           }
-          disabled={(teamShifts.data ?? []).length === 0}
+          disabled={!teamShifts.isSuccess || (teamShifts.data ?? []).length === 0}
         >
           Export all (CSV)
         </button>
@@ -479,7 +484,7 @@ export function TeamTimecards() {
                 "text/csv;charset=utf-8",
               )
             }
-            disabled={overtimeLines.length === 0}
+            disabled={!teamShifts.isSuccess || overtimeLines.length === 0}
           >
             {t("tcx.export.gusto")}
           </button>
@@ -493,7 +498,7 @@ export function TeamTimecards() {
           onClick={() =>
             void navigator.clipboard.writeText(buildTimecardTsv(teamPayload()))
           }
-          disabled={(teamShifts.data ?? []).length === 0}
+          disabled={!teamShifts.isSuccess || (teamShifts.data ?? []).length === 0}
         >
           Copy for Sheets
         </button>
@@ -547,7 +552,7 @@ export function TeamTimecards() {
       {suspects.length > 0 && (
         <section className="detail-card" style={{ marginTop: 12 }}>
           <h2 style={{ margin: 0, fontSize: 15 }}>
-            Suspect punches in this {rangeMode === "pay" ? "pay period" : "week"} ({suspects.length})
+            Suspect punches · {rangeLabel} ({suspects.length})
           </h2>
           <p className="muted" style={{ margin: "2px 0 8px", fontSize: 12 }}>
             Clock-out before clock-in, or a span over 24 hours — almost
@@ -761,6 +766,8 @@ export function TeamTimecards() {
       )}
 
       {(crew.isLoading || teamShifts.isLoading) && <SkeletonList rows={4} />}
+      {teamShifts.isError && <p role="alert">{formatApiError(teamShifts.error)}</p>}
+      <p className="muted">{t("timereport.rosterHelp")}</p>
       <div className={isSup ? "tcx-roster picking" : "tcx-roster"}>
         {roster.map((r) => {
           const live = r.open;
@@ -814,7 +821,7 @@ export function TeamTimecards() {
               </label>}
               {row}
             </div>
-            {(rangeMode === "pay" ? [weekRange(week.start), weekRange(addDays(week.start, 7))] : [week]).map((range) => (
+            {(rangeMode === "all" ? [] : rangeMode === "pay" ? [weekRange(week.start), weekRange(addDays(week.start, 7))] : [week]).map((range) => (
               <WeeklyApproval key={range.startIso} personId={r.id} range={range} shifts={teamShifts.data ?? []}
                 canApprove={canApproveTimecard(effectiveRole, r.role)} showRange={rangeMode === "pay"} />
             ))}
@@ -844,9 +851,10 @@ export function TeamTimecards() {
         />
       )}
 
-      {/* The pay period's hours cut by job & cost code — the billing basis for
-          service work (slice 3). Foreman+, same as this whole page. */}
-      <TimeByJobReport />
+      {/* The exact same selected punches, grouped by job instead of person. */}
+      <TimeByJobReport shifts={teamShifts.data ?? []} rangeLabel={rangeLabel}
+        isLoading={teamShifts.isPending} error={teamShifts.error} isFetching={teamShifts.isFetching}
+        onRefresh={() => { void teamShifts.refetch(); }} />
     </div>
   );
 }

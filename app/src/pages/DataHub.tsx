@@ -10,7 +10,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { listProjects } from "../lib/api";
+import { listProjectsAnyStatus } from "../lib/api";
+import { JobHoursLedger } from "../components/timecard/JobHoursLedger";
 import { Explain } from "../components/ui/Explain";
 import { listOpenings, listProfilesIncludingRemoved } from "../lib/install/api";
 import { listOpeningPhases, flashingOutstanding } from "../lib/install/phases";
@@ -93,7 +94,7 @@ const RUNG_LABELS: Record<LadderRung, string> = {
 
 export function DataHub() {
   const t = useT();
-  const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
+  const projects = useQuery({ queryKey: ["projectsAll"], queryFn: listProjectsAnyStatus });
   const profiles = useQuery({
     queryKey: ["profilesIncludingRemoved"],
     queryFn: listProfilesIncludingRemoved,
@@ -317,6 +318,8 @@ export function DataHub() {
         </select>
       </header>
 
+      <JobHoursLedger projectId={jobFilter} />
+
       {/* ---- The morning glance: four numbers before any reading ---- */}
       <div className="data-stats">
         <div className={`stat-tile${stalledTotal > 0 ? " stat-warn" : ""}`}>
@@ -325,7 +328,7 @@ export function DataHub() {
         </div>
         <div className="stat-tile stat-accent">
           <span className="stat-value">{fmtH(laborTotal)}</span>
-          <span className="stat-label">Work time recorded</span>
+          <span className="stat-label">Unit installation time recorded</span>
         </div>
         <div className="stat-tile stat-ok">
           <span className="stat-value">

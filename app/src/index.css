@@ -12969,3 +12969,9 @@ button.stage-chip {
 .crew-start-project { flex: 1 1 150px; min-width: 0; overflow-wrap: anywhere; font-size: 14px; }
 .crew-start-message { margin: 0; padding: 10px 12px; font-size: 13px; }
 button.crew-start-message { min-height: 44px; width: 100%; text-align: left; color: inherit; }
+
+/* Job clocks: totals stay legible beside long project names on phones. */
+.job-time-report { margin-block: 12px 20px; }
+.job-time-row { padding-block: 16px; border-top: 1px solid var(--border); }
+.job-time-row p { margin: 6px 0; font-size: 13px; }
+.job-time-row summary { padding-block: 10px; cursor: pointer; }
