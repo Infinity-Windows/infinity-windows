@@ -1,3 +1,4 @@
+import { VoiceInput } from "../../components/voice/VoiceInput";
 // Tag at the truck: stick a blank license-plate sticker on a package, tap
 // it here (or scan it), and bind it — job (defaults to the last one used,
 // so ten BLACK22 crates in a row are one tap each), category chip, optional
@@ -736,7 +737,7 @@ export function TagPackages() {
 
       <h2>{t("storage.tag.step3")}</h2>
       <label className="field-label">{t("storage.tag.noteOptional")}</label>
-      <input
+      <VoiceInput
         placeholder={t("storage.tag.notePlaceholder")}
         value={note}
         onChange={(e) => setNote(e.target.value)}

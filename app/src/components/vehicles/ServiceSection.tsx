@@ -1,3 +1,4 @@
+import { VoiceInput } from "../voice/VoiceInput";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2, Wrench } from "lucide-react";
@@ -98,7 +99,7 @@ export function ServiceSection({ vehicle }: { vehicle: VehicleWithMeta }) {
           <label className="field-label">Category</label>
           <input type="text" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Oil change, tires, repair…" />
           <label className="field-label">Description</label>
-          <input type="text" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What was done" />
+          <VoiceInput type="text" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What was done" />
           <div className="sched-row-2">
             <div>
               <label className="field-label">Cost</label>

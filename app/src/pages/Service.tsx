@@ -1,3 +1,4 @@
+import { VoiceInput } from "../components/voice/VoiceInput";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
@@ -223,7 +224,7 @@ export function Service() {
           )}
           {resolvingId === c.id && (
             <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-              <input
+              <VoiceInput
                 value={noteValue}
                 onChange={(e) => setNoteValue(e.target.value)}
                 placeholder="Resolution note (optional)"

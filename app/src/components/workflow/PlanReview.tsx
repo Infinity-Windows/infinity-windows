@@ -1,3 +1,4 @@
+import { VoiceTextarea } from "../voice/VoiceTextarea";
 import { planChanges } from "../../lib/workflow/changes";
 import { useFocusTrap } from "../../lib/useFocusTrap";
 import { listProjects } from "../../lib/api";
@@ -85,7 +86,7 @@ function ReviewBody({ initial, onClose }: { initial: Review; onClose: () => void
         <label>{t("workflow.end")}<input type="date" value={a.end_date} onChange={e => change(d => { d.assignments[i].end_date = e.target.value; })} /></label>
         <label>{t("workflow.startTime")}<input type="time" value={a.start_time ?? ""} onChange={e => change(d => { d.assignments[i].start_time = e.target.value || null; })} /></label>
         <label>{t("workflow.endTime")}<input type="time" value={a.end_time ?? ""} onChange={e => change(d => { d.assignments[i].end_time = e.target.value || null; })} /></label>
-        <label>{t("workflow.notes")}<textarea value={a.note ?? ""} onChange={e => change(d => { d.assignments[i].note = e.target.value; })} /></label>
+        <label>{t("workflow.notes")}<VoiceTextarea value={a.note ?? ""} onChange={e => change(d => { d.assignments[i].note = e.target.value; })} /></label>
         {crewPicker(a.members, members => change(d => { d.assignments[i].members = members as typeof a.members; }), true)}
         </fieldset>
         <p className="muted">{t("workflow.vehicleCount", { n: draft.vehicles.filter(v => v.assignment_id === a.id).length })}</p>{draft.vehicles.filter(v => v.assignment_id === a.id).map(v => <p key={v.id}>{vehicleName(v.vehicle_id)} · {a.start_date} – {a.end_date}</p>)}
@@ -98,7 +99,7 @@ function ReviewBody({ initial, onClose }: { initial: Review; onClose: () => void
         <label>{t("workflow.travelStart")}<input type="date" value={pack.trip.start_date} onChange={e => change(d => { d.trips[i].trip.start_date = e.target.value; })} /></label>
         <label>{t("workflow.travelEnd")}<input type="date" value={pack.trip.end_date} onChange={e => change(d => { d.trips[i].trip.end_date = e.target.value; })} /></label>
         <label>{t("workflow.timezone")}<input value={pack.trip.timezone ?? ""} placeholder="America/Denver" onChange={e => change(d => { d.trips[i].trip.timezone = e.target.value; })} /></label>
-        <label>{t("workflow.notes")}<textarea value={pack.trip.notes ?? ""} onChange={e => change(d => { d.trips[i].trip.notes = e.target.value; })} /></label>
+        <label>{t("workflow.notes")}<VoiceTextarea value={pack.trip.notes ?? ""} onChange={e => change(d => { d.trips[i].trip.notes = e.target.value; })} /></label>
         {crewPicker(pack.crew, crew => change(d => { d.trips[i].crew = crew; }), false)}
         </fieldset>
         <details><summary>{t("workflow.travelDetails")}</summary>

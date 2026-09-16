@@ -1,3 +1,4 @@
+import { VoiceInput } from "../voice/VoiceInput";
 // One person's timecard, Horizon style: Day / Week / Pay-period tabs, an
 // arrow stepper with a "this week" reset, one big mono total card carrying
 // the Regular · Overtime · break split, then collapsible per-day cards —
@@ -375,7 +376,7 @@ export function TimecardPanel({
               {t("timecard.unapproveExplain", { name: personName })}
             </p>
             <div className="row-gap">
-              <input
+              <VoiceInput
                 type="text"
                 style={{ flex: 1 }}
                 placeholder={t("timecard.unapproveReasonPlaceholder")}

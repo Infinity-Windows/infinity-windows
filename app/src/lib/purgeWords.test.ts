@@ -213,6 +213,8 @@ describe("the probe list covers the schema", () => {
    * here on its own reasons — this list is short and stays short.
    */
   const EPHEMERA = new Set([
+    // Seven-day request counters only; no audio, words, work or payroll.
+    "description_dictation_usage.profile_id",
     // A device's push endpoint. The device is gone with the login.
     "push_subscriptions.profile_id",
     // "I dismissed that chip." Per-person UI state.

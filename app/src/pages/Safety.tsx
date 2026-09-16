@@ -1,3 +1,4 @@
+import { VoiceTextarea } from "../components/voice/VoiceTextarea";
 import { BackChip } from "../components/BackChip";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -83,15 +84,15 @@ function TalkEditor({ talk, onSaved }: { talk: SafetyTalk; onSaved: () => void }
   return (
     <div className="detail-card" style={{ marginTop: 10 }}>
       <label className="field-label">Intro</label>
-      <textarea value={intro} onChange={(e) => setIntro(e.target.value)} rows={3} />
+      <VoiceTextarea value={intro} onChange={(e) => setIntro(e.target.value)} rows={3} />
       <label className="field-label">Key hazards (one per line)</label>
-      <textarea value={hazards} onChange={(e) => setHazards(e.target.value)} rows={4} />
+      <VoiceTextarea value={hazards} onChange={(e) => setHazards(e.target.value)} rows={4} />
       <label className="field-label">Steps (one per line)</label>
-      <textarea value={steps} onChange={(e) => setSteps(e.target.value)} rows={5} />
+      <VoiceTextarea value={steps} onChange={(e) => setSteps(e.target.value)} rows={5} />
       <label className="field-label">Do (one per line)</label>
-      <textarea value={dos} onChange={(e) => setDos(e.target.value)} rows={3} />
+      <VoiceTextarea value={dos} onChange={(e) => setDos(e.target.value)} rows={3} />
       <label className="field-label">Don't (one per line)</label>
-      <textarea value={donts} onChange={(e) => setDonts(e.target.value)} rows={3} />
+      <VoiceTextarea value={donts} onChange={(e) => setDonts(e.target.value)} rows={3} />
       <button className="primary big" disabled={save.isPending} onClick={() => save.mutate()}>
         {save.isPending ? "Saving…" : "Save content"}
       </button>

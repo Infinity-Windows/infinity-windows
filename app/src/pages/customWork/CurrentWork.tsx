@@ -1,3 +1,5 @@
+import { VoiceInput } from "../../components/voice/VoiceInput";
+import { VoiceTextarea } from "../../components/voice/VoiceTextarea";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import { roleRank } from "../../lib/nav";
 import { useT } from "../../lib/i18n";
@@ -237,7 +239,7 @@ export function CurrentWork() {
                   </label>
                   <label>
                     What did you accomplish?
-                    <textarea
+                    <VoiceTextarea
                       value={finishNote}
                       onChange={(e) => setFinishNote(e.target.value)}
                       placeholder="Short note — phone dictation works here"
@@ -246,7 +248,7 @@ export function CurrentWork() {
                   </label>
                   <label>
                     What slowed you down? (optional)
-                    <input
+                    <VoiceInput
                       value={delay}
                       onChange={(e) => setDelay(e.target.value)}
                       maxLength={1000}
@@ -384,7 +386,7 @@ export function CurrentWork() {
               </div>
               <label>
                 What are you doing?
-                <input
+                <VoiceInput
                   value={idleNote}
                   onChange={(e) => setIdleNote(e.target.value)}
                   placeholder="Choose a reason or describe your work"

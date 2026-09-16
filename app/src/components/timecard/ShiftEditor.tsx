@@ -1,3 +1,5 @@
+import { VoiceInput } from "../voice/VoiceInput";
+import { VoiceTextarea } from "../voice/VoiceTextarea";
 // The punch add/adjust form, delete flow and edit-history list, shared by
 // every timecard surface. Moved out of pages/Timecard.tsx unchanged when the
 // page took on the Horizon-style roster/panel split (2026-08-11).
@@ -296,7 +298,7 @@ export function ShiftEditor({
           <label className="field-label" htmlFor={descriptionId}>
             {t("timecard.descriptionLabel")}
           </label>
-          <textarea
+          <VoiceTextarea
             id={descriptionId}
             rows={4}
             maxLength={4000}
@@ -313,7 +315,7 @@ export function ShiftEditor({
       <label className="field-label">
         {mode === "edit" ? "Reason (required — goes in the audit log)" : "Note (why adjusted)"}
       </label>
-      <input
+      <VoiceInput
         type="text"
         value={note}
         placeholder="e.g. forgot to clock out"

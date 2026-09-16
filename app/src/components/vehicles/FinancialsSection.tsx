@@ -1,3 +1,4 @@
+import { VoiceTextarea } from "../voice/VoiceTextarea";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Lock } from "lucide-react";
@@ -123,7 +124,7 @@ export function FinancialsSection({ vehicleId }: { vehicleId: string }) {
           )}
 
           <label className="field-label">Notes</label>
-          <textarea className="sched-note-input" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
+          <VoiceTextarea className="sched-note-input" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
 
           <div className="sched-sheet-actions">
             <button className="button-like active-pill" style={{ marginLeft: "auto" }} onClick={() => save.mutate()} disabled={save.isPending}>

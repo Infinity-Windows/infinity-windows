@@ -1,3 +1,4 @@
+import { VoiceTextarea } from "../components/voice/VoiceTextarea";
 import { CrewStartBar } from "../components/schedule/CrewStartBar";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { SaveJobsStrip } from "../components/offline/SaveJobOffline";
@@ -785,7 +786,7 @@ export function MyWork() {
               {t("mywork.unsubmitBody")}
             </p>
             <label className="field-label">{t("mywork.unsubmitWhy")}</label>
-            <textarea
+            <VoiceTextarea
               rows={3}
               value={unsubmitReason}
               onChange={(e) => setUnsubmitReason(e.target.value)}

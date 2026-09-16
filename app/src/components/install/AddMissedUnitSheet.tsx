@@ -1,3 +1,4 @@
+import { VoiceInput } from "../voice/VoiceInput";
 // "There's a window here that isn't on the plans."
 //
 // Wave E (transcripts program, Q18 — the owner's own addition). The permission
@@ -196,7 +197,7 @@ export function AddMissedUnitSheet({
         </p>
       )}
 
-      <input
+      <VoiceInput
         value={note}
         onChange={(e) => setNote(e.target.value)}
         placeholder={t("missed.notePlaceholder")}

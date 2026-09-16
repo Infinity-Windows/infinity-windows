@@ -1,3 +1,5 @@
+import { VoiceInput } from "../voice/VoiceInput";
+import { VoiceTextarea } from "../voice/VoiceTextarea";
 // The one big clock-in spot, on every landing (standard-tracking-jobs slice 1).
 //
 // WHY (owner ask, 2026-09-02): clocking in was three different treatments — a
@@ -526,7 +528,7 @@ export function ClockInBlock() {
           {showNeedJob && (
             <div className="clock-picker">
               <p className="muted" style={{ margin: 0 }}>{t("clockblock.needJob.help")}</p>
-              <input
+              <VoiceInput
                 className="clock-search"
                 placeholder={t("clockblock.needJob.notePlaceholder")}
                 value={needJobNote}
@@ -626,7 +628,7 @@ export function ClockInBlock() {
       <label className="clock-row-label" htmlFor="clockin-block-note">
         {t("clock.label.notesOffice")}
       </label>
-      <textarea
+      <VoiceTextarea
         id="clockin-block-note"
         className="clock-note-input"
         rows={2}

@@ -292,6 +292,12 @@
   padding: 1rem;
   border-top: 1px solid var(--border);
 }
+.cw-helpful-body .cw-editor-grid {
+  align-items: start;
+}
+.cw-helpful-body .cw-editor-grid > label > span:first-child {
+  min-height: 2.7em;
+}
 .cw-helpful-body > label {
   margin-top: 1rem;
 }

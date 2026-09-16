@@ -1,3 +1,4 @@
+import { VoiceInput } from "../components/voice/VoiceInput";
 import { BackChip } from "../components/BackChip";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -159,7 +160,7 @@ export function CostCodes() {
             value={newLabel}
             onChange={(e) => setNewLabel(e.target.value)}
           />
-          <input
+          <VoiceInput
             placeholder="Description (optional)"
             value={newDescription}
             onChange={(e) => setNewDescription(e.target.value)}
@@ -228,7 +229,7 @@ export function CostCodes() {
                     onChange={(e) => setDraft({ ...draft, label: e.target.value })}
                     placeholder="Name"
                   />
-                  <input
+                  <VoiceInput
                     value={draft.description}
                     onChange={(e) =>
                       setDraft({ ...draft, description: e.target.value })

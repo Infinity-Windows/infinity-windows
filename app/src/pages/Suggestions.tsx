@@ -1,3 +1,4 @@
+import { VoiceTextarea } from "../components/voice/VoiceTextarea";
 // App suggestions (owner ask, 2026-08-25): every role's direct line about
 // the APP itself — "this is broken", "it should do this". Reports land on
 // the owners' list and nowhere else; the sender keeps their own thread so
@@ -85,7 +86,7 @@ export function Suggestions() {
           {t("suggestions.anIdea")}
         </button>
       </div>
-      <textarea
+      <VoiceTextarea
         value={body}
         onChange={(e) => setBody(e.target.value)}
         placeholder={

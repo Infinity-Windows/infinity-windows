@@ -1,3 +1,4 @@
+import { VoiceInput } from "../../components/voice/VoiceInput";
 // Arrival check: what actually turned up at the job, and what turned up
 // broken.
 //
@@ -229,7 +230,7 @@ export function ArrivePackages() {
           </div>
 
           <label className="field-label">{t("storage.arrive.noteOptional")}</label>
-          <input
+          <VoiceInput
             placeholder={t("storage.arrive.notePlaceholder")}
             value={note}
             onChange={(e) => setNote(e.target.value)}

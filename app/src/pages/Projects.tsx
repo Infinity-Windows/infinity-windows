@@ -1,3 +1,4 @@
+import { VoiceTextarea } from "../components/voice/VoiceTextarea";
 import { BackChip } from "../components/BackChip";
 import { SavedCopyNotice } from "../components/offline/SavedCopyNotice";
 import { useSavedCopy } from "../lib/offline/useSavedCopy";
@@ -399,7 +400,7 @@ export function Projects() {
                 </label>
                 <label className="project-create-address">
                   <span className="field-label">Job notes</span>
-                  <textarea
+                  <VoiceTextarea
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
                     placeholder="Access, gate codes, staging area, scope reminders…"

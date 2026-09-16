@@ -108,6 +108,7 @@ FEATURE_NAMES = {
     'summon-warning-sweep': 'summon 5-minute warnings',
     'synthesize-type-tips': 'window-type tips',
     'transcribe-install-memo': 'install voice memos',
+    'transcribe-description': 'dictating descriptions',
     'vault-config': 'the vault PIN screen',
 }
 

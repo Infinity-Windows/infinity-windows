@@ -1,3 +1,4 @@
+import { VoiceInput } from "../voice/VoiceInput";
 // The roster's bulk clock, for supervisors (owner ask, 2026-09-04).
 //
 // The owner opened Team timecards and found fourteen people clocked into
@@ -357,7 +358,7 @@ export function CrewClockBar({
                 <label className="field-label" htmlFor="crewclock-note">
                   {t("crewclock.in.note")}
                 </label>
-                <input
+                <VoiceInput
                   id="crewclock-note"
                   type="text"
                   value={note}

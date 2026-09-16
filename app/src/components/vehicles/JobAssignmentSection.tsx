@@ -1,3 +1,4 @@
+import { VoiceInput } from "../voice/VoiceInput";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import { isSupervisorPlus } from "../../lib/install/types";
 import { useT } from "../../lib/i18n";
@@ -76,7 +77,7 @@ export function JobAssignmentSection({ vehicle }: { vehicle: VehicleWithMeta }) 
             ))}
           </select>
           <label className="field-label">Note (optional)</label>
-          <input type="text" value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. hauling the lift" />
+          <VoiceInput type="text" value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. hauling the lift" />
           <button
             className="button-like active-pill"
             disabled={!projectId || assign.isPending}

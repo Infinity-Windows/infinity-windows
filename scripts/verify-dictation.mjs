@@ -1,0 +1,30 @@
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+const {PGlite}=await import(process.env.PGLITE_MODULE??'@electric-sql/pglite');
+const db=new PGlite();
+await db.exec('create role authenticated; create role anon; create role service_role; create table profiles(id uuid primary key, retired_at timestamptz, access_revoked_at timestamptz);');
+const sql=await readFile(new URL('../supabase/migrations/20261015000000_description_dictation.sql',import.meta.url),'utf8');
+await db.exec(sql);await db.exec(sql);
+const id=n=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
+for(let n=1;n<=4;n++)await db.query('insert into profiles values($1,$2,$3)',[id(n),n===3?new Date():null,n===4?new Date():null]);
+let checks=0;
+const equal=(a,b)=>{assert.deepEqual(a,b);checks++;};
+const claim=async n=>(await db.query('select claim_description_dictation($1) ok',[id(n)])).rows[0].ok;
+for(const role of ['anon','authenticated']){
+ await db.exec('set role '+role);
+ await assert.rejects(()=>claim(1));checks++;
+ await assert.rejects(()=>db.query('select * from description_dictation_usage'));checks++;
+ await db.exec('reset role');
+}
+await db.exec('set role service_role');
+for(let n=0;n<120;n++)equal(await claim(1),true);
+equal(await claim(1),false);equal(await claim(2),true);
+equal(await claim(3),false);equal(await claim(4),false);equal(await claim(99),false);
+await db.exec('reset role');
+await db.query("update description_dictation_usage set day=day-1 where profile_id=$1",[id(1)]);
+equal(await claim(1),true);
+await db.query("insert into description_dictation_usage values($1,current_date-20,15)",[id(2)]);
+await claim(2);equal((await db.query('select count(*)::int n from description_dictation_usage where day<current_date-7')).rows[0].n,0);
+await db.query('delete from profiles where id=$1',[id(2)]);
+equal((await db.query('select count(*)::int n from description_dictation_usage where profile_id=$1',[id(2)])).rows[0].n,0);
+await db.close();console.log(`${checks} dictation permission and quota checks passed.`);

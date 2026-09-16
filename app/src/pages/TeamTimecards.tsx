@@ -1,3 +1,4 @@
+import { VoiceInput } from "../components/voice/VoiceInput";
 // Team timecards (foreman+): the live roster — pulsing dot and running
 // timer for whoever is on the clock, week hours and approval chips on every
 // row — and tap a person to open the shared TimecardPanel with full edit.
@@ -701,7 +702,7 @@ export function TeamTimecards() {
                         deleted.
                       </p>
                       <div className="row-gap">
-                        <input
+                        <VoiceInput
                           type="text"
                           style={{ flex: 1 }}
                           placeholder="Why? e.g. clocked in by mistake"

@@ -1,3 +1,4 @@
+import { VoiceInput } from "../voice/VoiceInput";
 // "What doesn't add up" — the specs sheet cross-referenced against the building
 // plans, in the words a foreman would use.
 //
@@ -160,7 +161,7 @@ export function SpecReconciliationReport({ projectId, openings, specs }: Props) 
     if (noteFor === rowKey(d)) {
       return (
         <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          <input
+          <VoiceInput
             autoFocus
             value={note}
             placeholder="Optional — e.g. emailed the supplier 7/28"

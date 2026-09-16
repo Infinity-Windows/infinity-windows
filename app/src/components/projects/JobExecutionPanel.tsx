@@ -1,3 +1,4 @@
+import { VoiceTextarea } from "../voice/VoiceTextarea";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { JOB_STAGES, getJobStages, getLaborTargets, laborVariance, optionalPositive, saveJobStage, saveLaborTargets, type LaborTarget, type JobStage } from "../../lib/jobExecution";
@@ -28,7 +29,7 @@ function LaborEditor({ projectId, target, close }: { projectId: string; target?:
       <label>Foreman goal hours<input type="number" min="0.01" max="9999999" step="0.01" value={goal} onChange={(e) => setGoal(e.target.value)} /></label>
       <label>SQF (optional)<input type="number" min="0.01" max="999999999" step="0.01" value={sqf} onChange={(e) => setSqf(e.target.value)} /></label>
     </div>
-    <label>Reason for setting or changing the target<textarea required minLength={3} maxLength={2000} value={reason} onChange={(e) => setReason(e.target.value)} /></label>
+    <label>Reason for setting or changing the target<VoiceTextarea required minLength={3} maxLength={2000} value={reason} onChange={(e) => setReason(e.target.value)} /></label>
     {save.isError && <p role="alert">{formatApiError(save.error)}</p>}
     <button disabled={save.isPending} type="submit">{save.isPending ? "Saving…" : "Save labor targets"}</button>{" "}
     <button disabled={save.isPending} type="button" onClick={close}>Cancel</button>
@@ -74,7 +75,7 @@ export function JobExecutionPanel({ projectId, completed }: { projectId: string;
           <h3>{JOB_STAGES.find(([key]) => key === selected)?.[1]}</h3>
           {selectedStage?.note && <p>Last update: {selectedStage.note}</p>}
           <label>{selectedStage?.completed ? "Reason for reopening" : "Completion note / evidence reference"}
-            <textarea value={note} onChange={(e) => setNote(e.target.value)} required minLength={3} maxLength={2000} /></label>
+            <VoiceTextarea value={note} onChange={(e) => setNote(e.target.value)} required minLength={3} maxLength={2000} /></label>
           {saveStage.isError && <p role="alert">{formatApiError(saveStage.error)}</p>}
           <button type="submit" disabled={saveStage.isPending}>{selectedStage?.completed ? "Reopen stage" : "Mark stage complete"}</button>{" "}
           <button type="button" disabled={saveStage.isPending} onClick={() => setSelected(null)}>Cancel</button>

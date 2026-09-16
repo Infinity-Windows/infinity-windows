@@ -1,3 +1,4 @@
+import { VoiceInput } from "../components/voice/VoiceInput";
 // Supplies: where it lives, how many we think we have, take what you need
 // (warehouse ticket 07 — grill Q8/Q9/Q25, owner-confirmed).
 //
@@ -540,7 +541,7 @@ function HomeForm({
             ))}
         </select>
         <label className="field-label">{t("supplies.whereInIt")}</label>
-        <input
+        <VoiceInput
           placeholder={t("supplies.whereInItPlaceholder")}
           value={note}
           onChange={(e) => setNote(e.target.value)}

@@ -589,6 +589,7 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     # -- answer as ai_spend_limits — id = 1, and a human picks which side wins.
     "company_settings": ("id",),
     "ai_usage_days": ("user_id", "usage_day"),
+    "description_dictation_usage": ("profile_id", "day"),
     "ai_spend_months": ("usage_month",),
     "ai_spend_alerts": ("usage_month", "level"),
     "ai_usage_events": None,  # one row per attempt; two attempts are two events
@@ -807,6 +808,10 @@ PICK_ONE_WINNER: dict[str, str] = {
         "taking one side loses the other side's calls, which is how a merged "
         "project would silently hand somebody a second daily quota. Recompute "
         "as the sum of both sides per key."
+    ),
+    "description_dictation_usage": (
+        "A short-lived per-person-per-day dictation count. Sum requests from "
+        "both sides per (profile_id, day), so merging cannot reset a daily quota."
     ),
     "ai_spend_months": (
         "A per-month running total in micro-dollars. Same as ai_usage_days: sum "

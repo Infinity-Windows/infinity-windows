@@ -1,3 +1,4 @@
+import { VoiceInput } from "../components/voice/VoiceInput";
 // Takeoffs (owner spec + grill, 2026-08-18): the warehouse bundles a job's
 // supplies for a named person. "Warehouse manager" is a hat, not a rung —
 // and since ADR-0007 (2026-09-04) that is true of the whole screen: every
@@ -354,7 +355,7 @@ function TakeoffRow({
                   </button>
                 ))}
               </div>
-              <input
+              <VoiceInput
                 placeholder={tr("takeoffs.etaNotePlaceholder")}
                 value={etaNote}
                 onChange={(e) => setEtaNote(e.target.value)}
@@ -525,7 +526,7 @@ function CreateTakeoffSheet({
           </div>
         )}
         <label className="field-label">{t("takeoffs.noteOptional")}</label>
-        <input value={note} onChange={(e) => setNote(e.target.value)} />
+        <VoiceInput value={note} onChange={(e) => setNote(e.target.value)} />
         <div className="row-gap" style={{ marginTop: 10 }}>
           <button
             className="button-like"

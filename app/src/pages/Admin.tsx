@@ -1,3 +1,4 @@
+import { VoiceInput } from "../components/voice/VoiceInput";
 import { BackChip } from "../components/BackChip";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -252,7 +253,7 @@ export function Admin() {
                 <label className="field-label" htmlFor={`deny-why-${r.id}`}>
                   Why? — optional
                 </label>
-                <input
+                <VoiceInput
                   id={`deny-why-${r.id}`}
                   data-testid="deny-reason"
                   placeholder="e.g. not hiring right now"

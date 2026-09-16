@@ -1,3 +1,4 @@
+import { VoiceInput } from "../voice/VoiceInput";
 // New/edit container form. Moved here from the Storage hub when it merged
 // into /warehouse (ticket 18) — ContainerDetail.tsx also reuses this for
 // editing an existing container, same as before the merge.
@@ -117,7 +118,7 @@ export function ContainerForm({
         <label className="field-label">{t("warehouse.containerForm.accessCode")}</label>
         <input value={accessCode} onChange={(e) => setAccessCode(e.target.value)} />
         <label className="field-label">{t("warehouse.containerForm.notes")}</label>
-        <input value={notes} onChange={(e) => setNotes(e.target.value)} />
+        <VoiceInput value={notes} onChange={(e) => setNotes(e.target.value)} />
         <div className="row-gap" style={{ marginTop: 10 }}>
           <button
             className="button-like active-pill"

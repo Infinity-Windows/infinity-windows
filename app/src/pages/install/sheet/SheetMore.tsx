@@ -1,3 +1,5 @@
+import { VoiceInput } from "../../../components/voice/VoiceInput";
+import { VoiceTextarea } from "../../../components/voice/VoiceTextarea";
 // The unit sheet's "More" fold (S7): everything exceptional, one <details>
 // per stage screen (each stage mounts its own instance, closed by default)
 // plus one more mounted directly under the done card once a unit is
@@ -144,7 +146,7 @@ export function SheetMore({
                 Why does it need redoing? (required — your foreman gets pinged,
                 the window goes back on the list)
               </label>
-              <textarea
+              <VoiceTextarea
                 rows={2}
                 maxLength={500}
                 value={redo.reason}
@@ -222,7 +224,7 @@ export function SheetMore({
             No notes yet.
           </p>
         )}
-        <textarea
+        <VoiceTextarea
           rows={3}
           maxLength={2000}
           value={noteText}
@@ -255,7 +257,7 @@ export function SheetMore({
       {stage !== null && showSiteNoteFold(stage) && (
         <div className="sheet-more-item">
           <label className="field-label">Site note for the lead (optional)</label>
-          <input
+          <VoiceInput
             value={siteNote.jobNoteText}
             onChange={(e) => siteNote.onJobNoteChange(e.target.value)}
             placeholder="General note about this job/site"
@@ -273,7 +275,7 @@ export function SheetMore({
             Something needs your foreman's attention now — this opens an urgent
             issue on the cross-job Issues board.
           </p>
-          <input
+          <VoiceInput
             value={siteNote.complicationText}
             onChange={(e) => siteNote.onComplicationChange(e.target.value)}
             placeholder="e.g. rotten framing, needs a decision"

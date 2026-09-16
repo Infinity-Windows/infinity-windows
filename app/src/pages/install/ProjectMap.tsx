@@ -1,3 +1,4 @@
+import { VoiceInput } from "../../components/voice/VoiceInput";
 import { BackChip } from "../../components/BackChip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
@@ -2535,7 +2536,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
                     record is kept.
                     <label style={{ display: "block", marginTop: 8 }}>
                       Why is it coming back off the wall? (required)
-                      <input
+                      <VoiceInput
                         style={{ display: "block", width: "100%", marginTop: 4 }}
                         value={undoReason}
                         onChange={(e) => setUndoReason(e.target.value)}
