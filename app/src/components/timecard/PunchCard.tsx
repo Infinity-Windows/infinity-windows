@@ -35,12 +35,13 @@ interface PunchCardProps {
   shift: TimeShift;
   isLead: boolean;
   isSup: boolean;
+  canEdit?: boolean;
   projects: ProjectOpt[];
   costCodes: CostOpt[];
   reject: { isPending: boolean; mutate: (args: { id: string; reason: string }) => void; error?: unknown };
 }
 
-export function PunchCard({ shift: s, isLead, isSup, projects, costCodes, reject }: PunchCardProps) {
+export function PunchCard({ shift: s, isLead, isSup, canEdit = false, projects, costCodes, reject }: PunchCardProps) {
   const t = useT();
   const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
@@ -203,16 +204,16 @@ export function PunchCard({ shift: s, isLead, isSup, projects, costCodes, reject
           </div>
         )}
         {s.note && (
-          <div className="muted" style={{ fontSize: 11.5, fontStyle: "italic" }}>
+          <div className="muted tcx-punch-description" style={{ fontSize: 12 }}>
             {t("timecard.noteLabel", { note: s.note })}
           </div>
         )}
 
         {/* Approval is WEEKLY (owner call, 2026-08-11) — the Approve-week
             button lives on the panel's total card. Reject stays per punch:
-            a bad punch is a specific punch. Edit is supervisor+ only (Q3) —
-            a plain foreman can still Reject, but not open the edit sheet. */}
-        {(isLead || isSup) && !voided && (
+            a bad punch is a specific punch. Foremen may edit self/installers;
+            editing higher roles remains supervisor+ only. */}
+        {(isLead || canEdit) && !voided && (
           <div className="row-gap tcx-punch-actions">
             {isLead && s.status !== "rejected" && (
               <button
@@ -225,7 +226,7 @@ export function PunchCard({ shift: s, isLead, isSup, projects, costCodes, reject
                 {t("timecard.reject")}
               </button>
             )}
-            {isSup && (
+            {canEdit && (
               <button
                 className="button-like"
                 onClick={() => setEditing((v) => !v)}
@@ -259,13 +260,14 @@ export function PunchCard({ shift: s, isLead, isSup, projects, costCodes, reject
         {reject.error != null && (
           <p className="error">{formatApiError(reject.error)}</p>
         )}
-        {editing && isSup && (
+        {editing && canEdit && !voided && (
           <ShiftEditor
             mode="edit"
             shift={s}
             profileId={s.profile_id}
             projects={projects}
             costCodes={costCodes}
+            canDelete={isSup}
             onDone={() => setEditing(false)}
           />
         )}

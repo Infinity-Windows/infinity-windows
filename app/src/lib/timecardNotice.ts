@@ -20,6 +20,7 @@ export interface PunchSnapshot {
   break_seconds?: number | null;
   project_id?: string | null;
   cost_code_id?: string | null;
+  note?: string | null;
 }
 
 /**
@@ -37,6 +38,7 @@ export function changedPunchFields(
   if ((before.break_seconds ?? 0) !== (after.break_seconds ?? 0)) out.push("break");
   if (!same(before.project_id, after.project_id)) out.push("job");
   if (!same(before.cost_code_id, after.cost_code_id)) out.push("cost code");
+  if (!same(before.note, after.note)) out.push("description");
   return out;
 }
 
@@ -52,10 +54,9 @@ export function joinPlainList(items: string[]): string {
  * ("something on your punch") rather than inventing detail when we cannot.
  *
  * The approval sentence is read off the punch's status BEFORE and AFTER the
- * save, never guessed from "it was approved". `edit_shift` re-approves in the
- * same statement whenever the editor is allowed to approve — and every role
- * that can reach the RPC at all (supervisor and up) is allowed to — so a punch
- * that was approved is still approved by the time this push is written. Telling
+ * save, never guessed from "it was approved". A correction to time or job sends
+ * approved hours back for weekly review; a description-only edit leaves the
+ * approved hours intact. Telling
  * somebody "it needs approving again" about a punch nobody needs to touch is a
  * false statement about their pay on the one feature that exists to stop those.
  */

@@ -2,7 +2,7 @@
 // every timecard surface. Moved out of pages/Timecard.tsx unchanged when the
 // page took on the Horizon-style roster/panel split (2026-08-11).
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatApiError } from "../../lib/errors";
 import { getMyProfile } from "../../lib/install/api";
@@ -10,6 +10,7 @@ import { sendPush } from "../../lib/permissions/pushServer";
 import { changedPunchFields, editPushBody } from "../../lib/timecardNotice";
 import { endFromDuration } from "../../lib/shiftGuard";
 import { showUndoToast } from "../../lib/undoToast";
+import { useT } from "../../lib/i18n";
 import {
   editShift,
   leadAddShift,
@@ -45,6 +46,7 @@ export function ShiftEditor({
   costCodes,
   onDone,
   defaultInAt,
+  canDelete = true,
 }: {
   mode: "add" | "edit";
   shift: TimeShift | null;
@@ -54,7 +56,11 @@ export function ShiftEditor({
   onDone: () => void;
   /** Prefill for add mode — an empty day's "+ Add" seeds its own date. */
   defaultInAt?: string;
+  /** Self-editing foremen may correct a punch, but may not void it. */
+  canDelete?: boolean;
 }) {
+  const t = useT();
+  const descriptionId = useId();
   const qc = useQueryClient();
   // Whose punch this is, relative to whoever is editing. A supervisor tidying
   // up their OWN timecard should not push themselves a notice about it.
@@ -80,6 +86,7 @@ export function ShiftEditor({
   // never prefills from the last edit's note - a stale reason on a new change
   // would be a false audit entry.
   const [note, setNote] = useState("");
+  const [description, setDescription] = useState(shift?.note ?? "");
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const refresh = () => {
@@ -87,6 +94,8 @@ export function ShiftEditor({
     qc.invalidateQueries({ queryKey: ["timecardMine"] });
     qc.invalidateQueries({ queryKey: ["timecardPanel"] });
     qc.invalidateQueries({ queryKey: ["unfinishedShifts"] });
+    qc.invalidateQueries({ queryKey: ["payPeriodShifts"] });
+    qc.invalidateQueries({ queryKey: ["shiftEdits", shift?.id] });
   };
 
   // Duration mode computes the finish time from the clock-in instead of
@@ -117,10 +126,15 @@ export function ShiftEditor({
       return editShift(shift!.id, {
         projectId: projectId || null,
         costCodeId: codeId || null,
-        clockInAt: fromLocalInput(inAt),
-        clockOutAt,
-        breakSeconds,
+        // Adding a description must not round existing seconds off the punch.
+        clockInAt: inAt === toLocalInput(shift!.clock_in_at)
+          ? shift!.clock_in_at : fromLocalInput(inAt),
+        clockOutAt: endMode === "clockOut" && outAt === toLocalInput(shift!.clock_out_at)
+          ? shift!.clock_out_at : clockOutAt,
+        breakSeconds: breakMin === String(Math.round(shift!.break_seconds / 60))
+          ? shift!.break_seconds : breakSeconds,
         note: note.trim(),
+        description,
       });
     },
     onSuccess: (saved) => {
@@ -145,6 +159,7 @@ export function ShiftEditor({
             break_seconds: saved.break_seconds,
             project_id: saved.project_id,
             cost_code_id: saved.cost_code_id,
+            note: saved.note,
           });
           void sendPush({
             profileIds: [shift.profile_id],
@@ -195,7 +210,7 @@ export function ShiftEditor({
   });
 
   return (
-    <div className="detail-card" style={{ marginTop: 8 }}>
+    <div className="detail-card shift-editor" style={{ marginTop: 8 }}>
       <label className="field-label">Job</label>
       <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
         <option value="">— no job —</option>
@@ -276,6 +291,25 @@ export function ShiftEditor({
         value={breakMin}
         onChange={(e) => setBreakMin(e.target.value)}
       />
+      {mode === "edit" && (
+        <div className="shift-editor-description">
+          <label className="field-label" htmlFor={descriptionId}>
+            {t("timecard.descriptionLabel")}
+          </label>
+          <textarea
+            id={descriptionId}
+            rows={4}
+            maxLength={4000}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder={t("timecard.descriptionPlaceholder")}
+            aria-describedby={`${descriptionId}-help`}
+          />
+          <p id={`${descriptionId}-help`} className="muted" style={{ fontSize: 12, margin: "4px 0 12px" }}>
+            {t("timecard.descriptionHelp")}
+          </p>
+        </div>
+      )}
       <label className="field-label">
         {mode === "edit" ? "Reason (required — goes in the audit log)" : "Note (why adjusted)"}
       </label>
@@ -303,7 +337,7 @@ export function ShiftEditor({
         <button className="button-like" onClick={onDone} disabled={save.isPending}>
           Cancel
         </button>
-        {mode === "edit" && !confirmDelete && (
+        {mode === "edit" && canDelete && !confirmDelete && (
           <button
             className="button-like"
             style={{ marginLeft: "auto", color: "var(--bad, #e5484d)" }}
@@ -314,7 +348,7 @@ export function ShiftEditor({
           </button>
         )}
       </div>
-      {mode === "edit" && confirmDelete && (
+      {mode === "edit" && canDelete && confirmDelete && (
         <div className="detail-card" style={{ marginTop: 10 }}>
           <p style={{ margin: 0 }}>
             Delete this punch? It comes off the timecard and payroll totals.

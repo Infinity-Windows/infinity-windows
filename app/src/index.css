@@ -10445,6 +10445,15 @@ body {
 .tcx-status.submitted { color: #fbbf24; }
 .tcx-status.open, .tcx-status.needs_finish, .tcx-status.voided { color: var(--muted); }
 .tcx-punch-actions { margin-top: 6px; flex-wrap: wrap; }
+.tcx-punch-description { white-space: pre-wrap; overflow-wrap: anywhere; }
+.shift-editor { min-width: 0; }
+.shift-editor-description textarea { display: block; width: 100%; box-sizing: border-box; min-height: 112px; resize: vertical; padding: 12px; border: 1px solid var(--border); border-radius: 13px; background: var(--card-raised); color: var(--text); font: inherit; font-size: 16px; line-height: 1.5; }
+.tcx-week-reviews { display: grid; gap: 10px; }
+.tcx-week-review { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 12px; }
+.tcx-week-review button { min-height: 44px; }
+.tcx-week-review .error { flex-basis: 100%; margin: 0; }
+.tcx-person-review { min-width: 0; }
+.tcx-person-review > .tcx-week-review { padding: 8px 12px 12px; }
 
 /* ---- Toolbox talk library (tbx-*) ------------------------------------- */
 .tbx-cat {

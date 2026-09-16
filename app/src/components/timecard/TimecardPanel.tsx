@@ -1,19 +1,17 @@
 // One person's timecard, Horizon style: Day / Week / Pay-period tabs, an
 // arrow stepper with a "this week" reset, one big mono total card carrying
 // the Regular · Overtime · break split, then collapsible per-day cards —
-// empty days included, today open by default — of PunchCards. Approvals stay
-// per punch (owner call, 2026-08-11); Horizon's period sign-off was not
-// ported. Shared by the lead's drill-down and the installer's own view.
+// empty days included, today open by default — of PunchCards. Each person's
+// whole week has one approval action. Shared by personal and crew views.
 
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Coffee, Download } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, Coffee, Download } from "lucide-react";
 import { QueryError, SkeletonList } from "../ui/States";
 import { useT } from "../../lib/i18n";
 import { listInstallEventsForProfile } from "../../lib/install/api";
 import {
   addDays,
-  approveShift,
   unapproveShift,
   currentBreakSeconds,
   elapsedWorkSeconds,
@@ -43,6 +41,7 @@ import { PeriodSignOffStrip } from "./SignOffCard";
 import { fmtHours, fmtTime } from "./format";
 import { printTimesheet } from "./printTimesheet";
 import { sendPush } from "../../lib/permissions/pushServer";
+import { WeeklyApproval } from "./WeeklyApproval";
 
 function downloadText(text: string, filename: string, mime: string) {
   const blob = new Blob([text], { type: mime });
@@ -65,6 +64,9 @@ interface TimecardPanelProps {
   isLead: boolean;
   isSup: boolean;
   canEdit: boolean;
+  canApprove?: boolean;
+  initialRangeMode?: TimecardRangeMode;
+  initialAnchor?: Date;
   projects: ProjectOpt[];
   costCodes: CostOpt[];
   /** The person's currently-open shift, if any — powers the live hero card. */
@@ -77,14 +79,17 @@ export function TimecardPanel({
   isLead,
   isSup,
   canEdit,
+  canApprove = false,
+  initialRangeMode = "week",
+  initialAnchor,
   projects,
   costCodes,
   openShift,
 }: TimecardPanelProps) {
   const t = useT();
   const qc = useQueryClient();
-  const [mode, setMode] = useState<TimecardRangeMode>("week");
-  const [anchor, setAnchor] = useState<Date>(() => new Date());
+  const [mode, setMode] = useState<TimecardRangeMode>(initialRangeMode);
+  const [anchor, setAnchor] = useState<Date>(() => initialAnchor ?? new Date());
   const [showRemoved, setShowRemoved] = useState(false);
   const [adding, setAdding] = useState<string | null>(null); // ISO prefill or "now"
   const [exportOpen, setExportOpen] = useState(false);
@@ -116,17 +121,6 @@ export function TimecardPanel({
     qc.invalidateQueries({ queryKey: ["teamShifts"] });
     qc.invalidateQueries({ queryKey: ["unfinishedShifts"] });
   };
-  // Weekly approval (owner call, 2026-08-11): one action approves every
-  // submitted punch in the visible week. Storage stays per-shift status, so
-  // edit-honesty still works — editing an approved punch drops it back to
-  // submitted and the week reads "needs approval" again.
-  const approveWeek = useMutation({
-    mutationFn: async (ids: string[]) => {
-      for (const id of ids) await approveShift(id);
-      return ids.length;
-    },
-    onSuccess: refresh,
-  });
   // The escape hatch (supervisor+): revert the week's approval with a
   // required reason. Hours untouched; punches return to submitted, the
   // person gets a push carrying the reason, and the amber "Approval
@@ -226,10 +220,6 @@ export function TimecardPanel({
     return { regular, overtime, doubleTime };
   }, [paidRows, otRules.data, personId]);
 
-  const submittedIds = useMemo(
-    () => paidRows.filter((s) => s.status === "submitted").map((s) => s.id),
-    [paidRows],
-  );
   const approvedIds = useMemo(
     () => paidRows.filter((s) => s.status === "approved").map((s) => s.id),
     [paidRows],
@@ -362,23 +352,12 @@ export function TimecardPanel({
             </div>
           )}
         </div>
-        {isLead && canEdit && mode === "week" && (
-          submittedIds.length > 0 ? (
-            <button
-              className="button-like active-pill"
-              disabled={approveWeek.isPending}
-              onClick={() => approveWeek.mutate(submittedIds)}
-            >
-              {approveWeek.isPending
-                ? t("timecard.approving")
-                : t("timecard.approveWeek", { n: submittedIds.length })}
-            </button>
-          ) : weekApproved ? (
-            <span className="row-gap" style={{ alignItems: "center", flexWrap: "wrap" }}>
-              <span className="tcx-week-ok">
-                <CheckCircle2 size={15} aria-hidden /> {t("timecard.weekApproved")}
-              </span>
-              {isSup && (
+        {mode !== "day" && <div className="tcx-week-reviews">
+          {(mode === "pay" ? [weekRange(range.start), weekRange(addDays(range.start, 7))] : [range]).map((week) => (
+            <WeeklyApproval key={week.startIso} personId={personId} range={week} shifts={paidRows} canApprove={canApprove} showRange={mode === "pay"} />
+          ))}
+        </div>}
+        {mode === "week" && weekApproved && isSup && (
                 <button
                   className="button-like"
                   style={{ fontSize: 12 }}
@@ -386,9 +365,6 @@ export function TimecardPanel({
                 >
                   {unapproving ? t("timecard.keepApproved") : t("timecard.unapproveWeek")}
                 </button>
-              )}
-            </span>
-          ) : null
         )}
         {unapproving && isSup && weekApproved && (
           <div style={{ marginTop: 8, flexBasis: "100%" }}>
@@ -576,8 +552,9 @@ export function TimecardPanel({
                     <PunchCard
                       key={s.id}
                       shift={s}
-                      isLead={isLead}
+                      isLead={canApprove}
                       isSup={isSup}
+                      canEdit={canEdit}
                       projects={projects}
                       costCodes={costCodes}
                       reject={{ ...reject, error: reject.error }}
