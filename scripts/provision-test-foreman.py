@@ -58,6 +58,7 @@ from lib.tiny_pdf import HEIGHT, MARK_PINS, WIDTH, sandbox_plan_pdf  # noqa: E40
 
 REMOVE = "--remove" in sys.argv[1:]
 CHECK_MIGRATION = "--check-migration" in sys.argv[1:]
+RESTORE_ONLY = "--restore-access-only" in sys.argv[1:]
 
 PASSWORD = os.environ.get("TEST_FOREMAN_PASSWORD", "")
 if not REMOVE and not CHECK_MIGRATION and len(PASSWORD) < 8:
@@ -434,6 +435,34 @@ def remove() -> int:
     return steps.report()
 
 
+def restore_access_only() -> int:
+    """Owner-requested recovery of this exact test login; no sandbox/data writes."""
+    armed, detail = guard_is_installed()
+    if not steps.check(armed, f"the sandbox guard is installed ({detail})"):
+        return steps.report()
+    uid = sb.find_user(TEST_EMAIL)
+    if not steps.check(bool(uid), "the existing test foreman login was found"):
+        return steps.report()
+    profile = one(sb.svc("GET", f"/rest/v1/profiles?id=eq.{uid}"
+                        "&select=role,active,is_test,retired_at"))
+    eligible = (profile.get("role") == "foreman"
+                and profile.get("is_test") is True
+                and profile.get("active") is False
+                and "retired_at" in profile
+                and profile["retired_at"] is None)
+    if not steps.check(eligible, "the account is an off-site, non-retired test foreman"):
+        return steps.report()
+    status, result = sb.call_function("manage-crew-access", {
+        "action": "restore_access", "user_id": uid,
+    }, sb.service)
+    if not steps.check(status == "200" and result.get("ok") is True,
+                       f"the existing access-restoration action succeeded ({status})"):
+        return steps.report()
+    steps.check(bool(sb.password_session(TEST_EMAIL, PASSWORD)),
+                "the existing password signs in after access restoration")
+    return steps.report()
+
+
 def main() -> int:  # noqa: C901 — a checklist reads better in one place
     if CHECK_MIGRATION:
         return check_migration()
@@ -441,6 +470,9 @@ def main() -> int:  # noqa: C901 — a checklist reads better in one place
     if REMOVE:
         print("\nRemoving the test foreman login and its decoy job.\n")
         return remove()
+
+    if RESTORE_ONLY:
+        return restore_access_only()
 
     print("\nTest FOREMAN login: create or repair, then prove its limits.\n")
 
