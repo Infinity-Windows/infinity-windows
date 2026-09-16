@@ -12,6 +12,8 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { listProjectsAnyStatus } from "../lib/api";
 import { JobHoursLedger } from "../components/timecard/JobHoursLedger";
+import { JobMultiSelect } from "../components/timecard/JobMultiSelect";
+import { includesJob, type JobSelection } from "../lib/timeReportFilters";
 import { Explain } from "../components/ui/Explain";
 import { listOpenings, listProfilesIncludingRemoved } from "../lib/install/api";
 import { listOpeningPhases, flashingOutstanding } from "../lib/install/phases";
@@ -99,7 +101,7 @@ export function DataHub() {
     queryKey: ["profilesIncludingRemoved"],
     queryFn: listProfilesIncludingRemoved,
   });
-  const [jobFilter, setJobFilter] = useState<string>("all");
+  const [jobFilter, setJobFilter] = useState<JobSelection>(null);
   const [showPeople, setShowPeople] = useState(false);
 
   // 30 days of shifts for the on-tool window.
@@ -115,7 +117,7 @@ export function DataHub() {
   const scope = useMemo(
     () =>
       (projects.data ?? []).filter(
-        (p) => jobFilter === "all" || p.id === jobFilter,
+        (p) => includesJob(jobFilter, p.id),
       ),
     [projects.data, jobFilter],
   );
@@ -293,8 +295,8 @@ export function DataHub() {
       : 0;
 
   const crew = useMemo(
-    () => onTool(allSessions, shifts.data ?? []),
-    [allSessions, shifts.data],
+    () => onTool(allSessions, (shifts.data ?? []).filter(s => includesJob(jobFilter, s.project_id))),
+    [allSessions, shifts.data, jobFilter],
   );
   const crewPct = crew.total.pct != null ? Math.round(crew.total.pct * 100) : null;
   const nameOf = (id: string) =>
@@ -304,21 +306,10 @@ export function DataHub() {
     <div className="page">
       <header className="page-header">
         <h1>Data</h1>
-        <select
-          aria-label="Job filter"
-          value={jobFilter}
-          onChange={(e) => setJobFilter(e.target.value)}
-        >
-          <option value="all">All jobs</option>
-          {(projects.data ?? []).map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.job_code}
-            </option>
-          ))}
-        </select>
+        <JobMultiSelect projects={projects.data ?? []} selection={jobFilter} onChange={setJobFilter} loading={projects.isPending} />
       </header>
 
-      <JobHoursLedger projectId={jobFilter} />
+      <JobHoursLedger selectedJobs={jobFilter} />
 
       {/* ---- The morning glance: four numbers before any reading ---- */}
       <div className="data-stats">
