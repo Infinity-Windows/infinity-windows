@@ -1,3 +1,5 @@
+import { VoiceInput } from "../../components/voice/VoiceInput";
+import { VoiceTextarea } from "../../components/voice/VoiceTextarea";
 // The unit card: one window or door on one job, its pieces as tiles, and
 // every fact on it a thing you tap to change (warehouse redesign wave 1,
 // owner call 2026-09-06).
@@ -590,7 +592,7 @@ export function UnitCard() {
                 note.mutate({ piece: selected, text: noteDraft });
               }}
             >
-              <textarea
+              <VoiceTextarea
                 value={noteDraft}
                 onChange={(e) => setNoteDraft(e.target.value)}
                 rows={2}
@@ -771,7 +773,7 @@ function MoveEditor({
           maxLength={12}
         />
       ) : null}
-      <input
+      <VoiceInput
         value={reason}
         onChange={(e) => setReason(e.target.value)}
         placeholder="Why? (optional — e.g. wrong truck)"

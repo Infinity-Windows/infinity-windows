@@ -1,3 +1,4 @@
+import { VoiceInput } from "../../../components/voice/VoiceInput";
 // STAGE 1 of the unit sheet (S7): everything before the clock starts —
 // briefing, physical window, rough opening, condition, before photo,
 // flashing status. Moved out of OpeningSheet.tsx unchanged; every handler,
@@ -548,7 +549,7 @@ export function CheckStage({
               Damaged
             </button>
           </div>
-          <input
+          <VoiceInput
             value={conditionNote}
             onChange={(e) => onConditionNoteChange(e.target.value)}
             placeholder="Damage note (optional)"

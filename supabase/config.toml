@@ -88,3 +88,6 @@ verify_jwt = true
 
 [functions.deliver-workflow-notices]
 verify_jwt = true
+
+[functions.transcribe-description]
+verify_jwt = true

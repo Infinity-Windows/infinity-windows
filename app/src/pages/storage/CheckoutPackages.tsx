@@ -1,3 +1,4 @@
+import { VoiceInput } from "../../components/voice/VoiceInput";
 // Going out: the same multi-select, two destinations.
 //
 // STAGE sets packages aside on the job's own bay so they go out together —
@@ -258,7 +259,7 @@ export function CheckoutPackages() {
         ))}
       </div>
       {isOther && (
-        <input
+        <VoiceInput
           placeholder={t("storage.checkout.sayWhy")}
           value={otherNote}
           onChange={(e) => setOtherNote(e.target.value)}

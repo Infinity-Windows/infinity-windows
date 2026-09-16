@@ -1,3 +1,4 @@
+import { VoiceTextarea } from "../voice/VoiceTextarea";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
@@ -903,7 +904,7 @@ export function ClockSheet({
                     {t("clock.injury.emergency")}
                   </strong>
                 </label>
-                <textarea
+                <VoiceTextarea
                   id="injury-what-happened"
                   rows={3}
                   value={injuryNote}
@@ -1191,7 +1192,7 @@ export function ClockSheet({
                 <label className="clock-row-label" htmlFor="clock-note">
                   {t("clock.label.notesOffice")}
                 </label>
-                <textarea
+                <VoiceTextarea
                   id="clock-note"
                   className="clock-note-input"
                   rows={3}

@@ -1,3 +1,5 @@
+import { VoiceInput } from "../../components/voice/VoiceInput";
+import { VoiceTextarea } from "../../components/voice/VoiceTextarea";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -433,7 +435,7 @@ export function CustomData({ projectId }: { projectId: string }) {
               <h3>Correct work details</h3>
               <label>
                 Accomplishment / idle description
-                <textarea
+                <VoiceTextarea
                   value={session.description}
                   onChange={(e) =>
                     setSession({ ...session, description: e.target.value })
@@ -460,7 +462,7 @@ export function CustomData({ projectId }: { projectId: string }) {
               </label>
               <label>
                 Delay reason
-                <input
+                <VoiceInput
                   value={session.delay_reason}
                   onChange={(e) =>
                     setSession({ ...session, delay_reason: e.target.value })
@@ -513,7 +515,7 @@ export function CustomData({ projectId }: { projectId: string }) {
               )}
               <label>
                 Correction reason
-                <input
+                <VoiceInput
                   value={reason}
                   onChange={(e) => setReason(e.target.value)}
                 />

@@ -1,3 +1,4 @@
+import { VoiceTextarea } from "../voice/VoiceTextarea";
 // The Learn tab's video library (owner spec): each lesson is a window type
 // with a title, the video itself (uploaded or YouTube), and two drop-down
 // transcripts — "Transcript Summary" to review the video, "Transcript
@@ -583,13 +584,13 @@ function VideoForm({
         />
         {youtubeBad && <p className="error">That doesn't look like a YouTube address.</p>}
         <label className="field-label">Transcript Summary (for reviewing the video)</label>
-        <textarea
+        <VoiceTextarea
           rows={3}
           value={summary}
           onChange={(e) => setSummary(e.target.value)}
         />
         <label className="field-label">Transcript Full (to read along)</label>
-        <textarea
+        <VoiceTextarea
           rows={6}
           value={transcript}
           onChange={(e) => setTranscript(e.target.value)}

@@ -1,3 +1,4 @@
+import { VoiceInput } from "../components/voice/VoiceInput";
 import { BackChip } from "../components/BackChip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -321,7 +322,7 @@ export function Costing() {
           </button>
 
           <label className="field-label">Change order</label>
-          <input
+          <VoiceInput
             value={coLabel}
             onChange={(e) => setCoLabel(e.target.value)}
             placeholder="Description"

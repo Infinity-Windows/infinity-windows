@@ -1,3 +1,4 @@
+import { VoiceInput } from "../voice/VoiceInput";
 // "Data off" on the opening sheet — one tap, a reason, and a note if there is
 // one worth writing.
 //
@@ -88,7 +89,7 @@ export function DataOffCard({
           </button>
         ))}
       </div>
-      <input
+      <VoiceInput
         value={note}
         onChange={(e) => setNote(e.target.value)}
         placeholder={t("dataoff.notePlaceholder")}

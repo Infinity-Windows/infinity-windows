@@ -1,3 +1,4 @@
+import { VoiceInput } from "../../components/voice/VoiceInput";
 // One container: the door poster's landing page. Manifest grouped by job
 // with aging, the address + gate code at arm's reach, and CHECK IN — the
 // no-camera multi-select the owner asked for: pick this container once,
@@ -900,7 +901,7 @@ export function ContainerDetail() {
             >
               Add
             </button>
-            <input
+            <VoiceInput
               value={customForm.note}
               onChange={(e) => setCustomForm((prev) => ({ ...prev, note: e.target.value }))}
               placeholder="Note (optional)"

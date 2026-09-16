@@ -1,3 +1,4 @@
+import { VoiceTextarea } from "../voice/VoiceTextarea";
 import { formatApiError } from "../../lib/errors";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Plane, Trash2, Truck, X } from "lucide-react";
@@ -419,7 +420,7 @@ export function AssignmentEditor({
         </div>
 
         <label className="field-label">Note (optional)</label>
-        <textarea
+        <VoiceTextarea
           ref={noteRef}
           className="sched-note-input"
           rows={2}

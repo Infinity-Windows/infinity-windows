@@ -1,3 +1,4 @@
+import { VoiceTextarea } from "../voice/VoiceTextarea";
 // The Job facts card on a job's Overview (S4, .scratch/installer-os): the
 // build answers a foreman records once so nobody on the crew has to ask
 // twice — the exterior situations (one line per finish on the house),
@@ -456,7 +457,7 @@ function TextArea({
       <label className="field-label" htmlFor={id}>
         {label}
       </label>
-      <textarea
+      <VoiceTextarea
         id={id}
         key={keyBase}
         rows={2}

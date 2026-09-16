@@ -1,3 +1,4 @@
+import { VoiceTextarea } from "../../components/voice/VoiceTextarea";
 // One package: what it is, where it sits, and every touch it ever had —
 // the license plate's full life. Scanning a sticker lands here.
 
@@ -643,7 +644,7 @@ export function PackageSheet() {
           <div className="detail-card wh-card">
             {editingNote ? (
               <>
-                <textarea
+                <VoiceTextarea
                   value={noteText}
                   onChange={(e) => setNoteText(e.target.value)}
                   maxLength={1000}

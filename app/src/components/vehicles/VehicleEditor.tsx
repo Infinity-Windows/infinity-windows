@@ -1,3 +1,4 @@
+import { VoiceTextarea } from "../voice/VoiceTextarea";
 import { useMemo, useRef, useState } from "react";
 import { Trash2, X } from "lucide-react";
 import type { Profile } from "../../lib/install/types";
@@ -227,7 +228,7 @@ export function VehicleEditor({ vehicle, profiles, saving, onSave, onDelete, onC
         <DriverPicker profiles={profiles} value={drivers} onChange={setDrivers} />
 
         <label className="field-label">Notes (optional)</label>
-        <textarea
+        <VoiceTextarea
           className="sched-note-input"
           rows={2}
           value={notes}

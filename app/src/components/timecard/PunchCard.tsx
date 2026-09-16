@@ -1,3 +1,4 @@
+import { VoiceInput } from "../voice/VoiceInput";
 // One punch, Horizon style: card with a left accent rail, job on top, cost
 // code under it, mono time range, duration flush right, amber break line
 // nested below. All of Infinity's per-punch truth stays on the card — status,
@@ -239,7 +240,7 @@ export function PunchCard({ shift: s, isLead, isSup, canEdit = false, projects, 
         )}
         {rejecting && (
           <div className="row-gap" style={{ marginTop: 6 }}>
-            <input
+            <VoiceInput
               type="text"
               style={{ flex: 1 }}
               placeholder={t("timecard.reasonOptional")}

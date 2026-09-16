@@ -1,3 +1,5 @@
+import { VoiceInput } from "../../components/voice/VoiceInput";
+import { VoiceTextarea } from "../../components/voice/VoiceTextarea";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { listProjectsAnyStatus } from "../../lib/api";
@@ -72,7 +74,8 @@ export function UnitEditor({
           ))}
         </select>
       ) : (
-        <input
+        <VoiceInput
+          voiceDisabled={key !== "equipment"}
           type={number ? "number" : "text"}
           inputMode={number ? "decimal" : undefined}
           min={number ? 0 : undefined}
@@ -158,7 +161,7 @@ export function UnitEditor({
         {(unit?.project_id ?? null) !== (job || null) && unit && (
           <label>
             Assignment reason
-            <input
+            <VoiceInput
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               placeholder="Correct job / linking field capture"
@@ -260,7 +263,7 @@ export function UnitEditor({
           </p>
           <label>
             Unit description / access details
-            <textarea
+            <VoiceTextarea
               value={facts.note ?? ""}
               onChange={(e) => set("note", e.target.value)}
               placeholder="What makes this window or door different?"

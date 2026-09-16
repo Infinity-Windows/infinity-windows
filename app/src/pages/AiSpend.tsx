@@ -297,5 +297,6 @@ const FUNCTION_LABELS: Record<string, string> = {
   "synthesize-type-tips": "Writing install tips",
   "generate-howto": "Writing how-tos",
   "transcribe-install-memo": "Transcribing voice memos",
+  "transcribe-description": "Dictating descriptions",
   "ingest-knowledge": "Indexing company notes",
 };

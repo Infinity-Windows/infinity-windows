@@ -1,3 +1,4 @@
+import { VoiceTextarea } from "../../components/voice/VoiceTextarea";
 import { BackChip } from "../../components/BackChip";
 import { SavedCopyNotice } from "../../components/offline/SavedCopyNotice";
 import { useSavedCopy } from "../../lib/offline/useSavedCopy";
@@ -1633,7 +1634,7 @@ export function OpeningSheet() {
                   Why is it coming back off the wall? (required — goes on the
                   record and opens a fix-it issue)
                 </label>
-                <textarea
+                <VoiceTextarea
                   rows={2}
                   maxLength={500}
                   value={undoReason}

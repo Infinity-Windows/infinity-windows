@@ -1,3 +1,4 @@
+import { VoiceInput } from "../voice/VoiceInput";
 // Summon (owner, 2026-08-14): mid-install, call up to 8 helpers onto a
 // heavy window. Everyone on the job gets rung (push, as hard as the
 // platform allows); answering clocks the helper on and pays 10 points
@@ -319,7 +320,7 @@ export function SummonPanel({
               Answerers see the countdown and get a 5-minute warning.
             </p>
           )}
-          <input
+          <VoiceInput
             type="text"
             placeholder="Why? (optional) — e.g. second story, no elevator"
             value={note}

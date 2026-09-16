@@ -1,3 +1,4 @@
+import { VoiceTextarea } from "../voice/VoiceTextarea";
 // The GC card on a job's Overview (Wave H, H1): what the builder last said,
 // and the form for filing what he said today.
 //
@@ -304,7 +305,7 @@ export function GcPanel({
 
           <label className="field">
             <span className="field-label">{t("gc.notes")}</span>
-            <textarea
+            <VoiceTextarea
               aria-label={t("gc.notes")}
               rows={2}
               value={draft.notes ?? ""}
@@ -582,7 +583,7 @@ function GcLinkPanel({ projectId, project }: { projectId: string; project: Proje
         </div>
       ))}
 
-      <textarea
+      <VoiceTextarea
         aria-label={t("gc.thread.placeholder")}
         placeholder={t("gc.thread.placeholder")}
         rows={2}

@@ -1,3 +1,4 @@
+import { VoiceInput } from "../voice/VoiceInput";
 // Call for hands on the whole job (job-level-summons slice 4). The window
 // summon (SummonPanel) hangs off one opening and clocks a helper onto it; this
 // one hangs off the JOB — a tracking job has no openings at all — and rings the
@@ -264,7 +265,7 @@ export function CallForHandsPanel({
               </button>
             ))}
           </div>
-          <input
+          <VoiceInput
             type="text"
             placeholder={t("callhands.whatFor")}
             value={note}
@@ -273,7 +274,7 @@ export function CallForHandsPanel({
             style={{ width: "100%", marginTop: 8 }}
             aria-label={t("callhands.whatFor")}
           />
-          <input
+          <VoiceInput
             type="text"
             placeholder={t("callhands.whereAmI")}
             value={whereNote}

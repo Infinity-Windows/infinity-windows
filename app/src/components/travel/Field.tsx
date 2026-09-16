@@ -1,3 +1,4 @@
+import { VoiceTextarea } from "../voice/VoiceTextarea";
 import type { ReactNode } from "react";
 
 /** Labeled text/number/datetime input for the travel editors. */
@@ -48,7 +49,7 @@ export function AreaField({
   return (
     <label className="travel-field">
       <span className="travel-field-label">{label}</span>
-      <textarea
+      <VoiceTextarea
         className="travel-input travel-textarea"
         value={value}
         rows={rows}

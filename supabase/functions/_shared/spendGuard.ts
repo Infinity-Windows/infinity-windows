@@ -83,6 +83,9 @@ export function costMicros(
 /** A flat image-generation charge (gpt-image-1, 1024x1024) in micro-dollars. */
 export const IMAGE_MICROS = 40_000;
 
+/** Audio is billed by duration, not tokens: Whisper costs $0.006/minute. */
+export const AUDIO_MICROS_PER_SECOND: Record<string, number> = { "whisper-1": 100 };
+
 // ---------------------------------------------------------------------------
 // Per-function estimates, booked before the call and reconciled after
 // ---------------------------------------------------------------------------
@@ -99,6 +102,9 @@ export interface FunctionSpend {
 }
 
 export const FUNCTION_SPEND: Record<string, FunctionSpend> = {
+  "transcribe-description": {
+    kind: "content", provider: "openai", model: "whisper-1", estimateMicros: 18_000,
+  },
   // 12k tokens in / 300 out on Claude = 2.7 cents, the exact figure the
   // investigation costed the runaway on.
   ask: {

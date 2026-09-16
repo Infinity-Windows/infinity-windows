@@ -1,3 +1,4 @@
+import { VoiceTextarea } from "../../components/voice/VoiceTextarea";
 import { BackChip } from "../../components/BackChip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -147,13 +148,13 @@ export function TypeBrainCard() {
       {editing ? (
         <>
           <label className="field-label">Tips (one per line)</label>
-          <textarea
+          <VoiceTextarea
             className="knowledge-edit"
             value={tipsText}
             onChange={(e) => setTipsText(e.target.value)}
           />
           <label className="field-label">Watch-outs (one per line)</label>
-          <textarea
+          <VoiceTextarea
             className="knowledge-edit"
             value={watchText}
             onChange={(e) => setWatchText(e.target.value)}

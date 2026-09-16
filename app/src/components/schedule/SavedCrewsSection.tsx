@@ -1,3 +1,4 @@
+import { VoiceTextarea } from "../voice/VoiceTextarea";
 // Saved crews (wave A, A1): named teams (2-6 people) a supervisor builds on
 // the Roster because they work well together. CONTEXT.md: "Saved crew" — a
 // SOFT law for the scheduling AI (wave A2), which keeps one together to the
@@ -182,7 +183,7 @@ export function SavedCrewsSection({ profiles, canEdit }: Props) {
             </p>
 
             <label className="field-label">Note (optional)</label>
-            <textarea
+            <VoiceTextarea
               aria-label="Note"
               value={draft.note}
               rows={2}

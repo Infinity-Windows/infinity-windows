@@ -1,3 +1,4 @@
+import { VoiceTextarea } from "../voice/VoiceTextarea";
 import { useLayoutEffect, useRef, type TextareaHTMLAttributes } from "react";
 
 /** Keep saved and newly typed reports readable without a second scroll box.
@@ -25,5 +26,5 @@ export function LogTextArea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) 
     observer.observe(field);
     return () => observer.disconnect();
   }, []);
-  return <textarea {...props} ref={ref} />;
+  return <VoiceTextarea {...props} ref={ref} />;
 }
