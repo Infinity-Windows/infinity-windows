@@ -1,0 +1,42 @@
+name: Import reviewed time entries
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha256:
+        description: SHA256 of the privately reviewed payroll batch
+        type: string
+        required: true
+      apply:
+        description: Apply the reviewed batch (false validates and rolls back)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: import-time-entries
+  cancel-in-progress: false
+
+jobs:
+  import:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      # Payroll stays in an encrypted, temporary repository secret. Never put
+      # source rows, names, query text or API responses in logs or artifacts.
+      - name: Validate or apply reviewed batch
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          FORGE_TIME_IMPORT_PAYLOAD: ${{ secrets.FORGE_TIME_IMPORT_PAYLOAD }}
+          REVIEWED_SHA256: ${{ inputs.sha256 }}
+          APPLY_IMPORT: ${{ inputs.apply }}
+        run: |
+          if [ "$APPLY_IMPORT" = "true" ]; then
+            python3 scripts/time_entry_import.py execute --sha256 "$REVIEWED_SHA256" --apply
+          else
+            python3 scripts/time_entry_import.py execute --sha256 "$REVIEWED_SHA256"
+          fi

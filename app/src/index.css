@@ -13011,6 +13011,22 @@ button.crew-start-message { min-height: 44px; width: 100%; text-align: left; col
 .job-filter-option > span { min-width: 0; overflow-wrap: anywhere; }
 .job-filter-option small { display: block; margin-top: 4px; }
 .job-filter-body > p { margin: 12px 0 0; font-size: 14px; }
+.time-entry-export { max-width: 760px; }
+.time-entry-export .ui-sheet-body { padding: 20px; }
+.time-entry-export h2 { font-size: 22px; margin: 0; }
+.time-entry-export .row-between { gap: 12px; }
+.time-entry-export .muted { font-size: 14px; }
+.time-entry-export .detail-card > strong { font-size: 28px; font-variant-numeric: tabular-nums; }
+.time-export-people { border: 1px solid var(--border); border-radius: 12px; padding: 12px; }
+.time-export-people summary { min-height: 44px; cursor: pointer; padding-block: 10px; }
+.time-export-people .row-gap { margin-block: 12px; }
+.time-export-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.time-export-actions button { min-height: 48px; }
+@media (max-width: 560px) { .time-export-actions { grid-template-columns: 1fr; } }
+@media (min-width: 860px) {
+  .ui-sheet.time-entry-export.sheet-enter { width: min(760px, calc(100vw - 64px)); transform: translate(-50%, -50%); }
+  @starting-style { .ui-sheet.time-entry-export.sheet-enter { transform: translate(-50%, -46%); } }
+}
 @media (max-width: 560px) {
   .job-hours-toolbar { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .job-hours-toolbar > button, .job-hours-toolbar > .button-like { padding-inline: 8px; }

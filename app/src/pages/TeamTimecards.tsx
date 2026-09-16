@@ -65,6 +65,8 @@ import { TimecardPanel } from "../components/timecard/TimecardPanel";
 import { ShiftEditor } from "../components/timecard/ShiftEditor";
 import { TimeByJobReport } from "../components/timecard/TimeByJobReport";
 import { CrewClockBar } from "../components/timecard/CrewClockBar";
+import { TimeEntryExportDialog } from "../components/timecard/TimeEntryExportDialog";
+import { dateFieldValue } from "../lib/timeReportFilters";
 import {
   addCrewIds,
   allCrewIds,
@@ -102,6 +104,7 @@ export function TeamTimecards() {
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [entriesExportOpen, setEntriesExportOpen] = useState(false);
   const [search, setSearch] = useState("");
   /** Which runaway shift the office is entering a real finish time for. */
   const [finishingId, setFinishingId] = useState<string | null>(null);
@@ -457,8 +460,10 @@ export function TeamTimecards() {
         </button>
       </div>}
       {rangeMode === "all" && <p className="muted">{t("timereport.allTimeReview")}</p>}
+      {entriesExportOpen && <TimeEntryExportDialog people={crew.data} fromDate={dateFieldValue(week.start)} throughDate={dateFieldValue(addDays(week.end, -1))} onClose={() => setEntriesExportOpen(false)} />}
 
       <div className="row-gap" style={{ alignItems: "center", flexWrap: "wrap" }}>
+        <button className="button-like" onClick={() => setEntriesExportOpen(true)}>{t("timeexport.title")}</button>
         <button
           className="button-like"
           onClick={() =>

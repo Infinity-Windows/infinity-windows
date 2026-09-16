@@ -107,6 +107,7 @@ export function PunchCard({ shift: s, isLead, isSup, canEdit = false, projects, 
             {s.cost_codes.code} · {s.cost_codes.label}
           </div>
         )}
+        {!s.project_id && s.source_import?.original.Project && <p className="muted" style={{ fontSize: 13 }}>{t("timeexport.importedJob", { job: s.source_import.original.Project })}</p>}
         <div className="tcx-punch-times">
           {fmtTime(s.clock_in_at)} – {open ? t("timecard.active") : fmtTime(s.clock_out_at)}
         </div>

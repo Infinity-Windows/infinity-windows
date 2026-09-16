@@ -42,6 +42,8 @@ import { fmtHours, fmtTime } from "./format";
 import { printTimesheet } from "./printTimesheet";
 import { sendPush } from "../../lib/permissions/pushServer";
 import { WeeklyApproval } from "./WeeklyApproval";
+import { TimeEntryExportDialog } from "./TimeEntryExportDialog";
+import { dateFieldValue } from "../../lib/timeReportFilters";
 
 function downloadText(text: string, filename: string, mime: string) {
   const blob = new Blob([text], { type: mime });
@@ -93,6 +95,7 @@ export function TimecardPanel({
   const [showRemoved, setShowRemoved] = useState(false);
   const [adding, setAdding] = useState<string | null>(null); // ISO prefill or "now"
   const [exportOpen, setExportOpen] = useState(false);
+  const [entriesExportOpen, setEntriesExportOpen] = useState(false);
   const today = punchDay(new Date().toISOString());
   const [openDays, setOpenDays] = useState<Set<string>>(() => new Set([today]));
 
@@ -400,20 +403,22 @@ export function TimecardPanel({
       )}
 
       {/* Entries strip */}
+      {entriesExportOpen && <TimeEntryExportDialog person={{ id: personId, display_name: personName }} fromDate={dateFieldValue(range.start)} throughDate={dateFieldValue(addDays(range.end, -1))} onClose={() => setEntriesExportOpen(false)} />}
       <div className="tcx-entries-strip">
         <span className="tcx-label">{t("timecard.entries")}</span>
         <div className="row-gap" style={{ marginLeft: "auto", position: "relative" }}>
           <button
             className="button-like"
             onClick={() => setExportOpen((v) => !v)}
-            disabled={paidRows.length === 0}
           >
             <Download size={14} aria-hidden /> {t("timecard.export")} <ChevronDown size={12} aria-hidden />
           </button>
           {exportOpen && (
             <div className="tcx-menu" onClick={() => setExportOpen(false)}>
+              <button className="button-like" onClick={() => setEntriesExportOpen(true)}>{t("timeexport.title")}</button>
               <button
                 className="button-like"
+                disabled={paidRows.length === 0}
                 onClick={() =>
                   downloadText(
                     buildTimecardCsv(exportPayload()),
@@ -426,6 +431,7 @@ export function TimecardPanel({
               </button>
               <button
                 className="button-like"
+                disabled={paidRows.length === 0}
                 onClick={() =>
                   void navigator.clipboard.writeText(buildTimecardTsv(exportPayload()))
                 }
@@ -434,6 +440,7 @@ export function TimecardPanel({
               </button>
               <button
                 className="button-like"
+                disabled={paidRows.length === 0}
                 onClick={() =>
                   printTimesheet({
                     personName,

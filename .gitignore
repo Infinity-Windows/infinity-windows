@@ -44,3 +44,7 @@ app/.playwright/
 # an unpacked nightly archive all write. See docs/backups.md.
 backups/
 docs/backups/
+
+# Payroll audit inputs, reviewed plans and receipts are private local evidence.
+*.private.json
+*.private.txt
