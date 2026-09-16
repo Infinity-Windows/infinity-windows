@@ -6,6 +6,7 @@ import { isMissingFunction, isMissingTable } from "./schemaErrors";
 import { TRAVEL_COST_CODE } from "./farFromJob";
 import { isMissingClockInOverload, normalizeNote } from "./timeclockNote";
 import type { TimecardExportShift } from "./timecardExport";
+import type { TimeEntryImportSource } from "./timeEntryExport";
 
 export { isMissingClockInOverload, normalizeNote } from "./timeclockNote";
 
@@ -57,6 +58,8 @@ export interface TimeShift {
   created_at: string;
   /** Day/project description, entered at clock-in or while editing the punch. */
   note?: string | null;
+  source_import_key?: string | null;
+  source_import?: TimeEntryImportSource | null;
   /** "What happened?" when the injured box was ticked at clock-out. */
   injury_note?: string | null;
   clock_in_lat?: number | null;
@@ -238,6 +241,8 @@ export async function listShiftsToApprove(): Promise<TimeShift[]> {
 export async function listTeamShifts(
   sinceIso: string | null,
   untilIso: string | null,
+  /** Personal exports use complete pagination scoped to this person. */
+  profileId?: string,
 ): Promise<TimeShift[]> {
   const out: TimeShift[] = [];
   let expected: number | null = null;
@@ -247,6 +252,7 @@ export async function listTeamShifts(
       .neq("status", "voided");
     if (sinceIso) query = query.gte("clock_in_at", sinceIso);
     if (untilIso) query = query.lt("clock_in_at", untilIso);
+    if (profileId) query = query.eq("profile_id", profileId);
     const { data, error, count } = await query
       .order("clock_in_at", { ascending: false })
       .order("id", { ascending: false })
