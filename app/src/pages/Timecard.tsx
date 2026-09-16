@@ -1,6 +1,6 @@
 // My timecard: YOUR hours, whoever you are. Leads manage the crew (and
-// their own punches) on /team-timecards; this tab is deliberately the same
-// read-only personal panel for everyone, so "My timecard" always means me.
+// their own punches) on /team-timecards. Foremen and above can also correct
+// their own entries here; "My timecard" always means me.
 
 import { BackChip } from "../components/BackChip";
 import { useQuery } from "@tanstack/react-query";
@@ -10,9 +10,12 @@ import { listProjects } from "../lib/api";
 import { TimecardPanel } from "../components/timecard/TimecardPanel";
 import { SignMyTimecardCard } from "../components/timecard/SignOffCard";
 import { useT } from "../lib/i18n";
+import { useEffectiveRole } from "../lib/useEffectiveRole";
+import { isForemanPlus } from "../lib/install/types";
 
 export function Timecard() {
   const t = useT();
+  const { effectiveRole } = useEffectiveRole();
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const costCodes = useQuery({ queryKey: ["costCodes"], queryFn: listCostCodes });
@@ -39,7 +42,8 @@ export function Timecard() {
           personName={me.data.display_name}
           isLead={false}
           isSup={false}
-          canEdit={false}
+          canEdit={isForemanPlus(effectiveRole)}
+          canApprove={isForemanPlus(effectiveRole)}
           projects={projects.data ?? []}
           costCodes={costCodes.data ?? []}
           openShift={myOpen.data ?? null}

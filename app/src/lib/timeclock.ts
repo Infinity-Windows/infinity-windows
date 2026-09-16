@@ -55,7 +55,7 @@ export interface TimeShift {
    */
   status: "open" | "submitted" | "approved" | "rejected" | "needs_finish" | "voided";
   created_at: string;
-  /** Optional free-text note the worker adds at clock-in, for the office. */
+  /** Day/project description, entered at clock-in or while editing the punch. */
   note?: string | null;
   /** "What happened?" when the injured box was ticked at clock-out. */
   injury_note?: string | null;
@@ -521,20 +521,21 @@ export interface LeadShiftPatch {
   clockOutAt?: string | null;
   breakSeconds?: number | null;
   note?: string | null;
+  /** Omitted preserves the description; null/blank explicitly clears it. */
+  description?: string | null;
 }
 
 /**
- * Supervisor+ adjusts an existing punch (Q3: edit narrowed from foreman+ to
- * supervisor+). Only the provided fields change. Editing an approved shift
- * resets the approval, and re-approves it in the same save when the editor
- * could have approved it themselves (Q4) — both server-enforced by
- * `edit_shift`, not this wrapper.
+ * Supervisor+ adjusts crew punches; foremen may adjust self and installers.
+ * The description-aware RPC saves the work description and correction reason
+ * atomically. It never falls back and silently discards a description.
  */
 export async function editShift(
   shiftId: string,
   patch: LeadShiftPatch,
 ): Promise<TimeShift> {
-  const { data, error } = await supabase.rpc("edit_shift", {
+  const { data, error } = await supabase.rpc(
+    patch.description === undefined ? "edit_shift" : "edit_shift_with_description", {
     p_shift_id: shiftId,
     p_project_id: patch.projectId ?? null,
     p_cost_code_id: patch.costCodeId ?? null,
@@ -542,6 +543,7 @@ export async function editShift(
     p_clock_out_at: patch.clockOutAt ?? null,
     p_break_seconds: patch.breakSeconds ?? null,
     p_note: patch.note ?? null,
+    ...(patch.description === undefined ? {} : { p_description: normalizeNote(patch.description) }),
   });
   if (error) throw error;
   return data as TimeShift;
@@ -1065,21 +1067,30 @@ export async function touchShiftLocation(
   }
 }
 
-export async function approveShift(shiftId: string): Promise<void> {
-  const { data, error } = await supabase.rpc("approve_shift", { p_shift_id: shiftId });
+export async function approveTimecardWeek(profileId: string, range: WeekRange, shifts: TimeShift[]): Promise<number> {
+  const { data, error } = await supabase.rpc("approve_timecard_week", {
+    p_profile_id: profileId,
+    p_start: range.startIso,
+    p_end: range.endIso,
+    p_expected: shifts.map((s) => ({
+      id: s.id, project_id: s.project_id, cost_code_id: s.cost_code_id,
+      clock_in_at: s.clock_in_at, clock_out_at: s.clock_out_at,
+      break_seconds: s.break_seconds, note: s.note ?? null, edited_at: s.edited_at ?? null,
+    })),
+  });
   if (error) throw error;
-  // Web-push seam: let the crew member know their hours were approved (arrives
-  // even when the app is closed). Fire-and-forget — never blocks the approval.
-  const ownerId = (data as { profile_id?: string } | null)?.profile_id;
-  if (ownerId) {
+  // A retry/already-approved week returns zero: no duplicate notifications.
+  const count = Number(data);
+  if (count > 0) {
     void sendPush({
-      profileIds: [ownerId],
-      title: "Timecard approved",
-      body: "Your submitted hours were approved.",
-      tag: `timecard-approved-${shiftId}`,
-      url: "/clock",
+      profileIds: [profileId],
+      title: "Week approved",
+      body: `Your hours for ${range.label} were approved.`,
+      tag: `timecard-week-approved-${profileId}-${range.startIso}`,
+      url: "/timecard",
     });
   }
+  return count;
 }
 
 /** Server-persisted breaks so a refresh mid-break doesn't lose the timer. */

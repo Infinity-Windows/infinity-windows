@@ -7,7 +7,7 @@
 
 import { BackChip } from "../components/BackChip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { listProjects } from "../lib/api";
 import { formatApiError } from "../lib/errors";
@@ -20,7 +20,7 @@ import {
 } from "../lib/companySettings";
 import { useT } from "../lib/i18n";
 import { SkeletonList } from "../components/ui/States";
-import { listProfilesIncludingRemoved } from "../lib/install/api";
+import { getMyProfile, listProfilesIncludingRemoved } from "../lib/install/api";
 import {
   isForemanPlus,
   isRemovedProfile,
@@ -28,6 +28,8 @@ import {
   visibleRole,
 } from "../lib/install/types";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
+import { canApproveTimecard, canEditTimecard } from "../lib/timecardPermissions";
+import { WeeklyApproval } from "../components/timecard/WeeklyApproval";
 import {
   addDays,
   closeShiftAsNoWork,
@@ -97,6 +99,7 @@ export function TeamTimecards() {
   const { effectiveRole } = useEffectiveRole();
   const isLead = isForemanPlus(effectiveRole);
   const isSup = isSupervisorPlus(effectiveRole);
+  const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -221,8 +224,9 @@ export function TeamTimecards() {
     const rows = (crew.data ?? [])
       // `active` means "on site today" and a foreman toggles it every morning,
       // so it is not enough on its own: a removed login must never come back
-      // onto the live roster because somebody tapped that toggle.
-      .filter((p) => p.active && !isRemovedProfile(p))
+      // onto the live roster because somebody tapped that toggle. Include
+      // off-site/removed people who have hours in this review window.
+      .filter((p) => (p.active && !isRemovedProfile(p)) || byId.has(p.id))
       .map((p) => ({
         id: p.id,
         name: p.display_name,
@@ -254,13 +258,16 @@ export function TeamTimecards() {
   const [selected, setSelected] = useState<string[]>([]);
   const crewMembers = useMemo<CrewClockMember[]>(
     () =>
-      rosterAll.map((r) => ({
+      rosterAll.filter((r) => {
+        const p = crew.data?.find((p) => p.id === r.id);
+        return p?.active && !isRemovedProfile(p);
+      }).map((r) => ({
         id: r.id,
         name: r.name,
         onClock: Boolean(r.open),
         openProjectId: r.open?.project_id ?? null,
       })),
-    [rosterAll],
+    [rosterAll, crew.data],
   );
   // …but the two "select" buttons act on what is ON SCREEN. Handing them the
   // whole roster meant a supervisor filtered down to one name could tick, and
@@ -289,7 +296,9 @@ export function TeamTimecards() {
   /** "8.0h wk" / "8.0h pay" — the roster total follows the range on show. */
   const hoursSuffix = rangeMode === "pay" ? "pay" : "wk";
   // `sum`, not `t` — `t` is the translator on this component now.
-  const pendingCount = weekSummary.reduce((sum, r) => sum + r.submittedCount, 0);
+  const pendingCount = new Set((teamShifts.data ?? [])
+    .filter((s) => s.status === "submitted" && canApproveTimecard(effectiveRole, crew.data?.find((p) => p.id === s.profile_id)?.role))
+    .map((s) => `${s.profile_id}:${weekRange(new Date(s.clock_in_at)).startIso}`)).size;
 
   // ---- Team-wide export (the roster's "Export all") ----
   // T7: shiftsToExportRows (lib/timeclock.ts) is the one shared mapping —
@@ -347,6 +356,7 @@ export function TeamTimecards() {
   );
   const selectedOpen =
     liveShifts.find((s) => s.profile_id === selectedId) ?? null;
+  const selectedRole = crew.data?.find((c) => c.id === selectedId)?.role;
 
   // ---- Lead, person selected: the drill-down ----
   if (selectedId) {
@@ -378,7 +388,10 @@ export function TeamTimecards() {
           personName={selectedName}
           isLead
           isSup={isSup}
-          canEdit
+          canEdit={canEditTimecard(effectiveRole, me.data?.id, selectedRole, selectedId)}
+          canApprove={canApproveTimecard(effectiveRole, selectedRole)}
+          initialRangeMode={rangeMode}
+          initialAnchor={anchor}
           projects={projects.data ?? []}
           costCodes={costCodes.data ?? []}
           openShift={selectedOpen}
@@ -486,7 +499,7 @@ export function TeamTimecards() {
         </button>
         {pendingCount > 0 && (
           <span className="tcx-chip sky" style={{ marginLeft: "auto" }}>
-            {pendingCount} to approve
+            {t("timecard.weeksPending", { n: pendingCount })}
           </span>
         )}
       </div>
@@ -717,9 +730,8 @@ export function TeamTimecards() {
         />
       </div>
 
-      {/* Supervisors pick people; foremen only read this page (Q3 keeps every
-          time EDIT at supervisor+, and clocking somebody in is an edit to
-          their pay), so the checkboxes and the bar are simply absent for them. */}
+      {/* Bulk live clock-in/out remains supervisor-only; weekly review and
+          existing-entry corrections have their own per-person permissions. */}
       {isSup && (
         <div className="row-gap" style={{ marginTop: 10, flexWrap: "wrap" }}>
           <button
@@ -782,28 +794,30 @@ export function TeamTimecards() {
                   )}
                 </span>
               </span>
-              {r.submitted > 0 && (
-                <span className="tcx-chip sky">{r.submitted} to approve</span>
-              )}
               {r.rejected > 0 && <span className="tcx-chip bad">{r.rejected} rejected</span>}
               <ChevronRight size={16} className="muted" aria-hidden />
             </button>
           );
-          if (!isSup) return <Fragment key={r.id}>{row}</Fragment>;
           return (
-            <div key={r.id} className="tcx-row-pick">
+            <div key={r.id} className="tcx-person-review">
+            <div className={isSup ? "tcx-row-pick" : undefined}>
               {/* 48px of tap target, its own label: a checkbox inside the row
                   button would be a control inside a control, and on a phone
                   the wrong one wins. */}
-              <label className="tcx-check">
+              {isSup && crewMembers.some((m) => m.id === r.id) && <label className="tcx-check">
                 <input
                   type="checkbox"
                   aria-label={t("crewclock.select.person", { name: r.name })}
                   checked={selected.includes(r.id)}
                   onChange={() => setSelected((s) => toggleCrewId(s, r.id))}
                 />
-              </label>
+              </label>}
               {row}
+            </div>
+            {(rangeMode === "pay" ? [weekRange(week.start), weekRange(addDays(week.start, 7))] : [week]).map((range) => (
+              <WeeklyApproval key={range.startIso} personId={r.id} range={range} shifts={teamShifts.data ?? []}
+                canApprove={canApproveTimecard(effectiveRole, r.role)} showRange={rangeMode === "pay"} />
+            ))}
             </div>
           );
         })}
