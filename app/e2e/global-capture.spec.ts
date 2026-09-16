@@ -6,14 +6,13 @@
 //
 //   1. An INSTALLER sees Capture everywhere, and their tiles are their tiles.
 //      Before this the capture tab was foreman+ only, so the sheet was mounted
-//      on an installer's phone and nothing could open it. The Daily log tile
-//      stays hidden for them — daily_logs' RLS is foreman+ (Q7) and a tile
-//      that greys out only advertises a door that does not exist.
+//      on an installer's phone and nothing could open it. Daily reporting
+//      is now available to installers as well as managers.
 //   2. A receipt captured from a job page carries that job's id into
 //      file_receipt. That is the owner's ask in one sentence.
 //   3. A photo captured with a job picked in the sheet reaches the upload
 //      queue carrying that project id.
-//   4. A foreman's Daily log tile files a log without leaving the screen.
+//   4. An installer's Daily log tile files a log without leaving the screen.
 //   5. The desktop rail's Capture opens the same sheet at 1024px, where there
 //      is no bottom bar at all.
 //
@@ -129,17 +128,17 @@ test("an installer finds Capture on every screen, and sees an installer's tiles"
   await captureFab(page).click();
   await expect(sheet(page)).toBeVisible();
 
-  // Their four tiles, and not the fifth. Daily log is foreman+ by RLS.
+  // Daily reporting is available to installers alongside the other captures.
   for (const tile of ["Take a photo", "Add a receipt", "Open gallery", "Scan a unit"]) {
     await expect(sheet(page).getByText(tile, { exact: true })).toBeVisible();
   }
-  await expect(sheet(page).getByText("Daily log", { exact: true })).toHaveCount(0);
+  await expect(sheet(page).getByText("Daily log", { exact: true })).toBeVisible();
 
   mkdirSync(SHOTS, { recursive: true });
   await page.screenshot({ path: `${SHOTS}/installer-390-dark.png` });
 });
 
-test("a foreman gets the Daily log tile the installer does not", async ({ page }) => {
+test("a foreman retains the Daily log tile", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "light" });
   await useSupabaseFixtures(page, { role: "foreman" });
   await useProjectFixture(page);
@@ -238,8 +237,8 @@ test("a photo captured with a job picked lands in the queue carrying that job", 
   await page.screenshot({ path: `${SHOTS}/photo-with-job-390.png` });
 });
 
-test("a foreman files a daily log from Capture without leaving the screen", async ({ page }) => {
-  await useSupabaseFixtures(page, { role: "foreman" });
+test("an installer files a daily log from Capture without leaving the screen", async ({ page }) => {
+  await useSupabaseFixtures(page, { role: "installer" });
   await useProjectFixture(page);
   await stubGeolocationDenied(page);
 
@@ -421,7 +420,7 @@ test("clocking off a job nobody logged today offers the log, once", async ({ pag
     return route.fulfill({
       status: 200,
       contentType: isSingle ? "application/vnd.pgrst.object+json" : "application/json",
-      headers: { "content-range": "0-0/1" },
+      headers: { "content-range": "0-0/1", "access-control-expose-headers": "content-range" },
       body: JSON.stringify(isSingle ? SHIFT : [SHIFT]),
     });
   });
@@ -453,7 +452,7 @@ test("clocking off a job nobody logged today offers the log, once", async ({ pag
   await expect(page.getByLabel("Notes")).toBeVisible();
 });
 
-test("an installer clocking out is never offered a log they cannot read", async ({ page }) => {
+test("an installer clocking out is offered the daily report", async ({ page }) => {
   await useSupabaseFixtures(page, { role: "installer" });
   await useProjectFixture(page);
   await stubGeolocationDenied(page);
@@ -479,7 +478,7 @@ test("an installer clocking out is never offered a log they cannot read", async 
     return route.fulfill({
       status: 200,
       contentType: isSingle ? "application/vnd.pgrst.object+json" : "application/json",
-      headers: { "content-range": "0-0/1" },
+      headers: { "content-range": "0-0/1", "access-control-expose-headers": "content-range" },
       body: JSON.stringify(isSingle ? SHIFT : [SHIFT]),
     });
   });
@@ -496,16 +495,16 @@ test("an installer clocking out is never offered a log they cannot read", async 
   await page.getByRole("button", { name: "On the clock" }).click();
   await page.getByLabel("Time clock").getByRole("button", { name: "Clock out" }).click();
 
-  // daily_logs' RLS is foreman+ (Q7): an installer cannot read a log at all,
-  // so offering them one would be an offer that leads nowhere.
-  await expect(page.getByText(/Log today for/)).toHaveCount(0);
+  await expect(page.getByText("Log today for BLACK22?")).toBeVisible();
+  await page.getByRole("button", { name: "Write it" }).click();
+  await expect(page.getByRole("dialog").getByLabel("Notes", { exact: true })).toBeVisible();
 });
 
 test("the whole thing speaks Spanish, sheet and daily log alike", async ({ page }) => {
   // On the PROFILE, not just the device cache: LanguageProvider resolves the
   // profile's language first and the cache only carries the first paint, so a
   // localStorage seed alone is overruled the moment the profile query returns.
-  await useSupabaseFixtures(page, { role: "foreman", language: "es" });
+  await useSupabaseFixtures(page, { role: "installer", language: "es" });
   await useProjectFixture(page);
   await stubGeolocationDenied(page);
   await page.route("**/rest/v1/rpc/file_daily_log", (route) =>

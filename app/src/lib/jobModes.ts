@@ -168,7 +168,7 @@ export function hubTabsFor(opts: HubTabOpts): HubTabId[] {
       "overview",
       "custom-data",
       "specs",
-      ...(isLead ? (["logs"] as HubTabId[]) : []),
+      "logs",
       "photos",
       "chat",
       "time",
@@ -178,7 +178,8 @@ export function hubTabsFor(opts: HubTabOpts): HubTabId[] {
   return [
     "overview",
     "custom-data",
-    ...(isLead ? (["dispatch", "logs"] as HubTabId[]) : []),
+    ...(isLead ? (["dispatch"] as HubTabId[]) : []),
+    "logs",
     "warehouse",
     "chat",
     "photos",
@@ -218,7 +219,8 @@ export function resolveHubTab(
     "brain",
     "photos",
     "chat",
-    ...(opts.isLead ? ["dispatch", "exceptions", "logs"] : []),
+    "logs",
+    ...(opts.isLead ? ["dispatch", "exceptions"] : []),
   ];
   return accept.includes(t) ? (t as HubTabId) : "overview";
 }

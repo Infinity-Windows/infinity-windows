@@ -38,7 +38,7 @@ import { listMyPublished } from "../../lib/schedule/api";
 import { useClock } from "../../lib/clockContext";
 import { useFocusTrap } from "../../lib/useFocusTrap";
 import { useT, type TKey } from "../../lib/i18n";
-import { isForemanPlus } from "../../lib/install/types";
+import { canUseDailyLogs } from "../../lib/dailyLogAccess";
 import type { CrewRole } from "../../lib/install/types";
 import { PhotoCaptureSheet } from "../PhotoCaptureSheet";
 import { DailyLogDialog } from "../dailyLogs/DailyLogDialog";
@@ -72,7 +72,7 @@ interface CaptureTile {
   hintKey: TKey;
   Icon: LucideIcon;
   /** Hidden entirely for a role the server would refuse. */
-  foremanPlusOnly?: boolean;
+  dailyLogOnly?: boolean;
   /**
    * How much this tile needs a job before it can start.
    *
@@ -95,10 +95,8 @@ interface CaptureTile {
 /**
  * The five things a person captures in the field, in the order they happen.
  *
- * "Daily log" is foreman+ and hidden — not disabled — for an installer. That
- * is the settled Q6/Q7 decision, enforced by daily_logs' own RLS: installers
- * never see a log, so a tile that greys out would only advertise a door that
- * does not exist for them.
+ * Daily logs are available to installers and above. Partner access remains
+ * blocked by the app boundary and by the database read and write checks.
  */
 const TILES: CaptureTile[] = [
   {
@@ -120,7 +118,7 @@ const TILES: CaptureTile[] = [
     labelKey: "capture.tile.dailyLog",
     hintKey: "capture.tile.dailyLogHint",
     Icon: NotebookPen,
-    foremanPlusOnly: true,
+    dailyLogOnly: true,
     job: "required",
   },
   {
@@ -166,7 +164,7 @@ export function CaptureSheet({ open, onClose, role }: CaptureSheetProps) {
   // none. `flow` being set means the tile grid is not on screen.
   useFocusTrap(sheetRef, open && (flow === null || flow === "photoDone"), onClose);
 
-  const canLog = isForemanPlus(role);
+  const canLog = canUseDailyLogs(role);
 
   const recents = useQuery({
     queryKey: ["recentJobs", profileId],
@@ -534,7 +532,7 @@ export function CaptureSheet({ open, onClose, role }: CaptureSheetProps) {
             </div>
 
             <div className="capture-grid">
-              {TILES.filter((tile) => !tile.foremanPlusOnly || canLog).map((tile) => (
+              {TILES.filter((tile) => !tile.dailyLogOnly || canLog).map((tile) => (
                 <button
                   key={tile.key}
                   type="button"

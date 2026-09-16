@@ -18,8 +18,7 @@ interface DayPanelProps {
   date: string;
   memory: DayMemory | null;
   loading: boolean;
-  /** Foreman+ only (mirrors DailyLogsTab/LogTodayChip's isForemanPlus gate,
-   * and daily_logs' own RLS): shows hours next to a worked name, and the
+  /** Foreman+ schedule detail: shows hours next to a worked name, and the
    * tap-through into a job's Logs tab an installer couldn't open anyway. */
   canSeeHours: boolean;
   /** The published/draft install assignment behind one job entry, if any —

@@ -1,27 +1,18 @@
-// The "Log today · N" chip (wave L, L4). Lives on all three "/" landings
-// (Home for foremen, My Work for installers, Heartbeat for supervisors/
-// owners — the role-map rule: a landing feature goes on all three) exactly
-// like RoleMaps does: mounted unconditionally, and its OWN role check
-// decides whether anything renders. isForemanPlus is true for foreman,
-// supervisor, and owner alike, so a supervisor previewing My Work or an
-// owner on Heartbeat sees it too — there is no separate "this is only for
-// foremen" gate beyond the same rank Q7 gates daily_logs' own RLS with.
-//
-// Only click ever changes what's mounted here — no :hover-driven mount/
-// unmount (the RoleMap oscillation bug this app already learned from: a
-// hover that changes layout moves the cursor off the target, which
-// un-hovers it, which reverts the layout, forever).
+// Daily reporting is available on every crew landing. The database enforces
+// internal-crew access independently of this UI role check.
+import { useT } from "../../lib/i18n";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
-import { isForemanPlus } from "../../lib/install/types";
+import { canUseDailyLogs } from "../../lib/dailyLogAccess";
 import { jobsNeedingLogToday } from "../../lib/dailyLogs";
 import { localDateISO } from "../../lib/dailyLogDay";
 import { DailyLogDialog } from "./DailyLogDialog";
 
 export function LogTodayChip() {
+  const t = useT();
   const { effectiveRole } = useEffectiveRole();
-  const enabled = isForemanPlus(effectiveRole);
+  const enabled = canUseDailyLogs(effectiveRole);
   const needing = useQuery({
     queryKey: ["jobsNeedingLog"],
     queryFn: jobsNeedingLogToday,
@@ -45,15 +36,15 @@ export function LogTodayChip() {
           else setPickerOpen(true);
         }}
       >
-        Log today · {jobs.length}
+        {t("dailyLog.todayCount", { count: jobs.length })}
       </button>
 
       {pickerOpen && (
         <div className="modal-backdrop" role="dialog" aria-modal="true" onClick={() => setPickerOpen(false)}>
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-            <p style={{ margin: 0, fontWeight: 700 }}>Which job?</p>
+            <p style={{ margin: 0, fontWeight: 700 }}>{t("dailyLog.whichJob")}</p>
             <p className="muted" style={{ margin: "2px 0 10px", fontSize: 12.5 }}>
-              These jobs had work today with no log filed yet.
+              {t("dailyLog.jobsWithoutLog")}
             </p>
             <ul className="unit-list work-list">
               {jobs.map((j) => (
@@ -73,7 +64,7 @@ export function LogTodayChip() {
               ))}
             </ul>
             <button className="button-like" style={{ marginTop: 8 }} onClick={() => setPickerOpen(false)}>
-              Cancel
+              {t("dailyLog.action.cancel")}
             </button>
           </div>
         </div>

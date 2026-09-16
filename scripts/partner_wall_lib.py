@@ -73,8 +73,8 @@ MIGRATIONS_DIR = REPO_ROOT / "supabase" / "migrations"
 #:     integer whose meaning is "fourth in a list a builder cannot see".
 #:   - daily_logs: a partner never reads the table at all, under any
 #:     predicate — the S3 projection RPC is the only door, and daily_logs'
-#:     policy (my_role_rank() >= 1) already excludes the installer-ranked
-#:     partner floor before the wall would even be asked.
+#:     crew policy explicitly excludes partners, even when their role is
+#:     installer. test_partner_wall separately checks this protected policy.
 PARTNER_WALL_EXEMPT_TABLES: frozenset[str] = frozenset({"projects", "daily_logs"})
 
 #: Tables declared by a migration and later DROPPED outright, so a policy

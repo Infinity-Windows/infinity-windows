@@ -1,5 +1,5 @@
 // Wave L: the client face of daily_logs. Reads go straight through RLS
-// (foreman+ only — Q7, see 20260949000000_daily_logs.sql); every write goes
+// (internal crew, including installers); every write goes
 // through file_daily_log (SECURITY DEFINER) — there is no direct-write path
 // to bypass its validation.
 
@@ -291,12 +291,8 @@ async function listLoggedProjectIdsToday(logDate: string): Promise<string[]> {
  * The "Log today · N" chip's data (L4): active jobs worked today (any
  * shift or session, by anyone — Q6's ONE shared log per job means the chip
  * is not scoped to "installers who report to me", a hierarchy this app has
- * no table for) with no daily_logs row yet for today. Foreman+ only surface
- * — the caller (LogTodayChip) gates rendering on role; the underlying
- * shift/session reads are already open to any authenticated role (same as
- * every other crew-wide time read in this app), so there is nothing here
- * for RLS to block the way daily_logs' own SELECT policy blocks reading
- * logs themselves.
+ * no table for) with no daily_logs row yet for today. Available to installers
+ * and above. The daily_logs policy and filing RPC both exclude partners.
  */
 export async function jobsNeedingLogToday(): Promise<JobNeedingLog[]> {
   const logDate = localDateISO();

@@ -114,17 +114,12 @@ class TestTheWall(unittest.TestCase):
         self.assertIn("partner_job_grants", using_texts)
         self.assertIn("is_partner_user", using_texts)
 
-    def test_daily_logs_is_untouched_by_the_wall(self):
-        # daily_logs relies on its existing rank check (installer-ranked
-        # partners already fail my_role_rank() >= 1) rather than the
-        # mechanical guard — pin that this migration did not add one, which
-        # would just be redundant noise on the one table THE WALL says to
-        # leave alone.
+    def test_daily_logs_excludes_partners_when_installers_can_report(self):
         live = live_select_granting_tables()
         self.assertIn("daily_logs", live)
-        using_texts = " ".join(p.using for p in live["daily_logs"].values())
-        self.assertNotIn("is_partner_user", using_texts)
-        self.assertIn("my_role_rank", using_texts)
+        for policy in live["daily_logs"].values():
+            self.assertIn("is_partner_user", policy.using)
+            self.assertIn("can_file_daily_log", policy.using)
 
     def test_swept_table_count_is_in_the_ballpark(self):
         # Not a strict pin (unlike DEDUP_KEYS' exact 107) — new tables land
