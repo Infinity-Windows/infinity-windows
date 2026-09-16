@@ -12975,3 +12975,44 @@ button.crew-start-message { min-height: 44px; width: 100%; text-align: left; col
 .job-time-row { padding-block: 16px; border-top: 1px solid var(--border); }
 .job-time-row p { margin: 6px 0; font-size: 13px; }
 .job-time-row summary { padding-block: 10px; cursor: pointer; }
+
+/* Data report filters: shared sizing for date buttons and the history link. */
+.job-hours-toolbar { display: flex; flex-wrap: wrap; gap: 8px; }
+.job-hours-toolbar > button, .job-hours-toolbar > .button-like {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: 48px; padding: 12px 16px; font: 400 16px/1.25 var(--font-body);
+  border: 1px solid var(--border); border-radius: var(--radius-md);
+  background: var(--card-raised); color: var(--text); text-decoration: none;
+}
+.job-hours-toolbar > button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.job-hours-toolbar > .button-like:hover { border-color: var(--accent-line); }
+.job-hours-toolbar > :focus-visible, .job-filter-picker summary:focus-visible,
+.job-filter-option:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 3px; }
+.job-hours-custom-range { margin-top: 16px; color-scheme: light; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .job-hours-custom-range { color-scheme: dark; }
+}
+:root[data-theme="dark"] .job-hours-custom-range { color-scheme: dark; }
+.job-hours-dates { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; max-width: 620px; }
+.job-hours-dates label, .job-filter-search { display: grid; gap: 8px; min-width: 0; }
+.job-hours-dates input, .job-filter-search input { min-width: 0; margin: 0; font-size: 16px; }
+.job-hours-custom-range p { margin: 10px 0; font-size: 14px; }
+.job-filter-picker { width: 100%; margin-bottom: 8px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--card-raised); }
+.job-filter-picker summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-height: 52px; padding: 12px 16px; cursor: pointer; list-style: none; }
+.job-filter-picker summary::-webkit-details-marker { display: none; }
+.job-filter-picker summary > strong { margin-left: auto; font-size: 14px; }
+.job-filter-picker summary::after { content: ""; width: 8px; height: 8px; margin-left: 4px; border: solid currentColor; border-width: 0 2px 2px 0; transform: translateY(-2px) rotate(45deg); }
+.job-filter-picker[open] summary::after { transform: translateY(2px) rotate(225deg); }
+.job-filter-body { border-top: 1px solid var(--border); padding: 16px; }
+.job-filter-body > .row-gap { margin-block: 12px; }
+.job-filter-options { max-height: 320px; overflow-y: auto; overscroll-behavior: contain; }
+.job-filter-option { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 10px 4px; border-top: 1px solid var(--border); cursor: pointer; }
+.job-filter-option input { flex: 0 0 22px; width: 22px; height: 22px; min-height: 22px; margin: 0; padding: 0; accent-color: var(--accent); }
+.job-filter-option > span { min-width: 0; overflow-wrap: anywhere; }
+.job-filter-option small { display: block; margin-top: 4px; }
+.job-filter-body > p { margin: 12px 0 0; font-size: 14px; }
+@media (max-width: 560px) {
+  .job-hours-toolbar { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .job-hours-toolbar > button, .job-hours-toolbar > .button-like { padding-inline: 8px; }
+  .job-hours-dates { grid-template-columns: 1fr; }
+}
