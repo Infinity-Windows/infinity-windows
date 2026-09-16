@@ -274,7 +274,8 @@ class FunctionSecretsTest(unittest.TestCase):
         # (test_the_crash_monitor_is_optional_for_every_function), so the
         # headline sentence does not move a third time.
         # Connected publication adds one worker, reusing the existing VAPID keys.
-        self.assertEqual(len(names), 24)
+        # Description dictation reuses the existing OpenAI transcription key.
+        self.assertEqual(len(names), 25)
         self.assertIn("deliver-workflow-notices", names)
         self.assertIn("ask", names)
         self.assertIn("studio-assist", names)
@@ -418,7 +419,7 @@ class FunctionSecretsTest(unittest.TestCase):
         reqs = fs.all_requirements()
         self.assertEqual(
             fs.needing(reqs, "OPENAI_API_KEY"),
-            ["ingest-knowledge", "transcribe-install-memo"],
+            ["ingest-knowledge", "transcribe-description", "transcribe-install-memo"],
         )
 
     def test_the_repo_wide_required_set_is_exactly_these_four(self):
@@ -499,7 +500,7 @@ class PlainEnglishNames(unittest.TestCase):
 
     def test_the_openai_headline_names_only_what_claude_cannot_do(self):
         got = fs.features_needing(fs.all_requirements(), "OPENAI_API_KEY")
-        self.assertEqual(got, "adding documents to the brain|install voice memos")
+        self.assertEqual(got, "adding documents to the brain|dictating descriptions|install voice memos")
 
     def test_an_unknown_function_falls_back_to_its_directory_name(self):
         self.assertEqual(fs.feature_name("not-a-function"), "not-a-function")
