@@ -80,7 +80,7 @@ describe("role helpers derive from roleRank", () => {
 
 describe("minRoleForPath matches page-level gating", () => {
   it("guards foreman+ surfaces at the foreman floor", () => {
-    for (const path of ["/qc", "/analytics", "/crew", "/catalog", "/team", "/issues"]) {
+    for (const path of ["/qc", "/analytics", "/catalog", "/team", "/issues"]) {
       expect(minRoleForPath(path)).toBe("foreman");
     }
   });
@@ -107,6 +107,7 @@ describe("minRoleForPath matches page-level gating", () => {
   });
 
   it("keeps admin + heartbeat supervisor+ and costing owner-only", () => {
+    expect(minRoleForPath("/crew")).toBe("supervisor");
     expect(minRoleForPath("/admin")).toBe("supervisor");
     expect(minRoleForPath("/heartbeat")).toBe("supervisor");
     expect(minRoleForPath("/costing")).toBe("owner");

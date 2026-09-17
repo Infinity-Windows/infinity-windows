@@ -122,7 +122,6 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Travel (`/travel`)
 - Scheduling (`/scheduling`)
 - Team (`/team`)
-- Roster (`/crew`)
 - Learn (`/learn`)
 - Points (`/points`)
 - Memo review (`/review`)
@@ -135,7 +134,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Settings (`/settings`)
 - Catalog (`/catalog`)
 
-**Can reach (all 41 allowed destinations):**
+**Can reach (all 40 allowed destinations):**
 
 - Home (`/`)
 - Current Work (`/current-work`)
@@ -170,7 +169,6 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Service (`/service`)
 - Quality (`/qc`)
 - Analytics (`/analytics`)
-- Roster (`/crew`)
 - Receive (`/receive`)
 - Storage (`/storage`)
 - Catalog (`/catalog`)
@@ -184,6 +182,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Job history (`/jobs/history`)
 - Studio (`/studio`)
 - Data (`/data`)
+- Roster (`/crew`)
 - AI Knowledge (`/knowledge`)
 - Vehicles (`/vehicles`)
 - Heartbeat (`/heartbeat`)

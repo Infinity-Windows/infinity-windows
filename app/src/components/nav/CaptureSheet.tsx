@@ -392,165 +392,170 @@ export function CaptureSheet({ open, onClose, role }: CaptureSheetProps) {
           </button>
         </div>
 
-        {activeFlow === "photoDone" ? (
-          <div className="capture-done">
-            <p className="ok">
-              {queued === 1
-                ? t("capture.photo.queuedOne")
-                : t("capture.photo.queuedMany", { n: queued })}
-            </p>
-            <p className="muted">
-              {t("capture.photo.toJob", { job: jobLabel ?? t("capture.job.yourJob") })}
-            </p>
-            <div className="capture-grid">
-              <button
-                type="button"
-                className="capture-tile"
-                onClick={() => {
-                  navigate(projectId ? `/photos?project=${projectId}` : "/photos");
-                  onClose();
-                }}
-              >
-                <span className="capture-tile-icon">
-                  <FolderOpen size={22} />
-                </span>
-                <span className="capture-tile-text">
-                  <span className="capture-tile-label">{t("capture.photo.seeGallery")}</span>
-                </span>
-              </button>
-              <button type="button" className="capture-tile" onClick={() => setFlow("photo")}>
-                <span className="capture-tile-icon">
-                  <Camera size={22} />
-                </span>
-                <span className="capture-tile-text">
-                  <span className="capture-tile-label">{t("capture.photo.another")}</span>
-                </span>
-              </button>
-            </div>
-          </div>
-        ) : (
-          <>
-            {/* Job context — suggestion chips with reasons, then the full list */}
-            <div className="capture-project">
-              <p className="capture-project-label">
-                {selectedId
-                  ? t("capture.job.forJob")
-                  : pending === "daily-log"
-                    ? t("capture.job.pickForLog")
-                    : pending
-                      ? t("capture.job.pickForPhoto")
-                      : t("capture.job.which")}
+        <div className="capture-content">
+          {activeFlow === "photoDone" ? (
+            <div className="capture-done">
+              <p className="ok">
+                {queued === 1
+                  ? t("capture.photo.queuedOne")
+                  : t("capture.photo.queuedMany", { n: queued })}
               </p>
-              {/* Keyed on selectedId, NOT on the row it looks up. A job primed
-                  from the open shift is already the job every tile will file
-                  to, and while the jobs list is still loading there is no row
-                  to name it with — showing the chips in that gap would offer a
-                  choice the tiles were not going to honour. */}
-              {selectedId ? (
+              <p className="muted">
+                {t("capture.photo.toJob", { job: jobLabel ?? t("capture.job.yourJob") })}
+              </p>
+              <div className="capture-grid">
                 <button
-                  type="button"
-                  className="capture-project-current"
-                  onClick={() => {
-                    setSelectedId("");
-                    setShowList(true);
-                  }}
-                >
-                  {selected ? (
-                    <>
-                      <strong>{selected.job_code}</strong> · {selected.name}
-                    </>
-                  ) : (
-                    t("capture.job.yourJob")
-                  )}
-                  <span className="capture-project-change">{t("capture.job.change")}</span>
-                </button>
-              ) : (
-                <>
-                  {chips.length > 0 && (
-                    <div className="capture-chip-row">
-                      {chips.map((c) => (
-                        <button
-                          key={c.projectId}
-                          type="button"
-                          className="capture-chip"
-                          onClick={() => chooseJob(c.projectId)}
-                        >
-                          {c.label}
-                          <span className="capture-chip-reason">{c.reason}</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  {/* There is deliberately no "No job — general" escape here.
-                      It used to sit beside this button and it could not work:
-                      a photo answering it produced an attachments row with
-                      every target column null, which the database refuses
-                      (attachments_target) — the picture uploaded, the row was
-                      rejected, and the person was told it was filed. A receipt
-                      needs no such answer: its tile never asks, because its own
-                      follow-up question does, and a receipt with no job is a
-                      row the receipts table takes happily. */}
-                  <div className="capture-project-row">
-                    <button
-                      type="button"
-                      className="capture-list-toggle"
-                      onClick={() => setShowList((v) => !v)}
-                    >
-                      <Search size={14} aria-hidden />{" "}
-                      {showList ? t("capture.job.hideList") : t("capture.job.find")}
-                    </button>
-                  </div>
-                  {showList && (
-                    <div className="capture-picker">
-                      <input
-                        className="capture-search"
-                        placeholder={t("capture.job.search")}
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                        aria-label={t("capture.job.a11ySearch")}
-                      />
-                      <div className="capture-project-list">
-                        {filtered.slice(0, 30).map((p) => (
-                          <button
-                            key={p.id}
-                            type="button"
-                            className="capture-project-item"
-                            onClick={() => chooseJob(p.id)}
-                          >
-                            <span className="capture-project-code">{p.job_code}</span>
-                            <span className="capture-project-name">{p.name}</span>
-                          </button>
-                        ))}
-                        {filtered.length === 0 && (
-                          <p className="muted">{t("capture.job.noMatch", { q: search })}</p>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-
-            <div className="capture-grid">
-              {TILES.filter((tile) => !tile.dailyLogOnly || canLog).map((tile) => (
-                <button
-                  key={tile.key}
                   type="button"
                   className="capture-tile"
-                  onClick={() => tapTile(tile)}
+                  onClick={() => {
+                    navigate(projectId ? `/photos?project=${projectId}` : "/photos");
+                    onClose();
+                  }}
                 >
                   <span className="capture-tile-icon">
-                    <tile.Icon size={22} />
+                    <FolderOpen size={22} />
                   </span>
                   <span className="capture-tile-text">
-                    <span className="capture-tile-label">{t(tile.labelKey)}</span>
-                    <span className="capture-tile-hint">{t(tile.hintKey)}</span>
+                    <span className="capture-tile-label">{t("capture.photo.seeGallery")}</span>
                   </span>
                 </button>
-              ))}
+                <button type="button" className="capture-tile" onClick={() => setFlow("photo")}>
+                  <span className="capture-tile-icon">
+                    <Camera size={22} />
+                  </span>
+                  <span className="capture-tile-text">
+                    <span className="capture-tile-label">{t("capture.photo.another")}</span>
+                  </span>
+                </button>
+              </div>
             </div>
-          </>
-        )}
+          ) : (
+            <div className="capture-workspace">
+              {/* Job context — suggestion chips with reasons, then the full list */}
+              <div className="capture-project">
+                <p className="capture-project-label">
+                  {selectedId
+                    ? t("capture.job.forJob")
+                    : pending === "daily-log"
+                      ? t("capture.job.pickForLog")
+                      : pending
+                        ? t("capture.job.pickForPhoto")
+                        : t("capture.job.which")}
+                </p>
+                {/* Keyed on selectedId, NOT on the row it looks up. A job primed
+                    from the open shift is already the job every tile will file
+                    to, and while the jobs list is still loading there is no row
+                    to name it with — showing the chips in that gap would offer a
+                    choice the tiles were not going to honour. */}
+                {selectedId ? (
+                  <button
+                    type="button"
+                    className="capture-project-current"
+                    onClick={() => {
+                      setSelectedId("");
+                      setShowList(true);
+                    }}
+                  >
+                    {selected ? (
+                      <>
+                        <strong>{selected.job_code}</strong> · {selected.name}
+                      </>
+                    ) : (
+                      t("capture.job.yourJob")
+                    )}
+                    <span className="capture-project-change">{t("capture.job.change")}</span>
+                  </button>
+                ) : (
+                  <>
+                    {chips.length > 0 && (
+                      <div className="capture-chip-row">
+                        {chips.map((c) => (
+                          <button
+                            key={c.projectId}
+                            type="button"
+                            className="capture-chip"
+                            onClick={() => chooseJob(c.projectId)}
+                          >
+                            {c.label}
+                            <span className="capture-chip-reason">{c.reason}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {/* There is deliberately no "No job — general" escape here.
+                        It used to sit beside this button and it could not work:
+                        a photo answering it produced an attachments row with
+                        every target column null, which the database refuses
+                        (attachments_target) — the picture uploaded, the row was
+                        rejected, and the person was told it was filed. A receipt
+                        needs no such answer: its tile never asks, because its own
+                        follow-up question does, and a receipt with no job is a
+                        row the receipts table takes happily. */}
+                    <div className="capture-project-row">
+                      <button
+                        type="button"
+                        className="capture-list-toggle"
+                        onClick={() => setShowList((v) => !v)}
+                      >
+                        <Search size={14} aria-hidden />{" "}
+                        {showList ? t("capture.job.hideList") : t("capture.job.find")}
+                      </button>
+                    </div>
+                    {showList && (
+                      <div className="capture-picker">
+                        <input
+                          className="capture-search"
+                          placeholder={t("capture.job.search")}
+                          value={search}
+                          onChange={(e) => setSearch(e.target.value)}
+                          aria-label={t("capture.job.a11ySearch")}
+                        />
+                        <div className="capture-project-list">
+                          {filtered.slice(0, 30).map((p) => (
+                            <button
+                              key={p.id}
+                              type="button"
+                              className="capture-project-item"
+                              onClick={() => chooseJob(p.id)}
+                            >
+                              <span className="capture-project-code">{p.job_code}</span>
+                              <span className="capture-project-name">{p.name}</span>
+                            </button>
+                          ))}
+                          {filtered.length === 0 && (
+                            <p className="muted">{t("capture.job.noMatch", { q: search })}</p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+
+              <div className="capture-actions">
+                <p className="capture-project-label">{t("capture.actions")}</p>
+                <div className="capture-grid">
+                  {TILES.filter((tile) => !tile.dailyLogOnly || canLog).map((tile) => (
+                    <button
+                      key={tile.key}
+                      type="button"
+                      className="capture-tile"
+                      onClick={() => tapTile(tile)}
+                    >
+                      <span className="capture-tile-icon">
+                        <tile.Icon size={22} />
+                      </span>
+                      <span className="capture-tile-text">
+                        <span className="capture-tile-label">{t(tile.labelKey)}</span>
+                        <span className="capture-tile-hint">{t(tile.hintKey)}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </>
   );

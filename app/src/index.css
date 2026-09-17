@@ -12198,6 +12198,93 @@ button.stage-chip {
   }
 }
 
+/* Quick Capture uses the desktop space for a job panel beside the actions.
+   Keep the header outside the scroll area so Close never disappears. */
+.capture-sheet {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.capture-sheet .capture-head,
+.capture-sheet .capture-grip { flex-shrink: 0; }
+.capture-content {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.capture-workspace { display: grid; gap: 16px; }
+.capture-actions { min-width: 0; }
+.capture-actions > .capture-project-label { margin-bottom: 12px; }
+.capture-sheet .capture-close {
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--text);
+}
+.capture-sheet .capture-close:hover { border-color: var(--accent-line); }
+.capture-sheet .capture-tile-label { font-size: 16px; line-height: 1.4; }
+.capture-sheet .capture-tile-hint { font-size: 14px; line-height: 1.5; }
+.capture-sheet .capture-search { font-size: 16px; }
+.capture-sheet .capture-project-name {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+}
+.capture-sheet .capture-project-current { flex-wrap: wrap; text-align: left; }
+.capture-sheet .capture-project-item { min-height: 48px; flex-shrink: 0; }
+.capture-sheet .capture-project-code { flex-shrink: 0; }
+@media (min-width: 860px) {
+  .capture-sheet {
+    width: min(1120px, calc(100vw - 64px));
+    max-height: min(calc(100dvh - 48px), var(--dialog-max-h));
+    padding: 0 28px 28px;
+    border-radius: 24px;
+  }
+  .capture-sheet .capture-head { padding: 22px 0; }
+  .capture-sheet .capture-title { font-size: 28px; }
+  .capture-workspace {
+    grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+    gap: 24px;
+    align-items: start;
+  }
+  .capture-sheet .capture-project {
+    padding: 20px;
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    background: var(--card);
+    gap: 14px;
+  }
+  .capture-sheet .capture-project-label { font-size: 13px; line-height: 1.5; }
+  .capture-sheet .capture-chip-row { flex-wrap: wrap; }
+  .capture-sheet .capture-chip { font-size: 16px; padding: 10px 16px; }
+  .capture-sheet .capture-chip-reason { font-size: 13px; }
+  .capture-sheet .capture-list-toggle { min-height: 44px; font-size: 16px; }
+  .capture-sheet .capture-list-toggle svg { width: 18px; height: 18px; }
+  .capture-sheet .capture-search { min-height: 52px; }
+  .capture-sheet .capture-project-list {
+    max-height: clamp(160px, calc(100dvh - 440px), 380px);
+    scrollbar-gutter: stable;
+    margin-top: 12px;
+  }
+  .capture-sheet .capture-project-item { flex-direction: column; align-items: flex-start; gap: 3px; padding: 12px; }
+  .capture-sheet .capture-project-code,
+  .capture-sheet .capture-project-name,
+  .capture-sheet .capture-project-current { font-size: 16px; }
+  .capture-sheet .capture-project-change { font-size: 14px; }
+  .capture-sheet .capture-grid { gap: 12px; }
+  .capture-sheet .capture-tile { min-height: 84px; padding: 16px; gap: 16px; }
+  .capture-sheet .capture-tile-label { font-size: 18px; }
+  .capture-sheet .capture-tile-hint { font-size: 15px; }
+  .capture-sheet .capture-tile-icon { width: 48px; height: 48px; border-radius: 14px; }
+  .capture-sheet .capture-tile-icon svg { width: 24px; height: 24px; }
+}
+@media (min-width: 1100px) {
+  .capture-actions .capture-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .capture-actions .capture-tile { flex-direction: column; align-items: flex-start; min-height: 160px; }
+}
+
 /* "Save for offline" strip on the three landings (ticket 05). A row that
    never changes height while saving: the button's text grows, the row does
    not, and nothing moves on hover. */

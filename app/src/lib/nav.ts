@@ -231,7 +231,7 @@ export const NAV: NavDest[] = [
   { id: "service", to: "/service", label: "Service", icon: "⚕", minRole: "foreman" },
   { id: "qc", to: "/qc", label: "Quality", icon: "✓", minRole: "foreman" },
   { id: "analytics", to: "/analytics", label: "Analytics", icon: "◲", minRole: "foreman" },
-  { id: "crew", to: "/crew", label: "Roster", icon: "☰", minRole: "foreman" },
+  { id: "crew", to: "/crew", label: "Roster", icon: "☰", minRole: "supervisor" },
   // A signpost page, not a screen: unit intake retired with the chain
   // (ADR-0005) and /receive now just points at /storage/tag and /warehouse.
   // ADR-0007 opened tagging and the warehouse to every crew member, so a
