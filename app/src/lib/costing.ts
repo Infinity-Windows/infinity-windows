@@ -34,6 +34,7 @@ export interface LaborShift {
   /** Wave Z: who worked it, so the shift can be priced at THEIR rate. */
   profile_id?: string | null;
   profile_name?: string | null;
+  status?: string;
 }
 
 /** One person's hours and cost on one job, and whether the cost is real. */
@@ -45,6 +46,7 @@ export interface LaborPerson {
   /** True when any of these hours were priced off the role table because the
    * person had no rate on file that day. The line says so on screen. */
   estimated: boolean;
+  salaryAllocated?: boolean;
 }
 
 export interface LaborTotals {
@@ -73,36 +75,52 @@ export function computeLabor(
   // a real cost and which is a guess.
   const byPerson = new Map<string, Map<string, LaborPerson>>();
 
-  for (const s of shifts) {
-    if (!s.project_id || !s.clock_out_at) continue;
-    const ms = new Date(s.clock_out_at).getTime() - new Date(s.clock_in_at).getTime();
-    const hours = Math.max(0, ms / 3600000 - (s.break_seconds ?? 0) / 3600);
-
-    const onFile = s.profile_id
-      ? rateInEffect(rates?.get(s.profile_id), localDayOf(s.clock_in_at))
-      : null;
-    const rate = onFile ? onFile.hourlyCents / 100 : HOURLY_RATE[s.role] ?? HOURLY_RATE.installer;
-
+  // Split at local day boundaries, including a salary/month/rate change.
+  // Break time is distributed over the shift because older punches contain
+  // only a total break duration, not its exact timestamps.
+  const segments: {shift:LaborShift; hours:number; day:string; rate:PayRate|null}[]=[];
+  const monthHours=new Map<string,number>();
+  for (const shift of shifts) {
+    if (!shift.clock_out_at || shift.status === "voided") continue;
+    const start=new Date(shift.clock_in_at).getTime(), end=new Date(shift.clock_out_at).getTime();
+    if (!Number.isFinite(start)||!Number.isFinite(end)||end<start) continue;
+    if(end===start) {
+      const day=localDayOf(shift.clock_in_at);
+      segments.push({shift,hours:0,day,rate:shift.profile_id?rateInEffect(rates?.get(shift.profile_id),day):null});
+      continue;
+    }
+    const paidRatio=Math.max(0,1-Math.max(0,shift.break_seconds??0)*1000/(end-start));
+    for(let cursor=start;cursor<end;) {
+      const date=new Date(cursor), midnight=new Date(date.getFullYear(),date.getMonth(),date.getDate()+1).getTime();
+      const until=Math.min(end,midnight), hours=(until-cursor)/3600000*paidRatio;
+      const day=localDayOf(new Date(cursor).toISOString());
+      const rate=shift.profile_id?rateInEffect(rates?.get(shift.profile_id),day):null;
+      segments.push({shift,hours,day,rate});
+      if(rate?.payBasis==="salary_monthly") {
+        const key=`${shift.profile_id}:${day.slice(0,7)}`;
+        monthHours.set(key,(monthHours.get(key)??0)+hours);
+      }
+      cursor=until;
+    }
+  }
+  for (const {shift:s,hours,day,rate:onFile} of segments) {
+    if(!s.project_id)continue;
+    const salary=onFile?.payBasis==="salary_monthly";
+    const denominator=monthHours.get(`${s.profile_id}:${day.slice(0,7)}`)??0;
+    const cost=salary
+      ? (denominator>0?(onFile.monthlyCents??0)/100*hours/denominator:0)
+      : hours*(onFile?onFile.hourlyCents/100:HOURLY_RATE[s.role]??HOURLY_RATE.installer);
     const cur = out.get(s.project_id) ?? { hours: 0, cost: 0, people: [], estimated: false };
-    cur.hours += hours;
-    cur.cost += hours * rate;
+    cur.hours += hours; cur.cost += cost;
     if (!onFile) cur.estimated = true;
     out.set(s.project_id, cur);
-
     const who = s.profile_id ?? "unknown";
     const people = byPerson.get(s.project_id) ?? new Map<string, LaborPerson>();
-    const line = people.get(who) ?? {
-      profileId: who,
-      name: s.profile_name ?? "Someone",
-      hours: 0,
-      cost: 0,
-      estimated: false,
-    };
-    line.hours += hours;
-    line.cost += hours * rate;
+    const line = people.get(who) ?? {profileId:who,name:s.profile_name??"Someone",hours:0,cost:0,estimated:false};
+    line.hours += hours; line.cost += cost;
     if (!onFile) line.estimated = true;
-    people.set(who, line);
-    byPerson.set(s.project_id, people);
+    if (salary) line.salaryAllocated = true;
+    people.set(who, line); byPerson.set(s.project_id, people);
   }
 
   for (const [projectId, people] of byPerson) {
@@ -237,6 +255,30 @@ export async function setBid(
   if (error) throw error;
 }
 
+interface CostingShiftRow {
+  id:string; project_id:string|null; profile_id:string; clock_in_at:string; clock_out_at:string|null;
+  break_seconds:number; profiles:{role?:string;display_name?:string}|null;
+}
+async function listCostingShifts():Promise<CostingShiftRow[]> {
+  const rows:CostingShiftRow[]=[];
+  let expected:number|null=null;
+  for(let page=0;page<1000;page++) {
+    const {data,error,count}=await supabase.from("time_shifts")
+      .select("id, project_id, profile_id, clock_in_at, clock_out_at, break_seconds, profiles!profile_id(role, display_name)",{count:"exact"})
+      .neq("status","voided").order("id").range(rows.length,rows.length+999);
+    if(error)throw error;
+    if(typeof count!=="number"||(expected!==null&&count!==expected))throw new Error("Time records changed. Refresh job costing.");
+    expected=count;
+    if(!data?.length&&rows.length<expected)throw new Error("The cost report is incomplete. Refresh job costing.");
+    rows.push(...(data??[]) as CostingShiftRow[]);
+    if(rows.length>=expected) {
+      if(rows.length!==expected||new Set(rows.map(row=>row.id)).size!==expected)throw new Error("Time records changed. Refresh job costing.");
+      return rows;
+    }
+  }
+  throw new Error("The cost report is too large to load completely.");
+}
+
 /**
  * Company-wide costing rollup across active jobs.
  *
@@ -257,22 +299,12 @@ export async function getCompanyCosting(
     supabase.from("project_financials").select("project_id, bid_amount, target_margin_pct"),
     supabase.from("job_costs").select("project_id, amount"),
     supabase.from("change_orders").select("project_id, amount"),
-    supabase
-      .from("time_shifts")
-      // Named via `profile_id`: a shift also links to its approver, editor and
-      // rejecter, so a bare `profiles(...)` is ambiguous and fails the query.
-      // One literal, not a concatenation: PostgREST's row types are inferred
-      // from the string itself, and a `+` here turns every field below into
-      // `unknown`.
-      .select(
-        "project_id, profile_id, clock_in_at, clock_out_at, break_seconds, profiles!profile_id(role, display_name)",
-      ),
+    listCostingShifts(),
   ]);
   if (projRes.error) throw projRes.error;
   if (finRes.error && !isMissingTable(finRes.error, "project_financials")) throw finRes.error;
   if (costRes.error) throw costRes.error;
   if (coRes.error) throw coRes.error;
-  if (shiftRes.error) throw shiftRes.error;
 
   const finByProj = new Map<string, { bid: number; target: number | null }>();
   for (const f of finRes.data ?? []) {
@@ -301,7 +333,7 @@ export async function getCompanyCosting(
   const rates = canSeePay ? indexPayRates(await listPayRates()) : undefined;
 
   const labor = computeLabor(
-    (shiftRes.data ?? []).map((s) => ({
+    shiftRes.map((s) => ({
       project_id: s.project_id,
       clock_in_at: s.clock_in_at,
       clock_out_at: s.clock_out_at,
