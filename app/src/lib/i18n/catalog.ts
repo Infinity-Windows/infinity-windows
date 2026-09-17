@@ -940,6 +940,8 @@ export const CATALOG = {
     es: "Hora a la que sale el recordatorio de la tarde",
   },
   "unassigned.title": { en: "Unassigned time", es: "Tiempo sin trabajo asignado" },
+  "unassigned.total": { en: "Total unassigned hours", es: "Total de horas sin trabajo asignado" },
+  "unassigned.totalHelp": { en: "All dates · After breaks", es: "Todas las fechas · Después de descansos" },
   "unassigned.oldest": { en: "Oldest entries first", es: "Registros más antiguos primero" },
   "unassigned.help": { en: "All time entries without a job, regardless of the date range above. Ordered by when each entry was first added; the work date is shown separately.", es: "Todos los registros sin trabajo asignado, sin importar el rango de fechas de arriba. Ordenados por fecha de registro; la fecha trabajada se muestra aparte." },
   "unassigned.empty": { en: "Every time entry has a job assigned.", es: "Todos los registros tienen un trabajo asignado." },
