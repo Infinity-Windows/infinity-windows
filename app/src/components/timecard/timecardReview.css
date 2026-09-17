@@ -1,0 +1,53 @@
+.tcx-reminder {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 12px;
+  padding: 16px; margin: 16px 0;
+  background: var(--card); border: 1px solid var(--border); border-radius: 16px;
+}
+.tcx-reminder-label { display: flex; align-items: center; gap: 10px; flex: 1 1 280px; font-size: 14px; line-height: 1.5; }
+.tcx-reminder-label svg { color: var(--primary); flex: none; }
+.tcx-reminder input.tcx-reminder-time { width: 148px; min-height: 44px; margin: 0; padding: 10px 12px; font-size: 16px; }
+.tcx-reminder-toggle {
+  position: relative; display: inline-flex; align-items: center; gap: 10px;
+  min-height: 44px; padding: 10px 12px; border: 1px solid var(--border);
+  border-radius: 10px; font-size: 14px; cursor: pointer; background: var(--card-raised);
+}
+.tcx-reminder-toggle input[type="checkbox"] { position: absolute; opacity: 0; width: 1px; height: 1px; min-height: 0; margin: 0; padding: 0; }
+.tcx-reminder-check { display: grid; place-items: center; flex: none; width: 20px; height: 20px; border: 1.5px solid var(--faint); border-radius: 6px; color: transparent; background: var(--card); }
+.tcx-reminder-toggle.is-on .tcx-reminder-check { background: var(--accent); border-color: var(--accent); color: var(--ink); }
+.tcx-reminder-toggle:focus-within { outline: 2px solid var(--primary); outline-offset: 3px; }
+.tcx-reminder > button { min-height: 44px; }
+.unassigned-time { margin-top: 16px; }
+.unassigned-heading, .unassigned-heading-copy, .unassigned-entry-top, .unassigned-person, .unassigned-entry-footer { display: flex; align-items: center; gap: 12px; }
+.unassigned-heading, .unassigned-entry-top, .unassigned-entry-footer { justify-content: space-between; }
+.unassigned-heading { flex-wrap: wrap; }
+.unassigned-heading h2 { margin: 0; font-size: 20px; }
+.unassigned-heading p { margin: 3px 0 0; color: var(--muted); font-size: 13px; }
+.unassigned-icon { display: grid; place-items: center; width: 44px; height: 44px; flex: none; border-radius: 12px; background: var(--accent-soft); color: var(--primary); }
+.unassigned-help { font-size: 14px; line-height: 1.5; margin: 16px 0; }
+.unassigned-count { font-size: 14px; font-weight: 600; }
+.unassigned-empty { margin: 0; padding: 16px 0 4px; color: var(--muted); }
+.unassigned-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+.unassigned-entry { min-width: 0; border: 1px solid var(--border); background: var(--card); border-radius: 14px; padding: 18px; }
+.unassigned-entry-top { align-items: flex-start; }
+.unassigned-person { min-width: 0; flex-wrap: wrap; }
+.unassigned-person > strong { font-size: 17px; overflow-wrap: anywhere; }
+.unassigned-hours { font-size: 18px; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.unassigned-hours small { display: block; font-size: 12px; font-weight: 400; color: var(--muted); }
+.unassigned-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin: 18px 0; }
+.unassigned-facts dt { font-size: 12px; color: var(--muted); margin-bottom: 5px; }
+.unassigned-facts dd { margin: 0; font-size: 14px; overflow-wrap: anywhere; }
+.unassigned-description, .unassigned-source { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 15px; line-height: 1.55; margin: 12px 0; }
+.unassigned-source { color: var(--primary); }
+.unassigned-entry-footer { flex-wrap: wrap; padding-top: 12px; border-top: 1px solid var(--border); margin-top: 16px; }
+.unassigned-entry-footer > span { font-size: 12px; }
+.unassigned-entry-footer button { min-height: 44px; flex: none; }
+.unassigned-more { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; margin-top: 12px; min-height: 44px; }
+@media (max-width: 600px) {
+  .tcx-reminder-label { flex-basis: 100%; }
+  .tcx-reminder input.tcx-reminder-time { flex: 1 1 135px; }
+  .unassigned-entry { padding: 14px; }
+  .unassigned-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+  .unassigned-person { align-items: flex-start; flex-direction: column; gap: 6px; }
+  .unassigned-hours { font-size: 16px; white-space: normal; flex-shrink: 0; max-width: 42%; }
+  .unassigned-entry-footer button { width: 100%; }
+}

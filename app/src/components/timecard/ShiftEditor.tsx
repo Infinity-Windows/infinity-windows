@@ -93,6 +93,7 @@ export function ShiftEditor({
 
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["teamShifts"] });
+    qc.invalidateQueries({ queryKey: ["unassignedTimeShifts"] });
     qc.invalidateQueries({ queryKey: ["timecardMine"] });
     qc.invalidateQueries({ queryKey: ["timecardPanel"] });
     qc.invalidateQueries({ queryKey: ["unfinishedShifts"] });
