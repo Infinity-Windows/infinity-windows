@@ -221,7 +221,7 @@ const FOREMAN: RoleFlow = {
         label: "The crew",
         lines: ["Who's where, the board,", "team timecards."],
         asks: "The scheduling board drafts moves before they're real; timecards approve punch by punch, where the punch happened.",
-        doors: ["/team", "/crew", "/team-timecards", "/scheduling"],
+        doors: ["/team", "/team-timecards", "/scheduling"],
       },
     ],
     [

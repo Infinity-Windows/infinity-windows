@@ -25,6 +25,7 @@ import { fileURLToPath } from "node:url";
 import { TEST_USER, jobFixtures, useSupabaseFixtures } from "./support/supabaseFixtures";
 import {
   json,
+  hideWrongProjectBanner,
   pngFile,
   stubGeolocationDenied,
 } from "./support/specHelpers";
@@ -563,3 +564,46 @@ test("only a real capture becomes the 'Last time' job — not a look at the gall
   await expect(page.getByRole("dialog", { name: "Add job photos" })).toBeVisible();
   expect(await lastJob()).toBe(BLACK22.projectId);
 });
+
+for (const viewport of [{ width: 390, height: 844 }, { width: 1024, height: 768 }, { width: 1440, height: 900 }]) {
+  test(`capture job search and actions stay readable at ${viewport.width}px`, async ({ page }) => {
+    test.setTimeout(45_000);
+    await page.setViewportSize(viewport);
+    await page.emulateMedia({ colorScheme: "dark" });
+    await useSupabaseFixtures(page, { role: "owner" });
+    await hideWrongProjectBanner(page);
+    await stubGeolocationDenied(page);
+    await page.route("**/rest/v1/projects**", r => json(r, [PROJECT, ...Array.from({ length: 24 }, (_, i) => ({
+      ...PROJECT, id: `job-${i}`, job_code: `JOB-${i + 1}`, name: `Building ${i + 1} — window and door installation on the north elevation`,
+    }))], 25));
+    await page.goto("/crew");
+    if (viewport.width >= 860) await page.locator(".rail-capture").click();
+    else await captureFab(page).click();
+    await sheet(page).getByRole("button", { name: /Find a job/ }).click();
+    const box = await sheet(page).boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.x).toBeGreaterThanOrEqual(0);
+    expect(box!.y).toBeGreaterThanOrEqual(0);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(viewport.width);
+    expect(box!.y + box!.height).toBeLessThanOrEqual(viewport.height);
+    if (viewport.width >= 860) {
+      expect(box!.width).toBeGreaterThanOrEqual(900);
+      const jobs = await sheet(page).locator(".capture-project").boundingBox();
+      const actions = await sheet(page).locator(".capture-actions").boundingBox();
+      expect(actions!.x).toBeGreaterThan(jobs!.x + jobs!.width);
+      await expect(sheet(page).getByText("Scan a unit", { exact: true })).toBeInViewport();
+    }
+    expect(await sheet(page).evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+    const jobName = sheet(page).locator(".capture-project-name").first();
+    expect((await jobName.boundingBox())!.height).toBeGreaterThan(15);
+    mkdirSync(SHOTS, { recursive: true });
+    await page.screenshot({ path: `${SHOTS}/roomy-${viewport.width}.png` });
+    await sheet(page).getByRole("textbox").fill("BLACK22");
+    await sheet(page).getByRole("button", { name: /BLACK22/ }).click();
+    await sheet(page).getByText("Daily log", { exact: true }).click();
+    await expect(page.getByRole("dialog").getByLabel("Notes", { exact: true })).toBeVisible();
+    await page.getByRole("dialog").getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(page).toHaveURL(/\/crew$/);
+  });
+}

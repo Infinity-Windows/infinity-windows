@@ -1997,6 +1997,7 @@ export const CATALOG = {
   // in English. Nothing here is safety copy, so none of it is a SAFETY_KEY.
   "capture.tab": { en: "Capture", es: "Capturar" },
   "capture.a11y.open": { en: "Quick capture", es: "Captura rápida" },
+  "capture.actions": { en: "What would you like to capture?", es: "¿Qué quieres capturar?" },
   "capture.title": { en: "Quick capture", es: "Captura rápida" },
   "capture.a11y.close": { en: "Close", es: "Cerrar" },
 

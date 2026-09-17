@@ -459,3 +459,13 @@ describe("every NAV destination has a door", () => {
     expect(INTENTIONALLY_MENU_LESS.filter((p) => reachable.has(p))).toEqual([]);
   });
 });
+
+describe("Roster access", () => {
+  it("keeps the page and menu supervisor/owner only even with money grants", () => {
+    for (const role of ["installer", "foreman", "supervisor", "owner"] as const) {
+      const allowed = role === "supervisor" || role === "owner";
+      expect(canAccess(role, "/crew", { pay: true, costs: true })).toBe(allowed);
+      expect(menuForRole(role, { pay: true, costs: true }).flatMap(s => s.items).some(i => i.to === "/crew")).toBe(allowed);
+    }
+  });
+});

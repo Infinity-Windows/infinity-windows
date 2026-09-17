@@ -298,7 +298,7 @@ export const APP_GUIDE: AppGuideEntry[] = [
   {
     path: "/crew",
     label: "Roster",
-    minRole: "foreman",
+    minRole: "supervisor",
     blurb:
       "The people roster — crew members, roles and skill levels. Use it to see who's available and how skilled they are.",
   },

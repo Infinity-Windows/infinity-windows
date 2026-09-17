@@ -24,7 +24,7 @@ interface TeamLink {
 // People hub tiles, mirroring the Warehouse "Inventory hub" layout: a stat
 // strip up top, then a grid of tiles into each People area.
 const LINKS: TeamLink[] = [
-  { to: "/crew", label: "Roster", desc: "Crew, skill levels, roles & PINs" },
+  { to: "/crew", label: "Roster", desc: "Crew, skill levels, roles & PINs", admin: true },
   {
     to: "/access",
     label: "Crew access",
