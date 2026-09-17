@@ -36,7 +36,11 @@ export function CompensationPanel({profileId, name, rates, month, canSet, onSave
       setFrom(current?.payBasis==="salary_monthly"?`${month}-01`:today);save.reset();setOpen(true);
     }}>Set pay</button>}</div>
     {canSet&&open&&<div className="compensation-form">
-      <label>Pay type<select aria-label="Pay type" value={basis} onChange={e=>setBasis(e.target.value as PayBasis)}>
+      <label>Pay type<select aria-label="Pay type" value={basis} onChange={e=>{
+        const next=e.target.value as PayBasis;
+        setBasis(next);setAmount("");save.reset();
+        if(next==="salary_monthly")setFrom(`${month}-01`);
+      }}>
         <option value="hourly">Hourly</option><option value="salary_monthly">Salary — monthly</option>
       </select></label>
       <label>{basis==="salary_monthly"?"Monthly salary ($)":"Hourly rate ($)"}<input inputMode="decimal" value={amount} onChange={e=>setAmount(e.target.value)} placeholder={basis==="salary_monthly"?"5,000.00":"32.50"}/></label>

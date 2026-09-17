@@ -18,6 +18,12 @@ for(const width of [390,1280])test(`owner switches to salary, reviews months and
  await page.getByLabel("Pay month",{exact:true}).fill("2026-09");
  await panel.getByRole("button",{name:"Set pay",exact:true}).click();
  await panel.getByLabel("Pay type",{exact:true}).selectOption("salary_monthly");
+ await expect(panel.getByLabel("Monthly salary ($)",{exact:true})).toHaveValue("");
+ await expect(panel.getByRole("button",{name:"Save pay",exact:true})).toBeDisabled();
+ await panel.getByLabel("Monthly salary ($)",{exact:true}).fill("5000");
+ await panel.getByLabel("Pay type",{exact:true}).selectOption("hourly");
+ await expect(panel.getByLabel("Hourly rate ($)",{exact:true})).toHaveValue("");
+ await panel.getByLabel("Pay type",{exact:true}).selectOption("salary_monthly");
  await panel.getByLabel("Monthly salary ($)",{exact:true}).fill("5,000.00");
  await panel.getByLabel("Starting month",{exact:true}).fill("2026-09");
  await panel.screenshot({path:`e2e/test-results/monthly-salary-${width}.png`});
