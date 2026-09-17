@@ -4,12 +4,12 @@ import { hideWrongProjectBanner, json } from "./support/specHelpers";
 const id = (n: number) => `dddddddd-dddd-4ddd-8ddd-${String(n).padStart(12, "0")}`;
 const project = { id: id(90), job_code: "NORTH", name: "North storefront" };
 const note = "Installed four storefront frames.\nWaiting for the job to be added; moved the remaining glass into storage.";
-async function setup(page: Page, role: "owner" | "foreman" = "owner", language: "en" | "es" = "en") {
+async function setup(page: Page, role: "owner" | "foreman" = "owner", language: "en" | "es" = "en", options: { extraEntries?: number; unfinished?: boolean; empty?: boolean } = {}) {
   await loadSupabaseFixtures(page, { role, language }); await hideWrongProjectBanner(page);
   const people = [{ id: TEST_USER.id, display_name: "Reviewing Manager", role }, { id: id(1), display_name: "Installer Alex", role: "installer" },
     { id: id(2), display_name: "Supervisor Sam", role: "supervisor" }].map(p => ({ active: true, skill_level: 3, language, ...p }));
-  const base = { profile_id: id(1), project_id: null, cost_code_id: id(80), clock_in_at: "2025-09-03T13:00:13Z", clock_out_at: "2025-09-03T17:00:42Z",
-    break_seconds: 1800, break_started_at: null, injured: false, time_confirmed: true, status: "submitted", created_at: "2025-09-04T18:00:00Z",
+  const base = { profile_id: id(1), project_id: null, cost_code_id: id(80), clock_in_at: "2025-09-03T13:00:13Z", clock_out_at: "2025-09-03T17:00:42Z" as string | null,
+    break_seconds: 1800, break_started_at: null as string | null, injured: false, time_confirmed: true, status: "submitted", created_at: "2025-09-04T18:00:00Z",
     note, projects: null, profiles: { display_name: "Installer Alex" }, cost_codes: { code: "1", label: "Installation" } };
   let rows = [
     { ...base, id: id(12), created_at: "2025-09-06T18:00:00Z", clock_in_at: "2025-08-01T13:00:00Z", clock_out_at: "2025-08-01T17:00:00Z", note: "Later entry for earlier work" },
@@ -18,6 +18,13 @@ async function setup(page: Page, role: "owner" | "foreman" = "owner", language: 
     { ...base, id: id(13), status: "voided", note: "Removed punch" },
     { ...base, id: id(14), project_id: project.id, projects: null, note: "Assigned with unavailable job details" },
   ];
+  for (let n = 0; n < (options.extraEntries ?? 0); n++) rows.push({ ...base, id: id(100 + n), created_at: "2025-09-07T18:00:00Z" });
+  if (options.unfinished) rows.push(
+    { ...base, id: id(30), status: "open", clock_in_at: "2026-09-17T14:00:00Z", clock_out_at: null, break_started_at: "2026-09-17T17:30:00Z" },
+    { ...base, id: id(31), status: "needs_finish", clock_out_at: null },
+    { ...base, id: id(32), status: "open", clock_out_at: null },
+  );
+  if (options.empty) rows = [];
   const original = structuredClone(rows);
   const edits: Record<string, unknown>[] = [], settingsWrites: Record<string, unknown>[] = [], backlogQueries: URL[] = [];
   let settings = { id: 1, evening_nudge_local_time: "17:30:00", evening_nudge_enabled: true };
@@ -54,13 +61,18 @@ for (const [width, lang] of [[390, "es"], [1280, "en"]] as const) test(`all-date
   const f = await setup(page, "owner", lang); await page.goto("/team-timecards");
   const section = page.locator(".unassigned-time");
   await expect(section.locator(".unassigned-entry")).toHaveCount(3);
+  const total = section.locator(".unassigned-total-value");
+  await expect(total).toHaveText(lang === "es" ? "10,52h" : "10.52h");
+  await expect(section.locator(".unassigned-total-exact")).toHaveText("10:30:58 (h:mm:ss)");
   expect(await section.locator(".unassigned-entry").evaluateAll(es => es.map(e => e.getAttribute("data-entry-id")))).toEqual([id(10), id(11), id(12)]);
   await expect(section.getByText("03:30:29", { exact: false }).first()).toBeVisible();
   await expect(section.getByText("Pending storefront project", { exact: false })).toBeVisible();
   await expect(section.locator(".unassigned-description").first()).toHaveText(note);
   const rangeTabs = page.locator(".tcx-tabs").getByRole("tab");
   await rangeTabs.nth(1).click(); await expect(section.locator(".unassigned-entry")).toHaveCount(3);
+  await expect(total).toHaveText(lang === "es" ? "10,52h" : "10.52h");
   await rangeTabs.nth(2).click(); await expect(section.locator(".unassigned-entry")).toHaveCount(3);
+  await expect(total).toHaveText(lang === "es" ? "10,52h" : "10.52h");
   expect(f.backlogQueries.every(u => !u.searchParams.has("clock_in_at"))).toBe(true);
   const reminder = page.locator(".tcx-reminder");
   const toggle = reminder.getByRole("checkbox"); await expect(toggle).toBeChecked();
@@ -77,6 +89,8 @@ for (const [width, lang] of [[390, "es"], [1280, "en"]] as const) test(`all-date
   await first.getByPlaceholder("e.g. forgot to clock out").fill("Assigning the reported job");
   await first.getByRole("button", { name: "Save changes", exact: true }).click();
   await expect(section.locator(".unassigned-entry")).toHaveCount(2);
+  await expect(total).toHaveText(lang === "es" ? "7,01h" : "7.01h");
+  await expect(section.locator(".unassigned-total-exact")).toHaveText("7:00:29 (h:mm:ss)");
   expect(f.edits[0]).toMatchObject({ p_project_id: project.id, p_clock_in_at: f.original[1].clock_in_at, p_clock_out_at: f.original[1].clock_out_at, p_break_seconds: 1800, p_description: note });
 });
 
@@ -96,4 +110,31 @@ test("a failed backlog read reports an error instead of saying every job is assi
   await page.goto("/team-timecards");
   await expect(page.locator(".unassigned-time").getByRole("alert")).toBeVisible();
   await expect(page.getByText("Every time entry has a job assigned.")).toHaveCount(0);
+  await expect(page.locator(".unassigned-total-value")).toHaveCount(0);
+});
+
+test("the total includes cards beyond Show more and stays the same when they expand", async ({ page }) => {
+  await setup(page, "owner", "en", { extraEntries: 21 }); await page.goto("/team-timecards");
+  const section = page.locator(".unassigned-time");
+  await expect(section.locator(".unassigned-entry")).toHaveCount(20);
+  await expect(section.locator(".unassigned-count")).toHaveText("24 entries · 2 people");
+  await expect(section.locator(".unassigned-total-value")).toHaveText("84.19h");
+  await section.getByRole("button", { name: "Show 4 more entries" }).click();
+  await expect(section.locator(".unassigned-entry")).toHaveCount(24);
+  await expect(section.locator(".unassigned-total-value")).toHaveText("84.19h");
+});
+
+test("running hours subtract active breaks and unfinished clocks are flagged instead of guessed", async ({ page }) => {
+  await page.clock.setFixedTime(new Date("2026-09-17T18:00:00Z"));
+  await setup(page, "owner", "en", { unfinished: true }); await page.goto("/team-timecards");
+  const section = page.locator(".unassigned-time");
+  await expect(section.locator(".unassigned-total-value")).toHaveText("13.52h");
+  await expect(section.getByText("10.52h finished + 3.00h running (still changing)", { exact: true })).toBeVisible();
+  await expect(section.getByRole("status")).toHaveText("2 shifts need a finish time before their hours can be counted.");
+});
+
+test("an empty backlog shows a confirmed zero total", async ({ page }) => {
+  await setup(page, "owner", "en", { empty: true }); await page.goto("/team-timecards");
+  await expect(page.locator(".unassigned-total-value")).toHaveText("0.00h");
+  await expect(page.getByText("Every time entry has a job assigned.")).toBeVisible();
 });

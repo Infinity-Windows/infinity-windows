@@ -25,6 +25,13 @@
 .unassigned-icon { display: grid; place-items: center; width: 44px; height: 44px; flex: none; border-radius: 12px; background: var(--accent-soft); color: var(--primary); }
 .unassigned-help { font-size: 14px; line-height: 1.5; margin: 16px 0; }
 .unassigned-count { font-size: 14px; font-weight: 600; }
+.unassigned-summary { display: flex; align-items: center; flex-wrap: wrap; gap: 20px 32px; margin: 16px 0; padding: 18px; border: 1px solid var(--accent-line); border-radius: 14px; background: var(--accent-soft); }
+.unassigned-total-label, .unassigned-total-value, .unassigned-total-exact { display: block; }
+.unassigned-total-label { font-size: 14px; font-weight: 600; }
+.unassigned-total-value { color: var(--primary); font-size: 36px; line-height: 1.2; margin: 4px 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.unassigned-total-exact { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.unassigned-summary-detail { flex: 1 1 220px; min-width: 0; }
+.unassigned-summary-detail p { font-size: 14px; line-height: 1.5; margin: 4px 0; }
 .unassigned-empty { margin: 0; padding: 16px 0 4px; color: var(--muted); }
 .unassigned-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
 .unassigned-entry { min-width: 0; border: 1px solid var(--border); background: var(--card); border-radius: 14px; padding: 18px; }

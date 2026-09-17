@@ -1,12 +1,13 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ClipboardList, ChevronDown } from "lucide-react";
 import { useLanguage, type TKey } from "../../lib/i18n";
 import { formatApiError } from "../../lib/errors";
 import type { Profile } from "../../lib/install/types";
 import { canEditTimecard } from "../../lib/timecardPermissions";
 import { unassignedTimeEntries } from "../../lib/unassignedTime";
+import { jobTimeReport } from "../../lib/jobTimeReport";
 import { shiftGuard } from "../../lib/shiftGuard";
-import { punchDay, type TimeShift } from "../../lib/timeclock";
+import { currentBreakSeconds, formatClock, punchDay, type TimeShift } from "../../lib/timeclock";
 import { durationText } from "../../lib/timeEntryExport";
 import { ShiftEditor, type ProjectOpt, type CostOpt } from "./ShiftEditor";
 import { SkeletonList } from "../ui/States";
@@ -24,6 +25,14 @@ export function UnassignedTime({ shifts, people, projects, costCodes, role, acto
 }) {
   const { t, lang } = useLanguage();
   const entries = useMemo(() => unassignedTimeEntries(shifts), [shifts]);
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
+  // Total the complete backlog, not just the cards currently expanded below.
+  const report = useMemo(() => jobTimeReport(entries, now), [entries, now]);
+  const hoursText = (hours: number) => `${hours.toLocaleString(lang, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}h`;
   const [editingId, setEditingId] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState(20);
   const day = (iso: string) => new Date(iso).toLocaleDateString(lang, { weekday: "short", month: "short", day: "numeric", year: "numeric" });
@@ -40,14 +49,26 @@ export function UnassignedTime({ shifts, people, projects, costCodes, role, acto
     </header>
     <p className="muted unassigned-help">{t("unassigned.help")}</p>
     {isLoading ? <SkeletonList rows={2} /> : error ? <p role="alert">{formatApiError(error)}</p> : <>
+      <div className="unassigned-summary">
+        <div>
+          <span className="unassigned-total-label">{t("unassigned.total")}</span>
+          <strong className="unassigned-total-value">{hoursText(report.totalHours)}</strong>
+          <span className="unassigned-total-exact">{formatClock(Math.round(report.totalHours * 3600))} (h:mm:ss)</span>
+        </div>
+        <div className="unassigned-summary-detail">
+          <p>{t("unassigned.totalHelp")}</p>
+          <p className="unassigned-count">{t("unassigned.count", { entries: entries.length, people: report.peopleCount })}</p>
+          {report.runningCount > 0 && <p>{t("timereport.split", { closed: hoursText(report.recordedHours), live: hoursText(report.runningHours) })}</p>}
+          {report.unresolvedCount > 0 && <p role="status" className="warn-text">{t("timereport.unresolved", { n: report.unresolvedCount })}</p>}
+        </div>
+      </div>
       {entries.length === 0 ? <p className="unassigned-empty">{t("unassigned.empty")}</p> : <>
-        <p className="unassigned-count">{t("unassigned.count", { entries: entries.length, people: new Set(entries.map(s => s.profile_id)).size })}</p>
         <ol className="unassigned-list">
           {entries.slice(0, visibleCount).map(s => {
             const person = people.find(p => p.id === s.profile_id);
             const name = person?.display_name ?? s.profiles?.display_name ?? t("unassigned.person");
             const editable = canEditTimecard(role, actorId, person?.role, s.profile_id);
-            const seconds = shiftGuard(s).workedSeconds;
+            const seconds = shiftGuard(s, now).workedSeconds;
             const invalid = !Number.isFinite(Date.parse(s.clock_in_at)) || (s.clock_out_at && Date.parse(s.clock_out_at) < Date.parse(s.clock_in_at));
             const hours = invalid || seconds === null || !Number.isFinite(seconds) ? t("unassigned.needsReview") : durationText(seconds);
             const reportedJob = s.source_import?.original?.Project;
@@ -59,7 +80,7 @@ export function UnassignedTime({ shifts, people, projects, costCodes, role, acto
               <dl className="unassigned-facts">
                 <div><dt>{t("unassigned.workDay")}</dt><dd>{day(s.clock_in_at)}</dd></div>
                 <div><dt>{t("unassigned.timeEntry")}</dt><dd>{clock(s.clock_in_at)} – {s.clock_out_at ? (punchDay(s.clock_in_at) === punchDay(s.clock_out_at) ? clock(s.clock_out_at) : stamp(s.clock_out_at)) : t("unassigned.noFinish")}</dd></div>
-                <div><dt>{t("unassigned.break")}</dt><dd>{durationText(s.break_seconds)}</dd></div>
+                <div><dt>{t("unassigned.break")}</dt><dd>{durationText(s.clock_out_at ? s.break_seconds : currentBreakSeconds(s, now))}</dd></div>
                 <div><dt>{t("unassigned.costCode")}</dt><dd>{s.cost_codes ? `${s.cost_codes.code} · ${s.cost_codes.label}` : t("timereport.noCode")}</dd></div>
               </dl>
               {reportedJob && <p className="unassigned-source">{t("unassigned.reportedJob", { job: reportedJob })}</p>}
