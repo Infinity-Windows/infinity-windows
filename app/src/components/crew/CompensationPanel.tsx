@@ -1,7 +1,7 @@
 import {useState} from "react";
 import {useMutation} from "@tanstack/react-query";
 import {formatApiError} from "../../lib/errors";
-import {formatCompensation, localDayOf, parseRateDollars, rateInEffect, setCompensation, type PayBasis, type PayRate} from "../../lib/payRates";
+import {formatCompensation, localDayOf, parseRateDollars, payReviewDay, rateInEffect, setCompensation, type PayBasis, type PayRate} from "../../lib/payRates";
 import "./compensation.css";
 
 export function CompensationPanel({profileId, name, rates, month, canSet, onSaved}: {
@@ -9,7 +9,8 @@ export function CompensationPanel({profileId, name, rates, month, canSet, onSave
 }) {
   const today=localDayOf(new Date().toISOString());
   const current=rateInEffect(rates,today);
-  const selected=rateInEffect(rates,`${month}-01`);
+  const asOf=payReviewDay(month,today);
+  const selected=rateInEffect(rates,asOf);
   const [open,setOpen]=useState(false);
   const [basis,setBasis]=useState<PayBasis>("hourly");
   const [amount,setAmount]=useState("");
@@ -28,7 +29,7 @@ export function CompensationPanel({profileId, name, rates, month, canSet, onSave
     <div className="compensation-heading"><div>
       <span className="field-label">Pay</span>
       <strong>{selected?formatCompensation(selected):"No rate on file"}</strong>
-      <small>As of {month}-01{selected?` · effective ${selected.effectiveFrom}`:""}</small>
+      <small>As of {asOf}{selected?` · effective ${selected.effectiveFrom}`:""}</small>
     </div>{canSet&&!open&&<button type="button" className="button-like" onClick={()=>{
       setBasis(current?.payBasis??"hourly");
       setAmount(current?String((current.payBasis==="salary_monthly"?current.monthlyCents??0:current.hourlyCents)/100):"");

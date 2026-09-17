@@ -131,6 +131,13 @@ export function salaryForMonth(rates: PayRate[] | undefined, month: string): num
   return rate?.payBasis === "salary_monthly" ? rate.monthlyCents ?? null : null;
 }
 
+/** Show today's actual pay in this month; other months show their closing rate. */
+export function payReviewDay(month: string, today: string): string {
+  if (month === today.slice(0,7)) return today;
+  const [year, number] = month.split("-").map(Number);
+  return `${month}-${String(new Date(Date.UTC(year,number,0)).getUTCDate()).padStart(2,"0")}`;
+}
+
 /**
  * A typed hourly rate ("32.50", "$32.50", " 32 ") as whole cents, or null when
  * it is not a rate at all. Rounds to the cent rather than trusting float
