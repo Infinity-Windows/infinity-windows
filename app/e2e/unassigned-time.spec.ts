@@ -1,11 +1,11 @@
 import { expect, test, type Page } from "@playwright/test";
-import { useSupabaseFixtures, TEST_USER } from "./support/supabaseFixtures";
+import { useSupabaseFixtures as loadSupabaseFixtures, TEST_USER } from "./support/supabaseFixtures";
 import { hideWrongProjectBanner, json } from "./support/specHelpers";
 const id = (n: number) => `dddddddd-dddd-4ddd-8ddd-${String(n).padStart(12, "0")}`;
 const project = { id: id(90), job_code: "NORTH", name: "North storefront" };
 const note = "Installed four storefront frames.\nWaiting for the job to be added; moved the remaining glass into storage.";
 async function setup(page: Page, role: "owner" | "foreman" = "owner", language: "en" | "es" = "en") {
-  await useSupabaseFixtures(page, { role, language }); await hideWrongProjectBanner(page);
+  await loadSupabaseFixtures(page, { role, language }); await hideWrongProjectBanner(page);
   const people = [{ id: TEST_USER.id, display_name: "Reviewing Manager", role }, { id: id(1), display_name: "Installer Alex", role: "installer" },
     { id: id(2), display_name: "Supervisor Sam", role: "supervisor" }].map(p => ({ active: true, skill_level: 3, language, ...p }));
   const base = { profile_id: id(1), project_id: null, cost_code_id: id(80), clock_in_at: "2025-09-03T13:00:13Z", clock_out_at: "2025-09-03T17:00:42Z",
