@@ -243,6 +243,7 @@ export async function listTeamShifts(
   untilIso: string | null,
   /** Personal exports use complete pagination scoped to this person. */
   profileId?: string,
+  options?: { unassignedOnly?: boolean },
 ): Promise<TimeShift[]> {
   const out: TimeShift[] = [];
   let expected: number | null = null;
@@ -253,6 +254,7 @@ export async function listTeamShifts(
     if (sinceIso) query = query.gte("clock_in_at", sinceIso);
     if (untilIso) query = query.lt("clock_in_at", untilIso);
     if (profileId) query = query.eq("profile_id", profileId);
+    if (options?.unassignedOnly) query = query.is("project_id", null);
     const { data, error, count } = await query
       .order("clock_in_at", { ascending: false })
       .order("id", { ascending: false })

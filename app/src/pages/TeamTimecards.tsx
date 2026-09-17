@@ -9,7 +9,7 @@ import { VoiceInput } from "../components/voice/VoiceInput";
 import { BackChip } from "../components/BackChip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Search } from "lucide-react";
+import { Bell, Check, ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { listProjects } from "../lib/api";
 import { formatApiError } from "../lib/errors";
 import { lastSeenAwayFromJob } from "../lib/farFromJob";
@@ -76,6 +76,8 @@ import {
   type CrewClockMember,
 } from "../lib/crewClock";
 import { fmtTime } from "../components/timecard/format";
+import { UnassignedTime } from "../components/timecard/UnassignedTime";
+import "../components/timecard/timecardReview.css";
 
 function downloadText(text: string, filename: string, mime: string) {
   const blob = new Blob([text], { type: mime });
@@ -141,6 +143,13 @@ export function TeamTimecards() {
     enabled: isLead,
     refetchInterval: 30_000,
   });
+  // This backlog always spans all dates, independently of payroll review.
+  const unassigned = useQuery({
+    queryKey: ["unassignedTimeShifts"],
+    queryFn: () => listTeamShifts(null, null, undefined, { unassignedOnly: true }),
+    enabled: isLead,
+    refetchInterval: 30_000,
+  });
   // The overtime rules — company default plus any per-person override. Only
   // the exports use them; the roster still shows plain worked hours.
   const otRules = useQuery({
@@ -174,6 +183,7 @@ export function TeamTimecards() {
 
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["teamShifts"] });
+    qc.invalidateQueries({ queryKey: ["unassignedTimeShifts"] });
     qc.invalidateQueries({ queryKey: ["timecardPanel"] });
     qc.invalidateQueries({ queryKey: ["unfinishedShifts"] });
   };
@@ -519,26 +529,27 @@ export function TeamTimecards() {
           call, not a constant — a crew that starts at 5am wants asking earlier.
           Absent entirely on a database that hasn't applied the migration. */}
       {settings.data && (
-        <div className="row-gap" style={{ alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
-          <span className="muted" style={{ fontSize: 12 }}>
+        <div className="tcx-reminder">
+          <span className="tcx-reminder-label"><Bell size={18} aria-hidden /><span>
             {t("nudge.label", {
               time: formatLocalTime(settings.data.evening_nudge_local_time),
             })}
-          </span>
+          </span></span>
           <input
             type="time"
             aria-label={t("nudge.aria")}
             value={nudgeTime}
             onChange={(e) => setNudgeTime(e.target.value)}
-            style={{ width: 120 }}
+            className="tcx-reminder-time"
           />
-          <label className="row-gap" style={{ alignItems: "center", fontSize: 12 }}>
+          <label className={`tcx-reminder-toggle${nudgeOn ? " is-on" : ""}`}>
             <input
               type="checkbox"
               checked={nudgeOn}
               onChange={(e) => setNudgeOn(e.target.checked)}
             />
-            {t("nudge.on")}
+            <span className="tcx-reminder-check" aria-hidden><Check size={15} strokeWidth={3} /></span>
+            <span>{t("nudge.on")}</span>
           </label>
           <button
             className="button-like"
@@ -730,6 +741,12 @@ export function TeamTimecards() {
           </ul>
         </section>
       )}
+
+      <UnassignedTime shifts={unassigned.data ?? []} people={crew.data ?? []}
+        projects={projects.data ?? []} costCodes={costCodes.data ?? []}
+        role={effectiveRole} actorId={me.data?.id} rangeLabel={t("timereport.allTime")}
+        isLoading={unassigned.isLoading} error={unassigned.error} isFetching={unassigned.isFetching}
+        onRefresh={() => { void unassigned.refetch(); }} />
 
       <div className="tcx-search">
         <Search size={14} aria-hidden />

@@ -8,10 +8,11 @@ import type { JobMode } from "./types";
 // whatever `rangeResult` is told to give for that page.
 const rpc = vi.fn();
 const range = vi.fn();
+const queryFilter = vi.fn();
 vi.mock("./supabase", () => {
   const builder: Record<string, unknown> = {};
   for (const m of ["select", "gte", "lt", "neq", "order", "eq", "is", "limit"]) {
-    builder[m] = () => builder;
+    builder[m] = (...args: unknown[]) => { queryFilter(m, ...args); return builder; };
   }
   builder.range = (...args: unknown[]) => range(...args);
   return {
@@ -347,6 +348,7 @@ describe("listTeamShifts", () => {
 
   beforeEach(() => {
     range.mockReset();
+    queryFilter.mockReset();
   });
 
   it("keeps reading until it has every punch the count says exist", async () => {
@@ -381,6 +383,17 @@ describe("listTeamShifts", () => {
 
     expect(rows).toHaveLength(1012);
     expect(range).toHaveBeenCalledTimes(3);
+  });
+
+  it("loads the complete unassigned backlog without payroll date bounds", async () => {
+    range.mockResolvedValueOnce({ data: page(1000), count: 1001 })
+      .mockResolvedValueOnce({ data: page(1, 1000), count: 1001 });
+    expect(await listTeamShifts(null, null, undefined, { unassignedOnly: true })).toHaveLength(1001);
+    expect(queryFilter.mock.calls.filter(c => c[0] === "is")).toEqual([
+      ["is", "project_id", null], ["is", "project_id", null],
+    ]);
+    expect(queryFilter.mock.calls.some(c => c[0] === "gte" || c[0] === "lt")).toBe(false);
+    expect(queryFilter).toHaveBeenCalledWith("neq", "status", "voided");
   });
 
   it("reads a small period in one go", async () => {

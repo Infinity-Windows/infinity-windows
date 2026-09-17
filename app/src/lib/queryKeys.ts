@@ -272,6 +272,7 @@ export const QUERY_KEY_ROOTS: QueryKeyRootEntry[] = [
   { root: "trips", offline: true, why: "Travel Info — assigned trips must be viewable in transit / dead zones." },
   { root: "typeBrain", offline: true },
   { root: "undoneInstalls", offline: false },
+  { root: "unassignedTimeShifts", offline: false },
   { root: "unfinishedShifts", offline: false },
   { root: "unitMovements", offline: false },
   { root: "unitSearch", offline: false },
