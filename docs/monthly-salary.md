@@ -1,0 +1,11 @@
+# Monthly salary on Roster
+
+Owners can choose Hourly or Salary — monthly in each crew member's Pay section. A salary stores the full calendar-month amount in cents, with a starting month. It carries forward until another dated rate replaces it. The month selector on Roster reviews prior/current/future months and totals the monthly salary amounts on file. This is compensation setup, not a payment confirmation or a payroll disbursement.
+
+The first version uses whole months. Changes into, out of, or between salaries start on the first day of a month. The server checks both adjacent rates, so a backdated salary cannot quietly overlap a later mid-month hourly change. Hourly-to-hourly changes retain their existing daily dates. Re-saving the same start date corrects that record; other historical rows remain intact. No person's compensation is changed by deployment.
+
+Existing pay privacy applies: owners edit, owners and people granted “Sees pay rates” read. Other crew and partners receive no rates. The new RPC also refuses revoked/retired callers, partner targets, and retired targets. The older hourly RPC uses the same validation. Direct client writes remain revoked.
+
+Timecards, approvals, and recorded job hours do not change. Job costing allocates one monthly salary across that person's finished shifts for that calendar month, in proportion to hours after breaks. Unassigned shifts retain an unallocated share. A month without finished hours gets no job allocation; its salary remains visible on Roster. Current-month allocation changes as hours arrive. Each salary line is labeled “monthly salary share.” This is a cost allocation, not hours-times-wages payroll math. Overnight shifts are split at local calendar boundaries; legacy break totals are distributed proportionally because their exact timestamps may be unavailable. Removed punches are excluded, and costing reads all pages before allocating.
+
+Verification covers historical hourly rates, future salary changes, multiple jobs/months, overnight boundaries, breaks, zero/open/removed punches, server permissions and invalid/overlapping dates, plus phone/desktop editing and restricted pay visibility. Production verification must remain read-only: do not set a real employee's pay as a test.

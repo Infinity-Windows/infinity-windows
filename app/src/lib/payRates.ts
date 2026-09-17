@@ -13,12 +13,16 @@
 // screen with no rates falls back to the role table and says so on the line.
 
 import { supabase } from "./supabase";
-import { isMissingTable } from "./schemaErrors";
+import { isMissingColumn, isMissingTable } from "./schemaErrors";
+
+export type PayBasis = "hourly" | "salary_monthly";
 
 export interface PayRate {
   id: string;
   profileId: string;
   hourlyCents: number;
+  payBasis?: PayBasis;
+  monthlyCents?: number | null;
   /** The day this rate starts, "YYYY-MM-DD". There is no end date: a rate runs
    * until the next one begins. */
   effectiveFrom: string;
@@ -30,18 +34,23 @@ interface PayRateRow {
   id: string;
   profile_id: string;
   hourly_cents: number;
+  pay_basis?: PayBasis;
+  monthly_cents?: number | null;
   effective_from: string;
   set_by: string | null;
   created_at: string;
 }
 
-const PAY_RATE_COLS = "id, profile_id, hourly_cents, effective_from, set_by, created_at";
+const LEGACY_PAY_RATE_COLS = "id, profile_id, hourly_cents, effective_from, set_by, created_at";
+const PAY_RATE_COLS = "id, profile_id, hourly_cents, pay_basis, monthly_cents, effective_from, set_by, created_at";
 
 function mapRow(row: PayRateRow): PayRate {
   return {
     id: row.id,
     profileId: row.profile_id,
     hourlyCents: row.hourly_cents,
+    payBasis: row.pay_basis ?? "hourly",
+    monthlyCents: row.monthly_cents ?? null,
     effectiveFrom: row.effective_from,
     setBy: row.set_by,
     createdAt: row.created_at,
@@ -109,6 +118,26 @@ export function formatRate(hourlyCents: number): string {
   return `${sign}$${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, "0")}`;
 }
 
+export function formatCompensation(rate: PayRate): string {
+  return rate.payBasis === "salary_monthly"
+    ? `${formatRate(rate.monthlyCents ?? 0)}/month · Salary`
+    : `${formatRate(rate.hourlyCents)}/hr · Hourly`;
+}
+
+/** A salary carries forward month by month until another dated rate replaces it. */
+export function salaryForMonth(rates: PayRate[] | undefined, month: string): number | null {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return null;
+  const rate = rateInEffect(rates, `${month}-01`);
+  return rate?.payBasis === "salary_monthly" ? rate.monthlyCents ?? null : null;
+}
+
+/** Show today's actual pay in this month; other months show their closing rate. */
+export function payReviewDay(month: string, today: string): string {
+  if (month === today.slice(0,7)) return today;
+  const [year, number] = month.split("-").map(Number);
+  return `${month}-${String(new Date(Date.UTC(year,number,0)).getUTCDate()).padStart(2,"0")}`;
+}
+
 /**
  * A typed hourly rate ("32.50", "$32.50", " 32 ") as whole cents, or null when
  * it is not a rate at all. Rounds to the cent rather than trusting float
@@ -127,15 +156,37 @@ export function parseRateDollars(text: string): number | null {
 /** Every rate on file, newest first. Empty for anyone without the pay grant —
  * RLS answers with no rows rather than an error, so the screen just shows none. */
 export async function listPayRates(profileId?: string): Promise<PayRate[]> {
-  let query = supabase
-    .from("pay_rates")
-    .select(PAY_RATE_COLS)
-    .order("effective_from", { ascending: false });
-  if (profileId) query = query.eq("profile_id", profileId);
-  const { data, error } = await query;
-  if (isMissingTable(error, "pay_rates")) return [];
+  const rows: PayRateRow[] = [];
+  let expected: number | null = null;
+  let columns = PAY_RATE_COLS;
+  for (let page = 0; page < 1000; page++) {
+    let query = supabase.from("pay_rates").select(columns, {count:"exact"})
+      .order("effective_from", {ascending:false}).order("id").range(rows.length,rows.length+999);
+    if (profileId) query = query.eq("profile_id",profileId);
+    const {data,error,count} = await query;
+    if (columns === PAY_RATE_COLS && (isMissingColumn(error,"pay_basis") || isMissingColumn(error,"monthly_cents"))) {
+      columns = LEGACY_PAY_RATE_COLS;
+      continue;
+    }
+    if (isMissingTable(error,"pay_rates")) return [];
+    if (error) throw error;
+    if (typeof count !== "number" || (expected !== null && count !== expected)) throw new Error("Pay records changed. Refresh the page.");
+    expected = count;
+    if (!data?.length && rows.length < expected) throw new Error("The pay history is incomplete. Refresh the page.");
+    rows.push(...(data??[]) as unknown as PayRateRow[]);
+    if(rows.length >= expected) {
+      if(rows.length !== expected || new Set(rows.map(row=>row.id)).size !== expected) throw new Error("Pay records changed. Refresh the page.");
+      return rows.map(mapRow);
+    }
+  }
+  throw new Error("The pay history is too large to load completely.");
+}
+
+export async function setCompensation(profileId: string, payBasis: PayBasis, amountCents: number, effectiveFrom: string): Promise<void> {
+  const {error} = await supabase.rpc("set_compensation", {
+    p_profile_id: profileId, p_pay_basis: payBasis, p_amount_cents: amountCents, p_effective_from: effectiveFrom,
+  });
   if (error) throw error;
-  return ((data ?? []) as PayRateRow[]).map(mapRow);
 }
 
 /** Owner-only, refused in SQL. `effectiveFrom` defaults to today server-side. */

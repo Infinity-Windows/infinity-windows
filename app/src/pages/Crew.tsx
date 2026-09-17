@@ -20,15 +20,8 @@ import {
   type Capability,
 } from "../lib/dispatch";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
-import {
-  formatRate,
-  indexPayRates,
-  listPayRates,
-  parseRateDollars,
-  rateInEffect,
-  setPayRate,
-  type PayRate,
-} from "../lib/payRates";
+import { formatRate, indexPayRates, listPayRates, salaryForMonth } from "../lib/payRates";
+import { CompensationPanel } from "../components/crew/CompensationPanel";
 import { PinSetter } from "../components/PinGate";
 import { SavedCrewsSection } from "../components/schedule/SavedCrewsSection";
 import { useT } from "../lib/i18n";
@@ -58,105 +51,9 @@ function todayIso(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-/**
- * Wave Z: one person's pay, on their Roster row. Shown to an owner or to
- * somebody granted "Sees pay rates" — and to nobody else, which the pay_rates
- * policy enforces anyway: without the grant the list simply comes back empty.
- *
- * The history is visible on purpose. A rate is a record with dates, not a
- * current value, and the whole reason Costing prices January at January's rate
- * is that the older rows are still there to read.
- */
-function PayRateRow({
-  profile,
-  rates,
-  canSet,
-  onSaved,
-}: {
-  profile: Profile;
-  rates: PayRate[];
-  canSet: boolean;
-  onSaved: () => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [amount, setAmount] = useState("");
-  const [from, setFrom] = useState(todayIso());
-  const [error, setError] = useState<string | null>(null);
-
-  const current = rateInEffect(rates, todayIso());
-
-  const save = useMutation({
-    mutationFn: () => {
-      const cents = parseRateDollars(amount);
-      if (cents == null) throw new Error("Type an hourly rate, like 32.50.");
-      return setPayRate(profile.id, cents, from || undefined);
-    },
-    onSuccess: () => {
-      setAmount("");
-      setError(null);
-      setOpen(false);
-      onSaved();
-    },
-    onError: (e) => setError(formatApiError(e)),
-  });
-
-  return (
-    <>
-      <label className="field-label">Pay</label>
-      <p className="muted" style={{ margin: 0 }}>
-        {current ? `${formatRate(current.hourlyCents)}/hr since ${current.effectiveFrom}` : "No rate on file"}
-      </p>
-      {rates.length > 1 && (
-        <ul className="muted" style={{ margin: "4px 0 0", paddingLeft: 18 }}>
-          {rates.slice(1).map((r) => (
-            <li key={r.id}>
-              {formatRate(r.hourlyCents)}/hr from {r.effectiveFrom}
-            </li>
-          ))}
-        </ul>
-      )}
-      {canSet && (
-        <div className="row-gap" style={{ marginTop: 6, flexWrap: "wrap" }}>
-          {!open ? (
-            <button type="button" className="button-like" onClick={() => setOpen(true)}>
-              Set rate
-            </button>
-          ) : (
-            <>
-              <input
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="32.50"
-                aria-label={`Hourly rate for ${profile.display_name}`}
-              />
-              <input
-                type="date"
-                value={from}
-                onChange={(e) => setFrom(e.target.value)}
-                aria-label={`Rate starts for ${profile.display_name}`}
-              />
-              <button
-                type="button"
-                className="action-btn"
-                disabled={save.isPending || !amount.trim()}
-                onClick={() => save.mutate()}
-              >
-                {save.isPending ? "Saving…" : "Save rate"}
-              </button>
-              <button type="button" className="button-like" onClick={() => setOpen(false)}>
-                Cancel
-              </button>
-            </>
-          )}
-        </div>
-      )}
-      {error && <p className="error">{error}</p>}
-    </>
-  );
-}
-
 export function Crew() {
   const queryClient = useQueryClient();
+  const [payMonth, setPayMonth] = useState(todayIso().slice(0, 7));
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const crew = useQuery({
     queryKey: ["profilesIncludingRemoved"],
@@ -223,6 +120,9 @@ export function Crew() {
     enabled: canSeePay,
   });
   const ratesByPerson = indexPayRates(payRates.data ?? []);
+  const monthlySalaries = (crew.data ?? []).filter(p => !p.retired_at || p.retired_at.slice(0, 7) >= payMonth)
+    .map(p => salaryForMonth(ratesByPerson.get(p.id), payMonth)).filter((amount): amount is number => amount !== null);
+  const salaryTotal = monthlySalaries.reduce((total, amount) => total + amount, 0);
 
   const [grantError, setGrantError] = useState<string | null>(null);
   const setGrants = useMutation({
@@ -264,6 +164,13 @@ export function Crew() {
           copied out of the app. */}
       {canSetRoles && <CredentialSummary certifications={certs.data ?? []} />}
 
+      {canSeePay && <section className="salary-month-summary" aria-label="Monthly salary summary">
+        <header><div><h2>Monthly salaries on file</h2><strong>{payRates.isPending || crew.isPending ? "Loading…" : payRates.isError || crew.isError ? "Unavailable" : formatRate(salaryTotal)}</strong></div>
+          <label>Pay month<input type="month" value={payMonth} onChange={e => {if(e.target.value) setPayMonth(e.target.value);}} /></label>
+        </header>
+        <p className="muted">{monthlySalaries.length} salaried {monthlySalaries.length === 1 ? "person" : "people"} · fixed monthly amounts. This is the pay setup, not a payment confirmation. Hourly pay and job hours stay separate.</p>
+        {payRates.isError && <p className="error">{formatApiError(payRates.error)}</p>}
+      </section>}
       <h2>Roster</h2>
       <ul className="unit-list">
         {(crew.data ?? []).map((p) => {
@@ -332,6 +239,8 @@ export function Crew() {
                   </span>
                 )}
               </div>
+              {canSeePay && removed && <CompensationPanel profileId={p.id} name={p.display_name}
+                month={payMonth} rates={ratesByPerson.get(p.id) ?? []} canSet={false} onSaved={() => {}} />}
               {isLead && !removed && (
                 <div className="crew-controls">
                   <label className="field-label">Skill</label>
@@ -415,13 +324,16 @@ export function Crew() {
                     </>
                   )}
                   {canSeePay && (
-                    <PayRateRow
-                      profile={p}
+                    <CompensationPanel
+                      profileId={p.id}
+                      name={p.display_name}
+                      month={payMonth}
                       rates={ratesByPerson.get(p.id) ?? []}
                       canSet={isOwner(effectiveRole)}
-                      onSaved={() =>
-                        queryClient.invalidateQueries({ queryKey: ["payRates"] })
-                      }
+                      onSaved={() => {
+                        void queryClient.invalidateQueries({ queryKey: ["payRates"] });
+                        void queryClient.invalidateQueries({ queryKey: ["companyCosting"] });
+                      }}
                     />
                   )}
                   {/* Wave Z: money is a grant, not a rank. An owner can let one

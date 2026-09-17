@@ -1,0 +1,23 @@
+.compensation-panel { border: 1px solid var(--border); border-radius: 14px; padding: 16px; margin-top: 16px; min-width: 0; background: var(--bg); }
+.compensation-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.compensation-heading strong, .compensation-heading small { display: block; }
+.compensation-heading small { color: var(--muted); margin-top: 6px; }
+.compensation-form { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 18px; }
+.compensation-form label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; min-width: 0; }
+.compensation-form :is(input,select) { width: 100%; min-width: 0; min-height: 48px; font-size: 16px; box-sizing: border-box; }
+.compensation-full { grid-column: 1 / -1; }
+.compensation-form p { margin: 0; font-size: 13px; }
+.compensation-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.compensation-panel button { min-height: 44px; }
+.compensation-history { margin-top: 14px; font-size: 13px; }
+.compensation-history summary { cursor: pointer; padding: 8px 0; color: var(--muted); }
+.compensation-history ul { list-style: none; padding: 0; margin: 0; }
+.compensation-history li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; border-top: 1px solid var(--border); padding: 10px 0; }
+.salary-month-summary { padding: 18px; border: 1px solid var(--border); border-radius: 14px; margin-block: 18px; background: var(--card); }
+.salary-month-summary header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
+.salary-month-summary label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.salary-month-summary input { min-height: 44px; font-size: 16px; max-width: 100%; }
+.salary-month-summary h2 { margin: 0 0 6px; font-size: 18px; }
+.salary-month-summary strong { font-size: 24px; }
+.salary-month-summary p { font-size: 13px; margin-bottom: 0; }
+@media(max-width:640px) { .compensation-form { grid-template-columns: 1fr; } .compensation-actions > button { flex: 1; } }

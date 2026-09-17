@@ -140,7 +140,11 @@ export function Costing() {
       <p className="muted" style={{ fontSize: 12 }}>
         Labor cost comes from clocked hours priced at each person’s pay rate on
         the day they worked. Somebody with no rate on file is priced off their
-        role, and their line says so. Manual cost entries sit on top.
+        role, and their line says so. Monthly salary is shared across that person’s
+        jobs by their finished hours each calendar month; unassigned hours keep
+        their share outside job costs. This allocation changes while the month is
+        in progress. Salary with no recorded hours appears only on Roster.
+        Manual cost entries sit on top.
       </p>
 
       <div className="row-between">
@@ -235,6 +239,7 @@ export function Costing() {
             <div className="cost-kv" key={person.profileId}>
               <span>
                 {person.name}
+                {person.salaryAllocated ? " · monthly salary share" : ""}
                 {person.estimated && selJob.laborRatesVisible !== false
                   ? " · estimated — no rate on file"
                   : ""}

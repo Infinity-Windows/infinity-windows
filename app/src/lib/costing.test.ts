@@ -10,14 +10,21 @@ vi.mock("./supabase", () => ({
   supabase: {
     from: (table: string) => {
       asked.push(table);
+      let offset = 0, limit = 1000;
+      let excluded: {column:string;value:string} | null = null;
       const builder = {
         select: () => builder,
         order: () => builder,
         eq: () => builder,
+        neq: (column:string,value:string) => {excluded={column,value};return builder;},
+        range: (from:number,to:number) => {offset=from;limit=to-from+1;return builder;},
         then: (
           resolve: (v: { data: unknown[]; error: null }) => unknown,
           reject?: (e: unknown) => unknown,
-        ) => Promise.resolve({ data: tables[table] ?? [], error: null }).then(resolve, reject),
+        ) => {
+          const rows=(tables[table]??[]).filter(row=>!excluded||(row as Record<string,unknown>)[excluded.column]!==excluded.value);
+          return Promise.resolve({data:rows.slice(offset,offset+limit),error:null,count:rows.length}).then(resolve,reject);
+        },
       };
       return builder;
     },
@@ -196,6 +203,7 @@ describe("toCsv", () => {
 // read two different margins; only one of them was told why.
 describe("getCompanyCosting and the pay grant", () => {
   const SHIFT = {
+    id: "shift-1",
     project_id: "p1",
     profile_id: "u1",
     clock_in_at: "2026-03-02T15:00:00Z",
@@ -259,5 +267,19 @@ describe("getCompanyCosting and the pay grant", () => {
     expect(asked).toContain("pay_rates");
     expect(row.laborRatesVisible).toBe(true);
     expect(row.laborCost).toBe(8 * 60);
+  });
+
+  it("reads every shift and rate page before allocating a monthly salary", async () => {
+    tables.time_shifts=Array.from({length:1001},(_,i)=>({...SHIFT,id:`shift-${i}`}));
+    tables.pay_rates=Array.from({length:1001},(_,i)=>({id:`rate-${i}`,profile_id:i===1000?"u1":`other-${i}`,hourly_cents:0,pay_basis:"salary_monthly",monthly_cents:500000,effective_from:"2026-03-01",set_by:null,created_at:"2026-03-01T00:00:00Z"}));
+    const [row]=await getCompanyCosting();
+    expect(row.laborHours).toBe(8008);expect(row.laborCost).toBe(5000);
+    expect(asked.filter(table=>table==="time_shifts")).toHaveLength(2);
+    expect(asked.filter(table=>table==="pay_rates")).toHaveLength(2);
+  });
+
+  it("refuses duplicate punches instead of presenting an incomplete salary denominator", async () => {
+    tables.time_shifts=[SHIFT,SHIFT];
+    await expect(getCompanyCosting()).rejects.toThrow("Time records changed");
   });
 });
