@@ -102,6 +102,7 @@ FEATURE_NAMES = {
     'send-email': 'emailing a job\'s GC',
     'send-push': 'push notifications',
     'deliver-workflow-notices': 'connected plan notifications',
+    'crew-reminder-sweep': 'time-off and lunch reminders',
     'still-on-the-job-sweep': 'the evening still-on-the-job nudge',
     'studio-assist': 'the Model Studio AI assistant',
     'summarize-learning-video': 'video summaries and quizzes',

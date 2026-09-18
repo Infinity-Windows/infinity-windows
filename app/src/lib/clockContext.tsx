@@ -1,3 +1,5 @@
+import { LunchReminder } from "../components/clock/LunchReminder";
+import "../components/timeOff/timeOff.css";
 import {
   createContext,
   useCallback,
@@ -111,6 +113,7 @@ export function ClockProvider({ children }: { children: ReactNode }) {
   return (
     <ClockContext.Provider value={value}>
       {children}
+      <LunchReminder shift={shiftQuery.data ?? null} onOpen={openClock} />
       {isOpen && (
         <ClockSheet
           profileId={profileId}

@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { availableMembers } from "../../lib/timeOff/model";
 import {
   enumerateDays,
   formatStartTime,
@@ -86,7 +87,7 @@ export function TimelineView({
                           {a.project?.name ? ` · ${a.project.name}` : ""}
                         </span>
                         <span className="sched-cal-entry-sub">
-                          {a.members.length} crew
+                          {availableMembers(a, day).length} crew
                           {time ? ` · ${time}` : ""}
                           {a.start_date === day && a.end_date > day ? " · starts" : ""}
                         </span>

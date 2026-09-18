@@ -1,3 +1,4 @@
+import { availableMembers } from "../timeOff/model";
 // Pure grouping/sort for the "My Schedule" agenda and the unassigned-projects
 // tray. The agenda expands each multi-day assignment into one entry per day it
 // covers within the visible window, grouped and sorted by day, then by start
@@ -44,7 +45,7 @@ export function buildAgenda(
     if (daysBetween(spanStart, spanEnd) < 0) continue;
     for (const day of enumerateDays(spanStart, spanEnd)) {
       const entry: AgendaEntry = {
-        assignment: a,
+        assignment: {...a,members:availableMembers(a,day)},
         day,
         isFirstDay: day === a.start_date,
       };

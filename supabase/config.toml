@@ -91,3 +91,7 @@ verify_jwt = true
 
 [functions.transcribe-description]
 verify_jwt = true
+
+[functions.crew-reminder-sweep]
+# Parameterless, due-only, leased reminder delivery; no caller-controlled input.
+verify_jwt = false

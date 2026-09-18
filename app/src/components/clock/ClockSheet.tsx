@@ -744,6 +744,7 @@ export function ClockSheet({
                     </p>
                   )
                 )}
+                {onBreak && shift.break_type === "lunch" && <p className="clock-hero-sub">{t("lunch.hint")} <Link to="/settings" onClick={onClose}>{t("lunch.settings")}</Link></p>}
                 {guard?.state === "long" && (
                   <p className="clock-hero-warn">
                     That's a long day — clock out when you're done, or the app

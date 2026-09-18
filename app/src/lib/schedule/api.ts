@@ -1,3 +1,5 @@
+import { listTimeOff } from "../timeOff/api";
+import { availableAssignments } from "../timeOff/model";
 // Data layer for crew scheduling. Remote-first (Supabase) with a graceful
 // browser-local fallback: when the additive migration hasn't been applied yet
 // the table lookups fail with a "missing table" error and every call transparently
@@ -299,7 +301,7 @@ export async function listMyPublished(
     }
     throw error;
   }
-  return ((data ?? []) as unknown as RawAssignmentRow[]).map(mapRow);
+  return availableAssignments(((data ?? []) as unknown as RawAssignmentRow[]).map(mapRow), await listTimeOff(profileId), profileId);
 }
 
 /** Published assignments for one job (read-only view on the project hub). */
