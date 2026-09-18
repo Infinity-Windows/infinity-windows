@@ -83,6 +83,7 @@ function usedRoots(): Map<string, string> {
 // offline the same as the rest of the unit sheet; "myScheduleTomorrow" (S6,
 // the Tomorrow line) — same reasoning, one step earlier in the day.
 const EXPECTED_OFFLINE_ROOTS = [
+  "serviceVisit", "serviceVisits",
   "customWorkUnits", "customWorkSessions", "customWorkTypes", "customWorkOpening", "customWorkRoster",
   "buildFacts",
   "myScheduleTomorrow",

@@ -146,7 +146,7 @@ const Crew = lazy(() => import("./pages/Crew").then((m) => ({ default: m.Crew })
 const CrewAccess = lazy(() => import("./pages/CrewAccess").then((m) => ({ default: m.CrewAccess })));
 const GcPage = lazy(() => import("./pages/GcPage").then((m) => ({ default: m.GcPage })));
 const Issues = lazy(() => import("./pages/Issues").then((m) => ({ default: m.Issues })));
-const Service = lazy(() => import("./pages/Service").then((m) => ({ default: m.Service })));
+const Service = lazy(() => import("./pages/servicing/Servicing").then((m) => ({ default: m.Servicing })));
 const Analytics = lazy(() => import("./pages/Analytics").then((m) => ({ default: m.Analytics })));
 const MemoReview = lazy(() => import("./pages/MemoReview").then((m) => ({ default: m.MemoReview })));
 const Admin = lazy(() => import("./pages/Admin").then((m) => ({ default: m.Admin })));
@@ -207,7 +207,14 @@ function RouteFallback() {
 function RoleLanding() {
   const { effectiveRole: role, isLoading } = useEffectiveRole();
   const clock = useClock();
+  const service = useQuery({
+    queryKey: ["serviceActive", clock.profileId],
+    queryFn: async () => (await import("./lib/servicing/api")).listActiveService(clock.profileId!),
+    enabled: !!clock.profileId && clock.shift?.status === "open", retry: false,
+  });
   if (clock.loading) return <div className="page">Loading current work…</div>;
+  if (clock.shift?.status === "open" && service.isLoading) return <div className="page">Loading current work…</div>;
+  if (clock.shift?.status === "open" && service.data?.[0]) return <Navigate replace to={`/service?visit=${service.data[0].visit_id}`} />;
   if (clock.shift?.status === "open") return <CurrentWork />;
   if (!ROLE_NAV_V2) return <Home />;
   if (isLoading) return <div className="page"><p className="muted">Loading…</p></div>;

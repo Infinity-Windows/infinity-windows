@@ -276,10 +276,10 @@ export const APP_GUIDE: AppGuideEntry[] = [
   },
   {
     path: "/service",
-    label: "Service",
-    minRole: "foreman",
+    label: "Servicing",
+    minRole: "installer",
     blurb:
-      "Post-install service/warranty cases. Log a callback, track it, and close it out when the fix is done.",
+      "Repair visits for active or completed jobs. Choose a saved or custom unit, track unit/idle/travel time, capture voice/video/photos, and export the service report and hours. Supervisors review shared trip costs; lodging requests appear in the assigned supervisor’s chat mentions.",
   },
   {
     path: "/qc",

@@ -6,6 +6,7 @@
 // that drifted apart would be two answers to it. The card is presentational: it
 // knows nothing about maps, dispatch, or how it was opened.
 
+import { useLanguage } from "../../lib/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { Link } from "react-router-dom";
@@ -63,6 +64,7 @@ export function OpeningDetailCard({
   // The card is opened from the map and from dispatch, and both already hold
   // this query, so asking for it here costs nothing and means the card can
   // never be handed a description belonging to another opening.
+  const { lang } = useLanguage();
   const markSpecs = useQuery({
     queryKey: ["markSpecs", projectId],
     queryFn: () => listMarkSpecs(projectId),
@@ -163,6 +165,7 @@ export function OpeningDetailCard({
       )}
       <div className="map-detail-card__actions">
         <Link className="button-like" to={`/current-work?job=${projectId}&opening=${o.id}`}>Work on this unit</Link>
+        <Link className="button-like" to={`/service?job=${projectId}&opening=${o.id}`}>{lang === 'es' ? 'Dar servicio a esta unidad' : 'Service this unit'}</Link>
         <Link
           to={openingFullSheetPath(projectId, o.id)}
           className="button-like"

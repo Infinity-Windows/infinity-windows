@@ -228,7 +228,7 @@ export const NAV: NavDest[] = [
   // The crew-wide roster + edit surface; /timecard stays the personal view.
   { id: "team-timecards", to: "/team-timecards", label: "Team timecards", icon: "▥", minRole: "foreman" },
   { id: "issues", to: "/issues", label: "Issues", icon: "!", minRole: "foreman" },
-  { id: "service", to: "/service", label: "Service", icon: "⚕", minRole: "foreman" },
+  { id: "service", to: "/service", label: "Servicing", icon: "⚕", minRole: "installer" },
   { id: "qc", to: "/qc", label: "Quality", icon: "✓", minRole: "foreman" },
   { id: "analytics", to: "/analytics", label: "Analytics", icon: "◲", minRole: "foreman" },
   { id: "crew", to: "/crew", label: "Roster", icon: "☰", minRole: "supervisor" },
@@ -490,7 +490,7 @@ const MENU_DEF: MenuSection[] = [
     Icon: AlertTriangle,
     items: [
       { to: "/issues", label: "Issues", Icon: AlertTriangle },
-      { to: "/service", label: "Service", Icon: Wrench },
+      { to: "/service", label: "Servicing", Icon: Wrench },
       { to: "/qc", label: "Quality", Icon: CheckCircle2 },
     ],
   },
