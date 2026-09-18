@@ -10,6 +10,7 @@ await db.exec(`
  create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
  grant usage on schema public,auth to authenticated,anon,service_role;
  create table profiles(id uuid primary key,display_name text,role text,active boolean default true,is_partner boolean default false,retired_at timestamptz,access_revoked_at timestamptz);
+ create function is_partner_user() returns boolean language sql security definer as $$select coalesce((select is_partner from profiles where id=auth.uid()),false)$$;
  create function my_role_rank() returns integer language sql security definer as $$select case role when 'installer' then 1 when 'foreman' then 2 when 'supervisor' then 3 when 'owner' then 4 else 0 end from profiles where id=auth.uid()$$;
  create table time_shifts(id uuid primary key,profile_id uuid references profiles,clock_out_at timestamptz,status text,break_type text,break_started_at timestamptz);
  create table schedule_assignments(id uuid,project_id uuid,status text,start_date date,end_date date);

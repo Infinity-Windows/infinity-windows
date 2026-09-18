@@ -18,13 +18,15 @@ $$;
 create function public.time_off_manager() returns boolean language sql stable security definer set search_path=public,pg_temp as $$
   select public.time_off_internal() and exists(select 1 from profiles where id=auth.uid() and role in ('supervisor','owner','admin','big_boss'))
 $$;
-revoke all on function public.time_off_internal(), public.time_off_manager() from public,anon;
-grant execute on function public.time_off_internal(), public.time_off_manager() to authenticated;
+revoke all on function public.time_off_internal() from public,anon;
+revoke all on function public.time_off_manager() from public,anon;
+grant execute on function public.time_off_internal() to authenticated;
+grant execute on function public.time_off_manager() to authenticated;
 alter table public.time_off_requests enable row level security;
 revoke all on public.time_off_requests from public,anon,authenticated;
 grant select on public.time_off_requests to authenticated;
 create policy time_off_read on public.time_off_requests for select to authenticated using(
- public.time_off_internal() and (profile_id=auth.uid() or public.my_role_rank()>=2));
+ not public.is_partner_user() and public.time_off_internal() and (profile_id=auth.uid() or public.my_role_rank()>=2));
 
 -- A durable notification inbox plus retryable web-push delivery. The body is
 -- deliberately free of medical details. No caller supplies recipient or copy.
@@ -44,7 +46,7 @@ create table public.crew_reminders (
 alter table public.crew_reminders enable row level security;
 revoke all on public.crew_reminders from public,anon,authenticated;
 grant select on public.crew_reminders to authenticated;
-create policy reminder_read on public.crew_reminders for select to authenticated using(public.time_off_internal() and profile_id=auth.uid());
+create policy reminder_read on public.crew_reminders for select to authenticated using(not public.is_partner_user() and public.time_off_internal() and profile_id=auth.uid());
 
 create function public.time_off_notify(p_request uuid) returns void language plpgsql security definer set search_path=public,pg_temp as $$
 declare r time_off_requests; recipient uuid; recipients uuid[]; person text; title_text text;
@@ -143,8 +145,10 @@ create function public.finish_crew_reminder(p_id uuid,p_lease uuid,p_sent boolea
  update crew_reminders set sent_at=case when p_sent then now() else sent_at end,lease=null,lease_until=now()+interval '2 minutes'
  where id=p_id and lease=p_lease;
 $$;
-revoke all on function public.claim_crew_reminders(uuid),public.finish_crew_reminder(uuid,uuid,boolean) from public,anon,authenticated;
-grant execute on function public.claim_crew_reminders(uuid),public.finish_crew_reminder(uuid,uuid,boolean) to service_role;
+revoke all on function public.claim_crew_reminders(uuid) from public,anon,authenticated;
+revoke all on function public.finish_crew_reminder(uuid,uuid,boolean) from public,anon,authenticated;
+grant execute on function public.claim_crew_reminders(uuid) to service_role;
+grant execute on function public.finish_crew_reminder(uuid,uuid,boolean) to service_role;
 
 -- One-minute sweep works while the phone is locked. Local foreground reminders
 -- still cover a lunch whose punch has not reached the server in a dead zone.
