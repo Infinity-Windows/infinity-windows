@@ -353,7 +353,7 @@ export function Servicing() {
                   <div>
                     <h2>{job?.name ?? tx("loading")}</h2>
                     <p className="muted">
-                      {visit.created_at.slice(0, 10)} ·{" "}
+                      {visit.details.scheduled_date ?? visit.created_at.slice(0, 10)} ·{" "}
                       {tx(
                         visit.status === "completed" ? "completed" : "active",
                       )}{" "}

@@ -24,7 +24,7 @@ const phrases = {
   job: ["Job", "Proyecto"],
   chooseJob: ["Choose a job", "Elija un proyecto"],
   allJobs: ["All jobs", "Todos los proyectos"],
-  search: ["Search jobs or units…", "Buscar proyectos o unidades…"],
+  search: ["Search jobs…", "Buscar proyectos…"],
   active: ["Active", "Activo"],
   completed: ["Completed", "Completado"],
   returnVisit: ["New return visit", "Nueva visita de seguimiento"],
