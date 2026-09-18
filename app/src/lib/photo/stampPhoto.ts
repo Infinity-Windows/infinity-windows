@@ -138,7 +138,23 @@ async function loadBitmap(blob: Blob): Promise<{
 } | null> {
   if (typeof createImageBitmap === "function") {
     try {
-      const bmp = await createImageBitmap(blob);
+      // Mobile decoders can leave their promise pending (a partial download
+      // or a suspended camera hand-off). Do not hold the capture sheet forever.
+      const bmp = await new Promise<ImageBitmap>((resolve, reject) => {
+        let expired = false;
+        const timer = setTimeout(() => {
+          expired = true;
+          reject(new Error("Photo decoding timed out"));
+        }, 8_000);
+        createImageBitmap(blob).then((bitmap) => {
+          clearTimeout(timer);
+          if (expired) bitmap.close();
+          else resolve(bitmap);
+        }, (error) => {
+          clearTimeout(timer);
+          reject(error);
+        });
+      });
       return {
         width: bmp.width,
         height: bmp.height,
@@ -153,17 +169,24 @@ async function loadBitmap(blob: Blob): Promise<{
   return new Promise((resolve) => {
     const url = URL.createObjectURL(blob);
     const img = new Image();
-    img.onload = () =>
+    const fail = () => {
+      clearTimeout(timer);
+      img.onload = null;
+      img.onerror = null;
+      URL.revokeObjectURL(url);
+      resolve(null);
+    };
+    const timer = setTimeout(fail, 8_000);
+    img.onload = () => {
+      clearTimeout(timer);
       resolve({
         width: img.naturalWidth,
         height: img.naturalHeight,
         draw: (ctx, w, h) => ctx.drawImage(img, 0, 0, w, h),
         close: () => URL.revokeObjectURL(url),
       });
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      resolve(null);
     };
+    img.onerror = fail;
     img.src = url;
   });
 }

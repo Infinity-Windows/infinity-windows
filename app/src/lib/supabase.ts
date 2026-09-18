@@ -10,9 +10,10 @@ export const supabase = createClient(
   url ?? "http://localhost:54321",
   key ?? "anon-key-placeholder",
   {
-    // Every database and auth call gets a deadline; one that misses it marks
+    // Database, auth and signed-link calls get a deadline; a miss marks
     // "weak signal" and the screens fall back to their saved copy with a line
-    // saying so. Storage downloads and edge functions are left alone — see
+    // saying so. Photo uploads get a longer deadline; storage downloads and
+    // edge functions are left alone — see
     // lib/offline/weakSignal.ts for why.
     global: { fetch: (input, init) => timedFetch(input, init) },
   },

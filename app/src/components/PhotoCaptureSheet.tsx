@@ -19,6 +19,7 @@ import {
   type StampMeta,
 } from "../lib/photo/stampPhoto";
 import { usePhotoPicker } from "../lib/photo/usePhotoPicker";
+import { PhotoUploadStatus } from "./photos/PhotoUploadStatus";
 import {
   isPdfPick,
   receiptPdfNote,
@@ -159,17 +160,37 @@ export function PhotoCaptureSheet(props: PhotoCaptureSheetProps) {
 function useCameraStream(active: boolean, onError: (message: string, cause: unknown) => void) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
+    setReady(false);
+    let startupTimer: ReturnType<typeof setTimeout> | undefined;
+    const video = videoRef.current;
+    const updateReady = () => {
+      const hasFrame = Boolean(video && video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0);
+      setReady(hasFrame);
+      if (hasFrame) clearTimeout(startupTimer);
+    };
+    const events = ["loadeddata", "canplay", "playing", "waiting", "emptied"];
+    for (const event of events) video?.addEventListener(event, updateReady);
     const stopStream = () => {
       streamRef.current?.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
+      for (const event of events) video?.removeEventListener(event, updateReady);
     };
     if (!active) {
       stopStream();
       return;
     }
     let cancelled = false;
+    // A browser may leave getUserMedia/play pending indefinitely. Release the
+    // preview and give the person back the file picker, even if its permission
+    // prompt answers later (the cancelled branch stops that late stream).
+    startupTimer = setTimeout(() => {
+      cancelled = true;
+      stopStream();
+      onError("camera-start-timeout", new DOMException("Camera did not start", "TimeoutError"));
+    }, 20_000);
     (async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -181,9 +202,10 @@ function useCameraStream(active: boolean, onError: (message: string, cause: unkn
           return;
         }
         streamRef.current = stream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play().catch(() => {});
+        if (video) {
+          video.srcObject = stream;
+          await video.play();
+          if (!cancelled) updateReady();
         }
       } catch (e) {
         // The permission prompt outlives the request: tap "Use camera", change
@@ -192,30 +214,40 @@ function useCameraStream(active: boolean, onError: (message: string, cause: unkn
         // under a sheet that is fine — and, worse, tells the caller the camera
         // is gone (see cameraRefused) over a request the person cancelled.
         if (cancelled) return;
+        clearTimeout(startupTimer);
         onError(formatApiError(e), e);
       }
     })();
     return () => {
       cancelled = true;
+      clearTimeout(startupTimer);
       stopStream();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active]);
 
-  return videoRef;
+  return { videoRef, ready };
 }
 
 /** Grab the current video frame as a JPEG blob (0.85 quality). */
-function grabFrame(video: HTMLVideoElement): Promise<Blob | null> {
+async function grabFrame(video: HTMLVideoElement): Promise<Blob> {
+  // A camera permission prompt is not a decoded frame. Drawing before the
+  // preview is ready throws on phones; inventing 1280x720 instead saved black
+  // pictures or left an unhandled rejection behind an enabled shutter.
+  if (video.readyState < 2 || !video.videoWidth || !video.videoHeight) {
+    throw new Error("Camera preview is not ready");
+  }
   const canvas = document.createElement("canvas");
-  canvas.width = video.videoWidth || 1280;
-  canvas.height = video.videoHeight || 720;
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
   const ctx = canvas.getContext("2d");
-  if (!ctx) return Promise.resolve(null);
+  if (!ctx) throw new Error("Camera image could not be prepared");
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-  return new Promise((resolve) => {
+  const blob = await new Promise<Blob | null>((resolve) => {
     canvas.toBlob((b) => resolve(b), "image/jpeg", 0.85);
   });
+  if (!blob) throw new Error("Camera image could not be prepared");
+  return blob;
 }
 
 /** What the upload flow's one skippable question (P3) has settled on so far.
@@ -567,6 +599,8 @@ function JobPhotoCapture({
   const [cameraOn, setCameraOn] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [picking, setPicking] = useState(false);
+  const working = busy || picking;
   const [caption, setCaption] = useState("");
   const [queued, setQueued] = useState(0);
   /** Files this pick could not use, by name and by reason — see pickFiles.
@@ -594,7 +628,7 @@ function JobPhotoCapture({
   // Ask for the fix when the SHEET opens, not when the shutter is tapped.
   useWarmGeoFix();
 
-  const videoRef = useCameraStream(cameraOn, (message, cause) => {
+  const { videoRef, ready: cameraReady } = useCameraStream(cameraOn, (message, cause) => {
     setCameraError(message);
     setCameraOn(false);
     // Only a failure that another tap cannot fix takes the live shutter away
@@ -678,12 +712,17 @@ function JobPhotoCapture({
     }
   };
 
-  const snap = () => {
+  const snap = async () => {
     const video = videoRef.current;
-    if (!video) return;
-    void grabFrame(video).then((blob) => {
-      if (blob) void queueBlob(blob);
-    });
+    if (!video || !cameraReady || busy) return;
+    setBusy(true);
+    try {
+      await queueBlob(await grabFrame(video));
+    } catch {
+      pushToast(t("photo.captureFailed"), "error");
+    } finally {
+      setBusy(false);
+    }
   };
 
   /**
@@ -770,33 +809,40 @@ function JobPhotoCapture({
 
   const pickFiles = async (files: File[]) => {
     setRejected([]);
-    for (const file of files) {
-      // Now that this really is a file picker, what arrives is whatever the
-      // phone will hand over: a PDF of a spec sheet, a half-synced download, a
-      // HEIC on a browser with no HEIC decoder. stampPhoto degrades to the
-      // original blob rather than throwing (so a live shutter never breaks),
-      // which without this check would file an unopenable file as a photo, and
-      // the person would be told it saved. Ask first, name the file that
-      // failed, and carry on with the rest of the pick — one bad file must not
-      // take the other nine with it.
-      if (isPdfPick(file)) {
-        // A PDF is a receipt's business, not a job photo's: the photo feed
-        // stores an image and has nothing to show for a document. The receipt
-        // picker is the only one that offers PDFs, so this only catches a
-        // phone that ignored `accept` and handed one over anyway.
-        if (!isReceipt) {
+    setPicking(true);
+    try {
+      for (const file of files) {
+        // Now that this really is a file picker, what arrives is whatever the
+        // phone will hand over: a PDF of a spec sheet, a half-synced download, a
+        // HEIC on a browser with no HEIC decoder. stampPhoto degrades to the
+        // original blob rather than throwing (so a live shutter never breaks),
+        // which without this check would file an unopenable file as a photo, and
+        // the person would be told it saved. Ask first, name the file that
+        // failed, and carry on with the rest of the pick — one bad file must not
+        // take the other nine with it.
+        if (isPdfPick(file)) {
+          // A PDF is a receipt's business, not a job photo's: the photo feed
+          // stores an image and has nothing to show for a document. The receipt
+          // picker is the only one that offers PDFs, so this only catches a
+          // phone that ignored `accept` and handed one over anyway.
+          if (!isReceipt) {
+            setRejected((list) => [...list, { name: file.name, reason: t("photo.fileUnreadable") }]);
+            continue;
+          }
+          await queueReceiptPdf(file);
+          continue;
+        }
+        const usable = file.type.startsWith("image/") && (await canDecodePhoto(file));
+        if (!usable) {
           setRejected((list) => [...list, { name: file.name, reason: t("photo.fileUnreadable") }]);
           continue;
         }
-        await queueReceiptPdf(file);
-        continue;
+        await queueBlob(file);
       }
-      const usable = file.type.startsWith("image/") && (await canDecodePhoto(file));
-      if (!usable) {
-        setRejected((list) => [...list, { name: file.name, reason: t("photo.fileUnreadable") }]);
-        continue;
-      }
-      await queueBlob(file);
+    } catch {
+      pushToast(t("photo.captureFailed"), "error");
+    } finally {
+      setPicking(false);
     }
   };
 
@@ -913,8 +959,8 @@ function JobPhotoCapture({
           <div className="jobphoto-stage">
             <video ref={videoRef} playsInline muted className="ba-video" />
             <div className="row-gap">
-              <button className="primary big" disabled={busy} onClick={snap}>
-                {busy ? t("photo.action.saving") : t("photo.action.capture")}
+              <button className="primary big" disabled={busy || !cameraReady} onClick={() => void snap()}>
+                {busy ? t("photo.action.saving") : cameraReady ? t("photo.action.capture") : t("photo.cameraStarting")}
               </button>
               <button className="big" onClick={() => setCameraOn(false)}>
                 {t("photo.action.done")}
@@ -935,6 +981,7 @@ function JobPhotoCapture({
                 <button
                   type="button"
                   className="jobphoto-action"
+                  disabled={working}
                   /* Which shutter this tile is. Both tiles are buttons now and
                      both say "Use camera", so the words no longer tell them
                      apart — and WHICH one is on the sheet is the whole subject
@@ -963,6 +1010,7 @@ function JobPhotoCapture({
                   type="button"
                   className="jobphoto-action"
                   data-shutter="handoff"
+                  disabled={working}
                   onClick={picker.openCamera}
                 >
                   <Camera size={22} aria-hidden />
@@ -972,6 +1020,7 @@ function JobPhotoCapture({
               <button
                 type="button"
                 className="jobphoto-action"
+                disabled={working}
                 onClick={picker.openLibrary}
               >
                 <ImagePlus size={22} aria-hidden />
@@ -996,7 +1045,7 @@ function JobPhotoCapture({
             how somebody stops trying. */}
         {cameraError && (
           <p className="muted">
-            {cameraRefused ? t("photo.cameraUnavailable") : t("photo.cameraBusy")}
+            {cameraError === "camera-start-timeout" ? t("photo.cameraTimeout") : cameraRefused ? t("photo.cameraUnavailable") : t("photo.cameraBusy")}
           </p>
         )}
         {/* This line used to be hidden whenever the camera was on, which is
@@ -1004,14 +1053,14 @@ function JobPhotoCapture({
             other feedback is a greyed-out "Saving…". Any wait at all needs a
             sentence saying what is being waited for, or it reads as a broken
             app and gets tapped again. */}
-        {busy && (
+        {working && (
           <p className="muted">
             {/* A PDF is stamped with the TIME ONLY and never a position, and
                 reading one is the slowest wait on this sheet — the dynamic
                 pdf.js import, the parse, then the render. Saying "Stamping GPS
                 & time…" over it would be the sheet describing the opposite of
                 what it is doing, for longer than anything else here. */}
-            {readingPdf ? t("photo.readingPdf") : t("photo.stampingGps")}
+            {readingPdf ? t("photo.readingPdf") : picking ? t("photo.preparing") : t("photo.stampingGps")}
           </p>
         )}
         {queued > 0 && (
@@ -1019,6 +1068,7 @@ function JobPhotoCapture({
             {queued === 1 ? t("photo.queuedOne") : t("photo.queuedMany", { n: queued })}
           </p>
         )}
+        {!isReceipt && <PhotoUploadStatus projectId={projectId} />}
         {/* One line per file that could not be used, named — a pick of ten
             where the third one fails has to say WHICH one, or the person
             re-picks all ten looking for it. */}
@@ -1082,7 +1132,7 @@ function BeforeAfterCapture({
     }
   };
 
-  const videoRef = useCameraStream(mode !== "idle", (message) => {
+  const { videoRef, ready: cameraReady } = useCameraStream(mode !== "idle", (message) => {
     setCameraError(message);
     setMode("idle");
   });
@@ -1092,7 +1142,7 @@ function BeforeAfterCapture({
 
   const snap = () => {
     const video = videoRef.current;
-    if (!video || mode === "idle") return;
+    if (!video || mode === "idle" || !cameraReady) return;
     const slot = mode;
     void grabFrame(video).then((blob) => {
       if (!blob) return;
@@ -1100,8 +1150,8 @@ function BeforeAfterCapture({
         type: "image/jpeg",
       });
       setMode("idle");
-      void applyPhoto(slot, file);
-    });
+      return applyPhoto(slot, file);
+    }).catch(() => pushToast(t("photo.captureFailed"), "error"));
   };
 
   const pickFile = (slot: "before" | "after") => (file: File) => {
@@ -1118,8 +1168,8 @@ function BeforeAfterCapture({
           )}
         </div>
         <div className="row-gap">
-          <button className="primary big" onClick={snap}>
-            {mode === "before" ? t("photo.captureBefore") : t("photo.captureAfter")}
+          <button className="primary big" disabled={!cameraReady} onClick={snap}>
+            {!cameraReady ? t("photo.cameraStarting") : mode === "before" ? t("photo.captureBefore") : t("photo.captureAfter")}
           </button>
           <button className="big" onClick={() => setMode("idle")}>
             {t("photo.action.cancel")}
@@ -1281,7 +1331,7 @@ function SinglePhotoCapture({
     }
   };
 
-  const videoRef = useCameraStream(live, (message) => {
+  const { videoRef, ready: cameraReady } = useCameraStream(live, (message) => {
     setCameraError(message);
     setLive(false);
   });
@@ -1289,15 +1339,15 @@ function SinglePhotoCapture({
 
   const snap = () => {
     const video = videoRef.current;
-    if (!video) return;
+    if (!video || !cameraReady) return;
     void grabFrame(video).then((blob) => {
       if (!blob) return;
       const file = new File([blob], `${stamp ? "phase" : "card"}-${Date.now()}.jpg`, {
         type: "image/jpeg",
       });
       setLive(false);
-      void applyPhoto(file);
-    });
+      return applyPhoto(file);
+    }).catch(() => pushToast(t("photo.captureFailed"), "error"));
   };
 
   if (live) {
@@ -1307,7 +1357,7 @@ function SinglePhotoCapture({
           <video ref={videoRef} playsInline muted className="ba-video" />
         </div>
         <div className="row-gap">
-          <button className="primary big" onClick={snap}>{t("photo.action.capture")}</button>
+          <button className="primary big" disabled={!cameraReady} onClick={snap}>{cameraReady ? t("photo.action.capture") : t("photo.cameraStarting")}</button>
           <button className="big" onClick={() => setLive(false)}>{t("photo.action.cancel")}</button>
         </div>
       </div>
@@ -1334,7 +1384,7 @@ function SinglePhotoCapture({
         <p className="muted">{stamp ? t("photo.stampingGps") : t("photo.preparing")}</p>
       )}
       {cameraError && (
-        <p className="muted">{cameraError} — {t("photo.useFileInstead")}</p>
+        <p className="muted">{cameraError === "camera-start-timeout" ? t("photo.cameraTimeout") : t("photo.cameraUnavailable")}</p>
       )}
     </div>
   );

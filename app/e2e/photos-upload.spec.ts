@@ -13,7 +13,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { jobFixtures, useSupabaseFixtures } from "./support/supabaseFixtures";
+import { TEST_USER, jobFixtures, useSupabaseFixtures } from "./support/supabaseFixtures";
 import {
   hideWrongProjectBanner,
   json,
@@ -295,4 +295,132 @@ test("backing out while the permission prompt is up leaves the camera alone", as
   await expect(cameraInput(page)).toHaveCount(0);
   await expect(page.getByText("Camera unavailable", { exact: false })).toHaveCount(0);
   await expect(page.getByText("Camera busy", { exact: false })).toHaveCount(0);
+});
+
+test("camera warmup disables the shutter, then a real video frame reaches the job", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: {
+      getUserMedia: () => new Promise<MediaStream>((resolve) => {
+        setTimeout(() => {
+          const canvas = document.createElement("canvas");
+          canvas.width = 640; canvas.height = 480;
+          const ctx = canvas.getContext("2d")!;
+          ctx.fillStyle = "#ff432b"; ctx.fillRect(0, 0, 640, 480);
+          const stream = canvas.captureStream(10);
+          const draw = setInterval(() => {
+            if (stream.getTracks().every(track => track.readyState === "ended")) return clearInterval(draw);
+            ctx.fillRect(0, 0, 640, 480);
+          }, 100);
+          resolve(stream);
+        }, 1500);
+      }),
+    } });
+  });
+  await useSupabaseFixtures(page, { role: "installer" });
+  await useCaptureStorage(page);
+  await stubGeolocationDenied(page);
+  const rows = await collectPhotoRows(page);
+  await openTheSheet(page);
+  await cameraButton(page).click();
+  await expect(page.getByRole("button", {name:"Starting camera…",exact:true})).toBeDisabled();
+  const shutter = page.getByRole("dialog", {name:"Add job photos"}).getByRole("button",{name:"Capture",exact:true});
+  await expect(shutter).toBeEnabled();
+  await shutter.click();
+  await expect.poll(() => rows.length).toBe(1);
+  expect(rows[0]).toMatchObject({project_id:BLACK22.projectId,created_by:TEST_USER.email,kind:"photo"});
+});
+
+test("a camera that never starts returns to usable library upload", async ({ page }) => {
+  await page.clock.install();
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator,"mediaDevices",{configurable:true,value:{getUserMedia:()=>new Promise<MediaStream>(()=>{})}});
+  });
+  await useSupabaseFixtures(page,{role:"installer"});
+  await useCaptureStorage(page); await stubGeolocationDenied(page);
+  const rows=await collectPhotoRows(page);
+  await openTheSheet(page); await cameraButton(page).click();
+  await expect(page.getByRole("button",{name:"Starting camera…",exact:true})).toBeDisabled();
+  await page.clock.fastForward(20_100);
+  await expect(page.getByText("The camera did not start. Try again, or use Upload files to choose a photo.")).toBeVisible();
+  await uploadInput(page).setInputFiles(pngFile("fallback.png"));
+  await expect.poll(()=>rows.length).toBe(1);
+});
+
+test("a server refusal appears beside the photo and can be retried without taking it again",async({page})=>{
+  await useSupabaseFixtures(page,{role:"installer"});
+  await useCaptureStorage(page); await stubGeolocationDenied(page);
+  let refused=true;
+  const attempts: Record<string,unknown>[]=[];
+  await page.route("**/rest/v1/attachments**",async route=>{
+    if(route.request().method()!=="POST")return json(route,[]);
+    attempts.push(route.request().postDataJSON());
+    if(refused)return route.fulfill({status:400,contentType:"application/json",body:JSON.stringify({code:"42P10",message:"there is no unique or exclusion constraint matching the ON CONFLICT specification"})});
+    return json(route,[]);
+  });
+  await openTheSheet(page);
+  await uploadInput(page).setInputFiles(pngFile("kept-photo.png"));
+  const dialog=page.getByRole("dialog",{name:"Add job photos"});
+  await expect(dialog.getByText("Photos needing an upload retry: 1")).toBeVisible();
+  refused=false;
+  await dialog.getByRole("button",{name:"Retry photo uploads"}).click();
+  await expect.poll(()=>attempts.length).toBe(2);
+  expect(attempts[1].client_id).toBe(attempts[0].client_id);
+  expect(attempts[1].storage_path).toBe(attempts[0].storage_path);
+  await expect(dialog.getByText("Photos needing an upload retry: 1")).toHaveCount(0);
+});
+
+test("updating recovers the photographer's old index failure once with its original upload key",async({page})=>{
+  await useSupabaseFixtures(page,{role:"installer"});
+  await useCaptureStorage(page); await stubGeolocationDenied(page);
+  const rows=await collectPhotoRows(page);
+  await page.goto(`/photos?project=${BLACK22.projectId}`);
+  await expect(page.getByRole("button",{name:"Add photo",exact:true})).toBeVisible();
+  const id="ab111111-1111-4111-8111-111111111111";
+  await page.evaluate(async({id,email,project,png})=>{
+    const db=await new Promise<IDBDatabase>((resolve,reject)=>{
+      const request=indexedDB.open("wops-write-outbox",1);
+      request.onupgradeneeded=()=>request.result.createObjectStore("entries",{keyPath:"id"});
+      request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);
+    });
+    const entry={id,op:"photo_upload",payload:{bucket:"install-media",path:`${project}/feed/original.png`,contentType:"image/png",projectId:project,createdBy:email,kind:"photo"},createdAt:1,attemptCount:1,status:"failed",lastError:"there is no unique or exclusion constraint matching the ON CONFLICT specification",nextAttemptAt:0,hasBlob:true};
+    const tx=db.transaction("entries","readwrite");
+    tx.objectStore("entries").put({id,meta:JSON.stringify(entry),blob:new Blob([Uint8Array.from(atob(png),char=>char.charCodeAt(0))],{type:"image/png"})});
+    await new Promise<void>((resolve,reject)=>{tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);});db.close();
+  },{id,email:TEST_USER.email,project:BLACK22.projectId,png:pngFile("original.png").buffer.toString("base64")});
+  await page.reload();
+  await expect.poll(()=>rows.length).toBe(1);
+  expect(rows[0]).toMatchObject({client_id:id,storage_path:`install-media/${BLACK22.projectId}/feed/original.png`,created_by:TEST_USER.email});
+  await page.reload();
+  await expect(page.getByRole("button",{name:"Add photo",exact:true})).toBeVisible();
+  expect(rows).toHaveLength(1);
+});
+
+test("a stalled photo upload releases the queue and retries the saved picture", async ({ page }) => {
+  await useSupabaseFixtures(page, { role: "installer" });
+  await useCaptureStorage(page);
+  await stubGeolocationDenied(page);
+  await page.addInitScript(() => {
+    const original = window.fetch.bind(window);
+    let stalled = false;
+    window.fetch = (input, init) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (!stalled && url.includes("/storage/v1/object/install-media/") && init?.method === "POST") {
+        stalled = true;
+        return new Promise<Response>((_resolve, reject) => {
+          init.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
+        });
+      }
+      return original(input, init);
+    };
+  });
+  const rows = await collectPhotoRows(page);
+  await page.clock.install();
+  await openTheSheet(page);
+  await uploadInput(page).setInputFiles(pngFile("stalled-photo.png"));
+  await expect(page.getByText("1 photo queued", { exact: false })).toBeVisible();
+  expect(rows).toHaveLength(0);
+  await page.clock.fastForward(120_100);
+  await page.clock.fastForward(60_000);
+  await expect.poll(() => rows.length).toBe(1);
+  expect(rows[0]).toMatchObject({ project_id: BLACK22.projectId, created_by: TEST_USER.email });
 });

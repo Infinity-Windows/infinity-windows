@@ -26,6 +26,7 @@ import { isForemanPlus } from "../../lib/install/types";
 import { pushToast, toastError } from "../../lib/toast";
 import { EmptyState, QueryError, SkeletonCard } from "../ui/States";
 import { PhotoCaptureSheet } from "../PhotoCaptureSheet";
+import { PhotoUploadStatus } from "./PhotoUploadStatus";
 import { ReceiptDocumentLink } from "../receipts/ReceiptDocumentLink";
 import { useT } from "../../lib/i18n";
 
@@ -213,6 +214,7 @@ export function PhotoFeed({
       </div>
 
       {/* ---- The 30-day recoverable trash (foreman+) ---- */}
+      {!isReceipt && <PhotoUploadStatus projectId={projectId} />}
       {inTrash && (
         <>
           <p className="muted" style={{ margin: "0 0 8px" }}>

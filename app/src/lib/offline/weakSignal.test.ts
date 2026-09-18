@@ -1,6 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   WEAK_SIGNAL_WINDOW_MS,
+  PHOTO_UPLOAD_TIMEOUT_MS,
   isWeakSignalRecent,
   lastSuccessfulRequestAt,
   markRequestOk,
@@ -44,9 +45,10 @@ describe("the weak-signal mark", () => {
     off();
   });
 
-  it("only database and auth calls get a deadline", () => {
+  it("bounds database, auth and signed-link calls without cutting off large downloads", () => {
     expect(shouldTime("https://x.supabase.co/rest/v1/projects?select=*")).toBe(true);
     expect(shouldTime("https://x.supabase.co/auth/v1/token")).toBe(true);
+    expect(shouldTime("https://x.supabase.co/storage/v1/object/sign/install-media/photo.jpg")).toBe(true);
     expect(shouldTime("https://x.supabase.co/storage/v1/object/plansets/a.pdf")).toBe(false);
     expect(shouldTime("https://x.supabase.co/functions/v1/ask")).toBe(false);
   });
@@ -54,6 +56,29 @@ describe("the weak-signal mark", () => {
 
 describe("timedFetch", () => {
   beforeEach(() => { resetWeakSignal(); clearOfflineEvents(); vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it("gives a photo time to upload, then aborts a stall so the saved queue can retry", async () => {
+    const onTimeout = vi.fn();
+    const result = timedFetch("https://x.supabase.co/storage/v1/object/install-media/job/photo.jpg", {method:"POST"}, {
+      fetch: (_input, init) => never(init?.signal), now: () => 42, onTimeout, onOk: () => undefined,
+    }).catch(error => error);
+    await vi.advanceTimersByTimeAsync(15_001);
+    expect(onTimeout).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(PHOTO_UPLOAD_TIMEOUT_MS);
+    expect(await result).toBeInstanceOf(TypeError);
+    expect(onTimeout).toHaveBeenCalledWith(42);
+  });
+
+  it("aborts a stalled gallery signing request so one image cannot hold the gallery forever", async () => {
+    const onTimeout = vi.fn();
+    const result = timedFetch("https://x.supabase.co/storage/v1/object/sign/install-media/photo.jpg", {method:"POST"}, {
+      fetch: (_input, init) => never(init?.signal), timeoutMs: 100, now: () => 42, onTimeout, onOk: () => undefined,
+    }).catch(error => error);
+    await vi.advanceTimersByTimeAsync(101);
+    expect(await result).toBeInstanceOf(TypeError);
+    expect(onTimeout).toHaveBeenCalledWith(42);
+  });
 
   it("a database call that hangs is aborted, marked weak, and fails like a dropped connection", async () => {
     const onTimeout = vi.fn();

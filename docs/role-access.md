@@ -15,6 +15,8 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 **Menu drawer:**
 
 - My Work (`/`)
+- Current Work (`/current-work`)
+- Servicing (`/service`)
 - Jobs (`/projects`)
 - My Schedule (`/my-schedule`)
 - Warehouse (`/warehouse`)
@@ -107,6 +109,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 
 - Home (`/`)
 - Current Work (`/current-work`)
+- Servicing (`/service`)
 - My Work (`/my-work`)
 - Jobs (`/projects`)
 - Photos & receipts (`/photos`)
@@ -116,7 +119,6 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Analytics (`/analytics`)
 - Warehouse (`/warehouse`)
 - Issues (`/issues`)
-- Servicing (`/service`)
 - Quality (`/qc`)
 - My Schedule (`/my-schedule`)
 - Travel (`/travel`)
@@ -209,6 +211,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 
 - Home (`/`)
 - Current Work (`/current-work`)
+- Servicing (`/service`)
 - My Work (`/my-work`)
 - Jobs (`/projects`)
 - Job history (`/jobs/history`)
@@ -224,7 +227,6 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Receipts (`/receipts`)
 - Warehouse (`/warehouse`)
 - Issues (`/issues`)
-- Servicing (`/service`)
 - Quality (`/qc`)
 - Vehicles (`/vehicles`)
 - My Schedule (`/my-schedule`)
@@ -323,6 +325,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 
 - Home (`/`)
 - Current Work (`/current-work`)
+- Servicing (`/service`)
 - My Work (`/my-work`)
 - Jobs (`/projects`)
 - Job history (`/jobs/history`)
@@ -339,7 +342,6 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Receipts (`/receipts`)
 - Warehouse (`/warehouse`)
 - Issues (`/issues`)
-- Servicing (`/service`)
 - Quality (`/qc`)
 - Vehicles (`/vehicles`)
 - My Schedule (`/my-schedule`)

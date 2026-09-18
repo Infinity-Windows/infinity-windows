@@ -18,6 +18,8 @@ import {
 } from "./outbox-core";
 import { createDefaultStore } from "./outboxStore";
 import { logOfflineEvent } from "./telemetry";
+import { signedInEmail } from "../signedIn";
+import { recoverPhotoUpload } from "./recoverPhotoUploads";
 import {
   createShiftResolver,
   createSupabaseHandlers,
@@ -191,7 +193,7 @@ export async function recoverAndDrain(): Promise<void> {
     const all = await store.getAll();
     const now = Date.now();
     for (const e of all) {
-      const fixed = requeueStranded(e, now);
+      const fixed = recoverPhotoUpload(requeueStranded(e, now), signedInEmail(), now);
       if (fixed !== e) await store.put(fixed);
     }
   } catch {

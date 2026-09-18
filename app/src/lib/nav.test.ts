@@ -308,7 +308,7 @@ describe("menuForRole (Horizon grouped menu)", () => {
 
     const byTitle = (title: string) =>
       (sections.find((s) => s.title === title)?.items ?? []).map((i) => i.to);
-    expect(byTitle("Work")).toEqual(["/", "/projects", "/my-schedule", "/warehouse", "/supplies"]);
+    expect(byTitle("Work")).toEqual(["/", "/current-work", "/service", "/projects", "/my-schedule", "/warehouse", "/supplies"]);
     expect(byTitle("Me")).toEqual([
       "/timecard",
       "/points",
