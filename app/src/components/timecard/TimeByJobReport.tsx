@@ -75,10 +75,16 @@ export function TimeByJobReport({ shifts, rangeLabel, isLoading, error, isFetchi
           </details>}
         </div>;
       })}
-      <div className="row-between" style={{ borderTop: "1px solid var(--border)", paddingTop: 12 }}>
-        <strong>{t("timereport.total")}</strong><strong>{hours(report.totalHours)}</strong>
+      <div className="job-time-total">
+        <div className="job-time-total-scope">
+          <strong>{t("timereport.total")} · {rangeLabel}</strong>
+          <span className="muted">{t("timeexport.allPeople")}</span>
+        </div>
+        <strong className="job-time-total-hours">{hours(report.totalHours)}</strong>
       </div>
-      <p className="muted">{t("timereport.split", { closed: hours(report.recordedHours), live: hours(report.runningHours) })}</p>
+      <p className="muted">{report.runningCount > 0
+        ? t("timereport.split", { closed: hours(report.recordedHours), live: hours(report.runningHours) })
+        : t("timereport.finishedOnly")}</p>
     </>}
   </section>;
 }

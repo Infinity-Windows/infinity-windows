@@ -26,6 +26,12 @@ async function fixtures(page: Page, language: "en" | "es" = "en", role: "owner" 
     projects: projects.find(p => p.id === s.project_id) ?? null, cost_codes: { code: "1", label: "Installation" }, created_at: s.clock_in_at }));
   await page.route("**/rest/v1/profiles**", r => { const who = new URL(r.request().url()).searchParams.get("id")?.slice(3); return json(r, who ? people.find(p => p.id === who) : people, people.length); });
   await page.route("**/rest/v1/projects**", r => json(r, projects, projects.length));
+  await page.route("**/rest/v1/rpc/set_project_status", async r => {
+    const { p_project, p_status } = r.request().postDataJSON();
+    const project = projects.find(p => p.id === p_project);
+    if (project) project.status = p_status;
+    return json(r, null);
+  });
   await page.route("**/rest/v1/time_shifts**", r => {
     const p = new URL(r.request().url()).searchParams;
     const data = rows.filter(s => {
@@ -49,7 +55,7 @@ for (const [width, language] of [[375,"en"],[390,"es"],[1280,"en"]] as const) {
   test(`export dates, people, CSV and printable report at ${width}px ${language}`, async ({page}) => {
     await page.setViewportSize({width,height:844}); await fixtures(page,language); await page.goto('/team-timecards');
     const es=language==='es';
-    await page.getByRole('button',{name:es?'Exportar registros de tiempo':'Export time entries',exact:true}).click();
+    await page.getByRole('button',{name:es?'Exportar fechas personalizadas':'Export custom dates',exact:true}).click();
     const dialog=page.getByRole('dialog');
     await expect(dialog).toContainText('11:30');
     await expect(dialog).toContainText(es?'1 registros sin terminar':'1 unfinished entries');
@@ -101,7 +107,101 @@ test('read errors disable export instead of producing incomplete payroll',async(
   await fixtures(page); await page.goto('/team-timecards');
   await expect(page.locator('.job-time-report')).toContainText('15.5h');
   await page.route('**/rest/v1/time_shifts**',r=>r.fulfill({status:500,contentType:'application/json',body:JSON.stringify({message:'Records unavailable'})}));
-  await page.getByRole('button',{name:'Export time entries',exact:true}).click();
+  await page.getByRole('button',{name:'Export custom dates',exact:true}).click();
   const dialog=page.getByRole('dialog'); await expect(dialog.getByRole('alert')).toBeVisible();
   await expect(dialog.getByRole('button',{name:'Download CSV',exact:true})).toBeDisabled();
+});
+
+for (const [width, language] of [[375, 'en'], [390, 'es'], [1280, 'en']] as const) {
+  test(`multiple job exports retain completed jobs and intersect custom dates at ${width}px ${language}`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await page.emulateMedia({ colorScheme: width === 375 ? 'dark' : 'light' });
+    const f = await fixtures(page, language);
+    f.addShift(id(12), '2026-08-24T12:00:00Z', '2026-08-24T16:00:00Z');
+    const es = language === 'es';
+    await page.goto('/team-timecards');
+    await page.getByRole('button', { name: es ? 'Exportar horas por trabajo' : 'Export job timecards', exact: true }).click();
+    const dialog = page.getByRole('dialog');
+    const csvButton = dialog.getByRole('button', { name: es ? 'Descargar CSV' : 'Download CSV', exact: true });
+    const picker = dialog.locator('.job-filter-picker');
+    await picker.locator('summary').click();
+    await picker.getByRole('button', { name: es ? 'Quitar selección' : 'Clear selection', exact: true }).click();
+    await expect(csvButton).toBeDisabled();
+    await picker.getByRole('checkbox', { name: /JOB-B/ }).check();
+    await picker.getByRole('checkbox', { name: /JOB-A/ }).check();
+    await picker.locator('summary').click();
+    await expect(dialog.locator('.detail-card > strong')).toHaveText('17:30');
+    await expect(dialog.locator('.time-export-job-totals')).toContainText('Finished job');
+    await expect(dialog.locator('.time-export-job-totals')).not.toContainText('JOB-C');
+    const zipDownload = page.waitForEvent('download');
+    await dialog.getByRole('button', { name: /ZIP/ }).click();
+    const zip = await JSZip.loadAsync(await readFile((await (await zipDownload).path())!));
+    expect(Object.keys(zip.files)).toHaveLength(2);
+    const a = Object.values(zip.files).find(file => file.name.startsWith('JOB-A'))!;
+    const b = Object.values(zip.files).find(file => file.name.startsWith('JOB-B'))!;
+    const aCsv = await a.async('string'); const bCsv = await b.async('string');
+    expect(aCsv).toContain('Fixture,Manager'); expect(aCsv).toContain('Historical,Crew Member'); expect(aCsv).not.toContain('Finished job');
+    expect(bCsv).toContain('Finished job'); expect(bCsv).not.toContain('Fixture,Manager');
+    const popup = page.waitForEvent('popup');
+    await dialog.getByRole('button', { name: es ? 'Vista Forge / PDF' : 'Forge preview / PDF' }).click();
+    const report = await popup;
+    await expect(report.getByRole('heading', { name: 'Job timecards', exact: true })).toBeVisible();
+    await expect(report.locator('.job-heading')).toHaveCount(2);
+    await expect(report.getByText('Total recorded time: 17:30')).toBeVisible();
+    if (width === 1280) {
+      await report.setViewportSize({ width: 1440, height: 1000 });
+      await report.screenshot({ path: '/tmp/forge-job-timecards-print.png', fullPage: true });
+    }
+    await report.close();
+    await dialog.getByRole('button', { name: es ? 'Rango personalizado' : 'Custom range', exact: true }).click();
+    await dialog.getByLabel(es ? 'Fecha inicial' : 'From date', { exact: true }).fill('2026-09-14');
+    await dialog.getByLabel(es ? 'Fecha final' : 'Through date', { exact: true }).fill('2026-09-15');
+    await expect(dialog.locator('.detail-card > strong')).toHaveText('11:30');
+    const download = page.waitForEvent('download'); await csvButton.click();
+    const csv = await readFile((await (await download).path())!, 'utf8');
+    expect(csv).toContain('JOB-A'); expect(csv).not.toContain('JOB-B'); expect(csv).not.toContain('JOB-C');
+    expect(csv).toContain('00:30,07:30');
+    await dialog.screenshot({ path: `/tmp/forge-job-timecards-${width}-${language}.png` });
+    expect(await dialog.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+    await dialog.getByLabel(es ? 'Fecha inicial' : 'From date', { exact: true }).fill('2026-09-16');
+    await expect(csvButton).toBeDisabled();
+    await dialog.getByRole('button', { name: es ? 'Historial completo' : 'Full job history', exact: true }).click();
+    await expect(dialog.locator('.detail-card > strong')).toHaveText('17:30');
+    await expect(csvButton).toBeEnabled();
+  });
+}
+
+test('completing a job recommends billing and preserves its full-history export after reopening', async ({ page }) => {
+  await fixtures(page);
+  await page.goto(`/projects/${id(10)}`);
+  await expect(page.locator('.job-billing-reminder')).toHaveCount(0);
+  page.on('dialog', d => d.accept());
+  await page.getByRole('button', { name: 'Finish this job…', exact: true }).click();
+  const reminder = page.locator('.job-billing-reminder');
+  await expect(reminder.getByRole('heading', { name: 'Job complete · Review billing', exact: true })).toBeVisible();
+  await reminder.screenshot({ path: '/tmp/forge-job-billing-reminder.png' });
+  await reminder.getByRole('button', { name: 'Export job timecards', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.locator('.detail-card > strong')).toHaveText('11:30');
+  await expect(dialog.locator('.time-export-job-totals')).not.toContainText('JOB-B');
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.goto('/jobs/history');
+  const historyJob = page.locator('.opening-review-row').filter({ has: page.getByRole('link', { name: 'JOB-A', exact: true }) });
+  await expect(historyJob).toContainText('Review billing');
+  await historyJob.getByRole('button', { name: 'Export job timecards', exact: true }).click();
+  await expect(page.getByRole('dialog').locator('.detail-card > strong')).toHaveText('11:30');
+  await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click();
+  await page.goto(`/projects/${id(10)}`);
+  await page.getByRole('button', { name: 'Reopen this job', exact: true }).click();
+  await expect(page.locator('.job-billing-reminder')).toHaveCount(0);
+  await page.locator('.job-timecard-export').getByRole('button', { name: 'Export job timecards', exact: true }).click();
+  await expect(page.getByRole('dialog').locator('.detail-card > strong')).toHaveText('11:30');
+});
+
+test('installers cannot open exports for the whole job', async ({ page }) => {
+  await fixtures(page, 'en', 'installer');
+  await page.goto(`/projects/${id(11)}`);
+  await expect(page.getByRole('heading', { name: /JOB-B/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Export job timecards', exact: true })).toHaveCount(0);
+  await expect(page.locator('.job-billing-reminder')).toHaveCount(0);
 });

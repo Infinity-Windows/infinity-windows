@@ -2,6 +2,7 @@ import { VoiceTextarea } from "../components/voice/VoiceTextarea";
 import { BackChip } from "../components/BackChip";
 import { CustomData } from "./customWork/CustomData";
 import { JobExecutionPanel } from "../components/projects/JobExecutionPanel";
+import { JobTimecardExport } from "../components/timecard/JobTimecardExport";
 import { PlanPackagesPanel } from "../components/warehouse/PlanPackagesPanel";
 import { JobPackagesPanel } from "../components/warehouse/JobPackagesPanel";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -366,6 +367,7 @@ export function ProjectDetail() {
       {tab === "custom-data" && <CustomData key={projectId} projectId={projectId} />}
       {tab === "overview" && (
         <>
+          {project && isLead && <JobTimecardExport key={project.id} project={project} />}
           {/* Call for hands on the whole job (job-level-summons slice 4). A
               tracking job has no window sheet to summon from, so it creates
               here; every job shows a LIVE call so a helper who lands here from
@@ -1628,10 +1630,12 @@ function JobLifecyclePanel({
 }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const t = useT();
   const lifecycle = useMutation({
     mutationFn: (status: "active" | "completed" | "cancelled") =>
       setProjectStatus(project.id, status),
     onSuccess: (_r, status) => {
+      qc.setQueryData<Project[]>(["projectsAll"], rows => rows?.map(row => row.id === project.id ? { ...row, status } : row));
       void qc.invalidateQueries({ queryKey: ["projects"] });
       void qc.invalidateQueries({ queryKey: ["projectsAll"] });
       if (status === "active") {
@@ -1639,10 +1643,11 @@ function JobLifecyclePanel({
       } else {
         pushToast(
           status === "completed"
-            ? "Job finished — moved to Job history with everything it tracked."
+            ? t("timeexport.completedToast")
             : "Job cancelled — moved to Job history with everything it tracked.",
         );
-        navigate("/projects");
+        navigate(status === "completed" ? `/projects/${project.id}` : "/projects");
+        if (status === "completed") window.scrollTo(0, 0);
       }
     },
     onError: (e) => toastError(e, formatApiError(e)),

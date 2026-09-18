@@ -19,6 +19,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { AssignmentHistoryCard } from "../components/install/AssignmentHistoryCard";
+import { JobTimecardExport } from "../components/timecard/JobTimecardExport";
 import { BackChip } from "../components/BackChip";
 import { EmptyState } from "../components/ui/States";
 import { listProjectsAnyStatus, listTrashedProjects, restoreProject, setProjectStatus } from "../lib/api";
@@ -174,6 +175,7 @@ export function JobHistory() {
                 </button>
               )}
             </div>
+            {canSeeHandovers && <JobTimecardExport project={p} compact />}
             {canSeeHandovers && <AssignmentHistoryCard projectId={p.id} />}
           </li>
         ))}

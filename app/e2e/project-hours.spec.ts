@@ -63,7 +63,7 @@ for (const [width, language] of [[375, "en"], [390, "es"], [1280, "en"]] as cons
     await expect(page.getByRole("button", { name: language === "es" ? "Aprobar semana" : "Approve week", exact: true })).toHaveCount(0);
     f.closeRunning();
     await report.getByRole("button", { name: language === "es" ? "Actualizar horas" : "Refresh hours" }).click();
-    await expect(report).toContainText(language === "es" ? "22.0h terminadas + 0.0h en curso" : "22.0h finished + 0.0h running");
+    await expect(report).toContainText(language === "es" ? "Horas terminadas, después de descontar descansos." : "Finished hours, after breaks.");
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await report.screenshot({ path: `/tmp/forge-job-hours-${width}-${language}.png` });
   });
