@@ -9,7 +9,7 @@ await db.exec(`
 create role authenticated; create role anon; create role service_role; set check_function_bodies=off; create schema auth; create schema storage;
 create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
 grant usage on schema public,auth,storage to authenticated,anon;
-create table profiles(id uuid primary key,role text,active boolean default true,partner boolean default false,retired_at timestamptz,access_revoked_at timestamptz);
+create table profiles(id uuid primary key,role text,active boolean default true,is_partner boolean default false,retired_at timestamptz,access_revoked_at timestamptz);
 create table projects(id uuid primary key,deleted_at timestamptz,is_test boolean default false,status text default 'active',job_code text default 'TEST',name text default 'Fixture job');
 create table project_openings(id uuid primary key,project_id uuid references projects,status text default 'installed',removed_at timestamptz);
 create table windows(id uuid primary key,project_id uuid references projects);
@@ -24,7 +24,7 @@ create table storage.buckets(id text primary key,name text,public boolean,file_s
 create table storage.objects(id uuid primary key default gen_random_uuid(),bucket_id text,name text);
 alter table storage.objects enable row level security;
 grant select,insert on storage.objects to authenticated;
-create function is_partner_user() returns boolean language sql security definer as $$select coalesce((select partner from profiles where id=auth.uid()),false)$$;
+create function is_partner_user() returns boolean language sql security definer as $$select coalesce((select is_partner from profiles where id=auth.uid()),false)$$;
 create function _is_lead(p uuid) returns boolean language sql as $$select exists(select 1 from profiles where id=p and role in ('foreman','supervisor','owner'))$$;
 create function is_test_profile(p uuid) returns boolean language sql as $$select false$$;
 create function _end_open_session(p uuid,r text) returns void language sql as $$update unit_sessions set ended_at=now(),end_reason=r where profile_id=p and ended_at is null$$;
@@ -66,7 +66,7 @@ async function deny(fn) {
   checks++;
 }
 await db.query(
-  "insert into profiles(id,role,partner) values($1,'owner',false),($2,'installer',false),($3,'installer',false),($4,'supervisor',false),($5,'supervisor',false),($6,'owner',true),($7,'foreman',false)",
+  "insert into profiles(id,role,is_partner) values($1,'owner',false),($2,'installer',false),($3,'installer',false),($4,'supervisor',false),($5,'supervisor',false),($6,'owner',true),($7,'foreman',false)",
   [1, 2, 3, 4, 5, 6, 7].map(id),
 );
 await db.query(
@@ -469,8 +469,10 @@ await deny(() =>
     [`${id(6)}/${id(40)}/${id(81)}.webm`],
   ),
 );
+await db.exec('reset role');await db.query('update profiles set active=false where id=$1',[id(2)]);await asUser(2);
+assert.ok((await db.query('select * from service_visits')).rows.length>0);checks++;
+await cmd('visit',{...visit,id:id(94),details:{}});checks++;
 for (const state of [
-  "active=false",
   "active=true,retired_at=now()",
   "retired_at=null,access_revoked_at=now()",
 ]) {

@@ -96,9 +96,10 @@ create table public.service_audit (
   action text not null, entity_id uuid, before_value jsonb, after_value jsonb,
   created_at timestamptz not null default now()
 );
+-- On-site availability is not login access: off-site supervisors still review service work.
 create function public.service_internal() returns boolean language sql stable security definer set search_path=public,pg_temp as $$
   select auth.uid() is not null and not public.is_partner_user() and exists(
-    select 1 from profiles where id=auth.uid() and active and retired_at is null and access_revoked_at is null
+    select 1 from profiles where id=auth.uid() and retired_at is null and access_revoked_at is null
       and role in ('installer','foreman','supervisor','owner'))
 $$;
 create function public.service_job_access(j uuid) returns boolean language sql stable security definer set search_path=public,pg_temp as $$
@@ -176,9 +177,9 @@ begin
   select * into v from service_visits where id=target for update;
   if not coalesce((v.details->>'lodging')::boolean,false) or v.lodging_message_id is not null then return; end if;
   select array_agg(p.id) into recipients from service_job_supervisors s join profiles p on p.id=s.profile_id
-    where s.project_id=v.project_id and p.active and p.retired_at is null and p.access_revoked_at is null and p.role in ('supervisor','owner');
+    where s.project_id=v.project_id and not p.is_partner and p.retired_at is null and p.access_revoked_at is null and p.role in ('supervisor','owner');
   if coalesce(cardinality(recipients),0)=0 then
-    select array_agg(id) into recipients from profiles where active and retired_at is null and access_revoked_at is null and role='supervisor';
+    select array_agg(id) into recipients from profiles where not is_partner and retired_at is null and access_revoked_at is null and role='supervisor';
   end if;
   if coalesce(cardinality(recipients),0)=0 then return; end if;
   select job_code||' · '||name into job from projects where id=v.project_id;
@@ -216,7 +217,7 @@ begin
   if p_action='supervisor' then
     if not public.service_supervisor() then raise exception 'Only a supervisor can assign the job supervisor.' using errcode='42501'; end if;
     recipient:=nullif(p_data->>'profile_id','')::uuid;
-    if recipient is not null and not exists(select 1 from profiles where id=recipient and active and retired_at is null and access_revoked_at is null and role in ('supervisor','owner')) then raise exception 'Choose an active supervisor or owner.'; end if;
+    if recipient is not null and not exists(select 1 from profiles where id=recipient and not is_partner and retired_at is null and access_revoked_at is null and role in ('supervisor','owner')) then raise exception 'Choose an active supervisor or owner.'; end if;
     select to_jsonb(x) into oldj from service_job_supervisors x where project_id=jid;
     insert into service_job_supervisors(project_id,profile_id) values(jid,recipient) on conflict(project_id) do update set profile_id=excluded.profile_id;
     result:=jid; afterj:=jsonb_build_object('profile_id',recipient);

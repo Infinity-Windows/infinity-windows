@@ -2,7 +2,7 @@
 
 Owner approved the Servicing plan on September 17, 2026. Build the complete feature in this isolated checkout; preserve prior service cases and all payroll/installation records. Approved behavior is recorded in `../outputs/Servicing_Plan_2026-09-17.md` (workspace path outside this checkout).
 
-Confirmed: units may have different causes; supervisor approves shared trip cost split. Lodging chat goes to assigned job supervisor, or all active supervisors if unassigned.
+Confirmed: units may have different causes; supervisor approves shared trip cost split. Lodging chat goes to assigned job supervisor, or all supervisors with login access if unassigned.
 
 Implementation: service_visits, service_visit_units, service_time_sessions linked to payroll shifts, private immutable service-media, retry receipts, audit records. No financial rates or Roster permission changes. New job supervisor assignment fills the previously absent job-level field. All timers share the existing per-worker lock and stop on breaks/clock-out/surface changes.
 
