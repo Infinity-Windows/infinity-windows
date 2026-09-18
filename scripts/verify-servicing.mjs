@@ -513,6 +513,13 @@ assert.deepEqual(
   {},
 );
 checks++;
+// Service earlier in the shift must not suppress a later installation break/resume.
+await db.exec('reset role');
+await db.query("insert into project_openings(id,project_id,status) values($1,$2,'installing')",[id(22),id(10)]);
+await db.query('insert into unit_sessions(profile_id,opening_id,started_at) values($1,$2,now())',[id(3),id(22)]);
+await db.query('update time_shifts set break_started_at=now() where id=$1',[id(31)]);
+await db.query('update time_shifts set break_started_at=null,break_seconds=break_seconds+1 where id=$1',[id(31)]);
+assert.equal((await db.query('select * from unit_sessions where profile_id=$1 and ended_at is null',[id(3)])).rows.length,1);checks++;
 await db.close();
 console.log(
   `${checks} service database checks passed, using isolated fixtures.`,

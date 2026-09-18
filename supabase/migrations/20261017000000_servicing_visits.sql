@@ -443,7 +443,7 @@ begin
   -- two of walk-back inflation accepted for zero friction).
   if new.break_started_at is null and old.break_started_at is not null
      and new.clock_out_at is null then
-    if exists(select 1 from custom_work_sessions where shift_id=new.id and end_reason='break' and ended_at=old.break_started_at) or exists(select 1 from service_time_sessions where shift_id=new.id) then
+    if exists(select 1 from custom_work_sessions where shift_id=new.id and end_reason='break' and ended_at=old.break_started_at) or exists(select 1 from service_time_sessions where shift_id=new.id and end_reason='break' and ended_at>=old.break_started_at) then
       return new; -- Custom work resumes explicitly on Current Work.
     end if;
     select s.opening_id into v_held

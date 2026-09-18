@@ -14,4 +14,4 @@ Useful boundaries: new visits require a connection; already loaded visits retain
 
 Crew reports expose only the payroll time bounds needed for that visit; installers gain no access to another worker's full timecard or pay rates. Earlier service cases remain available to their existing foreman-and-above audience.
 
-Validation: 63 disposable database assertions; 13 browser flows across roles, phone/desktop, English/Spanish, map transfer, offline replay, PDF/CSV/ZIP and original evidence. Full application tests, build, lint and release checks recorded separately.
+Validation: 64 disposable database assertions; 13 browser flows across roles, phone/desktop, English/Spanish, map transfer, offline replay, PDF/CSV/ZIP and original evidence. Full application tests, build, lint and release checks recorded separately.

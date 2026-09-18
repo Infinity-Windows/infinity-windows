@@ -213,7 +213,9 @@ function RoleLanding() {
     enabled: !!clock.profileId && clock.shift?.status === "open", retry: false,
   });
   if (clock.loading) return <div className="page">Loading current work…</div>;
-  if (clock.shift?.status === "open" && service.isLoading) return <div className="page">Loading current work…</div>;
+  // Only the first lookup holds the landing screen. After an error, Current Work
+  // must stay mounted while its refresh retries the service lookup.
+  if (clock.shift?.status === "open" && service.isLoading && !service.errorUpdatedAt && !service.dataUpdatedAt) return <div className="page">Loading current work…</div>;
   if (clock.shift?.status === "open" && service.data?.[0]) return <Navigate replace to={`/service?visit=${service.data[0].visit_id}`} />;
   if (clock.shift?.status === "open") return <CurrentWork />;
   if (!ROLE_NAV_V2) return <Home />;
