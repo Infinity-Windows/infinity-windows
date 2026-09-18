@@ -34,6 +34,7 @@ create table public.crew_reminders (
  id uuid primary key default gen_random_uuid(),
  profile_id uuid not null references public.profiles(id) on delete cascade,
  request_id uuid references public.time_off_requests(id) on delete cascade,
+ request_status text,
  shift_id uuid references public.time_shifts(id) on delete cascade,
  break_started_at timestamptz,
  dedupe_key text not null unique,
@@ -69,13 +70,13 @@ begin
  end if;
  title_text:=case when r.kind='sick' and r.status='approved' then 'Sick day reported' when r.status='pending' then 'Time off needs approval' else 'Time off '||r.status end;
  foreach recipient in array coalesce(recipients,'{}'::uuid[]) loop
-  insert into crew_reminders(profile_id,request_id,dedupe_key,title,body,url,expires_at)
-  values(recipient,r.id,'time-off:'||r.id||':'||r.status||':'||recipient,title_text,
+  insert into crew_reminders(profile_id,request_id,request_status,dedupe_key,title,body,url,expires_at)
+  values(recipient,r.id,r.status,'time-off:'||r.id||':'||r.status||':'||recipient,title_text,
    coalesce(person,'Crew member')||' · '||r.start_date||' – '||r.end_date,'/scheduling',now()+interval '7 days') on conflict(dedupe_key) do nothing;
  end loop;
  if r.status<>'pending' then
-  insert into crew_reminders(profile_id,request_id,dedupe_key,title,body,url,expires_at)
-  values(r.profile_id,r.id,'time-off-self:'||r.id||':'||r.status,title_text,r.start_date||' – '||r.end_date,'/my-schedule',now()+interval '7 days') on conflict(dedupe_key) do nothing;
+  insert into crew_reminders(profile_id,request_id,request_status,dedupe_key,title,body,url,expires_at)
+  values(r.profile_id,r.id,r.status,'time-off-self:'||r.id||':'||r.status,title_text,r.start_date||' – '||r.end_date,'/my-schedule',now()+interval '7 days') on conflict(dedupe_key) do nothing;
  end if;
 end $$;
 revoke all on function public.time_off_notify(uuid) from public,anon,authenticated;
@@ -137,6 +138,7 @@ begin
  where n.id in(select q.id from crew_reminders q join profiles p on p.id=q.profile_id
   where q.sent_at is null and q.expires_at>now() and (q.lease_until is null or q.lease_until<now()) and q.attempts<30
   and p.active and not p.is_partner and p.retired_at is null and p.access_revoked_at is null
+  and (q.request_id is null or exists(select 1 from time_off_requests r where r.id=q.request_id and r.status=q.request_status))
   and (q.shift_id is null or exists(select 1 from time_shifts s where s.id=q.shift_id and s.status='open' and s.clock_out_at is null and s.break_type='lunch' and s.break_started_at=q.break_started_at))
   order by q.created_at limit 50 for update of q skip locked)
  returning n.*;

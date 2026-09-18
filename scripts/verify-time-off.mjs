@@ -112,6 +112,8 @@ for (const [n, minutes, type, status] of [
   );
 await db.exec("set role service_role");
 const claimed = await rows("select * from claim_crew_reminders($1)", [id(900)]);
+ok(claimed.some(x => x.request_id === id(103) && x.request_status === "pending"), false);
+ok(claimed.some(x => x.request_id === id(100) && x.request_status === "approved"), false);
 ok(
   claimed.filter((x) => x.shift_id !== null).map((x) => x.shift_id),
   [id(202)],

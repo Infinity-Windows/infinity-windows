@@ -55,7 +55,9 @@ export async function reviewTimeOff(
 export async function listCrewReminders(profileId: string) {
   const { data, error } = await supabase
     .from("crew_reminders")
-    .select("id,title,body,url,created_at")
+    .select(
+      "id,title,body,url,created_at,request_status,time_off_requests(status)",
+    )
     .eq("profile_id", profileId)
     .is("shift_id", null)
     .order("created_at", { ascending: false })
@@ -64,7 +66,12 @@ export async function listCrewReminders(profileId: string) {
     if (isMissingTable(error)) return [];
     throw error;
   }
-  return data as {
+  return (data ?? []).filter((row) => {
+    const request = row.time_off_requests as unknown as {
+      status: string;
+    } | null;
+    return request?.status === row.request_status;
+  }) as {
     id: string;
     title: string;
     body: string;

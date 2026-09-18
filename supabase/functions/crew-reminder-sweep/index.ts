@@ -39,7 +39,15 @@ Deno.serve(
       });
       if (claimed.error) throw claimed.error;
       let sentCount = 0;
-      for (const row of claimed.data ?? []) {
+      const deliver = async (row: {
+        id: string;
+        profile_id: string;
+        shift_id: string | null;
+        title: string;
+        body: string;
+        url: string;
+        dedupe_key: string;
+      }) => {
         const subs = await admin
           .from("push_subscriptions")
           .select("endpoint,p256dh,auth")
@@ -77,7 +85,7 @@ Deno.serve(
         });
         if (done.error) throw done.error;
         if (sent) sentCount++;
-      }
+      };
       return jsonResponse(
         { claimed: claimed.data?.length ?? 0, sent: sentCount },
         200,

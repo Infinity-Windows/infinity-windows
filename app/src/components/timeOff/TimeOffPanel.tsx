@@ -40,6 +40,7 @@ export function TimeOffPanel({
   const manager = team && canAct && isSupervisorPlus(effectiveRole);
   const rows = useQuery({
     queryKey: ["timeOff", team ? "team" : me.data?.id],
+    refetchInterval: 60_000,
     queryFn: () => listTimeOff(team ? undefined : me.data!.id),
     enabled: !!me.data,
   });

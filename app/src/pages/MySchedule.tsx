@@ -37,6 +37,7 @@ export function MySchedule() {
 
   const schedule = useQuery({
     queryKey: ["mySchedule", myId, today, to],
+    refetchInterval: 60_000,
     queryFn: () => listMyPublished(myId!, today, to),
     enabled: Boolean(myId),
   });
