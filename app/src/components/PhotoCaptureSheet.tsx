@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Camera, ImagePlus, RefreshCw, X } from "lucide-react";
 import {
   enqueueReceiptAnswer,
@@ -74,7 +74,9 @@ type PhotoCaptureSheetProps =
       jobChangeable?: boolean;
       onClose: () => void;
       /** Fired after at least one photo is queued, so the feed can refetch. */
-      onQueued?: () => void;
+      onQueued?: (entryId: string) => void;
+      /** Close the entire Capture flow when opening the gallery. */
+      onViewGallery?: () => void;
     }
   | {
       mode: "beforeAfter";
@@ -586,8 +588,10 @@ function JobPhotoCapture({
   jobChangeable = false,
   onClose,
   onQueued,
+  onViewGallery,
 }: Extract<PhotoCaptureSheetProps, { mode: "job" }>) {
   const t = useT();
+  const queryClient = useQueryClient();
   const isReceipt = kind === "receipt";
   // This sheet is reachable from the global Capture button now, which means
   // it opens over whatever screen a person was already on rather than over a
@@ -602,7 +606,7 @@ function JobPhotoCapture({
   const [picking, setPicking] = useState(false);
   const working = busy || picking;
   const [caption, setCaption] = useState("");
-  const [queued, setQueued] = useState(0);
+  const [queuedIds, setQueuedIds] = useState<string[]>([]);
   /** Files this pick could not use, by name and by reason — see pickFiles.
    * The reason travels with the name now that there are two of them: an
    * unreadable picture and a PDF that would not open need different words and
@@ -667,7 +671,7 @@ function JobPhotoCapture({
           blob: stamped,
         });
         setFiledReceipt({ id, entryId });
-        onQueued?.();
+        onQueued?.(entryId);
         return;
       }
 
@@ -685,7 +689,7 @@ function JobPhotoCapture({
       const stamp = Date.now();
       const rand = Math.random().toString(16).slice(2, 8);
       const prefix = projectId ?? "unassigned";
-      await enqueueUpload({
+      const entryId = await enqueueUpload({
         kind,
         bucket: "install-media",
         path: `${prefix}/feed/${stamp}-${rand}.jpg`,
@@ -699,8 +703,8 @@ function JobPhotoCapture({
         takenAt: fields.takenAt,
         blob: stamped,
       });
-      setQueued((n) => n + 1);
-      onQueued?.();
+      setQueuedIds((ids) => [...ids, entryId]);
+      onQueued?.(entryId);
     } catch (e) {
       // Silent otherwise: a too-large photo (or a full offline store) would
       // just vanish with the busy spinner and no trace, same failure the
@@ -798,7 +802,7 @@ function JobPhotoCapture({
       }
 
       setFiledReceipt({ id, entryId });
-      onQueued?.();
+      onQueued?.(entryId);
     } catch (e) {
       pushToast(`Couldn't save that receipt — ${formatApiError(e)}`, "error");
     } finally {
@@ -1063,12 +1067,10 @@ function JobPhotoCapture({
             {readingPdf ? t("photo.readingPdf") : picking ? t("photo.preparing") : t("photo.stampingGps")}
           </p>
         )}
-        {queued > 0 && (
-          <p className="ok jobphoto-count">
-            {queued === 1 ? t("photo.queuedOne") : t("photo.queuedMany", { n: queued })}
-          </p>
-        )}
-        {!isReceipt && <PhotoUploadStatus projectId={projectId} />}
+        {!isReceipt && <PhotoUploadStatus projectId={projectId} entryIds={queuedIds} showGalleryLink onViewGallery={() => {
+          void queryClient.invalidateQueries({ queryKey: ["photos"] });
+          (onViewGallery ?? onClose)();
+        }} />}
         {/* One line per file that could not be used, named — a pick of ten
             where the third one fails has to say WHICH one, or the person
             re-picks all ten looking for it. */}

@@ -700,6 +700,8 @@ export interface DrainResult {
 export interface DrainOpts {
   now?: number | (() => number);
   onChange?: () => void;
+  /** A server write succeeded and its local queue entry was removed. */
+  onSent?: (entry: OutboxEntry) => void;
 }
 
 function clockOf(opts: DrainOpts): () => number {
@@ -744,6 +746,9 @@ export async function drainStore(
       await handler(entry, { getBlob: () => store.getBlob(entry.id) });
       await store.delete(entry.id);
       sent += 1;
+      // Confirmation is different from an absent entry (which may have been
+      // discarded). A UI observer must never turn a successful write into a retry.
+      try { opts.onSent?.(entry); } catch { /* best-effort observer */ }
     } catch (err) {
       // Stamp the failure from the clock NOW, not from the pass's opening
       // read. A pass can hold a 25 MB photo upload for half a minute; a write

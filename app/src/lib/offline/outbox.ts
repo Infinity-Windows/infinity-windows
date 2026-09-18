@@ -20,6 +20,7 @@ import { createDefaultStore } from "./outboxStore";
 import { logOfflineEvent } from "./telemetry";
 import { signedInEmail } from "../signedIn";
 import { recoverPhotoUpload } from "./recoverPhotoUploads";
+import { PhotoUploadReceipts } from "./photoUploadProgress";
 import {
   createShiftResolver,
   createSupabaseHandlers,
@@ -33,6 +34,11 @@ export const MAX_BLOB_BYTES = 25 * 1024 * 1024; // 25 MB
 const store: OutboxStore = createDefaultStore();
 const resolver: ShiftResolver = createShiftResolver();
 const handlers = createSupabaseHandlers(resolver);
+const photoReceipts = new PhotoUploadReceipts();
+
+export async function getPhotoUploadProgress(ids: readonly string[]) {
+  return photoReceipts.summarize(ids, await store.getAll(), signedInEmail());
+}
 
 const listeners = new Set<() => void>();
 const syncedListeners = new Set<() => void>();
@@ -160,6 +166,7 @@ export async function drain(): Promise<void> {
       drainAgain = false;
       const res = await drainUntilSettled(store, handlers, {
         onChange: () => void refresh(),
+        onSent: (entry) => photoReceipts.record(entry),
       });
       if (res.attempted > 0) {
         logOfflineEvent({
