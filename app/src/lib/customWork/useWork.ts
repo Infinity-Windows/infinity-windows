@@ -37,6 +37,8 @@ export function useWork(projectId?: string) {
   const refresh = useCallback(async () => {
     await Promise.all(
       [
+        "serviceActive",
+        "serviceVisit",
         "customWorkUnits",
         "customWorkSessions",
         "customWorkTypes",

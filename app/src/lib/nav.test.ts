@@ -116,7 +116,7 @@ describe("canAccess", () => {
     expect(canAccess("installer", "/admin")).toBe(false);
     expect(canAccess("installer", "/qc")).toBe(false);
     expect(canAccess("installer", "/analytics")).toBe(false);
-    expect(canAccess("installer", "/service")).toBe(false);
+    expect(canAccess("installer", "/service")).toBe(true);
   });
 
   it("opens Supplies to installers — they are the ones taking the caulk", () => {
@@ -125,7 +125,7 @@ describe("canAccess", () => {
     expect(canAccess("installer", "/supplies")).toBe(true);
   });
 
-  it("opens Service (warranty) to foreman+ only", () => {
+  it("opens Servicing to the entire internal crew", () => {
     expect(canAccess("foreman", "/service")).toBe(true);
     expect(canAccess("supervisor", "/service")).toBe(true);
     expect(canAccess("owner", "/service")).toBe(true);

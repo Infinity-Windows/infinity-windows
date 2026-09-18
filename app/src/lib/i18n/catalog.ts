@@ -65,6 +65,7 @@ export const SAFETY_KEYS = [
 ] as const;
 
 export const CATALOG = {
+  "servicing.title": { en: "Servicing", es: "Servicio técnico" },
   "currentWork.title": { en: "Current Work", es: "Trabajo actual" },
   "currentWork.startUnit": { en: "+ Start unit", es: "+ Iniciar unidad" },
   "currentWork.idle": { en: "Idle time", es: "Tiempo entre unidades" },

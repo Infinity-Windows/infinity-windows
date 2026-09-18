@@ -82,6 +82,13 @@ function censusScopedTables(): Record<string, string> {
  * SET NULL by the final `delete from projects`.
  */
 const CASCADE_COVERED: Record<string, string> = {
+  service_visit_units: "ON DELETE CASCADE from projects (20261017000000)",
+  service_visits: "ON DELETE CASCADE from projects (20261017000000)",
+  service_time_sessions: "ON DELETE CASCADE from projects (20261017000000)",
+  service_audit: "ON DELETE CASCADE from projects (20261017000000)",
+  service_media: "ON DELETE CASCADE from projects (20261017000000)",
+  service_job_supervisors: "ON DELETE CASCADE from projects (20261017000000)",
+
   custom_work_units: "ON DELETE CASCADE from projects (20261011000000)",
   custom_work_sessions: "ON DELETE CASCADE from projects (20261011000000)",
   custom_work_history: "ON DELETE CASCADE from projects (20261011000000)",

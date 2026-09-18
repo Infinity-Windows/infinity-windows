@@ -49,6 +49,7 @@ function hasUseT(relPath: string): boolean {
  * own file.
  */
 const ROUTE_FILES: Partial<Record<string, string[]>> = {
+  service: ["pages/servicing/Servicing.tsx"],
   "current-work": ["pages/customWork/CurrentWork.tsx"],
   // RoleLanding renders MyWork/Home/Heartbeat by rank; an installer (rank 0)
   // always lands on MyWork — that is the file this route means for THIS

@@ -337,7 +337,7 @@ export function ProjectDetail() {
             <ScopeLine counts={scope.data} stories={storiesShown} trackingOnly={trackingOnly} showDoorKinds style={{ marginTop: 2 }} />
           </div>
         </div>
-        <DirectionsButton address={project?.address} />
+        <div className="row" style={{ gap: 12, flexWrap: "wrap" }}><Link className="button-like" to={`/service?job=${projectId}`}>{t("servicing.title")}</Link><DirectionsButton address={project?.address} /></div>
       </header>
 
       <ScrollTabs className="hub-tabs" label="Project sections" activeId={tab}>
