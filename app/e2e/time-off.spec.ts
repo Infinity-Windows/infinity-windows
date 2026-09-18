@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { useSupabaseFixtures, TEST_USER } from "./support/supabaseFixtures";
+import { useSupabaseFixtures as setupSupabaseFixtures, TEST_USER } from "./support/supabaseFixtures";
 import { json, dayISO, hideWrongProjectBanner } from "./support/specHelpers";
 import type { TimeOffRequest } from "../src/lib/timeOff/model";
 async function fixtures(
@@ -7,7 +7,7 @@ async function fixtures(
   role: "installer" | "supervisor" = "installer",
   language: "en" | "es" = "en",
 ) {
-  await useSupabaseFixtures(page, { role, language });
+  await setupSupabaseFixtures(page, { role, language });
   await hideWrongProjectBanner(page);
   const requests: TimeOffRequest[] = [];
   const row = (

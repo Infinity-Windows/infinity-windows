@@ -5,7 +5,7 @@ import {
   timeOffCounts,
   type TimeOffRequest,
 } from "./model";
-import { boardChips } from "../schedule/board";
+import { boardChips, coverageReport } from "../schedule/board";
 import type { ScheduleAssignment } from "../schedule/types";
 const request = (over: Partial<TimeOffRequest> = {}): TimeOffRequest => ({
   id: "a",
@@ -88,6 +88,14 @@ describe("time off does not erase the working schedule", () => {
       ),
     ).toEqual([assignment]);
     expect(absenceOn(rows, "v", "2026-09-18")).toBeUndefined();
+  });
+  it("does not report a job as covered when its only crew is absent for the whole assignment", () => {
+    const planned = { ...assignment, members: [assignment.members[0]] };
+    const jobs = [{ id: "p", job_code: "TEST", name: "Fixture", start_date: "2026-09-18" }];
+    const absence = request({ start_date: planned.start_date, end_date: planned.end_date });
+    expect(coverageReport(jobs, availableAssignments([planned], [absence]), "2026-09-18").covered).toHaveLength(0);
+    expect(coverageReport(jobs, availableAssignments([planned], [{ ...absence, status: "canceled" }]), "2026-09-18").covered).toHaveLength(1);
+    expect(planned.members).toHaveLength(1);
   });
   it("crew board and personal schedule agree about a sick day and pending leave does not remove work", () => {
     const days = ["2026-09-17", "2026-09-18"];

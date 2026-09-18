@@ -86,6 +86,11 @@ Deno.serve(
         if (done.error) throw done.error;
         if (sent) sentCount++;
       };
+      // Bound delivery work so the sweep stays inside the database lease,
+      // even when several phones no longer have reachable subscriptions.
+      const notices = claimed.data ?? [];
+      for (let offset = 0; offset < notices.length; offset += 10)
+        await Promise.all(notices.slice(offset, offset + 10).map(deliver));
       return jsonResponse(
         { claimed: claimed.data?.length ?? 0, sent: sentCount },
         200,

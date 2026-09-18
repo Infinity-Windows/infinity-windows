@@ -1,4 +1,5 @@
 import { listTimeOff } from "../lib/timeOff/api";
+import { availableAssignments } from "../lib/timeOff/model";
 import { TimeOffPanel } from "../components/timeOff/TimeOffPanel";
 import { WorkflowHub } from "../components/workflow/WorkflowHub";
 import { PlanReview } from "../components/workflow/PlanReview";
@@ -225,7 +226,7 @@ export function Scheduling() {
   const dayMemoryByDate = useMemo(() => {
     const map = new Map<string, DayMemory>();
     if (!monthGrid) return map;
-    const assignmentsInput = loaded.map((a) => ({
+    const assignmentsInput = availableAssignments(loaded, absences.data ?? []).map((a) => ({
       id: a.id,
       kind: a.kind,
       project_id: a.project_id,
@@ -270,7 +271,7 @@ export function Scheduling() {
       );
     }
     return map;
-  }, [monthGrid, loaded, memoryShifts.data, memorySessions.data, memoryLogs.data, crew.data, projects.data]);
+  }, [monthGrid, loaded, absences.data, memoryShifts.data, memorySessions.data, memoryLogs.data, crew.data, projects.data]);
 
   /** The install assignment behind one job entry in the open day panel, if
    * any — "Edit crew" opens the real editor on it. */
@@ -304,10 +305,10 @@ export function Scheduling() {
     () =>
       coverageReport(
         (projects.data ?? []).filter((p) => p.status === "active"),
-        coverageWindow.data ?? [],
+        availableAssignments(coverageWindow.data ?? [], absences.data ?? []),
         today,
       ),
-    [projects.data, coverageWindow.data, today],
+    [projects.data, coverageWindow.data, absences.data, today],
   );
 
   const roleOf = (personId: string): "foreman" | "installer" => {
