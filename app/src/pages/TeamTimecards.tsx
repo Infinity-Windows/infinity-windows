@@ -474,7 +474,7 @@ export function TeamTimecards() {
       {entriesExportOpen && <TimeEntryExportDialog people={crew.data} fromDate={dateFieldValue(week.start)} throughDate={dateFieldValue(addDays(week.end, -1))} onClose={() => setEntriesExportOpen(false)} />}
 
       <div className="row-gap" style={{ alignItems: "center", flexWrap: "wrap" }}>
-        <button className="button-like" onClick={() => setEntriesExportOpen(true)}>{t("timeexport.title")}</button>
+        <button className="button-like" onClick={() => setEntriesExportOpen(true)}>{t("timeexport.customDates")}</button>
         <button
           className="button-like"
           onClick={() =>

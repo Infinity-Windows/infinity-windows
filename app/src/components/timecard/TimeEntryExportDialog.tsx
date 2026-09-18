@@ -87,6 +87,7 @@ export function TimeEntryExportDialog({ fromDate, throughDate, people, person, o
     {query.isFetching && <p role="status">{t("timeexport.loading")}</p>}
     {Boolean(query.error || actionError) && <p role="alert">{formatApiError(query.error ?? actionError, t("timereport.error"))}</p>}
     {!range.error && query.isSuccess && !query.isFetching && !query.error && <div className="detail-card">
+      <p><strong>{from} – {through}</strong></p>
       <strong>{durationText(total)}</strong><p>{t("timeexport.counts", { people: new Set(completed.map(s => s.profile_id)).size, entries: completed.length })}</p>
       {unresolved > 0 && <p role="status">{t("timeexport.unfinished", { n: unresolved })}</p>}
       {completed.some(s => s.status !== "approved") && <p>{t("timeexport.unapproved")}</p>}

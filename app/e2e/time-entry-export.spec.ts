@@ -49,7 +49,7 @@ for (const [width, language] of [[375,"en"],[390,"es"],[1280,"en"]] as const) {
   test(`export dates, people, CSV and printable report at ${width}px ${language}`, async ({page}) => {
     await page.setViewportSize({width,height:844}); await fixtures(page,language); await page.goto('/team-timecards');
     const es=language==='es';
-    await page.getByRole('button',{name:es?'Exportar registros de tiempo':'Export time entries',exact:true}).click();
+    await page.getByRole('button',{name:es?'Exportar fechas personalizadas':'Export custom dates',exact:true}).click();
     const dialog=page.getByRole('dialog');
     await expect(dialog).toContainText('11:30');
     await expect(dialog).toContainText(es?'1 registros sin terminar':'1 unfinished entries');
@@ -101,7 +101,7 @@ test('read errors disable export instead of producing incomplete payroll',async(
   await fixtures(page); await page.goto('/team-timecards');
   await expect(page.locator('.job-time-report')).toContainText('15.5h');
   await page.route('**/rest/v1/time_shifts**',r=>r.fulfill({status:500,contentType:'application/json',body:JSON.stringify({message:'Records unavailable'})}));
-  await page.getByRole('button',{name:'Export time entries',exact:true}).click();
+  await page.getByRole('button',{name:'Export custom dates',exact:true}).click();
   const dialog=page.getByRole('dialog'); await expect(dialog.getByRole('alert')).toBeVisible();
   await expect(dialog.getByRole('button',{name:'Download CSV',exact:true})).toBeDisabled();
 });

@@ -13062,6 +13062,11 @@ button.crew-start-message { min-height: 44px; width: 100%; text-align: left; col
 .job-time-row { padding-block: 16px; border-top: 1px solid var(--border); }
 .job-time-row p { margin: 6px 0; font-size: 13px; }
 .job-time-row summary { padding-block: 10px; cursor: pointer; }
+.job-time-total { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px 20px; border-top: 1px solid var(--border); padding-top: 16px; }
+.job-time-total-scope { display: grid; gap: 5px; min-width: 0; overflow-wrap: anywhere; }
+.job-time-total-scope > strong { font-size: 16px; line-height: 1.4; }
+.job-time-total-scope > span { font-size: 13px; }
+.job-time-total-hours { white-space: nowrap; font-size: 20px; font-variant-numeric: tabular-nums; }
 
 /* Data report filters: shared sizing for date buttons and the history link. */
 .job-hours-toolbar { display: flex; flex-wrap: wrap; gap: 8px; }
