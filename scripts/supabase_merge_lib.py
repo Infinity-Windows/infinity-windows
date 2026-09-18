@@ -714,6 +714,14 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     "custom_work_sessions": None,
     "custom_work_history": None,
     "custom_work_commands": None,
+    # UUID service visits/evidence are distinct events; supervisor mapping is per job.
+    "service_job_supervisors": ("project_id",),
+    "service_visits": None,
+    "service_visit_units": None,
+    "service_time_sessions": None,
+    "service_media": ("storage_path",),
+    "service_commands": None,
+    "service_audit": None,
     "project_labor_targets": ("project_id",),
     "project_stage_progress": ("project_id", "stage_key"),
     # Separate changes remain separate audit events, even with identical notes.

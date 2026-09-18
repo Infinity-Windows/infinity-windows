@@ -108,8 +108,12 @@ $$;
 create function public.service_supervisor() returns boolean language sql stable security definer set search_path=public,pg_temp as $$
   select public.service_internal() and exists(select 1 from profiles where id=auth.uid() and role in ('supervisor','owner'))
 $$;
-revoke all on function public.service_internal(),public.service_job_access(uuid),public.service_supervisor() from public,anon;
-grant execute on function public.service_internal(),public.service_job_access(uuid),public.service_supervisor() to authenticated;
+revoke all on function public.service_internal() from public,anon;
+grant execute on function public.service_internal() to authenticated;
+revoke all on function public.service_job_access(uuid) from public,anon;
+grant execute on function public.service_job_access(uuid) to authenticated;
+revoke all on function public.service_supervisor() from public,anon;
+grant execute on function public.service_supervisor() to authenticated;
 
 alter table public.service_job_supervisors enable row level security;
 revoke all on public.service_job_supervisors from public,anon,authenticated;

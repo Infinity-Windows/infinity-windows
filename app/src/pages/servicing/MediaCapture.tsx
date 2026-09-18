@@ -235,6 +235,7 @@ export function ServiceMediaCapture({
         <label className="sv-upload">
           <Video size={18} />
           {tx("recordVideo")}
+          {/* photo-input-on-purpose: video-only recording; separate video library input remains available above. Photos use usePhotoPicker. */}
           <input
             type="file"
             accept="video/*"

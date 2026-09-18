@@ -811,9 +811,9 @@ export function Servicing() {
                   ))}
                 </div>
                 {boss && visit.status === "completed" && (
-                  <details
-                    onToggle={(e) => {
-                      if (e.currentTarget.open)
+                  <details>
+                    <summary
+                      onClick={() =>
                         setAllocation(
                           visit.allocation ?? {
                             manufacturer: 0,
@@ -821,10 +821,11 @@ export function Servicing() {
                             installer: 0,
                             reason: "",
                           },
-                        );
-                    }}
-                  >
-                    <summary>{tx("review")}</summary>
+                        )
+                      }
+                    >
+                      {tx("review")}
+                    </summary>
                     <p>{tx("reviewHelp")}</p>
                     <div className="sv-fields">
                       {(["manufacturer", "customer", "installer"] as const).map(
