@@ -108,6 +108,7 @@ export function TeamTimecards() {
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [entriesExportOpen, setEntriesExportOpen] = useState(false);
+  const [jobExportOpen, setJobExportOpen] = useState(false);
   const [search, setSearch] = useState("");
   /** Which runaway shift the office is entering a real finish time for. */
   const [finishingId, setFinishingId] = useState<string | null>(null);
@@ -472,9 +473,11 @@ export function TeamTimecards() {
       </div>}
       {rangeMode === "all" && <p className="muted">{t("timereport.allTimeReview")}</p>}
       {entriesExportOpen && <TimeEntryExportDialog people={crew.data} fromDate={dateFieldValue(week.start)} throughDate={dateFieldValue(addDays(week.end, -1))} onClose={() => setEntriesExportOpen(false)} />}
+      {jobExportOpen && <TimeEntryExportDialog byJob people={crew.data} fromDate={dateFieldValue(week.start)} throughDate={dateFieldValue(addDays(week.end, -1))} onClose={() => setJobExportOpen(false)} />}
 
       <div className="row-gap" style={{ alignItems: "center", flexWrap: "wrap" }}>
         <button className="button-like" onClick={() => setEntriesExportOpen(true)}>{t("timeexport.customDates")}</button>
+        <button className="button-like" onClick={() => setJobExportOpen(true)}>{t("timeexport.jobsTitle")}</button>
         <button
           className="button-like"
           onClick={() =>

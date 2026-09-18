@@ -13114,6 +13114,16 @@ button.crew-start-message { min-height: 44px; width: 100%; text-align: left; col
 .time-export-people .row-gap { margin-block: 12px; }
 .time-export-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .time-export-actions button { min-height: 48px; }
+.time-export-job-totals { padding: 0; list-style: none; }
+.time-export-job-totals li { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding-block: 10px; border-top: 1px solid var(--border); }
+.time-export-job-totals span { min-width: 0; overflow-wrap: anywhere; }
+.time-export-job-totals strong { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.job-timecard-export { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px; margin-block: 16px; }
+.job-timecard-export > div { flex: 1 1 260px; min-width: 0; }
+.job-timecard-export h2 { margin: 0 0 8px; font-size: 18px; }
+.job-timecard-export p { margin: 0; line-height: 1.5; }
+.job-timecard-export > button { min-height: 48px; }
+.job-billing-reminder { border-left: 3px solid var(--accent); padding-left: 16px; }
 @media (max-width: 560px) { .time-export-actions { grid-template-columns: 1fr; } }
 @media (min-width: 860px) {
   .ui-sheet.time-entry-export.sheet-enter { width: min(760px, calc(100vw - 64px)); transform: translate(-50%, -50%); }

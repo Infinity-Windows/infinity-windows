@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TimeShift } from "./timeclock";
-import { buildTimeEntriesCsv, buildTimeEntryRows, durationText, timeEntriesHtml } from "./timeEntryExport";
+import { buildTimeEntriesCsv, buildTimeEntryRows, durationText, groupTimeEntriesByJob, timeEntriesHtml } from "./timeEntryExport";
 const shift = (over: Partial<TimeShift> = {}): TimeShift => ({
   id: "shift-1", profile_id: "person-1", project_id: "job-1", cost_code_id: "code-1",
   clock_in_at: "2026-09-01T13:00:00Z", clock_out_at: "2026-09-01T21:30:00Z",
@@ -42,5 +42,28 @@ describe("detailed time-entry exports", () => {
     expect(html.match(/<section>/g)).toHaveLength(2);
     expect(html).toContain("Total recorded time: 16:00");
     expect(html).not.toContain("<script>bad()");
+  });
+  it("groups job exports by job identity, totals net labor once, and retains each person's detail", () => {
+    const rows = [shift({ projects: { job_code: "B", name: "Same name" } }),
+      shift({ id: "s2", profile_id: "p2", profiles: { display_name: "Bea Installer" }, project_id: "job-2", projects: { job_code: "A", name: "Same name" } }),
+      shift({ id: "s3", profile_id: "p2", profiles: { display_name: "Bea Installer" }, projects: { job_code: "B", name: "Same name" } }),
+      shift({ id: "s4", clock_out_at: null }), shift({ id: "s5", status: "voided" })];
+    const groups = groupTimeEntriesByJob(rows);
+    expect(groups.map(g => [g.id, g.seconds, g.shifts.length])).toEqual([["job-2", 28800, 1], ["job-1", 57600, 2]]);
+    expect(buildTimeEntryRows(rows, "America/Denver", "", true).slice(1).map(r => r[8])).toEqual(["A", "B", "B"]);
+    const html = timeEntriesHtml(rows, "All time", "America/Denver", "", true);
+    expect(html).toContain("<h1>Job timecards</h1>");
+    expect(html.match(/class="job-heading"/g)).toHaveLength(2);
+    expect(html).toContain("Total recorded time: 24:00");
+    expect(html).toContain("Bea Installer");
+    expect(html).toContain("Installed frames");
+  });
+  it("escapes job headings and keeps unassigned time separate from named jobs", () => {
+    const rows = [shift({ projects: { job_code: "<script>", name: "A & B" } }), shift({ id: "s2", project_id: null, projects: null })];
+    expect(groupTimeEntriesByJob(rows)).toHaveLength(2);
+    const html = timeEntriesHtml(rows, "All time", "America/Denver", "", true);
+    expect(html).toContain("&lt;script&gt; · A &amp; B");
+    expect(html).not.toContain("<script>");
+    expect(html).toContain("Unassigned time");
   });
 });
