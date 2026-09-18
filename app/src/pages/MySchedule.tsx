@@ -1,3 +1,4 @@
+import { TimeOffPanel } from "../components/timeOff/TimeOffPanel";
 import { myPlanTripLinks } from "../lib/workflow/api";
 import { BackChip } from "../components/BackChip";
 import { Fragment, useMemo, useState } from "react";
@@ -92,6 +93,7 @@ export function MySchedule() {
         </div>
         <BackChip fallback="/" label={t("mySchedule.home")} />
       </header>
+      <TimeOffPanel />
 
       {connectedTrips.error && <QueryError error={connectedTrips.error} onRetry={() => void connectedTrips.refetch()} label={t("workflow.tripLinksError")} />}
       {schedule.isError && (

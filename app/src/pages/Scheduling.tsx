@@ -1,3 +1,5 @@
+import { listTimeOff } from "../lib/timeOff/api";
+import { TimeOffPanel } from "../components/timeOff/TimeOffPanel";
 import { WorkflowHub } from "../components/workflow/WorkflowHub";
 import { PlanReview } from "../components/workflow/PlanReview";
 import { loadPlanLinks } from "../lib/workflow/api";
@@ -177,7 +179,8 @@ export function Scheduling() {
   const vehicles = useQuery({ queryKey: ["vehicles"], queryFn: listVehicles });
   const vehicleLinks = useQuery({ queryKey: ["vehicleLinks"], queryFn: listAllVehicleLinks });
 
-  const loaded = useMemo(() => assignments.data ?? [], [assignments.data]);
+  const absences = useQuery({ queryKey: ["timeOff", "team"], queryFn: () => listTimeOff() });
+  const loaded = useMemo(() => (assignments.data ?? []).map(a => ({...a,time_off:absences.data??[]})), [assignments.data,absences.data]);
   const conflictIds = useMemo(() => conflictingAssignmentIds(loaded.filter(a => a.status !== "canceled")), [loaded]);
 
   // ---- Calendar memory (C2/C3): Month view's worked-chips + day panel ---
@@ -727,6 +730,7 @@ export function Scheduling() {
         </div>
         <BackChip fallback="/" label="Home" />
       </header>
+      <TimeOffPanel team />
 
       {bannerConflicts.length > 0 && (
         <div className="sched-conflict-banner" role="alert">
@@ -954,6 +958,7 @@ export function Scheduling() {
             </div>
           )}
           <CrewBoard
+            absences={absences.data ?? []}
             weekDays={weekDays}
             lanes={lanes}
             assignments={loaded}

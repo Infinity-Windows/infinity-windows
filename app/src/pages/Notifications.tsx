@@ -1,3 +1,4 @@
+import { listCrewReminders } from "../lib/timeOff/api";
 import { BackChip } from "../components/BackChip";
 import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -60,6 +61,8 @@ export function Notifications() {
   const admin = isSupervisorPlus(effectiveRole);
   const id = me.data?.id;
   const todayISO = new Date().toISOString().slice(0, 10);
+
+  const leaveNotices = useQuery({queryKey:["crewReminders",id],queryFn:()=>listCrewReminders(id!),enabled:!!id,refetchInterval:60_000});
 
   const memos = useQuery({
     queryKey: ["memosToConfirm", id],
@@ -167,7 +170,7 @@ export function Notifications() {
     },
   });
 
-  const notes: Note[] = [];
+  const notes: Note[] = (leaveNotices.data??[]).map(r=>({id:`leave-${r.id}`,dot:"info",title:r.title,sub:r.body,to:r.url}));
 
   for (const m of memos.data ?? []) {
     notes.push({

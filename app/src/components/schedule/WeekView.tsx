@@ -1,3 +1,4 @@
+import { availableMembers } from "../../lib/timeOff/model";
 import { Plus, Truck } from "lucide-react";
 import {
   addDaysISO,
@@ -61,7 +62,7 @@ export function WeekView({
                     {a.project?.job_code ?? "Job"} · {a.project?.name ?? ""}
                   </span>
                   <span className="sched-block-sub">
-                    {a.members.length} crew
+                    {availableMembers(a, day).length} crew
                     {a.start_time ? ` · ${formatScheduleTime(a.start_time, a.end_time)}` : ""}
                     {a.start_date === day && a.end_date > day ? " · starts" : ""}
                   </span>

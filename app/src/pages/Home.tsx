@@ -1,3 +1,4 @@
+import { TimeOffPanel } from "../components/timeOff/TimeOffPanel";
 import { CrewStartBar } from "../components/schedule/CrewStartBar";
 import { useQuery } from "@tanstack/react-query";
 import { SaveJobsStrip } from "../components/offline/SaveJobOffline";
@@ -283,6 +284,7 @@ export function Home() {
 
       <CrewStartBar />
       <ClockInBlock />
+      <TimeOffPanel compact />
 
       {/* S6: the same Tomorrow line + week chips as My Work — reads the
           signed-in person's own schedule, per the three-landings rule. */}

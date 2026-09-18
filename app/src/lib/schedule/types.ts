@@ -19,6 +19,7 @@ export interface AssignmentMember {
 
 /** The schedulable unit: a crew on a project for a day range. */
 export interface ScheduleAssignment {
+  time_off?: import("../timeOff/model").TimeOffRequest[];
   id: string;
   /** Null on kind='delivery' — a truck can carry many jobs. */
   project_id: string | null;

@@ -1,3 +1,4 @@
+import { availableMembers } from "../timeOff/model";
 // The crew board's math: Horizon's week-grid ideas (person lanes, job chips,
 // coverage, seeding) computed over Infinity's own schedule blocks.
 //
@@ -76,7 +77,7 @@ export function boardChips(
       if (day < first || day > last) continue;
       // Delivery entries render on their own strip, never in the job pivot.
       if (a.kind === "delivery" || !a.project_id) continue;
-      for (const m of a.members) {
+      for (const m of availableMembers(a, day)) {
         chips.push({
           assignmentId: a.id,
           projectId: a.project_id,
@@ -313,7 +314,7 @@ export function dedupeProposals(
       const a = e as ScheduleAssignment;
       if (!a.project_id) continue;
       for (const day of enumerateDays(a.start_date, a.end_date)) {
-        for (const m of a.members) {
+        for (const m of availableMembers(a, day)) {
           have.add(seedKey({ personId: m.profile_id, projectId: a.project_id, day }));
         }
       }

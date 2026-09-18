@@ -30,3 +30,6 @@ bullet. Keep that shape.
   `verify_jwt = false`).
 - `summon-warning-sweep` — the same shape again: parameterless, idempotent,
   decides everything from the database (`verify_jwt = false`).
+- `crew-reminder-sweep` — parameterless one-minute cron target. SQL decides
+  due lunch breaks and committed time-off notices; leases serialize delivery.
+  No request body, recipient or message is accepted (`verify_jwt = false`).

@@ -1,0 +1,189 @@
+.time-off {
+  margin-block: 16px;
+  padding: 20px;
+}
+.time-off h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 21px;
+}
+.time-off h3 {
+  margin: 0 0 10px;
+  font-size: 17px;
+}
+.time-off p {
+  margin: 6px 0 12px;
+}
+.time-off-heading,
+.time-off-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.time-off-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.time-off-actions button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 44px;
+}
+.time-off-form {
+  border: 1px solid var(--line, #44342e);
+  background: var(--bg);
+  border-radius: 16px;
+  padding: 20px;
+  margin-top: 16px;
+  max-width: 720px;
+}
+.time-off label {
+  display: grid;
+  gap: 7px;
+  font-weight: 600;
+  min-width: 0;
+}
+.time-off input,
+.time-off select {
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  box-sizing: border-box;
+  font-size: 16px;
+}
+.time-off-dates,
+.time-off-filters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-block: 16px;
+}
+.time-off-filters {
+  max-width: 460px;
+}
+.time-off-counts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-block: 12px 20px;
+}
+.time-off-counts > div {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 16px;
+  border-radius: 12px;
+  background: var(--surface-2, rgba(128, 128, 128, 0.08));
+  border: 1px solid var(--line, #44342e);
+}
+.time-off-counts strong {
+  font-size: 30px;
+  font-variant-numeric: tabular-nums;
+}
+.time-off-counts small {
+  color: var(--muted);
+}
+.time-off-away {
+  border-left: 3px solid #ff472f;
+  padding: 8px 14px;
+  margin-top: 12px;
+  background: rgba(255, 71, 47, 0.08);
+  border-radius: 6px;
+}
+.time-off-row {
+  border-top: 1px solid var(--line, #44342e);
+  padding: 16px 0;
+  align-items: flex-start;
+}
+.time-off-status {
+  display: inline-block;
+  padding: 4px 9px;
+  border-radius: 20px;
+  font-size: 13px;
+  background: rgba(128, 128, 128, 0.15);
+}
+.time-off-status.is-pending {
+  color: #d99a12;
+}
+.time-off-success {
+  color: #16a56a;
+}
+.time-off-history summary {
+  cursor: pointer;
+  padding-block: 12px;
+  font-weight: 600;
+}
+.time-off button {
+  min-height: 44px;
+}
+@media (max-width: 600px) {
+  .time-off {
+    padding: 16px;
+  }
+  .time-off-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .time-off-form .time-off-heading {
+    flex-direction: row;
+  }
+  .time-off-form {
+    padding: 14px;
+  }
+  .time-off-counts > div {
+    padding: 12px 9px;
+  }
+  .time-off-counts span {
+    min-height: 38px;
+  }
+  .time-off-row {
+    flex-wrap: wrap;
+  }
+}
+.lunch-reminder {
+  position: fixed;
+  bottom: 90px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 80;
+  width: min(680px, calc(100vw - 24px));
+  box-sizing: border-box;
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  background: var(--panel, #1b110d);
+  color: var(--text, #fff);
+  border: 2px solid #ff472f;
+  padding: 18px;
+  border-radius: 18px;
+  box-shadow: 0 12px 40px #0006;
+}
+.lunch-reminder p {
+  margin: 6px 0 0;
+}
+.lunch-reminder button {
+  min-height: 44px;
+  flex-shrink: 0;
+}
+@media (max-width: 600px) {
+  .lunch-reminder {
+    flex-wrap: wrap;
+  }
+  .lunch-reminder > div {
+    flex: 1;
+  }
+  .lunch-reminder button {
+    width: 100%;
+  }
+}
+
+.time-off-details > summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding-block: 14px;
+}

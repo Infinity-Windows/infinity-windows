@@ -1,3 +1,5 @@
+import { absenceOn, type TimeOffRequest } from "../../lib/timeOff/model";
+import { useT } from "../../lib/i18n";
 // The crew board: Horizon's week grid over Infinity's schedule blocks.
 //
 // Rows are people (foremen banded first) or jobs — one toggle, same data.
@@ -32,6 +34,7 @@ export interface ChipMove {
 }
 
 interface CrewBoardProps {
+  absences?: TimeOffRequest[];
   weekDays: string[];
   lanes: BoardLane[];
   assignments: ScheduleAssignment[];
@@ -52,6 +55,7 @@ function dayHeader(iso: string, i: number): string {
 }
 
 export function CrewBoard({
+  absences = [],
   weekDays,
   lanes,
   assignments,
@@ -64,6 +68,7 @@ export function CrewBoard({
   onCreateAt,
   onOpenAssignment,
 }: CrewBoardProps) {
+  const t=useT();
   const [pivot, setPivot] = useState<"crew" | "job">("crew");
   /** The chip a phone tap selected — the move sheet's subject. */
   const [sheetChip, setSheetChip] = useState<BoardChip | null>(null);
@@ -145,7 +150,7 @@ export function CrewBoard({
         if (dragChip) e.preventDefault();
       }}
       onDrop={() => {
-        if (!dragChip) return;
+        if (!dragChip || absenceOn(absences,personId,day)) return;
         if (dragChip.day !== day || dragChip.personId !== personId) {
           onMoveChip({ chip: dragChip, toDay: day, toPersonId: personId });
         }
@@ -153,7 +158,8 @@ export function CrewBoard({
       }}
     >
       {children}
-      {canEdit && (
+      {absenceOn(absences,personId,day) && <span className="time-off-status">{t(`timeOff.kind.${absenceOn(absences,personId,day)!.kind}`)}</span>}
+      {canEdit && !absenceOn(absences,personId,day) && (
         <button
           type="button"
           className="cb-plus"
