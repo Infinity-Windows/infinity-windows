@@ -353,7 +353,8 @@ test("a server refusal appears beside the photo and can be retried without takin
   const attempts: Record<string,unknown>[]=[];
   await page.route("**/rest/v1/attachments**",async route=>{
     if(route.request().method()!=="POST")return json(route,[]);
-    attempts.push(route.request().postDataJSON());
+    const body=route.request().postDataJSON();
+    attempts.push(...(Array.isArray(body)?body:[body]));
     if(refused)return route.fulfill({status:400,contentType:"application/json",body:JSON.stringify({code:"42P10",message:"there is no unique or exclusion constraint matching the ON CONFLICT specification"})});
     return json(route,[]);
   });
@@ -364,6 +365,8 @@ test("a server refusal appears beside the photo and can be retried without takin
   refused=false;
   await dialog.getByRole("button",{name:"Retry photo uploads"}).click();
   await expect.poll(()=>attempts.length).toBe(2);
+  expect(attempts[0].client_id).toEqual(expect.any(String));
+  expect(attempts[0].storage_path).toEqual(expect.stringContaining("install-media/"));
   expect(attempts[1].client_id).toBe(attempts[0].client_id);
   expect(attempts[1].storage_path).toBe(attempts[0].storage_path);
   await expect(dialog.getByText("Photos needing an upload retry: 1")).toHaveCount(0);
