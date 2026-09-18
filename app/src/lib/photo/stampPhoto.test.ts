@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   canDecodePhoto,
   capturePhotoMeta,
@@ -156,6 +156,23 @@ describe("canDecodePhoto", () => {
   // The pick path asks this before it queues anything, now that "Upload files"
   // really does open the phone's library, Files app and Drive.
   const notAPicture = new Blob(["this is not a picture"], { type: "image/jpeg" });
+
+  it("bounds both stalled decoders and releases a bitmap that arrives after timeout", async () => {
+    vi.useFakeTimers();
+    let finish!: (bitmap: ImageBitmap) => void;
+    const close = vi.fn();
+    vi.stubGlobal("createImageBitmap", () => new Promise<ImageBitmap>((resolve) => { finish = resolve; }));
+    class StalledImage { onload = null; onerror = null; src = ""; }
+    vi.stubGlobal("Image", StalledImage);
+    try {
+      const result = canDecodePhoto(notAPicture);
+      await vi.advanceTimersByTimeAsync(16_001);
+      expect(await result).toBe(false);
+      finish({ close } as unknown as ImageBitmap);
+      await Promise.resolve();
+      expect(close).toHaveBeenCalledOnce();
+    } finally { vi.unstubAllGlobals(); vi.useRealTimers(); }
+  });
 
   it("says yes when this environment cannot decode anything at all", async () => {
     // jsdom has no createImageBitmap, and the <img> fallback never fires load

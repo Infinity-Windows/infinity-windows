@@ -9,7 +9,9 @@
 // as weak signal for twenty seconds, and the screen falls back to whatever it
 // last saved, with a line saying so. A request that succeeds clears the mark.
 //
-// Only the database and auth calls get a deadline. A planset download or an
+// Database, auth and signed-link requests get a short deadline; photo uploads
+// get two minutes so a stalled upload cannot hold the entire offline queue.
+// A planset download or an
 // AI answer legitimately takes longer than any sensible deadline, and
 // aborting a 4 MB sheet at fifteen seconds on a bad link would be the very
 // failure this exists to end.
@@ -18,6 +20,7 @@ import { logOfflineEvent } from "./telemetry";
 
 export const WEAK_SIGNAL_WINDOW_MS = 20_000;
 export const REQUEST_TIMEOUT_MS = 15_000;
+export const PHOTO_UPLOAD_TIMEOUT_MS = 120_000;
 
 let lastWeakAt = 0;
 let lastOkAt = 0;
@@ -71,9 +74,11 @@ export function resetWeakSignal(): void {
   lastOkAt = 0;
 }
 
-/** Which requests get a deadline: the database and auth, never storage or functions. PURE. */
+/** Signed links are small JSON requests, not file downloads. One stuck link
+ * used to hold the whole photo gallery's Promise.all spinner indefinitely. */
 export function shouldTime(url: string): boolean {
-  return url.includes("/rest/v1/") || url.includes("/auth/v1/");
+  return url.includes("/rest/v1/") || url.includes("/auth/v1/") ||
+    url.includes("/storage/v1/object/sign/");
 }
 
 export interface TimedFetchDeps {
@@ -104,14 +109,18 @@ export async function timedFetch(
   init?: RequestInit,
   deps?: Partial<TimedFetchDeps>,
 ): Promise<Response> {
+  const url = urlOf(input);
+  const method = (init?.method ?? (typeof Request !== "undefined" && input instanceof Request ? input.method : "GET")).toUpperCase();
+  const photoUpload = url.includes("/storage/v1/object/install-media/") &&
+    (method === "POST" || method === "PUT");
   const d: TimedFetchDeps = {
     fetch: deps?.fetch ?? globalThis.fetch.bind(globalThis),
-    timeoutMs: deps?.timeoutMs ?? REQUEST_TIMEOUT_MS,
+    timeoutMs: deps?.timeoutMs ?? (photoUpload ? PHOTO_UPLOAD_TIMEOUT_MS : REQUEST_TIMEOUT_MS),
     now: deps?.now ?? Date.now,
     onTimeout: deps?.onTimeout ?? markWeakSignal,
     onOk: deps?.onOk ?? markRequestOk,
   };
-  if (!shouldTime(urlOf(input))) {
+  if (!photoUpload && !shouldTime(url)) {
     const res = await d.fetch(input, init);
     d.onOk(d.now());
     return res;

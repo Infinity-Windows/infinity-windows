@@ -432,6 +432,7 @@ const MENU_DEF: MenuSection[] = [
     items: [
       { to: "/", label: "Home", Icon: LayoutGrid },
       { to: "/current-work", label: "Current Work", Icon: Clock },
+      { to: "/service", label: "Servicing", Icon: Wrench },
       { to: "/my-work", label: "My Work", Icon: ListChecks },
       { to: "/projects", label: "Jobs", Icon: LayoutGrid },
       // canAccess gates this to supervisor+ (owner ask, 2026-08-26).
@@ -490,7 +491,6 @@ const MENU_DEF: MenuSection[] = [
     Icon: AlertTriangle,
     items: [
       { to: "/issues", label: "Issues", Icon: AlertTriangle },
-      { to: "/service", label: "Servicing", Icon: Wrench },
       { to: "/qc", label: "Quality", Icon: CheckCircle2 },
     ],
   },
@@ -580,6 +580,8 @@ for (const section of MENU_DEF) {
  */
 const INSTALLER_WORK_PATHS: RoutePath[] = [
   "/",
+  "/current-work",
+  "/service",
   "/projects",
   "/my-schedule",
   "/warehouse",

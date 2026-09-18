@@ -41,6 +41,7 @@ import { useT, type TKey } from "../../lib/i18n";
 import { canUseDailyLogs } from "../../lib/dailyLogAccess";
 import type { CrewRole } from "../../lib/install/types";
 import { PhotoCaptureSheet } from "../PhotoCaptureSheet";
+import { PhotoUploadStatus } from "../photos/PhotoUploadStatus";
 import { DailyLogDialog } from "../dailyLogs/DailyLogDialog";
 import { localDateISO } from "../../lib/dailyLogDay";
 import { useNearbyJob } from "../../lib/capture/useNearbyJob";
@@ -403,6 +404,7 @@ export function CaptureSheet({ open, onClose, role }: CaptureSheetProps) {
               <p className="muted">
                 {t("capture.photo.toJob", { job: jobLabel ?? t("capture.job.yourJob") })}
               </p>
+              <PhotoUploadStatus projectId={projectId} />
               <div className="capture-grid">
                 <button
                   type="button"

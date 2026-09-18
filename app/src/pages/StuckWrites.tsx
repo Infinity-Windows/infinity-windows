@@ -17,6 +17,7 @@ import {
   subscribe,
 } from "../lib/offline/outbox";
 import type { OutboxOp } from "../lib/offline/outbox-core";
+import { isPhotoConflictIndexError } from "../lib/offline/recoverPhotoUploads";
 import {
   discardFailedInstall,
   listFailedInstalls,
@@ -190,7 +191,7 @@ export function StuckWrites() {
       id: e.id,
       label: t(OP_LABEL_KEY[e.op]),
       when: e.createdAt,
-      detail: e.lastError,
+      detail: isPhotoConflictIndexError(e.lastError) ? t("photo.databaseRetry") : e.lastError,
       source: "write" as const,
     })),
     ...(installsQ.data ?? []).map((r) => ({

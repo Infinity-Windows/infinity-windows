@@ -2100,6 +2100,29 @@ export const CATALOG = {
     en: "1 photo queued — syncing in the background.",
     es: "1 foto en cola — sincronizando en segundo plano.",
   },
+  "photo.cameraStarting": { en: "Starting camera…", es: "Iniciando cámara…" },
+  "photo.uploadNeedsAttention": {
+    en: "Photos needing an upload retry: {n}",
+    es: "Fotos que necesitan volver a subir: {n}",
+  },
+  "photo.uploadRetryHint": {
+    en: "These photos have not reached the gallery. Retry the upload or review the saved entries. Keep this app's data until they finish uploading.",
+    es: "Estas fotos no han llegado a la galería. Reintenta subirlas o revisa los registros guardados. Conserva los datos de la app hasta que terminen de subir.",
+  },
+  "photo.retryUploads": { en: "Retry photo uploads", es: "Reintentar subir fotos" },
+  "photo.databaseRetry": {
+    en: "Forge could not file this photo because of a database setup error. Keep the saved upload and try again after updating the app.",
+    es: "Forge no pudo archivar esta foto por un error de configuración. Conserva la carga guardada e inténtalo después de actualizar la app.",
+  },
+  "photo.reviewUploads": { en: "Review saved uploads", es: "Revisar cargas guardadas" },
+  "photo.cameraTimeout": {
+    en: "The camera did not start. Try again, or use Upload files to choose a photo.",
+    es: "La cámara no se inició. Intenta de nuevo o usa Subir archivos para elegir una foto.",
+  },
+  "photo.captureFailed": {
+    en: "Couldn't capture that photo. Try again, or use Upload files.",
+    es: "No se pudo tomar la foto. Intenta de nuevo o usa Subir archivos.",
+  },
   "photo.queuedMany": {
     en: "{n} photos queued — syncing in the background.",
     es: "{n} fotos en cola — sincronizando en segundo plano.",
