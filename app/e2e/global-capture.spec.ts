@@ -211,12 +211,15 @@ test("a photo captured with a job picked lands in the queue carrying that job", 
   // The upload handler writes `attachments` after the storage put; capture the
   // row so "assigned to a job" is asserted on the write, not on the UI.
   const rows: Record<string, unknown>[] = [];
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
   await page.route("**/rest/v1/attachments**", async (route) => {
     if (route.request().method() === "POST") {
       const body = route.request().postDataJSON();
       for (const r of Array.isArray(body) ? body : [body]) {
         rows.push(r as Record<string, unknown>);
       }
+      await gate;
       return route.fulfill({ status: 201, contentType: "application/json", body: "[]" });
     }
     return json(route, []);
@@ -233,6 +236,14 @@ test("a photo captured with a job picked lands in the queue carrying that job", 
 
   await expect.poll(() => rows.length, { timeout: 30_000 }).toBeGreaterThan(0);
   expect(rows[0]).toMatchObject({ project_id: BLACK22.projectId, kind: "photo" });
+  const photoDialog = page.getByRole("dialog", { name: "Add job photos" });
+  await expect(photoDialog.getByText("1 photo waiting to upload", { exact: true })).toBeVisible();
+  await photoDialog.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(sheet(page).getByText("1 photo waiting to upload", { exact: true })).toBeVisible();
+  release();
+  await expect(sheet(page).getByText("1 photo uploaded to job", { exact: true })).toBeVisible();
+  await expect(sheet(page).getByText(/syncing in the background|waiting to upload/)).toHaveCount(0);
+
 
   mkdirSync(SHOTS, { recursive: true });
   await page.screenshot({ path: `${SHOTS}/photo-with-job-390.png` });

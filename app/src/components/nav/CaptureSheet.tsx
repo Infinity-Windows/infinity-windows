@@ -21,7 +21,7 @@
 //    hangs off nothing is a row the database refuses — see TILES below.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Camera,
   FolderOpen,
@@ -148,6 +148,7 @@ interface JobChip {
 /** Quick-capture sheet opened by the Capture (+) FAB and the desktop rail. */
 export function CaptureSheet({ open, onClose, role }: CaptureSheetProps) {
   const t = useT();
+  const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const { profileId, shift } = useClock();
@@ -157,7 +158,7 @@ export function CaptureSheet({ open, onClose, role }: CaptureSheetProps) {
   const [flow, setFlow] = useState<Flow>(null);
   /** A tile waiting on the job question before it can start. */
   const [pending, setPending] = useState<TileKey | null>(null);
-  const [queued, setQueued] = useState(0);
+  const [queuedIds, setQueuedIds] = useState<string[]>([]);
   const primedRef = useRef(false);
   const sheetRef = useRef<HTMLDivElement>(null);
   // The trap follows the TILE view only: each flow below renders its own
@@ -203,7 +204,7 @@ export function CaptureSheet({ open, onClose, role }: CaptureSheetProps) {
       setShowList(false);
       setFlow(null);
       setPending(null);
-      setQueued(0);
+      setQueuedIds([]);
       primedRef.current = false;
     }
   }, [open]);
@@ -347,12 +348,13 @@ export function CaptureSheet({ open, onClose, role }: CaptureSheetProps) {
         // The job here was primed from the open shift, not typed by the
         // person — so the receipt's follow-up still asks, with this filled in.
         jobChangeable
-        onQueued={() => setQueued((n) => n + 1)}
+        onQueued={(id) => setQueuedIds((ids) => [...ids, id])}
+        onViewGallery={onClose}
         onClose={() => {
           // A receipt closes the whole sheet: its own follow-up question is
           // the confirmation. A photo earns one more beat — "it's saved,
           // here's where it went" — so the person can see it landed.
-          if (activeFlow === "photo" && queued > 0) return setFlow("photoDone");
+          if (activeFlow === "photo" && queuedIds.length > 0) return setFlow("photoDone");
           onClose();
         }}
       />
@@ -396,20 +398,16 @@ export function CaptureSheet({ open, onClose, role }: CaptureSheetProps) {
         <div className="capture-content">
           {activeFlow === "photoDone" ? (
             <div className="capture-done">
-              <p className="ok">
-                {queued === 1
-                  ? t("capture.photo.queuedOne")
-                  : t("capture.photo.queuedMany", { n: queued })}
-              </p>
               <p className="muted">
                 {t("capture.photo.toJob", { job: jobLabel ?? t("capture.job.yourJob") })}
               </p>
-              <PhotoUploadStatus projectId={projectId} />
+              <PhotoUploadStatus projectId={projectId} entryIds={queuedIds} />
               <div className="capture-grid">
                 <button
                   type="button"
                   className="capture-tile"
                   onClick={() => {
+                    void queryClient.invalidateQueries({ queryKey: ["photos"] });
                     navigate(projectId ? `/photos?project=${projectId}` : "/photos");
                     onClose();
                   }}

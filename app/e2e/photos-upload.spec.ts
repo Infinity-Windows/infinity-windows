@@ -362,6 +362,7 @@ test("a server refusal appears beside the photo and can be retried without takin
   await uploadInput(page).setInputFiles(pngFile("kept-photo.png"));
   const dialog=page.getByRole("dialog",{name:"Add job photos"});
   await expect(dialog.getByText("Photos needing an upload retry: 1")).toBeVisible();
+  await expect(dialog.getByText(/uploaded to job/)).toHaveCount(0);
   refused=false;
   await dialog.getByRole("button",{name:"Retry photo uploads"}).click();
   await expect.poll(()=>attempts.length).toBe(2);
@@ -370,6 +371,7 @@ test("a server refusal appears beside the photo and can be retried without takin
   expect(attempts[1].client_id).toBe(attempts[0].client_id);
   expect(attempts[1].storage_path).toBe(attempts[0].storage_path);
   await expect(dialog.getByText("Photos needing an upload retry: 1")).toHaveCount(0);
+  await expect(dialog.getByText("1 photo uploaded to job", { exact: true })).toBeVisible();
 });
 
 test("updating recovers the photographer's old index failure once with its original upload key",async({page})=>{
@@ -420,10 +422,43 @@ test("a stalled photo upload releases the queue and retries the saved picture", 
   await page.clock.install();
   await openTheSheet(page);
   await uploadInput(page).setInputFiles(pngFile("stalled-photo.png"));
-  await expect(page.getByText("1 photo queued", { exact: false })).toBeVisible();
+  await expect(page.getByText("1 photo waiting to upload", { exact: true })).toBeVisible();
   expect(rows).toHaveLength(0);
   await page.clock.fastForward(120_100);
   await page.clock.fastForward(60_000);
   await expect.poll(() => rows.length).toBe(1);
   expect(rows[0]).toMatchObject({ project_id: BLACK22.projectId, created_by: TEST_USER.email });
+});
+
+test("three photos change from waiting to uploaded and open their job gallery", async ({ page }) => {
+  await useSupabaseFixtures(page, { role: "installer" });
+  await useCaptureStorage(page);
+  await stubGeolocationDenied(page);
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const rows: Record<string, unknown>[] = [];
+  await page.route("**/rest/v1/attachments**", async route => {
+    if (route.request().method() === "POST") {
+      await gate;
+      const body = route.request().postDataJSON();
+      for (const row of Array.isArray(body) ? body : [body]) rows.push({ ...row, id: row.client_id, created_at: new Date().toISOString() });
+      return json(route, []);
+    }
+    return json(route, rows);
+  });
+  await openTheSheet(page);
+  await uploadInput(page).setInputFiles([pngFile("one.png"), pngFile("two.png"), pngFile("three.png")]);
+  const dialog = page.getByRole("dialog", { name: "Add job photos" });
+  await expect(dialog.getByText("3 photos waiting to upload", { exact: true })).toBeVisible();
+  await expect(dialog.getByText(/uploaded to job/)).toHaveCount(0);
+  release();
+  await expect(dialog.getByText("3 photos uploaded to job", { exact: true })).toBeVisible();
+  await expect(dialog.getByText(/waiting to upload|syncing in the background/)).toHaveCount(0);
+  await expect(page.locator(".sync-pill-text:visible").filter({ hasText: /^All synced$/ }).first()).toBeVisible();
+  mkdirSync(SHOTS, { recursive: true });
+  await page.screenshot({ path: `${SHOTS}/confirmed-390.png` });
+  await dialog.getByRole("link", { name: "View job photos" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.locator(".photo-card")).toHaveCount(3);
+  await expect(page).toHaveURL(new RegExp(`/photos\\?project=${BLACK22.projectId}`));
 });
