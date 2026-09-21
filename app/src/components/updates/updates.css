@@ -1,0 +1,23 @@
+.app-updates { margin: 18px auto; padding: clamp(18px, 3vw, 28px); width: calc(100% - 32px); max-width: 1100px; box-sizing: border-box; border: 1px solid var(--border, #4c3027); border-top: 3px solid var(--accent, #ff482e); border-radius: 20px; background: var(--surface, #1c110e); color: var(--text, #f8eee9); }
+.app-updates-history { width: 100%; }
+.app-updates-heading { display:flex; align-items:center; gap:14px; margin-bottom:18px; }
+.app-updates-emblem { display:grid; place-items:center; flex-shrink:0; width:46px; height:46px; border-radius:14px; color:var(--accent, #ff482e); background:color-mix(in srgb, var(--accent, #ff482e) 12%, transparent); }
+.app-updates h2 { margin:0; font-size:24px; }
+.app-updates-heading p { margin:4px 0 0; font-size:14px; opacity:.75; }
+.app-updates-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr)); padding:0; margin:0; gap:14px; list-style:none; }
+.app-updates-list li { min-width:0; padding:16px; border:1px solid var(--border, #4c3027); border-radius:14px; }
+.app-update-meta { display:flex; align-items:center; gap:6px; font-size:12px; opacity:.75; flex-wrap:wrap; }
+.app-update-meta time { margin-left:auto; }
+.app-updates h3 { font-size:18px; line-height:1.35; margin:12px 0 8px; overflow-wrap:anywhere; }
+.app-updates-list p { font-size:15px; line-height:1.6; margin:0; overflow-wrap:anywhere; white-space:pre-line; }
+.app-update-link { display:inline-flex; align-items:center; gap:5px; min-height:44px; margin-top:5px; }
+.app-updates footer { display:flex; align-items:center; flex-wrap:wrap; gap:16px; margin-top:18px; }
+.app-updates footer button { display:flex; align-items:center; justify-content:center; gap:8px; min-height:46px; min-width:120px; }
+.app-updates footer a { font-size:14px; min-height:44px; display:flex; align-items:center; }
+@media(max-width:600px) { .app-updates {width:calc(100% - 24px);margin:12px auto;} .app-updates-history {width:100%;} .app-updates h2 {font-size:22px;} }
+
+.app-updates summary { cursor:pointer; min-height:44px; padding-right:22px; position:relative; list-style:none; }
+.app-updates summary::-webkit-details-marker {display:none;}
+.app-updates summary::after {content:"+";position:absolute;right:0;top:10px;color:var(--accent);font-size:22px;}
+.app-updates details[open] summary::after {content:"−";}
+.app-updates summary:focus-visible {outline:2px solid var(--accent);outline-offset:4px;border-radius:4px;}

@@ -234,3 +234,13 @@ implementation tickets. The owner's direction is iPhone-first web design with
 optional computer layouts, using the [busybusy review](docs/busybusy-design-review.md).
 Track completed slices separately from planned work; preserve concurrent installer
 changes and the existing timekeeping/permission boundaries.
+
+## Tell the crew what changed
+
+Every crew-visible release must include plain-language English and Spanish
+announcements with explicit role audiences. Add the published rows in a new
+`app_release_notes` migration and their immutable IDs to
+`app/src/lib/appUpdates.ts` (`INCLUDED_UPDATE_IDS`). Follow
+[`docs/app-updates.md`](docs/app-updates.md). Never announce an unshipped feature,
+copy internal commit messages, or expose supervisor-only changes to installers.
+Infrastructure-only changes need no crew announcement.

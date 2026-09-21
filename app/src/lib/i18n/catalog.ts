@@ -4599,6 +4599,17 @@ export const CATALOG = {
   // (lib/knowledge.ts, lib/brain/*) and its written answers stay English:
   // translating a keyword-matched install-knowledge corpus is a separate,
   // much bigger effort than this UI sweep.
+  "updates.title": { en: "What’s new in Forge", es: "Novedades de Forge" },
+  "updates.history": { en: "App update history", es: "Historial de actualizaciones" },
+  "updates.subtitle": { en: "Improvements for your work. Tap a title for details.", es: "Mejoras para tu trabajo. Toca un título para ver detalles." },
+  "updates.fix": { en: "Fixed", es: "Corregido" },
+  "updates.improvement": { en: "Improved", es: "Mejorado" },
+  "updates.open": { en: "Take a look", es: "Ver más" },
+  "updates.dismiss": { en: "Got it", es: "Entendido" },
+  "updates.historyLink": { en: "Read updates again in Settings", es: "Leer de nuevo en Ajustes" },
+  "updates.empty": { en: "No updates for your role yet.", es: "Aún no hay actualizaciones para tu función." },
+  "updates.loading": { en: "Loading updates…", es: "Cargando actualizaciones…" },
+  "updates.unavailable": { en: "Updates could not load. Reconnect and refresh to try again.", es: "No se pudieron cargar las actualizaciones. Conéctate y actualiza para intentar de nuevo." },
   "ask.report.title": { en: "Hours report", es: "Informe de horas" },
   "ask.report.jobSummary": { en: "Job summary", es: "Resumen de obra" },
   "ask.report.recorded": { en: "Recorded after breaks", es: "Registradas sin descansos" },

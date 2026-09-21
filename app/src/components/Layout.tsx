@@ -1,3 +1,4 @@
+import { AppUpdates } from "./updates/AppUpdates";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
@@ -371,6 +372,7 @@ export function Layout() {
               </button>
             </div>
           ) : null}
+          {location.pathname !== "/settings" && <AppUpdates />}
           <Outlet />
         </main>
       </div>
