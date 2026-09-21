@@ -17,3 +17,10 @@ test('schedule publication requires fresh review and records the actual result',
  await ask(page,schedule);const card=page.getByRole('region',{name:'Review crew schedule'});await expect(card.getByRole('button',{name:'Publish this schedule'})).toHaveCount(0);await card.getByRole('button',{name:'Review / refresh availability'}).click();await expect(card).toContainText('Alex Lead');await expect(card.getByRole('button',{name:'Publish this schedule'})).toBeDisabled();expect(published).toBe(0);await card.getByRole('button',{name:'Review / refresh availability'}).click();await expect(card.getByRole('button',{name:'Publish this schedule'})).toBeEnabled();await card.getByRole('button',{name:'Publish this schedule'}).click();await expect(card.getByRole('status')).toContainText('Schedule published');expect(published).toBe(1);
 });
 test('installer cannot use a stale job-proposal card to create a job',async({page})=>{await useSupabaseFixtures(page,{role:'installer'});await ask(page,proposal);await expect(page.getByRole('button',{name:'Create job'})).toBeDisabled();});
+test('Spanish phone review keeps long notes readable and supports the keyboard',async({page})=>{
+ await page.setViewportSize({width:375,height:812});await useSupabaseFixtures(page,{role:'supervisor',language:'es'});
+ await ask(page,{...proposal,details:{...proposal.details,notes:'Instalar las ventanas de la fachada norte y revisar el acceso antes de descargar. '.repeat(10)}});
+ const card=page.getByRole('region',{name:'Revisar trabajo nuevo'});await expect(card.getByText('Meta de horas')).toBeVisible();await expect(card).toContainText('fachada norte');
+ await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+ await page.route('**/rest/v1/rpc/ai_create_job',r=>r.fulfill({json:{projectId:job}}));const create=card.getByRole('button',{name:'Crear trabajo'});await create.focus();await page.keyboard.press('Enter');await expect(card.getByRole('status')).toContainText('Trabajo creado');
+});
