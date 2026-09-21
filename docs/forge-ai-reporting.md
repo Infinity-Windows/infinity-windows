@@ -12,7 +12,8 @@ Existing scheduling draft tools remain available. This release does not add job 
 
 ## Data and permissions
 
-- A real authenticated, active internal profile is required; partner and service-role callers cannot use Ask.
+- Off-site availability does not disable AI: `active` is not used as a login authorization gate.
+- A real authenticated internal profile with no retirement or access revocation is required; partner and service-role callers cannot use Ask.
 - New operational reads use the caller JWT and database row security, never the service-role client. Installer reports force the caller's own profile ID. Team reporting and whole-job summaries require foreman or above.
 - The owner's existing AI Spend role threshold, call quotas and company budget still apply. Enabling the UI path does not override those settings.
 - Vault retrieval is owner-only until document-level authorization is defined. The pre-existing bounded live context still uses its existing role filters.
