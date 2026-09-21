@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import ts from "typescript";
 
-function harness(options: { auth?: boolean; partner?: boolean; readable?: boolean; enrichmentFails?: boolean; transcriptionFails?: boolean; deferred?: boolean; role?: string; createdBy?: string } = {}) {
+function harness(options: { auth?: boolean; partner?: boolean; active?: boolean; revoked?: boolean; retired?: boolean; readable?: boolean; enrichmentFails?: boolean; transcriptionFails?: boolean; deferred?: boolean; role?: string; createdBy?: string } = {}) {
   let handler!: (req: Request) => Promise<Response>;
   const updates: { table: string; values: Record<string, unknown>; id?: string }[] = [];
   const tasks: Promise<unknown>[] = [];
@@ -22,7 +22,7 @@ function harness(options: { auth?: boolean; partner?: boolean; readable?: boolea
       maybeSingle: () => query,
       then: (resolve: (result: unknown) => void) => {
         if (values) { updates.push({ table, values, id }); return Promise.resolve(resolve({ data: null, error: null })); }
-        const data = table === "profiles" ? { id: "crew", role: options.role ?? "foreman", active: true, is_partner: options.partner }
+        const data = table === "profiles" ? { id: "crew", role: options.role ?? "foreman", active: options.active ?? true, is_partner: options.partner, access_revoked_at: options.revoked ? "2026-09-21" : null, retired_at: options.retired ? "2026-09-21" : null }
           : table === "attachments" ? id ? options.readable === false ? null : attachment : []
           : { difficulty: "Installer's own words", quality_grade: 4 };
         return Promise.resolve(resolve({ data, error: null }));
@@ -65,6 +65,12 @@ function harness(options: { auth?: boolean; partner?: boolean; readable?: boolea
 }
 
 describe("install memo endpoint", () => {
+  it("allows a signed-in installer to transcribe after leaving the site", async () => {
+    const h = harness({ role: "installer", active: false });
+    expect((await h.run()).status).toBe(200); await h.background();
+    expect(h.whisper).toHaveBeenCalledTimes(1);
+    expect(h.updates.some(x => x.values.transcript === "Installed four windows.")).toBe(true);
+  });
   it("accepts an uploader's normalized WAV while leaving the original recording untouched", async () => {
     const h=harness({role:"installer"}), body=new FormData();body.append("attachment_id","saved-audio");body.append("transcription_audio",new Blob(["PCM audio"],{type:"audio/wav"}),"memo.wav");
     expect((await h.run(body)).status).toBe(200); await h.background();
@@ -98,7 +104,7 @@ describe("install memo endpoint", () => {
     expect(h.download).toHaveBeenCalledWith("crew/actual.mp4");
     expect(h.updates.filter(x => x.table === "install_events").every(x => x.id === "actual-event")).toBe(true);
   });
-  for (const [options, status] of [[{ auth: false }, 401], [{ partner: true }, 403], [{ readable: false }, 200]] as const)
+  for (const [options, status] of [[{ auth: false }, 401], [{ partner: true }, 403], [{ revoked: true }, 403], [{ retired: true }, 403], [{ readable: false }, 200]] as const)
     it(`does not send audio for inaccessible callers/records: ${JSON.stringify(options)}`, async () => {
       const h = harness(options); expect((await h.run()).status).toBe(status); expect(h.whisper).not.toHaveBeenCalled(); expect(h.updates).toHaveLength(0);
     });

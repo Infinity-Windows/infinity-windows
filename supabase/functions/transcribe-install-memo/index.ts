@@ -112,8 +112,10 @@ Deno.serve(withSentry("transcribe-install-memo", async (req) => {
     let callerRole = "";
     if (callerId) {
       const { data: profile, error } = await caller.from("profiles")
-        .select("id,role,active,is_partner,access_revoked_at,retired_at").eq("id", callerId).maybeSingle();
-      if (error || !profile || !profile.active || profile.is_partner || profile.access_revoked_at || profile.retired_at)
+        .select("id,role,is_partner,access_revoked_at,retired_at").eq("id", callerId).maybeSingle();
+      // profiles.active means "on site today", not login access. A crew member
+      // can finish a memo after leaving the site; revoked/removed logins cannot.
+      if (error || !profile || profile.is_partner || profile.access_revoked_at || profile.retired_at)
         return jsonResponse({ error: "access_unavailable" }, 403, cors);
       callerRole = profile.role;
     }
