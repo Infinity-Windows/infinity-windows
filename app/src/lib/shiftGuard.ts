@@ -22,6 +22,7 @@
  *   Never silently erase hours they did.
  */
 
+import { SHIFT_CAP_HOURS } from "../../../supabase/functions/_shared/timeMath.ts";
 import type { TimeShift } from "./timeclock";
 import { elapsedWorkSeconds } from "./timeclock";
 
@@ -38,7 +39,7 @@ export const SHIFT_LONG_HOURS = 12;
  * runs sixteen hours, so beyond it the timer is measuring absence, not work.
  * We stop counting and ask for the real finish time.
  */
-export const SHIFT_CAP_HOURS = 16;
+export { SHIFT_CAP_HOURS } from "../../../supabase/functions/_shared/timeMath.ts";
 
 export const SHIFT_LONG_SECONDS = SHIFT_LONG_HOURS * 3600;
 export const SHIFT_CAP_SECONDS = SHIFT_CAP_HOURS * 3600;

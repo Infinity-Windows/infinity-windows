@@ -1,4 +1,7 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { REPORTING_TOOLS, REPORTING_SYSTEM_PROMPT, validateZone, dateInZone, type AskArtifact } from "../_shared/askReporting.ts";
+import { reportingExecutor } from "./operations.ts";
+import { openaiAsk } from "../_shared/openaiAsk.ts";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import {
   corsHeaders,
   embed,
@@ -9,7 +12,6 @@ import {
 import {
   ANTHROPIC_API_KEY,
   ANTHROPIC_MODEL,
-  anthropicChat,
   anthropicToolChat,
   type AnthropicUsage,
 } from "../_shared/anthropic.ts";
@@ -50,12 +52,15 @@ import { UNEXPECTED_ERROR, reportCaughtError, withSentry } from "../_shared/sent
 // below-rank caller gets the same clean tool refusal a human trying a hidden
 // button would get, rather than the tools quietly not existing for them
 // (PERMISSION MIRROR).
-const SYSTEM_PROMPT = ASK_SYSTEM_PROMPT + SCHEDULING_SYSTEM_PROMPT;
+const SYSTEM_PROMPT = ASK_SYSTEM_PROMPT + SCHEDULING_SYSTEM_PROMPT + REPORTING_SYSTEM_PROMPT;
 
 /** Plain progress lines for the doors (A4): what the Ask page shows while the
  * model works, built from the tool calls it actually made. */
 function toolActivityLine(name: string, input: unknown): string {
   switch (name) {
+    case "find_report_records": return "Looked up people and jobs";
+    case "get_hours_report": return "Prepared an hours report";
+    case "get_job_summary": return "Read the job summary sources";
     case "get_scheduling_picture":
       return "Reading the week…";
     case "draft_assignments": {
@@ -84,7 +89,7 @@ interface HistoryTurn {
  * re-fetched per caller. Best-effort — degrades to "nothing is trashed"
  * rather than breaking the answer. */
 async function loadTrashedProjectIds(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient,
 ): Promise<Set<string>> {
   try {
     const { data } = await supabase.from("projects").select("id").not("deleted_at", "is", null);
@@ -99,7 +104,7 @@ async function loadTrashedProjectIds(
  * membership test and is reused to scope BOTH an installer's issues and their
  * job chat to jobs they can actually reach. Best-effort — degrades to empty. */
 async function loadMyProjectIds(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient,
   userId: string,
   trashedIds: Set<string>,
 ): Promise<Set<string>> {
@@ -142,7 +147,7 @@ async function loadMyProjectIds(
 /** Best-effort compact snapshot of live app data for grounding. Every query
  * degrades to empty so a missing table/column never breaks the answer. */
 async function loadLiveContext(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient,
   userId: string | null,
 ): Promise<LiveContext> {
   const live: LiveContext = {};
@@ -675,7 +680,7 @@ async function loadLiveContext(
 // exactly the caller's own power, never more.
 // ---------------------------------------------------------------------------
 
-type SupabaseLike = ReturnType<typeof createClient>;
+type SupabaseLike = SupabaseClient;
 
 /** The caller's own role_rank() (owner 3 / supervisor 2 / foreman 1 /
  * installer 0), queried on the caller-scoped client so `auth.uid()` resolves
@@ -1196,15 +1201,23 @@ Deno.serve(withSentry("ask", async (req) => {
   }
 
   const auth = await verifyCaller(req);
-  if (auth.status === "unauthorized") {
+  if (auth.status !== "ok" || auth.user.id === "service_role") {
     return jsonResponse({ error: "unauthorized" }, 401, cors);
   }
-  const userId = auth.status === "ok" ? auth.user.id : null;
+  const userId = auth.user.id;
+  const scopedClient = callerSupabaseClient(req);
+  if (!scopedClient) return jsonResponse({ error: "Sign in again to use Forge AI." }, 401, cors);
+  const partner = await scopedClient.rpc("is_partner_user");
+  const profile = await scopedClient.from("profiles").select("id,active").eq("id", userId).maybeSingle();
+  if (partner.error || partner.data !== false || profile.error || !profile.data?.active) {
+    return jsonResponse({ error: "Forge AI requires an active internal crew account." }, 403, cors);
+  }
+  const rank = await callerRank(scopedClient);
 
   try {
     const body = await req.json().catch(() => ({}));
     const question = String(body.question ?? "").trim();
-    if (!question) {
+    if (!question || question.length > 8000) {
       return jsonResponse({ error: "question is required" }, 400, cors);
     }
     const history: HistoryTurn[] = Array.isArray(body.history)
@@ -1213,21 +1226,25 @@ Deno.serve(withSentry("ask", async (req) => {
             (h: unknown): h is HistoryTurn =>
               !!h &&
               typeof (h as HistoryTurn).content === "string" &&
+              (h as HistoryTurn).content.length <= 16000 &&
               ((h as HistoryTurn).role === "user" ||
                 (h as HistoryTurn).role === "assistant"),
           )
           .slice(-8)
       : [];
 
-    // Without the Anthropic key this function cannot spend a cent, so there is
-    // nothing to meter — and metering anyway would charge somebody's daily
-    // allowance for a call that was always free. Hence this sits BEFORE the
-    // guard, and answers the way a refusal does: an empty answer, which is
-    // already the client's signal to serve the company brain. The brain is
-    // where the answer comes from either way, so this is a silent fall-through
-    // rather than the 500 it used to be.
-    if (!ANTHROPIC_API_KEY) {
-      return jsonResponse({ answer: "", sources: [] }, 200, cors);
+    // Provider selection is server-only. A missing key returns before metering.
+    const provider = Deno.env.get("ASK_AI_PROVIDER") ?? "anthropic";
+    const useOpenAI = provider === "openai";
+    const openaiKey = useOpenAI ? Deno.env.get("OPENAI_API_KEY") ?? "" : "";
+    const model = useOpenAI ? Deno.env.get("ASK_OPENAI_MODEL") ?? "gpt-5.6-terra" : ANTHROPIC_MODEL;
+    if (useOpenAI && !["gpt-5.6-terra", "gpt-6-astra"].includes(model)) {
+      return jsonResponse({ error: "The selected Ask model needs a reviewed spend configuration." }, 503, cors);
+    }
+    const timeZone = validateZone(body.timeZone ?? "America/Denver");
+    const artifacts: AskArtifact[] = [];
+    if (useOpenAI ? !openaiKey : !ANTHROPIC_API_KEY) {
+      return jsonResponse({ answer: "", sources: [], note: "The live assistant is not configured. Installation notes remain available offline." }, 200, cors);
     }
 
     // ---- Spend guard -------------------------------------------------------
@@ -1235,10 +1252,8 @@ Deno.serve(withSentry("ask", async (req) => {
     // everything that cannot. Nothing above this line spends, so nothing above
     // it is metered. Two facts make that the whole ballgame:
     //
-    //  - A question the company brain can answer never reaches this function.
-    //    AskInfinity.tsx tries cached live data, then the bundled brain, and
-    //    only calls here when both came up empty (see step 3 there). Free
-    //    answers therefore cost nobody a question from their daily 40.
+    //  - Operational requests bypass cached/keyword answers so totals are fresh.
+    //    Static installation notes can still be answered locally for free.
     //  - A question that arrives when we cannot pay returns above, unmetered.
     //
     // A refusal is a 200 with an empty `answer` and a `note`, never an error, so
@@ -1251,6 +1266,8 @@ Deno.serve(withSentry("ask", async (req) => {
     const gate = await reserveAiSpend(meter, {
       userId: userId === "service_role" ? null : userId,
       functionName: "ask",
+      spendOverride: { kind: "question", provider: useOpenAI ? "openai" : "anthropic", model,
+        estimateMicros: model === "gpt-6-astra" ? 3_000_000 : 600_000 },
     });
     if (gate.alert) {
       await notifyOwnersOfSpend(gate.alert, gate.alertProfileIds, {
@@ -1274,81 +1291,70 @@ Deno.serve(withSentry("ask", async (req) => {
     let live: LiveContext = {};
     if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
       const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+      // Vault search has no document ACL contract yet. Limit it to owners.
       if (Deno.env.get("OPENAI_API_KEY")) {
-        try {
-          const [queryEmbedding] = await embed([question]);
-          const { data } = await supabase.rpc("match_knowledge_chunks", {
-            query_embedding: queryEmbedding,
-            match_count: 8,
-            min_similarity: 0.0,
-          });
-          chunks = shapeMatches(data);
-        } catch (_e) {
-          // no-op: embeddings/RAG unavailable → answer from live data only.
-          chunks = [];
+        if (rank >= 3) {
+          try {
+            const [queryEmbedding] = await embed([question]);
+            const { data } = await supabase.rpc("match_knowledge_chunks", {
+              query_embedding: queryEmbedding,
+              match_count: 8,
+              min_similarity: 0.0,
+            });
+            chunks = shapeMatches(data);
+          } catch (_e) {
+            // no-op: embeddings/RAG unavailable → answer from live data only.
+            chunks = [];
+          }
         }
       }
       live = await loadLiveContext(supabase, userId);
     }
 
-    // (d) ground Claude with the assembled context. Wave A2: the scheduling
-    // toolset is offered whenever the caller has a real JWT to scope a
-    // client to (never for a service_role/unconfigured caller, which keeps
-    // today's plain-chat behavior exactly). See the header comment above
-    // buildSchedulingExecutor for why THAT client, not the service-role one
-    // used above, is what makes the supervisor-rank gate real.
+    // All operational tools use the caller-scoped client and explicit role gates.
     const contextBlock = buildContextBlock(chunks, live);
     const messages = buildAnthropicMessages(
       history,
       buildAskUserMessage(question, contextBlock),
     );
-    const schedulingCallerId = userId && userId !== "service_role" ? userId : null;
-    const scopedClient = schedulingCallerId ? callerSupabaseClient(req) : null;
 
     let usage: AnthropicUsage | null = null;
     let answer: string;
     let toolActivity: string[] = [];
     try {
-      if (scopedClient && schedulingCallerId) {
-        const rank = await callerRank(scopedClient);
-        const result = await anthropicToolChat({
-          system: SYSTEM_PROMPT,
-          messages,
-          tools: SCHEDULING_TOOLS,
-          executeTool: buildSchedulingExecutor(scopedClient, schedulingCallerId, rank),
-        });
-        answer = result.text;
-        usage = result.usage;
-        toolActivity = result.toolCalls.map((c) => toolActivityLine(c.name, c.input));
-        if (!answer && result.truncated) {
-          // The round-trip ceiling hit mid-tool-use. Whatever draft_assignments
-          // already committed is real (each call writes as it goes) — it just
-          // never got narrated, so say that rather than hand back silence.
-          answer =
-            "I got partway through that plan and ran out of room to finish " +
-            "explaining it. Check Scheduling for what's drafted so far — " +
-            "nothing has published.";
-        }
-      } else {
-        answer = await anthropicChat({
-          system: ASK_SYSTEM_PROMPT,
-          messages,
-          onUsage: (u) => {
-            usage = u;
-          },
-        });
+      const schedule = buildSchedulingExecutor(scopedClient, userId, rank);
+      const reporting = reportingExecutor(scopedClient, userId, rank, timeZone, artifacts);
+      const tools = [...SCHEDULING_TOOLS, ...REPORTING_TOOLS];
+      const executeTool = (name: string, input: unknown) => REPORTING_TOOLS.some(t => t.name === name)
+        ? reporting(name, input) : schedule(name, input);
+      const options = {
+        system: SYSTEM_PROMPT + `\nReport time zone: ${timeZone}. Current date: ${dateInZone(new Date().toISOString(), timeZone)}.`,
+        messages, tools, executeTool,
+        onUsage: (u: AnthropicUsage) => { usage = u; },
+      };
+      const result = useOpenAI
+        ? await openaiAsk({ ...options, apiKey: openaiKey, model })
+        : await anthropicToolChat(options);
+      answer = result.text;
+      usage = result.usage;
+      toolActivity = result.toolCalls.map((c) => toolActivityLine(c.name, c.input));
+      if (!answer && result.truncated) {
+        answer = "I reached the response limit. Any report cards below are complete snapshots. " +
+          "If you requested scheduling changes, check Scheduling for saved drafts; nothing has published.";
       }
     } catch (e) {
-      // Refund the money, keep the call count: a client stuck in a retry loop is
-      // the runaway this guards against, and it must still run out of quota.
-      await releaseAiSpend(meter, gate.reservationId, "provider_failed", false);
+      // Charge completed rounds even if a later provider request fails.
+      // If no usage was returned, release the reservation but keep the call count.
+      if (usage) await settleAiSpend(meter, gate.reservationId, usage, model);
+      else await releaseAiSpend(meter, gate.reservationId, "provider_failed", false);
       throw e;
     }
-    await settleAiSpend(meter, gate.reservationId, usage, ANTHROPIC_MODEL);
+    await settleAiSpend(meter, gate.reservationId, usage, model);
 
     return jsonResponse(
       {
         answer,
+        artifacts,
         sources: dedupeSources(chunks),
         ...(toolActivity.length > 0 ? { toolActivity } : {}),
       },

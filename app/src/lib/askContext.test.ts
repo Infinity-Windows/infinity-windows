@@ -168,10 +168,11 @@ describe("ASK_SYSTEM_PROMPT — access-aware, grounded, defense in depth", () =>
     expect(p).toContain("cite");
   });
 
-  it("tells the model the context is already role-filtered and not to reveal what it wasn't given", () => {
+  it("requires authorized sources and fresh tools without inferring access from missing context", () => {
     const p = ASK_SYSTEM_PROMPT.toLowerCase();
     expect(p).toContain("role");
-    expect(p).toContain("filtered");
+    expect(p).toContain("tools enforce role and record access");
+    expect(p).toContain("not a complete ledger or an authorization decision");
     expect(p).toContain("financial");
     expect(p).toMatch(/not\b.*(speculate|infer|reveal|invent)/);
   });

@@ -1,3 +1,6 @@
+import type { AskArtifact } from "../../../supabase/functions/_shared/askReporting.ts";
+import { ReportCard } from "../components/ask/ReportCard";
+import { isOperationalAsk } from "../lib/askRouting";
 import { BackChip } from "../components/BackChip";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
@@ -10,7 +13,6 @@ import { currentCatalog, refreshCatalogCache } from "../lib/brain/catalogCache";
 import { logAskedQuestion } from "../lib/brain/askLog";
 import type { BrainHit, CatalogType } from "../lib/brain/types";
 import type { Profile, ProjectOpening } from "../lib/install/types";
-import { isForemanPlus } from "../lib/install/types";
 import type { Project } from "../lib/types";
 import type { Issue } from "../lib/issues";
 import type { ScheduleAssignment } from "../lib/schedule/types";
@@ -19,6 +21,7 @@ import type { Trip } from "../lib/travel/types";
 import { useT } from "../lib/i18n";
 
 interface ChatMsg {
+  artifacts?: AskArtifact[];
   who: "me" | "infinity";
   text: string;
   /** Citations from the cloud path. */
@@ -126,7 +129,6 @@ export function AskInfinity() {
     { who: "infinity", text: t("ask.greeting") },
   ]);
   const [thinking, setThinking] = useState(false);
-  const profile = queryClient.getQueryData<Profile>(["myProfile"]);
   const threadEnd = useRef<HTMLDivElement>(null);
   const location = useLocation();
 
@@ -165,6 +167,8 @@ export function AskInfinity() {
   // much bigger effort than this UI sweep (see the S3b report).
   const suggestions = useMemo(
     () => [
+      { label: t("ask.report.suggestHours"), query: t("ask.report.suggestHours") },
+      { label: t("ask.report.suggestJob"), query: t("ask.report.suggestJob") },
       { label: t("ask.suggestion.singleHung"), query: "Single hung tips" },
       { label: t("ask.suggestion.flashing"), query: "What is flashing?" },
       { label: t("ask.suggestion.caulkBottom"), query: "Do I caulk the bottom?" },
@@ -183,7 +187,7 @@ export function AskInfinity() {
       .slice(1)
       .map((m) => ({
         role: m.who === "me" ? ("user" as const) : ("assistant" as const),
-        content: m.text,
+        content: m.text + (m.artifacts?.length ? "\nReport filters/IDs for follow-up (re-query before answering): " + JSON.stringify(m.artifacts.map(a => a.kind === "time_report" ? { scope:a.scope,people:a.people,jobs:a.jobs } : { project:a.project })) : ""),
       }))
       .slice(-8);
 
@@ -196,7 +200,8 @@ export function AskInfinity() {
     const run = async (): Promise<ChatMsg> => {
       // 1) Live job data the app already has cached — schedule, next window,
       //    my truck. No network needed and no model involved.
-      const live = liveAnswer(q, gatherLiveData());
+      const operational = isOperationalAsk(q, messages.some(m => Boolean(m.artifacts?.length)));
+      const live = operational ? null : liveAnswer(q, gatherLiveData());
       if (live) {
         void logAskedQuestion(q, { kind: "answers", hits: [] }, { online });
         return { who: "infinity", text: live };
@@ -206,22 +211,23 @@ export function AskInfinity() {
       //    always free, and incapable of making something up.
       const outcome = askBrain(index, q);
       void logAskedQuestion(q, outcome, { online });
-      if (outcome.kind === "answers") return brainMessage(outcome);
+      if (outcome.kind === "answers" && !operational) return brainMessage(outcome);
 
       // 3) Only when the brain has nothing written down, and only when the
       //    cloud AI is actually configured, offer what it can add. It is never
       //    a prerequisite for a correct answer and is skipped entirely with no
-      //    key, offline, or for installers.
+      //    key or offline. The server applies the company AI budget and role floor.
       let limitNote: string | undefined;
-      if (shouldUseLLM({ online, supabaseConfigured }) && isForemanPlus(profile?.role)) {
+      if (shouldUseLLM({ online, supabaseConfigured })) {
         try {
-          const { answer, sources, note, toolActivity } = await askInfinity(q, history);
-          if (answer) return { who: "infinity", text: answer, sources, toolActivity };
+          const { answer, sources, note, toolActivity, artifacts } = await askInfinity(q, history);
+          if (answer || artifacts?.length) return { who: "infinity", text: answer, sources, toolActivity, artifacts };
           limitNote = note;
         } catch {
-          // Cloud unavailable — the honest local message below stands.
+          limitNote = t("ask.report.cloudError");
         }
       }
+      if (operational) return { who: "infinity", text: limitNote || t(online ? "ask.report.cloudError" : "ask.report.offline") };
       return brainMessage(outcome, limitNote);
     };
 
@@ -268,6 +274,7 @@ export function AskInfinity() {
             >
               {m.text}
             </div>
+            {m.artifacts?.map(artifact => <ReportCard key={artifact.id} artifact={artifact}/>)}
             {m.hits && m.hits.length > 0 && (
               <p className="ask-sources muted">{t("ask.from", { source: m.hits[0].entry.source })}</p>
             )}

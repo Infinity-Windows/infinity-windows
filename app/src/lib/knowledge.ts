@@ -1,3 +1,4 @@
+import type { AskArtifact } from "../../../supabase/functions/_shared/askReporting.ts";
 // Client seam for the Infinity AI knowledge base (vault RAG). The pure logic
 // (chunking, hashing, retrieval shaping, prompt assembly, the fallback
 // decision) lives in the runtime-agnostic shared module so the browser, the
@@ -64,6 +65,7 @@ async function functionError(error: unknown): Promise<Error> {
 }
 
 export interface AskResult {
+  artifacts?: AskArtifact[];
   answer: string;
   sources: KnowledgeSource[];
   /**
@@ -91,7 +93,8 @@ export async function askInfinity(
   history: Array<{ role: "user" | "assistant"; content: string }> = [],
 ): Promise<AskResult> {
   const { data, error } = await supabase.functions.invoke("ask", {
-    body: { question, history },
+    body: { question, history, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone },
+    signal: AbortSignal.timeout(120000),
   });
   if (error) throw error;
   if (data?.error) throw new Error(String(data.error));
@@ -100,6 +103,7 @@ export async function askInfinity(
     : [];
   return {
     answer: String(data?.answer ?? "").trim(),
+    artifacts: Array.isArray(data?.artifacts) ? data.artifacts.filter((a: AskArtifact) => a && ["time_report", "job_summary"].includes(a.kind)).slice(0, 4) : [],
     sources: Array.isArray(data?.sources) ? (data.sources as KnowledgeSource[]) : [],
     ...(data?.limited ? { limited: true } : {}),
     ...(typeof data?.note === "string" && data.note ? { note: data.note } : {}),

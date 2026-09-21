@@ -1,3 +1,5 @@
+import { shiftHours } from "../../../supabase/functions/_shared/timeMath.ts";
+export { currentBreakSeconds, elapsedWorkSeconds, shiftHours } from "../../../supabase/functions/_shared/timeMath.ts";
 import { supabase } from "./supabase";
 import type { GeoFix } from "./geo";
 import type { JobMode } from "./types";
@@ -1095,21 +1097,6 @@ export async function endBreak(shiftId: string): Promise<TimeShift> {
   return data as TimeShift;
 }
 
-/** Effective break seconds including any break currently in progress. */
-export function currentBreakSeconds(s: TimeShift, now = Date.now()): number {
-  const running = s.break_started_at
-    ? Math.max(0, Math.floor((now - new Date(s.break_started_at).getTime()) / 1000))
-    : 0;
-  return (s.break_seconds ?? 0) + running;
-}
-
-/** Live worked seconds for an open shift: wall time minus all break time. */
-export function elapsedWorkSeconds(s: TimeShift, now = Date.now()): number {
-  const end = s.clock_out_at ? new Date(s.clock_out_at).getTime() : now;
-  const gross = Math.max(0, Math.floor((end - new Date(s.clock_in_at).getTime()) / 1000));
-  return Math.max(0, gross - currentBreakSeconds(s, now));
-}
-
 /** Format seconds as H:MM:SS for the live timer. */
 export function formatClock(totalSeconds: number): string {
   const s = Math.max(0, Math.floor(totalSeconds));
@@ -1118,12 +1105,6 @@ export function formatClock(totalSeconds: number): string {
   const sec = s % 60;
   const pad = (n: number) => n.toString().padStart(2, "0");
   return `${h}:${pad(m)}:${pad(sec)}`;
-}
-
-export function shiftHours(s: TimeShift): number {
-  if (!s.clock_out_at) return 0;
-  const ms = new Date(s.clock_out_at).getTime() - new Date(s.clock_in_at).getTime();
-  return Math.max(0, ms / 3600000 - s.break_seconds / 3600);
 }
 
 /**
