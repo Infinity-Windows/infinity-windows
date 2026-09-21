@@ -58,9 +58,9 @@ describe("timedFetch", () => {
   beforeEach(() => { resetWeakSignal(); clearOfflineEvents(); vi.useFakeTimers(); });
   afterEach(() => { vi.useRealTimers(); });
 
-  it("gives a photo time to upload, then aborts a stall so the saved queue can retry", async () => {
+  it.each(["install-media/job/photo.jpg", "service-media/job/memo.mp4"])("bounds a stalled evidence upload: %s", async (path) => {
     const onTimeout = vi.fn();
-    const result = timedFetch("https://x.supabase.co/storage/v1/object/install-media/job/photo.jpg", {method:"POST"}, {
+    const result = timedFetch(`https://x.supabase.co/storage/v1/object/${path}`, {method:"POST"}, {
       fetch: (_input, init) => never(init?.signal), now: () => 42, onTimeout, onOk: () => undefined,
     }).catch(error => error);
     await vi.advanceTimersByTimeAsync(15_001);

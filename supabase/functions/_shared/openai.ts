@@ -111,6 +111,7 @@ export async function embed(
 export async function whisperTranscribe(
   audio: Blob,
   filename: string,
+  signal?: AbortSignal,
 ): Promise<string> {
   const key = requireOpenAI();
   const form = new FormData();
@@ -120,6 +121,7 @@ export async function whisperTranscribe(
     method: "POST",
     headers: { Authorization: `Bearer ${key}` },
     body: form,
+    signal,
   });
   if (!res.ok) {
     const text = await res.text();

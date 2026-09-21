@@ -69,6 +69,11 @@ test("failed transcription retains the clip for retry without losing typed text"
   await control.getByRole("button",{name:/Stop & transcribe/}).click();
   await expect(control.getByRole("button",{name:"Retry transcription"})).toBeVisible();
   await expect(notes).toHaveValue("Typed note.");
+  await expect(control.locator("audio")).toBeVisible();
+  await expect(control.getByRole("link", {name: "Save audio"})).toHaveAttribute("download", "forge-recording.mp4");
+  const audioDownload = page.waitForEvent("download");
+  await control.getByRole("link", {name: "Save audio"}).click();
+  expect((await audioDownload).suggestedFilename()).toBe("forge-recording.mp4");
   await control.getByRole("button",{name:"Retry transcription"}).click();
   await expect(notes).toHaveValue("Typed note.\nRetry worked.");
 });

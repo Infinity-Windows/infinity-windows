@@ -5,3 +5,7 @@
 .dictation-controls .dictation-button.is-recording { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
 .dictation-message { max-width: 100%; }
 .dictation-overflow { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text); user-select: text; }
+
+.dictation-preview { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; width: 100%; }
+.dictation-preview audio { width: min(100%, 380px); height: 44px; }
+.dictation-preview a { padding: 10px; min-height: 44px; box-sizing: border-box; }

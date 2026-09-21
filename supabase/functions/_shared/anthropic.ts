@@ -155,6 +155,8 @@ export async function anthropicVisionChat(
 }
 
 interface AnthropicJsonOptions {
+  /** Optional deadline shared by the initial request and JSON repair. */
+  signal?: AbortSignal;
   /** The task, as the top-level system prompt. */
   system: string;
   /** The content of the single user turn. */
@@ -200,6 +202,7 @@ export async function anthropicChatJson<T>(
   const ask = async (messages: { role: "user" | "assistant"; content: unknown }[]) => {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
+      signal: opts.signal,
       headers: {
         "x-api-key": key,
         "anthropic-version": "2023-06-01",

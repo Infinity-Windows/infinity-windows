@@ -238,7 +238,7 @@ export async function flushQueue(): Promise<{ sent: number; remaining: number }>
           try {
             const { error: fnErr } = await supabase.functions.invoke(
               "transcribe-install-memo",
-              { body: { attachment_id: attachmentRow.id } },
+              { body: { attachment_id: attachmentRow.id }, signal: AbortSignal.timeout(60_000) },
             );
             if (fnErr) throw fnErr;
           } catch {
@@ -279,7 +279,7 @@ export async function retryTranscriptions(limit = 20): Promise<number> {
     try {
       const { error: fnErr } = await supabase.functions.invoke(
         "transcribe-install-memo",
-        { body: { attachment_id: row.id } },
+        { body: { attachment_id: row.id }, signal: AbortSignal.timeout(60_000) },
       );
       if (!fnErr) retried++;
     } catch {

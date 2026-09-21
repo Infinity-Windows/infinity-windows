@@ -7,6 +7,8 @@ import { type ServiceMedia, type ServiceUnit } from "../../lib/servicing/model";
 import { enqueueServiceMedia } from "../../lib/servicing/mediaQueue";
 import { serviceMediaBlob, serviceMediaUrl } from "../../lib/servicing/api";
 import { transcribeDescription } from "../../lib/dictation";
+import { startVoiceRecording, voiceFilename, type VoiceRecording } from "../../lib/voiceRecording";
+import "../../components/voice/dictation.css";
 import { formatApiError } from "../../lib/errors";
 export function ServiceMediaCapture({
   unit,
@@ -33,12 +35,16 @@ export function ServiceMediaCapture({
     { lang } = useLanguage();
   const [recording, setRecording] = useState(false),
     [working, setWorking] = useState(false),
+    [savingVoice, setSavingVoice] = useState(false),
     [error, setError] = useState("");
   const [urls, setUrls] = useState<Record<string, string>>({}),
     [kind, setKind] = useState<ServiceMedia["kind"]>("before");
-  const recorder = useRef<MediaRecorder | null>(null),
-    stream = useRef<MediaStream | null>(null),
-    timer = useRef<ReturnType<typeof setTimeout> | null>(null),
+  const [starting, setStarting] = useState(false);
+  const [seconds, setSeconds] = useState(0);
+  const [preview, setPreview] = useState<Blob | null>(null);
+  const [previewUrl, setPreviewUrl] = useState("");
+  const recorder = useRef<VoiceRecording | null>(null),
+    micRequest = useRef<AbortController | null>(null),
     live = useRef(true),
     recordOwner = useRef({ unit, user });
   useEffect(() => {
@@ -48,20 +54,23 @@ export function ServiceMediaCapture({
     live.current = true;
     return () => {
       live.current = false;
-      if (timer.current) clearTimeout(timer.current);
-      if (recorder.current?.state === "recording") recorder.current.stop();
-      stream.current?.getTracks().forEach((t) => t.stop());
+      if (recorder.current) recorder.current.stop();
+      else micRequest.current?.abort();
     };
   }, []);
+  useEffect(() => {
+    if (!preview) { setPreviewUrl(""); return; }
+    const url = URL.createObjectURL(preview); setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [preview]);
   async function run(fn: () => Promise<void>) {
-    setError("");
-    setWorking(true);
+    if (live.current) { setError(""); setWorking(true); }
     try {
       await fn();
     } catch (e) {
       if (live.current) setError(formatApiError(e));
     } finally {
-      if (live.current) setWorking(false);
+      if (live.current) { setWorking(false); setSavingVoice(false); }
     }
   }
   async function upload(
@@ -77,6 +86,7 @@ export function ServiceMediaCapture({
       type,
       file,
       name,
+      type === "voice" ? lang : undefined,
     );
     await sync();
   }
@@ -89,64 +99,24 @@ export function ServiceMediaCapture({
       }),
   });
   async function start() {
-    setError("");
+    if (starting || recording) return;
+    setError(""); setStarting(true); setSeconds(0);
+    const owner = recordOwner.current;
+    micRequest.current = new AbortController();
     try {
-      if (
-        !navigator.mediaDevices?.getUserMedia ||
-        typeof MediaRecorder === "undefined"
-      )
-        throw new Error(tx("recordingError"));
-      const owner = recordOwner.current;
-      const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
-      if (!live.current) {
-        mic.getTracks().forEach((t) => t.stop());
-        return;
-      }
-      stream.current = mic;
-      const mime = ["audio/webm;codecs=opus", "audio/mp4", "audio/webm"].find(
-        (t) => MediaRecorder.isTypeSupported(t),
-      );
-      const rec = new MediaRecorder(mic, {
-        ...(mime ? { mimeType: mime } : {}),
-        audioBitsPerSecond: 64000,
+      recorder.current = await startVoiceRecording({
+        signal: micRequest.current.signal,
+        onSeconds: value => { if (live.current) setSeconds(value); },
+        onError: () => { if (live.current) { setRecording(false); setError(tx("recordingError")); } },
+        onComplete: blob => {
+          if (live.current) { setRecording(false); setPreview(blob); setSavingVoice(true); }
+          void run(() => upload(blob, voiceFilename(blob, `service-memo-${Date.now()}`), "voice", owner));
+        },
       });
-      recorder.current = rec;
-      const chunks: Blob[] = [];
-      let size = 0;
-      rec.ondataavailable = (e) => {
-        if (e.data.size) {
-          chunks.push(e.data);
-          size += e.data.size;
-          if (size > 5 * 1024 * 1024 && rec.state === "recording") rec.stop();
-        }
-      };
-      rec.onstop = () => {
-        if (timer.current) clearTimeout(timer.current);
-        mic.getTracks().forEach((t) => t.stop());
-        if (live.current) setRecording(false);
-        const blob = new Blob(chunks, { type: rec.mimeType });
-        void run(() =>
-          upload(
-            blob,
-            `service-memo-${Date.now()}.${rec.mimeType.includes("mp4") ? "m4a" : "webm"}`,
-            "voice",
-            owner,
-          ),
-        );
-      };
-      rec.onerror = () => {
-        mic.getTracks().forEach((t) => t.stop());
-        setRecording(false);
-        setError(tx("recordingError"));
-      };
-      rec.start(1000);
-      setRecording(true);
-      timer.current = setTimeout(() => {
-        if (rec.state === "recording") rec.stop();
-      }, 180000);
-    } catch (e) {
-      setError(formatApiError(e));
-    }
+      if (live.current) setRecording(true);
+    } catch {
+      if (live.current) setError(tx("recordingError"));
+    } finally { if (live.current) setStarting(false); }
   }
   return (
     <section className="sv-card" aria-label={tx("evidence")}>
@@ -159,12 +129,18 @@ export function ServiceMediaCapture({
       </ol>
       <button
         className={recording ? "sv-recording" : "primary"}
-        disabled={busy || working}
+        disabled={busy || working || starting}
         onClick={() => (recording ? recorder.current?.stop() : void start())}
       >
         {recording ? <Square size={18} /> : <Mic size={18} />}{" "}
-        {tx(recording ? "stopRecord" : "record")}
+        {tx(starting ? "openingMic" : recording ? "stopRecord" : "record")}
+        {recording && ` · ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`}
       </button>
+      {working && <p role="status">{tx(savingVoice ? "savingMemo" : "workingMedia")}</p>}
+      {previewUrl && !recording && <div className="dictation-preview">
+        <audio controls src={previewUrl} aria-label={tx("listenMemo")} />
+        <a href={previewUrl} download={voiceFilename(preview!, "service-memo")}>{tx("saveAudio")}</a>
+      </div>}
       <h3>{tx("evidence")}</h3>
       <p className="muted">{tx("evidenceHelp")}</p>
       <div className="sv-fields">
@@ -285,7 +261,7 @@ export function ServiceMediaCapture({
                   disabled={working || busy || (!lead && m.created_by !== user)}
                   onClick={() =>
                     void run(async () => {
-                      const blob = await serviceMediaBlob(m);
+                      const blob = await serviceMediaBlob(m, AbortSignal.timeout(45_000));
                       const text = await transcribeDescription(
                         blob,
                         lang,

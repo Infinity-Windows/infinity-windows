@@ -31,6 +31,7 @@ async function setup(
 ) {
   await installFixtures(page, { role, language });
   await hideWrongProjectBanner(page);
+  await page.route("**/functions/v1/transcribe-description", r => json(r, { text: "Recorded explanation of the repair." }));
   const project = jobFixtures()[0].projectId;
   const shift = {
     id: "11111111-1111-4111-8111-111111111111",
@@ -48,6 +49,7 @@ async function setup(
     sessions: [] as ServiceSession[],
     media: [] as ServiceMedia[],
     offline: false,
+    transcriptFailures: 0,
   };
   await page.route("**/rest/v1/time_shifts**", (r) =>
     json(r, r.request().headers().accept?.includes("object") ? shift : [shift]),
@@ -153,6 +155,13 @@ async function setup(
         content_type: d.content_type,
         storage_path: d.storage_path,
       });
+    if (action === "transcript" && state.transcriptFailures-- > 0)
+      return r.fulfill({status: 503, contentType: "application/json", body: '{"message":"Connection interrupted"}'});
+    if (action === "transcript") {
+      const m = state.media.find(m => m.id === d.id)!;
+      expect(d.revision).toBe(m.revision);
+      m.transcript = d.transcript; m.revision++;
+    }
     if (action === "finish" && v) {
       v.status = "completed";
       v.completed_at = now;
@@ -454,4 +463,68 @@ test("original photos and audio are saved and included in the export packet", as
   const memo = Object.keys(zip.files).find((x) => x.endsWith("memo.webm"))!;
   expect(await zip.file(memo)!.async("string")).toBe("original memo fixture");
   expect(originals.size).toBe(2);
+});
+
+test("recording saves a playable original and automatically transcribes; retry never uploads twice", async ({ page }) => {
+  const { useSyntheticMicrophone } = await import("./support/voiceFixture");
+  const { state } = await setup(page, "supervisor", true);
+  await useSyntheticMicrophone(page);
+  let uploads = 0, transcriptions = 0;
+  await page.route("**/storage/v1/object/service-media/**", r => { uploads++; return json(r, { Key: "saved" }); });
+  await page.route("**/functions/v1/transcribe-description", r => {
+    transcriptions++;
+    expect(r.request().postDataBuffer()!.length).toBeGreaterThan(1000);
+    return transcriptions === 1 ? r.fulfill({ status: 502, contentType: "application/json", body: '{"error":"transcription_failed"}' }) : json(r, {text: "Replaced the faulty roller."});
+  });
+  await page.goto("/service?visit=" + state.visits[0].id);
+  const record = page.getByRole("button", { name: "Record voice memo", exact: true });
+  await record.click();
+  // The native MediaRecorder needs a real audio frame before Stop.
+  await expect.poll(() => page.evaluate(() => Reflect.get(window, "syntheticAudioBytes"))).toBeGreaterThan(1000);
+  await page.getByRole("button", { name: /Stop recording/ }).click();
+  await expect(page.getByText(/Audio is saved. Transcription did not finish/)).toBeVisible();
+  await expect.poll(() => state.media.length).toBe(1);
+  const preview = page.locator(".dictation-preview audio");
+  await expect(preview).toBeVisible();
+  await preview.evaluate((node: HTMLAudioElement) => node.play());
+  await expect.poll(() => preview.evaluate((node: HTMLAudioElement) => node.readyState)).toBeGreaterThanOrEqual(2);
+  await page.getByRole("button", { name: "Retry sync", exact: true }).click();
+  await expect.poll(() => state.media[0].transcript).toBe("Replaced the faulty roller.");
+  await expect(page.getByText("Replaced the faulty roller.", {exact: true})).toBeVisible();
+  expect(uploads).toBe(1); expect(transcriptions).toBe(2);
+  await expect(page.getByRole("button", {name: "Download report & evidence ZIP", exact: true})).toBeEnabled();
+});
+
+test("a saved voice memo can be kept as audio when no speech can be transcribed", async ({ page }) => {
+  const { state } = await setup(page, "supervisor", true);
+  await page.route("**/storage/v1/object/service-media/**", r => json(r, { Key: "saved" }));
+  await page.route("**/functions/v1/transcribe-description", r => json(r, { text: "" }));
+  await page.goto("/service?visit=" + state.visits[0].id);
+  await page.getByRole("combobox", {name: "Evidence type"}).selectOption("voice");
+  await page.locator('input[type=file][accept="audio/*"]').setInputFiles({name:"silent.webm",mimeType:"audio/webm",buffer:Buffer.from("synthetic silent clip")});
+  await expect(page.getByText(/Audio is saved. Transcription did not finish/)).toBeVisible();
+  await page.getByRole("button", {name: "Keep audio without transcription"}).click();
+  await expect(page.getByRole("button", {name: "Download report & evidence ZIP", exact: true})).toBeEnabled();
+  expect(state.media).toHaveLength(1); expect(state.media[0].transcript).toBe("");
+});
+
+test("offline audio survives reloading and a failed text save retries without another transcription", async ({ page }) => {
+  const { state } = await setup(page, "supervisor", true);
+  state.transcriptFailures = 100;
+  let uploads = 0, transcriptions = 0;
+  await page.route("**/storage/v1/object/service-media/**", r => { uploads++; return json(r, { Key: "saved" }); });
+  await page.route("**/functions/v1/transcribe-description", r => { transcriptions++; return json(r, { text: "Recorded offline and safely recovered." }); });
+  await page.goto("/service?visit=" + state.visits[0].id);
+  await page.evaluate(() => Object.defineProperty(navigator, "onLine", {configurable: true, value: false}));
+  await page.getByRole("combobox", {name: "Evidence type"}).selectOption("voice");
+  await page.locator('input[type=file][accept="audio/*"]').setInputFiles({name:"offline.webm",mimeType:"audio/webm",buffer:Buffer.from("synthetic offline audio")});
+  await expect(page.locator(".sv-notice")).toContainText("Saved on this device");
+  expect(uploads).toBe(0); expect(transcriptions).toBe(0);
+  await page.reload(); // Fresh navigator is online; the clip is restored from IndexedDB.
+  await expect.poll(() => transcriptions).toBe(1);
+  await expect(page.getByRole("button", {name: "Retry sync", exact: true})).toBeVisible();
+  state.transcriptFailures = 0;
+  await page.getByRole("button", {name: "Retry sync", exact: true}).click();
+  await expect.poll(() => state.media[0]?.transcript).toBe("Recorded offline and safely recovered.");
+  expect(uploads).toBe(1); expect(transcriptions).toBe(1);
 });

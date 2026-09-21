@@ -11,6 +11,8 @@ import {
 } from "./queue";
 import {
   flushServiceMedia,
+  keepServiceAudioOnly,
+  retryServiceMedia,
   pendingServiceMedia,
   type PendingServiceMedia,
 } from "./mediaQueue";
@@ -113,6 +115,7 @@ export function useService(visitId?: string | null) {
   async function retry() {
     if (user) {
       await retryService(user);
+      await retryServiceMedia(user);
       await sync();
     }
   }
@@ -133,6 +136,7 @@ export function useService(visitId?: string | null) {
     sync,
     command,
     retry,
+    keepAudioOnly: async (id: string) => { if (user) { await keepServiceAudioOnly(user, id); await sync(); } },
     refresh,
   };
 }

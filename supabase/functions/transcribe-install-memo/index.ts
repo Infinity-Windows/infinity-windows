@@ -13,7 +13,7 @@ import {
   requireAnthropic,
 } from "../_shared/anthropic.ts";
 import { bytesToBase64 } from "../_shared/bytes.ts";
-import { verifyCaller } from "../_shared/auth.ts";
+import { verifyCaller, callerSupabaseClient } from "../_shared/auth.ts";
 import {
   notifyOwnersOfSpend,
   releaseAiSpend,
@@ -21,6 +21,8 @@ import {
   settleAiSpend,
 } from "../_shared/spendGuard.ts";
 import { UNEXPECTED_ERROR, reportCaughtError, withSentry } from "../_shared/sentry.ts";
+
+declare const EdgeRuntime: { waitUntil: (promise: Promise<unknown>) => void } | undefined;
 
 const TOPIC_KEYS = [
   "difficulty",
@@ -71,42 +73,45 @@ Deno.serve(withSentry("transcribe-install-memo", async (req) => {
   }
 
   const auth = await verifyCaller(req);
-  if (auth.status === "unauthorized") {
+  if (auth.status !== "ok") {
     return jsonResponse({ error: "unauthorized" }, 401, cors);
   }
-  const callerId =
-    auth.status === "ok" && auth.user.id !== "service_role" ? auth.user.id : null;
+  const callerId = auth.user.id !== "service_role" ? auth.user.id : null;
 
+  let reservation: string | null = null;
   try {
-    // This is the one function that genuinely needs BOTH providers: Whisper
-    // (OpenAI) turns the audio into words, Claude sorts those words into topic
-    // fields and reads the photos. Checked up front so a missing Anthropic key
-    // costs nothing — the old order paid for the transcription first and then
-    // threw it away when the second call failed.
-    requireAnthropic();
+    // Audio-to-text is the required result. Photo/topic enrichment is optional
+    // and must never delay saving the transcript or throw it away.
     if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
       throw new Error("Supabase env not configured");
     }
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+      global: { fetch: (input, init) => fetch(input, { ...init, signal: init?.signal
+        ? AbortSignal.any([init.signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000) }) },
+    });
 
     const body = await req.json().catch(() => ({}));
     const record = (body.record ?? body) as Partial<AttachmentRecord> & {
       attachment_id?: string;
     };
 
-    let attachment: AttachmentRecord | null = null;
-    if (record.id) {
-      attachment = record as AttachmentRecord;
-    } else if (record.attachment_id) {
-      const { data, error } = await supabase
-        .from("attachments")
-        .select("id, kind, storage_path, install_event_id, transcribed_at")
-        .eq("id", record.attachment_id)
-        .maybeSingle();
-      if (error) throw error;
-      attachment = data;
+    const caller = callerId ? callerSupabaseClient(req) : supabase;
+    if (!caller) return jsonResponse({ error: "unauthorized" }, 401, cors);
+    if (callerId) {
+      const { data: profile, error } = await caller.from("profiles")
+        .select("id,active,is_partner,access_revoked_at,retired_at").eq("id", callerId).maybeSingle();
+      if (error || !profile || !profile.active || profile.is_partner || profile.access_revoked_at || profile.retired_at)
+        return jsonResponse({ error: "access_unavailable" }, 403, cors);
     }
-
+    // Even webhook-shaped requests resolve the saved row. Never accept a
+    // caller-supplied storage path or install ID under service credentials.
+    const attachmentId = record.attachment_id ?? record.id;
+    if (!attachmentId) return jsonResponse({ error: "attachment_required" }, 400, cors);
+    const { data, error: readError } = await caller.from("attachments")
+      .select("id,kind,storage_path,install_event_id,transcribed_at")
+      .eq("id", attachmentId).maybeSingle();
+    if (readError) throw readError;
+    const attachment = data as AttachmentRecord | null;
     if (!attachment || attachment.kind !== "voice_memo") {
       return jsonResponse({ skipped: true, reason: "not a voice_memo" }, 200, cors);
     }
@@ -158,141 +163,138 @@ Deno.serve(withSentry("transcribe-install-memo", async (req) => {
       );
     }
 
+    reservation = gate.reservationId;
     const filename = path.split("/").pop() ?? "memo.webm";
-    const transcript = await whisperTranscribe(file, filename).catch(async (err) => {
-      await releaseAiSpend(supabase, gate.reservationId, "whisper_failed", false);
-      throw err;
-    });
+    const transcript = await whisperTranscribe(file, filename, AbortSignal.timeout(45_000));
+    if (!transcript.trim()) throw new Error("No speech was detected in this memo.");
+    const { error: textError } = await supabase.from("install_events")
+      .update({ transcript_raw: transcript }).eq("id", attachment.install_event_id);
+    if (textError) throw textError;
+    const { error: attachmentError } = await supabase.from("attachments")
+      .update({ transcript, transcribed_at: new Date().toISOString() }).eq("id", attachment.id);
+    if (attachmentError) throw attachmentError;
 
-    // Pull the install-event's photos for vision context (before/after).
-    //
-    // Downloaded as bytes rather than handed over as signed URLs: Claude takes
-    // images inline as base64, which is also one less way for this to break —
-    // a signed URL that expires or that the provider cannot reach silently cost
-    // us the photo context. A photo that fails to download is skipped, because
-    // the transcript alone is still worth saving.
-    const images: AnthropicImage[] = [];
-    const { data: photoRows } = await supabase
-      .from("attachments")
-      .select("storage_path")
-      .eq("install_event_id", attachment.install_event_id)
-      .eq("kind", "photo")
-      .limit(4);
-    for (const row of photoRows ?? []) {
-      const p: string = row.storage_path;
-      const s = p.indexOf("/");
-      const b = s >= 0 ? p.slice(0, s) : "install-media";
-      const key = s >= 0 ? p.slice(s + 1) : p;
+    const whisperMicros = Math.max(1_000, Math.round((transcript.length / (150 * 5)) * 6_000));
+    const enrich = async () => {
+      let usage: { inputTokens: number | null; outputTokens: number | null } | null = null;
       try {
-        const { data: blob } = await supabase.storage.from(b).download(key);
-        if (!blob) continue;
-        const bytes = new Uint8Array(await blob.arrayBuffer());
-        images.push({
-          mediaType: blob.type || "image/jpeg",
-          data: bytesToBase64(bytes),
+        requireAnthropic();
+        // Pull the install-event's photos for vision context (before/after).
+        //
+        // Downloaded as bytes rather than handed over as signed URLs: Claude takes
+        // images inline as base64, which is also one less way for this to break —
+        // a signed URL that expires or that the provider cannot reach silently cost
+        // us the photo context. A photo that fails to download is skipped, because
+        // the transcript alone is still worth saving.
+        const images: AnthropicImage[] = [];
+        const { data: photoRows } = await supabase
+          .from("attachments")
+          .select("storage_path")
+          .eq("install_event_id", attachment.install_event_id)
+          .eq("kind", "photo")
+          .limit(4);
+        for (const row of photoRows ?? []) {
+          const p: string = row.storage_path;
+          const s = p.indexOf("/");
+          const b = s >= 0 ? p.slice(0, s) : "install-media";
+          const key = s >= 0 ? p.slice(s + 1) : p;
+          try {
+            const { data: blob } = await supabase.storage.from(b).download(key);
+            if (!blob) continue;
+            const bytes = new Uint8Array(await blob.arrayBuffer());
+            images.push({
+              mediaType: blob.type || "image/jpeg",
+              data: bytesToBase64(bytes),
+            });
+          } catch (e) {
+            console.warn("photo download failed, continuing without it", key, e);
+          }
+        }
+
+        const topics = await anthropicChatJson<TopicMap>({
+          system:
+            "You process window-install field memos. Split the installer's voice transcript into fixed topic fields, using the before/after photos as extra context. Use null for topics not mentioned. Keep each field concise (1-3 sentences). Also suggest a quality grade 1-5 (5 = flawless install) from the transcript and photos (null if unclear), and list any concrete visual observations from the photos (e.g. 'shim gap uneven on latch side', 'clean flashing tape') as photo_findings.",
+          user: `Transcript:\n${transcript}`,
+          schemaHint:
+            `Schema: { "difficulty": string|null, "went_well": string|null, "went_poorly": string|null, "obstacles": string|null, "tools_helped": string|null, "time_vs_estimate": string|null, "safety_notes": string|null, "do_again": string|null, "suggested_grade": number|null, "photo_findings": string[]|null }`,
+          schema: TOPICS_SCHEMA,
+          images,
+          signal: AbortSignal.timeout(60_000),
+          onUsage: (u) => {
+            usage = u;
+          },
         });
-      } catch (e) {
-        console.warn("photo download failed, continuing without it", key, e);
+
+        const patch: Record<string, string | null> = {};
+        for (const key of TOPIC_KEYS) {
+          const value = topics[key];
+          if (typeof value === "string" && value.trim()) {
+            patch[key] = value.trim();
+          }
+        }
+
+        // Only fill empty columns so typed/confirmed notes are never overwritten.
+        const { data: existing, error: exErr } = await supabase
+          .from("install_events")
+          .select(`${TOPIC_KEYS.join(",")}, quality_grade`)
+          .eq("id", attachment.install_event_id)
+          .single();
+        if (exErr) throw exErr;
+
+        const finalPatch: Record<string, string | number | null> = {};
+        for (const key of TOPIC_KEYS) {
+          const current = (existing as Record<string, string | null>)[key];
+          if ((!current || !String(current).trim()) && patch[key]) {
+            finalPatch[key] = patch[key];
+          }
+        }
+
+        // Suggest grade only if the installer didn't set one.
+        const existingGrade = (existing as Record<string, number | null>).quality_grade;
+        const suggested = Number(topics.suggested_grade);
+        if (
+          (existingGrade == null) &&
+          Number.isFinite(suggested) &&
+          suggested >= 1 &&
+          suggested <= 5
+        ) {
+          finalPatch.quality_grade = Math.round(suggested);
+        }
+
+        // Persist structured photo observations for later mining.
+        if (Array.isArray(topics.photo_findings) && topics.photo_findings.length > 0) {
+          (finalPatch as Record<string, unknown>).photo_findings = topics.photo_findings
+            .map((s) => String(s).trim())
+            .filter(Boolean)
+            .slice(0, 8);
+        }
+
+        const { error: upErr } = await supabase
+          .from("install_events")
+          .update(finalPatch)
+          .eq("id", attachment.install_event_id);
+        if (upErr) throw upErr;
+
+      } catch (error) {
+        await reportCaughtError("transcribe-install-memo", req, error);
+      } finally {
+        await settleAiSpend(supabase, gate.reservationId, usage, ANTHROPIC_MODEL, whisperMicros);
       }
-    }
-
-    let usage: { inputTokens: number | null; outputTokens: number | null } | null = null;
-    const topics = await anthropicChatJson<TopicMap>({
-      system:
-        "You process window-install field memos. Split the installer's voice transcript into fixed topic fields, using the before/after photos as extra context. Use null for topics not mentioned. Keep each field concise (1-3 sentences). Also suggest a quality grade 1-5 (5 = flawless install) from the transcript and photos (null if unclear), and list any concrete visual observations from the photos (e.g. 'shim gap uneven on latch side', 'clean flashing tape') as photo_findings.",
-      user: `Transcript:\n${transcript}`,
-      schemaHint:
-        `Schema: { "difficulty": string|null, "went_well": string|null, "went_poorly": string|null, "obstacles": string|null, "tools_helped": string|null, "time_vs_estimate": string|null, "safety_notes": string|null, "do_again": string|null, "suggested_grade": number|null, "photo_findings": string[]|null }`,
-      schema: TOPICS_SCHEMA,
-      images,
-      onUsage: (u) => {
-        usage = u;
-      },
-    });
-
-    // Whisper bills by audio minute, not tokens, so the transcript length is the
-    // only signal we have: ~150 spoken words a minute, ~5 characters a word,
-    // $0.006 a minute = 6,000 micro-dollars. The vision pass is priced from its
-    // real token counts on top.
-    const whisperMicros = Math.max(
-      1_000,
-      Math.round((transcript.length / (150 * 5)) * 6_000),
-    );
-    await settleAiSpend(
-      supabase,
-      gate.reservationId,
-      usage,
-      ANTHROPIC_MODEL,
-      whisperMicros,
-    );
-
-    const patch: Record<string, string | null> = {};
-    for (const key of TOPIC_KEYS) {
-      const value = topics[key];
-      if (typeof value === "string" && value.trim()) {
-        patch[key] = value.trim();
-      }
-    }
-
-    // Only fill empty columns so typed/confirmed notes are never overwritten.
-    const { data: existing, error: exErr } = await supabase
-      .from("install_events")
-      .select(`${TOPIC_KEYS.join(",")}, quality_grade`)
-      .eq("id", attachment.install_event_id)
-      .single();
-    if (exErr) throw exErr;
-
-    const finalPatch: Record<string, string | number | null> = {
-      transcript_raw: transcript,
     };
-    for (const key of TOPIC_KEYS) {
-      const current = (existing as Record<string, string | null>)[key];
-      if ((!current || !String(current).trim()) && patch[key]) {
-        finalPatch[key] = patch[key];
-      }
-    }
-
-    // Suggest grade only if the installer didn't set one.
-    const existingGrade = (existing as Record<string, number | null>).quality_grade;
-    const suggested = Number(topics.suggested_grade);
-    if (
-      (existingGrade == null) &&
-      Number.isFinite(suggested) &&
-      suggested >= 1 &&
-      suggested <= 5
-    ) {
-      finalPatch.quality_grade = Math.round(suggested);
-    }
-
-    // Persist structured photo observations for later mining.
-    if (Array.isArray(topics.photo_findings) && topics.photo_findings.length > 0) {
-      (finalPatch as Record<string, unknown>).photo_findings = topics.photo_findings
-        .map((s) => String(s).trim())
-        .filter(Boolean)
-        .slice(0, 8);
-    }
-
-    const { error: upErr } = await supabase
-      .from("install_events")
-      .update(finalPatch)
-      .eq("id", attachment.install_event_id);
-    if (upErr) throw upErr;
-
-    const { error: attErr } = await supabase
-      .from("attachments")
-      .update({
-        transcribed_at: new Date().toISOString(),
-        transcript,
-      })
-      .eq("id", attachment.id);
-    if (attErr) throw attErr;
+    // Supabase keeps this promise alive after responding. Failed enrichment
+    // leaves the already-saved audio/transcript available for manual review.
+    const background = enrich().catch(error => reportCaughtError("transcribe-install-memo", req, error));
+    reservation = null; // settlement now belongs to the background task
+    if (typeof EdgeRuntime !== "undefined") EdgeRuntime.waitUntil(background);
+    else await background;
 
     return jsonResponse(
-      { ok: true, attachment_id: attachment.id, chars: transcript.length },
+      { ok: true, attachment_id: attachment.id, chars: transcript.length, transcript, enrichment: "background" },
       200,
       cors,
     );
   } catch (e) {
+    if (reservation) await releaseAiSpend(createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY), reservation, "memo_failed", false);
     // withSentry only ever sees a throw that ESCAPES the handler, and this one
     // never does — so report it here, or nobody finds out this has been failing
     // since Tuesday. Then one plain sentence: String(e) hands whoever is

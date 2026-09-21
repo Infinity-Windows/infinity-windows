@@ -4213,6 +4213,7 @@ export async function setGoldenInstall(
 export async function requestTranscription(attachmentId: string): Promise<void> {
   const { error } = await supabase.functions.invoke("transcribe-install-memo", {
     body: { attachment_id: attachmentId },
+    signal: AbortSignal.timeout(60_000),
   });
   if (error) {
     console.warn("transcribe invoke failed", error);

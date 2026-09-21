@@ -1,3 +1,4 @@
+import { startVoiceRecording, voiceFilename, type VoiceRecording } from "../../lib/voiceRecording";
 import { VoiceTextarea } from "../../components/voice/VoiceTextarea";
 import { BackChip } from "../../components/BackChip";
 import { SavedCopyNotice } from "../../components/offline/SavedCopyNotice";
@@ -137,16 +138,6 @@ import { sheetStageLabel, SHEET_STAGES, type SheetStage } from "../../lib/instal
 
 const windowLookups = { getWindowByWindowId, findWindowByCode, findWindowBySerial };
 
-function pickAudioMime(): string {
-  const candidates = ["audio/webm", "audio/mp4", "audio/ogg"];
-  for (const c of candidates) {
-    if (typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(c)) {
-      return c;
-    }
-  }
-  return "";
-}
-
 const READY_LABEL: Record<string, string> = {
   ready: "READY TO INSTALL",
   blocked: "DO NOT INSTALL",
@@ -190,8 +181,16 @@ export function OpeningSheet() {
   const [recording, setRecording] = useState(false);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
-  const recorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
+  const recorderRef = useRef<VoiceRecording | null>(null);
+  const micRequest = useRef<AbortController | null>(null);
+  const [recordingStarting, setRecordingStarting] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  useEffect(() => () => { micRequest.current?.abort(); recorderRef.current?.cancel(); }, []);
+  useEffect(() => {
+    if (!audioBlob) { setAudioUrl(null); return; }
+    const url = URL.createObjectURL(audioBlob); setAudioUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [audioBlob]);
 
   // When work began, as this device knows it. The server's stamp is the
   // authority; this only carries a start made with no signal. Seeded from
@@ -1013,29 +1012,26 @@ export function OpeningSheet() {
   });
 
   const startRecording = async () => {
+    if (recording || recordingStarting) return;
+    setRecordingStarting(true); setRecordingSeconds(0);
+    micRequest.current = new AbortController();
+    const signal = micRequest.current.signal;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mime = pickAudioMime();
-      const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
-      chunksRef.current = [];
-      rec.ondataavailable = (e) => e.data.size > 0 && chunksRef.current.push(e.data);
-      rec.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: rec.mimeType });
-        setAudioBlob(blob);
-        setAudioUrl(URL.createObjectURL(blob));
-        stream.getTracks().forEach((t) => t.stop());
-      };
-      rec.start();
-      recorderRef.current = rec;
-      setRecording(true);
-    } catch (e) {
-      setMessage({ text: `Mic unavailable: ${formatApiError(e)}`, tone: "error" });
-    }
+      recorderRef.current = await startVoiceRecording({
+        signal,
+        onSeconds: setRecordingSeconds,
+        onComplete: blob => { setAudioBlob(blob); setRecording(false); },
+        onError: () => { setRecording(false); setMessage({ text: t("dictation.recordingFailed"), tone: "error" }); },
+      });
+      if (!signal.aborted) setRecording(true);
+    } catch {
+      if (!signal.aborted) setMessage({ text: t("dictation.permission"), tone: "error" });
+    } finally { if (!signal.aborted) setRecordingStarting(false); }
   };
 
   const stopRecording = () => {
     recorderRef.current?.stop();
-    setRecording(false);
+    // Keep Submit disabled until the final audio chunk arrives.
   };
 
   const submit = useMutation({
@@ -1098,10 +1094,10 @@ export function OpeningSheet() {
         });
       }
       if (audioBlob) {
-        const ext = audioBlob.type.includes("mp4") ? "m4a" : "webm";
+        const filename = voiceFilename(audioBlob, `${stamp}-memo`);
         media.push({
           bucket: "install-media",
-          path: `${projectId}/${o.opening_code}/${stamp}-memo.${ext}`,
+          path: `${projectId}/${o.opening_code}/${filename}`,
           contentType: audioBlob.type || "audio/webm",
           kind: "voice_memo",
           blob: audioBlob,
@@ -1312,7 +1308,7 @@ export function OpeningSheet() {
       : t("opening.action.startInstall");
 
   const submitDisabled =
-    submit.isPending || recording || ready.status === "blocked" || submitBlockedBy !== null;
+    submit.isPending || recording || recordingStarting || ready.status === "blocked" || submitBlockedBy !== null;
 
   // --- Shared "More" fold content (installer-os-spec.md S7, item 4) --------
   // One object, reused by every stage's own SheetMore mount and by the
@@ -1799,6 +1795,8 @@ export function OpeningSheet() {
               video={video}
               onVideoChange={setVideo}
               recording={recording}
+              recordingStarting={recordingStarting}
+              recordingSeconds={recordingSeconds}
               onStartRecording={() => void startRecording()}
               onStopRecording={stopRecording}
               audioBlob={audioBlob}

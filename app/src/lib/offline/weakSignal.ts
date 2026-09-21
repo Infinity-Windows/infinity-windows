@@ -111,7 +111,7 @@ export async function timedFetch(
 ): Promise<Response> {
   const url = urlOf(input);
   const method = (init?.method ?? (typeof Request !== "undefined" && input instanceof Request ? input.method : "GET")).toUpperCase();
-  const photoUpload = url.includes("/storage/v1/object/install-media/") &&
+  const photoUpload = (url.includes("/storage/v1/object/install-media/") || url.includes("/storage/v1/object/service-media/")) &&
     (method === "POST" || method === "PUT");
   const d: TimedFetchDeps = {
     fetch: deps?.fetch ?? globalThis.fetch.bind(globalThis),

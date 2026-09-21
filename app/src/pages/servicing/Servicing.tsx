@@ -283,6 +283,10 @@ export function Servicing() {
             {service.queue.length} · {service.files.length} {tx("pendingFiles")}
           </p>
           {service.queue.some((c) => c.error) && <p>{tx("queueConflict")}</p>}
+          {service.files.filter(f => f.visitId === visitId && f.error).map(f => <div key={f.id}>
+            <p role="alert">{f.filename}: {f.error}</p>
+            {f.metadataSaved && f.kind === "voice" && <button disabled={busy} onClick={() => void run(() => service.keepAudioOnly(f.id))}>{tx("keepAudioOnly")}</button>}
+          </div>)}
           <button onClick={() => void run(service.retry)} disabled={busy}>
             {tx("retry")}
           </button>

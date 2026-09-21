@@ -1,5 +1,11 @@
 import { useLanguage } from "../i18n";
 const phrases = {
+  openingMic: ["Opening microphone…", "Abriendo micrófono…"],
+  keepAudioOnly: ["Keep audio without transcription", "Conservar audio sin transcripción"],
+  workingMedia: ["Saving or loading evidence…", "Guardando o cargando evidencia…"],
+  savingMemo: ["Saving your recording and preparing the transcript…", "Guardando tu grabación y preparando la transcripción…"],
+  listenMemo: ["Listen to your memo", "Escuchar tu nota"],
+  saveAudio: ["Save audio", "Guardar audio"],
   recordVideo: ["Record explanation video", "Grabar video explicativo"],
   evidenceKind: ["Evidence type", "Tipo de evidencia"],
   serviceUnit: ["Service this unit", "Dar servicio a esta unidad"],
@@ -138,8 +144,8 @@ const phrases = {
   unresolved: ["Still being diagnosed", "Diagnóstico en proceso"],
   memo: ["Guided service memo", "Nota de voz guiada"],
   memoHelp: [
-    "Record up to 3 minutes, then confirm the transcript in the unit report. The original audio stays attached.",
-    "Grabe la explicación y confirme la transcripción en el reporte. El audio original se conserva.",
+    "Record up to 3 minutes. Stop to save the audio and transcribe automatically. Review the words before adding them to the unit report.",
+    "Graba hasta 3 minutos. Al detener, se guarda el audio y se transcribe automáticamente. Revisa las palabras antes de agregarlas al reporte.",
   ],
   record: ["Record voice memo", "Grabar nota de voz"],
   stopRecord: ["Stop recording", "Detener grabación"],
