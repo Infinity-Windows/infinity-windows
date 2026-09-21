@@ -524,7 +524,30 @@ test("offline audio survives reloading and a failed text save retries without an
   await expect.poll(() => transcriptions).toBe(1);
   await expect(page.getByRole("button", {name: "Retry sync", exact: true})).toBeVisible();
   state.transcriptFailures = 0;
-  await page.getByRole("button", {name: "Retry sync", exact: true}).click();
+  await page.getByRole("button", {name: "Refresh / sync", exact: true}).click();
   await expect.poll(() => state.media[0]?.transcript).toBe("Recorded offline and safely recovered.");
   expect(uploads).toBe(1); expect(transcriptions).toBe(1);
+});
+
+test("Apple AAC is transcribed through a real browser-decoded WAV while its original is retained", async ({ page }) => {
+  const { state } = await setup(page, "supervisor", true);
+  // Generated speech only: "Installed four windows and cleaned the work area."
+  const original = fs.readFileSync(new URL("./fixtures/synthetic-voice-aac.m4a", import.meta.url));
+  let uploadedOriginal = false, converted = false;
+  await page.route("**/storage/v1/object/service-media/**", r => {
+    uploadedOriginal = r.request().postDataBuffer()!.includes(original);
+    return json(r, {Key:"original-aac"});
+  });
+  await page.route("**/functions/v1/transcribe-description", r => {
+    const payload = r.request().postDataBuffer()!;
+    converted = payload.includes(Buffer.from("RIFF")) && payload.includes(Buffer.from("audio/wav"));
+    expect(payload.includes(original)).toBe(false);
+    return json(r, {text:"Installed four windows and cleaned the work area."});
+  });
+  await page.goto("/service?visit=" + state.visits[0].id);
+  await page.getByRole("combobox", {name:"Evidence type"}).selectOption("voice");
+  await page.locator('input[type=file][accept="audio/*"]').setInputFiles({name:"memo.m4a",mimeType:"audio/mp4",buffer:original});
+  await expect.poll(() => state.media[0]?.transcript).toBe("Installed four windows and cleaned the work area.");
+  expect(uploadedOriginal).toBe(true); expect(converted).toBe(true);
+  expect(state.media[0].filename).toBe("memo.m4a"); expect(state.media[0].content_type).toBe("audio/mp4");
 });
