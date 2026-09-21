@@ -1,3 +1,4 @@
+import { askProfileAllowed } from "../_shared/askAccess.ts";
 import { REPORTING_TOOLS, REPORTING_SYSTEM_PROMPT, validateZone, dateInZone, type AskArtifact } from "../_shared/askReporting.ts";
 import { reportingExecutor } from "./operations.ts";
 import { openaiAsk } from "../_shared/openaiAsk.ts";
@@ -1208,9 +1209,9 @@ Deno.serve(withSentry("ask", async (req) => {
   const scopedClient = callerSupabaseClient(req);
   if (!scopedClient) return jsonResponse({ error: "Sign in again to use Forge AI." }, 401, cors);
   const partner = await scopedClient.rpc("is_partner_user");
-  const profile = await scopedClient.from("profiles").select("id,active").eq("id", userId).maybeSingle();
-  if (partner.error || partner.data !== false || profile.error || !profile.data?.active) {
-    return jsonResponse({ error: "Forge AI requires an active internal crew account." }, 403, cors);
+  const profile = await scopedClient.from("profiles").select("id,retired_at,access_revoked_at").eq("id", userId).maybeSingle();
+  if (!askProfileAllowed(partner.data, profile.data, Boolean(partner.error || profile.error))) {
+    return jsonResponse({ error: "Forge AI requires an internal crew account with current access." }, 403, cors);
   }
   const rank = await callerRank(scopedClient);
 
