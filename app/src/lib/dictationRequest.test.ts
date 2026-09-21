@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 const invoke = vi.hoisted(() => vi.fn());
+vi.mock("./voiceAudio", () => ({ speechAudio: async (blob: Blob) => blob }));
 vi.mock("./supabase", () => ({ supabase: { functions: { invoke } } }));
 import { transcribeDescription, TRANSCRIPTION_TIMEOUT_MS } from "./dictation";
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.resetAllMocks(); });

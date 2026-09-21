@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
 import type { Lang } from "./i18n";
+import { speechAudio } from "./voiceAudio";
 import { voiceFilename } from "./voiceRecording";
 export const TRANSCRIPTION_TIMEOUT_MS = 45_000;
 
@@ -11,9 +12,6 @@ export function appendDictation(current: string, transcript: string, multiline: 
 
 export async function transcribeDescription(audio: Blob, lang: Lang, signal: AbortSignal): Promise<string> {
   if (signal.aborted) throw new Error("recording_canceled");
-  const body = new FormData();
-  body.append("audio", audio, voiceFilename(audio, "description"));
-  body.append("language", lang);
   if (!navigator.onLine) throw new Error("offline");
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -25,6 +23,11 @@ export async function transcribeDescription(audio: Blob, lang: Lang, signal: Abo
     timer = setTimeout(() => { controller.abort(); reject(new Error("transcription_timeout")); }, TRANSCRIPTION_TIMEOUT_MS);
   });
   const run = async () => {
+    const ready = await speechAudio(audio);
+    if (controller.signal.aborted) throw new Error("recording_canceled");
+    const body = new FormData();
+    body.append("audio", ready, voiceFilename(ready, "description"));
+    body.append("language", lang);
     const { data, error } = await supabase.functions.invoke("transcribe-description", { body, signal: controller.signal });
     if (error) {
       let code = "transcription_failed";

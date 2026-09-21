@@ -1134,6 +1134,9 @@ test("Install memo: Submit waits for the final audio chunk and includes the reco
   await routeOpenings(page, [o]);
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "mediaDevices", {configurable:true,value:{getUserMedia:async()=>({getTracks:()=>[{stop:()=>{}}]})}});
+    Object.defineProperty(window, "OfflineAudioContext", {configurable:true,value:class {
+      decodeAudioData() { return Promise.resolve({length:1600,duration:0.1,sampleRate:16000,numberOfChannels:1,getChannelData:()=>new Float32Array(1600)}); }
+    }});
     class Recorder {
       static isTypeSupported(type: string) { return type === "audio/mp4"; }
       state="inactive"; mimeType="audio/mp4";

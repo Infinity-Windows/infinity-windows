@@ -87,7 +87,8 @@ export async function enqueueServiceMedia(
     "video/quicktime",
     "application/pdf",
   ];
-  const contentType = file.type.split(";")[0];
+  const rawType = file.type.split(";")[0].toLowerCase();
+  const contentType = ["audio/x-m4a", "audio/m4a"].includes(rawType) ? "audio/mp4" : rawType;
   if (!allowed.includes(contentType))
     throw new Error(
       "Use a JPG, PNG, WebP, HEIC photo, PDF receipt, MP4/MOV/WebM video, or WebM/M4A/MP3/WAV/OGG audio file.",
@@ -107,7 +108,7 @@ export async function enqueueServiceMedia(
       unitId: unit,
       kind,
       filename: filename.slice(0, 240),
-      contentType: file.type.split(";")[0] || "application/octet-stream",
+      contentType,
       path: `${user}/${visit}/${id}.${extension}`,
       blob: file,
       ...(kind === "voice" && language ? { language, transcriptCommandId: crypto.randomUUID() } : {}),

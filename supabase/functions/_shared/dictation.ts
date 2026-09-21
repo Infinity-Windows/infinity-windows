@@ -1,8 +1,9 @@
-// Shared limits: a short field recording, never a retained attachment.
-export const DICTATION_MAX_BYTES = 5 * 1024 * 1024;
+// Six MiB fits three minutes of mono 16 kHz PCM when Safari AAC is normalized.
+// Shared short-recording limits; retention is handled by the calling workflow.
+export const DICTATION_MAX_BYTES = 6 * 1024 * 1024;
 export const DICTATION_MAX_SECONDS = 180;
 export const DICTATION_AUDIO_TYPES: Record<string, string> = {
-  "audio/webm": "webm", "audio/mp4": "mp4", "audio/ogg": "ogg",
+  "audio/webm": "webm", "audio/mp4": "mp4", "audio/x-m4a": "m4a", "audio/m4a": "m4a", "audio/ogg": "ogg",
   "audio/mpeg": "mp3", "audio/wav": "wav", "audio/x-wav": "wav",
 };
 export function dictationExtension(mime: string): string | null {

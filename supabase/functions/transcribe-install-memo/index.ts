@@ -1,3 +1,4 @@
+import { readDictationBody, DICTATION_MAX_BYTES } from "../_shared/dictation.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import {
   corsHeaders,
@@ -46,6 +47,7 @@ interface AttachmentRecord {
   storage_path: string;
   install_event_id: string | null;
   transcribed_at: string | null;
+  created_by: string | null;
 }
 
 const nullableString = { type: ["string", "null"] };
@@ -90,31 +92,45 @@ Deno.serve(withSentry("transcribe-install-memo", async (req) => {
         ? AbortSignal.any([init.signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000) }) },
     });
 
-    const body = await req.json().catch(() => ({}));
+    let normalizedAudio: File | null = null;
+    let body;
+    if (req.headers.get("Content-Type")?.includes("multipart/form-data")) {
+      const bytes = await readDictationBody(req);
+      const form = await new Response(bytes, {headers: {"Content-Type": req.headers.get("Content-Type")!}}).formData();
+      const file = form.get("transcription_audio");
+      if (!(file instanceof File) || !file.size || file.size > DICTATION_MAX_BYTES || file.type !== "audio/wav")
+        return jsonResponse({error: "invalid_audio"}, 400, cors);
+      normalizedAudio = file;
+      body = { attachment_id: form.get("attachment_id") };
+    } else body = await req.json().catch(() => ({}));
     const record = (body.record ?? body) as Partial<AttachmentRecord> & {
       attachment_id?: string;
     };
 
     const caller = callerId ? callerSupabaseClient(req) : supabase;
     if (!caller) return jsonResponse({ error: "unauthorized" }, 401, cors);
+    let callerRole = "";
     if (callerId) {
       const { data: profile, error } = await caller.from("profiles")
-        .select("id,active,is_partner,access_revoked_at,retired_at").eq("id", callerId).maybeSingle();
+        .select("id,role,active,is_partner,access_revoked_at,retired_at").eq("id", callerId).maybeSingle();
       if (error || !profile || !profile.active || profile.is_partner || profile.access_revoked_at || profile.retired_at)
         return jsonResponse({ error: "access_unavailable" }, 403, cors);
+      callerRole = profile.role;
     }
     // Even webhook-shaped requests resolve the saved row. Never accept a
     // caller-supplied storage path or install ID under service credentials.
     const attachmentId = record.attachment_id ?? record.id;
     if (!attachmentId) return jsonResponse({ error: "attachment_required" }, 400, cors);
     const { data, error: readError } = await caller.from("attachments")
-      .select("id,kind,storage_path,install_event_id,transcribed_at")
+      .select("id,kind,storage_path,install_event_id,transcribed_at,created_by")
       .eq("id", attachmentId).maybeSingle();
     if (readError) throw readError;
     const attachment = data as AttachmentRecord | null;
     if (!attachment || attachment.kind !== "voice_memo") {
       return jsonResponse({ skipped: true, reason: "not a voice_memo" }, 200, cors);
     }
+    if (normalizedAudio && callerId !== attachment.created_by && !["foreman", "supervisor", "owner"].includes(callerRole))
+      return jsonResponse({ error: "access_unavailable" }, 403, cors);
     if (!attachment.install_event_id) {
       return jsonResponse({ skipped: true, reason: "no install_event_id" }, 200, cors);
     }
@@ -128,10 +144,14 @@ Deno.serve(withSentry("transcribe-install-memo", async (req) => {
     const bucket = slash >= 0 ? full.slice(0, slash) : "install-media";
     const path = slash >= 0 ? full.slice(slash + 1) : full;
 
-    const { data: file, error: dlErr } = await supabase.storage
-      .from(bucket)
-      .download(path);
-    if (dlErr) throw dlErr;
+    // The original recording stays in Storage. Its uploader (or a crew lead)
+    // may supply a browser-decoded WAV solely for speech recognition.
+    let file: Blob = normalizedAudio!;
+    if (!file) {
+      const { data, error } = await supabase.storage.from(bucket).download(path);
+      if (error) throw error;
+      file = data;
+    }
 
     // Spend guard, write-time. Placed after every "already done / not a memo"
     // skip above so a no-op invocation books nothing. This one deliberately
@@ -164,7 +184,7 @@ Deno.serve(withSentry("transcribe-install-memo", async (req) => {
     }
 
     reservation = gate.reservationId;
-    const filename = path.split("/").pop() ?? "memo.webm";
+    const filename = normalizedAudio ? "memo.wav" : path.split("/").pop() ?? "memo.webm";
     const transcript = await whisperTranscribe(file, filename, AbortSignal.timeout(45_000));
     if (!transcript.trim()) throw new Error("No speech was detected in this memo.");
     const { error: textError } = await supabase.from("install_events")
