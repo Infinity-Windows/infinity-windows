@@ -8,6 +8,7 @@ create function auth.uid() returns uuid language sql stable as $$select nullif(c
 grant usage on schema public,auth to authenticated,anon;
 create table profiles(id uuid primary key,rank integer,role text,is_partner boolean default false,active boolean default false,retired_at timestamptz,access_revoked_at timestamptz);
 create function my_role_rank() returns integer language sql stable security definer as $$select rank from profiles where id=auth.uid()$$;
+create function is_partner_user() returns boolean language sql stable security definer as $$select coalesce((select is_partner from profiles where id=auth.uid()),false)$$;
 insert into profiles(id,rank,role) select ('00000000-0000-4000-8000-00000000000'||i)::uuid,i-1,(array['installer','foreman','supervisor','owner'])[i] from generate_series(1,4) i;
 `);
 await db.exec(await readFile(new URL('../supabase/migrations/20261021000000_role_scoped_app_updates.sql',import.meta.url),'utf8'));

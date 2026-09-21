@@ -25,7 +25,7 @@ $$;
 revoke all on function public.can_read_app_update(integer[]) from public,anon;
 grant execute on function public.can_read_app_update(integer[]) to authenticated;
 create policy app_updates_read on public.app_release_notes for select to authenticated
-using(withdrawn_at is null and published_on<=current_date and public.can_read_app_update(audience));
+using(not public.is_partner_user() and withdrawn_at is null and published_on<=current_date and public.can_read_app_update(audience));
 
 -- Initial catch-up includes merged, shipped improvements only. Draft AI job and
 -- scheduling actions are intentionally absent. IDs are also allowlisted by the
