@@ -343,6 +343,8 @@ export interface AnthropicToolResult {
 }
 
 interface AnthropicToolChatOptions {
+  /** Cumulative usage, including completed rounds before a later failure. */
+  onUsage?: (usage: AnthropicUsage) => void;
   system: string;
   /** Same shape anthropicChat takes — plain user/assistant string turns. The
    * loop itself pushes richer (content-block) turns internally as tools run. */
@@ -372,6 +374,7 @@ export async function anthropicToolChat(
   opts: AnthropicToolChatOptions,
 ): Promise<AnthropicToolResult> {
   const key = requireAnthropic();
+  const totals = { inputTokens: 0, outputTokens: 0 };
 
   const send = async (messages: ToolLoopMessage[]): Promise<ToolLoopResponse> => {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -394,7 +397,10 @@ export async function anthropicToolChat(
       throw new Error(`Anthropic tool chat failed: ${res.status} ${text}`);
     }
     const data = await res.json();
-    return { content: data.content, stop_reason: data.stop_reason, usage: readUsage(data) };
+    const usage = readUsage(data);
+    totals.inputTokens += usage.inputTokens ?? 0; totals.outputTokens += usage.outputTokens ?? 0;
+    opts.onUsage?.({ ...totals });
+    return { content: data.content, stop_reason: data.stop_reason, usage };
   };
 
   const result = await runToolLoop({

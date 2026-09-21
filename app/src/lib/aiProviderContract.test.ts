@@ -59,10 +59,10 @@ describe("no text generation is left on OpenAI", () => {
     expect(openai).not.toMatch(/export\s+async\s+function\s+chatJsonVision/);
   });
 
-  it("every text feature asks Claude", () => {
+  it("text features retain Claude, with Ask explicitly configurable on the server", () => {
     for (const name of TEXT_FUNCTIONS) {
       expect(read(`${name}/index.ts`), name).toMatch(
-        /anthropicChat|anthropicVisionChat|anthropicChatJson/,
+        /anthropicChat|anthropicVisionChat|anthropicChatJson|anthropicToolChat/,
       );
     }
   });

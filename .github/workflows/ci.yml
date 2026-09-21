@@ -41,6 +41,9 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: Verify caller-scoped AI report queries
+        run: node --experimental-strip-types ../scripts/verify-ask-reporting.mjs
+
   custom-work-sql:
     name: Custom work database invariants
     runs-on: ubuntu-latest
@@ -77,7 +80,7 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       # Uses the existing fixture-only server, never the shared database.
-      - run: npm run e2e -- display-layout.spec.ts trip-sheet.spec.ts travel-crew.spec.ts workflow-plans.spec.ts schedule-remove-day.spec.ts crew-start-bar.spec.ts crew-end-time.spec.ts custom-work.spec.ts timecard-weekly.spec.ts unassigned-time.spec.ts project-hours.spec.ts time-entry-export.spec.ts daily-logs.spec.ts global-capture.spec.ts photos-upload.spec.ts dictation.spec.ts monthly-salary.spec.ts servicing.spec.ts time-off.spec.ts
+      - run: npm run e2e -- display-layout.spec.ts trip-sheet.spec.ts travel-crew.spec.ts workflow-plans.spec.ts schedule-remove-day.spec.ts crew-start-bar.spec.ts crew-end-time.spec.ts custom-work.spec.ts timecard-weekly.spec.ts unassigned-time.spec.ts project-hours.spec.ts time-entry-export.spec.ts daily-logs.spec.ts global-capture.spec.ts photos-upload.spec.ts dictation.spec.ts monthly-salary.spec.ts servicing.spec.ts time-off.spec.ts ask-reporting.spec.ts
       - run: npm run e2e -- opening-sheet.spec.ts -g "Install memo:"
       - uses: actions/upload-artifact@v4
         if: always()
@@ -96,6 +99,9 @@ jobs:
       # scripts/verify-functions.sh is what decides whether a backend deploy
       # really happened, so it gets tested like anything else. The tests stub
       # curl and never touch the network.
+      - name: Test authenticated Ask deployment check
+        run: python3 scripts/test_smoke_ask_authenticated.py
+
       - name: Test explicit test-account recovery
         run: python3 scripts/test_foreman_access_recovery.py
 

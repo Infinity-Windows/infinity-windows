@@ -59,6 +59,8 @@ interface ModelPrice {
 
 export const MODEL_PRICES: Record<string, ModelPrice> = {
   "claude-sonnet-5": { inPerToken: 2, outPerToken: 10 },
+  "gpt-5.6-terra": { inPerToken: 2, outPerToken: 12 },
+  "gpt-6-astra": { inPerToken: 10, outPerToken: 50 },
   "gpt-4o-mini": { inPerToken: 0.15, outPerToken: 0.6 },
   "gpt-4o": { inPerToken: 2.5, outPerToken: 10 },
   "text-embedding-3-small": { inPerToken: 0.02, outPerToken: 0 },
@@ -263,6 +265,8 @@ const ALLOW_UNMETERED: SpendVerdict = {
 };
 
 export interface ReserveInput {
+  /** Server-selected provider/model and whole-loop estimate. Never client input. */
+  spendOverride?: FunctionSpend;
   /** The end user, or null for a service-role / webhook caller. */
   userId: string | null;
   functionName: keyof typeof FUNCTION_SPEND | string;
@@ -281,7 +285,7 @@ export async function reserveAiSpend(
   input: ReserveInput,
 ): Promise<SpendVerdict> {
   if (!client) return ALLOW_UNMETERED;
-  const spend = FUNCTION_SPEND[input.functionName];
+  const spend = input.spendOverride ?? FUNCTION_SPEND[input.functionName];
   const kind = input.kind ?? spend?.kind ?? "question";
   const units = Math.max(1, Math.floor(input.units ?? 1));
   const estimate = (spend?.estimateMicros ?? 0) * units;

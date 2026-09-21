@@ -236,7 +236,8 @@ describe("buildContextBlock / buildAskUserMessage", () => {
 
     const noCtx = buildAskUserMessage("Anything?", "");
     expect(noCtx).toContain("Anything?");
-    expect(noCtx.toLowerCase()).toContain("no company notes");
+    expect(noCtx.toLowerCase()).toContain("no initial snapshot");
+    expect(noCtx.toLowerCase()).toContain("use permitted tools");
   });
 
   it("has a grounded, cite-your-notes system prompt", () => {

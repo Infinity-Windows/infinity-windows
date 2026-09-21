@@ -1,3 +1,4 @@
+import { shiftHours } from "../../../supabase/functions/_shared/timeMath.ts";
 import type { TimeShift } from "./timeclock";
 import { splitDisplayName } from "./gustoExport";
 import { NO_JOB } from "./timeReportFilters";
@@ -35,7 +36,7 @@ export function exportTime(iso: string, timeZone: string): string {
 
 export function timeEntrySeconds(shift: TimeShift): number {
   if (!shift.clock_out_at) return 0;
-  return Math.max(0, (Date.parse(shift.clock_out_at) - Date.parse(shift.clock_in_at)) / 1000 - shift.break_seconds);
+  return shiftHours(shift) * 3600;
 }
 
 export function completedExportShifts(shifts: TimeShift[]): TimeShift[] {
