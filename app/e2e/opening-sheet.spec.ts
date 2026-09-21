@@ -1126,3 +1126,48 @@ test("Refused: the server's sentence reaches the sheet, not the queued toast", a
   // And it stopped asking: one attempt, not eight over four minutes.
   expect(calls).toBe(1);
 });
+
+test("Install memo: Submit waits for the final audio chunk and includes the recorded memo", async ({page}) => {
+  await useSupabaseFixtures(page, { role: "installer" });
+  await stubGeolocationDenied(page);
+  const o = opening(1, { status: "assigned", needs_flashing: false, work_started_at: "2026-08-20T09:00:00Z", confirmed: true });
+  await routeOpenings(page, [o]);
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "mediaDevices", {configurable:true,value:{getUserMedia:async()=>({getTracks:()=>[{stop:()=>{}}]})}});
+    Object.defineProperty(window, "OfflineAudioContext", {configurable:true,value:class {
+      decodeAudioData() { return Promise.resolve({length:1600,duration:0.1,sampleRate:16000,numberOfChannels:1,getChannelData:()=>new Float32Array(1600)}); }
+    }});
+    class Recorder {
+      static isTypeSupported(type: string) { return type === "audio/mp4"; }
+      state="inactive"; mimeType="audio/mp4";
+      ondataavailable?: (e: {data:Blob}) => void; onstop?: () => void;
+      start() { this.state="recording"; }
+      stop() {
+        this.state="inactive";
+        Reflect.set(window, "finishAudioChunk", () => {
+          this.ondataavailable?.({data:new Blob(["last audio chunk"],{type:this.mimeType})}); this.onstop?.();
+        });
+      }
+    }
+    Object.defineProperty(window,"MediaRecorder",{configurable:true,value:Recorder});
+  });
+  const attachments: Json[] = [];
+  await page.route("**/storage/v1/object/install-media/**", r => r.fulfill({status:200,contentType:"application/json",body:'{"Key":"fixture-audio"}'}));
+  await page.route("**/rest/v1/rpc/finish_unit", r => r.fulfill({status:200,contentType:"application/json",body:'{"id":"evt-voice"}'}));
+  await page.route("**/rest/v1/attachments**", async r => {
+    if (r.request().method() === "POST") attachments.push(r.request().postDataJSON());
+    await r.fulfill({status:200,contentType:"application/json",body:r.request().method() === "POST" ? '{"id":"attachment-voice"}' : "[]"});
+  });
+  await page.route("**/functions/v1/transcribe-install-memo", r => r.fulfill({status:200,contentType:"application/json",body:'{"ok":true}'}));
+  await page.goto(`/projects/${str(o.project_id)}/opening/${str(o.id)}`);
+  await page.getByRole("button", {name:"3. Capture"}).click();
+  await page.locator('input[type="file"][accept="image/*"]').setInputFiles(pngFile("after.png"));
+  await page.getByRole("button", {name:"4",exact:true}).click();
+  await page.getByRole("button", {name:"● Record memo",exact:true}).click();
+  await page.getByRole("button", {name:/Stop recording/}).click();
+  await expect(page.getByRole("button", {name:"Submit install"})).toBeDisabled();
+  await page.evaluate(() => Reflect.get(window,"finishAudioChunk")());
+  await expect(page.locator("audio.audio-preview")).toBeVisible();
+  await page.getByRole("button", {name:"Submit install"}).click();
+  await expect.poll(() => attachments.some(a => a.kind === "voice_memo" && String(a.storage_path).endsWith(".mp4"))).toBe(true);
+});

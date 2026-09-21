@@ -14,6 +14,9 @@ async function setupDictationFixture(page: Page, language: "en" | "es" = "en", d
       if(denied)throw new DOMException("Denied","NotAllowedError");
       return {getTracks:()=>[{stop:()=>stopped++}]};
     }}});
+    Object.defineProperty(window, "OfflineAudioContext", {configurable:true,value:class {
+      decodeAudioData() { return Promise.resolve({length:1600, duration:0.1, sampleRate:16000, numberOfChannels:1,getChannelData:()=>new Float32Array(1600)}); }
+    }});
     class Recorder {
       static isTypeSupported(type:string){return type === "audio/mp4";}
       state="inactive";mimeType="audio/mp4";
@@ -47,7 +50,7 @@ test("dictation appends to the latest text and saves through the normal report f
   await control.getByRole("button",{name:"Dictate",exact:true}).click();
   await control.getByRole("button",{name:/Stop & transcribe/}).click();
   await expect.poll(()=>arrived).toBe(true);
-  expect(requestBody).toContain("audio/mp4");
+  expect(requestBody).toContain("audio/wav");
   expect(requestBody).toContain('name="language"');
   await notes.fill("Updated while transcribing.");
   finish();
@@ -69,6 +72,11 @@ test("failed transcription retains the clip for retry without losing typed text"
   await control.getByRole("button",{name:/Stop & transcribe/}).click();
   await expect(control.getByRole("button",{name:"Retry transcription"})).toBeVisible();
   await expect(notes).toHaveValue("Typed note.");
+  await expect(control.locator("audio")).toBeVisible();
+  await expect(control.getByRole("link", {name: "Save audio"})).toHaveAttribute("download", "forge-recording.mp4");
+  const audioDownload = page.waitForEvent("download");
+  await control.getByRole("link", {name: "Save audio"}).click();
+  expect((await audioDownload).suggestedFilename()).toBe("forge-recording.mp4");
   await control.getByRole("button",{name:"Retry transcription"}).click();
   await expect(notes).toHaveValue("Typed note.\nRetry worked.");
 });

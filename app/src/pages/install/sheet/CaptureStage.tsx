@@ -21,6 +21,8 @@ export interface CaptureStageProps {
   onVideoChange: (f: File | null) => void;
 
   recording: boolean;
+  recordingStarting?: boolean;
+  recordingSeconds?: number;
   onStartRecording: () => void;
   onStopRecording: () => void;
   audioBlob: Blob | null;
@@ -60,6 +62,8 @@ export function CaptureStage({
   video,
   onVideoChange,
   recording,
+  recordingStarting = false,
+  recordingSeconds = 0,
   onStartRecording,
   onStopRecording,
   audioBlob,
@@ -124,9 +128,10 @@ export function CaptureStage({
       </p>
       <button
         className={recording ? "big record-btn recording" : "big record-btn"}
+        disabled={recordingStarting}
         onClick={recording ? onStopRecording : onStartRecording}
       >
-        {recording ? "■ Stop recording" : audioBlob ? "● Re-record memo" : "● Record memo"}
+        {recordingStarting ? t("dictation.starting") : recording ? `■ Stop recording · ${Math.floor(recordingSeconds / 60)}:${String(recordingSeconds % 60).padStart(2, "0")}` : audioBlob ? "● Re-record memo" : "● Record memo"}
       </button>
       {audioUrl && !recording && (
         <audio controls src={audioUrl} className="audio-preview" />

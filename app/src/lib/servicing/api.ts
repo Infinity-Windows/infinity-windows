@@ -108,10 +108,11 @@ export async function serviceMediaUrl(media: ServiceMedia): Promise<string> {
 }
 export async function serviceMediaBlob(
   media: Pick<ServiceMedia, "storage_path">,
+  signal?: AbortSignal,
 ): Promise<Blob> {
   const { data, error } = await supabase.storage
     .from("service-media")
-    .download(media.storage_path);
+    .download(media.storage_path, undefined, { signal });
   if (error) throw error;
   return data;
 }

@@ -1,3 +1,4 @@
+import { transcribeInstallAttachment } from "./transcribe";
 // Offline upload queue for on-site voice memos and photos. Job sites have
 // dead spots, so captured media lands in IndexedDB first and syncs to
 // Supabase Storage (+ an attachments row) whenever a flush succeeds.
@@ -236,11 +237,7 @@ export async function flushQueue(): Promise<{ sent: number; remaining: number }>
           // Kick off Whisper + topic split. On failure the attachment keeps
           // transcribed_at = null, so retryTranscriptions() will pick it up.
           try {
-            const { error: fnErr } = await supabase.functions.invoke(
-              "transcribe-install-memo",
-              { body: { attachment_id: attachmentRow.id } },
-            );
-            if (fnErr) throw fnErr;
+            await transcribeInstallAttachment(attachmentRow.id, record.blob);
           } catch {
             // Left untranscribed for the retry loop.
           }
@@ -277,11 +274,8 @@ export async function retryTranscriptions(limit = 20): Promise<number> {
   let retried = 0;
   for (const row of data) {
     try {
-      const { error: fnErr } = await supabase.functions.invoke(
-        "transcribe-install-memo",
-        { body: { attachment_id: row.id } },
-      );
-      if (!fnErr) retried++;
+      await transcribeInstallAttachment(row.id);
+      retried++;
     } catch {
       // Stays untranscribed; picked up on the next retry.
     }

@@ -1,3 +1,4 @@
+import { transcribeInstallAttachment } from "./transcribe";
 import type { PDFDocumentProxy } from "pdfjs-dist/types/src/display/api";
 import { supabase } from "../supabase";
 import { filterToLiveProjects } from "../liveProjects";
@@ -4211,10 +4212,5 @@ export async function setGoldenInstall(
 
 /** Fire-and-forget transcription after a voice attachment lands. */
 export async function requestTranscription(attachmentId: string): Promise<void> {
-  const { error } = await supabase.functions.invoke("transcribe-install-memo", {
-    body: { attachment_id: attachmentId },
-  });
-  if (error) {
-    console.warn("transcribe invoke failed", error);
-  }
+  await transcribeInstallAttachment(attachmentId);
 }
