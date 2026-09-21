@@ -1,3 +1,4 @@
+import { ActionCard } from "../components/ask/ActionCard";
 import type { AskArtifact } from "../../../supabase/functions/_shared/askReporting.ts";
 import { ReportCard } from "../components/ask/ReportCard";
 import { isOperationalAsk } from "../lib/askRouting";
@@ -187,7 +188,7 @@ export function AskInfinity() {
       .slice(1)
       .map((m) => ({
         role: m.who === "me" ? ("user" as const) : ("assistant" as const),
-        content: m.text + (m.artifacts?.length ? "\nReport filters/IDs for follow-up (re-query before answering): " + JSON.stringify(m.artifacts.map(a => a.kind === "time_report" ? { scope:a.scope,people:a.people,jobs:a.jobs } : { project:a.project })) : ""),
+        content: m.text + (m.artifacts?.length ? "\nReport filters/IDs for follow-up (re-query before answering): " + JSON.stringify(m.artifacts.map(a => a.kind === "time_report" ? { scope:a.scope,people:a.people,jobs:a.jobs } : a.kind === "job_summary" ? { project:a.project } : { action:a })) : ""),
       }))
       .slice(-8);
 
@@ -274,7 +275,7 @@ export function AskInfinity() {
             >
               {m.text}
             </div>
-            {m.artifacts?.map(artifact => <ReportCard key={artifact.id} artifact={artifact}/>)}
+            {m.artifacts?.map(artifact => artifact.kind === "job_proposal" || artifact.kind === "schedule_proposal" ? <ActionCard key={artifact.id} artifact={artifact}/> : <ReportCard key={artifact.id} artifact={artifact}/>)}
             {m.hits && m.hits.length > 0 && (
               <p className="ask-sources muted">{t("ask.from", { source: m.hits[0].entry.source })}</p>
             )}

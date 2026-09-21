@@ -1,6 +1,6 @@
 # Forge AI reporting: first implementation
 
-Status: implemented and verified in an isolated checkout; not deployed or activated in production. This is the reporting slice of the September 21 AI expansion plan.
+Status: shipped September 21, 2026 through PR620 and the off-site access correction in PR621. Frontend and backend deployments passed. An authenticated foreman report was independently reconciled against all 341 matching live shift records for September 1–15; IDs and post-break hours matched. No time records were changed. This is the reporting slice of the September 21 AI expansion plan.
 
 ## What the crew can do
 
@@ -26,15 +26,15 @@ Existing scheduling draft tools remain available. This release does not add job 
 
 ## Provider configuration
 
-Default Ask continues using Claude. The OpenAI adapter uses the Responses API with `store: false`, bounded tool rounds and caller-owned tool execution. No browser key is accepted or exposed.
+Production Ask uses OpenAI after this release; the adapter retains Claude as the configurable default for rollback. The OpenAI adapter uses the Responses API with `store: false`, bounded tool rounds and caller-owned tool execution. No browser key is accepted or exposed.
 
-To activate OpenAI after review and deployment, configure server-side secrets/settings:
+The release configured these server-side secrets/settings through the existing deployment workflow:
 
 - `OPENAI_API_KEY`: the new project key, through the existing secure deployment process.
 - `ASK_AI_PROVIDER=openai`.
 - `ASK_OPENAI_MODEL=gpt-5.6-terra` (default). `gpt-6-astra` is also allowlisted with separately reviewed pricing.
 
-A local `.env.local` is sufficient for the opt-in synthetic provider test; it does not configure Supabase production. Do not use a `VITE_` credential. No production credential/settings changes were made by this implementation.
+A local `.env.local` is sufficient for the opt-in synthetic provider test; it does not configure Supabase production. Do not use a `VITE_` credential. The release securely synced these settings to production; no key value is committed or exposed to the browser.
 
 The spend guard reserves a conservative whole-loop estimate, settles returned token usage, and charges completed provider rounds even when a later round fails. The adapter never falls back silently to a second billed provider. Revert `ASK_AI_PROVIDER` to the existing default to return to Claude without removing reporting tools.
 
@@ -48,7 +48,7 @@ The spend guard reserves a conservative whole-loop estimate, settles returned to
 - Opt-in real OpenAI test: English daily employee export, Spanish report, completed-job lookup/summary, using synthetic records only. New key and model responded successfully.
 - Exported PDF and phone/desktop layouts visually inspected.
 
-The browser fixtures and live provider tests do not prove production database permissions or deployment. Before enabling this for the crew, verify a signed-in installer can retrieve only personal time, a foreman can read permitted team time, a partner is denied, and an owner report matches Team timecards for identical dates/filters. Check a completed job, unassigned time, a long paginated report, and both download formats. Verify AI Spend policy and the selected provider in the live environment.
+Production verification used the designated foreman login and independent read-only shift reconciliation. Installer personal scope and partner refusals passed local permission tests; the designated installer login is banned, so authenticated production installer verification remains outstanding. CSV/PDF browser checks used fixtures. These checks do not finalize payroll or approve unapproved time.
 
 ## Example requests
 

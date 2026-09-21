@@ -1,4 +1,6 @@
 import { askProfileAllowed } from "../_shared/askAccess.ts";
+import { actionExecutor } from './actions.ts';
+import { JOB_PROPOSAL_TOOL, ACTIONS_SYSTEM_PROMPT } from '../_shared/askActions.ts';
 import { REPORTING_TOOLS, REPORTING_SYSTEM_PROMPT, validateZone, dateInZone, type AskArtifact } from "../_shared/askReporting.ts";
 import { reportingExecutor } from "./operations.ts";
 import { openaiAsk } from "../_shared/openaiAsk.ts";
@@ -45,7 +47,6 @@ import {
   SCHEDULING_SYSTEM_PROMPT,
   SCHEDULING_TOOLS,
   schedulingRefusal,
-  type DraftEntry,
 } from "../_shared/schedulingTools.ts";
 import { UNEXPECTED_ERROR, reportCaughtError, withSentry } from "../_shared/sentry.ts";
 
@@ -53,12 +54,13 @@ import { UNEXPECTED_ERROR, reportCaughtError, withSentry } from "../_shared/sent
 // below-rank caller gets the same clean tool refusal a human trying a hidden
 // button would get, rather than the tools quietly not existing for them
 // (PERMISSION MIRROR).
-const SYSTEM_PROMPT = ASK_SYSTEM_PROMPT + SCHEDULING_SYSTEM_PROMPT + REPORTING_SYSTEM_PROMPT;
+const SYSTEM_PROMPT = ASK_SYSTEM_PROMPT + SCHEDULING_SYSTEM_PROMPT + REPORTING_SYSTEM_PROMPT + ACTIONS_SYSTEM_PROMPT;
 
 /** Plain progress lines for the doors (A4): what the Ask page shows while the
  * model works, built from the tool calls it actually made. */
 function toolActivityLine(name: string, input: unknown): string {
   switch (name) {
+    case "prepare_new_job": return "Prepared a new-job review";
     case "find_report_records": return "Looked up people and jobs";
     case "get_hours_report": return "Prepared an hours report";
     case "get_job_summary": return "Read the job summary sources";
@@ -696,23 +698,6 @@ async function callerRank(client: SupabaseLike): Promise<number> {
   }
 }
 
-/** The board's own "foreman or installer" split for a schedule_assignment
- * member (mirrors Scheduling.tsx's roleOf()) — a board role, not the
- * organizational role_rank ladder. */
-function crewMemberRole(profileRole: string | null | undefined): "foreman" | "installer" {
-  switch (profileRole) {
-    case "foreman":
-    case "lead":
-    case "supervisor":
-    case "admin":
-    case "owner":
-    case "big_boss":
-      return "foreman";
-    default:
-      return "installer";
-  }
-}
-
 /** blue=window, green=door — mirrors loadLiveContext's own isDoor check
  * above, kept as its own small copy rather than a shared extraction so this
  * block stays self-contained (see the header note on scope). */
@@ -947,172 +932,13 @@ async function buildSchedulingPicture(
     picture.existing_ai_drafts = [];
   }
 
+  const {data:absences,error:absenceError} = await client.from("time_off_requests")
+    .select("id,profile_id,start_date,end_date,status,kind", {count:"exact"})
+    .in("status",["approved","pending"]).lte("start_date",to).gte("end_date",from).limit(2000);
+  picture.time_off = absenceError ? null : absences;
+  picture.coverage = "This is a bounded planning snapshot (40 jobs, 300 people, 2000 bookings/badges/absences). Missing records are not proof of availability. Draft and publish revalidate all selected records in the database. Profile active describes availability, not login permission. Verify specialized qualifications and job prerequisites with the supervisor.";
+  if (absenceError) picture.time_off_error = "Time off could not be read. Do not assume anyone is available.";
   return picture;
-}
-
-/** One {start,end,project_id} span a profile is already committed to, from
- * either the database or earlier in the SAME draft_assignments call. */
-interface BookedSpan {
-  start: string;
-  end: string;
-  project_id: string;
-}
-
-/**
- * draft_assignments' write: one schedule_assignments row per entry — the
- * board's own single-day/single-member draft unit (Scheduling.tsx's own
- * createDayDraft makes the identical shape) — tagged created_via='ai'.
- * Never publishes: status is always 'draft'.
- */
-async function executeDraftAssignments(
-  client: SupabaseLike,
-  callerUid: string,
-  rawInput: unknown,
-): Promise<{ content: string; is_error?: boolean }> {
-  const parsed = parseDraftEntriesInput(rawInput);
-  if (parsed.formatError) return { content: parsed.formatError, is_error: true };
-
-  const results: Array<Record<string, unknown>> = parsed.errors.map((e) => ({
-    index: e.index,
-    ok: false,
-    reason: "invalid_entry",
-    detail: e.reason,
-  }));
-
-  if (parsed.entries.length === 0) {
-    return { content: JSON.stringify({ results, drafted: 0, refused: results.length }) };
-  }
-
-  const projectIds = [...new Set(parsed.entries.map((e: DraftEntry) => e.project_id))];
-  const profileIds = [...new Set(parsed.entries.map((e: DraftEntry) => e.profile_id))];
-
-  // Wave D: an owner can still see their own trashed job's row (RLS lets
-  // them), so this is an explicit belt-and-suspenders check, not just RLS —
-  // PERMISSION MIRROR means the AI can't schedule against a job the owner's
-  // own UI no longer offers to schedule against either.
-  const { data: projectRows } = await client
-    .from("projects")
-    .select("id")
-    .in("id", projectIds)
-    .is("deleted_at", null);
-  const knownProjects = new Set(((projectRows ?? []) as Array<{ id: string }>).map((p) => p.id));
-
-  const { data: profileRows } = await client
-    .from("profiles")
-    .select("id, role, active")
-    .in("id", profileIds);
-  const profileById = new Map(
-    ((profileRows ?? []) as Array<{ id: string; role: string; active: boolean }>).map((p) => [p.id, p]),
-  );
-
-  // Every non-canceled assignment that could touch this batch's dates.
-  const dates = parsed.entries.map((e) => e.date).sort();
-  const { data: existingRows } = await client
-    .from("schedule_assignments")
-    .select("id, project_id, start_date, end_date, schedule_assignment_members(profile_id)")
-    .lte("start_date", dates[dates.length - 1])
-    .gte("end_date", dates[0])
-    .neq("status", "canceled")
-    .limit(2000);
-  const bookedByProfile = new Map<string, BookedSpan[]>();
-  for (const a of (existingRows ?? []) as Array<{
-    project_id: string | null;
-    start_date: string;
-    end_date: string;
-    schedule_assignment_members: Array<{ profile_id: string }> | null;
-  }>) {
-    if (!a.project_id) continue;
-    for (const m of a.schedule_assignment_members ?? []) {
-      const list = bookedByProfile.get(m.profile_id) ?? [];
-      list.push({ start: a.start_date, end: a.end_date, project_id: a.project_id });
-      bookedByProfile.set(m.profile_id, list);
-    }
-  }
-  // Claims made earlier IN THIS SAME CALL — a batch must not double-book
-  // itself either.
-  const claimedThisCall = new Map<string, BookedSpan[]>();
-
-  let drafted = 0;
-  for (const entry of parsed.entries) {
-    if (!knownProjects.has(entry.project_id)) {
-      results.push({ ...entry, ok: false, reason: "unknown_project" });
-      continue;
-    }
-    const profile = profileById.get(entry.profile_id);
-    if (!profile || !profile.active) {
-      results.push({ ...entry, ok: false, reason: "unknown_profile" });
-      continue;
-    }
-
-    const spans = [...(bookedByProfile.get(entry.profile_id) ?? []), ...(claimedThisCall.get(entry.profile_id) ?? [])];
-    const covering = spans.find((s) => entry.date >= s.start && entry.date <= s.end);
-    if (covering && covering.project_id !== entry.project_id) {
-      results.push({ ...entry, ok: false, reason: "double_booked" });
-      continue;
-    }
-    if (covering) {
-      // Already scheduled on this exact job/day — idempotent, not a second
-      // stacked chip.
-      results.push({ ...entry, ok: true, note: "already scheduled" });
-      drafted++;
-      continue;
-    }
-
-    const { data: created, error: insertError } = await client
-      .from("schedule_assignments")
-      .insert({
-        project_id: entry.project_id,
-        start_date: entry.date,
-        end_date: entry.date,
-        status: "draft",
-        created_by: callerUid,
-        created_via: "ai",
-      })
-      .select("id")
-      .single();
-    if (insertError || !created) {
-      results.push({
-        ...entry,
-        ok: false,
-        reason: "write_failed",
-        detail: String((insertError as { message?: string } | null)?.message ?? "unknown error"),
-      });
-      continue;
-    }
-    const assignmentId = (created as { id: string }).id;
-    const { error: memberError } = await client.from("schedule_assignment_members").insert({
-      assignment_id: assignmentId,
-      profile_id: entry.profile_id,
-      role: crewMemberRole(profile.role),
-    });
-    if (memberError) {
-      // A memberless assignment renders nothing on the board either way;
-      // clean it up so it doesn't linger as an empty row.
-      await client.from("schedule_assignments").delete().eq("id", assignmentId);
-      results.push({
-        ...entry,
-        ok: false,
-        reason: "write_failed",
-        detail: String((memberError as { message?: string }).message ?? "unknown error"),
-      });
-      continue;
-    }
-    try {
-      await client
-        .from("schedule_events")
-        .insert({ assignment_id: assignmentId, actor: callerUid, kind: "created", payload: { ai: true } });
-    } catch (_e) {
-      // audit is optional, matches lib/schedule/api.ts's own logEvent
-    }
-
-    drafted++;
-    results.push({ ...entry, ok: true });
-    const claimed = claimedThisCall.get(entry.profile_id) ?? [];
-    claimed.push({ start: entry.date, end: entry.date, project_id: entry.project_id });
-    claimedThisCall.set(entry.profile_id, claimed);
-  }
-
-  return { content: JSON.stringify({ results, drafted, refused: results.length - drafted }) };
 }
 
 /** clear_ai_drafts' write: deletes ONLY status='draft' AND created_via='ai'
@@ -1165,6 +991,7 @@ function buildSchedulingExecutor(
   client: SupabaseLike,
   callerUid: string,
   rank: number,
+  artifacts: AskArtifact[],
 ): (name: string, input: unknown) => Promise<{ content: string; is_error?: boolean }> {
   return async (name, input) => {
     const refusal = schedulingRefusal(rank);
@@ -1179,7 +1006,16 @@ function buildSchedulingExecutor(
           return { content: JSON.stringify(picture) };
         }
         case "draft_assignments":
-          return await executeDraftAssignments(client, callerUid, input);
+          {
+          if (artifacts.length >= 4) return { content:"Review the existing action cards before requesting more.", is_error:true };
+          const parsed = parseDraftEntriesInput(input);
+          if (parsed.formatError || parsed.errors.length) return { content: parsed.formatError ?? "Fix invalid draft entries before saving.", is_error: true };
+          const requestId = crypto.randomUUID();
+          const { data, error } = await client.rpc("ai_draft_schedule", { p_request: requestId, p_entries: parsed.entries });
+          if (error || !data) return { content: "The draft could not be saved. Check job status, crew availability, time off and existing bookings.", is_error: true };
+          artifacts.push({ kind:"schedule_proposal", id:requestId, assignmentCount:data.assignmentCount, message:"Draft saved. Review current availability before publishing." });
+          return { content:JSON.stringify({ ...data, requestId, status:"draft", instruction:"Use the attached review card to review and publish. Nothing has been published." }) };
+        }
         case "clear_ai_drafts": {
           const parsed = parseDateRangeInput(input);
           if (parsed.formatError) return { content: parsed.formatError, is_error: true };
@@ -1323,11 +1159,12 @@ Deno.serve(withSentry("ask", async (req) => {
     let answer: string;
     let toolActivity: string[] = [];
     try {
-      const schedule = buildSchedulingExecutor(scopedClient, userId, rank);
+      const schedule = buildSchedulingExecutor(scopedClient, userId, rank, artifacts);
       const reporting = reportingExecutor(scopedClient, userId, rank, timeZone, artifacts);
-      const tools = [...SCHEDULING_TOOLS, ...REPORTING_TOOLS];
+      const actions = actionExecutor(scopedClient, rank, artifacts);
+      const tools = [...SCHEDULING_TOOLS, ...REPORTING_TOOLS, JOB_PROPOSAL_TOOL];
       const executeTool = (name: string, input: unknown) => REPORTING_TOOLS.some(t => t.name === name)
-        ? reporting(name, input) : schedule(name, input);
+        ? reporting(name, input) : name === "prepare_new_job" ? actions(name, input) : schedule(name, input);
       const options = {
         system: SYSTEM_PROMPT + `\nReport time zone: ${timeZone}. Current date: ${dateInZone(new Date().toISOString(), timeZone)}.`,
         messages, tools, executeTool,

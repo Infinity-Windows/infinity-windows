@@ -1,0 +1,71 @@
+process.on('uncaughtException',e=>{console.error(e.message,e.where??'',e.position??'');process.exit(1);});
+// Disposable PostgreSQL: actual action functions and authenticated-role grants.
+import {readFile} from 'node:fs/promises';
+import assert from 'node:assert/strict';
+const {PGlite}=await import(process.env.PGLITE_MODULE??'@electric-sql/pglite');
+const db=new PGlite();
+await db.exec(`
+set check_function_bodies=off;create role authenticated;create role anon;create role service_role;create schema auth;
+create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
+grant usage on schema auth,public to authenticated,anon;
+create table profiles(id uuid primary key,display_name text,role text,active boolean default true,is_partner boolean default false,retired_at timestamptz,access_revoked_at timestamptz,is_test boolean default false);
+create table projects(id uuid primary key default gen_random_uuid(),job_code text unique,name text,address text,customer_name text,contact_phone text,contact_email text,notes text,start_date date,end_date date,ready_state text default 'ready',status text default 'active',deleted_at timestamptz);
+create table bays(project_id uuid references projects on delete cascade,position text);
+create function staging() returns trigger language plpgsql as $$begin insert into bays values(new.id,'A'),(new.id,'B');return new;end$$;
+create trigger staging after insert on projects for each row execute function staging();
+create table targets(project_id uuid references projects,projected numeric,goal numeric,sqf numeric);
+create function set_project_labor_targets(uuid,numeric,numeric,numeric,integer,text) returns void language plpgsql as $$begin if $2=999 then raise exception 'Synthetic write failure';end if;insert into targets values($1,$2,$3,$4);end$$;
+create function is_partner_user() returns boolean language sql security definer as $$select coalesce((select is_partner from profiles where id=auth.uid()),false)$$;
+create function my_role_rank() returns integer language sql security definer as $$select case role when 'owner' then 3 when 'supervisor' then 2 when 'foreman' then 1 else 0 end from profiles where id=auth.uid()$$;
+create function is_test_profile(uuid) returns boolean language sql security definer as $$select coalesce((select is_test from profiles where id=$1),false)$$;
+create function workflow_require_manager() returns void language plpgsql security definer as $$begin if auth.uid() is null or is_partner_user() or my_role_rank()<2 then raise exception 'Manager required';end if;end$$;
+create function workflow_lock_writes() returns trigger language plpgsql as $$begin perform pg_advisory_xact_lock(639024,1);return null;end$$;
+create table schedule_assignments(id uuid primary key default gen_random_uuid(),project_id uuid references projects,start_date date,end_date date,start_time time,end_time time,note text,status text,created_by uuid references profiles,created_via text,updated_at timestamptz default now(),published_at timestamptz);
+create table schedule_assignment_members(assignment_id uuid references schedule_assignments,profile_id uuid references profiles,role text,primary key(assignment_id,profile_id));
+create table schedule_events(assignment_id uuid,actor uuid,kind text,payload jsonb);
+create table workflow_plan_assignments(assignment_id uuid);
+create table time_off_requests(id uuid primary key default gen_random_uuid(),profile_id uuid,start_date date,end_date date,status text);
+create table crew_reminders(profile_id uuid,dedupe_key text unique,title text,body text,url text,expires_at timestamptz);
+grant select on profiles,projects,bays,targets,schedule_assignments,schedule_assignment_members,time_off_requests,schedule_events,crew_reminders to authenticated;
+`);
+await db.exec(await readFile(new URL('../supabase/migrations/20261020000000_ai_job_and_schedule_actions.sql',import.meta.url),'utf8'));
+const id=n=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
+let checks=0,request=100;
+const sql=async(q,p=[])=>{checks++;return(await db.query(q,p)).rows;};
+async function user(n){await db.exec('reset role');await db.query("select set_config('request.jwt.claim.sub',$1,false)",[id(n)]);await db.exec('set role authenticated');}
+async function root(q,p=[]){await db.exec('reset role');return sql(q,p);}
+async function deny(fn){await assert.rejects(fn);checks++;}
+for(const [n,role,partner,active] of [[1,'owner',false,false],[2,'supervisor',false,true],[3,'foreman',false,true],[4,'installer',false,true],[5,'owner',true,true],[6,'owner',false,true]])await sql('insert into profiles(id,display_name,role,is_partner,active) values($1,$2,$3,$4,$5)',[id(n),'Person '+n,role,partner,active]);
+await sql('update profiles set access_revoked_at=now() where id=$1',[id(6)]);
+const details={name:'Fixture New Job',jobCode:'FIXTURE-NEW',address:'123 Example St',projectedHours:200,goalHours:180};
+const create=(key,data)=>sql('select ai_create_job($1,$2) result',[id(key),data]);
+await user(1);const job=(await create(100,details))[0].result.projectId;
+assert.equal((await sql('select ready_state from projects where id=$1',[job]))[0].ready_state,'not_ready');assert.equal((await sql('select * from bays where project_id=$1',[job])).length,2);
+assert.equal((await create(100,details))[0].result.projectId,job);await deny(()=>create(100,{...details,name:'Changed'}));await deny(()=>create(101,details));
+await user(2);await deny(()=>create(100,details));
+await user(3);await deny(()=>create(102,{...details,name:'Foreman',jobCode:'FOREMAN'}));assert((await create(103,{name:'Foreman basic',jobCode:'BASIC'}))[0].result.projectId);
+for(const n of [4,5,6]){await user(n);await deny(()=>create(104,{name:'Denied',jobCode:'DENIED'}));}
+await user(1);await deny(()=>create(105,{name:'Bad fields',jobCode:'BAD',is_test:true}));await deny(()=>create(106,{name:'Bad dates',jobCode:'BAD',startDate:'2026-02-30'}));await deny(()=>create(107,{name:'Atomic rollback',jobCode:'ROLLBACK',projectedHours:999}));assert.equal((await sql("select * from projects where job_code='ROLLBACK'")).length,0);
+await deny(()=>sql("update ai_action_receipts set result='{}'"));
+await root("update projects set ready_state='ready' where id=$1",[job]);
+const entries=[{project_id:job,profile_id:id(3),date:'2026-10-05'},{project_id:job,profile_id:id(4),date:'2026-10-05'}];
+const draft=(key,data)=>sql('select ai_draft_schedule($1,$2) result',[id(key),data]);
+const review=async key=>(await sql('select ai_review_schedule($1) result',[id(key)]))[0].result;
+const publish=(key,token)=>sql('select ai_publish_schedule($1,$2) result',[id(key),token]);
+await user(3);await deny(()=>draft(110,entries));await user(1);
+const created=(await draft(110,entries))[0].result;assert.equal(created.assignmentCount,1);assert.equal((await draft(110,entries))[0].result.assignmentIds[0],created.assignmentIds[0]);await deny(()=>draft(111,entries));
+let r=await review(110);assert.deepEqual(r.issues,[]);
+await root("insert into time_off_requests(profile_id,start_date,end_date,status) values($1,'2026-10-05','2026-10-05','approved')",[id(4)]);await user(1);await deny(()=>publish(110,r.reviewToken));r=await review(110);assert(r.issues.some(x=>x.includes('time off')));await deny(()=>publish(110,r.reviewToken));
+await deny(()=>root("update schedule_assignments set status='published' where id=$1",[created.assignmentIds[0]]));
+await root('delete from time_off_requests');await user(1);r=await review(110);
+await root("update schedule_assignments set note='Changed after review',updated_at=now() where id=$1",[created.assignmentIds[0]]);await user(1);await deny(()=>publish(110,r.reviewToken));r=await review(110);
+assert.equal((await publish(110,r.reviewToken))[0].result.published,true);assert.equal((await publish(110,r.reviewToken))[0].result.published,true);
+assert.equal((await sql('select * from crew_reminders')).length,2);assert.equal((await sql("select * from schedule_events where kind='published'")).length,1);
+await user(2);await deny(()=>review(110));await deny(()=>publish(110,r.reviewToken));
+await user(1);await deny(()=>draft(120,[entries[0],entries[0]]));
+await root("insert into time_off_requests(profile_id,start_date,end_date,status) values($1,'2026-10-06','2026-10-06','approved')",[id(4)]);await user(1);await deny(()=>draft(121,entries.map(x=>({...x,date:'2026-10-06'}))));
+await draft(122,[{...entries[1],date:'2026-10-07'}]);assert((await review(122)).issues.some(x=>x.includes('foreman')));
+await deny(()=>root("update schedule_assignments set status='published' where id in(select value::uuid from ai_action_receipts r,jsonb_array_elements_text(r.result->'assignmentIds') where r.id=$1)",[id(122)]));
+await root("update profiles set retired_at=now() where id=$1",[id(1)]);await user(1);await deny(()=>create(100,details));await deny(()=>publish(110,r.reviewToken));
+console.log(`AI actions: ${checks} PostgreSQL permission, duplicate, atomicity, availability, stale-review and notification checks passed.`);
+await db.close();

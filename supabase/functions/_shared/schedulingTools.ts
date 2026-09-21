@@ -6,17 +6,17 @@
  * anthropicTools.ts are.
  *
  * What stays OUT of this file, deliberately: existence checks (does this
- * project_id/profile_id actually exist), active-profile checks, and
+ * project_id/profile_id actually exist), crew-access checks, and
  * double-booking checks. Those need a live query against schedule_assignments
- * and are inherently impure, so they live in ask/index.ts next to the rest of
- * loadLiveContext's DB-reading code — the same split that file already draws.
+ * and are inherently impure, so they are enforced by the atomic database RPC called from ask/index.ts;
+ * live context remains a bounded planning snapshot.
  *
  * PERMISSION MIRROR (a1-ai-scheduler-spec.md, settled, cite-not-redecide):
  * "the AI holds exactly the caller's power. Scheduling tools refuse below
  * supervisor rank with a plain sentence. No new power enters through the chat
  * door." Direct Schedule writes are now manager-only under migration
- * 20261003000000. This edge function can use a service-role client that bypasses
- * RLS, so the caller gate remains mandatory for all three tools.
+ * 20261003000000. The edge executor uses the caller client, and SECURITY DEFINER action RPCs
+ * independently recheck current caller permissions before any write.
  */
 
 import type { AnthropicToolDef } from "./anthropicTools.ts";
@@ -194,12 +194,9 @@ export const DRAFT_ASSIGNMENTS_TOOL: AnthropicToolDef = {
   name: "draft_assignments",
   description:
     "Write DRAFT crew assignments onto the schedule board: one person, one " +
-    "job, one day per entry — the board's own native unit, so every row is " +
-    "individually draggable and removable there. Every row this writes is " +
+    "job, one day per entry — the board's own native unit, grouped by job/day into a crew assignment that can be edited there. Every row this writes is " +
     "marked AI-proposed and stays invisible to the crew until a human " +
-    "publishes on Scheduling — this tool can NEVER publish. Returns one " +
-    "ok/refusal result per entry (refusal reasons: double_booked, " +
-    "unknown_project, unknown_profile). Refuses the whole call below " +
+    "publishes using the review card or Scheduling — this tool can NEVER publish. Saves the whole batch atomically or refuses it when jobs, people, time off or bookings conflict. Refuses the whole call below " +
     "supervisor rank.",
   input_schema: {
     type: "object",
@@ -272,8 +269,8 @@ export const SCHEDULING_SYSTEM_PROMPT =
   "or work around.\n" +
   "Team rules when proposing crew (never re-decide these, they are settled):\n" +
   "- Every team needs at least one skill-4-or-higher lead.\n" +
-  "- Fill headcount from crew who are active, unbooked in the range, and " +
-  "available — never double-book a person across overlapping assignments.\n" +
+  "- Fill headcount from crew who have current internal access, are unbooked in the range, and " +
+  "available — never double-book. The profile active flag means on-site now, not account access or future availability.\n" +
   "- Honor any capability a job names (wet glazing, curtain wall, retrofit, " +
   "nail fin, doors) — only send someone who holds that badge.\n" +
   "- Location is soft reasoning from job addresses (nearby jobs, same town) " +
@@ -297,5 +294,5 @@ export const SCHEDULING_SYSTEM_PROMPT =
   "- draft_assignments can NEVER publish a schedule to the crew — it only " +
   "ever writes drafts a human must review. Every final answer that drafted " +
   "anything must end with a plain summary of what was drafted and the " +
-  'sentence: "Review on Scheduling — nothing reaches the crew until you ' +
+  'sentence: "Review the schedule card or Scheduling — nothing reaches the crew until you ' +
   'publish."';

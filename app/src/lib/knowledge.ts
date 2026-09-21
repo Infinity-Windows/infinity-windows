@@ -103,7 +103,7 @@ export async function askInfinity(
     : [];
   return {
     answer: String(data?.answer ?? "").trim(),
-    artifacts: Array.isArray(data?.artifacts) ? data.artifacts.filter((a: AskArtifact) => a && ["time_report", "job_summary"].includes(a.kind)).slice(0, 4) : [],
+    artifacts: Array.isArray(data?.artifacts) ? data.artifacts.filter((a: AskArtifact) => a && ["time_report", "job_summary", "job_proposal", "schedule_proposal"].includes(a.kind)).slice(0, 4) : [],
     sources: Array.isArray(data?.sources) ? (data.sources as KnowledgeSource[]) : [],
     ...(data?.limited ? { limited: true } : {}),
     ...(typeof data?.note === "string" && data.note ? { note: data.note } : {}),

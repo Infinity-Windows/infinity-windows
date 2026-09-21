@@ -1,3 +1,4 @@
+import type { ActionArtifact } from './askActions.ts';
 import { elapsedWorkSeconds, shiftHours, SHIFT_CAP_HOURS, type ShiftTime } from './timeMath.ts';
 import type { AnthropicToolDef } from './anthropicTools.ts';
 
@@ -37,7 +38,7 @@ export interface JobSummaryArtifact {
   logs: Array<{ id: string; log_date: string; headline: string | null; notes: string | null }>;
   unavailable: string[];
 }
-export type AskArtifact = TimeReportArtifact | JobSummaryArtifact;
+export type AskArtifact = TimeReportArtifact | JobSummaryArtifact | ActionArtifact;
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export function validId(value: unknown): value is string { return typeof value === 'string' && uuid.test(value); }
 export function validDay(value: unknown): value is string {

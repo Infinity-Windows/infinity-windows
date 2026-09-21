@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Download, FileText, Clock3 } from 'lucide-react';
-import type { AskArtifact, TimeReportArtifact } from '../../../../supabase/functions/_shared/askReporting.ts';
+import type { TimeReportArtifact, JobSummaryArtifact } from '../../../../supabase/functions/_shared/askReporting.ts';
 import { askReportCsv, askReportPdf } from '../../lib/askReportExports';
 import { JOB_STAGES } from '../../lib/jobExecution';
 import { useT } from '../../lib/i18n';
@@ -11,7 +11,7 @@ function download(bytes: BlobPart, mime: string, name: string) {
   const a=document.createElement('a');a.href=url;a.download=name;a.click();
   setTimeout(()=>URL.revokeObjectURL(url),10000);
 }
-export function ReportCard({artifact}:{artifact:AskArtifact}) {
+export function ReportCard({artifact}:{artifact:TimeReportArtifact|JobSummaryArtifact}) {
   const t=useT();
   const [busy,setBusy]=useState(false);const [error,setError]=useState('');
   if(artifact.kind==='job_summary') {
