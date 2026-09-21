@@ -216,6 +216,8 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ASK_AI_PROVIDER: ${{ secrets.ASK_AI_PROVIDER }}
+          ASK_OPENAI_MODEL: ${{ secrets.ASK_OPENAI_MODEL }}
           VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
           VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
           # Crash monitoring for the edge functions (2026-09-05), and the one
@@ -719,10 +721,10 @@ jobs:
         if: ${{ !cancelled() && steps.guard.outputs.ok == 'true' }}
         shell: bash
         env:
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          TEST_FOREMAN_PASSWORD: ${{ secrets.TEST_FOREMAN_PASSWORD }}
         run: |
           set +e
-          scripts/smoke-ask.sh >/tmp/ask-smoke.log 2>&1
+          python3 scripts/smoke-ask-authenticated.py >/tmp/ask-smoke.log 2>&1
           rc=$?
           cat /tmp/ask-smoke.log
 

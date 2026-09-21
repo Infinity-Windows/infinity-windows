@@ -99,6 +99,9 @@ jobs:
       # scripts/verify-functions.sh is what decides whether a backend deploy
       # really happened, so it gets tested like anything else. The tests stub
       # curl and never touch the network.
+      - name: Test authenticated Ask deployment check
+        run: python3 scripts/test_smoke_ask_authenticated.py
+
       - name: Test explicit test-account recovery
         run: python3 scripts/test_foreman_access_recovery.py
 
