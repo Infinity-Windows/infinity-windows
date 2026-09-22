@@ -68,6 +68,7 @@ import {
   type FinishTimeCheck,
 } from "../../lib/shiftGuard";
 import { useT } from "../../lib/i18n";
+import { useFocusTrap } from "../../lib/useFocusTrap";
 import { effectiveClockInMode } from "../../lib/jobModes";
 
 const BREAK_ICONS: Record<BreakType, LucideIcon> = {
@@ -113,6 +114,20 @@ export function ClockSheet({
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const t = useT();
+  // Escape, Tab containment and focus-restore, through the same hook
+  // ui/Sheet.tsx and nav/CaptureSheet.tsx use — this sheet was the one that
+  // hand-rolled its dialog chrome and had none of the three.
+  //
+  // The open flag is the literal `true`, not a piece of state: clockContext
+  // only mounts this component while the sheet is open, so the trap arms once
+  // per open. That matters here more than anywhere else in the app — the 1s
+  // timer tick below re-renders this whole tree every second, and anything
+  // that made the hook's effect re-run would drag focus back to the close
+  // button and scroll the sheet to the top mid-note. The hook keeps `onClose`
+  // in a ref for exactly the same reason, so a fresh callback each render is
+  // fine.
+  const sheetRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(sheetRef, true, onClose);
   const [mode, setMode] = useState<Mode>(shift ? "main" : "pick");
   const [pickProjectId, setPickProjectId] = useState<string>(initialPick?.projectId ?? "");
   const [pickCostCodeId, setPickCostCodeId] = useState<string>(initialPick?.costCodeId ?? "");
@@ -685,6 +700,7 @@ export function ClockSheet({
   return (
     <div className="clock-sheet-backdrop" onClick={onClose} role="presentation">
       <div
+        ref={sheetRef}
         className="clock-sheet"
         role="dialog"
         aria-modal="true"
