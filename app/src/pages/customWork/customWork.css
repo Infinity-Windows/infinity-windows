@@ -224,6 +224,24 @@
   font-size: 0.85rem;
   line-height: 1.35;
 }
+/* Reserve two lines for every label in a multi-column row. The grid aligns its
+   inputs, not its words, so a row of "Access" next to "Machinery needed" next
+   to "Frame height (inches)" used to start its text at three different heights
+   and read as three different rows — the misalignment people reported. Two
+   lines is what the longest of these wraps to at every column width the grid
+   uses; a label that needs a third still gets it, this is a floor and not a
+   cap. The Helpful section has been doing this since it shipped (the rule used
+   to be scoped to .cw-helpful-body); Necessary now matches it. */
+.cw-editor-grid > label > span:first-child {
+  min-height: 2.7em;
+}
+/* Except when the grid is one column wide and there is nothing beside a label
+   to line it up with — the identity row on a phone. Reserving a blank second
+   line there would just push the fields that matter further down a 390px
+   screen for no gain. It comes back with the columns at 640px, below. */
+.cw-editor-identity > label > span:first-child {
+  min-height: 0;
+}
 .cw-editor input,
 .cw-editor select {
   height: 48px;
@@ -295,9 +313,6 @@
 .cw-helpful-body .cw-editor-grid {
   align-items: start;
 }
-.cw-helpful-body .cw-editor-grid > label > span:first-child {
-  min-height: 2.7em;
-}
 .cw-helpful-body > label {
   margin-top: 1rem;
 }
@@ -314,6 +329,11 @@
 @media (min-width: 640px) {
   .cw-editor-identity {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  /* Three across now, so "Unit number / name" wraps while "Type" and "Job"
+     don't — same job as the rule above, on the row that only needs it here. */
+  .cw-editor-identity > label > span:first-child {
+    min-height: 2.7em;
   }
   .cw-editor-facts {
     grid-template-columns: repeat(4, minmax(0, 1fr));
