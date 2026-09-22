@@ -440,6 +440,10 @@ def auth_dependent_tables(schema: Schema) -> list[str]:
 #: Every table the migrations declare has an entry; `test_supabase_merge.py`
 #: fails if a new migration adds a table and leaves it out.
 DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
+    "hex_portal_cases": None,
+    "hex_portal_outcomes": None,
+    "hex_portal_guidance_flags": ("guidance_id", "revision"),
+    "hex_portal_guidance_receipts": ("actor_id", "project_id", "guidance_id", "revision"),
     "app_release_notes": ("id",),  # stable release-note ID shared across deployments
     "time_off_requests": None,  # retries share the request UUID; canceled ranges may recur
     "crew_reminders": ("dedupe_key",),

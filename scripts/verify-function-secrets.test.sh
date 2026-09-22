@@ -153,7 +153,7 @@ assert_has "set "
 # --- a missing secret ------------------------------------------------------
 
 new_case "a missing secret fails and names the function that needs it"
-write_stub_listing OPENAI_API_KEY VAPID_PUBLIC_KEY VAPID_PRIVATE_KEY
+write_stub_listing HEX_PORTAL_SITES_TOKEN OPENAI_API_KEY VAPID_PUBLIC_KEY VAPID_PRIVATE_KEY
 run
 assert_rc 1
 assert_has "MISSING"
@@ -162,7 +162,7 @@ assert_has "ask"
 assert_has "500"
 
 new_case "the failure tells you the exact command to fix it"
-write_stub_listing OPENAI_API_KEY VAPID_PUBLIC_KEY VAPID_PRIVATE_KEY
+write_stub_listing HEX_PORTAL_SITES_TOKEN OPENAI_API_KEY VAPID_PUBLIC_KEY VAPID_PRIVATE_KEY
 run
 assert_rc 1
 assert_has "supabase secrets set ANTHROPIC_API_KEY --project-ref testref"
@@ -192,7 +192,7 @@ assert_lacks "MISSING"
 # authority permanently — and the person reading it is not an engineer.
 
 live_state() {
-  write_stub_listing OPENAI_API_KEY VAPID_PUBLIC_KEY VAPID_PRIVATE_KEY \
+  write_stub_listing HEX_PORTAL_SITES_TOKEN OPENAI_API_KEY VAPID_PUBLIC_KEY VAPID_PRIVATE_KEY \
     VAPID_SUBJECT
 }
 

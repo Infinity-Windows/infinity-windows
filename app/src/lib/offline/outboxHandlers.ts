@@ -1296,6 +1296,20 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
     move_container: moveContainer,
     issue_photo_upload: issuePhoto,
     save_build_facts: saveBuildFacts,
+    hex_portal_case: async (entry) => {
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError) throw authError;
+      if (!user || user.id !== entry.payload.actorId) throw tagPermanent(new Error("Sign in as the person who saved this learning case, then retry."));
+      const { error } = await supabase.rpc("hex_portal_save_case", entry.payload.args as Record<string, unknown>);
+      if (error) throw missingGuard(error, "Hex-Portal case");
+    },
+    hex_portal_outcome: async (entry) => {
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError) throw authError;
+      if (!user || user.id !== entry.payload.actorId) throw tagPermanent(new Error("Sign in as the person who reported this outcome, then retry."));
+      const { error } = await supabase.rpc("hex_portal_save_outcome", entry.payload.args as Record<string, unknown>);
+      if (error) throw missingGuard(error, "Hex-Portal outcome");
+    },
   } satisfies OpHandlers;
 }
 

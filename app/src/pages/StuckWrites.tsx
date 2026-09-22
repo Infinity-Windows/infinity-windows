@@ -70,6 +70,8 @@ const OP_LABEL_KEY: Record<OutboxOp, TKey> = {
   receipt_document_upload: "stuck.op.receiptDocumentUpload",
   video_quiz_submit: "stuck.op.videoQuizSubmit",
   save_build_facts: "stuck.op.saveBuildFacts",
+  hex_portal_case: "stuck.op.hexPortalCase",
+  hex_portal_outcome: "stuck.op.hexPortalOutcome",
 };
 
 /**

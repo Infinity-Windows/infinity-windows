@@ -33,6 +33,7 @@ export interface QueryKeyRootEntry {
  * beside the hand-kept offline list now live in each row's `why`.
  */
 export const QUERY_KEY_ROOTS: QueryKeyRootEntry[] = [
+  { root: "hexPortalCases", offline: false, why: "Original records remain in Forge; pending writes use the durable outbox." },
   { root: "appUpdates", offline: false },
   { root: "timeOff", offline: false },
   { root: "crewReminders", offline: false },

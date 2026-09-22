@@ -78,6 +78,9 @@ export interface HistoryProbe {
  * named, so the heaviest, most recognisable records come first.
  */
 export const WORK_HISTORY_PROBES: readonly HistoryProbe[] = [
+  { table: "hex_portal_cases", column: "asker_id", one: "learning case", many: "learning cases" },
+  { table: "hex_portal_outcomes", column: "actor_id", one: "learning outcome", many: "learning outcomes" },
+  { table: "hex_portal_guidance_receipts", column: "actor_id", one: "guidance receipt", many: "guidance receipts" },
   { table: "time_off_requests", column: "profile_id", one: "time-off entry", many: "time-off entries" },
   { table: "crew_reminders", column: "profile_id", one: "reminder", many: "reminders" },
   { table: "service_visits", column: "created_by", one: "service record", many: "service records" },

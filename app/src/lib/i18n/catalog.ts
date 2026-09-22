@@ -3493,6 +3493,8 @@ export const CATALOG = {
   // Added post-merge with #583 (job facts / S4), which introduced this
   // OutboxOp — OP_LABEL_KEY's exhaustive Record<OutboxOp, TKey> would not
   // compile without an entry for it.
+  "stuck.op.hexPortalCase": {en:"Hex-Portal question",es:"Pregunta de Hex-Portal"},
+  "stuck.op.hexPortalOutcome": {en:"Hex-Portal outcome",es:"Resultado de Hex-Portal"},
   "stuck.op.saveBuildFacts": { en: "Job fact", es: "Dato del trabajo" },
   // ---- Supplies data helpers (installer-spanish-first-fourteen) --------
   // lib/ops.ts's onHandLabel/supplyHomeLabel are shared with Warehouse.tsx

@@ -5599,6 +5599,55 @@ button.clock-out {
   gap: 12px;
 }
 
+/* On a desk, the clock is a dialog, not a bottom sheet (2026-09-22). The phone
+   layout above is the one installers use and is left exactly as it was: glued
+   to the thumb, full width, grip on top. From 860px — the same breakpoint
+   ui/Sheet.tsx centres at — the office is looking at a 520px strip welded to
+   the bottom edge of a 1440px screen, with the job list and the cost-code list
+   both scrolling inside it. Centring it and giving it 640px lets a whole
+   morning's picking be read at once, and takes nothing away from the phone.
+
+   Selectors are compound ON PURPOSE. The height cap further down this file
+   (`.clock-sheet, .sched-sheet, … { max-height: var(--sheet-max-h) }`, the
+   bottom-anchored geometry block) is a later rule of equal specificity, so a
+   bare `.clock-sheet` here would silently lose to it. The backdrop is always
+   this element's parent, so `.clock-sheet-backdrop .clock-sheet` is free — and
+   it keeps `.clock-sheet`'s own declarations the single place the safe-area
+   test reads its ceiling from (lib/ui/safeArea.test.ts). */
+@keyframes clockSheetIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (min-width: 860px) {
+  .clock-sheet-backdrop {
+    align-items: center;
+    padding: 24px;
+  }
+  .clock-sheet-backdrop .clock-sheet {
+    max-width: 640px;
+    border-radius: 22px;
+    border-bottom: 1px solid var(--border);
+    box-shadow: var(--shadow-soft);
+    padding: 10px 24px calc(24px + var(--safe-bottom));
+    /* Centred now, so half of any height it gains goes upward — which is the
+       dialog token, not the sheet one. Capped below that as well: a clock-in
+       with three chips in it should not be a full-height window. */
+    max-height: min(46rem, var(--dialog-max-h));
+    animation: clockSheetIn 0.18s ease;
+  }
+  /* A grip means "drag me down". Nothing drags on a desktop. */
+  .clock-sheet-backdrop .clock-sheet-grip {
+    display: none;
+  }
+}
+
 /* Hero timer card */
 .clock-hero-card {
   border-radius: 18px;
