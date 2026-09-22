@@ -4601,7 +4601,9 @@ export const CATALOG = {
   // much bigger effort than this UI sweep.
   "updates.title": { en: "What’s new in Forge", es: "Novedades de Forge" },
   "updates.history": { en: "App update history", es: "Historial de actualizaciones" },
-  "updates.subtitle": { en: "Improvements for your work. Tap a title for details.", es: "Mejoras para tu trabajo. Toca un título para ver detalles." },
+  "updates.subtitle": { en: "Your app is up to date. Here’s what changed for your role.", es: "Tu aplicación está actualizada. Estas son las novedades para tu función." },
+  "updates.otherRole": { en: "Different Role Update", es: "Actualización para otra función" },
+  "updates.otherRoleBody": { en: "This version includes changes for another role. Your tools are up to date.", es: "Esta versión incluye cambios para otra función. Tus herramientas están actualizadas." },
   "updates.fix": { en: "Fixed", es: "Corregido" },
   "updates.improvement": { en: "Improved", es: "Mejorado" },
   "updates.open": { en: "Take a look", es: "Ver más" },

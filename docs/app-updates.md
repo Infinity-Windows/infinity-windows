@@ -1,10 +1,10 @@
 # Role-specific app updates
 
-Status: implemented for review, not deployed.
+Status: release candidate; verify deployment before describing as live.
 
-After signing in or refreshing, an in-page “What’s new in Forge” card lists unread improvements applicable to that person's current role. Titles stay short; tapping a title expands the explanation and a link to the feature when appropriate. Nothing blocks the time clock, opens a modal, forces a refresh, or changes an ongoing capture. Settings contains a full history of announcements included in the installed build for that role.
+After a new installed build loads, a dismissible “What’s new in Forge” popup shows unread improvements for the signed-in person's role, with descriptions already expanded. If no new notes apply, it says “Different Role Update” without revealing other roles' feature details. Normal refreshes of an acknowledged version do not show it again. Settings retains the role-filtered history.
 
-“Got it” remembers only those visible announcement IDs, separately for each account on that device. It persists through refreshes, and new IDs appear on the next refresh. Clearing browser storage or using another device shows them again. Storage failures still allow dismissal for the session. No personal read-history table is added to the database. Role preview does not permanently dismiss the real user's updates.
+“Got it”, Escape, tapping outside, or following a feature/history link acknowledges the installed build and visible note IDs for that account on this device. The receipt survives refreshes and route navigation. A newer compiled build ID produces a new notice. Clearing storage or changing devices shows it again. Role preview never dismisses the real user's notice. If the release feed cannot load, normal work remains available; reconnecting retries and Settings shows the error. An authorization check distinguishes an empty role feed from partner, retired or revoked accounts, which receive no popup.
 
 ## Audience and rollout
 
@@ -19,7 +19,7 @@ The frontend also accepts only IDs in `INCLUDED_UPDATE_IDS`. Therefore a backend
 1. Write short English and Spanish titles and descriptions explaining what changed for a person. Use no payroll figures, names, secrets, or internal implementation details.
 2. Choose explicit audience ranks. Split shared crew improvements from supervisor-only controls into separate announcements.
 3. Add rows in a new, uniquely numbered database migration and append their IDs to `INCLUDED_UPDATE_IDS` in the same change. Use the actual publication day; future dates remain hidden. Optional links must be simple internal app paths.
-4. Keep prior IDs in the manifest for Settings history. Do not announce draft PRs or unverified fixes as shipped. Infrastructure-only releases need no announcement.
+4. Keep prior IDs in the manifest for Settings history. Do not announce draft PRs or unverified fixes as shipped. Every deployed build can trigger a notice; a build with no new applicable note uses the generic Different Role Update message.
 5. Verify installer, foreman, supervisor/owner and preview behavior; deploy the migration and frontend through the existing release process. A refresh loads the notes belonging to the installed build.
 
 The initial catch-up describes the previously merged photo, voice, leave and reporting improvements. It deliberately omits unshipped AI job-creation/schedule-publication work.
@@ -30,3 +30,7 @@ The initial catch-up describes the previously merged photo, voice, leave and rep
 - Pure tests cover explicit audiences, unknown/legacy roles, current-build filtering, corrupt receipts, per-account dismissal and internal-only links.
 - Browser fixtures cover reload/dismiss/new announcement behavior, Settings history, owner role preview, Spanish on a dark 375px phone, desktop, keyboard, and a missing database table.
 - Production role checks and physical iPhone Safari remain release validation, not implied by local fixtures.
+
+## Ask display formatting
+
+Ask displays replies as plain text, removing paired Markdown emphasis, heading markers and code fences while preserving names, values and link destinations. User messages and structured report exports are unchanged. The original response remains available to follow-up context. Rendering stays React text; no HTML execution or new Markdown dependency is introduced.

@@ -51,3 +51,17 @@ insert into public.app_release_notes(id,published_on,audience,kind,title_en,titl
  'Review vacation and days-off requests','Revisa solicitudes de vacaciones y días libres',
  'Supervisors and owners can review time-off requests and track absence counts. Approved vacation and days off affect availability; payroll hours remain unchanged.',
  'Los supervisores y dueños pueden revisar solicitudes y contar ausencias. Las vacaciones y días libres aprobados afectan la disponibilidad sin cambiar las horas de nómina.','/scheduling');
+
+insert into public.app_release_notes(id,published_on,audience,kind,title_en,title_es,body_en,body_es,href) values
+('2026-09-22-update-popup','2026-09-22',array[0,1,2,3],'improvement',
+ 'See what changed after an update','Ve qué cambió después de actualizar',
+ 'A one-time popup explains changes for your role after a new app version loads. Choose Got it to dismiss it. You can read the updates again in Settings.',
+ 'Al cargar una nueva versión, una ventana explica las novedades para tu función. Elige Entendido para cerrarla. Puedes volver a leerlas en Ajustes.','/settings'),
+('2026-09-22-ask-text','2026-09-22',array[0,1,2,3],'fix',
+ 'Cleaner Ask replies','Respuestas más claras en Ask',
+ 'Ask replies now display readable text instead of formatting symbols such as double asterisks. Hours, job names and downloadable reports keep their original values.',
+ 'Las respuestas de Ask muestran texto legible sin símbolos de formato como asteriscos dobles. Las horas, los nombres de obras y los informes conservan sus valores.','/ask'),
+('2026-09-22-export-scroll','2026-09-22',array[1,2,3],'fix',
+ 'Timecard exports keep your scroll position','La exportación de horas mantiene tu posición',
+ 'Live timer updates no longer pull the export window back to the top while you choose jobs or dates.',
+ 'Los temporizadores ya no regresan la ventana al inicio mientras eliges obras o fechas para exportar.','/team-timecards');

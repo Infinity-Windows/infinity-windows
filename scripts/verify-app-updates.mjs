@@ -16,18 +16,18 @@ await db.exec(await readFile(new URL('../supabase/migrations/20261021000000_role
 await db.exec("update app_release_notes set published_on=current_date");
 async function role(n){await db.exec('reset role');await db.query("select set_config('request.jwt.claim.sub',$1,false)",[`00000000-0000-4000-8000-00000000000${n}`]);await db.exec('set role authenticated');}
 async function ids(){return(await db.query('select id from app_release_notes order by id')).rows.map(n=>n.id);}
-await role(1);assert.equal((await ids()).length,3);assert(!(await ids()).includes('2026-09-21-leave-review'));
+await role(1);assert.equal((await ids()).length,5);assert(!(await ids()).includes('2026-09-21-leave-review'));
 await assert.rejects(()=>db.exec("insert into app_release_notes select * from app_release_notes"));
 await assert.rejects(()=>db.exec("update app_release_notes set audience=array[0]"));
 await assert.rejects(()=>db.exec("delete from app_release_notes"));
-await role(2);assert.equal((await ids()).length,4);
-await role(3);assert.equal((await ids()).length,5);
-await role(4);assert.equal((await ids()).length,5);
+await role(2);assert.equal((await ids()).length,7);
+await role(3);assert.equal((await ids()).length,8);
+await role(4);assert.equal((await ids()).length,8);
 for(const condition of ['is_partner=true','retired_at=now()','access_revoked_at=now()']){
  await db.exec('reset role');await db.exec(`update profiles set is_partner=false,retired_at=null,access_revoked_at=null; update profiles set ${condition} where rank=3;`);await role(4);assert.equal((await ids()).length,0);
 }
 await db.exec('reset role');await db.exec("update profiles set access_revoked_at=null;update app_release_notes set withdrawn_at=now() where id='2026-09-21-photos';update app_release_notes set published_on=current_date+1 where id='2026-09-21-voice'");
-await role(1);assert.equal((await ids()).length,1);
+await role(1);assert.equal((await ids()).length,3);
 await db.exec('reset role');await db.exec("update profiles set role='unknown' where rank=0");await role(1);assert.equal((await ids()).length,0);
 await db.exec('reset role');await db.exec('set role anon');await assert.rejects(()=>db.exec('select * from app_release_notes'));
 await db.exec('reset role');await db.exec("select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000009',false);set role authenticated;");assert.equal((await ids()).length,0);

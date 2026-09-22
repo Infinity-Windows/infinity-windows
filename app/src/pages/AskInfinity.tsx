@@ -1,6 +1,7 @@
 import type { AskArtifact } from "../../../supabase/functions/_shared/askReporting.ts";
 import { ReportCard } from "../components/ask/ReportCard";
 import { isOperationalAsk } from "../lib/askRouting";
+import { cleanAskText } from "../lib/cleanAskText";
 import { BackChip } from "../components/BackChip";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
@@ -272,7 +273,7 @@ export function AskInfinity() {
               className={m.who === "me" ? "ask-bubble mine" : "ask-bubble"}
               style={{ whiteSpace: "pre-line" }}
             >
-              {m.text}
+              {m.who === "me" ? m.text : cleanAskText(m.text)}
             </div>
             {m.artifacts?.map(artifact => <ReportCard key={artifact.id} artifact={artifact}/>)}
             {m.hits && m.hits.length > 0 && (

@@ -1,11 +1,12 @@
 import { supabase } from './supabase';
-import { isMissingTable } from './schemaErrors';
+import { BUILD_ID } from './pwa/buildInfo';
 
 // Only announcements included in THIS client build may appear. A backend-first
 // rollout must not advertise a feature the phone has not downloaded yet.
 export const INCLUDED_UPDATE_IDS = [
   '2026-09-21-photos', '2026-09-21-voice', '2026-09-21-time-off',
   '2026-09-21-team-reports', '2026-09-21-leave-review',
+  '2026-09-22-update-popup', '2026-09-22-ask-text', '2026-09-22-export-scroll',
 ] as const;
 export interface AppUpdate {
   id: string; published_on: string; audience: number[]; kind: 'fix' | 'improvement';
@@ -24,12 +25,17 @@ export function visibleUpdates(rows: AppUpdate[], role: string | null | undefine
   return rows.filter(r => INCLUDED_UPDATE_IDS.includes(r.id as typeof INCLUDED_UPDATE_IDS[number]) && r.audience.includes(rank))
     .sort((a,b) => b.published_on.localeCompare(a.published_on) || a.id.localeCompare(b.id));
 }
-export async function listAppUpdates(): Promise<AppUpdate[]> {
+export const updateBuildReceipt = (buildId = BUILD_ID) => `build:${buildId || 'unversioned'}`;
+export async function listAppUpdates(): Promise<{rows: AppUpdate[]; allowed: boolean}> {
   const {data,error} = await supabase.from('app_release_notes')
     .select('id,published_on,audience,kind,title_en,title_es,body_en,body_es,href')
     .in('id', [...INCLUDED_UPDATE_IDS]).order('published_on', {ascending:false});
-  if (error) { if (isMissingTable(error)) return []; throw error; }
-  return data ?? [];
+  if (error) throw error;
+  // An empty, role-filtered feed alone does not distinguish another-role
+  // release from a partner or revoked account. Do not show those a crew popup.
+  const access = await supabase.rpc('can_read_app_update', {p_audience:[0,1,2,3]});
+  if (access.error) throw access.error;
+  return {rows: data ?? [], allowed: access.data === true};
 }
 export function safeUpdateLink(href: string | null): string | null {
   return href && /^\/[a-z0-9][a-z0-9/-]*$/.test(href) ? href : null;

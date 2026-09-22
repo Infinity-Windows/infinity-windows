@@ -16,8 +16,9 @@
 .app-updates footer a { font-size:14px; min-height:44px; display:flex; align-items:center; }
 @media(max-width:600px) { .app-updates {width:calc(100% - 24px);margin:12px auto;} .app-updates-history {width:100%;} .app-updates h2 {font-size:22px;} }
 
-.app-updates summary { cursor:pointer; min-height:44px; padding-right:22px; position:relative; list-style:none; }
-.app-updates summary::-webkit-details-marker {display:none;}
-.app-updates summary::after {content:"+";position:absolute;right:0;top:10px;color:var(--accent);font-size:22px;}
-.app-updates details[open] summary::after {content:"−";}
-.app-updates summary:focus-visible {outline:2px solid var(--accent);outline-offset:4px;border-radius:4px;}
+.app-updates-sheet .app-updates { width:100%; max-width:none; margin:0; padding:12px 4px 0; border:0; background:transparent; }
+.app-updates-sheet .app-updates-list { grid-template-columns:1fr; }
+.app-updates-sheet .app-updates footer { position:sticky; bottom:0; background:var(--card-raised); padding:14px 0 4px; border-top:1px solid var(--border); }
+.app-update-other { padding:20px; border:1px solid var(--border); border-radius:14px; }
+.app-update-other p { margin:0; line-height:1.6; }
+@media(min-width:860px) { .ui-sheet.app-updates-sheet { translate:-50% -50%; box-sizing:border-box; width:min(780px,calc(100vw - 64px)); max-height:min(80dvh,900px); } }

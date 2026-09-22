@@ -413,6 +413,9 @@ export async function useSupabaseFixtures(
       }
       case "window_types":
         return jsonRoute(route, windowTypes, windowTypes.length);
+      case "app_release_notes":
+        // Most feature tests run without a release feed; update tests opt in.
+        return jsonRoute(route, [], 0);
       case "profiles": {
         const all = [...profiles, profile];
         const id = eqParam(url, "id");

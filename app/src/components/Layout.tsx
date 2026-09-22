@@ -372,7 +372,7 @@ export function Layout() {
               </button>
             </div>
           ) : null}
-          {location.pathname !== "/settings" && <AppUpdates />}
+          <AppUpdates />
           <Outlet />
         </main>
       </div>
