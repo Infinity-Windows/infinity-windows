@@ -1,0 +1,73 @@
+.hex-learning-panel {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 18px;
+  margin: 12px 0;
+  background: var(--surface);
+}
+.hex-learning-panel summary {
+  cursor: pointer;
+  font-weight: 650;
+  min-height: 44px;
+  align-content: center;
+}
+.hex-learning-panel p,
+.hex-learning-card p {
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.hex-learning-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 16px;
+  margin: 14px 0;
+}
+.hex-learning-fields > div {
+  min-width: 0;
+}
+.hex-learning-fields label,
+.hex-learning-card label {
+  margin-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.hex-learning-fields input,
+.hex-learning-fields select,
+.hex-learning-card textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  min-height: 48px;
+}
+.hex-learning-card {
+  margin: 14px 0;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow-wrap: anywhere;
+}
+.hex-learning-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+.hex-learning-actions button {
+  min-height: 44px;
+}
+@media (max-width: 560px) {
+  .hex-learning-fields {
+    grid-template-columns: 1fr;
+  }
+  .hex-learning-panel {
+    padding: 14px;
+  }
+}
+
+.hex-learning-panel .hex-learning-card .hex-learning-card {
+  padding: 0;
+  border: 0;
+  margin-bottom: 0;
+}

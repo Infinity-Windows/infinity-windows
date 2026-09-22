@@ -96,7 +96,9 @@ export type OutboxOp =
   // zones a photo does. upsert_build_facts is idempotent on (project, field)
   // — saving the same value twice lands on the same row — so a resend is
   // harmless.
-  | "save_build_facts";
+  | "save_build_facts"
+  | "hex_portal_case"
+  | "hex_portal_outcome";
 
 /**
  * queued   — waiting to be sent (respecting nextAttemptAt backoff)
@@ -621,6 +623,8 @@ const OP_REGISTRY = {
   receipt_document_upload: true,
   video_quiz_submit: true,
   save_build_facts: true,
+  hex_portal_case: true,
+  hex_portal_outcome: true,
 } as const satisfies Record<OutboxOp, true>;
 
 /** Every op the queue can carry — the single list tests enumerate. */

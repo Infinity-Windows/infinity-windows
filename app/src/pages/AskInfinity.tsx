@@ -1,3 +1,9 @@
+import {useQuery} from "@tanstack/react-query";
+import {getRealProfile} from "../lib/install/api";
+import {LearningPanel} from "../components/hexPortal/LearningPanel";
+import {LearningCard} from "../components/hexPortal/LearningCard";
+import {findPortalGuidance,type PortalSource,type LearningDraft} from "../lib/hexPortal";
+import "../components/hexPortal/hexPortal.css";
 import type { AskArtifact } from "../../../supabase/functions/_shared/askReporting.ts";
 import { ReportCard } from "../components/ask/ReportCard";
 import { isOperationalAsk } from "../lib/askRouting";
@@ -19,9 +25,12 @@ import type { Issue } from "../lib/issues";
 import type { ScheduleAssignment } from "../lib/schedule/types";
 import type { ScheduleVehicleLink, VehicleWithMeta } from "../lib/vehicles/types";
 import type { Trip } from "../lib/travel/types";
-import { useT } from "../lib/i18n";
+import { useT, useLanguage } from "../lib/i18n";
 
 interface ChatMsg {
+  learning?: LearningDraft;
+  portalSources?: PortalSource[];
+  portalNotice?: string;
   artifacts?: AskArtifact[];
   who: "me" | "infinity";
   text: string;
@@ -124,6 +133,10 @@ function brainMessage(outcome: BrainOutcome, note?: string): ChatMsg {
 
 export function AskInfinity() {
   const t = useT();
+  const es = useLanguage().lang === "es";
+  const profile = useQuery({queryKey:["myRealProfile"],queryFn:getRealProfile});
+  const [learningJob,setLearningJob]=useState("");
+  const [learningUnit,setLearningUnit]=useState("");
   const [input, setInput] = useState("");
   const [catalog, setCatalog] = useState<CatalogType[]>(() => currentCatalog().types);
   const [messages, setMessages] = useState<ChatMsg[]>([
@@ -131,6 +144,7 @@ export function AskInfinity() {
   ]);
   const [thinking, setThinking] = useState(false);
   const threadEnd = useRef<HTMLDivElement>(null);
+  const lastMessageCount = useRef(1);
   const location = useLocation();
 
   // Wave A4: Scheduling's "Plan with AI" button seeds this page with a
@@ -158,7 +172,13 @@ export function AskInfinity() {
   const index = useMemo(() => getBrainIndex(catalog), [catalog]);
 
   useEffect(() => {
-    threadEnd.current?.scrollIntoView({ block: "end" });
+    // New replies may arrive while the person is reading an earlier answer.
+    // Follow only when already near the end; never scroll on initial mount.
+    const end = threadEnd.current;
+    if (messages.length > lastMessageCount.current && end && end.getBoundingClientRect().top < window.innerHeight + 220) {
+      end.scrollIntoView({ block: "nearest" });
+    }
+    lastMessageCount.current = messages.length;
   }, [messages]);
 
   // The label is shown translated; the query sent to send() stays the
@@ -198,7 +218,19 @@ export function AskInfinity() {
 
     const online = typeof navigator === "undefined" ? true : navigator.onLine;
 
+    const operationalQuestion = isOperationalAsk(q, messages.some(m => Boolean(m.artifacts?.length)));
+    const learningContext=learningJob&&profile.data?.id&&!operationalQuestion?{actorId:profile.data.id,projectId:learningJob,unitLabel:learningUnit,question:q}:null;
+    let portalNotice = learningContext ? (es ? "Esta respuesta todavía necesita revisión." : "This answer still needs review.") : "";
     const run = async (): Promise<ChatMsg> => {
+      // Published guidance is returned verbatim. No model may reinterpret an
+      // outdated revision, and an unavailable bridge never blocks normal Ask.
+      if(learningContext&&online){
+        try{
+          const result=await findPortalGuidance(learningContext.projectId,q);
+          if(result.items.length){portalNotice=es?"Guía revisada de Hexcore · revisiones exactas":"Reviewed Hexcore guidance · exact revisions";return {who:"infinity",text:result.items.map(d=>`${d.title} — revision ${d.revision}\n${d.answer}\n\n${d.applicability}\nEvidence: ${d.evidence}\nReview through: ${d.reviewBy}`).join("\n\n"),portalSources:result.items.map(d=>({id:d.id,title:d.title,kind:"hex-portal",revision:d.revision}))};}
+          portalNotice=result.enabled?(es?"Todavía no hay una lección revisada que coincida. Respuesta normal de Ask.":"No matching reviewed lesson yet. Normal Ask answer."):(es?"Hex-Portal no está activado para este trabajo. Respuesta normal de Ask.":"Hex-Portal is not enabled for this job. Normal Ask answer.");
+        }catch{ portalNotice=es?"No se pudo consultar Hexcore. Esta respuesta no usa lecciones revisadas.":"Could not check Hexcore. This answer does not use reviewed lessons."; }
+      }
       // 1) Live job data the app already has cached — schedule, next window,
       //    my truck. No network needed and no model involved.
       const operational = isOperationalAsk(q, messages.some(m => Boolean(m.artifacts?.length)));
@@ -233,7 +265,7 @@ export function AskInfinity() {
     };
 
     void run()
-      .then((reply) => setMessages((m) => [...m, reply]))
+      .then((reply) => setMessages((m) => [...m, {...reply,portalNotice,...learningContext&&!reply.artifacts?.length?{learning:{...learningContext,answer:reply.text,sources:reply.portalSources??(reply.sources?.length?reply.sources.map(source=>({id:source.path.slice(0,160),title:source.title.slice(0,300),kind:"reference" as const})):(reply.hits??[]).map(hit=>({id:hit.entry.id.slice(0,160),title:hit.entry.title.slice(0,300),kind:"reference" as const})))}}:{}}]))
       .catch(() =>
         setMessages((m) => [
           ...m,
@@ -255,6 +287,7 @@ export function AskInfinity() {
         <BackChip label={t("ask.back")} />
       </header>
 
+      <LearningPanel projectId={learningJob} unitLabel={learningUnit} actorId={profile.data?.id} onProject={setLearningJob} onUnit={setLearningUnit}/>
       <div className="ask-thread">
         {messages.map((m, i) => (
           <div key={i} className={m.who === "me" ? "ask-msg mine" : "ask-msg"}>
@@ -275,6 +308,8 @@ export function AskInfinity() {
             >
               {m.who === "me" ? m.text : cleanAskText(m.text)}
             </div>
+            {m.portalNotice&&<p className="ask-sources muted">{m.portalNotice}</p>}
+            {m.learning&&<LearningCard draft={m.learning}/>}
             {m.artifacts?.map(artifact => <ReportCard key={artifact.id} artifact={artifact}/>)}
             {m.hits && m.hits.length > 0 && (
               <p className="ask-sources muted">{t("ask.from", { source: m.hits[0].entry.source })}</p>
@@ -302,11 +337,9 @@ export function AskInfinity() {
             )}
           </div>
         ))}
-        {thinking && (
-          <div className="ask-bubble" aria-live="polite">
-            …
-          </div>
-        )}
+        <div role="status" aria-live="polite" className={thinking ? "ask-bubble" : undefined}>
+          {thinking ? (es ? "Buscando una respuesta…" : "Finding an answer…") : ""}
+        </div>
         <div ref={threadEnd} />
       </div>
 
@@ -320,12 +353,13 @@ export function AskInfinity() {
 
       <div className="ask-input">
         <input
+          aria-label={t("ask.inputPlaceholder")}
           placeholder={t("ask.inputPlaceholder")}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && send(input)}
         />
-        <button type="button" className="ask-send" onClick={() => send(input)} aria-label={t("ask.send")}>
+        <button type="button" className="ask-send" disabled={thinking || !input.trim()} onClick={() => send(input)} aria-label={t("ask.send")}>
           ↑
         </button>
       </div>

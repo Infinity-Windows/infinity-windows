@@ -275,7 +275,7 @@ class FunctionSecretsTest(unittest.TestCase):
         # headline sentence does not move a third time.
         # Connected publication adds one worker, reusing the existing VAPID keys.
         # Description dictation reuses the existing OpenAI transcription key.
-        self.assertEqual(len(names), 26)
+        self.assertEqual(len(names), 27)
         self.assertIn("crew-reminder-sweep", names)
         self.assertIn("deliver-workflow-notices", names)
         self.assertIn("ask", names)
@@ -423,12 +423,13 @@ class FunctionSecretsTest(unittest.TestCase):
             ["ingest-knowledge", "transcribe-description", "transcribe-install-memo"],
         )
 
-    def test_the_repo_wide_required_set_is_exactly_these_four(self):
+    def test_the_repo_wide_required_set_is_exactly_these_five(self):
         """A change here should be a deliberate one, so pin the whole set."""
         self.assertEqual(
             fs.required_union(fs.all_requirements()),
             [
                 "ANTHROPIC_API_KEY",
+                "HEX_PORTAL_SITES_TOKEN",
                 "OPENAI_API_KEY",
                 "VAPID_PRIVATE_KEY",
                 "VAPID_PUBLIC_KEY",
