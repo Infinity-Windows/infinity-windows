@@ -50,12 +50,14 @@ grant execute on function public.hex_portal_crew() to authenticated;
 alter table public.hex_portal_cases enable row level security;
 alter table public.hex_portal_outcomes enable row level security;
 alter table public.hex_portal_guidance_flags enable row level security;
-revoke all on public.hex_portal_cases,public.hex_portal_outcomes,public.hex_portal_guidance_flags from public,anon,authenticated;
+revoke all on public.hex_portal_cases from public,anon,authenticated;
+revoke all on public.hex_portal_outcomes from public,anon,authenticated;
+revoke all on public.hex_portal_guidance_flags from public,anon,authenticated;
 grant select on public.hex_portal_cases,public.hex_portal_outcomes,public.hex_portal_guidance_flags to authenticated;
 grant all on public.hex_portal_cases,public.hex_portal_outcomes,public.hex_portal_guidance_flags to service_role;
-create policy hex_portal_case_read on public.hex_portal_cases for select to authenticated using(public.hex_portal_crew() and (asker_id=auth.uid() or public.my_role_rank()>=2));
-create policy hex_portal_outcome_read on public.hex_portal_outcomes for select to authenticated using(exists(select 1 from public.hex_portal_cases c where c.id=case_id));
-create policy hex_portal_flag_read on public.hex_portal_guidance_flags for select to authenticated using(public.hex_portal_crew());
+create policy hex_portal_case_read on public.hex_portal_cases for select to authenticated using(not public.is_partner_user() and public.hex_portal_crew() and (asker_id=auth.uid() or public.my_role_rank()>=2));
+create policy hex_portal_outcome_read on public.hex_portal_outcomes for select to authenticated using(not public.is_partner_user() and exists(select 1 from public.hex_portal_cases c where c.id=case_id));
+create policy hex_portal_flag_read on public.hex_portal_guidance_flags for select to authenticated using(not public.is_partner_user() and public.hex_portal_crew());
 
 create function public.hex_portal_save_case(p_id uuid,p_project_id uuid,p_unit_label text,p_question text,p_answer text,p_sources jsonb) returns uuid
 language plpgsql security definer set search_path=public,pg_temp as $$

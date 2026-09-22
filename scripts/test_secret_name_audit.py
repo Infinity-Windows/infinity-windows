@@ -27,7 +27,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import secret_name_audit as audit  # noqa: E402
 
-REQUIRED = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "VAPID_PRIVATE_KEY", "VAPID_PUBLIC_KEY"]
+REQUIRED = ["HEX_PORTAL_SITES_TOKEN", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "VAPID_PRIVATE_KEY", "VAPID_PUBLIC_KEY"]
 OPTIONAL = ["VAPID_SUBJECT"]
 
 # Every secret name this repository legitimately holds in GitHub Actions. This
@@ -39,6 +39,7 @@ OPTIONAL = ["VAPID_SUBJECT"]
 # has checked, and the first time a required key goes missing it becomes a
 # suggestion sent to an owner who is not an engineer.
 REAL_SECRETS = [
+    "HEX_PORTAL_SITES_TOKEN",
     "ANTHROPIC_API_KEY",
     "SLACK_CHANGELOG_WEBHOOK",
     "SUPABASE_ACCESS_TOKEN",

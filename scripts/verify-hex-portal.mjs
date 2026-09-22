@@ -6,6 +6,7 @@ await db.exec(`CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_
 CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$SELECT nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
 CREATE TABLE profiles(id uuid PRIMARY KEY,role text,is_partner boolean DEFAULT false,retired_at timestamptz,access_revoked_at timestamptz);
 CREATE TABLE projects(id uuid PRIMARY KEY,job_code text,name text,deleted_at timestamptz,is_test boolean DEFAULT false);
+CREATE FUNCTION is_partner_user() RETURNS boolean LANGUAGE sql SECURITY DEFINER AS $$SELECT coalesce((SELECT is_partner FROM profiles WHERE id=auth.uid()),false)$$;
 CREATE FUNCTION my_role_rank() RETURNS integer LANGUAGE sql SECURITY DEFINER AS $$SELECT CASE role WHEN 'installer' THEN 0 WHEN 'foreman' THEN 1 WHEN 'supervisor' THEN 2 ELSE 3 END FROM profiles WHERE id=auth.uid()$$;
 CREATE FUNCTION _is_supervisor(uid uuid) RETURNS boolean LANGUAGE sql SECURITY DEFINER AS $$SELECT role IN ('supervisor','owner') FROM profiles WHERE id=uid$$;
 GRANT USAGE ON SCHEMA auth TO authenticated; GRANT EXECUTE ON FUNCTION auth.uid() TO authenticated;`);
