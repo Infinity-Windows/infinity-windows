@@ -195,7 +195,7 @@ class TestSchemaParsing(unittest.TestCase):
         # +3: whole-job labor targets, named stages, and their change history.
         # +1: the short-lived daily description-dictation quota counter.
         # +7: service visits, units, time, evidence, supervisors, commands and audit.
-        self.assertEqual(len(SCHEMA.tables), 159)  # time-off requests and reminder delivery
+        self.assertEqual(len(SCHEMA.tables), 160)  # includes role-scoped release notes
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 
@@ -323,6 +323,7 @@ class TestDedupKeys(unittest.TestCase):
                 )
 
     def test_enforcement_is_classified_from_the_schema(self):
+        self.assertEqual(dedup_key_enforcement(SCHEMA, "app_release_notes"), ENFORCED)
         self.assertEqual(dedup_key_enforcement(SCHEMA, "window_types"), ENFORCED)
         self.assertEqual(dedup_key_enforcement(SCHEMA, "locations"), ENFORCED)
         # `cost_codes.code` reads like a key and carries no UNIQUE index, so

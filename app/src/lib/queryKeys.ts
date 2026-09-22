@@ -33,6 +33,7 @@ export interface QueryKeyRootEntry {
  * beside the hand-kept offline list now live in each row's `why`.
  */
 export const QUERY_KEY_ROOTS: QueryKeyRootEntry[] = [
+  { root: "appUpdates", offline: false },
   { root: "timeOff", offline: false },
   { root: "crewReminders", offline: false },
   { root: "timeEntryExport", offline: false },

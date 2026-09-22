@@ -1,3 +1,4 @@
+import { AppUpdates } from "../components/updates/AppUpdates";
 import { useState } from "react";
 import { DisplayModePicker } from "../components/DisplayModePicker";
 import { BackChip } from "../components/BackChip";
@@ -136,6 +137,7 @@ export function Settings() {
           {t("settings.diagnostics.open")}
         </Link>
       </section>
+      <AppUpdates history />
       <BuildIdentityCard />
     </div>
   );
