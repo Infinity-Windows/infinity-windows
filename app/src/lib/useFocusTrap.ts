@@ -1,4 +1,4 @@
-import { useEffect, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -17,6 +17,11 @@ export function useFocusTrap(
   open: boolean,
   onClose?: () => void,
 ): void {
+  // Live clocks re-render parents every second, often with a new inline callback.
+  // Keep Escape current without reopening the trap and scrolling back to Close.
+  const closeRef = useRef(onClose);
+  useLayoutEffect(() => { closeRef.current = onClose; }, [onClose]);
+
   useEffect(() => {
     if (!open) return;
     const node = ref.current;
@@ -32,7 +37,7 @@ export function useFocusTrap(
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.stopPropagation();
-        onClose?.();
+        closeRef.current?.();
         return;
       }
       if (e.key !== "Tab" || !node) return;
@@ -59,7 +64,7 @@ export function useFocusTrap(
     return () => {
       cancelAnimationFrame(raf);
       document.removeEventListener("keydown", onKeyDown, true);
-      previouslyFocused?.focus?.();
+      previouslyFocused?.focus?.({ preventScroll: true });
     };
-  }, [open, ref, onClose]);
+  }, [open, ref]);
 }

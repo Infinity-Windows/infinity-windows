@@ -205,3 +205,20 @@ test('installers cannot open exports for the whole job', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Export job timecards', exact: true })).toHaveCount(0);
   await expect(page.locator('.job-billing-reminder')).toHaveCount(0);
 });
+
+for (const width of [390,1280]) test(`job export keeps nested scroll and focus through live timecard ticks at ${width}px`,async({page})=>{
+  await page.setViewportSize({width,height:700});await fixtures(page);
+  const projects=Array.from({length:45},(_,i)=>({id:id(500+i),job_code:`SCROLL-${String(i).padStart(2,'0')}`,name:`Scroll regression job ${i}`,status:'active',is_test:false,allowed_modes:['tracking'],job_kind:'residential'}));
+  await page.route('**/rest/v1/projects**',r=>json(r,projects,projects.length));
+  await page.goto('/team-timecards');
+  const opener=page.getByRole('button',{name:'Export job timecards',exact:true});await opener.click();
+  const dialog=page.getByRole('dialog');await dialog.locator('.job-filter-picker summary').click();
+  const search=dialog.getByRole('searchbox');await search.focus();
+  const list=dialog.locator('.job-filter-options').first();await list.evaluate(el=>el.scrollTop=500);await dialog.evaluate(el=>el.scrollTop=180);
+  const scroll=await dialog.evaluate(el=>el.scrollTop);expect(scroll).toBeGreaterThan(80);const innerScroll=await list.evaluate(el=>el.scrollTop);
+  await page.clock.runFor(3200);
+  await expect(search).toBeFocused();expect(await dialog.evaluate(el=>el.scrollTop)).toBeCloseTo(scroll,0);expect(await list.evaluate(el=>el.scrollTop)).toBeCloseTo(innerScroll,0);
+  // The focus trap still wraps the keyboard and restores the original opener.
+  const close=dialog.getByRole('button',{name:'Close',exact:true});await close.focus();await page.keyboard.press('Shift+Tab');await expect(dialog.getByRole('button',{name:'Refresh hours',exact:true})).toBeFocused();await page.keyboard.press('Tab');await expect(close).toBeFocused();
+  await page.keyboard.press('Escape');await expect(dialog).toHaveCount(0);await expect(opener).toBeFocused();
+});
