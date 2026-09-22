@@ -213,3 +213,6 @@ insert into public.app_release_notes(id,published_on,audience,kind,title_en,titl
  'Save job lessons with Hex-Portal','Guarda lecciones del trabajo con Hex-Portal',
  'In Ask, choose a job, ask a work question and save the answer for review. Record what worked or what still needs help. Jobs linked by the owner can also receive reviewed Hexcore lessons. Other answers are clearly labeled as needing review.',
  'En Ask, elige un trabajo, haz una pregunta y guarda la respuesta para revisión. Anota lo que funcionó o lo que falta resolver. Los trabajos vinculados por el dueño también pueden recibir lecciones revisadas de Hexcore. Las demás respuestas indican que necesitan revisión.','/ask') on conflict(id) do nothing;
+
+-- New project-scoped records inherit the existing QA sandbox fence.
+select public.attach_sandbox_guards();
