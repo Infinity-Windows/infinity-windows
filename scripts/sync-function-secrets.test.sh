@@ -361,7 +361,7 @@ run ANTHROPIC_API_KEY=sk-ant-fake
 assert_rc 0
 assert_output_var "pushed_count=1"
 assert_output_var "pushed_names=ANTHROPIC_API_KEY"
-assert_output_var "unmanaged_names=OPENAI_API_KEY"
+assert_output_var "unmanaged_names=HEX_PORTAL_SITES_TOKEN OPENAI_API_KEY"
 
 # The workflow turns unmanaged_names into a warning annotation, so this output
 # is what makes a missing key visible rather than buried in the log. It used to
