@@ -2417,6 +2417,10 @@ export const CATALOG = {
   // through two independent workflows, so for a few minutes either can be
   // ahead — and the round an installer just played is not the place to say so
   // in red. Their answers are safe; the points land next time.
+  // Learn's "Using Forge" tab (2026-09-23). Only the tab's own label lives
+  // here; everything inside the tab is in components/learn/usingForgeCopy.ts,
+  // which loads with the tab rather than with the app shell.
+  "learn.tab.usingForge": { en: "Using Forge", es: "Usar Forge" },
   "learn.points.notReadyYet": {
     en: "Points aren't ready yet — that round still counted as practice. Try again in a few minutes.",
     es: "Los puntos aún no están listos — esa ronda contó como práctica. Intenta otra vez en unos minutos.",

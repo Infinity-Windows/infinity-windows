@@ -1,0 +1,55 @@
+/* Learn → Using Forge → the supervisor/owner importer. Loaded with the
+   importer only. Phone first (320 px up), wider cards on a computer, which is
+   where it will normally be used. Reuses the Using Forge amber for the
+   design-preview badge so an imported video looks the same here as it will on
+   a crew phone. */
+.training-importer { display: grid; gap: 14px; min-width: 0; padding: 14px; border: 1px solid var(--border); border-radius: 14px; background: var(--card); }
+.training-importer h2 { margin: 0; font-size: 18px; line-height: 1.3; overflow-wrap: anywhere; }
+.training-importer h3 { margin: 0; font-size: 16px; }
+.training-importer h4 { margin: 0; font-size: 16px; line-height: 1.35; overflow-wrap: anywhere; }
+.training-importer header p { margin: 4px 0 0; line-height: 1.5; }
+.ti-small { margin: 0; font-size: 13px; line-height: 1.45; color: var(--muted); }
+
+.ti-pickers { display: grid; gap: 12px; }
+.ti-picker { display: grid; gap: 6px; min-width: 0; }
+.ti-picker-label { margin: 0; font-weight: 600; }
+.ti-picker-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.ti-picker-row .button-like { min-height: 44px; }
+.ti-picker-summary { font-size: 14px; color: var(--muted); overflow-wrap: anywhere; min-width: 0; }
+
+.ti-alert { display: grid; gap: 6px; padding: 12px; border: 1px solid color-mix(in srgb, var(--danger, #c0392b) 55%, transparent); border-left-width: 4px; border-radius: 12px; background: color-mix(in srgb, var(--danger, #c0392b) 8%, transparent); }
+.ti-alert p { margin: 0; line-height: 1.45; }
+.ti-alert-title { margin: 0; font-weight: 700; }
+.ti-problems { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 14px; line-height: 1.45; overflow-wrap: anywhere; }
+
+.ti-preview { display: grid; gap: 8px; }
+.ti-cards { display: grid; grid-template-columns: 1fr; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.ti-card { display: grid; gap: 6px; min-width: 0; padding: 12px; border: 1px solid var(--border); border-radius: 12px; }
+.ti-badge { justify-self: start; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; letter-spacing: .02em; text-transform: uppercase; color: var(--text); background: color-mix(in srgb, var(--warn) 28%, transparent); }
+.ti-scope { margin: 0; font-size: 13px; font-weight: 600; }
+.ti-meta { display: flex; flex-wrap: wrap; gap: 2px 12px; margin: 0; font-size: 13px; color: var(--muted); }
+.ti-files { display: grid; gap: 4px; margin: 4px 0 0; padding: 0; list-style: none; font-size: 13px; }
+.ti-files li { display: grid; grid-template-columns: 72px minmax(0, 1fr) auto; gap: 8px; align-items: baseline; }
+.ti-file-name { overflow-wrap: anywhere; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+
+.ti-actions { display: grid; gap: 10px; justify-items: start; }
+.ti-actions > .ti-alert { justify-self: stretch; }
+.ti-actions button { min-height: 44px; }
+.ti-publish { min-width: 220px; }
+
+.ti-progress { display: grid; gap: 8px; }
+.ti-progress p { margin: 0; }
+.ti-progress-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.ti-progress-list li { display: grid; gap: 4px; min-width: 0; }
+.ti-progress-label { font-size: 13px; overflow-wrap: anywhere; }
+.ti-progress progress { width: 100%; height: 10px; }
+.ti-progress button { justify-self: start; min-height: 44px; }
+
+.ti-done { display: grid; gap: 8px; justify-items: start; padding: 12px; border: 1px solid var(--accent-line); border-radius: 12px; background: var(--accent-soft); }
+.ti-done ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+.ti-done button { min-height: 44px; }
+
+@media (min-width: 760px) {
+  .ti-pickers { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ti-cards { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+}

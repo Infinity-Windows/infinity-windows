@@ -1126,6 +1126,16 @@ floor per-person time already has on the Data tab. A foreman does not: that is
 a decision about people rather than a gap, and it is the owner's to make.
 A partner (builder) login never, by the wall.
 
+**Design preview** — a narrated walkthrough of how Forge *could* work, on
+Learn's **Using Forge** tab (2026-09-23): one each for installer, foreman and
+owner/supervisor, each visible to its floor and up by the real profile role.
+It is not a lesson: watching earns no learning time (the tab pauses the Learn
+clock), no points, quiz, clearance or payroll time, and it is not an approved
+way of working. Every card and player says so, and each chapter says whether
+it is proposed, in the app today, or partly. Published by a supervisor or
+owner through the in-app importer from a reviewed package, never written
+directly by any client; see docs/role-training-videos.md.
+
 ## Open questions
 
 None right now — the next ones come from building.

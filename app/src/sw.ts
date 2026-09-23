@@ -20,6 +20,7 @@ import { registerRoute, NavigationRoute } from "workbox-routing";
 import { CacheFirst } from "workbox-strategies";
 import { ExpirationPlugin } from "workbox-expiration";
 import { resolveNotificationUrl } from "./lib/pwa/basePaths";
+import { isPrivateTrainingMediaUrl } from "./lib/privateMedia";
 
 declare const self: ServiceWorkerGlobalScope & {
   __WB_MANIFEST: Array<{ url: string; revision: string | null }>;
@@ -35,8 +36,11 @@ precacheAndRoute(self.__WB_MANIFEST);
 registerRoute(new NavigationRoute(createHandlerBoundToURL("index.html")));
 
 // Runtime image cache (mirrors the prior workbox.runtimeCaching config).
+// Private walkthrough posters are left to the network: a signed link is only
+// good for an hour and only for the account that asked (lib/privateMedia.ts).
 registerRoute(
-  ({ request }) => request.destination === "image",
+  ({ request, url }) =>
+    request.destination === "image" && !isPrivateTrainingMediaUrl(url.href),
   new CacheFirst({
     cacheName: "infinity-images",
     plugins: [new ExpirationPlugin({ maxEntries: 64, maxAgeSeconds: 60 * 60 * 24 * 30 })],

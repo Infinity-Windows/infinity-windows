@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { getMyProfile } from "../lib/install/api";
 import { isForemanPlus, isSupervisorPlus } from "../lib/install/types";
@@ -33,10 +33,20 @@ import { SendRecordingButton } from "../components/learn/SendRecordingButton";
 import { VideoLibrary } from "../components/learn/VideoLibrary";
 import { useLearningTime } from "../lib/useLearningTime";
 import { YourLearningTime } from "../components/learn/YourLearningTime";
+import { SkeletonList } from "../components/ui/States";
 
-type Tab = "daily" | "quiz" | "sequence" | "glossary" | "videos";
+// Loaded on first tap: the walkthrough player, its stylesheet and its bilingual
+// dictionary stay out of the entry chunk and out of every other Learn tab.
+const UsingForge = lazy(() => import("../components/learn/UsingForge"));
+
+// The tabs whose minutes are learning time — the server's list of tab keys
+// (learning_heartbeat) names exactly these. "forge" is the one tab that is
+// deliberately NOT counted: its walkthroughs are design previews, not study.
+type CountedTab = "daily" | "quiz" | "sequence" | "glossary" | "videos";
+type Tab = CountedTab | "forge";
 
 export function Education() {
+  const t = useT();
   const queryClient = useQueryClient();
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const lead = isForemanPlus(me.data?.role);
@@ -63,7 +73,12 @@ export function Education() {
   // Quiz and Sequence tabs ARE their rounds. Anything summing kinds together
   // would double-count; the owner's table adds up 'tab' and shows the rest as
   // the breakdown inside it.
-  useLearningTime("tab", tab);
+  //
+  // "Using Forge" is the exception, and deliberately so (2026-09-23): its
+  // walkthroughs are design previews, not study, so time on that tab is not
+  // learning time. Null keeps the page clock silent there; every other tab
+  // counts exactly as before.
+  useLearningTime("tab", tab === "forge" ? null : tab);
   useLearningTime("quiz", tab === "quiz" ? "round" : null);
   useLearningTime("sequence", tab === "sequence" ? "round" : null);
 
@@ -101,9 +116,9 @@ export function Education() {
       <SendRecordingButton style={{ marginTop: 4 }} />
 
       <nav className="hub-tabs">
-        {(["daily", "quiz", "sequence", "glossary", "videos"] as Tab[]).map((t) => (
-          <button key={t} className={tab === t ? "hub-tab active" : "hub-tab"} onClick={() => setTab(t)}>
-            {t === "daily" ? "Daily 5" : t === "quiz" ? "Quiz" : t === "sequence" ? "Sequence" : t === "glossary" ? "Glossary" : "Videos"}
+        {(["daily", "quiz", "sequence", "glossary", "videos", "forge"] as Tab[]).map((id) => (
+          <button key={id} className={tab === id ? "hub-tab active" : "hub-tab"} onClick={() => setTab(id)}>
+            {id === "daily" ? "Daily 5" : id === "quiz" ? "Quiz" : id === "sequence" ? "Sequence" : id === "glossary" ? "Glossary" : id === "videos" ? "Videos" : t("learn.tab.usingForge")}
           </button>
         ))}
       </nav>
@@ -125,6 +140,11 @@ export function Education() {
       {tab === "videos" && (
         <VideoLibrary canAuthor={isSupervisorPlus(me.data?.role)} />
       )}
+      {tab === "forge" && (
+        <Suspense fallback={<SkeletonList rows={3} />}>
+          <UsingForge />
+        </Suspense>
+      )}
 
       {tab === "glossary" && (
         <Glossary
@@ -138,7 +158,7 @@ export function Education() {
 
       {/* Learning time, L4: the person being measured reads the same number
           the owner's table does, and one sentence saying why it is kept. */}
-      <YourLearningTime profileId={me.data?.id} />
+      {tab !== "forge" && <YourLearningTime profileId={me.data?.id} />}
     </div>
   );
 }

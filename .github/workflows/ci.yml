@@ -55,6 +55,8 @@ jobs:
       - run: npm install --prefix "$RUNNER_TEMP/custom-work-db" --no-save @electric-sql/pglite@0.5.8
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-hex-portal.mjs
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-app-updates.mjs
+      - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-app-training-videos.mjs
+      - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-app-training-importer.mjs
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-servicing.mjs
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-time-off.mjs
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-photo-upload.mjs
@@ -84,7 +86,7 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       # Uses the existing fixture-only server, never the shared database.
-      - run: npm run e2e -- usability-foundations.spec.ts display-layout.spec.ts trip-sheet.spec.ts travel-crew.spec.ts workflow-plans.spec.ts schedule-remove-day.spec.ts crew-start-bar.spec.ts crew-end-time.spec.ts crew-unit-records.spec.ts custom-work.spec.ts timecard-weekly.spec.ts unassigned-time.spec.ts project-hours.spec.ts time-entry-export.spec.ts daily-logs.spec.ts global-capture.spec.ts photos-upload.spec.ts dictation.spec.ts monthly-salary.spec.ts servicing.spec.ts time-off.spec.ts hex-portal.spec.ts ask-reporting.spec.ts app-updates.spec.ts
+      - run: npm run e2e -- usability-foundations.spec.ts display-layout.spec.ts trip-sheet.spec.ts travel-crew.spec.ts workflow-plans.spec.ts schedule-remove-day.spec.ts crew-start-bar.spec.ts crew-end-time.spec.ts crew-unit-records.spec.ts custom-work.spec.ts timecard-weekly.spec.ts unassigned-time.spec.ts project-hours.spec.ts time-entry-export.spec.ts daily-logs.spec.ts global-capture.spec.ts photos-upload.spec.ts dictation.spec.ts monthly-salary.spec.ts servicing.spec.ts time-off.spec.ts hex-portal.spec.ts ask-reporting.spec.ts app-updates.spec.ts using-forge.spec.ts training-importer.spec.ts
       - run: npm run e2e -- opening-sheet.spec.ts -g "Install memo:"
       - uses: actions/upload-artifact@v4
         if: always()
@@ -162,6 +164,11 @@ jobs:
 
       - name: Test the spec-kinds backfill
         run: node scripts/seed-spec-kinds.test.mjs
+
+      # The walkthrough publisher's refusals (roles, status, paths, sizes,
+      # chapter bounds, private data) and its dry-run default. Offline.
+      - name: Test the Using Forge walkthrough publisher
+        run: node scripts/publish-role-walkthroughs.test.mjs
 
       # And the check that keeps this list honest: a test in scripts/ that no
       # step above names is a test nobody runs.
