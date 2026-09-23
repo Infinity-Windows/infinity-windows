@@ -107,65 +107,8 @@ for i in (json.loads(r) if isinstance(r, str) else r or []): print(i)
   echo >>"$answers"
 done
 
-PUBLISHED="$published" python3 - "$answers" <<'PY'
-import json, os, sys
-
-def rows(raw):
-    """The Management API answers with the last statement's rows; accept a
-    list of them or one object, and find the single `result` value."""
-    data = json.loads(raw)
-    found = []
-    def walk(o):
-        if isinstance(o, dict):
-            if "result" in o:
-                found.append(o["result"])
-            else:
-                for v in o.values():
-                    walk(v)
-        elif isinstance(o, list):
-            for v in o:
-                walk(v)
-    walk(data)
-    if len(found) != 1:
-        raise SystemExit(f"unexpected answer from the database: {raw[:300]}")
-    r = found[0]
-    return json.loads(r) if isinstance(r, str) else r
-
-published = rows(os.environ["PUBLISHED"])
-floor = {"installer": 0, "foreman": 1, "supervisor": 2}
-rank = {"installer": 0, "foreman": 1, "lead": 1, "supervisor": 2, "admin": 2,
-        "owner": 3, "big_boss": 3, "partner": -1}
-fmt = lambda xs: ", ".join(xs) or "nothing"
-
-by_role, bad = {}, 0
-for line in open(sys.argv[1]):
-    line = line.strip()
-    if not line:
-        continue
-    r = rows(line)
-    role = r.get("role") or "unknown"
-    if r.get("as_user") != "authenticated":
-        raise SystemExit(f"FAILED: a check did not run as the login ({r.get('as_user')}); nothing proven")
-    # A role this app does not recognise must see nothing (can_watch_app_training).
-    should = sorted(p["slug"] for p in published if rank.get(role, -1) >= floor[p["min_role"]])
-    sees = (tuple(sorted(r["catalog"])), tuple(sorted(r["files"])))
-    g = by_role.setdefault(role, {"n": 0, "wrong": 0, "should": should})
-    g["n"] += 1
-    if sees != (tuple(should), tuple(should)):
-        g["wrong"] += 1
-        bad += 1
-
-if not by_role:
-    raise SystemExit("FAILED: nobody was checked, so nothing is proven")
-print("### Using Forge walkthroughs: what each person can open (live)\n")
-print("Published now: " + (", ".join(f"{p['slug']} ({p['min_role']}+)" for p in published) or "nothing") + "\n")
-print("Every account that has not been removed was checked as itself, inside a read-only transaction.\n")
-print("| Role | People checked | Should see | Result |")
-print("|---|---|---|---|")
-order = ["installer", "foreman", "lead", "supervisor", "admin", "owner", "big_boss", "partner"]
-for role in sorted(by_role, key=lambda k: (order.index(k) if k in order else 99, k)):
-    g = by_role[role]
-    result = "all correct" if not g["wrong"] else f"WRONG for {g['wrong']}"
-    print(f"| {role} | {g['n']} | {fmt(g['should'])} | {result} |")
-sys.exit(1 if bad else 0)
-PY
+# The judging (parse, compare with the role floor, render the table) is
+# scripts/verify_app_training_live.py, unit-tested offline in
+# scripts/test_verify_app_training_live.py — this just hands it the two
+# things it read above.
+PUBLISHED="$published" python3 "$(dirname "$0")/verify_app_training_live.py" "$answers"
