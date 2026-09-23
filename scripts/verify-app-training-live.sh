@@ -4,20 +4,20 @@
 #
 # scripts/verify-app-training-videos.mjs proves the rule against the migration
 # in a throwaway database. This asks production the same question after a
-# publication: for one real, active person of each role (and one STG partner),
+# publication: for EVERY person who can sign in today (STG partners too),
 # which catalog rows and which private files would their own login be allowed
 # to read? The answer comes from the live row security and storage policies,
 # not from a copy of their logic, and is compared with what the floors say
 # they should see: installer 0+, foreman 1+, leadership 2+ (docs/role-training-videos.md).
 #
-# READ-ONLY, and nobody's password. Each role is one statement batch through
+# READ-ONLY, and nobody's password. Each person is one statement batch through
 # the Management API, which runs it as a single implicit transaction:
 #   set transaction read only      -> any write in it is refused by Postgres
 #   set_config(..., true)          -> the caller's identity, gone at the end
 #   set local role authenticated   -> the policies apply, gone at the end
 # The final row reports current_user, so a batch that did NOT run as the
 # simulated login is caught and fails instead of passing on superuser reads.
-# Only role names and video slugs are printed — never who was sampled.
+# Only role names, head counts and video slugs are printed — never who.
 #
 # Usage (needs the management token, which only GitHub holds):
 #   SUPABASE_PROJECT_REF=czprjcskmzzagdztqonm scripts/verify-app-training-live.sh
@@ -29,7 +29,7 @@ if [ -z "${SUPABASE_PROJECT_REF:-}" ] || [ -z "${SUPABASE_ACCESS_TOKEN:-}" ]; th
 fi
 
 ask() {
-  # $1 = the profile filter, from the fixed list below — never outside input.
+  # $1 = the profile filter: an id from the database, checked as a uuid below.
   local who="$1" body
   body="$(mktemp)"
   python3 -c 'import json,sys; print(json.dumps({"query": sys.stdin.read()}))' >"$body" <<SQL
@@ -75,15 +75,35 @@ published="$(curl -sS -X POST "https://api.supabase.com/v1/projects/$SUPABASE_PR
   --data @"$published_body")"
 rm -f "$published_body"
 
+# Everyone who can sign in today, partners included. Only ids leave the
+# database, and only into this process: they are never printed.
+people_body="$(mktemp)"
+python3 -c 'import json,sys; print(json.dumps({"query": sys.stdin.read()}))' >"$people_body" <<'SQL'
+select coalesce(json_agg(p.id::text order by p.id), '[]'::json) as result
+from public.profiles p
+where p.retired_at is null and p.access_revoked_at is null;
+SQL
+people="$(curl -sS -X POST "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+  -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" \
+  --data @"$people_body")"
+rm -f "$people_body"
+
 answers="$(mktemp)"
 trap 'rm -f "$answers"' EXIT
-for who in \
-  "p.role = 'installer' and not coalesce(p.is_partner, false)" \
-  "p.role = 'foreman' and not coalesce(p.is_partner, false)" \
-  "p.role = 'supervisor' and not coalesce(p.is_partner, false)" \
-  "p.role = 'owner' and not coalesce(p.is_partner, false)" \
-  "coalesce(p.is_partner, false)"; do
-  ask "$who" >>"$answers"
+PEOPLE="$people" python3 -c '
+import json, os
+def find(o):
+    if isinstance(o, dict):
+        return o["result"] if "result" in o else next((r for v in o.values() for r in [find(v)] if r is not None), None)
+    if isinstance(o, list):
+        return next((r for v in o for r in [find(v)] if r is not None), None)
+r = find(json.loads(os.environ["PEOPLE"]))
+if r is None: raise SystemExit("could not list who to check: " + os.environ["PEOPLE"][:300])
+for i in (json.loads(r) if isinstance(r, str) else r or []): print(i)
+' | while read -r id; do
+  # A database uuid, checked anyway before it goes into SQL text.
+  [[ "$id" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] || { echo "not a uuid" >&2; exit 1; }
+  ask "p.id = '$id'" >>"$answers"
   echo >>"$answers"
 done
 
@@ -113,31 +133,39 @@ def rows(raw):
 
 published = rows(os.environ["PUBLISHED"])
 floor = {"installer": 0, "foreman": 1, "supervisor": 2}
-rank = {"installer": 0, "foreman": 1, "supervisor": 2, "owner": 3, "partner": -1}
+rank = {"installer": 0, "foreman": 1, "lead": 1, "supervisor": 2, "admin": 2,
+        "owner": 3, "big_boss": 3, "partner": -1}
+fmt = lambda xs: ", ".join(xs) or "nothing"
 
-print("### Using Forge walkthroughs: what each role can open (live)\n")
-print("Published now: " + (", ".join(f"{p['slug']} ({p['min_role']}+)" for p in published) or "nothing") + "\n")
-print("| Signed in as | Should see | Catalog shows | Files open | Result |")
-print("|---|---|---|---|---|")
-bad = 0
+by_role, bad = {}, 0
 for line in open(sys.argv[1]):
     line = line.strip()
     if not line:
         continue
     r = rows(line)
-    role = r.get("role") or ""
-    if not role:
-        print("| (no such login) | — | — | — | skipped |")
-        continue
+    role = r.get("role") or "unknown"
     if r.get("as_user") != "authenticated":
-        print(f"| {role} | — | — | — | FAILED: did not run as the login ({r.get('as_user')}) |")
+        raise SystemExit(f"FAILED: a check did not run as the login ({r.get('as_user')}); nothing proven")
+    # A role this app does not recognise must see nothing (can_watch_app_training).
+    should = sorted(p["slug"] for p in published if rank.get(role, -1) >= floor[p["min_role"]])
+    sees = (tuple(sorted(r["catalog"])), tuple(sorted(r["files"])))
+    g = by_role.setdefault(role, {"n": 0, "wrong": 0, "should": should})
+    g["n"] += 1
+    if sees != (tuple(should), tuple(should)):
+        g["wrong"] += 1
         bad += 1
-        continue
-    should = sorted(p["slug"] for p in published if rank[role] >= floor[p["min_role"]])
-    catalog, files = sorted(r["catalog"]), sorted(r["files"])
-    ok = catalog == should and files == should
-    bad += 0 if ok else 1
-    fmt = lambda xs: ", ".join(xs) or "nothing"
-    print(f"| {role} | {fmt(should)} | {fmt(catalog)} | {fmt(files)} | {'ok' if ok else 'WRONG'} |")
+
+if not by_role:
+    raise SystemExit("FAILED: nobody was checked, so nothing is proven")
+print("### Using Forge walkthroughs: what each person can open (live)\n")
+print("Published now: " + (", ".join(f"{p['slug']} ({p['min_role']}+)" for p in published) or "nothing") + "\n")
+print("Every account that has not been removed was checked as itself, inside a read-only transaction.\n")
+print("| Role | People checked | Should see | Result |")
+print("|---|---|---|---|")
+order = ["installer", "foreman", "lead", "supervisor", "admin", "owner", "big_boss", "partner"]
+for role in sorted(by_role, key=lambda k: (order.index(k) if k in order else 99, k)):
+    g = by_role[role]
+    result = "all correct" if not g["wrong"] else f"WRONG for {g['wrong']}"
+    print(f"| {role} | {g['n']} | {fmt(g['should'])} | {result} |")
 sys.exit(1 if bad else 0)
 PY
