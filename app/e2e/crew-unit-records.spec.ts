@@ -1,9 +1,9 @@
 import { expect, test, type Page } from '@playwright/test';
-import { useSupabaseFixtures, jobFixtures, TEST_USER } from './support/supabaseFixtures';
+import { useSupabaseFixtures as installFixtures, jobFixtures, TEST_USER } from './support/supabaseFixtures';
 import { hideWrongProjectBanner } from './support/specHelpers';
 test.setTimeout(60000);
 async function setup(page: Page, role: 'foreman' | 'installer' = 'foreman') {
-  await useSupabaseFixtures(page,{role}); await hideWrongProjectBanner(page);
+  await installFixtures(page,{role}); await hideWrongProjectBanner(page);
   const job=jobFixtures()[0].projectId;
   await page.route('**/rest/v1/profiles**',async r=>{
     if(!new URL(r.request().url()).searchParams.get('select')?.includes('is_partner')) return r.fallback();
