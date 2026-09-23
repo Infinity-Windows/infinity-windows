@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { listProjectsAnyStatus } from "../../lib/api";
 import { listOpenings } from "../../lib/install/api";
 import { listCrewWorkRecords, listCrewRecordPeople } from "../../lib/customWork/api";
-import { CREW_WORK_STAGES, localWorkDate, type WorkUnit } from "../../lib/customWork/model";
+import { CREW_WORK_STAGES, crewRecordEligible, localWorkDate, type WorkUnit } from "../../lib/customWork/model";
 import type { WorkStore } from "../../lib/customWork/useWork";
 import { formatApiError } from "../../lib/errors";
 import { useT } from "../../lib/i18n";
@@ -35,7 +35,7 @@ export function CrewWork({ work, jobId, canRecord }: { work: WorkStore; jobId: s
   const units = work.units.filter(u => u.project_id === job);
   const selected = units.find(u => u.id === choice);
   const mapped = openings.data?.find(o => `map:${o.id}` === choice);
-  const activeCrew = crew.data?.filter(p => p.active && !p.is_partner && ["installer", "foreman", "supervisor", "owner"].includes(p.role ?? "")) ?? [];
+  const activeCrew = crew.data?.filter(crewRecordEligible) ?? [];
   const pending = work.queue.filter(c => c.action === "crew_record" && (c.data.unit as WorkUnit)?.project_id === jobId);
   const resetUnit = () => { setWholeComplete(false); setDraft(null); setChoice(""); setEditing(false); };
   async function save() {

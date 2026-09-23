@@ -14,10 +14,55 @@ export type WorkFacts = Partial<
       | "note"
       | "named_helpers"
       | "area_source"
-      | "installation_complete",
+      | "installation_complete"
+      | "opening_direction"
+      | "direction_viewpoint"
+      | "measurement_source",
       string
     >
-  >;
+  > & {
+    /** Pieces inside this one unit (panels, frame), from Forge AI or the editor. */
+    components?: { label: string; quantity: number }[];
+    /** Details the worker said they do not know — distinct from never asked. */
+    unknown_fields?: string[];
+  };
+
+export const FACT_LABELS: Record<string, string> = {
+  width_in: "Width (in)",
+  height_in: "Height (in)",
+  weight_lb: "Weight (lb)",
+  story: "Story / floor",
+  location: "Location",
+  material: "Frame material",
+  electrical: "Electrical components",
+  complexity: "Complexity",
+  access: "Access",
+  equipment_needed: "Equipment needed",
+  equipment: "Equipment",
+  equipment_minutes: "Equipment minutes",
+  named_helpers: "Helper names",
+  area_source: "Size source",
+  installation_complete: "Whole install complete",
+  note: "Description",
+  components: "Components",
+  opening_direction: "Opening direction",
+  direction_viewpoint: "Direction viewed from",
+  measurement_source: "Size as spoken",
+  unknown_fields: "Said unknown",
+};
+
+/** One fact as plain text. Arrays and objects (components, unknowns) are
+ * written out rather than handed to React, which cannot render an object. */
+export function factText(key: string, value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (key === "components" && Array.isArray(value))
+    return value.map((c) => (c && typeof c === "object" ? `${(c as { quantity?: unknown }).quantity ?? "?"} × ${(c as { label?: unknown }).label ?? ""}` : String(c))).join(", ");
+  if (key === "unknown_fields" && Array.isArray(value))
+    return value.map((k) => FACT_LABELS[String(k)] ?? (String(k) === "type_label" ? "Type" : String(k).replaceAll("_", " "))).join(", ");
+  if (Array.isArray(value)) return value.map((v) => factText("", v)).join(", ");
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
 export interface WorkUnit {
   id: string;
   project_id: string | null;
@@ -274,6 +319,18 @@ export interface CrewWorkRecord {
   whole_complete: boolean;
 }
 export const CREW_WORK_STAGES = ["RO checked", ...WORK_STAGES];
+
+export interface CrewPerson {
+  id: string; display_name: string; active: boolean; role: string; is_partner: boolean;
+  retired_at?: string | null; access_revoked_at?: string | null;
+}
+/** Who can be named on a crew record: anyone with current login access in a
+ * crew role. `active` is the Crew page's On site / Off today switch — someone
+ * who installed yesterday can be off today — so it is not a condition here
+ * (the server's record_crew_work applies the same rule). */
+export function crewRecordEligible(p: CrewPerson): boolean {
+  return !p.is_partner && !p.retired_at && !p.access_revoked_at && ["installer", "foreman", "supervisor", "owner"].includes(p.role ?? "");
+}
 export function localWorkDate(now = new Date()): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 }

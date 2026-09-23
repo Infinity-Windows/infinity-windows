@@ -389,7 +389,8 @@ export async function anthropicToolChat(
         max_tokens: opts.maxTokens ?? 2048,
         system: opts.system,
         messages,
-        tools: opts.tools,
+        // `strict` is the OpenAI adapter's flag; the Messages API gets its own shape.
+        tools: opts.tools.map(({ name, description, input_schema }) => ({ name, description, input_schema })),
       }),
     });
     if (!res.ok) {

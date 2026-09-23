@@ -1,0 +1,74 @@
+# Remove Forge AI voice recordings that no request refers to, 90+ days old.
+# Referenced recordings (the evidence behind a sent message) are never touched.
+# Uses the existing repo secret SUPABASE_SERVICE_ROLE_KEY, like vault-sync.yml;
+# the SQL functions it calls accept only that role. See docs/ai-field-operations.md.
+
+name: Forge AI recording sweep
+
+on:
+  schedule:
+    # Daily at 09:17 UTC (~3am Mountain).
+    - cron: "17 9 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-field-memo-sweep
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the Supabase credential is present
+        env:
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          if [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+            echo "::error::SUPABASE_SERVICE_ROLE_KEY secret is not set — the sweep cannot run. Nothing was deleted."
+            exit 1
+          fi
+          echo "Credential present."
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install app dependencies (pinned @supabase/supabase-js)
+        working-directory: app
+        run: npm ci
+
+      - name: Expose deps to the root script
+        run: ln -sfn app/node_modules node_modules
+
+      - name: Sweep unreferenced recordings
+        env:
+          SUPABASE_URL: https://czprjcskmzzagdztqonm.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node --experimental-strip-types scripts/ai-field-memo-sweep.mjs
+
+      - name: Remove the temporary symlink
+        if: always()
+        run: rm -f node_modules
+
+  notify-failure:
+    name: Tell Slack if this broke
+    needs: sweep
+    if: failure()
+    uses: ./.github/workflows/notify-failure.yml
+    with:
+      workflow: ${{ github.workflow }}
+      detail: >-
+        Old unsent Forge AI recordings were not cleaned up tonight. Nothing users
+        see is affected; recordings behind sent messages are never removed. A
+        failed deletion is retried on the next run.
+    secrets: inherit

@@ -10,6 +10,8 @@ import { listWorkHistory } from "../../lib/customWork/api";
 import { useWork } from "../../lib/customWork/useWork";
 import {
   clockText,
+  FACT_LABELS,
+  factText,
   unitSummary,
   workerSeconds,
   type WorkSession,
@@ -21,24 +23,6 @@ import { UnitEditor } from "./UnitEditor";
 import { QueueNotice } from "./QueueNotice";
 import "./customWork.css";
 
-const factLabels: Record<string, string> = {
-  width_in: "Width (in)",
-  height_in: "Height (in)",
-  weight_lb: "Weight (lb)",
-  story: "Story / floor",
-  location: "Location",
-  material: "Frame material",
-  electrical: "Electrical components",
-  complexity: "Complexity",
-  access: "Access",
-  equipment_needed: "Equipment needed",
-  equipment: "Equipment",
-  equipment_minutes: "Equipment minutes",
-  named_helpers: "Helper names",
-  area_source: "Size source",
-  installation_complete: "Whole install complete",
-  note: "Description",
-};
 const localTime = (iso: string) => {
   const date = new Date(iso);
   return new Date(date.getTime() - date.getTimezoneOffset() * 60000)
@@ -332,8 +316,8 @@ export function CustomData({ projectId }: { projectId: string }) {
                   <dl className="cw-facts">
                     {Object.entries(u.facts).map(([k, v]) => (
                       <div key={k}>
-                        <dt>{factLabels[k] ?? k.replaceAll("_", " ")}</dt>
-                        <dd>{v}</dd>
+                        <dt>{FACT_LABELS[k] ?? k.replaceAll("_", " ")}</dt>
+                        <dd>{factText(k, v)}</dd>
                       </div>
                     ))}
                   </dl>

@@ -215,6 +215,9 @@ describe("the probe list covers the schema", () => {
   const EPHEMERA = new Set([
     // Seven-day request counters only; no audio, words, work or payroll.
     "description_dictation_usage.profile_id",
+    // A counter bumped when a person's clock/timers change, so Forge AI can
+    // tell a stale request. No time, work or words of its own.
+    "ai_clock_epochs.profile_id",
     // A device's push endpoint. The device is gone with the login.
     "push_subscriptions.profile_id",
     // "I dismissed that chip." Per-person UI state.

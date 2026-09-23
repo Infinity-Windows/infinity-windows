@@ -1,6 +1,5 @@
 import { VoiceTextarea } from "../components/voice/VoiceTextarea";
 import { BackChip } from "../components/BackChip";
-import { CustomData } from "./customWork/CustomData";
 import { JobExecutionPanel } from "../components/projects/JobExecutionPanel";
 import { JobTimecardExport } from "../components/timecard/JobTimecardExport";
 import { PlanPackagesPanel } from "../components/warehouse/PlanPackagesPanel";
@@ -106,6 +105,8 @@ import {
 // and the tracking-only specs / time tabs) lives in lib/jobModes with the pure
 // tab/route decision it drives.
 type HubTab = HubTabId;
+
+const CustomData = lazy(() => import("./customWork/CustomData").then(m => ({ default: m.CustomData })));
 
 export function ProjectDetail() {
   const { projectId = "" } = useParams();
@@ -364,7 +365,7 @@ export function ProjectDetail() {
           project row resolves in the same tick its own queries do. */}
       {!modesPending && (
       <>
-      {tab === "custom-data" && <CustomData key={projectId} projectId={projectId} />}
+      {tab === "custom-data" && <Suspense fallback={<SkeletonCard height={320} />}><CustomData key={projectId} projectId={projectId} /></Suspense>}
       {tab === "overview" && (
         <>
           {project && isLead && <JobTimecardExport key={project.id} project={project} />}

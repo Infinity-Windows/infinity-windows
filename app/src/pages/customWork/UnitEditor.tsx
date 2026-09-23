@@ -5,7 +5,11 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { listProjectsAnyStatus } from "../../lib/api";
 import { listProfiles } from "../../lib/install/api";
-import type { WorkFacts, WorkType, WorkUnit } from "../../lib/customWork/model";
+import { FACT_LABELS, factText, type WorkFacts, type WorkType, type WorkUnit } from "../../lib/customWork/model";
+
+type ScalarFact = Exclude<keyof WorkFacts, "components" | "unknown_fields">;
+/** Captured facts this editor has no input for; shown so they are not invisible. */
+const CAPTURED_ONLY = ["components", "opening_direction", "direction_viewpoint", "measurement_source", "unknown_fields"] as const;
 
 export function UnitEditor({
   unit,
@@ -52,15 +56,23 @@ export function UnitEditor({
     queryKey: ["customWorkRoster"],
     queryFn: listProfiles,
   });
-  const set = (key: keyof WorkFacts, value: string, number = false) =>
+  // Every other fact (components, direction, spoken size, "said unknown") rides
+  // along untouched in `facts`, so saving here never drops what Forge AI captured.
+  const set = (key: ScalarFact, value: string, number = false) =>
     setFacts((old) => {
       const next = { ...old };
       if (value === "") delete next[key];
       else Object.assign(next, { [key]: number ? Number(value) : value });
+      // Answering a question the worker had marked unknown clears that mark.
+      if (value !== "" && next.unknown_fields?.includes(key)) {
+        const rest = next.unknown_fields.filter((k) => k !== key);
+        if (rest.length) next.unknown_fields = rest;
+        else delete next.unknown_fields;
+      }
       return next;
     });
   const field = (
-    key: keyof WorkFacts,
+    key: ScalarFact,
     title: string,
     options?: string[],
     number = false,
@@ -72,10 +84,19 @@ export function UnitEditor({
           value={facts[key] ?? ""}
           onChange={(e) => set(key, e.target.value)}
         >
-          <option value="">Unknown</option>
+          <option value="">
+            {facts.unknown_fields?.includes(key) ? "Unknown (said unknown)" : "Unknown"}
+          </option>
           {options.map((x) => (
             <option key={x}>{x}</option>
           ))}
+          {/* A value outside the list (e.g. a material said to Forge AI) stays
+              visible and selected instead of silently reading as Unknown. */}
+          {facts[key] !== undefined &&
+            facts[key] !== "" &&
+            !options.includes(String(facts[key])) && (
+              <option value={String(facts[key])}>{String(facts[key])}</option>
+            )}
         </select>
       ) : (
         <VoiceInput
@@ -212,6 +233,16 @@ export function UnitEditor({
         <p className="cw-field-hint">
           Measure the outside of the frame. Ground floor is story 1.
         </p>
+        {CAPTURED_ONLY.some((k) => facts[k] !== undefined) && (
+          <dl className="cw-facts" aria-label="Also recorded">
+            {CAPTURED_ONLY.filter((k) => facts[k] !== undefined).map((k) => (
+              <div key={k}>
+                <dt>{FACT_LABELS[k]}</dt>
+                <dd>{factText(k, facts[k])}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
       </section>
       <details className="cw-editor-helpful">
         <summary>
