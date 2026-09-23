@@ -19,3 +19,9 @@ const STANDALONE = /\b(timer|idle\s+time|(what|which)\s+units|new\s+(job|project
 export function isFieldAsk(question: string): boolean {
   return (UNIT.test(question) && UNIT_ACTION.test(question)) || STANDALONE.test(question);
 }
+
+/** Offline help only: report requests need a complete live snapshot. This does
+ * not change their operational tools, durable request or role checks. */
+export function asksForReport(question: string): boolean {
+  return /\b(hours?|timecards?|payroll|export\w*|reports?|summary|summari[sz]\w*|horas?|n[oó]mina|export\w*|informe\w*|resumen)\b/i.test(question);
+}

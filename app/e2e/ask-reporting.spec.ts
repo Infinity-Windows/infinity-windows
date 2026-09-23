@@ -17,8 +17,19 @@ for(const width of [390,1440])test(`hours report and snapshot downloads at ${wid
  await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
  await page.screenshot({path:`e2e/test-results/ask-report-${width}.png`,fullPage:true});
 });
-test('offline operational question never displays a cached total',async({page,context})=>{
- await useSupabaseFixtures(page,{role:'foreman'});await page.goto('/ask');await expect(page.locator('.ask-input input')).toBeVisible();await context.setOffline(true);const input=page.locator('.ask-input input');await input.fill('How many hours did our crew work?');await input.press('Enter');await expect(page.locator('.ask-thread')).toContainText('Connect to the internet');await expect(page.locator('.ask-report')).toHaveCount(0);
+for (const language of ['en','es'] as const) test(`offline operational question never displays a cached total (${language})`,async({page,context})=>{
+ await useSupabaseFixtures(page,{role:'foreman',language});await page.goto('/ask');await expect(page.locator('.ask-input input')).toBeVisible();await context.setOffline(true);const input=page.locator('.ask-input input');await input.fill(language==='en'?'How many hours did our crew work?':'¿Cuántas horas trabajó nuestra cuadrilla?');await input.press('Enter');
+ await expect(page.locator('.ask-thread')).toContainText(language==='en'?'Connect to the internet':'Conéctate a internet');
+ await expect(page.locator('.ask-thread')).toContainText(language==='en'?'Cached records may be incomplete':'Los datos guardados pueden estar incompletos');
+ await expect(page.locator('.ask-thread')).toContainText(language==='en'?'Not sent yet — kept on this phone':'Aún no enviado; guardado en este teléfono');
+ await expect(page.locator('.ask-report')).toHaveCount(0);
+});
+test('offline unit setup keeps the field-work connection guidance',async({page,context})=>{
+ await useSupabaseFixtures(page,{role:'installer'});await page.goto('/ask');await expect(page.locator('.ask-input input')).toBeVisible();await context.setOffline(true);const input=page.locator('.ask-input input');await input.fill('Start unit 4');await input.press('Enter');
+ await expect(page.locator('.ask-thread')).toContainText('Forge AI needs a connection for job and unit work');
+ await expect(page.locator('.ask-thread')).toContainText('Your message is kept here.');
+ await expect(page.getByText('Not sent yet — kept on this phone',{exact:true})).toBeVisible();
+ await expect(page.locator('.ask-report')).toHaveCount(0);
 });
 test('installer can reach the server for a permitted personal report',async({page})=>{
  await useSupabaseFixtures(page,{role:'installer'});await page.route('**/functions/v1/ask',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({answer:'Your recorded hours.',artifacts:[{...report,accessScope:'self',scope:{...report.scope,profileIds:[person]}}]})}));await page.goto('/ask');const input=page.locator('.ask-input input');await input.fill('Show my hours September 1-15, 2026');await input.press('Enter');await expect(page.getByRole('region',{name:'Hours report'})).toContainText('Your time');

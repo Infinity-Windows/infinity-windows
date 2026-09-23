@@ -6,7 +6,7 @@ import {findPortalGuidance,type PortalSource,type LearningDraft} from "../lib/he
 import "../components/hexPortal/hexPortal.css";
 import type { AskArtifact } from "../../../supabase/functions/_shared/askReporting.ts";
 import { ReportCard } from "../components/ask/ReportCard";
-import { isOperationalAsk } from "../lib/askRouting";
+import { asksForReport, isOperationalAsk } from "../lib/askRouting";
 import { cleanAskText } from "../lib/cleanAskText";
 import { BackChip } from "../components/BackChip";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -402,7 +402,12 @@ export function AskInfinity() {
       // that cannot reach the server is kept, not guessed at.
       if (meta && !online) {
         const kept = meta.input_kind === "voice" || (await keepText("offline"));
-        return { who: "infinity", text: kept ? t("field.needsConnection") : t("field.notKept") };
+        // Reports share the durable operational envelope, but still explain
+        // why an offline total would be incomplete. Never show a cached total.
+        const message = asksForReport(q)
+          ? `${t("ask.report.offline")} ${t(kept ? "field.unsentTitle" : "field.notKept")}`
+          : t(kept ? "field.needsConnection" : "field.notKept");
+        return { who: "infinity", text: message };
       }
       const live = operational ? null : liveAnswer(q, gatherLiveData());
       if (live) {
