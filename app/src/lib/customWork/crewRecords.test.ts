@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { localWorkDate, previewCommands, unitSummary, type WorkUnit } from "./model";
+import { localWorkDate, previewCommands, unitSummary, type WorkUnit, type WorkSession } from "./model";
 describe("foreman crew records", () => {
   it("previews a queued unit without creating a timer or measured labor", () => {
     const unit = { id: "unit", project_id: "job", label: "16", type_label: "Bifold", facts: { width_in: 72, height_in: 96 }, revision: 0 };
@@ -10,7 +10,7 @@ describe("foreman crew records", () => {
     expect(view.sessions).toEqual([]);
     expect(unitSummary(view.units[0], [])).toMatchObject({labor: 0, ready: false, finished: false});
   });
-  it("keeps a real session unchanged when filing somebody else's work", () => {
+  it("keeps an existing unit identity without creating a session", () => {
     const unit = { id: "unit", project_id: "job", label: "16", facts: {}, revision: 1 } as WorkUnit;
     const view = previewCommands([unit], [], [{id: "r", userId: "lead", action: "crew_record", data:{unit:{...unit,revision:1},people:["other"]}}]);
     expect(view.units).toHaveLength(1);
@@ -19,7 +19,9 @@ describe("foreman crew records", () => {
   });
   it("excludes completed units with untimed crew work from pricing samples", () => {
     const unit = {id:"u",project_id:"job",type_label:"Bifold",facts:{width_in:72,height_in:96,installation_complete:"Yes"},untimed_work_present:true} as WorkUnit;
-    expect(unitSummary(unit,[]).ready).toBe(false);
+    const timedVisit = { unit_id: "u", profile_id: "installer", started_at: "2026-09-18T12:00:00Z", ended_at: "2026-09-18T13:00:00Z", shift_status: "approved" } as WorkSession;
+    expect(unitSummary({...unit, untimed_work_present: false}, [timedVisit]).ready).toBe(true);
+    expect(unitSummary(unit, [timedVisit]).ready).toBe(false);
   });
   it("uses the selected local calendar day rather than slicing UTC", () => {
     const d = new Date(2026, 8, 18, 23, 59);
