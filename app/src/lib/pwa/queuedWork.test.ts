@@ -73,7 +73,7 @@ vi.mock("../servicing/mediaQueue", () => ({
   },
 }));
 
-import { blocksReload, readQueuedWork, subscribeQueuedWork } from "./queuedWork";
+import { blocksReload, isSendingNow, readQueuedWork, subscribeQueuedWork } from "./queuedWork";
 
 beforeEach(() => {
   q.outboxPending = 0;
@@ -156,6 +156,23 @@ describe("readQueuedWork", () => {
       expect(r.waiting).toBe(5);
     },
   );
+});
+
+describe("isSendingNow", () => {
+  it("answers from the in-flight flags alone, without touching a store", () => {
+    // The hold banner's Refresh asks this at the tap; a store read would be
+    // too slow and could itself fail.
+    q.outboxPending = 5;
+    expect(isSendingNow()).toBe(false);
+    q.uploadsFlushing = true;
+    expect(isSendingNow()).toBe(true);
+    q.uploadsFlushing = false;
+    q.outboxDraining = true;
+    expect(isSendingNow()).toBe(true);
+    q.outboxDraining = false;
+    q.installsFlushing = true;
+    expect(isSendingNow()).toBe(true);
+  });
 });
 
 describe("subscribeQueuedWork", () => {

@@ -48,6 +48,18 @@ export function blocksReload(q: QueuedWork): boolean {
   return q.waiting > 0 || q.sending;
 }
 
+/**
+ * Is a drain or flush running at this instant? Synchronous — the three flags
+ * are module state, never the stores — so the hold banner's Refresh button can
+ * ask one last time as it is tapped. Items merely WAITING (offline, or the
+ * legacy upload queue with nothing flushing it) are safe to reload over: they
+ * are durable and nothing is mid-request. The duplicate-send risk is only a
+ * drain in flight.
+ */
+export function isSendingNow(): boolean {
+  return isDraining() || isFlushingInstalls() || isFlushingUploads();
+}
+
 async function count(read: () => Promise<number> | number): Promise<number> {
   try {
     return await read();
@@ -62,7 +74,7 @@ async function count(read: () => Promise<number> | number): Promise<number> {
  * hold nothing this session could be sending.
  */
 export async function readQueuedWork(userId: string | null): Promise<QueuedWork> {
-  const sending = isDraining() || isFlushingInstalls() || isFlushingUploads();
+  const sending = isSendingNow();
   const reads: Array<Promise<number>> = [
     count(pendingWriteCount),
     count(pendingInstallCount),

@@ -26,7 +26,12 @@ import {
 } from "../../lib/pwa/updateCore";
 import { hasUnsavedWork } from "../../lib/pwa/unsavedWork";
 import { onSafeSurface, subscribeSafeSurface } from "../../lib/pwa/safeSurface";
-import { blocksReload, readQueuedWork, subscribeQueuedWork } from "../../lib/pwa/queuedWork";
+import {
+  blocksReload,
+  isSendingNow,
+  readQueuedWork,
+  subscribeQueuedWork,
+} from "../../lib/pwa/queuedWork";
 import { supabase, supabaseConfigured } from "../../lib/supabase";
 import { CATALOG, type TKey } from "../../lib/i18n/catalog";
 import { readCachedLang } from "../../lib/i18n/cache";
@@ -150,6 +155,13 @@ function PwaUpdateBanner() {
   const [shown, setShown] = useState<"none" | "downloading" | "waiting" | "ready" | "applying">(
     "none",
   );
+  // A drain or flush was running at the last look at the queues. The hold
+  // banner's Refresh is disabled while this is true and nothing else: items
+  // merely waiting are durable and safe to reload over. A hold can otherwise
+  // last for good — the legacy upload queue is only flushed while a unit sheet
+  // is open, and retries a failing upload without a cap — and a banner with no
+  // way out would pin a phone to an old build (review of #634, 2026-09-23).
+  const [sending, setSending] = useState(false);
   // The latest decision cycle, for callers that outlive one effect run: the
   // registration callback, the installing worker's state change, the timers.
   const evaluateRef = useRef<(returning: boolean) => Promise<void>>(async () => {});
@@ -185,6 +197,23 @@ function PwaUpdateBanner() {
       applying.current = false;
       setShown("ready");
     }, 10_000);
+  }, []);
+
+  // Refresh from the hold banner. The button reflects the last look at the
+  // queues; a drain may have started since, so ask once more at the tap. A
+  // refusal here shows as the disabled "Sending…" state, and the queue event
+  // that ends the drain re-enables it.
+  const refreshWhileHeld = useCallback(() => {
+    if (isSendingNow()) {
+      setSending(true);
+      return;
+    }
+    applyNow();
+  }, [applyNow]);
+
+  const dismiss = useCallback(() => {
+    dismissedUntilReturn.current = true;
+    setShown("none");
   }, []);
 
   useEffect(() => {
@@ -252,6 +281,7 @@ function PwaUpdateBanner() {
       if (cancelled) return;
       const queued = waiting ? await readQueuedWork(userId.current) : null;
       if (cancelled) return;
+      setSending(queued?.sending ?? false);
 
       // Everything that says whether NOW is safe is read here, after the last
       // await and right before the decision that may reload the page.
@@ -318,7 +348,7 @@ function PwaUpdateBanner() {
           };
         }
         recheckIn(HOLD_RECHECK_MS);
-        setShown("waiting");
+        setShown(dismissedUntilReturn.current ? "none" : "waiting");
         return;
       }
       if (action === "prompt") {
@@ -426,13 +456,11 @@ function PwaUpdateBanner() {
 
   if (shown === "none") return null;
 
-  if (shown === "downloading" || shown === "waiting" || shown === "applying") {
+  if (shown === "downloading" || shown === "applying") {
     const [title, hint]: [TKey, TKey] =
       shown === "applying"
         ? ["pwa.update.applying", "pwa.update.applyingHint"]
-        : shown === "waiting"
-          ? ["pwa.update.waiting", "pwa.update.waitingHint"]
-          : ["pwa.update.downloading", "pwa.update.downloadingHint"];
+        : ["pwa.update.downloading", "pwa.update.downloadingHint"];
     return (
       <div className="pwa-banner pwa-banner-update" role="status" aria-live="polite">
         <span className="pwa-banner-icon" aria-hidden>
@@ -442,6 +470,43 @@ function PwaUpdateBanner() {
           <strong>{t(title)}</strong>
           <span>{t(hint)}</span>
         </div>
+      </div>
+    );
+  }
+
+  const closeButton = (
+    <button
+      type="button"
+      className="pwa-banner-close"
+      aria-label={t("pwa.update.dismiss")}
+      onClick={dismiss}
+    >
+      <X size={18} aria-hidden />
+    </button>
+  );
+
+  if (shown === "waiting") {
+    // Held back by queued work. The person can still choose to switch over —
+    // what is waiting is durable — except while a drain is actually in
+    // flight, which is the one moment a reload could send a punch twice.
+    return (
+      <div className="pwa-banner pwa-banner-update" role="status" aria-live="polite">
+        <span className="pwa-banner-icon" aria-hidden>
+          <RefreshCw size={18} />
+        </span>
+        <div className="pwa-banner-text">
+          <strong>{t("pwa.update.waiting")}</strong>
+          <span>{t("pwa.update.waitingHint")}</span>
+        </div>
+        <button
+          type="button"
+          className="wizard-btn primary pwa-banner-action"
+          disabled={sending}
+          onClick={refreshWhileHeld}
+        >
+          {sending ? t("pwa.update.sending") : t("pwa.update.refresh")}
+        </button>
+        {closeButton}
       </div>
     );
   }
@@ -462,17 +527,7 @@ function PwaUpdateBanner() {
       >
         {t("pwa.update.refresh")}
       </button>
-      <button
-        type="button"
-        className="pwa-banner-close"
-        aria-label={t("pwa.update.dismiss")}
-        onClick={() => {
-          dismissedUntilReturn.current = true;
-          setShown("none");
-        }}
-      >
-        <X size={18} aria-hidden />
-      </button>
+      {closeButton}
     </div>
   );
 }

@@ -228,7 +228,7 @@ essentially immediately on the next time someone looks at their phone.**
 | Situation | What happens |
 | --- | --- |
 | Unsaved work in progress | **Asks.** Never reloads. No exceptions. |
-| Anything still queued or being sent (any outbox, the upload queue, custom work, servicing) | **Holds**, then decides again the moment the queues change. A reload mid-drain can send a clock punch twice. |
+| Anything still queued or being sent (any outbox, the upload queue, custom work, servicing) | **Holds**, then decides again the moment the queues change. A reload mid-drain can send a clock punch twice. The hold banner still offers Refresh and dismiss — Refresh is disabled only while a drain is actually in flight, since what is merely waiting is durable. |
 | Nothing unsaved, app was out of sight ≥ 60s | **Reloads itself.** The user comes back to the new version. |
 | Nothing unsaved, just opened or just signed in (≤ 90s, nothing typed), on the sign-in screen or the Work landing with no sheet open | **Reloads itself**, once nobody has tapped for a few seconds. Dismissing the banner turns this off. |
 | Nothing unsaved, on the sign-in screen | **Reloads itself**, same conditions. |

@@ -58,11 +58,14 @@ vi.mock("../../lib/supabase", () => ({
 const queue = vi.hoisted(() => ({
   waiting: 0,
   sending: false,
+  /** What isSendingNow() answers at the instant of a tap, if it differs. */
+  sendingNow: null as boolean | null,
   listeners: new Set<() => void>(),
   reads: 0,
 }));
 vi.mock("../../lib/pwa/queuedWork", () => ({
   blocksReload: (q: { waiting: number; sending: boolean }) => q.waiting > 0 || q.sending,
+  isSendingNow: () => queue.sendingNow ?? queue.sending,
   readQueuedWork: async () => {
     queue.reads += 1;
     return { waiting: queue.waiting, sending: queue.sending };
@@ -164,6 +167,7 @@ beforeEach(() => {
   auth.listener = null;
   queue.waiting = 0;
   queue.sending = false;
+  queue.sendingNow = null;
   queue.reads = 0;
   mic.onComplete = null;
   visibility = "visible";
@@ -484,6 +488,94 @@ describe("queued work", () => {
   it("reads the queues only when there is something to apply", async () => {
     await mount();
     expect(queue.reads).toBe(0);
+  });
+
+  describe("the hold banner has a way out", () => {
+    // A hold can last for good: the legacy upload queue is only flushed
+    // while a unit sheet is open and retries a failing upload without a cap,
+    // so a phone that left the sheet with unsent unit photos would otherwise
+    // read "it switches over once everything has been sent" forever (review
+    // of #634, 2026-09-23).
+    const refreshButton = () =>
+      Array.from(host!.querySelectorAll<HTMLButtonElement>("button")).find((b) =>
+        b.classList.contains("pwa-banner-action"),
+      );
+    const dismissButton = () =>
+      host!.querySelector<HTMLButtonElement>('button[aria-label="Dismiss update notice"]');
+
+    it("offers Refresh while items are merely waiting, and it applies", async () => {
+      onSafeScreen();
+      queue.waiting = 3;
+      registration.waiting = {};
+      await mount();
+      expect(text()).toContain("New version ready");
+      const refresh = refreshButton()!;
+      expect(refresh.disabled).toBe(false);
+      expect(refresh.textContent).toBe("Refresh");
+      expect(dismissButton()).not.toBeNull();
+      await tap(refresh);
+      expect(updateServiceWorker).toHaveBeenCalledWith(true);
+      expect(text()).toContain("Updating Forge Windows");
+    });
+
+    it("disables Refresh while a drain is in flight, and enables it when the drain ends", async () => {
+      onSafeScreen();
+      queue.waiting = 1;
+      queue.sending = true;
+      registration.waiting = {};
+      await mount();
+      let refresh = refreshButton()!;
+      expect(refresh.disabled).toBe(true);
+      expect(refresh.textContent).toBe("Sending… one moment");
+
+      // The drain ends with one upload still waiting — a legacy queue with
+      // nothing flushing it. Not safe to apply automatically; safe to offer.
+      queue.sending = false;
+      await queuesChanged();
+      expect(updateServiceWorker).not.toHaveBeenCalled();
+      refresh = refreshButton()!;
+      expect(refresh.disabled).toBe(false);
+      expect(refresh.textContent).toBe("Refresh");
+    });
+
+    it("refuses a Refresh tapped just as a drain starts", async () => {
+      // The button reflects the last look at the queues; the tap asks again.
+      onSafeScreen();
+      queue.waiting = 1;
+      registration.waiting = {};
+      await mount();
+      queue.sendingNow = true;
+      await tap(refreshButton()!);
+      expect(updateServiceWorker).not.toHaveBeenCalled();
+      expect(refreshButton()!.disabled).toBe(true);
+      expect(refreshButton()!.textContent).toBe("Sending… one moment");
+    });
+
+    it("can be dismissed until the app next comes back into view, without forgetting the update", async () => {
+      onSafeScreen();
+      queue.waiting = 1;
+      registration.waiting = {};
+      await mount();
+      expect(text()).toContain("New version ready");
+      await act(async () => dismissButton()!.click());
+      expect(text()).toBe("");
+      // A queue changing while dismissed does not bring it back.
+      await queuesChanged();
+      expect(text()).toBe("");
+      expect(updateServiceWorker).not.toHaveBeenCalled();
+
+      await setVisibility("hidden");
+      vi.setSystemTime(new Date("2026-09-23T15:03:00Z"));
+      await setVisibility("visible");
+      // Back, re-evaluated: still held (the upload is still waiting), so the
+      // banner is offered again — and the worker was never forgotten.
+      expect(text()).toContain("New version ready");
+      expect(updateServiceWorker).not.toHaveBeenCalled();
+      vi.setSystemTime(new Date("2026-09-23T15:03:10Z"));
+      queue.waiting = 0;
+      await queuesChanged();
+      expect(updateServiceWorker).toHaveBeenCalledWith(true);
+    });
   });
 });
 

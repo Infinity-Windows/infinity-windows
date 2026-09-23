@@ -2533,6 +2533,7 @@ export const CATALOG = {
   "pwa.update.downloadingHint": { en: "Keep working — it switches over when nothing is in progress.", es: "Sigue trabajando: cambiará cuando no haya nada en curso." },
   "pwa.update.waiting": { en: "New version ready", es: "Nueva versión lista" },
   "pwa.update.waitingHint": { en: "It switches over once everything on this phone has been sent.", es: "Cambiará en cuanto se envíe todo lo pendiente de este teléfono." },
+  "pwa.update.sending": { en: "Sending… one moment", es: "Enviando… un momento" },
   "pwa.update.applying": { en: "Updating Forge Windows…", es: "Actualizando Forge Windows…" },
   "pwa.update.applyingHint": { en: "One moment.", es: "Un momento." },
   "pwa.update.ready": { en: "A new version is available", es: "Hay una versión nueva disponible" },
