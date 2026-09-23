@@ -195,7 +195,7 @@ class TestSchemaParsing(unittest.TestCase):
         # +3: whole-job labor targets, named stages, and their change history.
         # +1: the short-lived daily description-dictation quota counter.
         # +7: service visits, units, time, evidence, supervisors, commands and audit.
-        self.assertEqual(len(SCHEMA.tables), 164)  # includes role-scoped release notes
+        self.assertEqual(len(SCHEMA.tables), 166)  # includes crew records and participant links
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 
