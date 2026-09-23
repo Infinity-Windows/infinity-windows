@@ -19,6 +19,9 @@ export interface AnthropicToolDef {
   name: string;
   description: string;
   input_schema: JsonSchema;
+  /** OpenAI strict function schema (every property required, nullable for
+   * optional, additionalProperties false). Not sent to Anthropic. */
+  strict?: boolean;
 }
 
 /** One content block of a Messages API reply — text, tool_use, or thinking. */

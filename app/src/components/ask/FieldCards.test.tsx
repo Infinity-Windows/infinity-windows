@@ -1,0 +1,86 @@
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it } from "vitest";
+import { FieldChecklist, FieldReceiptCard } from "./FieldCards";
+import { optionText, reasonText } from "./fieldCardText";
+import { buildChecklist, completeAnswers } from "../../../../supabase/functions/_shared/fieldTools";
+import { translate } from "../../lib/i18n/translate";
+import { CATALOG } from "../../lib/i18n/catalog";
+import { FIELD_CATALOG, type TKey } from "./fieldCatalog";
+import type { FieldReceipt } from "../../lib/fieldAsk";
+
+const html = (el: React.ReactElement) => renderToStaticMarkup(el);
+const es = ((key: TKey, vars?: Record<string, string | number>) => translate({ ...CATALOG, ...FIELD_CATALOG }, "es", key, vars)) as never;
+
+describe("receipt cards", () => {
+  it("a waiting choice says nothing has changed and offers only its options", () => {
+    const r: FieldReceipt = { action_id: "a", action: "start_unit", status: "needs_choice", reason: "on_break", preview_hash: "h", options: [{ id: "end_break_and_start", label: "x" }, { id: "cancel", label: "y" }], unit: { unit_id: "u", label: "4", type: "Bifold", facts: {} } };
+    const out = html(<FieldReceiptCard receipt={r} onChange={() => undefined} timingPending={async () => false} />);
+    expect(out).toContain("nothing has changed yet");
+    expect(out).toContain("End break and start");
+    expect(out).not.toMatch(/running|started/i);
+  });
+  it("a stale or cancelled receipt never reads as success", () => {
+    for (const status of ["stale", "cancelled"] as const) {
+      const out = html(<FieldReceiptCard receipt={{ action_id: "a", action: "start_unit", status, message: "Your job clock changed." }} onChange={() => undefined} timingPending={async () => false} />);
+      expect(out).toMatch(/Nothing changed/);
+      expect(out).not.toMatch(/Timer running/);
+    }
+  });
+  it("a running timer shows its start basis and that QC is separate on stop", () => {
+    const run = html(<FieldReceiptCard receipt={{ action_id: "a", action: "start_unit", status: "running", outcome: "started", started_at: "2026-09-22T15:00:00Z", start_time_basis: "request_sent", unit: { unit_id: "u", label: "4", type: "Bifold", facts: {} } }} onChange={() => undefined} timingPending={async () => false} />);
+    expect(run).toContain("Timer running on 4");
+    expect(run).toContain("moment you sent the request");
+    const stop = html(<FieldReceiptCard receipt={{ action_id: "b", action: "stop_work", status: "done", outcome: "stopped", stage_outcome: "partial" }} onChange={() => undefined} timingPending={async () => false} />);
+    expect(stop).toContain("QC is not approved here");
+  });
+  it("differences are readable: components, sizes and lists are written out", () => {
+    const r: FieldReceipt = { action_id: "a", action: "save_unit", status: "needs_choice", reason: "fact_conflict", options: [{ id: "keep_original", label: "k" }],
+      unit: { unit_id: "u", label: "4", type: "Bifold", facts: {} },
+      differences: {
+        components: { stored: [{ label: "Door panel", quantity: 2 }], said: [{ label: "Door panel", quantity: 3 }, { label: "Frame", quantity: 1 }] },
+        width_in: { stored: 72, said: 76.5 }, material: { stored: "Vinyl", said: "Aluminum" },
+      } };
+    const out = html(<FieldReceiptCard receipt={r} onChange={() => undefined} timingPending={async () => false} />);
+    expect(out).not.toContain("[object Object]");
+    expect(out).toContain("2 × Door panel → 3 × Door panel, 1 × Frame");
+    expect(out).toContain("72 in → 76.5 in");
+    expect(out).toContain("Vinyl → Aluminum");
+  });
+  it("a plan conflict names the map unit, and a duplicate-job card shows the new job asked for", () => {
+    const plan: FieldReceipt = { action_id: "a", action: "save_unit", status: "needs_choice", reason: "plan_conflict", map_code: "MAP-10", options: [], differences: { width_in: { plans: 60, said: 40 } } };
+    expect(html(<FieldReceiptCard receipt={plan} onChange={() => undefined} timingPending={async () => false} />)).toContain("60 in → 40 in");
+    const job: FieldReceipt = { action_id: "b", action: "create_job", status: "needs_choice", reason: "similar_job", proposed: { name: "Smith House", location: "12 Oak St" }, matches: [{ id: "j1", name: "Smith Residence", location: "12 Oak St" }], options: [] };
+    const out = html(<FieldReceiptCard receipt={job} onChange={() => undefined} timingPending={async () => false} />);
+    expect(out).toContain("Smith House · 12 Oak St");
+    expect(out).toContain("Smith Residence · 12 Oak St");
+  });
+  it("choices and questions are shown in Spanish, not the server's English", () => {
+    const r: FieldReceipt = { action_id: "a", action: "create_job", status: "needs_choice", reason: "similar_job", options: [{ id: "use_existing:j1", label: "Use Smith" }, { id: "create_new", label: "Create" }], matches: [{ id: "j1", name: "Smith Residence" }] };
+    expect(reasonText(es, r)).toContain("obra parecida");
+    expect(optionText(es, r, r.options![0])).toBe("Usar Smith Residence");
+    expect(optionText(es, r, r.options![1])).toBe("Crear una obra nueva aparte");
+  });
+});
+
+describe("the checklist card", () => {
+  it("lists what is answered, unknown and still needed", () => {
+    const c = buildChecklist({ job: { name: "Pine Hollow", location: null }, unit: completeAnswers({ label: "4", type_label: "Bifold door", unknown: ["electrical"] }) });
+    const out = html(<FieldChecklist checklist={c} />);
+    expect(out).toContain("Pine Hollow");
+    expect(out).toContain("Said unknown");
+    expect(out).toContain("Still needed");
+    expect(out).toContain("needed before timing");
+  });
+});
+
+
+describe("lazy field translations", () => {
+  it("every field phrase has English, Spanish and matching placeholders", () => {
+    const placeholders = (text: string) => [...text.matchAll(/\{(\w+)\}/g)].map(m => m[1]).sort();
+    for (const [key, entry] of Object.entries(FIELD_CATALOG)) {
+      expect(entry.en.trim(), key).not.toBe("");
+      expect(entry.es.trim(), key).not.toBe("");
+      expect(placeholders(entry.es), key).toEqual(placeholders(entry.en));
+    }
+  });
+});

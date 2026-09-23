@@ -131,6 +131,13 @@ build. Let `tsc` tell you which ones to drop.
 A test fails on an unregistered root. Registering means deciding whether the
 phone keeps it.
 
+**Forge AI field tools never confirm, and never make autonomous job-clock changes.** Choices
+are cards the person taps (`ai_field_resolve`); timing refuses on any clock
+version change since the phone's pre-Send read or anything still queued on the
+phone. A new field tool follows [`docs/ai-field-operations.md`](docs/ai-field-operations.md).
+`profiles.active` is On site / Off today, not login access — gate on
+`retired_at` / `access_revoked_at` (as `custom_work_internal` now does).
+
 **Most of the laws above are checked on every pull request.** The exact ones by
 `scripts/advisory-rules.sh`, which can go red; the rest by three prompts in
 `.checks/`, which never can — [`docs/advisory-review.md`](docs/advisory-review.md).

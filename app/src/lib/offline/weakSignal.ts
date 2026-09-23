@@ -111,7 +111,8 @@ export async function timedFetch(
 ): Promise<Response> {
   const url = urlOf(input);
   const method = (init?.method ?? (typeof Request !== "undefined" && input instanceof Request ? input.method : "GET")).toUpperCase();
-  const photoUpload = (url.includes("/storage/v1/object/install-media/") || url.includes("/storage/v1/object/service-media/")) &&
+  const fieldMemoUpload = url.includes("/storage/v1/object/ai-field-memos/") && (method === "POST" || method === "PUT");
+  const photoUpload = (fieldMemoUpload || url.includes("/storage/v1/object/install-media/") || url.includes("/storage/v1/object/service-media/")) &&
     (method === "POST" || method === "PUT");
   const d: TimedFetchDeps = {
     fetch: deps?.fetch ?? globalThis.fetch.bind(globalThis),
@@ -133,12 +134,22 @@ export async function timedFetch(
     if (outer.aborted) controller.abort();
     else outer.addEventListener("abort", () => controller.abort(), { once: true });
   }
+  let rejectDeadline: ((reason: Error) => void) | undefined;
+  const deadline = new Promise<never>((_resolve, reject) => { rejectDeadline = reject; });
   const timer = setTimeout(() => {
     timedOut = true;
     controller.abort();
+    if (fieldMemoUpload) rejectDeadline?.(new TypeError("Request timed out: weak signal"));
   }, d.timeoutMs);
   try {
-    const res = await d.fetch(input, { ...init, signal: controller.signal });
+    const request = d.fetch(input, { ...init, signal: controller.signal });
+    // A voice upload is saved only after its response body is complete. Weak
+    // service can deliver headers then stall; preserve the original for retry.
+    const complete = fieldMemoUpload ? request.then(async (res) => {
+      const body = await res.arrayBuffer();
+      return new Response(res.status === 204 ? null : body, { status: res.status, statusText: res.statusText, headers: res.headers });
+    }) : request;
+    const res = await (fieldMemoUpload ? Promise.race([complete, deadline]) : complete);
     d.onOk(d.now());
     return res;
   } catch (err) {

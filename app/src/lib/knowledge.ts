@@ -1,4 +1,5 @@
 import type { AskArtifact } from "../../../supabase/functions/_shared/askReporting.ts";
+import type { FieldMeta, FieldReply } from "./fieldAsk";
 // Client seam for the Infinity AI knowledge base (vault RAG). The pure logic
 // (chunking, hashing, retrieval shaping, prompt assembly, the fallback
 // decision) lives in the runtime-agnostic shared module so the browser, the
@@ -84,6 +85,8 @@ export interface AskResult {
    * none, which is most questions.
    */
   toolActivity?: string[];
+  /** Field work receipts and the setup checklist, straight from the database. */
+  field?: FieldReply;
 }
 
 /** Ask the cloud `ask` function for a real, grounded answer. Throws on any
@@ -91,9 +94,10 @@ export interface AskResult {
 export async function askInfinity(
   question: string,
   history: Array<{ role: "user" | "assistant"; content: string }> = [],
+  field?: FieldMeta,
 ): Promise<AskResult> {
   const { data, error } = await supabase.functions.invoke("ask", {
-    body: { question, history, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone },
+    body: { question, history, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone, ...(field ? { field } : {}) },
     signal: AbortSignal.timeout(120000),
   });
   if (error) throw error;
@@ -108,6 +112,9 @@ export async function askInfinity(
     ...(data?.limited ? { limited: true } : {}),
     ...(typeof data?.note === "string" && data.note ? { note: data.note } : {}),
     ...(toolActivity.length > 0 ? { toolActivity } : {}),
+    ...(data?.field && typeof data.field === "object" && typeof data.field.request_id === "string"
+      ? { field: { request_id: data.field.request_id, receipts: Array.isArray(data.field.receipts) ? data.field.receipts : [], checklist: data.field.checklist ?? null, draft: data.field.draft, replayed: data.field.replayed === true } }
+      : {}),
   };
 }
 

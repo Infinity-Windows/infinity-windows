@@ -5311,6 +5311,52 @@ button.clock-out {
   font-weight: 700;
 }
 
+/* Forge AI field work: mic, checklist, receipt and choice cards. Thumb-sized
+   targets; a waiting choice is visually distinct from a saved receipt. */
+.ask-mic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: var(--card-raised);
+  border-color: var(--border);
+  color: var(--text);
+}
+.ask-mic.recording {
+  width: auto;
+  padding: 0 12px;
+  background: var(--danger, #c0392b);
+  border-color: var(--danger, #c0392b);
+  color: #fff;
+}
+.ask-mic-seconds { font-size: 14px; font-variant-numeric: tabular-nums; }
+.field-card {
+  margin: 8px 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card-raised);
+}
+.field-card h3 { margin: 0 0 4px; font-size: 15px; }
+.field-card p { margin: 4px 0; }
+.field-receipt.field-needs_choice { border-color: var(--accent); border-width: 2px; }
+.field-receipt.field-stale,
+.field-receipt.field-cancelled { opacity: 0.85; }
+.field-options { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.field-options button { min-height: 44px; }
+.field-checklist ul { list-style: none; margin: 6px 0 0; padding: 0; }
+.field-item { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-top: 1px solid var(--border); }
+.field-item-label { color: var(--text-secondary); }
+.field-item-value { text-align: right; }
+.field-missing .field-item-value { font-weight: 600; }
+.field-unknown .field-item-value { font-style: italic; }
+.field-differences div { display: flex; gap: 8px; }
+.field-differences dt { color: var(--text-secondary); }
+.field-differences dd { margin: 0; }
+.field-unsent-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 0; }
+.field-unsent-row span { flex: 1 1 160px; }
+.field-memo { margin: 4px 0; max-width: 100%; }
+
 /* --- Desktop: left rail replaces bottom bar, wider content --- */
 
 @media (min-width: 860px) {

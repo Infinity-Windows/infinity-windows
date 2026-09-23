@@ -1,6 +1,7 @@
 import { supabase } from "../supabase";
 import { isMissingColumn } from "../schemaErrors";
 import type {
+  CrewPerson,
   CrewWorkRecord,
   WorkCommand,
   WorkHistory,
@@ -71,9 +72,7 @@ export const listWorkHistory = (job?: string | null) =>
     "id,project_id,actor_id,entity_id,action,reason,before_value,after_value,created_at",
     job,
   );
-export const listCrewRecordPeople = () => allRows<{
-  id: string; display_name: string; active: boolean; role: string; is_partner: boolean;
-}>("profiles", "id,display_name,active,role,is_partner");
+export const listCrewRecordPeople = () => allRows<CrewPerson>("profiles", "id,display_name,active,role,is_partner,retired_at,access_revoked_at");
 export const listCrewWorkRecords = (job: string) =>
   allRows<CrewWorkRecord>("crew_work_records",
     "id,project_id,unit_id,filed_by,work_date,stage,outcome,whole_complete,description,created_at,people:crew_work_record_people(profile_id)", job);

@@ -26,7 +26,7 @@ export async function openaiAsk(opts: OpenAIAskOptions): Promise<ToolLoopResult>
         store: false, include: ['reasoning.encrypted_content'], max_output_tokens: 4096,
         parallel_tool_calls: false,
         tools: opts.tools.map(t => ({ type: 'function', name: t.name, description: t.description,
-          parameters: t.input_schema, strict: false })),
+          parameters: t.input_schema, strict: t.strict === true })),
       }),
     });
     // Do not log raw provider errors, prompts, headers or credentials.

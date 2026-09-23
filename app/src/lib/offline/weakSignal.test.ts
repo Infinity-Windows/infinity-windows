@@ -58,7 +58,7 @@ describe("timedFetch", () => {
   beforeEach(() => { resetWeakSignal(); clearOfflineEvents(); vi.useFakeTimers(); });
   afterEach(() => { vi.useRealTimers(); });
 
-  it.each(["install-media/job/photo.jpg", "service-media/job/memo.mp4"])("bounds a stalled evidence upload: %s", async (path) => {
+  it.each(["install-media/job/photo.jpg", "service-media/job/memo.mp4", "ai-field-memos/user/request/memo.webm"])("bounds a stalled evidence upload: %s", async (path) => {
     const onTimeout = vi.fn();
     const result = timedFetch(`https://x.supabase.co/storage/v1/object/${path}`, {method:"POST"}, {
       fetch: (_input, init) => never(init?.signal), now: () => 42, onTimeout, onOk: () => undefined,
@@ -68,6 +68,25 @@ describe("timedFetch", () => {
     await vi.advanceTimersByTimeAsync(PHOTO_UPLOAD_TIMEOUT_MS);
     expect(await result).toBeInstanceOf(TypeError);
     expect(onTimeout).toHaveBeenCalledWith(42);
+  });
+
+  it("bounds an AI memo response body stalled after headers, then permits the same-path retry", async () => {
+    const path = "https://x.supabase.co/storage/v1/object/ai-field-memos/user/request/memo.webm";
+    const onOk = vi.fn(), onTimeout = vi.fn();
+    const stalled = new Response(new ReadableStream({ start() {} }), { status: 200 });
+    const pending = timedFetch(path, { method: "POST" }, {
+      fetch: async () => stalled, timeoutMs: 100, now: () => 42, onTimeout, onOk,
+    }).catch(error => error);
+    await vi.advanceTimersByTimeAsync(101);
+    expect(await pending).toBeInstanceOf(TypeError);
+    expect(onTimeout).toHaveBeenCalledWith(42);
+    expect(onOk).not.toHaveBeenCalled();
+    const retry = await timedFetch(path, { method: "POST" }, {
+      fetch: async () => new Response('{"Key":"user/request/memo.webm"}', { status: 200 }),
+      timeoutMs: 100, now: () => 43, onTimeout, onOk,
+    });
+    expect(await retry.json()).toEqual({ Key: "user/request/memo.webm" });
+    expect(onOk).toHaveBeenCalledWith(43);
   });
 
   it("aborts a stalled gallery signing request so one image cannot hold the gallery forever", async () => {

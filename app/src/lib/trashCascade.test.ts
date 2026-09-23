@@ -82,6 +82,8 @@ function censusScopedTables(): Record<string, string> {
  * SET NULL by the final `delete from projects`.
  */
 const CASCADE_COVERED: Record<string, string> = {
+  ai_field_actions: "ON DELETE CASCADE from projects (20261024000000); the request itself stays with its speaker",
+  ai_field_jobs: "project_id primary key references projects ON DELETE CASCADE (20261024000000)",
   crew_work_records: "ON DELETE CASCADE from projects; people cascade with the record",
   hex_portal_cases: "project_id references projects ON DELETE CASCADE; outcomes cascade from the case",
   hex_portal_guidance_receipts: "project_id references projects ON DELETE CASCADE",

@@ -723,6 +723,15 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     "custom_work_commands": None,
     # Separate foreman reports remain distinct; each participant occurs once per report.
     "crew_work_records": None,
+    # Forge AI field messages and their receipts are distinct events keyed by
+    # UUIDs; one receipt per (message, action key). The epoch is per person;
+    # a field-created job is marked once per job.
+    "ai_field_requests": None,
+    "ai_field_actions": ("request_id", "action_key"),
+    "ai_clock_epochs": ("profile_id",),
+    "ai_field_jobs": ("project_id",),
+    # One cleanup marker per recording path.
+    "ai_field_memo_cleanup": ("name",),
     "crew_work_record_people": ("record_id", "profile_id"),
     # UUID service visits/evidence are distinct events; supervisor mapping is per job.
     "service_job_supervisors": ("project_id",),

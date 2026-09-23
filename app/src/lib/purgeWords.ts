@@ -78,6 +78,8 @@ export interface HistoryProbe {
  * named, so the heaviest, most recognisable records come first.
  */
 export const WORK_HISTORY_PROBES: readonly HistoryProbe[] = [
+  { table: "ai_field_requests", column: "profile_id", one: "Forge AI field message", many: "Forge AI field messages" },
+  { table: "ai_field_actions", column: "profile_id", one: "Forge AI field action", many: "Forge AI field actions" },
   { table: "crew_work_records", column: "filed_by", one: "crew unit record", many: "crew unit records" },
   { table: "crew_work_record_people", column: "profile_id", one: "unit attribution", many: "unit attributions" },
   { table: "hex_portal_cases", column: "asker_id", one: "learning case", many: "learning cases" },

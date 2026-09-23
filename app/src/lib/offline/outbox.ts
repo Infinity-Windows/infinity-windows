@@ -94,6 +94,19 @@ export function getCounts(): OpCounts {
   return cachedCounts;
 }
 
+const CLOCK_OPS = new Set(["clock_in", "clock_out", "break_start", "break_stop"]);
+/**
+ * Job-clock writes still on this phone (waiting or failed), read from the
+ * durable store rather than the cached counts, which are empty until the first
+ * refresh after a reload. A queued break or clock-out carries the REAL shift id,
+ * so a shift id alone cannot tell that the server is behind. Forge AI refuses
+ * timing actions while this is non-zero. Throws when the store cannot be read;
+ * callers treat that as "pending".
+ */
+export async function pendingClockWrites(): Promise<number> {
+  return (await store.getAll()).filter((e) => CLOCK_OPS.has(e.op)).length;
+}
+
 /** Thrown when a blob is too big to safely persist offline. Handled at call sites. */
 export class BlobTooLargeError extends Error {
   readonly bytes: number;
