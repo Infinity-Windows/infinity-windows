@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   AUTO_RELOAD_AFTER_HIDDEN_MS,
   decideUpdateAction,
+  FRESH_WINDOW_MS,
+  SETTLE_MS,
   isNewerBuildKnown,
   parseBuildVersion,
   type UpdateFacts,
@@ -140,6 +142,87 @@ describe("decideUpdateAction", () => {
         ),
       ).toBe("reload");
     });
+  });
+});
+
+describe("safe moments: opening the app, signing in, the sign-in screen", () => {
+  // The owner's call (2026-09-23): phones kept running an old build after being
+  // opened, because only "came back after a minute away" ever applied an update
+  // silently. Opening and signing in hold nothing to lose, so they count too —
+  // but never over unsaved work, a focused text field or a tap in progress.
+
+  it("applies an update that is ready right after the app opens", () => {
+    expect(decideUpdateAction(facts({ freshForMs: 2_000 }))).toBe("reload");
+  });
+
+  it("still applies it at the very end of the fresh window", () => {
+    expect(decideUpdateAction(facts({ freshForMs: FRESH_WINDOW_MS }))).toBe("reload");
+  });
+
+  it("asks once the fresh window has passed", () => {
+    expect(decideUpdateAction(facts({ freshForMs: FRESH_WINDOW_MS + 1 }))).toBe("prompt");
+  });
+
+  it("asks when anything has been typed since opening", () => {
+    // Most forms never claim unsaved work — only capture does — so typing is
+    // the only sign a note is half-written.
+    expect(
+      decideUpdateAction(facts({ freshForMs: 5_000, typedSinceFresh: true })),
+    ).toBe("prompt");
+  });
+
+  it("never reloads over unsaved work, fresh or not", () => {
+    expect(
+      decideUpdateAction(facts({ freshForMs: 1_000, hasUnsavedWork: true })),
+    ).toBe("prompt");
+    expect(
+      decideUpdateAction(facts({ signedIn: false, hasUnsavedWork: true })),
+    ).toBe("prompt");
+  });
+
+  it("applies it on the sign-in screen, where nothing can be lost", () => {
+    expect(decideUpdateAction(facts({ signedIn: false }))).toBe("reload");
+  });
+
+  it("treats an unknown sign-in state as signed in", () => {
+    expect(decideUpdateAction(facts({ signedIn: null }))).toBe("prompt");
+    expect(decideUpdateAction(facts({ signedIn: undefined }))).toBe("prompt");
+  });
+
+  it("waits while a text field has focus instead of reloading", () => {
+    expect(decideUpdateAction(facts({ freshForMs: 1_000, typing: true }))).toBe("defer");
+    expect(decideUpdateAction(facts({ signedIn: false, typing: true }))).toBe("defer");
+  });
+
+  it("waits a few seconds after a tap", () => {
+    expect(
+      decideUpdateAction(facts({ freshForMs: 1_000, msSinceInteraction: SETTLE_MS - 1 })),
+    ).toBe("defer");
+    expect(
+      decideUpdateAction(facts({ freshForMs: 1_000, msSinceInteraction: SETTLE_MS })),
+    ).toBe("reload");
+  });
+
+  it("asks, not waits, when someone returns to a focused text field", () => {
+    // Returning is a one-off reading; there is no later moment to wait for,
+    // and the field may hold typing from before they left.
+    expect(
+      decideUpdateAction(
+        facts({ hiddenForMs: AUTO_RELOAD_AFTER_HIDDEN_MS, typing: true }),
+      ),
+    ).toBe("prompt");
+  });
+
+  it("does not reload on the strength of a fresh moment alone", () => {
+    // Nothing downloaded yet: the fresh moment only makes the browser check.
+    expect(
+      decideUpdateAction(facts({ swUpdateWaiting: false, freshForMs: 1_000 })),
+    ).toBe("check");
+    expect(
+      decideUpdateAction(
+        facts({ swUpdateWaiting: false, signedIn: false, latestBuildId: "old-sha" }),
+      ),
+    ).toBe("none");
   });
 });
 

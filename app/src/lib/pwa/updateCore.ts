@@ -21,8 +21,18 @@
 //   - nothing unsaved, app backgrounded a while -> reload on return. Safe:
 //     there is nothing in memory to lose, and it is the moment a phone that has
 //     been in a pocket all morning should catch up.
+//   - nothing unsaved, just opened or just signed in, nothing typed yet ->
+//     reload. The owner's call (2026-09-23): people kept running an old build
+//     after opening the app, because the only silent path was "come back after
+//     a minute away" and a fresh launch never counted. The first moments after
+//     opening or signing in hold nothing to lose, and "Getting the newest
+//     version" is on screen while it downloads, so the reload is expected.
+//   - on the sign-in screen           -> reload. There is no work to lose.
 //   - nothing unsaved, actively in use -> ASK. A page vanishing under someone's
 //     thumb is startling even when it costs them nothing.
+// Even at a safe moment, a focused text field or a tap in the last few seconds
+// DEFERS it: most forms never claim unsaved work (only capture does), and a
+// half-typed note is exactly what a reload would silently eat.
 //
 // Everything here is a pure function of serializable facts so all of that is
 // testable without a service worker, a phone, or a real clock.
@@ -33,6 +43,19 @@
  * short enough that picking it back up gets them current within a minute.
  */
 export const AUTO_RELOAD_AFTER_HIDDEN_MS = 60 * 1000;
+
+/**
+ * How long after opening the app, or signing in, an update that finishes
+ * downloading is still applied without asking. Covers a normal download on
+ * jobsite signal; a slower one falls back to the banner and the next return.
+ */
+export const FRESH_WINDOW_MS = 90 * 1000;
+
+/**
+ * A tap or keystroke this recent means somebody is mid-action: wait this long
+ * after it before reloading, rather than reloading under their thumb.
+ */
+export const SETTLE_MS = 4 * 1000;
 
 /** How often to ask whether a newer build exists while the app is open. */
 export const VERSION_POLL_INTERVAL_MS = 5 * 60 * 1000;
@@ -48,6 +71,11 @@ export type UpdateAction =
   | "check"
   /** Show the banner and let the user choose. */
   | "prompt"
+  /**
+   * It is a safe moment, but someone is typing or just tapped. Ask again in
+   * SETTLE_MS; if the moment has passed by then, that answer is "prompt".
+   */
+  | "defer"
   /** Apply it now — established as safe. */
   | "reload";
 
@@ -70,6 +98,22 @@ export interface UpdateFacts {
    * consumed, so a long-ago absence cannot make a reload look safe later.
    */
   hiddenForMs: number | null;
+  /**
+   * `false` on the sign-in screen, where there is nothing to lose. `null` or
+   * absent means unknown, which is treated as signed in — the cautious reading.
+   */
+  signedIn?: boolean | null;
+  /**
+   * Time since the app was opened or someone signed in, whichever was later.
+   * `null` or absent: not known, so never counts as fresh.
+   */
+  freshForMs?: number | null;
+  /** Anything has been typed since that moment. Ends the fresh window early. */
+  typedSinceFresh?: boolean;
+  /** A text field has focus right now. */
+  typing?: boolean;
+  /** Time since the last tap or keystroke; `null` or absent: none yet. */
+  msSinceInteraction?: number | null;
 }
 
 /** Is a build newer than the running one known to be published? */
@@ -96,11 +140,25 @@ export function decideUpdateAction(f: UpdateFacts): UpdateAction {
   // A waiting worker means the new build is downloaded and ready.
   if (f.hasUnsavedWork) return "prompt";
 
-  if (f.hiddenForMs !== null && f.hiddenForMs >= AUTO_RELOAD_AFTER_HIDDEN_MS) {
-    return "reload";
-  }
+  const returning =
+    f.hiddenForMs !== null && f.hiddenForMs >= AUTO_RELOAD_AFTER_HIDDEN_MS;
+  const signedOut = f.signedIn === false;
+  const fresh =
+    f.freshForMs != null &&
+    f.freshForMs <= FRESH_WINDOW_MS &&
+    !f.typedSinceFresh;
+  if (!returning && !signedOut && !fresh) return "prompt";
 
-  return "prompt";
+  // A safe moment — unless someone is typing or mid-tap. Coming back to the
+  // app is a one-off reading (the hidden duration is consumed), so there is
+  // nothing to wait for: a field still holding focus after the absence means
+  // ask. The other two moments last, so they can wait a few seconds.
+  const busy =
+    f.typing === true ||
+    (f.msSinceInteraction != null && f.msSinceInteraction < SETTLE_MS);
+  if (busy) return returning && !signedOut && !fresh ? "prompt" : "defer";
+
+  return "reload";
 }
 
 /** Shape of version.json, as emitted by the build. */

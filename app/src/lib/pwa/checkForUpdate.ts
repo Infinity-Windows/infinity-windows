@@ -21,9 +21,16 @@ import { parseBuildVersion, type BuildVersion } from "./updateCore";
  */
 export async function fetchPublishedVersion(
   fetchImpl: typeof fetch = fetch,
+  now: () => number = () => Date.now(),
 ): Promise<BuildVersion | null> {
   try {
-    const res = await fetchImpl(versionUrl(), {
+    // no-store only reaches the browser's cache. GitHub's CDN in front of
+    // Pages keeps its own copy for up to ten minutes (max-age=600), and a
+    // phone that asks during those minutes is told nothing changed. A query
+    // string the CDN has never seen has to come from the origin. The service
+    // worker does not precache version.json, so the query cannot miss a cache
+    // the app relies on.
+    const res = await fetchImpl(`${versionUrl()}?t=${now()}`, {
       cache: "no-store",
       // A version check is never worth a credential.
       credentials: "omit",
@@ -62,4 +69,72 @@ export function createHiddenClock(now: () => number = () => Date.now()): {
       return ms;
     },
   };
+}
+
+/**
+ * The "fresh moment" facts updateCore needs: how long since the app opened or
+ * someone signed in, whether anything has been typed since, and how long since
+ * the last tap or keystroke. Starts fresh — creating it IS the app opening.
+ */
+export function createActivityClock(now: () => number = () => Date.now()): {
+  markFresh: () => void;
+  noteInteraction: () => void;
+  noteTyped: () => void;
+  read: () => {
+    freshForMs: number;
+    typedSinceFresh: boolean;
+    msSinceInteraction: number | null;
+  };
+} {
+  let freshSince = now();
+  let typed = false;
+  let lastInteraction: number | null = null;
+  return {
+    markFresh() {
+      freshSince = now();
+      typed = false;
+    },
+    noteInteraction() {
+      lastInteraction = now();
+    },
+    noteTyped() {
+      typed = true;
+      lastInteraction = now();
+    },
+    read() {
+      return {
+        freshForMs: now() - freshSince,
+        typedSinceFresh: typed,
+        msSinceInteraction: lastInteraction === null ? null : now() - lastInteraction,
+      };
+    },
+  };
+}
+
+// Input types that do not hold typed text. Everything else — text, email,
+// number, search, date and anything new a browser invents — counts as typing.
+const NOT_TEXT_INPUTS = new Set([
+  "button",
+  "checkbox",
+  "color",
+  "file",
+  "hidden",
+  "image",
+  "radio",
+  "range",
+  "reset",
+  "submit",
+]);
+
+/** Is this element a place someone types into? */
+export function isEditingText(el: Element | null): boolean {
+  if (!el) return false;
+  if ((el as HTMLElement).isContentEditable) return true;
+  const editable = el.getAttribute("contenteditable");
+  if (editable === "" || editable === "true" || editable === "plaintext-only") return true;
+  const tag = el.tagName;
+  if (tag === "TEXTAREA") return true;
+  if (tag !== "INPUT") return false;
+  const type = (el.getAttribute("type") ?? "text").toLowerCase();
+  return !NOT_TEXT_INPUTS.has(type);
 }

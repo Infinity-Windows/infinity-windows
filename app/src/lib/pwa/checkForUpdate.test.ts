@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { createHiddenClock, fetchPublishedVersion } from "./checkForUpdate";
+import {
+  createActivityClock,
+  createHiddenClock,
+  fetchPublishedVersion,
+  isEditingText,
+} from "./checkForUpdate";
 
 describe("createHiddenClock", () => {
   it("reports nothing when the app has been visible all along", () => {
@@ -63,6 +68,16 @@ describe("fetchPublishedVersion", () => {
     );
   });
 
+  it("asks past the CDN with an address it has never seen", async () => {
+    // no-store only reaches the browser's cache; GitHub's CDN holds version.json
+    // for up to ten minutes after a deploy unless the address is new to it.
+    const fetchImpl = ok({ buildId: "abc123" });
+    await fetchPublishedVersion(fetchImpl as never, () => 1234);
+    await fetchPublishedVersion(fetchImpl as never, () => 5678);
+    expect(fetchImpl.mock.calls[0][0]).toMatch(/version\.json\?t=1234$/);
+    expect(fetchImpl.mock.calls[1][0]).toMatch(/version\.json\?t=5678$/);
+  });
+
   it("reads a non-200 as unknown", async () => {
     const fetchImpl = vi.fn().mockResolvedValue({ ok: false, json: async () => ({}) });
     await expect(fetchPublishedVersion(fetchImpl as never)).resolves.toBeNull();
@@ -87,5 +102,88 @@ describe("fetchPublishedVersion", () => {
   it("reads a body that is not a version file as unknown", async () => {
     const fetchImpl = ok({ nope: true });
     await expect(fetchPublishedVersion(fetchImpl as never)).resolves.toBeNull();
+  });
+});
+
+describe("createActivityClock", () => {
+  it("starts fresh, because creating it is the app opening", () => {
+    let t = 1_000;
+    const clock = createActivityClock(() => t);
+    t = 31_000;
+    expect(clock.read()).toEqual({
+      freshForMs: 30_000,
+      typedSinceFresh: false,
+      msSinceInteraction: null,
+    });
+  });
+
+  it("measures time since the last tap", () => {
+    let t = 0;
+    const clock = createActivityClock(() => t);
+    t = 10_000;
+    clock.noteInteraction();
+    t = 12_500;
+    expect(clock.read().msSinceInteraction).toBe(2_500);
+  });
+
+  it("remembers typing until the next fresh moment", () => {
+    // A half-typed note is what a reload would silently eat, so typing ends
+    // the fresh window — until someone signs in, which starts a new one.
+    let t = 0;
+    const clock = createActivityClock(() => t);
+    clock.noteTyped();
+    expect(clock.read().typedSinceFresh).toBe(true);
+    t = 50_000;
+    clock.markFresh();
+    expect(clock.read()).toMatchObject({ freshForMs: 0, typedSinceFresh: false });
+  });
+
+  it("counts typing as an interaction too", () => {
+    let t = 0;
+    const clock = createActivityClock(() => t);
+    t = 5_000;
+    clock.noteTyped();
+    t = 6_000;
+    expect(clock.read().msSinceInteraction).toBe(1_000);
+  });
+});
+
+describe("isEditingText", () => {
+  const el = (
+    tagName: string,
+    attrs: Record<string, string> = {},
+    isContentEditable = false,
+  ) =>
+    ({
+      tagName,
+      isContentEditable,
+      getAttribute: (name: string) => attrs[name] ?? null,
+    }) as unknown as Element;
+
+  it("is false when nothing has focus", () => {
+    expect(isEditingText(null)).toBe(false);
+  });
+
+  it("is true for text boxes, including ones with no type", () => {
+    expect(isEditingText(el("TEXTAREA"))).toBe(true);
+    expect(isEditingText(el("INPUT"))).toBe(true);
+    for (const type of ["text", "email", "number", "search", "tel", "date", "password"]) {
+      expect(isEditingText(el("INPUT", { type }))).toBe(true);
+    }
+  });
+
+  it("is false for controls that hold no typed text", () => {
+    for (const type of ["checkbox", "radio", "button", "submit", "file", "range"]) {
+      expect(isEditingText(el("INPUT", { type }))).toBe(false);
+    }
+    expect(isEditingText(el("BUTTON"))).toBe(false);
+    expect(isEditingText(el("DIV"))).toBe(false);
+  });
+
+  it("is true for editable regions", () => {
+    expect(isEditingText(el("DIV", {}, true))).toBe(true);
+    expect(isEditingText(el("DIV", { contenteditable: "true" }))).toBe(true);
+    expect(isEditingText(el("DIV", { contenteditable: "" }))).toBe(true);
+    expect(isEditingText(el("DIV", { contenteditable: "false" }))).toBe(false);
   });
 });
