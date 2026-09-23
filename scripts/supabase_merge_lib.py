@@ -721,6 +721,9 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     "custom_work_sessions": None,
     "custom_work_history": None,
     "custom_work_commands": None,
+    # Separate foreman reports remain distinct; each participant occurs once per report.
+    "crew_work_records": None,
+    "crew_work_record_people": ("record_id", "profile_id"),
     # UUID service visits/evidence are distinct events; supervisor mapping is per job.
     "service_job_supervisors": ("project_id",),
     "service_visits": None,

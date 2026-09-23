@@ -19,6 +19,7 @@ import {
   type WorkSession,
   type WorkUnit,
 } from "../../lib/customWork/model";
+import { CrewWork } from "./CrewWork";
 import { UnitEditor } from "./UnitEditor";
 import { QueueNotice } from "./QueueNotice";
 import "./customWork.css";
@@ -165,6 +166,7 @@ export function CurrentWork() {
         </button>
       </div>
       <QueueNotice work={work} />
+      <CrewWork work={work} jobId={jobId} canRecord={lead} />
       {error && (
         <p role="alert" className="cw-error">
           {error}
@@ -215,7 +217,7 @@ export function CurrentWork() {
                 </button>
               </div>
               {activeUnit && (activeUnit.created_by === work.user || lead) && (
-                <button onClick={() => setEditing(activeUnit)}>
+                <button disabled={blocked} onClick={() => setEditing(activeUnit)}>
                   {t("currentWork.editUnit")}
                 </button>
               )}
@@ -327,7 +329,7 @@ export function CurrentWork() {
           {opening.data && !selectedUnit && editing === null && (
             <section className="cw-card">
               <h2>Map unit {opening.data.opening_code}</h2>
-              <button onClick={() => setEditing("new")}>
+              <button disabled={blocked} onClick={() => setEditing("new")}>
                 Use this map unit
               </button>
               {activeUnit && !activeUnit.opening_id && (
@@ -436,7 +438,7 @@ export function CurrentWork() {
                       Join
                     </button>
                     {(u.created_by === work.user || lead) && (
-                      <button onClick={() => setEditing(u)}>
+                      <button disabled={blocked} onClick={() => setEditing(u)}>
                         Details / assign
                       </button>
                     )}

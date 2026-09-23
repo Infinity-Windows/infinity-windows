@@ -362,3 +362,15 @@
   width: 20px;
   min-height: 20px;
 }
+
+/* Crew records use generous phone targets, with a bounded people list. */
+.custom-work .cw-crew-records { margin: 1rem 0; }
+.custom-work .cw-crew-entry { display: grid; gap: .35rem; text-align: left; width: 100%; padding: 1rem; border: 1px solid var(--accent, #ff482e); border-radius: 14px; }
+.custom-work .cw-crew-entry span { font-size: .9rem; color: var(--muted); }
+.custom-work .cw-crew-picker { border: 1px solid var(--border, #46342c); border-radius: 12px; padding: 1rem; margin: 1rem 0; min-width: 0; }
+.custom-work .cw-crew-picker > div { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); gap: .5rem; max-height: 300px; overflow-y: auto; overscroll-behavior: contain; }
+.custom-work label.cw-person-choice { display: flex; flex-direction: row; align-items: center; gap: .7rem; min-height: 48px; padding: .7rem; border: 1px solid var(--border, #46342c); border-radius: 10px; cursor: pointer; }
+.custom-work .cw-person-choice:has(input:checked) { border-color: var(--accent, #ff482e); background: #ff482e18; }
+.custom-work .cw-person-choice input { width: 22px; height: 22px; min-height: 0; flex: 0 0 22px; accent-color: #ff482e; }
+.custom-work .cw-crew-history { border-top: 1px solid var(--border, #46342c); padding: 1rem 0; overflow-wrap: anywhere; }
+.custom-work .cw-crew-description { white-space: pre-wrap; }

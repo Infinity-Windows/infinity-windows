@@ -27,6 +27,7 @@ export interface WorkUnit {
   type_label: string;
   facts: WorkFacts;
   legacy_time_present?: boolean;
+  untimed_work_present?: boolean;
   revision: number;
   created_at: string;
   updated_at: string;
@@ -68,7 +69,7 @@ export interface WorkHistory {
   created_at: string;
 }
 export type WorkAction =
-  "unit" | "link" | "start" | "stop" | "session" | "type";
+  "unit" | "link" | "start" | "stop" | "session" | "type" | "crew_record";
 export interface WorkCommand {
   id: string;
   userId: string;
@@ -153,6 +154,7 @@ export function unitSummary(unit: WorkUnit, sessions: WorkSession[]) {
   const ready =
     !!unit.project_id &&
     !unit.legacy_time_present &&
+    !unit.untimed_work_present &&
     !review &&
     !!area &&
     unit.type_label.trim().toLowerCase() !== "unknown" &&
@@ -178,8 +180,12 @@ export function previewCommands(
   const us = new Map(units.map((u) => [u.id, { ...u }]));
   const ss = new Map(sessions.map((s) => [s.id, { ...s }]));
   for (const c of commands) {
-    const d = c.data;
-    if (c.action === "unit" || c.action === "link") {
+    const d = c.action === "crew_record" ? {
+      ...c.data.unit as Record<string, unknown>,
+      ...((c.data.outcome !== "assigned") ? { untimed_work_present: true } : {}),
+      ...(c.data.whole_complete ? { facts: { ...(c.data.unit as WorkUnit).facts, installation_complete: "Yes" } } : {}),
+    } : c.data;
+    if (c.action === "unit" || c.action === "link" || c.action === "crew_record") {
       const id = String(d.id),
         old = us.get(id);
       us.set(id, {
@@ -251,4 +257,23 @@ export function previewCommands(
     }
   }
   return { units: [...us.values()], sessions: [...ss.values()] };
+}
+
+/** A foreman's attribution, not measured time or QC approval. */
+export interface CrewWorkRecord {
+  id: string;
+  project_id: string;
+  unit_id: string;
+  filed_by: string | null;
+  work_date: string;
+  stage: string;
+  outcome: "assigned" | "partial" | "finished";
+  description: string;
+  created_at: string;
+  people: { profile_id: string }[];
+  whole_complete: boolean;
+}
+export const CREW_WORK_STAGES = ["RO checked", ...WORK_STAGES];
+export function localWorkDate(now = new Date()): string {
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 }

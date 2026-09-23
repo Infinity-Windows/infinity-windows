@@ -43,6 +43,7 @@ export function useWork(projectId?: string) {
         "customWorkSessions",
         "customWorkTypes",
         "customWorkHistory",
+        "crewWorkRecords",
         "myOpenSession",
         "myActivePhases",
       ].map((root) => qc.invalidateQueries({ queryKey: [root] })),

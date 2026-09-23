@@ -1,5 +1,7 @@
 import { supabase } from "../supabase";
+import { isMissingColumn } from "../schemaErrors";
 import type {
+  CrewWorkRecord,
   WorkCommand,
   WorkHistory,
   WorkSession,
@@ -8,7 +10,7 @@ import type {
 } from "./model";
 
 const UNIT_COLS =
-  "id,project_id,opening_id,created_by,label,type_label,facts,legacy_time_present,revision,created_at,updated_at";
+  "id,project_id,opening_id,created_by,label,type_label,facts,legacy_time_present,untimed_work_present,revision,created_at,updated_at";
 const SESSION_COLS =
   "id,profile_id,shift_id,project_id,unit_id,kind,participation,stage,description,outcome,delay_reason,started_at,ended_at,end_reason,revision,shift_status,review_required";
 async function allRows<T>(
@@ -51,8 +53,14 @@ async function allRows<T>(
   }
   throw new Error("This report needs a smaller scope.");
 }
-export const listWorkUnits = (job?: string | null) =>
-  allRows<WorkUnit>("custom_work_units", UNIT_COLS, job);
+export async function listWorkUnits(job?: string | null): Promise<WorkUnit[]> {
+  try { return await allRows<WorkUnit>("custom_work_units", UNIT_COLS, job); }
+  catch (error) {
+    // Keep the existing unit builder working during a backend/frontend rollout gap.
+    if (!isMissingColumn(error)) throw error;
+    return allRows<WorkUnit>("custom_work_units", UNIT_COLS.replace(",untimed_work_present", ""), job);
+  }
+}
 export const listWorkSessions = (job?: string | null, profileId?: string) =>
   allRows<WorkSession>("custom_work_sessions", SESSION_COLS, job, profileId);
 export const listWorkTypes = () =>
@@ -63,6 +71,12 @@ export const listWorkHistory = (job?: string | null) =>
     "id,project_id,actor_id,entity_id,action,reason,before_value,after_value,created_at",
     job,
   );
+export const listCrewRecordPeople = () => allRows<{
+  id: string; display_name: string; active: boolean; role: string; is_partner: boolean;
+}>("profiles", "id,display_name,active,role,is_partner");
+export const listCrewWorkRecords = (job: string) =>
+  allRows<CrewWorkRecord>("crew_work_records",
+    "id,project_id,unit_id,filed_by,work_date,stage,outcome,whole_complete,description,created_at,people:crew_work_record_people(profile_id)", job);
 export async function sendWorkCommand(c: WorkCommand): Promise<string> {
   const { data: auth, error: authError } = await supabase.auth.getSession();
   if (authError) throw authError;
@@ -70,9 +84,9 @@ export async function sendWorkCommand(c: WorkCommand): Promise<string> {
     throw new Error(
       "Sign back into the account that recorded this work to sync it.",
     );
-  const { data, error } = await supabase.rpc("custom_work_command", {
+  const { data, error } = await supabase.rpc(c.action === "crew_record" ? "record_crew_work" : "custom_work_command", {
     p_id: c.id,
-    p_action: c.action,
+    ...(c.action === "crew_record" ? {} : { p_action: c.action }),
     p_data: c.data,
   });
   if (error) throw error;

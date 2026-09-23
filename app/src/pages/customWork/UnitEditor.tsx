@@ -1,5 +1,6 @@
 import { VoiceInput } from "../../components/voice/VoiceInput";
 import { VoiceTextarea } from "../../components/voice/VoiceTextarea";
+import { useT } from "../../lib/i18n";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { listProjectsAnyStatus } from "../../lib/api";
@@ -8,6 +9,7 @@ import type { WorkFacts, WorkType, WorkUnit } from "../../lib/customWork/model";
 
 export function UnitEditor({
   unit,
+  recordOnly = false,
   jobId,
   openingId,
   label,
@@ -19,6 +21,7 @@ export function UnitEditor({
   onCancel,
 }: {
   unit?: WorkUnit;
+  recordOnly?: boolean;
   jobId?: string | null;
   openingId?: string | null;
   label?: string;
@@ -29,6 +32,7 @@ export function UnitEditor({
   onSave: (value: Record<string, unknown>, start: boolean) => Promise<void>;
   onCancel: () => void;
 }) {
+  const t = useT();
   const [name, setName] = useState(unit?.label ?? label ?? "");
   const [job, setJob] = useState(
     unit ? (unit.project_id ?? "") : (jobId ?? ""),
@@ -105,7 +109,7 @@ export function UnitEditor({
   return (
     <section className="cw-card cw-editor" aria-label="Unit details">
       <header className="cw-editor-heading">
-        <h2>{unit ? "Edit unit" : "Start a unit"}</h2>
+        <h2>{recordOnly ? t("crewRecord.unitDetails") : unit ? "Edit unit" : "Start a unit"}</h2>
         <p className="muted">Capture what you know. You can fill in more later.</p>
       </header>
       <section className="cw-editor-section" aria-label="Necessary information">
@@ -147,7 +151,7 @@ export function UnitEditor({
             <select
               value={job}
               onChange={(e) => setJob(e.target.value)}
-              disabled={!!unit?.opening_id || !!openingId}
+              disabled={recordOnly || !!unit?.opening_id || !!openingId}
             >
               <option value="">Assign job later</option>
               {projects.data?.map((p) => (
@@ -231,7 +235,7 @@ export function UnitEditor({
               "From plans",
               "Estimated",
             ])}
-            {field(
+            {!recordOnly && field(
               "installation_complete",
               "Installation complete (all visits)",
               ["Yes", "No"],
@@ -275,14 +279,14 @@ export function UnitEditor({
       <div className="cw-actions cw-editor-actions">
         <button
           className="primary"
-          disabled={busy}
-          onClick={() => void save(true)}
+          disabled={busy || (recordOnly && !name.trim())}
+          onClick={() => void save(!recordOnly)}
         >
-          {unit ? "Save and start" : "Start this unit"}
+          {recordOnly ? t("crewRecord.continue") : unit ? "Save and start" : "Start this unit"}
         </button>
-        <button disabled={busy} onClick={() => void save(false)}>
+        {!recordOnly && <button disabled={busy} onClick={() => void save(false)}>
           Save details
-        </button>
+        </button>}
         <button disabled={busy} onClick={onCancel}>
           Cancel
         </button>

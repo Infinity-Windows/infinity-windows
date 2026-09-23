@@ -16,6 +16,7 @@ import {
   type WorkUnit,
 } from "../../lib/customWork/model";
 import { formatApiError } from "../../lib/errors";
+import { CrewWork } from "./CrewWork";
 import { UnitEditor } from "./UnitEditor";
 import { QueueNotice } from "./QueueNotice";
 import "./customWork.css";
@@ -192,6 +193,7 @@ export function CustomData({ projectId }: { projectId: string }) {
         </Link>
       </div>
       <QueueNotice work={work} />
+      <CrewWork work={work} jobId={projectId} canRecord={lead} />
       {(error || work.error) && (
         <p role="alert" className="cw-error">
           {error || formatApiError(work.error)}
@@ -340,7 +342,7 @@ export function CustomData({ projectId }: { projectId: string }) {
                       Not yet a pricing sample: check size, type, completed
                       work, closed job clocks and any time review flags. Units
                       with older tracking time stay out of these benchmarks
-                      because this report only totals custom capture.
+                      because this report only totals custom capture. Work filed without timers is also excluded: its hours were not measured.
                     </p>
                   )}
                   <div className="cw-actions">
