@@ -251,6 +251,7 @@ test("owner on desktop sees all three; previewing installer narrows to one", asy
 });
 
 test("a missing catalog is an honest empty shelf, and a failed signature offers Retry", async ({ page }) => {
+  const video = await makeTestVideo(page);
   await useSupabaseFixtures(page, { role: "installer" });
   await walkthroughFixtures(page, { rows: [], video: null, catalogStatus: 404 });
   await openTab(page, "Using Forge");
@@ -260,13 +261,23 @@ test("a missing catalog is an honest empty shelf, and a failed signature offers 
   await page.unrouteAll({ behavior: "ignoreErrors" });
   let fail = true;
   await useSupabaseFixtures(page, { role: "installer" });
-  await walkthroughFixtures(page, { rows: [row("installer")], video: null, signFails: () => fail });
+  await walkthroughFixtures(page, { rows: [row("installer")], video, signFails: () => fail });
   await openTab(page, "Using Forge");
   await page.getByRole("button", { name: "Watch Installer day" }).click();
   await expect(page.getByText("The video couldn't be opened.")).toBeVisible();
   fail = false;
   await page.getByRole("button", { name: "Try again" }).click();
-  await expect(page.locator(".uf-player video")).toHaveCount(1);
+  // A successful signature is not enough: the recovered link must load real
+  // media and captions. A null fixture returns 404 and correctly triggers the
+  // separate playback error, so counting a briefly mounted video hid that bug
+  // in the test setup on faster local runs.
+  const player = page.locator(".uf-player");
+  const el = player.locator("video");
+  await expect(el).toHaveCount(1);
+  await expect.poll(() => el.evaluate((v: HTMLVideoElement) => v.readyState)).toBeGreaterThanOrEqual(1);
+  await expect.poll(() => el.evaluate((v: HTMLVideoElement) => v.textTracks[0]?.cues?.length ?? 0)).toBe(2);
+  await expect(player.getByRole("alert")).toHaveCount(0);
+  expect(await el.evaluate((v: HTMLVideoElement) => v.paused)).toBe(true);
 });
 
 test("a portrait phone recording fills a 390px phone at its own shape, not squashed into 16:9", async ({ page }) => {
