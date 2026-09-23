@@ -35,6 +35,7 @@ export interface QueryKeyRootEntry {
 export const QUERY_KEY_ROOTS: QueryKeyRootEntry[] = [
   { root: "hexPortalCases", offline: false, why: "Original records remain in Forge; pending writes use the durable outbox." },
   { root: "appUpdates", offline: false },
+  { root: "appTrainingVideos", offline: false, why: "Using Forge walkthroughs: private, role-gated media metadata keyed by user id. Streams only — never kept on the phone, so another account on the same device never inherits it." },
   { root: "timeOff", offline: false },
   { root: "crewReminders", offline: false },
   { root: "timeEntryExport", offline: false },

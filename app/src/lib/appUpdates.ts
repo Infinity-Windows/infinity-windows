@@ -11,6 +11,7 @@ export const INCLUDED_UPDATE_IDS = [
   '2026-09-21-photos', '2026-09-21-voice', '2026-09-21-time-off',
   '2026-09-21-team-reports', '2026-09-21-leave-review',
   '2026-09-22-update-popup', '2026-09-22-ask-text', '2026-09-22-export-scroll',
+  '2026-09-23-using-forge-previews',
 ] as const;
 export interface AppUpdate {
   id: string; published_on: string; audience: number[]; kind: 'fix' | 'improvement';

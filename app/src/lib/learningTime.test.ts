@@ -327,13 +327,18 @@ describe("the server's own check on which item a beat names", () => {
   });
 
   it("names the five tabs the app really ships", () => {
-    // Pinned against the Tab union in pages/Education.tsx: a tab added there
-    // and not here is time that silently stops being recorded.
+    // Pinned against the CountedTab union in pages/Education.tsx: a tab added
+    // there and not here is time that silently stops being recorded.
     const tabs = ["daily", "quiz", "sequence", "glossary", "videos"];
     const page = readFileSync(resolve(REPO, "app/src/pages/Education.tsx"), "utf8");
     expect(page).toContain(
-      `type Tab = ${tabs.map((t) => `"${t}"`).join(" | ")};`,
+      `type CountedTab = ${tabs.map((t) => `"${t}"`).join(" | ")};`,
     );
+    // The only other tab, Using Forge (design previews), is never counted:
+    // the page clock is handed null while it is open, so the server is never
+    // asked about a key it does not know.
+    expect(page).toContain('type Tab = CountedTab | "forge";');
+    expect(page).toContain('useLearningTime("tab", tab === "forge" ? null : tab);');
   });
 });
 
