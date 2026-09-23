@@ -217,14 +217,16 @@ create policy app_training_read_boundary on storage.objects
   as restrictive for select to authenticated
   using (
     bucket_id <> 'app-training'
-    or public.can_read_app_training_object(name)
-    or public.can_see_staged_app_training_object(name)
+    or (not public.is_partner_user() and (
+      public.can_read_app_training_object(name)
+      or public.can_see_staged_app_training_object(name)
+    ))
   );
 
 drop policy if exists app_training_staged_read on storage.objects;
 create policy app_training_staged_read on storage.objects
   for select to authenticated
-  using (bucket_id = 'app-training' and public.can_see_staged_app_training_object(name));
+  using (bucket_id = 'app-training' and not public.is_partner_user() and public.can_see_staged_app_training_object(name));
 
 -- UPDATE and DELETE walls (app_training_no_client_update / _delete) are the
 -- base file's and are not touched: no browser replaces or removes an object,

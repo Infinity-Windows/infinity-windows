@@ -197,7 +197,8 @@ class TestSchemaParsing(unittest.TestCase):
         # +7: service visits, units, time, evidence, supervisors, commands and audit.
         # +5: Forge AI field messages, action receipts, clock epochs, field-created
         # jobs, and the recording-cleanup markers.
-        self.assertEqual(len(SCHEMA.tables), 171)  # includes crew records and participant links
+        # +2: immutable role walkthrough catalog and importer reservations.
+        self.assertEqual(len(SCHEMA.tables), 173)  # includes crew records and participant links
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 
@@ -310,6 +311,16 @@ class TestDedupKeys(unittest.TestCase):
     def test_every_table_has_a_decision(self):
         undecided = sorted(set(SCHEMA.tables) - set(DEDUP_KEYS))
         self.assertEqual(undecided, [], f"no dedup decision for: {undecided}")
+
+    def test_training_identity_is_exact_walkthrough_language_and_version(self):
+        for table in ("app_training_videos", "app_training_imports"):
+            self.assertEqual(DEDUP_KEYS[table], ("slug", "language", "version"))
+            self.assertEqual(dedup_key_enforcement(SCHEMA, table), ENFORCED)
+            row = {"slug": "installer", "language": "en", "version": 1}
+            key = natural_key_of(table, row)
+            self.assertNotEqual(key, natural_key_of(table, {**row, "version": 2}))
+            self.assertNotEqual(key, natural_key_of(table, {**row, "language": "es"}))
+            self.assertNotEqual(key, natural_key_of(table, {**row, "slug": "foreman"}))
 
     def test_no_dedup_key_for_a_table_that_does_not_exist(self):
         stale = sorted(set(DEDUP_KEYS) - set(SCHEMA.tables))

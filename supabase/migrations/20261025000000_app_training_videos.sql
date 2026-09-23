@@ -307,7 +307,7 @@ create policy app_training_read on storage.objects
 drop policy if exists app_training_read_boundary on storage.objects;
 create policy app_training_read_boundary on storage.objects
   as restrictive for select to authenticated
-  using (bucket_id <> 'app-training' or public.can_read_app_training_object(name));
+  using (bucket_id <> 'app-training' or (not public.is_partner_user() and public.can_read_app_training_object(name)));
 
 drop policy if exists app_training_anon_boundary on storage.objects;
 create policy app_training_anon_boundary on storage.objects

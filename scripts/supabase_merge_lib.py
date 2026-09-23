@@ -184,6 +184,9 @@ def _columns_from_list(text: str) -> tuple[str, ...]:
 def _parse_create_table(name: str, body: str, source: str) -> Table:
     table = Table(name=name, defined_in=source)
     for item in _split_top_level(body):
+        # A named UNIQUE constraint enforces the same key as an unnamed one.
+        item = re.sub(r'^constraint\s+(?:"[^"]+"|[a-z_][a-z0-9_]*)\s+(?=unique\b)',
+                      '', item, flags=re.IGNORECASE)
         lowered = item.lower()
         if lowered.startswith("primary key"):
             inner = item[item.index("(") + 1 : item.rindex(")")]
@@ -445,6 +448,11 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     "hex_portal_guidance_flags": ("guidance_id", "revision"),
     "hex_portal_guidance_receipts": ("actor_id", "project_id", "guidance_id", "revision"),
     "app_release_notes": ("id",),  # stable release-note ID shared across deployments
+    # Immutable walkthrough versions and reserved object-path versions each
+    # have this UNIQUE identity; title or uploader is not their identity.
+    # Storage bytes remain a separate, reviewed transfer requirement.
+    "app_training_videos": ("slug", "language", "version"),
+    "app_training_imports": ("slug", "language", "version"),
     "time_off_requests": None,  # retries share the request UUID; canceled ranges may recur
     "crew_reminders": ("dedupe_key",),
     # -- Reference data with real natural keys: safe to dedup and merge.
