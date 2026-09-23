@@ -472,7 +472,7 @@ export function OpeningSheet() {
   // map's "Record install for…" arrives with one already made.
   const showCreditPicker =
     creditPeople.length > 1 &&
-    (askWhoInstalled || (creditedTo != null && creditedTo !== myId));
+    (isForemanPlus(effectiveRole) || askWhoInstalled || (creditedTo != null && creditedTo !== myId));
   // Seed once the answer is knowable: the person the map named if there is
   // one, otherwise the assignee. Left alone afterwards so a deliberate change
   // is never quietly overwritten by a refetch.

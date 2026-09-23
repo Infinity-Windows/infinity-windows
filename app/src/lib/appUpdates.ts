@@ -4,6 +4,7 @@ import { BUILD_ID } from './pwa/buildInfo';
 // Only announcements included in THIS client build may appear. A backend-first
 // rollout must not advertise a feature the phone has not downloaded yet.
 export const INCLUDED_UPDATE_IDS = [
+  '2026-09-22-crew-unit-records',
   '2026-09-22-hex-portal',
   '2026-09-22-easier-clock-and-forms',
   '2026-09-21-photos', '2026-09-21-voice', '2026-09-21-time-off',
