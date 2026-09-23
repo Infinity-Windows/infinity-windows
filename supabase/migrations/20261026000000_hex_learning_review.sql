@@ -204,7 +204,10 @@ alter table public.hex_learning_reviews enable row level security;
 alter table public.hex_learning_review_events enable row level security;
 alter table public.hex_learning_deliveries enable row level security;
 alter table public.hex_learning_withdrawals enable row level security;
-revoke all on public.hex_learning_reviews, public.hex_learning_review_events, public.hex_learning_deliveries, public.hex_learning_withdrawals from public, anon, authenticated;
+revoke all on public.hex_learning_reviews from public, anon, authenticated;
+revoke all on public.hex_learning_review_events from public, anon, authenticated;
+revoke all on public.hex_learning_deliveries from public, anon, authenticated;
+revoke all on public.hex_learning_withdrawals from public, anon, authenticated;
 grant all on public.hex_learning_reviews, public.hex_learning_review_events, public.hex_learning_deliveries, public.hex_learning_withdrawals to service_role;
 
 -- ---------------------------------------------------------------------------
