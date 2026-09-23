@@ -38,6 +38,7 @@ import { pendingClockWrites } from "../lib/offline/outbox";
 import { readWorkQueue } from "../lib/customWork/queue";
 import { startVoiceRecording, type VoiceRecording } from "../lib/voiceRecording";
 import { transcribeDescription } from "../lib/dictation";
+import { useUnsavedWorkWhile } from "../lib/pwa/useUnsavedWork";
 import { Mic, Square } from "lucide-react";
 import type { TimeShift } from "../lib/timeclock";
 
@@ -190,7 +191,7 @@ export function AskInfinity() {
   const userId = profile.data?.id === sessionActor ? sessionActor : null;
   const [conversation, setConversation] = useState<string | null>(null);
   const [unsent, setUnsent] = useState<UnsentField[]>([]);
-  const [voice, setVoice] = useState<"idle" | "recording" | "saving" | "transcribing">("idle");
+  const [voice, setVoice] = useState<"idle" | "starting" | "recording" | "saving" | "transcribing">("idle");
   const [seconds, setSeconds] = useState(0);
   const [voiceError, setVoiceError] = useState("");
   const [restoreError, setRestoreError] = useState(false);
@@ -199,6 +200,13 @@ export function AskInfinity() {
   /** A recording the phone could not keep yet: held in memory until it is
    * saved on the phone or on the server, never silently dropped. */
   const [held, setHeld] = useState<{ blob: Blob; meta: FieldMeta } | null>(null);
+  // From asking for the microphone until the recording is kept on the phone
+  // or held by a sent request, the only copy is in this component's memory —
+  // and a held recording is, by definition, one the phone could NOT keep. An
+  // automatic app update must not reload over any of it (independent review,
+  // 2026-09-23). Released by durability or by the person, never by the mic
+  // merely stopping.
+  useUnsavedWorkWhile(voice !== "idle" || held !== null);
   /** The clock version read when this message was started (typing or recording). */
   const clockSeen = useRef<number | null>(null);
   // Every async completion checks it still belongs to the account and setup it
@@ -527,6 +535,9 @@ export function AskInfinity() {
     setVoiceError(""); setSeconds(0);
     readClockNow(g);
     recordAbort.current = new AbortController();
+    // "starting" covers the microphone permission wait, which can sit on a
+    // system dialog for as long as the person leaves it there.
+    setVoice("starting");
     try {
       recording.current = await startVoiceRecording({
         signal: recordAbort.current.signal,

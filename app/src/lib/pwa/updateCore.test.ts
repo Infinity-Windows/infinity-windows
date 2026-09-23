@@ -149,57 +149,60 @@ describe("safe moments: opening the app, signing in, the sign-in screen", () => 
   // The owner's call (2026-09-23): phones kept running an old build after being
   // opened, because only "came back after a minute away" ever applied an update
   // silently. Opening and signing in hold nothing to lose, so they count too —
-  // but never over unsaved work, a focused text field or a tap in progress.
+  // but never over unsaved work, a focused text field or a tap in progress, and
+  // (after the independent review the same day) only on a screen that has
+  // said it is safe: the sign-in screen, or the Work landing with no sheet up.
+  const safe = (over: Partial<UpdateFacts> = {}) => facts({ onSafeSurface: true, ...over });
 
   it("applies an update that is ready right after the app opens", () => {
-    expect(decideUpdateAction(facts({ freshForMs: 2_000 }))).toBe("reload");
+    expect(decideUpdateAction(safe({ freshForMs: 2_000 }))).toBe("reload");
   });
 
   it("still applies it at the very end of the fresh window", () => {
-    expect(decideUpdateAction(facts({ freshForMs: FRESH_WINDOW_MS }))).toBe("reload");
+    expect(decideUpdateAction(safe({ freshForMs: FRESH_WINDOW_MS }))).toBe("reload");
   });
 
   it("asks once the fresh window has passed", () => {
-    expect(decideUpdateAction(facts({ freshForMs: FRESH_WINDOW_MS + 1 }))).toBe("prompt");
+    expect(decideUpdateAction(safe({ freshForMs: FRESH_WINDOW_MS + 1 }))).toBe("prompt");
   });
 
   it("asks when anything has been typed since opening", () => {
     // Most forms never claim unsaved work — only capture does — so typing is
     // the only sign a note is half-written.
     expect(
-      decideUpdateAction(facts({ freshForMs: 5_000, typedSinceFresh: true })),
+      decideUpdateAction(safe({ freshForMs: 5_000, typedSinceFresh: true })),
     ).toBe("prompt");
   });
 
   it("never reloads over unsaved work, fresh or not", () => {
     expect(
-      decideUpdateAction(facts({ freshForMs: 1_000, hasUnsavedWork: true })),
+      decideUpdateAction(safe({ freshForMs: 1_000, hasUnsavedWork: true })),
     ).toBe("prompt");
     expect(
-      decideUpdateAction(facts({ signedIn: false, hasUnsavedWork: true })),
+      decideUpdateAction(safe({ signedIn: false, hasUnsavedWork: true })),
     ).toBe("prompt");
   });
 
   it("applies it on the sign-in screen, where nothing can be lost", () => {
-    expect(decideUpdateAction(facts({ signedIn: false }))).toBe("reload");
+    expect(decideUpdateAction(safe({ signedIn: false }))).toBe("reload");
   });
 
   it("treats an unknown sign-in state as signed in", () => {
-    expect(decideUpdateAction(facts({ signedIn: null }))).toBe("prompt");
-    expect(decideUpdateAction(facts({ signedIn: undefined }))).toBe("prompt");
+    expect(decideUpdateAction(safe({ signedIn: null }))).toBe("prompt");
+    expect(decideUpdateAction(safe({ signedIn: undefined }))).toBe("prompt");
   });
 
   it("waits while a text field has focus instead of reloading", () => {
-    expect(decideUpdateAction(facts({ freshForMs: 1_000, typing: true }))).toBe("defer");
-    expect(decideUpdateAction(facts({ signedIn: false, typing: true }))).toBe("defer");
+    expect(decideUpdateAction(safe({ freshForMs: 1_000, typing: true }))).toBe("defer");
+    expect(decideUpdateAction(safe({ signedIn: false, typing: true }))).toBe("defer");
   });
 
   it("waits a few seconds after a tap", () => {
     expect(
-      decideUpdateAction(facts({ freshForMs: 1_000, msSinceInteraction: SETTLE_MS - 1 })),
+      decideUpdateAction(safe({ freshForMs: 1_000, msSinceInteraction: SETTLE_MS - 1 })),
     ).toBe("defer");
     expect(
-      decideUpdateAction(facts({ freshForMs: 1_000, msSinceInteraction: SETTLE_MS })),
+      decideUpdateAction(safe({ freshForMs: 1_000, msSinceInteraction: SETTLE_MS })),
     ).toBe("reload");
   });
 
@@ -216,13 +219,126 @@ describe("safe moments: opening the app, signing in, the sign-in screen", () => 
   it("does not reload on the strength of a fresh moment alone", () => {
     // Nothing downloaded yet: the fresh moment only makes the browser check.
     expect(
-      decideUpdateAction(facts({ swUpdateWaiting: false, freshForMs: 1_000 })),
+      decideUpdateAction(safe({ swUpdateWaiting: false, freshForMs: 1_000 })),
     ).toBe("check");
     expect(
       decideUpdateAction(
-        facts({ swUpdateWaiting: false, signedIn: false, latestBuildId: "old-sha" }),
+        safe({ swUpdateWaiting: false, signedIn: false, latestBuildId: "old-sha" }),
       ),
     ).toBe("none");
+  });
+
+  describe("only on a screen that said it is safe", () => {
+    // The first version of the opening window treated ANY screen as safe
+    // once four seconds passed without a tap — including one with a voice
+    // memo recording (independent review, 2026-09-23). A screen is safe
+    // because it claimed so, never because it stayed quiet.
+    it("asks, right after opening, on a screen that has not claimed", () => {
+      expect(decideUpdateAction(facts({ freshForMs: 2_000 }))).toBe("prompt");
+      expect(
+        decideUpdateAction(facts({ freshForMs: 2_000, onSafeSurface: false })),
+      ).toBe("prompt");
+    });
+
+    it("asks on the sign-in path too, without a claim", () => {
+      expect(decideUpdateAction(facts({ signedIn: false }))).toBe("prompt");
+    });
+
+    it("asks when a sheet is open over the landing", () => {
+      // The registry reads "claimed, but covered" as not safe; the fact
+      // arrives here as false.
+      expect(
+        decideUpdateAction(facts({ freshForMs: 2_000, onSafeSurface: false })),
+      ).toBe("prompt");
+    });
+
+    it("does not need a claim to reload on return after a long absence", () => {
+      // That path predates the claim and is guarded by the unsaved-work and
+      // queued-work checks instead.
+      expect(
+        decideUpdateAction(facts({ hiddenForMs: AUTO_RELOAD_AFTER_HIDDEN_MS })),
+      ).toBe("reload");
+    });
+  });
+
+  describe("a dismissal means not now", () => {
+    it("turns the opening window off", () => {
+      // Without this, dismissing the banner four seconds into the window was
+      // followed by the very reload that was just declined.
+      expect(
+        decideUpdateAction(safe({ freshForMs: 2_000, dismissed: true })),
+      ).toBe("prompt");
+    });
+
+    it("turns the sign-in screen path off", () => {
+      expect(decideUpdateAction(safe({ signedIn: false, dismissed: true }))).toBe("prompt");
+    });
+
+    it("is cleared by coming back to the app, so a return still applies it", () => {
+      // The banner resets the dismissal before it evaluates a return; the
+      // fact is false by then. A dismissed update is never forgotten.
+      expect(
+        decideUpdateAction(
+          facts({ hiddenForMs: AUTO_RELOAD_AFTER_HIDDEN_MS, dismissed: false }),
+        ),
+      ).toBe("reload");
+    });
+  });
+});
+
+describe("queued work holds an automatic reload", () => {
+  // The outboxes replay clock punches, installs and photos in the background.
+  // A reload mid-drain can send the same punch twice, and clock_out is not
+  // idempotent on the server. So every automatic path waits for the queues —
+  // and asks again the moment they change, which is what "hold" means.
+
+  it("holds the opening window while anything is still being sent", () => {
+    expect(
+      decideUpdateAction(facts({ onSafeSurface: true, freshForMs: 2_000, queuedWork: true })),
+    ).toBe("hold");
+  });
+
+  it("holds the sign-in screen path", () => {
+    expect(
+      decideUpdateAction(facts({ onSafeSurface: true, signedIn: false, queuedWork: true })),
+    ).toBe("hold");
+  });
+
+  it("holds the return after a long absence", () => {
+    expect(
+      decideUpdateAction(facts({ hiddenForMs: AUTO_RELOAD_AFTER_HIDDEN_MS, queuedWork: true })),
+    ).toBe("hold");
+  });
+
+  it("holds ahead of the typing and tap checks", () => {
+    // Typing is asked about again in four seconds; a queue is asked about
+    // again when it changes. The queue is the longer wait, so it decides.
+    expect(
+      decideUpdateAction(
+        facts({ onSafeSurface: true, freshForMs: 2_000, queuedWork: true, typing: true }),
+      ),
+    ).toBe("hold");
+  });
+
+  it("reloads once the queues are empty again", () => {
+    expect(
+      decideUpdateAction(facts({ onSafeSurface: true, freshForMs: 2_000, queuedWork: false })),
+    ).toBe("reload");
+  });
+
+  it("never turns a prompt into a hold", () => {
+    // Not a safe moment: the banner is the answer, queue or no queue. And
+    // unsaved work still outranks everything.
+    expect(decideUpdateAction(facts({ queuedWork: true }))).toBe("prompt");
+    expect(
+      decideUpdateAction(facts({ queuedWork: true, hasUnsavedWork: true, freshForMs: 1_000, onSafeSurface: true })),
+    ).toBe("prompt");
+  });
+
+  it("is not a reason to check for a build", () => {
+    expect(
+      decideUpdateAction(facts({ swUpdateWaiting: false, queuedWork: true, latestBuildId: "new-sha" })),
+    ).toBe("check");
   });
 });
 

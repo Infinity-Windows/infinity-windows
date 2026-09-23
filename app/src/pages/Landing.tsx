@@ -1,9 +1,14 @@
+import { useSafeSurface } from "../lib/pwa/useSafeSurface";
+
 interface LandingProps {
   onSignIn: () => void;
   onRequest: () => void;
 }
 
 export function Landing({ onSignIn, onRequest }: LandingProps) {
+  // Two buttons and a tagline: the automatic update may apply itself here —
+  // see lib/pwa/safeSurface.ts.
+  useSafeSurface();
   return (
     <div className="landing">
       <div className="landing-brand">

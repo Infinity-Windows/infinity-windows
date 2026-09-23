@@ -31,6 +31,7 @@ import {
 } from "../lib/credentials";
 import { isForemanPlus } from "../lib/install/types";
 import { listGreenLightItems, openGreenLightItems } from "../lib/install/buildFacts";
+import { useSafeSurface } from "../lib/pwa/useSafeSurface";
 
 /** "32 min" / "45s" for a duration in seconds. */
 function fmtDur(sec: number): string {
@@ -66,6 +67,9 @@ interface LiveTask extends HeartbeatTask {
 export function Heartbeat() {
   const queryClient = useQueryClient();
   const t = useT();
+  // The supervisor's Work landing ("/"): a read of every job. See
+  // lib/pwa/safeSurface.ts.
+  useSafeSurface();
   const { effectiveRole: role } = useEffectiveRole();
   const canWrite = isSupervisorPlus(role);
   // Wave O (O4): the same thirty-day window the 7 AM push uses, so the tile and

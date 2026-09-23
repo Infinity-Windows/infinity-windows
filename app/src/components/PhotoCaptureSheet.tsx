@@ -19,6 +19,7 @@ import {
   type StampMeta,
 } from "../lib/photo/stampPhoto";
 import { usePhotoPicker } from "../lib/photo/usePhotoPicker";
+import { useUnsavedWorkWhile } from "../lib/pwa/useUnsavedWork";
 import { PhotoUploadStatus } from "./photos/PhotoUploadStatus";
 import {
   isPdfPick,
@@ -607,6 +608,10 @@ function JobPhotoCapture({
   const working = busy || picking;
   const [caption, setCaption] = useState("");
   const [queuedIds, setQueuedIds] = useState<string[]>([]);
+  // From the shutter (or the pick) until enqueue* has it in IndexedDB, the
+  // picture exists only in this sheet — and a live camera is somebody about
+  // to take one. Neither may be reloaded over by an automatic update.
+  useUnsavedWorkWhile(cameraOn || working);
   /** Files this pick could not use, by name and by reason — see pickFiles.
    * The reason travels with the name now that there are two of them: an
    * unreadable picture and a PDF that would not open need different words and
@@ -1096,6 +1101,10 @@ function BeforeAfterCapture({
   const [mode, setMode] = useState<"idle" | "before" | "after">("idle");
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [stamping, setStamping] = useState(false);
+  // The camera open, or a shot being stamped before the parent holds it: the
+  // parent's own claim (OpeningSheet's hasCapture) starts only once onChange
+  // hands the file over, and this covers the gap in front of it.
+  useUnsavedWorkWhile(mode !== "idle" || stamping);
 
   // Fires the first time a slot is asked for. `autoOpen` arrives late on a
   // chained sheet (the hand-off stamp is read out of history state in an
@@ -1299,6 +1308,8 @@ function SinglePhotoCapture({
   const [live, setLive] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [stamping, setStamping] = useState(false);
+  // Same gap as the before/after pair: the caller's claim starts at onChange.
+  useUnsavedWorkWhile(live || stamping);
 
   // Only when this shot is actually stamped. A photo of somebody's OSHA card
   // asks for no fix at the shutter, so it must not ask for one on mount either.

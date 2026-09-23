@@ -65,6 +65,7 @@ import {
   listClearances,
 } from "../lib/install/api";
 import { SkillTree } from "../components/crew/SkillTree";
+import { useOverlayWhile, useSafeSurface } from "../lib/pwa/useSafeSurface";
 import type { Capability } from "../lib/dispatch";
 
 function todayLocalISO(): string {
@@ -77,6 +78,11 @@ export function MyWork() {
   const navigate = useNavigate();
   const location = useLocation();
   const t = useT();
+  // The installer's Work landing ("/"): a day list, a clock block, chips that
+  // open sheets. Everything that holds work here opens a sheet (an overlay) or
+  // claims unsaved work itself, so the bare landing is one of the few screens
+  // the automatic update may apply itself on — see lib/pwa/safeSurface.ts.
+  useSafeSurface();
   const queryClient = useQueryClient();
   // S6: the core values strip moves to the bottom of THIS page and stops
   // rotating while a shift is open — but only when this render IS the
@@ -171,6 +177,8 @@ export function MyWork() {
   const [unsubmit, setUnsubmit] = useState<ProjectOpening | null>(null);
   const [unsubmitReason, setUnsubmitReason] = useState("");
   const [unsubmitError, setUnsubmitError] = useState<string | null>(null);
+  // The un-submit dialog traps no focus, so it says so itself.
+  useOverlayWhile(unsubmit !== null);
   const doUnsubmit = useMutation({
     mutationFn: (o: ProjectOpening) => undoInstall(o.id, unsubmitReason.trim()),
     onSuccess: () => {

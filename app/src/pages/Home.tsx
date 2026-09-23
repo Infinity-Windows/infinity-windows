@@ -34,6 +34,7 @@ import { listAssignments } from "../lib/schedule/api";
 import { ToolboxTalkNagBanner } from "../components/time/ToolboxTalkNagBanner";
 import { useUnreadCounts } from "../lib/chat/useUnreadCounts";
 import { totalUnread } from "../lib/chat/unread";
+import { useSafeSurface } from "../lib/pwa/useSafeSurface";
 
 function initialsFrom(name: string | null | undefined): string {
   if (!name?.trim()) return "∞";
@@ -60,6 +61,9 @@ function termOfDay(): (typeof TERMS)[number] {
 
 export function Home() {
   const t = useT();
+  // The foreman's Work landing ("/"). Same reasoning as MyWork: what holds
+  // work here opens a sheet or claims for itself — see lib/pwa/safeSurface.ts.
+  useSafeSurface();
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const { effectiveRole: role } = useEffectiveRole();
   const boss = isOwner(role);

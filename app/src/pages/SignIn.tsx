@@ -9,6 +9,7 @@ import {
 import { supabase, supabaseConfigured } from "../lib/supabase";
 import { submitAccessRequest, setMyLanguage } from "../lib/install/api";
 import { usePreAuthT } from "../lib/i18n";
+import { useSafeSurface } from "../lib/pwa/useSafeSurface";
 
 /**
  * There is no "create your own account" here any more.
@@ -43,6 +44,10 @@ export function SignIn({
   // provider uses, so the very first thing on this screen respects a choice
   // made here before, or on another pre-login screen (JoinCrew).
   const { lang, t, setLang: pickLang, hadNoChoice } = usePreAuthT();
+  // Nothing here can be lost to a reload but a half-typed address, and the
+  // typing guard covers that. One of the few screens the automatic update may
+  // apply itself on — see lib/pwa/safeSurface.ts.
+  useSafeSurface();
 
   const [mode, setMode] = useState<Mode>(initialMode);
   const [email, setEmail] = useState("");

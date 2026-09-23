@@ -12,16 +12,25 @@ import { BUILD_ID } from "../../lib/pwa/buildInfo";
 import {
   createActivityClock,
   createHiddenClock,
-  fetchPublishedVersion,
+  createVersionCheck,
   isEditingText,
+  UPDATE_CHECK_TIMEOUT_MS,
+  withDeadline,
 } from "../../lib/pwa/checkForUpdate";
 import {
   decideUpdateAction,
+  HOLD_RECHECK_MS,
+  RETURN_CARRY_MS,
   SETTLE_MS,
   VERSION_POLL_INTERVAL_MS,
 } from "../../lib/pwa/updateCore";
 import { hasUnsavedWork } from "../../lib/pwa/unsavedWork";
+import { onSafeSurface, subscribeSafeSurface } from "../../lib/pwa/safeSurface";
+import { blocksReload, readQueuedWork, subscribeQueuedWork } from "../../lib/pwa/queuedWork";
 import { supabase, supabaseConfigured } from "../../lib/supabase";
+import { CATALOG, type TKey } from "../../lib/i18n/catalog";
+import { readCachedLang } from "../../lib/i18n/cache";
+import { translate } from "../../lib/i18n/translate";
 
 /**
  * The Chromium-only `beforeinstallprompt` event. Not in the DOM lib, so we
@@ -50,6 +59,18 @@ export function PwaBanners() {
       <PwaInstallBanner />
     </>
   );
+}
+
+/**
+ * The update banner's words. It is mounted above LanguageProvider (main.tsx),
+ * which only exists once there is a session, so — like the stale-chunk toast
+ * in preloadRecovery.ts — it reads the per-device cache the provider writes
+ * to. Read at render, not at mount: the banner lives for the whole session
+ * and someone may pick Spanish after it mounted.
+ */
+function useBannerT(): (key: TKey) => string {
+  const lang = readCachedLang() ?? "en";
+  return useCallback((key: TKey) => translate(CATALOG, lang, key), [lang]);
 }
 
 /**
@@ -83,23 +104,55 @@ export function PwaBanners() {
  *      silently doing nothing when it runs before registration finishes, which
  *      cost some phones five minutes and others nothing.
  *
+ * An independent review of that change (Codex, 2026-09-23) found three holes,
+ * closed here:
+ *
+ *   7. The opening window counted ANY screen as safe after four quiet seconds,
+ *      including one with a voice memo recording — the recorder holds its audio
+ *      in memory, claims nothing, and produces no input events. Every surface
+ *      that holds bytes only in memory now claims unsaved work, and the two
+ *      newer automatic paths (4) additionally require a screen that has
+ *      declared itself safe — the sign-in screen or the Work landing with no
+ *      sheet open (safeSurface.ts). Nothing on the phone may be mid-send
+ *      either (queuedWork.ts); a reload mid-drain can replay a clock punch.
+ *   8. A registration that finished AFTER the first check was only stored, so
+ *      that phone waited for the five-minute poll — outside the opening window.
+ *      Registration finishing now runs the check.
+ *   9. Every check awaited version.json before looking at the worker, and that
+ *      request had no deadline, so on one bar an update already downloaded and
+ *      waiting could be neither applied nor offered. The worker is read first;
+ *      the version request is one-at-a-time with a deadline.
+ *
  * The safety rule lives in updateCore.ts, with the reasoning about why an
  * installer's in-memory capture outranks being up to date.
  */
 function PwaUpdateBanner() {
+  const t = useBannerT();
   const registration = useRef<ServiceWorkerRegistration | null>(null);
   const hiddenClock = useRef(createHiddenClock());
   const activity = useRef(createActivityClock());
+  const versionCheck = useRef(createVersionCheck());
   // null until auth has answered; updateCore reads null as "signed in".
   const signedIn = useRef<boolean | null>(null);
+  // The signed-in account, for the queues that are kept per person.
+  const userId = useRef<string | null>(null);
   // Applying an update reloads the page, so re-entering that path while it is
   // already under way would only fight itself.
   const applying = useRef(false);
   // A dismissed banner stays away until the app next comes back into view —
   // but the waiting update itself is never forgotten.
   const dismissedUntilReturn = useRef(false);
-  const deferTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [shown, setShown] = useState<"none" | "downloading" | "ready" | "applying">("none");
+  // The last decision was "hold": a queue changing is worth another look.
+  const holding = useRef(false);
+  // A return to the app that queued work held back — see RETURN_CARRY_MS.
+  const carriedReturn = useRef<{ hiddenForMs: number; since: number } | null>(null);
+  const recheck = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [shown, setShown] = useState<"none" | "downloading" | "waiting" | "ready" | "applying">(
+    "none",
+  );
+  // The latest decision cycle, for callers that outlive one effect run: the
+  // registration callback, the installing worker's state change, the timers.
+  const evaluateRef = useRef<(returning: boolean) => Promise<void>>(async () => {});
 
   const {
     needRefresh: [needRefresh],
@@ -107,6 +160,10 @@ function PwaUpdateBanner() {
   } = useRegisterSW({
     onRegisteredSW(_swUrl, reg) {
       registration.current = reg ?? null;
+      // The first check may already have run and found no registration. If
+      // it did, nothing else would look again until the five-minute poll —
+      // long after the opening window has closed.
+      if (reg) void evaluateRef.current(false);
     },
   });
 
@@ -114,11 +171,10 @@ function PwaUpdateBanner() {
   // just because the helper is a fresh closure each time.
   const apply = useRef(updateServiceWorker);
   apply.current = updateServiceWorker;
-  // The latest decision cycle, for listeners that outlive one effect run.
-  const evaluateRef = useRef<(returning: boolean) => Promise<void>>(async () => {});
 
   const applyNow = useCallback(() => {
     applying.current = true;
+    holding.current = false;
     setShown("applying");
     // `true` posts SKIP_WAITING and reloads. A bare location.reload() would
     // NOT help: the old worker still controls the page and would serve the
@@ -133,6 +189,12 @@ function PwaUpdateBanner() {
 
   useEffect(() => {
     let cancelled = false;
+    // One decision cycle at a time. A trigger that lands mid-cycle asks for
+    // one more cycle afterwards rather than starting a second one over the
+    // top: two cycles racing could each read a clean queue and both reload.
+    let running = false;
+    let again: { returning: boolean } | null = null;
+    const check = versionCheck.current;
 
     const currentRegistration = async () => {
       if (registration.current) return registration.current;
@@ -145,36 +207,75 @@ function PwaUpdateBanner() {
       }
     };
 
-    /**
-     * One decision cycle. `returning` is true when triggered by the app coming
-     * back into view, which is the only case allowed to consume the hidden
-     * duration.
-     */
-    const evaluate = async (returning: boolean) => {
-      if (cancelled || applying.current) return;
-      const hiddenForMs = returning ? hiddenClock.current.takeHiddenDuration() : null;
+    const clearRecheck = () => {
+      if (recheck.current) clearTimeout(recheck.current);
+      recheck.current = null;
+    };
+    const recheckIn = (ms: number) => {
+      clearRecheck();
+      recheck.current = setTimeout(() => void evaluate(false), ms);
+    };
 
-      const published = await fetchPublishedVersion();
-      if (cancelled) return;
+    /**
+     * The hidden-duration fact for this cycle. Coming back to the app is the
+     * one reading that consumes the clock. A reading that queued work held
+     * back may be reused once, briefly, if nobody has touched the phone since
+     * — so a drain that finishes a few seconds after the return still lets
+     * the update apply, and one that finishes after the person is back at
+     * work does not.
+     */
+    const hiddenReading = (returning: boolean): number | null => {
+      const carried = carriedReturn.current;
+      carriedReturn.current = null;
+      if (returning) return hiddenClock.current.takeHiddenDuration();
+      if (!carried) return null;
+      const since = Date.now() - carried.since;
+      const { msSinceInteraction } = activity.current.read();
+      const touched = msSinceInteraction != null && msSinceInteraction < since;
+      return since > RETURN_CARRY_MS || touched ? null : carried.hiddenForMs;
+    };
+
+    const runOnce = async (returning: boolean) => {
+      if (applying.current) return;
+      clearRecheck();
+      const carriedSince = carriedReturn.current?.since ?? null;
+      const hiddenForMs = hiddenReading(returning);
+
       const reg = await currentRegistration();
       if (cancelled) return;
+      // What is on the phone comes first. An update already downloaded and
+      // waiting is actionable on its own; only the question "is there a newer
+      // build to go and get" needs the network, and on one bar that request
+      // can take a very long time to answer or fail.
+      const waiting = needRefresh || Boolean(reg?.waiting);
+      const published = waiting ? null : await check.run();
+      if (cancelled) return;
+      const queued = waiting ? await readQueuedWork(userId.current) : null;
+      if (cancelled) return;
 
+      // Everything that says whether NOW is safe is read here, after the last
+      // await and right before the decision that may reload the page.
       const action = decideUpdateAction({
         runningBuildId: BUILD_ID,
         latestBuildId: published?.buildId ?? null,
-        swUpdateWaiting: needRefresh || Boolean(reg?.waiting),
+        swUpdateWaiting: waiting,
         hasUnsavedWork: hasUnsavedWork(),
         hiddenForMs,
         signedIn: signedIn.current,
         ...activity.current.read(),
         typing: isEditingText(document.activeElement),
+        queuedWork: queued ? blocksReload(queued) : false,
+        onSafeSurface: onSafeSurface(),
+        dismissed: dismissedUntilReturn.current,
       });
+      holding.current = action === "hold";
 
       if (action === "check") {
         if (!reg) return;
         setShown((s) => (s === "none" ? "downloading" : s));
         try {
-          await reg.update();
+          // The browser's own check can stall like any other request.
+          await withDeadline(reg.update(), UPDATE_CHECK_TIMEOUT_MS);
         } catch {
           // Offline or the fetch failed: the next check tries again.
         }
@@ -182,7 +283,10 @@ function PwaUpdateBanner() {
         const installing = reg.installing;
         if (!installing) {
           // Nothing new was found (yet) — do not claim a download is running.
-          if (!reg.waiting) setShown((s) => (s === "downloading" ? "none" : s));
+          // Unless it was found and finished before we looked, in which case
+          // decide about it now rather than on the next poll.
+          if (reg.waiting) void evaluate(false);
+          else setShown((s) => (s === "downloading" ? "none" : s));
           return;
         }
         // Downloads the new worker; when it finishes, needRefresh flips and
@@ -200,9 +304,21 @@ function PwaUpdateBanner() {
         return;
       }
       if (action === "defer") {
-        if (deferTimer.current) clearTimeout(deferTimer.current);
-        deferTimer.current = setTimeout(() => void evaluateRef.current(false), SETTLE_MS);
-        setShown((s) => (s === "downloading" || s === "none" ? "ready" : s));
+        recheckIn(SETTLE_MS);
+        setShown((s) => (s === "downloading" || s === "waiting" || s === "none" ? "ready" : s));
+        return;
+      }
+      if (action === "hold") {
+        // Keep the return-to-app reading for the cycle the queues trigger,
+        // stamped with when the return actually happened.
+        if (hiddenForMs != null) {
+          carriedReturn.current = {
+            hiddenForMs,
+            since: returning ? Date.now() : (carriedSince ?? Date.now()),
+          };
+        }
+        recheckIn(HOLD_RECHECK_MS);
+        setShown("waiting");
         return;
       }
       if (action === "prompt") {
@@ -210,6 +326,32 @@ function PwaUpdateBanner() {
         return;
       }
       setShown("none");
+    };
+
+    /**
+     * One decision cycle. `returning` is true when triggered by the app coming
+     * back into view, which is the only case allowed to consume the hidden
+     * duration.
+     */
+    const evaluate = async (returning: boolean) => {
+      if (cancelled) return;
+      if (running) {
+        again = { returning: (again?.returning ?? false) || returning };
+        return;
+      }
+      running = true;
+      try {
+        await runOnce(returning);
+      } catch {
+        // A check must never break the app. The next trigger tries again.
+      } finally {
+        running = false;
+        if (!cancelled && again) {
+          const next = again;
+          again = null;
+          void evaluate(next.returning);
+        }
+      }
     };
     evaluateRef.current = evaluate;
 
@@ -224,13 +366,28 @@ function PwaUpdateBanner() {
 
     document.addEventListener("visibilitychange", onVisibility);
     const timer = setInterval(() => void evaluate(false), VERSION_POLL_INTERVAL_MS);
+    // A queue finishing is what a "hold" is waiting for. Only then: a photo
+    // going out is not otherwise a reason to ask the network about builds.
+    const unsubscribeQueues = subscribeQueuedWork(() => {
+      if (holding.current) void evaluate(false);
+    });
+    // The landing mounting a moment after the app opened, with an update
+    // already waiting: the check that ran at open found no safe screen yet.
+    const unsubscribeSurface = subscribeSafeSurface(() => {
+      if (onSafeSurface() && (needRefresh || registration.current?.waiting)) {
+        void evaluate(false);
+      }
+    });
     void evaluate(false);
 
     return () => {
       cancelled = true;
       document.removeEventListener("visibilitychange", onVisibility);
       clearInterval(timer);
-      if (deferTimer.current) clearTimeout(deferTimer.current);
+      clearRecheck();
+      unsubscribeQueues();
+      unsubscribeSurface();
+      check.abort();
     };
   }, [needRefresh, applyNow]);
 
@@ -239,13 +396,14 @@ function PwaUpdateBanner() {
     if (!supabaseConfigured) return;
     let previous: string | null | undefined;
     const { data } = supabase.auth.onAuthStateChange((_event, session) => {
-      const userId = session?.user?.id ?? null;
-      signedIn.current = userId !== null;
-      if (previous !== undefined && userId !== null && userId !== previous) {
+      const id = session?.user?.id ?? null;
+      signedIn.current = id !== null;
+      userId.current = id;
+      if (previous !== undefined && id !== null && id !== previous) {
         activity.current.markFresh();
       }
-      const changed = userId !== previous;
-      previous = userId;
+      const changed = id !== previous;
+      previous = id;
       if (changed) void evaluateRef.current(false);
     });
     return () => data.subscription.unsubscribe();
@@ -268,23 +426,21 @@ function PwaUpdateBanner() {
 
   if (shown === "none") return null;
 
-  if (shown === "downloading" || shown === "applying") {
+  if (shown === "downloading" || shown === "waiting" || shown === "applying") {
+    const [title, hint]: [TKey, TKey] =
+      shown === "applying"
+        ? ["pwa.update.applying", "pwa.update.applyingHint"]
+        : shown === "waiting"
+          ? ["pwa.update.waiting", "pwa.update.waitingHint"]
+          : ["pwa.update.downloading", "pwa.update.downloadingHint"];
     return (
       <div className="pwa-banner pwa-banner-update" role="status" aria-live="polite">
         <span className="pwa-banner-icon" aria-hidden>
           <RefreshCw size={18} />
         </span>
         <div className="pwa-banner-text">
-          <strong>
-            {shown === "applying"
-              ? "Updating Forge Windows…"
-              : "Getting the newest version…"}
-          </strong>
-          <span>
-            {shown === "applying"
-              ? "One moment."
-              : "Keep working — it switches over when nothing is in progress."}
-          </span>
+          <strong>{t(title)}</strong>
+          <span>{t(hint)}</span>
         </div>
       </div>
     );
@@ -296,20 +452,20 @@ function PwaUpdateBanner() {
         <RefreshCw size={18} />
       </span>
       <div className="pwa-banner-text">
-        <strong>A new version is available</strong>
-        <span>Refresh to get the latest Forge Windows.</span>
+        <strong>{t("pwa.update.ready")}</strong>
+        <span>{t("pwa.update.readyHint")}</span>
       </div>
       <button
         type="button"
         className="wizard-btn primary pwa-banner-action"
         onClick={applyNow}
       >
-        Refresh
+        {t("pwa.update.refresh")}
       </button>
       <button
         type="button"
         className="pwa-banner-close"
-        aria-label="Dismiss update notice"
+        aria-label={t("pwa.update.dismiss")}
         onClick={() => {
           dismissedUntilReturn.current = true;
           setShown("none");

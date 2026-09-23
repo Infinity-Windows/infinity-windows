@@ -10,6 +10,7 @@ import {
   type OutboxEntry,
   countsByOp,
   drainUntilSettled,
+  isPending,
   makeEntry,
   requeueStranded,
   type OpCounts,
@@ -92,6 +93,24 @@ export function subscribeSynced(cb: () => void): () => void {
 
 export function getCounts(): OpCounts {
   return cachedCounts;
+}
+
+/** Is a drain running right now? Synchronous, for a decision that must not
+ * wait on the store: a reload mid-drain can replay a punch the server has
+ * already taken. See lib/pwa/queuedWork.ts. */
+export function isDraining(): boolean {
+  return draining;
+}
+
+/**
+ * Writes still on this phone that WILL be sent: queued, or mid-send. Read
+ * from the durable store, not the cached counts, which are empty until the
+ * first refresh after a reload — and the moment right after a reload is
+ * exactly when the update banner asks. Dead-lettered writes are not counted:
+ * they have stopped trying and a reload cannot resend them.
+ */
+export async function pendingWriteCount(): Promise<number> {
+  return (await store.getAll()).filter(isPending).length;
 }
 
 const CLOCK_OPS = new Set(["clock_in", "clock_out", "break_start", "break_stop"]);
