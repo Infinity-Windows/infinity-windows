@@ -21,13 +21,14 @@ create table public.crew_work_record_people (
 );
 alter table public.crew_work_records enable row level security;
 alter table public.crew_work_record_people enable row level security;
-revoke all on public.crew_work_records, public.crew_work_record_people from public,anon,authenticated;
+revoke all on public.crew_work_records from public,anon,authenticated;
+revoke all on public.crew_work_record_people from public,anon,authenticated;
 grant select on public.crew_work_records, public.crew_work_record_people to authenticated;
 create policy crew_records_read on public.crew_work_records for select to authenticated using (
-  public.custom_work_internal() and exists(select 1 from public.projects p where p.id=project_id and p.deleted_at is null)
+  not public.is_partner_user() and public.custom_work_internal() and exists(select 1 from public.projects p where p.id=project_id and p.deleted_at is null)
 );
 create policy crew_record_people_read on public.crew_work_record_people for select to authenticated using (
-  exists(select 1 from public.crew_work_records r where r.id=record_id)
+  not public.is_partner_user() and exists(select 1 from public.crew_work_records r where r.id=record_id)
 );
 
 create function public.record_crew_work(p_id uuid,p_data jsonb) returns uuid
