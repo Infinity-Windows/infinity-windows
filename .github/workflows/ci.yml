@@ -371,6 +371,12 @@ jobs:
         shell: bash
         run: scripts/verify-invariants.test.sh
 
+      # The same probe's second question — who can watch which walkthrough
+      # video — judged offline here: a leak, a wrong file, a check that did not
+      # run as the login, and nobody checked must each fail.
+      - name: Test the walkthrough-access judge
+        run: python3 scripts/test_verify_app_training_live.py
+
       # The migration-history tool decides what gets deleted from
       # supabase_migrations.schema_migrations, and it used to refuse to run at
       # all whenever a committed count went stale — which was after roughly
