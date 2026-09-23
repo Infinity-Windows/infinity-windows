@@ -447,6 +447,10 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     "hex_portal_outcomes": None,
     "hex_portal_guidance_flags": ("guidance_id", "revision"),
     "hex_portal_guidance_receipts": ("actor_id", "project_id", "guidance_id", "revision"),
+    "hex_learning_reviews": ("case_id",),  # one write-up per case
+    "hex_learning_review_events": ("review_id", "revision"),
+    "hex_learning_deliveries": ("review_id", "revision"),
+    "hex_learning_withdrawals": ("review_id",),
     "app_release_notes": ("id",),  # stable release-note ID shared across deployments
     # Immutable walkthrough versions and reserved object-path versions each
     # have this UNIQUE identity; title or uploader is not their identity.

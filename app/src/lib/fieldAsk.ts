@@ -1,6 +1,7 @@
 import { supabase } from "./supabase";
 import { dictationExtension } from "../../../supabase/functions/_shared/dictation";
 import type { SetupChecklist, SetupDraft } from "../../../supabase/functions/_shared/fieldTools";
+import type { LearningPrep } from "../../../supabase/functions/_shared/learningTools";
 import type { AskArtifact } from "../../../supabase/functions/_shared/askReporting";
 import type { KnowledgeSource } from "../../../supabase/functions/_shared/knowledge";
 
@@ -44,7 +45,8 @@ export interface FieldReceipt {
   work_date?: string;
   [key: string]: unknown;
 }
-export interface FieldReply { request_id: string; receipts: FieldReceipt[]; checklist: SetupChecklist | null; draft?: SetupDraft; replayed?: boolean }
+/** `learning` is a write-up prepared on screen: never saved or sent by the reply itself. */
+export interface FieldReply { request_id: string; receipts: FieldReceipt[]; checklist: SetupChecklist | null; draft?: SetupDraft; learning?: LearningPrep | null; replayed?: boolean }
 
 /** What goes with a message so the server can bind it to the person and time. */
 export interface FieldMeta {
@@ -159,7 +161,7 @@ export interface SavedTurn {
   id: string; transcript: string; input_kind: "text" | "voice"; sent_at: string; audio_path: string | null;
   /** The whole saved reply: report/job-summary cards and sources come back too. */
   reply: { answer?: string; toolActivity?: string[]; artifacts?: AskArtifact[]; sources?: KnowledgeSource[] } | null;
-  captured: { checklist?: SetupChecklist | null } | null; finished_at: string | null;
+  captured: { checklist?: SetupChecklist | null; learning?: LearningPrep | null } | null; finished_at: string | null;
   receipts: FieldReceipt[];
 }
 /** How many recent messages a reload shows. The newest are always included;

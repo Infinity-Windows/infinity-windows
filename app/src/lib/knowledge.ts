@@ -113,7 +113,7 @@ export async function askInfinity(
     ...(typeof data?.note === "string" && data.note ? { note: data.note } : {}),
     ...(toolActivity.length > 0 ? { toolActivity } : {}),
     ...(data?.field && typeof data.field === "object" && typeof data.field.request_id === "string"
-      ? { field: { request_id: data.field.request_id, receipts: Array.isArray(data.field.receipts) ? data.field.receipts : [], checklist: data.field.checklist ?? null, draft: data.field.draft, replayed: data.field.replayed === true } }
+      ? { field: { request_id: data.field.request_id, receipts: Array.isArray(data.field.receipts) ? data.field.receipts : [], checklist: data.field.checklist ?? null, draft: data.field.draft, learning: data.field.learning ?? null, replayed: data.field.replayed === true } }
       : {}),
   };
 }

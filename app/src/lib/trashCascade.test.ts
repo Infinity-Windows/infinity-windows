@@ -87,6 +87,7 @@ const CASCADE_COVERED: Record<string, string> = {
   crew_work_records: "ON DELETE CASCADE from projects; people cascade with the record",
   hex_portal_cases: "project_id references projects ON DELETE CASCADE; outcomes cascade from the case",
   hex_portal_guidance_receipts: "project_id references projects ON DELETE CASCADE",
+  hex_learning_reviews: "project_id references projects ON DELETE CASCADE (20261026000000); history and deliveries cascade from the write-up",
   service_visit_units: "ON DELETE CASCADE from projects (20261017000000)",
   service_visits: "ON DELETE CASCADE from projects (20261017000000)",
   service_time_sessions: "ON DELETE CASCADE from projects (20261017000000)",

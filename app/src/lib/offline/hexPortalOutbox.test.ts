@@ -66,3 +66,19 @@ it("a network failure remains retryable and does not fall back to an unguarded w
   expect(isRetryableError(err)).toBe(true);
   expect(rpc).not.toHaveBeenCalled();
 });
+it("a queued lesson draft is sent only as its author, with the same action id and p_actor every retry", async () => {
+  const draft = { actorId: "original-user", args: { p_review: "r", p_action: "a", p_case: "c", p_expected_revision: 1, p_content: {}, p_actor: "original-user" } };
+  const e = makeEntry({ op: "hex_learning_draft", payload: draft }, "draft-id", 0);
+  await handlers.hex_learning_draft!(e, { getBlob: async () => null });
+  await handlers.hex_learning_draft!(e, { getBlob: async () => null });
+  expect(rpc.mock.calls).toEqual([["hex_learning_save_draft", draft.args], ["hex_learning_save_draft", draft.args]]);
+  rpc.mockClear();
+  getUser.mockResolvedValue({ data: { user: { id: "another-user" } }, error: null });
+  await expect(handlers.hex_learning_draft!(e, { getBlob: async () => null })).rejects.toSatisfy((err) => !isRetryableError(err));
+  expect(rpc).not.toHaveBeenCalled();
+});
+it("a queued draft made stale by another screen dead-letters instead of retrying forever", async () => {
+  rpc.mockResolvedValue({ error: { code: "P0001", hint: "stale_revision", message: "This write-up changed on another screen." } });
+  const e = makeEntry({ op: "hex_learning_draft", payload: { actorId: "original-user", args: {} } }, "draft-id", 0);
+  await expect(handlers.hex_learning_draft!(e, { getBlob: async () => null })).rejects.toSatisfy((err) => !isRetryableError(err));
+});

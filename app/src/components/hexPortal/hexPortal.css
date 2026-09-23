@@ -71,3 +71,50 @@
   border: 0;
   margin-bottom: 0;
 }
+
+/* Lesson write-ups (scoped; no global input rules). One column on a phone,
+   themed full-width fields, compact inline Unknown, nothing clipped at 320px. */
+.learning-review, .learning-detail { display: grid; gap: 10px; min-width: 0; }
+/* Cards inside the panel's cards: one frame is enough. */
+.hex-learning-card .learning-review, .hex-learning-card .learning-detail { border: 0; padding: 0; margin: 0; }
+.learning-review h3 { margin: 0; font-size: var(--text-md, 1rem); }
+.learning-state { font-weight: 600; margin: 0; }
+.learning-missing { font-weight: 600; margin: 0; }
+.learning-headings { list-style: none; padding: 0; margin: 0; display: grid; gap: 16px; }
+.learning-heading { min-width: 0; display: grid; gap: 6px; }
+.learning-heading > label:first-child { font-weight: 600; margin: 0; display: block; }
+.learning-heading-missing > label:first-child::after { content: " •"; color: var(--accent, currentColor); }
+.learning-review textarea,
+.learning-detail textarea,
+.learning-review input[type="number"],
+.learning-review input[type="text"],
+.learning-reviewer-search input {
+  width: 100%; box-sizing: border-box; font: inherit; min-height: 44px; padding: 10px 12px;
+  color: var(--text, inherit); background: var(--surface, transparent);
+  border: 1px solid var(--border); border-radius: var(--radius-md, 10px);
+}
+.learning-review textarea, .learning-detail textarea { min-height: 88px; resize: vertical; line-height: 1.45; }
+.learning-review textarea:disabled { opacity: 0.6; }
+.learning-impact { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+.learning-impact label { display: grid; gap: 4px; font-size: var(--text-sm, 0.9rem); margin: 0; }
+.learning-impact p { grid-column: 1 / -1; margin: 0; font-size: var(--text-sm, 0.9rem); }
+/* Unknown: a normal-sized checkbox beside its words, with a full touch target. */
+.hex-learning-card label.learning-unknown,
+.learning-unknown { display: inline-flex; flex-direction: row; align-items: center; gap: 8px; min-height: 44px; margin: 0; font-weight: 400; }
+.learning-unknown input[type="checkbox"] { width: 20px; height: 20px; min-height: 0; margin: 0; flex: none; accent-color: var(--accent, #ff432d); }
+.learning-reviewer { border: 1px solid var(--border); border-radius: var(--radius-md, 10px); padding: 12px; margin: 0; min-width: 0; }
+.learning-reviewer legend { font-weight: 600; padding: 0 4px; }
+.learning-reviewer-search { display: flex; gap: 8px; flex-wrap: wrap; }
+.learning-reviewer-search input { flex: 1 1 160px; width: auto; }
+.learning-choices { list-style: none; padding: 0; margin: 8px 0 0; }
+.hex-learning-card .learning-choices label,
+.learning-choices label { display: flex; flex-direction: row; align-items: center; gap: 8px; min-height: 44px; margin: 0; overflow-wrap: anywhere; }
+.learning-choices input[type="radio"] { width: 20px; height: 20px; margin: 0; flex: none; accent-color: var(--accent, #ff432d); }
+.learning-breakdown, .learning-original, .learning-note { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
+.learning-sources { padding-left: 18px; display: grid; gap: 10px; margin: 8px 0; }
+.learning-conflict, .learning-replaced { border: 1px solid var(--border); border-radius: var(--radius-md, 10px); padding: 12px; display: grid; gap: 8px; }
+.learning-decision, .learning-recovery, .learning-withdraw { display: grid; gap: 8px; }
+.learning-history { padding-left: 18px; }
+.learning-queues { display: grid; gap: 8px; margin-top: 12px; }
+.learning-list summary, .learning-detail summary, .learning-withdraw summary, .learning-recovery summary { cursor: pointer; font-weight: 600; min-height: 44px; align-content: center; }
+.learning-review .hex-learning-actions button, .learning-detail .hex-learning-actions button { flex: 1 1 140px; }

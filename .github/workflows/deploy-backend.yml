@@ -169,7 +169,7 @@ jobs:
             [ "${name#_}" != "$name" ] && continue
             echo "::group::deploy $name"
             if supabase functions deploy "$name" \
-                 --project-ref "$SUPABASE_PROJECT_REF"; then
+                 --project-ref "$SUPABASE_PROJECT_REF" --use-api; then
               echo "deployed $name"
               deployed=$((deployed + 1))
             else

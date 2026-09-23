@@ -72,6 +72,7 @@ const OP_LABEL_KEY: Record<OutboxOp, TKey> = {
   save_build_facts: "stuck.op.saveBuildFacts",
   hex_portal_case: "stuck.op.hexPortalCase",
   hex_portal_outcome: "stuck.op.hexPortalOutcome",
+  hex_learning_draft: "stuck.op.hexLearningDraft",
 };
 
 /**

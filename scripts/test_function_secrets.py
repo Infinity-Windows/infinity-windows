@@ -275,7 +275,8 @@ class FunctionSecretsTest(unittest.TestCase):
         # headline sentence does not move a third time.
         # Connected publication adds one worker, reusing the existing VAPID keys.
         # Description dictation reuses the existing OpenAI transcription key.
-        self.assertEqual(len(names), 27)
+        # Lesson delivery (hex-portal-review) reuses HEX_PORTAL_SITES_TOKEN.
+        self.assertEqual(len(names), 28)
         self.assertIn("crew-reminder-sweep", names)
         self.assertIn("deliver-workflow-notices", names)
         self.assertIn("ask", names)

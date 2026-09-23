@@ -98,3 +98,6 @@ verify_jwt = false
 
 [functions.hex-portal]
 verify_jwt = true
+
+[functions.hex-portal-review]
+verify_jwt = true

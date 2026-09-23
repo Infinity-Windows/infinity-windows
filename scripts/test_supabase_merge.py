@@ -198,7 +198,8 @@ class TestSchemaParsing(unittest.TestCase):
         # +5: Forge AI field messages, action receipts, clock epochs, field-created
         # jobs, and the recording-cleanup markers.
         # +2: immutable role walkthrough catalog and importer reservations.
-        self.assertEqual(len(SCHEMA.tables), 173)  # includes crew records and participant links
+        # +4: versioned learning reviews, events, deliveries and withdrawals.
+        self.assertEqual(len(SCHEMA.tables), 177)  # includes crew records, training and lesson reviews
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 

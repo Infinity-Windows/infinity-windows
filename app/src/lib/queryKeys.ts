@@ -34,6 +34,9 @@ export interface QueryKeyRootEntry {
  */
 export const QUERY_KEY_ROOTS: QueryKeyRootEntry[] = [
   { root: "hexPortalCases", offline: false, why: "Original records remain in Forge; pending writes use the durable outbox." },
+  { root: "hexLearningReviews", offline: false, why: "Review state is decided on the server; drafts wait in the durable outbox, not in a cached list." },
+  { root: "hexLearningWaiting", offline: false, why: "A review notice must reflect who the write-up is waiting with now." },
+  { root: "hexLearningReview", offline: false, why: "Approval, delivery and withdrawal must be read fresh before any tap acts on them." },
   { root: "appUpdates", offline: false },
   { root: "appTrainingVideos", offline: false, why: "Using Forge walkthroughs: private, role-gated media metadata keyed by user id. Streams only — never kept on the phone, so another account on the same device never inherits it." },
   { root: "timeOff", offline: false },

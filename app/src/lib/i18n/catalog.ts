@@ -3538,6 +3538,9 @@ export const CATALOG = {
   // compile without an entry for it.
   "stuck.op.hexPortalCase": {en:"Hex-Portal question",es:"Pregunta de Hex-Portal"},
   "stuck.op.hexPortalOutcome": {en:"Hex-Portal outcome",es:"Resultado de Hex-Portal"},
+  "stuck.op.hexLearningDraft": {en:"Lesson write-up draft",es:"Borrador de lección"},
+  "notif.learningReview.title": {en:"Lesson write-up waiting for your review",es:"Lección esperando tu revisión"},
+  "notif.learningReview.sub": {en:"{job} · from {name}",es:"{job} · de {name}"},
   "stuck.op.saveBuildFacts": { en: "Job fact", es: "Dato del trabajo" },
   // ---- Supplies data helpers (installer-spanish-first-fourteen) --------
   // lib/ops.ts's onHandLabel/supplyHomeLabel are shared with Warehouse.tsx
