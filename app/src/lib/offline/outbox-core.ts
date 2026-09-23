@@ -98,7 +98,11 @@ export type OutboxOp =
   // harmless.
   | "save_build_facts"
   | "hex_portal_case"
-  | "hex_portal_outcome";
+  | "hex_portal_outcome"
+  // A lesson write-up draft (20261026000000). Carries the revision the phone
+  // last saw and a fixed action id, so a resend is the same save and a save
+  // made stale by another screen dead-letters with its words intact.
+  | "hex_learning_draft";
 
 /**
  * queued   — waiting to be sent (respecting nextAttemptAt backoff)
@@ -625,6 +629,7 @@ const OP_REGISTRY = {
   save_build_facts: true,
   hex_portal_case: true,
   hex_portal_outcome: true,
+  hex_learning_draft: true,
 } as const satisfies Record<OutboxOp, true>;
 
 /** Every op the queue can carry — the single list tests enumerate. */

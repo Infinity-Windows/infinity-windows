@@ -1,0 +1,41 @@
+{
+  "_note": "Synthetic Forge <-> Hexcore learning-review contract v1 (Hexcore docs/hex-portal/forge-learning-review-contract.md). Pinned by scripts/verify-hex-learning-review.mjs (SQL key sets) and app/src/lib/hexReviewBridge.test.ts (parser). No real people, jobs or receipts.",
+  "deliveryRequest": { "version": 1, "caseId": "00000000-0000-4000-8000-00000000c001", "revision": 5, "reviewerId": "00000000-0000-4000-8000-00000000a003", "approvalEventId": "00000000-0000-4000-8000-00000000e001" },
+  "reviewPacket": {
+    "version": 1,
+    "caseId": "00000000-0000-4000-8000-00000000c001",
+    "projectId": "00000000-0000-4000-8000-00000000b001",
+    "revision": 5,
+    "reviewerId": "00000000-0000-4000-8000-00000000a003",
+    "reviewerRole": "supervisor",
+    "approvalEventId": "00000000-0000-4000-8000-00000000e001",
+    "approvedAt": "2026-09-23T17:00:00.000Z",
+    "revisionFingerprint": "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0",
+    "status": "approved",
+    "authorId": "00000000-0000-4000-8000-00000000a001",
+    "unitLabel": "16",
+    "sections": { "issue": "Synthetic sill corner leaked", "whatHappened": "Synthetic water test failed at the corner", "impact": null, "lessonLearned": null, "preventiveAction": "Synthetic corner check" },
+    "unknownFields": ["lessonLearned"],
+    "selfReportedImpact": { "minutes": 45, "costCents": null },
+    "callerId": "00000000-0000-4000-8000-00000000a001",
+    "deliveryAuthorized": true
+  },
+  "deliveredResponse": { "status": "delivered", "receiptId": "synthetic-receipt-1", "receivedAt": "2026-09-23T18:00:00.000Z", "caseId": "00000000-0000-4000-8000-00000000c001", "revision": 5, "approvalEventId": "00000000-0000-4000-8000-00000000e001", "revisionFingerprint": "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0" },
+  "removedInHexcoreResponse": { "status": "withdrawn", "caseId": "00000000-0000-4000-8000-00000000c001", "receiptId": "synthetic-tombstone-1", "receivedAt": "2026-09-23T19:00:00.000Z" },
+  "withdrawalRequest": { "version": 1, "caseId": "00000000-0000-4000-8000-00000000c001", "withdrawalEventId": "00000000-0000-4000-8000-00000000e002" },
+  "withdrawalPacket": {
+    "version": 1,
+    "caseId": "00000000-0000-4000-8000-00000000c001",
+    "projectId": "00000000-0000-4000-8000-00000000b001",
+    "withdrawalEventId": "00000000-0000-4000-8000-00000000e002",
+    "withdrawnAt": "2026-09-23T20:00:00.000Z",
+    "withdrawnBy": "00000000-0000-4000-8000-00000000a004",
+    "withdrawnByRole": "supervisor",
+    "callerId": "00000000-0000-4000-8000-00000000a005",
+    "callerRole": "owner",
+    "withdrawalAuthorized": true,
+    "revisionFingerprint": "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0"
+  },
+  "withdrawnResponse": { "status": "withdrawn", "receiptId": "synthetic-removal-1", "receivedAt": "2026-09-23T20:05:00.000Z", "caseId": "00000000-0000-4000-8000-00000000c001", "withdrawalEventId": "00000000-0000-4000-8000-00000000e002" },
+  "approvedCasesPage": { "items": [], "nextCursor": null }
+}

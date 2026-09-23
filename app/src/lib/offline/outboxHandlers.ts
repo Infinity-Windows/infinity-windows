@@ -1310,6 +1310,13 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
       const { error } = await supabase.rpc("hex_portal_save_outcome", entry.payload.args as Record<string, unknown>);
       if (error) throw missingGuard(error, "Hex-Portal outcome");
     },
+    hex_learning_draft: async (entry) => {
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError) throw authError;
+      if (!user || user.id !== entry.payload.actorId) throw tagPermanent(new Error("Sign in as the person who wrote this lesson, then retry."));
+      const { error } = await supabase.rpc("hex_learning_save_draft", entry.payload.args as Record<string, unknown>);
+      if (error) throw missingGuard(error, "lesson write-up");
+    },
   } satisfies OpHandlers;
 }
 

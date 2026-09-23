@@ -14,10 +14,14 @@ const UNIT = /\b(units?|unidad(es)?)\b/i;
 const UNIT_ACTION = /\b(start\w*|stop\w*|clock(ed)?\s+(in|into|on)|finish\w*|done\s+with|build\w*|create\w*|claim\w*|release\w*|help\w*|join\w*|work(ing)?\s+on|who('s|\s+is)|empiez\w*|empez\w*|comienz\w*|comenz\w*|inici\w*|termin\w*|acab\w*|constru\w*|cre[ao]\w*|reclam\w*|liber\w*|ayud\w*|qui[eé]n)/i;
 const STANDALONE = /\b(timer|idle\s+time|(what|which)\s+units|new\s+(job|project)|(create|build)\s+(a\s+|the\s+)?(job|project)|temporizador|tiempo\s+muerto|nuev[ao]\s+(obra|proyecto)|(crea|construye)\s+(una\s+|la\s+)?(obra|proyecto))\b/i;
 
-/** Setting up or working a unit: these go to Forge AI's field tools, whether
- * typed or spoken. Install tips and "my next unit" stay with the free local answers. */
+// Writing up what happened so others learn from it (a lesson for review).
+const LESSON = /\b(lessons?\s+learn\w*|what\s+happened\s+(on|at|with)|write\s+(up|down)\s+(a\s+|the\s+)?(lesson|issue|problem)|preventive\s+action|lecci[oó]n(es)?\s+aprendida\w*|lo\s+que\s+pas[oó]\s+(en|con)|acci[oó]n\s+preventiva)\b/i;
+
+/** Setting up or working a unit, or writing up a lesson: these go to Forge AI's
+ * field tools, whether typed or spoken. Install tips and "my next unit" stay
+ * with the free local answers. */
 export function isFieldAsk(question: string): boolean {
-  return (UNIT.test(question) && UNIT_ACTION.test(question)) || STANDALONE.test(question);
+  return (UNIT.test(question) && UNIT_ACTION.test(question)) || STANDALONE.test(question) || LESSON.test(question);
 }
 
 /** Offline help only: report requests need a complete live snapshot. This does

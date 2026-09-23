@@ -2,6 +2,7 @@ import {useQuery} from "@tanstack/react-query";
 import {getRealProfile} from "../lib/install/api";
 import {LearningPanel} from "../components/hexPortal/LearningPanel";
 import {LearningCard} from "../components/hexPortal/LearningCard";
+import {LearningReviewForm} from "../components/hexPortal/LearningReviewForm";
 import {findPortalGuidance,type PortalSource,type LearningDraft} from "../lib/hexPortal";
 import "../components/hexPortal/hexPortal.css";
 import type { AskArtifact } from "../../../supabase/functions/_shared/askReporting.ts";
@@ -14,6 +15,7 @@ import { useLocation } from "react-router-dom";
 import { Sparkles } from "lucide-react";
 import { supabaseConfigured } from "../lib/supabase";
 import { queryClient } from "../lib/queryClient";
+import { useAskSessionActor } from "../lib/useAskSessionActor";
 import { askInfinity, liveAnswer, shouldUseLLM, type AskLiveData, type KnowledgeSource } from "../lib/knowledge";
 import { askBrain, getBrainIndex, type BrainOutcome } from "../lib/brain/answer";
 import { currentCatalog, refreshCatalogCache } from "../lib/brain/catalogCache";
@@ -169,6 +171,7 @@ export function AskInfinity() {
   const t = useT();
   const es = useLanguage().lang === "es";
   const profile = useQuery({queryKey:["myRealProfile"],queryFn:getRealProfile});
+  const sessionActor = useAskSessionActor();
   const [learningJob,setLearningJob]=useState("");
   const [learningUnit,setLearningUnit]=useState("");
   const [input, setInput] = useState("");
@@ -184,7 +187,7 @@ export function AskInfinity() {
   // --- Field work -----------------------------------------------------------
   // Everything below is scoped to the REAL signed-in account (not "view as"):
   // another person signing in on this phone sees none of it.
-  const userId = profile.data?.id ?? null;
+  const userId = profile.data?.id === sessionActor ? sessionActor : null;
   const [conversation, setConversation] = useState<string | null>(null);
   const [unsent, setUnsent] = useState<UnsentField[]>([]);
   const [voice, setVoice] = useState<"idle" | "recording" | "saving" | "transcribing">("idle");
@@ -244,7 +247,7 @@ export function AskInfinity() {
             restored.push({ who: "infinity", text: turn.reply?.answer ?? "", toolActivity: turn.reply?.toolActivity,
               artifacts: (turn.reply?.artifacts ?? []).filter((a) => a && ["time_report", "job_summary"].includes(a.kind)).slice(0, 4),
               sources: turn.reply?.sources ?? [],
-              field: { request_id: turn.id, receipts: turn.receipts, checklist: turn.captured?.checklist ?? null } });
+              field: { request_id: turn.id, receipts: turn.receipts, checklist: turn.captured?.checklist ?? null, learning: turn.captured?.learning ?? null } });
         }
         return [m[0], ...restored, ...m.slice(1)];
       });
@@ -255,6 +258,11 @@ export function AskInfinity() {
 
   const fieldActive = messages.some((m) => !!m.field);
   const latestChecklist = [...messages].reverse().find((m) => m.field?.checklist)?.field?.checklist ?? null;
+  // A lesson write-up Ask prepared: one card for the latest version, filed as a
+  // Hex-Portal case (the person's words and the reply) only when they tap Save.
+  const learningReply = [...messages].reverse().find((m) => m.field?.learning);
+  const learningPrep = learningReply?.field?.learning ?? null;
+  const learningWords = learningPrep ? messages.find((m) => m.who === "me" && m.requestId === learningPrep.request_id)?.text : undefined;
   const updateReceipt = (next: FieldReceipt) => {
     setMessages((all) => all.map((m) => m.field?.receipts.some((r) => r.action_id === next.action_id)
       ? { ...m, field: { ...m.field!, receipts: m.field!.receipts.map((r) => (r.action_id === next.action_id ? { ...r, ...next } : r)) } }
@@ -579,7 +587,7 @@ export function AskInfinity() {
         <BackChip label={t("ask.back")} />
       </header>
 
-      <LearningPanel projectId={learningJob} unitLabel={learningUnit} actorId={profile.data?.id} onProject={setLearningJob} onUnit={setLearningUnit}/>
+      {userId && <LearningPanel key={userId} projectId={learningJob} unitLabel={learningUnit} actorId={userId} onProject={setLearningJob} onUnit={setLearningUnit}/>}
       <div className="ask-thread">
         {messages.map((m, i) => (
           <div key={i} className={m.who === "me" ? "ask-msg mine" : "ask-msg"}>
@@ -632,6 +640,14 @@ export function AskInfinity() {
             )}
           </div>
         ))}
+        {learningPrep && userId && (
+          <LearningReviewForm key={`${userId}:${learningPrep.request_id}`} keepKey={learningPrep.request_id} actorId={userId}
+            projectId={learningPrep.project_id} via="ask" initial={learningPrep.content} initialReviewer={learningPrep.reviewer}
+            requestId={learningPrep.request_id} sourceRequestIds={learningPrep.source_request_ids ?? [learningPrep.request_id]} unitId={learningPrep.unit_id}
+            source={{ newCase: { actorId: userId, projectId: learningPrep.project_id, unitLabel: learningPrep.unit_label ?? "",
+              question: (learningWords || learningPrep.content.what_happened || learningPrep.content.issue || "Lesson write-up").slice(0, 8000),
+              answer: (learningReply?.text ?? "").slice(0, 20000), sources: [] } }} />
+        )}
         <div role="status" aria-live="polite" className={thinking ? "ask-bubble" : undefined}>
           {thinking ? (es ? "Buscando una respuesta…" : "Finding an answer…") : ""}
         </div>

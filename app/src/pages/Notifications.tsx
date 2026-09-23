@@ -32,6 +32,7 @@ import { tripPublishMessage } from "../lib/travel/notify";
 import { tripPhase } from "../lib/travel/status";
 import { listMyMentions } from "../lib/chat/api";
 import { useT } from "../lib/i18n";
+import { listWaitingReviews } from "../lib/hexLearningNotices";
 
 interface Note {
   id: string;
@@ -63,6 +64,7 @@ export function Notifications() {
   const todayISO = new Date().toISOString().slice(0, 10);
 
   const leaveNotices = useQuery({queryKey:["crewReminders",id],queryFn:()=>listCrewReminders(id!),enabled:!!id,refetchInterval:60_000});
+  const learningWaiting = useQuery({ queryKey: ["hexLearningWaiting", id], queryFn: listWaitingReviews, enabled: !!id && lead, refetchInterval: 60_000 });
 
   const memos = useQuery({
     queryKey: ["memosToConfirm", id],
@@ -171,6 +173,19 @@ export function Notifications() {
   });
 
   const notes: Note[] = (leaveNotices.data??[]).map(r=>({id:`leave-${r.id}`,dot:"info",title:r.title,sub:r.body,to:r.url}));
+
+  // Lesson write-ups sent to me by name. Keyed by write-up AND revision: a
+  // forward or resend is a new notice, a retried tap is the same one.
+  for (const w of learningWaiting.data ?? []) {
+    notes.push({
+      id: `learning-review-${w.id}`,
+      dot: "info",
+      title: t("notif.learningReview.title"),
+      sub: t("notif.learningReview.sub", { job: [w.job_code, w.unit_label].filter(Boolean).join(" · "), name: w.author ?? "" }),
+      to: "/ask",
+      fp: fingerprint([w.revision]),
+    });
+  }
 
   for (const m of memos.data ?? []) {
     notes.push({

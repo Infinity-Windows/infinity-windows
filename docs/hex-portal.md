@@ -6,6 +6,8 @@ Release candidate, September 22, 2026. Pilot selected by the owner: Isaac Barlow
 
 In Ask, expand Hex-Portal, choose a job and optional unit, then ask a work question. The bridge can return exact reviewed lessons when that job is linked. The answer shows whether it used reviewed guidance or the normal Ask path. Save Hex-Portal case is an explicit action; private timecard/report questions bypass this learning flow. The original question, answer, cited revisions and outcome remain in Forge. Resolved and Needs help record follow-up evidence; they never change an approved lesson automatically. Needs help withholds that exact received revision until a reviewer publishes and explicitly shares a new revision.
 
+**What Hexcore may read changed (candidate, September 23):** Hexcore no longer reads raw Forge cases or outcomes. It reads only supervisor/owner-approved lesson write-ups through `hex_portal_approved_cases` and the exact `hex_portal_review_packet`; unreviewed questions, answers and later outcomes never cross. Forge's own case list, outcomes and history here are unchanged. See [hex-learning-review.md](hex-learning-review.md).
+
 Cases and outcomes use the existing durable offline queue with stable IDs and original-user ownership checks. A queued save is labeled as saved on the device rather than confirmed uploaded. Switching accounts cannot submit another person’s evidence. Profile/project deletion follows the existing retention and trash cascades. Cases are not duplicated into Hexcore’s database.
 
 ## Owner setup and review

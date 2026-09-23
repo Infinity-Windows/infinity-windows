@@ -18,4 +18,8 @@ describe("routing field work to Forge AI", () => {
   it("a follow-up inside a field setup stays with the field tools", () => {
     expect(isOperationalAsk("aluminum, second floor, six by eight", true)).toBe(true);
   });
+  it("a lesson write-up goes to the field tools in English and Spanish", () => {
+    for (const q of ["Lesson learned on unit 16: the sill pan leaked", "What happened on the Smith job today", "La lección aprendida fue revisar la esquina"]) expect(isFieldAsk(q)).toBe(true);
+    expect(isFieldAsk("What is flashing?")).toBe(false);
+  });
 });

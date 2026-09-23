@@ -1,9 +1,16 @@
-import { useId } from "react";
+import { useId, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLanguage } from "../../lib/i18n";
 import { listProjectsAnyStatus } from "../../lib/api";
 import { listLearningCases } from "../../lib/hexPortal";
+import { listLearningReviews } from "../../lib/hexLearning";
+import { useEffectiveRole } from "../../lib/useEffectiveRole";
+import { roleRank } from "../../lib/install/types";
 import { LearningCard } from "./LearningCard";
+import { LearningReviewForm } from "./LearningReviewForm";
+import { LearningReviewDetail } from "./LearningReviewDetail";
+import { LearningReviewList } from "./LearningReviews";
+import { useLearningT, type LearningKey } from "./learningCatalog";
 export function LearningPanel({
   projectId,
   unitLabel,
@@ -29,6 +36,17 @@ export function LearningPanel({
     enabled: !!projectId && !!actorId,
     refetchInterval: 30000,
   });
+  const lt = useLearningT();
+  const rank = roleRank(useEffectiveRole().effectiveRole);
+  const [writing, setWriting] = useState<string | null>(null);
+  // Write-ups for this job's cases; the older case list and outcomes are unchanged.
+  const reviews = useQuery({
+    queryKey: ["hexLearningReviews", "mine", actorId, projectId],
+    queryFn: () => listLearningReviews("mine", projectId),
+    enabled: !!projectId && !!actorId,
+  });
+  const reviewFor = (caseId: string) => reviews.data?.find((r) => r.case_id === caseId);
+  const reviewsChanged = () => { void reviews.refetch(); };
   return (
     <section className="hex-learning-panel">
       <details>
@@ -127,9 +145,31 @@ export function LearningPanel({
                   caseId={{ id: c.id, actorId: c.asker_id }}
                   onSaved={() => void cases.refetch()}
                 />
+                {reviewFor(c.id) ? (
+                  writing === c.id ? (
+                    <LearningReviewDetail reviewId={reviewFor(c.id)!.id} actorId={c.asker_id} onChanged={reviewsChanged} />
+                  ) : (
+                    <p className="muted">
+                      {lt("learn.title")}: {reviewFor(c.id)!.state === "draft" ? lt("learn.state.draft")
+                        : lt(`learn.state.${reviewFor(c.id)!.state}` as LearningKey, { name: reviewFor(c.id)!.reviewer?.name ?? "" })}{" "}
+                      <button type="button" className="btn" onClick={() => setWriting(c.id)}>{lt("learn.open")}</button>
+                    </p>
+                  )
+                ) : writing === c.id ? (
+                  <LearningReviewForm actorId={c.asker_id} projectId={c.project_id} source={{ caseId: c.id }} via="form" onChanged={reviewsChanged} />
+                ) : (
+                  <button type="button" className="btn" disabled={reviews.isLoading} onClick={() => setWriting(c.id)}>{lt("learn.writeUp")}</button>
+                )}
               </article>
             ))}
           </details>
+        )}
+        {actorId && (
+          <div className="learning-queues">
+            <LearningReviewList scope="mine" actorId={actorId} />
+            {rank >= 1 && <LearningReviewList scope="assigned" actorId={actorId} />}
+            {rank >= 2 && <LearningReviewList scope="oversight" actorId={actorId} />}
+          </div>
         )}
       </details>
     </section>
