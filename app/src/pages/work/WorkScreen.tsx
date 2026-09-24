@@ -2,12 +2,13 @@
 // 2026-09-23). One screen, one job: "clocked in? where? what's next?"
 //
 // Top to bottom, in the order the spec settled (Q2): the clock strip with
-// its one big button (Start day, K1.3) → heads-ups when there are any (K1.9)
-// → Today / Next up (the classic CrewStartBar, upgraded) → your unit
-// (running, or Next up from plan openings and saved units, or a blank New
-// unit only when nothing matches — K1.4) → four quick buttons → for leads,
-// the Jobs row (K1.1) where Release 3's crew summary will sit. Items 1–3 fit
-// a 375×667 screen without scrolling; the Playwright spec measures it.
+// its one big button (Start day, K1.3) → Today / Next up (the classic
+// CrewStartBar, upgraded) → your unit (running, or Next up from plan
+// openings and saved units, or a blank New unit only when nothing matches —
+// K1.4) → heads-ups when there are any (K1.9) → four quick buttons → for
+// leads, the Jobs row (K1.1) where Release 3's crew summary will sit. Items
+// 1–3 fit a 375×667 screen above the bar without scrolling; the Playwright
+// spec measures it.
 //
 // Every role lands here in the new design — installers, foremen, and the
 // supervisors and owners who used to land on Heartbeat, which is one tap
@@ -230,7 +231,6 @@ export function WorkScreen() {
         gate={gate}
         onShiftChanged={onShiftChanged}
       />
-      <HeadsUps items={notices} />
       <TodayCard
         meId={profileId}
         todayISO={today}
@@ -245,6 +245,11 @@ export function WorkScreen() {
         now={now}
       />
       <YourUnit nextUp={nextUp} locked={locked} jobId={jobId} shift={shift} work={work} now={now} />
+      {/* Heads-ups sit under the three things the screen exists for, not
+          between them: a notice above Today pushed your unit under the bar
+          on a 667px phone. The one that matters most — the talk not signed —
+          also has its own card right under the clock. */}
+      <HeadsUps items={notices} />
       <QuickButtons
         role={effectiveRole}
         jobId={jobId}

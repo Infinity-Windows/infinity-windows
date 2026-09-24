@@ -26,8 +26,12 @@ test("items 1–3 — clock, today, your unit — are visible without scrolling,
   const [c, t, u] = await Promise.all([clock.boundingBox(), today.boundingBox(), unit.boundingBox()]);
   expect(c!.y).toBeLessThan(t!.y);
   expect(t!.y).toBeLessThan(u!.y);
-  // Item 3's bottom edge sits inside the 667px viewport without a scroll.
-  expect(u!.y + u!.height).toBeLessThanOrEqual(667);
+  // Item 3's bottom edge clears the bar (3rem) AND the Capture button that
+  // overhangs it by 14px, without a scroll — "visible" means not under
+  // anything.
+  const barTop = await page.locator("nav.tabbar").evaluate((n) => n.getBoundingClientRect().top);
+  expect(barTop).toBeLessThanOrEqual(667);
+  expect(u!.y + u!.height).toBeLessThanOrEqual(barTop - 14);
   expect(await page.evaluate(() => window.scrollY)).toBe(0);
   await expect(quick).toBeVisible();
   // No horizontal scroll at 375px.
@@ -45,8 +49,9 @@ test("on the clock: the badge in the top bar, Today's facts, Next up from the pl
   const clock = page.getByTestId("ws-clock");
   // The strip carries the code on its one status row; the full name is on
   // the Today card and in the code's tooltip.
-  await expect(clock).toContainText("OAKRIDGE");
-  await expect(clock.locator(".ws-clock-job")).toHaveAttribute("title", "OAKRIDGE · Oakridge Apartments Bldg C");
+  await expect(clock).toContainText("Clocked in");
+  await expect(clock).toContainText("· OAKRIDGE");
+  await expect(clock.locator(".ws-clock-label")).toHaveAttribute("title", "OAKRIDGE · Oakridge Apartments Bldg C");
   const today = page.getByTestId("ws-today");
   await expect(today).toContainText("Oakridge Apartments Bldg C");
   await expect(today).toContainText("Starts 7:00 AM");

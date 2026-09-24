@@ -187,15 +187,16 @@ export function ClockStrip({ profileId, shift, todayJobId, scheduleSettled, talk
     return (
       <>
         <section className="ws-card ws-clock ws-clock--on" aria-label={t("work.clock.a11y")} data-testid="ws-clock">
-          {/* One row: the fact, the job, the timer. The job's full name is
-              on the Today card under it; the code is enough here, and the
-              row it saves is what keeps your unit above the fold at 667px. */}
+          {/* One row, one line: the fact and the job code on the left, the
+              timer on the right. The job's full name is on the Today card
+              under it (and in this label's tooltip); a row that wrapped is
+              what pushed your unit under the bar at 667px. */}
           <div className="ws-clock-status">
             <span className={`ws-live-dot${onBreak ? " ws-live-dot--break" : ""}`} aria-hidden />
-            <span className="ws-clock-label">
+            <span className="ws-clock-label" title={jobLine}>
               {onBreak ? t("work.clock.onBreak") : t("work.clock.clockedIn", { time: clockInLabel(shift.clock_in_at) })}
+              {shift.projects?.job_code ? ` · ${shift.projects.job_code}` : ""}
             </span>
-            <span className="ws-clock-job" title={jobLine}>{shift.projects?.job_code ?? ""}</span>
             <span className="ws-clock-timer" aria-label={t("clock.a11y.timeWorked")}>
               {guard.workedSeconds == null ? t("clockBadge.finish") : formatClock(elapsedWorkSeconds(shift, now))}
             </span>

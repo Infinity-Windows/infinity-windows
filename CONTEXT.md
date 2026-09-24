@@ -1219,11 +1219,12 @@ is a new file beside the old one, never an edit of it. The resolved answer
 is cached on the device for the first paint (`lib/design/design.ts`).
 
 **Work** — the new design's landing, for every role, on and off the clock:
-the clock strip (status and one big button), heads-ups, Today / Next up,
-your unit, four quick buttons (Prep time · Take supplies · Daily log · Report
-a problem), and for leads the Jobs row where Release 3's crew summary will
-sit. Its one job is "clocked in? where? what's next?", and items 1–3 fit a
-375×667 screen without scrolling. Supervisors and owners land here too; the
+the clock strip (status and one big button), Today / Next up, your unit,
+then heads-ups when there are any, four quick buttons (Prep time · Take
+supplies · Daily log · Report a problem), and for leads the Jobs row where
+Release 3's crew summary will sit. Its one job is "clocked in? where? what's
+next?", and items 1–3 fit a 375×667 screen above the bar without scrolling —
+which is why heads-ups sit under them rather than between them. Supervisors and owners land here too; the
 classic Heartbeat is one tap away as Overview and still in More — nothing is
 removed from the app, only moved.
 
