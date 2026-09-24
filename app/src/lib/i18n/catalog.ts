@@ -2553,6 +2553,31 @@ export const CATALOG = {
     en: "Showing the last saved copy — the last refresh failed.",
     es: "Mostrando la última copia guardada — la última actualización falló.",
   },
+  // ---- The sync pill over every queue (K0.6) ----------------------------
+  "pill.installQueuedOne": { en: "1 install queued", es: "1 instalación en espera" },
+  "pill.installsQueuedMany": { en: "{n} installs queued", es: "{n} instalaciones en espera" },
+  "pill.installNeedsYouOne": { en: "1 install needs you", es: "1 instalación te necesita" },
+  "pill.installsNeedYouMany": { en: "{n} installs need you", es: "{n} instalaciones te necesitan" },
+  "pill.workQueuedOne": { en: "1 work change queued", es: "1 cambio de trabajo en espera" },
+  "pill.workQueuedMany": { en: "{n} work changes queued", es: "{n} cambios de trabajo en espera" },
+  "pill.workNeedsReview": { en: "Work needs review", es: "El trabajo necesita revisión" },
+  "pill.serviceQueuedOne": { en: "1 service change queued", es: "1 cambio de servicio en espera" },
+  "pill.serviceQueuedMany": { en: "{n} service changes queued", es: "{n} cambios de servicio en espera" },
+  "pill.serviceNeedsReview": { en: "Service work needs review", es: "El servicio necesita revisión" },
+  "pill.oldUploadsQueued": { en: "Old uploads {n}", es: "Subidas antiguas {n}" },
+  "pill.needsYouDetail": {
+    en: "Something on this phone couldn't send and needs you. Open this to see it.",
+    es: "Algo en este teléfono no se pudo enviar y te necesita. Ábrelo para verlo.",
+  },
+  "pill.waitingDetailOne": {
+    en: "1 change is saved on this phone and waiting to send. Open this to see it.",
+    es: "1 cambio está guardado en este teléfono y en espera de enviarse. Ábrelo para verlo.",
+  },
+  "pill.waitingDetailMany": {
+    en: "{n} changes are saved on this phone and waiting to send. Open this to see them.",
+    es: "{n} cambios están guardados en este teléfono y en espera de enviarse. Ábrelo para verlos.",
+  },
+  "pill.openStatus": { en: "open sync status", es: "abrir el estado de sincronización" },
   "pill.noSignal": { en: "No signal", es: "Sin señal" },
   "pill.noSignalDetail": {
     en: "No signal. Changes are saved on this phone and send when it returns.",
