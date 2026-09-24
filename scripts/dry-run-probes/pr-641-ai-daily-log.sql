@@ -5,9 +5,11 @@
 -- two people who can both write there are the QA installer and the QA
 -- foreman; the last scenario proves the fence still holds for a real one.)
 -- The job is whichever job is both flagged as testing and on the sandbox list
--- (BLACK22 first when it is), never a fixed code: on 2026-09-24 BLACK22 had
--- been unflagged, and a probe pinned to it failed on the fence instead of
--- testing the change.
+-- (PECAN14 first — the owner restored it on 2026-09-24 as the practice job, so
+-- a run never needs MADMOOSE, a real job flagged as testing — then BLACK22 if
+-- it is flagged again, then by code), never a fixed code: on 2026-09-24
+-- BLACK22 had been unflagged, and a probe pinned to it failed on the fence
+-- instead of testing the change.
 --   * two different people contribute to the same job-day: both entries are
 --     kept, the second is appended under the first, the first author stays;
 --   * the same words under the same id again is already_saved, not a copy;
@@ -50,7 +52,7 @@ begin
   select p.id, p.job_code into v_job, v_job_code
     from public.sandbox_projects s join public.projects p on p.id = s.project_id
    where p.deleted_at is null and coalesce(p.is_test, false)
-   order by (p.job_code = 'BLACK22') desc, p.job_code
+   order by (p.job_code = 'PECAN14') desc, (p.job_code = 'BLACK22') desc, p.job_code
    limit 1;
   if v_job is null then
     raise exception 'dry run: no job is both flagged as testing and on the sandbox list, so the QA logins have nowhere to write. Mark a practice job as testing in the app (that puts it on the sandbox list too) and run again.';
