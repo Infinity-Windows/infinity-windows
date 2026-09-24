@@ -36,7 +36,8 @@
 # Exit codes: 0 every check passed and nothing was kept; 1 the change is broken
 # (a statement failed, a check failed, or the probe checked nothing); 2 refused
 # or misused, nothing was sent; 3 could not tell (no answer, a timeout, a
-# token or project problem).
+# token or project problem, or a "dry run:" refusal that stopped the run
+# while it set itself up, before the change was tried).
 #
 # The token is never printed and never put on a command line: curl reads it
 # from a mode-600 config file that is deleted on exit, and everything printed
