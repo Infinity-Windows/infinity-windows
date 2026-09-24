@@ -1,12 +1,17 @@
-# AI daily logs — integration with Ask (not yet applied)
+# AI daily logs — integration with Ask (applied by Release 2, K2.7)
 
-Branch `codex/ai-daily-logs` deliberately does **not** edit the shared Ask files
+Branch `codex/ai-daily-logs` deliberately did **not** edit the shared Ask files
 owned by the learning build: `app/src/pages/AskInfinity.tsx`,
 `supabase/functions/ask/index.ts` (the real edge path — there is no
 `ask-infinity` function), and — because it is the same request path —
-`app/src/lib/knowledge.ts` (`askInfinity`). Everything below is additive. Until it
-is applied, crew cannot reach the feature, so no release note is published
-(drafts at the end).
+`app/src/lib/knowledge.ts` (`askInfinity`). The steps below were applied on
+the crew-redesign Release 2 branch (`claude/r2-ai`): the migration was
+renumbered 20261027000000 → 20261030000000, `person_record_counts` was rebuilt
+as the union described in §0, the wiring in §1–§2 is in the three files named
+above, the daily-log PGlite harness runs in CI, and the release note in §6
+ships as `20261030010000_ai_actions_note.sql`. Kept as the record of the
+contract; `app/src/pages/AskInfinity.dailyLog.test.tsx` and
+`app/e2e/ask-daily-log.spec.ts` prove it on the real page.
 
 ## 0. Merge warning: `person_record_counts` must be UNIONED
 

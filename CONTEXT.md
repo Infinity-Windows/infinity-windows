@@ -336,6 +336,54 @@ publishing never clears it, so the audit trail outlives the badge — only the
 CHIP's visibility is draft-scoped. `draft_assignments` (the AI's one write
 tool) can never publish anything itself; a human always does that step.
 
+## Forge AI in Ask
+
+Settled 2026-09-23, crew redesign round 3 (Q17–Q23, owner-approved — cite,
+never re-decide). How the assistant's hands are shown, bounded and proven.
+
+**Capability registry** — the one list in code
+(`supabase/functions/_shared/askCapabilities.ts`) of what Ask can do: each
+action's roles, questions, what it changes, its receipt kind, its model tools
+and whether it is live. The action cards, "All actions" and the model's own
+tool list all read it; nothing else decides. An action that is not live
+never appears as a card and is listed honestly under All actions with "Use
+the <screen> for this". PERMISSION MIRROR still holds: tools are offered,
+executors refuse below rank.
+
+**Action card** — one of the fixed four per role on the Ask page (installer:
+Build a unit · Daily log · Take supplies · My hours; foreman: Crew status ·
+Build a unit · Daily log · Units completed; supervisor/owner: Crew status ·
+Plan the schedule · Job summary · Hours report), plus All actions. A running
+unit puts "Finish unit N" first. Cards hide the moment the composer has text
+or a recording starts, come back with "Actions", and a card tap sends the
+card's own words as a field request without discarding what was typed.
+
+**Context tag** — the job (and maybe unit) Ask was opened from, shown as a
+clearable chip ("BLACK22 · Black Desert · Unit W-12"). It fills the setup's
+blanks, never replaces a job the conversation already settled on, is named to
+the model so the job and unit are said before the first save on them, and is
+dropped when another account signs in on the phone.
+
+**Receipt** — the only proof a Forge AI reply changed anything. Three words,
+from the database receipt's status and never from prose: Saved in Forge
+(done, running) / Needs your choice (a card the person taps) / Nothing
+changed (stale, cancelled). A draft kept on the phone (daily log, lesson) is
+"Saved on this phone" until the person's Save. A reply that reads as done
+with no receipt, report card or applied draft behind it is contradicted on
+screen automatically: "Nothing was saved yet".
+
+**One-tap button** — how the assistant touches the clock without touching
+it: it never clocks anyone in or out, starts or ends a break, signs a toolbox
+talk, approves timecards/QC/lessons or publishes a schedule. "Going to lunch"
+puts a Start break button under the reply; the tap goes through the clock
+sheet's own path (RPC, or the same queued write with no signal). Clock in and
+clock out open the job clock, whose safety questions stay there.
+
+**Daily log contribution through Ask** — see "The daily log": every daily-log
+turn is a field request (its row is the entry's evidence), the first message
+already carries the draft, and Save appends — never overwrites — through
+`append_daily_log_contribution`.
+
 ## Receipts that read themselves
 
 Settled 2026-08-28, wave P (grilled, cited in the spec's opening block —

@@ -1,8 +1,11 @@
 # Forge AI daily logs and job photos
 
-Authorized September 23, 2026. Status: **implemented on branch
-`codex/ai-daily-logs`; not merged, not deployed, not wired into Ask yet**
-(`.scratch/ai-daily-logs/INTEGRATION.md`).
+Authorized September 23, 2026. Built on branch `codex/ai-daily-logs`
+(4943076) and wired into Ask by Release 2 of the crew redesign (K2.7): the
+migration is `20261030000000_ai_daily_log_contributions.sql`, the Ask page
+opens the card from "Build today's daily log" (typed, spoken or the Daily log
+card), and `docs/ai-daily-logs-integration.md` records the contract that was
+applied. Verify deployment before describing it as live.
 
 ## What it does
 
