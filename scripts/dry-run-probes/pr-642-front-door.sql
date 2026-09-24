@@ -464,6 +464,7 @@ declare
   v_cs public.company_settings;
   v_n int;
   v_open int;
+  v_total int;
   v_pre_n int;
   v_pre_hash text;
   v_post_n int;
