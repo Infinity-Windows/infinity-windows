@@ -53,7 +53,17 @@ vi.mock("../lib/brain/catalogCache", () => ({
   refreshCatalogCache: async () => ({ types: [] }),
 }));
 vi.mock("../lib/brain/askLog", () => ({ logAskedQuestion: () => {} }));
-vi.mock("../lib/offline/outbox", () => ({ pendingClockWrites: async () => 0 }));
+vi.mock("../lib/offline/outbox", () => ({
+  pendingClockWrites: async () => 0,
+  // The daily-log controller behind the Ask page reads the upload queue too.
+  MAX_BLOB_BYTES: 25 * 1024 * 1024,
+  getPhotoUploadProgress: async () => ({ pending: 0, failed: 0, uploaded: 0 }),
+  enqueueUpload: async () => "queued",
+  listFailed: async () => [],
+  retryFailed: async () => {},
+  subscribe: () => () => {},
+  subscribeSynced: () => () => {},
+}));
 vi.mock("../lib/customWork/queue", () => ({ readWorkQueue: () => [] }));
 vi.mock("../lib/supabase", () => ({ supabaseConfigured: true, supabase: {} }));
 vi.mock("../lib/fieldAsk", () => ({

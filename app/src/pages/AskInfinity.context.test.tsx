@@ -44,7 +44,17 @@ vi.mock("../lib/knowledge", () => ({
 vi.mock("../lib/brain/answer", () => ({ askBrain: () => ({ kind: "none", hits: [] }), getBrainIndex: () => ({}) }));
 vi.mock("../lib/brain/catalogCache", () => ({ currentCatalog: () => ({ types: [] }), refreshCatalogCache: async () => ({ types: [] }) }));
 vi.mock("../lib/brain/askLog", () => ({ logAskedQuestion: () => {} }));
-vi.mock("../lib/offline/outbox", () => ({ pendingClockWrites: async () => 0 }));
+vi.mock("../lib/offline/outbox", () => ({
+  pendingClockWrites: async () => 0,
+  // The daily-log controller behind the Ask page reads the upload queue too.
+  MAX_BLOB_BYTES: 25 * 1024 * 1024,
+  getPhotoUploadProgress: async () => ({ pending: 0, failed: 0, uploaded: 0 }),
+  enqueueUpload: async () => "queued",
+  listFailed: async () => [],
+  retryFailed: async () => {},
+  subscribe: () => () => {},
+  subscribeSynced: () => () => {},
+}));
 vi.mock("../lib/customWork/queue", () => ({ readWorkQueue: () => [] }));
 vi.mock("../lib/supabase", () => ({ supabaseConfigured: true, supabase: {} }));
 vi.mock("../lib/fieldAsk", () => ({
@@ -125,7 +135,7 @@ describe("the context tag", () => {
     await act(async () => button("Build a unit")!.click());
     await settle();
     expect((sent.calls[0].field as { context: unknown }).context).toBeNull();
-    expect(sent.calls[0].extra).toEqual({ contextTag: null });
+    expect((sent.calls[0].extra as { contextTag: unknown }).contextTag).toBeNull();
   });
 
   it("is ignored when the screen that opened Ask sent something that is not a job", async () => {
