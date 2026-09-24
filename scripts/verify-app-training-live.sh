@@ -17,7 +17,7 @@
 #   set local role authenticated   -> the policies apply, gone at the end
 # The final row reports current_user, so a batch that did NOT run as the
 # simulated login is caught and fails instead of passing on superuser reads.
-# Only role names, head counts and video slugs are printed — never who.
+# Only role names, head counts, slugs and paths are printed — never who.
 #
 # Usage (needs the management token, which only GitHub holds):
 #   SUPABASE_PROJECT_REF=czprjcskmzzagdztqonm scripts/verify-app-training-live.sh
@@ -50,8 +50,17 @@ set local role authenticated;
 select json_build_object(
   'role', current_setting('app.training_role', true),
   'as_user', current_user,
-  'catalog', (select coalesce(json_agg(slug order by slug), '[]'::json) from public.app_training_videos),
-  'files', (select coalesce(json_agg(distinct split_part(name, '/', 1)), '[]'::json)
+  -- Identity, not just slug: an active English and Spanish row of the same
+  -- walkthrough share one slug, so comparing slug lists made a healthy
+  -- bilingual catalog look one video short (PR631 review). This matches the
+  -- identity the published query below reports.
+  'catalog', (select coalesce(json_agg(slug || '/' || language || '/' || version::text
+                                        order by slug, language, version), '[]'::json)
+              from public.app_training_videos),
+  -- The exact object name, not a folder: a slug reads as "readable" even
+  -- when its MP4 is gone and only the poster or captions remain, so this
+  -- names every object the login can actually open (PR631 review).
+  'files', (select coalesce(json_agg(name order by name), '[]'::json)
             from storage.objects where bucket_id = 'app-training')
 ) as result;
 SQL
@@ -66,7 +75,15 @@ SQL
 # the floors decide who should see which of these.
 published_body="$(mktemp)"
 python3 -c 'import json,sys; print(json.dumps({"query": sys.stdin.read()}))' >"$published_body" <<'SQL'
-select coalesce(json_agg(json_build_object('slug', slug, 'min_role', min_role) order by slug), '[]'::json) as result
+select coalesce(json_agg(json_build_object(
+  'slug', slug,
+  'language', language,
+  'version', version,
+  'min_role', min_role,
+  'video_path', video_path,
+  'captions_path', captions_path,
+  'poster_path', poster_path
+) order by slug, language, version), '[]'::json) as result
 from public.app_training_videos
 where active and published_at is not null and published_at <= now();
 SQL
