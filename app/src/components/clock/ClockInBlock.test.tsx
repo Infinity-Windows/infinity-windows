@@ -242,12 +242,14 @@ describe("the clock-in block", () => {
     expect(clockInSpy).toHaveBeenCalledTimes(1);
     // The 5th arg is the job mode (slice 2). This recent job isn't in the
     // projects list, so its mode is unknown → null (unchanged, mode-less punch).
+    // The 6th is the tap's one-time id and time (Release 0, K0.2).
     expect(clockInSpy.mock.calls[0]).toEqual([
       "p1",
       "cc1",
       expect.anything(),
       "left the gate open",
       null,
+      expect.objectContaining({ clientId: expect.any(String), tappedAt: expect.any(String) }),
     ]);
   });
 
@@ -418,6 +420,7 @@ describe("the clock-in block", () => {
         expect.anything(),
         "gate code 4411",
         "tracking",
+        expect.objectContaining({ clientId: expect.any(String) }),
       ]);
     } finally {
       restore();
@@ -677,11 +680,16 @@ describe("the clock-in block", () => {
         .map(([ev]) => ev as CustomEvent)
         .filter((ev) => ev.type === "infinity:open-clock");
       expect(opened).toHaveLength(1);
+      // The hand-off carries the tap's one-time id (K0.2): the block's punch
+      // may have been saved before its reply was lost, and the sheet retrying
+      // the SAME id gets that shift back rather than making a second one.
+      const punchSent = (clockInSpy.mock.calls[0] as unknown[])[5] as { clientId: string };
       expect(opened[0].detail).toEqual({
         projectId: "p1",
         costCodeId: "cc1",
         note: "gate code 4411",
         mode: "tracking",
+        clientId: punchSent.clientId,
       });
       expect(pushToastSpy).toHaveBeenCalledTimes(1);
       expect(String(pushToastSpy.mock.calls[0][0])).toContain("finish in the clock sheet");
@@ -772,6 +780,7 @@ describe("the clock-in block", () => {
       expect.anything(),
       null,
       "tracking",
+      expect.objectContaining({ clientId: expect.any(String) }),
     ]);
   });
 
@@ -836,6 +845,7 @@ describe("the clock-in block", () => {
       expect.anything(),
       null,
       "tracking",
+      expect.objectContaining({ clientId: expect.any(String) }),
     ]);
   });
 

@@ -46,6 +46,8 @@ import {
   breakTypeLabel,
   clockIn,
   clockOut,
+  CLOCK_REFUSAL_KEY,
+  ClockRefusal,
   currentBreakSeconds,
   type ClockInPick,
   elapsedWorkSeconds,
@@ -53,7 +55,9 @@ import {
   finishShiftAt,
   formatClock,
   isOnTheClock,
+  isPendingShiftRef,
   listRecentJobs,
+  mintPunch,
   startBreak,
   type BreakType,
   type TimeShift,
@@ -271,6 +275,25 @@ export function ClockSheet({
   // (Wave K) queues its switch off exactly this test rather than a third.
   const shouldQueue = isNetworkError;
 
+  // A refusal the server wrote for the person to read (K0.4: "we couldn't
+  // find the start of that break") is shown in their language; anything else
+  // goes through formatApiError as before.
+  const toastPunchError = (e: unknown) => {
+    if (e instanceof ClockRefusal) {
+      pushToast(t(CLOCK_REFUSAL_KEY[e.code]), "error");
+      return;
+    }
+    toastError(e);
+  };
+
+  // A punch on a clock-in that is still on the phone (`pending:` id) can never
+  // go to the server directly — there is no shift id to send. It queues behind
+  // the clock-in, which is what the offline branches below already do; this is
+  // the fork that takes them straight there instead of first sending a made-up
+  // id to a uuid RPC (K0.4 — CurrentWork and Servicing had this guard; the
+  // sheet did not).
+  const shiftIsPending = () => isPendingShiftRef(shift?.id);
+
   const openShiftKey = ["openShift", profileId] as const;
 
   /** Optimistically drop a synthetic open shift into the cache while queued. */
@@ -340,12 +363,9 @@ export function ClockSheet({
       // 2026-09-06, when this path always sent null and a both-mode job
       // clocked here lost its mode.
       //
-      // ONLINE punch only. The offline queue below carries job, cost code and
-      // note but not the mode: no clock_in overload takes both p_client_id
-      // (the outbox's dedupe key) and p_mode, so the replay has nothing to
-      // send it to and the shift records job_mode null. Closing that needs a
-      // migration and a handler change, neither of which this sheet owns
-      // (stated limit, review 2026-09-06).
+      // The offline queue below carries the mode too, since 20261028000000
+      // gave clock_in an overload that takes both p_client_id and p_mode (the
+      // stated limit of 2026-09-06, closed by Release 0).
       const jobsOwnMode = effectiveClockInMode(
         (projects.data ?? []).find((p) => p.id === projectId)?.allowed_modes,
         null,
@@ -354,8 +374,14 @@ export function ClockSheet({
         initialPick && initialPick.projectId === projectId
           ? (initialPick.mode ?? jobsOwnMode)
           : jobsOwnMode;
+      // One id per tap (K0.2). A pick carried from the landing block keeps the
+      // block's id: its punch may have been SAVED before the reply was lost,
+      // and the server answers a repeat of that id with the shift it made.
+      const punch = mintPunch(
+        initialPick && initialPick.projectId === projectId ? initialPick.clientId : null,
+      );
       try {
-        await clockIn(projectId, costCodeId, geo, noteText, jobMode);
+        await clockIn(projectId, costCodeId, geo, noteText, jobMode, punch);
         // Same tap starts the first window when one was picked. The clock-in
         // stands even if this part fails — a refused start must never un-ring
         // that bell, so the failure becomes a toast, not an error.
@@ -378,6 +404,8 @@ export function ClockSheet({
           lat: geo?.lat ?? null,
           lng: geo?.lng ?? null,
           note: noteText,
+          mode: jobMode,
+          punch,
         });
         setOptimisticShift(synthOpenShift(entryId, projectId, costCodeId, noteText));
         // Offline: the punch is queued, but a unit start can't be confirmed
@@ -408,7 +436,7 @@ export function ClockSheet({
       if (!r.startedOpening) navigate("/current-work");
       onClose();
     },
-    onError: (e) => toastError(e),
+    onError: (e) => toastPunchError(e),
   });
 
   const doSwitch = useMutation<PunchResult>({
@@ -417,9 +445,10 @@ export function ClockSheet({
       const projectId = pickProjectId || null;
       const costCodeId = pickCostCodeId || null;
       const noteText = note.trim() || null;
+      const punch = mintPunch();
       try {
         // clock_in auto-closes the prior open shift, so switching leaves no gap.
-        await clockIn(projectId, costCodeId, geo, noteText);
+        await clockIn(projectId, costCodeId, geo, noteText, null, punch);
         return { queued: false };
       } catch (e) {
         if (!shouldQueue(e)) throw e;
@@ -429,6 +458,7 @@ export function ClockSheet({
           lat: geo?.lat ?? null,
           lng: geo?.lng ?? null,
           note: noteText,
+          punch,
         });
         setOptimisticShift(synthOpenShift(entryId, projectId, costCodeId, noteText));
         return { queued: true };
@@ -440,15 +470,16 @@ export function ClockSheet({
       if (!r.queued) refresh();
       onClose();
     },
-    onError: (e) => toastError(e),
+    onError: (e) => toastPunchError(e),
   });
 
   const doPhaseSwitch = useMutation<PunchResult, Error, string>({
     mutationFn: async (costCodeId: string) => {
       const geo = await captureGeoSoft();
       const projectId = shift?.project_id ?? null;
+      const punch = mintPunch();
       try {
-        await clockIn(projectId, costCodeId, geo);
+        await clockIn(projectId, costCodeId, geo, null, null, punch);
         return { queued: false };
       } catch (e) {
         if (!shouldQueue(e)) throw e;
@@ -457,6 +488,7 @@ export function ClockSheet({
           costCodeId,
           lat: geo?.lat ?? null,
           lng: geo?.lng ?? null,
+          punch,
         });
         setOptimisticShift(synthOpenShift(entryId, projectId, costCodeId));
         return { queued: true };
@@ -466,26 +498,29 @@ export function ClockSheet({
       toastSuccess(r.queued ? t("clock.toast.costSwitchedQueued") : t("clock.toast.costSwitched"));
       if (!r.queued) refresh();
     },
-    onError: (e) => toastError(e),
+    onError: (e) => toastPunchError(e),
   });
 
   const doBreakStart = useMutation<PunchResult, Error, BreakType>({
     mutationFn: async (type: BreakType) => {
-      try {
-        await startBreak(shift!.id, type);
-        return { queued: false };
-      } catch (e) {
-        if (!shouldQueue(e)) throw e;
-        await enqueueBreakStart(shift!.id, type);
-        if (shift) {
-          setOptimisticShift({
-            ...shift,
-            break_started_at: new Date().toISOString(),
-            break_type: type,
-          });
+      const punch = mintPunch();
+      if (!shiftIsPending()) {
+        try {
+          await startBreak(shift!.id, type, punch);
+          return { queued: false };
+        } catch (e) {
+          if (!shouldQueue(e)) throw e;
         }
-        return { queued: true };
       }
+      await enqueueBreakStart(shift!.id, type, punch);
+      if (shift) {
+        setOptimisticShift({
+          ...shift,
+          break_started_at: new Date().toISOString(),
+          break_type: type,
+        });
+      }
+      return { queued: true };
     },
     onSuccess: (r, type) => {
       pushToast(
@@ -500,27 +535,30 @@ export function ClockSheet({
       void queryClient.invalidateQueries({ queryKey: ["myActivePhases"] });
       if (!r.queued) refresh();
     },
-    onError: (e) => toastError(e),
+    onError: (e) => toastPunchError(e),
   });
 
   const doBreakEnd = useMutation<PunchResult>({
     mutationFn: async () => {
-      try {
-        await endBreak(shift!.id);
-        return { queued: false };
-      } catch (e) {
-        if (!shouldQueue(e)) throw e;
-        await enqueueBreakStop(shift!.id);
-        if (shift) {
-          setOptimisticShift({
-            ...shift,
-            break_seconds: currentBreakSeconds(shift, Date.now()),
-            break_started_at: null,
-            break_type: null,
-          });
+      const punch = mintPunch();
+      if (!shiftIsPending()) {
+        try {
+          await endBreak(shift!.id, punch);
+          return { queued: false };
+        } catch (e) {
+          if (!shouldQueue(e)) throw e;
         }
-        return { queued: true };
       }
+      await enqueueBreakStop(shift!.id, punch);
+      if (shift) {
+        setOptimisticShift({
+          ...shift,
+          break_seconds: currentBreakSeconds(shift, Date.now()),
+          break_started_at: null,
+          break_type: null,
+        });
+      }
+      return { queued: true };
     },
     onSuccess: (r) => {
       toastSuccess(r.queued ? t("clock.toast.backOnClockQueued") : t("clock.toast.backOnClock"));
@@ -547,37 +585,39 @@ export function ClockSheet({
         })();
       }
     },
-    onError: (e) => toastError(e),
+    onError: (e) => toastPunchError(e),
   });
 
   const doClockOut = useMutation<PunchResult>({
     mutationFn: async () => {
       const geo = await captureGeoSoft();
       const breakSeconds = currentBreakSeconds(shift!, Date.now());
-      try {
-        await clockOut(shift!.id, {
-          injured,
-          injuryNote,
-          timeConfirmed: !timeWrong,
-          breakSeconds,
-          geo,
-        });
-        return { queued: false };
-      } catch (e) {
-        if (!shouldQueue(e)) throw e;
-        await enqueueClockOut({
-          shiftRef: shift!.id,
-          injured,
-          injuryNote: injured ? injuryNote.trim() || null : null,
-          timeConfirmed: !timeWrong,
-          breakSeconds,
-          lat: geo?.lat ?? null,
-          lng: geo?.lng ?? null,
-        });
-        // Optimistically clear the open shift — the crew is off the clock now.
-        setOptimisticShift(null);
-        return { queued: true };
+      const punch = mintPunch();
+      if (!shiftIsPending()) {
+        try {
+          await clockOut(
+            shift!.id,
+            { injured, injuryNote, timeConfirmed: !timeWrong, breakSeconds, geo },
+            punch,
+          );
+          return { queued: false };
+        } catch (e) {
+          if (!shouldQueue(e)) throw e;
+        }
       }
+      await enqueueClockOut({
+        shiftRef: shift!.id,
+        injured,
+        injuryNote: injured ? injuryNote.trim() || null : null,
+        timeConfirmed: !timeWrong,
+        breakSeconds,
+        lat: geo?.lat ?? null,
+        lng: geo?.lng ?? null,
+        punch,
+      });
+      // Optimistically clear the open shift — the crew is off the clock now.
+      setOptimisticShift(null);
+      return { queued: true };
     },
     onSuccess: (r) => {
       toastSuccess(r.queued ? t("clock.toast.clockedOutQueued") : t("clock.toast.clockedOut"));
@@ -594,7 +634,7 @@ export function ClockSheet({
       // log written offline queues the same way the punch did.
       announceClockedOut(shift?.project_id ?? null);
     },
-    onError: (e) => toastError(e),
+    onError: (e) => toastPunchError(e),
   });
 
   /**

@@ -173,16 +173,39 @@ describe("the clock sheet opened with a carried pick", () => {
     });
     await flush();
     expect(clockInSpy).toHaveBeenCalledTimes(1);
-    expect(clockInSpy.mock.calls[0]).toEqual(["p2", "cc2", expect.anything(), null, "tracking"]);
+    expect(clockInSpy.mock.calls[0]).toEqual([
+      "p2",
+      "cc2",
+      expect.anything(),
+      null,
+      "tracking",
+      expect.objectContaining({ clientId: expect.any(String) }),
+    ]);
   });
 
-  it("queues a carried pick's job, cost code and note when the punch fails offline — the mode does not ride the queue yet", async () => {
+  it("retries a carried pick under the id the landing block already sent, never a fresh one", async () => {
+    // The block's punch may have been SAVED before its reply was lost (K0.2).
+    // The sheet's Start must send the same id, so the server answers with the
+    // shift it already made instead of making a second one.
+    const el = mount({ projectId: "p2", costCodeId: "cc2", note: null, mode: "tracking", clientId: "tap-from-block" });
+    await flush();
+    await act(async () => {
+      el.querySelector<HTMLButtonElement>(".clock-btn.primary.big")!.dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+    });
+    await flush();
+    expect(clockInSpy).toHaveBeenCalledTimes(1);
+    expect((clockInSpy.mock.calls[0] as unknown[])[5]).toEqual(expect.objectContaining({ clientId: "tap-from-block" }));
+  });
+
+  it("queues a carried pick's job, cost code, note, mode and tap id when the punch fails offline", async () => {
     // The hand-off's reason for existing is the phone with no signal. The
     // punch fails, the outbox takes it, and the carried picks must be what
-    // gets queued — not yesterday's job. The mode is NOT in the payload: no
-    // clock_in overload takes both the outbox's p_client_id and p_mode, so
-    // the replay would have nowhere to send it (stated limit, review
-    // 2026-09-06). When that overload lands, this is the assertion to widen.
+    // gets queued — not yesterday's job. The mode rides the queue since
+    // 20261028000000 gave clock_in an overload that takes both p_client_id
+    // and p_mode (the stated limit of 2026-09-06, closed by Release 0), and
+    // the queued punch carries the SAME id the live try sent.
     clockInSpy.mockRejectedValueOnce(new Error("Failed to fetch"));
     const el = mount({ projectId: "p2", costCodeId: "cc2", note: "gate 4411", mode: "tracking" });
     await flush();
@@ -193,6 +216,7 @@ describe("the clock sheet opened with a carried pick", () => {
     });
     await flush();
     expect(clockInSpy).toHaveBeenCalledTimes(1);
+    const livePunch = (clockInSpy.mock.calls[0] as unknown[])[5] as { clientId: string };
     expect(enqueueSpy).toHaveBeenCalledTimes(1);
     expect(enqueueSpy.mock.calls[0][0]).toEqual({
       projectId: "p2",
@@ -200,6 +224,8 @@ describe("the clock sheet opened with a carried pick", () => {
       lat: null,
       lng: null,
       note: "gate 4411",
+      mode: "tracking",
+      punch: expect.objectContaining({ clientId: livePunch.clientId, tappedAt: expect.any(String) }),
     });
   });
 
@@ -223,7 +249,14 @@ describe("the clock sheet opened with a carried pick", () => {
     });
     await flush();
     expect(clockInSpy).toHaveBeenCalledTimes(1);
-    expect(clockInSpy.mock.calls[0]).toEqual(["p1", "cc1", expect.anything(), null, "data"]);
+    expect(clockInSpy.mock.calls[0]).toEqual([
+      "p1",
+      "cc1",
+      expect.anything(),
+      null,
+      "data",
+      expect.objectContaining({ clientId: expect.any(String) }),
+    ]);
   });
 
   it("opened bare, records a single-mode job's one mode and nothing for a both-mode job", async () => {
@@ -236,7 +269,14 @@ describe("the clock sheet opened with a carried pick", () => {
       );
     });
     await flush();
-    expect(clockInSpy.mock.calls[0]).toEqual(["p1", "cc1", expect.anything(), null, "data"]);
+    expect(clockInSpy.mock.calls[0]).toEqual([
+      "p1",
+      "cc1",
+      expect.anything(),
+      null,
+      "data",
+      expect.objectContaining({ clientId: expect.any(String) }),
+    ]);
     clockInSpy.mockClear();
 
     // Tap over to OAK-2 (both modes): the sheet has no mode step, so null.
@@ -256,7 +296,14 @@ describe("the clock sheet opened with a carried pick", () => {
     });
     await flush();
     expect(clockInSpy).toHaveBeenCalledTimes(1);
-    expect(clockInSpy.mock.calls[0]).toEqual(["p2", "cc1", expect.anything(), null, null]);
+    expect(clockInSpy.mock.calls[0]).toEqual([
+      "p2",
+      "cc1",
+      expect.anything(),
+      null,
+      null,
+      expect.objectContaining({ clientId: expect.any(String) }),
+    ]);
   });
 
   it("still primes from the schedule when opened bare", async () => {

@@ -44,6 +44,8 @@ import {
   getOpenShift,
   isOnTheClock,
   listRecentJobs,
+  mintPunch,
+  type ClockPunch,
 } from "../../lib/timeclock";
 import { getClockCostCodesForProject } from "../../lib/costCodes";
 import { useT } from "../../lib/i18n";
@@ -218,18 +220,26 @@ export function ClockInBlock() {
   const isBothMode = chosenModes.length >= 2;
   const effectiveMode = effectiveClockInMode(chosenProject?.allowed_modes, pickedMode);
 
+  // The tap's one-time id (K0.2), minted when the button is pressed and kept
+  // through the hand-off below: the block's punch may have been SAVED before
+  // its reply was lost, and the sheet retrying the same id gets that shift
+  // back instead of making a second one.
+  const punchRef = useRef<ClockPunch | null>(null);
   const doStart = useMutation({
     mutationFn: async () => {
       const geo = await captureGeoSoft();
+      punchRef.current = mintPunch();
       await clockIn(
         pickProjectId || null,
         pickCostCodeId || null,
         geo,
         note.trim() || null,
         effectiveMode,
+        punchRef.current,
       );
     },
     onSuccess: () => {
+      punchRef.current = null;
       toastSuccess(t("clock.action.clockingIn"));
       refresh();
     },
@@ -245,6 +255,7 @@ export function ClockInBlock() {
         costCodeId: pickCostCodeId || null,
         note: note.trim() || null,
         mode: effectiveMode,
+        clientId: punchRef.current?.clientId ?? null,
       });
     },
   });

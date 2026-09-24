@@ -43,6 +43,7 @@ import {
   getJobLastGeo,
   isOnTheClock,
   listCostCodes,
+  mintPunch,
   touchShiftLocation,
   type CostCode,
   type TimeShift,
@@ -208,6 +209,8 @@ export function FarFromJobPrompt({
       const geo: GeoFix =
         fresh.lat != null ? fresh : (fixRef.current ?? {});
       const current = shift!;
+      // One id for this tap, live try and queued retry alike (K0.2).
+      const punch = mintPunch();
       try {
         await clockIn(
           current.project_id,
@@ -215,6 +218,7 @@ export function FarFromJobPrompt({
           geo,
           current.note ?? null,
           current.job_mode ?? null,
+          punch,
         );
         return { queued: false };
       } catch (e) {
@@ -227,14 +231,16 @@ export function FarFromJobPrompt({
           lat: geo.lat ?? null,
           lng: geo.lng ?? null,
           note: current.note ?? null,
+          mode: current.job_mode ?? null,
+          punch,
         });
         // Show the switch immediately, the way the clock sheet does. Built from
         // the shift already in hand rather than through ClockSheet's own
         // synthOpenShift, which is closed over that component's project and
         // cost-code queries; here the whole previous punch is the template and
-        // only the code and the start time move. The job mode is NOT carried:
-        // the outbox's clock_in payload has never held one, so a queued switch
-        // lands without it and is corrected on sync like any other.
+        // only the code and the start time move. The job mode rides the queue
+        // since 20261028000000 (the keyed clock_in takes p_mode), so a queued
+        // switch lands with the same mode the punch it replaces had.
         const optimistic: TimeShift = {
           ...current,
           id: pendingRefForShift(entryId),

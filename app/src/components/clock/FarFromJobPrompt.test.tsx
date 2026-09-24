@@ -173,6 +173,8 @@ describe("the far-from-job switch survives no signal", () => {
       AWAY,
       "framing the back elevation",
       null,
+      // The tap's one-time id and time (Release 0, K0.2/K0.5).
+      expect.objectContaining({ clientId: expect.any(String), tappedAt: expect.any(String) }),
     );
   });
 
@@ -186,12 +188,18 @@ describe("the far-from-job switch survives no signal", () => {
       await Promise.resolve();
     });
 
+    // The queued switch carries the SAME id the live try sent (K0.2): if that
+    // try was saved before its reply was lost, the server answers the retry
+    // with the punch it already made.
+    const livePunch = clockIn.mock.calls[0][5] as { clientId: string };
     expect(enqueueClockIn).toHaveBeenCalledWith({
       projectId: "p1",
       costCodeId: "cc-travel",
       lat: AWAY.lat,
       lng: AWAY.lng,
       note: "framing the back elevation",
+      mode: null,
+      punch: expect.objectContaining({ clientId: livePunch.clientId }),
     });
     // Told it is saved, not told it failed.
     expect(mine()).toEqual([
