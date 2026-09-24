@@ -1171,3 +1171,92 @@ test("Install memo: Submit waits for the final audio chunk and includes the reco
   await page.getByRole("button", {name:"Submit install"}).click();
   await expect.poll(() => attachments.some(a => a.kind === "voice_memo" && String(a.storage_path).endsWith(".mp4"))).toBe(true);
 });
+
+test("Install memo: with no signal the finished unit waits on this phone, then its photo and memo reach the server exactly once", async ({page}) => {
+  // K0.6. The whole chain, in a dead zone: Submit → the install record on the
+  // phone → relaunch → signal back → the RPC lands, the after photo and the
+  // memo are handed to the outbox under ids decided at Submit → one
+  // attachments row each, never two. The pill and /stuck tell the truth at
+  // every step.
+  await useSupabaseFixtures(page, { role: "installer" });
+  await stubGeolocationDenied(page);
+  const o = opening(1, { status: "assigned", needs_flashing: false, work_started_at: "2026-08-20T09:00:00Z", confirmed: true });
+  await routeOpenings(page, [o]);
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "mediaDevices", {configurable:true,value:{getUserMedia:async()=>({getTracks:()=>[{stop:()=>{}}]})}});
+    Object.defineProperty(window, "OfflineAudioContext", {configurable:true,value:class {
+      decodeAudioData() { return Promise.resolve({length:1600,duration:0.1,sampleRate:16000,numberOfChannels:1,getChannelData:()=>new Float32Array(1600)}); }
+    }});
+    class Recorder {
+      static isTypeSupported(type: string) { return type === "audio/mp4"; }
+      state="inactive"; mimeType="audio/mp4";
+      ondataavailable?: (e: {data:Blob}) => void; onstop?: () => void;
+      start() { this.state="recording"; }
+      stop() {
+        this.state="inactive";
+        this.ondataavailable?.({data:new Blob(["last audio chunk"],{type:this.mimeType})}); this.onstop?.();
+      }
+    }
+    Object.defineProperty(window,"MediaRecorder",{configurable:true,value:Recorder});
+  });
+  const signal = { down: false };
+  let rpcCalls = 0;
+  const attachments: Json[] = [];
+  await page.route("**/storage/v1/object/install-media/**", r => signal.down ? r.abort("internetdisconnected") : r.fulfill({status:200,contentType:"application/json",body:'{"Key":"fixture"}'}));
+  await page.route("**/rest/v1/rpc/finish_unit", r => {
+    if (signal.down) return r.abort("internetdisconnected");
+    rpcCalls++;
+    return r.fulfill({status:200,contentType:"application/json",body:'{"id":"evt-offline"}'});
+  });
+  await page.route("**/rest/v1/attachments**", async r => {
+    if (signal.down) return r.abort("internetdisconnected");
+    if (r.request().method() === "POST") attachments.push(r.request().postDataJSON());
+    await r.fulfill({status:200,contentType:"application/json",body:"[]"});
+  });
+  await page.route("**/functions/v1/transcribe-install-memo", r => r.fulfill({status:200,contentType:"application/json",body:'{"ok":true}'}));
+
+  await page.goto(`/projects/${str(o.project_id)}/opening/${str(o.id)}`);
+  await page.getByRole("button", {name:"3. Capture"}).click();
+  await page.locator('input[type="file"][accept="image/*"]').setInputFiles(pngFile("after.png"));
+  await page.getByRole("button", {name:"4",exact:true}).click();
+  await page.getByRole("button", {name:"● Record memo",exact:true}).click();
+  await page.getByRole("button", {name:/Stop recording/}).click();
+  await expect(page.locator("audio.audio-preview")).toBeVisible();
+
+  // The dead zone begins at Submit.
+  signal.down = true;
+  await page.getByRole("button", {name:"Submit install"}).click();
+  await expect(page.getByText(/saved on this device/).first()).toBeVisible();
+  const pillText = page.locator(".sync-pill-text:visible").first();
+  await expect(pillText).toContainText("1 install queued");
+  await expect(pillText).not.toContainText("All synced");
+  expect(attachments).toHaveLength(0);
+
+  // Relaunch, still with no signal: the finished unit is listed as waiting,
+  // with its age — it is not lost and it is not "synced".
+  await page.goto("/stuck");
+  await expect(page.getByRole("heading", {name:"Waiting to send"})).toBeVisible();
+  await expect(page.getByText(/^Window .* finished$/)).toBeVisible();
+  await expect(page.getByText("Saved on this phone", {exact:true})).toBeVisible();
+  await expect(page.getByText("Queued just now")).toBeVisible();
+
+  // Signal back: the RPC lands once, and the photo and memo each land once.
+  signal.down = false;
+  await page.getByRole("button", {name:"Send now"}).click();
+  await expect.poll(() => attachments.length, {timeout: 60_000}).toBe(2);
+  expect(rpcCalls).toBe(1);
+  expect(attachments.map(a => a.kind).sort()).toEqual(["photo", "voice_memo"]);
+  for (const a of attachments) {
+    expect(a.client_id).toEqual(expect.any(String));
+    expect(a.install_event_id).toBe("evt-offline");
+  }
+  expect(new Set(attachments.map(a => a.client_id)).size).toBe(2);
+  await expect(pillText).toHaveText("All synced");
+  await expect(page.getByText("Saved in Forge", {exact:true}).first()).toBeVisible();
+
+  // Another relaunch finds nothing to send.
+  await page.reload();
+  await expect(pillText).toHaveText("All synced");
+  expect(attachments).toHaveLength(2);
+  expect(rpcCalls).toBe(1);
+});

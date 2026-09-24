@@ -388,9 +388,11 @@ test("disconnected work survives reload and a refused retry remains recoverable"
   await expect(
     page.getByRole("complementary", { name: "Pending work" }),
   ).toContainText("2 work changes");
+  // The pill counts every queue now (K0.6) and speaks for all of them at
+  // once; custom work is named on its face, in words.
   await expect(
-    page.getByRole("status", { name: /Custom work is saved on this device/ }),
-  ).toContainText("queued");
+    page.getByRole("status", { name: /saved on this phone and waiting to send/ }),
+  ).toContainText("2 work changes queued");
   expect(data.sessions).toHaveLength(0);
   await page.reload();
   await expect(
