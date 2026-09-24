@@ -87,6 +87,8 @@ const EXPECTED_OFFLINE_ROOTS = [
   "customWorkUnits", "customWorkSessions", "customWorkTypes", "customWorkOpening", "customWorkRoster",
   "buildFacts",
   "myScheduleTomorrow",
+  // Release 1 (K1.6): the Work screen's and the Schedule tab's shared window.
+  "workSchedule",
   "projects",
   "projectsAll",
   "openings",

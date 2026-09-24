@@ -15,6 +15,8 @@
 // flag on any safety string you add here.
 
 import type { CatalogEntry } from "./translate";
+import type { WorkKey } from "./workCatalog";
+import type { DesignKey } from "./designCatalog";
 
 /**
  * Keys whose Spanish still needs a bilingual crew member to verify it — the
@@ -62,6 +64,16 @@ export const SAFETY_KEYS = [
   // above it came apart. Same family as clockblock.signFirst.
   "clockblock.signedPickCode",
   "toolbox.group.bySupervisor",
+  // Release 1's Start day (K1.3): the lines that tell a person the talk
+  // comes first, or that paid time already started and the talk is owed, and
+  // the lock on unit work until it is signed. Same family as
+  // clockblock.signFirst; a bilingual crew member checks them in the pilot week.
+  "work.clock.willOpenTalk",
+  "work.clock.paidFromTap",
+  "work.toolbox.finish",
+  "work.toolbox.finishHelp",
+  "work.toolbox.locked",
+  "work.headsUp.toolbox",
 ] as const;
 
 export const CATALOG = {
@@ -107,12 +119,12 @@ export const CATALOG = {
   "servicing.title": { en: "Servicing", es: "Servicio técnico" },
   "currentWork.title": { en: "Current Work", es: "Trabajo actual" },
   "currentWork.startUnit": { en: "+ Start unit", es: "+ Iniciar unidad" },
-  "currentWork.idle": { en: "Idle time", es: "Tiempo entre unidades" },
+  "currentWork.idle": { en: "Prep time", es: "Tiempo de preparación" },
   "currentWork.map": { en: "Open map", es: "Abrir mapa" },
   "currentWork.stop": { en: "Stop activity", es: "Detener actividad" },
   "currentWork.clock": { en: "Clock in / resume", es: "Registrar entrada / continuar" },
   "currentWork.manageClock": { en: "Job clock / break", es: "Reloj del trabajo / descanso" },
-  "currentWork.finishIdle": { en: "Finish → Idle time", es: "Terminar → Tiempo entre unidades" },
+  "currentWork.finishIdle": { en: "Finish → Prep time", es: "Terminar → Tiempo de preparación" },
   "currentWork.editUnit": { en: "Edit unit details", es: "Editar detalles de la unidad" },
   // One tap to finish a unit (2026-09-24): the old path saved "complete" and
   // started a new visit that reopened it, so no unit ever stayed complete.
@@ -124,6 +136,24 @@ export const CATALOG = {
   "unitEditor.installComplete": { en: "Whole install complete (all visits)", es: "Instalación completa (todas las visitas)" },
   "unitEditor.completeHint": { en: "Yes means the whole install is done. Saving will not start a new visit.", es: "Sí significa que toda la instalación está terminada. Guardar no inicia una nueva visita." },
   "unitEditor.saveComplete": { en: "Save — install complete ✓", es: "Guardar — instalación terminada ✓" },
+  // K1.5 / F3 (2026-09-23): Prep time — "job work that isn't on one unit" —
+  // is ONE term in one Spanish rendering everywhere; these replace the
+  // English-only lines Current Work carried.
+  "currentWork.prep.help": {
+    en: "Job work that isn't on one unit — gathering, hauling, setup, errands, cleanup.",
+    es: "Trabajo del proyecto que no es de una sola unidad: juntar material, acarrear, preparar, mandados, limpieza.",
+  },
+  "currentWork.prep.what": { en: "What are you doing?", es: "¿Qué estás haciendo?" },
+  "currentWork.prep.placeholder": {
+    en: "Choose a reason or describe your work",
+    es: "Elige una razón o describe tu trabajo",
+  },
+  "currentWork.prep.start": { en: "Start prep time", es: "Iniciar tiempo de preparación" },
+  "currentWork.prep.cancel": { en: "Cancel", es: "Cancelar" },
+  "currentWork.prep.footnote": {
+    en: "Unit and prep-time activity explain your job clock; they do not add extra payroll hours. Finishing a record does not approve QC or award points.",
+    es: "La actividad de unidades y de tiempo de preparación explica tu reloj del trabajo; no agrega horas de nómina. Terminar un registro no aprueba QC ni otorga puntos.",
+  },
 
   // ---- First-login language picker -------------------------------------
   "picker.heading": { en: "Choose your language", es: "Elige tu idioma" },
@@ -5047,30 +5077,6 @@ export const CATALOG = {
   "workflow.tripLinksError": { en: "Could not load connected trips", es: "No se pudieron cargar los viajes conectados" },
 
   // ---- Release 1, the new front door (crew redesign spec, 2026-09-23) ----
-  // K-X2: the design switch, per person, plus the owner's master switch.
-  "design.heading": { en: "Design", es: "Diseño" },
-  "design.help": {
-    en: "The new Forge puts your clock, today's job and your next unit on one Work screen. Your work saves the same either way. Switch back any time.",
-    es: "El nuevo Forge pone tu reloj, el trabajo de hoy y tu siguiente unidad en una sola pantalla de Trabajo. Tu trabajo se guarda igual de las dos formas. Vuelve cuando quieras.",
-  },
-  "design.useNew": { en: "Use the new design", es: "Usar el nuevo diseño" },
-  "design.useClassic": { en: "Use the classic design", es: "Usar el diseño clásico" },
-  "design.current.new": { en: "You're on the new design.", es: "Estás en el nuevo diseño." },
-  "design.current.classic": { en: "You're on the classic design.", es: "Estás en el diseño clásico." },
-  "design.masterOff": {
-    en: "The owner has turned the new design off for everyone for now. Your choice is kept for when it comes back.",
-    es: "El dueño desactivó el nuevo diseño para todos por ahora. Tu elección se guarda para cuando vuelva.",
-  },
-  "design.owner.heading": { en: "New design master switch", es: "Interruptor general del nuevo diseño" },
-  "design.owner.help": {
-    en: "Owner only. Off sends everyone back to the classic screens at once; people's own choices are kept and come back when it's on again.",
-    es: "Solo el dueño. Apagado regresa a todos a las pantallas clásicas de una vez; la elección de cada persona se guarda y vuelve cuando se encienda de nuevo.",
-  },
-  "design.owner.on": { en: "On — people can choose it", es: "Encendido: la gente puede elegirlo" },
-  "design.owner.off": { en: "Off for everyone", es: "Apagado para todos" },
-  "design.owner.turnOff": { en: "Turn off for everyone", es: "Apagar para todos" },
-  "design.owner.turnOn": { en: "Turn on", es: "Encender" },
-  "design.owner.saving": { en: "Saving…", es: "Guardando…" },
   "design.try.title": { en: "Try the new Forge", es: "Prueba el nuevo Forge" },
   "design.try.body": {
     en: "One screen with your clock, today's job and your next unit. Your work saves the same either way, and you can switch back any time in Settings.",
@@ -5078,19 +5084,6 @@ export const CATALOG = {
   },
   "design.try.yes": { en: "Try it", es: "Probarlo" },
   "design.try.no": { en: "Not now", es: "Ahora no" },
-  // K1.3 / Q69: the paid-time rule's effective date (owner only).
-  "paidTime.heading": { en: "Paid time starts at Start day", es: "El tiempo pagado empieza al Iniciar el día" },
-  "paidTime.help": {
-    en: "Owner only. From this date, paid time starts the moment someone taps Start day — before the toolbox talk is signed. Until then, today's timing applies. One date for everyone, and no shift already on record changes.",
-    es: "Solo el dueño. Desde esta fecha, el tiempo pagado empieza en el momento en que alguien toca Iniciar el día, antes de firmar la charla de seguridad. Hasta entonces aplica el horario de hoy. Una sola fecha para todos y ningún turno ya registrado cambia.",
-  },
-  "paidTime.from": { en: "Starts on", es: "Empieza el" },
-  "paidTime.state.off": { en: "Off — today's timing applies.", es: "Apagado: aplica el horario de hoy." },
-  "paidTime.state.scheduled": { en: "Starts {date} for everyone.", es: "Empieza el {date} para todos." },
-  "paidTime.state.on": { en: "On for everyone since {date}.", es: "Activo para todos desde el {date}." },
-  "paidTime.save": { en: "Save date", es: "Guardar fecha" },
-  "paidTime.clear": { en: "Turn off", es: "Apagar" },
-  "paidTime.saved": { en: "Saved.", es: "Guardado." },
   // K1.1: the phone bar in the new design.
   "nav.work": { en: "Work", es: "Trabajo" },
   "nav.schedule": { en: "Schedule", es: "Horario" },
@@ -5111,5 +5104,21 @@ export const CATALOG = {
   },
 } satisfies Record<string, CatalogEntry>;
 
-/** Every key the catalog knows. Later slices widen this by adding entries. */
-export type TKey = keyof typeof CATALOG;
+/**
+ * Every key the catalog knows. Later slices widen this by adding entries —
+ * or, for a lazy route, by registering a second file (workCatalog.ts): its
+ * keys are part of this type through a type-only import, which costs the
+ * entry chunk nothing, while its strings ride in the route's own chunk.
+ */
+export type TKey = keyof typeof CATALOG | WorkKey | DesignKey;
+
+/**
+ * Add a lazily loaded phrasebook to the live catalog. Called at module load
+ * by the file that owns the strings, before any component that uses them
+ * renders. Mutates CATALOG in place on purpose: every `t` — the provider's
+ * and the no-provider fallback's — reads this one object by reference, so a
+ * copy would be a phrasebook nobody consults.
+ */
+export function registerCatalog(extra: Record<string, CatalogEntry>): void {
+  Object.assign(CATALOG as Record<string, CatalogEntry>, extra);
+}

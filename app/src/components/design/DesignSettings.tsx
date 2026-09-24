@@ -19,6 +19,7 @@ import {
 } from "../../lib/companySettings";
 import { useDesign } from "../../lib/design/context";
 import { useT } from "../../lib/i18n";
+import "../../lib/i18n/designCatalog";
 import { isOwner } from "../../lib/install/types";
 import {
   normalizeRuleDate,

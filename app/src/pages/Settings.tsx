@@ -1,11 +1,19 @@
 import { AppUpdates } from "../components/updates/AppUpdates";
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { DisplayModePicker } from "../components/DisplayModePicker";
 import { BackChip } from "../components/BackChip";
 import { Link } from "react-router-dom";
 import { BuildIdentityCard } from "../components/BuildIdentityCard";
-import { DesignSettings } from "../components/design/DesignSettings";
 import { PermissionsSettings } from "../components/permissions/PermissionsSettings";
+import { SkeletonCard } from "../components/ui/States";
+
+// Release 1's design switch and the owner's two release controls. Lazy: this
+// page is in the classic shell every phone downloads first, and the shell's
+// budget (scripts/check-bundle-budget.mjs) has no room for a card most
+// mornings never open. It lands in its own small chunk, precached with the rest.
+const DesignSettings = lazy(() =>
+  import("../components/design/DesignSettings").then((m) => ({ default: m.DesignSettings })),
+);
 import { playSuccessTone, setSoundsEnabled, soundsEnabled } from "../lib/sound";
 import { useLanguage } from "../lib/i18n";
 import type { Lang } from "../lib/i18n";
@@ -62,7 +70,9 @@ export function Settings() {
       {/* Release 1 (K-X2): the person's own front door, first — it is the
           reason most people open Settings during the rollout — plus the
           owner's release switches, which the component shows only to owners. */}
-      <DesignSettings />
+      <Suspense fallback={<SkeletonCard height={120} />}>
+        <DesignSettings />
+      </Suspense>
 
       <section className="detail-card" style={{ marginBottom: 12 }}>
         <DisplayModePicker />

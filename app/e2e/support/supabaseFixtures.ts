@@ -181,6 +181,12 @@ export interface FixtureOptions {
    * cache alone is overruled the moment the profile query returns.
    */
   language?: "en" | "es";
+  /**
+   * Release 1 (crew redesign K-X2): which front door the fixture person
+   * chose. Defaults to the classic screens, which is what every existing
+   * spec was written against; a Release 1 spec opts into "new".
+   */
+  uiDesign?: "classic" | "new";
 }
 
 /** Every first-run micro-tip, pre-dismissed (see lib/featureTips). */
@@ -308,6 +314,7 @@ export async function useSupabaseFixtures(
     can_see_costs: opts.canSeeCosts ?? false,
     can_see_pay: opts.canSeePay ?? false,
     language: opts.language ?? "en",
+    ui_design: opts.uiDesign ?? "classic",
   };
 
   // A session in localStorage, under whatever key this build's Supabase URL

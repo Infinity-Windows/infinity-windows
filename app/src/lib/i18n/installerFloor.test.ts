@@ -54,7 +54,9 @@ const ROUTE_FILES: Partial<Record<string, string[]>> = {
   // RoleLanding renders MyWork/Home/Heartbeat by rank; an installer (rank 0)
   // always lands on MyWork — that is the file this route means for THIS
   // floor, even though "/" is also how foreman+ reach Home/Heartbeat.
-  home: ["pages/MyWork.tsx"],
+  // Release 1: a person who chose the new design lands on Work instead
+  // (RoleLanding, `design === "new"`); both doors must speak Spanish.
+  home: ["pages/MyWork.tsx", "pages/work/WorkScreen.tsx"],
   // ClockRoute (App.tsx) has no text of its own — it opens the shared clock
   // sheet mounted in Layout.tsx and redirects to "/".
   clock: ["components/Layout.tsx"],
@@ -86,7 +88,8 @@ const ROUTE_FILES: Partial<Record<string, string[]>> = {
   // it renders nothing of its own, so the route means Warehouse.tsx.
   search: ["pages/Warehouse.tsx"],
   review: ["pages/MemoReview.tsx"],
-  "my-schedule": ["pages/MySchedule.tsx"],
+  // Release 1: the new design's Schedule tab at the same address (K1.6).
+  "my-schedule": ["pages/MySchedule.tsx", "pages/work/Schedule.tsx"],
   travel: ["pages/Travel.tsx"],
   timecard: ["pages/Timecard.tsx", "components/timecard/TimecardPanel.tsx"],
   // "/receive" → `<Navigate to="/storage/log-delivery" replace />`.
