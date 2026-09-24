@@ -7233,6 +7233,33 @@ body {
   background: oklch(0.32 0.11 45 / 0.4);
 }
 
+/* /stuck: one row's state, in words first — the tone only echoes the pill's
+   so a person who has learned the pill's colours sees the same ones here. */
+.stuck-state {
+  display: inline-block;
+  margin: 4px 0 2px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 13px;
+  font-weight: 600;
+}
+.stuck-state-waiting,
+.stuck-state-sending {
+  color: oklch(0.9 0.03 250);
+  border-color: oklch(0.5 0.08 250);
+  background: oklch(0.28 0.06 250 / 0.35);
+}
+.stuck-state-failed {
+  color: oklch(0.92 0.08 45);
+  border-color: oklch(0.62 0.16 45);
+  background: oklch(0.32 0.11 45 / 0.4);
+}
+.stuck-state-sent {
+  color: var(--ok);
+  border-color: color-mix(in oklch, var(--ok) 55%, transparent);
+}
+
 .sync-pill-spin {
   animation: sync-pill-spin 1.1s linear infinite;
 }

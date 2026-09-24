@@ -105,8 +105,12 @@ export const QUERY_KEY_ROOTS: QueryKeyRootEntry[] = [
   { root: "dispatch", offline: false },
   { root: "educationProgress", offline: false },
   { root: "elevationViews", offline: true, why: "The flat map's two other reads (ticket 05, 2026-09-06): the traced building outline and the elevation views the pins hang off. The openings were cached and these were not, so the map offline drew pins on nothing." },
-  { root: "failedInstalls", offline: false },
-  { root: "failedWrites", offline: false },
+  // The /stuck screen's three reads, every state of every queue (K0.6). Read
+  // from the phone's own stores, never from the server, so there is nothing
+  // to keep offline — the stores ARE the offline copy.
+  { root: "queuedInstalls", offline: false },
+  { root: "queuedPersonal", offline: false },
+  { root: "queuedWrites", offline: false },
   { root: "flashAlarms", offline: false },
   { root: "flashRunners", offline: false },
   { root: "fleetFinancials", offline: false },
