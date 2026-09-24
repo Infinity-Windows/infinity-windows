@@ -703,6 +703,9 @@ export interface OutboxStore {
   /** Persist an entry (and optionally its blob). Insert or replace by id. */
   put(entry: OutboxEntry, blob?: Blob | null): Promise<void>;
   getBlob(id: string): Promise<Blob | null>;
+  /** Insert unless the id exists; returns the existing entry, or null when
+   * inserted. Atomic. Optional: only a caller-minted stable id uses it. */
+  insertIfAbsent?(entry: OutboxEntry, blob: Blob | null): Promise<OutboxEntry | null>;
   delete(id: string): Promise<void>;
   count(): Promise<number>;
 }

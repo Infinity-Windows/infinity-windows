@@ -33,6 +33,9 @@ export interface DailyLog {
   weather: string | null;
   customer_visible: boolean;
   customer_visible_at: string | null;
+  /** Bumped by every change to what the log says (20261030000000). A Forge AI
+   * contribution names the revision it was previewed against. */
+  revision?: number;
   filed_by: string;
   updated_by: string | null;
   created_at: string;
@@ -52,8 +55,8 @@ function isMissingTableError(e: { code?: string; message?: string } | null): boo
   );
 }
 
-/** A job's logs, newest first — the Logs tab's list (L3). Foreman+ only see
- * any rows at all; an installer's identical call comes back empty (RLS). */
+/** A job's logs, newest first — the Logs tab's list (L3). Internal crew from
+ * installer up read them (20261014000000); a partner's call comes back empty (RLS). */
 export async function listDailyLogs(projectId: string): Promise<DailyLog[]> {
   const { data, error } = await supabase
     .from("daily_logs")
@@ -71,7 +74,8 @@ export async function listDailyLogs(projectId: string): Promise<DailyLog[]> {
  * job's whole history (listDailyLogs above) or just which project ids
  * logged today (listLoggedProjectIdsToday below). Fetched once per visible
  * month and re-sliced per day by dayMemory.ts's own log_date filter.
- * Foreman+ only see rows at all (RLS, Q7) — same as every other read here.
+ * Internal crew from installer up see rows (RLS, 20261014000000) — same as
+ * every other read here.
  */
 export async function listDailyLogsForRange(fromDate: string, toDate: string): Promise<DailyLog[]> {
   const { data, error } = await supabase
@@ -97,6 +101,12 @@ export async function getDailyLog(projectId: string, logDate: string): Promise<D
   return (data as unknown as DailyLog) ?? null;
 }
 
+/**
+ * The manual editor's writer. It replaces the shared row's text, which is
+ * right when the person is editing the text they can see. Forge AI drafts never
+ * come through here: they append through append_daily_log_contribution
+ * (lib/aiDailyLogs/save.ts), which refuses a stale preview and saves once.
+ */
 export interface FileDailyLogInput {
   projectId: string;
   logDate: string;
@@ -125,7 +135,7 @@ export interface FiledDailyLog {
  *
  * The direction of that doctrine matters here more than most places, because
  * file_daily_log genuinely rejects things: notes are required, a future date
- * is refused, and anyone below foreman is turned away. Those are REAL answers
+ * is refused, and partners or removed logins are turned away. Those are REAL answers
  * and they surface immediately — queueing a refusal means it fails forever in
  * the dead-letter and the person never learns they were wrong. Only a network
  * failure queues.

@@ -201,6 +201,13 @@ well, what went poorly, what would have helped, what's worth doing again);
 Smooth clears them at save. Never a second required field — notes is the
 Daily Log's only hard gate.
 
+**Daily log contribution** — one person's reviewed addition to a Daily Log,
+drafted with Forge AI and saved by their own tap. It is appended under a
+header naming them, never replaces anyone's words, and is refused (nothing
+written) if the log changed since they previewed it. Saving the same
+contribution twice returns the first receipt. Its photos go to the job they
+were attached to and report their own upload status.
+
 **Log coverage** — logged worked-days ÷ all worked-days, overall or per
 job (a worked job-day is any shift or session on that job, that local
 day). Surfaced today as one line for owners on Heartbeat; wave S's later

@@ -1,0 +1,41 @@
+<!doctype html>
+<!-- Test-only page: the Forge AI daily log card with its real controller,
+     IndexedDB draft store, upload queue and Supabase client, mounted alone so
+     a phone-width browser test can drive it before it is wired into Ask.
+     Served by the dev server only; the production build never includes it.
+     e2e/ai-daily-logs.spec.ts replays every network call. -->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>AI daily log harness</title>
+    <script>
+      // Before any module loads: the stored Supabase session is whichever
+      // account window.__authAs names (the test changes it to simulate a
+      // different sign-in). Fixture tokens only; the network is replayed.
+      (function () {
+        var ids = { ana: "00000000-0000-4000-8000-00000000a001", ben: "00000000-0000-4000-8000-00000000b002" };
+        var params = new URLSearchParams(location.search);
+        window.__authAs = params.get("auth") || params.get("user") || "ana";
+        var proto = Object.getPrototypeOf(window.localStorage);
+        var original = proto.getItem;
+        proto.getItem = function (key) {
+          if (this === window.localStorage && /^sb-.+-auth-token$/.test(key)) {
+            var who = window.__authAs;
+            if (!ids[who]) return null;
+            return JSON.stringify({
+              access_token: "e2e-fixture-" + who, refresh_token: "e2e-fixture-refresh-" + who, token_type: "bearer",
+              expires_in: 3600, expires_at: 2066000000,
+              user: { id: ids[who], email: who + "@example.test", aud: "authenticated", role: "authenticated" },
+            });
+          }
+          return original.call(this, key);
+        };
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./aiDailyLogHarness.js"></script>
+  </body>
+</html>

@@ -1,0 +1,32 @@
+/* Forge AI daily log card. Phone first (375px); loads with the Ask page. */
+.ai-log-card { display: grid; gap: var(--space-4); min-width: 0; }
+.ai-log-card h3, .ai-log-card h4 { margin: 0; }
+.ai-log-card h4 { font-size: var(--text-md); }
+.ai-log-header { display: grid; gap: var(--space-1); padding-bottom: var(--space-3); border-bottom: 1px solid var(--border); }
+.ai-log-job, .ai-log-date { margin: 0; font-size: var(--text-lg); overflow-wrap: anywhere; }
+.ai-log-options { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.ai-log-options button, .ai-log-options .action-btn, .ai-log-answer-help button, .ai-log-more > button { min-height: 44px; display: inline-flex; align-items: center; gap: var(--space-1); }
+.ai-log-fields { display: grid; gap: var(--space-3); }
+.ai-log-row { display: grid; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--border); border-radius: 12px; min-width: 0; }
+.ai-log-row.ai-log-missing { border-style: dashed; }
+.ai-log-row-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-2); }
+.ai-log-label { font-weight: 650; }
+.ai-log-chip { font-size: var(--text-sm); color: var(--muted); }
+.ai-log-row textarea, .ai-log-picker input, .ai-log-photo input { box-sizing: border-box; width: 100%; min-width: 0; padding: var(--space-3); border: 1px solid var(--border); border-radius: 10px; background: var(--card-raised); color: var(--text); font: inherit; font-size: 16px; }
+.ai-log-text { margin: 0; padding: var(--space-3); border-radius: 10px; background: var(--surface); white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--font-body); font-size: var(--text-md); line-height: 1.5; max-height: 40vh; overflow-y: auto; }
+.ai-log-existing, .ai-log-preview, .ai-log-photos, .ai-log-jobs { display: grid; gap: var(--space-2); }
+.ai-log-warn { margin: 0; padding: var(--space-2) var(--space-3); border-left: 3px solid var(--warn, #c77700); background: var(--surface); }
+.ai-log-photo-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
+.ai-log-photo { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: var(--space-3); align-items: start; }
+.ai-log-photo img, .ai-log-photo-placeholder { width: 88px; height: 88px; object-fit: cover; border-radius: 10px; background: var(--surface); display: grid; place-items: center; }
+.ai-log-photo-body { display: grid; gap: var(--space-2); min-width: 0; }
+.ai-log-photo-body p { margin: 0; overflow-wrap: anywhere; }
+.ai-log-photo-dest { font-weight: 650; }
+.ai-log-status-failed { color: var(--danger, #b3261e); }
+.ai-log-status-saved { color: var(--ok, #2e7d32); }
+.ai-log-footer { display: grid; gap: var(--space-2); position: sticky; bottom: 0; padding-top: var(--space-2); background: var(--card-raised); }
+.ai-log-problems { margin: 0; padding-left: var(--space-5); }
+.ai-log-footer .primary.big { min-height: 52px; width: 100%; }
+.ai-log-discard { min-height: 44px; }
+.ai-log-receipt { display: grid; gap: var(--space-2); }
+.ai-log-receipt p { margin: 0; }

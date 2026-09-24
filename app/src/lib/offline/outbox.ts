@@ -18,7 +18,7 @@ import {
   type OutboxInput,
   type OutboxStore,
 } from "./outbox-core";
-import { createDefaultStore } from "./outboxStore";
+import { createDefaultStore, UnreadableOutboxEntryError } from "./outboxStore";
 import { logOfflineEvent } from "./telemetry";
 import { signedInEmail } from "../signedIn";
 import type { JobMode } from "../types";
@@ -179,6 +179,33 @@ export class BlobTooLargeError extends Error {
   }
 }
 
+/**
+ * A caller-minted id is already in the queue for something else: another
+ * account, another job, another stored file. Refused rather than reported as
+ * queued, because the entry under that id is not this photo.
+ */
+export class StableIdConflictError extends Error {
+  constructor() {
+    super("This photo is already waiting to upload for a different job or sign-in. It is still on this phone.");
+    this.name = "StableIdConflictError";
+  }
+}
+
+/** The parts of a queued write that say WHOSE it is and WHERE it goes. */
+const IDENTITY_KEYS = ["createdBy", "projectId", "packageId", "windowId", "installEventId", "bucket", "path"] as const;
+function sameIdentity(a: OutboxEntry, b: OutboxEntry): boolean {
+  if (a.op !== b.op) return false;
+  return IDENTITY_KEYS.every((k) => {
+    const x = a.payload[k] ?? null, y = b.payload[k] ?? null;
+    if (k === "createdBy" && typeof x === "string" && typeof y === "string") return x.toLowerCase() === y.toLowerCase();
+    return x === y;
+  });
+}
+
+/** Same-tab stable-id hand-offs run one at a time (the IndexedDB insert is
+ * atomic on its own; this also covers a store without insertIfAbsent). */
+let stableChain: Promise<unknown> = Promise.resolve();
+
 export class OutboxStorageError extends Error {
   constructor(message: string) {
     super(message);
@@ -187,14 +214,27 @@ export class OutboxStorageError extends Error {
 }
 
 /**
- * Add a write to the outbox. Idempotent by client id — enqueuing the same id
- * twice is a no-op. Returns the entry id (the idempotency key). Immediately
- * attempts a drain when online so healthy connections write straight through.
+ * Add a write to the outbox. Returns the entry id (the idempotency key).
+ * Immediately attempts a drain when online so healthy connections write
+ * straight through.
+ *
+ * Most callers let the queue mint the id. A caller that must survive its own
+ * retry — the Forge AI daily log hands a photo over only after a Save whose
+ * response can be lost — passes the id it minted when the photo was taken:
+ * the same id already waiting here is left exactly as it is, and one that has
+ * already been sent uploads to the same path and upserts the same
+ * attachments.client_id, so neither becomes a second photo.
  */
 export async function enqueue(
   input: OutboxInput,
   blob?: Blob | null,
+  options: { id?: string } = {},
 ): Promise<string> {
+  if (options.id) {
+    const run = stableChain.then(() => enqueueStable(input, blob ?? null, options.id!));
+    stableChain = run.catch(() => undefined);
+    return run;
+  }
   const id = newId();
   if (blob != null) {
     if (blob.size > MAX_BLOB_BYTES) throw new BlobTooLargeError(blob.size);
@@ -210,6 +250,34 @@ export async function enqueue(
   }
   await refresh();
   // Fire-and-forget immediate drain; the write is already durably queued.
+  if (isOnline()) void drain();
+  return id;
+}
+
+/**
+ * The stable-id path. The same photo handed over again (a retried Save, a
+ * reload mid hand-off) is the entry already waiting — returned untouched, even
+ * mid-upload. Anything else under that id is a conflict, never success.
+ */
+async function enqueueStable(input: OutboxInput, blob: Blob | null, id: string): Promise<string> {
+  if (blob != null && blob.size > MAX_BLOB_BYTES) throw new BlobTooLargeError(blob.size);
+  const entry = makeEntry(input, id, Date.now());
+  let existing: OutboxEntry | null;
+  try {
+    if (store.insertIfAbsent) {
+      existing = await store.insertIfAbsent(entry, blob);
+    } else {
+      existing = (await store.getAll()).find((e) => e.id === id) ?? null;
+      if (!existing) await store.put(entry, blob);
+    }
+  } catch (err) {
+    if (err instanceof UnreadableOutboxEntryError) throw err;
+    throw new OutboxStorageError(
+      `Couldn't save this offline (storage may be full): ${(err as Error)?.message ?? err}`,
+    );
+  }
+  if (existing && !sameIdentity(existing, entry)) throw new StableIdConflictError();
+  await refresh();
   if (isOnline()) void drain();
   return id;
 }
@@ -462,6 +530,8 @@ export interface UploadInput {
   takenAt?: string | null;
   caption?: string | null;
   blob: Blob;
+  /** A stable id minted by the caller; see enqueue. Becomes attachments.client_id. */
+  clientId?: string;
 }
 
 export function enqueueUpload(input: UploadInput): Promise<string> {
@@ -506,6 +576,7 @@ export function enqueueUpload(input: UploadInput): Promise<string> {
       },
     },
     input.blob,
+    input.clientId ? { id: input.clientId } : {},
   );
 }
 

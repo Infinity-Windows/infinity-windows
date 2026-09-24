@@ -94,6 +94,8 @@ const CASCADE_COVERED: Record<string, string> = {
   service_audit: "ON DELETE CASCADE from projects (20261017000000)",
   service_media: "ON DELETE CASCADE from projects (20261017000000)",
   service_job_supervisors: "ON DELETE CASCADE from projects (20261017000000)",
+  daily_log_contributions: "ON DELETE CASCADE from projects and from daily_logs (20261030000000)",
+  daily_log_contribution_photos: "ON DELETE CASCADE from projects and from its contribution (20261030000000)",
 
   custom_work_units: "ON DELETE CASCADE from projects (20261011000000)",
   custom_work_sessions: "ON DELETE CASCADE from projects (20261011000000)",
