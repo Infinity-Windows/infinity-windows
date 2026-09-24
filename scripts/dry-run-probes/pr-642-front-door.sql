@@ -76,13 +76,24 @@
 -- The owner (dry_run_pick_real) is the one real person it acts as: the two
 -- owner-only RPCs have no QA login, and every write is rolled back.
 --
--- THE JOB IT ACTS ON: a job that is BOTH on public.sandbox_projects and a
--- testing project (projects.is_test), read at run time — the two facts the
--- fence and the QA logins' job visibility read. BLACK22 was that job when
--- this probe was written and left both lists on 2026-09-24 (today's are
--- MADMOOSE and PECAN14); it comes first again the day it is back, else the
--- lowest job code. An empty list stops the run out loud before anything is
--- checked.
+-- THE JOB IT ACTS ON: a live job that is BOTH on public.sandbox_projects and
+-- a testing project (projects.is_test), read at run time — the two facts the
+-- fence and the QA logins' job visibility read. PECAN14 first (the owner's
+-- practice job, 2026-09-24), then BLACK22 (the sandbox when this probe was
+-- written; it left both lists on 2026-09-24), then the lowest job code —
+-- MADMOOSE is a real job flagged testing and the owner would rather runs
+-- not touch it, even rolled back. An empty list stops the run out loud
+-- before anything is checked.
+--
+-- Two things the setup does as the system so a refusal can only be about
+-- the change (both rolled back with everything else): it ends the QA
+-- login's stray open timers — a task session, a unit session, an active
+-- flashing phase left on a job that is no longer the sandbox (BLACK22) —
+-- because every start hands those off, and the sandbox guard refuses a QA
+-- login touching a real job's row (the first run of this block died there);
+-- and it clears needs_flashing on ONE opening for the run, because every
+-- opening on the practice jobs needs flashing (the flashing feature's
+-- default) and the doors on an opening cannot be tried otherwise.
 --
 -- THE UNIT-WORK GATE, AND HOW IT IS CHECKED HERE: ADR-0012 §5 and the
 -- migration's header say unit work stays refused until the talk is signed,
@@ -140,7 +151,7 @@ begin
     from public.sandbox_projects sp
     join public.projects p on p.id = sp.project_id
    where p.deleted_at is null and coalesce(p.is_test, false)
-   order by (p.job_code = 'BLACK22') desc, p.job_code
+   order by (p.job_code = 'PECAN14') desc, (p.job_code = 'BLACK22') desc, p.job_code
    limit 1;
   if v_job is null then
     raise exception using message =
@@ -150,7 +161,8 @@ begin
       || 'again — nothing was checked.';
   end if;
   perform pg_temp.dry_run_check('setup: acting on the sandbox job as the QA installer login (a test login, inside the sandbox)',
-    true, 'installer ' || v_who || ', foreman ' || v_foreman || ', job ' || v_job);
+    true, 'installer ' || v_who || ', foreman ' || v_foreman || ', job ' || v_job
+      || ' (' || (select p.job_code from public.projects p where p.id = v_job) || ')');
 
   -- Start every clock scenario from a clean slate: no shift left open from
   -- before, and no signature today, so the gate is CLOSED until the probe
@@ -434,6 +446,7 @@ declare
   v_prep uuid;
   v_custom uuid;
   v_kind text;
+  v_detail text;
   v_stamp_before timestamptz;
   v_o public.project_openings;
   v_ph public.opening_phases;
@@ -474,16 +487,37 @@ begin
     from public.sandbox_projects sp
     join public.projects p on p.id = sp.project_id
    where p.deleted_at is null and coalesce(p.is_test, false)
-   order by (p.job_code = 'BLACK22') desc, p.job_code
+   order by (p.job_code = 'PECAN14') desc, (p.job_code = 'BLACK22') desc, p.job_code
    limit 1;
   v_owner := pg_temp.dry_run_pick_real('owner');
   v_today := (now() at time zone 'America/Denver')::date;
   select id into v_cost_code from public.cost_codes order by active desc, code limit 1;
+  -- The QA login's stray open timers, wherever they are: every start below
+  -- hands them off (close_open_task_sessions, _end_open_session, the
+  -- custom-work handoff), and the sandbox guard refuses the QA login the
+  -- moment one of them sits on a job that is no longer the sandbox. Ended
+  -- here, as the system, for the run (see the header).
+  update public.task_sessions set ended_at = now()
+   where profile_id = v_who and ended_at is null;
+  get diagnostics v_n = row_count;
+  update public.unit_sessions set ended_at = now(), end_reason = 'handoff'
+   where profile_id = v_who and ended_at is null;
+  get diagnostics v_open = row_count;
+  update public.opening_phases set paused_at = now()
+   where started_by = v_who and status = 'active' and paused_at is null;
+  get diagnostics v_total = row_count;
+  perform pg_temp.dry_run_check('setup: the installer''s stray open timers are ended for the run, so a start''s handoff never touches a job outside the sandbox',
+    true, v_n || ' task session(s), ' || v_open || ' unit session(s), ' || v_total || ' active phase(s) ended or paused');
   -- An opening on the sandbox job that is clear of flashing, so a refusal
-  -- below can only be about the signature.
+  -- below can only be about the signature. The practice jobs' openings all
+  -- need flashing, so one is cleared for the run (as the system; rolled back).
   select o.id into v_opening from public.project_openings o
-   where o.project_id = v_job and coalesce(public._flashing_outstanding(o.id), false) = false
-   order by o.id limit 1;
+   where o.project_id = v_job and o.removed_at is null
+   order by (coalesce(public._flashing_outstanding(o.id), false) = false) desc, o.id
+   limit 1;
+  if v_opening is not null then
+    update public.project_openings set needs_flashing = false where id = v_opening;
+  end if;
   -- Two more openings for the doors that need a phase row of their own: one
   -- with no flashing phase yet (start_opening_phase inserts it), and one to
   -- carry a phase the installer paused yesterday (resume_opening_phase).
@@ -737,7 +771,11 @@ begin
     v_prep := public.custom_work_command(gen_random_uuid(), 'start', jsonb_build_object(
       'id', gen_random_uuid(), 'unit_id', null, 'shift_id', v_s5.id, 'expected_session_id', v_custom, 'description', 'dry run prep'));
   exception when others then
-    perform pg_temp.dry_run_check('prep time: signed, starts — as before', false, 'refused: ' || sqlstate || ' ' || sqlerrm);
+    -- The detail names the table and job a guard refused on, which the
+    -- message alone does not.
+    get stacked diagnostics v_detail = pg_exception_detail;
+    perform pg_temp.dry_run_check('prep time: signed, starts — as before', false,
+      'refused: ' || sqlstate || ' ' || sqlerrm || coalesce(' — ' || nullif(v_detail, ''), ''));
   end;
   if v_prep is not null then
     perform pg_temp.dry_run_as_system();
