@@ -1,0 +1,203 @@
+# Try a pull request's new migrations and RPCs on the REAL database, inside
+# one transaction that is always rolled back, before the merge.
+#
+# WHY THIS EXISTS. Twice a migration passed every local test and failed in
+# production on a constraint the local copy never had (2026-09-06: #578's
+# finalize hit movements_one_subject_ck, after a probe that had only counted
+# objects and never CALLED the RPC). PGlite and a fixture schema are the
+# tests' world; the crew's world has every constraint, trigger, grant and
+# row of the last three months in it. The rule since: every new migration is
+# applied and every new RPC is called, as a real role on the sandbox job,
+# inside a transaction that is then rolled back, before merge.
+#
+# WHAT IT DOES. scripts/db-dry-run.sh sends ONE statement batch to the
+# Management API:
+#
+#   begin  ->  harness  ->  the migrations, in order  ->  the probe
+#          ->  do $$ raise exception 'DRY_RUN_RESULT:<the checks>' $$
+#
+# The forced error at the end is the guarantee: Postgres rolls the whole
+# batch back whether or not anything before it misbehaved, so NOTHING IS
+# KEPT — not the migration, not the probe's writes, not a helper. The error
+# message is how the results get out. A statement that fails earlier is the
+# result: the change is broken, and it was rolled back too. The one trace a
+# rollback cannot undo is a sequence number: a table with a serial id skips
+# a few. Locks are the real deploy's locks, for a few seconds; a lock the
+# batch cannot get within 5 s fails the run instead of queueing the crew's
+# clock behind it (docs/db-dry-run.md).
+#
+# WHY A WORKFLOW. The management token lives in GitHub and nowhere else, the
+# same SUPABASE_ACCESS_TOKEN deploy-backend.yml and verify-invariants.yml use.
+#
+# HOW TO RUN IT (docs/db-dry-run.md):
+#   gh workflow run db-dry-run.yml -f ref=<branch> \
+#     -f migrations="supabase/migrations/<a>.sql supabase/migrations/<b>.sql" \
+#     -f probe=scripts/dry-run-probes/pr-<n>-<what>.sql
+# The tool runs from the default branch; the migrations come from `ref`; the
+# probe is taken from `ref` when it has one at that path, else from the
+# default branch — so a probe written here can try a branch that predates it.
+# A missing secret is red: "nothing was checked" must never look green.
+
+name: Database dry run
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch (or commit) whose migrations to try"
+        required: true
+        type: string
+      migrations:
+        description: "Migration files under supabase/migrations/, space-separated, in order. Blank = every migration the branch adds on top of the default branch."
+        required: false
+        type: string
+        default: ""
+      probe:
+        description: "The probe, e.g. scripts/dry-run-probes/pr-640-clock-integrity.sql (from the branch if it has it, else from the default branch)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+# One at a time: two batches could wait on each other's locks, and the
+# lock timeout would turn a good change into "could not tell".
+concurrency:
+  group: db-dry-run
+  cancel-in-progress: false
+
+jobs:
+  self-test:
+    name: Test the tool itself
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # A check nobody has proved can fail is not a check. Offline: the
+      # builder and the judge on fixtures, the wrapper with curl stubbed.
+      - name: Test the builder and the judge
+        run: python3 scripts/test_db_dry_run.py
+
+      - name: Test the wrapper
+        shell: bash
+        run: scripts/db-dry-run.test.sh
+
+  dry-run:
+    name: Try the change on the real database and roll it back
+    needs: [self-test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      # The tool, from the branch this workflow file is on (the default
+      # branch when dispatched the usual way).
+      - name: Checkout the tool
+        uses: actions/checkout@v4
+
+      # The change, in its own directory. Full history, so a blank
+      # `migrations` input can be worked out as "what this branch adds".
+      - name: Checkout the change
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          path: candidate
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # The inputs arrive as environment variables, not inline expressions,
+      # so nothing can be spliced into the shell (run-seed.yml's reasoning).
+      - name: Work out what to try
+        id: plan
+        shell: bash
+        env:
+          REF: ${{ inputs.ref }}
+          MIGRATIONS: ${{ inputs.migrations }}
+          PROBE: ${{ inputs.probe }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          if [ -z "$MIGRATIONS" ]; then
+            MIGRATIONS="$(git -C candidate diff --name-only --diff-filter=A \
+              "origin/$DEFAULT_BRANCH...HEAD" -- supabase/migrations/ | sort | tr '\n' ' ')"
+            echo "No migrations named: trying every migration $REF adds on top of $DEFAULT_BRANCH."
+          fi
+          if [ -z "${MIGRATIONS// /}" ]; then
+            echo "::error::No migration to try: name them with -f migrations=..., or the branch adds none."
+            exit 1
+          fi
+          paths=""
+          for m in $MIGRATIONS; do
+            case "$m" in
+              supabase/migrations/*.sql) ;;
+              *) echo "::error::$m is not a file under supabase/migrations/. Nothing was sent."; exit 1 ;;
+            esac
+            if [ ! -f "candidate/$m" ]; then
+              echo "::error::$m is not on $REF. Nothing was sent."; exit 1
+            fi
+            paths="$paths candidate/$m"
+          done
+          case "$PROBE" in
+            *.sql) ;;
+            *) echo "::error::$PROBE is not a .sql probe. Nothing was sent."; exit 1 ;;
+          esac
+          if [ -f "candidate/$PROBE" ]; then
+            probe="candidate/$PROBE"; echo "Probe: $PROBE, from $REF."
+          elif [ -f "$PROBE" ]; then
+            probe="$PROBE"; echo "Probe: $PROBE, from $DEFAULT_BRANCH ($REF does not carry it)."
+          else
+            echo "::error::$PROBE is on neither $REF nor $DEFAULT_BRANCH. Nothing was sent."; exit 1
+          fi
+          echo "migrations=${paths# }" >> "$GITHUB_OUTPUT"
+          echo "probe=$probe" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Database dry run of \`$REF\`"
+            echo
+            echo "Migrations, in order:"
+            for m in $MIGRATIONS; do echo "- \`$m\`"; done
+            echo
+            echo "Probe: \`$PROBE\`"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # `shell: bash` is load-bearing: without it a pipe into tee reports
+      # tee's exit code, and a red run would show green.
+      - name: Send the batch and read the answer
+        shell: bash
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          # Production, named explicitly for the same reason scripts/pgq.sh
+          # refuses to guess one.
+          SUPABASE_PROJECT_REF: czprjcskmzzagdztqonm
+          MIGRATIONS: ${{ steps.plan.outputs.migrations }}
+          PROBE: ${{ steps.plan.outputs.probe }}
+        run: |
+          set -uo pipefail
+          if [ -z "$SUPABASE_ACCESS_TOKEN" ]; then
+            echo "::error::SUPABASE_ACCESS_TOKEN is not set, so nothing was tried. That is a failure, not a pass: add the secret (the same management token deploy-backend.yml uses)."
+            exit 1
+          fi
+          # shellcheck disable=SC2086
+          scripts/db-dry-run.sh --probe "$PROBE" $MIGRATIONS 2>&1 | tee /tmp/dry-run.log
+          rc=${PIPESTATUS[0]}
+          {
+            echo '```'
+            cat /tmp/dry-run.log
+            echo '```'
+            echo
+            case "$rc" in
+              0) echo "**Every check passed.** Nothing was kept: the batch ended in its forced error and was rolled back." ;;
+              1) echo "**The change is not ready.** A statement failed or a check reported a failure. Nothing was kept." ;;
+              2) echo "**Refused before anything was sent.** Read the reason above." ;;
+              *) echo "**Could not tell.** Nothing was measured; read the reason above and run it again." ;;
+            esac
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$rc"
