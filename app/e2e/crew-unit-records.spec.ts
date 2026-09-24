@@ -75,6 +75,10 @@ test('connection loss keeps the same record ID and crew assignment for retry',as
   state.setOffline(true);
   await form.getByRole('button',{name:'Save crew record',exact:true}).click();
   await expect(form).toContainText('awaiting sync');
+  // The record is saved on the phone first (that is what "awaiting sync"
+  // reports), THEN the send is tried — so the attempt can land a moment after
+  // the message. Wait for it instead of assuming it already happened.
+  await expect.poll(()=>state.requests.length).toBeGreaterThan(0);
   const first=state.requests[0].p_id;
   state.setOffline(false);await page.reload();
   await expect.poll(()=>state.records.length).toBe(1);
