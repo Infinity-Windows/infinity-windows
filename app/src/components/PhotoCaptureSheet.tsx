@@ -78,6 +78,12 @@ type PhotoCaptureSheetProps =
       onQueued?: (entryId: string) => void;
       /** Close the entire Capture flow when opening the gallery. */
       onViewGallery?: () => void;
+      /**
+       * K1.7 (crew redesign, 2026-09-23): every photo says where it is going
+       * and one tap changes it. When set, a "Change" link sits beside the
+       * "For <job>" line and hands the person back to the job question.
+       */
+      onChangeJob?: () => void;
     }
   | {
       mode: "beforeAfter";
@@ -590,6 +596,7 @@ function JobPhotoCapture({
   onClose,
   onQueued,
   onViewGallery,
+  onChangeJob,
 }: Extract<PhotoCaptureSheetProps, { mode: "job" }>) {
   const t = useT();
   const queryClient = useQueryClient();
@@ -960,7 +967,16 @@ function JobPhotoCapture({
         </div>
 
         <p className="muted jobphoto-sub">
-          {label ? <>{t("photo.for")} <strong>{label}</strong>. </> : null}
+          {label ? (
+            <>
+              {t("photo.for")} <strong>{label}</strong>.{" "}
+              {onChangeJob && (
+                <button type="button" className="link jobphoto-change" onClick={onChangeJob} data-testid="photo-change-job">
+                  {t("capture.job.change")}
+                </button>
+              )}{" "}
+            </>
+          ) : null}
           {t("photo.stamped")}
         </p>
 

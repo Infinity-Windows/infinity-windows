@@ -350,6 +350,15 @@ export function CaptureSheet({ open, onClose, role }: CaptureSheetProps) {
         jobChangeable
         onQueued={(id) => setQueuedIds((ids) => [...ids, id])}
         onViewGallery={onClose}
+        // K1.7: one tap from the photo sheet back to "which job?" — the
+        // destination is shown on every photo, and changing it must not mean
+        // closing the sheet and starting over.
+        onChangeJob={() => {
+          setFlow(null);
+          setPending(activeFlow === "receipt" ? "receipt" : "photo");
+          setSelectedId("");
+          setShowList(true);
+        }}
         onClose={() => {
           // A receipt closes the whole sheet: its own follow-up question is
           // the confirmation. A photo earns one more beat — "it's saved,
