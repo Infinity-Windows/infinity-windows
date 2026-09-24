@@ -55,6 +55,16 @@ begin
   if v_job is null then
     raise exception 'dry run: no job is both flagged as testing and on the sandbox list, so the QA logins have nowhere to write. Mark a practice job as testing in the app (that puts it on the sandbox list too) and run again.';
   end if;
+  -- dry_run_pick falls back to a real person when no QA login holds the role,
+  -- and a real person is refused on a testing job with the same sentence this
+  -- probe is here to test. On 2026-09-24 qa.installer had been set to foreman
+  -- and three runs died on that refusal. Stop loudly instead.
+  if not public.is_test_profile(v_first) then
+    raise exception 'dry run: no QA login has the installer role, so the run would act as a real person. Set qa.installer (shown as "TEST — automation, do not assign") to Installer in the app and run again.';
+  end if;
+  if not public.is_test_profile(v_second) then
+    raise exception 'dry run: no QA login has the foreman role, so the run would act as a real person. Set qa.foreman (shown as "TEST — automation FOREMAN, do not assign") to Foreman in the app and run again.';
+  end if;
   perform pg_temp.dry_run_check('setup: the sandbox job the run writes on (and throws away)', true, v_job_code);
   perform pg_temp.dry_run_check('setup: two different people who may write on the sandbox job', v_first <> v_second, null);
   perform pg_temp.dry_run_check('schema: daily_logs.revision, daily_log_contributions and the revision trigger exist',
