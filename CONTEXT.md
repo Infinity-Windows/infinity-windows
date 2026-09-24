@@ -80,7 +80,7 @@ Settled 2026-08-17. The warehouse answers one question — *where is it* — and
 
 Both are derived from sessions. Neither is stored directly. Storing an aggregate would destroy the other one permanently.
 
-**Chain** — finishing a unit hands the running clock to the next unit on the installer's list rather than stopping it. Walk time and prep time are real install cost and are captured this way, attributed to the unit being walked to. Block hands off exactly the same way — one behavior to learn; only the ended session is marked differently. The chain suppresses on multi-tier units: finishing one stops the clock, and the next unit starts fresh by hand — a storefront's teardown is not walk time. The field app's finish-proposes-next flow is the chain's UX foundation, but its clock semantics are new: today the walk between units is recorded nowhere.
+**Chain** — finishing a unit hands the running clock to the next unit on the installer's list rather than stopping it. Walk-over time — the walk and the pick-up between one unit and the next — is real install cost and is captured this way, attributed to the unit being walked to (it is NOT Prep time, which is job work that isn't on one unit; see The new front door). Block hands off exactly the same way — one behavior to learn; only the ended session is marked differently. The chain suppresses on multi-tier units: finishing one stops the clock, and the next unit starts fresh by hand — a storefront's teardown is not walk time. The field app's finish-proposes-next flow is the chain's UX foundation, but its clock semantics are new: today the walk between units is recorded nowhere.
 
 **Transition** — the part of a session between finishing one unit and starting work on the next. Inside the chain, accrues to the incoming unit.
 
@@ -1198,6 +1198,81 @@ way of working. Every card and player says so, and each chapter says whether
 it is proposed, in the app today, or partly. Published by a supervisor or
 owner through the in-app importer from a reviewed package, never written
 directly by any client; see docs/role-training-videos.md.
+
+## The new front door
+
+Settled 2026-09-23, crew redesign Release 1 (`.scratch/crew-redesign/
+crew-redesign-spec.md`, K-X2, K1.1–K1.9; grill Q1–Q9, Q64 owner change, Q69).
+See ADR-0012.
+
+**Design (classic / new)** — which front door a person sees. Two designs, one
+app, one database: the classic screens (My Work / Home / Heartbeat, the
+Menu · Today · Capture · Clock · Ask bar) and the new design (Work · Schedule
+· Capture · Ask · More, the Work screen, the Schedule tab). A person picks
+their own in Settings (`profiles.ui_design`, written only by
+`set_my_ui_design`) and switches back any time; the owner keeps a master
+switch per release (`company_settings.new_design_r1_enabled`) that sends
+everyone back to classic at once. Both designs write the same records, so
+payroll and reports never see two worlds. The classic screens are FROZEN —
+fixes only, retired when the owner says — which is why a new design screen
+is a new file beside the old one, never an edit of it. The resolved answer
+is cached on the device for the first paint (`lib/design/design.ts`).
+
+**Work** — the new design's landing, for every role, on and off the clock:
+the clock strip (status and one big button), heads-ups, Today / Next up,
+your unit, four quick buttons (Prep time · Take supplies · Daily log · Report
+a problem), and for leads the Jobs row where Release 3's crew summary will
+sit. Its one job is "clocked in? where? what's next?", and items 1–3 fit a
+375×667 screen without scrolling. Supervisors and owners land here too; the
+classic Heartbeat is one tap away as Overview and still in More — nothing is
+removed from the app, only moved.
+
+**Start day** — the one big button off the clock. It opens today's toolbox
+talk and clocks the person in, on today's scheduled job (one tap to change).
+People sign for themselves; the AI never signs. Until the owner's paid-time
+date, the order is today's: the talk first, and signing it IS the clock-in.
+From that date (`company_settings.paid_time_from_start_day_on`, one date for
+everyone, picked at the start of a pay period — Q69), paid time starts at the
+tap: the clock-in goes first and the talk is signed on the clock. Either way
+unit work stays locked until the talk is signed (`start_opening_work` still
+refuses), "Finish your toolbox talk" stays on Work, and the foreman's
+compliance list reads "not signed". No shift on record is ever recalculated —
+`paidTimeRule.test.ts` totals the same fixture shifts with the rule off and
+on and gets the same payroll to the cent. The server's clock-in gate is one
+function, `_toolbox_gate_open`, shared by every `clock_in` overload.
+
+**Prep time** — job work that isn't on one unit: gathering, hauling, setup,
+errands, cleanup. One tap from Work, a reason (Gathering · Hauling · Setup ·
+Errand · Cleanup · Other), optional voice. It is the display name of what the
+records still call idle: `custom_work_sessions.kind = 'idle'`, `stage =
+"Idle time"` and the AI tool `start_idle_time` are unchanged, old records
+show as Prep time, and the Spanish is ONE term everywhere, "Tiempo de
+preparación" (the two earlier renderings are gone). Waiting on an outside
+cause — material, equipment, an opening not ready — is not prep time; it is
+a Block on the unit. Walk-over time between units stays on the unit (Chain).
+
+**Next up** — what the Work screen offers as your unit, decided in one place
+(`lib/work/nextUp.ts`) in a fixed order: the unit already running; else
+yesterday's unfinished; else one assigned to you (today's job first); else
+one available on today's job; else — and only then — a blank New unit, whose
+number is checked against the job's saved units as it is typed so a twin is
+joined rather than made. A session-blocked unit is never offered.
+
+**Heads-up** — a rule-based one-line notice on Work with a door, at most
+three, never a feed and never a push: the toolbox talk not signed while on
+the clock, a photo unsent for over an hour, an assignment changed since it
+was published, units waiting for QC (leads). Borrowed-equipment overdue joins
+in Release 5. Push stays reserved for tomorrow's schedule changes and summons.
+
+**Changed** — the tag on a schedule entry edited clearly after it was
+published (`updated_at` more than a minute past `published_at`) within the
+last two days. A fact about the record, so every phone on the crew agrees.
+
+**Saved copy of the schedule** — the Schedule tab and the Today card read one
+window, today + 7 days, through one cached query (`workSchedule`, kept on the
+phone). With no signal they show the copy under "Showing your schedule from
+<time> — can't reach Forge", and with no copy at all they say Forge cannot be
+reached. They never say "no work" for a phone that merely has no signal.
 
 ## Open questions
 

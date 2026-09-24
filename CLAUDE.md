@@ -127,6 +127,17 @@ throw that escapes the handler, and a caught one is invisible without it.
 **`tsconfig` has `noUnusedLocals`.** Removing the last use of an import breaks the
 build. Let `tsc` tell you which ones to drop.
 
+**There are two front doors, and the classic one is frozen.** Since Release 1 of
+the crew redesign (2026-09-23) a person is on the classic screens or the new
+design (`useDesign()` — `profiles.ui_design` under the owner's master switch).
+`RoleLanding` and `/my-schedule` fork on it; `bottomBarForRole` and
+`menuForRole` take it. A new design screen is a new file beside the old one
+(`pages/work/`, `components/work/`), never an edit of the classic screen, which
+takes fixes only. The new screens' strings live in `lib/i18n/workCatalog.ts`
+(and the settings card's in `designCatalog.ts`), registered into the catalog by
+the lazy chunk that uses them — the entry chunk has no room for them — so a
+component under `components/work/` imports that file for its side effect.
+
 **Every query-key root is registered in `lib/queryKeys.ts` with an offline flag.**
 A test fails on an unregistered root. Registering means deciding whether the
 phone keeps it.
