@@ -48,7 +48,7 @@ vi.mock("../lib/supabase", () => ({ supabaseConfigured: false, supabase: {} }));
 
 // The phone's own storage for a message the server did not get. Whether it
 // works is the whole difference between "held in memory" and "kept".
-const phone = vi.hoisted(() => ({ canKeep: false }));
+const phone = vi.hoisted(() => ({ canKeep: false, transcribe: false, transcribedWith: null as null | string }));
 vi.mock("../lib/fieldAsk", () => ({
   FIELD_QUERY_ROOTS: [],
   currentConversation: () => "conversation-1",
@@ -65,11 +65,21 @@ vi.mock("../lib/fieldAsk", () => ({
   // The real runVoiceSteps tries keep() first and carries on from there; this
   // double runs Ask's own keep() — which is what clears the held card — and
   // then reports that the rest did not get through (no signal).
-  runVoiceSteps: async (steps: { keep: (text: string, error: string) => Promise<boolean> }) => ({
-    outcome: "failed",
-    keptOnPhone: await steps.keep("", "offline"),
-    error: "offline",
-  }),
+  runVoiceSteps: async (steps: { keep: (text: string, error: string) => Promise<boolean>; transcribe: () => Promise<string>; send: (words: string, path: string) => void }) => {
+    // K2.6: with `transcribe` on, the double runs the real order — words
+    // first, then send — so the transcript bubble is on screen at once.
+    if (phone.transcribe) {
+      const kept = await steps.keep("", "pending");
+      const words = await steps.transcribe();
+      steps.send(words, "memo/path");
+      return { outcome: "sent", keptOnPhone: kept };
+    }
+    return {
+      outcome: "failed",
+      keptOnPhone: await steps.keep("", "offline"),
+      error: "offline",
+    };
+  },
   sessionUserIs: async () => true,
   uploadMemo: async () => "memo/path",
 }));
@@ -86,7 +96,10 @@ vi.mock("../lib/voiceRecording", () => ({
     }),
 }));
 vi.mock("../lib/dictation", () => ({
-  transcribeDescription: () => new Promise<string>(() => {}),
+  transcribeDescription: (_blob: Blob, lang: string) => {
+    phone.transcribedWith = lang;
+    return phone.transcribe ? Promise.resolve("Unidad cuatro is a bifold, dos paneles") : new Promise<string>(() => {});
+  },
 }));
 
 import { AskInfinity } from "./AskInfinity";
@@ -127,6 +140,8 @@ beforeEach(() => {
   mic.onComplete = null;
   mic.resolveStart = null;
   phone.canKeep = false;
+  phone.transcribe = false;
+  phone.transcribedWith = null;
   vi.stubGlobal("URL", {
     ...URL,
     createObjectURL: () => "blob:held",
@@ -191,6 +206,22 @@ describe("Ask's voice message and unsaved work", () => {
     expect(host!.textContent).not.toContain("NOT saved yet");
     expect(host!.textContent).toContain("connection");
     expect(hasUnsavedWork()).toBe(false);
+  });
+
+  it("hears English, Spanish or a mix, and shows the transcript the moment it is written out (K2.6)", async () => {
+    phone.canKeep = true;
+    phone.transcribe = true;
+    await mount();
+    await act(async () => micButton()!.click());
+    await act(async () => mic.resolveStart?.());
+    await settle();
+    await act(async () => mic.onComplete?.(new Blob(["audio"], { type: "audio/webm" })));
+    await settle();
+    // No forced language: the provider hears what was said.
+    expect(phone.transcribedWith).toBe("auto");
+    // The person's own words are on screen as their bubble, ahead of any reply.
+    const mine = [...host!.querySelectorAll(".ask-bubble.mine")].map((b) => b.textContent);
+    expect(mine).toContain("Unidad cuatro is a bifold, dos paneles");
   });
 
   it("releases on unmount", async () => {

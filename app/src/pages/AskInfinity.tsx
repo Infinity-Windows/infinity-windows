@@ -568,7 +568,9 @@ export function AskInfinity() {
         if (isCurrent(g)) setVoice("transcribing");
         const abort = new AbortController();
         recordAbort.current = abort;
-        return transcribeDescription(blob, lang, abort.signal);
+        // K2.6: English, Spanish or a mix — the provider hears which; the
+        // reply comes back in the language the person used.
+        return transcribeDescription(blob, "auto", abort.signal);
       },
       send: (words, path) => send(words, { ...meta, audio_path: path }, g),
     });

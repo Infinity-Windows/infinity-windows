@@ -10,7 +10,9 @@ export function appendDictation(current: string, transcript: string, multiline: 
   return maxLength >= 0 && result.length > maxLength ? null : result;
 }
 
-export async function transcribeDescription(audio: Blob, lang: Lang, signal: AbortSignal): Promise<string> {
+/** `lang` "auto" lets the provider hear English, Spanish or a mix (Ask's
+ * microphone, K2.6); a text field's dictation mic sends its own language. */
+export async function transcribeDescription(audio: Blob, lang: Lang | "auto", signal: AbortSignal): Promise<string> {
   if (signal.aborted) throw new Error("recording_canceled");
   if (!navigator.onLine) throw new Error("offline");
   const controller = new AbortController();
