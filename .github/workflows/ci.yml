@@ -276,6 +276,15 @@ jobs:
         shell: bash
         run: scripts/advisory-comment.test.sh
 
+      # The rolled-back practice run (db-dry-run.yml) sends a migration to
+      # PRODUCTION inside a transaction it then throws away. What is pinned
+      # here is that promise: the batch it builds ends in the forced error,
+      # nothing that could commit gets into it, a failed statement or a
+      # failed check is red, and the token is never printed. Stubs curl.
+      - name: Test scripts/db-dry-run.sh
+        shell: bash
+        run: scripts/db-dry-run.test.sh
+
   forge-permissions:
     name: Forge database permission boundaries
     runs-on: ubuntu-latest
@@ -283,6 +292,18 @@ jobs:
       - uses: actions/checkout@v4
       - name: Test real PostgreSQL roles with synthetic records
         run: scripts/test-forge-permissions.sh
+
+  db-dry-run-harness:
+    name: Database dry run harness on a real PostgreSQL
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # The SQL half of the practice run, in a disposable container: a probe
+      # acting as a login can record checks, a refusal is caught without
+      # aborting the batch, the results ride out in the forced error, and —
+      # the point — the migration and every row it wrote are gone afterwards.
+      - name: Test scripts/db-dry-run-harness.test.sh
+        run: scripts/db-dry-run-harness.test.sh
 
   supabase-tooling:
     name: Supabase merge tooling
@@ -396,6 +417,13 @@ jobs:
       # no token, no project, no network.
       - name: Test the migration-history phantom cleanup
         run: scripts/cleanup-migration-phantoms.test.sh
+
+      # The practice run's builder and judge: what may not enter the batch
+      # (anything that could commit), a migration's own begin/commit wrapper
+      # set aside rather than trusted, and the answer read in every shape it
+      # arrives in. Stdlib only, offline.
+      - name: Test the database dry-run builder and judge
+        run: python3 scripts/test_db_dry_run.py
 
       # The dry run must stay runnable with no credentials. If it ever needs a
       # database to plan a merge, that is a bug.

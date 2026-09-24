@@ -138,6 +138,13 @@ phone. A new field tool follows [`docs/ai-field-operations.md`](docs/ai-field-op
 `profiles.active` is On site / Off today, not login access — gate on
 `retired_at` / `access_revoked_at` (as `custom_work_internal` now does).
 
+**A new migration or RPC is tried on the real database and rolled back before it
+merges.** Twice one passed every local test and failed in production on a
+constraint the fixture never had. Write a probe from
+`scripts/dry-run-probes/TEMPLATE.sql` that CALLS the RPC as the roles that will,
+on BLACK22, then `gh workflow run db-dry-run.yml` — [`docs/db-dry-run.md`](docs/db-dry-run.md).
+The forced error at the end of the batch is what guarantees nothing is kept.
+
 **Most of the laws above are checked on every pull request.** The exact ones by
 `scripts/advisory-rules.sh`, which can go red; the rest by three prompts in
 `.checks/`, which never can — [`docs/advisory-review.md`](docs/advisory-review.md).
