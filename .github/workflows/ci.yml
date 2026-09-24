@@ -44,6 +44,12 @@ jobs:
       - name: Verify caller-scoped AI report queries
         run: node --experimental-strip-types ../scripts/verify-ask-reporting.mjs
 
+      # The Forge AI evaluation set against the real tool layer with a stubbed
+      # model (scripts/ask-eval/cases.json). Deterministic; a live-model run
+      # is manual and opt-in (--live), never here.
+      - name: Forge AI evaluation set (stubbed model)
+        run: node --experimental-strip-types ../scripts/ask-eval.mjs
+
   custom-work-sql:
     name: Custom work database invariants
     runs-on: ubuntu-latest

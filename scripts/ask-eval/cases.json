@@ -1,0 +1,1985 @@
+{
+  "$comment": "Forge AI evaluation set (crew redesign Release 2, owner priority 'AI model improvements'). Realistic crew requests in English, Spanish, mixed and noisy voice-style transcripts, each with the checklist/receipt outcome the tool layer must produce. `stub` is the tool trajectory a well-behaved model takes: `node --experimental-strip-types scripts/ask-eval.mjs` replays it through the real registry, executors and receipt guard with no model at all; `--live` sends only `utterance` to a real model and scores what it actually did. Synthetic jobs and people only (scripts/ask-eval.mjs builds the world).",
+  "cases": [
+    {
+      "id": "unit-setup-en-basic",
+      "action": "build_unit",
+      "lang": "en",
+      "rank": 0,
+      "kind": "text",
+      "utterance": "Unit 4 on Smith is a bifold door, aluminum, second floor",
+      "world": {
+        "clock": "smith",
+        "field": true
+      },
+      "stub": {
+        "tools": [
+          {
+            "name": "get_field_context",
+            "input": {
+              "project_id": null,
+              "search": "Smith"
+            }
+          },
+          {
+            "name": "record_setup_answers",
+            "input": {
+              "job": {
+                "name": "Smith Residence",
+                "location": null,
+                "project_id": "$SMITH"
+              },
+              "unit": {
+                "label": "4",
+                "type_label": "Bifold door",
+                "material": "aluminum",
+                "story": "2"
+              }
+            }
+          }
+        ],
+        "text": "Got it: unit 4 on Smith Residence, a bifold door, aluminum, second floor. What size is it, and was that measured, from plans or estimated?"
+      },
+      "expect": {
+        "toolsAny": [
+          "record_setup_answers"
+        ],
+        "toolsNever": [
+          "save_field_unit",
+          "start_unit_work"
+        ],
+        "checklistCaptured": [
+          "label",
+          "type_label",
+          "material",
+          "story"
+        ],
+        "checklistMissing": [
+          "width_in"
+        ],
+        "receipts": [],
+        "noWrite": true,
+        "answerLang": "en",
+        "noDoneClaim": true
+      },
+      "$comment": "Typed with no card and no open conversation the router would not send this as a field request; `field: true` stands for the Build a unit card tap (K2.2). The runner reports the router finding either way."
+    },
+    {
+      "id": "unit-setup-en-measured",
+      "action": "build_unit",
+      "lang": "en",
+      "rank": 0,
+      "kind": "text",
+      "utterance": "It's eight feet by six feet, I measured it on site",
+      "world": {
+        "clock": "smith",
+        "draft": {
+          "job": "$SMITH",
+          "unit": {
+            "label": "4",
+            "type_label": "Bifold door"
+          }
+        }
+      },
+      "stub": {
+        "tools": [
+          {
+            "name": "record_setup_answers",
+            "input": {
+              "job": null,
+              "unit": {
+                "label": null,
+                "width": {
+                  "feet": 8,
+                  "inches": null,
+                  "metric_value": null,
+                  "metric_unit": null,
+                  "spoken": "eight feet"
+                },
+                "height": {
+                  "feet": 6,
+                  "inches": null,
+                  "metric_value": null,
+                  "metric_unit": null,
+                  "spoken": "six feet"
+                },
+                "size_source": "Measured"
+              }
+            }
+          }
+        ],
+        "text": "96 by 72 inches, measured on site. Still needed: the frame material and the story. Want me to save it?"
+      },
+      "expect": {
+        "toolsAny": [
+          "record_setup_answers"
+        ],
+        "checklistCaptured": [
+          "width_in",
+          "height_in",
+          "area_source"
+        ],
+        "checklistValues": {
+          "width_in": "96 in",
+          "height_in": "72 in",
+          "area_source": "Measured"
+        },
+        "noWrite": true,
+        "noDoneClaim": true
+      }
+    },
+    {
+      "id": "unit-setup-en-unknown",
+      "action": "build_unit",
+      "lang": "en",
+      "rank": 0,
+      "kind": "text",
+      "utterance": "I don't know the material, and it's a sliding door, unit 7",
+      "world": {
+        "clock": "smith",
+        "draft": {
+          "job": "$SMITH"
+        }
+      },
+      "stub": {
+        "tools": [
+          {
+            "name": "record_setup_answers",
+            "input": {
+              "job": null,
+              "unit": {
+                "label": "7",
+                "type_label": "Sliding door",
+                "unknown": [
+                  "material"
+                ]
+              }
+            }
+          }
+        ],
+        "text": "Unit 7, a sliding door; material marked as unknown. What size is it?"
+      },
+      "expect": {
+        "checklistCaptured": [
+          "label",
+          "type_label"
+        ],
+        "checklistUnknown": [
+          "material"
+        ],
+        "noWrite": true,
+        "noDoneClaim": true
+      }
+    },
+    {
+      "id": "unit-setup-en-fixed-no-direction",
+      "action": "build_unit",
+      "lang": "en",
+      "rank": 0,
+      "kind": "text",
+      "utterance": "Unit 9 is a fixed picture window, vinyl",
+      "world": {
+        "clock": "smith",
+        "draft": {
+          "job": "$SMITH"
+        }
+      },
+      "stub": {
+        "tools": [
+          {
+            "name": "record_setup_answers",
+            "input": {
+              "job": null,
+              "unit": {
+                "label": "9",
+                "type_label": "Fixed picture window",
+                "material": "vinyl"
+              }
+            }
+          }
+        ],
+        "text": "Unit 9, a fixed picture window, vinyl. What size, and which story?"
+      },
+      "expect": {
+        "checklistNotApplicable": [
+          "opening_direction"
+        ],
+        "checklistCaptured": [
+          "material"
+        ],
+        "checklistValues": {
+          "material": "Vinyl"
+        },
+        "noWrite": true
+      }
+    },
+    {
+      "id": "unit-setup-en-components",
+      "action": "build_unit",
+      "lang": "en",
+      "rank": 0,
+      "kind": "text",
+      "utterance": "Unit 4 has two door panels and one frame",
+      "world": {
+        "clock": "smith",
+        "draft": {
+          "job": "$SMITH",
+          "unit": {
+            "label": "4",
+            "type_label": "Bifold door"
+          }
+        }
+      },
+      "stub": {
+        "tools": [
+          {
+            "name": "record_setup_answers",
+            "input": {
+              "job": null,
+              "unit": {
+                "label": "4",
+                "components": [
+                  {
+                    "label": "Door panel",
+                    "quantity": 2
+                  },
+                  {
+                    "label": "Frame",
+                    "quantity": 1
+                  }
+                ]
+              }
+            }
+          }
+        ],
+        "text": "Two door panels and one frame on unit 4. What size is it?"
+      },
+      "expect": {
+        "checklistValues": {
+          "components": "2 × Door panel, 1 × Frame"
+        },
+        "noWrite": true
+      }
+    },
+    {
+      "id": "unit-save-en",
+      "action": "build_unit",
+      "lang": "en",
+      "rank": 0,
+      "kind": "text",
+      "utterance": "Save unit 4 now",
+      "world": {
+        "clock": "smith",
+        "draft": {
+          "job": "$SMITH",
+          "unit": {
+            "label": "4",
+            "type_label": "Bifold door",
+            "material": "Aluminum"
+          }
+        }
+      },
+      "stub": {
+        "tools": [
+          {
+            "name": "save_field_unit",
+            "input": {
+              "project_id": "$SMITH",
+              "unit_id": null,
+              "opening_id": null,
+              "unit": {
+                "label": "4",
+                "type_label": "Bifold door",
+                "material": "Aluminum"
+              }
+            }
+          }
+        ],
+        "text": "Unit 4 is saved on Smith Residence as a bifold door, aluminum. Say start when you want the timer on it."
+      },
+      "expect": {
+        "toolsAny": [
+          "save_field_unit"
+        ],
+        "receipts": [
+          {
+            "action": "save_unit",
+            "status": "done"
+          }
+        ],
+        "doneClaimBacked": true
+      }
+    },
+    {
+      "id": "unit-setup-es-basic",
+      "action": "build_unit",
+      "lang": "es",
+      "rank": 0,
+      "kind": "text",
+      "utterance": "La unidad 4 en Smith es una puerta plegable de aluminio, segundo piso",
+      "world": {
+        "clock": "smith",
+        "field": true
+      },
+      "stub": {
+        "tools": [
+          {
+            "name": "get_field_context",
+            "input": {
+              "project_id": null,
+              "search": "Smith"
+            }
+          },
+          {
+            "name": "record_setup_answers",
+            "input": {
+              "job": {
+                "name": "Smith Residence",
+                "location": null,
+                "project_id": "$SMITH"
+              },
+              "unit": {
+                "label": "4",
+                "type_label": "Puerta plegable",
+                "material": "aluminio",
+                "story": "2"
+              }
+            }
+          }
+        ],
+        "text": "Anotado: unidad 4 en Smith Residence, puerta plegable de aluminio, segundo piso. ¿Qué medida tiene, y fue medida en sitio, de planos o estimada?"
+      },
+      "expect": {
+        "checklistCaptured": [
+          "label",
+          "type_label",
+          "material",
+          "story"
+        ],
+        "checklistValues": {
+          "material": "Aluminum"
+        },
+        "noWrite": true,
+        "answerLang": "es",
+        "noDoneClaim": true
+      },
+      "$comment": "Typed with no card and no open conversation the router would not send this as a field request; `field: true` stands for the Build a unit card tap (K2.2). The runner reports the router finding either way."
+    },
+    {
+      "id": "unit-setup-es-metric",
+      "action": "build_unit",
+      "lang": "es",
+      "rank": 0,
+      "kind": "text",
+      "utterance": "Mide dos metros por uno ochenta, lo medí en la obra",
+      "world": {
+        "clock": "smith",
+        "draft": {
+          "job": "$SMITH",
+          "unit": {
+            "label": "4",
+            "type_label": "Puerta plegable"
+          }
+        }
+      },
+      "stub": {
+        "tools": [
+          {
+            "name": "record_setup_answers",
+            "input": {
+              "job": null,
+              "unit": {
+                "label": null,
+                "width": {
+                  "feet": null,
+                  "inches": null,
+                  "metric_value": 2,
+                  "metric_unit": "m",
+                  "spoken": "dos metros"
+                },
+                "height": {
+                  "feet": null,
+                  "inches": null,
+                  "metric_value": 1.8,
+                  "metric_unit": "m",
+                  "spoken": "uno ochenta"
+                },
+                "size_source": "Measured"
+              }
+            }
+          }
+        ],
+        "text": "78.75 por 70.875 pulgadas, medido en la obra. ¿De qué material es el marco?"
+      },
+      "expect": {
+        "checklistValues": {
+          "width_in": "78.75 in",
+          "height_in": "70.875 in",
+          "area_source": "Measured"
+        },
+        "answerLang": "es",
+        "noWrite": true
+      }
+    },
+    {
+      "id": "unit-setup-es-unknown-story",
+      "action": "build_unit",
+      "lang": "es",
+      "rank": 0,
+      "kind": "text",
+      "utterance": "No sé en qué piso está",
+      "world": {
+        "clock": "smith",
+        "draft": {
+          "job": "$SMITH",
+          "unit": {
+            "label": "4",
+            "type_label": "Puerta plegable"
+          }
+        }
+      },
+      "stub": {
+        "tools": [
+          {
+            "name": "record_setup_answers",
+            "input": {
+              "job": null,
+              "unit": {
+                "label": null,
+                "unknown": [
+                  "story"
+                ]
+              }
+            }
+          }
+        ],
+        "text": "Piso: no lo sabes, queda anotado así. ¿Qué medida tiene?"
+      },
+      "expect": {
+        "checklistUnknown": [
+          "story"
+        ],
+        "answerLang": "es",
+        "noWrite": true
+      }
+    },
+    {
+      "id": "unit-setup-mixed-1",
+      "action": "build_unit",
+      "lang": "mixed",
+      "rank": 0,
+      "kind": "voice",
+      "utterance": "Unit cuatro es un bifold, two panels, aluminio, on the second floor",
+      "world": {
+        "clock": "smith",
+        "draft": {
+          "job": "$SMITH"
+        }
+      },
+      "stub": {
+        "tools": [
+          {
+            "name": "record_setup_answers",
+            "input": {
+              "job": null,
+              "unit": {
+                "label": "4",
+                "type_label": "Bifold door",
+                "material": "aluminio",
+                "story": "2",
+                "components": [
+                  {
+                    "label": "Panel",
+                    "quantity": 2
+                  }
+                ]
+              }
+            }
+          }
+        ],
+        "text": "Unidad 4: bifold, dos paneles, aluminio, segundo piso. ¿Qué medida tiene?"
+      },
+      "expect": {
+        "checklistCaptured": [
+          "label",
+          "type_label",
+          "material",
+          "story",
+          "components"
+        ],
+        "checklistValues": {
+          "material": "Aluminum"
+        },
+        "noWrite": true
+      }
+    },
+    {
+      "id": "unit-setup-mixed-2",
+      "action": "build_unit",
+      "lang": "mixed",
+      "rank": 0,
+      "kind": "voice",
+      "utterance": "ok la 7 is a slider, vinyl, no sé el tamaño todavía",
+      "world": {
+        "clock": "smith",
+        "draft": {
+          "job": "$SMITH"
+        }
+      },
+      "stub": {
+        "tools": [
+          {
+            "name": "record_setup_answers",
+            "input": {
+              "job": null,
+              "unit": {
+                "label": "7",
+                "type_label": "Sliding door",
+                "material": "vinyl",
+                "unknown": [
+                  "width_in",
+                  "height_in"
+                ]
+              }
+            }
+          }
+        ],
+        "text": "Unidad 7, slider de vinilo; tamaño marcado como desconocido. ¿En qué piso está?"
+      },
+      "expect": {
+        "checklistCaptured": [
+          "label",
+          "type_label",
+          "material"
+        ],
+        "checklistUnknown": [
+          "width_in",
+          "height_in"
+        ],
+        "noWrite": true
+      }
+    },
+    {
+      "id": "voice-noisy-1",
+      "action": "build_unit",
+      "lang": "en",
+      "rank": 0,
+      "kind": "voice",
+      "utterance": "uh unit four its a bi fold door um aluminum second floor",
+      "world": {
+        "clock": "smith",
+        "draft": {
+          "job": "$SMITH"
+        }
+      },
+      "stub": {
+        "tools": [
+          {
+            "name": "record_setup_answers",
+            "input": {
+              "job": null,
+              "unit": {
+                "label": "4",
+                "type_label": "Bifold door",
+                "material": "aluminum",
+                "story": "2"
+              }
+            }
+          }
+        ],
+        "text": "Unit 4: bifold door, aluminum, second floor. What size?"
+      },
+      "expect": {
+        "checklistCaptured": [
+          "label",
+          "type_label",
+          "material",
+          "story"
+        ],
+        "noWrite": true,
+        "noDoneClaim": true
+      }
+    },
+    {
+      "id": "voice-noisy-2",
+      "action": "build_unit",
+      "lang": "en",
+      "rank": 0,
+      "kind": "voice",
+      "utterance": "unit 4 bifold 8 by six",
+      "world": {
+        "clock": "smith",
+        "draft": {
+          "job": "$SMITH"
+        }
+      },
+      "stub": {
+        "tools": [
+          {
+            "name": "record_setup_answers",
+            "input": {
+              "job": null,
+              "unit": {
+                "label": "4",
+                "type_label": "Bifold door",
+                "width": {
+                  "feet": 8,
+                  "inches": null,
+                  "metric_value": null,
+                  "metric_unit": null,
+                  "spoken": "8"
+                },
+                "height": {
+                  "feet": 6,
+                  "inches": null,
+                  "metric_value": null,
+                  "metric_unit": null,
+                  "spoken": "six"
+                }
+              }
+            }
+          }
+        ],
+        "text": "Unit 4, bifold, 8 by 6 feet. Was that measured on site, from plans, or estimated?"
+      },
+      "expect": {
+        "checklistCaptured": [
+          "width_in",
+          "height_in"
+        ],
+        "checklistMissing": [
+          "area_source"
+        ],
+        "noWrite": true
+      }
+    },
+    {
+      "id": "voice-noisy-3-start",
+      "action": "build_unit",
+      "lang": "en",
+      "rank": 0,
+      "kind": "voice",
+      "utterance": "start the timer on unit 4 um install",
+      "world": {
+        "clock": "smith",
+        "draft": {
+          "job": "$SMITH",
+          "unit": {
+            "label": "4",
+            "type_label": "Bifold door"
+          }
+        },
+        "savedUnits": [
+          "4"
+        ]
+      },
+      "stub": {
+        "tools": [
+          {
+            "name": "get_field_context",
+            "input": {
+              "project_id": "$SMITH",
+              "search": "4"
+            }
+          },
+          {
+            "name": "start_unit_work",
+            "input": {
+              "project_id": "$SMITH",
+              "unit_id": "$U4",
+              "stage": "Installing",
+              "participation": "install"
+            }
+          }
+        ],
+        "text": "Timer running on unit 4, Installing."
+      },
+      "expect": {
+        "toolsAny": [
+          "start_unit_work"
+        ],
+        "receipts": [
+          {
+            "action": "start_unit",
+            "status": "running"
+          }
+        ],
+        "doneClaimBacked": true
+      }
+    },
+    {
+      "id": "voice-noisy-4-finished-ambiguous",
+      "action": "finish_unit",
+      "lang": "en",
+      "rank": 0,
+      "kind": "voice",
+      "utterance": "ok so I'm done with this one",
+      "world": {
+        "clock": "smith",
+        "running": "4"
+      },
+      "stub": {
+        "tools": [],
+        "text": "Do you mean this stage is done, or the whole unit? If this stage: finished, partial, blocked or rework?"
+      },
+      "expect": {
+        "toolsNever": [
+          "stop_my_work"
+        ],
+        "receipts": [],
+        "noWrite": true,
+        "noDoneClaim": true,
+        "asksQuestion": true
+      }
+    },
+    {
+      "id": "start-timer-clocked-in",
+      "action": "build_unit",
+      "lang": "en",
+      "rank": 0,
+      "kind": "text",
+      "utterance": "Start unit 4, installing",
+      "world": {
+        "clock": "smith",
+        "savedUnits": [
+          "4"
+        ]
+      },
+      "stub": {
+        "tools": [
+          {
+            "name": "get_field_context",
+            "input": {
+              "project_id": "$SMITH",
+              "search": "4"
+            }
+          },
+          {
+            "name": "start_unit_work",
+            "input": {
+              "project_id": "$SMITH",
+              "unit_id": "$U4",
+              "stage": "Installing",
+              "participation": "install"
+            }
+          }
+        ],
+        "text": "Timer running on unit 4 since now, Installing."
+      },
+      "expect": {
+        "receipts": [
+          {
+            "action": "start_unit",
+            "status": "running",
+            "outcome": "started"
+          }
+        ],
+        "doneClaimBacked": true
+      }
+    },
+    {
+      "id": "start-timer-not-clocked-in",
+      "action": "build_unit",
+      "lang": "en",
+      "rank": 0,
+      "kind": "text",
+      "utterance": "Start unit 4",
+      "world": {
+        "clock": null,
+        "savedUnits": [
+          "4"
+        ]
+      },
+      "stub": {
+        "tools": [
+          {
+            "name": "get_field_context",
+            "input": {
+              "project_id": "$SMITH",
+              "search": "4"
+            }
+          },
+          {
+            "name": "start_unit_work",
+            "input": {
+              "project_id": "$SMITH",
+              "unit_id": "$U4",
+              "stage": "Installing",
+              "participation": "install"
+            }
+          }
+        ],
+        "text": "You're not clocked in, so nothing started. The card asks you to clock in on the job clock and then tap Start now."
+      },
+      "expect": {
+        "receipts": [
+          {
+            "action": "start_unit",
+            "status": "needs_choice",
+            "reason": "needs_clock"
+          }
+        ],
+        "noDoneClaim": true
+      }
+    },
+    {
+      "id": "start-timer-on-break",
+      "action": "build_unit",
+      "lang": "en",
+      "rank": 0,
+      "kind": "text",
+      "utterance": "Start unit 4",
+      "world": {
+        "clock": "smith",
+        "onBreak": true,
+        "savedUnits": [
+          "4"
+        ]
+      },
+      "stub": {
+        "tools": [
+          {
+            "name": "get_field_context",
+            "input": {
+              "project_id": "$SMITH",
+              "search": "4"
+            }
+          },
+          {
+            "name": "start_unit_work",
+            "input": {
+              "project_id": "$SMITH",
+              "unit_id": "$U4",
+              "stage": "Installing",
+              "participation": "install"
+            }
+          }
+        ],
+        "text": "You're on break. The card asks whether to end your break and start unit 4 — tap it if so; nothing has changed yet."
+      },
+      "expect": {
+        "receipts": [
+          {
+            "action": "start_unit",
+            "status": "needs_choice",
+            "reason": "on_break"
+          }
+        ],
+        "noDoneClaim": true
+      }
+    },
+    {
+      "id": "start-timer-wrong-job",
+      "action": "build_unit",
+      "lang": "en",
+      "rank": 0,
+      "kind": "text",
+      "utterance": "Start unit 4 on Smith",
+      "world": {
+        "clock": "smythe",
+        "savedUnits": [
+          "4"
+        ]
+      },
+      "stub": {
+        "tools": [
+          {
+            "name": "get_field_context",
+            "input": {
+              "project_id": null,
+              "search": "Smith"
+            }
+          },
+          {
+            "name": "start_unit_work",
+            "input": {
+              "project_id": "$SMITH",
+              "unit_id": "$U4",
+              "stage": "Installing",
+              "participation": "install"
+            }
+          }
+        ],
+        "text": "Your job clock is on Smythe Ranch, not Smith Residence, so nothing started. Switch jobs with the job clock, then tap Start now on the card."
+      },
+      "expect": {
+        "receipts": [
+          {
+            "action": "start_unit",
+            "status": "needs_choice",
+            "reason": "wrong_job"
+          }
+        ],
+        "noDoneClaim": true
+      }
+    },
+    {
+      "id": "finish-stage-partial",
+      "action": "finish_unit",
+      "lang": "en",
+      "rank": 0,
+      "kind": "text",
+      "utterance": "Finished this stage on unit 4 for today, it's partial",
+      "world": {
+        "clock": "smith",
+        "running": "4"
+      },
+      "stub": {
+        "tools": [
+          {
+            "name": "stop_my_work",
+            "input": {
+              "outcome": "partial",
+              "note": null
+            }
+          }
+        ],
+        "text": "Your timer on unit 4 stopped, stage partial. Your job clock is still running."
+      },
+      "expect": {
+        "receipts": [
+          {
+            "action": "stop_work",
+            "status": "done",
+            "outcome": "stopped"
+          }
+        ],
+        "doneClaimBacked": true
+      }
+    },
+    {
+      "id": "finish-blocked-es",
+      "action": "finish_unit",
+      "lang": "es",
+      "rank": 0,
+      "kind": "voice",
+      "utterance": "Ya no puedo seguir con la 4, falta el herraje, bloqueada",
+      "world": {
+        "clock": "smith",
+        "running": "4"
+      },
+      "stub": {
+        "tools": [
+          {
+            "name": "stop_my_work",
+            "input": {
+              "outcome": "blocked",
+              "note": "Falta el herraje"
+            }
+          }
+        ],
+        "text": "Tu temporizador en la unidad 4 se detuvo: bloqueada, falta el herraje. Tu reloj de trabajo sigue corriendo."
+      },
+      "expect": {
+        "receipts": [
+          {
+            "action": "stop_work",
+            "status": "done"
+          }
+        ],
+        "answerLang": "es",
+        "doneClaimBacked": true
+      }
+    },
+    {
+      "id": "finish-nothing-running",
+      "action": "finish_unit",
+      "lang": "en",
+      "rank": 0,
+      "kind": "text",
+      "utterance": "Stop my timer, finished",
+      "world": {
+        "clock": "smith"
+      },
+      "stub": {
+        "tools": [
+          {
+            "name": "stop_my_work",
+            "input": {
+              "outcome": "finished",
+              "note": null
+            }
+          }
+        ],
+        "text": "No timer was running, so nothing stopped."
+      },
+      "expect": {
+        "receipts": [
+          {
+            "action": "stop_work",
+            "status": "done",
+            "outcome": "already_stopped"
+          }
+        ],
+        "noDoneClaim": true
+      }
+    },
+    {
+      "id": "daily-log-en-first",
+      "action": "daily_log",
+      "lang": "en",
+      "rank": 0,
+      "kind": "text",
+      "utterance": "Build today's daily log — I set six frames on the east wall with Ben, the lift was late",
+      "world": {
+        "clock": "smith",
+        "dailyLog": true
+      },
+      "stub": {
+        "tools": [
+          {
+            "name": "record_daily_log_answers",
+            "input": {
+              "work_completed": "Set six frames on the east wall",
+              "units_stages": null,
+              "people": "Ben",
+              "problems": "The lift was late",
+              "notes": null,
+              "day_flow": null,
+              "weather": null,
+              "went_well": null,
+              "went_poorly": null,
+              "would_have_helped": null,
+              "what_worked": null,
+              "unknown": []
+            }
+          }
+        ],
+        "text": "Got it: six frames on the east wall with Ben; the lift was late. Which units or stages, and anything else worth noting? Check the card and tap Save daily log when it's right."
+      },
+      "expect": {
+        "toolsAny": [
+          "record_daily_log_answers"
+        ],
+        "dailyAnswers": {
+          "work_completed": "Set six frames on the east wall",
+          "people": "Ben",
+          "problems": "The lift was late"
+        },
+        "noWrite": true,
+        "noDoneClaim": true
+      }
+    },
+    {
+      "id": "daily-log-es-first",
+      "action": "daily_log",
+      "lang": "es",
+      "rank": 0,
+      "kind": "voice",
+      "utterance": "Hacer el registro de hoy: pusimos seis marcos en la pared este con Ben, el elevador llegó tarde",
+      "world": {
+        "clock": "smith",
+        "dailyLog": true
+      },
+      "stub": {
+        "tools": [
+          {
+            "name": "record_daily_log_answers",
+            "input": {
+              "work_completed": "Pusimos seis marcos en la pared este",
+              "units_stages": null,
+              "people": "Ben",
+              "problems": "El elevador llegó tarde",
+              "notes": null,
+              "day_flow": null,
+              "weather": null,
+              "went_well": null,
+              "went_poorly": null,
+              "would_have_helped": null,
+              "what_worked": null,
+              "unknown": []
+            }
+          }
+        ],
+        "text": "Anotado: seis marcos en la pared este con Ben; el elevador llegó tarde. ¿Qué unidades o etapas? Revisa la tarjeta y toca Guardar registro cuando esté bien."
+      },
+      "expect": {
+        "dailyAnswers": {
+          "people": "Ben"
+        },
+        "answerLang": "es",
+        "noWrite": true,
+        "noDoneClaim": true
+      }
+    },
+    {
+      "id": "daily-log-mixed",
+      "action": "daily_log",
+      "lang": "mixed",
+      "rank": 1,
+      "kind": "voice",
+      "utterance": "daily log: flashed units 3 y 4, todo bien, el clima estuvo caliente",
+      "world": {
+        "clock": "smith",
+        "dailyLog": true
+      },
+      "stub": {
+        "tools": [
+          {
+            "name": "record_daily_log_answers",
+            "input": {
+              "work_completed": "Flashed units 3 and 4",
+              "units_stages": "Units 3 and 4, flashing",
+              "people": null,
+              "problems": null,
+              "notes": null,
+              "day_flow": "smooth",
+              "weather": "Hot",
+              "went_well": null,
+              "went_poorly": null,
+              "would_have_helped": null,
+              "what_worked": null,
+              "unknown": []
+            }
+          }
+        ],
+        "text": "Flashing en las unidades 3 y 4, día tranquilo, clima caliente. ¿Quién estuvo contigo?"
+      },
+      "expect": {
+        "dailyAnswers": {
+          "units_stages": "Units 3 and 4, flashing",
+          "day_flow": "smooth",
+          "weather": "Hot"
+        },
+        "noWrite": true
+      }
+    },
+    {
+      "id": "daily-log-unknown-people",
+      "action": "daily_log",
+      "lang": "en",
+      "rank": 0,
+      "kind": "text",
+      "utterance": "I don't know who else was there, I came late",
+      "world": {
+        "clock": "smith",
+        "dailyLog": true,
+        "dailyAnswers": {
+          "work_completed": "Set six frames"
+        }
+      },
+      "stub": {
+        "tools": [
+          {
+            "name": "record_daily_log_answers",
+            "input": {
+              "work_completed": null,
+              "units_stages": null,
+              "people": null,
+              "problems": null,
+              "notes": null,
+              "day_flow": null,
+              "weather": null,
+              "went_well": null,
+              "went_poorly": null,
+              "would_have_helped": null,
+              "what_worked": null,
+              "unknown": [
+                "people"
+              ]
+            }
+          }
+        ],
+        "text": "People marked unknown. Any problems or delays?"
+      },
+      "expect": {
+        "dailyUnknown": [
+          "people"
+        ],
+        "dailyAnswers": {
+          "work_completed": "Set six frames"
+        },
+        "noWrite": true
+      }
+    },
+    {
+      "id": "daily-log-never-invents",
+      "action": "daily_log",
+      "lang": "en",
+      "rank": 0,
+      "kind": "text",
+      "utterance": "Build today's daily log",
+      "world": {
+        "clock": "smith",
+        "dailyLog": true
+      },
+      "stub": {
+        "tools": [
+          {
+            "name": "record_daily_log_answers",
+            "input": {
+              "work_completed": null,
+              "units_stages": null,
+              "people": null,
+              "problems": null,
+              "notes": null,
+              "day_flow": null,
+              "weather": null,
+              "went_well": null,
+              "went_poorly": null,
+              "would_have_helped": null,
+              "what_worked": null,
+              "unknown": []
+            }
+          }
+        ],
+        "text": "What work did you complete today?"
+      },
+      "expect": {
+        "dailyAnswersAbsent": [
+          "work_completed",
+          "people",
+          "weather",
+          "problems"
+        ],
+        "noWrite": true,
+        "asksQuestion": true
+      }
+    },
+    {
+      "id": "lunch-en",
+      "action": "clock_buttons",
+      "lang": "en",
+      "rank": 0,
+      "kind": "voice",
+      "utterance": "going to lunch",
+      "world": {
+        "clock": "smith",
+        "field": false
+      },
+      "stub": {
+        "tools": [
+          {
+            "name": "offer_clock_button",
+            "input": {
+              "action": "start_break",
+              "break_type": "lunch"
+            }
+          }
+        ],
+        "text": "Tap Start break below when you go — your break starts from your tap, not from this message."
+      },
+      "expect": {
+        "buttons": [
+          {
+            "action": "start_break",
+            "break_type": "lunch"
+          }
+        ],
+        "toolsNever": [
+          "start_unit_work",
+          "stop_my_work"
+        ],
+        "noWrite": true,
+        "noDoneClaim": true
+      }
+    },
+    {
+      "id": "lunch-es",
+      "action": "clock_buttons",
+      "lang": "es",
+      "rank": 0,
+      "kind": "voice",
+      "utterance": "voy a comer",
+      "world": {
+        "clock": "smith",
+        "field": false
+      },
+      "stub": {
+        "tools": [
+          {
+            "name": "offer_clock_button",
+            "input": {
+              "action": "start_break",
+              "break_type": "lunch"
+            }
+          }
+        ],
+        "text": "Toca Empezar descanso abajo cuando te vayas; el descanso empieza con tu toque, no con este mensaje."
+      },
+      "expect": {
+        "buttons": [
+          {
+            "action": "start_break",
+            "break_type": "lunch"
+          }
+        ],
+        "answerLang": "es",
+        "noWrite": true,
+        "noDoneClaim": true
+      }
+    },
+    {
+      "id": "back-from-lunch",
+      "action": "clock_buttons",
+      "lang": "en",
+      "rank": 0,
+      "kind": "text",
+      "utterance": "back from lunch",
+      "world": {
+        "clock": "smith",
+        "onBreak": true,
+        "field": false
+      },
+      "stub": {
+        "tools": [
+          {
+            "name": "offer_clock_button",
+            "input": {
+              "action": "end_break",
+              "break_type": null
+            }
+          }
+        ],
+        "text": "Tap End break below to get back on the clock."
+      },
+      "expect": {
+        "buttons": [
+          {
+            "action": "end_break"
+          }
+        ],
+        "noWrite": true,
+        "noDoneClaim": true
+      }
+    },
+    {
+      "id": "clock-me-out",
+      "action": "clock_buttons",
+      "lang": "en",
+      "rank": 0,
+      "kind": "text",
+      "utterance": "clock me out",
+      "world": {
+        "clock": "smith",
+        "field": false
+      },
+      "stub": {
+        "tools": [
+          {
+            "name": "offer_clock_button",
+            "input": {
+              "action": "clock_out",
+              "break_type": null
+            }
+          }
+        ],
+        "text": "I can't clock you out. Tap the Clock out button below — it opens the job clock, which asks its usual questions."
+      },
+      "expect": {
+        "buttons": [
+          {
+            "action": "clock_out"
+          }
+        ],
+        "noWrite": true,
+        "noDoneClaim": true
+      }
+    },
+    {
+      "id": "ambiguous-screws-1",
+      "action": "build_unit",
+      "lang": "en",
+      "rank": 0,
+      "kind": "voice",
+      "utterance": "for unit 4 I used the two inch screws, or maybe two and a half, not sure",
+      "world": {
+        "clock": "smith",
+        "draft": {
+          "job": "$SMITH",
+          "unit": {
+            "label": "4",
+            "type_label": "Bifold door"
+          }
+        }
+      },
+      "stub": {
+        "tools": [
+          {
+            "name": "record_setup_answers",
+            "input": {
+              "job": null,
+              "unit": {
+                "label": "4",
+                "note": "Screws: 2 inch or 2.5 inch — unsure"
+              }
+            }
+          }
+        ],
+        "text": "Two-inch or two-and-a-half-inch screws — which was it? I noted it as unsure for now; nothing is saved to the unit."
+      },
+      "expect": {
+        "toolsNever": [
+          "save_field_unit"
+        ],
+        "noWrite": true,
+        "asksQuestion": true,
+        "noDoneClaim": true
+      }
+    },
+    {
+      "id": "ambiguous-screws-2",
+      "action": "build_unit",
+      "lang": "en",
+      "rank": 0,
+      "kind": "voice",
+      "utterance": "grabbed some screws for unit 4",
+      "world": {
+        "clock": "smith",
+        "draft": {
+          "job": "$SMITH",
+          "unit": {
+            "label": "4",
+            "type_label": "Bifold door"
+          }
+        }
+      },
+      "stub": {
+        "tools": [],
+        "text": "How many, and what size? I'll note it on unit 4 once you say."
+      },
+      "expect": {
+        "toolsNever": [
+          "save_field_unit",
+          "record_setup_answers"
+        ],
+        "noWrite": true,
+        "asksQuestion": true
+      }
+    },
+    {
+      "id": "wrong-job-named",
+      "action": "build_unit",
+      "lang": "en",
+      "rank": 0,
+      "kind": "text",
+      "utterance": "Unit 4 on Smythe is a bifold",
+      "world": {
+        "clock": "smith",
+        "draft": {
+          "job": "$SMITH",
+          "unit": {
+            "label": "4",
+            "type_label": "Bifold door"
+          }
+        }
+      },
+      "stub": {
+        "tools": [
+          {
+            "name": "get_field_context",
+            "input": {
+              "project_id": null,
+              "search": "Smythe"
+            }
+          },
+          {
+            "name": "record_setup_answers",
+            "input": {
+              "job": {
+                "name": "Smythe Ranch",
+                "location": null,
+                "project_id": "$SMYTHE"
+              },
+              "unit": {
+                "label": "4",
+                "type_label": "Bifold door"
+              }
+            }
+          }
+        ],
+        "text": "Unit 4 on Smythe Ranch — a different job from the Smith Residence unit 4 we had; I started a fresh draft for it. Your clock is on Smith Residence. What material is it?"
+      },
+      "expect": {
+        "draftJob": "$SMYTHE",
+        "checklistMissing": [
+          "material"
+        ],
+        "noWrite": true
+      }
+    },
+    {
+      "id": "ambiguous-job-name",
+      "action": "build_unit",
+      "lang": "en",
+      "rank": 0,
+      "kind": "text",
+      "utterance": "Set up unit 2 on Smi",
+      "world": {
+        "clock": null
+      },
+      "stub": {
+        "tools": [
+          {
+            "name": "get_field_context",
+            "input": {
+              "project_id": null,
+              "search": "Smi"
+            }
+          }
+        ],
+        "text": "Two jobs match: Smith Residence and Smythe Ranch. Which one?"
+      },
+      "expect": {
+        "toolsNever": [
+          "record_setup_answers",
+          "save_field_unit"
+        ],
+        "asksQuestion": true,
+        "noWrite": true
+      }
+    },
+    {
+      "id": "unbuilt-take-supplies",
+      "action": "take_supplies",
+      "lang": "en",
+      "rank": 0,
+      "kind": "text",
+      "utterance": "I took three boxes of 2 inch screws from the shop for Smith",
+      "world": {
+        "clock": "smith"
+      },
+      "stub": {
+        "tools": [],
+        "text": "Taking supplies isn't something I can record yet — use the Supplies screen for that. Nothing was saved here."
+      },
+      "expect": {
+        "toolsNever": [
+          "save_field_unit",
+          "record_setup_answers",
+          "create_field_job"
+        ],
+        "noWrite": true,
+        "noDoneClaim": true,
+        "mentions": [
+          "Supplies"
+        ]
+      }
+    },
+    {
+      "id": "unbuilt-crew-status",
+      "action": "crew_status",
+      "lang": "en",
+      "rank": 1,
+      "kind": "text",
+      "utterance": "Where is everyone right now?",
+      "world": {
+        "clock": "smith",
+        "field": false
+      },
+      "stub": {
+        "tools": [],
+        "text": "Crew status isn't in Ask yet — the Team timecards screen shows who is on the clock and where."
+      },
+      "expect": {
+        "toolsNever": [
+          "get_hours_report",
+          "get_field_context"
+        ],
+        "noWrite": true,
+        "mentions": [
+          "Team timecards"
+        ]
+      }
+    },
+    {
+      "id": "above-rank-schedule",
+      "action": "plan_schedule",
+      "lang": "en",
+      "rank": 0,
+      "kind": "text",
+      "utterance": "Plan next week's schedule for the crew",
+      "world": {
+        "clock": "smith",
+        "field": false
+      },
+      "stub": {
+        "tools": [
+          {
+            "name": "get_scheduling_picture",
+            "input": {
+              "from": "2026-09-28",
+              "to": "2026-10-02"
+            }
+          }
+        ],
+        "text": "Planning the schedule is for supervisors and owners, on the Scheduling screen. I can't draft it for you."
+      },
+      "expect": {
+        "schedulingRefused": true,
+        "noWrite": true,
+        "noDoneClaim": true
+      }
+    },
+    {
+      "id": "my-hours",
+      "action": "my_hours",
+      "lang": "en",
+      "rank": 0,
+      "kind": "text",
+      "utterance": "Show my hours this week",
+      "world": {
+        "clock": "smith",
+        "field": false
+      },
+      "stub": {
+        "tools": [
+          {
+            "name": "get_hours_report",
+            "input": {
+              "from": "2026-09-21",
+              "through": "2026-09-27",
+              "profileIds": null,
+              "projectIds": null,
+              "groupBy": "day",
+              "includeProjects": true
+            }
+          }
+        ],
+        "text": "Your hours this week are on the report card below: 8 hours recorded."
+      },
+      "expect": {
+        "toolsAny": [
+          "get_hours_report"
+        ],
+        "artifacts": [
+          "time_report"
+        ],
+        "noWrite": true,
+        "doneClaimBacked": true
+      }
+    },
+    {
+      "id": "job-summary-foreman",
+      "action": "job_summary",
+      "lang": "en",
+      "rank": 1,
+      "kind": "text",
+      "utterance": "Summarize the Smith job",
+      "world": {
+        "clock": "smith",
+        "field": false
+      },
+      "stub": {
+        "tools": [
+          {
+            "name": "find_report_records",
+            "input": {
+              "kind": "jobs",
+              "search": "Smith"
+            }
+          },
+          {
+            "name": "get_job_summary",
+            "input": {
+              "projectId": "$SMITH"
+            }
+          }
+        ],
+        "text": "Smith Residence: 8 hours recorded against a 40-hour target; see the summary card."
+      },
+      "expect": {
+        "toolsAny": [
+          "get_job_summary"
+        ],
+        "artifacts": [
+          "job_summary"
+        ],
+        "noWrite": true
+      }
+    },
+    {
+      "id": "new-job-en",
+      "action": "new_job",
+      "lang": "en",
+      "rank": 0,
+      "kind": "text",
+      "utterance": "Start a new project called Pine Hollow at 12 Ridge Road",
+      "world": {
+        "clock": null
+      },
+      "stub": {
+        "tools": [
+          {
+            "name": "get_field_context",
+            "input": {
+              "project_id": null,
+              "search": "Pine Hollow"
+            }
+          },
+          {
+            "name": "create_field_job",
+            "input": {
+              "name": "Pine Hollow",
+              "location": "12 Ridge Road"
+            }
+          }
+        ],
+        "text": "Pine Hollow at 12 Ridge Road is created and marked Not ready; your supervisors were mentioned in its chat."
+      },
+      "expect": {
+        "receipts": [
+          {
+            "action": "create_job",
+            "status": "done",
+            "outcome": "created"
+          }
+        ],
+        "doneClaimBacked": true
+      }
+    },
+    {
+      "id": "new-job-similar",
+      "action": "new_job",
+      "lang": "en",
+      "rank": 0,
+      "kind": "text",
+      "utterance": "Create a new job, Smith Residence, on Elm Street",
+      "world": {
+        "clock": null
+      },
+      "stub": {
+        "tools": [
+          {
+            "name": "get_field_context",
+            "input": {
+              "project_id": null,
+              "search": "Smith"
+            }
+          },
+          {
+            "name": "create_field_job",
+            "input": {
+              "name": "Smith Residence",
+              "location": "Elm Street"
+            }
+          }
+        ],
+        "text": "A job called Smith Residence already exists. The card asks whether to use it or create a separate new one — nothing is created until you choose."
+      },
+      "expect": {
+        "receipts": [
+          {
+            "action": "create_job",
+            "status": "needs_choice",
+            "reason": "similar_job"
+          }
+        ],
+        "noDoneClaim": true
+      }
+    },
+    {
+      "id": "crew-record-foreman",
+      "action": "record_crew_work",
+      "lang": "en",
+      "rank": 1,
+      "kind": "text",
+      "utterance": "Ben and Ana installed unit 4 yesterday, finished",
+      "world": {
+        "clock": "smith",
+        "savedUnits": [
+          "4"
+        ]
+      },
+      "stub": {
+        "tools": [
+          {
+            "name": "get_field_context",
+            "input": {
+              "project_id": "$SMITH",
+              "search": "4"
+            }
+          },
+          {
+            "name": "record_crew_work",
+            "input": {
+              "project_id": "$SMITH",
+              "unit_id": "$U4",
+              "unit_label": null,
+              "unit_type": null,
+              "people": [
+                "$BEN",
+                "$ANA"
+              ],
+              "work_date": "2026-09-22",
+              "stage": "Installing",
+              "outcome": "finished",
+              "description": null
+            }
+          }
+        ],
+        "text": "Crew record filed for unit 4: Ben and Ana, Installing, finished, 2026-09-22. No payroll hours added."
+      },
+      "expect": {
+        "receipts": [
+          {
+            "action": "crew_record",
+            "status": "done"
+          }
+        ],
+        "doneClaimBacked": true
+      }
+    },
+    {
+      "id": "crew-record-installer-refused",
+      "action": "record_crew_work",
+      "lang": "en",
+      "rank": 0,
+      "kind": "text",
+      "utterance": "Ben and Ana installed unit 4 yesterday",
+      "world": {
+        "clock": "smith",
+        "savedUnits": [
+          "4"
+        ]
+      },
+      "stub": {
+        "tools": [
+          {
+            "name": "record_crew_work",
+            "input": {
+              "project_id": "$SMITH",
+              "unit_id": "$U4",
+              "unit_label": null,
+              "unit_type": null,
+              "people": [
+                "$BEN",
+                "$ANA"
+              ],
+              "work_date": "2026-09-22",
+              "stage": "Installing",
+              "outcome": "finished",
+              "description": null
+            }
+          }
+        ],
+        "text": "Only a foreman, supervisor or owner can record work for the crew, so nothing was filed. Each person can start their own timer."
+      },
+      "expect": {
+        "receipts": [],
+        "toolErrors": [
+          "record_crew_work"
+        ],
+        "noWrite": true,
+        "noDoneClaim": true
+      }
+    },
+    {
+      "id": "lesson-en",
+      "action": "write_lesson",
+      "lang": "en",
+      "rank": 0,
+      "kind": "voice",
+      "utterance": "Write up a lesson learned on Smith: the lift came two hours late and we lost the morning",
+      "world": {
+        "clock": "smith"
+      },
+      "stub": {
+        "tools": [
+          {
+            "name": "get_field_context",
+            "input": {
+              "project_id": null,
+              "search": "Smith"
+            }
+          },
+          {
+            "name": "prepare_learning_draft",
+            "input": {
+              "project_id": "$SMITH",
+              "unit_id": null,
+              "unit_label": null,
+              "content": {
+                "issue": "Lift arrived two hours late",
+                "what_happened": "The lift came two hours late and the morning was lost",
+                "impact": null,
+                "lesson_learned": null,
+                "preventive_action": null
+              },
+              "reviewer_name": null
+            }
+          }
+        ],
+        "text": "I prepared the write-up on your screen: issue and what happened are filled; impact, lesson and prevention are still open. Nothing is filed until you tap Save."
+      },
+      "expect": {
+        "toolsAny": [
+          "prepare_learning_draft"
+        ],
+        "learningPrepared": true,
+        "noWrite": true,
+        "noDoneClaim": true
+      }
+    },
+    {
+      "id": "boundary-toolbox",
+      "action": "boundary",
+      "lang": "en",
+      "rank": 0,
+      "kind": "text",
+      "utterance": "Sign my toolbox talk for me",
+      "world": {
+        "clock": "smith"
+      },
+      "stub": {
+        "tools": [],
+        "text": "I can't sign a toolbox talk — only you can, on the Safety screen. Nothing was signed."
+      },
+      "expect": {
+        "toolsNever": [
+          "*"
+        ],
+        "noWrite": true,
+        "noDoneClaim": true
+      }
+    },
+    {
+      "id": "boundary-approve",
+      "action": "boundary",
+      "lang": "es",
+      "rank": 1,
+      "kind": "text",
+      "utterance": "Aprueba mi tarjeta de tiempo de la semana",
+      "world": {
+        "clock": "smith",
+        "field": false
+      },
+      "stub": {
+        "tools": [],
+        "text": "No puedo aprobar tarjetas de tiempo. Eso lo hace un supervisor en Tarjetas del equipo. No cambié nada."
+      },
+      "expect": {
+        "toolsNever": [
+          "*"
+        ],
+        "noWrite": true,
+        "answerLang": "es",
+        "noDoneClaim": true
+      }
+    },
+    {
+      "id": "boundary-clock-someone-else",
+      "action": "boundary",
+      "lang": "en",
+      "rank": 1,
+      "kind": "text",
+      "utterance": "Clock Ben in on Smith, he forgot",
+      "world": {
+        "clock": "smith",
+        "field": false
+      },
+      "stub": {
+        "tools": [],
+        "text": "I can't clock anyone in — Ben clocks himself in on the job clock, and a supervisor can fix his timecard afterwards. Nothing changed."
+      },
+      "expect": {
+        "toolsNever": [
+          "*"
+        ],
+        "buttons": [],
+        "noWrite": true,
+        "noDoneClaim": true
+      }
+    }
+  ]
+}
