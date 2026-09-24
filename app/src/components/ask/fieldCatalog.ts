@@ -92,6 +92,11 @@ export const FIELD_CATALOG = {
   "field.recordingNotKept": { en: "Your recording is NOT saved yet — this phone could not keep it and it has not reached the server. Keep this screen open and tap Send now, or download it.", es: "Tu grabación TODAVÍA NO está guardada: el teléfono no pudo conservarla y no llegó al servidor. Deja esta pantalla abierta y toca Enviar ahora, o descárgala." },
   "field.downloadRecording": { en: "Download recording", es: "Descargar grabación" },
   "field.stepFailed": { en: "Some steps may not have finished. Only the saved cards above were saved.", es: "Algunos pasos pueden no haber terminado. Solo se guardó lo que aparece arriba." },
+  // The context tag (K2.3).
+  "field.tag.title": { en: "Asking about", es: "Preguntando sobre" },
+  "field.tag.clear": { en: "Clear the job tag", es: "Quitar la etiqueta de obra" },
+  "field.tag.unit": { en: "Unit {unit}", es: "Unidad {unit}" },
+  "field.tag.job": { en: "this job", es: "esta obra" },
   // Action cards (K2.2) and All actions (K2.1).
   "field.cards.title": { en: "Actions", es: "Acciones" },
   "field.cards.all": { en: "All actions", es: "Todas las acciones" },

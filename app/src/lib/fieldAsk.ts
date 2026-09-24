@@ -1,6 +1,6 @@
 import { supabase } from "./supabase";
 import { dictationExtension } from "../../../supabase/functions/_shared/dictation";
-import type { SetupChecklist, SetupDraft } from "../../../supabase/functions/_shared/fieldTools";
+import type { AskContextTag, SetupChecklist, SetupDraft } from "../../../supabase/functions/_shared/fieldTools";
 import type { LearningPrep } from "../../../supabase/functions/_shared/learningTools";
 import type { AskArtifact } from "../../../supabase/functions/_shared/askReporting";
 import type { KnowledgeSource } from "../../../supabase/functions/_shared/knowledge";
@@ -59,6 +59,8 @@ export interface FieldMeta {
   clock_version: number | null;
   clock_pending_sync: boolean;
   audio_path?: string | null;
+  /** The job/unit tag Ask was opened with (K2.3), if the person kept it. */
+  context?: AskContextTag | null;
 }
 
 const conversationKey = (userId: string) => `forge.ai-field.conversation.${userId}`;

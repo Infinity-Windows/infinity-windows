@@ -92,3 +92,21 @@ describe("field executor", () => {
     expect(bad.is_error).toBe(true);
   });
 });
+
+describe("the context tag fills the setup's blanks (K2.3)", () => {
+  it("seeds the job and the unit number when the conversation has none, and never replaces a settled job", async () => {
+    const { seedContextTag } = await import("../../../supabase/functions/ask/field");
+    const tag = { project_id: JOB, project_label: "Black Desert", unit_id: null, opening_id: "00000000-0000-4000-8000-000000000200", unit_label: "W-12" };
+    const fresh = newFieldState(REQ, [], null);
+    seedContextTag(fresh, tag);
+    expect(fresh.draft.job).toEqual({ name: "Black Desert", location: null, project_id: JOB });
+    expect(fresh.draft.unit?.label).toBe("W-12");
+    expect(fresh.checklist?.unit?.find((i) => i.key === "label")).toMatchObject({ status: "captured", value: "W-12" });
+    expect(fresh.checklist?.unit?.find((i) => i.key === "type_label")).toMatchObject({ status: "missing" });
+
+    const settled = newFieldState(REQ, [], { answers: { job: { name: "Pine Hollow", location: null, project_id: OTHER }, unit: unit({ label: "4", material: "Aluminum" }) } });
+    seedContextTag(settled, tag);
+    expect(settled.draft.job?.project_id).toBe(OTHER);
+    expect(settled.draft.unit?.label).toBe("4");
+  });
+});

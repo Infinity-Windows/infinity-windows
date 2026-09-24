@@ -5319,6 +5319,10 @@ button.clock-out {
   color: var(--text-secondary);
   font-weight: 500;
 }
+/* The context tag (K2.3): one line above the composer, cleared by its own
+   button; the × is a 44 px chip so a gloved thumb can hit it. */
+.ask-tag { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; font-size: 16px; }
+.ask-tag .chip { min-width: 44px; min-height: 44px; font-size: 18px; }
 .ask-all-actions { margin-bottom: 12px; }
 .ask-all-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .ask-all-list { list-style: none; margin: 8px 0 0; padding: 0; }

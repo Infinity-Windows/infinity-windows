@@ -45,6 +45,7 @@ import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { roleRank } from "../lib/install/types";
 import { listWorkSessions, listWorkUnits } from "../lib/customWork/api";
 import { ActionCards, AllActions, type CardPick, type RunningUnit } from "../components/ask/ActionCards";
+import { contextTagFromInput, type AskContextTag } from "../../../supabase/functions/_shared/fieldTools";
 
 // Every cached screen a field receipt may have changed (see FIELD_QUERY_ROOTS).
 const refreshFieldViews = () => { for (const root of FIELD_QUERY_ROOTS) void queryClient.invalidateQueries({ queryKey: [root] }); };
@@ -197,6 +198,12 @@ export function AskInfinity() {
   /** The person tapped "Actions" while the composer had text: show the cards
    * anyway until they tap one or start typing again. */
   const [cardsForced, setCardsForced] = useState(false);
+  // Context tag (K2.3): the job (and maybe unit) Ask was opened from. Read
+  // through a ref inside send(), which closes over an older render.
+  const [tag, setTag] = useState<AskContextTag | null>(null);
+  const tagRef = useRef<AskContextTag | null>(null);
+  tagRef.current = tag;
+  const lastActor = useRef<string | null | undefined>(undefined);
 
   // --- Field work -----------------------------------------------------------
   // Everything below is scoped to the REAL signed-in account (not "view as"):
@@ -249,6 +256,11 @@ export function AskInfinity() {
     actor.current = userId;
     setUnsent([]);
     setConversation(null);
+    // The tag belongs to the person who opened Ask with it (K2.3): a
+    // different account signing in on this phone starts without it. The first
+    // resolution of the account (nobody → somebody) keeps it.
+    if (lastActor.current && lastActor.current !== userId) setTag(null);
+    lastActor.current = userId;
     if (!userId) return;
     const conv = currentConversation(userId);
     setConversation(conv);
@@ -312,7 +324,7 @@ export function AskInfinity() {
       workQueue: readWorkQueue,
       shiftId: queryClient.getQueryData<TimeShift | null>(["openShift", uid])?.id,
     });
-    return { actor_id: uid, request_id: base.requestId, conversation_id: conversation, input_kind: kind, sent_at: base.sentAt, clock_version: base.clockVersion, clock_pending_sync: pending, audio_path: null };
+    return { actor_id: uid, request_id: base.requestId, conversation_id: conversation, input_kind: kind, sent_at: base.sentAt, clock_version: base.clockVersion, clock_pending_sync: pending, audio_path: null, context: tagRef.current };
   };
   /** Before any upload, transcription or Ask call: is this still the screen and
    * the signed-in account the message was captured under? */
@@ -334,8 +346,13 @@ export function AskInfinity() {
   // `state` object each time React Router delivers one), so re-rendering
   // this page for any other reason never stomps on something typed since.
   useEffect(() => {
-    const seed = (location.state as { seed?: string } | null)?.seed;
+    const state = location.state as { seed?: string; askContext?: unknown } | null;
+    const seed = state?.seed;
     if (typeof seed === "string" && seed) setInput(seed);
+    // K2.3: a job/unit screen hands over its tag the same way. Checked with the
+    // server's own reader, so a malformed one is no tag rather than a bad id.
+    const context = contextTagFromInput(state?.askContext);
+    if (context) setTag(context);
   }, [location.state]);
 
   // Freshen the bundled catalog whenever there is signal. The brain answers
@@ -478,7 +495,7 @@ export function AskInfinity() {
           return { who: "infinity", text: t("field.otherAccount") };
         }
         try {
-          const { answer, sources, note, toolActivity, artifacts, field } = await askInfinity(q, history, meta ?? undefined);
+          const { answer, sources, note, toolActivity, artifacts, field } = await askInfinity(q, history, meta ?? undefined, { contextTag: tagRef.current });
           if (meta) {
             void dropUnsent(meta.request_id).then(async () => { if (isCurrent(g) && uid) setUnsent(await listUnsent(uid)); }).catch(() => undefined);
             if (isCurrent(g)) { clockSeen.current = null; readClockNow(g); }
@@ -614,6 +631,15 @@ export function AskInfinity() {
     readClockNow();
   };
 
+  // --- Context tag -----------------------------------------------------------
+  /** "BLACK22 · Black Desert · Unit 4": the job's own words when the screen
+   * that opened Ask sent none, from the jobs list already cached here. */
+  const tagLabel = (x: AskContextTag): string => {
+    const cached = queryClient.getQueryData<Project[]>(["projects"])?.find((p) => p.id === x.project_id);
+    const job = x.project_label ?? (cached ? [cached.job_code, cached.name].filter(Boolean).join(" · ") : t("field.tag.job"));
+    return x.unit_label ? `${job} · ${t("field.tag.unit", { unit: x.unit_label })}` : job;
+  };
+
   // --- Action cards ----------------------------------------------------------
   const composerBusy = input.trim() !== "" || voice !== "idle";
   const cardsVisible = cardsForced || !composerBusy;
@@ -733,6 +759,12 @@ export function AskInfinity() {
             <a className="chip" href={heldUrl ?? undefined} download={`forge-recording-${held.meta.sent_at.slice(0, 19).replace(/[:T]/g, "-")}.${held.blob.type.includes("mp4") ? "m4a" : "webm"}`}>{t("field.downloadRecording")}</a>
           </div>
         </section>
+      )}
+      {tag && (
+        <div className="ask-tag" role="status">
+          <span className="muted">{t("field.tag.title")}</span> <strong>{tagLabel(tag)}</strong>
+          <button type="button" className="chip" aria-label={t("field.tag.clear")} onClick={() => setTag(null)}>×</button>
+        </div>
       )}
       {voice === "saving" && <p role="status" className="muted">{t("field.savingMemo")}</p>}
       {voice === "transcribing" && <p role="status" className="muted">{t("field.transcribing")}</p>}

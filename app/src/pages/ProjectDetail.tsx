@@ -603,6 +603,7 @@ function OverviewTab({
   project?: Project;
   trackingOnly: boolean;
 }) {
+  const t = useT();
   const queryClient = useQueryClient();
   const saveEstimate = useMutation({
     mutationFn: () =>
@@ -781,6 +782,13 @@ function OverviewTab({
         )}
         <Link to={`/supplies?job=${projectId}`} className="action-btn">
           Supplies for this job
+        </Link>
+        {/* K2.3: Ask opens tagged with this job, so "set up unit 4" needs no
+            job name; the tag is cleared with one tap and checked before any
+            save. */}
+        <Link to="/ask" className="action-btn"
+          state={{ askContext: { project_id: projectId, project_label: [project?.job_code, project?.name].filter(Boolean).join(" · ") || null, unit_id: null, opening_id: null, unit_label: null } }}>
+          {t("ask.aboutJob")}
         </Link>
         {/* Wave E: anyone on the job can record a window or door the plans
             never had — the server checks they are clocked in here, which is

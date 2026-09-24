@@ -1,5 +1,6 @@
 import type { AskArtifact } from "../../../supabase/functions/_shared/askReporting.ts";
 import type { FieldMeta, FieldReply } from "./fieldAsk";
+import type { AskContextTag } from "../../../supabase/functions/_shared/fieldTools";
 // Client seam for the Infinity AI knowledge base (vault RAG). The pure logic
 // (chunking, hashing, retrieval shaping, prompt assembly, the fallback
 // decision) lives in the runtime-agnostic shared module so the browser, the
@@ -95,9 +96,16 @@ export async function askInfinity(
   question: string,
   history: Array<{ role: "user" | "assistant"; content: string }> = [],
   field?: FieldMeta,
+  extra: { contextTag?: AskContextTag | null } = {},
 ): Promise<AskResult> {
   const { data, error } = await supabase.functions.invoke("ask", {
-    body: { question, history, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone, ...(field ? { field } : {}) },
+    body: {
+      question, history, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      ...(field ? { field } : {}),
+      // K2.3: a question asked from a job/unit screen carries that tag even
+      // when it is not a field request, so the answer is about that job.
+      ...(extra.contextTag ? { context_tag: extra.contextTag } : {}),
+    },
     signal: AbortSignal.timeout(120000),
   });
   if (error) throw error;
