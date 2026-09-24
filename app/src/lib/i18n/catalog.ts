@@ -2526,6 +2526,21 @@ export const CATALOG = {
     es: "La app se actualizó mientras trabajabas. Termina y guarda, luego desliza hacia abajo para actualizar.",
   },
 
+  // --- The update banner (PR #632, hardened 2026-09-23) -----------------------
+  // Mounted above LanguageProvider, so it reads the per-device cache directly —
+  // see useBannerT in components/pwa/PwaBanners.tsx.
+  "pwa.update.downloading": { en: "Getting the newest version…", es: "Descargando la versión más reciente…" },
+  "pwa.update.downloadingHint": { en: "Keep working — it switches over when nothing is in progress.", es: "Sigue trabajando: cambiará cuando no haya nada en curso." },
+  "pwa.update.waiting": { en: "New version ready", es: "Nueva versión lista" },
+  "pwa.update.waitingHint": { en: "It switches over once everything on this phone has been sent.", es: "Cambiará en cuanto se envíe todo lo pendiente de este teléfono." },
+  "pwa.update.sending": { en: "Sending… one moment", es: "Enviando… un momento" },
+  "pwa.update.applying": { en: "Updating Forge Windows…", es: "Actualizando Forge Windows…" },
+  "pwa.update.applyingHint": { en: "One moment.", es: "Un momento." },
+  "pwa.update.ready": { en: "A new version is available", es: "Hay una versión nueva disponible" },
+  "pwa.update.readyHint": { en: "Refresh to get the latest Forge Windows.", es: "Actualiza para usar la versión más reciente de Forge Windows." },
+  "pwa.update.refresh": { en: "Refresh", es: "Actualizar" },
+  "pwa.update.dismiss": { en: "Dismiss update notice", es: "Cerrar el aviso de actualización" },
+
   // ---- Learning time (2026-09-05) ----------------------------------------
   // The owner's ask: "a timer that I can see as an owner how long they spend in
   // the learning tab and on what item… as well as a timer for watching the

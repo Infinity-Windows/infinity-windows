@@ -8,6 +8,7 @@ import { enqueueServiceMedia } from "../../lib/servicing/mediaQueue";
 import { serviceMediaBlob, serviceMediaUrl } from "../../lib/servicing/api";
 import { transcribeDescription } from "../../lib/dictation";
 import { startVoiceRecording, voiceFilename, type VoiceRecording } from "../../lib/voiceRecording";
+import { useUnsavedWorkWhile } from "../../lib/pwa/useUnsavedWork";
 import "../../components/voice/dictation.css";
 import { formatApiError } from "../../lib/errors";
 export function ServiceMediaCapture({
@@ -41,6 +42,10 @@ export function ServiceMediaCapture({
     [kind, setKind] = useState<ServiceMedia["kind"]>("before");
   const [starting, setStarting] = useState(false);
   const [seconds, setSeconds] = useState(0);
+  // A memo being recorded, or any evidence between the pick and the
+  // evidence store (IndexedDB), exists only here. The app's automatic update
+  // must not reload over it — see lib/pwa/updateCore.ts.
+  useUnsavedWorkWhile(starting || recording || working);
   const [preview, setPreview] = useState<Blob | null>(null);
   const [previewUrl, setPreviewUrl] = useState("");
   const recorder = useRef<VoiceRecording | null>(null),

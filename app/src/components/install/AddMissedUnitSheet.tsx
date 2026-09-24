@@ -21,6 +21,7 @@ import { addFieldUnit } from "../../lib/install/api";
 import { announceMissedUnit } from "../../lib/install/missedUnit";
 import { uploadMissedUnitPhoto } from "../../lib/install/missedUnitPhoto";
 import { formatApiError } from "../../lib/install/errors";
+import { useUnsavedWorkWhile } from "../../lib/pwa/useUnsavedWork";
 
 export interface AddMissedUnitSheetProps {
   projectId: string;
@@ -53,6 +54,8 @@ export function AddMissedUnitSheet({
   const [note, setNote] = useState("");
   const [photo, setPhoto] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The unit's photo lives here until the sheet files it.
+  useUnsavedWorkWhile(photo !== null);
 
   // The app's ONE file-input pair (lib/photo/usePhotoPicker.tsx). This sheet
   // wrote its own input until now, and that input carried `capture="environment"`

@@ -26,6 +26,7 @@ import type { ProjectOpening } from "../../lib/install/types";
 import { isClockGateError } from "../../lib/install/installTimer";
 import { formatApiError } from "../../lib/install/errors";
 import { toastSuccess } from "../../lib/toast";
+import { useUnsavedWorkWhile } from "../../lib/pwa/useUnsavedWork";
 
 function phasesFor(phases: OpeningPhase[], openingId: string): OpeningPhase[] {
   return phases.filter((p) => p.opening_id === openingId);
@@ -37,6 +38,8 @@ export function FlashRun() {
   const [photo, setPhoto] = useState<File | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  // The flashing proof photo lives here until "Flashed" sends it.
+  useUnsavedWorkWhile(photo !== null);
 
   const openings = useQuery({
     queryKey: ["openings", projectId],

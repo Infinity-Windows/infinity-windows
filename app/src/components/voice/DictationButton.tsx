@@ -3,6 +3,7 @@ import { Mic, Square, X } from "lucide-react";
 import { useLanguage, useT } from "../../lib/i18n";
 import { appendDictation, transcribeDescription } from "../../lib/dictation";
 import { startVoiceRecording, voiceFilename, type VoiceRecording } from "../../lib/voiceRecording";
+import { useUnsavedWorkWhile } from "../../lib/pwa/useUnsavedWork";
 import "./dictation.css";
 
 type Field = HTMLTextAreaElement | HTMLInputElement;
@@ -18,6 +19,17 @@ export function DictationButton({ fieldRef }: { fieldRef: RefObject<Field | null
   const micRequest = useRef<AbortController | null>(null);
   const [preview, setPreview] = useState<Blob | null>(null);
   const [previewUrl, setPreviewUrl] = useState("");
+  /** Audio captured whose words have not been put into the field yet. */
+  const [unapplied, setUnapplied] = useState(false);
+  // The recording exists only in this component's memory from the moment the
+  // microphone is asked for until its words land in the field: opening the
+  // mic, recording, transcribing, a failed transcription waiting for Retry, a
+  // clip whose words did not fit. An automatic app update reloading the page
+  // during any of those destroys the memo (independent review, 2026-09-23 —
+  // the update window saw no typing and no claim and reloaded over a live
+  // recording). Released only when the words are applied or the person
+  // cancels; stopping the mic alone is not durability.
+  useUnsavedWorkWhile(phase !== "idle" || unapplied);
   useEffect(() => {
     if (!preview) { setPreviewUrl(""); return; }
     const url = URL.createObjectURL(preview); setPreviewUrl(url);
@@ -57,6 +69,7 @@ export function DictationButton({ fieldRef }: { fieldRef: RefObject<Field | null
         field.dispatchEvent(new Event("input", { bubbles: true }));
         field.focus({preventScroll: true});
         setMessage(t("dictation.added"));
+        setUnapplied(false);
       }
       clip.current = null;
       setPhase("idle");
@@ -79,7 +92,7 @@ export function DictationButton({ fieldRef }: { fieldRef: RefObject<Field | null
         onError: () => { if (token === generation.current) { setMessage(t("dictation.recordingFailed")); setPhase("idle"); } },
         onComplete: audio => {
           if (token !== generation.current) return;
-          clip.current = audio; setPreview(audio);
+          clip.current = audio; setPreview(audio); setUnapplied(true);
           void transcribe(audio, token);
         },
       });
@@ -99,7 +112,7 @@ export function DictationButton({ fieldRef }: { fieldRef: RefObject<Field | null
         {phase === "recording" && <button type="button" className="dictation-button is-recording" onClick={() => recorder.current?.stop()}><Square size={14} aria-hidden="true" />{t("dictation.stop")} · {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, "0")}</button>}
         {phase === "transcribing" && <span role="status">{t("dictation.transcribing")}</span>}
         {phase === "retry" && <button type="button" className="dictation-button" onClick={() => clip.current && void transcribe(clip.current, generation.current)}>{t("dictation.retry")}</button>}
-        {phase !== "idle" && <button type="button" className="dictation-button" aria-label={t("dictation.cancel")} onClick={() => {discard(); setPreview(null); setPhase("idle"); setMessage("");}}><X size={16} aria-hidden="true" />{t("dictation.cancel")}</button>}
+        {phase !== "idle" && <button type="button" className="dictation-button" aria-label={t("dictation.cancel")} onClick={() => {discard(); setPreview(null); setUnapplied(false); setPhase("idle"); setMessage("");}}><X size={16} aria-hidden="true" />{t("dictation.cancel")}</button>}
       </span>
       {previewUrl && phase !== "recording" && phase !== "starting" && <span className="dictation-preview">
         <audio controls preload="metadata" src={previewUrl} aria-label={t("dictation.playback")} />

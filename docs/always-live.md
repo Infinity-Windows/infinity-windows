@@ -228,8 +228,11 @@ essentially immediately on the next time someone looks at their phone.**
 | Situation | What happens |
 | --- | --- |
 | Unsaved work in progress | **Asks.** Never reloads. No exceptions. |
+| Anything still queued or being sent (any outbox, the upload queue, custom work, servicing) | **Holds**, then decides again the moment the queues change. A reload mid-drain can send a clock punch twice. The hold banner still offers Refresh and dismiss — Refresh is disabled only while a drain is actually in flight, since what is merely waiting is durable. |
 | Nothing unsaved, app was out of sight ≥ 60s | **Reloads itself.** The user comes back to the new version. |
-| Nothing unsaved, app in active use | **Asks.** |
+| Nothing unsaved, just opened or just signed in (≤ 90s, nothing typed), on the sign-in screen or the Work landing with no sheet open | **Reloads itself**, once nobody has tapped for a few seconds. Dismissing the banner turns this off. |
+| Nothing unsaved, on the sign-in screen | **Reloads itself**, same conditions. |
+| Nothing unsaved, app in active use — or on any other screen | **Asks.** |
 
 The rule that unsaved work always wins is not caution for its own sake. Reading
 `OpeningSheet.tsx` and `installOutbox.ts`: an install is written to IndexedDB
@@ -241,11 +244,34 @@ be closed up. Being one build behind for a few minutes costs nothing by
 comparison.
 
 `lib/pwa/unsavedWork.ts` is a claim count rather than a flag, so two screens can
-hold work at once and the first to finish cannot clear the other's claim. The
-screens that claim are `OpeningSheet` (any capture started) and `PlansetUpload`
-(an extraction running). The decision itself is a pure function in
-`lib/pwa/updateCore.ts` with 44 tests, including that a long absence never
-overrides unsaved work.
+hold work at once and the first to finish cannot clear the other's claim. Every
+surface that holds bytes only in memory claims it: `OpeningSheet` (any capture
+started), `PlansetUpload` (an extraction running), `DictationButton` and Ask's
+voice message (from asking for the microphone until the words are in the field
+or the recording is kept), the photo capture sheets while the camera is open or
+a shot is being stamped, and every form that holds a picked photo or file until
+Save. The bar for releasing is durability or a deliberate discard — stopping the
+microphone is not enough. The decision itself is a pure function in
+`lib/pwa/updateCore.ts`, including that a long absence never overrides unsaved
+work.
+
+Two more registries feed it, both added after an independent review
+(2026-09-23) showed the "just opened" window reloading over a live dictation:
+
+- `lib/pwa/safeSurface.ts` — a screen is a safe surface because it **said so**
+  (the sign-in screen, the landing splash, the Work landing), and only while no
+  sheet, drawer or dialog is open on top (every `useFocusTrap` modal registers
+  itself). The "just opened" and "sign-in screen" paths need it; the older
+  "came back after a minute away" path does not.
+- `lib/pwa/queuedWork.ts` — everything still waiting to be sent or mid-send,
+  across every queue, including the legacy upload queue the sync pill never
+  counted. Failed items do not count (a reload cannot resend them), and a queue
+  that cannot be opened reads as empty (it cannot be draining either).
+
+The version check itself runs one request at a time with an eight-second
+deadline, and an update that is already downloaded is decided on **before** the
+network is asked anything — on one bar, a stalled `version.json` request used to
+keep a waiting update from being applied or even offered.
 
 One subtlety worth knowing: a plain `location.reload()` would **not** help. The
 old worker still controls the page and would serve the same cached shell straight

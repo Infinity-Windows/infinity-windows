@@ -414,6 +414,8 @@ export async function enqueueInstall(
  * answer.
  */
 let flushChain: Promise<void> = Promise.resolve();
+/** Flushes asked for and not yet finished — running or waiting their turn. */
+let flushesInFlight = 0;
 
 /**
  * Refusals nobody has collected yet, keyed by outbox record id.
@@ -476,6 +478,7 @@ export interface InstallFlushResult {
  * having tried anything. See `flushChain`.
  */
 export function flushInstallOutbox(): Promise<InstallFlushResult> {
+  flushesInFlight += 1;
   const run = flushChain.then(() => runFlushPass());
   // The chain must survive a pass that threw, or every later flush would be
   // stuck behind a rejected promise for the rest of the session.
@@ -483,7 +486,17 @@ export function flushInstallOutbox(): Promise<InstallFlushResult> {
     () => undefined,
     () => undefined,
   );
+  void flushChain.then(() => {
+    flushesInFlight -= 1;
+  });
   return run;
+}
+
+/** Is an install flush running or queued right now? Synchronous, for the
+ * update banner: a reload mid-flush could repeat a stage. See
+ * lib/pwa/queuedWork.ts. */
+export function isFlushingInstalls(): boolean {
+  return flushesInFlight > 0;
 }
 
 async function runFlushPass(): Promise<InstallFlushResult> {

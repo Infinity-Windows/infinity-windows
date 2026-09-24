@@ -18,21 +18,32 @@
 //
 // THE RULE, therefore:
 //   - unsaved work                    -> ASK, never reload. No exceptions.
+//     "Unsaved" is wider than the opening sheet: a voice memo being recorded
+//     or transcribed, a photo being stamped, a file picked and not yet sent —
+//     every surface that holds bytes only in memory claims it (unsavedWork.ts).
 //   - nothing unsaved, app backgrounded a while -> reload on return. Safe:
 //     there is nothing in memory to lose, and it is the moment a phone that has
 //     been in a pocket all morning should catch up.
-//   - nothing unsaved, just opened or just signed in, nothing typed yet ->
-//     reload. The owner's call (2026-09-23): people kept running an old build
-//     after opening the app, because the only silent path was "come back after
-//     a minute away" and a fresh launch never counted. The first moments after
-//     opening or signing in hold nothing to lose, and "Getting the newest
-//     version" is on screen while it downloads, so the reload is expected.
+//   - nothing unsaved, just opened or just signed in, nothing typed yet, AND
+//     on a screen that has declared itself safe -> reload. The owner's call
+//     (2026-09-23): people kept running an old build after opening the app,
+//     because the only silent path was "come back after a minute away" and a
+//     fresh launch never counted. The first moments after opening or signing
+//     in hold nothing to lose, and "Getting the newest version" is on screen
+//     while it downloads, so the reload is expected. "Declared safe" is the
+//     sign-in screen or the Work landing with no sheet open (safeSurface.ts):
+//     an independent review found the first version of this window reloading
+//     over a live dictation, because four quiet seconds on ANY screen counted.
 //   - on the sign-in screen           -> reload. There is no work to lose.
 //   - nothing unsaved, actively in use -> ASK. A page vanishing under someone's
 //     thumb is startling even when it costs them nothing.
 // Even at a safe moment, a focused text field or a tap in the last few seconds
 // DEFERS it: most forms never claim unsaved work (only capture does), and a
 // half-typed note is exactly what a reload would silently eat.
+// And at a safe moment, anything the phone is still SENDING holds it: the
+// outboxes replay clock punches, installs and photos, a reload mid-drain can
+// send the same punch twice, and clock_out is not idempotent on the server.
+// The decision is asked again the moment the queues change.
 //
 // Everything here is a pure function of serializable facts so all of that is
 // testable without a service worker, a phone, or a real clock.
@@ -60,6 +71,22 @@ export const SETTLE_MS = 4 * 1000;
 /** How often to ask whether a newer build exists while the app is open. */
 export const VERSION_POLL_INTERVAL_MS = 5 * 60 * 1000;
 
+/**
+ * While an update is held back by queued work, ask again this often even if
+ * no queue announced a change — a backstop for the one queue with no change
+ * event (servicing evidence), and for an event that was missed.
+ */
+export const HOLD_RECHECK_MS = 15 * 1000;
+
+/**
+ * A return-to-the-app reading that queued work held back is kept this long,
+ * so the update still applies once the phone finishes sending — provided
+ * nobody has tapped or typed in the meantime. Long enough for a few photos
+ * to go out on one bar; short enough that a phone put back to work is not
+ * reloaded on the strength of an absence that ended a while ago.
+ */
+export const RETURN_CARRY_MS = 45 * 1000;
+
 /** What to do about a possible update. */
 export type UpdateAction =
   /** Nothing to do. */
@@ -76,6 +103,11 @@ export type UpdateAction =
    * SETTLE_MS; if the moment has passed by then, that answer is "prompt".
    */
   | "defer"
+  /**
+   * It is a safe moment, but the phone still holds or is sending queued work.
+   * Ask again when a queue changes (and every HOLD_RECHECK_MS as a backstop).
+   */
+  | "hold"
   /** Apply it now — established as safe. */
   | "reload";
 
@@ -114,6 +146,25 @@ export interface UpdateFacts {
   typing?: boolean;
   /** Time since the last tap or keystroke; `null` or absent: none yet. */
   msSinceInteraction?: number | null;
+  /**
+   * Something on this phone is still waiting to be sent, or is being sent
+   * right now — any outbox, the legacy upload queue, custom-work commands,
+   * servicing evidence. Absent: not known, read as nothing queued; the
+   * banner always supplies it when a worker is waiting.
+   */
+  queuedWork?: boolean;
+  /**
+   * The screen on show has declared itself safe and nothing is open on top
+   * of it (safeSurface.ts). Absent or false: unknown, so the "just opened" and
+   * "sign-in screen" paths do not apply. The "returning" path never needs it.
+   */
+  onSafeSurface?: boolean;
+  /**
+   * The person dismissed the banner since the app last came into view. Ends
+   * the "just opened" and "sign-in screen" paths: "not now" means not now.
+   * Coming back to the app clears the dismissal before it is evaluated.
+   */
+  dismissed?: boolean;
 }
 
 /** Is a build newer than the running one known to be published? */
@@ -142,17 +193,25 @@ export function decideUpdateAction(f: UpdateFacts): UpdateAction {
 
   const returning =
     f.hiddenForMs !== null && f.hiddenForMs >= AUTO_RELOAD_AFTER_HIDDEN_MS;
-  const signedOut = f.signedIn === false;
+  // The two newer moments need a screen that said it is safe, and a
+  // dismissal turns them off: "not now" is an answer.
+  const safeScreen = f.onSafeSurface === true && f.dismissed !== true;
+  const signedOut = f.signedIn === false && safeScreen;
   const fresh =
     f.freshForMs != null &&
     f.freshForMs <= FRESH_WINDOW_MS &&
-    !f.typedSinceFresh;
+    !f.typedSinceFresh &&
+    safeScreen;
   if (!returning && !signedOut && !fresh) return "prompt";
 
-  // A safe moment — unless someone is typing or mid-tap. Coming back to the
-  // app is a one-off reading (the hidden duration is consumed), so there is
-  // nothing to wait for: a field still holding focus after the absence means
-  // ask. The other two moments last, so they can wait a few seconds.
+  // A safe moment. Anything still being sent holds it: a reload mid-drain can
+  // replay a clock punch, and the queues say when they are done.
+  if (f.queuedWork === true) return "hold";
+
+  // Unless someone is typing or mid-tap. Coming back to the app is a one-off
+  // reading (the hidden duration is consumed), so there is nothing to wait
+  // for: a field still holding focus after the absence means ask. The other
+  // two moments last, so they can wait a few seconds.
   const busy =
     f.typing === true ||
     (f.msSinceInteraction != null && f.msSinceInteraction < SETTLE_MS);

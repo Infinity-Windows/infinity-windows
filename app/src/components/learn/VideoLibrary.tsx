@@ -41,6 +41,7 @@ import {
   VIDEO_HEARTBEAT_MS,
 } from "../../lib/learningTime";
 import { useLearningTime } from "../../lib/useLearningTime";
+import { useUnsavedWorkWhile } from "../../lib/pwa/useUnsavedWork";
 import {
   loadYouTubeIframeApi,
   YT_STATE,
@@ -483,6 +484,8 @@ function VideoForm({
   const [topic, setTopic] = useState(initial?.topic ?? "");
   const [youtube, setYoutube] = useState(initial?.youtube_url ?? "");
   const [file, setFile] = useState<File | null>(null);
+  // A picked video lives here until Save uploads it.
+  useUnsavedWorkWhile(file !== null);
   const [summary, setSummary] = useState(initial?.summary ?? "");
   const [transcript, setTranscript] = useState(initial?.transcript ?? "");
   const [grantsClearance, setGrantsClearance] = useState(initial?.grants_clearance ?? "");

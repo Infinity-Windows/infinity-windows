@@ -17,6 +17,7 @@ import { useMutation } from "@tanstack/react-query";
 import { PhotoCaptureSheet } from "../PhotoCaptureSheet";
 import { formatApiError } from "../../lib/errors";
 import { useLanguage, useT } from "../../lib/i18n";
+import { useUnsavedWorkWhile } from "../../lib/pwa/useUnsavedWork";
 import { CERT_KIND_KEYS, useCertLabel } from "../../lib/credentialLabels";
 import {
   CERTIFICATION_KINDS,
@@ -113,6 +114,8 @@ function AddCardForm({
   const [photo, setPhoto] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  // The card photo lives here until Save uploads it.
+  useUnsavedWorkWhile(photo !== null || uploading);
 
   const save = useMutation({
     mutationFn: async () => {

@@ -37,6 +37,7 @@ import {
   type PublishedWalkthrough,
 } from "../../lib/trainingImport";
 import { useTrainingImporterT, type TrainingImporterKey, type TrainingImporterT } from "./trainingImporterCopy";
+import { useUnsavedWorkWhile } from "../../lib/pwa/useUnsavedWork";
 import "./trainingImporter.css";
 
 export interface TrainingImporterProps {
@@ -123,6 +124,8 @@ function ImporterPanel({ actorId, onPublished }: TrainingImporterProps & { actor
 
   const [manifest, setManifest] = useState<File | null>(null);
   const [files, setFiles] = useState<File[]>([]);
+  // A picked plan and its videos live here until the import publishes them.
+  useUnsavedWorkWhile(manifest !== null || files.length > 0);
   const [check, setCheck] = useState<Check>({ status: "idle" });
   const [run, setRun] = useState<Run>({ status: "idle" });
   // One request id per checked plan; retries reuse it so the server hands

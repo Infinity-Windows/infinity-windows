@@ -172,6 +172,12 @@ export function needsAttachmentId(kind: QueuedUploadMeta["kind"]): boolean {
 
 let flushing = false;
 
+/** Is an upload flush running right now? For the update banner, which must
+ * not reload a phone mid-send. See lib/pwa/queuedWork.ts. */
+export function isFlushingUploads(): boolean {
+  return flushing;
+}
+
 /**
  * Try to push every queued item: upload the blob to storage, then write the
  * attachments row, then drop the queue record. Items that fail stay queued

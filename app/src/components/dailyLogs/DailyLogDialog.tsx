@@ -15,6 +15,7 @@ import { useT, type TKey } from "../../lib/i18n";
 import { formatApiError } from "../../lib/errors";
 import { pushToast, toastSuccess } from "../../lib/toast";
 import { formatLogDateLabel } from "../../lib/dailyLogDay";
+import { useOverlayWhile } from "../../lib/pwa/useSafeSurface";
 import {
   buildDraftForJobDay,
   fileDailyLog,
@@ -58,6 +59,8 @@ export function DailyLogDialog({
   const t = useT();
   const titleId = useId();
   const queryClient = useQueryClient();
+  // Mounted only while open, and traps no focus, so it declares itself.
+  useOverlayWhile(true);
   const existing = useQuery({
     queryKey: ["dailyLog", projectId, logDate],
     queryFn: () => getDailyLog(projectId, logDate),

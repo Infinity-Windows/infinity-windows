@@ -1,9 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createActivityClock,
   createHiddenClock,
+  createVersionCheck,
   fetchPublishedVersion,
   isEditingText,
+  withDeadline,
 } from "./checkForUpdate";
 
 describe("createHiddenClock", () => {
@@ -102,6 +104,102 @@ describe("fetchPublishedVersion", () => {
   it("reads a body that is not a version file as unknown", async () => {
     const fetchImpl = ok({ nope: true });
     await expect(fetchPublishedVersion(fetchImpl as never)).resolves.toBeNull();
+  });
+
+  it("hands the abort signal to the request", async () => {
+    const fetchImpl = ok({ buildId: "abc123" });
+    const controller = new AbortController();
+    await fetchPublishedVersion(fetchImpl as never, () => 1, controller.signal);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ signal: controller.signal }),
+    );
+  });
+});
+
+describe("createVersionCheck", () => {
+  // The banner checks on a timer, on every return to the app, on sign-in and
+  // whenever a registration or queue changes. On a stalled connection each
+  // of those used to open another request that never closed (independent
+  // review, 2026-09-23). One at a time, with a deadline.
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("shares one request between callers that overlap", async () => {
+    let resolve!: (value: unknown) => void;
+    const fetchImpl = vi.fn(() => new Promise((r) => (resolve = r)));
+    const check = createVersionCheck({ fetchImpl: fetchImpl as never });
+    const first = check.run();
+    const second = check.run();
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    resolve({ ok: true, json: async () => ({ buildId: "b1" }) });
+    await expect(first).resolves.toEqual({ buildId: "b1", builtAt: "" });
+    await expect(second).resolves.toEqual({ buildId: "b1", builtAt: "" });
+  });
+
+  it("asks again once the previous request has answered", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ buildId: "b1" }) });
+    const check = createVersionCheck({ fetchImpl: fetchImpl as never });
+    await check.run();
+    await check.run();
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("gives up on a request that never answers, and reads it as unknown", async () => {
+    vi.useFakeTimers();
+    const seen: AbortSignal[] = [];
+    const fetchImpl = vi.fn((_url: string, init: { signal: AbortSignal }) => {
+      seen.push(init.signal);
+      return new Promise(() => {});
+    });
+    const check = createVersionCheck({ fetchImpl: fetchImpl as never, timeoutMs: 8_000 });
+    const pending = check.run();
+    await vi.advanceTimersByTimeAsync(7_999);
+    expect(seen[0].aborted).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(pending).resolves.toBeNull();
+    expect(seen[0].aborted).toBe(true);
+    // The line is clear for the next check, even though the old request's
+    // promise itself never settled.
+    void check.run();
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("can be told to stop, for a banner that is unmounting", async () => {
+    const seen: AbortSignal[] = [];
+    const fetchImpl = vi.fn((_url: string, init: { signal: AbortSignal }) => {
+      seen.push(init.signal);
+      return Promise.reject(new Error("aborted"));
+    });
+    const check = createVersionCheck({ fetchImpl: fetchImpl as never });
+    const pending = check.run();
+    check.abort();
+    expect(seen[0].aborted).toBe(true);
+    await expect(pending).resolves.toBeNull();
+  });
+});
+
+describe("withDeadline", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("passes a prompt answer through", async () => {
+    await expect(withDeadline(Promise.resolve(7), 1_000)).resolves.toBe(7);
+  });
+
+  it("answers undefined when the deadline passes first", async () => {
+    vi.useFakeTimers();
+    const pending = withDeadline(new Promise<number>(() => {}), 30_000);
+    await vi.advanceTimersByTimeAsync(30_000);
+    await expect(pending).resolves.toBeUndefined();
+  });
+
+  it("still rejects when the work rejects", async () => {
+    await expect(withDeadline(Promise.reject(new Error("offline")), 1_000)).rejects.toThrow(
+      "offline",
+    );
   });
 });
 
