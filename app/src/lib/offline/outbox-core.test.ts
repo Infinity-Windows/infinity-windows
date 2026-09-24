@@ -702,3 +702,127 @@ describe("retrying a dead-lettered entry", () => {
     expect(again.nextAttemptAt).toBe(500);
   });
 });
+
+// --- K0.3: clock punches jump the queue ----------------------------------
+//
+// The drain is one lane. A clock-out tapped after three photos used to wait
+// behind three two-minute uploads on a bad link, and on a link that bad the
+// photos often failed, which pushed the punch to the next pass and the one
+// after. A punch's timing IS the record, so punches go first — in tap order
+// among themselves, and still behind the clock-in they hang off.
+
+describe("clock punches jump the queue (K0.3)", () => {
+  const photo = (id: string, createdAt: number) =>
+    entry({ id, op: "photo_upload", createdAt, hasBlob: true, payload: { path: `${id}.jpg` } });
+
+  it("plans punches before photos and other media, whatever order they were queued in", () => {
+    const list = [
+      photo("photo-1", 10),
+      photo("photo-2", 20),
+      entry({ id: "log", op: "daily_log", createdAt: 25 }),
+      photo("photo-3", 30),
+      entry({ id: "out", op: "clock_out", createdAt: 40 }),
+    ];
+    expect(dueEntries(list, T0).map((e) => e.id)).toEqual(["out", "photo-1", "photo-2", "log", "photo-3"]);
+  });
+
+  it("keeps punches in tap order among themselves: clock-in, break start, break end, clock-out", () => {
+    const list = [
+      entry({ id: "out", op: "clock_out", createdAt: 40 }),
+      entry({ id: "break-end", op: "break_stop", createdAt: 30 }),
+      photo("photo", 5),
+      entry({ id: "in", op: "clock_in", createdAt: 10 }),
+      entry({ id: "break-start", op: "break_start", createdAt: 20 }),
+    ];
+    expect(dueEntries(list, T0).map((e) => e.id)).toEqual(["in", "break-start", "break-end", "out", "photo"]);
+  });
+
+  it("a queued clock-out still waits for its queued clock-in, ahead of nothing", () => {
+    const list = [
+      photo("photo", 5),
+      entry({ id: "in", op: "clock_in", createdAt: 10 }),
+      entry({ id: "out", op: "clock_out", createdAt: 20, dependsOn: "in" }),
+    ];
+    expect(dueEntries(list, T0).map((e) => e.id)).toEqual(["in", "photo"]);
+    // The clock-in landed: the clock-out is next, and still ahead of the photo.
+    expect(dueEntries(list.filter((e) => e.id !== "in"), T0).map((e) => e.id)).toEqual(["out", "photo"]);
+  });
+
+  it("sends a queued clock-out before three photos queued earlier", async () => {
+    const store = new MemoryOutboxStore();
+    await store.put(photo("photo-1", 10));
+    await store.put(photo("photo-2", 20));
+    await store.put(photo("photo-3", 30));
+    await store.put(entry({ id: "out", op: "clock_out", createdAt: 40 }));
+    const order: string[] = [];
+    const res = await drainStore(store, recordingHandlers(order), { now: T0 });
+    expect(order).toEqual(["out", "photo-1", "photo-2", "photo-3"]);
+    expect(res.sent).toBe(4);
+    expect(res.attempted).toBe(4);
+  });
+
+  it("a punch tapped while a photo was uploading goes out right after that photo, not after the whole pass", async () => {
+    const store = new MemoryOutboxStore();
+    await store.put(photo("photo-1", 10));
+    await store.put(photo("photo-2", 20));
+    await store.put(photo("photo-3", 30));
+    const order: string[] = [];
+    const handlers: OpHandlers = {
+      photo_upload: async (e) => {
+        order.push(e.id);
+        // The tap lands while photo one is on the wire.
+        if (e.id === "photo-1") await store.put(entry({ id: "out", op: "clock_out", createdAt: 40 }));
+      },
+      clock_out: async (e) => {
+        order.push(e.id);
+      },
+    };
+    const res = await drainStore(store, handlers, { now: T0 });
+    expect(order).toEqual(["photo-1", "out", "photo-2", "photo-3"]);
+    expect(res.attempted).toBe(4);
+    expect(res.remaining).toBe(0);
+  });
+
+  it("a clock-out unblocked by the clock-in this pass sent goes out before the pass's photos", async () => {
+    const store = new MemoryOutboxStore();
+    await store.put(entry({ id: "in", op: "clock_in", createdAt: 10 }));
+    await store.put(entry({ id: "out", op: "clock_out", createdAt: 20, dependsOn: "in" }));
+    await store.put(photo("photo", 5));
+    const order: string[] = [];
+    const res = await drainStore(store, recordingHandlers(order), { now: T0 });
+    expect(order).toEqual(["in", "out", "photo"]);
+    expect(res.sent).toBe(3);
+  });
+
+  it("does not try a punch twice in one pass when it failed ahead of a photo", async () => {
+    const store = new MemoryOutboxStore();
+    await store.put(entry({ id: "out", op: "clock_out", createdAt: 10 }));
+    await store.put(photo("photo", 20));
+    const attempts: string[] = [];
+    const handlers: OpHandlers = {
+      clock_out: async (e) => {
+        attempts.push(e.id);
+        throw new TypeError("Failed to fetch");
+      },
+      photo_upload: async (e) => {
+        attempts.push(e.id);
+      },
+    };
+    const res = await drainStore(store, handlers, { now: T0 });
+    expect(attempts).toEqual(["out", "photo"]);
+    expect(res.retried).toBe(1);
+    expect(res.sent).toBe(1);
+  });
+
+  it("hands what the handler resolved with to onSent, beside the entry", async () => {
+    const store = new MemoryOutboxStore();
+    await store.put(entry({ id: "in", op: "clock_in", createdAt: 10 }));
+    const seen: Array<[string, unknown]> = [];
+    await drainStore(
+      store,
+      { clock_in: async () => ({ id: "shift-1", clock_in_at: "2026-09-23T13:02:00Z" }) },
+      { now: T0, onSent: (e, result) => seen.push([e.id, result]) },
+    );
+    expect(seen).toEqual([["in", { id: "shift-1", clock_in_at: "2026-09-23T13:02:00Z" }]]);
+  });
+});
