@@ -1,9 +1,13 @@
 -- Probe for PR #641 (branch claude/r2-ai): append_daily_log_contribution from
 -- 20261030000000_ai_daily_log_contributions.sql, called on the real database
--- as the two QA logins on BLACK22, and rolled back. (A real installer cannot
--- reach BLACK22 at all — it is a testing project, hidden below supervisor —
--- so the two people who can both write there are the QA installer and the QA
+-- as the two QA logins on a sandbox job, and rolled back. (A real installer
+-- cannot reach a testing job at all — it is hidden below supervisor — so the
+-- two people who can both write there are the QA installer and the QA
 -- foreman; the last scenario proves the fence still holds for a real one.)
+-- The job is whichever job is both flagged as testing and on the sandbox list
+-- (BLACK22 first when it is), never a fixed code: on 2026-09-24 BLACK22 had
+-- been unflagged, and a probe pinned to it failed on the fence instead of
+-- testing the change.
 --   * two different people contribute to the same job-day: both entries are
 --     kept, the second is appended under the first, the first author stays;
 --   * the same words under the same id again is already_saved, not a copy;
@@ -19,6 +23,7 @@ declare
   v_second uuid;
   v_real uuid;
   v_job uuid;
+  v_job_code text;
   v_role text;
   v_rev_before bigint;
   v_r1 jsonb;
@@ -42,8 +47,16 @@ begin
   v_first := pg_temp.dry_run_pick('installer');
   v_second := pg_temp.dry_run_pick('foreman');
   v_real := pg_temp.dry_run_pick_real('installer');
-  v_job := pg_temp.dry_run_job('BLACK22');
-  perform pg_temp.dry_run_check('setup: two different people who may write on BLACK22', v_first <> v_second, null);
+  select p.id, p.job_code into v_job, v_job_code
+    from public.sandbox_projects s join public.projects p on p.id = s.project_id
+   where p.deleted_at is null and coalesce(p.is_test, false)
+   order by (p.job_code = 'BLACK22') desc, p.job_code
+   limit 1;
+  if v_job is null then
+    raise exception 'dry run: no job is both flagged as testing and on the sandbox list, so the QA logins have nowhere to write. Mark a practice job as testing in the app (that puts it on the sandbox list too) and run again.';
+  end if;
+  perform pg_temp.dry_run_check('setup: the sandbox job the run writes on (and throws away)', true, v_job_code);
+  perform pg_temp.dry_run_check('setup: two different people who may write on the sandbox job', v_first <> v_second, null);
   perform pg_temp.dry_run_check('schema: daily_logs.revision, daily_log_contributions and the revision trigger exist',
     exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'daily_logs' and column_name = 'revision')
     and to_regclass('public.daily_log_contributions') is not null
@@ -51,7 +64,7 @@ begin
     null);
   select coalesce((select revision from public.daily_logs where project_id = v_job and log_date = current_date), 0)
     into v_rev_before;
-  perform pg_temp.dry_run_check('setup: BLACK22 has a log for today already, or not', true,
+  perform pg_temp.dry_run_check('setup: the sandbox job has a log for today already, or not', true,
     'revision before the run: ' || v_rev_before);
 
   -- ---- the first person contributes -------------------------------------------
@@ -124,7 +137,7 @@ begin
 
   -- ---- the fence: a real installer cannot reach the testing job ---------------------
   perform pg_temp.dry_run_act_as(v_real);
-  perform pg_temp.dry_run_expect_error('fence: a real installer is refused on BLACK22 (a testing job is not theirs to see)',
+  perform pg_temp.dry_run_expect_error('fence: a real installer is refused on the sandbox job (a testing job is not theirs to see)',
     format('select public.append_daily_log_contribution(%L::uuid, %L::uuid, %L::uuid, current_date, 0, %L::jsonb, %L, ''{}''::uuid[], ''{}''::uuid[])',
            gen_random_uuid(), v_real, v_job, '{"work_completed": {"status": "captured", "value": "Dry run: must not save"}}', 'Dry run: must not save'),
     'Choose an existing job');
