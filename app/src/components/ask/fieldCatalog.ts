@@ -92,6 +92,9 @@ export const FIELD_CATALOG = {
   "field.recordingNotKept": { en: "Your recording is NOT saved yet — this phone could not keep it and it has not reached the server. Keep this screen open and tap Send now, or download it.", es: "Tu grabación TODAVÍA NO está guardada: el teléfono no pudo conservarla y no llegó al servidor. Deja esta pantalla abierta y toca Enviar ahora, o descárgala." },
   "field.downloadRecording": { en: "Download recording", es: "Descargar grabación" },
   "field.stepFailed": { en: "Some steps may not have finished. Only the saved cards above were saved.", es: "Algunos pasos pueden no haber terminado. Solo se guardó lo que aparece arriba." },
+  // Daily log through Ask (K2.7).
+  "field.dailyNotRecorded": { en: "Those words were NOT added to your daily log draft — no saved message is behind them. Send them again.", es: "Esas palabras NO se agregaron a tu borrador del registro; no hay un mensaje guardado detrás. Envíalas otra vez." },
+  "field.dailyHide": { en: "Hide the daily log (your draft is kept)", es: "Ocultar el registro (tu borrador se conserva)" },
   // Receipts (K2.5): three words, from the receipt's status, never from prose.
   "field.receiptStatus.saved_in_forge": { en: "Saved in Forge", es: "Guardado en Forge" },
   "field.receiptStatus.needs_choice": { en: "Needs your choice", es: "Necesita tu decisión" },

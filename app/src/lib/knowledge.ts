@@ -2,6 +2,7 @@ import type { AskArtifact } from "../../../supabase/functions/_shared/askReporti
 import type { FieldMeta, FieldReply } from "./fieldAsk";
 import type { AskContextTag } from "../../../supabase/functions/_shared/fieldTools";
 import { readClockButtons, type ClockButton } from "../../../supabase/functions/_shared/clockButtons";
+import type { DailyLogAskContext } from "../../../supabase/functions/_shared/aiDailyLog";
 // Client seam for the Infinity AI knowledge base (vault RAG). The pure logic
 // (chunking, hashing, retrieval shaping, prompt assembly, the fallback
 // decision) lives in the runtime-agnostic shared module so the browser, the
@@ -91,6 +92,9 @@ export interface AskResult {
   field?: FieldReply;
   /** One-tap job-clock buttons the model offered (K2.4); the tap does the work. */
   buttons?: ClockButton[];
+  /** The daily-log draft's answers from this reply (K2.7), raw: the phone
+   * checks it belongs to its draft, account and conversation before use. */
+  dailyLog?: unknown;
 }
 
 /** Ask the cloud `ask` function for a real, grounded answer. Throws on any
@@ -99,7 +103,7 @@ export async function askInfinity(
   question: string,
   history: Array<{ role: "user" | "assistant"; content: string }> = [],
   field?: FieldMeta,
-  extra: { contextTag?: AskContextTag | null } = {},
+  extra: { contextTag?: AskContextTag | null; dailyLog?: DailyLogAskContext | null } = {},
 ): Promise<AskResult> {
   const { data, error } = await supabase.functions.invoke("ask", {
     body: {
@@ -108,6 +112,9 @@ export async function askInfinity(
       // K2.3: a question asked from a job/unit screen carries that tag even
       // when it is not a field request, so the answer is about that job.
       ...(extra.contextTag ? { context_tag: extra.contextTag } : {}),
+      // K2.7: the open daily-log draft goes with every message while the card
+      // is open, so the model records answers into it.
+      ...(extra.dailyLog ? { daily_log: extra.dailyLog } : {}),
     },
     signal: AbortSignal.timeout(120000),
   });
@@ -124,6 +131,7 @@ export async function askInfinity(
     ...(typeof data?.note === "string" && data.note ? { note: data.note } : {}),
     ...(toolActivity.length > 0 ? { toolActivity } : {}),
     ...(readClockButtons(data?.buttons).length > 0 ? { buttons: readClockButtons(data?.buttons) } : {}),
+    ...(data?.daily_log && typeof data.daily_log === "object" ? { dailyLog: data.daily_log } : {}),
     ...(data?.field && typeof data.field === "object" && typeof data.field.request_id === "string"
       ? { field: { request_id: data.field.request_id, receipts: Array.isArray(data.field.receipts) ? data.field.receipts : [], checklist: data.field.checklist ?? null, draft: data.field.draft, learning: data.field.learning ?? null, replayed: data.field.replayed === true } }
       : {}),

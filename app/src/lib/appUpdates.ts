@@ -13,6 +13,7 @@ export const INCLUDED_UPDATE_IDS = [
   '2026-09-22-update-popup', '2026-09-22-ask-text', '2026-09-22-export-scroll',
   '2026-09-23-using-forge-previews',
   '2026-09-23-clock-counts-once', '2026-09-23-time-needs-review',
+  '2026-09-23-ai-daily-log', '2026-09-23-ask-actions',
 ] as const;
 export interface AppUpdate {
   id: string; published_on: string; audience: number[]; kind: 'fix' | 'improvement';

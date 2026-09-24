@@ -49,6 +49,10 @@ import { contextTagFromInput, type AskContextTag } from "../../../supabase/funct
 import { readClockButtons, type ClockButton } from "../../../supabase/functions/_shared/clockButtons";
 import { ClockButtons } from "../components/ask/ClockButtons";
 import { needsNothingSavedNotice } from "../lib/askReceiptGuard";
+import { AiDailyLogCard } from "../components/aiDailyLogs/AiDailyLogCard";
+import { useAiDailyLogDraft } from "../lib/aiDailyLogs/useAiDailyLogDraft";
+import { applyDailyLogReply, asksForDailyLog, dailyLogContextForMessage } from "../lib/aiDailyLogs/askBridge";
+import { signedInEmail } from "../lib/signedIn";
 
 // Every cached screen a field receipt may have changed (see FIELD_QUERY_ROOTS).
 const refreshFieldViews = () => { for (const root of FIELD_QUERY_ROOTS) void queryClient.invalidateQueries({ queryKey: [root] }); };
@@ -60,6 +64,8 @@ interface ChatMsg {
   buttons?: ClockButton[];
   /** The reply filled a draft on this phone (a lesson write-up, a daily log). */
   draftApplied?: boolean;
+  /** The reply's daily-log answers had no saved message behind them: NOT recorded. */
+  dailyNotRecorded?: boolean;
   /** The saved original recording behind this message. */
   memoPath?: string | null;
   /** The field request this message was, so a reload never shows it twice. */
@@ -217,6 +223,13 @@ export function AskInfinity() {
   // another person signing in on this phone sees none of it.
   const userId = profile.data?.id === sessionActor ? sessionActor : null;
   const [conversation, setConversation] = useState<string | null>(null);
+  // Daily log through Ask (K2.7). The controller is bound to the REAL
+  // signed-in person (never a role preview); the card shows while a draft is
+  // being built here, and `logOpenRef` is what send()/run() read, because
+  // they close over an older render.
+  const logs = useAiDailyLogDraft(userId && profile.data ? { userId, email: signedInEmail(), displayName: profile.data.display_name ?? null } : null);
+  const [logOpen, setLogOpen] = useState(false);
+  const logOpenRef = useRef(false);
   const [unsent, setUnsent] = useState<UnsentField[]>([]);
   const [voice, setVoice] = useState<"idle" | "starting" | "recording" | "saving" | "transcribing">("idle");
   const [seconds, setSeconds] = useState(0);
@@ -254,6 +267,7 @@ export function AskInfinity() {
     recording.current = null;
     clockSeen.current = null;
     setInput(""); setVoice("idle"); setThinking(false); setVoiceError(""); setRestoreError(false); setHeld(null);
+    setLogOpen(false); logOpenRef.current = false;
     setMessages([{ who: "infinity", text: t("ask.greeting") }]);
     return gen.current;
   };
@@ -416,7 +430,10 @@ export function AskInfinity() {
     const g = gen.current;
     const uid = actor.current;
     // Send was pressed now; this is the time and clock view the request carries.
-    const operationalNow = !!voiceMeta || opts.operational === true || isOperationalAsk(q, messages.some(m => Boolean(m.artifacts?.length)) || fieldActive);
+    // A daily-log message is a field request whatever its words look like:
+    // the saved request row is the evidence the log entry will list (K2.7).
+    const dailyLogMsg = logOpenRef.current || asksForDailyLog(q);
+    const operationalNow = !!voiceMeta || opts.operational === true || dailyLogMsg || isOperationalAsk(q, messages.some(m => Boolean(m.artifacts?.length)) || fieldActive);
     const pressed = voiceMeta ? null : operationalNow && uid ? pressSend() : null;
     const requestId = voiceMeta?.request_id ?? pressed?.requestId;
 
@@ -454,6 +471,14 @@ export function AskInfinity() {
       //    my truck. No network needed and no model involved.
       const operational = operationalNow;
       const meta = voiceMeta ?? (pressed ? await fieldMeta("text", pressed) : null);
+      // K2.7: while a daily-log draft is open, or when this message asks for
+      // one, the request carries the draft — built from the AWAITED fresh
+      // start(), never from a closed-over `logs.draft`, which is still null on
+      // the very first message ("Build my daily log — I set six frames with
+      // Ben") and would send the model no tool and lose those facts.
+      const suggestedJob = tagRef.current ? { projectId: tagRef.current.project_id, label: tagLabel(tagRef.current) } : null;
+      const daily = meta ? await dailyLogContextForMessage(logs, q, { cardOpen: logOpenRef.current, suggestedJob }) : { open: false, context: null };
+      if (daily.open && isCurrent(g)) { logOpenRef.current = true; setLogOpen(true); }
       // A text message the server did not get is kept on this phone under its
       // speaker — and if the phone cannot keep it, it goes back in the box.
       const keepText = async (error: string): Promise<boolean> => {
@@ -502,7 +527,17 @@ export function AskInfinity() {
           return { who: "infinity", text: t("field.otherAccount") };
         }
         try {
-          const { answer, sources, note, toolActivity, artifacts, field, buttons } = await askInfinity(q, history, meta ?? undefined, { contextTag: tagRef.current });
+          const { answer, sources, note, toolActivity, artifacts, field, buttons, dailyLog } = await askInfinity(q, history, meta ?? undefined, { contextTag: tagRef.current, dailyLog: daily.context });
+          // The daily-log answers go into the draft only for this draft,
+          // account and conversation, and only with the saved message behind
+          // them; "missing_evidence" means the words were NOT recorded, and
+          // the reply says so rather than showing them as captured.
+          let draftApplied = false, dailyNotRecorded = false;
+          if (dailyLog && isCurrent(g)) {
+            const applied = applyDailyLogReply(logs, dailyLog);
+            draftApplied = applied.applied;
+            dailyNotRecorded = !applied.applied && applied.reason === "missing_evidence";
+          }
           if (meta) {
             void dropUnsent(meta.request_id).then(async () => { if (isCurrent(g) && uid) setUnsent(await listUnsent(uid)); }).catch(() => undefined);
             if (isCurrent(g)) { clockSeen.current = null; readClockNow(g); }
@@ -510,7 +545,7 @@ export function AskInfinity() {
             if (isCurrent(g) && field) setHeld((h) => (h?.meta.request_id === meta.request_id ? null : h));
             if (field?.receipts.length) refreshFieldViews();
           }
-          if (answer || artifacts?.length || field?.receipts.length || field?.checklist || buttons?.length) return { who: "infinity", text: answer || note || "", sources, toolActivity, artifacts, field, buttons };
+          if (answer || artifacts?.length || field?.receipts.length || field?.checklist || buttons?.length || dailyLog) return { who: "infinity", text: answer || note || "", sources, toolActivity, artifacts, field, buttons, draftApplied, dailyNotRecorded };
           limitNote = note;
         } catch {
           if (meta) {
@@ -698,6 +733,7 @@ export function AskInfinity() {
             {m.field?.receipts.map((r) => <FieldReceiptCard key={r.action_id} receipt={r} onChange={updateReceipt} timingPending={timingPendingNow} />)}
             {m.field?.checklist && m.field.checklist === latestChecklist && <FieldChecklist checklist={m.field.checklist} />}
             {m.buttons && m.buttons.length > 0 && <ClockButtons buttons={m.buttons} />}
+            {m.dailyNotRecorded && <p role="alert" className="cw-error">{t("field.dailyNotRecorded")}</p>}
             {/* K2.5: words that read as done with nothing behind them are
                 contradicted here, automatically. */}
             {m.who === "infinity" && needsNothingSavedNotice({ text: m.text, receipts: m.field?.receipts, artifacts: m.artifacts, draftApplied: m.draftApplied || !!m.field?.learning }) && (
@@ -774,6 +810,12 @@ export function AskInfinity() {
             <a className="chip" href={heldUrl ?? undefined} download={`forge-recording-${held.meta.sent_at.slice(0, 19).replace(/[:T]/g, "-")}.${held.blob.type.includes("mp4") ? "m4a" : "webm"}`}>{t("field.downloadRecording")}</a>
           </div>
         </section>
+      )}
+      {logOpen && userId && (
+        <>
+          <AiDailyLogCard controller={logs} onAnswerByVoice={() => void startRecording()} />
+          <button type="button" className="chip" onClick={() => { setLogOpen(false); logOpenRef.current = false; }}>{t("field.dailyHide")}</button>
+        </>
       )}
       {tag && (
         <div className="ask-tag" role="status">
