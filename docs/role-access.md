@@ -12,6 +12,14 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Clock (time tracking sheet)
 - Ask (`/ask`)
 
+**Bottom bar (phone, new design):**
+
+- Work (`/`)
+- Schedule (`/my-schedule`)
+- Capture (quick-capture sheet)
+- Ask (`/ask`)
+- More (opens the drawer)
+
 **Menu drawer:**
 
 - My Work (`/`)
@@ -104,6 +112,14 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Capture (quick-capture sheet)
 - Clock (time tracking sheet)
 - Ask (`/ask`)
+
+**Bottom bar (phone, new design):**
+
+- Work (`/`)
+- Schedule (`/my-schedule`)
+- Capture (quick-capture sheet)
+- Ask (`/ask`)
+- More (opens the drawer)
 
 **Menu drawer:**
 
@@ -206,6 +222,14 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Capture (quick-capture sheet)
 - Clock (time tracking sheet)
 - Ask (`/ask`)
+
+**Bottom bar (phone, new design):**
+
+- Work (`/`)
+- Schedule (`/my-schedule`)
+- Capture (quick-capture sheet)
+- Ask (`/ask`)
+- More (opens the drawer)
 
 **Menu drawer:**
 
@@ -320,6 +344,14 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Capture (quick-capture sheet)
 - Clock (time tracking sheet)
 - Ask (`/ask`)
+
+**Bottom bar (phone, new design):**
+
+- Work (`/`)
+- Schedule (`/my-schedule`)
+- Capture (quick-capture sheet)
+- Ask (`/ask`)
+- More (opens the drawer)
 
 **Menu drawer:**
 

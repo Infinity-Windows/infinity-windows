@@ -33,6 +33,8 @@ import {
   Wrench,
 } from "lucide-react";
 import { roleRank, type CrewRole } from "./install/types";
+import type { UiDesign } from "./design/design";
+import type { TKey } from "./i18n/catalog";
 
 // Re-exported so existing importers (Layout, tests) keep a single source of
 // truth: roleRank now lives in install/types and nav/pages share it.
@@ -341,7 +343,12 @@ export function canAccess(
 // these; roleAccessDoc reads them so the docs can never drift from the UI.
 
 export type BottomTab =
-  | { kind: "menu" }
+  | {
+      kind: "menu";
+      /** The new design calls the drawer "More"; the classic bar says "Menu". */
+      label?: string;
+      i18nKey?: TKey;
+    }
   | { kind: "capture" }
   | { kind: "clock" }
   | {
@@ -353,12 +360,42 @@ export type BottomTab =
       end?: boolean;
       /** Show the installer "ready now" count. */
       readyBadge?: boolean;
+      /**
+       * Catalog key for the tab's label (Release 1). The classic bar's labels
+       * are English literals and stay so — its screens are frozen; the new
+       * bar is a crew screen and speaks both languages (K-X4).
+       */
+      i18nKey?: TKey;
     };
 
-/** The ordered phone bottom-bar tabs for a role. */
+/**
+ * The ordered phone bottom-bar tabs for a role.
+ *
+ * Release 1, the new front door (crew redesign K1.1, owner-approved
+ * 2026-09-23): in the NEW design every role gets the same five —
+ * Work · Schedule · (+) · Ask · More. The Clock tab goes: the clock lives at
+ * the top of Work and as a badge in the top bar that opens break / clock out
+ * from any screen (Layout's ClockBadge). "More" is the same drawer "Menu"
+ * opened; nothing is removed from the app, only moved. Foremen's Jobs moves
+ * onto their Work screen and stays in More.
+ *
+ * The CLASSIC bar is untouched by design (K-X2: the old screens are frozen
+ * and stay fully working), which is why this is a second branch rather than
+ * an edit of the first.
+ */
 export function bottomBarForRole(
   role: CrewRole | string | null | undefined,
+  design: UiDesign = "classic",
 ): BottomTab[] {
+  if (design === "new") {
+    return [
+      { kind: "link", id: "work", to: "/", label: "Work", end: true, readyBadge: true, i18nKey: "nav.work" },
+      { kind: "link", id: "schedule", to: "/my-schedule", label: "Schedule", i18nKey: "nav.schedule" },
+      { kind: "capture" },
+      { kind: "link", id: "ask", to: "/ask", label: "Ask", i18nKey: "nav.ask" },
+      { kind: "menu", label: "More", i18nKey: "nav.more" },
+    ];
+  }
   if (roleRank(role) === 0) {
     return [
       { kind: "menu" },
@@ -625,12 +662,16 @@ const INSTALLER_ONLY_ITEMS: Partial<Record<RoutePath, MenuItem>> = {
 function installerMenu(
   role: CrewRole | string | null | undefined,
   grants?: MoneyGrants,
+  design: UiDesign = "classic",
 ): MenuSection[] {
+  // K1.1: the home tab is "Work" everywhere in the new design — no
+  // Home / Today / My Work three ways of naming the same door.
+  const homeLabel = design === "new" ? "Work" : "My Work";
   const pick = (paths: RoutePath[]): MenuItem[] =>
     paths
       .map((p) => MENU_ITEM_BY_PATH.get(p) ?? INSTALLER_ONLY_ITEMS[p])
       .filter((it): it is MenuItem => Boolean(it?.to) && canAccess(role, it!.to!, grants))
-      .map((it) => (it.to === "/" ? { ...it, label: "My Work" } : it));
+      .map((it) => (it.to === "/" ? { ...it, label: homeLabel } : it));
 
   const out: MenuSection[] = [];
   const work = pick(INSTALLER_WORK_PATHS);
@@ -651,11 +692,15 @@ function installerMenu(
 export function menuForRole(
   role: CrewRole | string | null | undefined,
   grants?: MoneyGrants,
+  design: UiDesign = "classic",
 ): MenuSection[] {
-  if (roleRank(role) === 0) return installerMenu(role, grants);
+  if (roleRank(role) === 0) return installerMenu(role, grants, design);
   const out: MenuSection[] = [];
   for (const section of MENU_DEF) {
-    const items = section.items.filter((it) => !it.to || canAccess(role, it.to, grants));
+    const items = section.items
+      .filter((it) => !it.to || canAccess(role, it.to, grants))
+      // K1.1: "Work" everywhere in the new design (see installerMenu).
+      .map((it) => (design === "new" && it.to === "/" ? { ...it, label: "Work" } : it));
     if (items.length === 0) continue;
     out.push({ ...section, items });
   }

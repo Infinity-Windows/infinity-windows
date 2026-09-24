@@ -15,6 +15,8 @@ interface AppMenuDrawerProps {
   onSignOut: () => void;
   /** Optional pinned footer (e.g. the View-as-role picker). */
   footer?: ReactNode;
+  /** What the drawer calls itself: "Menu" (classic) or "More" (Release 1). */
+  title?: string;
 }
 
 /**
@@ -30,6 +32,7 @@ export function AppMenuDrawer({
   isActionActive,
   onSignOut,
   footer,
+  title = "Menu",
 }: AppMenuDrawerProps) {
   const drawerRef = useRef<HTMLElement>(null);
   useFocusTrap(drawerRef, open, onClose);
@@ -44,13 +47,13 @@ export function AppMenuDrawer({
         className="menu-drawer sheet-enter"
         role="dialog"
         aria-modal="true"
-        aria-label="Menu"
+        aria-label={title}
       >
         <div className="menu-drawer-grip" aria-hidden />
         <div className="menu-drawer-head">
           <span className="menu-drawer-brand">
             <InfinityMark size={22} />
-            <span className="menu-drawer-title">Menu</span>
+            <span className="menu-drawer-title">{title}</span>
           </span>
           <button
             type="button"
