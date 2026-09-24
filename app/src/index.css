@@ -5289,6 +5289,46 @@ button.clock-out {
   font-size: 12.5px;
 }
 
+/* Action cards (crew redesign K2.2). Two columns on a phone, one thumb, every
+   card a real 56 px button with 16 px text (K-X4); the "Finish unit N" card
+   is the primary one and is told apart by weight and a border, never colour
+   alone. */
+.ask-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.ask-card {
+  min-height: 56px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: var(--card-raised);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.ask-card-primary {
+  border: 2px solid var(--accent);
+  font-weight: 700;
+}
+.ask-card-all {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+.ask-all-actions { margin-bottom: 12px; }
+.ask-all-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.ask-all-list { list-style: none; margin: 8px 0 0; padding: 0; }
+.ask-all-row { padding: 10px 0; border-top: 1px solid var(--border); }
+.ask-all-row .ask-card { width: 100%; }
+.ask-all-row p { margin: 4px 0; }
+.ask-all-name { font-size: 16px; }
+.ask-all-never { margin: 6px 0 0; padding-left: 20px; }
+.ask-all-never li { padding: 2px 0; }
+
 .ask-input {
   display: flex;
   gap: 8px;

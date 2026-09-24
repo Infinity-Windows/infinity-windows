@@ -41,6 +41,10 @@ import { transcribeDescription } from "../lib/dictation";
 import { useUnsavedWorkWhile } from "../lib/pwa/useUnsavedWork";
 import { Mic, Square } from "lucide-react";
 import type { TimeShift } from "../lib/timeclock";
+import { useEffectiveRole } from "../lib/useEffectiveRole";
+import { roleRank } from "../lib/install/types";
+import { listWorkSessions, listWorkUnits } from "../lib/customWork/api";
+import { ActionCards, AllActions, type CardPick, type RunningUnit } from "../components/ask/ActionCards";
 
 // Every cached screen a field receipt may have changed (see FIELD_QUERY_ROOTS).
 const refreshFieldViews = () => { for (const root of FIELD_QUERY_ROOTS) void queryClient.invalidateQueries({ queryKey: [root] }); };
@@ -184,6 +188,15 @@ export function AskInfinity() {
   const threadEnd = useRef<HTMLDivElement>(null);
   const lastMessageCount = useRef(1);
   const location = useLocation();
+  // Action cards (K2.2): what the UI shows follows the effective role (an
+  // owner previewing "installer" sees installer cards), while every message
+  // is still sent as the real account — the cards only choose words.
+  const { effectiveRole } = useEffectiveRole();
+  const cardRank = roleRank(effectiveRole);
+  const [showAll, setShowAll] = useState(false);
+  /** The person tapped "Actions" while the composer had text: show the cards
+   * anyway until they tap one or start typing again. */
+  const [cardsForced, setCardsForced] = useState(false);
 
   // --- Field work -----------------------------------------------------------
   // Everything below is scoped to the REAL signed-in account (not "view as"):
@@ -263,6 +276,17 @@ export function AskInfinity() {
     return () => { recordAbort.current?.abort(); recording.current?.cancel(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
+
+  // The running unit puts "Finish unit N" first (K2.2). Same query keys as
+  // useWork, so Current Work's cache answers this without a second fetch and
+  // no queue sync is started from here.
+  const mySessions = useQuery({ queryKey: ["customWorkSessions", userId, "mine"], queryFn: () => listWorkSessions(undefined, userId!), enabled: !!userId });
+  const myUnits = useQuery({ queryKey: ["customWorkUnits", userId, "all"], queryFn: () => listWorkUnits(undefined), enabled: !!userId });
+  const running = useMemo<RunningUnit | null>(() => {
+    const open = (mySessions.data ?? []).find((s) => s.profile_id === userId && !s.ended_at && s.unit_id);
+    const unit = open ? (myUnits.data ?? []).find((u) => u.id === open.unit_id) : null;
+    return unit ? { unitLabel: unit.label } : null;
+  }, [mySessions.data, myUnits.data, userId]);
 
   const fieldActive = messages.some((m) => !!m.field);
   const latestChecklist = [...messages].reverse().find((m) => m.field?.checklist)?.field?.checklist ?? null;
@@ -359,13 +383,16 @@ export function AskInfinity() {
     [t],
   );
 
-  const send = (text: string, voiceMeta?: FieldMeta, sentFrom = gen.current) => {
+  /** `keepInput`: a card tap sends its own words and leaves whatever the
+   * person typed in the box (K2.2). `operational`: an action card is always a
+   * saved field request, whatever its words look like to the router. */
+  const send = (text: string, voiceMeta?: FieldMeta, sentFrom = gen.current, opts: { keepInput?: boolean; operational?: boolean } = {}) => {
     const q = text.trim();
     if (!q || thinking || !isCurrent(sentFrom)) return;
     const g = gen.current;
     const uid = actor.current;
     // Send was pressed now; this is the time and clock view the request carries.
-    const operationalNow = !!voiceMeta || isOperationalAsk(q, messages.some(m => Boolean(m.artifacts?.length)) || fieldActive);
+    const operationalNow = !!voiceMeta || opts.operational === true || isOperationalAsk(q, messages.some(m => Boolean(m.artifacts?.length)) || fieldActive);
     const pressed = voiceMeta ? null : operationalNow && uid ? pressSend() : null;
     const requestId = voiceMeta?.request_id ?? pressed?.requestId;
 
@@ -378,9 +405,10 @@ export function AskInfinity() {
       .slice(-8);
 
     setMessages((m) => [...m, { who: "me", text: q, memoPath: voiceMeta?.audio_path ?? null, requestId }]);
-    // A voice message sends itself when transcription finishes; whatever the
-    // person typed meanwhile is theirs and stays in the box.
-    if (!voiceMeta) setInput("");
+    // A voice message sends itself when transcription finishes, and a card
+    // sends its own words; whatever the person typed meanwhile is theirs and
+    // stays in the box.
+    if (!voiceMeta && !opts.keepInput) setInput("");
     setThinking(true);
 
     const online = typeof navigator === "undefined" ? true : navigator.onLine;
@@ -586,6 +614,18 @@ export function AskInfinity() {
     readClockNow();
   };
 
+  // --- Action cards ----------------------------------------------------------
+  const composerBusy = input.trim() !== "" || voice !== "idle";
+  const cardsVisible = cardsForced || !composerBusy;
+  // Typing or recording hides the cards even after "Actions" reopened them;
+  // the next "Actions" tap brings them back.
+  useEffect(() => { if (composerBusy) setCardsForced(false); }, [composerBusy]);
+  const pickCard = (pick: CardPick) => {
+    setShowAll(false);
+    setCardsForced(false);
+    send(pick.query, undefined, gen.current, { keepInput: true, operational: pick.operational });
+  };
+
   return (
     <div className="page ask-page">
       <header className="page-header">
@@ -697,13 +737,19 @@ export function AskInfinity() {
       {voice === "saving" && <p role="status" className="muted">{t("field.savingMemo")}</p>}
       {voice === "transcribing" && <p role="status" className="muted">{t("field.transcribing")}</p>}
 
-      <div className="ask-suggestions">
-        {suggestions.map((s) => (
-          <button key={s.query} type="button" className="chip" onClick={() => send(s.query)}>
-            {s.label}
-          </button>
-        ))}
-      </div>
+      {/* Action cards (K2.2): four per role + All actions, gone the moment the
+          composer has text or a recording starts, back with the "Actions"
+          button. Tapping a card sends the card's own words and never touches
+          what was typed. */}
+      {showAll ? (
+        <AllActions rank={cardRank} lang={lang} running={running} questions={suggestions} onClose={() => setShowAll(false)} onPick={pickCard} />
+      ) : cardsVisible ? (
+        <ActionCards rank={cardRank} lang={lang} running={running} onPick={pickCard} onAll={() => setShowAll(true)} />
+      ) : (
+        <div className="ask-suggestions">
+          <button type="button" className="chip" onClick={() => setCardsForced(true)}>{t("field.cards.reopen")}</button>
+        </div>
+      )}
 
       <div className="ask-input">
         <input

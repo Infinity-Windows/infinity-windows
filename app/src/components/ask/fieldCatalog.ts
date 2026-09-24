@@ -92,6 +92,21 @@ export const FIELD_CATALOG = {
   "field.recordingNotKept": { en: "Your recording is NOT saved yet — this phone could not keep it and it has not reached the server. Keep this screen open and tap Send now, or download it.", es: "Tu grabación TODAVÍA NO está guardada: el teléfono no pudo conservarla y no llegó al servidor. Deja esta pantalla abierta y toca Enviar ahora, o descárgala." },
   "field.downloadRecording": { en: "Download recording", es: "Descargar grabación" },
   "field.stepFailed": { en: "Some steps may not have finished. Only the saved cards above were saved.", es: "Algunos pasos pueden no haber terminado. Solo se guardó lo que aparece arriba." },
+  // Action cards (K2.2) and All actions (K2.1).
+  "field.cards.title": { en: "Actions", es: "Acciones" },
+  "field.cards.all": { en: "All actions", es: "Todas las acciones" },
+  "field.cards.reopen": { en: "Actions", es: "Acciones" },
+  "field.cards.close": { en: "Close", es: "Cerrar" },
+  "field.cards.notYet": { en: "not in Ask yet (release {release})", es: "todavía no está en Ask (versión {release})" },
+  "field.cards.useScreen": { en: "Use the {screen} screen for this", es: "Usa la pantalla {screen} para esto" },
+  "field.cards.asks": { en: "Asks: {list}", es: "Pregunta: {list}" },
+  "field.cards.never": { en: "Forge AI never:", es: "Forge AI nunca:" },
+  "field.cards.questions": { en: "Quick questions", es: "Preguntas rápidas" },
+  "field.cards.receipt.saved_in_forge": { en: "Receipt: Saved in Forge", es: "Recibo: Guardado en Forge" },
+  "field.cards.receipt.saved_on_phone": { en: "Receipt: Saved on this phone until you tap Save, then Saved in Forge", es: "Recibo: Guardado en este teléfono hasta que toques Guardar, y después Guardado en Forge" },
+  "field.cards.receipt.needs_choice": { en: "Receipt: Needs your choice, then Saved in Forge", es: "Recibo: Necesita tu decisión, y después Guardado en Forge" },
+  "field.cards.receipt.read_only": { en: "Shows a card. Nothing changes.", es: "Muestra una tarjeta. No cambia nada." },
+  "field.cards.receipt.one_tap_button": { en: "Shows a button. Only your tap changes the clock.", es: "Muestra un botón. Solo tu toque cambia el reloj." },
 } as const satisfies Record<string, CatalogEntry>;
 export type FieldKey = keyof typeof FIELD_CATALOG;
 export type TKey = AppKey | FieldKey;
