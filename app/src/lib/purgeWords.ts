@@ -108,6 +108,9 @@ export const WORK_HISTORY_PROBES: readonly HistoryProbe[] = [
 
   // Time and money.
   { table: "time_shifts", column: "profile_id", one: "punch", many: "punches" },
+  // The tap time and arrival time behind each punch (20261028000000): payroll
+  // evidence, so counted — even though every row is a child of a counted punch.
+  { table: "time_clock_actions", column: "profile_id", one: "clock punch record", many: "clock punch records" },
   {
     table: "unit_sessions",
     column: "profile_id",
