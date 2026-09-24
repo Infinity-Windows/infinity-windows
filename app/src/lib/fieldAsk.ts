@@ -161,8 +161,9 @@ export async function guardedResolve(
 
 export interface SavedTurn {
   id: string; transcript: string; input_kind: "text" | "voice"; sent_at: string; audio_path: string | null;
-  /** The whole saved reply: report/job-summary cards and sources come back too. */
-  reply: { answer?: string; toolActivity?: string[]; artifacts?: AskArtifact[]; sources?: KnowledgeSource[] } | null;
+  /** The whole saved reply: report/job-summary cards, sources and any one-tap
+   * clock buttons come back too. */
+  reply: { answer?: string; toolActivity?: string[]; artifacts?: AskArtifact[]; sources?: KnowledgeSource[]; buttons?: unknown } | null;
   captured: { checklist?: SetupChecklist | null; learning?: LearningPrep | null } | null; finished_at: string | null;
   receipts: FieldReceipt[];
 }

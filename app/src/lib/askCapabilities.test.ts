@@ -124,3 +124,30 @@ describe("the model's tool list derives from the registry", () => {
     expect(owner).toContain("Crew status → the Team timecards screen");
   });
 });
+
+// The boundary as source: no Ask-side module ever calls the RPCs that move a
+// clock, sign a talk, approve or publish — the tap on the phone does those.
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+describe("the AI boundary, read from the Ask function's own source (K2.4)", () => {
+  const HERE = dirname(fileURLToPath(import.meta.url));
+  const ROOT = join(HERE, "../../..");
+  const files = (dir: string): string[] => readdirSync(dir).flatMap((f) => {
+    const p = join(dir, f);
+    return statSync(p).isDirectory() ? files(p) : /\.ts$/.test(f) && !/\.test\.ts$/.test(f) ? [p] : [];
+  });
+  it("names no clock, break, toolbox, approval or publish RPC anywhere the model's tools run", () => {
+    const sources = [
+      ...files(join(ROOT, "supabase/functions/ask")),
+      ...["askCapabilities", "clockButtons", "fieldTools", "learningTools", "schedulingTools", "askReporting", "aiDailyLog"].map((n) => join(ROOT, `supabase/functions/_shared/${n}.ts`)),
+    ];
+    expect(sources.length).toBeGreaterThan(8);
+    for (const file of sources) {
+      const text = readFileSync(file, "utf8");
+      expect(text, file).not.toMatch(/\.rpc\(\s*["'](start_break|end_break|clock_in|clock_out|queued_clock_in|complete_toolbox|toolbox_sign|approve_[a-z_]+|publish_[a-z_]+|set_shift_status)["']/);
+      expect(text, file).not.toMatch(/from\(\s*["']time_shifts["']\s*\)\s*\.(insert|upsert|update|delete)/);
+      expect(text, file).not.toMatch(/from\(\s*["']schedule_assignments["']\s*\)\s*\.update\([^)]*status:\s*["']published["']/);
+    }
+  });
+});

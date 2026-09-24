@@ -46,6 +46,8 @@ import { roleRank } from "../lib/install/types";
 import { listWorkSessions, listWorkUnits } from "../lib/customWork/api";
 import { ActionCards, AllActions, type CardPick, type RunningUnit } from "../components/ask/ActionCards";
 import { contextTagFromInput, type AskContextTag } from "../../../supabase/functions/_shared/fieldTools";
+import { readClockButtons, type ClockButton } from "../../../supabase/functions/_shared/clockButtons";
+import { ClockButtons } from "../components/ask/ClockButtons";
 
 // Every cached screen a field receipt may have changed (see FIELD_QUERY_ROOTS).
 const refreshFieldViews = () => { for (const root of FIELD_QUERY_ROOTS) void queryClient.invalidateQueries({ queryKey: [root] }); };
@@ -53,6 +55,8 @@ const refreshFieldViews = () => { for (const root of FIELD_QUERY_ROOTS) void que
 interface ChatMsg {
   /** Field work: database receipts and the checklist, never model claims. */
   field?: FieldReply;
+  /** One-tap job-clock buttons the reply offered (K2.4): the tap is the change. */
+  buttons?: ClockButton[];
   /** The saved original recording behind this message. */
   memoPath?: string | null;
   /** The field request this message was, so a reload never shows it twice. */
@@ -277,7 +281,7 @@ export function AskInfinity() {
         for (const turn of turns.filter((x) => !shown.has(x.id))) {
           restored.push({ who: "me", text: turn.transcript, memoPath: turn.audio_path, requestId: turn.id });
           if (turn.reply || turn.receipts.length)
-            restored.push({ who: "infinity", text: turn.reply?.answer ?? "", toolActivity: turn.reply?.toolActivity,
+            restored.push({ who: "infinity", text: turn.reply?.answer ?? "", toolActivity: turn.reply?.toolActivity, buttons: readClockButtons(turn.reply?.buttons),
               artifacts: (turn.reply?.artifacts ?? []).filter((a) => a && ["time_report", "job_summary"].includes(a.kind)).slice(0, 4),
               sources: turn.reply?.sources ?? [],
               field: { request_id: turn.id, receipts: turn.receipts, checklist: turn.captured?.checklist ?? null, learning: turn.captured?.learning ?? null } });
@@ -495,7 +499,7 @@ export function AskInfinity() {
           return { who: "infinity", text: t("field.otherAccount") };
         }
         try {
-          const { answer, sources, note, toolActivity, artifacts, field } = await askInfinity(q, history, meta ?? undefined, { contextTag: tagRef.current });
+          const { answer, sources, note, toolActivity, artifacts, field, buttons } = await askInfinity(q, history, meta ?? undefined, { contextTag: tagRef.current });
           if (meta) {
             void dropUnsent(meta.request_id).then(async () => { if (isCurrent(g) && uid) setUnsent(await listUnsent(uid)); }).catch(() => undefined);
             if (isCurrent(g)) { clockSeen.current = null; readClockNow(g); }
@@ -503,7 +507,7 @@ export function AskInfinity() {
             if (isCurrent(g) && field) setHeld((h) => (h?.meta.request_id === meta.request_id ? null : h));
             if (field?.receipts.length) refreshFieldViews();
           }
-          if (answer || artifacts?.length || field?.receipts.length || field?.checklist) return { who: "infinity", text: answer || note || "", sources, toolActivity, artifacts, field };
+          if (answer || artifacts?.length || field?.receipts.length || field?.checklist || buttons?.length) return { who: "infinity", text: answer || note || "", sources, toolActivity, artifacts, field, buttons };
           limitNote = note;
         } catch {
           if (meta) {
@@ -688,6 +692,7 @@ export function AskInfinity() {
             {m.memoPath && <MemoPlayback path={m.memoPath} />}
             {m.field?.receipts.map((r) => <FieldReceiptCard key={r.action_id} receipt={r} onChange={updateReceipt} timingPending={timingPendingNow} />)}
             {m.field?.checklist && m.field.checklist === latestChecklist && <FieldChecklist checklist={m.field.checklist} />}
+            {m.buttons && m.buttons.length > 0 && <ClockButtons buttons={m.buttons} />}
             {m.portalNotice&&<p className="ask-sources muted">{m.portalNotice}</p>}
             {m.learning&&<LearningCard draft={m.learning}/>}
             {m.artifacts?.map(artifact => <ReportCard key={artifact.id} artifact={artifact}/>)}

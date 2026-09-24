@@ -1,6 +1,7 @@
 import type { AskArtifact } from "../../../supabase/functions/_shared/askReporting.ts";
 import type { FieldMeta, FieldReply } from "./fieldAsk";
 import type { AskContextTag } from "../../../supabase/functions/_shared/fieldTools";
+import { readClockButtons, type ClockButton } from "../../../supabase/functions/_shared/clockButtons";
 // Client seam for the Infinity AI knowledge base (vault RAG). The pure logic
 // (chunking, hashing, retrieval shaping, prompt assembly, the fallback
 // decision) lives in the runtime-agnostic shared module so the browser, the
@@ -88,6 +89,8 @@ export interface AskResult {
   toolActivity?: string[];
   /** Field work receipts and the setup checklist, straight from the database. */
   field?: FieldReply;
+  /** One-tap job-clock buttons the model offered (K2.4); the tap does the work. */
+  buttons?: ClockButton[];
 }
 
 /** Ask the cloud `ask` function for a real, grounded answer. Throws on any
@@ -120,6 +123,7 @@ export async function askInfinity(
     ...(data?.limited ? { limited: true } : {}),
     ...(typeof data?.note === "string" && data.note ? { note: data.note } : {}),
     ...(toolActivity.length > 0 ? { toolActivity } : {}),
+    ...(readClockButtons(data?.buttons).length > 0 ? { buttons: readClockButtons(data?.buttons) } : {}),
     ...(data?.field && typeof data.field === "object" && typeof data.field.request_id === "string"
       ? { field: { request_id: data.field.request_id, receipts: Array.isArray(data.field.receipts) ? data.field.receipts : [], checklist: data.field.checklist ?? null, draft: data.field.draft, learning: data.field.learning ?? null, replayed: data.field.replayed === true } }
       : {}),
