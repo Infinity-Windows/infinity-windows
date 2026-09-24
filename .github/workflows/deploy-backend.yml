@@ -155,43 +155,19 @@ jobs:
         with:
           version: ${{ env.SUPABASE_CLI_VERSION }}
 
+      # On 2026-09-23 Supabase returned a bare internal-error 500 for a
+      # different, unchanged function on two separate merges (monday-sync,
+      # then extract-schedule), and a manual rerun of the exact same command
+      # passed both times. scripts/deploy-functions.sh gives each function's
+      # deploy a couple of quick retries before calling it broken, so a blip
+      # on Supabase's end no longer turns a good deploy red. See its header
+      # for the full story and scripts/deploy-functions.test.sh for the tests.
       - name: Deploy every function in supabase/functions
         if: steps.guard.outputs.ok == 'true'
+        shell: bash
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-        run: |
-          set -euo pipefail
-          failed=()
-          deployed=0
-          for dir in supabase/functions/*/; do
-            name="$(basename "$dir")"
-            # _shared holds imported helpers, not a deployable function.
-            [ "${name#_}" != "$name" ] && continue
-            echo "::group::deploy $name"
-            if supabase functions deploy "$name" \
-                 --project-ref "$SUPABASE_PROJECT_REF" --use-api; then
-              echo "deployed $name"
-              deployed=$((deployed + 1))
-            else
-              echo "::error title=Function deploy failed::$name"
-              failed+=("$name")
-            fi
-            echo "::endgroup::"
-          done
-          if [ "${#failed[@]}" -gt 0 ]; then
-            echo "failed to deploy: ${failed[*]}" >&2
-            exit 1
-          fi
-          # A loop over a glob that matches nothing runs zero times and exits 0.
-          # This job would then report success having shipped absolutely
-          # nothing — the silent no-op again, just from a moved directory or a
-          # bad checkout rather than a missing secret. There is never a correct
-          # run of this workflow that deploys no functions.
-          if [ "$deployed" -eq 0 ]; then
-            echo "::error title=Nothing was deployed::No function directories were found under supabase/functions/, so this run shipped nothing."
-            exit 1
-          fi
-          echo "deployed $deployed function(s)"
+        run: scripts/deploy-functions.sh
 
       # Put the secrets there BEFORE anything checks for them. This step is the
       # difference between a pipeline that reports Ask Infinity is broken and one

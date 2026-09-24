@@ -116,6 +116,14 @@ jobs:
         shell: bash
         run: scripts/verify-functions.test.sh
 
+      # The step above that actually ships the functions. What matters is that
+      # a function whose deploy blips gets retried before it counts as broken,
+      # and a function that is genuinely broken still fails loudly. Stubs the
+      # Supabase CLI; no token, no project, no network, no real sleep.
+      - name: Test scripts/deploy-functions.sh
+        shell: bash
+        run: scripts/deploy-functions.test.sh
+
       # The failure notifier is the thing that tells a human when anything else
       # here breaks, so it gets the same treatment. Stubs curl; posts nothing.
       - name: Test scripts/slack-notify.sh
