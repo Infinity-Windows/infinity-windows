@@ -1,7 +1,7 @@
 import { VoiceInput } from "../../components/voice/VoiceInput";
 import { VoiceTextarea } from "../../components/voice/VoiceTextarea";
 import { useT } from "../../lib/i18n";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { listProjectsAnyStatus } from "../../lib/api";
 import { listProfiles } from "../../lib/install/api";
@@ -41,6 +41,18 @@ export function UnitEditor({
   const [job, setJob] = useState(
     unit ? (unit.project_id ?? "") : (jobId ?? ""),
   );
+  // F1 (crew redesign, 2026-09-23): the job arrives AFTER this form is
+  // already on screen when the shift resolves late (`shift?.project_id` is
+  // asynchronous). The editor used to be remounted for it, which wiped
+  // whatever had been typed. Now it stays mounted and the job fills in on
+  // its own — but only while the field is still blank, so a job the person
+  // chose by hand is never overwritten.
+  useEffect(() => {
+    if (!unit && jobId && !job) setJob(jobId);
+    // `job` is read deliberately without being a dependency: this fills an
+    // empty field once per new jobId and must not re-run on every keystroke.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobId, unit]);
   const [type, setType] = useState(
     unit?.type_label ?? defaults?.type ?? "Unknown",
   );
