@@ -247,6 +247,13 @@ expect "  and points at the token" "token"
 reply 400 0 '{"message":"failed to run sql query: ERROR:  canceling statement due to lock timeout"}'
 run "a lock timeout is exit 3, not a broken change" 3 --probe "$probe" "$migration"
 expect_not "  it does not call the change broken" "the change is broken"
+# The harness stopping on its own setup (2026-09-23/24: qa.installer had been
+# set to foreman), in the shape the Management API really answers with.
+reply 400 0 '{"message":"Failed to run sql query: ERROR:  P0001: dry run: no QA login has the installer role — set qa.installer (\"TEST — automation, do not assign\") to Installer in the app"}'
+run "a dry run: setup refusal is exit 3, not a broken change" 3 --probe "$probe" "$migration"
+expect "  it says the change was not tried" "the change was not tried"
+expect "  and names the login to fix" "set qa.installer"
+expect_not "  it does not call the change broken" "the change is broken"
 
 # --- what a probe prints is scrubbed ----------------------------------------------
 echo

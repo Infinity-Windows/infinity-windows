@@ -209,10 +209,36 @@ class Build(unittest.TestCase):
         batch = self.batch()
         for fn in ("dry_run_check(text, boolean, text)", "dry_run_act_as(uuid)", "dry_run_as_system()",
                    "dry_run_pick(text)", "dry_run_pick_real(text)", "dry_run_job(text)",
-                   "dry_run_expect_error(text, text, text)"):
+                   "dry_run_sandbox_job()", "dry_run_expect_error(text, text, text)"):
             self.assertIn(f"create function pg_temp.{fn.split('(')[0]}(", batch)
             self.assertIn(f"grant execute on function pg_temp.{fn} to anon, authenticated;", batch)
         self.assertIn("grant insert, select on table pg_temp.dry_run_results to anon, authenticated;", batch)
+
+    def test_the_installer_and_foreman_picks_stop_rather_than_act_as_a_real_person(self):
+        # 2026-09-23/24: qa.installer had been set to foreman, the picker handed
+        # back a real installer, and three runs died on the testing-job fence
+        # with a sentence that read like the change was broken. The behaviour
+        # is proved on a real Postgres by scripts/db-dry-run-harness.test.sh;
+        # this pins the words the person fixing it reads.
+        m = write(self.dir, "1.sql", "select 1;\n")
+        d.build(self.out, self.probe, [m])
+        batch = self.batch()
+        self.assertIn('dry run: no QA login has the installer role — set qa.installer ("TEST — automation, do not assign") '
+                      "to Installer in the app; use dry_run_pick_real(''installer'') if the probe means a real person.", batch)
+        self.assertIn('dry run: no QA login has the foreman role — set qa.foreman ("TEST — automation FOREMAN, do not assign") '
+                      "to Foreman in the app; use dry_run_pick_real(''foreman'') if the probe means a real person.", batch)
+
+    def test_the_sandbox_job_is_read_at_run_time_not_pinned(self):
+        # On 2026-09-24 BLACK22 was found unflagged and probes pinned to it died
+        # on the fence. The job a probe writes on is whichever is live, flagged
+        # and on the sandbox list, PECAN14 first; no helper defaults to a code.
+        m = write(self.dir, "1.sql", "select 1;\n")
+        d.build(self.out, self.probe, [m])
+        batch = self.batch()
+        self.assertIn("where p.deleted_at is null and coalesce(p.is_test, false)", batch)
+        self.assertIn("order by (p.job_code = 'PECAN14') desc, (p.job_code = 'BLACK22') desc, p.job_code", batch)
+        self.assertIn("dry run: no job is both flagged as testing and on the sandbox list", batch)
+        self.assertIn("create function pg_temp.dry_run_job(p_job_code text)\n", batch)
 
     def test_a_hostile_migration_writes_nothing(self):
         m = write(self.dir, "1.sql", "vacuum t;\n")
@@ -340,6 +366,31 @@ class Judge(unittest.TestCase):
         self.assertEqual(code, 3)
         self.assertIn("COULD NOT TELL", out)
         self.assertIn("Run it again", out)
+
+    SETUP = ('dry run: no QA login has the installer role — set qa.installer ("TEST — automation, do not assign") '
+             "to Installer in the app; use dry_run_pick_real('installer') if the probe means a real person.")
+
+    def test_a_setup_refusal_is_not_the_change_being_broken(self):
+        # The harness stopping before the change was tried: every shape the
+        # answer arrives in. The first is what the Management API really sent
+        # on 2026-09-24, with the harness's sentence in place of the fence's.
+        for body in (json.dumps({"message": "Failed to run sql query: ERROR:  P0001: " + self.SETUP}),
+                     json.dumps({"message": self.SETUP, "formattedError": "ERROR:  P0001:  " + self.SETUP, "code": "P0001"}),
+                     "ERROR:  " + self.SETUP + "\nCONTEXT:  PL/pgSQL function pg_temp_3.dry_run_pick(text) line 14 at RAISE\n"):
+            code, out = self.run_judge("400", body)
+            self.assertEqual(code, 3, out)
+            self.assertIn("COULD NOT TELL", out)
+            self.assertIn("the change was not tried", out)
+            self.assertIn("set qa.installer", out)
+            self.assertNotIn("the change is broken", out)
+
+    def test_the_words_dry_run_inside_a_real_error_are_still_the_change(self):
+        # Only a message that STARTS "dry run:" is the harness's. The change's
+        # own error that happens to say it is still the change failing.
+        body = json.dumps({"message": "Failed to run sql query: ERROR:  22023: Nothing is saved in a dry run: turn it off first."})
+        code, out = self.run_judge("400", body)
+        self.assertEqual(code, 1, out)
+        self.assertIn("the change is broken", out)
 
     def test_a_2xx_without_the_marker_is_alarming(self):
         code, out = self.run_judge("201", "[]")

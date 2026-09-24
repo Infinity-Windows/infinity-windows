@@ -43,26 +43,44 @@ create policy projects_read on public.projects for select to authenticated using
   not is_test or exists (select 1 from public.profiles p where p.id = auth.uid() and p.role in ('supervisor', 'owner'))
 );
 
--- Two QA logins and two real people; a retired one and a partner that the
--- pickers must skip; two jobs, one of them the sandbox.
+-- Two QA logins and three real people — a real installer and a real foreman
+-- for the pickers to (wrongly) fall back to if a QA login lost its role — plus
+-- a retired one and a partner that the pickers must skip.
 insert into auth.users (id, email) values
   ('00000000-0000-4000-8000-000000000001', 'qa.installer@example.test'),
   ('00000000-0000-4000-8000-000000000002', 'qa.foreman@example.test'),
   ('00000000-0000-4000-8000-000000000003', 'real.installer@example.test'),
   ('00000000-0000-4000-8000-000000000004', 'real.supervisor@example.test'),
   ('00000000-0000-4000-8000-000000000005', 'retired.installer@example.test'),
-  ('00000000-0000-4000-8000-000000000006', 'partner.installer@example.test');
+  ('00000000-0000-4000-8000-000000000006', 'partner.installer@example.test'),
+  ('00000000-0000-4000-8000-000000000007', 'real.foreman@example.test');
 insert into public.profiles (id, role, display_name, is_test, is_partner, retired_at) values
   ('00000000-0000-4000-8000-000000000001', 'installer', 'TEST — automation', true, false, null),
   ('00000000-0000-4000-8000-000000000002', 'foreman', 'TEST — automation FOREMAN', true, false, null),
   ('00000000-0000-4000-8000-000000000003', 'installer', 'Real Installer', false, false, null),
   ('00000000-0000-4000-8000-000000000004', 'supervisor', 'Real Supervisor', false, false, null),
   ('00000000-0000-4000-8000-000000000005', 'installer', 'Retired', false, false, now()),
-  ('00000000-0000-4000-8000-000000000006', 'installer', 'Partner', false, true, null);
-insert into public.projects (id, job_code, is_test) values
-  ('00000000-0000-4000-8000-000000000090', 'BLACK22', true),
-  ('00000000-0000-4000-8000-000000000091', 'REAL01', false);
-insert into public.sandbox_projects values ('00000000-0000-4000-8000-000000000090');
+  ('00000000-0000-4000-8000-000000000006', 'installer', 'Partner', false, true, null),
+  ('00000000-0000-4000-8000-000000000007', 'foreman', 'Real Foreman', false, false, null);
+
+-- A real job; three that qualify as the sandbox, in dry_run_sandbox_job's
+-- order (PECAN14, BLACK22, then by code: MADMOOSE); and three decoys whose
+-- codes sort ahead of all of them, each failing one test — in the trash,
+-- flagged but not on the sandbox list, on the list but not flagged.
+insert into public.projects (id, job_code, is_test, deleted_at) values
+  ('00000000-0000-4000-8000-000000000090', 'BLACK22', true, null),
+  ('00000000-0000-4000-8000-000000000091', 'REAL01', false, null),
+  ('00000000-0000-4000-8000-000000000092', 'PECAN14', true, null),
+  ('00000000-0000-4000-8000-000000000093', 'MADMOOSE', true, null),
+  ('00000000-0000-4000-8000-000000000094', 'AAA-TRASHED', true, now()),
+  ('00000000-0000-4000-8000-000000000095', 'AAA-NOT-LISTED', true, null),
+  ('00000000-0000-4000-8000-000000000096', 'AAA-NOT-FLAGGED', false, null);
+insert into public.sandbox_projects values
+  ('00000000-0000-4000-8000-000000000090'),
+  ('00000000-0000-4000-8000-000000000092'),
+  ('00000000-0000-4000-8000-000000000093'),
+  ('00000000-0000-4000-8000-000000000094'),
+  ('00000000-0000-4000-8000-000000000096');
 
 -- What the project's default privileges do to a function postgres creates:
 -- no EXECUTE for public, in any schema — pg_temp included.

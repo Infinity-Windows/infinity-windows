@@ -142,7 +142,8 @@ phone. A new field tool follows [`docs/ai-field-operations.md`](docs/ai-field-op
 merges.** Twice one passed every local test and failed in production on a
 constraint the fixture never had. Write a probe from
 `scripts/dry-run-probes/TEMPLATE.sql` that CALLS the RPC as the roles that will,
-on BLACK22, then `gh workflow run db-dry-run.yml` — [`docs/db-dry-run.md`](docs/db-dry-run.md).
+on the sandbox job (`dry_run_sandbox_job()`, never a pinned code), then
+`gh workflow run db-dry-run.yml` — [`docs/db-dry-run.md`](docs/db-dry-run.md).
 The forced error at the end of the batch is what guarantees nothing is kept.
 
 **Most of the laws above are checked on every pull request.** The exact ones by

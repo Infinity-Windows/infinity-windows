@@ -27,8 +27,10 @@ Exit codes, shared with the wrapper:
      the probe recorded no checks at all (a run that checks nothing proves
      nothing)
   2  refused or misused; nothing was sent
-  3  could not tell: no answer, an answer with no results in it, or a batch
-     that ended WITHOUT the forced error
+  3  could not tell: no answer, a lock or statement timeout, a run that
+     stopped on a "dry run:" setup refusal before the change was tried, an
+     answer with no results in it, or a batch that ended WITHOUT the forced
+     error
 """
 from __future__ import annotations
 
@@ -98,6 +100,15 @@ DEFAULT_LOCK_TIMEOUT = "5s"
 DEFAULT_STATEMENT_TIMEOUT = "120s"
 
 TIMEOUT_RE = re.compile(r"^\d+(ms|s|min|h)?$")
+
+# The harness's refusals, and a probe's refusals of its own setup, begin
+# "dry run:" — no QA login holds a role, no job is on the sandbox list. They
+# stop the run before the change is tried, so the verdict must not say the
+# change is broken: that headline over a setup problem is how three runs of
+# #641's probe on 2026-09-23/24 read as a product bug and cost hours. Matched
+# only where the database's message starts (after "ERROR:" and the P0001 a
+# plain `raise exception` carries), never in the middle of a sentence.
+SETUP_REFUSAL = re.compile(r"(?:^|ERROR:\s+)(?:P0001:\s+)?dry run: ", re.MULTILINE)
 
 
 # --------------------------------------------------------------------------
@@ -354,22 +365,41 @@ begin
 end $dry$;
 grant execute on function pg_temp.dry_run_as_system() to anon, authenticated;
 
--- Somebody with a role. The QA test login first where the role has one
--- (docs/test-account.md: the accounts built to write on the sandbox job, and
--- fenced to it by the database if a rollback ever failed); otherwise the
--- longest-standing real account of that role. Everything is rolled back
+-- Somebody with a role: the QA test login of that role (docs/test-account.md:
+-- the accounts built to write on the sandbox job, and fenced to it by the
+-- database if a rollback ever failed).
+--
+-- Installer and foreman HAVE a QA login, so for them it is that login or
+-- nobody: when the login no longer holds the role, the run stops here in
+-- plain words. It used to fall back to a real person, and a real person is
+-- refused on a testing job — so the run died later on the fence with a
+-- sentence that read like the change was broken. On 2026-09-23/24
+-- qa.installer had been set to foreman, and three runs of #641's probe died
+-- on "Choose an existing job for the daily log." A probe that means a real
+-- person asks dry_run_pick_real.
+--
+-- Every other role has no QA login, so it gets a real account of that role
+-- (the lowest id, so every run picks the same one). Everything is rolled back
 -- either way. Resets to the system, so pick people BEFORE acting as one.
 create function pg_temp.dry_run_pick(p_role text)
 returns uuid language plpgsql as $dry$
-declare v_id uuid;
+declare
+  v_id uuid;
+  v_is_test boolean;
 begin
   execute 'reset role';
-  select p.id into v_id from public.profiles p
+  select p.id, coalesce(p.is_test, false) into v_id, v_is_test from public.profiles p
    where p.role = p_role
      and p.retired_at is null and p.access_revoked_at is null
      and coalesce(p.is_partner, false) = false
    order by coalesce(p.is_test, false) desc, p.id
    limit 1;
+  if p_role = 'installer' and not coalesce(v_is_test, false) then
+    raise exception 'dry run: no QA login has the installer role — set qa.installer ("TEST — automation, do not assign") to Installer in the app; use dry_run_pick_real(''installer'') if the probe means a real person.';
+  end if;
+  if p_role = 'foreman' and not coalesce(v_is_test, false) then
+    raise exception 'dry run: no QA login has the foreman role — set qa.foreman ("TEST — automation FOREMAN, do not assign") to Foreman in the app; use dry_run_pick_real(''foreman'') if the probe means a real person.';
+  end if;
   if v_id is null then
     raise exception 'dry run: nobody with the role % to act as', p_role;
   end if;
@@ -398,10 +428,11 @@ begin
 end $dry$;
 grant execute on function pg_temp.dry_run_pick_real(text) to anon, authenticated;
 
--- A job by its code. BLACK22 is the sandbox job every probe targets: it is a
--- testing project, so even a rollback that failed could touch nothing real.
--- Resets to the system (the row is hidden from installers by design).
-create function pg_temp.dry_run_job(p_job_code text default 'BLACK22')
+-- A job by its code, for a probe that needs one particular job: to read it,
+-- or to prove a fence holds on it. The job a probe WRITES on comes from
+-- dry_run_sandbox_job() below, because no code stays the sandbox for good.
+-- Resets to the system (a testing job is hidden from installers by design).
+create function pg_temp.dry_run_job(p_job_code text)
 returns uuid language plpgsql as $dry$
 declare v_id uuid;
 begin
@@ -414,6 +445,32 @@ begin
   return v_id;
 end $dry$;
 grant execute on function pg_temp.dry_run_job(text) to anon, authenticated;
+
+-- The job a probe writes on: not in the trash, flagged as a testing project,
+-- and on public.sandbox_projects. Those are the two facts the QA logins'
+-- fence and their view of a job read, so even a rollback that failed could
+-- have touched nothing real. PECAN14 first (the owner's practice job since
+-- 2026-09-24), then BLACK22 if it is flagged again, then by code; MADMOOSE is
+-- a real job flagged as testing, and a run should not need it. Never a fixed
+-- code: on 2026-09-24 BLACK22 was found unflagged, and probes pinned to it
+-- died on the fence instead of testing the change. Stops the run when no job
+-- qualifies. Resets to the system.
+create function pg_temp.dry_run_sandbox_job()
+returns uuid language plpgsql as $dry$
+declare v_id uuid;
+begin
+  execute 'reset role';
+  select p.id into v_id
+    from public.sandbox_projects s join public.projects p on p.id = s.project_id
+   where p.deleted_at is null and coalesce(p.is_test, false)
+   order by (p.job_code = 'PECAN14') desc, (p.job_code = 'BLACK22') desc, p.job_code
+   limit 1;
+  if v_id is null then
+    raise exception 'dry run: no job is both flagged as testing and on the sandbox list, so the QA logins have nowhere to write — mark a practice job as testing in the app (a supervisor or above can; that puts it on the sandbox list too) and run again.';
+  end if;
+  return v_id;
+end $dry$;
+grant execute on function pg_temp.dry_run_sandbox_job() to anon, authenticated;
 
 -- Run a statement that SHOULD be refused, as whoever we are acting as. The
 -- check passes when it raises (and, if p_expect is given, when the error
@@ -630,6 +687,12 @@ def judge(status: str, body_path: str, project: str) -> int:
             say(f"COULD NOT TELL: the batch{where} timed out waiting, so the change was not tried to the end.",
                 "Everything was rolled back. Run it again in a quieter minute, or raise DB_DRY_RUN_LOCK_TIMEOUT /",
                 "DB_DRY_RUN_STATEMENT_TIMEOUT if the migration genuinely takes longer. The database said:",
+                "    " + said.replace("\n", "\n    "))
+            return 3
+        if SETUP_REFUSAL.search(said):
+            say(f"COULD NOT TELL: the practice run{where} stopped while setting itself up, so the change was not tried.",
+                "That is the harness or the probe refusing, not the change failing. Fix what it names, then run again.",
+                "Everything was rolled back; nothing was kept. It said:",
                 "    " + said.replace("\n", "\n    "))
             return 3
         say(f"FAIL: a statement failed before the end of the batch{where}, so the change is broken.",

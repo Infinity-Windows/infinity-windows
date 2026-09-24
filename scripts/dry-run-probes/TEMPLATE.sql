@@ -11,23 +11,35 @@
 -- THE RULES
 --   * Never open, commit or roll back a transaction. The batch owns it, and
 --     the builder refuses a probe that carries any transaction control.
---   * Target BLACK22, the sandbox job (docs/test-account.md). Everything is
---     rolled back anyway; BLACK22 is the belt to those braces — a testing
---     project a failed rollback could not have hurt anyone through.
+--   * Write on the sandbox job from dry_run_sandbox_job(), never a job pinned
+--     by its code: whichever live job is flagged as testing AND on the sandbox
+--     list (PECAN14 first), the one kind of job the QA logins may write
+--     (docs/test-account.md). Everything is rolled back anyway; the sandbox is
+--     the belt to those braces. BLACK22 was the sandbox until 2026-09-24, and
+--     probes pinned to it died on the fence instead of testing the change.
 --   * Act as people, not as the system, for every RPC call: the point is to
 --     hit the grants, the policies and auth.uid() the app will hit. Use the
 --     system only to set up and to read the truth afterwards.
 --   * Pick people and jobs BEFORE acting as someone (the pickers reset to the
 --     system, and a testing job is hidden from installers by design).
+--   * An installer or a foreman is the QA login or nobody: dry_run_pick stops
+--     the run, naming the login to fix, when that login has lost its role. A
+--     probe that means a real person asks dry_run_pick_real.
+--   * If the probe itself cannot start (nothing on the sandbox job to try the
+--     change on), stop with raise exception 'dry run: ...' saying what to fix.
+--     The report then says the run could not set itself up, not that the
+--     change is broken.
 --   * Details are for ids and counts. The run's log is readable by everyone
 --     with access to the repository, so never a person's name or email.
 --   * Every check has a name a human can read in a table, and says what was
 --     expected when it fails ("expected 1 row, got 2").
 --
 -- THE HARNESS (all in pg_temp; scripts/db_dry_run.py defines them)
---   dry_run_pick(role)          uuid   the QA login of that role if there is one, else a real person
+--   dry_run_pick(role)          uuid   the QA login of that role; installer and foreman stop the run
+--                                      if theirs lost the role; other roles have none: a real person
 --   dry_run_pick_real(role)     uuid   a real person of that role, never a QA login
---   dry_run_job(code)           uuid   a job by its code — 'BLACK22'
+--   dry_run_sandbox_job()       uuid   the job to write on: live, flagged testing, on the sandbox list
+--   dry_run_job(code)           uuid   a job by its code, to read it or prove a fence holds on it
 --   dry_run_act_as(profile)     text   from here on, that person's JWT and the authenticated role
 --   dry_run_as_system()         void   from here on, the system: no caller, no row security
 --   dry_run_check(name, ok, detail)         record a check
@@ -47,7 +59,7 @@ begin
   -- 1. Setup, as the system. Look everyone and everything up first.
   perform pg_temp.dry_run_as_system();
   v_installer := pg_temp.dry_run_pick('installer');
-  v_job := pg_temp.dry_run_job('BLACK22');
+  v_job := pg_temp.dry_run_sandbox_job();
   -- Arrange what the RPC needs, e.g. today's toolbox talk for a clock-in:
   --   insert into public.toolbox_completions (profile_id, signed_at) values (v_installer, now());
 

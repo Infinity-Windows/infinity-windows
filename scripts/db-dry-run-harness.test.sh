@@ -79,13 +79,24 @@ set -e
 cat "$work/verdict"
 [ "$rc" -eq 0 ] && ok "every check in the probe passed (exit 0)" || bad "the judge exited $rc"
 for check in "pick: the QA installer comes first" \
+             "pick: the QA foreman comes first, ahead of the real one" \
+             "sandbox_job: PECAN14 first" \
+             "job: BLACK22 by code" \
              "act_as: runs as the authenticated role with their id" \
              "act_as: a testing job is hidden from an installer" \
              "rpc: the installer's note is saved under their id" \
              "rpc: a body over twenty characters is refused" \
              "rls: the installer cannot read the table directly" \
              "system: both notes are on the job" \
-             "system: back to no caller"; do
+             "system: back to no caller" \
+             "sandbox_job: BLACK22 once PECAN14 is off the sandbox list" \
+             "sandbox_job: then by code, past the trashed, unlisted, unflagged" \
+             "sandbox_job: none left stops the run in plain words" \
+             "pick: no QA installer stops the run, never a real installer" \
+             "pick_real: the real installer, for a probe that means one" \
+             "pick: no QA foreman stops the run, never a real foreman" \
+             "pick: a role with no QA login still gets a real person" \
+             "pick: a role nobody holds stops the run"; do
   grep -q "ok    $check" "$work/verdict" && ok "  $check" || bad "  missing or failed: $check"
 done
 
@@ -94,6 +105,15 @@ after="$(query "select to_regclass('public.demo_notes') is null, to_regprocedure
 [ "$after" = "t|t" ] && ok "after the batch the migration's table and RPC do not exist" || bad "something survived the rollback: $after"
 temps="$(query "select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname like 'pg_temp%' and c.relname = 'dry_run_results'")"
 [ "$temps" = "0" ] && ok "no harness object survived the connection" || bad "a harness object survived: $temps"
+# And the probe's own setup changes: a QA login's role, the sandbox list, a
+# job's flag, a job in the trash.
+state="$(query "select (select role from public.profiles where id = '00000000-0000-4000-8000-000000000001'),
+                       (select role from public.profiles where id = '00000000-0000-4000-8000-000000000002'),
+                       (select count(*) from public.sandbox_projects),
+                       (select is_test from public.projects where job_code = 'BLACK22'),
+                       (select deleted_at is null from public.projects where job_code = 'MADMOOSE')")"
+[ "$state" = "installer|foreman|5|t|t" ] && ok "the probe's changes to roles, the sandbox list and the jobs were rolled back too" \
+  || bad "the probe's setup changes survived: $state"
 
 # --- 2. A migration that breaks on a constraint --------------------------------
 python3 "$REPO/scripts/db_dry_run.py" build --out "$work/batch2.sql" --probe "$FIX/probe.sql" "$FIX/migration.sql" "$FIX/migration-broken.sql" >/dev/null
@@ -118,6 +138,25 @@ set -e
 cat "$work/verdict3"
 [ "$rc" -eq 1 ] && ok "a false check is exit 1" || bad "the judge exited $rc for a false check"
 grep -q "FAIL  a check that is wrong on purpose" "$work/verdict3" && ok "  and it is named" || bad "  it was not named"
+
+# --- 4. A QA login that lost its role (2026-09-23/24) ---------------------------
+# The whole trip: the probe picks an installer the usual way while qa.installer
+# is a foreman. It must stop in plain words, and the verdict must say the
+# change was not tried — not act as the real installer and fail on the fence.
+python3 "$REPO/scripts/db_dry_run.py" build --out "$work/batch4.sql" --probe "$FIX/probe-lost-qa-role.sql" "$FIX/migration.sql" >/dev/null
+send_batch "$work/batch4.sql" "$work/out4" "$work/err4" || true
+set +e
+python3 "$REPO/scripts/db_dry_run.py" judge --status 400 --body "$work/err4" --project "disposable" >"$work/verdict4"
+rc=$?
+set -e
+cat "$work/verdict4"
+[ "$rc" -eq 3 ] && ok "a QA login that lost its role is exit 3: the change was not tried" || bad "the judge exited $rc for a QA login that lost its role"
+grep -q "no QA login has the installer role" "$work/verdict4" && grep -q "set qa.installer" "$work/verdict4" \
+  && ok "  and it names the login to fix" || bad "  it did not name the login to fix"
+grep -q "the change is broken" "$work/verdict4" && bad "  and it says the change is broken" || ok "  and it does not say the change is broken"
+grep -q "never reached" "$work/verdict4" && bad "  and the probe went on past the pick" || ok "  and the probe stopped at the pick"
+role="$(query "select role from public.profiles where id = '00000000-0000-4000-8000-000000000001'")"
+[ "$role" = "installer" ] && ok "  and the role change was rolled back with the batch" || bad "  the role change survived: $role"
 
 echo
 echo "$pass passed, $fail failed (disposable PostgreSQL 16)"
