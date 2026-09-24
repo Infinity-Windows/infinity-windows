@@ -374,3 +374,19 @@
 .custom-work .cw-person-choice input { width: 22px; height: 22px; min-height: 0; flex: 0 0 22px; accent-color: #ff482e; }
 .custom-work .cw-crew-history { border-top: 1px solid var(--border, #46342c); padding: 1rem 0; overflow-wrap: anywhere; }
 .custom-work .cw-crew-description { white-space: pre-wrap; }
+
+/* One tap to finish a unit (2026-09-24): the complete button leads the running
+   card, and a finished unit says so in the list. */
+.custom-work .cw-complete-actions .primary {
+  min-height: 56px;
+  width: 100%;
+  font-size: 1.05rem;
+}
+.custom-work .cw-complete-badge {
+  color: var(--ok);
+  font-weight: 700;
+}
+.custom-work .cw-editor-complete {
+  margin: 0.5rem 0 0.75rem;
+}
+

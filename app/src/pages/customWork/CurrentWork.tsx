@@ -19,6 +19,12 @@ import {
   type WorkSession,
   type WorkUnit,
 } from "../../lib/customWork/model";
+import {
+  canEditUnit,
+  finishedStop,
+  isUnitComplete,
+  markCompleteUnit,
+} from "../../lib/customWork/complete";
 import { CrewWork } from "./CrewWork";
 import { UnitEditor } from "./UnitEditor";
 import { QueueNotice } from "./QueueNotice";
@@ -143,6 +149,26 @@ export function CurrentWork() {
     setFinishNote("");
     setDelay("");
   };
+  // One tap to finish a unit: stop as finished, then mark the whole install
+  // complete — never a start, which reopens it (lib/customWork/complete.ts).
+  const completeUnit = async () => {
+    if (!active || !activeUnit) return;
+    await work.command("stop", finishedStop(active, new Date().toISOString(), finishNote, delay));
+    await work.command("unit", markCompleteUnit(activeUnit));
+    setFinishNote("");
+    setDelay("");
+    setOutcome("partial");
+  };
+  // A helper on someone else's unit finishes their own part; the unit's author
+  // or a foreman records the whole install (the server's rule for unit edits).
+  const finishMyPart = async () => {
+    if (!active) return;
+    await work.command("stop", finishedStop(active, new Date().toISOString(), finishNote, delay));
+    setFinishNote("");
+    setDelay("");
+    setOutcome("partial");
+  };
+  const canComplete = !!activeUnit && canEditUnit(activeUnit, work.user, lead);
   const saveUnit = async (data: Record<string, unknown>, begin: boolean) =>
     run(async () => {
       await work.command("unit", data);
@@ -208,6 +234,22 @@ export function CurrentWork() {
                   ? `${activeUnit.type_label} · ${active.stage} · ${active.participation}`
                   : active.description}
               </p>
+              {activeUnit && (
+                <div className="cw-actions cw-complete-actions">
+                  <button
+                    className="primary"
+                    disabled={blocked}
+                    onClick={() => void run(canComplete ? completeUnit : finishMyPart)}
+                  >
+                    {canComplete
+                      ? t("currentWork.unitComplete")
+                      : t("currentWork.finishedMyPart")}
+                  </button>
+                </div>
+              )}
+              {activeUnit && !canComplete && (
+                <p className="cw-field-hint">{t("currentWork.foremanCompletes")}</p>
+              )}
               <div className="cw-actions">
                 <button disabled={blocked} onClick={() => setIdle(true)}>
                   {t("currentWork.finishIdle")}
@@ -417,6 +459,11 @@ export function CurrentWork() {
               {available.map((u) => (
                 <div className="cw-card" key={u.id}>
                   <strong>{u.label}</strong>
+                  {isUnitComplete(u) && (
+                    <span className="cw-complete-badge">
+                      {t("currentWork.installComplete")}
+                    </span>
+                  )}
                   <span>
                     {u.type_label} ·{" "}
                     {u.facts.location ||
@@ -429,7 +476,9 @@ export function CurrentWork() {
                       disabled={blocked}
                       onClick={() => void run(() => start(u))}
                     >
-                      Start / resume
+                      {isUnitComplete(u)
+                        ? t("currentWork.startAgain")
+                        : "Start / resume"}
                     </button>
                     <button
                       disabled={blocked}

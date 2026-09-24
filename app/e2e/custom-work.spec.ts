@@ -216,6 +216,68 @@ for (const role of ["installer", "foreman", "supervisor", "owner"] as const) {
   });
 }
 
+// 2026-09-24: crews said marking a unit complete "doesn't work or save". The
+// form's "Save and start" saved the Yes and then started a visit, which
+// reopens completion, so no unit ever stayed complete. Now one tap on the
+// running unit finishes it, and the form's Yes is a plain save.
+test("an installer marks a unit complete in one tap, and it stays complete", async ({
+  page,
+}) => {
+  test.setTimeout(60000);
+  const { data } = await setupWork(page, "installer");
+  await page.goto("/");
+  await page.getByRole("button", { name: "+ Start unit", exact: true }).click();
+  await page.getByLabel("Unit number / name").fill("16");
+  await page.getByLabel("Type", { exact: true }).fill("Custom aluminum slider");
+  await page.getByRole("button", { name: "Start this unit", exact: true }).click();
+  const active = page.getByRole("region", { name: "Current activity" });
+  await expect(active.getByRole("heading", { name: "Unit 16" })).toBeVisible();
+  // Settled: the start has synced and the form has closed.
+  await expect(page.getByRole("region", { name: "Unit details", exact: true })).toHaveCount(0);
+  await expect(active.getByRole("button", { name: "Unit complete ✓", exact: true })).toBeEnabled();
+  await page.screenshot({ path: "e2e/test-results/unit-running-phone.png" });
+  await active.getByRole("button", { name: "Unit complete ✓", exact: true }).click();
+  await expect.poll(() => data.units[0]?.facts.installation_complete).toBe("Yes");
+  await expect.poll(() => data.sessions.filter((s) => !s.ended_at).length).toBe(0);
+  expect(data.sessions[0].outcome).toBe("finished");
+  await expect(page.getByText("✓ Install complete", { exact: true })).toBeVisible();
+  // Both commands went through: nothing is left refused in the queue, so the
+  // screen is usable again (a stuck queue disables every button here).
+  await expect(
+    page.getByRole("button", { name: "Start again (reopens it)", exact: true }),
+  ).toBeEnabled();
+  await expect(page.getByText(/saved on this device — pending sync/)).toHaveCount(0);
+  await page.screenshot({ path: "e2e/test-results/unit-complete-phone.png", fullPage: true });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+    page.viewportSize()!.width,
+  );
+  await page.reload();
+  await expect(page.getByText("✓ Install complete", { exact: true })).toBeVisible();
+  expect(data.units[0].facts.installation_complete).toBe("Yes");
+});
+
+test("choosing whole install complete in the unit form saves without starting a visit", async ({
+  page,
+}) => {
+  test.setTimeout(60000);
+  const { data } = await setupWork(page, "installer");
+  await page.goto("/");
+  await page.getByRole("button", { name: "+ Start unit", exact: true }).click();
+  await page.getByLabel("Unit number / name").fill("17");
+  await page.getByLabel("Type", { exact: true }).fill("Fixed window");
+  await page.getByRole("button", { name: "Start this unit", exact: true }).click();
+  const active = page.getByRole("region", { name: "Current activity" });
+  await expect(active.getByRole("heading", { name: "Unit 17" })).toBeVisible();
+  await active.getByRole("button", { name: "Edit unit details" }).click();
+  const editor = page.getByRole("region", { name: "Unit details", exact: true });
+  await editor.getByLabel("Whole install complete (all visits)").selectOption("Yes");
+  await expect(editor.getByRole("button", { name: "Save and start", exact: true })).toHaveCount(0);
+  await editor.getByRole("button", { name: "Save — install complete ✓", exact: true }).click();
+  await expect.poll(() => data.units[0]?.facts.installation_complete).toBe("Yes");
+  // No new visit was started, so nothing reopened it: still one session.
+  expect(data.sessions.length).toBe(1);
+});
+
 test("a map unit keeps its identity when creating and joining custom work", async ({
   page,
 }) => {
