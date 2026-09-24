@@ -102,7 +102,16 @@ export interface DraftEntry {
   project_id: string;
   profile_id: string;
   date: string;
+  /** Why this person, this job, this day — one short plain sentence the
+   * supervisor reads on Scheduling's Review AI drafts card (K2.8). Kept in
+   * the draft's 'created' schedule_events payload, never on the row's `note`,
+   * which the crew can see. Null when the model gave none (older drafts). */
+  reason: string | null;
 }
+
+/** A reason longer than this is clipped, never refused — losing the
+ * assignment over a wordy sentence would be the worse outcome. */
+export const MAX_DRAFT_REASON_CHARS = 160;
 
 export interface DraftEntryError {
   /** Index into the ORIGINAL entries array the model sent, for its own reply. */
@@ -153,10 +162,12 @@ export function parseDraftEntriesInput(input: unknown): ParsedDraftEntries {
     } else if (!isIsoDate(e.date)) {
       errors.push({ index, reason: "date must be YYYY-MM-DD" });
     } else {
+      const reason = typeof e.reason === "string" ? e.reason.replace(/\s+/g, " ").trim().slice(0, MAX_DRAFT_REASON_CHARS) : "";
       entries.push({
         project_id: e.project_id as string,
         profile_id: e.profile_id as string,
         date: e.date as string,
+        reason: reason || null,
       });
     }
   });
@@ -197,7 +208,9 @@ export const DRAFT_ASSIGNMENTS_TOOL: AnthropicToolDef = {
     "job, one day per entry — the board's own native unit, so every row is " +
     "individually draggable and removable there. Every row this writes is " +
     "marked AI-proposed and stays invisible to the crew until a human " +
-    "publishes on Scheduling — this tool can NEVER publish. Returns one " +
+    "publishes on Scheduling — this tool can NEVER publish. Give every entry " +
+    "a `reason`: one plain sentence the supervisor reads on Scheduling's " +
+    "Review AI drafts card before publishing. Returns one " +
     "ok/refusal result per entry (refusal reasons: double_booked, " +
     "unknown_project, unknown_profile). Refuses the whole call below " +
     "supervisor rank.",
@@ -215,6 +228,10 @@ export const DRAFT_ASSIGNMENTS_TOOL: AnthropicToolDef = {
             project_id: { type: "string", description: "The job's id, from get_scheduling_picture." },
             profile_id: { type: "string", description: "The crew member's id, from get_scheduling_picture." },
             date: { type: "string", description: "YYYY-MM-DD." },
+            reason: {
+              type: "string",
+              description: `Why this person, this job, this day, in plain words a supervisor reads before publishing — under ${MAX_DRAFT_REASON_CHARS} characters, e.g. "Lead with wet glazing; keeps Team 1 together". Say here when a saved crew was split.`,
+            },
           },
           required: ["project_id", "profile_id", "date"],
         },
@@ -294,6 +311,10 @@ export const SCHEDULING_SYSTEM_PROMPT =
   '- A mid-conversation correction ("swap Sam for Jordan") edits the plan ' +
   "in place: clear_ai_drafts the affected entries, then draft_assignments " +
   "the fix — don't just describe the change without writing it.\n" +
+  "- Give every draft_assignments entry a `reason`: one plain sentence a " +
+  "supervisor reads on Scheduling's Review AI drafts card — why this " +
+  "person, this job, this day (a split saved crew is said here too, not " +
+  "only in your answer).\n" +
   "- draft_assignments can NEVER publish a schedule to the crew — it only " +
   "ever writes drafts a human must review. Every final answer that drafted " +
   "anything must end with a plain summary of what was drafted and the " +

@@ -1626,6 +1626,64 @@
       "$comment": "schedulingRefused passes two ways (2026-09-24): the scheduling tool is called and refuses by rank (the stub), or no scheduling tool is called and the reply says it is a supervisor's. A live model did the second, exactly as the capability block tells it to, and was scored as a failure."
     },
     {
+      "id": "plan-schedule-supervisor-reasons",
+      "action": "plan_schedule",
+      "lang": "en",
+      "rank": 2,
+      "kind": "text",
+      "utterance": "Plan Monday the 28th on Smith: Ana and Ben, and tell me why each",
+      "world": {
+        "field": false
+      },
+      "stub": {
+        "tools": [
+          {
+            "name": "get_scheduling_picture",
+            "input": {
+              "from": "2026-09-28",
+              "to": "2026-09-28"
+            }
+          },
+          {
+            "name": "draft_assignments",
+            "input": {
+              "entries": [
+                {
+                  "project_id": "$SMITH",
+                  "profile_id": "$ANA",
+                  "date": "2026-09-28",
+                  "reason": "Lead on Smith; keeps Team 1 together"
+                },
+                {
+                  "project_id": "$SMITH",
+                  "profile_id": "$BEN",
+                  "date": "2026-09-28",
+                  "reason": "Second pair of hands for the corner units"
+                }
+              ]
+            }
+          }
+        ],
+        "text": "Two drafts for Monday Sep 28 on Smith Residence: Ana (lead, keeps Team 1 together) and Ben (second pair of hands for the corner units). Review on Scheduling — nothing reaches the crew until you publish."
+      },
+      "expect": {
+        "toolsAny": [
+          "draft_assignments"
+        ],
+        "toolsNever": [
+          "save_field_unit",
+          "create_field_job"
+        ],
+        "draftReasons": true,
+        "noWrite": true,
+        "answerLang": "en",
+        "mentions": [
+          "Review on Scheduling"
+        ]
+      },
+      "$comment": "K2.8: each drafted row carries the model's reason, which the supervisor reads on Scheduling's Review AI drafts card. The rows are drafts (created_via='ai'); only a human publish on Scheduling reaches the crew."
+    },
+    {
       "id": "my-hours",
       "action": "my_hours",
       "lang": "en",

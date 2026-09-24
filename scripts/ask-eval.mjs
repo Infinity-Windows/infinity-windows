@@ -232,7 +232,7 @@ async function runCase(c, send) {
     + `\nReport time zone: America/Denver. Current date: 2026-09-23.`;
   const messages = [{ role: "user", content: c.utterance }];
   const result = await send({ system, messages, tools, executeTool, stub: c.stub });
-  return { rank, isField, routed, hasContext, text: result.text, toolCalls: result.toolCalls.map((t) => t.name), truncated: result.truncated, state, daily, buttons: clock.buttons, artifacts, toolErrors, notOffered, schedulingRefused, rpcCalls, usage: result.usage };
+  return { rank, isField, routed, hasContext, text: result.text, toolCalls: result.toolCalls.map((t) => t.name), toolInputs: result.toolCalls, truncated: result.truncated, state, daily, buttons: clock.buttons, artifacts, toolErrors, notOffered, schedulingRefused, rpcCalls, usage: result.usage };
 }
 
 // ---------------------------------------------------------------------------
@@ -351,6 +351,12 @@ function score(c, r) {
   // exactly as instructed and was scored as a failure. A write is never
   // accepted (noWrite on the case), and the prose must still name who can.
   if (e.schedulingRefused) check(r.schedulingRefused || (!r.toolCalls.some((t) => SCHEDULING_TOOL_NAMES.has(t)) && /supervisor/i.test(r.text)), "scheduling should have been refused by rank, or not attempted and said to be a supervisor's");
+  // K2.8: every drafted row carries the reason the supervisor reads on the
+  // Review AI drafts card — short, plain, never blank.
+  if (e.draftReasons) {
+    const drafts = (r.toolInputs ?? []).filter((t) => t.name === "draft_assignments");
+    check(drafts.length > 0 && drafts.every((t) => (t.input?.entries ?? []).length > 0 && (t.input?.entries ?? []).every((x) => typeof x.reason === "string" && x.reason.trim().length > 0 && x.reason.length <= 160)), "every drafted row needs a short reason for the supervisor");
+  }
   for (const t of e.toolErrors ?? []) check(r.toolErrors.includes(t), `${t} should have returned an error`);
   for (const t of e.refusedOrNotCalled ?? []) check(r.toolErrors.includes(t) || !r.toolCalls.includes(t), `${t} should have been refused by the tool or never called, it returned a result`);
   if (e.learningPrepared) check(!!r.state?.learning, "no lesson write-up prepared");

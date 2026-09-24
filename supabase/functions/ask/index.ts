@@ -1117,9 +1117,12 @@ async function executeDraftAssignments(
       continue;
     }
     try {
+      // The model's reason rides on the audit event, not on the row: `note`
+      // is crew-visible, and the Review AI drafts card (K2.8) reads this
+      // payload back for the supervisor. Older drafts have no reason.
       await client
         .from("schedule_events")
-        .insert({ assignment_id: assignmentId, actor: callerUid, kind: "created", payload: { ai: true } });
+        .insert({ assignment_id: assignmentId, actor: callerUid, kind: "created", payload: { ai: true, reason: entry.reason } });
     } catch (_e) {
       // audit is optional, matches lib/schedule/api.ts's own logEvent
     }
