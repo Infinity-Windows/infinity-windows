@@ -195,4 +195,20 @@ describe("action cards", () => {
     expect(sent.questions).toEqual(["What is flashing?"]);
     expect(sent.fields[0]).toBeNull();
   });
+
+  // K2.8: reviewing the AI's schedule drafts is done on Scheduling, never in
+  // Ask — listed for a supervisor with the screen, and no release promised.
+  it("a supervisor's All actions lists Review AI drafts as done on its screen, with the Scheduling link — never as a card", async () => {
+    who.role = "supervisor";
+    await mount();
+    expect(cardNames()).not.toContain("Review AI drafts");
+    await act(async () => button("All actions")!.click());
+    await settle();
+    const all = host!.querySelector(".ask-all-actions")!;
+    expect(all.textContent).toContain("Review AI drafts · done on its screen, not in Ask");
+    expect(all.textContent).not.toContain("Review AI drafts · not in Ask yet");
+    const link = [...all.querySelectorAll<HTMLAnchorElement>("a")].find((a) => a.textContent?.includes("Use the Scheduling screen for this"));
+    expect(link?.getAttribute("href")).toBe("/scheduling");
+    expect(button("Review AI drafts")).toBeNull();
+  });
 });

@@ -37,9 +37,29 @@ describe("the capability registry is the one list", () => {
       expect(c.changes.es.trim()).not.toBe("");
       expect(c.screen, `${c.id} has no screen`).not.toBeNull();
       if (!c.live) expect(c.tools, `${c.id} is not live but claims tools`).toEqual([]);
-      if (!c.live) expect(c.release, `${c.id} is not live and names no release`).not.toBeNull();
+      // A screen-only action is not "not live yet": no release brings it to Ask.
+      if (!c.live && !c.screenOnly) expect(c.release, `${c.id} is not live and names no release`).not.toBeNull();
+      if (c.screenOnly) {
+        expect(c.live, `${c.id} is screen-only and cannot be live in Ask`).toBe(false);
+        expect(c.release, `${c.id} is screen-only and promises no release`).toBeNull();
+        expect(c.tools, `${c.id} is screen-only and can have no tools`).toEqual([]);
+      }
     }
     for (const b of AI_BOUNDARY) { expect(b.en).not.toBe(""); expect(b.es).not.toBe(""); }
+  });
+
+  // K2.8: reviewing and publishing the AI's schedule drafts is done on
+  // Scheduling and never in Ask (the boundary: no publishing) — the registry
+  // still lists it, so a supervisor asking is pointed to the screen.
+  it("lists Review AI drafts as screen-only for supervisors and owners: no card, no tool, no release", () => {
+    const review = ASK_CAPABILITIES.find((c) => c.id === "review_schedule_drafts")!;
+    expect(review.screenOnly).toBe(true);
+    expect(review.minRank).toBe(2);
+    expect(review.receipt).toBe("read_only");
+    expect(review.screen).toEqual({ path: "/scheduling", label: { en: "Scheduling", es: "Programación" } });
+    for (const rank of [0, 1, 2, 3]) expect(ids(cardsForRank(rank))).not.toContain("review_schedule_drafts");
+    expect(registeredToolNames()).not.toContain("review_schedule_drafts");
+    expect(Object.values(ROLE_CARDS).flat()).not.toContain("review_schedule_drafts");
   });
 
   it("no tool can change a clock, a break, a toolbox talk, an approval or a publish", () => {
@@ -95,6 +115,18 @@ describe("All actions (K2.1)", () => {
     expect(ids(allActionsForRank(1).map((r) => r.capability))).toContain("crew_status");
     expect(ids(allActionsForRank(2).map((r) => r.capability))).toContain("plan_schedule");
   });
+  it("lists a screen-only action with the screen to use, never as 'not in Ask yet'", () => {
+    for (const rank of [2, 3]) {
+      const row = allActionsForRank(rank).find((r) => r.capability.id === "review_schedule_drafts")!;
+      expect(row.live).toBe(false);
+      expect(row.screenOnly).toBe(true);
+      expect(row.useScreen).toEqual({ path: "/scheduling", label: { en: "Scheduling", es: "Programación" } });
+    }
+    for (const rank of [0, 1]) expect(ids(allActionsForRank(rank).map((r) => r.capability))).not.toContain("review_schedule_drafts");
+    // An unbuilt action is still "not in Ask yet", not screen-only.
+    expect(allActionsForRank(2).find((r) => r.capability.id === "take_supplies")!.screenOnly).toBe(false);
+    expect(allActionsForRank(1).find((r) => r.capability.id === "crew_status")!.screenOnly).toBe(false);
+  });
 });
 
 describe("the model's tool list derives from the registry", () => {
@@ -122,6 +154,12 @@ describe("the model's tool list derives from the registry", () => {
     const owner = capabilityPromptBlock(3);
     expect(owner).not.toContain("NOT FOR THIS ROLE");
     expect(owner).toContain("Crew status → the Team timecards screen");
+    // Screen-only (K2.8): named under its own heading, with no release promised.
+    expect(owner).toContain("ON A SCREEN, NEVER IN ASK");
+    expect(owner).toContain("- Review AI drafts → the Scheduling screen\n");
+    expect(owner).not.toMatch(/Review AI drafts → the Scheduling screen \(Ask learns/);
+    expect(installer).not.toContain("ON A SCREEN, NEVER IN ASK");
+    expect(installer).toContain("Review AI drafts — supervisor and above, on the Scheduling screen");
   });
 });
 

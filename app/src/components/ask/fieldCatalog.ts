@@ -136,6 +136,7 @@ export const FIELD_CATALOG = {
   "field.cards.reopen": { en: "Actions", es: "Acciones" },
   "field.cards.close": { en: "Close", es: "Cerrar" },
   "field.cards.notYet": { en: "not in Ask yet (release {release})", es: "todavía no está en Ask (versión {release})" },
+  "field.cards.onScreen": { en: "done on its screen, not in Ask", es: "se hace en su pantalla, no en Ask" },
   "field.cards.useScreen": { en: "Use the {screen} screen for this", es: "Usa la pantalla {screen} para esto" },
   "field.cards.asks": { en: "Asks: {list}", es: "Pregunta: {list}" },
   "field.cards.never": { en: "Forge AI never:", es: "Forge AI nunca:" },
