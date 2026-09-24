@@ -32,6 +32,25 @@ const STATUS_KEY: Record<TimeShift["status"], TKey> = {
   voided: "timecard.status.voided",
 };
 
+/**
+ * The reason behind a "time needs review" mark (time_shifts.review_reason,
+ * 20261028000000), translated. A code this screen has not been taught yet
+ * gets the generic line — never the code itself.
+ */
+const REVIEW_REASON_KEY: Record<string, TKey> = {
+  clock_unchecked: "timecard.review.clock_unchecked",
+  clock_off: "timecard.review.clock_off",
+  tap_after_arrival: "timecard.review.tap_after_arrival",
+  tap_too_old: "timecard.review.tap_too_old",
+  tap_out_of_order: "timecard.review.tap_out_of_order",
+  previous_shift_open: "timecard.review.previous_shift_open",
+  break_end_without_break: "timecard.review.break_end_without_break",
+};
+
+function reviewReasonKey(code: string): TKey {
+  return REVIEW_REASON_KEY[code] ?? "timecard.review.unknown";
+}
+
 interface PunchCardProps {
   shift: TimeShift;
   isLead: boolean;
@@ -142,6 +161,14 @@ export function PunchCard({ shift: s, isLead, isSup, canEdit = false, projects, 
           {s.time_confirmed === false && (
             <span className="tcx-chip bad">{t("timecard.timeFlagged")}</span>
           )}
+          {/* Release 0 (K0.4/K0.5): the server's own mark — the phone's tap
+              time could not be trusted so pay used the time the punch reached
+              Forge, or a break end arrived with no break running. The code is
+              translated here; one nobody has taught this screen yet still
+              shows a plain line rather than the code itself. */}
+          {s.review_reason && (
+            <span className="tcx-chip bad">{t("timecard.needsReview")}</span>
+          )}
           {/* Q3/T2: "edited by <name>" on the row itself, muted — not just a
               generic "adjusted" flag. Supervisors get the same line as a
               button that opens the full per-field history. */}
@@ -161,6 +188,13 @@ export function PunchCard({ shift: s, isLead, isSup, canEdit = false, projects, 
               </span>
             ))}
         </div>
+        {/* The reason under the chip, in full: this is read on a phone, where
+            a hover tooltip would never be seen. */}
+        {!voided && s.review_reason && (
+          <div className="warn-text" style={{ fontSize: 11.5 }}>
+            {t(reviewReasonKey(s.review_reason))}
+          </div>
+        )}
         {historyOpen && isSup && <ShiftHistory shiftId={s.id} />}
         {voided && (
           <div className="muted" style={{ fontSize: 11.5 }}>
