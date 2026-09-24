@@ -339,6 +339,12 @@ records that a human approved an AI plan. The flag itself is permanent —
 publishing never clears it, so the audit trail outlives the badge — only the
 CHIP's visibility is draft-scoped. `draft_assignments` (the AI's one write
 tool) can never publish anything itself; a human always does that step.
+Since K2.8 (2026-09-24) each draft carries the model's **reason** — one plain
+sentence, stored on the draft's own `schedule_events` 'created' payload
+(`{ai: true, reason}`), never on the crew-visible `note` — and Scheduling's
+**Review AI drafts** card shows the reason per draft with Keep (a mark on
+that screen only) or Drop (the board's own delete), then hands off to the
+one Review & publish sheet. Nothing in Ask reviews or publishes a schedule.
 
 ## Forge AI in Ask
 

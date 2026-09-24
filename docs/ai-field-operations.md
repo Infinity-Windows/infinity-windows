@@ -224,6 +224,28 @@ and past work on a unit ("Ben and Ana installed unit 4 yesterday", the
 Record crew work card's job) as field requests — the two crew-record cases
 could never reach their tool by typing before.
 
+**Supervisor schedule review (K2.8, Q24).** Reviewing and publishing what
+Plan the schedule drafted happens on Scheduling, never in Ask (the boundary:
+no publishing). `draft_assignments` takes an optional `reason` per entry
+(one plain sentence, clipped at 160 characters) and writes it on the draft's
+'created' `schedule_events` payload as `{ai: true, reason}` — never on the
+crew-visible `note`. `components/schedule/AiDraftReview.tsx`, lazy-loaded on
+Scheduling for supervisors and owners only (`effectiveRole`), lists the AI
+drafts for the visible dates (`lib/schedule/aiDraftReview.ts`) with each
+reason (`listAiDraftReasons`; "No reason recorded" for older drafts), Keep (a
+mark on that screen only, no column), Drop (the board's own
+`deleteAssignment`), a count of AI drafts outside the dates, and a Publish
+button that opens the page's existing Review & publish sheet — the one
+publish path; the human's publish records approval and `created_via` stays
+on the row for good. The registry lists `review_schedule_drafts` as
+screen-only (`screenOnly: true`): no card, no tool, no release, "done on its
+screen, not in Ask" under All actions, and its own heading in the model's
+prompt. Two fixes on the publish path: `doPublish` shows a refused publish
+(`formatApiError`), and the board's Undo after Remove carries `created_via`
+back onto the row it re-creates. Copy: `scheduleReviewCatalog.ts` (loads
+with the card's chunk); announcement `20261032000000_ai_schedule_review_note`
+(ranks 2 and 3 only).
+
 **Evaluation set.** `scripts/ask-eval/cases.json` + `scripts/ask-eval.mjs`:
 48 realistic requests through the real tool layer with a stubbed model (in
 CI) or, manually and opt-in, a real model (`--live`, `--only a,b,c` for a
