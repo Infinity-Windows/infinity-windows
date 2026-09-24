@@ -12,12 +12,27 @@ import {
 
 // The network edges of a flush, faked so the queue's own decisions are what
 // is under test: the RPC that files the install, the points award, and the
-// media upload queue.
+// global outbox the media is handed to.
 vi.mock("./api", () => ({ submitInstallEvent: vi.fn() }));
 vi.mock("../points", () => ({ awardPoints: vi.fn(async () => {}) }));
-vi.mock("./queue", () => ({
-  enqueueUpload: vi.fn(async () => {}),
-  flushQueue: vi.fn(async () => ({ sent: 0, remaining: 0 })),
+const outbox = vi.hoisted(() => ({
+  /** Every hand-off the media stage made, in order, across every pass. */
+  handedOff: [] as Array<{ id?: string; kind: string; path: string; uncapped?: boolean }>,
+  /** Throw on the hand-off with this path, once — a crash mid-stage. */
+  failOnce: null as string | null,
+  pendingMedia: 0,
+}));
+vi.mock("../offline/outbox", () => ({
+  enqueueUpload: vi.fn(async (input: { id?: string; kind: string; path: string; uncapped?: boolean }) => {
+    if (outbox.failOnce === input.path) {
+      outbox.failOnce = null;
+      throw new Error("Couldn't save this offline (storage may be full)");
+    }
+    outbox.handedOff.push({ id: input.id, kind: input.kind, path: input.path, uncapped: input.uncapped });
+    return input.id ?? "minted";
+  }),
+  drain: vi.fn(async () => {}),
+  pendingMediaCount: vi.fn(async () => outbox.pendingMedia),
 }));
 const RECORD: InstallOutboxRecord = {
   id: "outbox-1",
@@ -476,5 +491,143 @@ describe("a refused install reaches the person who submitted it", () => {
     expect(result.refused).toBeNull();
     expect(result.queued).toBe(false);
     expect(rows.size).toBe(0);
+  });
+});
+
+// --- the media hand-off ----------------------------------------------------
+//
+// K0.6 (2026-09-23). Once the RPC and the points have landed, the unit's
+// photos, memo and video go to the global outbox — under ids this record
+// already carries, so a stage that runs twice queues the same entries twice
+// rather than two different sets. Before this the media went to a queue of
+// its own under a fresh id per pass, and a crash between "queued the second
+// photo" and "removed the install record" made every photo a second row.
+describe("media is handed to the global outbox under ids decided up front", () => {
+  let rows: Map<string, FakeRow>;
+
+  beforeEach(() => {
+    rows = installFakeIndexedDb();
+    outbox.handedOff.length = 0;
+    outbox.failOnce = null;
+    outbox.pendingMedia = 0;
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+  });
+
+  const MEDIA = [
+    {
+      bucket: "install-media" as const,
+      path: "project-1/10/1-before.jpg",
+      contentType: "image/jpeg",
+      kind: "photo" as const,
+      blob: new Blob(["before"], { type: "image/jpeg" }),
+    },
+    {
+      bucket: "install-media" as const,
+      path: "project-1/10/1-memo.webm",
+      contentType: "audio/webm",
+      kind: "voice_memo" as const,
+      blob: new Blob(["memo"], { type: "audio/webm" }),
+    },
+  ];
+
+  async function landTheRpc() {
+    const { submitInstallEvent } = await import("./api");
+    vi.mocked(submitInstallEvent).mockResolvedValue({
+      id: "event-1",
+    } as unknown as Awaited<ReturnType<typeof submitInstallEvent>>);
+  }
+
+  it("writes each item's outbox id into the record before anything is sent", async () => {
+    const { enqueueInstall } = await import("./installOutbox");
+    const record = await enqueueInstall({ ...INPUT, media: MEDIA });
+    const ids = record.payload.media.map((m) => m.clientId);
+    expect(ids).toHaveLength(2);
+    for (const id of ids) expect(id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(new Set(ids).size).toBe(2);
+    // And it is on disk that way, which is what a re-run reads.
+    const stored = deserializeInstallOutbox(rows.get(record.id)!.meta);
+    expect(stored?.payload.media.map((m) => m.clientId)).toEqual(ids);
+  });
+
+  it("hands every item over under its recorded id, then clears the record", async () => {
+    await landTheRpc();
+    const { submitInstallViaOutbox, listInstalls } = await import("./installOutbox");
+    const result = await submitInstallViaOutbox({ ...INPUT, media: MEDIA });
+    expect(result.queued).toBe(false);
+    expect(outbox.handedOff.map((h) => h.path)).toEqual(MEDIA.map((m) => m.path));
+    expect(outbox.handedOff.map((h) => h.kind)).toEqual(["photo", "voice_memo"]);
+    // Already captured media is never refused for its size at hand-off.
+    expect(outbox.handedOff.every((h) => h.uncapped)).toBe(true);
+    for (const h of outbox.handedOff) expect(h.id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(await listInstalls()).toEqual([]);
+  });
+
+  it("queues the same ids again when the stage re-runs after a crash, never new ones", async () => {
+    await landTheRpc();
+    const { submitInstallViaOutbox, sendInstallsNow, listInstalls } = await import(
+      "./installOutbox"
+    );
+    // The second hand-off dies — a full store, a killed app — after the
+    // first has landed in the outbox.
+    outbox.failOnce = MEDIA[1].path;
+    const first = await submitInstallViaOutbox({ ...INPUT, media: MEDIA });
+    expect(first.queued).toBe(true);
+    expect(outbox.handedOff.map((h) => h.path)).toEqual([MEDIA[0].path]);
+    // Still on the phone, at the media step, pending — not lost, not failed.
+    const [left] = await listInstalls();
+    expect(left?.step).toBe("points_done");
+    expect(left?.status).toBe("pending");
+
+    await sendInstallsNow();
+    expect(await listInstalls()).toEqual([]);
+    // Three hand-offs in total, TWO distinct ids: the photo went twice under
+    // the same id, which the outbox store replaces and the server dedupes.
+    expect(outbox.handedOff).toHaveLength(3);
+    const byPath = new Map<string, Set<string | undefined>>();
+    for (const h of outbox.handedOff) {
+      byPath.set(h.path, (byPath.get(h.path) ?? new Set()).add(h.id));
+    }
+    expect(byPath.get(MEDIA[0].path)?.size).toBe(1);
+    expect(byPath.get(MEDIA[1].path)?.size).toBe(1);
+    expect(new Set(outbox.handedOff.map((h) => h.id)).size).toBe(2);
+  });
+
+  it("derives a stable id for a record written before ids were recorded", async () => {
+    // What is sitting on phones today: a record at the media step whose
+    // items carry no clientId. It must get the same crash-safety without a
+    // rewrite of what is on disk.
+    const older: InstallOutboxRecord = {
+      ...RECORD,
+      step: "points_done",
+      installEventId: "event-old",
+      nextAttemptAt: 0,
+    };
+    rows.set(older.id, {
+      id: older.id,
+      meta: serializeInstallOutbox(older),
+      blobs: [new Blob(["memo"], { type: "audio/webm" })],
+    });
+    const { flushInstallOutbox } = await import("./installOutbox");
+    const { stableId } = await import("../offline/stableId");
+
+    await flushInstallOutbox();
+
+    expect(outbox.handedOff).toHaveLength(1);
+    expect(outbox.handedOff[0]?.id).toBe(await stableId(`${RECORD.payload.clientKey}:media:0`));
+    expect(rows.size).toBe(0);
+  });
+
+  it("reports the media still waiting after its one attempt, so the sheet can say so", async () => {
+    await landTheRpc();
+    outbox.pendingMedia = 2;
+    const { submitInstallViaOutbox } = await import("./installOutbox");
+    const result = await submitInstallViaOutbox({ ...INPUT, media: MEDIA });
+    const { drain } = await import("../offline/outbox");
+    expect(vi.mocked(drain)).toHaveBeenCalled();
+    expect(result.remainingUploads).toBe(2);
   });
 });

@@ -97,14 +97,14 @@ import { myTodayCompletion } from "../../lib/toolbox";
 import { useClock } from "../../lib/clockContext";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import {
+  initInstallOutboxAutoFlush,
   submitInstallViaOutbox,
 } from "../../lib/install/installOutbox";
 import {
-  initQueueAutoFlush,
   pendingTranscriptionCount,
-  pendingUploadCount,
   retryTranscriptions,
-} from "../../lib/install/queue";
+} from "../../lib/install/transcriptions";
+import { pendingMediaCount, subscribe as subscribeOutbox } from "../../lib/offline/outbox";
 import {
   isForemanPlus,
   isSupervisorPlus,
@@ -258,13 +258,21 @@ export function OpeningSheet() {
   }, [hasCapture]);
 
   const refreshStatus = () => {
-    pendingUploadCount().then(setPending).catch(() => {});
+    pendingMediaCount().then(setPending).catch(() => {});
     pendingTranscriptionCount().then(setTranscribing).catch(() => {});
   };
 
   useEffect(() => {
-    initQueueAutoFlush();
+    // The pill starts this too; here as well so a sheet opened straight from
+    // a cold link is never waiting on a component further up the tree.
+    initInstallOutboxAutoFlush();
     refreshStatus();
+    // The media rides the global outbox now, which announces every change —
+    // so "N upload(s) waiting for signal" falls as they go, instead of
+    // freezing at whatever it said when the sheet opened.
+    return subscribeOutbox(() => {
+      pendingMediaCount().then(setPending).catch(() => {});
+    });
   }, []);
 
   const opening = useQuery({
