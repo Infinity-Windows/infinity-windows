@@ -48,6 +48,7 @@ import { ActionCards, AllActions, type CardPick, type RunningUnit } from "../com
 import { contextTagFromInput, type AskContextTag } from "../../../supabase/functions/_shared/fieldTools";
 import { readClockButtons, type ClockButton } from "../../../supabase/functions/_shared/clockButtons";
 import { ClockButtons } from "../components/ask/ClockButtons";
+import { needsNothingSavedNotice } from "../lib/askReceiptGuard";
 
 // Every cached screen a field receipt may have changed (see FIELD_QUERY_ROOTS).
 const refreshFieldViews = () => { for (const root of FIELD_QUERY_ROOTS) void queryClient.invalidateQueries({ queryKey: [root] }); };
@@ -57,6 +58,8 @@ interface ChatMsg {
   field?: FieldReply;
   /** One-tap job-clock buttons the reply offered (K2.4): the tap is the change. */
   buttons?: ClockButton[];
+  /** The reply filled a draft on this phone (a lesson write-up, a daily log). */
+  draftApplied?: boolean;
   /** The saved original recording behind this message. */
   memoPath?: string | null;
   /** The field request this message was, so a reload never shows it twice. */
@@ -693,6 +696,11 @@ export function AskInfinity() {
             {m.field?.receipts.map((r) => <FieldReceiptCard key={r.action_id} receipt={r} onChange={updateReceipt} timingPending={timingPendingNow} />)}
             {m.field?.checklist && m.field.checklist === latestChecklist && <FieldChecklist checklist={m.field.checklist} />}
             {m.buttons && m.buttons.length > 0 && <ClockButtons buttons={m.buttons} />}
+            {/* K2.5: words that read as done with nothing behind them are
+                contradicted here, automatically. */}
+            {m.who === "infinity" && needsNothingSavedNotice({ text: m.text, receipts: m.field?.receipts, artifacts: m.artifacts, draftApplied: m.draftApplied || !!m.field?.learning }) && (
+              <p className="field-nothing-saved" role="status"><strong>{t("field.nothingSaved")}</strong> · {t("field.nothingSavedHelp")}</p>
+            )}
             {m.portalNotice&&<p className="ask-sources muted">{m.portalNotice}</p>}
             {m.learning&&<LearningCard draft={m.learning}/>}
             {m.artifacts?.map(artifact => <ReportCard key={artifact.id} artifact={artifact}/>)}

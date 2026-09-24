@@ -84,3 +84,24 @@ describe("lazy field translations", () => {
     }
   });
 });
+
+describe("receipt status words (K2.5)", () => {
+  const card = (r: FieldReceipt) => html(<FieldReceiptCard receipt={r} onChange={() => undefined} timingPending={async () => false} />);
+  it("every card opens with the real status: Saved in Forge, Needs your choice, or Nothing changed", () => {
+    expect(card({ action_id: "a", action: "save_unit", status: "done", outcome: "created_unit", unit: { unit_id: "u", label: "4", type: "Bifold", facts: {} } })).toContain("Saved in Forge");
+    expect(card({ action_id: "a", action: "start_unit", status: "running", outcome: "started", started_at: "2026-09-22T15:00:00Z", unit: { unit_id: "u", label: "4", type: "Bifold", facts: {} } })).toContain("Saved in Forge");
+    expect(card({ action_id: "a", action: "start_unit", status: "needs_choice", reason: "on_break", preview_hash: "h", options: [{ id: "cancel", label: "y" }], unit: { unit_id: "u", label: "4", type: "Bifold", facts: {} } })).toContain("Needs your choice");
+    expect(card({ action_id: "a", action: "start_unit", status: "stale", message: "x" })).toContain("Nothing changed");
+    expect(card({ action_id: "a", action: "start_unit", status: "cancelled" })).toContain("Nothing changed");
+  });
+  it("the checklist says it is kept for the conversation, not saved to the job", () => {
+    const out = html(<FieldChecklist checklist={buildChecklist({ unit: completeAnswers({ label: "4" }) })} />);
+    expect(out).toContain("nothing saved to the job yet");
+  });
+  it("the status words exist in Spanish", () => {
+    const words = (key: TKey) => translate({ ...CATALOG, ...FIELD_CATALOG }, "es", key);
+    expect(words("field.receiptStatus.saved_in_forge")).toBe("Guardado en Forge");
+    expect(words("field.receiptStatus.needs_choice")).toBe("Necesita tu decisión");
+    expect(words("field.nothingSaved")).toBe("Todavía no se guardó nada");
+  });
+});

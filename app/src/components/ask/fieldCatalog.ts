@@ -92,6 +92,13 @@ export const FIELD_CATALOG = {
   "field.recordingNotKept": { en: "Your recording is NOT saved yet — this phone could not keep it and it has not reached the server. Keep this screen open and tap Send now, or download it.", es: "Tu grabación TODAVÍA NO está guardada: el teléfono no pudo conservarla y no llegó al servidor. Deja esta pantalla abierta y toca Enviar ahora, o descárgala." },
   "field.downloadRecording": { en: "Download recording", es: "Descargar grabación" },
   "field.stepFailed": { en: "Some steps may not have finished. Only the saved cards above were saved.", es: "Algunos pasos pueden no haber terminado. Solo se guardó lo que aparece arriba." },
+  // Receipts (K2.5): three words, from the receipt's status, never from prose.
+  "field.receiptStatus.saved_in_forge": { en: "Saved in Forge", es: "Guardado en Forge" },
+  "field.receiptStatus.needs_choice": { en: "Needs your choice", es: "Necesita tu decisión" },
+  "field.receiptStatus.nothing_changed": { en: "Nothing changed", es: "No cambió nada" },
+  "field.checklistKept": { en: "Kept for this conversation — nothing saved to the job yet", es: "Guardado para esta conversación; todavía nada en la obra" },
+  "field.nothingSaved": { en: "Nothing was saved yet", es: "Todavía no se guardó nada" },
+  "field.nothingSavedHelp": { en: "Only a receipt card under a reply proves a change.", es: "Solo una tarjeta de recibo debajo de una respuesta demuestra un cambio." },
   // One-tap clock buttons (K2.4). The AI offers; only the tap changes the clock.
   "field.button.title": { en: "Job clock", es: "Reloj de trabajo" },
   "field.button.start_break": { en: "Start break", es: "Empezar descanso" },
