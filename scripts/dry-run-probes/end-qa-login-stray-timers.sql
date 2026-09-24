@@ -1,5 +1,5 @@
 -- Probe for the QA-login stray-timer cleanup (branch claude/qa-stray-timers):
--- 20261027000000_end_qa_login_stray_timers.sql run on the live database and
+-- 20261027010000_end_qa_login_stray_timers.sql run on the live database and
 -- rolled back.
 --   * no QA login keeps an open timer on a job off the sandbox list;
 --   * qa.foreman's task timer on BLACK22 from 2026-09-02 is ended at its own
@@ -12,7 +12,7 @@
 --     ends every open timer first and one sat on BLACK22.
 -- Job codes and qa.* logins only in the output; the repo and its logs are public.
 -- Run: gh workflow run db-dry-run.yml -f ref=claude/qa-stray-timers \
---        -f migrations="supabase/migrations/20261027000000_end_qa_login_stray_timers.sql" \
+--        -f migrations="supabase/migrations/20261027010000_end_qa_login_stray_timers.sql" \
 --        -f probe=scripts/dry-run-probes/end-qa-login-stray-timers.sql
 do $$
 declare
