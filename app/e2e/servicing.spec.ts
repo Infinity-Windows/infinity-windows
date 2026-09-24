@@ -271,7 +271,10 @@ for (const role of ["installer", "foreman", "supervisor", "owner"] as const)
     await page
       .getByLabel("What are you doing?", { exact: true })
       .fill("Getting replacement hardware");
-    await page.getByRole("button", { name: "Idle time", exact: true }).click();
+    // "Prep time" on screen, `kind: "idle"` in the record: K1.5 renamed every
+    // user-facing occurrence, Servicing's timer included (ADR-0012 §7), and
+    // left the stored identifiers alone.
+    await page.getByRole("button", { name: "Prep time", exact: true }).click();
     await expect.poll(() => state.sessions.length).toBe(2);
     expect(state.sessions[0].ended_at).toBeTruthy();
     expect(state.sessions[1].kind).toBe("idle");
@@ -387,7 +390,7 @@ test("offline timer changes remain on the device and replay once", async ({
   await page
     .getByLabel("What are you doing?", { exact: true })
     .fill("Picking up supplies");
-  await page.getByRole("button", { name: "Idle time", exact: true }).click();
+  await page.getByRole("button", { name: "Prep time", exact: true }).click();
   await expect(page.locator(".sv-notice")).toContainText(
     "Saved on this device",
   );
