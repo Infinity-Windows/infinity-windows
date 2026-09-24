@@ -41,6 +41,9 @@ export const SAFETY_KEYS = [
   "toolbox.signTalk",
   "toolbox.signing",
   "opening.action.signToolbox",
+  "opening.action.signTalkHeading",
+  "opening.action.signTalkFirst",
+  "work.toolbox.refused",
   // Wave O: the names of the safety cards themselves. A crew member reads these
   // to decide whether the card in their wallet is the one being asked for, and
   // "protección contra caídas" is the phrase a fall-protection class is sold
@@ -771,6 +774,17 @@ export const CATALOG = {
   "opening.action.clockInFirst": {
     en: "Clock in first to start",
     es: "Marca entrada primero para empezar",
+  },
+  // SAFETY / toolbox — the server's refusal when a person is ON the clock
+  // but today's talk is not signed (the paid-time rule allows that order;
+  // _unit_work_gate, 20261031000000). Spanish flagged for bilingual review.
+  "opening.action.signTalkHeading": {
+    en: "Toolbox talk not signed yet",
+    es: "Charla de seguridad sin firmar",
+  },
+  "opening.action.signTalkFirst": {
+    en: "Sign today's toolbox talk to start this unit. Your clock keeps running.",
+    es: "Firma la charla de seguridad de hoy para empezar esta unidad. Tu reloj sigue corriendo.",
   },
   "opening.action.lunch": { en: "Lunch", es: "Almuerzo" },
   "opening.action.break": { en: "Break", es: "Descanso" },

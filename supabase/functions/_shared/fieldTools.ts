@@ -113,7 +113,7 @@ export const FIELD_TOOLS: AnthropicToolDef[] = [
   },
   {
     name: "start_unit_work", strict: true,
-    description: "Start the caller's OWN timer on a saved unit (job, unit number and type known), as soon as they ask to start. Do not check their clock, break or job first: the database answers with a card when they are not clocked in, on another job, on break, or the unit is someone else's, and you relay what it says. Stage not said means Installing. Repeating never restarts a running timer.",
+    description: "Start the caller's OWN timer on a saved unit (job, unit number and type known), as soon as they ask to start. Do not check their clock, break or job first: the database answers with a card when they are not clocked in, on another job, on break, or the unit is someone else's, and you relay what it says. It is also refused while today's toolbox talk is unsigned, even on the clock — then tell them to sign it on Work (Finish your toolbox talk) and ask again. Stage not said means Installing. Repeating never restarts a running timer.",
     input_schema: strictObject({
       project_id: { type: "string" }, unit_id: { type: "string" },
       stage: { type: "string", enum: [...WORK_STAGES] },

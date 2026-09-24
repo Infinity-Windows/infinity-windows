@@ -137,6 +137,11 @@ takes fixes only. The new screens' strings live in `lib/i18n/workCatalog.ts`
 (and the settings card's in `designCatalog.ts`), registered into the catalog by
 the lazy chunk that uses them — the entry chunk has no room for them — so a
 component under `components/work/` imports that file for its side effect.
+Under the paid-time rule an open shift no longer proves today's toolbox talk
+is signed, so every RPC that starts a timer on a unit calls
+`_unit_work_gate(uid)` right after its open-shift check (20261031000000); a
+new one must too — `scripts/verify-new-front-door.mjs` pins the list. Prep
+time is deliberately ungated until the owner answers.
 
 **Every query-key root is registered in `lib/queryKeys.ts` with an offline flag.**
 A test fails on an unregistered root. Registering means deciding whether the

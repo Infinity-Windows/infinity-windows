@@ -20,6 +20,14 @@
 --     may begin, never the time it records); a date still ahead, and the
 --     date cleared, put today's timing back; no shift already on the record
 --     is touched by any of it;
+--   * unit work stays locked until the talk is signed (ADR-0012 §5) on EVERY
+--     door, even on the shift the rule just opened unsigned:
+--     start_opening_work, start_opening_phase, start_unit_session (both
+--     roles), resume_opening_phase, custom_work_command's unit start and
+--     answer_summon are each refused with the one plain sentence and write
+--     nothing; Prep time (a start with no unit) still starts, on purpose;
+--     signed, every door opens and does what it always did; and the database
+--     shows exactly those six wired to _unit_work_gate;
 --   * the three crew announcements exist for their audiences, in Spanish too.
 --
 -- Run: gh workflow run db-dry-run.yml --repo Infinity-Windows/infinity-windows \
@@ -62,17 +70,22 @@
 -- case, out loud, rather than fail later on a sandbox guard nobody asked
 -- about.
 --
--- A CHECK THE REAL DATABASE MAY FAIL, AND WHY: ADR-0012 §5 and this
+-- THE UNIT-WORK GATE, AND HOW IT IS CHECKED HERE: ADR-0012 §5 and the
 -- migration's header say unit work stays refused until the talk is signed,
--- whatever the rule says. But 20260969000000 dropped the signature check
--- from start_opening_work, start_opening_phase and start_unit_session on the
--- strength of "an open shift proves the talk is signed" — which the paid-time
--- rule makes untrue. scripts/verify-new-front-door.mjs passes because it
--- stubs the OLDER body of start_opening_work. The check
--- "start_opening_work: unit work is still refused until the talk is signed"
--- asks the real database; if it says unit work opened, the migration has to
--- put the signature gate back on those three RPCs before the rule can be
--- switched on for anyone.
+-- whatever the rule says about the shift. 20260969000000 had dropped the
+-- signature check from start_opening_work, start_opening_phase and
+-- start_unit_session on the strength of "an open shift proves the talk is
+-- signed" — which the paid-time rule makes untrue, and which the first
+-- version of this probe caught (verify-new-front-door.mjs was stubbing an
+-- older body). 20261031000000 now puts the check back, through one helper
+-- (_unit_work_gate), on every path that starts a timer on a unit: those
+-- three, resume_opening_phase, custom_work_command's 'start' with a unit_id
+-- (Current Work, the new Work screen, the Forge AI field tool) and
+-- answer_summon. Block A checks the gate is wired into exactly those six on
+-- the database; block D calls every one of them as the installer, clocked in
+-- UNSIGNED under the rule (refused, nothing written), then signed (each opens
+-- and does what it always did). Prep time — a 'start' with no unit — is
+-- deliberately NOT gated (an owner question); block D proves it still starts.
 
 -- ---------------------------------------------------------------------------
 -- A. Setup, the loud early checks, and what the migration left in the schema
@@ -85,6 +98,7 @@ declare
   v_n int;
   v_total int;
   v_gated int;
+  v_gated_names text;
   v_cs public.company_settings;
   v_col record;
 begin
@@ -194,6 +208,28 @@ begin
    where p.proname = 'clock_in' and p.pronamespace = 'public'::regnamespace;
   perform pg_temp.dry_run_check('clock_in: every overload on the database routes through _toolbox_gate_open (one that does not is the #640 merge-order hazard)',
     v_total >= 5 and v_gated = v_total, v_gated || ' of ' || v_total || ' overload(s) gated');
+
+  -- The unit-work gate (ADR-0012 §5): the two helpers, who may call them,
+  -- and EXACTLY the six doors wired to it — one dropped, or one added
+  -- without it, changes this list by name.
+  perform pg_temp.dry_run_check('unit work: _toolbox_signed_today and _unit_work_gate exist',
+    to_regprocedure('public._toolbox_signed_today(uuid)') is not null
+    and to_regprocedure('public._unit_work_gate(uuid)') is not null, null);
+  perform pg_temp.dry_run_check('grants: signed-in crew may call the two unit-work helpers; anon may not',
+    has_function_privilege('authenticated', 'public._toolbox_signed_today(uuid)', 'execute')
+    and has_function_privilege('authenticated', 'public._unit_work_gate(uuid)', 'execute')
+    and not has_function_privilege('anon', 'public._toolbox_signed_today(uuid)', 'execute')
+    and not has_function_privilege('anon', 'public._unit_work_gate(uuid)', 'execute'), null);
+  select string_agg(p.proname, ', ' order by p.proname) into v_gated_names
+    from pg_proc p
+   where p.pronamespace = 'public'::regnamespace
+     and position('_unit_work_gate' in p.prosrc) > 0;
+  perform pg_temp.dry_run_check('unit work: exactly the six doors route through _unit_work_gate (answer_summon, custom_work_command, resume_opening_phase, start_opening_phase, start_opening_work, start_unit_session)',
+    v_gated_names = 'answer_summon, custom_work_command, resume_opening_phase, start_opening_phase, start_opening_work, start_unit_session',
+    coalesce(v_gated_names, 'none'));
+  perform pg_temp.dry_run_check('unit work: the clock-in gate and the unit-work gate both read the one _toolbox_signed_today',
+    exists (select 1 from pg_proc where proname = '_toolbox_gate_open' and pronamespace = 'public'::regnamespace and position('_toolbox_signed_today' in prosrc) > 0)
+    and exists (select 1 from pg_proc where proname = '_unit_work_gate' and pronamespace = 'public'::regnamespace and position('_toolbox_signed_today' in prosrc) > 0), null);
 end $$;
 
 -- ---------------------------------------------------------------------------
@@ -340,7 +376,8 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------------
--- D. One gate, five doors: closed, opened by a signature, opened by the date
+-- D. One gate, five doors: closed, opened by a signature, opened by the date —
+--    and, on the shift the date opened unsigned, unit work locked on six more
 -- ---------------------------------------------------------------------------
 do $$
 declare
@@ -349,6 +386,18 @@ declare
   v_owner uuid;
   v_cost_code uuid;
   v_opening uuid;
+  v_no_phase uuid;
+  v_paused uuid;
+  v_summon uuid;
+  v_unit uuid := gen_random_uuid();
+  v_prep uuid;
+  v_custom uuid;
+  v_kind text;
+  v_stamp_before timestamptz;
+  v_o public.project_openings;
+  v_ph public.opening_phases;
+  v_us public.unit_sessions;
+  v_sh public.summon_helpers;
   v_today date;
   v_base text;
   v_nulls text;
@@ -383,6 +432,32 @@ begin
   select o.id into v_opening from public.project_openings o
    where o.project_id = v_job and coalesce(public._flashing_outstanding(o.id), false) = false
    order by o.id limit 1;
+  -- Two more openings for the doors that need a phase row of their own: one
+  -- with no flashing phase yet (start_opening_phase inserts it), and one to
+  -- carry a phase the installer paused yesterday (resume_opening_phase).
+  select o.id into v_no_phase from public.project_openings o
+   where o.project_id = v_job and o.removed_at is null and o.id is distinct from v_opening
+     and not exists (select 1 from public.opening_phases ph where ph.opening_id = o.id and ph.kind = 'flashing')
+   order by o.id limit 1;
+  select o.id into v_paused from public.project_openings o
+   where o.project_id = v_job and o.removed_at is null
+     and o.id is distinct from v_opening and o.id is distinct from v_no_phase
+     and not exists (select 1 from public.opening_phases ph where ph.opening_id = o.id and ph.kind = 'flashing')
+   order by o.id limit 1;
+  if v_paused is not null then
+    insert into public.opening_phases (opening_id, kind, started_by, status, started_at, paused_at)
+    values (v_paused, 'flashing', v_who, 'active', now() - interval '1 day', now() - interval '5 minutes');
+  end if;
+  -- A summon the owner put out on the installer's unit (the answerer must
+  -- not be the caller), and a clean custom-work slate for the installer so a
+  -- refusal below can only be about the signature.
+  if v_opening is not null then
+    insert into public.summons (project_id, opening_id, requested_by, needed)
+    values (v_job, v_opening, v_owner, 1) returning id into v_summon;
+    select work_started_at into v_stamp_before from public.project_openings where id = v_opening;
+  end if;
+  update public.custom_work_sessions set ended_at = now(), end_reason = 'stop'
+   where profile_id = v_who and ended_at is null;
   -- Block A already did both of these; repeated here so this block stands
   -- on its own if it is ever run alone. Both are no-ops the second time.
   update public.time_shifts set clock_out_at = now(), status = 'submitted'
@@ -506,16 +581,131 @@ begin
   perform pg_temp.dry_run_check('clock_in (+ note + mode): unsigned under the rule, clocks in — still at arrival, data mode',
     v_s5.id is not null and v_s5.project_id = v_job and v_s5.job_mode = 'data' and v_s5.clock_in_at = now(), 'shift ' || coalesce(v_s5.id::text, 'none'));
 
-  -- Clocked in, unsigned: unit work must still be refused (ADR-0012 §5 and
-  -- the migration's own header). See the note at the top of this file for
-  -- why the real database may say otherwise.
+  -- ---- clocked in UNSIGNED under the rule: unit work is locked on every door (ADR-0012 §5) ----
+  -- The saved custom unit the custom-work door needs. Recording a unit
+  -- starts nothing, so the 'unit' action is rightly not gated.
+  perform public.custom_work_command(gen_random_uuid(), 'unit', jsonb_build_object(
+    'id', v_unit, 'revision', 0, 'project_id', v_job, 'opening_id', null, 'label', 'dry run unit',
+    'type_label', 'Dry run', 'facts', '{}'::jsonb, 'reason', 'dry run'));
   if v_opening is not null then
-    perform pg_temp.dry_run_expect_error('start_opening_work: unit work is still refused until the talk is signed, even though the shift began under the rule (ADR-0012 §5)',
+    perform pg_temp.dry_run_expect_error('start_opening_work: unit work is refused until the talk is signed, even though the shift began under the rule (ADR-0012 §5)',
       format('select public.start_opening_work(%L::uuid)', v_opening), 'toolbox talk');
+    perform pg_temp.dry_run_expect_error('start_opening_phase: refused unsigned on the shift the rule opened',
+      format('select public.start_opening_phase(%L::uuid, ''flashing'')', v_opening), 'toolbox talk');
+    perform pg_temp.dry_run_expect_error('start_unit_session (install): refused unsigned on the shift the rule opened',
+      format('select public.start_unit_session(%L::uuid, ''install'')', v_opening), 'toolbox talk');
+    perform pg_temp.dry_run_expect_error('start_unit_session (helper): refused unsigned on the shift the rule opened',
+      format('select public.start_unit_session(%L::uuid, ''helper'')', v_opening), 'toolbox talk');
+    perform pg_temp.dry_run_expect_error('custom_work_command start (a unit — Current Work, the new Work screen, Forge AI start_unit_work): refused unsigned on the shift the rule opened',
+      format('select public.custom_work_command(%L::uuid, ''start'', %L::jsonb)', gen_random_uuid(),
+        jsonb_build_object('id', gen_random_uuid(), 'unit_id', v_unit, 'shift_id', v_s5.id, 'project_id', v_job,
+          'expected_session_id', null, 'stage', 'Installing', 'participation', 'install', 'description', '')::text),
+      'toolbox talk');
+    perform pg_temp.dry_run_expect_error('answer_summon: refused unsigned on the shift the rule opened (the answer would open a helper session)',
+      format('select public.answer_summon(%L::uuid)', v_summon), 'toolbox talk');
   else
-    perform pg_temp.dry_run_check('start_opening_work: unit work is still refused until the talk is signed, even though the shift began under the rule (ADR-0012 §5)',
-      false, 'not proved: BLACK22 has no opening clear of flashing to try it on');
+    perform pg_temp.dry_run_check('unit work: the five doors on an opening are refused unsigned under the rule (ADR-0012 §5)',
+      false, 'not proved: BLACK22 has no opening clear of flashing to try them on');
   end if;
+  if v_paused is not null then
+    perform pg_temp.dry_run_expect_error('resume_opening_phase: a phase paused yesterday is refused unsigned today',
+      format('select public.resume_opening_phase(%L::uuid, ''flashing'')', v_paused), 'toolbox talk');
+  else
+    perform pg_temp.dry_run_check('resume_opening_phase: a phase paused yesterday is refused unsigned today',
+      false, 'not proved: BLACK22 has no second opening without a flashing phase to pause');
+  end if;
+
+  -- The refusals wrote nothing. Every row this transaction writes carries
+  -- now() as its start, so "started now" is exactly "written by this run".
+  perform pg_temp.dry_run_as_system();
+  select count(*) into v_n from public.unit_sessions where profile_id = v_who and started_at = now();
+  perform pg_temp.dry_run_check('unit work refused: no unit session was opened', v_n = 0, v_n || ' row(s)');
+  select count(*) into v_n from public.task_sessions where profile_id = v_who and started_at = now();
+  perform pg_temp.dry_run_check('unit work refused: no task session was opened', v_n = 0, v_n || ' row(s)');
+  select count(*) into v_n from public.opening_phases where started_by = v_who and started_at = now();
+  perform pg_temp.dry_run_check('unit work refused: no phase was started', v_n = 0, v_n || ' row(s)');
+  select count(*) into v_n from public.custom_work_sessions where profile_id = v_who and kind = 'unit' and started_at = now();
+  perform pg_temp.dry_run_check('unit work refused: no custom unit session was opened', v_n = 0, v_n || ' row(s)');
+  select count(*) into v_n from public.summon_helpers where profile_id = v_who and joined_at = now();
+  perform pg_temp.dry_run_check('unit work refused: no summon was answered', v_n = 0, v_n || ' row(s)');
+  if v_opening is not null then
+    perform pg_temp.dry_run_check('unit work refused: the opening was not stamped as started',
+      (select work_started_at from public.project_openings where id = v_opening) is not distinct from v_stamp_before, null);
+  end if;
+  if v_paused is not null then
+    perform pg_temp.dry_run_check('unit work refused: the paused phase is still paused',
+      (select paused_at from public.opening_phases where opening_id = v_paused and kind = 'flashing') is not null, null);
+  end if;
+
+  -- Prep time — a 'start' with NO unit — is deliberately not gated (owner
+  -- question, TODO in the migration): it starts unsigned, as it always has.
+  perform pg_temp.dry_run_act_as(v_who);
+  begin
+    v_prep := public.custom_work_command(gen_random_uuid(), 'start', jsonb_build_object(
+      'id', gen_random_uuid(), 'unit_id', null, 'shift_id', v_s5.id, 'expected_session_id', null, 'description', 'dry run prep'));
+  exception when others then
+    perform pg_temp.dry_run_check('prep time: a start with no unit is not gated — it starts unsigned (owner question)', false, 'refused: ' || sqlstate || ' ' || sqlerrm);
+  end;
+  if v_prep is not null then
+    perform pg_temp.dry_run_as_system();
+    select kind into v_kind from public.custom_work_sessions where id = v_prep;
+    perform pg_temp.dry_run_check('prep time: a start with no unit is not gated — it starts unsigned (owner question)',
+      v_kind = 'idle', coalesce(v_kind, 'no session'));
+    perform pg_temp.dry_run_act_as(v_who);
+    perform public.custom_work_command(gen_random_uuid(), 'stop', jsonb_build_object('expected_session_id', v_prep, 'outcome', 'finished'));
+  end if;
+
+  -- ---- signed: every door opens, and does what it always did ----
+  perform pg_temp.dry_run_as_system();
+  insert into public.toolbox_completions (profile_id, signed_at) values (v_who, now());
+  perform pg_temp.dry_run_act_as(v_who);
+  if v_opening is not null then
+    v_o := public.start_opening_work(v_opening);
+    perform pg_temp.dry_run_check('start_opening_work: signed, opens and stamps the unit as started — as before',
+      v_o.id = v_opening and v_o.work_started_at is not null, null);
+  end if;
+  if v_no_phase is not null then
+    v_ph := public.start_opening_phase(v_no_phase, 'flashing');
+    perform pg_temp.dry_run_check('start_opening_phase: signed, starts the phase — as before',
+      v_ph.status = 'active' and v_ph.started_by = v_who, 'phase ' || coalesce(v_ph.id::text, 'none'));
+  else
+    perform pg_temp.dry_run_check('start_opening_phase: signed, starts the phase — as before',
+      true, 'not tried: BLACK22 has no opening without a flashing phase');
+  end if;
+  if v_opening is not null then
+    v_us := public.start_unit_session(v_opening, 'install');
+    perform pg_temp.dry_run_check('start_unit_session: signed, opens the installer''s session — as before',
+      v_us.profile_id = v_who and v_us.role = 'install' and v_us.ended_at is null, 'session ' || coalesce(v_us.id::text, 'none'));
+    v_custom := public.custom_work_command(gen_random_uuid(), 'start', jsonb_build_object(
+      'id', gen_random_uuid(), 'unit_id', v_unit, 'shift_id', v_s5.id, 'project_id', v_job,
+      'expected_session_id', null, 'stage', 'Installing', 'participation', 'install', 'description', ''));
+    perform pg_temp.dry_run_check('custom_work_command start (a unit): signed, opens the custom session — as before',
+      v_custom is not null, 'session ' || coalesce(v_custom::text, 'none'));
+  end if;
+  if v_paused is not null then
+    v_ph := public.resume_opening_phase(v_paused, 'flashing');
+    perform pg_temp.dry_run_check('resume_opening_phase: signed, picks the paused phase back up and books the pause — as before',
+      v_ph.paused_at is null and v_ph.paused_seconds >= 299, coalesce(v_ph.paused_seconds::text, 'null') || ' paused second(s)');
+  end if;
+  if v_opening is not null then
+    begin
+      v_sh := public.answer_summon(v_summon);
+      perform pg_temp.dry_run_check('answer_summon: signed, the answer lands — as before',
+        v_sh.profile_id = v_who and v_sh.summon_id = v_summon, 'row ' || coalesce(v_sh.id::text, 'none'));
+    exception when others then
+      perform pg_temp.dry_run_check('answer_summon: signed, the answer lands — as before', false, 'refused: ' || sqlstate || ' ' || sqlerrm);
+    end;
+  end if;
+  perform pg_temp.dry_run_as_system();
+  if v_opening is not null then
+    select count(*) into v_n from public.unit_sessions
+     where profile_id = v_who and role = 'helper' and opening_id = v_opening and ended_at is null;
+    perform pg_temp.dry_run_check('answer_summon: the trigger opened the helper unit session once the talk was signed', v_n = 1, v_n || ' row(s)');
+  end if;
+  -- Unsigned again for the checks that follow; the signature was this run's own.
+  delete from public.toolbox_completions
+   where profile_id = v_who
+     and (signed_at at time zone 'America/Denver')::date = (now() at time zone 'America/Denver')::date;
 
   -- ---- a date still ahead, then the date cleared: today's timing comes back ----
   perform pg_temp.dry_run_act_as(v_owner);

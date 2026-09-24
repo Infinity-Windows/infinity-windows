@@ -62,14 +62,25 @@ everyone at once, on a date the owner picks at the start of a pay period
    may already be signed. Unit work is locked only on a POSITIVELY known
    unsigned talk, in words, never by a greyed button alone.
 
-5. **One clock-in gate.** `_toolbox_gate_open(uid)` (20261031000000) is the
-   single copy of "may this shift begin": today's signature on record, OR the
-   owner's date has arrived. The five `clock_in` overloads were re-issued
-   verbatim calling it, so the rule cannot be forgotten by one path; a later
-   overload (Release 0's client id and tap time) keeps calling it. Unit work
-   keeps its own signature gate (`start_opening_work`, `start_opening_phase`)
-   untouched, which is what makes "unit work stays locked until signed" true
-   on the server and not only on the screen.
+5. **One clock-in gate, one unit-work gate.** `_toolbox_gate_open(uid)`
+   (20261031000000) is the single copy of "may this shift begin": today's
+   signature on record, OR the owner's date has arrived. The five `clock_in`
+   overloads were re-issued verbatim calling it, so the rule cannot be
+   forgotten by one path; a later overload (Release 0's client id and tap
+   time) keeps calling it. Unit work has its own gate, `_unit_work_gate(uid)`
+   — today's signature and never the date — called by every RPC that starts
+   a timer on a unit: `start_opening_work`, `start_opening_phase`,
+   `start_unit_session`, `resume_opening_phase`, `custom_work_command`'s
+   unit start (Current Work, the new Work screen and the AI field tool
+   `start_unit_work` all end there) and `answer_summon` (its trigger opens a
+   helper session). It had to be put BACK: 20260969000000 had dropped the
+   signature check from the first three because "an open shift proves the
+   talk is signed", which is exactly what the paid-time rule stops being
+   true — the practice-run probe caught it. Both gates read one
+   `_toolbox_signed_today`. This is what makes "unit work stays locked until
+   signed" true on the server and not only on the screen. Prep time
+   (`custom_work_command` with no unit) is deliberately not gated — an open
+   owner question, marked TODO in the migration.
 
 6. **Payroll never reads the rule.** The rule changes WHEN a shift begins and
    nothing else. `paidTimeRule.test.ts` totals the same fixture shifts —
@@ -103,3 +114,7 @@ everyone at once, on a date the owner picks at the start of a pay period
 - Release 0's clock-integrity work lands under this: `startShiftOrQueue`
   calls `clockIn` and `enqueueClockIn` and nothing else, so a client id and a
   tap time flow into Start day the day they exist.
+- A new RPC that starts a timer on a unit calls `_unit_work_gate(uid)` right
+  after its open-shift check. `scripts/verify-new-front-door.mjs` pins the
+  list of gated functions and the practice-run probe reads it off the real
+  database, so one added without the gate fails a check by name.

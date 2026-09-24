@@ -79,6 +79,7 @@ import {
   clockEligibility,
   installTimer,
   isClockGateError,
+  isToolboxGateError,
   recordedMinutes,
   resolveStartedAt,
 } from "../../lib/install/installTimer";
@@ -177,6 +178,10 @@ export function OpeningSheet() {
   // Post-install "spam-through" modal (installers) + start-of-task gate error.
   const [doneModal, setDoneModal] = useState(false);
   const [startGateError, setStartGateError] = useState<string | null>(null);
+  // The gate refused for the SIGNATURE, not the clock: under the paid-time
+  // rule a person is on the clock before the talk is signed, so the banner
+  // must not say "not on the clock" or offer the clock as the fix.
+  const [startGateTalk, setStartGateTalk] = useState(false);
 
   const [recording, setRecording] = useState(false);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
@@ -692,13 +697,19 @@ export function OpeningSheet() {
     onSuccess: (startedNow) => {
       setLocalStartedAt(startedNow);
       setStartGateError(null);
+      setStartGateTalk(false);
       setStage("install");
       refresh();
     },
     onError: (e) => {
-      // Only a real refusal from the gate earns the "not on the clock" banner.
-      // A dead zone is a different problem and must not be dressed up as one.
-      if (isClockGateError(e)) {
+      // Only a real refusal from the gate earns the banner. A dead zone is a
+      // different problem and must not be dressed up as one. The signature
+      // refusal gets its own words: they may well be on the clock already.
+      if (isToolboxGateError(e)) {
+        setStartGateTalk(true);
+        setStartGateError(t("opening.action.signTalkFirst"));
+      } else if (isClockGateError(e)) {
+        setStartGateTalk(false);
         setStartGateError("Clock in and sign today's toolbox talk to start this task.");
       } else {
         setMessage({ text: formatApiError(e), tone: "error" });
@@ -1579,7 +1590,7 @@ export function OpeningSheet() {
           this banner used to sit above a running clock. */}
       {!installed && (eligibility.status === "blocked" || startGateError) && (
         <div className="ready-banner ready-blocked">
-          <strong>Not on the clock yet</strong>
+          <strong>{startGateTalk ? t("opening.action.signTalkHeading") : "Not on the clock yet"}</strong>
           <ul>
             {eligibility.blockers.map((b) => (
               <li key={b}>{b}</li>
@@ -1591,12 +1602,15 @@ export function OpeningSheet() {
           </p>
           <div style={{ display: "flex", gap: 10 }}>
             {/* The clock is a sheet over this screen, so they punch in and
-                start the window without losing their place. */}
-            <button className="primary" onClick={clock.openClock}>
-              {t("opening.action.clockIn")}
-            </button>
+                start the window without losing their place. When the talk is
+                what's owed, the clock is not the fix and is not offered. */}
+            {!startGateTalk && (
+              <button className="primary" onClick={clock.openClock}>
+                {t("opening.action.clockIn")}
+              </button>
+            )}
             {/* SAFETY / toolbox — Spanish flagged for bilingual review. */}
-            <button className="action-btn" onClick={() => navigate("/safety")}>
+            <button className={startGateTalk ? "primary" : "action-btn"} onClick={() => navigate("/safety")}>
               {t("opening.action.signToolbox")}
             </button>
           </div>

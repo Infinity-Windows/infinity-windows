@@ -1235,12 +1235,17 @@ date, the order is today's: the talk first, and signing it IS the clock-in.
 From that date (`company_settings.paid_time_from_start_day_on`, one date for
 everyone, picked at the start of a pay period — Q69), paid time starts at the
 tap: the clock-in goes first and the talk is signed on the clock. Either way
-unit work stays locked until the talk is signed (`start_opening_work` still
-refuses), "Finish your toolbox talk" stays on Work, and the foreman's
-compliance list reads "not signed". No shift on record is ever recalculated —
-`paidTimeRule.test.ts` totals the same fixture shifts with the rule off and
-on and gets the same payroll to the cent. The server's clock-in gate is one
-function, `_toolbox_gate_open`, shared by every `clock_in` overload.
+unit work stays locked until the talk is signed — on the server by
+`_unit_work_gate`, which every RPC that starts a timer on a unit calls
+(`start_opening_work`, `start_opening_phase`, `start_unit_session`,
+`resume_opening_phase`, the custom-work unit start, a summon answer), since
+an open shift no longer proves the talk is signed — "Finish your toolbox
+talk" stays on Work, and the foreman's compliance list reads "not signed".
+Prep time is not gated (an open owner question). No shift on record is ever
+recalculated — `paidTimeRule.test.ts` totals the same fixture shifts with
+the rule off and on and gets the same payroll to the cent. The server's
+clock-in gate is one function, `_toolbox_gate_open`, shared by every
+`clock_in` overload; both gates read one `_toolbox_signed_today`.
 
 **Prep time** — job work that isn't on one unit: gathering, hauling, setup,
 errands, cleanup. One tap from Work, a reason (Gathering · Hauling · Setup ·

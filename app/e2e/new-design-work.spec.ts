@@ -132,3 +132,28 @@ test("foreman: Jobs, Team timecards on Work; supervisor adds Overview", async ({
   await expect(lead.getByRole("link", { name: "Team timecards" })).toBeVisible();
   await expect(lead.getByRole("link", { name: "Overview" })).toBeVisible();
 });
+
+test("K1.3: a start Forge refuses for the signature is said in plain words on Work, and the sheet does not open", async ({ page }) => {
+  await useSupabaseFixtures(page, { role: "installer", uiDesign: "new" });
+  await hideWrongProjectBanner(page);
+  await stubGeolocationDenied(page);
+  // The phone's last read says signed, so the button is live; the server
+  // knows the record better. Under the paid-time rule "on the clock" no
+  // longer proves "signed", and every unit start on the server carries the
+  // signature gate (_unit_work_gate, 20261031000000) — this is what it
+  // answers, as PostgREST hands it over.
+  await morningFixtures(page, { signed: true, openShift: true, myOpening: true });
+  await page.route((url) => /\/rest\/v1\/rpc\/start_opening_work(\?|$)/.test(url.href), (r) =>
+    r.fulfill({
+      status: 400,
+      contentType: "application/json",
+      body: JSON.stringify({ code: "P0001", message: "Sign today's toolbox talk before starting work on a unit.", details: null, hint: null }),
+    }),
+  );
+  await page.goto("/");
+  await page.getByTestId("ws-unit-start").click();
+  await expect(page.locator(".toast-error")).toContainText("Forge won't start a unit until today's toolbox talk is signed. Sign it under Finish your toolbox talk");
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByTestId("ws-unit")).toBeVisible();
+  await expect(page.getByTestId("ws-unit-start")).toBeVisible();
+});

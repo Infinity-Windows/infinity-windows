@@ -29,6 +29,19 @@ let sessions: WorkSession[] = [];
 let schedule: unknown[] = [];
 const clockIn = vi.fn(async (..._args: unknown[]) => ({ ...(shift ?? {}), id: "s-new" }));
 const workCommand = vi.fn(async () => {});
+const startOpeningWork = vi.fn(async (id: string) => ({ id }));
+const navigateSpy = vi.fn();
+
+// The screen's two ways of speaking a refusal: a toast, and leaving for the
+// unit sheet. Both are spied so a test can say which one happened.
+vi.mock("../../lib/toast", async (orig) => ({
+  ...(await orig<typeof import("../../lib/toast")>()),
+  pushToast: vi.fn(),
+}));
+vi.mock("react-router-dom", async (orig) => ({
+  ...(await orig<typeof import("react-router-dom")>()),
+  useNavigate: () => navigateSpy,
+}));
 
 vi.mock("../../lib/clockContext", () => ({
   useClock: () => ({ shift, profileId: ME, loading: false, isOpen: false, openClock: () => {}, closeClock: () => {}, refresh: () => {} }),
@@ -39,7 +52,7 @@ vi.mock("../../lib/install/api", () => ({
   getRealProfile: async () => ({ id: ME, display_name: "E2E", role: "installer", active: true }),
   listMyOpeningsAllJobs: async () => myOpenings,
   listOpenings: async () => [],
-  startOpeningWork: vi.fn(async (id: string) => ({ id })),
+  startOpeningWork: (id: string) => startOpeningWork(id),
 }));
 vi.mock("../../lib/install/sessions", () => ({
   listSessionsForOpenings: async () => [],
@@ -108,6 +121,7 @@ vi.mock("../../components/clock/ToolboxSignCard", () => ({
 }));
 
 const { WorkScreen } = await import("./WorkScreen");
+const { pushToast } = await import("../../lib/toast");
 
 function opening(over: Partial<ProjectOpening>): ProjectOpening {
   return {
@@ -170,6 +184,9 @@ beforeEach(() => {
   schedule = [];
   clockIn.mockClear();
   workCommand.mockClear();
+  startOpeningWork.mockClear();
+  navigateSpy.mockClear();
+  vi.mocked(pushToast).mockClear();
 });
 afterEach(() => {
   act(() => root?.unmount());
@@ -296,6 +313,47 @@ describe("WorkScreen (K1.2)", () => {
     const finish = [...unit.querySelectorAll("button")].find((b) => /Finish/.test(b.textContent ?? ""))!;
     await act(async () => finish.click());
     expect(workCommand).toHaveBeenCalledWith("stop", expect.objectContaining({ outcome: "finished", expected_session_id: "ss1" }));
+  });
+
+  // K1.3 on the server: every unit start is refused until today's talk is
+  // signed (_unit_work_gate, 20261031000000). The button here was live
+  // because the phone's last read said signed; the server knows better.
+  const REFUSAL = "Sign today's toolbox talk before starting work on a unit.";
+
+  it("K1.3: a plan-opening start Forge refuses for the signature is said in plain words, and the sheet does not open", async () => {
+    shift = openShift();
+    signed = { id: "stale" };
+    myOpenings = [opening({})];
+    startOpeningWork.mockRejectedValueOnce(new Error(REFUSAL));
+    const el = await mount();
+    await act(async () => byTestId(el, "ws-unit-start")!.click());
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(startOpeningWork).toHaveBeenCalledWith("o1");
+    expect(pushToast).toHaveBeenCalledWith(
+      "Forge won't start a unit until today's toolbox talk is signed. Sign it under Finish your toolbox talk, then try again.",
+      "error",
+    );
+    // The sheet cannot clear this one, so Work stays put (any other refusal
+    // opens the sheet with the reason — that path is unchanged).
+    expect(navigateSpy).not.toHaveBeenCalled();
+  });
+
+  it("K1.3: a saved-unit start Forge refuses for the signature shows the same words on the card", async () => {
+    shift = openShift();
+    signed = { id: "stale" };
+    units = [{ id: "u1", project_id: JOB, opening_id: null, created_by: ME, label: "16", type_label: "Slider", facts: {}, revision: 1, created_at: "", updated_at: "" }];
+    workCommand.mockRejectedValueOnce(new Error(REFUSAL));
+    const el = await mount();
+    await act(async () => byTestId(el, "ws-unit-start")!.click());
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(workCommand).toHaveBeenCalledWith("start", expect.objectContaining({ unit_id: "u1" }));
+    const alert = byTestId(el, "ws-unit")!.querySelector("[role=alert]");
+    expect(alert?.textContent).toContain("Forge won't start a unit until today's toolbox talk is signed");
+    expect(alert?.textContent).not.toContain(REFUSAL);
   });
 
   it("K1.4: nothing matches → the blank New unit door, only then", async () => {

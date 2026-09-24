@@ -62,6 +62,11 @@ export const WORK_CATALOG = {
     en: "Sign today's toolbox talk to start a unit.",
     es: "Firma la charla de seguridad de hoy para empezar una unidad.",
   },
+  // SAFETY — the server's own refusal (_unit_work_gate), said on the phone.
+  "work.toolbox.refused": {
+    en: "Forge won't start a unit until today's toolbox talk is signed. Sign it under Finish your toolbox talk, then try again.",
+    es: "Forge no empieza una unidad hasta que firmes la charla de seguridad de hoy. Fírmala en Termina tu charla de seguridad y vuelve a intentar.",
+  },
   "work.today.heading": { en: "Today", es: "Hoy" },
   "work.today.nextUp": { en: "Next up · {day}", es: "Lo que sigue · {day}" },
   "work.today.none": {

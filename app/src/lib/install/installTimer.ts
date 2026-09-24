@@ -220,6 +220,21 @@ export function isClockGateError(err: unknown): boolean {
 }
 
 /**
+ * Did the server refuse because today's toolbox talk is not signed?
+ *
+ * Since 20261031000000 every RPC that starts a timer on a unit says so in
+ * one sentence — "Sign today's toolbox talk before starting work on a unit."
+ * — and under the paid-time rule a person can be ON the clock and still meet
+ * it (Start day clocks in first, the talk is signed on the clock). So the
+ * screen must say "sign the talk", not "clock in". A subset of
+ * `isClockGateError`, which keeps deciding "a verdict, not a dead zone".
+ */
+export function isToolboxGateError(err: unknown): boolean {
+  const msg = String((err as { message?: string } | null)?.message ?? err ?? "");
+  return /toolbox talk/i.test(msg);
+}
+
+/**
  * Which start stamp to trust. The server's is authoritative and survives a
  * reinstall, a new phone and a refresh; the device-local one only exists when
  * work began in a dead zone and is the best we have until the outbox drains.

@@ -55,6 +55,13 @@ answers and send time on `ai_field_requests`.
 - Timing taps (Start now, Join as helper, End break and start) re-read the
   phone's queues at the moment of the tap and refuse while anything is pending.
 - Repeated starts return the running timer; retries return saved receipts.
+- `start_unit_work` is refused — "Sign today's toolbox talk before starting
+  work on a unit." — until today's talk is on the caller's record, even on an
+  open shift: `custom_work_command`'s unit start carries the same
+  `_unit_work_gate` every unit-start RPC does (20261031000000; under the
+  paid-time rule a shift can begin unsigned). The model tells the person to
+  sign it on Work. `start_idle_time` (Prep time) is not gated — an open owner
+  question.
 
 ## Accounts and phones
 

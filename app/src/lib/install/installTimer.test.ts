@@ -9,6 +9,7 @@ import {
   elapsedMinutes,
   installTimer,
   isClockGateError,
+  isToolboxGateError,
   isInstallInProgress,
   isStaleStart,
   recordedMinutes,
@@ -319,5 +320,25 @@ describe("resolveStartedAt", () => {
   it("is null when neither exists", () => {
     expect(resolveStartedAt(null, null)).toBeNull();
     expect(resolveStartedAt(undefined, undefined)).toBeNull();
+  });
+});
+
+describe("isToolboxGateError", () => {
+  const sentence = "Sign today's toolbox talk before starting work on a unit.";
+
+  it("recognises the server's one sentence for an unsigned talk (P0001, as PostgREST hands it over)", () => {
+    expect(isToolboxGateError({ code: "P0001", message: sentence })).toBe(true);
+    expect(isToolboxGateError(new Error(sentence))).toBe(true);
+  });
+
+  it("is a subset of the clock gate: the sheet never times an unsigned start locally", () => {
+    expect(isClockGateError(new Error(sentence))).toBe(true);
+  });
+
+  it("does not fire for the shift refusal, a dead zone, or a flashing refusal", () => {
+    expect(isToolboxGateError(new Error("clock in before starting a task"))).toBe(false);
+    expect(isToolboxGateError(new Error("Failed to fetch"))).toBe(false);
+    expect(isToolboxGateError(new Error("this opening needs flashing before the install starts"))).toBe(false);
+    expect(isToolboxGateError(null)).toBe(false);
   });
 });

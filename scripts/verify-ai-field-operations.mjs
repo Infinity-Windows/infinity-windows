@@ -647,5 +647,40 @@ await asAdmin();
 await db.query("delete from profiles where id=$1", [Z]);
 eq([await count("select count(*) n from profiles where id=$1", [Z]), await count("select count(*) n from ai_clock_epochs where profile_id=$1", [Z]),
   await count("select count(*) n from task_sessions where profile_id=$1", [Z]), await count("select count(*) n from ai_field_requests where id=$1", [zReq.rid])], [0, 0, 0, 0], "profile deletion cascades cleanly");
+
+// --- Release 1 (20261031000000): start_unit_work waits for today's toolbox signature ---
+// The new front door puts the unit-work gate on custom_work_command's unit
+// start, which is where start_unit_work lands (ai_field_command →
+// _ai_field_apply → custom_work_command). Loaded last, over the tables it
+// touches that this harness had no need of until now; nobody above signed a
+// talk, and nobody needed to.
+await asAdmin();
+await db.exec(`create table company_settings(id int primary key,updated_at timestamptz not null default now(),updated_by uuid); insert into company_settings(id) values(1);
+create function _close_dangling_shift(p uuid) returns void language sql as $$update time_shifts set clock_out_at=now(),status='submitted' where profile_id=p and clock_out_at is null$$;
+create table summons(id uuid primary key default gen_random_uuid(),project_id uuid,opening_id uuid,requested_by uuid,needed int,status text default 'open',created_at timestamptz default now());
+create table summon_helpers(id uuid primary key default gen_random_uuid(),summon_id uuid,profile_id uuid,joined_at timestamptz default now(),completed_at timestamptz,canceled_at timestamptz,minutes int);
+create table summon_declines(summon_id uuid,profile_id uuid,primary key(summon_id,profile_id));
+create table points_ledger(id uuid primary key default gen_random_uuid(),profile_id uuid,kind text,points int,ref text,status text);`);
+await db.exec(await migration("20261031000000_new_front_door.sql"));
+const U77 = id(777);
+await db.query("insert into custom_work_units(id,project_id,created_by,label,type_label) values($1,$2,$3,'77','Slider')", [U77, JOB, id(A)]);
+await db.query("update custom_work_sessions set ended_at=now(),end_reason='stop' where ended_at is null");
+await clockIn(A, JOB);
+// Clocked in, unsigned (as Start day allows from the owner's date): the unit
+// start is refused with the one plain sentence, and nothing starts.
+const unsigned77 = await begin(A, "start unit 77");
+await denied(() => cmd(unsigned77.rid, "start:77", "start_unit", { project_id: JOB, unit_id: U77, stage: "Installing", participation: "install" }), /Sign today's toolbox talk before starting work on a unit/);
+await asAdmin();
+eq(await count("select count(*) n from custom_work_sessions where unit_id=$1", [U77]), 0, "an unsigned start wrote no session");
+// Prep time is deliberately NOT gated (owner question, TODO in the migration).
+await settle(A);
+let prep = await cmd((await begin(A, "hauling")).rid, "idle:hauling", "start_idle", { description: "Hauling" });
+eq([prep.status, prep.stage], ["running", "Idle time"], "prep time still starts unsigned");
+// Signed: the same request starts the unit exactly as before (ending the prep timer).
+await asAdmin();
+await db.query("insert into toolbox_completions values($1,now())", [id(A)]);
+await settle(A);
+let signedStart = await cmd((await begin(A, "start unit 77")).rid, "start:77", "start_unit", { project_id: JOB, unit_id: U77, stage: "Installing", participation: "install" });
+eq([signedStart.status, signedStart.outcome, signedStart.previous_timer_ended], ["running", "started", true], "signed, start_unit_work runs as before");
 await db.close();
-console.log(`${checks} AI field-operation SQL assertions passed against the actual custom-work, crew-record and AI field migrations. Platform auth, storage, sandbox fence and clock RPCs are stubs; single-connection PGlite cannot exercise true concurrent transactions. No production writes.`);
+console.log(`${checks} AI field-operation SQL assertions passed against the actual custom-work, crew-record, AI field and new-front-door migrations. Platform auth, storage, sandbox fence and clock RPCs are stubs; single-connection PGlite cannot exercise true concurrent transactions. No production writes.`);

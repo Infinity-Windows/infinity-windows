@@ -7,13 +7,17 @@
 // start_opening_work (its timer and gates live on the unit sheet, which the
 // tap then opens); a saved custom-work UNIT starts a custom_work_sessions row
 // right here. Both are locked while today's toolbox talk is owed (K1.3), and
-// the lock is said in words, never by a greyed button alone.
+// the lock is said in words, never by a greyed button alone. The lock is
+// drawn from the phone's last read of the record; the server has the same
+// gate on both starts (_unit_work_gate, 20261031000000), and when it says
+// no the same words come back here, in the phone's language.
 
 import { useMemo, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { Play, Pause, Check, Plus } from "lucide-react";
 import { startOpeningWork } from "../../lib/install/api";
+import { isToolboxGateError } from "../../lib/install/installTimer";
 import { areaKey } from "../../lib/install/nextOpening";
 import type { ProjectOpening } from "../../lib/install/types";
 import { useT } from "../../lib/i18n";
@@ -49,10 +53,20 @@ function timed(shift: TimeShift | null): "ok" | "off" | "break" | "pending" {
 export function YourUnit({ nextUp, locked, jobId, shift, work, now }: YourUnitProps) {
   const t = useT();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [adding, setAdding] = useState(false);
   const clockState = timed(shift);
+
+  // Forge refused because today's talk is not signed. The button was live
+  // because the phone's last read said signed (or could not say — the lock
+  // fails open, the server is the backstop): say why in the phone's words,
+  // point at the talk, and re-read the record so the lock line appears.
+  const refusedForTalk = () => {
+    void queryClient.invalidateQueries({ queryKey: ["toolboxToday"] });
+    return t("work.toolbox.refused");
+  };
 
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
@@ -60,7 +74,7 @@ export function YourUnit({ nextUp, locked, jobId, shift, work, now }: YourUnitPr
     try {
       await fn();
     } catch (e) {
-      setError(formatApiError(e));
+      setError(isToolboxGateError(e) ? refusedForTalk() : formatApiError(e));
     } finally {
       setBusy(false);
     }
@@ -70,11 +84,17 @@ export function YourUnit({ nextUp, locked, jobId, shift, work, now }: YourUnitPr
 
   // A plan opening: start its timer, then open its sheet. A refused start
   // (a gate the sheet knows how to clear — flashing, a before photo) still
-  // opens the sheet, with the reason said out loud: one tap either way.
+  // opens the sheet, with the reason said out loud: one tap either way. The
+  // one refusal the sheet cannot clear is the signature — the talk is on
+  // Work, so that one stays here.
   const startOpening = useMutation({
     mutationFn: (o: ProjectOpening) => startOpeningWork(o.id),
     onSuccess: (_, o) => openSheet(o),
     onError: (e, o) => {
+      if (isToolboxGateError(e)) {
+        pushToast(refusedForTalk(), "error");
+        return;
+      }
       pushToast(t("work.unit.startFailed", { code: o.opening_code }) + ` ${formatApiError(e)}`, "error");
       openSheet(o);
     },
