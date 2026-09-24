@@ -10,6 +10,7 @@ import { supabase } from "../supabase";
 import { filterToLiveProjects } from "../liveProjects";
 import { isMissingFunction, isMissingTable } from "../schemaErrors";
 import { addDaysISO } from "./dates";
+import { aiReasonFromPayload } from "./aiDraftReview";
 import { filterMyPublished } from "./myPublished";
 import type {
   AssignmentMember,
@@ -85,6 +86,7 @@ const localStore = {
       color: input.color ?? null,
       note: input.note ?? null,
       created_by: null,
+      created_via: input.created_via === "ai" ? "ai" : null,
       published_at: null,
       created_at: nowISO(),
       updated_at: nowISO(),
@@ -340,6 +342,7 @@ export async function createAssignment(
       note: input.note ?? null,
       status: "draft",
       created_by: await currentUserId(),
+      ...(input.created_via === "ai" ? { created_via: "ai" } : {}),
     })
     .select("id")
     .single();
@@ -424,6 +427,30 @@ export async function publishAssignments(ids: string[]): Promise<void> {
     throw error;
   }
   for (const id of ids) await logEvent({ assignment_id: id, kind: "published" });
+}
+
+/** The model's reason for each AI draft (K2.8), read back from the 'created'
+ * audit event the draft tool wrote — the row's `note` is crew-visible, so the
+ * reason never lives there. Keyed by assignment id; a draft the model gave no
+ * reason for, or one older than the reason field, is simply absent. A
+ * missing table reads as no reasons, the way logEvent treats its writes. */
+export async function listAiDraftReasons(ids: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (ids.length === 0) return out;
+  const { data, error } = await supabase
+    .from("schedule_events")
+    .select("assignment_id, payload")
+    .eq("kind", "created")
+    .in("assignment_id", ids);
+  if (error) {
+    if (isMissingScheduleTable(error)) return out;
+    throw error;
+  }
+  for (const row of (data ?? []) as { assignment_id: string | null; payload: unknown }[]) {
+    const reason = aiReasonFromPayload(row.payload);
+    if (row.assignment_id && reason) out.set(row.assignment_id, reason);
+  }
+  return out;
 }
 
 /** Best-effort audit write; never throws (a missing table is fine). */

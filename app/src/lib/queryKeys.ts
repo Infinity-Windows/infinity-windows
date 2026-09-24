@@ -233,6 +233,7 @@ export const QUERY_KEY_ROOTS: QueryKeyRootEntry[] = [
   { root: "reorderNeeds", offline: false },
   { root: "savedCrews", offline: false },
   { root: "schedule", offline: false },
+  { root: "scheduleAiReasons", offline: false },
   { root: "scheduleAssignments", offline: false },
   { root: "scheduleCoverage", offline: false },
   { root: "scheduleDrafts", offline: false },

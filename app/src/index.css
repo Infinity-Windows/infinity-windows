@@ -8671,6 +8671,21 @@ body {
 }
 .sched-publishbar-warn { color: var(--warn); font-weight: 600; margin-left: 4px; }
 
+/* ---- Review AI drafts (K2.8): the supervisor's read of what the AI drafted ---- */
+.sched-ai-review { margin: 8px 0; border-color: var(--accent-line); }
+.sched-ai-review-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.sched-ai-review-head strong { display: inline-flex; align-items: center; gap: 6px; }
+.sched-ai-review-help { margin: 4px 0 8px; font-size: 13px; }
+.sched-ai-review-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.sched-ai-review-row { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 12px; }
+.sched-ai-review-row.is-kept { border-color: var(--accent); }
+.sched-ai-review-what { flex: 1 1 200px; min-width: 0; font-size: 14px; }
+.sched-ai-review-reason { margin: 4px 0 0; font-size: 13px; }
+.sched-ai-review-actions { display: flex; gap: 6px; flex: 0 0 auto; }
+.sched-ai-review-actions .button-like { min-height: 44px; }
+.sched-ai-review-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; font-size: 13px; }
+.sched-ai-review-foot .button-like { min-height: 44px; margin-left: auto; }
+
 /* ---- Editor / publish sheet ---- */
 .sched-sheet-backdrop {
   position: fixed;
