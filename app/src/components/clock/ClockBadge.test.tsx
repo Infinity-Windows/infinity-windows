@@ -7,7 +7,7 @@
 
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TimeShift } from "../../lib/timeclock";
 
 const openClock = vi.fn();
@@ -18,9 +18,15 @@ vi.mock("../../lib/clockContext", () => ({
 
 const { ClockBadge } = await import("./ClockBadge");
 
+// The badge reads the clock twice: it prints the punch, and once a shift has
+// run past the 16-hour guard (lib/shiftGuard.ts) it stops counting and asks
+// "Finish time?". A shift pinned to 7:02 today crossed that line every night
+// after 23:02, so these tests failed for the hour they ran at, not for the
+// code. The clock is frozen instead, and every shift starts two hours before it.
+const NOW = new Date("2026-09-23T15:02:00Z");
+
 function mkShift(over: Partial<TimeShift> = {}): TimeShift {
-  const inAt = new Date();
-  inAt.setHours(7, 2, 0, 0);
+  const inAt = new Date(Date.now() - 2 * 3600_000);
   return {
     id: "s1",
     profile_id: "me",
@@ -40,12 +46,17 @@ function mkShift(over: Partial<TimeShift> = {}): TimeShift {
 
 let root: Root | null = null;
 let host: HTMLDivElement | null = null;
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(NOW);
+});
 afterEach(() => {
   act(() => root?.unmount());
   host?.remove();
   root = null;
   host = null;
   openClock.mockReset();
+  vi.useRealTimers();
 });
 
 function mount(): HTMLElement {
@@ -66,7 +77,13 @@ describe("ClockBadge", () => {
     shift = mkShift();
     const el = mount();
     const btn = el.querySelector<HTMLButtonElement>("button.clock-badge")!;
-    expect(btn.textContent).toMatch(/Clocked in 7:02/);
+    // The punch as this machine's locale and zone print it — 7:02 AM in
+    // Denver, 1:02 PM on a UTC runner — so it is read off the fixture.
+    const inAt = new Date(shift.clock_in_at).toLocaleTimeString(undefined, {
+      hour: "numeric",
+      minute: "2-digit",
+    });
+    expect(btn.textContent).toBe(`Clocked in ${inAt} · 2:00:00`);
     act(() => btn.click());
     expect(openClock).toHaveBeenCalledTimes(1);
   });
