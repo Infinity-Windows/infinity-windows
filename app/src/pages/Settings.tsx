@@ -4,6 +4,7 @@ import { DisplayModePicker } from "../components/DisplayModePicker";
 import { BackChip } from "../components/BackChip";
 import { Link } from "react-router-dom";
 import { BuildIdentityCard } from "../components/BuildIdentityCard";
+import { DesignSettings } from "../components/design/DesignSettings";
 import { PermissionsSettings } from "../components/permissions/PermissionsSettings";
 import { playSuccessTone, setSoundsEnabled, soundsEnabled } from "../lib/sound";
 import { useLanguage } from "../lib/i18n";
@@ -57,6 +58,11 @@ export function Settings() {
         </div>
         <BackChip label={t("settings.back")} />
       </header>
+
+      {/* Release 1 (K-X2): the person's own front door, first — it is the
+          reason most people open Settings during the rollout — plus the
+          owner's release switches, which the component shows only to owners. */}
+      <DesignSettings />
 
       <section className="detail-card" style={{ marginBottom: 12 }}>
         <DisplayModePicker />

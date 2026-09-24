@@ -49,6 +49,7 @@ import { MyWork } from "./pages/MyWork";
 import { Heartbeat } from "./pages/Heartbeat";
 import { PinGate } from "./components/PinGate";
 import { LanguageProvider } from "./lib/i18n";
+import { DesignProvider } from "./lib/design/DesignProvider";
 import { FirstRunLanguagePicker } from "./components/LanguagePicker";
 import { ensureMyProfile } from "./lib/install/api";
 import { SkeletonCard } from "./components/ui/States";
@@ -564,6 +565,11 @@ export default function App() {
       }}
     >
       <LanguageProvider>
+      {/* Release 1 (K-X2): which front door renders — the person's own choice
+          under the owner's master switch. Beside the language provider on
+          purpose: both are the viewer's own preference, both read the real
+          profile, both paint from a device cache before it answers. */}
+      <DesignProvider>
       {/* The first-login language choice sits above everything — even the PIN
           gate — so a new crew member picks their language before the app asks
           for anything else. It renders nothing once a choice exists. */}
@@ -922,6 +928,7 @@ export default function App() {
       </BrowserRouter>
       </ViewAsRoleProvider>
       </PinGate>
+      </DesignProvider>
       </LanguageProvider>
     </PersistQueryClientProvider>
   );

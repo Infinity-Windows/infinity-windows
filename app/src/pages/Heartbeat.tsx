@@ -1,4 +1,5 @@
 import { CrewStartBar } from "../components/schedule/CrewStartBar";
+import { TryNewDesignCard } from "../components/design/TryNewDesignCard";
 import { BackChip } from "../components/BackChip";
 import { SaveJobsStrip } from "../components/offline/SaveJobOffline";
 import { RoleMaps } from "../components/RoleMaps";
@@ -172,6 +173,8 @@ export function Heartbeat() {
         <BackChip fallback="/projects" label="Back" />
       </header>
 
+      {/* Release 1 (K-X2): the one-time invitation to the new design. */}
+      <TryNewDesignCard />
       <CrewStartBar />
       <ClockInBlock />
 

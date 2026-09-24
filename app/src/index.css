@@ -13284,3 +13284,63 @@ button.crew-start-message { min-height: 44px; width: 100%; text-align: left; col
   .job-hours-toolbar > button, .job-hours-toolbar > .button-like { padding-inline: 8px; }
   .job-hours-dates { grid-template-columns: 1fr; }
 }
+
+/* ---- Release 1, the new front door (crew redesign, 2026-09-23) ----------
+   K-X2: the design switch in Settings and the one-time "Try the new Forge"
+   card on the classic landings. Sized to the crew screen rule (K-X4) even
+   though Settings is a classic screen: the switch itself is new. */
+.design-choice { min-height: 48px; font-size: 16px; padding: 10px 16px; }
+.design-date { min-height: 48px; font-size: 16px; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--card); color: var(--text); }
+.try-design-card {
+  margin: 0 0 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--accent-line);
+  border-radius: 14px;
+  background: linear-gradient(135deg, var(--accent-bg), var(--card-raised));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.try-design-title { margin: 0; display: flex; align-items: center; gap: 6px; font-family: var(--font-display); font-weight: 800; font-size: 20px; }
+.try-design-body { margin: 0; font-size: 16px; line-height: 1.4; color: var(--text-secondary); }
+.try-design-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.try-design-btn {
+  min-height: 48px;
+  padding: 0 18px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 16px;
+  cursor: pointer;
+}
+.try-design-btn--primary { min-height: 56px; background: var(--accent); border-color: var(--accent); color: var(--ink); }
+/* K1.1: the top-bar clock badge (new design). Sits in the sync strip's row,
+   left of the sync pill; 48px tall and 16px text per the crew screen rule. */
+.sync-strip[data-design="new"] { justify-content: space-between; align-items: center; gap: 8px; }
+.clock-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid var(--accent-line);
+  background: var(--card);
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.clock-badge-icon { display: inline-flex; color: var(--ok); }
+.clock-badge--break .clock-badge-icon { color: var(--warn); }
+.clock-badge--finish { border-color: var(--danger); }
+.clock-badge--finish .clock-badge-icon { color: var(--danger); }
+.clock-badge-text { overflow: hidden; text-overflow: ellipsis; }

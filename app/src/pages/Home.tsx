@@ -1,5 +1,6 @@
 import { TimeOffPanel } from "../components/timeOff/TimeOffPanel";
 import { CrewStartBar } from "../components/schedule/CrewStartBar";
+import { TryNewDesignCard } from "../components/design/TryNewDesignCard";
 import { useQuery } from "@tanstack/react-query";
 import { SaveJobsStrip } from "../components/offline/SaveJobOffline";
 import { useEffect, useMemo, useState } from "react";
@@ -284,6 +285,8 @@ export function Home() {
 
       <LiveSummonsStrip />
 
+      {/* Release 1 (K-X2): the one-time invitation to the new design. */}
+      <TryNewDesignCard />
       <CrewStartBar />
       <ClockInBlock />
       <TimeOffPanel compact />

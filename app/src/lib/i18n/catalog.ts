@@ -5045,6 +5045,70 @@ export const CATALOG = {
   "workflow.selectionHelp": { en: "Only unlinked drafts for this job appear. Select at least one work block and one trip. Work and travel keep separate dates.", es: "Solo aparecen borradores sin conectar para este trabajo. Selecciona al menos un bloque de trabajo y un viaje. El trabajo y los viajes conservan fechas separadas." },
   "workflow.connectReview": { en: "Connect and review", es: "Conectar y revisar" },
   "workflow.tripLinksError": { en: "Could not load connected trips", es: "No se pudieron cargar los viajes conectados" },
+
+  // ---- Release 1, the new front door (crew redesign spec, 2026-09-23) ----
+  // K-X2: the design switch, per person, plus the owner's master switch.
+  "design.heading": { en: "Design", es: "Diseño" },
+  "design.help": {
+    en: "The new Forge puts your clock, today's job and your next unit on one Work screen. Your work saves the same either way. Switch back any time.",
+    es: "El nuevo Forge pone tu reloj, el trabajo de hoy y tu siguiente unidad en una sola pantalla de Trabajo. Tu trabajo se guarda igual de las dos formas. Vuelve cuando quieras.",
+  },
+  "design.useNew": { en: "Use the new design", es: "Usar el nuevo diseño" },
+  "design.useClassic": { en: "Use the classic design", es: "Usar el diseño clásico" },
+  "design.current.new": { en: "You're on the new design.", es: "Estás en el nuevo diseño." },
+  "design.current.classic": { en: "You're on the classic design.", es: "Estás en el diseño clásico." },
+  "design.masterOff": {
+    en: "The owner has turned the new design off for everyone for now. Your choice is kept for when it comes back.",
+    es: "El dueño desactivó el nuevo diseño para todos por ahora. Tu elección se guarda para cuando vuelva.",
+  },
+  "design.owner.heading": { en: "New design master switch", es: "Interruptor general del nuevo diseño" },
+  "design.owner.help": {
+    en: "Owner only. Off sends everyone back to the classic screens at once; people's own choices are kept and come back when it's on again.",
+    es: "Solo el dueño. Apagado regresa a todos a las pantallas clásicas de una vez; la elección de cada persona se guarda y vuelve cuando se encienda de nuevo.",
+  },
+  "design.owner.on": { en: "On — people can choose it", es: "Encendido: la gente puede elegirlo" },
+  "design.owner.off": { en: "Off for everyone", es: "Apagado para todos" },
+  "design.owner.turnOff": { en: "Turn off for everyone", es: "Apagar para todos" },
+  "design.owner.turnOn": { en: "Turn on", es: "Encender" },
+  "design.owner.saving": { en: "Saving…", es: "Guardando…" },
+  "design.try.title": { en: "Try the new Forge", es: "Prueba el nuevo Forge" },
+  "design.try.body": {
+    en: "One screen with your clock, today's job and your next unit. Your work saves the same either way, and you can switch back any time in Settings.",
+    es: "Una sola pantalla con tu reloj, el trabajo de hoy y tu siguiente unidad. Tu trabajo se guarda igual de las dos formas y puedes volver cuando quieras en Ajustes.",
+  },
+  "design.try.yes": { en: "Try it", es: "Probarlo" },
+  "design.try.no": { en: "Not now", es: "Ahora no" },
+  // K1.3 / Q69: the paid-time rule's effective date (owner only).
+  "paidTime.heading": { en: "Paid time starts at Start day", es: "El tiempo pagado empieza al Iniciar el día" },
+  "paidTime.help": {
+    en: "Owner only. From this date, paid time starts the moment someone taps Start day — before the toolbox talk is signed. Until then, today's timing applies. One date for everyone, and no shift already on record changes.",
+    es: "Solo el dueño. Desde esta fecha, el tiempo pagado empieza en el momento en que alguien toca Iniciar el día, antes de firmar la charla de seguridad. Hasta entonces aplica el horario de hoy. Una sola fecha para todos y ningún turno ya registrado cambia.",
+  },
+  "paidTime.from": { en: "Starts on", es: "Empieza el" },
+  "paidTime.state.off": { en: "Off — today's timing applies.", es: "Apagado: aplica el horario de hoy." },
+  "paidTime.state.scheduled": { en: "Starts {date} for everyone.", es: "Empieza el {date} para todos." },
+  "paidTime.state.on": { en: "On for everyone since {date}.", es: "Activo para todos desde el {date}." },
+  "paidTime.save": { en: "Save date", es: "Guardar fecha" },
+  "paidTime.clear": { en: "Turn off", es: "Apagar" },
+  "paidTime.saved": { en: "Saved.", es: "Guardado." },
+  // K1.1: the phone bar in the new design.
+  "nav.work": { en: "Work", es: "Trabajo" },
+  "nav.schedule": { en: "Schedule", es: "Horario" },
+  "nav.ask": { en: "Ask", es: "Preguntar" },
+  "nav.more": { en: "More", es: "Más" },
+  "nav.more.a11y": { en: "Open more", es: "Abrir más" },
+  // K1.1: the top-bar clock badge that opens break / clock out from any screen.
+  "clockBadge.in": { en: "Clocked in {time}", es: "Entrada {time}" },
+  "clockBadge.break": { en: "On break", es: "En descanso" },
+  "clockBadge.finish": { en: "Finish time?", es: "¿Hora de salida?" },
+  "clockBadge.a11y": {
+    en: "Clocked in at {time} — open break or clock out",
+    es: "Entrada a las {time}: abrir descanso o salida",
+  },
+  "clockBadge.a11yBreak": {
+    en: "On break — open the clock",
+    es: "En descanso: abrir el reloj",
+  },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */
