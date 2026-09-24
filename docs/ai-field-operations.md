@@ -155,7 +155,12 @@ completed (Release 3) are absent from the cards and listed under All actions
 with "Use the <screen> for this". A running unit puts "Finish unit N" first.
 Cards hide as soon as the composer has text or a recording starts; "Actions"
 brings them back; a card sends its own words as a field request and never
-discards what was typed.
+discards what was typed. A typed first message that names a unit and its type
+or size ("Unit 4 on Smith is a bifold door", "La unidad 4 es una puerta
+plegable", "unit 4 bifold 8 by six") is routed as the same field request
+without the card (`describesUnit` in `lib/askRouting.ts`); questions, hours or
+schedule talk and problem reports about a unit stay with the local answers —
+a miss costs one card tap, a false route saves a request nobody meant.
 
 **Context tag (K2.3).** The job page and the unit sheet open Ask with
 `location.state.askContext` (`contextTagFromInput` checks it). The tag rides

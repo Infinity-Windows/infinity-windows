@@ -9,8 +9,7 @@
       "kind": "text",
       "utterance": "Unit 4 on Smith is a bifold door, aluminum, second floor",
       "world": {
-        "clock": "smith",
-        "field": true
+        "clock": "smith"
       },
       "stub": {
         "tools": [
@@ -62,7 +61,7 @@
         "answerLang": "en",
         "noDoneClaim": true
       },
-      "$comment": "Typed with no card and no open conversation the router would not send this as a field request; `field: true` stands for the Build a unit card tap (K2.2). The runner reports the router finding either way."
+      "$comment": "Typed with no card and no open conversation: the phone's router (askRouting.ts, describesUnit — a named unit plus a unit-type or size word) sends this as the same field request the Build a unit card makes. No `field` override here on purpose: if that rule regresses, the runner reports the router finding again."
     },
     {
       "id": "unit-setup-en-measured",
@@ -318,8 +317,7 @@
       "kind": "text",
       "utterance": "La unidad 4 en Smith es una puerta plegable de aluminio, segundo piso",
       "world": {
-        "clock": "smith",
-        "field": true
+        "clock": "smith"
       },
       "stub": {
         "tools": [
@@ -363,7 +361,7 @@
         "answerLang": "es",
         "noDoneClaim": true
       },
-      "$comment": "Typed with no card and no open conversation the router would not send this as a field request; `field: true` stands for the Build a unit card tap (K2.2). The runner reports the router finding either way."
+      "$comment": "Typed with no card and no open conversation: the phone's router (askRouting.ts, describesUnit — a named unit plus a unit-type or size word) sends this as the same field request the Build a unit card makes. No `field` override here on purpose: if that rule regresses, the runner reports the router finding again."
     },
     {
       "id": "unit-setup-es-metric",
