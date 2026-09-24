@@ -20,6 +20,7 @@ import {
 import { createDefaultStore } from "./outboxStore";
 import { logOfflineEvent } from "./telemetry";
 import { signedInEmail } from "../signedIn";
+import type { JobMode } from "../types";
 import { recoverPhotoUpload } from "./recoverPhotoUploads";
 import { PhotoUploadReceipts } from "./photoUploadProgress";
 import {
@@ -274,6 +275,31 @@ export function stopOutboxAutoFlush(): void {
 
 // --- op-specific enqueue helpers ----------------------------------------
 
+/**
+ * The tap's one-time id and time, as every queued clock action carries it
+ * (Release 0, K0.2/K0.5). Minted by the caller at the TAP — before the live
+ * try that may already have gone through — and sent unchanged by every
+ * attempt, so the server can tell a resend from a second punch. In the
+ * payload, not in entry.id, for the same reason take_supply's key is: the key
+ * has to exist before the entry does. The type is the guard: an entry queued
+ * without one cannot be built.
+ */
+export interface ClockPunchFields {
+  clientId: string;
+  tappedAt: string;
+  clockCheckedAt: string | null;
+  clockSkewMs: number | null;
+}
+
+function punchPayload(p: ClockPunchFields) {
+  return {
+    clientId: p.clientId,
+    tappedAt: p.tappedAt,
+    clockCheckedAt: p.clockCheckedAt,
+    clockSkewMs: p.clockSkewMs,
+  };
+}
+
 export interface ClockInInput {
   projectId: string | null;
   costCodeId: string | null;
@@ -281,6 +307,14 @@ export interface ClockInInput {
   lng?: number | null;
   /** Optional worker note for the office, carried through to sync. */
   note?: string | null;
+  /**
+   * The mode picked on a both-mode job. Rides the queue since 20261028000000
+   * gave clock_in an overload that takes both p_client_id and p_mode — before
+   * that a queued punch always landed with job_mode null (the stated limit of
+   * 2026-09-06).
+   */
+  mode?: JobMode | null;
+  punch: ClockPunchFields;
 }
 
 /** Enqueue a clock-in. Returns the entry id, usable as a pending shift ref. */
@@ -293,6 +327,8 @@ export function enqueueClockIn(input: ClockInInput): Promise<string> {
       lat: input.lat ?? null,
       lng: input.lng ?? null,
       note: input.note ?? null,
+      mode: input.mode ?? null,
+      ...punchPayload(input.punch),
     },
   });
 }
@@ -306,6 +342,7 @@ export interface ClockOutInput {
   breakSeconds: number;
   lat?: number | null;
   lng?: number | null;
+  punch: ClockPunchFields;
 }
 
 export function enqueueClockOut(input: ClockOutInput): Promise<string> {
@@ -321,23 +358,28 @@ export function enqueueClockOut(input: ClockOutInput): Promise<string> {
       breakSeconds: input.breakSeconds,
       lat: input.lat ?? null,
       lng: input.lng ?? null,
+      ...punchPayload(input.punch),
     },
   });
 }
 
-export function enqueueBreakStart(shiftRef: string, breakType: string): Promise<string> {
+export function enqueueBreakStart(
+  shiftRef: string,
+  breakType: string,
+  punch: ClockPunchFields,
+): Promise<string> {
   return enqueue({
     op: "break_start",
     dependsOn: refDependency(shiftRef),
-    payload: { shiftRef, breakType },
+    payload: { shiftRef, breakType, ...punchPayload(punch) },
   });
 }
 
-export function enqueueBreakStop(shiftRef: string): Promise<string> {
+export function enqueueBreakStop(shiftRef: string, punch: ClockPunchFields): Promise<string> {
   return enqueue({
     op: "break_stop",
     dependsOn: refDependency(shiftRef),
-    payload: { shiftRef },
+    payload: { shiftRef, ...punchPayload(punch) },
   });
 }
 

@@ -285,21 +285,29 @@ describe("clockIn (mode-carrying path, slice 2)", () => {
     expect(out).toBe(returned);
   });
 
-  it("falls back mode+note -> note-only -> bare punch when the overload is missing", async () => {
-    rpc.mockResolvedValueOnce({ data: null, error: MISSING }); // mode+note overload absent
-    rpc.mockResolvedValueOnce({ data: null, error: MISSING }); // note-only overload absent
+  it("falls back keyed+mode -> keyed+note -> keyed only when an overload is missing, never to an unkeyed punch", async () => {
+    // Release 0 (K0.2): every rung of the ladder carries the tap's one-time
+    // id. The old bottom rung — a bare, unkeyed punch — is gone on purpose:
+    // an unkeyed clock-in is the double punch this release exists to end.
+    rpc.mockResolvedValueOnce({ data: null, error: MISSING }); // 20261028000000 not applied
+    rpc.mockResolvedValueOnce({ data: null, error: MISSING }); // client_id + note overload absent
     const returned = shift({});
-    rpc.mockResolvedValueOnce({ data: returned, error: null }); // bare punch works
+    rpc.mockResolvedValueOnce({ data: returned, error: null }); // client_id-only overload works
 
     const out = await clockIn("j1", null, undefined, "hello", "data");
 
     expect(rpc).toHaveBeenCalledTimes(3);
-    // 1st carries both note and mode.
-    expect(rpc.mock.calls[0][1]).toMatchObject({ p_note: "hello", p_mode: "data" });
-    // 2nd drops the mode but keeps the note.
-    expect(rpc.mock.calls[1][1]).toHaveProperty("p_note", "hello");
+    const id = (rpc.mock.calls[0][1] as { p_client_id: string }).p_client_id;
+    expect(id).toEqual(expect.any(String));
+    // 1st carries id, note, mode and the tap time.
+    expect(rpc.mock.calls[0][1]).toMatchObject({ p_note: "hello", p_mode: "data", p_client_id: id });
+    expect(rpc.mock.calls[0][1]).toHaveProperty("p_tapped_at");
+    // 2nd drops the mode and the tap time but keeps the note — and the SAME id.
+    expect(rpc.mock.calls[1][1]).toMatchObject({ p_note: "hello", p_client_id: id });
     expect(rpc.mock.calls[1][1]).not.toHaveProperty("p_mode");
-    // 3rd is a bare punch: neither note nor mode.
+    expect(rpc.mock.calls[1][1]).not.toHaveProperty("p_tapped_at");
+    // 3rd keeps only the id: neither note nor mode, still never unkeyed.
+    expect(rpc.mock.calls[2][1]).toMatchObject({ p_client_id: id });
     expect(rpc.mock.calls[2][1]).not.toHaveProperty("p_note");
     expect(rpc.mock.calls[2][1]).not.toHaveProperty("p_mode");
     expect(out).toBe(returned);
@@ -313,14 +321,18 @@ describe("clockIn (mode-carrying path, slice 2)", () => {
     expect(rpc).toHaveBeenCalledTimes(1); // no fallback on a real error
   });
 
-  it("leaves a single-mode punch on the note-only path, with no p_mode key", async () => {
+  it("sends a single-mode punch through the same keyed overload, with p_mode null", async () => {
+    // Before Release 0 a null mode took a different overload (note-only). The
+    // keyed overload takes p_mode itself, so null is simply sent as null and the
+    // server stores nothing — the same result by one path instead of two.
     rpc.mockResolvedValueOnce({ data: shift({}), error: null });
 
     await clockIn("j1", null, undefined, "note", null);
 
     expect(rpc).toHaveBeenCalledTimes(1);
     expect(rpc.mock.calls[0][1]).toHaveProperty("p_note", "note");
-    expect(rpc.mock.calls[0][1]).not.toHaveProperty("p_mode");
+    expect(rpc.mock.calls[0][1]).toHaveProperty("p_mode", null);
+    expect(rpc.mock.calls[0][1]).toHaveProperty("p_client_id", expect.any(String));
   });
 
   it("ignores an unrecognised mode rather than sending it", async () => {
@@ -329,7 +341,7 @@ describe("clockIn (mode-carrying path, slice 2)", () => {
     await clockIn("j1", null, undefined, null, "bogus" as unknown as JobMode);
 
     expect(rpc).toHaveBeenCalledTimes(1);
-    expect(rpc.mock.calls[0][1]).not.toHaveProperty("p_mode");
+    expect(rpc.mock.calls[0][1]).toHaveProperty("p_mode", null);
     // note normalised to null when blank/absent
     expect(rpc.mock.calls[0][1]).toHaveProperty("p_note", null);
   });
@@ -432,5 +444,169 @@ describe("listTeamShifts", () => {
     await expect(
       listTeamShifts("2026-08-24T00:00:00Z", "2026-08-31T00:00:00Z"),
     ).rejects.toEqual({ message: "boom" });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Release 0 (K0.2 / K0.4 / K0.5): one-time ids, the tap trio, and refusals a
+// person can read. Every direct punch is keyed even when the caller never
+// thinks about it; a caller retrying a tap it already stamped keeps the id.
+// ---------------------------------------------------------------------------
+import {
+  ClockRefusal,
+  clockOut,
+  endBreak,
+  mintPunch,
+  readEndBreak,
+  startBreak,
+} from "./timeclock";
+
+const PUNCH = {
+  clientId: "11111111-2222-4333-8444-555555555555",
+  tappedAt: "2026-09-23T13:02:11.000Z",
+  clockCheckedAt: "2026-09-23T12:00:00.000Z",
+  clockSkewMs: 1500,
+};
+
+describe("clockIn carries the tap's one-time id and time (Release 0)", () => {
+  beforeEach(() => rpc.mockReset());
+
+  it("sends the punch it was given — id, tap time, last clock check and skew", async () => {
+    rpc.mockResolvedValueOnce({ data: shift({}), error: null });
+    await clockIn("j1", "cc1", undefined, null, "data", PUNCH);
+    expect(rpc).toHaveBeenCalledTimes(1);
+    expect(rpc.mock.calls[0][1]).toMatchObject({
+      p_client_id: PUNCH.clientId,
+      p_tapped_at: PUNCH.tappedAt,
+      p_clock_checked_at: PUNCH.clockCheckedAt,
+      p_clock_skew_ms: 1500,
+    });
+  });
+
+  it("keeps the same id on a retry of the same punch object", async () => {
+    // The landing block's punch, refused on the network, handed to the sheet:
+    // the second send must be the FIRST send to the server.
+    rpc.mockResolvedValueOnce({ data: null, error: { message: "Failed to fetch" } });
+    rpc.mockResolvedValueOnce({ data: shift({}), error: null });
+    await expect(clockIn("j1", "cc1", undefined, null, null, PUNCH)).rejects.toBeTruthy();
+    await clockIn("j1", "cc1", undefined, null, null, PUNCH);
+    expect(rpc.mock.calls[0][1]).toHaveProperty("p_client_id", PUNCH.clientId);
+    expect(rpc.mock.calls[1][1]).toHaveProperty("p_client_id", PUNCH.clientId);
+  });
+
+  it("mints a fresh id per call when the caller passes none, so no direct punch is ever unkeyed", async () => {
+    rpc.mockResolvedValue({ data: shift({}), error: null });
+    await clockIn("j1", "cc1");
+    await clockIn("j1", "cc1");
+    const a = (rpc.mock.calls[0][1] as { p_client_id: string }).p_client_id;
+    const b = (rpc.mock.calls[1][1] as { p_client_id: string }).p_client_id;
+    expect(a).toEqual(expect.any(String));
+    expect(b).toEqual(expect.any(String));
+    expect(a).not.toBe(b);
+  });
+});
+
+describe("clockOut, startBreak and endBreak are keyed the same way", () => {
+  const MISSING = { code: "PGRST202", message: "Could not find the function" };
+  beforeEach(() => rpc.mockReset());
+
+  it("clockOut sends the id and the tap trio beside the punch's own fields", async () => {
+    rpc.mockResolvedValueOnce({ data: shift({ clock_out_at: "2026-09-23T21:00:00Z" }), error: null });
+    await clockOut("s1", { injured: false, timeConfirmed: true, breakSeconds: 600 }, PUNCH);
+    expect(rpc.mock.calls[0][0]).toBe("clock_out");
+    expect(rpc.mock.calls[0][1]).toMatchObject({
+      p_shift_id: "s1",
+      p_break_seconds: 600,
+      p_client_id: PUNCH.clientId,
+      p_tapped_at: PUNCH.tappedAt,
+      p_clock_skew_ms: 1500,
+    });
+  });
+
+  it("clockOut falls back to the legacy overload only when the keyed one is missing", async () => {
+    rpc.mockResolvedValueOnce({ data: null, error: MISSING });
+    rpc.mockResolvedValueOnce({ data: shift({}), error: null });
+    await clockOut("s1", { injured: false, timeConfirmed: true, breakSeconds: 0 }, PUNCH);
+    expect(rpc).toHaveBeenCalledTimes(2);
+    expect(rpc.mock.calls[1][1]).not.toHaveProperty("p_client_id");
+  });
+
+  it("clockOut surfaces the server's plain refusal of a second close, without retrying", async () => {
+    const refusal = { code: "P0001", message: "This shift was already clocked out. Nothing was changed." };
+    rpc.mockResolvedValueOnce({ data: null, error: refusal });
+    await expect(clockOut("s1", { injured: false, timeConfirmed: true, breakSeconds: 0 })).rejects.toBe(refusal);
+    expect(rpc).toHaveBeenCalledTimes(1);
+  });
+
+  it("startBreak sends the id and the break type", async () => {
+    rpc.mockResolvedValueOnce({ data: shift({ break_started_at: "2026-09-23T17:00:00Z" }), error: null });
+    await startBreak("s1", "lunch", PUNCH);
+    expect(rpc.mock.calls[0][0]).toBe("start_break");
+    expect(rpc.mock.calls[0][1]).toMatchObject({ p_shift_id: "s1", p_break_type: "lunch", p_client_id: PUNCH.clientId });
+  });
+
+  it("endBreak returns the shift when the break ended", async () => {
+    const ended = shift({ break_seconds: 1800 });
+    rpc.mockResolvedValueOnce({ data: { outcome: "ended", shift: ended }, error: null });
+    const out = await endBreak("s1", PUNCH);
+    expect(out).toEqual(ended);
+    expect(rpc.mock.calls[0][1]).toMatchObject({ p_shift_id: "s1", p_client_id: PUNCH.clientId });
+  });
+
+  it("endBreak turns 'no_break_running' into a refusal the sheet can read (K0.4)", async () => {
+    rpc.mockResolvedValueOnce({ data: { outcome: "no_break_running", shift: shift({}) }, error: null });
+    const err = await endBreak("s1", PUNCH).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ClockRefusal);
+    expect((err as ClockRefusal).code).toBe("no_break_running");
+    // The English line, for a caller that only has formatApiError.
+    expect((err as Error).message).toContain("couldn't find the start of that break");
+  });
+
+  it("endBreak turns 'shift_closed' into its own refusal", async () => {
+    rpc.mockResolvedValueOnce({ data: { outcome: "shift_closed", shift: shift({}) }, error: null });
+    const err = await endBreak("s1", PUNCH).catch((e: unknown) => e);
+    expect((err as ClockRefusal).code).toBe("shift_closed");
+  });
+
+  it("endBreak on a database behind the app takes the legacy overload and its row", async () => {
+    const row = shift({ break_seconds: 900 });
+    rpc.mockResolvedValueOnce({ data: null, error: MISSING });
+    rpc.mockResolvedValueOnce({ data: row, error: null });
+    expect(await endBreak("s1", PUNCH)).toEqual(row);
+    expect(rpc.mock.calls[1][1]).toEqual({ p_shift_id: "s1" });
+  });
+
+  it("readEndBreak passes a bare row through untouched (the legacy shape)", () => {
+    const row = shift({});
+    expect(readEndBreak(row)).toBe(row);
+  });
+});
+
+describe("a made-up shift id never reaches a uuid RPC (K0.4)", () => {
+  beforeEach(() => rpc.mockReset());
+
+  for (const [name, call] of [
+    ["clockOut", () => clockOut("pending:abc", { injured: false, timeConfirmed: true, breakSeconds: 0 })],
+    ["startBreak", () => startBreak("pending:abc", "lunch")],
+    ["endBreak", () => endBreak("pending:abc")],
+  ] as const) {
+    it(`${name} refuses a pending: ref before any request leaves`, async () => {
+      const err = await call().catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ClockRefusal);
+      expect((err as ClockRefusal).code).toBe("clock_pending_sync");
+      expect(rpc).not.toHaveBeenCalled();
+    });
+  }
+});
+
+describe("mintPunch", () => {
+  it("keeps a caller's id and stamps the tap time", () => {
+    const p = mintPunch("keep-me", Date.UTC(2026, 8, 23, 13, 2, 11));
+    expect(p.clientId).toBe("keep-me");
+    expect(p.tappedAt).toBe("2026-09-23T13:02:11.000Z");
+  });
+  it("mints a uuid-shaped id when given none", () => {
+    expect(mintPunch().clientId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    expect(mintPunch(null).clientId).not.toBe(mintPunch(null).clientId);
   });
 });
