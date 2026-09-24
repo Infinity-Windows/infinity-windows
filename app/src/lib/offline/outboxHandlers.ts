@@ -547,7 +547,11 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
     // retried it forever over its own row. Here the row is confirmed first;
     // the id is a separate read, and a read that fails costs only the kick-
     // off, which lib/install/transcriptions.ts retries on its own schedule.
-    // A transcription that fails costs the same and nothing more.
+    //
+    // The transcription itself is NOT awaited. It can take up to a minute on
+    // one bar, and this handler runs inside the one drain every write shares
+    // — a clock-out queued behind a memo must not wait on a transcript it has
+    // nothing to do with. A transcription that fails is left for the retry.
     if (row.kind === "voice_memo") {
       try {
         const saved = await supabase
@@ -557,7 +561,9 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
           .maybeSingle();
         if (saved.data?.id) {
           const { transcribeInstallAttachment } = await import("../install/transcribe");
-          await transcribeInstallAttachment(saved.data.id, blob);
+          void transcribeInstallAttachment(saved.data.id, blob).catch(() => {
+            // Left untranscribed for retryTranscriptions().
+          });
         }
       } catch {
         // Left untranscribed for retryTranscriptions().

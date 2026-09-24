@@ -101,6 +101,7 @@ import {
   submitInstallViaOutbox,
 } from "../../lib/install/installOutbox";
 import {
+  initTranscriptionAutoRetry,
   pendingTranscriptionCount,
   retryTranscriptions,
 } from "../../lib/install/transcriptions";
@@ -266,6 +267,9 @@ export function OpeningSheet() {
     // The pill starts this too; here as well so a sheet opened straight from
     // a cold link is never waiting on a component further up the tree.
     initInstallOutboxAutoFlush();
+    // The transcript retry stays with this sheet on purpose — see
+    // lib/install/transcriptions.ts for why the pill does not start it.
+    initTranscriptionAutoRetry();
     refreshStatus();
     // The media rides the global outbox now, which announces every change —
     // so "N upload(s) waiting for signal" falls as they go, instead of

@@ -49,3 +49,22 @@ export async function pendingTranscriptionCount(): Promise<number> {
   if (error) return 0;
   return count ?? 0;
 }
+
+let autoRetryWired = false;
+
+/**
+ * Retry missing transcripts on reconnect and on a slow interval, once per
+ * session — started by the opening sheet, as the retired upload queue's
+ * timer was, and deliberately NOT by the sync pill on every screen: the
+ * query behind it is company-wide for a foreman, and the media itself no
+ * longer needs this timer to be sent (the outbox does that from anywhere).
+ */
+export function initTranscriptionAutoRetry(): void {
+  if (autoRetryWired || typeof window === "undefined") return;
+  autoRetryWired = true;
+  window.addEventListener("online", () => void retryTranscriptions());
+  window.setInterval(() => {
+    if (navigator.onLine) void retryTranscriptions();
+  }, 30_000);
+  if (navigator.onLine) void retryTranscriptions();
+}

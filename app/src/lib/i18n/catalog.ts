@@ -3696,6 +3696,7 @@ export const CATALOG = {
     es: "No se pudo empezar a enviar. Revisa tu señal e intenta de nuevo.",
   },
   "stuck.op.voiceMemo": { en: "Voice memo", es: "Nota de voz" },
+  // i18n-same-on-purpose: "video" is the same word in the crew's Spanish.
   "stuck.op.video": { en: "Video", es: "Video" },
   "stuck.customWork": { en: "Work change", es: "Cambio de trabajo" },
   "stuck.serviceChange": { en: "Service change", es: "Cambio de servicio" },

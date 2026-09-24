@@ -149,10 +149,16 @@ async function mount(): Promise<HTMLElement> {
       </QueryClientProvider>,
     );
   });
-  // The lists come back from promises; let them land before reading the DOM.
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 0));
-  });
+  // The lists come back from promises — three queries, two of them behind
+  // on-demand imports — so wait until the page has stopped saying it is
+  // checking, rather than guessing at a number of ticks. Under a full-suite
+  // run one tick was not enough, and the assertions read a half-loaded page.
+  for (let i = 0; i < 50; i++) {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    if (!host.textContent?.includes("Checking for stuck writes")) break;
+  }
   return host;
 }
 

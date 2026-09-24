@@ -709,19 +709,6 @@ async function runFlushPass(): Promise<InstallFlushResult> {
 
 let autoFlushWired = false;
 
-async function flushAllPending(): Promise<void> {
-  await flushInstallOutbox();
-  // The memo's transcript is asked for once when its row lands; anything that
-  // missed that ask is picked up here. Loaded on demand so the shell does not
-  // carry the transcription code until a memo actually needs it.
-  try {
-    const { retryTranscriptions } = await import("./transcriptions");
-    await retryTranscriptions();
-  } catch {
-    // Offline, or no memos to retry — the next pass asks again.
-  }
-}
-
 /**
  * Keep this queue draining from EVERY screen: on reconnect, when the app
  * comes back into view, and on a slow interval (flaky LTE can keep `onLine`
@@ -732,18 +719,24 @@ async function flushAllPending(): Promise<void> {
  * only while that sheet was open — close it, and the record waited for the
  * next time somebody opened a window. The sync pill starts it now, and the
  * pill is on every screen.
+ *
+ * Only the install queue. The transcription retry that used to ride the same
+ * timer stays with the opening sheet (lib/install/transcriptions.ts): it asks
+ * the server for every memo still missing a transcript, company-wide for a
+ * foreman, and running that from every screen of every office session every
+ * thirty seconds is not what "send from any screen" meant.
  */
 export function initInstallOutboxAutoFlush(): void {
   if (autoFlushWired || typeof window === "undefined") return;
   autoFlushWired = true;
-  window.addEventListener("online", () => void flushAllPending());
+  window.addEventListener("online", () => void flushInstallOutbox());
   document.addEventListener?.("visibilitychange", () => {
-    if (document.visibilityState === "visible") void flushAllPending();
+    if (document.visibilityState === "visible") void flushInstallOutbox();
   });
   window.setInterval(() => {
-    if (navigator.onLine) void flushAllPending();
+    if (navigator.onLine) void flushInstallOutbox();
   }, 30_000);
-  if (navigator.onLine) void flushAllPending();
+  if (navigator.onLine) void flushInstallOutbox();
 }
 
 /** For tests. */
