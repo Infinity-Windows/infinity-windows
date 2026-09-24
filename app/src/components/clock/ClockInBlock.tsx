@@ -35,13 +35,14 @@ import { farFromJob, type DeviceFix } from "../../lib/jobProximity";
 import { pushToast, toastSuccess } from "../../lib/toast";
 import { formatApiError } from "../../lib/errors";
 import { openClockGlobally } from "../../lib/clockContext";
+import { useOpenShiftView } from "../../lib/useOpenShiftView";
 import { ToolboxSignCard } from "./ToolboxSignCard";
+import { ClockQueueStatus } from "./ClockQueueStatus";
 import {
   clockIn,
   elapsedWorkSeconds,
   formatClock,
   getJobLastGeo,
-  getOpenShift,
   isOnTheClock,
   listRecentJobs,
   mintPunch,
@@ -68,13 +69,10 @@ export function ClockInBlock() {
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const profileId = me.data?.id ?? null;
 
-  // Shares the exact query key the clock provider polls, so the block and the
-  // nav timer always agree without a second poll of their own.
-  const openShift = useQuery({
-    queryKey: ["openShift", profileId],
-    queryFn: () => getOpenShift(profileId!),
-    enabled: Boolean(profileId),
-  });
+  // The same view the clock provider shows — the server's shift with this
+  // phone's queued punches applied (K0.1) — so the block and the nav timer
+  // always agree, and a clock-in still on the phone is never offered again.
+  const openShift = useOpenShiftView(profileId);
   const recents = useQuery({
     queryKey: ["recentJobs", profileId],
     queryFn: () => listRecentJobs(profileId!),
@@ -86,12 +84,12 @@ export function ClockInBlock() {
   const todayTalk = useQuery({
     queryKey: ["todayTalk"],
     queryFn: getTodayTalk,
-    enabled: !openShift.data,
+    enabled: !openShift.shift,
   });
   const toolboxDone = useQuery({
     queryKey: ["toolboxToday", profileId],
     queryFn: () => myTodayCompletion(profileId!),
-    enabled: Boolean(profileId) && !openShift.data,
+    enabled: Boolean(profileId) && !openShift.shift,
   });
 
   const [pickProjectId, setPickProjectId] = useState<string>("");
@@ -149,10 +147,10 @@ export function ClockInBlock() {
   const jobGeo = useQuery({
     queryKey: ["jobLastGeo", pickProjectId],
     queryFn: () => getJobLastGeo(pickProjectId),
-    enabled: Boolean(pickProjectId) && Boolean(myGeo) && !openShift.data,
+    enabled: Boolean(pickProjectId) && Boolean(myGeo) && !openShift.shift,
   });
 
-  const shift = openShift.data ?? null;
+  const shift = openShift.shift;
   const onClock = isOnTheClock(shift);
 
   // 1s tick drives the live timer (only meaningful on the clock).
@@ -195,7 +193,7 @@ export function ClockInBlock() {
   // (The already-granted rule now lives in captureGeoIfGranted, shared with the
   // far-from-job question — Wave K, K1 — so there is one copy of it.)
   useEffect(() => {
-    if (geoTriedRef.current || openShift.data) return;
+    if (geoTriedRef.current || openShift.shift) return;
     geoTriedRef.current = true;
     let cancelled = false;
     void (async () => {
@@ -205,7 +203,7 @@ export function ClockInBlock() {
     return () => {
       cancelled = true;
     };
-  }, [openShift.data]);
+  }, [openShift.shift]);
 
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: ["openShift"] });
@@ -353,6 +351,8 @@ export function ClockInBlock() {
           <span className="clockin-bar-name">{jobLine}</span>
           {/* Absent unless a supervisor started this punch from the roster. */}
           <ClockedInByLine shift={shift} />
+          {/* K0.1: the punch behind this bar is still on the phone. */}
+          <ClockQueueStatus pending={openShift.pending} refused={openShift.refused} />
         </div>
         <span className="clockin-bar-timer" aria-label={t("clock.a11y.timeWorked")}>
           {formatClock(workSec)}
@@ -675,6 +675,10 @@ export function ClockInBlock() {
       />
 
       {showFarNote && <p className="clockin-note">{t("clockblock.notNearJob")}</p>}
+
+      {/* K0.1: off the clock because the clock-out is still on the phone, or
+          because a punch was refused — said here, above the button. */}
+      <ClockQueueStatus pending={openShift.pending} refused={openShift.refused} />
 
       {toolboxKnownUnsigned ? (
         showSign && todayTalk.data && canStart ? (

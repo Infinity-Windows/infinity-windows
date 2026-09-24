@@ -75,6 +75,12 @@ export function breakTypeLabel(t: BreakType | null | undefined): string {
 
 export interface TimeShift {
   id: string;
+  /**
+   * The one-time id of the tap that made this shift (20260720000000), when
+   * the phone sent one. The clock view reads it to tell "the server already
+   * has the punch that is still in my queue" from "it does not" (K0.1).
+   */
+  client_id?: string | null;
   profile_id: string;
   project_id: string | null;
   cost_code_id: string | null;

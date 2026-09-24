@@ -260,6 +260,41 @@ export const CATALOG = {
     en: "Your clock-in is still being sent. Wait a moment and try again.",
     es: "Tu entrada todavía se está enviando. Espera un momento y vuelve a intentarlo.",
   },
+  // Release 0 (K0.1): a punch saved on this phone reads as real, with the
+  // tap time and where it stands — sending, or waiting for signal.
+  "clock.queued.clockIn": {
+    en: "Clocked in {time} — {state}",
+    es: "Entrada marcada a las {time} — {state}",
+  },
+  "clock.queued.breakStart": {
+    en: "On break since {time} — {state}",
+    es: "En descanso desde las {time} — {state}",
+  },
+  "clock.queued.breakStop": {
+    en: "Back to work {time} — {state}",
+    es: "De vuelta al trabajo a las {time} — {state}",
+  },
+  "clock.queued.clockOut": {
+    en: "Clocked out {time} — {state}",
+    es: "Salida marcada a las {time} — {state}",
+  },
+  "clock.queued.stateSending": {
+    en: "saved on this phone, sending",
+    es: "guardado en este teléfono, enviando",
+  },
+  "clock.queued.stateWaiting": {
+    en: "saved on this phone, sends when you have signal",
+    es: "guardado en este teléfono, se envía cuando tengas señal",
+  },
+  // A punch the phone gave up on: what it was, when, and why, then the door.
+  "clock.refused.line": {
+    en: "{what} at {time} couldn't be sent: {reason}",
+    es: "{what} a las {time} no se pudo enviar: {reason}",
+  },
+  "clock.refused.link": {
+    en: "See it under Stuck writes",
+    es: "Míralo en Escrituras atascadas",
+  },
   // The wrong-clock banner (T9, reworded for Release 0: since K0.5 a phone
   // more than 2 minutes off is paid from arrival time and marked for review).
   "wrongclock.title": {

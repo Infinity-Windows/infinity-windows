@@ -31,6 +31,8 @@ import { ToolboxTalkNagBanner } from "../time/ToolboxTalkNagBanner";
 import { WrongClockBanner } from "../time/WrongClockBanner";
 import { ToolboxSignCard } from "./ToolboxSignCard";
 import { ClockedInByLine } from "./ClockedInByLine";
+import { ClockQueueStatus } from "./ClockQueueStatus";
+import type { QueuedClockAction, RefusedClockAction } from "../../lib/clockQueueView";
 import { myTodayCompletion } from "../../lib/toolbox";
 import { getTodayTalk } from "../../lib/ops";
 import { listMyOpeningsAllJobs, startOpeningWork } from "../../lib/install/api";
@@ -100,12 +102,22 @@ type Mode = "pick" | "main" | "break-type" | "switch";
 export function ClockSheet({
   profileId,
   shift,
+  pending = null,
+  refused = [],
   initialPick = null,
   onClose,
   onChanged,
 }: {
   profileId: string | null;
   shift: TimeShift | null;
+  /**
+   * The punch still on this phone and the ones the phone gave up on (K0.1),
+   * from the clock provider. Drawn as one status line under the hero, so a
+   * person looking at the sheet knows their clock-in is saved and not yet
+   * in Forge — and never taps it twice.
+   */
+  pending?: QueuedClockAction | null;
+  refused?: readonly RefusedClockAction[];
   /**
    * What to open pre-filled with (2026-09-06): the landing block's job, cost
    * code, note and mode when its own punch was refused, so nobody picks them
@@ -454,6 +466,12 @@ export function ClockSheet({
     onError: (e) => toastPunchError(e),
   });
 
+  // A switch is a clock-in that closes the shift before it. On a shift that
+  // is itself still on the phone (K0.1) it never goes to the server directly:
+  // sent first, it would be the open shift the queued clock-in then has to
+  // close, and the hours before the switch would be paid from the moment
+  // that clock-in ARRIVED rather than the moment it was tapped. So it queues
+  // behind that clock-in, the way a queued clock-out does.
   const doSwitch = useMutation<PunchResult>({
     mutationFn: async () => {
       const punch = mintPunch();
@@ -461,23 +479,26 @@ export function ClockSheet({
       const projectId = pickProjectId || null;
       const costCodeId = pickCostCodeId || null;
       const noteText = note.trim() || null;
-      try {
-        // clock_in auto-closes the prior open shift, so switching leaves no gap.
-        await clockIn(projectId, costCodeId, geo, noteText, null, punch);
-        return { queued: false };
-      } catch (e) {
-        if (!shouldQueue(e)) throw e;
-        const entryId = await enqueueClockIn({
-          projectId,
-          costCodeId,
-          lat: geo?.lat ?? null,
-          lng: geo?.lng ?? null,
-          note: noteText,
-          punch,
-        });
-        setOptimisticShift(synthOpenShift(entryId, projectId, costCodeId, noteText));
-        return { queued: true };
+      if (!shiftIsPending()) {
+        try {
+          // clock_in auto-closes the prior open shift, so switching leaves no gap.
+          await clockIn(projectId, costCodeId, geo, noteText, null, punch);
+          return { queued: false };
+        } catch (e) {
+          if (!shouldQueue(e)) throw e;
+        }
       }
+      const entryId = await enqueueClockIn({
+        projectId,
+        costCodeId,
+        lat: geo?.lat ?? null,
+        lng: geo?.lng ?? null,
+        note: noteText,
+        punch,
+        afterShiftRef: shiftIsPending() ? shift!.id : null,
+      });
+      setOptimisticShift(synthOpenShift(entryId, projectId, costCodeId, noteText));
+      return { queued: true };
     },
     onSuccess: (r) => {
       toastSuccess(r.queued ? t("clock.toast.switchedQueued") : t("clock.toast.switched"));
@@ -493,21 +514,24 @@ export function ClockSheet({
       const punch = mintPunch();
       const geo = await captureGeoSoft();
       const projectId = shift?.project_id ?? null;
-      try {
-        await clockIn(projectId, costCodeId, geo, null, null, punch);
-        return { queued: false };
-      } catch (e) {
-        if (!shouldQueue(e)) throw e;
-        const entryId = await enqueueClockIn({
-          projectId,
-          costCodeId,
-          lat: geo?.lat ?? null,
-          lng: geo?.lng ?? null,
-          punch,
-        });
-        setOptimisticShift(synthOpenShift(entryId, projectId, costCodeId));
-        return { queued: true };
+      if (!shiftIsPending()) {
+        try {
+          await clockIn(projectId, costCodeId, geo, null, null, punch);
+          return { queued: false };
+        } catch (e) {
+          if (!shouldQueue(e)) throw e;
+        }
       }
+      const entryId = await enqueueClockIn({
+        projectId,
+        costCodeId,
+        lat: geo?.lat ?? null,
+        lng: geo?.lng ?? null,
+        punch,
+        afterShiftRef: shiftIsPending() ? shift!.id : null,
+      });
+      setOptimisticShift(synthOpenShift(entryId, projectId, costCodeId));
+      return { queued: true };
     },
     onSuccess: (r) => {
       toastSuccess(r.queued ? t("clock.toast.costSwitchedQueued") : t("clock.toast.costSwitched"));
@@ -826,6 +850,8 @@ export function ClockSheet({
                     the real finish time.
                   </p>
                 )}
+                {/* K0.1: the punch that made this state is still on the phone. */}
+                <ClockQueueStatus pending={pending} refused={refused} />
               </div>
             )}
 
@@ -1103,6 +1129,9 @@ export function ClockSheet({
             {
               <>
                 {mode === "pick" && <WrongClockBanner />}
+                {/* K0.1: off the clock because a clock-out is still on the
+                    phone, or a punch was refused — say so before the pickers. */}
+                {mode === "pick" && <ClockQueueStatus pending={pending} refused={refused} />}
                 {mode === "switch" && shift && (
                   <p className="muted clock-switch-note">
                     Currently on <strong>{shift.projects?.job_code ?? "a job"}</strong> — no gap, the

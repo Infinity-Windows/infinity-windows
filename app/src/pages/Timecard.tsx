@@ -5,7 +5,8 @@
 import { BackChip } from "../components/BackChip";
 import { useQuery } from "@tanstack/react-query";
 import { getMyProfile } from "../lib/install/api";
-import { getOpenShift, listCostCodes } from "../lib/timeclock";
+import { listCostCodes } from "../lib/timeclock";
+import { useOpenShiftView } from "../lib/useOpenShiftView";
 import { listProjects } from "../lib/api";
 import { TimecardPanel } from "../components/timecard/TimecardPanel";
 import { SignMyTimecardCard } from "../components/timecard/SignOffCard";
@@ -19,12 +20,9 @@ export function Timecard() {
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const costCodes = useQuery({ queryKey: ["costCodes"], queryFn: listCostCodes });
-  const myOpen = useQuery({
-    queryKey: ["openShift", me.data?.id],
-    queryFn: () => getOpenShift(me.data!.id),
-    enabled: Boolean(me.data?.id),
-    refetchInterval: 60_000,
-  });
+  // The live hero counts from the shift as this phone knows it — a clock-in
+  // still in the queue included (K0.1).
+  const myOpen = useOpenShiftView(me.data?.id ?? null, { poll: true });
 
   return (
     <div className="page">
@@ -46,7 +44,7 @@ export function Timecard() {
           canApprove={isForemanPlus(effectiveRole)}
           projects={projects.data ?? []}
           costCodes={costCodes.data ?? []}
-          openShift={myOpen.data ?? null}
+          openShift={myOpen.shift}
         />
       )}
     </div>

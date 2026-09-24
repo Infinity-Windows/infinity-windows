@@ -375,6 +375,9 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
     if (res.error) throw missingGuard(res.error, "clock-in");
     const shiftId = (res.data as { id?: string } | null)?.id;
     if (shiftId) resolver.record(entry.id, shiftId);
+    // The row the server made (or already had, for a resend) — handed to
+    // onSent so the clock screens show the confirmed shift at once (K0.1).
+    return res.data;
   };
 
   const resolveShift = (ref: string | null): string => {
@@ -408,6 +411,7 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
       res = await supabase.rpc("clock_out", base);
     }
     if (res.error) throw res.error;
+    return res.data;
   };
 
   const breakStart: OpHandler = async (entry) => {
@@ -420,6 +424,7 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
       res = await supabase.rpc("start_break", base);
     }
     if (res.error) throw res.error;
+    return res.data;
   };
 
   const breakStop: OpHandler = async (entry) => {
@@ -430,11 +435,11 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
     if (res.error && isMissingFunction(res.error)) {
       res = await supabase.rpc("end_break", { p_shift_id: shiftId });
       if (res.error) throw res.error;
-      return;
+      return res.data;
     }
     if (res.error) throw res.error;
-    const outcome = (res.data as { outcome?: string } | null)?.outcome;
-    if (outcome === "no_break_running") {
+    const out = res.data as { outcome?: string; shift?: unknown } | null;
+    if (out?.outcome === "no_break_running") {
       // K0.4: the server kept the request and marked the shift for the
       // foreman; here it stays on /stuck, in the person's own words, rather
       // than vanishing as "sent". Permanent — sending it again cannot find a
@@ -442,7 +447,9 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
       throw tagPermanent(new Error(translate(CATALOG, "en", "clock.error.noBreakRunning")));
     }
     // 'ended', and 'shift_closed' (the shift was clocked out meanwhile, which
-    // folded its running break): nothing left to do for either.
+    // folded its running break): nothing left to do for either. The shift
+    // inside the envelope is what the screens show as confirmed.
+    return out?.shift ?? null;
   };
 
   const upload: OpHandler = async (entry, ctx) => {

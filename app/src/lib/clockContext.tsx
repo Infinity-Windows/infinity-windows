@@ -11,16 +11,30 @@ import {
 } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getMyProfile } from "./install/api";
-import { getOpenShift, type ClockInPick, type TimeShift } from "./timeclock";
-import { subscribeSynced } from "./offline/outbox";
+import { type ClockInPick, type TimeShift } from "./timeclock";
+import { subscribeClockSent, subscribeSynced } from "./offline/outbox";
 import { ClockSheet } from "../components/clock/ClockSheet";
 import { FarFromJobPrompt } from "../components/clock/FarFromJobPrompt";
+import {
+  confirmedOpenShift,
+  type ClockActionKind,
+  type QueuedClockAction,
+  type RefusedClockAction,
+} from "./clockQueueView";
+import { useOpenShiftView } from "./useOpenShiftView";
 
 /**
  * App-wide clock state. The clock is a bottom sheet that any surface can open
  * (the Time nav tab, a Home CTA, etc.) via `openClock()` or by dispatching the
- * `infinity:open-clock` window event. The open shift is queried once here and
+ * `infinity:open-clock` window event. The open shift is read once here and
  * shared, so the nav timer and the sheet always agree.
+ *
+ * Since Release 0 (K0.1) `shift` is the server's shift WITH the phone's own
+ * queued punches applied (useOpenShiftView): a clock-in tapped with no signal
+ * is a shift here, from its tap time, until the server has it — so no screen
+ * offers a second clock-in while the first is still on the phone. `pending`
+ * says which punch is still on the phone and `refused` which ones the queue
+ * gave up on, for the status line the clock screens draw.
  *
  * The event may carry a ClockInPick as its `detail` (2026-09-06): the landing
  * block hands its job / cost code / note / mode over when its own punch is
@@ -30,8 +44,14 @@ import { FarFromJobPrompt } from "../components/clock/FarFromJobPrompt";
 interface ClockContextValue {
   profileId: string | null;
   shift: TimeShift | null;
-  /** True while the open-shift query is still resolving on first load. */
+  /**
+   * True until the open-shift query has resolved on first load AND this
+   * phone's own punch queue has been read — a relaunch must not show
+   * "clock in" in the moment before its queued clock-in is known.
+   */
   loading: boolean;
+  pending: QueuedClockAction | null;
+  refused: RefusedClockAction[];
   isOpen: boolean;
   openClock: () => void;
   closeClock: () => void;
@@ -58,14 +78,30 @@ export function ClockProvider({ children }: { children: ReactNode }) {
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const profileId = me.data?.id ?? null;
 
-  const shiftQuery = useQuery({
-    queryKey: ["openShift", profileId],
-    queryFn: () => getOpenShift(profileId!),
-    enabled: Boolean(profileId),
-    // Keep the nav timer honest if the tab was backgrounded through a punch.
-    refetchInterval: 60_000,
-    refetchOnWindowFocus: true,
-  });
+  // Polls, to keep the nav timer honest if the tab was backgrounded through
+  // a punch made elsewhere (a supervisor clocking the crew out).
+  const view = useOpenShiftView(profileId, { poll: true });
+  const shift = view.shift;
+
+  // The moment a queued punch is confirmed, the row the server answered with
+  // becomes the cached server shift. The queue entry is deleted right after,
+  // and without this the merge would fall back to the LAST server read — the
+  // empty one from before the punch — until the re-read below came back:
+  // seconds of "off the clock" on a good link, and on a link that drops again
+  // straight after the send, a clock-in button offered over a shift the server
+  // already holds. The re-read still runs (subscribeSynced) and brings the
+  // job and cost-code names the RPC's bare row does not carry.
+  useEffect(
+    () =>
+      subscribeClockSent((entry, result) => {
+        const next = confirmedOpenShift(entry.op as ClockActionKind, result);
+        if (next === undefined) return;
+        const owner = next?.profile_id ?? profileId;
+        if (!owner) return;
+        queryClient.setQueryData(["openShift", owner], next);
+      }),
+    [queryClient, profileId],
+  );
 
   const openClock = useCallback(() => setIsOpen(true), []);
   const closeClock = useCallback(() => {
@@ -97,27 +133,32 @@ export function ClockProvider({ children }: { children: ReactNode }) {
     [queryClient],
   );
 
+  const loading = Boolean(profileId) && (view.query.isLoading || !view.ready);
   const value = useMemo<ClockContextValue>(
     () => ({
       profileId,
-      shift: shiftQuery.data ?? null,
-      loading: Boolean(profileId) && shiftQuery.isLoading,
+      shift,
+      loading,
+      pending: view.pending,
+      refused: view.refused,
       isOpen,
       openClock,
       closeClock,
       refresh,
     }),
-    [profileId, shiftQuery.data, shiftQuery.isLoading, isOpen, openClock, closeClock, refresh],
+    [profileId, shift, loading, view.pending, view.refused, isOpen, openClock, closeClock, refresh],
   );
 
   return (
     <ClockContext.Provider value={value}>
       {children}
-      <LunchReminder shift={shiftQuery.data ?? null} onOpen={openClock} />
+      <LunchReminder shift={shift} onOpen={openClock} />
       {isOpen && (
         <ClockSheet
           profileId={profileId}
-          shift={shiftQuery.data ?? null}
+          shift={shift}
+          pending={view.pending}
+          refused={view.refused}
           initialPick={initialPick}
           onClose={closeClock}
           onChanged={refresh}
@@ -127,7 +168,7 @@ export function ClockProvider({ children }: { children: ReactNode }) {
           because "you're 14 miles from the job" is worth asking wherever the
           person happens to be looking when they open the app. Renders nothing
           until it has something to ask. */}
-      <FarFromJobPrompt shift={shiftQuery.data ?? null} onChanged={refresh} />
+      <FarFromJobPrompt shift={shift} onChanged={refresh} />
     </ClockContext.Provider>
   );
 }

@@ -239,3 +239,44 @@ describe("the queued break end (K0.4)", () => {
     expect(rpc).not.toHaveBeenCalled();
   });
 });
+
+// K0.1: a confirmed punch hands the server's row back to the drain, so the
+// clock screens can show the confirmed shift the instant the entry leaves
+// the queue instead of dropping to the last server read.
+describe("what a sent punch resolves with", () => {
+  const punchBase = { shiftRef: "shift-1", ...PUNCH };
+
+  it("a clock-in resolves with the shift the server made", async () => {
+    const row = { id: "shift-1", clock_in_at: "2026-09-23T13:02:11.000Z", status: "open" };
+    rpc.mockResolvedValueOnce({ data: row, error: null });
+    const result = await handlers.clock_in!(
+      entryFor("clock_in", { projectId: "job-1", costCodeId: "cc-1", ...PUNCH }),
+      { getBlob: async () => null },
+    );
+    expect(result).toBe(row);
+  });
+
+  it("a clock-out and a break start resolve with the row the RPC answered", async () => {
+    const closed = { id: "shift-1", clock_out_at: "2026-09-23T22:02:00.000Z", status: "submitted" };
+    rpc.mockResolvedValueOnce({ data: closed, error: null });
+    expect(
+      await handlers.clock_out!(entryFor("clock_out", { ...punchBase, injured: false, timeConfirmed: true, breakSeconds: 0 }), { getBlob: async () => null }),
+    ).toBe(closed);
+
+    const onBreak = { id: "shift-1", break_started_at: "2026-09-23T19:00:00.000Z", status: "open" };
+    rpc.mockResolvedValueOnce({ data: onBreak, error: null });
+    expect(
+      await handlers.break_start!(entryFor("break_start", { ...punchBase, breakType: "lunch" }), { getBlob: async () => null }),
+    ).toBe(onBreak);
+  });
+
+  it("a break end resolves with the shift inside the keyed envelope, or the legacy row itself", async () => {
+    const shift = { id: "shift-1", break_started_at: null, status: "open" };
+    rpc.mockResolvedValueOnce({ data: { outcome: "ended", shift }, error: null });
+    expect(await handlers.break_stop!(entryFor("break_stop", punchBase), { getBlob: async () => null })).toBe(shift);
+
+    rpc.mockResolvedValueOnce({ data: null, error: MISSING });
+    rpc.mockResolvedValueOnce({ data: shift, error: null });
+    expect(await handlers.break_stop!(entryFor("break_stop", punchBase), { getBlob: async () => null })).toBe(shift);
+  });
+});

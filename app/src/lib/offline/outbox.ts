@@ -10,6 +10,7 @@ import {
   type OutboxEntry,
   countsByOp,
   drainUntilSettled,
+  isClockOp,
   isPending,
   makeEntry,
   requeueStranded,
@@ -45,6 +46,43 @@ export async function getPhotoUploadProgress(ids: readonly string[]) {
 const listeners = new Set<() => void>();
 const syncedListeners = new Set<() => void>();
 let cachedCounts: OpCounts = countsByOp([]);
+
+/**
+ * The clock punches still on this phone, readable without touching the store
+ * (K0.1). The clock screens render from this beside the server's shift, so a
+ * clock-in tapped with no signal shows as clocked in — on this screen, after a
+ * reload, after a relaunch — until the server has it.
+ *
+ * `ready` is false until the durable store has been read once this session.
+ * A phone that has just relaunched must not offer a clock-in in the moment
+ * before its own queue has been read: that moment is exactly when the second,
+ * duplicate punch used to be made. Set true even when the store cannot be
+ * read — a broken store must not hold the landing on "loading" forever.
+ */
+export interface ClockQueueSnapshot {
+  entries: readonly OutboxEntry[];
+  ready: boolean;
+}
+let clockSnapshot: ClockQueueSnapshot = { entries: [], ready: false };
+
+export function getClockQueueSnapshot(): ClockQueueSnapshot {
+  return clockSnapshot;
+}
+
+/**
+ * A punch the server has just accepted, with the row it answered. Fires from
+ * the drain BEFORE the queue notifies that the entry is gone, so a listener
+ * that keeps the server's shift can take the row first and the screens never
+ * pass through "off the clock" between "sent" and "re-read".
+ */
+export type ClockSentListener = (entry: OutboxEntry, result: unknown) => void;
+const clockSentListeners = new Set<ClockSentListener>();
+
+export function subscribeClockSent(cb: ClockSentListener): () => void {
+  clockSentListeners.add(cb);
+  return () => clockSentListeners.delete(cb);
+}
+
 let draining = false;
 /** Somebody asked for a drain while one was running — see drain(). */
 let drainAgain = false;
@@ -64,9 +102,12 @@ function isOnline(): boolean {
 /** Recompute cached counts and notify subscribers (pill, hooks). */
 async function refresh(): Promise<void> {
   try {
-    cachedCounts = countsByOp(await store.getAll());
+    const all = await store.getAll();
+    cachedCounts = countsByOp(all);
+    clockSnapshot = { entries: all.filter((e) => isClockOp(e.op)), ready: true };
   } catch {
     /* keep last known counts */
+    if (!clockSnapshot.ready) clockSnapshot = { entries: clockSnapshot.entries, ready: true };
   }
   for (const cb of listeners) {
     try {
@@ -114,7 +155,6 @@ export async function pendingWriteCount(): Promise<number> {
   return (await store.getAll()).filter(isPending).length;
 }
 
-const CLOCK_OPS = new Set(["clock_in", "clock_out", "break_start", "break_stop"]);
 /**
  * Job-clock writes still on this phone (waiting or failed), read from the
  * durable store rather than the cached counts, which are empty until the first
@@ -124,7 +164,7 @@ const CLOCK_OPS = new Set(["clock_in", "clock_out", "break_start", "break_stop"]
  * callers treat that as "pending".
  */
 export async function pendingClockWrites(): Promise<number> {
-  return (await store.getAll()).filter((e) => CLOCK_OPS.has(e.op)).length;
+  return (await store.getAll()).filter((e) => isClockOp(e.op)).length;
 }
 
 /** Thrown when a blob is too big to safely persist offline. Handled at call sites. */
@@ -199,7 +239,17 @@ export async function drain(): Promise<void> {
       drainAgain = false;
       const res = await drainUntilSettled(store, handlers, {
         onChange: () => void refresh(),
-        onSent: (entry) => photoReceipts.record(entry),
+        onSent: (entry, result) => {
+          photoReceipts.record(entry);
+          if (!isClockOp(entry.op)) return;
+          for (const cb of clockSentListeners) {
+            try {
+              cb(entry, result);
+            } catch {
+              /* a listener must never break the queue */
+            }
+          }
+        },
       });
       if (res.attempted > 0) {
         logOfflineEvent({
@@ -315,12 +365,21 @@ export interface ClockInInput {
    */
   mode?: JobMode | null;
   punch: ClockPunchFields;
+  /**
+   * A switch made on a shift that is itself still on the phone (K0.1): the
+   * pending clock-in's shift ref. The switch then waits for that clock-in to
+   * land, the way a queued clock-out does — sent first, it would be the open
+   * shift the earlier clock-in has to close, and the earlier hours would be
+   * paid from the moment it arrived rather than the moment it was tapped.
+   */
+  afterShiftRef?: string | null;
 }
 
 /** Enqueue a clock-in. Returns the entry id, usable as a pending shift ref. */
 export function enqueueClockIn(input: ClockInInput): Promise<string> {
   return enqueue({
     op: "clock_in",
+    dependsOn: input.afterShiftRef ? refDependency(input.afterShiftRef) : null,
     payload: {
       projectId: input.projectId,
       costCodeId: input.costCodeId,
