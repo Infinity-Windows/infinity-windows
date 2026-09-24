@@ -12,12 +12,13 @@
 //      start_opening_phase, start_unit_session (both roles),
 //      resume_opening_phase, custom_work_command 'start' with a unit, and
 //      answer_summon are each refused with the one plain sentence and write
-//      nothing; Prep time (a 'start' with no unit) is NOT gated, on purpose;
-//      signed, every door opens and does exactly what it did before. The
-//      bodies under test are the REAL current ones — 20260969000000,
-//      20260811010000, 20261011000000 and 20260963000000 are loaded first,
-//      so the migration's create-or-replace lands on the true signatures —
-//      not stubs of an older shape.
+//      nothing; Prep time (a 'start' with no unit) is refused too, in its
+//      own sentence, and writes nothing (the owner's answer, 2026-09-24);
+//      signed, every door opens and does exactly what it did before, Prep
+//      time included. The bodies under test are the REAL current ones —
+//      20260969000000, 20260811010000, 20261011000000 and 20260963000000 are
+//      loaded first, so the migration's create-or-replace lands on the true
+//      signatures — not stubs of an older shape.
 //   5. The three announcements exist in both languages for their audiences.
 import { readFile } from "node:fs/promises";
 import assert from "node:assert/strict";
@@ -301,15 +302,19 @@ const written = async () => ({
 });
 assert.deepEqual(await written(), { task: 0, unit: 0, phase: 0, custom_unit: 0, helper: 0, stamped: 0, resumed: 0 });
 
-// Prep time (a 'start' with no unit) is NOT gated — deliberately, pending
-// the owner's answer (TODO in the migration). It starts exactly as before.
+// Prep time (a 'start' with no unit) waits for the same signature, in its
+// own sentence (the owner's answer, 2026-09-24), and writes nothing.
+const PREP_SENTENCE = /Sign today's toolbox talk before starting work\./;
+const startPrep = (expected) =>
+  one("select custom_work_command($1, 'start', $2) as id", [
+    fresh(),
+    { id: fresh(), unit_id: null, shift_id: first.id, expected_session_id: expected, description: "Hauling" },
+  ]);
 await as(1);
-const idleId = (await one("select custom_work_command($1, 'start', $2) as id", [
-  fresh(),
-  { id: fresh(), unit_id: null, shift_id: first.id, expected_session_id: null, description: "Hauling" },
-])).id;
-assert.deepEqual(await one("select kind, stage from custom_work_sessions where id = $1", [idleId]), { kind: "idle", stage: "Idle time" });
-await db.query("select custom_work_command($1, 'stop', $2)", [fresh(), { expected_session_id: idleId, outcome: "finished" }]);
+await assert.rejects(() => startPrep(null), PREP_SENTENCE, "Prep time: refused unsigned on a shift the rule opened");
+await admin();
+assert.equal(await count("custom_work_sessions where kind = 'idle'"), 0, "a refused Prep start wrote nothing");
+await as(1);
 
 // Signing today's talk unlocks every door, and each does what it always did.
 await db.query("insert into toolbox_completions (profile_id) values ($1)", [uid(1)]);
@@ -331,7 +336,16 @@ await admin();
 // Today's behaviour, unchanged: a custom start hands off the map session and pauses the phases.
 assert.equal((await one("select end_reason from unit_sessions where id = $1", [session.id])).end_reason, "handoff");
 assert.equal(await count("opening_phases where started_by = $1 and status = 'active' and paused_at is null", [uid(1)]), 0);
+// Signed, Prep time starts exactly as it always did: the same row, the same
+// stored identifiers, handing off the running custom unit session. (Before
+// the summon: its helper session ends any open custom session, by design.)
 await as(1);
+const idleId = (await startPrep(customId)).id;
+assert.deepEqual(await one("select kind, stage, description from custom_work_sessions where id = $1", [idleId]), { kind: "idle", stage: "Idle time", description: "Hauling" });
+await admin();
+assert.equal((await one("select end_reason from custom_work_sessions where id = $1", [customId])).end_reason, "switch", "the unit session handed off to Prep time");
+await as(1);
+await db.query("select custom_work_command($1, 'stop', $2)", [fresh(), { expected_session_id: idleId, outcome: "finished" }]);
 const answered = (await db.query("select * from answer_summon($1)", [summonId])).rows[0];
 assert.equal(answered.profile_id, uid(1));
 await admin();
@@ -344,8 +358,14 @@ const gated = (await db.query(
   "select proname from pg_proc where pronamespace = 'public'::regnamespace and position('_unit_work_gate' in prosrc) > 0 order by proname",
 )).rows.map((r) => r.proname);
 assert.deepEqual(gated, ["answer_summon", "custom_work_command", "resume_opening_phase", "start_opening_phase", "start_opening_work", "start_unit_session"]);
+// …and the Prep-time gate sits on the one path that starts Prep time.
+const prepGated = (await db.query(
+  "select proname from pg_proc where pronamespace = 'public'::regnamespace and position('_prep_time_gate' in prosrc) > 0 order by proname",
+)).rows.map((r) => r.proname);
+assert.deepEqual(prepGated, ["custom_work_command"]);
 assert.ok((await one("select prosrc from pg_proc where proname = '_toolbox_gate_open'")).prosrc.includes("_toolbox_signed_today"), "the clock-in gate reads the one signed-today helper");
 assert.ok((await one("select prosrc from pg_proc where proname = '_unit_work_gate'")).prosrc.includes("_toolbox_signed_today"), "so does the unit-work gate");
+assert.ok((await one("select prosrc from pg_proc where proname = '_prep_time_gate'")).prosrc.includes("_toolbox_signed_today"), "and the Prep-time gate");
 
 // Rule off or on, an unsigned person with NO shift still meets the shift
 // sentence first — the order today's callers see is unchanged.
@@ -388,6 +408,6 @@ for (const n of notes) {
 assert.deepEqual(notes.find((n) => n.id === "2026-09-23-new-design-owner-switches").audience, [3]);
 
 console.log(
-  "New front door: own-row design choice, owner-only switches, the one clock-in gate (rule off / scheduled / on, offline dedupe), unit work locked on all six doors until signed (Prep time ungated on purpose) and bilingual announcements passed.",
+  "New front door: own-row design choice, owner-only switches, the one clock-in gate (rule off / scheduled / on, offline dedupe), unit work locked on all six doors and Prep time on its one door until signed, and bilingual announcements passed.",
 );
 await db.close();

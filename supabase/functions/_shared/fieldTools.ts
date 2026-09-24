@@ -126,7 +126,7 @@ export const FIELD_TOOLS: AnthropicToolDef[] = [
     // isn't on one unit. The tool NAME stays start_idle_time (a stored
     // identifier); the words teach the model both names so "idle" and "prep"
     // both land here.
-    description: "Start the caller's own prep-time timer (formerly 'idle time': job work that isn't on one unit — gathering, hauling, setup, errands, cleanup) on their current job clock, only when explicitly asked. Waiting on an outside cause is a block on the unit, not prep time.",
+    description: "Start the caller's own prep-time timer (formerly 'idle time': job work that isn't on one unit — gathering, hauling, setup, errands, cleanup) on their current job clock, only when explicitly asked. Refused while today's toolbox talk is unsigned, even on the clock — tell them to sign it on Work (Finish your toolbox talk) and ask again. Waiting on an outside cause is a block on the unit, not prep time.",
     input_schema: strictObject({ description: { type: "string", description: "What the prep time is, one of Gathering, Hauling, Setup, Errand, Cleanup or Other — e.g. 'Hauling'." } }),
   },
   {

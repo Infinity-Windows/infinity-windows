@@ -9,7 +9,7 @@
 --      owner's master switch per release, and
 --      company_settings.paid_time_from_start_day_on + set_paid_time_rule_date —
 --      the one date (Q69) from which paid time starts at the Start day tap.
---   3. Three helpers, each the ONE copy of a rule:
+--   3. Four helpers, each the ONE copy of a rule:
 --        _toolbox_signed_today — "is today's talk on this person's record";
 --        _toolbox_gate_open    — "may this person clock in without today's
 --                                signature", replacing five inline copies in
@@ -19,7 +19,11 @@
 --                                p_mode one), extracted verbatim with ONLY
 --                                the gate's condition moved into the helper;
 --        _unit_work_gate       — "refuse unit work until today's talk is
---                                signed", the plain sentence and all.
+--                                signed", the plain sentence and all;
+--        _prep_time_gate       — the same refusal for Prep time, in its own
+--                                sentence (the owner's answer, 2026-09-24:
+--                                Prep time waits for the signature exactly
+--                                like unit work).
 --   4. The unit-work gate put back on EVERY server path that starts a unit,
 --      phase or session timer (WHY it was missing is below):
 --      start_opening_work, start_opening_phase, start_unit_session
@@ -32,8 +36,17 @@
 --      `perform public._unit_work_gate(…)`, right after its open-shift
 --      check (resume_opening_phase never had one; the line goes first).
 --      Signed, every one of them behaves exactly as before. PREP TIME
---      (custom_work_command 'start' with no unit_id) is NOT gated — an open
---      owner question, marked TODO in the body.
+--      (custom_work_command 'start' with no unit_id — the Work screen's
+--      Prep time button, Current Work, and the Forge AI field tool
+--      start_idle_time, which all end in that one branch) carries
+--      `perform public._prep_time_gate(…)` in the same place. Breaks,
+--      clock-out and the break-end resume (unit_sessions_follow_shift) are
+--      NOT gated: they end or continue time, they never start work.
+--      Servicing's own idle and travel timers (service_visit_command,
+--      20261017000000) are left alone on purpose — that RPC starts a service
+--      VISIT's timer, unit kind included, and none of its kinds pass the
+--      unit-work gate either; if the owner extends the rule to service
+--      visits, its 'start' branch is the one door to gate.
 --   5. The crew announcements (docs/app-updates.md).
 --
 -- THE PAID-TIME RULE, plainly: today the first clock-in of the day is refused
@@ -65,7 +78,8 @@
 --     cannot be forgotten by one path.
 --   * A NEW RPC that starts a timer on a unit — a session, a phase, a helper —
 --     calls `perform public._unit_work_gate(auth.uid())` right after its
---     open-shift check, for the same reason.
+--     open-shift check, for the same reason; one that starts Prep time calls
+--     `perform public._prep_time_gate(auth.uid())` there.
 --
 -- Timezone: 'America/Denver' spelled out, the company-local day every clock
 -- gate has used since 20260813000000.
@@ -219,7 +233,8 @@ revoke all on function public.set_paid_time_rule_date(date) from public, anon;
 grant execute on function public.set_paid_time_rule_date(date) to authenticated;
 
 -- ---------------------------------------------------------------------------
--- 3. Three helpers: signed today, may the shift begin, may unit work begin
+-- 3. Four helpers: signed today, may the shift begin, may unit work begin,
+--    may Prep time begin
 -- ---------------------------------------------------------------------------
 -- Invoker rights on purpose: the caller reads their OWN toolbox_completions
 -- rows and the crew-readable company_settings row, both of which every clock
@@ -241,7 +256,7 @@ as $$
 $$;
 
 comment on function public._toolbox_signed_today(uuid) is
-  'Is today''s toolbox talk (company-local day, America/Denver) on this person''s record? The ONE copy of that condition: _toolbox_gate_open and _unit_work_gate both read it.';
+  'Is today''s toolbox talk (company-local day, America/Denver) on this person''s record? The ONE copy of that condition: _toolbox_gate_open, _unit_work_gate and _prep_time_gate all read it.';
 
 revoke all on function public._toolbox_signed_today(uuid) from public, anon;
 grant execute on function public._toolbox_signed_today(uuid) to authenticated;
@@ -290,6 +305,31 @@ comment on function public._unit_work_gate(uuid) is
 
 revoke all on function public._unit_work_gate(uuid) from public, anon;
 grant execute on function public._unit_work_gate(uuid) to authenticated;
+
+-- The Prep-time gate (owner decision 2026-09-24: "Prep time also waits for
+-- today's toolbox signature, exactly like unit work"). The same condition,
+-- the same SQLSTATE, its own sentence — Prep time is not "work on a unit",
+-- and the phone maps each sentence to its own words. It does NOT read the
+-- paid-time date either: under the rule the shift may begin unsigned, paid
+-- job work of any kind may not.
+create or replace function public._prep_time_gate(p_uid uuid)
+returns void
+language plpgsql
+stable
+set search_path = public, pg_temp
+as $$
+begin
+  if not public._toolbox_signed_today(p_uid) then
+    raise exception 'Sign today''s toolbox talk before starting work.';
+  end if;
+end;
+$$;
+
+comment on function public._prep_time_gate(uuid) is
+  'Refuse, in one plain sentence, until today''s toolbox talk is on this person''s record. Called by every RPC that starts a Prep-time (idle) timer — today only custom_work_command''s start with no unit — right after its open-shift check. The owner''s answer of 2026-09-24: Prep time waits for the signature exactly like unit work, whatever the paid-time rule says about the shift.';
+
+revoke all on function public._prep_time_gate(uuid) from public, anon;
+grant execute on function public._prep_time_gate(uuid) to authenticated;
 
 -- 3a–3e. One gate, five doors: the clock_in overloads.
 -- 3a. The five-argument overload (20260813000000).
@@ -617,8 +657,11 @@ $$;
 -- 4e. custom_work_command (20261011000000): SECURITY DEFINER. Current Work,
 -- the new Work screen's saved units and the Forge AI field tool
 -- start_unit_work (ai_field_command → _ai_field_apply) all start a unit
--- through its 'start' action with a unit_id; that branch is gated. The
--- 'start' with NO unit_id is Prep time and is left as it was (TODO inside).
+-- through its 'start' action with a unit_id; that branch is gated by
+-- _unit_work_gate. The 'start' with NO unit_id is Prep time — the Work
+-- screen's Prep time button, Current Work's, and the Forge AI field tool
+-- start_idle_time (the same ai_field_command → _ai_field_apply route) — and
+-- is gated by _prep_time_gate in the same place (owner, 2026-09-24).
 create or replace function public.custom_work_command(p_id uuid,p_action text,p_data jsonb) returns uuid
 language plpgsql security definer set search_path=public,pg_temp as $$
 declare
@@ -685,18 +728,20 @@ begin
       if now()-sh.clock_in_at>interval '16 hours' and sh.clock_out_at is null then raise exception 'Finish the older job clock before starting new work.'; end if;
       target:=nullif(p_data->>'unit_id','')::uuid;
       jid:=sh.project_id;
-      -- A UNIT start (a unit_id) waits for today's toolbox signature — the same
-      -- gate every other unit-start RPC passes (20261031000000). PREP TIME (no
-      -- unit_id; kind 'idle') is deliberately NOT gated here.
-      -- TODO(owner, PR #642): should Prep time also wait for the signature?
-      -- Until that is answered it starts exactly as it did before.
+      -- Both kinds of start wait for today's toolbox signature, right after the
+      -- open-shift check above (20261031000000): a UNIT start (a unit_id) meets
+      -- the same gate every other unit-start RPC passes; PREP TIME (no unit_id;
+      -- kind 'idle') meets its own, in its own sentence — the owner's answer of
+      -- 2026-09-24. The two lines are the only change to this branch.
       if target is not null then
         perform public._unit_work_gate(uid);
         select * into u from public.custom_work_units where id=target for update;
         if u.id is null or (u.project_id is null and u.created_by<>uid and not public._is_lead(uid)) then raise exception 'That custom unit is unavailable.'; end if;
         if u.project_id is not null and u.project_id is distinct from sh.project_id then raise exception 'Switch your job clock to this unit''s job first.'; end if;
         jid:=u.project_id;
-      elsif length(btrim(coalesce(p_data->>'description','')))=0 then raise exception 'Describe your idle time.';
+      else
+        perform public._prep_time_gate(uid);
+        if length(btrim(coalesce(p_data->>'description','')))=0 then raise exception 'Describe your idle time.'; end if;
       end if;
       if jid is not null and not exists(select 1 from projects where id=jid and deleted_at is null) then raise exception 'That job is unavailable.'; end if;
       -- Never rewrite a newer activity based on a stale/offline start.

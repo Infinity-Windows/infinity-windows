@@ -59,9 +59,13 @@ answers and send time on `ai_field_requests`.
   work on a unit." — until today's talk is on the caller's record, even on an
   open shift: `custom_work_command`'s unit start carries the same
   `_unit_work_gate` every unit-start RPC does (20261031000000; under the
-  paid-time rule a shift can begin unsigned). The model tells the person to
-  sign it on Work. `start_idle_time` (Prep time) is not gated — an open owner
-  question.
+  paid-time rule a shift can begin unsigned). `start_idle_time` (Prep time)
+  is refused the same way, in its own sentence — "Sign today's toolbox talk
+  before starting work." — through `_prep_time_gate` on the no-unit start
+  (the owner's answer, 2026-09-24). Either way nothing is started; the model
+  tells the person to sign it on Work (Finish your toolbox talk) and ask
+  again, and a tapped Start now / Join as helper the server refuses for the
+  signature says the same on the card, in the reader's language.
 
 ## Accounts and phones
 

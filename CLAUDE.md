@@ -139,9 +139,12 @@ the lazy chunk that uses them — the entry chunk has no room for them — so a
 component under `components/work/` imports that file for its side effect.
 Under the paid-time rule an open shift no longer proves today's toolbox talk
 is signed, so every RPC that starts a timer on a unit calls
-`_unit_work_gate(uid)` right after its open-shift check (20261031000000); a
-new one must too — `scripts/verify-new-front-door.mjs` pins the list. Prep
-time is deliberately ungated until the owner answers.
+`_unit_work_gate(uid)` right after its open-shift check (20261031000000), and
+the one that starts Prep time (`custom_work_command`'s start with no unit)
+calls `_prep_time_gate(uid)` there — the owner's answer of 2026-09-24. A new
+one must too — `scripts/verify-new-front-door.mjs` pins both lists. On the
+phone, `useWork.command` throws that one refusal to the tap and drops the
+request (nothing to review); every other refusal stays queued for review.
 
 **Every query-key root is registered in `lib/queryKeys.ts` with an offline flag.**
 A test fails on an unregistered root. Registering means deciding whether the

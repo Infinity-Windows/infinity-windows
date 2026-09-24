@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getOpening } from "../../lib/install/api";
+import { isToolboxGateError } from "../../lib/install/installTimer";
 import { listProjectsAnyStatus } from "../../lib/api";
 import { formatApiError } from "../../lib/errors";
 import { isMissingTable, isMissingFunction } from "../../lib/schemaErrors";
@@ -103,7 +104,10 @@ export function CurrentWork() {
     try {
       await fn();
     } catch (e) {
-      setError(formatApiError(e));
+      // Forge refused a unit or prep-time start because today's talk is not
+      // signed (20261031000000; on the clock, under the paid-time rule): say
+      // it in the phone's words rather than the server's English sentence.
+      setError(isToolboxGateError(e) ? t("currentWork.signTalkFirst") : formatApiError(e));
     } finally {
       setBusy(false);
     }

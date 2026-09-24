@@ -55,8 +55,8 @@ export const WORK_CATALOG = {
   "work.clock.a11y": { en: "Your clock", es: "Tu reloj" },
   "work.toolbox.finish": { en: "Finish your toolbox talk", es: "Termina tu charla de seguridad" },
   "work.toolbox.finishHelp": {
-    en: "You're on the clock. Sign today's talk to unlock unit work.",
-    es: "Ya estás en horario. Firma la charla de hoy para poder trabajar en unidades.",
+    en: "You're on the clock. Sign today's talk to unlock unit work and prep time.",
+    es: "Ya estás en horario. Firma la charla de hoy para poder trabajar en unidades y registrar tiempo de preparación.",
   },
   "work.toolbox.locked": {
     en: "Sign today's toolbox talk to start a unit.",
@@ -149,6 +149,17 @@ export const WORK_CATALOG = {
   "work.prep.pendingClock": {
     en: "Your clock is still sending. Prep time can start once it's saved in Forge.",
     es: "Tu reloj todavía se está enviando. El tiempo de preparación puede empezar cuando se guarde en Forge.",
+  },
+  // SAFETY — Prep time waits for today's talk like unit work (K1.3, the
+  // owner's answer of 2026-09-24): the lock in words, and the server's own
+  // refusal (_prep_time_gate), said on the phone.
+  "work.prep.locked": {
+    en: "Sign today's toolbox talk to start prep time.",
+    es: "Firma la charla de seguridad de hoy para empezar el tiempo de preparación.",
+  },
+  "work.prep.refused": {
+    en: "Forge won't start prep time until today's toolbox talk is signed. Sign it under Finish your toolbox talk, then try again.",
+    es: "Forge no empieza el tiempo de preparación hasta que firmes la charla de seguridad de hoy. Fírmala en Termina tu charla de seguridad y vuelve a intentar.",
   },
   "work.problem.title": { en: "Report a problem", es: "Reportar un problema" },
   "work.problem.help": { en: "Your lead sees it right away.", es: "Tu encargado lo ve de inmediato." },

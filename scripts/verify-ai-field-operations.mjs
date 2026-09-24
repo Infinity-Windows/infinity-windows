@@ -648,9 +648,10 @@ await db.query("delete from profiles where id=$1", [Z]);
 eq([await count("select count(*) n from profiles where id=$1", [Z]), await count("select count(*) n from ai_clock_epochs where profile_id=$1", [Z]),
   await count("select count(*) n from task_sessions where profile_id=$1", [Z]), await count("select count(*) n from ai_field_requests where id=$1", [zReq.rid])], [0, 0, 0, 0], "profile deletion cascades cleanly");
 
-// --- Release 1 (20261031000000): start_unit_work waits for today's toolbox signature ---
+// --- Release 1 (20261031000000): start_unit_work AND start_idle_time wait for today's toolbox signature ---
 // The new front door puts the unit-work gate on custom_work_command's unit
-// start, which is where start_unit_work lands (ai_field_command →
+// start and the Prep-time gate on its no-unit start, which is where
+// start_unit_work and start_idle_time land (ai_field_command →
 // _ai_field_apply → custom_work_command). Loaded last, over the tables it
 // touches that this harness had no need of until now; nobody above signed a
 // talk, and nobody needed to.
@@ -672,13 +673,18 @@ const unsigned77 = await begin(A, "start unit 77");
 await denied(() => cmd(unsigned77.rid, "start:77", "start_unit", { project_id: JOB, unit_id: U77, stage: "Installing", participation: "install" }), /Sign today's toolbox talk before starting work on a unit/);
 await asAdmin();
 eq(await count("select count(*) n from custom_work_sessions where unit_id=$1", [U77]), 0, "an unsigned start wrote no session");
-// Prep time is deliberately NOT gated (owner question, TODO in the migration).
+// Prep time waits for the same signature, in its own sentence (owner, 2026-09-24).
+await settle(A);
+const unsignedPrep = await begin(A, "hauling");
+await denied(() => cmd(unsignedPrep.rid, "idle:hauling", "start_idle", { description: "Hauling" }), /Sign today's toolbox talk before starting work\./);
+await asAdmin();
+eq(await count("select count(*) n from custom_work_sessions where profile_id=$1 and kind='idle' and ended_at is null", [id(A)]), 0, "an unsigned prep start wrote no session");
+// Signed: prep time starts exactly as before, and the unit request then runs
+// exactly as before (ending the prep timer).
+await db.query("insert into toolbox_completions values($1,now())", [id(A)]);
 await settle(A);
 let prep = await cmd((await begin(A, "hauling")).rid, "idle:hauling", "start_idle", { description: "Hauling" });
-eq([prep.status, prep.stage], ["running", "Idle time"], "prep time still starts unsigned");
-// Signed: the same request starts the unit exactly as before (ending the prep timer).
-await asAdmin();
-await db.query("insert into toolbox_completions values($1,now())", [id(A)]);
+eq([prep.status, prep.stage], ["running", "Idle time"], "signed, start_idle_time runs as before");
 await settle(A);
 let signedStart = await cmd((await begin(A, "start unit 77")).rid, "start:77", "start_unit", { project_id: JOB, unit_id: U77, stage: "Installing", participation: "install" });
 eq([signedStart.status, signedStart.outcome, signedStart.previous_timer_ended], ["running", "started", true], "signed, start_unit_work runs as before");

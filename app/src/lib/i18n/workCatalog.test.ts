@@ -22,7 +22,7 @@ describe("the Work screen's lazy phrasebook", () => {
   });
 
   it("keeps the Start day safety lines on the bilingual-review list", () => {
-    for (const key of ["work.clock.willOpenTalk", "work.clock.paidFromTap", "work.toolbox.locked", "work.headsUp.toolbox"]) {
+    for (const key of ["work.clock.willOpenTalk", "work.clock.paidFromTap", "work.toolbox.locked", "work.headsUp.toolbox", "work.prep.locked", "work.prep.refused"]) {
       expect(SAFETY_KEYS as readonly string[]).toContain(key);
       expect(key in WORK_CATALOG).toBe(true);
     }

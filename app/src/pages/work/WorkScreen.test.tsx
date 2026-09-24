@@ -287,6 +287,48 @@ describe("WorkScreen (K1.2)", () => {
     expect(byTestId(el, "ws-unit-start")!.hasAttribute("disabled")).toBe(true);
     // And the heads-up says so too.
     expect(byTestId(el, "ws-headsups")!.textContent).toContain("Toolbox talk not signed yet");
+    // The card under the clock says what the signature unlocks: both.
+    expect(byTestId(el, "ws-finish-talk")!.textContent).toContain("unlock unit work and prep time");
+  });
+
+  // Prep time waits for the signature exactly like unit work (owner,
+  // 2026-09-24): locked in words on the clock with the talk owed, and the
+  // server's refusal said in the phone's words when the phone's read was stale.
+  it("K1.3: on the clock with the talk owed, Prep time is locked in words and the sheet does not open", async () => {
+    shift = openShift();
+    talk = { id: "t1", title: "Ladders", body: "", talk_date: "2026-10-06" };
+    signed = null;
+    const el = await mount();
+    const prep = byTestId(el, "ws-quick-prep")!;
+    expect(prep.getAttribute("data-locked")).toBe("true");
+    await act(async () => prep.click());
+    expect(pushToast).toHaveBeenCalledWith("Sign today's toolbox talk to start prep time.", "info");
+    expect(el.querySelector('[role="dialog"][aria-label="Prep time"]')).toBeNull();
+    expect(workCommand).not.toHaveBeenCalled();
+  });
+
+  it("K1.3: a prep start Forge refuses for the signature is said in plain words, and the sheet closes", async () => {
+    shift = openShift();
+    signed = { id: "stale" };
+    workCommand.mockRejectedValueOnce(new Error("Sign today's toolbox talk before starting work."));
+    const el = await mount();
+    const prep = byTestId(el, "ws-quick-prep")!;
+    expect(prep.getAttribute("data-locked")).toBeNull();
+    await act(async () => prep.click());
+    const sheet = el.querySelector<HTMLElement>('[role="dialog"][aria-label="Prep time"]');
+    expect(sheet).not.toBeNull();
+    const hauling = [...sheet!.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Hauling")!;
+    await act(async () => hauling.click());
+    await act(async () => byTestId(el, "ws-prep-start")!.click());
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(workCommand).toHaveBeenCalledWith("start", expect.objectContaining({ unit_id: null, stage: "Idle time", description: "Hauling" }));
+    expect(pushToast).toHaveBeenCalledWith(
+      "Forge won't start prep time until today's toolbox talk is signed. Sign it under Finish your toolbox talk, then try again.",
+      "error",
+    );
+    expect(el.querySelector('[role="dialog"][aria-label="Prep time"]')).toBeNull();
   });
 
   it("K1.4: after clock-in, Next up comes from the plan's openings — assigned to me, on my job", async () => {

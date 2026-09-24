@@ -44,6 +44,9 @@ export const SAFETY_KEYS = [
   "opening.action.signTalkHeading",
   "opening.action.signTalkFirst",
   "work.toolbox.refused",
+  "work.prep.locked",
+  "work.prep.refused",
+  "currentWork.signTalkFirst",
   // Wave O: the names of the safety cards themselves. A crew member reads these
   // to decide whether the card in their wallet is the one being asked for, and
   // "protección contra caídas" is the phrase a fall-protection class is sold
@@ -156,6 +159,15 @@ export const CATALOG = {
   "currentWork.prep.footnote": {
     en: "Unit and prep-time activity explain your job clock; they do not add extra payroll hours. Finishing a record does not approve QC or award points.",
     es: "La actividad de unidades y de tiempo de preparación explica tu reloj del trabajo; no agrega horas de nómina. Terminar un registro no aprueba QC ni otorga puntos.",
+  },
+  // SAFETY / toolbox — the server's refusal on Current Work when a person is
+  // ON the clock but today's talk is not signed (the paid-time rule allows
+  // that order; _unit_work_gate and _prep_time_gate, 20261031000000). One
+  // sentence for a unit or a prep-time start. Spanish flagged for bilingual
+  // review.
+  "currentWork.signTalkFirst": {
+    en: "Sign today's toolbox talk before starting work. Your clock keeps running.",
+    es: "Firma la charla de seguridad de hoy antes de empezar a trabajar. Tu reloj sigue corriendo.",
   },
 
   // ---- First-login language picker -------------------------------------

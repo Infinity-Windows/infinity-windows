@@ -257,6 +257,7 @@ export function WorkScreen() {
         shift={shift}
         work={work}
         unit={unitForProblem}
+        locked={locked}
         now={now}
       />
       {lead && <LeadRow role={effectiveRole} />}

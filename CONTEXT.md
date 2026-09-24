@@ -1241,11 +1241,15 @@ unit work stays locked until the talk is signed — on the server by
 `resume_opening_phase`, the custom-work unit start, a summon answer), since
 an open shift no longer proves the talk is signed — "Finish your toolbox
 talk" stays on Work, and the foreman's compliance list reads "not signed".
-Prep time is not gated (an open owner question). No shift on record is ever
-recalculated — `paidTimeRule.test.ts` totals the same fixture shifts with
-the rule off and on and gets the same payroll to the cent. The server's
-clock-in gate is one function, `_toolbox_gate_open`, shared by every
-`clock_in` overload; both gates read one `_toolbox_signed_today`.
+Prep time waits for the same signature (the owner's answer, 2026-09-24):
+the one path that starts it, `custom_work_command`'s start with no unit,
+calls `_prep_time_gate`, which refuses in its own sentence — "Sign today's
+toolbox talk before starting work." — and the Work screen shows Prep time
+locked meanwhile. No shift on record is ever recalculated —
+`paidTimeRule.test.ts` totals the same fixture shifts with the rule off and
+on and gets the same payroll to the cent. The server's clock-in gate is one
+function, `_toolbox_gate_open`, shared by every `clock_in` overload; all
+three gates read one `_toolbox_signed_today`.
 
 **Prep time** — job work that isn't on one unit: gathering, hauling, setup,
 errands, cleanup. One tap from Work, a reason (Gathering · Hauling · Setup ·
@@ -1253,9 +1257,11 @@ Errand · Cleanup · Other), optional voice. It is the display name of what the
 records still call idle: `custom_work_sessions.kind = 'idle'`, `stage =
 "Idle time"` and the AI tool `start_idle_time` are unchanged, old records
 show as Prep time, and the Spanish is ONE term everywhere, "Tiempo de
-preparación" (the two earlier renderings are gone). Waiting on an outside
-cause — material, equipment, an opening not ready — is not prep time; it is
-a Block on the unit. Walk-over time between units stays on the unit (Chain).
+preparación" (the two earlier renderings are gone). It is paid job work, so
+it waits for today's toolbox talk exactly like unit work (`_prep_time_gate`;
+see Start day). Waiting on an outside cause — material, equipment, an
+opening not ready — is not prep time; it is a Block on the unit. Walk-over
+time between units stays on the unit (Chain).
 
 **Next up** — what the Work screen offers as your unit, decided in one place
 (`lib/work/nextUp.ts`) in a fixed order: the unit already running; else

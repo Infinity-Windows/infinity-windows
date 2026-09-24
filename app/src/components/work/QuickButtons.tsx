@@ -6,10 +6,17 @@
 //
 // A running prep-time session shows above the buttons with its own Stop,
 // because "what is my clock on right now" is the question this row answers.
+//
+// Prep time waits for today's toolbox talk exactly like unit work (K1.3,
+// the owner's answer of 2026-09-24): on the clock with the talk owed, the
+// button carries a lock and a tap says so in words; the server has the same
+// gate (_prep_time_gate, 20261031000000), and when it says no the same words
+// come back here, in the phone's language, and the record is re-read.
 
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { AlertTriangle, NotebookPen, Package, Timer } from "lucide-react";
+import { AlertTriangle, Lock, NotebookPen, Package, Timer } from "lucide-react";
 import { localDateISO } from "../../lib/dailyLogDay";
 import { canUseDailyLogs } from "../../lib/dailyLogAccess";
 import { useT } from "../../lib/i18n";
@@ -17,6 +24,7 @@ import "../../lib/i18n/workCatalog";
 import { clockText, seconds, type PrepReason } from "../../lib/customWork/model";
 import type { WorkStore } from "../../lib/customWork/useWork";
 import { formatApiError } from "../../lib/errors";
+import { isToolboxGateError } from "../../lib/install/installTimer";
 import { pushToast } from "../../lib/toast";
 import type { TimeShift } from "../../lib/timeclock";
 import { isPendingShiftId } from "../../lib/work/startDay";
@@ -32,12 +40,15 @@ export interface QuickButtonsProps {
   work: WorkStore;
   /** The unit on screen, so a problem can name it. */
   unit?: { openingId?: string | null; label: string } | null;
+  /** Today's talk is owed: Prep time stays locked, like unit work (K1.3). */
+  locked: boolean;
   now: number;
 }
 
-export function QuickButtons({ role, jobId, jobLabel, shift, work, unit, now }: QuickButtonsProps) {
+export function QuickButtons({ role, jobId, jobLabel, shift, work, unit, locked, now }: QuickButtonsProps) {
   const t = useT();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [prepOpen, setPrepOpen] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
   const [problemOpen, setProblemOpen] = useState(false);
@@ -45,8 +56,16 @@ export function QuickButtons({ role, jobId, jobLabel, shift, work, unit, now }: 
   const canLog = canUseDailyLogs(role);
   const prepSession = work.active && !work.active.unit_id ? work.active : null;
   const clockOk = Boolean(shift && shift.status === "open" && !shift.break_started_at);
+  // Off the clock, Start day is the answer (it handles the talk); the lock is
+  // the reason only once the clock is running.
+  const prepLocked = clockOk && locked;
 
   const needJob = () => pushToast(t("work.quick.needJob"), "info");
+  const tapPrep = () => {
+    if (!clockOk) return pushToast(t("work.prep.needClock"), "info");
+    if (prepLocked) return pushToast(t("work.prep.locked"), "info");
+    setPrepOpen(true);
+  };
 
   const startPrep = async (reason: PrepReason, note: string) => {
     if (!shift) return needJob();
@@ -69,7 +88,18 @@ export function QuickButtons({ role, jobId, jobLabel, shift, work, unit, now }: 
       });
       setPrepOpen(false);
     } catch (e) {
-      pushToast(formatApiError(e), "error");
+      if (isToolboxGateError(e)) {
+        // Forge refused because today's talk is not signed. The sheet was
+        // open because the phone's last read said signed (or could not say
+        // — the lock fails open, the server is the backstop): say why in
+        // the phone's words, point at the talk, and re-read the record so
+        // the lock appears. Nothing was recorded.
+        setPrepOpen(false);
+        void queryClient.invalidateQueries({ queryKey: ["toolboxToday"] });
+        pushToast(t("work.prep.refused"), "error");
+      } else {
+        pushToast(formatApiError(e), "error");
+      }
     } finally {
       setBusy(false);
     }
@@ -112,10 +142,11 @@ export function QuickButtons({ role, jobId, jobLabel, shift, work, unit, now }: 
         <button
           type="button"
           className="ws-btn ws-quick-btn"
-          onClick={() => (clockOk ? setPrepOpen(true) : pushToast(t("work.prep.needClock"), "info"))}
+          onClick={tapPrep}
           data-testid="ws-quick-prep"
+          data-locked={prepLocked ? "true" : undefined}
         >
-          <Timer size={20} aria-hidden /> {t("work.quick.prep")}
+          {prepLocked ? <Lock size={20} aria-hidden /> : <Timer size={20} aria-hidden />} {t("work.quick.prep")}
         </button>
         <button type="button" className="ws-btn ws-quick-btn" onClick={() => navigate("/supplies")}>
           <Package size={20} aria-hidden /> {t("work.quick.supplies")}

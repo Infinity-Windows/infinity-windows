@@ -224,10 +224,12 @@ export function isClockGateError(err: unknown): boolean {
  *
  * Since 20261031000000 every RPC that starts a timer on a unit says so in
  * one sentence — "Sign today's toolbox talk before starting work on a unit."
- * — and under the paid-time rule a person can be ON the clock and still meet
- * it (Start day clocks in first, the talk is signed on the clock). So the
- * screen must say "sign the talk", not "clock in". A subset of
- * `isClockGateError`, which keeps deciding "a verdict, not a dead zone".
+ * — and a Prep-time start in its own: "Sign today's toolbox talk before
+ * starting work." (the owner's answer of 2026-09-24). Under the paid-time
+ * rule a person can be ON the clock and still meet either (Start day clocks
+ * in first, the talk is signed on the clock). So the screen must say "sign
+ * the talk", not "clock in". A subset of `isClockGateError`, which keeps
+ * deciding "a verdict, not a dead zone". Takes the error or its message.
  */
 export function isToolboxGateError(err: unknown): boolean {
   const msg = String((err as { message?: string } | null)?.message ?? err ?? "");

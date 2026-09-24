@@ -76,11 +76,22 @@ everyone at once, on a date the owner picks at the start of a pay period
    helper session). It had to be put BACK: 20260969000000 had dropped the
    signature check from the first three because "an open shift proves the
    talk is signed", which is exactly what the paid-time rule stops being
-   true — the practice-run probe caught it. Both gates read one
-   `_toolbox_signed_today`. This is what makes "unit work stays locked until
-   signed" true on the server and not only on the screen. Prep time
-   (`custom_work_command` with no unit) is deliberately not gated — an open
-   owner question, marked TODO in the migration.
+   true — the practice-run probe caught it. This is what makes "unit work
+   stays locked until signed" true on the server and not only on the screen.
+   Prep time waits for the same signature (the owner's answer, 2026-09-24:
+   "exactly like unit work" — it is paid job work, and the talk is the safety
+   step for the day, not for one window): the one path that starts it,
+   `custom_work_command`'s start with no unit — Work's Prep time button,
+   Current Work and the AI field tool `start_idle_time` all end there — calls
+   `_prep_time_gate(uid)` in the same place, refusing in its own sentence,
+   "Sign today's toolbox talk before starting work." Breaks, clock-out and
+   the break-end resume are not gated: they end or continue time, they never
+   start work. Servicing's visit timers (`service_visit_command`) are left
+   alone — none of its kinds pass the unit-work gate either. All three gates
+   read one `_toolbox_signed_today`. On the phone, a start refused for the
+   signature is the one refusal `useWork.command` throws to the tap and drops
+   from the queue (nothing was written, and a retry after signing would carry
+   the unsigned tap's time); every other refusal stays queued for review.
 
 6. **Payroll never reads the rule.** The rule changes WHEN a shift begins and
    nothing else. `paidTimeRule.test.ts` totals the same fixture shifts —
@@ -115,6 +126,7 @@ everyone at once, on a date the owner picks at the start of a pay period
   calls `clockIn` and `enqueueClockIn` and nothing else, so a client id and a
   tap time flow into Start day the day they exist.
 - A new RPC that starts a timer on a unit calls `_unit_work_gate(uid)` right
-  after its open-shift check. `scripts/verify-new-front-door.mjs` pins the
-  list of gated functions and the practice-run probe reads it off the real
-  database, so one added without the gate fails a check by name.
+  after its open-shift check; one that starts Prep time calls
+  `_prep_time_gate(uid)` there. `scripts/verify-new-front-door.mjs` pins both
+  lists of gated functions and the practice-run probe reads them off the real
+  database, so one added without its gate fails a check by name.

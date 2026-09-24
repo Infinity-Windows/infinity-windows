@@ -1,6 +1,6 @@
 -- Probe for PR #642 (branch claude/r1-front-door): Release 1, "the new front
 -- door" — 20261031000000_new_front_door.sql tried on the real database as
--- the people who will use it, on BLACK22, and rolled back. In order:
+-- the people who will use it, on the sandbox job, and rolled back. In order:
 --   * the two new company_settings columns and profiles.ui_design exist with
 --     the defaults the migration promises: master switch ON (people may opt
 --     in; every person starts on classic), paid-time date OFF (null);
@@ -13,8 +13,9 @@
 --     master switch going off and on;
 --   * every clock_in overload the migration re-issues (all five) is refused
 --     with the plain sentence when the gate is closed (no signature today,
---     no date), clocks the installer in on BLACK22 when it is open, and —
---     with the date unset — records exactly today's times (arrival = now());
+--     no date), clocks the installer in on the sandbox job when it is open,
+--     and — with the date unset — records exactly today's times (arrival =
+--     now());
 --   * with the owner's date set to today the same five overloads clock the
 --     installer in UNSIGNED, still at arrival (the rule changes when a shift
 --     may begin, never the time it records); a date still ahead, and the
@@ -25,9 +26,11 @@
 --     start_opening_work, start_opening_phase, start_unit_session (both
 --     roles), resume_opening_phase, custom_work_command's unit start and
 --     answer_summon are each refused with the one plain sentence and write
---     nothing; Prep time (a start with no unit) still starts, on purpose;
---     signed, every door opens and does what it always did; and the database
---     shows exactly those six wired to _unit_work_gate;
+--     nothing; Prep time (a start with no unit) is refused too, in its own
+--     sentence, and writes nothing (the owner's answer, 2026-09-24); signed,
+--     every door opens and does what it always did, Prep time included; and
+--     the database shows exactly those six wired to _unit_work_gate and
+--     exactly custom_work_command wired to _prep_time_gate;
 --   * the three crew announcements exist for their audiences, in Spanish too.
 --
 -- Run: gh workflow run db-dry-run.yml --repo Infinity-Windows/infinity-windows \
@@ -61,14 +64,25 @@
 --   accident. If #640 is not yet deployed when this is dispatched, the
 --   database has five overloads and that check counts five.
 --
--- THE INSTALLER IT ACTS AS: dry_run_pick('installer') takes the QA installer
--- login first (docs/test-account.md) — the account the database fences to
--- the sandbox, and the only login this probe should clock in and sign a talk
--- under. On 2026-09-23 that login's profile role still read 'foreman' by
--- mistake (the owner is fixing it); until it is fixed the picker returns a
--- REAL installer. The first thing the probe does is refuse to go on in that
--- case, out loud, rather than fail later on a sandbox guard nobody asked
--- about.
+-- THE PEOPLE IT ACTS AS: dry_run_pick('installer') and dry_run_pick('foreman')
+-- take the QA logins first (docs/test-account.md) — the accounts the database
+-- fences to the sandbox, and the only logins this probe should clock in,
+-- sign a talk or choose a design under. On 2026-09-23/24 BOTH QA logins'
+-- profiles read 'foreman' (qa.installer by mistake; the owner is setting it
+-- back to Installer), so the installer picker returns a REAL installer —
+-- who cannot even see a testing job. The first thing the probe does is
+-- refuse to go on in that case, out loud, for either role, rather than act
+-- as a real person or fail later on a sandbox guard nobody asked about.
+-- The owner (dry_run_pick_real) is the one real person it acts as: the two
+-- owner-only RPCs have no QA login, and every write is rolled back.
+--
+-- THE JOB IT ACTS ON: a job that is BOTH on public.sandbox_projects and a
+-- testing project (projects.is_test), read at run time — the two facts the
+-- fence and the QA logins' job visibility read. BLACK22 was that job when
+-- this probe was written and left both lists on 2026-09-24 (today's are
+-- MADMOOSE and PECAN14); it comes first again the day it is back, else the
+-- lowest job code. An empty list stops the run out loud before anything is
+-- checked.
 --
 -- THE UNIT-WORK GATE, AND HOW IT IS CHECKED HERE: ADR-0012 §5 and the
 -- migration's header say unit work stays refused until the talk is signed,
@@ -84,8 +98,10 @@
 -- answer_summon. Block A checks the gate is wired into exactly those six on
 -- the database; block D calls every one of them as the installer, clocked in
 -- UNSIGNED under the rule (refused, nothing written), then signed (each opens
--- and does what it always did). Prep time — a 'start' with no unit — is
--- deliberately NOT gated (an owner question); block D proves it still starts.
+-- and does what it always did). Prep time — a 'start' with no unit — meets
+-- its own gate, _prep_time_gate, in the same branch (the owner's answer,
+-- 2026-09-24); block A checks exactly custom_work_command is wired to it and
+-- block D proves it is refused unsigned, writes nothing, and starts signed.
 
 -- ---------------------------------------------------------------------------
 -- A. Setup, the loud early checks, and what the migration left in the schema
@@ -93,8 +109,8 @@
 do $$
 declare
   v_who uuid;
+  v_foreman uuid;
   v_job uuid;
-  v_is_test boolean;
   v_n int;
   v_total int;
   v_gated int;
@@ -104,27 +120,37 @@ declare
 begin
   perform pg_temp.dry_run_as_system();
   v_who := pg_temp.dry_run_pick('installer');
-  v_job := pg_temp.dry_run_job('BLACK22');
+  v_foreman := pg_temp.dry_run_pick('foreman');
 
-  -- Loud and early: this probe clocks in and signs a talk, and does that
-  -- only under a test login the database fences to the sandbox job.
-  select coalesce(p.is_test, false) into v_is_test from public.profiles p where p.id = v_who;
-  if not v_is_test then
+  -- Loud and early: this probe clocks in, signs a talk and chooses a design,
+  -- and does that only under the QA logins the database fences to the
+  -- sandbox job — never as a real person (see the header).
+  if not public.is_test_profile(v_who) then
     raise exception using message =
-      'dry run: the installer picked is a REAL person, not the QA installer test login. '
-      || 'dry_run_pick(''installer'') takes the QA login first only while its profile role is ''installer''; '
-      || 'on 2026-09-23 that profile still read ''foreman''. Set the QA installer''s role back to installer '
-      || '(docs/test-account.md) and dispatch again — nothing was checked.';
+      'dry run: no QA login has the installer role — set qa.installer ("TEST — automation, do not assign") '
+      || 'to Installer in the app; refusing to act as a real person. Nothing was checked.';
   end if;
-  select count(*) into v_n from public.sandbox_projects where project_id = v_job;
-  if v_n = 0 then
+  if not public.is_test_profile(v_foreman) then
     raise exception using message =
-      'dry run: BLACK22 is not in sandbox_projects, so the QA installer''s clock-ins on it would be '
-      || 'refused by the sandbox guard for a reason that has nothing to do with this change. '
-      || 'Put it back (set_project_test) and dispatch again — nothing was checked.';
+      'dry run: no QA login has the foreman role — set qa.foreman ("TEST — automation, do not assign") '
+      || 'to Foreman in the app; refusing to act as a real person. Nothing was checked.';
   end if;
-  perform pg_temp.dry_run_check('setup: acting on BLACK22 as the QA installer login (a test login, inside the sandbox)',
-    true, 'installer ' || v_who || ', job ' || v_job);
+  -- The sandbox job: on the sandbox list AND a testing project (see the header).
+  select p.id into v_job
+    from public.sandbox_projects sp
+    join public.projects p on p.id = sp.project_id
+   where p.deleted_at is null and coalesce(p.is_test, false)
+   order by (p.job_code = 'BLACK22') desc, p.job_code
+   limit 1;
+  if v_job is null then
+    raise exception using message =
+      'dry run: no live job is both on public.sandbox_projects and a testing project (projects.is_test), '
+      || 'so the QA installer''s clock-ins would be refused by the sandbox guard for a reason that has '
+      || 'nothing to do with this change. Mark a testing job as the sandbox (set_project_test) and dispatch '
+      || 'again — nothing was checked.';
+  end if;
+  perform pg_temp.dry_run_check('setup: acting on the sandbox job as the QA installer login (a test login, inside the sandbox)',
+    true, 'installer ' || v_who || ', foreman ' || v_foreman || ', job ' || v_job);
 
   -- Start every clock scenario from a clean slate: no shift left open from
   -- before, and no signature today, so the gate is CLOSED until the probe
@@ -209,17 +235,20 @@ begin
   perform pg_temp.dry_run_check('clock_in: every overload on the database routes through _toolbox_gate_open (one that does not is the #640 merge-order hazard)',
     v_total >= 5 and v_gated = v_total, v_gated || ' of ' || v_total || ' overload(s) gated');
 
-  -- The unit-work gate (ADR-0012 §5): the two helpers, who may call them,
-  -- and EXACTLY the six doors wired to it — one dropped, or one added
-  -- without it, changes this list by name.
-  perform pg_temp.dry_run_check('unit work: _toolbox_signed_today and _unit_work_gate exist',
+  -- The unit-work gate (ADR-0012 §5) and the Prep-time gate: the three
+  -- helpers, who may call them, and EXACTLY the doors wired to each — one
+  -- dropped, or one added without it, changes a list by name.
+  perform pg_temp.dry_run_check('unit work: _toolbox_signed_today, _unit_work_gate and _prep_time_gate exist',
     to_regprocedure('public._toolbox_signed_today(uuid)') is not null
-    and to_regprocedure('public._unit_work_gate(uuid)') is not null, null);
-  perform pg_temp.dry_run_check('grants: signed-in crew may call the two unit-work helpers; anon may not',
+    and to_regprocedure('public._unit_work_gate(uuid)') is not null
+    and to_regprocedure('public._prep_time_gate(uuid)') is not null, null);
+  perform pg_temp.dry_run_check('grants: signed-in crew may call the three work-gate helpers; anon may not',
     has_function_privilege('authenticated', 'public._toolbox_signed_today(uuid)', 'execute')
     and has_function_privilege('authenticated', 'public._unit_work_gate(uuid)', 'execute')
+    and has_function_privilege('authenticated', 'public._prep_time_gate(uuid)', 'execute')
     and not has_function_privilege('anon', 'public._toolbox_signed_today(uuid)', 'execute')
-    and not has_function_privilege('anon', 'public._unit_work_gate(uuid)', 'execute'), null);
+    and not has_function_privilege('anon', 'public._unit_work_gate(uuid)', 'execute')
+    and not has_function_privilege('anon', 'public._prep_time_gate(uuid)', 'execute'), null);
   select string_agg(p.proname, ', ' order by p.proname) into v_gated_names
     from pg_proc p
    where p.pronamespace = 'public'::regnamespace
@@ -227,9 +256,16 @@ begin
   perform pg_temp.dry_run_check('unit work: exactly the six doors route through _unit_work_gate (answer_summon, custom_work_command, resume_opening_phase, start_opening_phase, start_opening_work, start_unit_session)',
     v_gated_names = 'answer_summon, custom_work_command, resume_opening_phase, start_opening_phase, start_opening_work, start_unit_session',
     coalesce(v_gated_names, 'none'));
-  perform pg_temp.dry_run_check('unit work: the clock-in gate and the unit-work gate both read the one _toolbox_signed_today',
+  select string_agg(p.proname, ', ' order by p.proname) into v_gated_names
+    from pg_proc p
+   where p.pronamespace = 'public'::regnamespace
+     and position('_prep_time_gate' in p.prosrc) > 0;
+  perform pg_temp.dry_run_check('prep time: exactly custom_work_command routes through _prep_time_gate (the one path that starts Prep time — Work, Current Work and the AI field tool start_idle_time)',
+    v_gated_names = 'custom_work_command', coalesce(v_gated_names, 'none'));
+  perform pg_temp.dry_run_check('unit work: the clock-in gate, the unit-work gate and the Prep-time gate all read the one _toolbox_signed_today',
     exists (select 1 from pg_proc where proname = '_toolbox_gate_open' and pronamespace = 'public'::regnamespace and position('_toolbox_signed_today' in prosrc) > 0)
-    and exists (select 1 from pg_proc where proname = '_unit_work_gate' and pronamespace = 'public'::regnamespace and position('_toolbox_signed_today' in prosrc) > 0), null);
+    and exists (select 1 from pg_proc where proname = '_unit_work_gate' and pronamespace = 'public'::regnamespace and position('_toolbox_signed_today' in prosrc) > 0)
+    and exists (select 1 from pg_proc where proname = '_prep_time_gate' and pronamespace = 'public'::regnamespace and position('_toolbox_signed_today' in prosrc) > 0), null);
 end $$;
 
 -- ---------------------------------------------------------------------------
@@ -246,6 +282,11 @@ begin
   perform pg_temp.dry_run_as_system();
   v_who := pg_temp.dry_run_pick('installer');
   v_foreman := pg_temp.dry_run_pick('foreman');
+  -- Block A already stopped the run if either pick is a real person; this
+  -- block writes a design choice as both, so it checks again on its own.
+  if not public.is_test_profile(v_who) or not public.is_test_profile(v_foreman) then
+    raise exception 'dry run: a pick is a real person, not a QA login; refusing to act as them.';
+  end if;
 
   v_role := pg_temp.dry_run_act_as(v_who);
   perform pg_temp.dry_run_check('acting as an installer with their own id',
@@ -423,7 +464,18 @@ begin
   -- ---- setup, as the system ---------------------------------------------------
   perform pg_temp.dry_run_as_system();
   v_who := pg_temp.dry_run_pick('installer');
-  v_job := pg_temp.dry_run_job('BLACK22');
+  -- Block A already stopped the run if this pick is a real person or the
+  -- sandbox list is empty; this block clocks in as the pick, so it checks
+  -- the person again on its own and reads the same job the same way.
+  if not public.is_test_profile(v_who) then
+    raise exception 'dry run: the installer pick is a real person, not a QA login; refusing to clock in as them.';
+  end if;
+  select p.id into v_job
+    from public.sandbox_projects sp
+    join public.projects p on p.id = sp.project_id
+   where p.deleted_at is null and coalesce(p.is_test, false)
+   order by (p.job_code = 'BLACK22') desc, p.job_code
+   limit 1;
   v_owner := pg_temp.dry_run_pick_real('owner');
   v_today := (now() at time zone 'America/Denver')::date;
   select id into v_cost_code from public.cost_codes order by active desc, code limit 1;
@@ -472,7 +524,7 @@ begin
   select count(*), coalesce(md5(string_agg(id::text || '|' || clock_in_at::text || '|' || coalesce(clock_out_at::text, '-') || '|' || coalesce(status, '-'), ',' order by id)), '-')
     into v_pre_n, v_pre_hash
     from public.time_shifts where profile_id = v_who and clock_in_at < now();
-  perform pg_temp.dry_run_check('setup: gate closed, one cost code and (if BLACK22 has one) an opening clear of flashing picked',
+  perform pg_temp.dry_run_check('setup: gate closed, one cost code and (if the sandbox job has one) an opening clear of flashing picked',
     v_cost_code is not null, 'cost code ' || coalesce(v_cost_code::text, 'none') || ', opening ' || coalesce(v_opening::text, 'none clear of flashing') || ', ' || v_pre_n || ' shift(s) already on record');
   v_base := format('p_project_id => %L::uuid, p_cost_code_id => %L::uuid', v_job, v_cost_code);
   v_nulls := 'p_photo => null::text, p_lat => null::double precision, p_lng => null::double precision';
@@ -504,7 +556,7 @@ begin
   perform pg_temp.dry_run_check('gate: open once today''s talk is on the record',
     public._toolbox_gate_open(auth.uid()) = true, public._toolbox_gate_open(auth.uid())::text);
   v_s1 := public.clock_in(p_project_id => v_job, p_cost_code_id => v_cost_code);
-  perform pg_temp.dry_run_check('clock_in (project, cost code): signed, clocks in on BLACK22 at arrival',
+  perform pg_temp.dry_run_check('clock_in (project, cost code): signed, clocks in on the sandbox job at arrival',
     v_s1.id is not null and v_s1.project_id = v_job and v_s1.profile_id = v_who and v_s1.status = 'open' and v_s1.clock_in_at = now(),
     'shift ' || coalesce(v_s1.id::text, 'none'));
   v_s2 := public.clock_in(p_project_id => v_job, p_cost_code_id => v_cost_code, p_photo => null::text,
@@ -605,15 +657,24 @@ begin
       format('select public.answer_summon(%L::uuid)', v_summon), 'toolbox talk');
   else
     perform pg_temp.dry_run_check('unit work: the five doors on an opening are refused unsigned under the rule (ADR-0012 §5)',
-      false, 'not proved: BLACK22 has no opening clear of flashing to try them on');
+      false, 'not proved: the sandbox job has no opening clear of flashing to try them on');
   end if;
   if v_paused is not null then
     perform pg_temp.dry_run_expect_error('resume_opening_phase: a phase paused yesterday is refused unsigned today',
       format('select public.resume_opening_phase(%L::uuid, ''flashing'')', v_paused), 'toolbox talk');
   else
     perform pg_temp.dry_run_check('resume_opening_phase: a phase paused yesterday is refused unsigned today',
-      false, 'not proved: BLACK22 has no second opening without a flashing phase to pause');
+      false, 'not proved: the sandbox job has no second opening without a flashing phase to pause');
   end if;
+  -- Prep time — a 'start' with NO unit — meets its own gate in the same
+  -- branch (the owner's answer, 2026-09-24): refused unsigned, in its own
+  -- sentence, on the shift the rule opened. Needs no opening, so it is
+  -- proved on every run.
+  perform pg_temp.dry_run_expect_error('prep time (custom_work_command start with no unit — Work''s Prep time, Current Work, Forge AI start_idle_time): refused unsigned on the shift the rule opened',
+    format('select public.custom_work_command(%L::uuid, ''start'', %L::jsonb)', gen_random_uuid(),
+      jsonb_build_object('id', gen_random_uuid(), 'unit_id', null, 'shift_id', v_s5.id, 'expected_session_id', null,
+        'description', 'dry run prep')::text),
+    'Sign today''s toolbox talk before starting work.');
 
   -- The refusals wrote nothing. Every row this transaction writes carries
   -- now() as its start, so "started now" is exactly "written by this run".
@@ -626,6 +687,8 @@ begin
   perform pg_temp.dry_run_check('unit work refused: no phase was started', v_n = 0, v_n || ' row(s)');
   select count(*) into v_n from public.custom_work_sessions where profile_id = v_who and kind = 'unit' and started_at = now();
   perform pg_temp.dry_run_check('unit work refused: no custom unit session was opened', v_n = 0, v_n || ' row(s)');
+  select count(*) into v_n from public.custom_work_sessions where profile_id = v_who and kind = 'idle' and started_at = now();
+  perform pg_temp.dry_run_check('prep time refused: no prep-time (idle) session was opened', v_n = 0, v_n || ' row(s)');
   select count(*) into v_n from public.summon_helpers where profile_id = v_who and joined_at = now();
   perform pg_temp.dry_run_check('unit work refused: no summon was answered', v_n = 0, v_n || ' row(s)');
   if v_opening is not null then
@@ -635,24 +698,6 @@ begin
   if v_paused is not null then
     perform pg_temp.dry_run_check('unit work refused: the paused phase is still paused',
       (select paused_at from public.opening_phases where opening_id = v_paused and kind = 'flashing') is not null, null);
-  end if;
-
-  -- Prep time — a 'start' with NO unit — is deliberately not gated (owner
-  -- question, TODO in the migration): it starts unsigned, as it always has.
-  perform pg_temp.dry_run_act_as(v_who);
-  begin
-    v_prep := public.custom_work_command(gen_random_uuid(), 'start', jsonb_build_object(
-      'id', gen_random_uuid(), 'unit_id', null, 'shift_id', v_s5.id, 'expected_session_id', null, 'description', 'dry run prep'));
-  exception when others then
-    perform pg_temp.dry_run_check('prep time: a start with no unit is not gated — it starts unsigned (owner question)', false, 'refused: ' || sqlstate || ' ' || sqlerrm);
-  end;
-  if v_prep is not null then
-    perform pg_temp.dry_run_as_system();
-    select kind into v_kind from public.custom_work_sessions where id = v_prep;
-    perform pg_temp.dry_run_check('prep time: a start with no unit is not gated — it starts unsigned (owner question)',
-      v_kind = 'idle', coalesce(v_kind, 'no session'));
-    perform pg_temp.dry_run_act_as(v_who);
-    perform public.custom_work_command(gen_random_uuid(), 'stop', jsonb_build_object('expected_session_id', v_prep, 'outcome', 'finished'));
   end if;
 
   -- ---- signed: every door opens, and does what it always did ----
@@ -670,7 +715,7 @@ begin
       v_ph.status = 'active' and v_ph.started_by = v_who, 'phase ' || coalesce(v_ph.id::text, 'none'));
   else
     perform pg_temp.dry_run_check('start_opening_phase: signed, starts the phase — as before',
-      true, 'not tried: BLACK22 has no opening without a flashing phase');
+      true, 'not tried: the sandbox job has no opening without a flashing phase');
   end if;
   if v_opening is not null then
     v_us := public.start_unit_session(v_opening, 'install');
@@ -681,6 +726,26 @@ begin
       'expected_session_id', null, 'stage', 'Installing', 'participation', 'install', 'description', ''));
     perform pg_temp.dry_run_check('custom_work_command start (a unit): signed, opens the custom session — as before',
       v_custom is not null, 'session ' || coalesce(v_custom::text, 'none'));
+  end if;
+  -- Prep time, signed: starts exactly as it always did — the same row, the
+  -- same stored identifiers (kind idle, stage "Idle time"), handing off the
+  -- running custom unit session when there is one. Placed before the summon
+  -- and the phase resume on purpose: a helper session or an active phase
+  -- ends any open custom session (custom_work_legacy / custom_work_phase),
+  -- which is their behaviour, not this gate's.
+  begin
+    v_prep := public.custom_work_command(gen_random_uuid(), 'start', jsonb_build_object(
+      'id', gen_random_uuid(), 'unit_id', null, 'shift_id', v_s5.id, 'expected_session_id', v_custom, 'description', 'dry run prep'));
+  exception when others then
+    perform pg_temp.dry_run_check('prep time: signed, starts — as before', false, 'refused: ' || sqlstate || ' ' || sqlerrm);
+  end;
+  if v_prep is not null then
+    perform pg_temp.dry_run_as_system();
+    select kind into v_kind from public.custom_work_sessions where id = v_prep;
+    perform pg_temp.dry_run_check('prep time: signed, starts — as before (kind idle, the stored identifier unchanged)',
+      v_kind = 'idle', coalesce(v_kind, 'no session'));
+    perform pg_temp.dry_run_act_as(v_who);
+    perform public.custom_work_command(gen_random_uuid(), 'stop', jsonb_build_object('expected_session_id', v_prep, 'outcome', 'finished'));
   end if;
   if v_paused is not null then
     v_ph := public.resume_opening_phase(v_paused, 'flashing');
@@ -725,7 +790,7 @@ begin
   perform pg_temp.dry_run_as_system();
   select count(*), count(*) filter (where status = 'open' and clock_out_at is null) into v_n, v_open
     from public.time_shifts where profile_id = v_who and clock_in_at = now();
-  perform pg_temp.dry_run_check('this run wrote ten shifts on BLACK22 (five signed, five under the rule) and left one open',
+  perform pg_temp.dry_run_check('this run wrote ten shifts on the sandbox job (five signed, five under the rule) and left one open',
     v_n = 10 and v_open = 1, v_n || ' shift(s), ' || v_open || ' open');
   select count(*) into v_n from public.time_shifts
    where profile_id = v_who and clock_out_at is not null and clock_out_at < clock_in_at;

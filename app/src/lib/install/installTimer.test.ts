@@ -331,6 +331,14 @@ describe("isToolboxGateError", () => {
     expect(isToolboxGateError(new Error(sentence))).toBe(true);
   });
 
+  it("recognises the Prep-time sentence too (_prep_time_gate, owner 2026-09-24), and a bare message", () => {
+    const prep = "Sign today's toolbox talk before starting work.";
+    expect(isToolboxGateError({ code: "P0001", message: prep })).toBe(true);
+    // The work queue keeps a refusal as its message text (queue.ts), and
+    // useWork.command asks about that string.
+    expect(isToolboxGateError(prep)).toBe(true);
+  });
+
   it("is a subset of the clock gate: the sheet never times an unsigned start locally", () => {
     expect(isClockGateError(new Error(sentence))).toBe(true);
   });
