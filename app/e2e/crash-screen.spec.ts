@@ -73,26 +73,27 @@ test("a screen that fails to load shows the code and Try again, and tells nobody
   const code = await crash.locator("strong").first().textContent();
   expect(code?.trim()).toMatch(/^[0-9ABCDEFGHJKMNPQRSTVWXYZ]{5}$/);
 
-  // Try again is offered, and it RE-RENDERS rather than reloading — which is
-  // the difference from the old screen, whose only way out was Reload and a
-  // lost screen. Proved by a flag on the window: a reload would wipe it.
+  // Try again now actually brings Studio back (K0.7) — but for THIS failure
+  // (a REJECTED import, not merely a slow one) that takes a real reload, and
+  // there is no way around that: the browser's own module registry remembers
+  // a failed fetch for the life of the page, the same reason production's
+  // vite:preloadError handler (preloadRecovery.ts) reloads instead of
+  // retrying softly. A plain re-render — clearing `error` and showing
+  // `children` again — would just hit that same remembered failure; only a
+  // fresh document gets a fresh module registry. So ErrorBoundary's Try Again
+  // reloads specifically when the caught error is a chunk-load error (never
+  // over unsaved work — proved directly in ErrorBoundary.test.tsx, which also
+  // pins the ORIGINAL "no reload" guarantee for an ordinary crash that isn't
+  // a chunk-load failure at all). `__stillHere` is expected to be gone
+  // afterwards — that is this reload actually happening, not a regression.
   //
-  // (It cannot bring THIS screen back: React caches a rejected lazy import, so
-  // a chunk that failed to download stays failed for the life of the page. The
-  // recovery path itself is covered where it can be — ErrorBoundary.test.tsx,
-  // "Try again re-renders the children without a reload".)
+  // (A chunk that is merely SLOW rather than rejected recovers WITHOUT a
+  // reload, via lazyRoute.tsx's own retry — see lazy-route-hang.spec.ts.)
   cut = false;
-  await page.evaluate(() => {
-    (window as unknown as { __stillHere?: boolean }).__stillHere = true;
-  });
   const tryAgain = page.getByRole("button", { name: "Try again" });
   await expect(tryAgain).toBeEnabled();
   await tryAgain.click();
-  expect(
-    await page.evaluate(
-      () => (window as unknown as { __stillHere?: boolean }).__stillHere === true,
-    ),
-  ).toBe(true);
+  await expect(page.getByRole("heading", { name: "Studio" })).toBeVisible();
 
   // Nothing about that crash went anywhere near a monitoring host.
   expect(reportsSent(requests)).toEqual([]);

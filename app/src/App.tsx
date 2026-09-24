@@ -1,8 +1,9 @@
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { useQuery } from "@tanstack/react-query";
 import type { Session } from "@supabase/supabase-js";
-import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
+import { Suspense, useEffect, useState, type ReactNode } from "react";
 import { listProjectsAnyStatus } from "./lib/api";
+import { lazyRoute } from "./lib/pwa/lazyRoute";
 import { isTrackingOnly } from "./lib/jobModes";
 import {
   persister,
@@ -59,128 +60,141 @@ import "./index.css";
  * this app at 6 AM should download the shell it actually needs — the "/"
  * landing, the opening sheet, the project hub, the warehouse, sign-in/join,
  * settings and the two write-recovery screens (StuckWrites, Diagnostics) —
- * and nothing else. Every other route below is `React.lazy`, so its chunk
- * (and whatever it pulls in — pdf.js for the plan viewer, three.js and the
- * Draco decoders for the 3D model tools) only downloads once someone
- * actually navigates there. One shared Suspense boundary (RouteFallback)
- * wraps the whole <Routes> tree below; the service worker still precaches
- * every one of these chunks in the background (vite.config.ts), so offline
- * use is unaffected once the first background sync finishes.
+ * and nothing else. Every other route below is wrapped in `lazyRoute()`
+ * (lib/pwa/lazyRoute.tsx), so its chunk (and whatever it pulls in — pdf.js for
+ * the plan viewer, three.js and the Draco decoders for the 3D model tools)
+ * only downloads once someone actually navigates there. Each one carries its
+ * OWN Suspense and a 20-second deadline (K0.7): past it, "This didn't load on
+ * this signal" replaces the skeleton, with Try again (a genuinely fresh
+ * import, not React.lazy's memoized one) and Go to Work. The outer
+ * `<Suspense fallback={<RouteFallback />}>` below is only a backstop for
+ * anything that ever suspends outside that per-route boundary. The service
+ * worker still precaches every chunk in the background (vite.config.ts), so
+ * offline use is unaffected once the first background sync finishes.
  */
-const CurrentWork = lazy(() => import("./pages/customWork/CurrentWork").then(m => ({default:m.CurrentWork})));
-const AskInfinity = lazy(() => import("./pages/AskInfinity").then((m) => ({ default: m.AskInfinity })));
-const AskMisses = lazy(() => import("./pages/AskMisses").then((m) => ({ default: m.AskMisses })));
-const Knowledge = lazy(() => import("./pages/Knowledge").then((m) => ({ default: m.Knowledge })));
-const AiSpend = lazy(() => import("./pages/AiSpend").then((m) => ({ default: m.AiSpend })));
-const Notifications = lazy(() => import("./pages/Notifications").then((m) => ({ default: m.Notifications })));
-const Team = lazy(() => import("./pages/Team").then((m) => ({ default: m.Team })));
-const ContainerViewer = lazy(() =>
+const CurrentWork = lazyRoute(() => import("./pages/customWork/CurrentWork").then(m => ({default:m.CurrentWork})));
+const AskInfinity = lazyRoute(() => import("./pages/AskInfinity").then((m) => ({ default: m.AskInfinity })));
+const AskMisses = lazyRoute(() => import("./pages/AskMisses").then((m) => ({ default: m.AskMisses })));
+const Knowledge = lazyRoute(() => import("./pages/Knowledge").then((m) => ({ default: m.Knowledge })));
+const AiSpend = lazyRoute(() => import("./pages/AiSpend").then((m) => ({ default: m.AiSpend })));
+const Notifications = lazyRoute(() => import("./pages/Notifications").then((m) => ({ default: m.Notifications })));
+const Team = lazyRoute(() => import("./pages/Team").then((m) => ({ default: m.Team })));
+const ContainerViewer = lazyRoute(() =>
   import("./pages/storage/ContainerViewer").then((m) => ({ default: m.ContainerViewer })),
 );
-const Takeoffs = lazy(() => import("./pages/Takeoffs").then((m) => ({ default: m.Takeoffs })));
-const JobHistory = lazy(() => import("./pages/JobHistory").then((m) => ({ default: m.JobHistory })));
-const Scan = lazy(() => import("./pages/Scan").then((m) => ({ default: m.Scan })));
-const ContainerDetail = lazy(() =>
+const Takeoffs = lazyRoute(() => import("./pages/Takeoffs").then((m) => ({ default: m.Takeoffs })));
+const JobHistory = lazyRoute(() => import("./pages/JobHistory").then((m) => ({ default: m.JobHistory })));
+const Scan = lazyRoute(() => import("./pages/Scan").then((m) => ({ default: m.Scan })));
+const ContainerDetail = lazyRoute(() =>
   import("./pages/storage/ContainerDetail").then((m) => ({ default: m.ContainerDetail })),
 );
-const TagPackages = lazy(() =>
+const TagPackages = lazyRoute(() =>
   import("./pages/storage/TagPackages").then((m) => ({ default: m.TagPackages })),
 );
-const LogDelivery = lazy(() =>
+const LogDelivery = lazyRoute(() =>
   import("./pages/storage/LogDelivery").then((m) => ({ default: m.LogDelivery })),
 );
-const DeliveryDetail = lazy(() =>
+const DeliveryDetail = lazyRoute(() =>
   import("./pages/storage/DeliveryDetail").then((m) => ({ default: m.DeliveryDetail })),
 );
-const RewriteSet = lazy(() =>
+const RewriteSet = lazyRoute(() =>
   import("./pages/storage/RewriteSet").then((m) => ({ default: m.RewriteSet })),
 );
-const DeliveriesList = lazy(() =>
+const DeliveriesList = lazyRoute(() =>
   import("./pages/storage/DeliveriesList").then((m) => ({ default: m.DeliveriesList })),
 );
-const JobMaterials = lazy(() =>
+const JobMaterials = lazyRoute(() =>
   import("./pages/storage/JobMaterials").then((m) => ({ default: m.JobMaterials })),
 );
-const SendToSite = lazy(() =>
+const SendToSite = lazyRoute(() =>
   import("./pages/storage/SendToSite").then((m) => ({ default: m.SendToSite })),
 );
-const WarehouseHistory = lazy(() =>
+const WarehouseHistory = lazyRoute(() =>
   import("./pages/storage/WarehouseHistory").then((m) => ({ default: m.WarehouseHistory })),
 );
-const CheckoutPackages = lazy(() =>
+const CheckoutPackages = lazyRoute(() =>
   import("./pages/storage/CheckoutPackages").then((m) => ({ default: m.CheckoutPackages })),
 );
-const Suggestions = lazy(() => import("./pages/Suggestions").then((m) => ({ default: m.Suggestions })));
-const ArrivePackages = lazy(() =>
+const Suggestions = lazyRoute(() => import("./pages/Suggestions").then((m) => ({ default: m.Suggestions })));
+const ArrivePackages = lazyRoute(() =>
   import("./pages/storage/ArrivePackages").then((m) => ({ default: m.ArrivePackages })),
 );
-const PackageSheet = lazy(() =>
+const PackageSheet = lazyRoute(() =>
   import("./pages/storage/PackageSheet").then((m) => ({ default: m.PackageSheet })),
 );
-const UnitCard = lazy(() => import("./pages/storage/UnitCard").then((m) => ({ default: m.UnitCard })));
-const OpeningReview = lazy(() =>
+const UnitCard = lazyRoute(() => import("./pages/storage/UnitCard").then((m) => ({ default: m.UnitCard })));
+const OpeningReview = lazyRoute(() =>
   import("./pages/install/OpeningReview").then((m) => ({ default: m.OpeningReview })),
 );
-const MapsTrace = lazy(() => import("./pages/install/MapsTrace").then((m) => ({ default: m.MapsTrace })));
-const StudioList = lazy(() =>
-  import("./pages/install/StudioList").then((m) => ({ default: m.StudioList })),
-)
-const StudioJobRoute = lazy(() =>
-  import("./pages/install/StudioList").then((m) => ({ default: m.StudioJobRoute })),
-)
-const StudioProjectRoute = lazy(() =>
-  import("./pages/install/StudioList").then((m) => ({ default: m.StudioProjectRoute })),
+const MapsTrace = lazyRoute(() => import("./pages/install/MapsTrace").then((m) => ({ default: m.MapsTrace })));
+// The Studio's own loading line, kept as it was — lazyRoute's default skeleton
+// still takes over if the chunk isn't there within 20 seconds.
+const STUDIO_LOADING = <div className="page"><p className="muted">Loading the Studio…</p></div>;
+const StudioList = lazyRoute(
+  () => import("./pages/install/StudioList").then((m) => ({ default: m.StudioList })),
+  { loadingFallback: STUDIO_LOADING },
 );
-const FlashRun = lazy(() => import("./pages/install/FlashRun").then((m) => ({ default: m.FlashRun })));
-const JobModelViewer = lazy(() =>
+const StudioJobRoute = lazyRoute(
+  () => import("./pages/install/StudioList").then((m) => ({ default: m.StudioJobRoute })),
+  { loadingFallback: STUDIO_LOADING },
+);
+const StudioProjectRoute = lazyRoute(
+  () => import("./pages/install/StudioList").then((m) => ({ default: m.StudioProjectRoute })),
+  { loadingFallback: STUDIO_LOADING },
+);
+const FlashRun = lazyRoute(() => import("./pages/install/FlashRun").then((m) => ({ default: m.FlashRun })));
+const JobModelViewer = lazyRoute(() =>
   import("./pages/install/JobModelViewer").then((m) => ({ default: m.JobModelViewer })),
 );
-const PlansetUpload = lazy(() =>
+const PlansetUpload = lazyRoute(() =>
   import("./pages/install/PlansetUpload").then((m) => ({ default: m.PlansetUpload })),
 );
-const TypeBrainCard = lazy(() =>
+const TypeBrainCard = lazyRoute(() =>
   import("./pages/install/TypeBrainCard").then((m) => ({ default: m.TypeBrainCard })),
 );
-const CatalogImport = lazy(() => import("./pages/CatalogImport").then((m) => ({ default: m.CatalogImport })));
-const Crew = lazy(() => import("./pages/Crew").then((m) => ({ default: m.Crew })));
-const CrewAccess = lazy(() => import("./pages/CrewAccess").then((m) => ({ default: m.CrewAccess })));
-const GcPage = lazy(() => import("./pages/GcPage").then((m) => ({ default: m.GcPage })));
-const Issues = lazy(() => import("./pages/Issues").then((m) => ({ default: m.Issues })));
-const Service = lazy(() => import("./pages/servicing/Servicing").then((m) => ({ default: m.Servicing })));
-const Analytics = lazy(() => import("./pages/Analytics").then((m) => ({ default: m.Analytics })));
-const MemoReview = lazy(() => import("./pages/MemoReview").then((m) => ({ default: m.MemoReview })));
-const Admin = lazy(() => import("./pages/Admin").then((m) => ({ default: m.Admin })));
-const Timecard = lazy(() => import("./pages/Timecard").then((m) => ({ default: m.Timecard })));
-const TeamTimecards = lazy(() =>
+const CatalogImport = lazyRoute(() => import("./pages/CatalogImport").then((m) => ({ default: m.CatalogImport })));
+const Crew = lazyRoute(() => import("./pages/Crew").then((m) => ({ default: m.Crew })));
+const CrewAccess = lazyRoute(() => import("./pages/CrewAccess").then((m) => ({ default: m.CrewAccess })));
+const GcPage = lazyRoute(
+  () => import("./pages/GcPage").then((m) => ({ default: m.GcPage })),
+  { loadingFallback: <div className="page" style={{ padding: 24, textAlign: "center" }}><p className="muted">Connecting…</p></div> },
+);
+const Issues = lazyRoute(() => import("./pages/Issues").then((m) => ({ default: m.Issues })));
+const Service = lazyRoute(() => import("./pages/servicing/Servicing").then((m) => ({ default: m.Servicing })));
+const Analytics = lazyRoute(() => import("./pages/Analytics").then((m) => ({ default: m.Analytics })));
+const MemoReview = lazyRoute(() => import("./pages/MemoReview").then((m) => ({ default: m.MemoReview })));
+const Admin = lazyRoute(() => import("./pages/Admin").then((m) => ({ default: m.Admin })));
+const Timecard = lazyRoute(() => import("./pages/Timecard").then((m) => ({ default: m.Timecard })));
+const TeamTimecards = lazyRoute(() =>
   import("./pages/TeamTimecards").then((m) => ({ default: m.TeamTimecards })),
 );
-const Scheduling = lazy(() => import("./pages/Scheduling").then((m) => ({ default: m.Scheduling })));
-const MySchedule = lazy(() => import("./pages/MySchedule").then((m) => ({ default: m.MySchedule })));
-const Travel = lazy(() => import("./pages/Travel").then((m) => ({ default: m.Travel })));
-const TripDetail = lazy(() => import("./pages/TripDetail").then((m) => ({ default: m.TripDetail })));
-const Vehicles = lazy(() => import("./pages/Vehicles").then((m) => ({ default: m.Vehicles })));
-const VehicleDetail = lazy(() =>
+const Scheduling = lazyRoute(() => import("./pages/Scheduling").then((m) => ({ default: m.Scheduling })));
+const MySchedule = lazyRoute(() => import("./pages/MySchedule").then((m) => ({ default: m.MySchedule })));
+const Travel = lazyRoute(() => import("./pages/Travel").then((m) => ({ default: m.Travel })));
+const TripDetail = lazyRoute(() => import("./pages/TripDetail").then((m) => ({ default: m.TripDetail })));
+const Vehicles = lazyRoute(() => import("./pages/Vehicles").then((m) => ({ default: m.Vehicles })));
+const VehicleDetail = lazyRoute(() =>
   import("./pages/VehicleDetail").then((m) => ({ default: m.VehicleDetail })),
 );
-const FleetMap = lazy(() => import("./pages/FleetMap").then((m) => ({ default: m.FleetMap })));
-const CostCodes = lazy(() => import("./pages/CostCodes").then((m) => ({ default: m.CostCodes })));
-const Costing = lazy(() => import("./pages/Costing").then((m) => ({ default: m.Costing })));
-const Receipts = lazy(() => import("./pages/Receipts").then((m) => ({ default: m.Receipts })));
-const Education = lazy(() => import("./pages/Education").then((m) => ({ default: m.Education })));
-const LearningTime = lazy(() =>
+const FleetMap = lazyRoute(() => import("./pages/FleetMap").then((m) => ({ default: m.FleetMap })));
+const CostCodes = lazyRoute(() => import("./pages/CostCodes").then((m) => ({ default: m.CostCodes })));
+const Costing = lazyRoute(() => import("./pages/Costing").then((m) => ({ default: m.Costing })));
+const Receipts = lazyRoute(() => import("./pages/Receipts").then((m) => ({ default: m.Receipts })));
+const Education = lazyRoute(() => import("./pages/Education").then((m) => ({ default: m.Education })));
+const LearningTime = lazyRoute(() =>
   import("./pages/LearningTime").then((m) => ({ default: m.LearningTime })),
 );
-const Photos = lazy(() => import("./pages/Photos").then((m) => ({ default: m.Photos })));
-const Points = lazy(() => import("./pages/Points").then((m) => ({ default: m.Points })));
-const Safety = lazy(() => import("./pages/Safety").then((m) => ({ default: m.Safety })));
-const ToolboxHistory = lazy(() =>
+const Photos = lazyRoute(() => import("./pages/Photos").then((m) => ({ default: m.Photos })));
+const Points = lazyRoute(() => import("./pages/Points").then((m) => ({ default: m.Points })));
+const Safety = lazyRoute(() => import("./pages/Safety").then((m) => ({ default: m.Safety })));
+const ToolboxHistory = lazyRoute(() =>
   import("./pages/ToolboxHistory").then((m) => ({ default: m.ToolboxHistory })),
 );
-const Supplies = lazy(() => import("./pages/Supplies").then((m) => ({ default: m.Supplies })));
-const Qc = lazy(() => import("./pages/Qc").then((m) => ({ default: m.Qc })));
-const DataHub = lazy(() => import("./pages/DataHub").then((m) => ({ default: m.DataHub })));
-const StgApp = lazy(() => import("./pages/stg/StgApp").then((m) => ({ default: m.StgApp })));
-const AccountBuilders = lazy(() =>
+const Supplies = lazyRoute(() => import("./pages/Supplies").then((m) => ({ default: m.Supplies })));
+const Qc = lazyRoute(() => import("./pages/Qc").then((m) => ({ default: m.Qc })));
+const DataHub = lazyRoute(() => import("./pages/DataHub").then((m) => ({ default: m.DataHub })));
+const StgApp = lazyRoute(() => import("./pages/stg/StgApp").then((m) => ({ default: m.StgApp })));
+const AccountBuilders = lazyRoute(() =>
   import("./pages/AccountBuilders").then((m) => ({ default: m.AccountBuilders })),
 );
 
@@ -465,13 +479,12 @@ export default function App() {
   // a link from a text message would sit there for it, and on a bad connection
   // sit there for a while. He is not signing in, so he does not wait for the
   // answer. Everything this page shows comes from the gc-link edge function on
-  // the service role; the token grants no table access at all.
+  // the service role; the token grants no table access at all. GcPage carries
+  // its own Suspense (lazyRoute), with its own "Connecting…" wording and the
+  // same 20-second limit as every other lazy screen (K0.7) — a builder on bad
+  // signal gets a way out too, not just crew.
   if (gcToken) {
-    return (
-      <Suspense fallback={<div className="page" style={{ padding: 24, textAlign: "center" }}><p className="muted">Connecting…</p></div>}>
-        <GcPage token={gcToken} />
-      </Suspense>
-    );
+    return <GcPage token={gcToken} />;
   }
 
   if (!ready) {
@@ -705,13 +718,14 @@ export default function App() {
                 </RequireRole>
               }
             />
+            {/* Studio's "Loading the Studio…" wording now lives in the
+                lazyRoute() call above, alongside the 20-second limit every
+                other lazy screen gets (K0.7) — no Suspense needed here. */}
             <Route
               path="/studio"
               element={
                 <RequireRole path="/studio">
-                  <Suspense fallback={<div className="page"><p className="muted">Loading the Studio…</p></div>}>
-                    <StudioList />
-                  </Suspense>
+                  <StudioList />
                 </RequireRole>
               }
             />
@@ -720,9 +734,7 @@ export default function App() {
               element={
                 <RequireDataJob>
                   <RequireRole minRole="supervisor">
-                    <Suspense fallback={<div className="page"><p className="muted">Loading the Studio…</p></div>}>
-                      <StudioJobRoute />
-                    </Suspense>
+                    <StudioJobRoute />
                   </RequireRole>
                 </RequireDataJob>
               }
@@ -731,9 +743,7 @@ export default function App() {
               path="/studio/p/:id"
               element={
                 <RequireRole minRole="supervisor">
-                  <Suspense fallback={<div className="page"><p className="muted">Loading the Studio…</p></div>}>
-                    <StudioProjectRoute />
-                  </Suspense>
+                  <StudioProjectRoute />
                 </RequireRole>
               }
             />

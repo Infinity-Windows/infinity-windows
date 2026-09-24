@@ -3,6 +3,7 @@ import { crashDigest, reportCrash } from "../lib/crashReport";
 import { CATALOG, resolveLanguage, translate, type TKey } from "../lib/i18n";
 import { readCachedLang } from "../lib/i18n/cache";
 import { isChunkLoadError, recoverFromChunkLoadError } from "../lib/pwa/preloadRecovery";
+import { hasUnsavedWork } from "../lib/pwa/unsavedWork";
 
 interface Props {
   children: ReactNode;
@@ -95,7 +96,24 @@ export class ErrorBoundary extends Component<Props, State> {
             <button
               type="button"
               className="button-like button-like--primary"
-              onClick={() => this.setState({ error: null })}
+              onClick={() => {
+                // A chunk-load error is not an ordinary crash to re-render
+                // past: the browser's OWN module map remembers a rejected
+                // import() for the life of this page (React.lazy caching the
+                // rejection is only the OUTER layer of the same problem — see
+                // lib/pwa/lazyRoute.tsx's header), so clearing `error` and
+                // re-rendering `children` would just hit the same cached
+                // rejection again. Only a real reload gets a fresh module
+                // map — the automatic one-per-minute throttle in
+                // recoverFromChunkLoadError does not apply here, because this
+                // is a single deliberate tap, not a risk of looping. Unsaved
+                // work still wins: never reload out from under it (K0.7).
+                if (isChunkLoadError(this.state.error) && !hasUnsavedWork()) {
+                  window.location.reload();
+                  return;
+                }
+                this.setState({ error: null });
+              }}
             >
               {t("crash.tryAgain")}
             </button>
