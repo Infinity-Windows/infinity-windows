@@ -61,7 +61,7 @@ const phrases = {
   edit: ["Edit unit report", "Editar reporte de unidad"],
   start: ["Start unit", "Iniciar unidad"],
   stop: ["Stop service timer", "Detener cronómetro"],
-  idle: ["Idle time", "Tiempo indirecto"],
+  idle: ["Prep time", "Tiempo de preparación"],
   travel: ["Travel", "Traslado"],
   stage: ["Work stage", "Etapa del trabajo"],
   activity: ["What are you doing?", "¿Qué está haciendo?"],
@@ -208,8 +208,8 @@ const phrases = {
     "Revisar facturación y costos compartidos",
   ],
   reviewHelp: [
-    "Each unit’s labor follows its reported responsibility. Split shared travel, idle time, mileage and expenses once for the visit.",
-    "Las horas de cada unidad siguen su responsabilidad. Distribuya traslado, tiempo indirecto, millas y gastos una sola vez.",
+    "Each unit’s labor follows its reported responsibility. Split shared travel, prep time, mileage and expenses once for the visit.",
+    "Las horas de cada unidad siguen su responsabilidad. Distribuya traslado, tiempo de preparación, millas y gastos una sola vez.",
   ],
   manufacturerPct: ["Strata share (%)", "Porcentaje de Strata (%)"],
   customerPct: ["STG / customer share (%)", "Porcentaje de STG / cliente (%)"],
@@ -229,8 +229,8 @@ const phrases = {
   select: ["Select visit", "Seleccionar visita"],
   hours: ["Recorded service hours", "Horas de servicio registradas"],
   shared: [
-    "Shared travel / idle time",
-    "Traslado / tiempo indirecto compartido",
+    "Shared travel / prep time",
+    "Traslado / tiempo de preparación compartido",
   ],
   person: ["Person", "Persona"],
   dateRange: ["Date range", "Rango de fechas"],
@@ -320,7 +320,7 @@ const stageSpanish: Record<string, string> = {
   "Repair / replacement": "Reparación / reemplazo",
   Testing: "Pruebas",
   "Detail work": "Detalles",
-  "Idle time": "Tiempo indirecto",
+  "Idle time": "Tiempo de preparación",
   Travel: "Traslado",
 };
 export function useServiceStage() {

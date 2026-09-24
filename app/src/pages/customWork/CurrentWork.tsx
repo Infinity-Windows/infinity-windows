@@ -3,6 +3,7 @@ import { VoiceTextarea } from "../../components/voice/VoiceTextarea";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import { roleRank } from "../../lib/nav";
 import { useT } from "../../lib/i18n";
+import "../../lib/i18n/workCatalog";
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -223,7 +224,7 @@ export function CurrentWork() {
                   ? "● CURRENT ACTIVITY"
                   : "LAST ACTIVITY — CHECK JOB CLOCK"}
               </span>
-              <h2>{activeUnit ? `Unit ${activeUnit.label}` : "Idle time"}</h2>
+              <h2>{activeUnit ? `Unit ${activeUnit.label}` : t("currentWork.idle")}</h2>
               <div className="cw-timer">
                 {clockText(
                   seconds(
@@ -401,7 +402,14 @@ export function CurrentWork() {
           )}
           {editing && (
             <UnitEditor
-              key={editing === "new" ? `new-${openingId ?? jobId}` : editing.id}
+              // F1 (crew redesign K1.8, 2026-09-23): keyed on the OPENING only.
+              // `jobId` used to be in this key, and it comes from
+              // `shift?.project_id`, which resolves asynchronously — so the
+              // clock settling mid-entry remounted the editor and threw away
+              // everything typed. The editor now takes the late job as a prop
+              // (UnitEditor fills a blank Job field itself). The form resets
+              // only on Cancel or Save, never on a clock refresh.
+              key={editing === "new" ? `new-${openingId ?? "blank"}` : editing.id}
               unit={editing === "new" ? undefined : editing}
               jobId={opening.data?.project_id ?? jobId}
               openingId={editing === "new" ? opening.data?.id : undefined}
@@ -418,10 +426,10 @@ export function CurrentWork() {
             <section
               id="cw-idle"
               className="cw-card"
-              aria-label="Start idle time"
+              aria-label={t("currentWork.prep.start")}
             >
               <h2>{t("currentWork.idle")}</h2>
-              <p className="muted">Work away from a specific unit.</p>
+              <p className="muted">{t("currentWork.prep.help")}</p>
               <div className="cw-chips">
                 {IDLE_REASONS.map((r) => (
                   <button
@@ -429,16 +437,18 @@ export function CurrentWork() {
                     key={r}
                     onClick={() => setIdleNote(r)}
                   >
-                    {r}
+                    {/* The stored reason stays the English word; the chip
+                        speaks the phone's language (K1.5). */}
+                    {t(`work.prep.reason.${r}` as never) || r}
                   </button>
                 ))}
               </div>
               <label>
-                What are you doing?
+                {t("currentWork.prep.what")}
                 <VoiceInput
                   value={idleNote}
                   onChange={(e) => setIdleNote(e.target.value)}
-                  placeholder="Choose a reason or describe your work"
+                  placeholder={t("currentWork.prep.placeholder")}
                   maxLength={4000}
                 />
               </label>
@@ -448,9 +458,9 @@ export function CurrentWork() {
                   disabled={blocked || !idleNote.trim()}
                   onClick={() => void run(() => start(null))}
                 >
-                  Start idle time
+                  {t("currentWork.prep.start")}
                 </button>
-                <button onClick={() => setIdle(false)}>Cancel</button>
+                <button onClick={() => setIdle(false)}>{t("currentWork.prep.cancel")}</button>
               </div>
             </section>
           )}
@@ -508,10 +518,7 @@ export function CurrentWork() {
           )}
         </>
       )}
-      <p className="muted">
-        Unit and idle activity explain your job clock; they do not add extra
-        payroll hours. Finishing a record does not approve QC or award points.
-      </p>
+      <p className="muted">{t("currentWork.prep.footnote")}</p>
     </div>
   );
 }
