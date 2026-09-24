@@ -243,11 +243,27 @@ npm --prefix app run e2e
 
 Since the seal landed (the follow-up to #557), the file in the bucket is
 `<ref>-<stamp>.tar.gz.enc`: the archive encrypted with AES-256 under the
-`BACKUP_PASSPHRASE` repository secret, using nothing but `openssl`, which is
-on every runner and every Mac. The nightly job seals, then opens its own seal
-and re-verifies the result, so a file nobody could open never leaves. With no
-passphrase set it refuses to upload rather than send plaintext, and says so in
-the summary and in Slack.
+`BACKUP_PASSPHRASE` repository secret, using nothing but `openssl` and
+python3's standard library, both of which are on every runner and every Mac.
+The nightly job seals, then opens its own seal and re-verifies the result, so
+a file nobody could open never leaves. With no passphrase set it refuses to
+upload rather than send plaintext, and says so in the summary and in Slack.
+
+The file also carries a **seal**: a keyed checksum (HMAC-SHA256, keyed from
+the passphrase) over the whole encrypted payload, which `open` checks before
+it decrypts a byte. A wrong passphrase, a file that was altered, and a
+download that stopped short all fail the same way — exit 4, one sentence
+saying so, and no output file. The first version of `open` was AES-CBC on its
+own, which cannot tell a wrong passphrase from the right one: it exited 0 and
+wrote a file of noise about one time in 256, and CI caught it doing so on
+master (2026-09-23). The header of `scripts/backup-seal.sh` has the whole
+story and the file layout.
+
+Files sealed before the seal check start with openssl's `Salted__` instead
+of `FORGE BACKUP SEAL v1`. `open` still opens them, prints a warning that the
+old format cannot detect a wrong passphrase, and only exits 0 once what came
+out is a real archive (`gzip -t`, then `scripts/backup_verify.py`). The
+bucket's 30-day rule retires the last of those files on its own.
 
 **Keep a copy of the passphrase in the password manager.** A passphrase that
 exists only as a GitHub secret is lost with the GitHub account, and every

@@ -53,8 +53,26 @@ BACKUP_PASSPHRASE='…' scripts/backup-seal.sh open czprjcskmzzagdztqonm-<stamp>
 python3 scripts/backup_verify.py backup.tar.gz
 ```
 
-`backup OK` from the second command means every dump is the size and hash the
-manifest recorded. Anything else: take the previous night's file instead.
+The first command checks the file's seal before it decrypts anything. "The
+seal does not match" means the passphrase is wrong or the file was damaged
+on its way down: check the passphrase, then take the previous night's file.
+It never leaves a half-opened file behind. A file from before the seal check
+(it starts with `Salted__`; `open` prints a warning saying so) cannot tell a
+wrong passphrase from the right one, so `open` checks that what came out is
+a real archive instead — treat a failure there the same way.
+
+`OK: archive reads back as its manifest says` from the second command means
+every dump is the size and hash the manifest recorded. Anything else: take
+the previous night's file instead.
+
+If you have the file and `openssl` but not this repository, the payload is a
+plain `openssl enc` file behind a 69-byte header, so this opens it — without
+the seal check, so run `backup_verify.py` from a fresh clone before trusting it:
+
+```bash
+tail -c +70 czprjcskmzzagdztqonm-<stamp>.tar.gz.enc | BACKUP_PASSPHRASE='…' \
+  openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -pass env:BACKUP_PASSPHRASE -out backup.tar.gz
+```
 
 **How fresh it is.** At worst one day old. Anything the crew did between the
 last backup and the outage is gone, and the honest thing to do is tell them so

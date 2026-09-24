@@ -347,8 +347,12 @@ jobs:
         run: python3 scripts/test_backup_verify.py
 
       # The seal on the archive before it goes off-site. It opens again with
-      # the passphrase we hold and refuses the wrong one. Throwaway passphrase,
-      # throwaway files.
+      # the passphrase we hold and refuses the wrong one — 300 different wrong
+      # ones, against a new-format file and an old-format one, because the
+      # first version was AES-CBC alone and its padding check let one wrong
+      # passphrase in 256 through (master, 2026-09-23, run 35945380393). About
+      # a minute: each try is a 600k-round key derivation, on purpose.
+      # Throwaway passphrase, throwaway files.
       - name: Test scripts/backup-seal.sh
         shell: bash
         run: scripts/backup-seal.test.sh
