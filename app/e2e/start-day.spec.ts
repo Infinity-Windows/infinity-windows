@@ -8,7 +8,7 @@
 import { expect, test } from "@playwright/test";
 import { useSupabaseFixtures } from "./support/supabaseFixtures";
 import { dayISO, hideWrongProjectBanner, stubGeolocationDenied } from "./support/specHelpers";
-import { INSTALL, morningFixtures, OAKRIDGE, signTalk } from "./support/release1Fixtures";
+import { GENERAL, morningFixtures, OAKRIDGE, signTalk } from "./support/release1Fixtures";
 
 test.use({ viewport: { width: 375, height: 667 }, deviceScaleFactor: 2 });
 
@@ -22,10 +22,13 @@ test("already signed: Start day is the clock-in — one tap, today's job, no sec
   // Today's published job is preselected, not yesterday's BLACK22.
   await expect(clock).toContainText("OAKRIDGE · Oakridge Apartments Bldg C");
   await expect(clock).not.toContainText("BLACK22");
+  // No punch on OAKRIDGE yet, so the cost code is the general one — said on
+  // the strip before the tap, one tap to change.
+  await expect(clock).toContainText("000 — General");
   await page.getByTestId("ws-start-day").click();
   await expect.poll(() => world.clockIns.length).toBe(1);
   expect(world.clockIns[0].p_project_id).toBe(OAKRIDGE);
-  expect(world.clockIns[0].p_cost_code_id).toBe(INSTALL);
+  expect(world.clockIns[0].p_cost_code_id).toBe(GENERAL);
   // Landed on Work, on the clock, with Next up filled from the plan (K1.4).
   await expect(page.getByTestId("work-screen")).toBeVisible();
   await expect(page.getByTestId("ws-clock")).toContainText("Clocked in");

@@ -32,7 +32,9 @@ test("classic by default: the old landing, the old bar, and a one-time Try the n
 });
 
 test("the person's own choice switches the whole front door, and back", async ({ page }) => {
-  await useSupabaseFixtures(page, { role: "installer", uiDesign: "new" });
+  // The server keeps the choice; the fixture profile follows the write.
+  const live = { ui_design: "new" };
+  await useSupabaseFixtures(page, { role: "installer", uiDesign: "new", profileOverrides: () => live });
   await hideWrongProjectBanner(page);
   await stubGeolocationDenied(page);
   const world = await morningFixtures(page);
@@ -52,7 +54,8 @@ test("the person's own choice switches the whole front door, and back", async ({
   // Switch back from Settings: one tap, the same record set either way.
   await page.goto("/settings");
   await page.getByRole("button", { name: "Use the classic design" }).click();
-  expect(world.designWrites).toEqual(["classic"]);
+  await expect.poll(() => world.designWrites).toEqual(["classic"]);
+  live.ui_design = "classic";
   await page.goto("/");
   await expect(page.locator(".clockin-block")).toBeVisible();
   await expect(page.getByTestId("work-screen")).toHaveCount(0);

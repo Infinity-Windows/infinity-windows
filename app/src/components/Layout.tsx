@@ -351,7 +351,9 @@ export function Layout() {
               are untouched. */}
           <CoreValuesStrip
             pathname={location.pathname}
-            hidden={isInstaller && location.pathname === "/"}
+            // Release 1: the new design's Work screen has one stated job and
+            // carries no strip (K-X3, no fat), for every role.
+            hidden={(isInstaller || isNewDesign) && location.pathname === "/"}
           />
           {/* Phones only (hidden from 860px up, where the rail carries it).
               In the page flow rather than floating over it, so it can never
@@ -401,7 +403,10 @@ export function Layout() {
       {!(isNewDesign && layout === "phone") && <GlobalAskFab />}
       <ScanFab />
 
-      {!menuOpen && !captureOpen && !clock.isOpen && <FeatureTip />}
+      {/* The first-run tip for "/" describes the classic landing ("Tap Clock
+          to start your shift"); on the new design's Work screen it would be
+          wrong, so it stays off there. */}
+      {!menuOpen && !captureOpen && !clock.isOpen && !(isNewDesign && location.pathname === "/") && <FeatureTip />}
 
       <nav className="tabbar" aria-label="Main">
         {bottomBarForRole(role, design).map((tab) => {

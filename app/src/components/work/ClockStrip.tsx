@@ -52,13 +52,16 @@ export interface ClockStripProps {
   shift: TimeShift | null;
   /** Today's published job, to preselect (K1.3). */
   todayJobId: string | null;
+  /** The schedule has answered (or failed) — priming waits for it, so the
+   * last job never wins over today's merely by arriving first. */
+  scheduleSettled: boolean;
   talk: SafetyTalk | null;
   gate: StartDayInput;
   /** Refetch the shift and everything keyed off it after a punch. */
   onShiftChanged: () => void;
 }
 
-export function ClockStrip({ profileId, shift, todayJobId, talk, gate, onShiftChanged }: ClockStripProps) {
+export function ClockStrip({ profileId, shift, todayJobId, scheduleSettled, talk, gate, onShiftChanged }: ClockStripProps) {
   const t = useT();
   const queryClient = useQueryClient();
   const onClock = isOnTheClock(shift);
@@ -83,20 +86,28 @@ export function ClockStrip({ profileId, shift, todayJobId, talk, gate, onShiftCh
   });
   const [picking, setPicking] = useState(false);
   const [showSign, setShowSign] = useState(false);
-  const primedRef = useRef(false);
+  // Set the moment the person picks a job by hand; from then on nothing the
+  // server answers later may move the pick under their thumb.
+  const pickedByHandRef = useRef(false);
   const canStartRef = useRef(false);
 
-  // Prime once: today's scheduled job, else the last job, with the cost code
-  // that job was last punched on. Never while a shift is open.
+  // Prime: today's scheduled job, else the last job, with the cost code that
+  // job was last punched on. Waits for BOTH the schedule and the recents to
+  // settle — the recents answer first on most mornings, and priming off them
+  // alone put yesterday's job on the button (e2e, 2026-09-23). Never while a
+  // shift is open, never over a pick made by hand.
   useEffect(() => {
-    if (primedRef.current || shift || !recents.isSuccess) return;
+    if (pickedByHandRef.current || shift || !(recents.isSuccess || recents.isError) || !scheduleSettled) return;
     const recent = recents.data ?? [];
     const projectId = todayJobId ?? recent[0]?.projectId ?? "";
     if (!projectId) return;
-    primedRef.current = true;
     const match = recent.find((r) => r.projectId === projectId);
-    setPick((p) => ({ ...p, projectId, costCodeId: match?.costCodeId ?? recent[0]?.costCodeId ?? "" }));
-  }, [recents.isSuccess, recents.data, todayJobId, shift]);
+    setPick((p) =>
+      p.projectId === projectId
+        ? p
+        : { ...p, projectId, costCodeId: match?.costCodeId ?? recent[0]?.costCodeId ?? "" },
+    );
+  }, [recents.isSuccess, recents.isError, recents.data, todayJobId, scheduleSettled, shift]);
 
   // A cost code the job's list does not offer is dropped; an empty pick takes
   // the general code, so the common morning is one tap.
@@ -176,16 +187,19 @@ export function ClockStrip({ profileId, shift, todayJobId, talk, gate, onShiftCh
     return (
       <>
         <section className="ws-card ws-clock ws-clock--on" aria-label={t("work.clock.a11y")} data-testid="ws-clock">
+          {/* One row: the fact, the job, the timer. The job's full name is
+              on the Today card under it; the code is enough here, and the
+              row it saves is what keeps your unit above the fold at 667px. */}
           <div className="ws-clock-status">
             <span className={`ws-live-dot${onBreak ? " ws-live-dot--break" : ""}`} aria-hidden />
             <span className="ws-clock-label">
               {onBreak ? t("work.clock.onBreak") : t("work.clock.clockedIn", { time: clockInLabel(shift.clock_in_at) })}
             </span>
+            <span className="ws-clock-job" title={jobLine}>{shift.projects?.job_code ?? ""}</span>
             <span className="ws-clock-timer" aria-label={t("clock.a11y.timeWorked")}>
               {guard.workedSeconds == null ? t("clockBadge.finish") : formatClock(elapsedWorkSeconds(shift, now))}
             </span>
           </div>
-          <p className="ws-clock-job">{jobLine}</p>
           {pending && <p className="ws-meta">{t("work.clock.queued")}</p>}
           <div className="ws-clock-actions">
             <button type="button" className="ws-btn ws-btn--primary" onClick={() => openClockGlobally()}>
@@ -243,7 +257,7 @@ export function ClockStrip({ profileId, shift, todayJobId, talk, gate, onShiftCh
       </div>
 
       {showSign && talk && canStart ? (
-        <div data-testid="ws-start-talk">
+        <div className="ws-talk" data-testid="ws-start-talk">
           <ToolboxSignCard
             profileId={profileId}
             talk={talk}
@@ -286,7 +300,10 @@ export function ClockStrip({ profileId, shift, todayJobId, talk, gate, onShiftCh
         recents={recents.data ?? []}
         costCodes={costCodes.data ?? []}
         value={pick}
-        onChange={setPick}
+        onChange={(next) => {
+          pickedByHandRef.current = true;
+          setPick(next);
+        }}
       />
     </section>
   );

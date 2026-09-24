@@ -17,9 +17,12 @@ test("opens on today + 7 days with Start work on today, Updated and Changed; Sho
   const ranges: string[] = [];
   await morningFixtures(page);
   // Record every window the tab asks for, on top of the fixture's answer.
+  // listMyPublished asks for start_date <= to and end_date >= from.
   await page.route("**/rest/v1/schedule_assignments**", async (r) => {
     const url = new URL(r.request().url());
-    ranges.push(`${url.searchParams.get("end_date")}|${url.searchParams.get("start_date")}`);
+    const from = (url.searchParams.get("end_date") ?? "").replace("gte.", "");
+    const to = (url.searchParams.get("start_date") ?? "").replace("lte.", "");
+    ranges.push(`${from}|${to}`);
     await r.fallback();
   });
   await page.goto("/my-schedule");
@@ -33,15 +36,14 @@ test("opens on today + 7 days with Start work on today, Updated and Changed; Sho
   await expect(screen.getByTestId("schedule-start-work")).toBeVisible();
   await expect(screen).toContainText("Black Desert");
   // The first window is seven days.
-  const first = ranges[0];
-  const [endLte, startGte] = first.split("|");
-  const days = (new Date(endLte.replace("lte.", "")).getTime() - new Date(startGte.replace("gte.", "")).getTime()) / 86400_000;
-  expect(days).toBe(7);
+  const span = (range: string) => {
+    const [from, to] = range.split("|");
+    return Math.round((new Date(to).getTime() - new Date(from).getTime()) / 86400_000);
+  };
+  expect(span(ranges[0])).toBe(7);
   await screen.getByTestId("schedule-more").click();
   await expect.poll(() => ranges.length).toBeGreaterThan(1);
-  const [endLte2, startGte2] = ranges.at(-1)!.split("|");
-  const days2 = (new Date(endLte2.replace("lte.", "")).getTime() - new Date(startGte2.replace("gte.", "")).getTime()) / 86400_000;
-  expect(days2).toBe(21);
+  expect(span(ranges.at(-1)!)).toBe(21);
   // K-X4 on this screen too.
   const report = await measureCrewRule(page, '[data-testid="schedule-screen"]');
   expect(report.smallTargets).toEqual([]);
@@ -54,9 +56,15 @@ test("offline with a saved copy: shows the copy, says when it is from — never 
   await hideWrongProjectBanner(page);
   await stubGeolocationDenied(page);
   await morningFixtures(page);
-  // Load Work first: it reads the same week the Schedule tab opens on.
+  // Load Work and the Schedule tab once while online: Work reads the same
+  // week the tab opens on, and the tab's chunk is on the phone (a real
+  // phone has it precached by the service worker; the e2e run has no worker).
   await page.goto("/");
   await expect(page.getByTestId("ws-today")).toContainText("Oakridge Apartments Bldg C");
+  await page.getByRole("navigation", { name: "Main" }).getByText("Schedule").click();
+  await expect(page.getByTestId("schedule-screen")).toBeVisible();
+  await page.getByRole("navigation", { name: "Main" }).getByText("Work").click();
+  await expect(page.getByTestId("ws-today")).toBeVisible();
   await context.setOffline(true);
   await page.getByRole("navigation", { name: "Main" }).getByText("Schedule").click();
   const screen = page.getByTestId("schedule-screen");

@@ -178,20 +178,18 @@ export function YourUnit({ nextUp, locked, jobId, shift, work, now }: YourUnitPr
           </p>
           {lockedLine}
           {!locked && clockHint && <p className="ws-meta">{clockHint}</p>}
-          <div className="ws-clock-actions">
-            <button type="button" className="ws-btn" onClick={() => openSheet(o)}>
-              {t("work.unit.open")}
-            </button>
-            <button
-              type="button"
-              className="ws-btn ws-btn--primary"
-              disabled={locked || clockState !== "ok" || startOpening.isPending}
-              onClick={() => startOpening.mutate(o)}
-              data-testid="ws-unit-start"
-            >
-              <Play size={20} aria-hidden /> {startOpening.isPending ? t("work.unit.starting") : t("work.unit.start")}
-            </button>
-          </div>
+          {/* One tap: start the timer and open the sheet. A refused start (a
+              gate the sheet clears) still opens the sheet, with the reason
+              said — so there is no separate "Open" button to choose between. */}
+          <button
+            type="button"
+            className="ws-btn ws-btn--primary"
+            disabled={locked || clockState !== "ok" || startOpening.isPending}
+            onClick={() => startOpening.mutate(o)}
+            data-testid="ws-unit-start"
+          >
+            <Play size={20} aria-hidden /> {startOpening.isPending ? t("work.unit.starting") : t("work.unit.start")}
+          </button>
         </>
       );
     } else {

@@ -238,9 +238,13 @@ export async function morningFixtures(page: Page, opts: MorningOptions = {}): Pr
 
 /** Sign the talk card on screen: pledge, typed name, a stroke, the button. */
 export async function signTalk(page: Page, scope = page.locator("body")) {
+  await scope.getByText("I read and understood today's talk").scrollIntoViewIfNeeded();
   await scope.getByText("I read and understood today's talk").click();
   await scope.getByPlaceholder("Full name").fill("E2E Fixture");
   const pad = scope.locator("canvas.sig-canvas");
+  // A 667px phone: the pad is below the fold, and mouse events aimed past
+  // the viewport's edge land on nothing.
+  await pad.scrollIntoViewIfNeeded();
   const box = (await pad.boundingBox())!;
   await page.mouse.move(box.x + 20, box.y + box.height / 2);
   await page.mouse.down();

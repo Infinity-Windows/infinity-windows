@@ -43,7 +43,10 @@ test("on the clock: the badge in the top bar, Today's facts, Next up from the pl
   await page.goto("/");
   await expect(page.getByTestId("clock-badge")).toContainText("Clocked in");
   const clock = page.getByTestId("ws-clock");
-  await expect(clock).toContainText("OAKRIDGE · Oakridge Apartments Bldg C");
+  // The strip carries the code on its one status row; the full name is on
+  // the Today card and in the code's tooltip.
+  await expect(clock).toContainText("OAKRIDGE");
+  await expect(clock.locator(".ws-clock-job")).toHaveAttribute("title", "OAKRIDGE · Oakridge Apartments Bldg C");
   const today = page.getByTestId("ws-today");
   await expect(today).toContainText("Oakridge Apartments Bldg C");
   await expect(today).toContainText("Starts 7:00 AM");
@@ -64,6 +67,10 @@ test("on the clock: the badge in the top bar, Today's facts, Next up from the pl
   await page.getByTestId("clock-badge").click();
   await expect(page.locator(".clock-sheet")).toBeVisible();
   await expect(page.locator(".clock-sheet")).toContainText("Go on break");
+  // The classic landing's first-run tip ("Tap Clock to start your shift")
+  // would be wrong here, and the values strip is not this screen's job.
+  await expect(page.getByText("Tap Clock to start your shift")).toHaveCount(0);
+  await expect(page.locator(".core-values-strip, .values-strip")).toHaveCount(0);
 });
 
 test("K-X4: every target ≥48px (primary 56), every text ≥16px, sunlight contrast — measured", async ({ page }) => {

@@ -60,9 +60,11 @@ export function TodayCard({ meId, todayISO, pick, query, now }: TodayCardProps) 
         <h2 className="ws-h2">
           <CalendarDays size={18} aria-hidden /> {heading}
         </h2>
-        <Link to="/my-schedule" className="ws-link">
-          {t("work.today.viewSchedule")} ›
-        </Link>
+        {pick.entries[0] && (
+          <span className="ws-meta ws-updated">
+            {t("work.today.updated", { time: formatUpdatedAt(pick.entries[0].updated_at, now) })}
+          </span>
+        )}
       </div>
 
       {reason && query.data != null && (
@@ -97,34 +99,39 @@ export function TodayCard({ meId, todayISO, pick, query, now }: TodayCardProps) 
                 </Link>
                 {changed && <span className="ws-tag ws-tag--changed">{t("work.today.changed")}</span>}
               </div>
-              <p className="ws-today-start">
-                {a.start_time
-                  ? t("work.today.starts", { time: formatScheduleTime(a.start_time, a.end_time) ?? "" })
-                  : t("work.today.noTime")}
+              {/* One dense line: start · crew · truck · updated. The 667px
+                  screen has room for three cards only if each says its
+                  facts in as few rows as it can. */}
+              <p className="ws-meta ws-facts">
+                <strong className="ws-today-start">
+                  {a.start_time
+                    ? t("work.today.starts", { time: formatScheduleTime(a.start_time, a.end_time) ?? "" })
+                    : t("work.today.noTime")}
+                </strong>
+                {mates.length > 0 && (
+                  <span className="ws-inline">
+                    <Users size={16} aria-hidden /> {t("work.today.with", { names: mates.join(", ") })}
+                  </span>
+                )}
+                {truck && (
+                  <span className="ws-inline">
+                    <Truck size={16} aria-hidden /> {t("work.today.truck", { truck })}
+                  </span>
+                )}
+                {/* A second entry on the same day carries its own Updated;
+                    the first's sits beside the heading. */}
+                {a.id !== pick.entries[0]?.id && (
+                  <span className="ws-inline ws-updated">{t("work.today.updated", { time: formatUpdatedAt(a.updated_at, now) })}</span>
+                )}
               </p>
               {a.project?.address && (
-                <p className="ws-meta ws-inline">
-                  <MapPin size={16} aria-hidden /> {a.project.address}
-                </p>
+                <div className="ws-row-between ws-address">
+                  <span className="ws-meta ws-inline">
+                    <MapPin size={16} aria-hidden /> {a.project.address}
+                  </span>
+                  <DirectionsButton address={a.project?.address} label={t("work.today.directions")} className="ws-btn ws-btn--ghost ws-btn--inline" />
+                </div>
               )}
-              {(mates.length > 0 || truck) && (
-                <p className="ws-meta ws-inline">
-                  {mates.length > 0 && (
-                    <span className="ws-inline">
-                      <Users size={16} aria-hidden /> {t("work.today.with", { names: mates.join(", ") })}
-                    </span>
-                  )}
-                  {truck && (
-                    <span className="ws-inline">
-                      <Truck size={16} aria-hidden /> {t("work.today.truck", { truck })}
-                    </span>
-                  )}
-                </p>
-              )}
-              <div className="ws-row-between">
-                <DirectionsButton address={a.project?.address} label={t("work.today.directions")} className="ws-btn ws-btn--ghost ws-btn--inline" />
-                <span className="ws-meta ws-updated">{t("work.today.updated", { time: formatUpdatedAt(a.updated_at, now) })}</span>
-              </div>
             </div>
           );
         })

@@ -47,15 +47,34 @@ export async function measureCrewRule(page: Page, root: string): Promise<CrewRul
       const cs = getComputedStyle(el);
       return r.width > 0 && r.height > 0 && cs.visibility !== "hidden" && cs.display !== "none";
     };
-    // Backgrounds: walk up until something is not transparent.
+    // Backgrounds: composite every translucent layer over the first opaque
+    // one beneath it — a 7%-alpha callout tint sits on the card, not on
+    // nothing, and reading it alone made amber-on-amber out of amber-on-white.
     const bgOf = (el: Element): [number, number, number, number] => {
+      const layers: [number, number, number, number][] = [];
       let node: Element | null = el;
+      let base: [number, number, number, number] | null = null;
       while (node) {
         const c = rgba(getComputedStyle(node).backgroundColor);
-        if (c[3] > 0.05) return c;
+        if (c[3] >= 0.99) {
+          base = c;
+          break;
+        }
+        if (c[3] > 0.01) layers.push(c);
         node = node.parentElement;
       }
-      return rgba(getComputedStyle(document.body).backgroundColor);
+      let out = base ?? rgba(getComputedStyle(document.body).backgroundColor);
+      if (out[3] < 0.99) out = [255, 255, 255, 1];
+      for (const layer of layers.reverse()) {
+        const a = layer[3];
+        out = [
+          layer[0] * a + out[0] * (1 - a),
+          layer[1] * a + out[1] * (1 - a),
+          layer[2] * a + out[2] * (1 - a),
+          1,
+        ];
+      }
+      return out;
     };
 
     // 1. Tap targets.
@@ -63,7 +82,12 @@ export async function measureCrewRule(page: Page, root: string): Promise<CrewRul
     for (const el of targets) {
       if (!visible(el)) continue;
       report.targetsMeasured++;
-      const h = el.getBoundingClientRect().height;
+      // A checkbox's real target is the label row it sits in.
+      const box =
+        el instanceof HTMLInputElement && el.type === "checkbox" && el.closest("label")
+          ? el.closest("label")!.getBoundingClientRect()
+          : el.getBoundingClientRect();
+      const h = box.height;
       const primary = (el as HTMLElement).classList.contains("ws-btn--primary");
       const min = primary ? 56 : 48;
       // A caption-sized inline control (a "Change" link inside a sentence)

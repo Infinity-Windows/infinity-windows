@@ -11,7 +11,20 @@
 .work-screen {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
+  font-size: 16px;
+}
+/* The page's name for a screen reader; the bar's Work tab is the visible one. */
+.ws-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
   font-size: 16px;
 }
 .work-screen .ws-top {
@@ -33,10 +46,10 @@
   border: 1px solid var(--border);
   border-radius: 14px;
   background: var(--card-raised);
-  padding: 12px 14px;
+  padding: 8px 12px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
 }
 .ws-h2 {
   margin: 0;
@@ -156,7 +169,15 @@
   font-size: 26px;
   font-variant-numeric: tabular-nums;
 }
-.ws-clock-job { margin: 0; font-size: 16px; color: var(--text-secondary); }
+.ws-clock-job {
+  margin: 0 0 0 4px;
+  font-size: 16px;
+  color: var(--text-secondary);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .ws-clock-actions { display: flex; gap: 8px; }
 .ws-live-dot {
   width: 12px;
@@ -187,6 +208,27 @@
 }
 .ws-clock--finish { border-color: var(--danger); }
 .ws-talk { border-color: var(--accent-line); }
+/* The classic ToolboxSignCard, rendered inside the new screen, meets the
+   crew screen rule here: 48px pledge row, name field and Sign button, 16px
+   text, a checkbox big enough for a glove. */
+.ws-talk .ack-row { min-height: 48px; display: flex; align-items: center; gap: 12px; font-size: 16px; }
+.ws-talk .ack-row input { width: 26px; height: 26px; flex: none; }
+.ws-talk .field-label, .ws-talk summary, .ws-talk p { font-size: 16px; }
+.ws-talk summary { min-height: 48px; display: flex; align-items: center; }
+/* The talk's own content and the signature pad's hint are classic
+   components with 10–13px type set inline and by their own rules; on this
+   screen they read at 16px. `!important` because the sizes they carry are
+   inline styles, which nothing but this can beat — the classic files are
+   frozen (K-X2) and stay as they are. */
+.ws-talk summary, .ws-talk details > div, .ws-talk h4, .ws-talk li, .ws-talk p, .ws-talk .sig-hint,
+.ws-talk .talk-section, .ws-talk .talk-section * { font-size: 16px !important; line-height: 1.4 !important; }
+/* The Watch-for / Stop-work callout headings are fixed hex amber and red
+   drawn for the dark theme; on a sunlit light card they read at 1.6:1. The
+   words carry the meaning and the callout keeps its tinted border, so the
+   heading itself reads in the text colour here. */
+.ws-talk .tbx-callout h4 { color: var(--text) !important; }
+.ws-talk input[type="text"] { min-height: 48px; font-size: 16px; width: 100%; }
+.ws-talk .button-like { min-height: 48px; font-size: 16px; width: 100%; justify-content: center; display: inline-flex; align-items: center; }
 
 /* Heads-ups. */
 .ws-headsups {
@@ -222,14 +264,23 @@
   border-top: 1px solid var(--border);
 }
 .ws-today-title {
+  /* A link is a tap target: 48px tall like every other one. */
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+  flex: 1 1 auto;
   font-family: var(--font-display);
   font-weight: 800;
   font-size: 20px;
+  line-height: 1.15;
   color: var(--text);
   text-decoration: none;
   overflow-wrap: anywhere;
 }
-.ws-today-start { margin: 0; font-size: 16px; font-weight: 700; }
+.ws-today-start { margin: 0; font-size: 16px; font-weight: 700; color: var(--text); }
+.ws-facts { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; }
+.ws-address { flex-wrap: nowrap; }
+.ws-address > .ws-inline { flex: 1 1 auto; min-width: 0; margin-right: 0; }
 .ws-tag {
   display: inline-flex;
   align-items: center;

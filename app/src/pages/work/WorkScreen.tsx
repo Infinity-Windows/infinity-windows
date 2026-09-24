@@ -219,15 +219,13 @@ export function WorkScreen() {
 
   return (
     <div className="page work-screen" data-testid="work-screen">
-      <p className="ws-top">
-        <strong>{t("work.title")}</strong>
-        <span>{new Date(now).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}</span>
-      </p>
+      <h1 className="ws-sr-only">{t("work.title")}</h1>
       <LiveSummonsStrip />
       <ClockStrip
         profileId={profileId}
         shift={shift}
         todayJobId={todayJobId}
+        scheduleSettled={schedule.isSuccess || schedule.isError}
         talk={todayTalk.data ?? null}
         gate={gate}
         onShiftChanged={onShiftChanged}
