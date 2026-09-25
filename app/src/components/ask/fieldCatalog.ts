@@ -104,6 +104,8 @@ export const FIELD_CATALOG = {
   "field.nothingSavedHelp": { en: "Only a receipt card under a reply proves a change.", es: "Solo una tarjeta de recibo debajo de una respuesta demuestra un cambio." },
   // One-tap clock buttons (K2.4). The AI offers; only the tap changes the clock.
   "field.button.title": { en: "Job clock", es: "Reloj de trabajo" },
+  // Shown while the clock is still being read, instead of any claim about it.
+  "field.button.checking": { en: "Checking your clock…", es: "Revisando tu reloj…" },
   "field.button.start_break": { en: "Start break", es: "Empezar descanso" },
   "field.button.start_lunch": { en: "Start lunch break", es: "Empezar descanso de comida" },
   "field.button.start_rest": { en: "Start rest break", es: "Empezar descanso corto" },
