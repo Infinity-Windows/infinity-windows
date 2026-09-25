@@ -216,17 +216,8 @@ describe("the chunk costs a phone nothing while monitoring is off", () => {
   );
 
   it("gives the monitor a chunk name a glob can point at", () => {
-    expect(config).toContain("name: 'monitoring'");
-    expect(config).toContain("test: /node_modules[\\\\/]@sentry/");
-  });
-
-  it("puts only Sentry in that chunk, never what Sentry imports", () => {
-    // Left to include its dependencies, the named chunk also took React (which
-    // @sentry/react imports), so the entry imported React FROM this chunk and
-    // could not start without the one file the service worker skips below
-    // (2026-09-25). scripts/check-bundle-budget.mjs checks the built output
-    // for the same thing; this is the line that prevents it.
-    expect(config).toContain("includeDependenciesRecursively: false");
+    expect(config).toContain("node_modules/@sentry");
+    expect(config).toContain("return 'monitoring'");
   });
 
   it("keeps that chunk out of the precache when there is no DSN", () => {
