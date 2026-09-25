@@ -109,6 +109,15 @@ jobs:
       # their own, so a branch appending to the long list above doesn't collide
       # with this one.
       - run: npm run e2e -- clock-in-once.spec.ts crew-clock.spec.ts
+      # The INSTALLED app: two production builds with their service workers,
+      # from the build the crew is running (master) to this one — reopened
+      # with no signal, and reopened after the deploy by a phone still holding
+      # yesterday's worker. Every spec above runs on the dev server, which
+      # has no worker at all, and none of them saw 2026-09-25 coming. Its own
+      # step, like the clock-in one. Master is fetched because the checkout
+      # is shallow and the harness builds it (app/e2e/support/pwaHarness.ts).
+      - run: git fetch --depth=1 origin master
+      - run: npx playwright test --config playwright.pwa.config.ts
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -161,6 +170,14 @@ jobs:
       - name: Test scripts/verify-push-key.sh
         shell: bash
         run: scripts/verify-push-key.test.sh
+
+      # The check that runs on the live site after every Pages deploy: is it
+      # this build, can a phone start it with no signal, can a phone on the
+      # previous build still start it. Written the day a green deploy turned
+      # every phone black (2026-09-25). Stubs curl with a fake site; no network.
+      - name: Test scripts/verify-pages.sh
+        shell: bash
+        run: scripts/verify-pages.test.sh
 
       # The local checkpoint. It is the thing that would be reached for on the
       # worst day, so it does not get to be the one piece nobody tested.

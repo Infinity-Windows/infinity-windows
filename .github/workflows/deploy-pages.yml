@@ -86,9 +86,65 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    outputs:
+      page_url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+
+  # Deployed is not the same as startable. On 2026-09-25 this workflow went
+  # green and every installed phone and laptop went black: the new bundle no
+  # longer had a file that phones still on the previous build asked the
+  # network for, and nothing here had looked at the live site the way a phone
+  # does. scripts/verify-pages.sh asks three things of the site just deployed:
+  # is it this build, can a phone start it with no signal, can a phone on the
+  # previous build still start it. Red here means the app shipped and people
+  # may not be able to open it — roll back (revert the merge) first, read the
+  # headline second.
+  verify:
+    name: Check every phone can start it
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read the live site the way a phone does
+        id: pages
+        env:
+          PAGES_URL: ${{ needs.deploy.outputs.page_url }}
+          EXPECT_BUILD_ID: ${{ github.sha }}
+        run: |
+          set +e
+          scripts/verify-pages.sh >/tmp/pages-check.log 2>&1
+          rc=$?
+          cat /tmp/pages-check.log
+
+          if [ "$rc" -eq 0 ]; then
+            {
+              echo "### Every phone can start the deployed app"
+              echo
+              echo '```'
+              cat /tmp/pages-check.log
+              echo '```'
+            } >>"$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # The script leads its failure output with a one-line plain-English
+          # cause (a tested contract — see scripts/verify-pages.test.sh), the
+          # same way scripts/verify-push-key.sh does.
+          cause="$(head -n 1 /tmp/pages-check.log)"
+          echo "::error title=The app shipped, but phones may not start it::$cause"
+          {
+            echo "### $cause"
+            echo
+            echo "The deploy itself succeeded. If phones cannot start the app, revert"
+            echo "the merge on master first; the details:"
+            echo
+            echo '```'
+            cat /tmp/pages-check.log
+            echo '```'
+          } >>"$GITHUB_STEP_SUMMARY"
+          exit 1
 
   # This workflow is how the app reaches users at all. If it fails, master and
   # what installers are running have silently diverged, which is the exact gap
@@ -103,4 +159,21 @@ jobs:
       detail: >-
         The app did NOT ship. Everyone is still on the previous version until
         this is fixed and re-run.
+    secrets: inherit
+
+  # The opposite failure, worded the opposite way: the app DID ship, and the
+  # live site says a phone may not be able to open it. `needs.verify.result`,
+  # not failure(): a deploy that never ran leaves verify skipped, and that is
+  # the job above's news, not this one's.
+  notify-verify-failure:
+    name: Tell Slack if phones may not start it
+    needs: [verify]
+    if: always() && needs.verify.result == 'failure'
+    uses: ./.github/workflows/notify-failure.yml
+    with:
+      workflow: ${{ github.workflow }}
+      detail: >-
+        The app shipped, but the live site failed the phone start-up check.
+        Phones that open the app now may see a black screen. Revert the merge
+        on master first, then read the run's summary for the cause.
     secrets: inherit
