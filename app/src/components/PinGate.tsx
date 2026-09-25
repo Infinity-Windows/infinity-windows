@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { checkMyPin, myPinStatus, setMyPin } from "../lib/install/api";
 import { getMyProfile } from "../lib/install/api";
 import { useT } from "../lib/i18n";
+import { checkPinOffline, forgetOfflinePin, rememberPinForOffline } from "../lib/offlinePin";
 import { PIN_CHECK_WAIT_MS, pinGateView } from "../lib/pinGate";
 import { signedInUserId } from "../lib/signedIn";
 
@@ -32,15 +33,40 @@ function initialsFrom(name: string | null | undefined): string {
 function usePinStatus(userId: string | null) {
   return useQuery({
     queryKey: ["myPinStatus", userId],
-    queryFn: myPinStatus,
+    queryFn: async () => {
+      const hasPin = await myPinStatus();
+      // The server says there is no PIN now — cleared here, on another phone
+      // or by a supervisor. There is nothing left for the offline unlock to
+      // stand in for (lib/offlinePin.ts).
+      if (!hasPin) forgetOfflinePin();
+      return hasPin;
+    },
     enabled: Boolean(userId),
     networkMode: "always",
   });
 }
 
+/** Why the PIN pad is not letting somebody in, when it has something to say. */
+type PinProblem =
+  /** The server says that is not the PIN. */
+  | { kind: "wrong" }
+  /** No signal, and the offline unlock says that is not the PIN. */
+  | { kind: "wrong-offline"; triesLeft: number }
+  /** …and that was the fifth wrong try: the offline unlock is gone. */
+  | { kind: "locked-offline" }
+  /** No signal, and no offline unlock for this person on this phone. */
+  | { kind: "no-signal" }
+  /** No signal, and the offline unlock is past its twelve hours. */
+  | { kind: "expired" }
+  /** The server answered, but not with a yes or a no. */
+  | { kind: "not-checked" };
+
 /**
  * Lightweight device PIN lock on top of the persisted Supabase session.
- * The PIN itself never reaches the client — status and verification are RPCs.
+ * The PIN's hash never leaves the server — status and verification are RPCs.
+ * The one exception is the owner's shift-long offline unlock: when the server
+ * cannot be reached, a PIN it accepted on this phone in the last twelve hours
+ * is checked against a slow fingerprint kept here (lib/offlinePin.ts).
  *
  * It opens on a definite "no PIN" and on nothing else; lib/pinGate.ts has the
  * rule and why. `userId` is the real signed-in login (App.tsx's session), never
@@ -52,11 +78,11 @@ export function PinGate({ userId, children }: { userId: string; children: React.
   const pinStatus = usePinStatus(userId);
   const restoring = useIsRestoring();
   const [entry, setEntry] = useState("");
-  const [error, setError] = useState<"wrong" | "network" | null>(null);
+  const [error, setError] = useState<PinProblem | null>(null);
   const [checkingPin, setCheckingPin] = useState(false);
-  // The four digits of a check that could not reach the server, so Try again
-  // can send them again. Memory only, like the digits being typed; cleared on
-  // a wrong PIN and on unlock.
+  // The four digits of a check the server could not answer, so Try again can
+  // send them again. Memory only, like the digits being typed; cleared once
+  // anybody has judged them.
   const lastTry = useRef("");
   const [unlocked, setUnlocked] = useState(
     () => sessionStorage.getItem(UNLOCK_KEY) === "1",
@@ -119,27 +145,93 @@ export function PinGate({ userId, children }: { userId: string; children: React.
     );
   }
 
-  const submit = async (value: string) => {
-    setCheckingPin(true);
-    setError(null);
+  /**
+   * Who decides, in order. With an answer from the server, the server alone —
+   * unchanged. Only when it cannot be reached, the offline unlock kept from the
+   * last yes on this phone (lib/offlinePin.ts, the owner's call 2026-09-24).
+   * Null means let them in.
+   */
+  const judge = async (value: string): Promise<PinProblem | null> => {
+    lastTry.current = "";
     let result: Awaited<ReturnType<typeof checkMyPin>>;
     try {
       result = await checkMyPin(value);
     } catch {
       result = { ok: false, reason: "network" };
+    }
+    if (result.ok) {
+      // A fresh offline unlock: this PIN, for the next twelve hours.
+      void rememberPinForOffline(userId, value);
+      return null;
+    }
+    if (result.reason === "wrong") {
+      // Mistyped, or changed on another phone — either way the copy kept here
+      // can no longer be trusted to match.
+      forgetOfflinePin();
+      return { kind: "wrong" };
+    }
+    if (result.reason === "error") {
+      lastTry.current = value;
+      return { kind: "not-checked" };
+    }
+    let offline: Awaited<ReturnType<typeof checkPinOffline>>;
+    try {
+      offline = await checkPinOffline(userId, value);
+    } catch {
+      offline = { kind: "none" };
+    }
+    switch (offline.kind) {
+      case "ok":
+        return null;
+      case "wrong":
+        return { kind: "wrong-offline", triesLeft: offline.triesLeft };
+      case "locked":
+        return { kind: "locked-offline" };
+      case "expired":
+        lastTry.current = value;
+        return { kind: "expired" };
+      case "none":
+        lastTry.current = value;
+        return { kind: "no-signal" };
+    }
+  };
+
+  const submit = async (value: string) => {
+    setCheckingPin(true);
+    setError(null);
+    let problem: PinProblem | null;
+    try {
+      problem = await judge(value);
     } finally {
       setCheckingPin(false);
     }
-    if (result.ok) {
-      lastTry.current = "";
-      setUnlocked(true);
-      setError(null);
-    } else {
-      lastTry.current = result.reason === "network" ? value : "";
-      setError(result.reason);
+    if (problem) {
+      setError(problem);
       setEntry("");
+    } else {
+      setUnlocked(true);
     }
   };
+
+  const problemText = (p: PinProblem): string => {
+    switch (p.kind) {
+      case "wrong":
+        return t("pin.wrong");
+      case "wrong-offline":
+        return t("pin.wrongOffline", { n: p.triesLeft });
+      case "locked-offline":
+        return t("pin.offlineLocked");
+      case "no-signal":
+        return t("pin.noSignal");
+      case "expired":
+        return t("pin.offlineExpired");
+      case "not-checked":
+        return t("pin.notChecked");
+    }
+  };
+  // The digits are worth sending again only when nobody could judge them.
+  const canTryAgain =
+    error?.kind === "no-signal" || error?.kind === "expired" || error?.kind === "not-checked";
 
   const pushDigit = (digit: string) => {
     if (checkingPin || entry.length >= 4) return;
@@ -188,21 +280,17 @@ export function PinGate({ userId, children }: { userId: string; children: React.
           if (v.length === 4) void submit(v);
         }}
       />
-      {error === "wrong" && <p className="error">{t("pin.wrong")}</p>}
-      {error === "network" && (
-        <>
-          {/* The PIN is only ever checked by the server — no copy of it or its
-              hash is on the phone — so with no signal the lock stays shut. */}
-          <p className="error">{t("pin.noSignal")}</p>
-          <button
-            type="button"
-            onClick={() => {
-              if (lastTry.current) void submit(lastTry.current);
-            }}
-          >
-            {t("pin.tryAgain")}
-          </button>
-        </>
+      {error && <p className="error">{problemText(error)}</p>}
+      {canTryAgain && (
+        <button
+          type="button"
+          disabled={checkingPin}
+          onClick={() => {
+            if (lastTry.current) void submit(lastTry.current);
+          }}
+        >
+          {t("pin.tryAgain")}
+        </button>
       )}
       <div className="pin-pad">
         {PAD_KEYS.map((key, i) => {
@@ -267,6 +355,9 @@ export function PinSetter() {
           disabled={pin.length !== 4}
           onClick={async () => {
             await setMyPin(pin);
+            // A new PIN: the offline unlock kept for the old one must not open
+            // the lock. The next check with signal makes a fresh one.
+            forgetOfflinePin();
             queryClient.setQueryData(["myPinStatus", userId], true);
             setSaved(true);
             setPin("");
@@ -280,6 +371,7 @@ export function PinSetter() {
             className="button-like"
             onClick={async () => {
               await setMyPin("");
+              forgetOfflinePin();
               queryClient.setQueryData(["myPinStatus", userId], false);
               setSaved(false);
               hasPin.refetch();

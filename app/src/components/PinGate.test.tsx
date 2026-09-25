@@ -11,9 +11,13 @@
 // The lock now works from the last answer this phone got (the key is kept on the
 // phone, see lib/queryKeys.ts): a PIN account still gets the PIN pad, a no-PIN
 // account goes straight in, and a phone that has never had an answer says so in
-// plain words, with a Try again button, instead of spinning. The PIN itself is
-// only ever checked by the server, so with no signal the lock stays shut and
-// says why.
+// plain words, with a Try again button, instead of spinning.
+//
+// With signal the server alone judges the PIN. When it cannot be reached, the
+// owner's shift-long offline unlock (lib/offlinePin.ts, proven on its own in
+// offlinePin.test.ts) may: a PIN the server accepted on this phone in the last
+// twelve hours opens the lock again. It is mocked here — what this file proves
+// is WHEN the lock asks it, and what it tells the person.
 
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -47,7 +51,19 @@ vi.mock("../lib/install/api", () => ({
 }));
 vi.mock("../lib/toast", () => ({ toastError: vi.fn() }));
 
-const { PinGate } = await import("./PinGate");
+const offline = vi.hoisted(() => ({
+  rememberPinForOffline: vi.fn(),
+  checkPinOffline: vi.fn(),
+  forgetOfflinePin: vi.fn(),
+}));
+vi.mock("../lib/offlinePin", () => ({
+  rememberPinForOffline: (...a: unknown[]) => offline.rememberPinForOffline(...a),
+  checkPinOffline: (...a: unknown[]) => offline.checkPinOffline(...a),
+  forgetOfflinePin: (...a: unknown[]) => offline.forgetOfflinePin(...a),
+}));
+
+const { PinGate, PinSetter } = await import("./PinGate");
+const { rememberSignedIn } = await import("../lib/signedIn");
 const { LanguageProvider } = await import("../lib/i18n");
 
 let container: HTMLElement;
@@ -74,6 +90,9 @@ beforeEach(() => {
   });
   api.getMyProfile.mockResolvedValue(PROFILE);
   api.getRealProfile.mockResolvedValue(null);
+  offline.rememberPinForOffline.mockResolvedValue(undefined);
+  // This phone has no offline unlock unless a test says otherwise.
+  offline.checkPinOffline.mockResolvedValue({ kind: "none" });
 });
 
 afterEach(() => {
@@ -161,7 +180,7 @@ describe("PinGate with signal (unchanged)", () => {
     expect(text()).toContain("THE APP");
   });
 
-  it("unlocks on the right PIN and says so on a wrong one", async () => {
+  it("unlocks on the right PIN and says so on a wrong one — the server alone judges", async () => {
     api.myPinStatus.mockResolvedValue(true);
     api.checkMyPin.mockResolvedValueOnce({ ok: false, reason: "wrong" });
     api.checkMyPin.mockResolvedValueOnce({ ok: true });
@@ -170,10 +189,17 @@ describe("PinGate with signal (unchanged)", () => {
     await typePin("1111");
     expect(text()).toContain("Wrong PIN — try again");
     expect(text()).not.toContain("THE APP");
+    // A no from the server: the copy kept for offline use can no longer be
+    // trusted to match, so it goes.
+    expect(offline.forgetOfflinePin).toHaveBeenCalledTimes(1);
 
     await typePin("4821");
     expect(api.checkMyPin).toHaveBeenLastCalledWith("4821");
     expect(text()).toContain("THE APP");
+    // A yes keeps this PIN for offline use, for this person, for the shift.
+    expect(offline.rememberPinForOffline).toHaveBeenCalledWith(USER, "4821");
+    // With an answer from the server, the phone's copy is never asked.
+    expect(offline.checkPinOffline).not.toHaveBeenCalled();
   });
 });
 
@@ -216,13 +242,14 @@ describe("PinGate reopened with no signal", () => {
     expect(text()).not.toContain("Checking device lock…");
   });
 
-  it("(a) the PIN cannot be checked without signal, so the lock stays shut and says why", async () => {
+  it("(a) with no offline unlock on this phone the PIN cannot be checked, so the lock stays shut and says why", async () => {
     savedOnPhone(true);
     api.myPinStatus.mockRejectedValue(NO_SIGNAL);
     api.checkMyPin.mockResolvedValueOnce({ ok: false, reason: "network" });
     await mount();
 
     await typePin("4821");
+    expect(offline.checkPinOffline).toHaveBeenCalledWith(USER, "4821");
     expect(text()).toContain("No signal. Your PIN is checked online");
     expect(text()).not.toContain("THE APP");
 
@@ -276,5 +303,122 @@ describe("PinGate reopened with no signal", () => {
     await mount({ spanish: true });
     expect(text()).toContain("Estás sin señal");
     expect(() => button("Intentar de nuevo")).not.toThrow();
+  });
+});
+
+describe("the shift-long offline unlock (owner's decision, 2026-09-24)", () => {
+  /** A PIN account on a phone with no signal: the pad, from the saved answer. */
+  async function padWithNoSignal() {
+    savedOnPhone(true);
+    api.myPinStatus.mockRejectedValue(NO_SIGNAL);
+    await mount();
+    expect(text()).toContain("Enter your 4-digit PIN");
+  }
+
+  it("the same PIN as the last yes on this phone opens the lock — and does not stretch the twelve hours", async () => {
+    await padWithNoSignal();
+    api.checkMyPin.mockResolvedValueOnce({ ok: false, reason: "network" });
+    offline.checkPinOffline.mockResolvedValueOnce({ kind: "ok" });
+
+    await typePin("4821");
+    expect(offline.checkPinOffline).toHaveBeenCalledWith(USER, "4821");
+    expect(text()).toContain("THE APP");
+    // Only a yes from the server makes or refreshes the offline unlock.
+    expect(offline.rememberPinForOffline).not.toHaveBeenCalled();
+  });
+
+  it("a wrong PIN with no signal is refused, and says how many tries are left", async () => {
+    await padWithNoSignal();
+    api.checkMyPin.mockResolvedValueOnce({ ok: false, reason: "network" });
+    offline.checkPinOffline.mockResolvedValueOnce({ kind: "wrong", triesLeft: 3 });
+
+    await typePin("1111");
+    expect(text()).toContain("Wrong PIN. Tries left without signal: 3");
+    expect(text()).not.toContain("THE APP");
+    // Nothing to send again: those digits were judged.
+    expect(() => button("Try again")).toThrow();
+  });
+
+  it("the fifth wrong try says the offline unlock is gone", async () => {
+    await padWithNoSignal();
+    api.checkMyPin.mockResolvedValueOnce({ ok: false, reason: "network" });
+    offline.checkPinOffline.mockResolvedValueOnce({ kind: "locked" });
+
+    await typePin("5555");
+    expect(text()).toContain("Too many wrong tries without signal. Connect to the internet to check your PIN.");
+    expect(text()).not.toContain("THE APP");
+  });
+
+  it("past its twelve hours it fails closed and says so; Try again works once signal is back", async () => {
+    await padWithNoSignal();
+    api.checkMyPin.mockResolvedValueOnce({ ok: false, reason: "network" });
+    offline.checkPinOffline.mockResolvedValueOnce({ kind: "expired" });
+
+    await typePin("4821");
+    expect(text()).toContain("Your offline unlock has expired — connect to check your PIN.");
+    expect(text()).not.toContain("THE APP");
+
+    api.checkMyPin.mockResolvedValueOnce({ ok: true });
+    await act(async () => button("Try again").click());
+    await settle();
+    expect(api.checkMyPin).toHaveBeenLastCalledWith("4821");
+    expect(text()).toContain("THE APP");
+    expect(offline.rememberPinForOffline).toHaveBeenCalledWith(USER, "4821");
+  });
+
+  it("a server that answers with an error is not a dead zone: the phone's copy is not asked", async () => {
+    api.myPinStatus.mockResolvedValue(true);
+    api.checkMyPin.mockResolvedValueOnce({ ok: false, reason: "error" });
+    await mount();
+
+    await typePin("4821");
+    expect(text()).toContain("Forge couldn't check your PIN. Try again.");
+    expect(text()).not.toContain("THE APP");
+    expect(offline.checkPinOffline).not.toHaveBeenCalled();
+  });
+
+  it("the server saying there is no PIN any more wipes the offline unlock", async () => {
+    api.myPinStatus.mockResolvedValue(true);
+    await mount();
+    expect(offline.forgetOfflinePin).not.toHaveBeenCalled();
+
+    api.myPinStatus.mockResolvedValue(false);
+    await act(async () => {
+      await qc.refetchQueries({ queryKey: ["myPinStatus"] });
+    });
+    await settle();
+    expect(offline.forgetOfflinePin).toHaveBeenCalled();
+    expect(text()).toContain("THE APP");
+  });
+
+  it("changing or removing the PIN on the Crew screen wipes the offline unlock kept for the old one", async () => {
+    rememberSignedIn({ user: { id: USER } });
+    api.myPinStatus.mockResolvedValue(true);
+    api.setMyPin.mockResolvedValue(undefined);
+    act(() => {
+      root.render(
+        <QueryClientProvider client={qc}>
+          <PinSetter />
+        </QueryClientProvider>,
+      );
+    });
+    await settle();
+
+    const input = container.querySelector("input")!;
+    const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+    await act(async () => {
+      setValue.call(input, "1234");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => button("Save PIN").click());
+    await settle();
+    expect(api.setMyPin).toHaveBeenLastCalledWith("1234");
+    expect(offline.forgetOfflinePin).toHaveBeenCalledTimes(1);
+
+    await act(async () => button("Clear").click());
+    await settle();
+    expect(api.setMyPin).toHaveBeenLastCalledWith("");
+    expect(offline.forgetOfflinePin).toHaveBeenCalledTimes(2);
+    rememberSignedIn(null);
   });
 });

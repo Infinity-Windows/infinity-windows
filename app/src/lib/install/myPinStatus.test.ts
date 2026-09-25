@@ -10,7 +10,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const rpc = vi.hoisted(() => ({
-  result: { data: null as unknown, error: null as unknown },
+  result: { data: null as unknown, error: null as unknown, status: 200 },
   calls: [] as string[],
 }));
 
@@ -24,18 +24,18 @@ vi.mock("../supabase", () => ({
   supabaseConfigured: true,
 }));
 
-const { myPinStatus } = await import("./api");
+const { checkMyPin, myPinStatus } = await import("./api");
 
 beforeEach(() => {
   rpc.calls = [];
-  rpc.result = { data: null, error: null };
+  rpc.result = { data: null, error: null, status: 200 };
 });
 
 describe("myPinStatus", () => {
   it("asks my_pin_status and returns the server's answer", async () => {
-    rpc.result = { data: true, error: null };
+    rpc.result = { data: true, error: null, status: 200 };
     await expect(myPinStatus()).resolves.toBe(true);
-    rpc.result = { data: false, error: null };
+    rpc.result = { data: false, error: null, status: 200 };
     await expect(myPinStatus()).resolves.toBe(false);
     expect(rpc.calls).toEqual(["my_pin_status", "my_pin_status"]);
   });
@@ -45,6 +45,7 @@ describe("myPinStatus", () => {
     rpc.result = {
       data: null,
       error: { message: "TypeError: Failed to fetch", details: "", hint: "", code: "" },
+      status: 0,
     };
     await expect(myPinStatus()).rejects.toBeTruthy();
   });
@@ -53,6 +54,7 @@ describe("myPinStatus", () => {
     rpc.result = {
       data: null,
       error: { message: "TypeError: Request timed out: weak signal", details: "", hint: "", code: "" },
+      status: 0,
     };
     await expect(myPinStatus()).rejects.toBeTruthy();
   });
@@ -61,6 +63,7 @@ describe("myPinStatus", () => {
     rpc.result = {
       data: null,
       error: { message: "permission denied for function my_pin_status", code: "42501" },
+      status: 403,
     };
     await expect(myPinStatus()).rejects.toBeTruthy();
   });
@@ -69,7 +72,46 @@ describe("myPinStatus", () => {
     rpc.result = {
       data: null,
       error: { message: "Could not find the function public.my_pin_status", code: "PGRST202" },
+      status: 404,
     };
     await expect(myPinStatus()).resolves.toBe(false);
+  });
+});
+
+// Which failures count as "the server could not be reached" decides whether
+// PinGate may fall back to the offline unlock (lib/offlinePin.ts) — so an
+// answer from the server must never be read as one.
+describe("checkMyPin", () => {
+  const failure = (status: number) => ({
+    data: null,
+    error: { message: status ? "server said no" : "TypeError: Failed to fetch", code: "" },
+    status,
+  });
+
+  it("a yes and a no from the server are exactly that", async () => {
+    rpc.result = { data: true, error: null, status: 200 };
+    await expect(checkMyPin("4821")).resolves.toEqual({ ok: true });
+    rpc.result = { data: false, error: null, status: 200 };
+    await expect(checkMyPin("1111")).resolves.toEqual({ ok: false, reason: "wrong" });
+    expect(rpc.calls).toEqual(["check_my_pin", "check_my_pin"]);
+  });
+
+  it("no answer at all — no signal, a dropped or timed-out request — is \"network\"", async () => {
+    rpc.result = failure(0);
+    await expect(checkMyPin("4821")).resolves.toEqual({ ok: false, reason: "network" });
+  });
+
+  it("the server itself failing is \"network\" too: it cannot judge", async () => {
+    for (const status of [500, 502, 503, 504]) {
+      rpc.result = failure(status);
+      await expect(checkMyPin("4821")).resolves.toEqual({ ok: false, reason: "network" });
+    }
+  });
+
+  it("the server answering and refusing is \"error\", never \"network\"", async () => {
+    for (const status of [400, 401, 403, 404]) {
+      rpc.result = failure(status);
+      await expect(checkMyPin("4821")).resolves.toEqual({ ok: false, reason: "error" });
+    }
   });
 });

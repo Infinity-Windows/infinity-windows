@@ -5120,6 +5120,23 @@ export const CATALOG = {
     es: "Conéctate a internet una vez para que Forge revise el bloqueo de tu dispositivo y luego toca Intentar de nuevo.",
   },
   "pin.tryAgain": { en: "Try again", es: "Intentar de nuevo" },
+  // The shift-long offline unlock (lib/offlinePin.ts), 2026-09-24.
+  "pin.wrongOffline": {
+    en: "Wrong PIN. Tries left without signal: {n}",
+    es: "PIN incorrecto. Intentos que quedan sin señal: {n}",
+  },
+  "pin.offlineLocked": {
+    en: "Too many wrong tries without signal. Connect to the internet to check your PIN.",
+    es: "Demasiados intentos incorrectos sin señal. Conéctate a internet para revisar tu PIN.",
+  },
+  "pin.offlineExpired": {
+    en: "Your offline unlock has expired — connect to check your PIN.",
+    es: "Tu desbloqueo sin señal ya venció. Conéctate para revisar tu PIN.",
+  },
+  "pin.notChecked": {
+    en: "Forge couldn't check your PIN. Try again.",
+    es: "Forge no pudo revisar tu PIN. Inténtalo de nuevo.",
+  },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */

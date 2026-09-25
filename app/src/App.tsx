@@ -33,6 +33,7 @@ import { ViewAsRoleProvider } from "./lib/viewAsRole";
 import { useEffectiveRole } from "./lib/useEffectiveRole";
 import { supabase } from "./lib/supabase";
 import { rememberSignedIn } from "./lib/signedIn";
+import { syncOfflinePinWithAuth } from "./lib/offlinePin";
 import { Home } from "./pages/Home";
 import { Landing } from "./pages/Landing";
 import { Warehouse } from "./pages/Warehouse";
@@ -460,6 +461,10 @@ export default function App() {
       // in the middle of a tap is a network round trip, and on a token that has
       // gone stale offline it is a long one that answers "nobody".
       rememberSignedIn(data.session);
+      // The device lock's offline unlock belongs to one sign-in on this phone:
+      // another person's, or one past its twelve hours, goes before the lock
+      // is drawn (lib/offlinePin.ts).
+      syncOfflinePinWithAuth("INITIAL_SESSION", data.session?.user.id ?? null);
       setSession(data.session);
       setReady(true);
       onSignedIn(data.session);
@@ -467,6 +472,8 @@ export default function App() {
     const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
       if (event === "PASSWORD_RECOVERY") setRecovery(true);
       rememberSignedIn(s);
+      // Signing out (from the menu, or the server ending the session) wipes it.
+      syncOfflinePinWithAuth(event, s?.user.id ?? null);
       setSession(s);
       onSignedIn(s);
     });

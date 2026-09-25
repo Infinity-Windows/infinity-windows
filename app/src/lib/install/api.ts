@@ -288,11 +288,21 @@ export async function myPinStatus(): Promise<boolean> {
   return Boolean(data);
 }
 
+/**
+ * Ask the server whether `pin` is the signed-in person's PIN.
+ *
+ * "network" means the server could not be reached: no answer at all (no
+ * signal, or a dropped or timed-out request — postgrest-js reports those as
+ * status 0) or the server itself failing (5xx). That is the ONLY case in which
+ * PinGate may fall back to the offline unlock (lib/offlinePin.ts). "error" is
+ * the server answering and refusing, and with an answer from the server the
+ * server stays the only judge.
+ */
 export async function checkMyPin(
   pin: string,
-): Promise<{ ok: true } | { ok: false; reason: "wrong" | "network" }> {
-  const { data, error } = await supabase.rpc("check_my_pin", { p_pin: pin });
-  if (error) return { ok: false, reason: "network" };
+): Promise<{ ok: true } | { ok: false; reason: "wrong" | "network" | "error" }> {
+  const { data, error, status } = await supabase.rpc("check_my_pin", { p_pin: pin });
+  if (error) return { ok: false, reason: status === 0 || status >= 500 ? "network" : "error" };
   return data ? { ok: true } : { ok: false, reason: "wrong" };
 }
 

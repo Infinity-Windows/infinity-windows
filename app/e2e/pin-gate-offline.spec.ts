@@ -13,6 +13,13 @@
 //   (c) a phone that has never had an answer says so in plain words, with a
 //       Try again button that works the moment signal is back.
 //
+// And the owner's shift-long offline unlock (lib/offlinePin.ts): a PIN the
+// server accepted on this phone opens the lock with no signal for twelve hours
+// — the phone keeps a slow fingerprint of it, never the PIN —
+//   (d) the same PIN opens it, a wrong one is counted;
+//   (e) twelve hours on it is gone, and the lock stays shut and says so;
+//   (f) signing out wipes it.
+//
 // How the dead zone is made, and why a relaunch is a NEW PAGE:
 //   - Every Supabase call — auth included, a phone with no signal reaches
 //     nothing — is aborted by routes registered after the fixtures, and the
@@ -26,7 +33,8 @@
 //     not keep it, so a relaunch here is a fresh page in the same context:
 //     same localStorage (the phone), fresh sessionStorage (a new launch).
 import { expect, test, type BrowserContext, type Page, type Route } from "@playwright/test";
-import { useSupabaseFixtures } from "./support/supabaseFixtures";
+import { OFFLINE_PIN_ITERATIONS, OFFLINE_PIN_KEY, OFFLINE_PIN_TTL_MS } from "../src/lib/offlinePin";
+import { TEST_USER, useSupabaseFixtures } from "./support/supabaseFixtures";
 
 const SUPABASE = ["**/rest/v1/**", "**/auth/v1/**", "**/storage/v1/**", "**/functions/v1/**"];
 
@@ -93,6 +101,55 @@ async function lockAnswerIsOnThePhone(page: Page) {
 async function useNoSignalRelaunch(page: Page, hasPin: boolean): Promise<DeadZone> {
   await pinStatusIs(page, hasPin);
   return goToTheDeadZone(page);
+}
+
+/** The server's check, for an account whose PIN is `pin`. */
+async function usePinCheck(page: Page, pin: string) {
+  await page.route("**/rest/v1/rpc/check_my_pin", (route) => {
+    const body = route.request().postDataJSON() as { p_pin?: string } | null;
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(body?.p_pin === pin),
+    });
+  });
+}
+
+async function typePin(page: Page, digits: string) {
+  for (const digit of digits) {
+    await page.locator(".pin-pad").getByRole("button", { name: digit, exact: true }).click();
+  }
+}
+
+type KeptUnlock = Record<string, unknown> & { salt: string; hash: string; issuedAt: number; expiresAt: number };
+
+/** What the phone keeps for the offline unlock, or null. */
+function storedOfflineUnlock(page: Page): Promise<KeptUnlock | null> {
+  return page.evaluate((key) => JSON.parse(localStorage.getItem(key) ?? "null"), OFFLINE_PIN_KEY);
+}
+
+/** Wait for the fingerprint a yes from the server leaves behind. */
+async function offlineUnlockOnThePhone(page: Page): Promise<KeptUnlock> {
+  await expect
+    .poll(() => storedOfflineUnlock(page), { timeout: 20_000, message: "no offline unlock was kept" })
+    .not.toBeNull();
+  return (await storedOfflineUnlock(page))!;
+}
+
+/**
+ * Unlock with signal — the one thing that makes an offline unlock. Call after
+ * useSupabaseFixtures and usePinCheck(page, "4821").
+ */
+async function unlockWithSignal(page: Page) {
+  await pinStatusIs(page, true);
+  await page.goto("/");
+  await typePin(page, "4821");
+  await expect(theApp(page)).toBeAttached();
+  const kept = await offlineUnlockOnThePhone(page);
+  // The lock's own answer ("has a PIN") reaches the phone on the cache's
+  // write throttle; a relaunch before it lands is the never-checked case (c).
+  await lockAnswerIsOnThePhone(page);
+  return kept;
 }
 
 const theApp = (page: Page) => page.locator("nav.tabbar");
@@ -172,4 +229,78 @@ test("(c) a phone that never got an answer says so, stays locked, and Try again 
   await page.getByRole("button", { name: "Try again" }).click();
   await expect(theApp(page)).toBeAttached({ timeout: 15_000 });
   await expect(theLock(page)).toHaveCount(0);
+});
+
+test("(d) a PIN the server accepted on this phone opens the lock with no signal, and a wrong one is counted", async ({
+  page,
+  context,
+}) => {
+  await useSupabaseFixtures(page, { role: "installer" });
+  await usePinCheck(page, "4821");
+  const kept = await unlockWithSignal(page);
+
+  // A slow, salted fingerprint for this person — never the PIN.
+  expect(kept).toMatchObject({ v: 1, userId: TEST_USER.id, iterations: OFFLINE_PIN_ITERATIONS, failures: 0 });
+  expect(kept.expiresAt - kept.issuedAt).toBe(OFFLINE_PIN_TTL_MS);
+  expect(Buffer.from(kept.salt, "base64")).toHaveLength(16);
+  expect(Buffer.from(kept.hash, "base64")).toHaveLength(32);
+  const everything = await page.evaluate(() =>
+    [localStorage, sessionStorage].flatMap((s) => Object.keys(s).map((k) => s.getItem(k) ?? "")),
+  );
+  for (const value of everything) {
+    expect(value).not.toBe("4821");
+    expect(value).not.toContain('"4821"');
+  }
+  await page.close();
+
+  const again = await context.newPage();
+  await useSupabaseFixtures(again, { role: "installer" });
+  const { refused } = await useNoSignalRelaunch(again, true);
+  await context.setOffline(true);
+  await again.goto("/");
+  await expect(again.getByText("Enter your 4-digit PIN")).toBeVisible();
+
+  await typePin(again, "1111");
+  await expect(again.getByText("Wrong PIN. Tries left without signal: 4")).toBeVisible();
+  await expect(theApp(again)).toHaveCount(0);
+
+  await typePin(again, "4821");
+  await expect(theApp(again)).toBeAttached();
+  // The server was asked first both times, and could not answer.
+  expect(refused.filter((path) => path === "/rest/v1/rpc/check_my_pin")).toHaveLength(2);
+});
+
+test("(e) twelve hours after the last check with signal the offline unlock is gone, and the lock stays shut", async ({
+  page,
+  context,
+}) => {
+  await useSupabaseFixtures(page, { role: "installer" });
+  await usePinCheck(page, "4821");
+  const kept = await unlockWithSignal(page);
+  await page.close();
+
+  // Thirteen hours later, by the phone's own clock.
+  const again = await context.newPage();
+  await again.clock.setFixedTime(new Date(kept.issuedAt + 13 * 60 * 60 * 1000));
+  await useSupabaseFixtures(again, { role: "installer" });
+  await useNoSignalRelaunch(again, true);
+  await context.setOffline(true);
+  await again.goto("/");
+  await expect(again.getByText("Enter your 4-digit PIN")).toBeVisible();
+  // The salt and hash were deleted at launch; only "it ran out" is left.
+  await expect.poll(() => storedOfflineUnlock(again)).toEqual({ v: 1, userId: TEST_USER.id, expired: true });
+
+  await typePin(again, "4821");
+  await expect(again.getByText("Your offline unlock has expired — connect to check your PIN.")).toBeVisible();
+  await expect(again.getByRole("button", { name: "Try again" })).toBeVisible();
+  await expect(theApp(again)).toHaveCount(0);
+});
+
+test("(f) signing out wipes the offline unlock from the phone", async ({ page }) => {
+  await useSupabaseFixtures(page, { role: "installer" });
+  await usePinCheck(page, "4821");
+  await unlockWithSignal(page);
+  await page.getByRole("button", { name: "Open menu" }).click();
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect.poll(() => storedOfflineUnlock(page)).toBeNull();
 });
