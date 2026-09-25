@@ -172,7 +172,9 @@ export function Supplies() {
       <ul className="unit-list" style={{ margin: 0 }}>
         {shelf.map((s) => (
           <li key={s.id} className="find-row" style={{ alignItems: "center", gap: 10 }}>
-            <div style={{ minWidth: 0, flex: 1 }}>
+            {/* A class, not flex: 1: see .supply-row-text in index.css for why
+                the name went one letter per line on phones. */}
+            <div className="supply-row-text">
               <strong>{s.name}</strong>{" "}
               <span className="muted" style={{ fontSize: 12 }}>
                 {supplyHomeLabel(s, containerName, locationAddress, t)}
