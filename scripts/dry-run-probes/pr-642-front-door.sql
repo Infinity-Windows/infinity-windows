@@ -525,7 +525,7 @@ begin
     'select public.clock_in(' || v_base || ', ' || v_nulls || format(', p_client_id => %L::uuid)', v_cid_refused), 'complete today''s toolbox talk before clocking in');
   perform pg_temp.dry_run_expect_error('clock_in (+ client id + note): refused unsigned with the plain sentence',
     'select public.clock_in(' || v_base || ', ' || v_nulls || format(', p_client_id => %L::uuid, p_note => ''dry run''::text)', v_cid_refused), 'complete today''s toolbox talk before clocking in');
-  perform pg_temp.dry_run_expect_error('clock_in (+ note + mode, the one the app calls first): refused unsigned with the plain sentence',
+  perform pg_temp.dry_run_expect_error('clock_in (+ note + mode, the one the app called first before Release 0): refused unsigned with the plain sentence',
     'select public.clock_in(' || v_base || ', ' || v_nulls || ', p_note => ''dry run''::text, p_mode => ''data''::text)', 'complete today''s toolbox talk before clocking in');
 
   perform pg_temp.dry_run_as_system();
