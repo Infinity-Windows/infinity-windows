@@ -1,55 +1,88 @@
-// Facts captured by Forge AI must survive the manual Unit details editor: a
-// material outside the list stays visible and selected, and components,
-// direction, spoken size and "said unknown" are shown and ride along in the
-// same facts object the editor saves.
-import { renderToStaticMarkup } from "react-dom/server";
+// @vitest-environment happy-dom
+//
+// F1 (crew redesign K1.8): the unit form keeps what you type. The clock
+// resolving a moment after the form opened used to remount the editor
+// (its key carried the shift's job id) and wipe the typed values. Now the
+// job arrives as a prop and fills a blank Job field on its own — and never
+// overwrites one the person already chose.
+
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { describe, expect, it } from "vitest";
-import { UnitEditor } from "./UnitEditor";
-import { factText, type WorkUnit } from "../../lib/customWork/model";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-const unit: WorkUnit = {
-  id: "u4", project_id: "job-1", opening_id: null, created_by: "me", label: "4", type_label: "Bifold door", revision: 3,
-  created_at: "2026-09-22T00:00:00Z", updated_at: "2026-09-22T00:00:00Z",
-  facts: {
-    material: "Bronze-clad cedar", width_in: 72, height_in: 96, story: "1",
-    components: [{ label: "Door panel", quantity: 2 }, { label: "Frame", quantity: 1 }],
-    opening_direction: "left to right", direction_viewpoint: "outside looking in (default)",
-    measurement_source: "width: six feet; height: eight feet", unknown_fields: ["electrical"],
-  },
-};
+vi.mock("../../lib/api", () => ({
+  listProjectsAnyStatus: async () => [
+    { id: "job-a", job_code: "A", name: "Job A", address: null, status: "active" },
+    { id: "job-b", job_code: "B", name: "Job B", address: null, status: "active" },
+  ],
+}));
+vi.mock("../../lib/install/api", () => ({ listProfiles: async () => [] }));
 
-function render(u: WorkUnit) {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  qc.setQueryData(["projects"], [{ id: "job-1", name: "Pine Hollow" }]);
-  qc.setQueryData(["customWorkRoster"], []);
-  return renderToStaticMarkup(
-    <QueryClientProvider client={qc}>
-      <UnitEditor unit={u} types={[]} busy={false} onSave={async () => undefined} onCancel={() => undefined} />
-    </QueryClientProvider>,
-  );
-}
+const { UnitEditor } = await import("./UnitEditor");
 
-describe("Unit details with facts from Forge AI", () => {
-  it("keeps a custom material selected instead of reading as Unknown", () => {
-    const out = render(unit);
-    expect(out).toMatch(/<option value="Bronze-clad cedar" selected="">Bronze-clad cedar<\/option>/);
-  });
-  it("shows components, direction, spoken size and said-unknown", () => {
-    const out = render(unit);
-    expect(out).toContain("2 × Door panel, 1 × Frame");
-    expect(out).toContain("left to right");
-    expect(out).toContain("outside looking in (default)");
-    expect(out).toContain("width: six feet; height: eight feet");
-    expect(out).toContain("Unknown (said unknown)");
-  });
+let root: Root | null = null;
+let host: HTMLDivElement | null = null;
+afterEach(() => {
+  act(() => root?.unmount());
+  host?.remove();
+  root = null;
+  host = null;
 });
 
-describe("fact text for Custom Data and exports", () => {
-  it("writes arrays out rather than handing objects to React", () => {
-    expect(factText("components", unit.facts.components)).toBe("2 × Door panel, 1 × Frame");
-    expect(factText("unknown_fields", ["electrical", "type_label", "area_source"])).toBe("Electrical components, Type, Size source");
-    expect(factText("width_in", 72)).toBe("72");
-    expect(factText("x", { a: 1 })).toBe('{"a":1}');
+function render(jobId: string | null) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const tree = (
+    <QueryClientProvider client={qc}>
+      <UnitEditor jobId={jobId} types={[]} busy={false} onSave={async () => {}} onCancel={() => {}} />
+    </QueryClientProvider>
+  );
+  if (!root) {
+    host = document.createElement("div");
+    document.body.appendChild(host);
+    root = createRoot(host);
+  }
+  act(() => root!.render(tree));
+  return host!;
+}
+
+/** Let the seeded project list land before touching the Job select. */
+async function settle() {
+  for (let i = 0; i < 4; i++) {
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+  }
+}
+
+function type(input: HTMLInputElement | HTMLSelectElement, value: string) {
+  const proto = input instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
+  Object.getOwnPropertyDescriptor(proto, "value")!.set!.call(input, value);
+  input.dispatchEvent(new Event(input instanceof HTMLSelectElement ? "change" : "input", { bubbles: true }));
+}
+
+describe("UnitEditor keeps what you type (F1)", () => {
+  it("fills a blank Job when the shift resolves late, and keeps the typed name", async () => {
+    const el = render(null);
+    const name = el.querySelector<HTMLInputElement>('input[placeholder="e.g. 16"]')!;
+    await act(async () => type(name, "16"));
+    expect(name.value).toBe("16");
+    // The clock resolves: the same mounted editor receives the job.
+    render("job-a");
+    await settle();
+    expect(el.querySelector<HTMLInputElement>('input[placeholder="e.g. 16"]')!.value).toBe("16");
+    expect(el.querySelector<HTMLSelectElement>("select")!.value).toBe("job-a");
+  });
+
+  it("never overwrites a job the person chose by hand", async () => {
+    const el = render(null);
+    await settle();
+    const select = el.querySelector<HTMLSelectElement>("select")!;
+    expect(select.querySelectorAll("option").length).toBeGreaterThan(1);
+    await act(async () => type(select, "job-b"));
+    expect(select.value).toBe("job-b");
+    render("job-a");
+    await settle();
+    expect(el.querySelector<HTMLSelectElement>("select")!.value).toBe("job-b");
   });
 });

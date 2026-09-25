@@ -58,6 +58,7 @@ export const QUERY_KEY_ROOTS: QueryKeyRootEntry[] = [
   { root: "jobExecutionStages", offline: false },
   { root: "laborStatsRoster", offline: false },
   { root: "laborStatsShifts", offline: false },
+  { root: "workSchedule", offline: true, why: "Release 1 (K1.6): the Work screen's Today card and the Schedule tab read the same window (today + 7 days) and must say \"Showing your schedule from <time> — can't reach Forge\" on a phone with no signal, never \"no work\". A phone that cannot show yesterday's copy of where to be this morning is the failure the offline work exists for." },
   { root: "workflowLinks", offline: false },
   { root: "workflowMyTrips", offline: false },
   { root: "workflowPlans", offline: false },

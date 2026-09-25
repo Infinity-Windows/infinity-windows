@@ -1,10 +1,9 @@
 import { useState } from "react";
 import { useFieldT as useT, type TKey } from "./fieldCatalog";
-import { formatApiError } from "../../lib/errors";
 import { openClockGlobally } from "../../lib/clockContext";
 import { guardedResolve, TimingPendingError, type FieldReceipt } from "../../lib/fieldAsk";
 import type { ChecklistItem, SetupChecklist } from "../../../../supabase/functions/_shared/fieldTools";
-import { differenceLabel, differenceText, optionText, reasonText } from "./fieldCardText";
+import { choiceFailureText, differenceLabel, differenceText, optionText, reasonText } from "./fieldCardText";
 import { receiptStatus } from "../../lib/askReceiptGuard";
 
 const time = (iso?: string) => (iso ? new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "");
@@ -76,7 +75,7 @@ export function FieldReceiptCard({ receipt, onChange, timingPending }: {
   const choose = async (choice: string) => {
     setBusy(true); setError("");
     try { onChange(await guardedResolve(receipt, choice, { timingPending })); }
-    catch (e) { setError(e instanceof TimingPendingError ? t("field.timingPending") : `${t("field.choiceFailed")} ${formatApiError(e)}`); }
+    catch (e) { setError(e instanceof TimingPendingError ? t("field.timingPending") : choiceFailureText(t, e)); }
     finally { setBusy(false); }
   };
   return (

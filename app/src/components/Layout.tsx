@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
+  CalendarDays,
   Camera,
   Clock as ClockIcon,
   Coffee,
@@ -19,7 +20,10 @@ import { ROLE_LABELS, type CrewRole } from "../lib/install/types";
 import { CoreValuesStrip } from "./CoreValuesStrip";
 import { bottomBarForRole, menuForRole, roleRank, type MenuAction } from "../lib/nav";
 import { useClock } from "../lib/clockContext";
+import { useDesign } from "../lib/design/context";
+import { useDisplayMode } from "../lib/displayMode";
 import { useT } from "../lib/i18n";
+import { ClockBadge } from "./clock/ClockBadge";
 import { formatClock } from "../lib/timeclock";
 import { shiftGuard } from "../lib/shiftGuard";
 import { effectiveRole, previewableRoles, useViewAsRole } from "../lib/viewAsRoleContext";
@@ -48,6 +52,9 @@ import {
 /** Icons for the registry-driven bottom-bar link tabs (see `bottomBarForRole`). */
 const TAB_ICONS: Record<string, ReactNode> = {
   today: <Hammer size={20} />,
+  // Release 1's bar: Work keeps the hammer, Schedule gets the calendar.
+  work: <Hammer size={20} />,
+  schedule: <CalendarDays size={20} />,
   scan: <ScanLine size={20} />,
   ask: <Sparkles size={20} />,
   jobs: <LayoutGrid size={20} />,
@@ -69,6 +76,11 @@ export function Layout() {
   const view = useViewAsRole();
   const role = effectiveRole(me.data?.role, view);
   const isInstaller = roleRank(role) === 0;
+  // Release 1 (K-X2): which front door this person chose. The classic bar and
+  // menus are untouched when it is "classic"; "new" swaps in K1.1's bar.
+  const { design } = useDesign();
+  const isNewDesign = design === "new";
+  const { layout } = useDisplayMode();
   const location = useLocation();
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -159,6 +171,7 @@ export function Layout() {
     role === realMe.data?.role
       ? { costs: realMe.data?.can_see_costs === true, pay: realMe.data?.can_see_pay === true }
       : {},
+    design,
   );
   const isActionActive = (action: MenuAction) => (action === "open-clock" ? clock.isOpen : false);
   const onMenuAction = (action: MenuAction) => {
@@ -338,12 +351,18 @@ export function Layout() {
               are untouched. */}
           <CoreValuesStrip
             pathname={location.pathname}
-            hidden={isInstaller && location.pathname === "/"}
+            // Release 1: the new design's Work screen has one stated job and
+            // carries no strip (K-X3, no fat), for every role.
+            hidden={(isInstaller || isNewDesign) && location.pathname === "/"}
           />
           {/* Phones only (hidden from 860px up, where the rail carries it).
               In the page flow rather than floating over it, so it can never
-              land on top of a job title. */}
-          <div className="sync-strip">
+              land on top of a job title. In the new design (K1.1) the same
+              row carries the "Clocked in 7:02" badge on the left — the door
+              to break / clock out from any screen now that the bar has no
+              Clock tab. */}
+          <div className="sync-strip" data-design={isNewDesign ? "new" : undefined}>
+            {isNewDesign && <ClockBadge />}
             <SyncStatusPill />
           </div>
           {previewingPerson ? (
@@ -377,22 +396,30 @@ export function Layout() {
         </main>
       </div>
 
-      <GlobalAskFab />
+      {/* K1.1: the floating Ask button goes on phones in the new design —
+          Ask is a bar tab there, and a second door stacked over it was fat.
+          It stays on the desktop layout, whose rail has no bar, and on the
+          classic design everywhere. */}
+      {!(isNewDesign && layout === "phone") && <GlobalAskFab />}
       <ScanFab />
 
-      {!menuOpen && !captureOpen && !clock.isOpen && <FeatureTip />}
+      {/* The first-run tip for "/" describes the classic landing ("Tap Clock
+          to start your shift"); on the new design's Work screen it would be
+          wrong, so it stays off there. */}
+      {!menuOpen && !captureOpen && !clock.isOpen && !(isNewDesign && location.pathname === "/") && <FeatureTip />}
 
       <nav className="tabbar" aria-label="Main">
-        {bottomBarForRole(role).map((tab) => {
+        {bottomBarForRole(role, design).map((tab) => {
           if (tab.kind === "menu") {
+            const menuLabel = tab.i18nKey ? t(tab.i18nKey) : (tab.label ?? "Menu");
             return (
               <TabButton
                 key="menu"
-                label="Menu"
+                label={menuLabel}
                 icon={<MenuIcon size={20} />}
                 active={menuOpen}
                 onClick={openMenu}
-                ariaLabel="Open menu"
+                ariaLabel={tab.i18nKey ? t("nav.more.a11y") : "Open menu"}
                 ariaExpanded={menuOpen}
               />
             );
@@ -421,7 +448,7 @@ export function Layout() {
           return (
             <TabLink
               key={tab.id}
-              label={tab.label}
+              label={tab.i18nKey ? t(tab.i18nKey) : tab.label}
               to={tab.to}
               end={tab.end}
               icon={TAB_ICONS[tab.id] ?? <LayoutGrid size={20} />}
@@ -443,6 +470,7 @@ export function Layout() {
       <AppMenuDrawer
         open={menuOpen}
         onClose={() => setMenuOpen(false)}
+        title={isNewDesign ? t("nav.more") : "Menu"}
         sections={sections}
         onNavigate={() => setMenuOpen(false)}
         onAction={onMenuAction}

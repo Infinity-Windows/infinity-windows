@@ -113,7 +113,7 @@ export const FIELD_TOOLS: AnthropicToolDef[] = [
   },
   {
     name: "start_unit_work", strict: true,
-    description: "Start the caller's OWN timer on a saved unit (job, unit number and type known), as soon as they ask to start. Do not check their clock, break or job first: the database answers with a card when they are not clocked in, on another job, on break, or the unit is someone else's, and you relay what it says. Stage not said means Installing. Repeating never restarts a running timer.",
+    description: "Start the caller's OWN timer on a saved unit (job, unit number and type known), as soon as they ask to start. Do not check their clock, break or job first: the database answers with a card when they are not clocked in, on another job, on break, or the unit is someone else's, and you relay what it says. It is also refused while today's toolbox talk is unsigned, even on the clock — then tell them to sign it on Work (Finish your toolbox talk) and ask again. Stage not said means Installing. Repeating never restarts a running timer.",
     input_schema: strictObject({
       project_id: { type: "string" }, unit_id: { type: "string" },
       stage: { type: "string", enum: [...WORK_STAGES] },
@@ -122,12 +122,16 @@ export const FIELD_TOOLS: AnthropicToolDef[] = [
   },
   {
     name: "start_idle_time", strict: true,
-    description: "Start the caller's own idle-time timer (non-unit work such as loading or waiting) on their current job clock, only when explicitly asked.",
-    input_schema: strictObject({ description: { type: "string", description: "What the idle time is, e.g. 'Loading or unloading'." } }),
+    // K1.5 (2026-09-23): the crew calls this PREP TIME now — job work that
+    // isn't on one unit. The tool NAME stays start_idle_time (a stored
+    // identifier); the words teach the model both names so "idle" and "prep"
+    // both land here.
+    description: "Start the caller's own prep-time timer (formerly 'idle time': job work that isn't on one unit — gathering, hauling, setup, errands, cleanup) on their current job clock, only when explicitly asked. Refused while today's toolbox talk is unsigned, even on the clock — tell them to sign it on Work (Finish your toolbox talk) and ask again. Waiting on an outside cause is a block on the unit, not prep time.",
+    input_schema: strictObject({ description: { type: "string", description: "What the prep time is, one of Gathering, Hauling, Setup, Errand, Cleanup or Other — e.g. 'Hauling'." } }),
   },
   {
     name: "stop_my_work", strict: true,
-    description: "Stop the caller's OWN running unit or idle timer, as soon as they ask to stop or finish it with an outcome: 'Stop my timer, finished' is one call with outcome finished, no question first. Call it even when get_field_context shows no timer running: its receipt (already stopped) is what the phone needs, your reading of the clock is not. Only when they say just 'finished' or 'done' on its own, without asking to stop the timer, ask first whether they mean this stage or the whole unit. The job clock keeps running and helpers keep working; this records the STAGE outcome only and never approves QC.",
+    description: "Stop the caller's OWN running unit or prep-time timer, as soon as they ask to stop or finish it with an outcome: 'Stop my timer, finished' is one call with outcome finished, no question first. Call it even when get_field_context shows no timer running: its receipt (already stopped) is what the phone needs, your reading of the clock is not. Only when they say just 'finished' or 'done' on its own, without asking to stop the timer, ask first whether they mean this stage or the whole unit. The job clock keeps running and helpers keep working; this records the STAGE outcome only and never approves QC.",
     input_schema: strictObject({ outcome: { type: "string", enum: ["finished", "partial", "blocked", "rework"] }, note: nullable("string") }),
   },
   {
@@ -365,7 +369,7 @@ export function fieldCommand(name: string, input: unknown): FieldCommand {
     }
     case "start_idle_time": {
       const description = text(a.description, 4000);
-      if (!description) throw new Error("Ask what the idle time is for.");
+      if (!description) throw new Error("Ask what the prep time is for.");
       return { action: "start_idle", key: `idle:${norm(description).slice(0, 80)}`, data: { description } };
     }
     case "stop_my_work": {

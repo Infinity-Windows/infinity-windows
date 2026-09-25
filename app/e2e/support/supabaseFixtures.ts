@@ -181,6 +181,18 @@ export interface FixtureOptions {
    * cache alone is overruled the moment the profile query returns.
    */
   language?: "en" | "es";
+  /**
+   * Release 1 (crew redesign K-X2): which front door the fixture person
+   * chose. Defaults to the classic screens, which is what every existing
+   * spec was written against; a Release 1 spec opts into "new".
+   */
+  uiDesign?: "classic" | "new";
+  /**
+   * Read on EVERY profile response and merged over the fixture row, so a
+   * spec can move the profile after a write it captured (a design switch,
+   * say) the way the real server would.
+   */
+  profileOverrides?: () => Record<string, unknown>;
 }
 
 /** Every first-run micro-tip, pre-dismissed (see lib/featureTips). */
@@ -308,6 +320,7 @@ export async function useSupabaseFixtures(
     can_see_costs: opts.canSeeCosts ?? false,
     can_see_pay: opts.canSeePay ?? false,
     language: opts.language ?? "en",
+    ui_design: opts.uiDesign ?? "classic",
   };
 
   // A session in localStorage, under whatever key this build's Supabase URL
@@ -417,7 +430,8 @@ export async function useSupabaseFixtures(
         // Most feature tests run without a release feed; update tests opt in.
         return jsonRoute(route, [], 0);
       case "profiles": {
-        const all = [...profiles, profile];
+        const live = opts.profileOverrides ? { ...profile, ...opts.profileOverrides() } : profile;
+        const all = [...profiles, live];
         const id = eqParam(url, "id");
         const rows = id ? all.filter((p) => p.id === id) : all;
         if (wantsSingleObject(route)) {

@@ -64,7 +64,7 @@ async function actor(): Promise<string | null> {
 // may read, so `select("*")` against it fails by design. Add a column here only
 // after a migration grants SELECT on it to `authenticated`.
 export const PROFILE_COLS =
-  "id, display_name, skill_level, role, active, language, can_see_costs, can_see_pay, retired_at, created_at, updated_at";
+  "id, display_name, skill_level, role, active, language, can_see_costs, can_see_pay, retired_at, ui_design, created_at, updated_at";
 
 /**
  * The columns a database might not have yet, newest first, with the name the
@@ -82,6 +82,8 @@ export const PROFILE_COLS =
  * drops that too.
  */
 const OPTIONAL_PROFILE_COLS: readonly { column: string; inList: string }[] = [
+  // Release 1's design switch (20261031000000), newest first.
+  { column: "ui_design", inList: ", ui_design" },
   { column: "retired_at", inList: ", retired_at" },
   { column: "can_see_costs", inList: ", can_see_costs, can_see_pay" },
 ];
@@ -472,6 +474,16 @@ export async function setMyPin(pin: string): Promise<void> {
  */
 export async function setMyLanguage(lang: "en" | "es"): Promise<void> {
   const { error } = await supabase.rpc("set_my_language", { p_lang: lang });
+  if (error) throw error;
+}
+
+/**
+ * Release 1 (K-X2): the person's own front door, "classic" or "new". The same
+ * shape as set_my_language — SECURITY DEFINER, scoped to auth.uid(), the one
+ * writer of profiles.ui_design (20261031000000).
+ */
+export async function setMyUiDesign(design: "classic" | "new"): Promise<void> {
+  const { error } = await supabase.rpc("set_my_ui_design", { p_design: design });
   if (error) throw error;
 }
 

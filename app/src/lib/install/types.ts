@@ -178,6 +178,14 @@ export interface Profile {
    * removed" — the safe answer, because it shows a person who is still there.
    */
   retired_at?: string | null;
+  /**
+   * Release 1 (crew redesign K-X2, 20261031000000): which front door this
+   * person chose, "classic" or "new". NOT NULL DEFAULT 'classic' in the
+   * database; optional only for a row parsed before the column existed, which
+   * reads as classic — the safe answer, because it is the screen everyone
+   * already knows. Written only through set_my_ui_design().
+   */
+  ui_design?: "classic" | "new";
   created_at?: string;
   updated_at?: string;
 }

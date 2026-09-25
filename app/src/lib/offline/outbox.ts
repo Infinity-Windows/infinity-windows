@@ -1048,6 +1048,25 @@ export async function listFailed(): Promise<OutboxEntry[]> {
     .sort((a, b) => b.createdAt - a.createdAt);
 }
 
+const PHOTO_OPS = new Set(["photo_upload", "issue_photo_upload"]);
+
+/**
+ * Photos still on this phone that WILL be sent (queued or mid-send), and when
+ * the oldest of them was taken — the Work screen's "photo unsent for over an
+ * hour" heads-up (crew redesign K1.9). Failed photos are not counted: they
+ * have stopped trying and are already on the stuck list with their reason.
+ * Read from the durable store, never the cached counts, which are empty
+ * until the first refresh after a reload — the moment Work first draws.
+ */
+export async function pendingPhotos(): Promise<{ count: number; oldestAt: number | null }> {
+  const all = await store.getAll();
+  const photos = all.filter((e) => PHOTO_OPS.has(e.op) && isPending(e));
+  return {
+    count: photos.length,
+    oldestAt: photos.length ? Math.min(...photos.map((e) => e.createdAt)) : null,
+  };
+}
+
 /**
  * Put one failed write back in the queue and try it now.
  *

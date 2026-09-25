@@ -108,6 +108,63 @@ describe("bottomBarForRole (phone bottom bar)", () => {
       }
     }
   });
+
+  // Release 1, the new front door (crew redesign K1.1, owner-approved
+  // 2026-09-23). The NEW design's bar is the same five for every role:
+  // Work · Schedule · (+) · Ask · More. No Clock tab — the clock lives at the
+  // top of Work and as the top-bar badge — and nothing else from the app is
+  // removed, only moved (foremen's Jobs onto Work and into More).
+  describe("the new design's bar (K1.1)", () => {
+    const roles = ["installer", "foreman", "supervisor", "owner"] as const;
+
+    it("is Work · Schedule · Capture · Ask · More for every role", () => {
+      for (const role of roles) {
+        const tabs = bottomBarForRole(role, "new");
+        expect(tabs.map((t) => t.kind)).toEqual(["link", "link", "capture", "link", "menu"]);
+        const links = tabs.filter((t): t is Extract<typeof t, { kind: "link" }> => t.kind === "link");
+        expect(links.map((t) => t.label)).toEqual(["Work", "Schedule", "Ask"]);
+        expect(links.map((t) => t.to)).toEqual(["/", "/my-schedule", "/ask"]);
+        expect(links.every((t) => t.i18nKey), `${role}'s new bar speaks both languages`).toBe(true);
+      }
+    });
+
+    it("has no Clock tab — the badge in the top bar is the clock's door", () => {
+      for (const role of roles) {
+        expect(bottomBarForRole(role, "new").some((t) => t.kind === "clock")).toBe(false);
+      }
+    });
+
+    it("calls the drawer More, in both languages", () => {
+      const more = bottomBarForRole("installer", "new").find((t) => t.kind === "menu");
+      expect(more && "label" in more ? more.label : null).toBe("More");
+      expect(more && "i18nKey" in more ? more.i18nKey : null).toBe("nav.more");
+    });
+
+    it("leaves the classic bar exactly as it was (K-X2: old screens frozen)", () => {
+      for (const role of roles) {
+        expect(bottomBarForRole(role, "classic")).toEqual(bottomBarForRole(role));
+      }
+    });
+
+    it("names the home door Work everywhere in the new design's menus", () => {
+      for (const role of roles) {
+        const home = menuForRole(role, undefined, "new")
+          .flatMap((s) => s.items)
+          .find((i) => i.to === "/");
+        expect(home?.label, `${role}`).toBe("Work");
+        // And the classic menu keeps its own names (My Work / Home).
+        const classicHome = menuForRole(role)
+          .flatMap((s) => s.items)
+          .find((i) => i.to === "/");
+        expect(classicHome?.label).toBe(role === "installer" ? "My Work" : "Home");
+      }
+    });
+
+    it("keeps foremen's Jobs reachable from More", () => {
+      const paths = menuForRole("foreman", undefined, "new").flatMap((s) => s.items).map((i) => i.to);
+      expect(paths).toContain("/projects");
+    });
+  });
 });
 
 describe("canAccess", () => {

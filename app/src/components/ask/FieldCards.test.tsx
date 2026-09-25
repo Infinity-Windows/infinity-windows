@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { FieldChecklist, FieldReceiptCard } from "./FieldCards";
-import { optionText, reasonText } from "./fieldCardText";
+import { choiceFailureText, optionText, reasonText } from "./fieldCardText";
 import { buildChecklist, completeAnswers } from "../../../../supabase/functions/_shared/fieldTools";
 import { translate } from "../../lib/i18n/translate";
 import { CATALOG } from "../../lib/i18n/catalog";
@@ -59,6 +59,15 @@ describe("receipt cards", () => {
     expect(reasonText(es, r)).toContain("obra parecida");
     expect(optionText(es, r, r.options![0])).toBe("Usar Smith Residence");
     expect(optionText(es, r, r.options![1])).toBe("Crear una obra nueva aparte");
+  });
+  it("a tap Forge refused for the toolbox signature says so in the reader's words; any other refusal keeps the server's sentence", () => {
+    const en = ((key: TKey, vars?: Record<string, string | number>) => translate({ ...CATALOG, ...FIELD_CATALOG }, "en", key, vars)) as never;
+    // Start now on a prep-time card, and Join as helper on a unit card — the two gate sentences (20261031000000).
+    expect(choiceFailureText(en, { code: "P0001", message: "Sign today's toolbox talk before starting work." })).toContain("Sign it under Finish your toolbox talk on Work");
+    expect(choiceFailureText(es, { code: "P0001", message: "Sign today's toolbox talk before starting work on a unit." })).toContain("charla de seguridad");
+    expect(choiceFailureText(en, new Error("Your current work changed. Sync and review before retrying."))).toBe(
+      "That choice was not saved. Nothing changed from it; try again. Your current work changed. Sync and review before retrying.",
+    );
   });
 });
 

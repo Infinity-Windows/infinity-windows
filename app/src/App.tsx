@@ -31,6 +31,7 @@ import { authErrorFromHash, isRecoveryLanding } from "./lib/passwordReset";
 import { SetNewPassword } from "./components/SetNewPassword";
 import { ViewAsRoleProvider } from "./lib/viewAsRole";
 import { useEffectiveRole } from "./lib/useEffectiveRole";
+import { useDesign } from "./lib/design/context";
 import { supabase } from "./lib/supabase";
 import { rememberSignedIn } from "./lib/signedIn";
 import { Home } from "./pages/Home";
@@ -40,7 +41,6 @@ import { ProjectDetail } from "./pages/ProjectDetail";
 import { Projects } from "./pages/Projects";
 import { StuckWrites } from "./pages/StuckWrites";
 import { Diagnostics } from "./pages/Diagnostics";
-import { Settings } from "./pages/Settings";
 import { SignIn } from "./pages/SignIn";
 import { OpeningSheetRoute } from "./pages/install/OpeningSheet";
 import { JoinCrew } from "./pages/JoinCrew";
@@ -49,6 +49,7 @@ import { MyWork } from "./pages/MyWork";
 import { Heartbeat } from "./pages/Heartbeat";
 import { PinGate } from "./components/PinGate";
 import { LanguageProvider } from "./lib/i18n";
+import { DesignProvider } from "./lib/design/DesignProvider";
 import { FirstRunLanguagePicker } from "./components/LanguagePicker";
 import { ensureMyProfile } from "./lib/install/api";
 import { SkeletonCard } from "./components/ui/States";
@@ -58,8 +59,8 @@ import "./index.css";
 /**
  * Route-level code splitting (owner-approved plan, step 1): a phone opening
  * this app at 6 AM should download the shell it actually needs — the "/"
- * landing, the opening sheet, the project hub, the warehouse, sign-in/join,
- * settings and the two write-recovery screens (StuckWrites, Diagnostics) —
+ * landing, the opening sheet, the project hub, the warehouse, sign-in/join
+ * and the two write-recovery screens (StuckWrites, Diagnostics) —
  * and nothing else. Every other route below is wrapped in `lazyRoute()`
  * (lib/pwa/lazyRoute.tsx), so its chunk (and whatever it pulls in — pdf.js for
  * the plan viewer, three.js and the Draco decoders for the 3D model tools)
@@ -73,6 +74,17 @@ import "./index.css";
  * offline use is unaffected once the first background sync finishes.
  */
 const CurrentWork = lazyRoute(() => import("./pages/customWork/CurrentWork").then(m => ({default:m.CurrentWork})));
+// Release 1 (crew redesign K1.2): the new design's landing. Lazy on purpose —
+// the classic shell stays what a phone downloads first, and the person who
+// switched designs gets this chunk once, precached like every other route.
+const WorkScreen = lazyRoute(() => import("./pages/work/WorkScreen").then((m) => ({ default: m.WorkScreen })));
+// K1.6: the new design's Schedule tab, at the classic My Schedule address.
+const Schedule = lazyRoute(() => import("./pages/work/Schedule").then((m) => ({ default: m.Schedule })));
+// Settings left the eager shell with Release 1 (2026-09-23): the entry chunk
+// sat a hair under its budget and Settings is the one shell screen nobody
+// needs at 6 AM with no signal — it is precached like every other route, and
+// the two write-recovery screens (StuckWrites, Diagnostics) stay eager.
+const Settings = lazyRoute(() => import("./pages/Settings").then((m) => ({ default: m.Settings })));
 const AskInfinity = lazyRoute(() => import("./pages/AskInfinity").then((m) => ({ default: m.AskInfinity })));
 const AskMisses = lazyRoute(() => import("./pages/AskMisses").then((m) => ({ default: m.AskMisses })));
 const Knowledge = lazyRoute(() => import("./pages/Knowledge").then((m) => ({ default: m.Knowledge })));
@@ -221,6 +233,7 @@ function RouteFallback() {
 function RoleLanding() {
   const { effectiveRole: role, isLoading } = useEffectiveRole();
   const clock = useClock();
+  const { design } = useDesign();
   const service = useQuery({
     queryKey: ["serviceActive", clock.profileId],
     queryFn: async () => (await import("./lib/servicing/api")).listActiveService(clock.profileId!),
@@ -231,6 +244,10 @@ function RoleLanding() {
   // must stay mounted while its refresh retries the service lookup.
   if (clock.shift?.status === "open" && service.isLoading && !service.errorUpdatedAt && !service.dataUpdatedAt) return <div className="page">Loading current work…</div>;
   if (clock.shift?.status === "open" && service.data?.[0]) return <Navigate replace to={`/service?visit=${service.data[0].visit_id}`} />;
+  // Release 1 (K-X2 / K1.2 / K1.4): the new design lands on Work for every
+  // role, on and off the clock — Work carries the clock, the running unit and
+  // Next up itself. A running service visit above still wins in both designs.
+  if (design === "new") return <WorkScreen />;
   if (clock.shift?.status === "open") return <CurrentWork />;
   if (!ROLE_NAV_V2) return <Home />;
   if (isLoading) return <div className="page"><p className="muted">Loading…</p></div>;
@@ -300,6 +317,17 @@ function RequirePartnerElsewhere({ children }: { children: ReactNode }) {
   }
   if (isPartner.data) return <Navigate to="/stg" replace />;
   return <>{children}</>;
+}
+
+/**
+ * /my-schedule is the classic My Schedule page, or — for a person on the new
+ * design — Release 1's Schedule tab (K1.6). One address, so the bottom bar,
+ * the Today card's link and every bookmark keep working whichever design a
+ * person chose.
+ */
+function ScheduleRoute() {
+  const { design } = useDesign();
+  return design === "new" ? <Schedule /> : <MySchedule />;
 }
 
 /** Legacy /install/:projectId/* bookmarks → unified /projects/:id hub. */
@@ -564,6 +592,11 @@ export default function App() {
       }}
     >
       <LanguageProvider>
+      {/* Release 1 (K-X2): which front door renders — the person's own choice
+          under the owner's master switch. Beside the language provider on
+          purpose: both are the viewer's own preference, both read the real
+          profile, both paint from a device cache before it answers. */}
+      <DesignProvider>
       {/* The first-login language choice sits above everything — even the PIN
           gate — so a new crew member picks their language before the app asks
           for anything else. It renders nothing once a choice exists. */}
@@ -844,7 +877,7 @@ export default function App() {
             />
             <Route
               path="/my-schedule"
-              element={<RequireRole path="/my-schedule"><MySchedule /></RequireRole>}
+              element={<RequireRole path="/my-schedule"><ScheduleRoute /></RequireRole>}
             />
             <Route
               path="/travel"
@@ -922,6 +955,7 @@ export default function App() {
       </BrowserRouter>
       </ViewAsRoleProvider>
       </PinGate>
+      </DesignProvider>
       </LanguageProvider>
     </PersistQueryClientProvider>
   );
