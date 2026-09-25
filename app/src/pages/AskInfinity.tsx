@@ -260,20 +260,27 @@ export function AskInfinity() {
   const readClockNow = (g = gen.current) => {
     void readClockVersion().then((v) => { if (isCurrent(g)) clockSeen.current = v; });
   };
-  const resetFieldUi = () => {
+  const resetFieldUi = ({ keepInput = false }: { keepInput?: boolean } = {}) => {
     gen.current += 1;
     recordAbort.current?.abort();
     recording.current?.cancel();
     recording.current = null;
     clockSeen.current = null;
-    setInput(""); setVoice("idle"); setThinking(false); setVoiceError(""); setRestoreError(false); setHeld(null);
+    if (!keepInput) setInput("");
+    setVoice("idle"); setThinking(false); setVoiceError(""); setRestoreError(false); setHeld(null);
     setLogOpen(false); logOpenRef.current = false;
     setMessages([{ who: "infinity", text: t("ask.greeting") }]);
     return gen.current;
   };
 
   useEffect(() => {
-    const g = resetFieldUi();
+    // The first resolution of the account (nobody → somebody) is the person
+    // who just arrived, not a different one, so it keeps what the arrival
+    // brought along with the tag below: Scheduling's "Plan with AI" puts its
+    // prompt in the box before the account resolves, and wiping it here
+    // landed a supervisor on an empty Ask (nightly e2e, red since Sep 17).
+    // Any later change of account still starts with an empty box.
+    const g = resetFieldUi({ keepInput: !lastActor.current });
     actor.current = userId;
     setUnsent([]);
     setConversation(null);
