@@ -12,11 +12,12 @@
 --   3. Four helpers, each the ONE copy of a rule:
 --        _toolbox_signed_today — "is today's talk on this person's record";
 --        _toolbox_gate_open    — "may this person clock in without today's
---                                signature", replacing five inline copies in
+--                                signature", replacing six inline copies in
 --                                the clock_in overloads. The bodies below are
 --                                the latest ones (20260813000000 for the four
 --                                older overloads, 20260970000000 for the
---                                p_mode one), extracted verbatim with ONLY
+--                                p_mode one, 20261028000000 for Release 0's
+--                                keyed one), extracted verbatim with ONLY
 --                                the gate's condition moved into the helper;
 --        _unit_work_gate       — "refuse unit work until today's talk is
 --                                signed", the plain sentence and all;
@@ -72,10 +73,12 @@
 -- proves every path both ways.
 --
 -- Coordination notes:
---   * Release 0 (clock integrity): any later overload of clock_in — a client
---     id, a tap time — keeps its gate as
---     `if not public._toolbox_gate_open(auth.uid()) then raise …`, so the rule
---     cannot be forgotten by one path.
+--   * Release 0 (clock integrity, 20261028000000) merges first. Its keyed
+--     clock_in — the one the app calls — is restated below as 3f with the
+--     shared gate, so the rule opens the door the phone actually uses (Codex
+--     review of #642, 2026-09-25). Any LATER overload of clock_in keeps its
+--     gate as `if not public._toolbox_gate_open(<caller>) then raise …`, so
+--     the rule cannot be forgotten by one path.
 --   * A NEW RPC that starts a timer on a unit — a session, a phase, a helper —
 --     calls `perform public._unit_work_gate(auth.uid())` right after its
 --     open-shift check, for the same reason; one that starts Prep time calls
@@ -331,7 +334,7 @@ comment on function public._prep_time_gate(uuid) is
 revoke all on function public._prep_time_gate(uuid) from public, anon;
 grant execute on function public._prep_time_gate(uuid) to authenticated;
 
--- 3a–3e. One gate, five doors: the clock_in overloads.
+-- 3a–3f. One gate, six doors: the clock_in overloads.
 -- 3a. The five-argument overload (20260813000000).
 create or replace function clock_in(
   p_project_id uuid,
@@ -459,7 +462,8 @@ begin
 end;
 $$;
 
--- 3e. The note + mode overload (20260970000000) — the one the app calls first.
+-- 3e. The note + mode overload (20260970000000) — the one the app called
+-- first before Release 0; a bundle from before it still does.
 create or replace function clock_in(
   p_project_id uuid,
   p_cost_code_id uuid,
@@ -489,6 +493,144 @@ begin
   return v_shift;
 end;
 $$;
+
+-- 3f. The keyed overload (20261028000000, Release 0) — the one the app calls
+-- first since #640: the tap's one-time id, the mode and the tap time. That
+-- migration merges first and carries its own inline copy of the toolbox
+-- check; left alone, the paid-time rule would open the five doors above and
+-- keep this one shut, so Start day would promise a clock-in the database
+-- refused (Codex review of #642, 2026-09-25). Restated from 20261028000000's
+-- final body VERBATIM — the per-person advisory lock, the replay lookups (a
+-- repeat of a saved id is answered BEFORE the gate, so a punch saved while
+-- the gate was open still comes back if it has closed since), the dangling-
+-- shift close, the tap-time rule and the timeline check against completed
+-- shifts, last_punch_at, the ledger row and the review flag — with ONE
+-- change: the inline `if not exists (select 1 from toolbox_completions …)`
+-- condition is `if not public._toolbox_gate_open(v_uid)`. SECURITY DEFINER
+-- and its pinned search_path stay as they were; the grants are restated so
+-- this file says who may call it. app/src/lib/frontDoorKeyedClockIn.test.ts
+-- pins the body to 20261028000000's line for line, but for that condition.
+create or replace function public.clock_in(
+  p_project_id uuid,
+  p_cost_code_id uuid,
+  p_photo text,
+  p_lat double precision,
+  p_lng double precision,
+  p_note text,
+  p_mode text,
+  p_client_id uuid,
+  p_tapped_at timestamptz default null,
+  p_clock_checked_at timestamptz default null,
+  p_clock_skew_ms integer default null
+)
+returns public.time_shifts
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_shift public.time_shifts;
+  v_pick public.clock_time_pick;
+  v_had_open boolean;
+  v_previous_end timestamptz;
+begin
+  if v_uid is null then
+    raise exception 'Sign in before clocking in.';
+  end if;
+  if public.is_partner_user() then
+    raise exception 'Not available for your account.' using errcode = '42501';
+  end if;
+  if p_client_id is null then
+    raise exception 'This clock-in is missing its id. Update the app and try again.';
+  end if;
+
+  -- One person, one clock-in at a time, until this transaction ends. Two
+  -- devices sending clock-ins together — or one tap resent neck and neck
+  -- with itself — would otherwise both read the timeline below before either
+  -- had written to it, and the second would not see the first's shift.
+  perform pg_advisory_xact_lock(hashtextextended('clock_in:' || v_uid::text, 0));
+
+  -- The same tap arriving twice: answer with the shift it already made.
+  select ts.* into v_shift
+    from public.time_clock_actions a
+    join public.time_shifts ts on ts.id = a.shift_id
+   where a.client_id = p_client_id and a.profile_id = v_uid;
+  if v_shift.id is not null then
+    return v_shift;
+  end if;
+  -- A queued punch that went through the older client_id overload before the
+  -- app updated, then retried through this one.
+  select * into v_shift from public.time_shifts
+   where client_id = p_client_id and profile_id = v_uid;
+  if v_shift.id is not null then
+    return v_shift;
+  end if;
+
+  if not public._toolbox_gate_open(v_uid) then
+    raise exception 'complete today''s toolbox talk before clocking in';
+  end if;
+
+  -- A shift still open when this one arrives is closed at ARRIVAL by the
+  -- dangling-shift guard. Starting the new one at an earlier tap time would
+  -- overlap the two and pay the gap twice, so the new one starts at arrival
+  -- too, and says why.
+  select exists (
+    select 1 from public.time_shifts
+     where profile_id = v_uid and status = 'open' and clock_out_at is null
+  ) into v_had_open;
+  perform public._close_dangling_shift(v_uid);
+
+  if v_had_open then
+    v_pick := (now(), false, 'previous_shift_open')::public.clock_time_pick;
+  else
+    v_pick := public._clock_pick_time(p_tapped_at, p_clock_checked_at, p_clock_skew_ms, null);
+    -- The end of this person's timeline: the latest moment any shift that
+    -- still counts reached (a voided one has left every total; a completed
+    -- or approved one has not). A trusted tap before it would start this
+    -- shift inside the previous one and pay the overlap twice — the stale
+    -- device whose earlier clock-in arrives after another phone or the
+    -- office closed the day. Arrival instead, marked, with the tap kept in
+    -- the ledger for the review. An untrusted tap is already arrival time.
+    select max(greatest(clock_in_at, clock_out_at)) into v_previous_end
+      from public.time_shifts
+     where profile_id = v_uid and status <> 'voided';
+    if v_pick.used_tap and v_previous_end is not null and v_pick.pay_at < v_previous_end then
+      v_pick := (now(), false, 'overlaps_previous_shift')::public.clock_time_pick;
+    end if;
+  end if;
+
+  insert into public.time_shifts
+    (profile_id, project_id, cost_code_id, clock_in_photo, clock_in_lat, clock_in_lng,
+     note, job_mode, client_id, clock_in_at, last_punch_at, review_reason)
+  values
+    (v_uid, p_project_id, p_cost_code_id, p_photo, p_lat, p_lng,
+     nullif(btrim(p_note), ''),
+     case when p_mode in ('data', 'tracking') then p_mode else null end,
+     p_client_id, v_pick.pay_at, v_pick.pay_at, v_pick.reason)
+  returning * into v_shift;
+
+  insert into public.time_clock_actions
+    (client_id, shift_id, profile_id, action, outcome, tapped_at, arrived_at,
+     clock_checked_at, clock_skew_ms, used_tap_time, review_reason)
+  values
+    (p_client_id, v_shift.id, v_uid, 'clock_in', 'clocked_in', p_tapped_at, now(),
+     p_clock_checked_at, p_clock_skew_ms, v_pick.used_tap, v_pick.reason);
+
+  if v_pick.reason is not null then
+    perform public._flag_shift_for_review(v_shift.id, v_pick.reason,
+      public._clock_review_sentence(v_pick.reason, p_tapped_at, now(), v_previous_end));
+  end if;
+
+  return v_shift;
+end;
+$$;
+
+revoke all on function public.clock_in(uuid, uuid, text, double precision, double precision, text, text, uuid, timestamptz, timestamptz, integer) from public, anon;
+grant execute on function public.clock_in(uuid, uuid, text, double precision, double precision, text, text, uuid, timestamptz, timestamptz, integer) to authenticated;
+
+comment on function public.clock_in(uuid, uuid, text, double precision, double precision, text, text, uuid, timestamptz, timestamptz, integer) is
+  'Clock in with a one-time client id (a repeat returns the same shift), the job mode, and the phone''s tap time (pay uses it when trusted — see _clock_pick_time; otherwise arrival time and review_reason). 20261028000000; its toolbox check is the shared _toolbox_gate_open since 20261031000000 (today''s signature, or the owner''s paid-time date).';
 
 -- ---------------------------------------------------------------------------
 -- 4. Unit work stays locked until signed — six doors, one gate

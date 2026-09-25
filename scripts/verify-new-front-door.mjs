@@ -6,7 +6,15 @@
 //   2. The two owner RPCs refuse everyone below owner and do their one job.
 //   3. The clock_in gate: unsigned is refused with the rule off; allowed once
 //      the owner's date has arrived; a signature still opens it either way;
-//      the offline client-id overload still dedupes.
+//      the offline client-id overload still dedupes. And Release 0's KEYED
+//      clock_in (20261028000000, applied first — it merges first) — the
+//      overload the app calls — goes through the same gate once 3f restates
+//      it: refused with the rule off and for a date still ahead, open on the
+//      date and with a signature; a resend of a saved id answered even after
+//      the gate has closed; the ledger row, last_punch_at, the tap-time rule,
+//      the timeline check against a completed shift and the per-person lock
+//      all still there; and the body on the database is 20261028000000's but
+//      for the one gate condition (Codex review of #642, 2026-09-25).
 //   4. Unit work stays locked until the talk is signed (K1.3), on EVERY door,
 //      even on a shift the rule opened unsigned: start_opening_work,
 //      start_opening_phase, start_unit_session (both roles),
@@ -102,6 +110,14 @@ create table time_shifts (
   status text not null default 'open', client_id uuid, note text, job_mode text,
   break_seconds integer not null default 0, break_started_at timestamptz
 );
+-- What Release 0's keyed clock_in writes beside the shift: the audit line a
+-- review mark leaves (20260718040000's columns), and the shift cap its
+-- tap-time rule reads (20260730230000).
+create table time_shift_edits (
+  id uuid primary key default gen_random_uuid(), shift_id uuid, edited_by uuid,
+  field text, old_value text, new_value text, reason text, created_at timestamptz default now()
+);
+create function public.shift_cap_hours() returns int language sql immutable as $$ select 16 $$;
 grant select, insert, update on time_shifts to authenticated;
 create function _close_dangling_shift(p_uid uuid) returns void language sql as
   $$ update time_shifts set clock_out_at = now(), status = 'submitted' where profile_id = p_uid and clock_out_at is null $$;
@@ -180,6 +196,12 @@ await db.exec(await migration("20261011000000_custom_work.sql"));
 await db.exec(await fnFrom("20260963000000_summon_expiry.sql", "create or replace function unit_sessions_follow_summon_helpers("));
 await db.exec("create trigger unit_sessions_follow_summon_helpers after insert or update on summon_helpers for each row execute function unit_sessions_follow_summon_helpers()");
 await db.exec(await fnFrom("20260963000000_summon_expiry.sql", "create or replace function answer_summon("));
+// Release 0 (20261028000000) merges before this migration, so it is on the
+// database first — its keyed clock_in included, the overload 3f must replace.
+// Body checking stays off for it, as in verify-clock-integrity.mjs: its
+// person_record_counts names tables this slice does not carry.
+const RELEASE0 = await migration("20261028000000_clock_integrity.sql");
+await db.exec(RELEASE0);
 await db.exec("set check_function_bodies = on");
 
 await db.exec(await migration("20261031000000_new_front_door.sql"));
@@ -395,6 +417,118 @@ await as(3);
 await assert.rejects(() => db.query("select clock_in($1, $2)", [JOB, COST]), /toolbox talk/);
 await assert.rejects(() => db.query("select clock_in($1, $2, null, null, null, 'n')", [JOB, COST]), /toolbox talk/);
 
+// ---- 3 (again). Release 0's keyed clock_in — the overload the app calls ----
+// Codex review of #642 (2026-09-25): this migration used to re-issue only the
+// five older overloads, while the app has called 20261028000000's keyed one
+// since #640 — which kept its own inline signature check — so the owner's rule
+// opened five doors the phone no longer uses and left its own shut. 3f
+// restates it with the shared gate. Called here exactly as the app calls it:
+// by name, all eleven arguments.
+const KEYED_IN =
+  "select * from clock_in(p_project_id => $1, p_cost_code_id => $2, p_photo => null, p_lat => null, p_lng => null, " +
+  "p_note => $3, p_mode => $4, p_client_id => $5, p_tapped_at => $6, p_clock_checked_at => $7, p_clock_skew_ms => $8)";
+const keyed = async (clientId, { mode = "data", tap = null, checked = null, skew = null } = {}) =>
+  (await db.query(KEYED_IN, [JOB, COST, "keyed", mode, clientId, tap, checked, skew])).rows[0];
+const ago = (m) => new Date(Date.now() - m * 60e3).toISOString();
+const near = (a, b, ms, msg) => assert.ok(Math.abs(new Date(a).getTime() - new Date(b).getTime()) <= ms, `${msg}: ${a} vs ${b}`);
+await admin();
+for (const n of [5, 6, 7, 8, 9]) await db.query("insert into profiles (id, role, rank) values ($1, 'installer', 0)", [uid(n)]);
+
+// The rule is off again (above). Unsigned: refused, and nothing written.
+const k1 = fresh();
+await as(5);
+await assert.rejects(() => keyed(k1), /complete today's toolbox talk before clocking in/, "keyed, rule off, unsigned: refused");
+await admin();
+assert.equal(await count("time_shifts where profile_id = $1", [uid(5)]), 0, "keyed, refused: no shift");
+assert.equal(await count("time_clock_actions where client_id = $1", [k1]), 0, "keyed, refused: no ledger row");
+// A date still ahead: still today's timing.
+await as(4);
+await db.query("select set_paid_time_rule_date(current_date + 7)");
+await as(5);
+await assert.rejects(() => keyed(k1), /toolbox talk/, "keyed, rule set for a day ahead: still refused unsigned");
+// The date arrives: the Start day tap clocks in unsigned through the keyed door.
+await as(4);
+await db.query("select set_paid_time_rule_date(current_date)");
+await as(5);
+const s5 = await keyed(k1, { mode: "tracking" });
+assert.deepEqual([s5.profile_id, s5.client_id, s5.job_mode, s5.review_reason], [uid(5), k1, "tracking", null], "keyed, rule on, unsigned: clocks in");
+assert.equal(new Date(s5.last_punch_at).getTime(), new Date(s5.clock_in_at).getTime(), "the shift remembers its last punch (20261028000000 §1b)");
+await admin();
+assert.deepEqual(
+  await one("select action, outcome, profile_id, used_tap_time from time_clock_actions where client_id = $1", [k1]),
+  { action: "clock_in", outcome: "clocked_in", profile_id: uid(5), used_tap_time: false },
+  "one ledger row for the tap",
+);
+// The same tap again, after the owner has switched the rule off — the gate
+// is closed now — is answered with the shift it made: the replay lookup
+// comes before the gate, as it does in 20261028000000.
+await as(4);
+await db.query("select set_paid_time_rule_date(null)");
+await as(5);
+assert.equal((await keyed(k1, { mode: "tracking" })).id, s5.id, "a resend of a saved id is the same shift, gate open or not");
+await admin();
+assert.equal(await count("time_shifts where profile_id = $1", [uid(5)]), 1, "still one shift");
+assert.equal(await count("time_clock_actions where client_id = $1", [k1]), 1, "still one ledger row");
+// Rule off, signed: the keyed door opens exactly as before.
+await as(6);
+await assert.rejects(() => keyed(fresh()), /toolbox talk/);
+await db.query("insert into toolbox_completions (profile_id) values ($1)", [uid(6)]);
+assert.equal((await keyed(fresh())).profile_id, uid(6), "keyed, rule off, signed: clocks in");
+
+// The tap-time rule survived the restatement: a trusted tap on a clean
+// timeline pays from the tap, and the ledger says pay used it.
+await admin();
+await db.query("insert into toolbox_completions (profile_id) values ($1), ($2), ($3)", [uid(7), uid(8), uid(9)]);
+const trust = (m) => ({ tap: ago(m), checked: ago(30), skew: 0 });
+const t7 = fresh();
+await as(7);
+const s7 = await keyed(t7, trust(10));
+near(s7.clock_in_at, ago(10), 5000, "a trusted tap on a clean timeline pays from the tap");
+assert.equal(s7.review_reason, null);
+await admin();
+assert.equal((await one("select used_tap_time from time_clock_actions where client_id = $1", [t7])).used_tap_time, true);
+// …and so did the timeline check (Codex review of #640): a completed,
+// approved shift T-120m → T-60m, then a clock-in tapped at T-90m, starts at
+// arrival and is marked for the foreman instead of paying the overlap twice.
+await db.query(
+  "insert into time_shifts (profile_id, project_id, cost_code_id, clock_in_at, clock_out_at, status) values ($1, $2, $3, $4, $5, 'approved')",
+  [uid(8), JOB, COST, ago(120), ago(60)],
+);
+await as(8);
+const late = await keyed(fresh(), trust(90));
+assert.equal(late.review_reason, "overlaps_previous_shift", "a tap inside a completed shift is marked for the foreman");
+near(late.clock_in_at, new Date().toISOString(), 5000, "and pays from arrival, not from the tap");
+await admin();
+assert.equal(await count("time_shift_edits where shift_id = $1 and field = 'review_reason'", [late.id]), 1, "with its audit line");
+// The per-person lock is held for the transaction (one connection: held, not contended).
+await db.exec("begin");
+await as(9);
+await keyed(fresh());
+await db.exec("reset role");
+assert.ok((await one("select count(*)::int as n from pg_locks where locktype = 'advisory' and pid = pg_backend_pid()")).n >= 1, "clock_in holds its per-person lock while the transaction is open");
+await db.exec("commit");
+await admin();
+assert.equal((await one("select count(*)::int as n from pg_locks where locktype = 'advisory' and pid = pg_backend_pid()")).n, 0, "and lets go of it at commit");
+
+// Six doors, one gate — and the keyed body on the database is Release 0's,
+// line for line, but for the gate condition.
+assert.deepEqual(
+  await one("select count(*) filter (where position('_toolbox_gate_open' in prosrc) > 0)::int as gated, count(*)::int as total from pg_proc where proname = 'clock_in' and pronamespace = 'public'::regnamespace"),
+  { gated: 6, total: 6 },
+  "every clock_in overload on the database routes through _toolbox_gate_open",
+);
+const KEYED_SIG = "public.clock_in(uuid, uuid, text, double precision, double precision, text, text, uuid, timestamptz, timestamptz, integer)";
+const live = await one(`select prosrc, prosecdef, proconfig from pg_proc where oid = '${KEYED_SIG}'::regprocedure`);
+const r0Start = RELEASE0.indexOf("create or replace function public.clock_in(\n  p_project_id uuid,\n  p_cost_code_id uuid,\n  p_photo text,\n  p_lat double precision,\n  p_lng double precision,\n  p_note text,\n  p_mode text,\n  p_client_id uuid,");
+assert.ok(r0Start >= 0, "20261028000000 defines the keyed clock_in");
+const r0Body = RELEASE0.slice(RELEASE0.indexOf("as $$", r0Start) + 5, RELEASE0.indexOf("\n$$;\n", r0Start) + 1);
+const R0_GATE =
+  "  if not exists (\n    select 1 from public.toolbox_completions\n    where profile_id = v_uid and (signed_at at time zone 'America/Denver')::date = (now() at time zone 'America/Denver')::date\n  ) then";
+assert.equal(r0Body.split(R0_GATE).length, 2, "Release 0's keyed body carries its inline check exactly once");
+assert.equal(live.prosrc, r0Body.replace(R0_GATE, "  if not public._toolbox_gate_open(v_uid) then"), "the keyed body on the database is Release 0's, but for the gate");
+assert.equal(live.prosecdef, true, "still SECURITY DEFINER");
+assert.deepEqual(live.proconfig, ["search_path=public, pg_temp"], "with its search path pinned");
+
 // ---- 5. the announcements ------------------------------------------------
 await admin();
 const notes = (await db.query("select id, audience, title_es, body_es from app_release_notes order by id")).rows;
@@ -408,6 +542,6 @@ for (const n of notes) {
 assert.deepEqual(notes.find((n) => n.id === "2026-09-23-new-design-owner-switches").audience, [3]);
 
 console.log(
-  "New front door: own-row design choice, owner-only switches, the one clock-in gate (rule off / scheduled / on, offline dedupe), unit work locked on all six doors and Prep time on its one door until signed, and bilingual announcements passed.",
+  "New front door: own-row design choice, owner-only switches, the one clock-in gate on all six clock_in doors including Release 0's keyed one (rule off / scheduled / on, signed, replay, ledger, tap time, timeline, lock, body pinned to 20261028000000), unit work locked on all six doors and Prep time on its one door until signed, and bilingual announcements passed.",
 );
 await db.close();

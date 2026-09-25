@@ -64,10 +64,14 @@ everyone at once, on a date the owner picks at the start of a pay period
 
 5. **One clock-in gate, one unit-work gate.** `_toolbox_gate_open(uid)`
    (20261031000000) is the single copy of "may this shift begin": today's
-   signature on record, OR the owner's date has arrived. The five `clock_in`
-   overloads were re-issued verbatim calling it, so the rule cannot be
-   forgotten by one path; a later overload (Release 0's client id and tap
-   time) keeps calling it. Unit work has its own gate, `_unit_work_gate(uid)`
+   signature on record, OR the owner's date has arrived. All six `clock_in`
+   overloads call it: the five older ones re-issued verbatim, and Release
+   0's keyed overload (20261028000000 — the client id, the mode and the tap
+   time; the one the app calls) restated from that migration's final body
+   with only its inline check swapped for the gate, so the rule opens the
+   door the phone actually uses (Codex review of #642, 2026-09-25). The rule
+   cannot be forgotten by one path; any later overload keeps calling it.
+   Unit work has its own gate, `_unit_work_gate(uid)`
    — today's signature and never the date — called by every RPC that starts
    a timer on a unit: `start_opening_work`, `start_opening_phase`,
    `start_unit_session`, `resume_opening_phase`, `custom_work_command`'s
@@ -122,9 +126,16 @@ everyone at once, on a date the owner picks at the start of a pay period
   then a fix to a shared behaviour goes in the shared lib, not in one design.
 - Anything added to the new screens' strings goes in `workCatalog.ts`, and
   any new component under `components/work/` imports it for its side effect.
-- Release 0's clock-integrity work lands under this: `startShiftOrQueue`
-  calls `clockIn` and `enqueueClockIn` and nothing else, so a client id and a
-  tap time flow into Start day the day they exist.
+- Release 0's clock integrity (#640, which merges first) is under this, and
+  Start day does not inherit it for free: the tap that starts the day — the
+  signature, when signing is the clock-in — stamps ONE punch (the one-time id
+  and the tap time) before the geolocation wait, and `startShiftOrQueue`
+  hands that same punch and mode to `clockIn`, to `enqueueClockIn` and to the
+  clock sheet on a hand-off. A fresh punch on a retry turns a lost reply into
+  a second shift. And Work offers no clock-in until the shared clock state is
+  known — `useClock().loading` (the open shift and this phone's queued
+  punches) and the saved data's restore — saying "Recovering your clock…"
+  meanwhile (Codex review of #642, 2026-09-25).
 - A new RPC that starts a timer on a unit calls `_unit_work_gate(uid)` right
   after its open-shift check; one that starts Prep time calls
   `_prep_time_gate(uid)` there. `scripts/verify-new-front-door.mjs` pins both

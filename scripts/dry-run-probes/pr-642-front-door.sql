@@ -11,11 +11,19 @@
 --     a foreman and a supervisor; the owner flips them, an unknown release
 --     and a date in the past are refused, and a person's choice survives the
 --     master switch going off and on;
---   * every clock_in overload the migration re-issues (all five) is refused
---     with the plain sentence when the gate is closed (no signature today,
---     no date), clocks the installer in on the sandbox job when it is open,
---     and — with the date unset — records exactly today's times (arrival =
---     now());
+--   * every clock_in overload the migration re-issues (the five older ones)
+--     is refused with the plain sentence when the gate is closed (no
+--     signature today, no date), clocks the installer in on the sandbox job
+--     when it is open, and — with the date unset — records exactly today's
+--     times (arrival = now());
+--   * Release 0's KEYED clock_in (20261028000000) — the eleven-argument
+--     overload the app calls, restated by this migration as 3f — is called
+--     by name exactly as the app calls it: refused unsigned with the rule
+--     off and with the owner's date still ahead, clocks in unsigned on the
+--     date and signed with the rule off; a resend of a saved id is the same
+--     shift even after the gate has closed; one ledger row per tap and
+--     last_punch_at stamped; and a trusted tap before the run's own last
+--     shift ended starts at arrival, marked overlaps_previous_shift (block D2);
 --   * with the owner's date set to today the same five overloads clock the
 --     installer in UNSIGNED, still at arrival (the rule changes when a shift
 --     may begin, never the time it records); a date still ahead, and the
@@ -33,57 +41,36 @@
 --     exactly custom_work_command wired to _prep_time_gate;
 --   * the three crew announcements exist for their audiences, in Spanish too.
 --
--- Run: gh workflow run db-dry-run.yml --repo Infinity-Windows/infinity-windows \
+-- Run (2026-09-25: this branch sits on #641 → #644 → #640, so every
+-- migration beneath it applies first, in number order, as the deploy will):
+--   gh workflow run db-dry-run.yml --repo Infinity-Windows/infinity-windows \
 --        -f ref=claude/r1-front-door \
---        -f migrations="supabase/migrations/20261031000000_new_front_door.sql" \
+--        -f migrations="supabase/migrations/20261028000000_clock_integrity.sql supabase/migrations/20261028010000_clock_integrity_note.sql supabase/migrations/20261030000000_ai_daily_log_contributions.sql supabase/migrations/20261030010000_ai_actions_note.sql supabase/migrations/20261031000000_new_front_door.sql" \
 --        -f probe=scripts/dry-run-probes/pr-642-front-door.sql
 --
--- MERGE-ORDER HAZARD (read before dispatching, and again before merging):
---   PR #640 (branch claude/r0-clock-integrity, migration 20261028000000)
---   merges FIRST. It adds a NEW keyed clock_in overload —
---     clock_in(p_project_id, p_cost_code_id, p_photo, p_lat, p_lng, p_note,
---              p_mode, p_client_id, p_tapped_at, p_clock_checked_at,
---              p_clock_skew_ms)
---   — whose body carries its own inline copy of the toolbox check, and it
---   leaves the five older overloads alone. This migration (20261031000000)
---   re-issues those five to call _toolbox_gate_open and knows nothing of the
---   keyed one. Once #640 is on master, the paid-time rule would open the
---   five doors the phone no longer uses and leave the keyed door — the one
---   startShiftOrQueue calls — shut. Before #642 merges:
---     1. rebase this branch onto master with #640 in it;
---     2. make 20261031000000 re-issue the keyed overload as well, with
---        `if not public._toolbox_gate_open(v_uid) then raise …` in place of
---        its inline `exists (select 1 from toolbox_completions …)`;
---     3. extend this probe: call the keyed overload as the installer with
---        the gate closed (refused), signed (clocks in) and unsigned with the
---        owner's date on (clocks in) — the same three rows the five below
---        get.
---   The check "clock_in: every overload on the database routes through
---   _toolbox_gate_open" below goes red by itself the moment #640's overload
---   is on the database without step 2, so a stale probe cannot pass by
---   accident. If #640 is not yet deployed when this is dispatched, the
---   database has five overloads and that check counts five.
+-- THE MERGE-ORDER HAZARD, CLOSED: #640 (20261028000000) merges first and
+-- adds the keyed clock_in the app calls, with its own inline copy of the
+-- toolbox check. This migration used to re-issue only the five older
+-- overloads, so the paid-time rule would have opened five doors the phone no
+-- longer uses and left the keyed one shut (Codex review of #642,
+-- 2026-09-25). It now restates the keyed overload too (3f), from #640's
+-- final body with only the gate condition changed; block A checks every
+-- clock_in on the database routes through _toolbox_gate_open (six of six
+-- with #640 in the batch) and block D2 calls the keyed one.
 --
--- THE PEOPLE IT ACTS AS: dry_run_pick('installer') and dry_run_pick('foreman')
--- take the QA logins first (docs/test-account.md) — the accounts the database
--- fences to the sandbox, and the only logins this probe should clock in,
--- sign a talk or choose a design under. On 2026-09-23/24 BOTH QA logins'
--- profiles read 'foreman' (qa.installer by mistake; the owner is setting it
--- back to Installer), so the installer picker returns a REAL installer —
--- who cannot even see a testing job. The first thing the probe does is
--- refuse to go on in that case, out loud, for either role, rather than act
--- as a real person or fail later on a sandbox guard nobody asked about.
--- The owner (dry_run_pick_real) is the one real person it acts as: the two
--- owner-only RPCs have no QA login, and every write is rolled back.
+-- THE PEOPLE IT ACTS AS: the harness's dry_run_pick('installer') and
+-- dry_run_pick('foreman') — the QA logins (docs/test-account.md), the
+-- accounts the database fences to the sandbox and the only logins this probe
+-- clocks in, signs a talk or chooses a design under. dry_run_pick stops the
+-- run in plain words if either login has lost its role, rather than hand back
+-- a real person (on 2026-09-23/24 both QA profiles read 'foreman'). The owner
+-- (dry_run_pick_real) is the one real person it acts as: the two owner-only
+-- RPCs have no QA login, and every write is rolled back.
 --
--- THE JOB IT ACTS ON: a live job that is BOTH on public.sandbox_projects and
--- a testing project (projects.is_test), read at run time — the two facts the
--- fence and the QA logins' job visibility read. PECAN14 first (the owner's
--- practice job, 2026-09-24), then BLACK22 (the sandbox when this probe was
--- written; it left both lists on 2026-09-24), then the lowest job code —
--- MADMOOSE is a real job flagged testing and the owner would rather runs
--- not touch it, even rolled back. An empty list stops the run out loud
--- before anything is checked.
+-- THE JOB IT ACTS ON: the harness's dry_run_sandbox_job() — a live job that
+-- is BOTH on public.sandbox_projects and a testing project, read at run time
+-- (PECAN14 first), never a pinned code; it stops the run out loud when no job
+-- qualifies, before anything is checked.
 --
 -- Two things the setup does as the system so a refusal can only be about
 -- the change (both rolled back with everything else): it ends the QA
@@ -133,33 +120,9 @@ begin
   v_who := pg_temp.dry_run_pick('installer');
   v_foreman := pg_temp.dry_run_pick('foreman');
 
-  -- Loud and early: this probe clocks in, signs a talk and chooses a design,
-  -- and does that only under the QA logins the database fences to the
-  -- sandbox job — never as a real person (see the header).
-  if not public.is_test_profile(v_who) then
-    raise exception using message =
-      'dry run: no QA login has the installer role — set qa.installer ("TEST — automation, do not assign") '
-      || 'to Installer in the app; refusing to act as a real person. Nothing was checked.';
-  end if;
-  if not public.is_test_profile(v_foreman) then
-    raise exception using message =
-      'dry run: no QA login has the foreman role — set qa.foreman ("TEST — automation, do not assign") '
-      || 'to Foreman in the app; refusing to act as a real person. Nothing was checked.';
-  end if;
-  -- The sandbox job: on the sandbox list AND a testing project (see the header).
-  select p.id into v_job
-    from public.sandbox_projects sp
-    join public.projects p on p.id = sp.project_id
-   where p.deleted_at is null and coalesce(p.is_test, false)
-   order by (p.job_code = 'PECAN14') desc, (p.job_code = 'BLACK22') desc, p.job_code
-   limit 1;
-  if v_job is null then
-    raise exception using message =
-      'dry run: no live job is both on public.sandbox_projects and a testing project (projects.is_test), '
-      || 'so the QA installer''s clock-ins would be refused by the sandbox guard for a reason that has '
-      || 'nothing to do with this change. Mark a testing job as the sandbox (set_project_test) and dispatch '
-      || 'again — nothing was checked.';
-  end if;
+  -- The job from the harness (see the header); the two people above are the
+  -- QA logins or the run has already stopped.
+  v_job := pg_temp.dry_run_sandbox_job();
   perform pg_temp.dry_run_check('setup: acting on the sandbox job as the QA installer login (a test login, inside the sandbox)',
     true, 'installer ' || v_who || ', foreman ' || v_foreman || ', job ' || v_job
       || ' (' || (select p.job_code from public.projects p where p.id = v_job) || ')');
@@ -244,8 +207,10 @@ begin
     into v_gated, v_total
     from pg_proc p
    where p.proname = 'clock_in' and p.pronamespace = 'public'::regnamespace;
-  perform pg_temp.dry_run_check('clock_in: every overload on the database routes through _toolbox_gate_open (one that does not is the #640 merge-order hazard)',
-    v_total >= 5 and v_gated = v_total, v_gated || ' of ' || v_total || ' overload(s) gated');
+  perform pg_temp.dry_run_check('clock_in: Release 0''s keyed overload (the one the app calls) is on the database too',
+    to_regprocedure('public.clock_in(uuid, uuid, text, double precision, double precision, text, text, uuid, timestamptz, timestamptz, integer)') is not null, null);
+  perform pg_temp.dry_run_check('clock_in: all six overloads on the database route through _toolbox_gate_open, the keyed one included (the #640 merge-order hazard, closed)',
+    v_total = 6 and v_gated = 6, v_gated || ' of ' || v_total || ' overload(s) gated');
 
   -- The unit-work gate (ADR-0012 §5) and the Prep-time gate: the three
   -- helpers, who may call them, and EXACTLY the doors wired to each — one
@@ -294,11 +259,6 @@ begin
   perform pg_temp.dry_run_as_system();
   v_who := pg_temp.dry_run_pick('installer');
   v_foreman := pg_temp.dry_run_pick('foreman');
-  -- Block A already stopped the run if either pick is a real person; this
-  -- block writes a design choice as both, so it checks again on its own.
-  if not public.is_test_profile(v_who) or not public.is_test_profile(v_foreman) then
-    raise exception 'dry run: a pick is a real person, not a QA login; refusing to act as them.';
-  end if;
 
   v_role := pg_temp.dry_run_act_as(v_who);
   perform pg_temp.dry_run_check('acting as an installer with their own id',
@@ -478,18 +438,7 @@ begin
   -- ---- setup, as the system ---------------------------------------------------
   perform pg_temp.dry_run_as_system();
   v_who := pg_temp.dry_run_pick('installer');
-  -- Block A already stopped the run if this pick is a real person or the
-  -- sandbox list is empty; this block clocks in as the pick, so it checks
-  -- the person again on its own and reads the same job the same way.
-  if not public.is_test_profile(v_who) then
-    raise exception 'dry run: the installer pick is a real person, not a QA login; refusing to clock in as them.';
-  end if;
-  select p.id into v_job
-    from public.sandbox_projects sp
-    join public.projects p on p.id = sp.project_id
-   where p.deleted_at is null and coalesce(p.is_test, false)
-   order by (p.job_code = 'PECAN14') desc, (p.job_code = 'BLACK22') desc, p.job_code
-   limit 1;
+  v_job := pg_temp.dry_run_sandbox_job();
   v_owner := pg_temp.dry_run_pick_real('owner');
   v_today := (now() at time zone 'America/Denver')::date;
   select id into v_cost_code from public.cost_codes order by active desc, code limit 1;
@@ -842,6 +791,158 @@ begin
   select * into v_cs from public.company_settings where id = 1;
   perform pg_temp.dry_run_check('settings: the paid-time date is null again at the end', v_cs.paid_time_from_start_day_on is null,
     coalesce(v_cs.paid_time_from_start_day_on::text, 'null'));
+end $$;
+
+-- ---------------------------------------------------------------------------
+-- D2. The keyed door — Release 0's clock_in, the one the app calls — through
+--     the same gate (Codex review of #642, 2026-09-25): closed, a date ahead,
+--     the date, a signature; a resend of a saved id; the ledger, the last
+--     punch and the timeline check all still there
+-- ---------------------------------------------------------------------------
+do $$
+declare
+  v_who uuid;
+  v_job uuid;
+  v_owner uuid;
+  v_cost_code uuid;
+  v_today date;
+  v_keyed text;
+  v_src text;
+  v_s public.time_shifts;
+  v_again public.time_shifts;
+  v_signed public.time_shifts;
+  v_late public.time_shifts;
+  v_led public.time_clock_actions;
+  v_cs public.company_settings;
+  v_n int;
+  v_cid_closed uuid := gen_random_uuid();
+  v_cid_ahead uuid := gen_random_uuid();
+  v_cid_rule uuid := gen_random_uuid();
+  v_cid_signed uuid := gen_random_uuid();
+  v_cid_late uuid := gen_random_uuid();
+begin
+  -- ---- setup, as the system ---------------------------------------------------
+  perform pg_temp.dry_run_as_system();
+  v_who := pg_temp.dry_run_pick('installer');
+  v_job := pg_temp.dry_run_sandbox_job();
+  v_owner := pg_temp.dry_run_pick_real('owner');
+  v_today := (now() at time zone 'America/Denver')::date;
+  select id into v_cost_code from public.cost_codes order by active desc, code limit 1;
+  -- A clean slate: no open shift, no signature today, the rule off (block D
+  -- left it off; set here so this block stands on its own). Rolled back.
+  update public.time_shifts set clock_out_at = now(), status = 'submitted'
+   where profile_id = v_who and status = 'open' and clock_out_at is null;
+  delete from public.toolbox_completions
+   where profile_id = v_who and (signed_at at time zone 'America/Denver')::date = v_today;
+  update public.company_settings set paid_time_from_start_day_on = null where id = 1;
+
+  -- What the migration left on the database for this one overload.
+  select prosrc into v_src from pg_proc
+   where oid = 'public.clock_in(uuid, uuid, text, double precision, double precision, text, text, uuid, timestamptz, timestamptz, integer)'::regprocedure;
+  perform pg_temp.dry_run_check('keyed: its body reads the shared gate and keeps no inline toolbox check',
+    position('_toolbox_gate_open(v_uid)' in v_src) > 0 and position('toolbox_completions' in v_src) = 0, null);
+  perform pg_temp.dry_run_check('keyed: Release 0''s payroll fixes are all in it — the per-person lock, the replay before the gate, the timeline check, last_punch_at and the ledger',
+    position('pg_advisory_xact_lock' in v_src) > 0
+    and position('a.client_id = p_client_id' in v_src) between 1 and position('_toolbox_gate_open' in v_src)
+    and position('overlaps_previous_shift' in v_src) > 0
+    and position('last_punch_at' in v_src) > 0
+    and position('insert into public.time_clock_actions' in v_src) > 0, null);
+  perform pg_temp.dry_run_check('keyed: still SECURITY DEFINER with its search path pinned, callable by signed-in people and not by anon',
+    (select prosecdef and proconfig = array['search_path=public, pg_temp'] from pg_proc
+      where oid = 'public.clock_in(uuid, uuid, text, double precision, double precision, text, text, uuid, timestamptz, timestamptz, integer)'::regprocedure)
+    and has_function_privilege('authenticated', 'public.clock_in(uuid, uuid, text, double precision, double precision, text, text, uuid, timestamptz, timestamptz, integer)', 'execute')
+    and not has_function_privilege('anon', 'public.clock_in(uuid, uuid, text, double precision, double precision, text, text, uuid, timestamptz, timestamptz, integer)', 'execute'), null);
+
+  -- The call exactly as the app makes it: by name, all eleven arguments.
+  v_keyed := 'select public.clock_in(p_project_id => %L::uuid, p_cost_code_id => %L::uuid, p_photo => null::text, '
+    || 'p_lat => null::double precision, p_lng => null::double precision, p_note => %L::text, p_mode => %L::text, '
+    || 'p_client_id => %L::uuid, p_tapped_at => null::timestamptz, p_clock_checked_at => null::timestamptz, p_clock_skew_ms => null::integer)';
+
+  -- ---- rule off, unsigned: refused ------------------------------------------------
+  perform pg_temp.dry_run_act_as(v_who);
+  perform pg_temp.dry_run_expect_error('keyed clock_in: refused unsigned with the rule off, in the plain sentence',
+    format(v_keyed, v_job, v_cost_code, 'dry run keyed', 'data', v_cid_closed), 'complete today''s toolbox talk before clocking in');
+
+  -- ---- the owner's date still ahead: still refused --------------------------------
+  perform pg_temp.dry_run_act_as(v_owner);
+  v_cs := public.set_paid_time_rule_date(v_today + 7);
+  perform pg_temp.dry_run_act_as(v_who);
+  perform pg_temp.dry_run_expect_error('keyed clock_in: still refused unsigned while the owner''s date is ahead (today''s timing)',
+    format(v_keyed, v_job, v_cost_code, 'dry run keyed', 'data', v_cid_ahead), 'complete today''s toolbox talk before clocking in');
+
+  -- ---- the date arrives: the Start day tap clocks in, unsigned, through the keyed door ----
+  perform pg_temp.dry_run_act_as(v_owner);
+  v_cs := public.set_paid_time_rule_date(v_today);
+  perform pg_temp.dry_run_act_as(v_who);
+  v_s := public.clock_in(p_project_id => v_job, p_cost_code_id => v_cost_code, p_photo => null::text,
+    p_lat => null::double precision, p_lng => null::double precision, p_note => 'dry run keyed'::text, p_mode => 'data'::text,
+    p_client_id => v_cid_rule, p_tapped_at => null::timestamptz, p_clock_checked_at => null::timestamptz, p_clock_skew_ms => null::integer);
+  perform pg_temp.dry_run_check('keyed clock_in: unsigned on the owner''s date, clocks in on the sandbox job at arrival, with its id and mode',
+    v_s.id is not null and v_s.profile_id = v_who and v_s.project_id = v_job and v_s.client_id = v_cid_rule
+      and v_s.job_mode = 'data' and v_s.clock_in_at = now() and v_s.status = 'open',
+    'shift ' || coalesce(v_s.id::text, 'none'));
+  perform pg_temp.dry_run_check('keyed clock_in: the shift remembers its clock-in as its last punch (20261028000000 §1b)',
+    v_s.last_punch_at = v_s.clock_in_at, coalesce(v_s.last_punch_at::text, 'null'));
+
+  -- ---- the same tap again, after the owner switched the rule off: the same shift ----
+  -- The replay is answered before the gate, as in 20261028000000: a punch the
+  -- server saved while the gate was open comes back even once it has closed.
+  perform pg_temp.dry_run_act_as(v_owner);
+  v_cs := public.set_paid_time_rule_date(null::date);
+  perform pg_temp.dry_run_act_as(v_who);
+  v_again := public.clock_in(p_project_id => v_job, p_cost_code_id => v_cost_code, p_photo => null::text,
+    p_lat => null::double precision, p_lng => null::double precision, p_note => 'dry run keyed'::text, p_mode => 'data'::text,
+    p_client_id => v_cid_rule, p_tapped_at => null::timestamptz, p_clock_checked_at => null::timestamptz, p_clock_skew_ms => null::integer);
+  perform pg_temp.dry_run_check('keyed clock_in: a resend of the saved id is the same shift, even with the gate closed again',
+    v_again.id = v_s.id, 'shift ' || coalesce(v_again.id::text, 'none'));
+
+  -- ---- rule off, signed: the keyed door opens as it always did ----------------------
+  perform pg_temp.dry_run_as_system();
+  insert into public.toolbox_completions (profile_id, signed_at) values (v_who, now());
+  perform pg_temp.dry_run_act_as(v_who);
+  v_signed := public.clock_in(p_project_id => v_job, p_cost_code_id => v_cost_code, p_photo => null::text,
+    p_lat => null::double precision, p_lng => null::double precision, p_note => 'dry run keyed signed'::text, p_mode => 'data'::text,
+    p_client_id => v_cid_signed, p_tapped_at => null::timestamptz, p_clock_checked_at => null::timestamptz, p_clock_skew_ms => null::integer);
+  perform pg_temp.dry_run_check('keyed clock_in: signed with the rule off, clocks in (and closes the shift before it, marked previous_shift_open)',
+    v_signed.id is not null and v_signed.id <> v_s.id and v_signed.client_id = v_cid_signed and v_signed.review_reason = 'previous_shift_open',
+    'shift ' || coalesce(v_signed.id::text, 'none') || ', ' || coalesce(v_signed.review_reason, 'no mark'));
+
+  -- ---- the timeline check survived the restatement ----------------------------------
+  -- With nothing open, a TRUSTED tap a minute ago falls before the run's own
+  -- shifts ended (now), so it starts at arrival and is marked for the foreman
+  -- rather than paying the overlap twice (Codex review of #640).
+  perform pg_temp.dry_run_as_system();
+  update public.time_shifts set clock_out_at = now(), status = 'submitted'
+   where profile_id = v_who and status = 'open' and clock_out_at is null;
+  perform pg_temp.dry_run_act_as(v_who);
+  v_late := public.clock_in(p_project_id => v_job, p_cost_code_id => v_cost_code, p_photo => null::text,
+    p_lat => null::double precision, p_lng => null::double precision, p_note => 'dry run keyed late'::text, p_mode => 'data'::text,
+    p_client_id => v_cid_late, p_tapped_at => now() - interval '1 minute', p_clock_checked_at => now() - interval '1 minute', p_clock_skew_ms => 0);
+  perform pg_temp.dry_run_check('keyed clock_in: a trusted tap before the last shift ended starts at arrival and is marked overlaps_previous_shift',
+    v_late.clock_in_at = now() and v_late.review_reason = 'overlaps_previous_shift',
+    coalesce(v_late.review_reason, 'no mark'));
+
+  -- ---- the truth, as the system ----------------------------------------------------
+  perform pg_temp.dry_run_as_system();
+  select count(*) into v_n from public.time_clock_actions where client_id in (v_cid_closed, v_cid_ahead);
+  perform pg_temp.dry_run_check('ledger: the two refused taps wrote nothing', v_n = 0, v_n || ' row(s)');
+  select count(*) into v_n from public.time_shifts where client_id in (v_cid_closed, v_cid_ahead);
+  perform pg_temp.dry_run_check('ledger: and made no shift', v_n = 0, v_n || ' row(s)');
+  select count(*) into v_n from public.time_clock_actions where client_id = v_cid_rule;
+  perform pg_temp.dry_run_check('ledger: the tap sent twice is ONE ledger row', v_n = 1, v_n || ' row(s)');
+  select count(*) into v_n from public.time_shifts where client_id = v_cid_rule;
+  perform pg_temp.dry_run_check('ledger: and ONE shift', v_n = 1, v_n || ' row(s)');
+  select * into v_led from public.time_clock_actions where client_id = v_cid_late;
+  perform pg_temp.dry_run_check('ledger: the late tap keeps what the phone claimed, and says pay did not use it',
+    v_led.action = 'clock_in' and v_led.used_tap_time = false and v_led.review_reason = 'overlaps_previous_shift'
+      and v_led.tapped_at = now() - interval '1 minute',
+    coalesce(v_led.review_reason, 'no row'));
+  select count(*) into v_n from public.time_shifts
+   where profile_id = v_who and clock_out_at is not null and clock_out_at < clock_in_at;
+  perform pg_temp.dry_run_check('keyed: no shift on the installer''s record ends before it starts', v_n = 0, v_n || ' bad row(s)');
+  select * into v_cs from public.company_settings where id = 1;
+  perform pg_temp.dry_run_check('settings: the paid-time date is null again at the end of the keyed block',
+    v_cs.paid_time_from_start_day_on is null, coalesce(v_cs.paid_time_from_start_day_on::text, 'null'));
 end $$;
 
 -- ---------------------------------------------------------------------------

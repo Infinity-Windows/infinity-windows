@@ -1234,7 +1234,11 @@ People sign for themselves; the AI never signs. Until the owner's paid-time
 date, the order is today's: the talk first, and signing it IS the clock-in.
 From that date (`company_settings.paid_time_from_start_day_on`, one date for
 everyone, picked at the start of a pay period — Q69), paid time starts at the
-tap: the clock-in goes first and the talk is signed on the clock. Either way
+tap: the clock-in goes first and the talk is signed on the clock. The tap is
+one punch (Release 0): its id and tap time are stamped at the tap — at the
+signature, when signing is the clock-in — and carried through the queue and
+any hand-off, so a lost reply is never a second shift; until the clock has
+been read, Work says "Recovering your clock…" and offers no Start day. Either way
 unit work stays locked until the talk is signed — on the server by
 `_unit_work_gate`, which every RPC that starts a timer on a unit calls
 (`start_opening_work`, `start_opening_phase`, `start_unit_session`,
