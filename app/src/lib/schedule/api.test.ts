@@ -124,9 +124,10 @@ describe("dropDraftAssignment (the review card's Drop)", () => {
     expect(await dropDraftAssignment(draft)).toBe("changed");
     expect(calls.some((c) => c.table === "schedule_events")).toBe(false);
   });
-  it("a refusal is still an error, never a silent 'dropped'", async () => {
-    respond = () => ({ data: null, error: { code: "PGRST301", message: "JWT expired" } });
-    await expect(dropDraftAssignment(draft)).rejects.toMatchObject({ code: "PGRST301" });
+  it("a refusal is still an error, never a silent 'dropped' — even one whose wording names the table", async () => {
+    respond = () => ({ data: null, error: { code: "42501", message: "permission denied for table schedule_assignments" } });
+    await expect(dropDraftAssignment(draft)).rejects.toMatchObject({ code: "42501" });
+    expect(calls.some((c) => c.table === "schedule_events")).toBe(false);
   });
 });
 
@@ -153,13 +154,20 @@ describe("a publish whose reply was lost", () => {
       { assignment_id: "b", actor: "me", kind: "published", payload: null },
     ]);
   });
-  it("a database refusal is confirmed: nothing to re-read", async () => {
-    const refused = { code: "42501", message: "new row violates row-level security policy" };
+  it("a database refusal is confirmed: nothing to re-read — and it is never mistaken for a missing table and 'published' locally", async () => {
+    // The refusal names the table, which isMissingTable's wording fallback
+    // used to read as "not migrated yet" and hand to the browser-local store.
+    const refused = { code: "42501", message: 'new row violates row-level security policy for table "schedule_assignments"' };
     respond = (table, ops) => table === "schedule_assignments" && ops.includes("update") ? { data: null, error: refused } : { data: null, error: null };
     let caught: unknown = null;
     await publishAssignments(["a"]).catch((e) => { caught = e; });
     expect(caught).toEqual(refused);
     expect(isUnconfirmedPublishError(caught)).toBe(false);
+    expect(calls.some((c) => c.table === "schedule_events")).toBe(false);
+  });
+  it("a table that is genuinely not there yet still falls back to the browser-local store", async () => {
+    respond = () => ({ data: null, error: { code: "42P01", message: 'relation "public.schedule_assignments" does not exist' } });
+    await expect(publishAssignments(["a"])).resolves.toBeUndefined();
   });
   it("the re-read sorts rows into published, still draft and not readable", async () => {
     respond = (table) => table === "schedule_assignments" ? { data: [{ id: "a", status: "published" }, { id: "b", status: "draft" }], error: null } : { data: null, error: null };

@@ -21,8 +21,21 @@ import type {
 
 const LOCAL_KEY = "infinity.schedule.assignments.v1";
 
-/** Missing-table / missing-column errors mean the migration isn't applied. */
+/** Errors the database returns as an ANSWER — a refusal, a constraint, a
+ * session — which name the table in their text often enough ("...policy for
+ * table "schedule_assignments"") that isMissingTable's name-based fallback
+ * used to mistake them for the table not being there yet. */
+const ANSWERED_CODES = new Set(["42501", "23502", "23503", "23505", "23514", "40001", "P0001", "PGRST301", "PGRST302"]);
+
+/** Missing-table / missing-column errors mean the migration isn't applied.
+ * A coded refusal is NOT that, however it is worded: a publish the database
+ * refused used to fall through here into the browser-local store and "go",
+ * with the sheet closing as if it had (2026-09-24, caught by the e2e for
+ * Codex's #646 review). Only an error that carries no answer code is judged
+ * by its wording. */
 function isMissingScheduleTable(error: unknown): boolean {
+  const code = error && typeof error === "object" && typeof (error as { code?: unknown }).code === "string" ? (error as { code: string }).code : "";
+  if (ANSWERED_CODES.has(code)) return false;
   return isMissingTable(error, "schedule_assignment", "schedule_events", "schedule_ai_reasons");
 }
 

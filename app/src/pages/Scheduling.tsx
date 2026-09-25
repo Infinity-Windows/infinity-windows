@@ -9,7 +9,7 @@ import { DisplayModePicker } from "../components/DisplayModePicker";
 import { useDisplayMode, type DisplayLayout } from "../lib/displayMode";
 import { useT } from "../lib/i18n";
 import { BackChip } from "../components/BackChip";
-import { Suspense, lazy, useMemo, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import { AlertTriangle, CalendarDays, ChevronLeft, ChevronRight, Plus, Send, Sparkles } from "lucide-react";
@@ -674,9 +674,16 @@ export function Scheduling() {
   // Drop deletes the row only while it is still the draft the card showed
   // (status and revision checked at the database); "changed" means another
   // supervisor published or edited it and nothing was deleted. Either way the
-  // lists re-read, so a row that went live leaves the card on its own.
+  // lists re-read, so a row that went live leaves the card on its own — and
+  // when it was the LAST one, the card would unmount with the "this draft
+  // changed" sentence still unread. `reviewCardPinned` keeps the card up
+  // until the supervisor moves the dates (the e2e for the two-supervisor
+  // case caught the message vanishing).
+  const [reviewCardPinned, setReviewCardPinned] = useState(false);
+  useEffect(() => { setReviewCardPinned(false); }, [range.from, range.to]);
   const dropAiDraft = async (a: ScheduleAssignment) => {
     const result = await dropDraftAssignment(a);
+    if (result === "changed") setReviewCardPinned(true);
     refresh();
     return result;
   };
@@ -924,7 +931,7 @@ export function Scheduling() {
         </button>
       </div>
 
-      {canEdit && (aiReview.inRange.length > 0 || aiReview.outside > 0) && (
+      {canEdit && (aiReview.inRange.length > 0 || aiReview.outside > 0 || reviewCardPinned) && (
         <Suspense fallback={null}>
           <AiDraftReview
             drafts={aiReview.inRange}
