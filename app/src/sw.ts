@@ -20,6 +20,7 @@ import { registerRoute, NavigationRoute } from "workbox-routing";
 import { CacheFirst } from "workbox-strategies";
 import { ExpirationPlugin } from "workbox-expiration";
 import { resolveNotificationUrl } from "./lib/pwa/basePaths";
+import { createTakeoverReload } from "./lib/pwa/takeover";
 import { isPrivateTrainingMediaUrl } from "./lib/privateMedia";
 
 declare const self: ServiceWorkerGlobalScope & {
@@ -51,15 +52,30 @@ registerRoute(
 // instead of skipping straight to active, so the app can surface an "update
 // available — Refresh" banner (see PwaBanners). The waiting worker only takes
 // over when the client explicitly asks via a SKIP_WAITING message (posted by
-// vite-plugin-pwa's updateServiceWorker(true)). Once activated it claims all
-// open clients so the reload runs the new shell.
+// PwaBanners, directly and through vite-plugin-pwa's updateServiceWorker(true)).
+// Once activated it claims all open clients — and then brings the page that
+// asked onto the new build itself. That page reloads on the controller
+// change too, when it can; a page on the build before 2026-09-25 cannot
+// (lib/pwa/takeover.ts says why), and the worker is the only new code it
+// runs. Only the page that asked: a tab that did not is left where it is.
+const takeover = createTakeoverReload(self.clients);
 self.addEventListener("message", (event) => {
   if ((event.data as { type?: string } | undefined)?.type === "SKIP_WAITING") {
+    takeover.asked(event.source as { id: string } | null);
     void self.skipWaiting();
   }
 });
 self.addEventListener("activate", (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(
+    self.clients.claim().then(() => {
+      // Started here, NOT awaited: the reload it asks for is a navigation
+      // this worker has to answer, and a worker answers no fetch until its
+      // activation has finished. Awaiting it inside waitUntil deadlocked —
+      // the page sat on a navigation that could never complete (found in
+      // the upgrade harness, 2026-09-25).
+      void takeover.finish();
+    }),
+  );
 });
 
 // --- Web push ---------------------------------------------------------------
