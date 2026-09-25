@@ -114,6 +114,16 @@ export const CATALOG = {
   "currentWork.manageClock": { en: "Job clock / break", es: "Reloj del trabajo / descanso" },
   "currentWork.finishIdle": { en: "Finish → Idle time", es: "Terminar → Tiempo entre unidades" },
   "currentWork.editUnit": { en: "Edit unit details", es: "Editar detalles de la unidad" },
+  // One tap to finish a unit (2026-09-24): the old path saved "complete" and
+  // started a new visit that reopened it, so no unit ever stayed complete.
+  "currentWork.unitComplete": { en: "Unit complete ✓", es: "Unidad terminada ✓" },
+  "currentWork.finishedMyPart": { en: "Finished my part ✓", es: "Terminé mi parte ✓" },
+  "currentWork.foremanCompletes": { en: "Your foreman, or whoever added this unit, marks the whole install complete.", es: "Tu capataz, o quien agregó esta unidad, marca la instalación completa." },
+  "currentWork.installComplete": { en: "✓ Install complete", es: "✓ Instalación terminada" },
+  "currentWork.startAgain": { en: "Start again (reopens it)", es: "Empezar de nuevo (la reabre)" },
+  "unitEditor.installComplete": { en: "Whole install complete (all visits)", es: "Instalación completa (todas las visitas)" },
+  "unitEditor.completeHint": { en: "Yes means the whole install is done. Saving will not start a new visit.", es: "Sí significa que toda la instalación está terminada. Guardar no inicia una nueva visita." },
+  "unitEditor.saveComplete": { en: "Save — install complete ✓", es: "Guardar — instalación terminada ✓" },
 
   // ---- First-login language picker -------------------------------------
   "picker.heading": { en: "Choose your language", es: "Elige tu idioma" },

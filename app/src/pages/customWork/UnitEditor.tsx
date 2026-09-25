@@ -111,6 +111,11 @@ export function UnitEditor({
       )}
     </label>
   );
+  // "Save and start" after choosing Yes used to save the Yes and then start a
+  // new visit, and a new visit reopens completion (custom_work_command
+  // 'start') — so no unit ever stayed complete (2026-09-24). With Yes chosen
+  // the only save is a plain one.
+  const completeChosen = !recordOnly && facts.installation_complete === "Yes";
   const save = (start: boolean) =>
     onSave(
       {
@@ -206,6 +211,12 @@ export function UnitEditor({
               name.
             </p>
           )}
+        {!recordOnly && (
+          <div className="cw-editor-complete">
+            {field("installation_complete", t("unitEditor.installComplete"), ["Yes", "No"])}
+            <p className="cw-field-hint">{t("unitEditor.completeHint")}</p>
+          </div>
+        )}
         {defaults && !unit && (
           <p className="muted">
             Available type and dimensions came from the selected map unit. Confirm
@@ -266,11 +277,6 @@ export function UnitEditor({
               "From plans",
               "Estimated",
             ])}
-            {!recordOnly && field(
-              "installation_complete",
-              "Installation complete (all visits)",
-              ["Yes", "No"],
-            )}
             {field("equipment", "Machinery / vehicle description")}
             {field(
               "equipment_minutes",
@@ -308,14 +314,20 @@ export function UnitEditor({
         </div>
       </details>
       <div className="cw-actions cw-editor-actions">
-        <button
-          className="primary"
-          disabled={busy || (recordOnly && !name.trim())}
-          onClick={() => void save(!recordOnly)}
-        >
-          {recordOnly ? t("crewRecord.continue") : unit ? "Save and start" : "Start this unit"}
-        </button>
-        {!recordOnly && <button disabled={busy} onClick={() => void save(false)}>
+        {completeChosen ? (
+          <button className="primary" disabled={busy} onClick={() => void save(false)}>
+            {t("unitEditor.saveComplete")}
+          </button>
+        ) : (
+          <button
+            className="primary"
+            disabled={busy || (recordOnly && !name.trim())}
+            onClick={() => void save(!recordOnly)}
+          >
+            {recordOnly ? t("crewRecord.continue") : unit ? "Save and start" : "Start this unit"}
+          </button>
+        )}
+        {!recordOnly && !completeChosen && <button disabled={busy} onClick={() => void save(false)}>
           Save details
         </button>}
         <button disabled={busy} onClick={onCancel}>
