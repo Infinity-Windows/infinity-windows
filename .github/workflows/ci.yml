@@ -68,6 +68,7 @@ jobs:
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-servicing.mjs
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-time-off.mjs
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-photo-upload.mjs
+      - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-partner-visibility.mjs
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-custom-work.mjs
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-crew-unit-records.mjs
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-ai-field-operations.mjs
