@@ -254,8 +254,13 @@ function PersonsPinGate({ userId, children }: { userId: string; children: React.
     } finally {
       setCheckingPin(false);
     }
-    // Asked once more right before anything is written or shown.
-    if (problem === ENDED || !stillOurs(signIn)) return;
+    // Asked once more right before anything is written or shown. A check
+    // dropped while the same person's lock is still drawn (signed out and
+    // back in before App redrew) hands the pad back empty, to type again.
+    if (problem === ENDED || !stillOurs(signIn)) {
+      setEntry("");
+      return;
+    }
     if (problem) {
       setError(problem);
       setEntry("");

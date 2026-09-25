@@ -610,6 +610,29 @@ describe("signing out and switching accounts, as App does it", () => {
     expect(offline.rememberPinForOffline).not.toHaveBeenCalled();
   });
 
+  it("a check dropped while the same person's lock stays drawn hands the pad back empty", async () => {
+    // Signed out and straight back in (another tab, say) before App redrew:
+    // the same person's lock is still on screen when the old answer lands.
+    api.myPinStatus.mockResolvedValue(true);
+    let answer!: (value: { ok: true }) => void;
+    api.checkMyPin.mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)));
+    await mount();
+    await typePin("4821");
+    authSays("SIGNED_OUT", null);
+    authSays("SIGNED_IN", USER);
+
+    await act(async () => answer({ ok: true }));
+    await settle();
+    expect(text()).not.toContain("THE APP");
+    expect(container.querySelector<HTMLInputElement>("input.pin-input")?.value).toBe("");
+
+    // The pad takes digits again, and a check made now counts.
+    api.checkMyPin.mockResolvedValueOnce({ ok: true });
+    await typePin("4821");
+    expect(api.checkMyPin).toHaveBeenCalledTimes(2);
+    expect(text()).toContain("THE APP");
+  });
+
   it("an offline yes that lands after sign-out lets nobody in", async () => {
     savedOnPhone(true);
     api.myPinStatus.mockRejectedValue(NO_SIGNAL);
