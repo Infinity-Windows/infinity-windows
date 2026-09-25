@@ -1,8 +1,7 @@
 // Toolbox talks: signed daily safety-talk completions. Builds a dated PDF
-// (talk content + drawn signature + typed name) at the moment of signing and
-// hands the whole signature to the phone's outbox, which archives it to the
-// 'toolbox-records' storage bucket and files the completion row that the
-// server-side clock_in gate checks — at once with signal, later without.
+// (talk content + drawn signature + typed name), archives it to the
+// 'toolbox-records' storage bucket, and records the completion row that the
+// server-side clock_in gate checks.
 import { PDFDocument, StandardFonts, rgb, type PDFFont } from "pdf-lib";
 import { supabase } from "./supabase";
 import { isMissingColumn } from "./schemaErrors";
