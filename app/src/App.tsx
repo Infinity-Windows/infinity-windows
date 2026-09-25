@@ -33,6 +33,7 @@ import { ViewAsRoleProvider } from "./lib/viewAsRole";
 import { useEffectiveRole } from "./lib/useEffectiveRole";
 import { supabase } from "./lib/supabase";
 import { rememberSignedIn } from "./lib/signedIn";
+import { syncPinLockWithAuth } from "./lib/pinGate";
 import { Home } from "./pages/Home";
 import { Landing } from "./pages/Landing";
 import { Warehouse } from "./pages/Warehouse";
@@ -460,6 +461,10 @@ export default function App() {
       // in the middle of a tap is a network round trip, and on a token that has
       // gone stale offline it is a long one that answers "nobody".
       rememberSignedIn(data.session);
+      // The device lock keeps nothing for anybody but the person signed in
+      // now: another person's unlock, or an offline unlock past its twelve
+      // hours, goes before the lock is drawn (lib/pinGate.ts).
+      syncPinLockWithAuth("INITIAL_SESSION", data.session?.user.id ?? null);
       setSession(data.session);
       setReady(true);
       onSignedIn(data.session);
@@ -467,6 +472,9 @@ export default function App() {
     const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
       if (event === "PASSWORD_RECOVERY") setRecovery(true);
       rememberSignedIn(s);
+      // Signing out (from the menu, or the server ending the session), or
+      // anybody else signing in, ends every unlock the lock kept.
+      syncPinLockWithAuth(event, s?.user.id ?? null);
       setSession(s);
       onSignedIn(s);
     });
@@ -568,7 +576,7 @@ export default function App() {
           gate — so a new crew member picks their language before the app asks
           for anything else. It renders nothing once a choice exists. */}
       <FirstRunLanguagePicker />
-      <PinGate>
+      <PinGate userId={session.user.id}>
       <ViewAsRoleProvider>
       <BrowserRouter basename={routerBasename(import.meta.env.BASE_URL)}>
         <ClockProvider>

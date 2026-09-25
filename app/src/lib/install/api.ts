@@ -267,18 +267,60 @@ export async function listProfilesIncludingRemoved(): Promise<Profile[]> {
   return (data ?? []) as Profile[];
 }
 
-/** PIN status/verify happen server-side; the value never reaches the client. */
-export async function myPinStatus(): Promise<boolean> {
-  const { data, error } = await supabase.rpc("my_pin_status");
-  if (error) return false;
-  return Boolean(data);
+/**
+ * The server could not be reached, or could not judge: no answer at all (no
+ * signal, a dropped or timed-out request — postgrest-js reports those as
+ * status 0) or the server itself failing (5xx).
+ */
+function serverUnreachable(status: number): boolean {
+  return status === 0 || status >= 500;
 }
 
+/**
+ * PIN status/verify happen server-side; the value never reaches the client.
+ *
+ * Only a real yes or no from the server is an answer — `true` or `false`, and
+ * my_pin_status never returns anything else. Everything else THROWS, and the
+ * lock stays shut and offers Try again (PinGate): no signal, a request that ran
+ * out of time, a token the server would not take, a missing function. The
+ * error's `reason` says which kind: "network" when the server could not be
+ * reached or could not judge (as checkMyPin), "error" when it answered without
+ * a yes or a no — so the lock does not tell somebody with full bars that they
+ * are offline.
+ *
+ * This read is the deliberate exception to "degrade instead of crashing"
+ * (CLAUDE.md): everywhere else a missing table or function empties a screen,
+ * but here the answer decides whether a lock opens, and a security gate fails
+ * CLOSED. It used to answer `false` — "no PIN" — for every error, which let a
+ * PIN account past its lock with no signal (2026-09-24); then still for a
+ * missing function, which is also what PostgREST says about a stale schema
+ * cache while the function is there and the person has a PIN (PGRST202;
+ * Codex review of #651, 2026-09-25). "Couldn't ask" is never "no".
+ */
+export async function myPinStatus(): Promise<boolean> {
+  const { data, error, status } = await supabase.rpc("my_pin_status");
+  if (!error && typeof data === "boolean") return data;
+  throw Object.assign(new Error(error?.message ?? "my_pin_status answered neither yes nor no"), {
+    code: error?.code,
+    reason: error && serverUnreachable(status) ? "network" : "error",
+  });
+}
+
+/**
+ * Ask the server whether `pin` is the signed-in person's PIN.
+ *
+ * "network" means the server could not be reached: no answer at all (no
+ * signal, or a dropped or timed-out request — postgrest-js reports those as
+ * status 0) or the server itself failing (5xx). That is the ONLY case in which
+ * PinGate may fall back to the offline unlock (lib/offlinePin.ts). "error" is
+ * the server answering and refusing, and with an answer from the server the
+ * server stays the only judge.
+ */
 export async function checkMyPin(
   pin: string,
-): Promise<{ ok: true } | { ok: false; reason: "wrong" | "network" }> {
-  const { data, error } = await supabase.rpc("check_my_pin", { p_pin: pin });
-  if (error) return { ok: false, reason: "network" };
+): Promise<{ ok: true } | { ok: false; reason: "wrong" | "network" | "error" }> {
+  const { data, error, status } = await supabase.rpc("check_my_pin", { p_pin: pin });
+  if (error) return { ok: false, reason: serverUnreachable(status) ? "network" : "error" };
   return data ? { ok: true } : { ok: false, reason: "wrong" };
 }
 

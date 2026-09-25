@@ -161,7 +161,7 @@ export const QUERY_KEY_ROOTS: QueryKeyRootEntry[] = [
   { root: "myLearningTime", offline: false },
   { root: "myOpeningBlocks", offline: false },
   { root: "myOpenings", offline: true },
-  { root: "myPinStatus", offline: false },
+  { root: "myPinStatus", offline: true, why: "The device lock's last answer (2026-09-24). Not kept, an app reopened with no signal had nothing to go on: the lock sat on \"Checking device lock…\" for as long as the read hung, and when the read failed it took that for \"no PIN\" and opened for a person who has one. Kept, a PIN account still gets the PIN pad offline and a no-PIN account goes straight in. It is one yes/no per signed-in person, keyed by their id; the PIN and its hash never leave the server." },
   { root: "myProfile", offline: true },
   { root: "myReadyCount", offline: false },
   { root: "myRealProfile", offline: false },

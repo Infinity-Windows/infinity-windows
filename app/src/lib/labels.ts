@@ -1,13 +1,27 @@
 // Generates printable label PDFs (4x2 inch landscape labels, one per page,
 // sized for thermal printers like the Rollo; also fine on letter sheets).
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
-import QRCode from "qrcode";
 import {
   encodeContainerSerialQr,
   encodeLocationQr,
   encodeLocationSerialQr,
   encodePackageSerialQr,
 } from "./qr";
+
+/**
+ * A QR code as a PNG data URL, drawn by a library loaded the first time a
+ * label is printed. The Warehouse screen imports this file for its print
+ * buttons, so the library — about 23 kB — used to ride in the entry chunk
+ * that every phone downloads before its first screen, for labels a few
+ * people print at the shop. Taken out 2026-09-25 to keep that chunk under
+ * its budget (scripts/check-bundle-budget.mjs) as #651 grew the device lock.
+ * The service worker still precaches it, so a phone that has synced once
+ * prints with no signal.
+ */
+async function qrPng(payload: string, width: number): Promise<string> {
+  const { default: QRCode } = await import("qrcode");
+  return QRCode.toDataURL(payload, { errorCorrectionLevel: "M", margin: 1, width });
+}
 
 const LABEL_W = 288; // 4in * 72pt
 const LABEL_H = 144; // 2in * 72pt
@@ -34,11 +48,7 @@ async function buildLabelPdf(labels: LabelSpec[]): Promise<Uint8Array> {
 
   for (const label of labels) {
     const page = doc.addPage([LABEL_W, LABEL_H]);
-    const qrDataUrl = await QRCode.toDataURL(label.qrPayload, {
-      errorCorrectionLevel: "M",
-      margin: 1,
-      width: 240,
-    });
+    const qrDataUrl = await qrPng(label.qrPayload, 240);
     const png = await doc.embedPng(qrDataUrl);
     const qrSize = 116;
     page.drawImage(png, {
@@ -169,11 +179,7 @@ export async function containerPostersPdf(
 
   for (const c of containers) {
     const page = doc.addPage([W, H]);
-    const qrDataUrl = await QRCode.toDataURL(encodeContainerSerialQr(c.serial), {
-      errorCorrectionLevel: "M",
-      margin: 1,
-      width: 640,
-    });
+    const qrDataUrl = await qrPng(encodeContainerSerialQr(c.serial), 640);
     const png = await doc.embedPng(qrDataUrl);
     const qrSize = 440;
     page.drawImage(png, {

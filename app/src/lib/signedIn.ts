@@ -22,10 +22,16 @@
 /** The shape this module needs from a Supabase session. Structural on purpose:
  *  `Session | null` satisfies it, and the tests need no SDK. */
 export interface SignedInSession {
-  user?: { email?: string | null } | null;
+  user?: { id?: string | null; email?: string | null } | null;
 }
 
 let email: string | null = null;
+let userId: string | null = null;
+/**
+ * Moves on every time the signed-in id changes: a sign-out, another login, the
+ * same person signing in again after signing out. See signInMark.
+ */
+let generation = 0;
 
 /**
  * Remember who is signed in. Called by App's auth plumbing — the boot
@@ -36,7 +42,46 @@ let email: string | null = null;
  * no longer the author of anything.
  */
 export function rememberSignedIn(session: SignedInSession | null): void {
+  const id = session?.user?.id ?? null;
+  if (id !== userId) generation++;
   email = session?.user?.email ?? null;
+  userId = id;
+}
+
+/** Who was signed in when a piece of work began. */
+export interface SignInMark {
+  readonly userId: string | null;
+  readonly generation: number;
+}
+
+/**
+ * A mark of who is signed in right now. Slow work that could let somebody in —
+ * the device lock's check with the server, its offline fingerprint — takes one
+ * BEFORE it starts, and asks stillSignedInAs right before it writes anything.
+ */
+export function signInMark(): SignInMark {
+  return { userId, generation };
+}
+
+/**
+ * The sign-in generation right now. The device lock ties an unlock to it, so
+ * an unlock ends with the sign-in it was made in — even when the next sign-in
+ * is the same person's.
+ */
+export function signInGeneration(): number {
+  return generation;
+}
+
+/**
+ * Is `who` still the person signed in, with no sign-out and no other login
+ * since `mark` was taken? False after ANY change of who is signed in, even
+ * back to the same person. Work begun before that boundary belongs to a
+ * sign-in that has ended, and must land nowhere: a yes from the server that
+ * arrived after a sign-out used to keep a fresh offline unlock for the person
+ * who had just signed out (Codex review of #651, 2026-09-25).
+ */
+export function stillSignedInAs(mark: SignInMark, who: string): boolean {
+  return mark.generation === generation && mark.userId === who && userId === who;
 }
 
 /**
@@ -46,4 +91,16 @@ export function rememberSignedIn(session: SignedInSession | null): void {
  */
 export function signedInEmail(): string | null {
   return email;
+}
+
+/**
+ * The signed-in person's auth id, or null before sign-in has resolved — the
+ * REAL login, never a person being previewed. The device lock's saved answer
+ * is keyed on this id, because my_pin_status answers for auth.uid(): App hands
+ * the same id to PinGate from its session, and the Crew screen's PIN setter
+ * reads it here so a PIN change lands on the answer the lock keeps.
+ * Same promises as signedInEmail: no await, no request.
+ */
+export function signedInUserId(): string | null {
+  return userId;
 }

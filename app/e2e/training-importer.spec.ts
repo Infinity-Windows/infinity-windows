@@ -101,12 +101,20 @@ test("Spanish owner importer is readable at320px and rejects incomplete local fi
 
 test("account change drops the selected private package and ignores the old reservation reply",async({page})=>{
   await openTraining(page);
-  let release:()=>void=()=>{},arrived=false,uploads=0;
+  let release:()=>void=()=>{},arrived=false,replied=false,uploads=0;
+  let reserved:Array<{kind:string,path:string,bytes:number,mime:string}>=[];
+  const reservation={id:"10000000-0000-4000-8000-000000000002",slug:"installer",language:"en",version:1,state:"reserved",expiresAt:"2099-01-01T00:00:00Z"};
   await page.route("**/rest/v1/rpc/app_training_import_reserve",async route=>{
     const body=route.request().postDataJSON(); arrived=true;
+    reserved=["video","captions"].map(kind=>({kind,path:`installer/en/v1/${kind==='video'?'walkthrough.mp4':'captions.vtt'}`,bytes:body.p_entry[kind].bytes,mime:body.p_entry[kind].mime}));
     await new Promise<void>(resolve=>release=resolve);
-    await route.fulfill({json:{id:"10000000-0000-4000-8000-000000000002",slug:"installer",language:"en",version:1,state:"reserved",expiresAt:"2099-01-01T00:00:00Z",assets:["video","captions"].map(kind=>({kind,path:`installer/en/v1/${kind==='video'?'walkthrough.mp4':'captions.vtt'}`,bytes:body.p_entry[kind].bytes,mime:body.p_entry[kind].mime}))}}).catch(()=>{});
+    await route.fulfill({json:{...reservation,assets:reserved}}).catch(()=>{});
+    replied=true;
   });
+  // What a live server answers next: nothing stored yet. Without this the run
+  // stopped here for want of an answer, so the upload count below could never
+  // move; now a run that carried on for A after B signed in WOULD upload.
+  await page.route("**/rest/v1/rpc/app_training_import_status",route=>route.fulfill({json:[{...reservation,expired:false,assets:reserved.map(a=>({...a,present:false,ownedByYou:false,storedBytes:null,storedMime:null}))}]}));
   await page.route("**/storage/v1/object/app-training/**",route=>{uploads++;return route.fulfill({json:{}})});
   await chooseFiles(page);await expect(page.locator('.ti-publish')).toBeEnabled();
   await page.locator('.ti-publish').click();await expect.poll(()=>arrived).toBe(true);
@@ -124,8 +132,18 @@ test("account change drops the selected private package and ignores the old rese
   await expect.poll(()=>page.evaluate(async()=>{
     const browserModule='/src/lib/supabase.ts';const {supabase}=await import(browserModule);return (await supabase.auth.getSession()).data.session?.user.id;
   })).toBe(id);
+  // Another person on this phone gets a fresh app. The device lock checks B's
+  // PIN before it shows B anything, and keeps nothing of A's below it — it is
+  // keyed by person and sign-in (components/PinGate.tsx, #651) — so the Learn
+  // page is drawn anew for B, on its first tab. A's picked files went with A's
+  // page, and unmounting A's importer stopped the run waiting on its reply.
+  await expect(page.getByRole("heading",{name:"Learn",level:1})).toBeVisible();
+  await page.locator(".hub-tab",{hasText:"Using Forge"}).click();
   await expect(page.locator('.ti-picker-summary').first()).not.toContainText('role-videos-manifest.json');
   await expect(page.locator('.ti-preview')).toHaveCount(0);
-  release(); await expect(page.locator('.ti-publish')).toHaveCount(0);
+  // A's reservation reply lands only now, and nothing may come of it.
+  release(); await expect.poll(()=>replied).toBe(true);
+  await page.waitForTimeout(500);
+  await expect(page.locator('.ti-publish')).toHaveCount(0);
   expect(uploads).toBe(0);
 });
