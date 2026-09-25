@@ -123,6 +123,15 @@ describe("with no signal", () => {
     expect(await checkPinOffline(ANA, PIN, phone())).toEqual({ kind: "ok" });
   });
 
+  it("an unlock with no signal never stretches the twelve hours", async () => {
+    await rememberPinForOffline(ANA, PIN, phone());
+    clock = T0 + 11 * HOUR;
+    expect(await checkPinOffline(ANA, PIN, phone())).toEqual({ kind: "ok" });
+    expect(saved()).toMatchObject({ issuedAt: T0, expiresAt: T0 + 12 * HOUR, failures: 0 });
+    clock = T0 + 12 * HOUR;
+    expect(await checkPinOffline(ANA, PIN, phone())).toEqual({ kind: "expired" });
+  });
+
   it("a wrong PIN is refused and counted, and the count survives closing the app", async () => {
     await rememberPinForOffline(ANA, PIN, phone());
     expect(await checkPinOffline(ANA, "1111", phone())).toEqual({ kind: "wrong", triesLeft: 4 });
