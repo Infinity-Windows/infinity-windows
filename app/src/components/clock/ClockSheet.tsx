@@ -345,9 +345,16 @@ export function ClockSheet({
   });
   const phaseBusy = pausePhase.isPending || resumePhase.isPending;
 
+  // EVERY PUNCH IS STAMPED AT ITS TAP (Release 0, K0.2/K0.5): each mutation
+  // below mints its punch — the one-time id and the tap time — before it
+  // awaits anything, and so before the location wait. captureGeoSoft can take
+  // 12.5 seconds on a weak fix, and a punch minted after it told the server
+  // the tap happened up to 12.5 seconds later than it did; pay uses the tap
+  // time when it trusts the phone. The live try and the queued fallback carry
+  // that one punch. (A mutation's first try runs the moment it is tapped:
+  // mutations are offlineFirst, lib/queryClient.ts.)
   const doStart = useMutation<PunchResult>({
     mutationFn: async () => {
-      const geo = await captureGeoSoft();
       const projectId = pickProjectId || null;
       const costCodeId = pickCostCodeId || null;
       const noteText = note.trim() || null;
@@ -377,9 +384,11 @@ export function ClockSheet({
       // One id per tap (K0.2). A pick carried from the landing block keeps the
       // block's id: its punch may have been SAVED before the reply was lost,
       // and the server answers a repeat of that id with the shift it made.
+      // Stamped here, before the location wait (see above).
       const punch = mintPunch(
         initialPick && initialPick.projectId === projectId ? initialPick.clientId : null,
       );
+      const geo = await captureGeoSoft();
       try {
         await clockIn(projectId, costCodeId, geo, noteText, jobMode, punch);
         // Same tap starts the first window when one was picked. The clock-in
@@ -441,11 +450,11 @@ export function ClockSheet({
 
   const doSwitch = useMutation<PunchResult>({
     mutationFn: async () => {
+      const punch = mintPunch();
       const geo = await captureGeoSoft();
       const projectId = pickProjectId || null;
       const costCodeId = pickCostCodeId || null;
       const noteText = note.trim() || null;
-      const punch = mintPunch();
       try {
         // clock_in auto-closes the prior open shift, so switching leaves no gap.
         await clockIn(projectId, costCodeId, geo, noteText, null, punch);
@@ -475,9 +484,9 @@ export function ClockSheet({
 
   const doPhaseSwitch = useMutation<PunchResult, Error, string>({
     mutationFn: async (costCodeId: string) => {
+      const punch = mintPunch();
       const geo = await captureGeoSoft();
       const projectId = shift?.project_id ?? null;
-      const punch = mintPunch();
       try {
         await clockIn(projectId, costCodeId, geo, null, null, punch);
         return { queued: false };
@@ -590,9 +599,12 @@ export function ClockSheet({
 
   const doClockOut = useMutation<PunchResult>({
     mutationFn: async () => {
+      // A break still running ends at the tap too, with the punch — not after
+      // the location wait, which would count those seconds as break.
+      const tapMs = Date.now();
+      const punch = mintPunch(null, tapMs);
+      const breakSeconds = currentBreakSeconds(shift!, tapMs);
       const geo = await captureGeoSoft();
-      const breakSeconds = currentBreakSeconds(shift!, Date.now());
-      const punch = mintPunch();
       if (!shiftIsPending()) {
         try {
           await clockOut(

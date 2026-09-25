@@ -195,6 +195,10 @@ export function FarFromJobPrompt({
   // fail exactly when it matters and leave the clock charging the job.
   const switchToTravel = useMutation<{ queued: boolean }>({
     mutationFn: async () => {
+      // One id for this tap, live try and queued retry alike (K0.2), stamped
+      // at the tap: before the Travel lookup and the location wait, either of
+      // which can take seconds that are not when the person tapped.
+      const punch = mintPunch();
       const travel = cachedTravel ?? (await getTravelCostCode());
       if (!travel) {
         throw new Error(
@@ -209,8 +213,6 @@ export function FarFromJobPrompt({
       const geo: GeoFix =
         fresh.lat != null ? fresh : (fixRef.current ?? {});
       const current = shift!;
-      // One id for this tap, live try and queued retry alike (K0.2).
-      const punch = mintPunch();
       try {
         await clockIn(
           current.project_id,
