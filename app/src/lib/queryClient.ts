@@ -1,5 +1,6 @@
 import { MutationCache, QueryClient } from "@tanstack/react-query";
 import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
+import type { PersistedClient, Persister } from "@tanstack/react-query-persist-client";
 import { getProjectWindows, listProjects } from "./api";
 import {
   downloadPlanset,
@@ -39,13 +40,107 @@ export const queryClient = new QueryClient({
   },
 });
 
-export const persister =
+/** The three calls the phone's copy needs from localStorage. */
+type CacheStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
+
+/**
+ * The persister, plus a way to write its newest snapshot NOW.
+ *
+ * The sync persister writes at most once a second: the first change starts a
+ * one-second timer, and the write carries whatever the cache held when the
+ * timer fires. Nothing writes when the page goes away. So a close, a reload or
+ * iOS putting the app to sleep inside that second loses the last second of
+ * reads from the phone's copy. Inside the first second after the app opens,
+ * that is ALL of them, because nothing has been written yet. The app reloads
+ * itself in exactly that window by design: the update-on-open takeover, and
+ * the missing-chunk recovery (lib/pwa/preloadRecovery.ts). A person swiping
+ * the app away right after a tap does it too.
+ *
+ * What that costs showed up in e2e/queued-clock.spec.ts (2026-09-24), which
+ * reloads with no signal about 0.8 s after the landing appears. In half its
+ * runs the phone's copy was still empty. The reopened app had no profile to
+ * restore, so the device lock waited on a read that could not succeed and sat
+ * on "Checking device lock…" for good, while the clock-in the person had just
+ * made sat safely in the outbox behind it.
+ *
+ * `saveNow` is the timer's pending write, done early: the same snapshot, in
+ * the same format, and nothing at all once the timer has written it. So the
+ * timer firing later can only write the same thing or something newer.
+ * installSaveOnLeave() calls it when the page is hidden or put away.
+ */
+export function leaveSafePersister(
+  storage: CacheStorage,
+  key: string,
+): { persister: Persister; saveNow: () => void } {
+  // The snapshot the timer is holding for its next write; null once written.
+  let unsaved: PersistedClient | null = null;
+  const timed = createSyncStoragePersister({
+    storage: {
+      getItem: (k) => storage.getItem(k),
+      setItem: (k, value) => {
+        storage.setItem(k, value);
+        unsaved = null;
+      },
+      removeItem: (k) => storage.removeItem(k),
+    },
+    key,
+  });
+  return {
+    persister: {
+      persistClient: (client) => {
+        unsaved = client;
+        return timed.persistClient(client);
+      },
+      restoreClient: () => timed.restoreClient(),
+      removeClient: () => timed.removeClient(),
+    },
+    saveNow: () => {
+      if (!unsaved) return;
+      try {
+        storage.setItem(key, JSON.stringify(unsaved));
+        unsaved = null;
+      } catch {
+        // Storage full: keep what is already there, as the timer's own write does.
+      }
+    },
+  };
+}
+
+const cacheOnPhone =
   typeof window !== "undefined"
-    ? createSyncStoragePersister({
-        storage: window.localStorage,
-        key: "wops-query-cache",
-      })
+    ? leaveSafePersister(window.localStorage, "wops-query-cache")
     : undefined;
+
+export const persister = cacheOnPhone?.persister;
+
+/** The two events installSaveOnLeave listens for. `window` is one. */
+export interface LeaveEvents {
+  addEventListener(type: "pagehide", listener: () => void): void;
+  readonly document: {
+    addEventListener(type: "visibilitychange", listener: () => void): void;
+    readonly visibilityState: DocumentVisibilityState;
+  };
+}
+
+/**
+ * Write the phone's copy of the cache the moment the page is hidden or put
+ * away, instead of up to a second later (see leaveSafePersister above).
+ *
+ * Both events, because neither is enough alone. A reload or a navigation fires
+ * `pagehide`. An installed app sent to the background on iOS can be killed
+ * later with no event at all, so `visibilitychange` to hidden is the last
+ * thing it reliably hears. Called once, from main.tsx.
+ */
+export function installSaveOnLeave(
+  target: LeaveEvents | undefined = typeof window !== "undefined" ? window : undefined,
+  saveNow: (() => void) | undefined = cacheOnPhone?.saveNow,
+): void {
+  if (!target || !saveNow) return;
+  target.addEventListener("pagehide", saveNow);
+  target.document.addEventListener("visibilitychange", () => {
+    if (target.document.visibilityState === "hidden") saveNow();
+  });
+}
 
 /**
  * Queries worth keeping offline. Excludes heavy/binary and volatile searches.
