@@ -11,6 +11,7 @@ import { startCrashMonitoring } from "./lib/monitoring/sentry";
 import { installPushChangeListener } from "./lib/permissions/pushSubscribe";
 import { installPreloadRecovery } from "./lib/pwa/preloadRecovery";
 import { installClockCheck } from "./lib/clockSkew";
+import { installSaveOnLeave } from "./lib/queryClient";
 
 // Crash monitoring, started BEFORE anything mounts so a crash on the very first
 // paint is still caught. With VITE_SENTRY_DSN unset — the state this ships in —
@@ -41,6 +42,11 @@ installPreloadRecovery();
 // morning with signal is still trusted for the evening clock-out in a dead
 // zone. Silent when offline: the last good check stands. See lib/clockSkew.ts.
 installClockCheck();
+
+// The phone's copy of what the screens last read is written on a one-second
+// timer; this also writes it the moment the app is hidden or reloaded, so a
+// reopen with no signal never finds it empty. See lib/queryClient.ts.
+installSaveOnLeave();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
