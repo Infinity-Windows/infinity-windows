@@ -206,7 +206,11 @@ drafted with Forge AI and saved by their own tap. It is appended under a
 header naming them, never replaces anyone's words, and is refused (nothing
 written) if the log changed since they previewed it. Saving the same
 contribution twice returns the first receipt. Its photos go to the job they
-were attached to and report their own upload status.
+were attached to and report their own upload status. Its answers are written
+in English whatever language was spoken (owner call, 2026-09-24: one company
+record for the office); the person's own words stay as the entry's evidence
+on the Ask message that fed it (recording and transcript), and the AI's
+reply to them stays in their language.
 
 **Log coverage** — logged worked-days ÷ all worked-days, overall or per
 job (a worked job-day is any shift or session on that job, that local

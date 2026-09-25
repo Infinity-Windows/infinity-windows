@@ -82,6 +82,17 @@ The model gets one tool, `record_daily_log_answers`, whose schema has no job,
 date, photo, destination, save or confirmation field. Photo captions are never
 sent to it (only a photo count). No image content is sent; vision is not used.
 
+**Answers are written in English** (owner decision, 2026-09-24). The shared
+log is one company record the office reads, so whatever language the person
+spoke, the model records a faithful translation — the same facts, nothing
+added, names, numbers and unit codes exact ("el clima estuvo caliente" →
+Weather: Hot). The reply to the person stays in their language. Their own
+words are not lost: the Ask message that fed the entry keeps the recording
+and the transcript, and the entry names those messages as its evidence
+(`source_request_ids`). Until the receipt says saved, the model calls it a
+draft ("en el borrador"), never recorded or saved — the phone prints
+"Nothing was saved yet" under such words.
+
 ## Evidence (local, synthetic only)
 
 - `PGLITE_MODULE=… node scripts/verify-ai-daily-logs.mjs` — 121 checks: roles,
