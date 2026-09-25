@@ -320,35 +320,63 @@ describe("the recorder follows the scroll (note 1)", () => {
 });
 
 describe("the newest message comes into view (note 3)", () => {
-  it("someone down at the cards and the daily log sees their message and then the reply, brought up above them", async () => {
+  it("someone down at the cards and the daily log gets their message brought up above them, and the reply lands under it", async () => {
     await mount();
     // The thread is above the screen: the person is below it.
     layout.rows.set(0, [-700, -640]);
     layout.rows.set(1, [-600, -560]);
-    layout.rows.set(2, [-540, -400]);
+    let answer: () => void = () => {};
+    server.hold = new Promise<void>((resolve) => { answer = resolve; });
     await send("What is flashing?");
+    // Their own words to the top of the screen, the options still under them.
+    expect(scrollBy.mock.calls.map(([arg]) => (arg as ScrollToOptions).top)).toEqual([-600 - BAND.top]);
+    // The page moved; the reply then lands right under their words, on screen.
+    layout.rows.set(0, [-88 + BAND.top, -28 + BAND.top]);
+    layout.rows.set(1, [BAND.top, BAND.top + 40]);
+    layout.rows.set(2, [BAND.top + 60, BAND.top + 200]);
+    await act(async () => answer());
+    await settle();
     expect(host!.textContent).toContain("Got it: What is flashing?");
-    const moves = scrollBy.mock.calls.map(([arg]) => (arg as ScrollToOptions).top);
-    // Their own words first, then the reply — each to the top of the screen,
-    // the options still under it.
-    expect(moves).toEqual([-600 - BAND.top, -540 - BAND.top]);
+    expect(scrollBy).toHaveBeenCalledTimes(1);
     expect(host!.querySelector(".ask-jump")).toBeNull();
   });
 
-  it("a voice message's transcript comes into view the moment it is written out, then its reply", async () => {
+  it("a reply that arrives while the page is still gliding up brings their words and itself into view together", async () => {
+    await mount();
+    layout.rows.set(0, [-700, -640]);
+    layout.rows.set(1, [-600, -560]);
+    layout.rows.set(2, [-540, -400]);
+    await send("What is flashing?");
+    // Both moves aim at the person's own words: the question and its answer
+    // show together, in the same place however fast the reply came.
+    expect(scrollBy.mock.calls.map(([arg]) => (arg as ScrollToOptions).top)).toEqual([-600 - BAND.top, -600 - BAND.top]);
+  });
+
+  it("a reply too long to show with the question shows its own start", async () => {
+    await mount();
+    layout.rows.set(0, [-1700, -1640]);
+    layout.rows.set(1, [-1600, -1560]);
+    layout.rows.set(2, [-1540, -400]);
+    await send("What is flashing?");
+    expect(scrollBy.mock.calls.map(([arg]) => (arg as ScrollToOptions).top)).toEqual([-1600 - BAND.top, -1540 - BAND.top]);
+  });
+
+  it("a voice message's transcript comes into view the moment it is written out, and its reply under it", async () => {
     await mount();
     layout.rows.set(0, [-900, -840]);
     layout.rows.set(1, [-800, -760]);
-    layout.rows.set(2, [-700, -600]);
     // The reply waits on the network, as it does on a phone.
     let answer: () => void = () => {};
     server.hold = new Promise<void>((resolve) => { answer = resolve; });
     await speak();
     expect(host!.querySelector(".ask-bubble.mine")?.textContent).toBe("Set six frames on the east wall with Ben");
     expect(scrollBy.mock.calls.map(([arg]) => (arg as ScrollToOptions).top)).toEqual([-800 - BAND.top]);
+    layout.rows.set(1, [BAND.top, BAND.top + 40]);
+    layout.rows.set(2, [BAND.top + 60, BAND.top + 260]);
     await act(async () => answer());
     await settle();
-    expect(scrollBy.mock.calls.map(([arg]) => (arg as ScrollToOptions).top)).toEqual([-800 - BAND.top, -700 - BAND.top]);
+    expect(host!.textContent).toContain("Got it: Set six frames on the east wall with Ben");
+    expect(scrollBy).toHaveBeenCalledTimes(1);
   });
 
   it("a message already on screen stays put", async () => {

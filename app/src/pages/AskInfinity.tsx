@@ -40,7 +40,7 @@ import { startVoiceRecording, type VoiceRecording } from "../lib/voiceRecording"
 import { transcribeDescription } from "../lib/dictation";
 import { useUnsavedWorkWhile } from "../lib/pwa/useUnsavedWork";
 import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, Mic, Square } from "lucide-react";
-import { inBand, isTextEntry, readingHistory, revealDelta, scrollPageBy, spanOf, unionSpan, visibleBand, type Span } from "../lib/askLatest";
+import { inBand, isTextEntry, readingHistory, revealDelta, revealTarget, scrollPageBy, spanOf, unionSpan, visibleBand, type Span } from "../lib/askLatest";
 import { readCardsHidden, rememberCardsHidden } from "../lib/askCardsPref";
 import type { TimeShift } from "../lib/timeclock";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
@@ -175,12 +175,16 @@ function brainMessage(outcome: BrainOutcome, note?: string): ChatMsg {
   return { who: "infinity", text: prefix + outcome.message };
 }
 
-/** Where the newest message is on screen — with "Finding an answer…" under it
- * while that shows, so a sent message and its wait come into view together. */
-function newestSpan(thread: HTMLElement | null, status: HTMLElement | null): Span | null {
+/** What to bring into view (askLatest's revealTarget): the newest message with
+ * "Finding an answer…" under it while that shows, and — for a reply — the
+ * person's words just above it when both fit. */
+function latestTarget(thread: HTMLElement | null, status: HTMLElement | null, answersMine: boolean, band: Span): Span | null {
   const rows = thread ? thread.querySelectorAll("[data-msg]") : null;
-  return unionSpan([rows && rows.length ? spanOf(rows[rows.length - 1]) : null, spanOf(status)]);
+  if (!rows || !rows.length) return spanOf(status);
+  const newest = unionSpan([spanOf(rows[rows.length - 1]), spanOf(status)]);
+  return revealTarget(newest, answersMine && rows.length > 1 ? spanOf(rows[rows.length - 2]) : null, band);
 }
+const answersMine = (all: ChatMsg[]) => all.length > 1 && all[all.length - 1].who === "infinity" && all[all.length - 2].who === "me";
 
 /** The speaker's original recording, fetched on demand through a short-lived
  * private link (the bucket is readable only by them and supervisors). */
@@ -447,9 +451,9 @@ export function AskInfinity() {
     // puts older turns in front of it, so its old position means nothing.
     const at = messages.lastIndexOf(before.newest);
     const previous = spanOf(rows[at >= 0 ? at : before.count - 1]);
-    const box = newestSpan(threadRef.current, statusRef.current);
-    if (!box) return;
     const band = visibleBand(pinnedRef.current ? dockRef.current : null);
+    const box = latestTarget(threadRef.current, statusRef.current, answersMine(messages), band);
+    if (!box) return;
     const delta = revealDelta(box, band);
     if (delta === 0) { setJump(null); return; }
     const typing = document.activeElement;
@@ -467,8 +471,9 @@ export function AskInfinity() {
     const onScroll = () => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
-        const box = newestSpan(threadRef.current, statusRef.current);
-        if (box && inBand(box, visibleBand(pinnedRef.current ? dockRef.current : null))) setJump(null);
+        const band = visibleBand(pinnedRef.current ? dockRef.current : null);
+        const box = latestTarget(threadRef.current, statusRef.current, false, band);
+        if (box && inBand(box, band)) setJump(null);
       });
     };
     window.addEventListener("scroll", onScroll, { passive: true });
@@ -476,8 +481,9 @@ export function AskInfinity() {
   }, [jump]);
   const jumpToLatest = () => {
     setJump(null);
-    const box = newestSpan(threadRef.current, statusRef.current);
-    if (box) scrollPageBy(revealDelta(box, visibleBand(pinnedRef.current ? dockRef.current : null)));
+    const band = visibleBand(pinnedRef.current ? dockRef.current : null);
+    const box = latestTarget(threadRef.current, statusRef.current, answersMine(messages), band);
+    if (box) scrollPageBy(revealDelta(box, band));
   };
 
   // The label is shown translated; the query sent to send() stays the

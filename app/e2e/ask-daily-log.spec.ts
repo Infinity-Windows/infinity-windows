@@ -4,9 +4,10 @@
 // written; the card shows what the log says now; the second append saves
 // against the new revision. Every append carries only this person's own
 // words and the one Ask message they came from — never anyone else's text.
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { useSupabaseFixtures } from "./support/supabaseFixtures";
 import { dayISO, json } from "./support/specHelpers";
+import { useSyntheticMicrophone } from "./support/voiceFixture";
 
 const USER = "00000000-0000-4000-8000-0000000000e2";
 const BLACK22 = "ebf64f94-0413-4434-aeb3-1aff228fb5b3";
@@ -90,3 +91,131 @@ test("an installer's entry is added under Frank's and Ben's, never over them, an
   }
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 });
+
+// The owner, dictating a daily log on an iPhone (2026-09-24): the recording
+// bar should follow him so the pulsing Stop is always in reach; options he
+// put away kept opening again every time he used the microphone; and the
+// reply landed above those options, out of view — "it should be the most
+// recent thing I see." Run at iPhone size and at laptop width.
+const unit4 = { unit_id: "00000000-0000-4000-8000-000000000104", label: "4", type: "Bifold door", facts: {} };
+
+/** Wholly on screen with no scrolling and nothing over it: inside the window,
+ * under the phone's sync strip once it is stuck to the top, clear of the
+ * fixed banners (this fixture always shows "Wrong database" at the top), and
+ * above the phone tab bar. */
+async function expectOnScreen(page: Page, target: Locator) {
+  await expect.poll(async () => {
+    const box = await target.boundingBox();
+    const edges = await page.evaluate(() => {
+      let top = 0, bottom = window.innerHeight;
+      const strip = document.querySelector(".sync-strip")?.getBoundingClientRect();
+      if (strip && strip.height > 0 && strip.top <= 1) top = strip.bottom;
+      for (const el of document.querySelectorAll(".pwa-banner, .tabbar")) {
+        const r = el.getBoundingClientRect();
+        if (!r.height) continue;
+        if ((r.top + r.bottom) / 2 < window.innerHeight / 2) top = Math.max(top, r.bottom);
+        else bottom = Math.min(bottom, r.top);
+      }
+      return { top, bottom };
+    });
+    return !!box && box.y >= edges.top - 1 && box.y + box.height <= edges.bottom + 1;
+  }).toBe(true);
+}
+
+for (const size of [{ width: 375, height: 812 }, { width: 1280, height: 800 }]) {
+  test(`a daily log by voice at ${size.width}px: the recorder follows the scroll, put-away options stay away, the reply lands in view`, async ({ page }) => {
+    await page.setViewportSize(size);
+    await useSupabaseFixtures(page, { role: "installer" });
+    await useSyntheticMicrophone(page);
+    await page.route("**/rest/v1/daily_logs**", (r) => json(r, [], 0));
+    // The recording goes to the speaker's own folder, then is written out —
+    // held here so the "writing it out" moment can be looked at.
+    await page.route("**/storage/v1/object/ai-field-memos/**", (r) => json(r, { Key: "ai-field-memos/memo" }));
+    let writeOut: () => void = () => {};
+    const written = new Promise<void>((resolve) => { writeOut = resolve; });
+    await page.route("**/functions/v1/transcribe-description", async (r) => {
+      await written;
+      await json(r, { text: "I set six frames on the east wall with Ben and finished unit 4" });
+    });
+    const asks: Record<string, unknown>[] = [];
+    await page.route("**/functions/v1/ask", async (route) => {
+      const body = route.request().postDataJSON() as Record<string, unknown>;
+      asks.push(body);
+      const field = body.field as Record<string, unknown>;
+      const draft = body.daily_log as Record<string, unknown>;
+      const spoken = asks.length > 1;
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+        answer: spoken
+          ? "Got it: six frames on the east wall with Ben, and unit 4 is saved. Check the card, then tap Save daily log."
+          : "Tell me what you got done today. Tap Answer by voice and talk.",
+        field: { request_id: field.request_id, checklist: null,
+          receipts: spoken ? [{ action_id: "a1", action: "save_unit", status: "done", outcome: "created", unit: unit4 }] : [] },
+        daily_log: { draft_id: draft.draft_id, actor_id: draft.actor_id, request_id: field.request_id, conversation_id: field.conversation_id,
+          tool_inputs: spoken ? [{ work_completed: "Set six frames on the east wall", people: "Ben", unknown: [] }] : [] },
+      }) });
+    });
+
+    await page.goto("/ask");
+    const actionCards = page.locator(".ask-cards");
+    await expect(actionCards.locator(".ask-card")).toHaveCount(4);
+    // 1. The options, put away.
+    await page.getByRole("button", { name: "Hide actions" }).click();
+    await expect(actionCards).toHaveCount(0);
+
+    // 2. The daily log is started by typing; the reply is on screen and the
+    //    options stay away.
+    const composer = page.locator(".ask-input input");
+    await composer.fill("Build today's daily log");
+    await composer.press("Enter");
+    const card = page.locator(".ai-log-card");
+    await expect(card).toBeVisible();
+    const reply = page.locator(".ask-msg:not(.mine)").last();
+    await expect(reply).toContainText("Tell me what you got done today");
+    await expectOnScreen(page, reply.locator(".ask-bubble"));
+    await expect(actionCards).toHaveCount(0);
+
+    // 3. Answer by voice from the card, part-way down the page.
+    await card.getByRole("button", { name: "Answer by voice" }).click();
+    const stop = page.getByRole("button", { name: /^Stop and send/ });
+    await expect(stop).toBeVisible();
+    await expect.poll(() => page.evaluate(() => Reflect.get(window, "syntheticAudioBytes") as number)).toBeGreaterThan(1000);
+    const status = page.locator(".ask-dock-status");
+    await expect(status).toHaveText("Recording — tap the square to stop and send");
+    // At the very top of the page the recorder is still on screen, clear of the tab bar…
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await expectOnScreen(page, stop);
+    await expectOnScreen(page, status);
+    await page.screenshot({ path: `e2e/test-results/ask-recorder-top-${size.width}.png` });
+    // …and in the middle of the daily log card.
+    await card.getByRole("textbox", { name: "Work completed" }).scrollIntoViewIfNeeded();
+    await expectOnScreen(page, stop);
+    await page.screenshot({ path: `e2e/test-results/ask-recorder-card-${size.width}.png` });
+    // Stop from right there; while it is written out the pinned bar says so.
+    await stop.click();
+    await expect(status).toHaveText("Writing out what you said…");
+    await expectOnScreen(page, status);
+    writeOut();
+
+    // 4. Their words, then the reply and its receipt, on screen together
+    //    above the card — without a scroll from the person.
+    const spoken = page.locator(".ask-bubble.mine").last();
+    await expect(spoken).toHaveText("I set six frames on the east wall with Ben and finished unit 4");
+    await expect(reply).toContainText("unit 4 is saved");
+    const receipt = reply.locator(".field-receipt");
+    await expect(receipt).toContainText("Saved in Forge");
+    await expectOnScreen(page, spoken);
+    await expectOnScreen(page, reply.locator(".ask-bubble"));
+    await expectOnScreen(page, receipt);
+    await expect(page.locator(".ask-dock")).not.toHaveClass(/is-pinned/);
+    await expect(card.getByRole("textbox", { name: "Work completed" })).toHaveValue("Set six frames on the east wall");
+    await page.screenshot({ path: `e2e/test-results/ask-reply-in-view-${size.width}.png` });
+    expect(asks).toHaveLength(2);
+    expect(asks[1].field).toMatchObject({ input_kind: "voice" });
+
+    // 5. The options stayed away through all of it; Actions brings them back.
+    await expect(actionCards).toHaveCount(0);
+    await page.getByRole("button", { name: "Actions", exact: true }).click();
+    await expect(actionCards.locator(".ask-card")).toHaveCount(4);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(size.width);
+  });
+}

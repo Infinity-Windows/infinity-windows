@@ -5377,15 +5377,16 @@ button.clock-out {
 
 /* The composer, and while the microphone is on, the recorder pinned to the
    bottom of the screen (owner's note, 2026-09-24: "the chat bar that shows
-   that it's recording should follow me"). It rests just above the phone tab
-   bar — which already carries the home-indicator inset — or 16px off the
-   bottom of a laptop window, where the tab bar is display:none. The margin
+   that it's recording should follow me"). On a phone it rests above the tab
+   bar — which already carries the home-indicator inset — and clear of the
+   Capture (+) button, which rides 14px above the bar with a 4px ring; on a
+   laptop, where the tab bar is display:none, 16px off the bottom. The margin
    and padding cancel out, so pinning it never shifts the text box. */
-.ask-page { --ask-dock-bottom: calc(var(--above-tabbar) + 8px); }
+.ask-page { --ask-dock-bottom: calc(var(--above-tabbar) + 22px); }
 @media (min-width: 860px) {
   .ask-page { --ask-dock-bottom: calc(16px + var(--safe-bottom)); }
 }
-:root[data-display-layout="phone"] .ask-page { --ask-dock-bottom: calc(var(--above-tabbar) + 8px); }
+:root[data-display-layout="phone"] .ask-page { --ask-dock-bottom: calc(var(--above-tabbar) + 22px); }
 .ask-dock { position: relative; }
 .ask-dock.is-pinned {
   position: sticky;

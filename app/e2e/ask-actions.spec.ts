@@ -50,9 +50,15 @@ test("cards for an installer, gone while typing, back with Actions, and a card t
   expect((requests[0].field as { actor_id: string }).actor_id).toBe(USER);
   await expect(composer(page)).toHaveValue("Unit 7 is a slider");
   await expect(page.locator(".ask-cards")).toHaveCount(0);
-  // Every card is a real thumb target (K-X4).
+  // Emptying the box does not bring them back — only Actions does (owner's
+  // note, 2026-09-24: options he put away kept reopening). Every card is a
+  // real thumb target (K-X4), and so is the button that hides them again.
   await composer(page).fill("");
+  await expect(page.locator(".ask-cards")).toHaveCount(0);
+  await page.getByRole("button", { name: "Actions", exact: true }).click();
+  await expect(cards(page)).toHaveCount(4);
   for (const card of await cards(page).all()) expect((await card.boundingBox())!.height).toBeGreaterThanOrEqual(56);
+  expect((await page.getByRole("button", { name: "Hide actions" }).boundingBox())!.height).toBeGreaterThanOrEqual(48);
 });
 
 test("All actions says which actions still live on a screen, and what Forge AI never does", async ({ page }) => {

@@ -3,7 +3,7 @@
 // Where the newest Ask message lands (owner's note, 2026-09-24: "it should be
 // the most recent thing I see"). The page measures; these are the decisions.
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { FOLLOW_SLACK, REVEAL_GAP, inBand, isTextEntry, readingHistory, revealDelta, unionSpan, visibleBand } from "./askLatest";
+import { FOLLOW_SLACK, REVEAL_GAP, inBand, isTextEntry, readingHistory, revealDelta, revealTarget, unionSpan, visibleBand } from "./askLatest";
 
 // An iPhone-sized band: under the sticky sync strip, above the tab bar.
 const band = { top: 60, bottom: 740 };
@@ -25,6 +25,21 @@ describe("revealDelta", () => {
   it("shows the START of a reply taller than the screen, wherever it is", () => {
     expect(revealDelta({ top: 900, bottom: 2400 }, band)).toBe(840);
     expect(revealDelta({ top: -1500, bottom: 300 }, band)).toBe(-1560);
+  });
+});
+
+describe("revealTarget", () => {
+  it("a reply comes with the words it answers when both fit", () => {
+    expect(revealTarget({ top: -540, bottom: -400 }, { top: -600, bottom: -560 }, band)).toEqual({ top: -600, bottom: -400 });
+  });
+
+  it("a reply too long to share the screen comes alone", () => {
+    expect(revealTarget({ top: -1540, bottom: -400 }, { top: -1600, bottom: -1560 }, band)).toEqual({ top: -1540, bottom: -400 });
+  });
+
+  it("anything else is just the newest message", () => {
+    expect(revealTarget({ top: 10, bottom: 20 }, null, band)).toEqual({ top: 10, bottom: 20 });
+    expect(revealTarget(null, { top: 10, bottom: 20 }, band)).toBeNull();
   });
 });
 
@@ -79,6 +94,21 @@ describe("visibleBand", () => {
     const dock = place("ask-dock", 640, 756);
     expect(visibleBand(null)).toEqual({ top: 47 + REVEAL_GAP, bottom: 764 - REVEAL_GAP });
     expect(visibleBand(dock)).toEqual({ top: 47 + REVEAL_GAP, bottom: 640 - REVEAL_GAP });
+  });
+
+  it("a fixed banner covers the edge it sits nearer to", () => {
+    vi.spyOn(window, "innerHeight", "get").mockReturnValue(812);
+    // "Wrong database" pinned to the top; an update banner above the tab bar.
+    place("pwa-banner pwa-banner-wrong-project", 12, 130);
+    place("pwa-banner pwa-banner-update", 600, 684);
+    place("tabbar", 764, 812);
+    expect(visibleBand(null)).toEqual({ top: 130 + REVEAL_GAP, bottom: 600 - REVEAL_GAP });
+  });
+
+  it("the pinned recorder covers the bottom even where a short page leaves it high up", () => {
+    vi.spyOn(window, "innerHeight", "get").mockReturnValue(812);
+    const dock = place("ask-dock", 200, 320);
+    expect(visibleBand(dock)).toEqual({ top: REVEAL_GAP, bottom: 200 - REVEAL_GAP });
   });
 
   it("a sync strip still in its place further down the page covers nothing", () => {
