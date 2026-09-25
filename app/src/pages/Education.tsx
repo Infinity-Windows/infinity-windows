@@ -1,6 +1,8 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { lazyOptional } from "../lib/pwa/lazyOptional";
+import { PartDidNotLoad } from "../lib/pwa/lazyOptionalFallback";
 import { getMyProfile } from "../lib/install/api";
 import { isForemanPlus, isSupervisorPlus } from "../lib/install/types";
 import {
@@ -36,8 +38,13 @@ import { YourLearningTime } from "../components/learn/YourLearningTime";
 import { SkeletonList } from "../components/ui/States";
 
 // Loaded on first tap: the walkthrough player, its stylesheet and its bilingual
-// dictionary stay out of the entry chunk and out of every other Learn tab.
-const UsingForge = lazy(() => import("../components/learn/UsingForge"));
+// dictionary stay out of the entry chunk and out of every other Learn tab. A
+// failed download says so in the tab and leaves the other tabs working
+// (lib/pwa/lazyOptional.tsx).
+const UsingForge = lazyOptional(
+  () => import("../components/learn/UsingForge"),
+  <PartDidNotLoad />,
+);
 
 // The tabs whose minutes are learning time — the server's list of tab keys
 // (learning_heartbeat) names exactly these. "forge" is the one tab that is

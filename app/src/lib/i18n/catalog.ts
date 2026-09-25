@@ -2632,7 +2632,9 @@ export const CATALOG = {
   // once a lazily-loaded screen has been waiting past its deadline — one bar of
   // signal in a conex, not a bug. Unlike the crash screen above, this sits
   // INSIDE LanguageProvider (it is an ordinary part of the route tree), so it
-  // reads the live language through useT() like any other screen.
+  // reads the live language through useT() like any other screen. Also the
+  // sentence a lazily-loaded PART of a screen (a job hub tab, a map) shows in
+  // its own place when its code never arrived (lib/pwa/lazyOptionalFallback.tsx).
   "lazyRoute.hung": {
     en: "This didn't load on this signal.",
     es: "Esto no se cargó con esta señal.",

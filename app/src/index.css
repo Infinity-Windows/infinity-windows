@@ -662,6 +662,20 @@ button:disabled {
   flex-wrap: wrap;
 }
 
+/* The text side of a Supplies shelf row: name and home spot, with Take /
+   Count / Home / History beside it (Supplies.tsx). It was `flex: 1`, a zero
+   basis, and a wrapping row decides what fits on a line from the basis. So the
+   four buttons always "fit" next to text that asked for no room, and on a
+   360 px Android phone the name got the sliver left over, one letter per line
+   (crew report, 2026-09-06). A 200px basis is room for a name to read: a phone
+   now puts the buttons under the text, and a desktop, with room for both,
+   still grows the text to the same width it had. */
+.supply-row-text {
+  flex: 1 1 200px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .big-address {
   margin-left: auto;
   font-weight: 700;

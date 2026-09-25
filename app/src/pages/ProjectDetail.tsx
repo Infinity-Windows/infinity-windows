@@ -5,8 +5,10 @@ import { JobTimecardExport } from "../components/timecard/JobTimecardExport";
 import { PlanPackagesPanel } from "../components/warehouse/PlanPackagesPanel";
 import { JobPackagesPanel } from "../components/warehouse/JobPackagesPanel";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { lazyOptional } from "../lib/pwa/lazyOptional";
+import { PartDidNotLoad } from "../lib/pwa/lazyOptionalFallback";
 import { DirectionsButton } from "../components/maps/DirectionsButton";
 import {
   deleteTestProject,
@@ -64,9 +66,13 @@ import { SkeletonCard } from "../components/ui/States";
 // for the planset sheets it overlays) — a phone opening this job's overview
 // or dispatch board should not pay for that until someone actually taps the
 // tab. ProjectDetail itself stays a static import (it's the job hub, part
-// of the 6-AM shell); only this one heavy tab is split out.
-const MapsInteractive = lazy(() =>
-  import("./install/MapsInteractive").then((m) => ({ default: m.MapsInteractive })),
+// of the 6-AM shell); only this one heavy tab is split out. When that
+// download fails the tab says so and the rest of the hub keeps working,
+// rather than the whole app giving way to the crash screen
+// (lib/pwa/lazyOptional.tsx).
+const MapsInteractive = lazyOptional(
+  () => import("./install/MapsInteractive").then((m) => ({ default: m.MapsInteractive })),
+  <PartDidNotLoad />,
 );
 import { DispatchBoard } from "./install/DispatchBoard";
 import { SignatureEstimates } from "../components/install/SignatureEstimates";
@@ -106,7 +112,10 @@ import {
 // tab/route decision it drives.
 type HubTab = HubTabId;
 
-const CustomData = lazy(() => import("./customWork/CustomData").then(m => ({ default: m.CustomData })));
+const CustomData = lazyOptional(
+  () => import("./customWork/CustomData").then((m) => ({ default: m.CustomData })),
+  <PartDidNotLoad />,
+);
 
 export function ProjectDetail() {
   const { projectId = "" } = useParams();

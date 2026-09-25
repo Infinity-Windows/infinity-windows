@@ -12,7 +12,8 @@
 // The rule: reload once, and only once per minute, so a genuinely broken
 // deploy cannot bounce the phone in a loop. Never over unsaved work — an
 // installer mid-way through an opening sheet gets a sentence and keeps their
-// work; the reload is theirs to choose.
+// work; the reload is theirs to choose. What then happens to the import that
+// failed, swallowed or left to throw, is shouldSwallowPreloadError's call.
 //
 // This handles PRODUCTION, where a failed chunk fetch raises `vite:preloadError`.
 // The Vite DEV SERVER never raises that event: a rejected dynamic import (a
@@ -171,6 +172,37 @@ export function recoverFromChunkLoadError(deps: Partial<PreloadRecoveryDeps> = {
   return decision;
 }
 
+/** Vite's own wording for a stylesheet that failed to preload (its preload helper). */
+function isStylesheetPreloadError(err: unknown): boolean {
+  return err instanceof Error && /^Unable to preload CSS for /.test(err.message);
+}
+
+/**
+ * Whether to swallow a `vite:preloadError` (call `preventDefault()`), given
+ * what was decided about it. PURE.
+ *
+ * Swallowing does not make the failure go away. Vite's preload helper then
+ * RESOLVES the import with `undefined` instead of rejecting it, and the build
+ * puts every `import().then((m) => ({ default: m.X }))` inside that helper, so
+ * React.lazy is handed `undefined`, reads `.default` off it, and throws a
+ * TypeError into the root ErrorBoundary. isChunkLoadError cannot recognise
+ * that as a failed download, so the crash screen's Try again replays the
+ * crash instead of reloading, and the report reads like a bug (crash report
+ * 8WEYC, 2026-09-22). So swallow only where that cannot happen or cannot
+ * matter:
+ *   - "reload": the page is being replaced, and nothing that runs next is kept.
+ *   - a failed STYLESHEET: Vite raises it before it loads the code and, once
+ *     swallowed, goes on to load the code, so the screen still gets a real
+ *     module and shows unstyled rather than not at all.
+ * A failed CODE download that only "notify"s is left to throw. The importer
+ * gets a real rejection: lazyOptional renders its fallback, and a route's
+ * failure reaches ErrorBoundary as the chunk failure it is, whose Try again
+ * reloads (never over unsaved work).
+ */
+export function shouldSwallowPreloadError(decision: PreloadDecision, payload: unknown): boolean {
+  return decision === "reload" || isStylesheetPreloadError(payload);
+}
+
 /**
  * Listen for Vite's preload error and act on the decision above. Returns the
  * uninstall function. Call once from main.tsx; everything is injectable for
@@ -180,10 +212,12 @@ export function installPreloadRecovery(over: Partial<PreloadRecoveryDeps> = {}):
   if (typeof window === "undefined" && !over.target) return () => undefined;
   const target = over.target ?? window;
   const handler = (e: Event) => {
-    // Vite would otherwise throw the error into the component that asked for
-    // the chunk. Whatever we decide, the person should not see a white screen.
-    e.preventDefault();
-    recoverFromChunkLoadError(over);
+    const decision = recoverFromChunkLoadError(over);
+    // Vite reads defaultPrevented once every listener has run, so deciding
+    // first and swallowing after is in time.
+    if (shouldSwallowPreloadError(decision, (e as Event & { payload?: unknown }).payload)) {
+      e.preventDefault();
+    }
   };
   target.addEventListener("vite:preloadError", handler);
   return () => target.removeEventListener("vite:preloadError", handler);

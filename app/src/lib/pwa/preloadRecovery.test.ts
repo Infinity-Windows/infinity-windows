@@ -6,6 +6,7 @@ import {
   installPreloadRecovery,
   isChunkLoadError,
   recoverFromChunkLoadError,
+  shouldSwallowPreloadError,
 } from "./preloadRecovery";
 
 describe("decidePreloadRecovery", () => {
@@ -29,10 +30,19 @@ function memory() {
   return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => { m.set(k, v); }, m };
 }
 
-function fire(target: EventTarget): boolean {
-  const e = new Event("vite:preloadError", { cancelable: true });
+/** Raise the event the way Vite's preload helper does; true = NOT swallowed. */
+function fire(target: EventTarget, payload: unknown = CODE_FAILED): boolean {
+  const e = new Event("vite:preloadError", { cancelable: true }) as Event & { payload?: unknown };
+  e.payload = payload;
   return target.dispatchEvent(e);
 }
+
+/** What the browser rejects a failed code download with (Chrome's wording). */
+const CODE_FAILED = new TypeError(
+  "Failed to fetch dynamically imported module: https://forge.example/assets/DictationButton-W7x5kOMx.js",
+);
+/** What Vite's preload helper rejects a failed stylesheet with. */
+const CSS_FAILED = new Error("Unable to preload CSS for https://forge.example/assets/dictation-Bqu5nDxh.css");
 
 describe("installPreloadRecovery", () => {
   it("on the first stale chunk: stops Vite's throw, stamps the time, reloads", () => {
@@ -81,6 +91,32 @@ describe("installPreloadRecovery", () => {
     expect(reload).toHaveBeenCalledTimes(1);
   });
 
+  // Crash report 8WEYC (2026-09-22). A swallowed error makes Vite resolve the
+  // import with undefined, and React.lazy then crashes reading .default off
+  // it. So when the page is NOT reloading, a failed code download must reach
+  // whoever asked for it as the rejection it is.
+  it("when it only tells the person, a failed code download is left to throw", () => {
+    const target = new EventTarget();
+    const storage = memory();
+    storage.setItem(PRELOAD_RELOAD_AT_KEY, "1000");
+    installPreloadRecovery({ target, storage, reload: vi.fn(), notify: vi.fn(), log: () => undefined, now: () => 20_000, unsavedWork: () => false });
+    expect(fire(target, CODE_FAILED)).toBe(true);
+  });
+
+  it("unsaved work on screen: the failed code download is left to throw too", () => {
+    const target = new EventTarget();
+    installPreloadRecovery({ target, storage: memory(), reload: vi.fn(), notify: vi.fn(), log: () => undefined, now: () => 1, unsavedWork: () => true });
+    expect(fire(target, CODE_FAILED)).toBe(true);
+  });
+
+  it("a failed stylesheet is still swallowed, so Vite goes on to load the code", () => {
+    const target = new EventTarget();
+    const notify = vi.fn();
+    installPreloadRecovery({ target, storage: memory(), reload: vi.fn(), notify, log: () => undefined, now: () => 1, unsavedWork: () => true });
+    expect(fire(target, CSS_FAILED)).toBe(false);
+    expect(notify).toHaveBeenCalledTimes(1);
+  });
+
   it("uninstalls cleanly", () => {
     const target = new EventTarget();
     const reload = vi.fn();
@@ -118,6 +154,23 @@ describe("isChunkLoadError", () => {
     expect(isChunkLoadError("Loading chunk 3 failed")).toBe(false);
     expect(isChunkLoadError(null)).toBe(false);
     expect(isChunkLoadError(undefined)).toBe(false);
+  });
+});
+
+describe("shouldSwallowPreloadError", () => {
+  it("swallows whatever failed when the page is reloading anyway", () => {
+    expect(shouldSwallowPreloadError("reload", CODE_FAILED)).toBe(true);
+    expect(shouldSwallowPreloadError("reload", CSS_FAILED)).toBe(true);
+    expect(shouldSwallowPreloadError("reload", undefined)).toBe(true);
+  });
+  it("swallows a failed stylesheet when it only notifies", () => {
+    expect(shouldSwallowPreloadError("notify", CSS_FAILED)).toBe(true);
+  });
+  it("lets a failed code download throw when it only notifies", () => {
+    expect(shouldSwallowPreloadError("notify", CODE_FAILED)).toBe(false);
+    expect(shouldSwallowPreloadError("notify", new Error("Importing a module script failed."))).toBe(false);
+    expect(shouldSwallowPreloadError("notify", undefined)).toBe(false);
+    expect(shouldSwallowPreloadError("notify", "Unable to preload CSS for x.css")).toBe(false);
   });
 });
 
