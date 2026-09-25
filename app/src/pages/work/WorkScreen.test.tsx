@@ -614,7 +614,9 @@ describe("Start day and a clock that is not known yet (Codex review of #642)", (
     });
   });
 
-  it("a server no hands the clock sheet this tap's id, so its retry is the same punch", async () => {
+  it("a server no hands the clock sheet this tap's whole punch, so its retry is the same punch", async () => {
+    // The id AND the tap time: a retry of a request that never arrived is
+    // still paid from this tap, not from the sheet's later one.
     signed = { id: "c1" };
     clockIn.mockRejectedValueOnce(new Error("complete today's toolbox talk before clocking in"));
     const el = await mount();
@@ -622,7 +624,7 @@ describe("Start day and a clock that is not known yet (Codex review of #642)", (
     await settle();
     expect(enqueueClockIn).not.toHaveBeenCalled();
     expect(openClockGlobally).toHaveBeenCalledWith(
-      expect.objectContaining({ projectId: JOB, costCodeId: "cc-gen", mode: "data", clientId: punchOf(0).clientId }),
+      expect.objectContaining({ projectId: JOB, costCodeId: "cc-gen", mode: "data", punch: punchOf(0) }),
     );
   });
 

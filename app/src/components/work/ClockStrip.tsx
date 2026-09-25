@@ -200,16 +200,18 @@ export function ClockStrip({ profileId, shift, clockKnown, todayJobId, scheduleS
     onError: (e, tap) => {
       // A server "no" (not a network gap): say why and hand off to the full
       // sheet with the picks carried, as the classic block does — and with
-      // this tap's id, so the sheet's retry is the same punch: if this one
-      // was saved before its reply was lost, the server answers with that
-      // shift instead of making a second.
+      // this tap's WHOLE punch, so the sheet's retry is the same punch: if
+      // this one was saved before its reply was lost, the server answers with
+      // that shift instead of making a second; if it never arrived, the sheet
+      // still sends this tap's time, not its own later one (Codex review of
+      // #640 — see ClockInPick.punch).
       pushToast(t("clockblock.handoff", { reason: formatApiError(e) }), "error");
       openClockGlobally({
         projectId: tap.projectId,
         costCodeId: tap.costCodeId,
         note: tap.note,
         mode: tap.mode,
-        clientId: tap.punch.clientId,
+        punch: tap.punch,
       });
     },
   });
