@@ -13,8 +13,9 @@
 // harmless in prod — see that file's comment), set via `page.addInitScript` so
 // it exists before the app's own first paint.
 
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page, type Route } from "@playwright/test";
 import { useSupabaseFixtures } from "./support/supabaseFixtures";
+import { hideWrongProjectBanner } from "./support/specHelpers";
 import { delayRoute, hangRoute } from "./support/badSignal";
 
 test.use({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
@@ -77,4 +78,88 @@ test("a chunk that never answers still leaves a way out: Go to Work", async ({ p
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole("heading", { name: "Heartbeat" })).toBeVisible();
   await expect(hung).not.toBeVisible();
+});
+
+// ---------------------------------------------------------------------------
+// The public GC link: the one lazy route that mounts OUTSIDE the router
+// ---------------------------------------------------------------------------
+// App.tsx returns GcPage before BrowserRouter on purpose (a builder has no
+// account and must not wait on getSession()), so the hung-route screen there
+// cannot use React Router's Link — the first cut did, and threw instead of
+// showing the way out (Codex's review of #638). These run like gc-link.spec.ts:
+// no useSupabaseFixtures, no session, no login anywhere.
+
+/** 43 characters of base64url, the shape create_gc_link mints. */
+const GC_TOKEN = "Zm9yZ2Utd2luZG93cy1nYy1saW5rLXRva2VuLTMyYnl0ZXM";
+
+function useGcLinkFunction(page: Page) {
+  void page.route("**/auth/v1/**", (r: Route) =>
+    r.fulfill({ status: 200, contentType: "application/json", body: "{}" }),
+  );
+  void page.route("**/rest/v1/**", (r: Route) =>
+    r.fulfill({ status: 200, contentType: "application/json", body: "[]" }),
+  );
+  void page.route("**/functions/v1/gc-link", (r: Route) =>
+    r.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ job: "Sand Hollow", brand: "stg", answers: null, thread: [] }),
+    }),
+  );
+}
+
+test("a GC link whose chunk is slow shows the way out with no login and no router, and Try again succeeds", async ({
+  page,
+}) => {
+  await shortenLazyRouteTimeout(page);
+  useGcLinkFunction(page);
+  // The fixture env is not the real project, so the "Wrong database" banner
+  // shows and would sit over the recovery buttons (it swallowed the first
+  // run's click on Try again). Hidden the same way every other spec hides it.
+  await hideWrongProjectBanner(page);
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(String(e)));
+
+  await delayRoute(page, "**/GcPage*", 4000);
+  await page.goto(`/gc/${GC_TOKEN}`);
+
+  const hung = page.getByText("This didn't load on this signal.");
+  await expect(hung).toBeVisible({ timeout: SHORT_TIMEOUT_MS + 3000 });
+  // Not "Go to Work": there is no login here, and "/" would be the sign-in
+  // screen. An ordinary link back to this same address instead.
+  await expect(page.getByRole("link", { name: "Go to Work" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Open this link again" })).toHaveAttribute(
+    "href",
+    page.url(),
+  );
+  expect(errors).toEqual([]);
+
+  await page.getByRole("button", { name: "Try again" }).click();
+  await expect(hung).not.toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sand Hollow" })).toBeVisible({ timeout: 8000 });
+});
+
+test("a GC link whose chunk never answers: Open this link again is a real reload that recovers", async ({
+  page,
+}) => {
+  await shortenLazyRouteTimeout(page);
+  useGcLinkFunction(page);
+  await hideWrongProjectBanner(page);
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(String(e)));
+
+  const stuck = await hangRoute(page, "**/GcPage*");
+  await page.goto(`/gc/${GC_TOKEN}`);
+
+  const hung = page.getByText("This didn't load on this signal.");
+  await expect(hung).toBeVisible({ timeout: SHORT_TIMEOUT_MS + 3000 });
+  expect(errors).toEqual([]);
+
+  // The signal comes back; the stuck request never will (see badSignal.ts).
+  // Reopening the address is a fresh page load, so the chunk is asked for anew.
+  await stuck.release();
+  await page.getByRole("link", { name: "Open this link again" }).click();
+  await expect(page.getByRole("heading", { name: "Sand Hollow" })).toBeVisible({ timeout: 8000 });
+  await expect(hung).not.toBeVisible();
+  expect(page.url()).toContain(`/gc/${GC_TOKEN}`);
 });

@@ -2550,6 +2550,13 @@ export const CATALOG = {
   // Matches nav.group.work's "Trabajo" — the destination is "/", whichever of
   // My Work / Home / Heartbeat that resolves to for this person's role.
   "lazyRoute.goToWork": { en: "Go to Work", es: "Ir a Trabajo" },
+  // The way out OUTSIDE the router: the GC's public link (/gc/<token>) mounts
+  // before BrowserRouter, so its hung screen cannot offer Work — a builder has
+  // no login, and "/" would be the sign-in screen. Reopening the same address
+  // is a real navigation, which is also what clears a stuck chunk request.
+  // Read through useT()'s no-provider fallback there (English), since that
+  // page sits above LanguageProvider too.
+  "lazyRoute.openAgain": { en: "Open this link again", es: "Abrir este enlace de nuevo" },
 
   // --- The update banner (PR #632, hardened 2026-09-23) -----------------------
   // Mounted above LanguageProvider, so it reads the per-device cache directly —

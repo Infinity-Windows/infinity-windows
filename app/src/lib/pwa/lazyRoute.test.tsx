@@ -32,12 +32,17 @@ function deferred<T>() {
 let root: Root | null = null;
 let host: HTMLDivElement | null = null;
 
-function mount(node: React.ReactElement) {
+/**
+ * Inside a router by default — every authenticated screen is. `bare` mounts
+ * with NO router at all, which is how App.tsx renders the GC's public page:
+ * ahead of BrowserRouter, so a builder never waits on getSession().
+ */
+function mount(node: React.ReactElement, { bare = false } = {}) {
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
   act(() => {
-    root!.render(<MemoryRouter>{node}</MemoryRouter>);
+    root!.render(bare ? node : <MemoryRouter>{node}</MemoryRouter>);
   });
   return host;
 }
@@ -122,6 +127,52 @@ describe("lazyRoute()", () => {
       await attempts[1].promise;
     });
     expect(el.textContent).toContain("Loaded!");
+  });
+
+  it("outside any router — the public GC link — the hung message still renders, with an ordinary link that reopens the same address", async () => {
+    // React Router's Link throws with no router above it; the first cut
+    // rendered one here, so the promised recovery screen crashed on exactly
+    // the route a stranger opens from a text message (Codex on #638).
+    const errors: unknown[] = [];
+    const quiet = vi.spyOn(console, "error").mockImplementation((...args) => { errors.push(args); });
+    const pending = deferred<{ default: typeof Loaded }>();
+    const Screen = lazyRoute(() => pending.promise, {
+      loadingFallback: <p>Connecting…</p>,
+    });
+    const el = mount(<Screen />, { bare: true });
+    expect(el.textContent).toContain("Connecting…");
+
+    act(() => {
+      vi.advanceTimersByTime(LAZY_ROUTE_TIMEOUT_MS);
+    });
+    // React's own act() environment warning fires in every test here and is
+    // not the crash; the crash was Link's "Cannot destructure property
+    // 'basename'", which this catches by name and by any other uncaught throw.
+    expect(errors.flat().map(String).filter((m) => !m.includes("act(...)"))).toEqual([]);
+    expect(el.textContent).toContain("This didn't load on this signal.");
+    expect(el.querySelector("button")?.textContent).toBe("Try again");
+    // Not Work: a builder has no login, and "/" would be the sign-in screen.
+    expect(el.textContent).not.toContain("Go to Work");
+    const again = el.querySelector("a");
+    expect(again?.textContent).toBe("Open this link again");
+    expect(again?.getAttribute("href")).toBe(window.location.href);
+    quiet.mockRestore();
+
+    // Try again still means a fresh import() here too.
+    click(el, "Try again");
+    expect(el.textContent).not.toContain("This didn't load on this signal.");
+    expect(el.textContent).toContain("Connecting…");
+  });
+
+  it("inside the router — every signed-in screen — the way out is still Go to Work", () => {
+    const pending = deferred<{ default: typeof Loaded }>();
+    const Screen = lazyRoute(() => pending.promise);
+    const el = mount(<Screen />);
+    act(() => {
+      vi.advanceTimersByTime(LAZY_ROUTE_TIMEOUT_MS);
+    });
+    expect(el.textContent).toContain("Go to Work");
+    expect(el.textContent).not.toContain("Open this link again");
   });
 
   it("uses a caller's own loadingFallback before the deadline instead of the default skeleton", () => {
