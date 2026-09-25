@@ -1,4 +1,4 @@
--- Probe for offline toolbox signing (branch claude/offline-toolbox-signing):
+-- Probe for PR #666 (branch claude/offline-toolbox-signing), offline toolbox signing:
 -- sign_toolbox_talk from 20261033000000_offline_toolbox_signing.sql, called on
 -- the real database as the QA installer login, then a keyed clock_in on the
 -- practice job through the real toolbox gate, and rolled back. Each scenario
@@ -19,7 +19,7 @@
 -- Run: gh workflow run db-dry-run.yml --repo Infinity-Windows/infinity-windows \
 --        -f ref=claude/offline-toolbox-signing \
 --        -f migrations="supabase/migrations/20261033000000_offline_toolbox_signing.sql supabase/migrations/20261033010000_offline_toolbox_signing_note.sql" \
---        -f probe=scripts/dry-run-probes/pr-XXX-offline-toolbox.sql
+--        -f probe=scripts/dry-run-probes/pr-666-offline-toolbox.sql
 do $$
 declare
   v_who uuid;
