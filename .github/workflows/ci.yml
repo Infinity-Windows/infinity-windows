@@ -35,6 +35,12 @@ jobs:
       - name: Check the entry-chunk size budget
         run: npm run budget
 
+      # Files that phones on an OLDER build still ask the network for, carried
+      # in public/assets/ until those phones are gone. The first deploy without
+      # one turned every such phone black (2026-09-25) — see the script.
+      - name: Check the files old phones still ask for are in the build
+        run: node scripts/check-kept-assets.mjs
+
       - name: Lint
         run: npm run lint
 
