@@ -27,6 +27,11 @@ export interface SignedInSession {
 
 let email: string | null = null;
 let userId: string | null = null;
+/**
+ * Moves on every time the signed-in id changes: a sign-out, another login, the
+ * same person signing in again after signing out. See signInMark.
+ */
+let generation = 0;
 
 /**
  * Remember who is signed in. Called by App's auth plumbing — the boot
@@ -37,8 +42,37 @@ let userId: string | null = null;
  * no longer the author of anything.
  */
 export function rememberSignedIn(session: SignedInSession | null): void {
+  const id = session?.user?.id ?? null;
+  if (id !== userId) generation++;
   email = session?.user?.email ?? null;
-  userId = session?.user?.id ?? null;
+  userId = id;
+}
+
+/** Who was signed in when a piece of work began. */
+export interface SignInMark {
+  readonly userId: string | null;
+  readonly generation: number;
+}
+
+/**
+ * A mark of who is signed in right now. Slow work that could let somebody in —
+ * the device lock's check with the server, its offline fingerprint — takes one
+ * BEFORE it starts, and asks stillSignedInAs right before it writes anything.
+ */
+export function signInMark(): SignInMark {
+  return { userId, generation };
+}
+
+/**
+ * Is `who` still the person signed in, with no sign-out and no other login
+ * since `mark` was taken? False after ANY change of who is signed in, even
+ * back to the same person. Work begun before that boundary belongs to a
+ * sign-in that has ended, and must land nowhere: a yes from the server that
+ * arrived after a sign-out used to keep a fresh offline unlock for the person
+ * who had just signed out (Codex review of #651, 2026-09-25).
+ */
+export function stillSignedInAs(mark: SignInMark, who: string): boolean {
+  return mark.generation === generation && mark.userId === who && userId === who;
 }
 
 /**

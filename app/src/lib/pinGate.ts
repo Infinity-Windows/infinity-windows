@@ -12,6 +12,11 @@
 // long as the read hung, and when the read FAILED it took the failure for "no
 // PIN" and opened for somebody who has one. Crews on a site with no bars were
 // either stuck in front of their own clock or let past a lock they had set.
+//
+// Below the rule: the per-tab unlock, and the one call App makes at every
+// change of who is signed in (syncPinLockWithAuth).
+
+import { syncOfflinePinWithAuth } from "./offlinePin";
 
 /**
  * How long "Checking device lock…" may show before the person is told why.
@@ -32,7 +37,7 @@ export type PinGateView =
   | "no-answer";
 
 export interface PinGateFacts {
-  /** The right PIN was entered earlier in this launch (sessionStorage). */
+  /** This person entered the right PIN earlier in this tab (isUnlockedInThisTab). */
   unlocked: boolean;
   /** The phone's saved copy is still being read back from storage. */
   restoring: boolean;
@@ -59,4 +64,72 @@ export function pinGateView(f: PinGateFacts): PinGateView {
   // but never longer than the lock waits for anything else.
   if (f.profileLoading && !f.waitedOut) return "checking";
   return f.hasPin ? "pin" : "open";
+}
+
+/**
+ * Where the per-tab unlock is kept. sessionStorage: it lasts for this tab's
+ * life — through the reloads the app does by itself (the update-on-open
+ * takeover, the missing-chunk recovery) — and ends when the app is closed.
+ * That lifetime is its own. The twelve-hour offline unlock (lib/offlinePin.ts)
+ * is a different thing: it only decides whether a PIN typed with no signal is
+ * the right one, and never opens a lock nobody typed into.
+ */
+export const TAB_UNLOCK_KEY = "wops-pin-unlocked";
+
+type TabStore = Pick<Storage, "getItem" | "setItem" | "removeItem">;
+
+function tabStorage(): TabStore | null {
+  try {
+    return typeof sessionStorage === "undefined" ? null : sessionStorage;
+  } catch {
+    return null; // storage switched off: an unlock lasts as long as the screen
+  }
+}
+
+/**
+ * Has `userId` unlocked the lock in this tab? The unlock holds the id of the
+ * person who unlocked and opens for nobody else. It used to be a bare "1" that
+ * opened the lock for whoever was signed in next: A unlocked, signed out, B
+ * signed in on the same tab and went straight past B's own PIN (Codex review
+ * of #651, 2026-09-25). The old "1" is nobody's, so it opens nothing.
+ */
+export function isUnlockedInThisTab(userId: string, tab: TabStore | null = tabStorage()): boolean {
+  try {
+    return tab?.getItem(TAB_UNLOCK_KEY) === userId;
+  } catch {
+    return false;
+  }
+}
+
+/** `userId` entered the right PIN in this tab. */
+export function rememberUnlockInThisTab(userId: string, tab: TabStore | null = tabStorage()): void {
+  try {
+    tab?.setItem(TAB_UNLOCK_KEY, userId);
+  } catch {
+    /* storage full or off: the unlock lasts as long as this screen */
+  }
+}
+
+/**
+ * Follow the sign-in on this phone. App.tsx calls this for the session found
+ * at launch and for every auth event after it, with the signed-in id — the
+ * same moments it tells lib/signedIn, whose mark drops any PIN check still in
+ * flight for the sign-in before. The lock keeps nothing for anybody but the
+ * person signed in now: the per-tab unlock goes at sign-out and at any change
+ * of who is signed in, and the offline unlock follows its own rules
+ * (syncOfflinePinWithAuth).
+ */
+export function syncPinLockWithAuth(
+  event: string,
+  userId: string | null,
+  tab: TabStore | null = tabStorage(),
+): void {
+  if (event === "SIGNED_OUT" || !userId || !isUnlockedInThisTab(userId, tab)) {
+    try {
+      tab?.removeItem(TAB_UNLOCK_KEY);
+    } catch {
+      /* nothing kept, nothing to clear */
+    }
+  }
+  syncOfflinePinWithAuth(event, userId);
 }

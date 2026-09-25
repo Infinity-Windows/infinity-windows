@@ -25,6 +25,7 @@ vi.mock("../supabase", () => ({
 }));
 
 const { checkMyPin, myPinStatus } = await import("./api");
+const { pinGateView } = await import("../pinGate");
 
 beforeEach(() => {
   rpc.calls = [];
@@ -68,13 +69,27 @@ describe("myPinStatus", () => {
     await expect(myPinStatus()).rejects.toBeTruthy();
   });
 
-  it("says no PIN on a database that predates the RPC", async () => {
+  // Codex's review of #651 (2026-09-25): this read used to answer "no PIN" for
+  // a missing function. PostgREST says the same thing (PGRST202) for a stale
+  // schema cache, while the function is there and the person has a PIN — and
+  // the lock opened on it with no PIN asked.
+  it("a stale schema cache (PGRST202) is not a no: the lock stays shut and offers Try again", async () => {
     rpc.result = {
       data: null,
-      error: { message: "Could not find the function public.my_pin_status", code: "PGRST202" },
+      error: {
+        message: "Could not find the function public.my_pin_status in the schema cache",
+        code: "PGRST202",
+      },
       status: 404,
     };
-    await expect(myPinStatus()).resolves.toBe(false);
+    const hasPin = await myPinStatus().then(
+      (answer) => answer,
+      () => undefined,
+    );
+    expect(hasPin).toBeUndefined();
+    expect(
+      pinGateView({ unlocked: false, restoring: false, hasPin, asking: false, profileLoading: false, waitedOut: false }),
+    ).toBe("no-answer");
   });
 });
 

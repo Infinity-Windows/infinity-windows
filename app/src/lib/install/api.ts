@@ -268,24 +268,42 @@ export async function listProfilesIncludingRemoved(): Promise<Profile[]> {
 }
 
 /**
+ * The server could not be reached, or could not judge: no answer at all (no
+ * signal, a dropped or timed-out request — postgrest-js reports those as
+ * status 0) or the server itself failing (5xx).
+ */
+function serverUnreachable(status: number): boolean {
+  return status === 0 || status >= 500;
+}
+
+/**
  * PIN status/verify happen server-side; the value never reaches the client.
  *
- * Throws when the server could not be asked — no signal, a request that ran
- * out of time, a token it would not take. This used to answer `false` for
- * EVERY error, and PinGate opens on `false`: an app reopened with no signal let
- * a person who has a PIN straight past the lock (2026-09-24). "Couldn't ask" is
- * not "no". PinGate falls back to the last answer this phone got instead.
+ * Only a real yes or no from the server is an answer — `true` or `false`, and
+ * my_pin_status never returns anything else. Everything else THROWS, and the
+ * lock stays shut and offers Try again (PinGate): no signal, a request that ran
+ * out of time, a token the server would not take, a missing function. The
+ * error's `reason` says which kind: "network" when the server could not be
+ * reached or could not judge (as checkMyPin), "error" when it answered without
+ * a yes or a no — so the lock does not tell somebody with full bars that they
+ * are offline.
  *
- * The one error that IS an answer is a database that predates the RPC — no PIN
- * feature there, so nobody has one.
+ * This read is the deliberate exception to "degrade instead of crashing"
+ * (CLAUDE.md): everywhere else a missing table or function empties a screen,
+ * but here the answer decides whether a lock opens, and a security gate fails
+ * CLOSED. It used to answer `false` — "no PIN" — for every error, which let a
+ * PIN account past its lock with no signal (2026-09-24); then still for a
+ * missing function, which is also what PostgREST says about a stale schema
+ * cache while the function is there and the person has a PIN (PGRST202;
+ * Codex review of #651, 2026-09-25). "Couldn't ask" is never "no".
  */
 export async function myPinStatus(): Promise<boolean> {
-  const { data, error } = await supabase.rpc("my_pin_status");
-  if (error) {
-    if (isMissingFunction(error)) return false;
-    throw error;
-  }
-  return Boolean(data);
+  const { data, error, status } = await supabase.rpc("my_pin_status");
+  if (!error && typeof data === "boolean") return data;
+  throw Object.assign(new Error(error?.message ?? "my_pin_status answered neither yes nor no"), {
+    code: error?.code,
+    reason: error && serverUnreachable(status) ? "network" : "error",
+  });
 }
 
 /**
@@ -302,7 +320,7 @@ export async function checkMyPin(
   pin: string,
 ): Promise<{ ok: true } | { ok: false; reason: "wrong" | "network" | "error" }> {
   const { data, error, status } = await supabase.rpc("check_my_pin", { p_pin: pin });
-  if (error) return { ok: false, reason: status === 0 || status >= 500 ? "network" : "error" };
+  if (error) return { ok: false, reason: serverUnreachable(status) ? "network" : "error" };
   return data ? { ok: true } : { ok: false, reason: "wrong" };
 }
 

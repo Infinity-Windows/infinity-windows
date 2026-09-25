@@ -4,10 +4,13 @@ import { checkMyPin, myPinStatus, setMyPin } from "../lib/install/api";
 import { getMyProfile } from "../lib/install/api";
 import { useT } from "../lib/i18n";
 import { checkPinOffline, forgetOfflinePin, rememberPinForOffline } from "../lib/offlinePin";
-import { PIN_CHECK_WAIT_MS, pinGateView } from "../lib/pinGate";
-import { signedInUserId } from "../lib/signedIn";
-
-const UNLOCK_KEY = "wops-pin-unlocked";
+import {
+  PIN_CHECK_WAIT_MS,
+  isUnlockedInThisTab,
+  pinGateView,
+  rememberUnlockInThisTab,
+} from "../lib/pinGate";
+import { signInMark, signedInUserId, stillSignedInAs, type SignInMark } from "../lib/signedIn";
 
 const PAD_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "⌫"] as const;
 
@@ -34,11 +37,18 @@ function usePinStatus(userId: string | null) {
   return useQuery({
     queryKey: ["myPinStatus", userId],
     queryFn: async () => {
+      const signIn = signInMark();
+      // Throws on anything but a real yes or no (install/api.ts): a failed
+      // read leaves the saved answer as it was — a saved yes stays a yes.
       const hasPin = await myPinStatus();
+      // my_pin_status answers for whoever the request went out as. An answer
+      // that lands after a sign-out or another login may be somebody else's,
+      // and is not kept as this person's.
+      if (!userId || !stillSignedInAs(signIn, userId)) throw new Error("signed in as somebody else now");
       // The server says there is no PIN now — cleared here, on another phone
       // or by a supervisor. There is nothing left for the offline unlock to
       // stand in for (lib/offlinePin.ts).
-      if (!hasPin) forgetOfflinePin();
+      if (hasPin === false) forgetOfflinePin();
       return hasPin;
     },
     enabled: Boolean(userId),
@@ -61,6 +71,9 @@ type PinProblem =
   /** The server answered, but not with a yes or a no. */
   | { kind: "not-checked" };
 
+/** A check whose sign-in ended while it was out: it judges nobody. */
+const ENDED = "ended";
+
 /**
  * Lightweight device PIN lock on top of the persisted Supabase session.
  * The PIN's hash never leaves the server — status and verification are RPCs.
@@ -71,8 +84,21 @@ type PinProblem =
  * It opens on a definite "no PIN" and on nothing else; lib/pinGate.ts has the
  * rule and why. `userId` is the real signed-in login (App.tsx's session), never
  * a person being previewed — my_pin_status answers for auth.uid().
+ *
+ * One lock per person. Everything it holds — an unlock, digits typed, a check
+ * on the wire — is the person's it was drawn for, so a different login gets a
+ * fresh lock instead of the last person's state (Codex review of #651,
+ * 2026-09-25).
  */
 export function PinGate({ userId, children }: { userId: string; children: React.ReactNode }) {
+  return (
+    <PersonsPinGate key={userId} userId={userId}>
+      {children}
+    </PersonsPinGate>
+  );
+}
+
+function PersonsPinGate({ userId, children }: { userId: string; children: React.ReactNode }) {
   const t = useT();
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const pinStatus = usePinStatus(userId);
@@ -84,14 +110,18 @@ export function PinGate({ userId, children }: { userId: string; children: React.
   // send them again. Memory only, like the digits being typed; cleared once
   // anybody has judged them.
   const lastTry = useRef("");
-  const [unlocked, setUnlocked] = useState(
-    () => sessionStorage.getItem(UNLOCK_KEY) === "1",
-  );
+  const [unlocked, setUnlocked] = useState(() => isUnlockedInThisTab(userId));
   const [waitedOut, setWaitedOut] = useState(false);
-
+  // False once this lock is gone — signed out, or another login drew its own.
+  const drawn = useRef(true);
   useEffect(() => {
-    if (unlocked) sessionStorage.setItem(UNLOCK_KEY, "1");
-  }, [unlocked]);
+    drawn.current = true;
+    return () => {
+      drawn.current = false;
+    };
+  }, []);
+  /** Is the check that started under `signIn` still this lock's to finish? */
+  const stillOurs = (signIn: SignInMark) => drawn.current && stillSignedInAs(signIn, userId);
 
   const view = pinGateView({
     unlocked,
@@ -126,11 +156,20 @@ export function PinGate({ userId, children }: { userId: string; children: React.
   if (view === "no-answer") {
     // Never learned whether this person has a PIN, and cannot ask. Opening
     // would let a PIN account past its own lock, so it stays shut and says so.
+    // When the server did answer, just not with a yes or a no (a stale schema
+    // cache, a token it would not take), "You're offline" would be wrong.
+    const serverAnswered = (pinStatus.error as { reason?: unknown } | null)?.reason === "error";
     return (
       <div className="pin-gate">
         <h1 className="pin-gate-brand">FORGE WINDOWS</h1>
-        <p className="pin-name">{t("pin.offlineTitle")}</p>
-        <p className="pin-hint">{t("pin.offlineNeverChecked")}</p>
+        {serverAnswered ? (
+          <p className="pin-hint">{t("pin.notChecked")}</p>
+        ) : (
+          <>
+            <p className="pin-name">{t("pin.offlineTitle")}</p>
+            <p className="pin-hint">{t("pin.offlineNeverChecked")}</p>
+          </>
+        )}
         <button
           type="button"
           className="primary"
@@ -149,9 +188,10 @@ export function PinGate({ userId, children }: { userId: string; children: React.
    * Who decides, in order. With an answer from the server, the server alone —
    * unchanged. Only when it cannot be reached, the offline unlock kept from the
    * last yes on this phone (lib/offlinePin.ts, the owner's call 2026-09-24).
-   * Null means let them in.
+   * Null means let them in; ENDED means the sign-in this check was for is over,
+   * and nobody is let in or told anything.
    */
-  const judge = async (value: string): Promise<PinProblem | null> => {
+  const judge = async (value: string, signIn: SignInMark): Promise<PinProblem | null | typeof ENDED> => {
     lastTry.current = "";
     let result: Awaited<ReturnType<typeof checkMyPin>>;
     try {
@@ -159,9 +199,15 @@ export function PinGate({ userId, children }: { userId: string; children: React.
     } catch {
       result = { ok: false, reason: "network" };
     }
+    // The answer can take up to the fifteen-second request deadline to land,
+    // and the person it was asked for may have signed out, or somebody else
+    // signed in, by then. It used to keep a fresh offline unlock for the
+    // person who had just signed out (Codex review of #651, 2026-09-25).
+    if (!stillOurs(signIn)) return ENDED;
     if (result.ok) {
-      // A fresh offline unlock: this PIN, for the next twelve hours.
-      void rememberPinForOffline(userId, value);
+      // A fresh offline unlock: this PIN, for the next twelve hours — held to
+      // the same sign-in, which offlinePin asks again right before it writes.
+      void rememberPinForOffline(userId, value, { signIn });
       return null;
     }
     if (result.reason === "wrong") {
@@ -176,10 +222,11 @@ export function PinGate({ userId, children }: { userId: string; children: React.
     }
     let offline: Awaited<ReturnType<typeof checkPinOffline>>;
     try {
-      offline = await checkPinOffline(userId, value);
+      offline = await checkPinOffline(userId, value, { signIn });
     } catch {
       offline = { kind: "none" };
     }
+    if (!stillOurs(signIn)) return ENDED;
     switch (offline.kind) {
       case "ok":
         return null;
@@ -197,18 +244,24 @@ export function PinGate({ userId, children }: { userId: string; children: React.
   };
 
   const submit = async (value: string) => {
+    // Taken BEFORE the server is asked: the whole check — the server's answer
+    // and any offline one — is held to the sign-in it began in.
+    const signIn = signInMark();
     setCheckingPin(true);
     setError(null);
-    let problem: PinProblem | null;
+    let problem: PinProblem | null | typeof ENDED;
     try {
-      problem = await judge(value);
+      problem = await judge(value, signIn);
     } finally {
       setCheckingPin(false);
     }
+    // Asked once more right before anything is written or shown.
+    if (problem === ENDED || !stillOurs(signIn)) return;
     if (problem) {
       setError(problem);
       setEntry("");
     } else {
+      rememberUnlockInThisTab(userId);
       setUnlocked(true);
     }
   };

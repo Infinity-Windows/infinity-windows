@@ -6,7 +6,7 @@
 // belongs to one person, and signing out or switching accounts wipes it. PinGate
 // decides WHEN to consult it (PinGate.test.tsx); this file proves what it does.
 
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   OFFLINE_PIN_ITERATIONS,
   OFFLINE_PIN_KEY,
@@ -18,6 +18,7 @@ import {
   syncOfflinePinWithAuth,
   type OfflinePinDeps,
 } from "./offlinePin";
+import { rememberSignedIn } from "./signedIn";
 
 const ANA = "00000000-0000-4000-8000-0000000000a1";
 const BEN = "00000000-0000-4000-8000-0000000000b2";
@@ -60,6 +61,8 @@ const bytes = (b64: unknown) => Uint8Array.from(atob(b64 as string), (c) => c.ch
 beforeEach(() => {
   store = memoryStorage();
   clock = T0;
+  // Ana is signed in on this phone, as App tells lib/signedIn at launch.
+  rememberSignedIn({ user: { id: ANA } });
 });
 
 describe("after a check with signal", () => {
@@ -191,6 +194,8 @@ describe("with no signal", () => {
   it("a fingerprint relabelled with another person's id matches nobody's PIN", async () => {
     await rememberPinForOffline(ANA, PIN, phone());
     store.map.set(OFFLINE_PIN_KEY, JSON.stringify({ ...saved(), userId: BEN }));
+    // Ben is the one at the lock, trying Ana's PIN on it.
+    rememberSignedIn({ user: { id: BEN } });
     expect(await checkPinOffline(BEN, PIN, phone())).toEqual({ kind: "wrong", triesLeft: 4 });
   });
 
@@ -261,6 +266,54 @@ describe("a wipe in the middle of the work", () => {
     const checking = checkPinOffline(ANA, PIN, phone());
     forgetOfflinePin(phone());
     expect(await checking).toEqual({ kind: "none" });
+    expect(store.map.size).toBe(0);
+  });
+
+  // Codex's review of #651 (2026-09-25): the first fingerprint on a phone has
+  // nothing stored yet, so an account switch found nothing to wipe — and the
+  // derivation still in flight for the person before wrote theirs after it.
+  it("another login before the first fingerprint is written keeps nothing, even with nothing stored yet", async () => {
+    expect(store.map.size).toBe(0);
+    const making = rememberPinForOffline(ANA, PIN, phone());
+    // What App does when Ben signs in on this phone.
+    rememberSignedIn({ user: { id: BEN } });
+    syncOfflinePinWithAuth("SIGNED_IN", BEN, phone());
+    await making;
+    expect(store.map.size).toBe(0);
+  });
+});
+
+describe("five tries in all", () => {
+  // Codex's review of #651 (2026-09-25): a try is counted before it is
+  // checked, but nothing looked at the count before the NEXT check started.
+  // Five checks the app was closed in the middle of left five tries spent,
+  // and the sixth guess was still checked — and the right PIN reset the count.
+  it("five tries spent by checks that never finished: the next is refused and wiped before anything is derived", async () => {
+    await rememberPinForOffline(ANA, PIN, phone());
+    const subtle = globalThis.crypto.subtle;
+    let derivations = 0;
+    const neverFinishes = {
+      importKey: subtle.importKey.bind(subtle),
+      deriveBits: () => {
+        derivations++;
+        return new Promise<ArrayBuffer>(() => {});
+      },
+    } as unknown as SubtleCrypto;
+    // Five guesses, each counted, none finished: the app was closed each time.
+    for (let i = 0; i < 5; i++) void checkPinOffline(ANA, "0000", phone({ subtle: neverFinishes }));
+    expect(saved()!.failures).toBe(5);
+    await vi.waitFor(() => expect(derivations).toBe(5));
+
+    const counting = {
+      importKey: subtle.importKey.bind(subtle),
+      deriveBits: (...args: Parameters<SubtleCrypto["deriveBits"]>) => {
+        derivations++;
+        return subtle.deriveBits(...args);
+      },
+    } as unknown as SubtleCrypto;
+    // Even the right PIN: five is five.
+    expect(await checkPinOffline(ANA, PIN, phone({ subtle: counting }))).toEqual({ kind: "locked" });
+    expect(derivations).toBe(5);
     expect(store.map.size).toBe(0);
   });
 });

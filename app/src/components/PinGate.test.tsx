@@ -25,6 +25,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const USER = "00000000-0000-4000-8000-0000000000a1";
+/** Somebody else with a login on the same phone. */
+const BEN = "00000000-0000-4000-8000-0000000000b2";
 const PROFILE = { id: USER, display_name: "Ana Lopez", role: "installer", language: "en" };
 const HOURS_AGO = (h: number) => Date.now() - h * 60 * 60 * 1000;
 
@@ -32,6 +34,11 @@ const HOURS_AGO = (h: number) => Date.now() - h * 60 * 60 * 1000;
 // failure back as an error, and myPinStatus throws it (myPinStatus.test.ts).
 const NO_SIGNAL = { message: "TypeError: Failed to fetch", code: "" };
 const NEVER = () => new Promise<never>(() => {});
+/**
+ * Every call into the offline unlock carries the sign-in the check began in —
+ * this person's — so an answer that lands after a sign-out is held to it.
+ */
+const HELD_TO_USER = { signIn: expect.objectContaining({ userId: USER }) };
 
 const api = vi.hoisted(() => ({
   myPinStatus: vi.fn(),
@@ -55,11 +62,13 @@ const offline = vi.hoisted(() => ({
   rememberPinForOffline: vi.fn(),
   checkPinOffline: vi.fn(),
   forgetOfflinePin: vi.fn(),
+  syncOfflinePinWithAuth: vi.fn(),
 }));
 vi.mock("../lib/offlinePin", () => ({
   rememberPinForOffline: (...a: unknown[]) => offline.rememberPinForOffline(...a),
   checkPinOffline: (...a: unknown[]) => offline.checkPinOffline(...a),
   forgetOfflinePin: (...a: unknown[]) => offline.forgetOfflinePin(...a),
+  syncOfflinePinWithAuth: (...a: unknown[]) => offline.syncOfflinePinWithAuth(...a),
 }));
 
 const { PinGate, PinSetter } = await import("./PinGate");
@@ -93,6 +102,8 @@ beforeEach(() => {
   offline.rememberPinForOffline.mockResolvedValue(undefined);
   // This phone has no offline unlock unless a test says otherwise.
   offline.checkPinOffline.mockResolvedValue({ kind: "none" });
+  // Ana is signed in, as App tells lib/signedIn before it draws the lock.
+  rememberSignedIn({ user: { id: USER } });
 });
 
 afterEach(() => {
@@ -100,6 +111,7 @@ afterEach(() => {
   container.remove();
   vi.useRealTimers();
   vi.clearAllMocks();
+  rememberSignedIn(null);
 });
 
 /**
@@ -197,7 +209,7 @@ describe("PinGate with signal (unchanged)", () => {
     expect(api.checkMyPin).toHaveBeenLastCalledWith("4821");
     expect(text()).toContain("THE APP");
     // A yes keeps this PIN for offline use, for this person, for the shift.
-    expect(offline.rememberPinForOffline).toHaveBeenCalledWith(USER, "4821");
+    expect(offline.rememberPinForOffline).toHaveBeenCalledWith(USER, "4821", HELD_TO_USER);
     // With an answer from the server, the phone's copy is never asked.
     expect(offline.checkPinOffline).not.toHaveBeenCalled();
   });
@@ -249,7 +261,7 @@ describe("PinGate reopened with no signal", () => {
     await mount();
 
     await typePin("4821");
-    expect(offline.checkPinOffline).toHaveBeenCalledWith(USER, "4821");
+    expect(offline.checkPinOffline).toHaveBeenCalledWith(USER, "4821", HELD_TO_USER);
     expect(text()).toContain("No signal. Your PIN is checked online");
     expect(text()).not.toContain("THE APP");
 
@@ -321,7 +333,7 @@ describe("the shift-long offline unlock (owner's decision, 2026-09-24)", () => {
     offline.checkPinOffline.mockResolvedValueOnce({ kind: "ok" });
 
     await typePin("4821");
-    expect(offline.checkPinOffline).toHaveBeenCalledWith(USER, "4821");
+    expect(offline.checkPinOffline).toHaveBeenCalledWith(USER, "4821", HELD_TO_USER);
     expect(text()).toContain("THE APP");
     // Only a yes from the server makes or refreshes the offline unlock.
     expect(offline.rememberPinForOffline).not.toHaveBeenCalled();
@@ -363,7 +375,7 @@ describe("the shift-long offline unlock (owner's decision, 2026-09-24)", () => {
     await settle();
     expect(api.checkMyPin).toHaveBeenLastCalledWith("4821");
     expect(text()).toContain("THE APP");
-    expect(offline.rememberPinForOffline).toHaveBeenCalledWith(USER, "4821");
+    expect(offline.rememberPinForOffline).toHaveBeenCalledWith(USER, "4821", HELD_TO_USER);
   });
 
   it("a server that answers with an error is not a dead zone: the phone's copy is not asked", async () => {
@@ -420,5 +432,68 @@ describe("the shift-long offline unlock (owner's decision, 2026-09-24)", () => {
     expect(api.setMyPin).toHaveBeenLastCalledWith("");
     expect(offline.forgetOfflinePin).toHaveBeenCalledTimes(2);
     rememberSignedIn(null);
+  });
+});
+
+// Codex's review of #651 (2026-09-25). The unlock used to be a bare "1" in
+// this tab's storage, read by whoever was signed in next, and the lock's React
+// state carried over from one login to the next. An unlock is one person's.
+describe("an unlock belongs to the person who unlocked", () => {
+  it.each([
+    ["the old bare “1”", "1"],
+    ["somebody else's", BEN],
+  ])("an unlock kept in this tab by %s does not open the lock", async (_label, kept) => {
+    api.myPinStatus.mockResolvedValue(true);
+    sessionStorage.setItem("wops-pin-unlocked", kept);
+    await mount();
+    expect(text()).toContain("Enter your 4-digit PIN");
+    expect(text()).not.toContain("THE APP");
+    expect(api.checkMyPin).not.toHaveBeenCalled();
+    expect(offline.checkPinOffline).not.toHaveBeenCalled();
+  });
+
+  it("the lock drawn for somebody else starts shut, with nothing the first person typed", async () => {
+    api.myPinStatus.mockResolvedValue(true);
+    api.checkMyPin.mockResolvedValue({ ok: true });
+    await mount();
+    await typePin("4821");
+    expect(text()).toContain("THE APP");
+    api.checkMyPin.mockClear();
+
+    act(() =>
+      root.render(
+        <QueryClientProvider client={qc}>
+          <PinGate userId={BEN}>
+            <p>OTHER APP</p>
+          </PinGate>
+        </QueryClientProvider>,
+      ),
+    );
+    await settle();
+    expect(text()).not.toContain("OTHER APP");
+    expect(text()).not.toContain("THE APP");
+    expect(api.checkMyPin).not.toHaveBeenCalled();
+    const typed = container.querySelector<HTMLInputElement>("input.pin-input");
+    expect(typed?.value ?? "").toBe("");
+  });
+});
+
+// Codex's review of #651 (2026-09-25): a yes from the server that landed after
+// the lock was gone still kept a fresh offline unlock for the person before.
+describe("a check that lands after its lock is gone", () => {
+  it("a yes from the server after the lock was taken down keeps nothing and lets nobody in", async () => {
+    api.myPinStatus.mockResolvedValue(true);
+    let answer!: (value: { ok: true }) => void;
+    api.checkMyPin.mockImplementation(() => new Promise((resolve) => (answer = resolve)));
+    await mount();
+    await typePin("4821");
+    expect(text()).toContain("Checking your PIN…");
+
+    // App draws the sign-in screen when SIGNED_OUT arrives, and the lock goes.
+    act(() => root.render(<div>Signed out</div>));
+    await act(async () => answer({ ok: true }));
+    await settle();
+    expect(offline.rememberPinForOffline).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem("wops-pin-unlocked")).toBeNull();
   });
 });
