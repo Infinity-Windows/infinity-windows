@@ -24,7 +24,7 @@ import { formatClock } from "../lib/timeclock";
 import { shiftGuard } from "../lib/shiftGuard";
 import { effectiveRole, previewableRoles, useViewAsRole } from "../lib/viewAsRoleContext";
 import { useRealtimeMyOpenings } from "../lib/useRealtimeOpenings";
-import { supabase } from "../lib/supabase";
+import { signOutOnRequest } from "../lib/signOut";
 import { ToastHost } from "./ToastHost";
 import { UndoToast } from "./UndoToast";
 import { SummonBell } from "./SummonBell";
@@ -148,7 +148,7 @@ export function Layout() {
   };
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
+    await signOutOnRequest();
   };
 
   // Wave Z: the money grants come off the REAL profile and are dropped while

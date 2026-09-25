@@ -107,6 +107,11 @@ const EXPECTED_OFFLINE_ROOTS = [
   "openShift",
   "myShifts",
   "costCodes",
+  // +2 on 2026-09-24: the clock's own pickers. Not kept, a phone opened with
+  // no signal had no cost code to offer, and the clock will not start without
+  // one — not even to save the punch on the phone.
+  "clockCostCodes",
+  "recentJobs",
   "learnProgress",
   "priorityTerms",
   "ledger",

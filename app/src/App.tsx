@@ -53,6 +53,9 @@ import { FirstRunLanguagePicker } from "./components/LanguagePicker";
 import { ensureMyProfile } from "./lib/install/api";
 import { SkeletonCard } from "./components/ui/States";
 import { useIsPartnerUser } from "./lib/stg";
+import { onSignInRefused, signInRefused, storedSignIn } from "./lib/supabase";
+import { followSignIn } from "./lib/offlineSession";
+import { signOutWasRequested } from "./lib/signOut";
 import "./index.css";
 
 /**
@@ -402,6 +405,8 @@ function SectionAura() {
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
+  /** The auth server ended this phone's sign-in; nobody tapped Sign out. */
+  const [signedOutByServer, setSignedOutByServer] = useState(false);
   // Password recovery: true when this load came from a reset email, or when
   // supabase fires PASSWORD_RECOVERY after picking the tokens out of the URL.
   const [recovery, setRecovery] = useState(() => isRecoveryLanding(LANDING_HASH));
@@ -453,24 +458,53 @@ export default function App() {
       void ensureMyProfile().catch(() => {});
       void prefetchWarehousePack();
     };
-    supabase.auth.getSession().then(({ data }) => {
-      // This is the ONE place the app asks who is signed in. Everywhere that
-      // only wants a name on a record — the photo shutter above all — reads
-      // lib/signedIn instead of making its own auth call, because an auth call
-      // in the middle of a tap is a network round trip, and on a token that has
-      // gone stale offline it is a long one that answers "nobody".
-      rememberSignedIn(data.session);
-      setSession(data.session);
-      setReady(true);
-      onSignedIn(data.session);
+    // Every answer auth gives goes through one follower (lib/offlineSession):
+    // a no-signal "no session" keeps the sign-in this phone still holds, so a
+    // crew member stays signed in on the profile and clock the phone saved;
+    // a sign-in the server refused is let go at once and explained; and an
+    // answer that arrives after a newer sign-in or sign-out is dropped, so a
+    // slow one can never bring the previous person back (2026-09-24/25).
+    const follow = followSignIn({
+      stored: storedSignIn,
+      isRefused: signInRefused,
+      hold: (next) => {
+        if (next) setSignedOutByServer(false);
+        rememberSignedIn(next);
+        setSession(next);
+      },
+      signedOutByServer: () => {
+        setSignedOutByServer(true);
+        setEntered(true);
+      },
+      signOutWasRequested,
     });
+    const launchAnswer = follow.asking();
+    const launchAnswered = (answer: Session | null) => {
+      const s = launchAnswer(answer);
+      setReady(true);
+      if (s !== undefined) onSignedIn(s);
+    };
+    // This is the ONE place the app asks who is signed in. Everywhere that
+    // only wants a name on a record — the photo shutter above all — reads
+    // lib/signedIn instead of making its own auth call, because an auth call
+    // in the middle of a tap is a network round trip, and on a token that has
+    // gone stale offline it is a long one that answers "nobody". A question
+    // that fails outright (a phone whose storage is full cannot save a renewed
+    // sign-in) answers "nothing new" rather than leaving "Connecting…" up.
+    supabase.auth.getSession().then(
+      ({ data }) => launchAnswered(data.session),
+      () => launchAnswered(null),
+    );
     const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
       if (event === "PASSWORD_RECOVERY") setRecovery(true);
-      rememberSignedIn(s);
-      setSession(s);
-      onSignedIn(s);
+      const next = follow.changed(event, s);
+      if (next !== undefined) onSignedIn(next);
     });
-    return () => sub.subscription.unsubscribe();
+    const stopHearingRefusals = onSignInRefused((refreshToken) => follow.refused(refreshToken));
+    return () => {
+      sub.subscription.unsubscribe();
+      stopHearingRefusals();
+    };
   }, []);
 
   // Wave H (H2): the GC's page, ahead of EVERYTHING — ahead of the "Connecting…"
@@ -542,6 +576,7 @@ export default function App() {
       <SignIn
         initialMode={signInMode}
         initialNotice={landingNotice}
+        signedOut={signedOutByServer}
         onHaveInviteCode={() => setJoining(true)}
       />
     );
