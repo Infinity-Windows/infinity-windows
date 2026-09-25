@@ -5374,6 +5374,99 @@ button.clock-out {
   color: #fff;
 }
 .ask-mic-seconds { font-size: 14px; font-variant-numeric: tabular-nums; }
+
+/* The composer, and while the microphone is on, the recorder pinned to the
+   bottom of the screen (owner's note, 2026-09-24: "the chat bar that shows
+   that it's recording should follow me"). On a phone it rests above the tab
+   bar — which already carries the home-indicator inset — and clear of the
+   Capture (+) button, which rides 14px above the bar with a 4px ring; on a
+   laptop, where the tab bar is display:none, 16px off the bottom. The margin
+   and padding cancel out, so pinning it never shifts the text box. */
+.ask-page { --ask-dock-bottom: calc(var(--above-tabbar) + 22px); }
+@media (min-width: 860px) {
+  .ask-page { --ask-dock-bottom: calc(16px + var(--safe-bottom)); }
+}
+:root[data-display-layout="phone"] .ask-page { --ask-dock-bottom: calc(var(--above-tabbar) + 22px); }
+.ask-dock { position: relative; }
+.ask-dock.is-pinned {
+  position: sticky;
+  bottom: var(--ask-dock-bottom);
+  /* Over the page, under the tab bar (50), the Ask button (45) and every sheet. */
+  z-index: 40;
+  margin: 0 -8px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+}
+.ask-dock-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 600;
+}
+/* Recording is said in words; the dot and the pulse only back them up. */
+.ask-rec-dot {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--danger, #c0392b);
+  animation: ask-rec-blink 1.2s ease-in-out infinite;
+}
+.ask-mic.recording { animation: ask-rec-pulse 1.4s ease-out infinite; }
+@keyframes ask-rec-blink { 50% { opacity: 0.3; } }
+@keyframes ask-rec-pulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--danger, #c0392b) 60%, transparent); }
+  70% { box-shadow: 0 0 0 12px color-mix(in oklab, var(--danger, #c0392b) 0%, transparent); }
+  100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--danger, #c0392b) 0%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ask-rec-dot, .ask-mic.recording { animation: none; }
+}
+/* Hide actions / Actions: one 48px button that stays put either way. */
+.ask-actions-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 48px;
+  margin-bottom: 8px;
+  padding: 0 16px;
+  border-radius: 999px;
+  font-size: 16px;
+  font-weight: 600;
+}
+/* "New message": a zero-height sticky row, so it takes no room at the end of
+   the page; the button hangs just above it (or above the pinned recorder). */
+.ask-jump-row {
+  position: sticky;
+  bottom: var(--ask-dock-bottom);
+  z-index: 41;
+  height: 0;
+}
+.ask-jump {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  /* `translate`, not `transform`: every button scales on :active, and a
+     transform there would throw this one sideways mid-tap. */
+  translate: -50% 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 48px;
+  padding: 0 18px;
+  border-radius: 999px;
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--ink);
+  font-weight: 700;
+  white-space: nowrap;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
 .field-card {
   margin: 8px 0;
   padding: 12px;

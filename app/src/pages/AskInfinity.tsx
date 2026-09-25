@@ -10,7 +10,7 @@ import { ReportCard } from "../components/ask/ReportCard";
 import { asksForReport, isOperationalAsk } from "../lib/askRouting";
 import { cleanAskText } from "../lib/cleanAskText";
 import { BackChip } from "../components/BackChip";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { Sparkles } from "lucide-react";
 import { supabaseConfigured } from "../lib/supabase";
@@ -39,7 +39,9 @@ import { readWorkQueue } from "../lib/customWork/queue";
 import { startVoiceRecording, type VoiceRecording } from "../lib/voiceRecording";
 import { transcribeDescription } from "../lib/dictation";
 import { useUnsavedWorkWhile } from "../lib/pwa/useUnsavedWork";
-import { Mic, Square } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, Mic, Square } from "lucide-react";
+import { inBand, isTextEntry, readingHistory, revealDelta, revealTarget, scrollPageBy, spanOf, unionSpan, visibleBand, type Span } from "../lib/askLatest";
+import { readCardsHidden, rememberCardsHidden } from "../lib/askCardsPref";
 import type { TimeShift } from "../lib/timeclock";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { roleRank } from "../lib/install/types";
@@ -173,6 +175,17 @@ function brainMessage(outcome: BrainOutcome, note?: string): ChatMsg {
   return { who: "infinity", text: prefix + outcome.message };
 }
 
+/** What to bring into view (askLatest's revealTarget): the newest message with
+ * "Finding an answer…" under it while that shows, and — for a reply — the
+ * person's words just above it when both fit. */
+function latestTarget(thread: HTMLElement | null, status: HTMLElement | null, answersMine: boolean, band: Span): Span | null {
+  const rows = thread ? thread.querySelectorAll("[data-msg]") : null;
+  if (!rows || !rows.length) return spanOf(status);
+  const newest = unionSpan([spanOf(rows[rows.length - 1]), spanOf(status)]);
+  return revealTarget(newest, answersMine && rows.length > 1 ? spanOf(rows[rows.length - 2]) : null, band);
+}
+const answersMine = (all: ChatMsg[]) => all.length > 1 && all[all.length - 1].who === "infinity" && all[all.length - 2].who === "me";
+
 /** The speaker's original recording, fetched on demand through a short-lived
  * private link (the bucket is readable only by them and supervisors). */
 function MemoPlayback({ path }: { path: string }) {
@@ -199,8 +212,14 @@ export function AskInfinity() {
     { who: "infinity", text: t("ask.greeting") },
   ]);
   const [thinking, setThinking] = useState(false);
-  const threadEnd = useRef<HTMLDivElement>(null);
-  const lastMessageCount = useRef(1);
+  const threadRef = useRef<HTMLDivElement>(null);
+  /** "Finding an answer…" — part of the newest thing on screen while it shows. */
+  const statusRef = useRef<HTMLDivElement>(null);
+  const dockRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  /** A new message arrived while the person was reading older ones (or typing
+   * elsewhere): which way it is. The page is not moved under them. */
+  const [jump, setJump] = useState<"up" | "down" | null>(null);
   const location = useLocation();
   // Action cards (K2.2): what the UI shows follows the effective role (an
   // owner previewing "installer" sees installer cards), while every message
@@ -208,9 +227,8 @@ export function AskInfinity() {
   const { effectiveRole } = useEffectiveRole();
   const cardRank = roleRank(effectiveRole);
   const [showAll, setShowAll] = useState(false);
-  /** The person tapped "Actions" while the composer had text: show the cards
-   * anyway until they tap one or start typing again. */
-  const [cardsForced, setCardsForced] = useState(false);
+  /** The action cards are put away (see "Action cards" below). */
+  const [cardsHidden, setCardsHidden] = useState(false);
   // Context tag (K2.3): the job (and maybe unit) Ask was opened from. Read
   // through a ref inside send(), which closes over an older render.
   const [tag, setTag] = useState<AskContextTag | null>(null);
@@ -232,6 +250,12 @@ export function AskInfinity() {
   const logOpenRef = useRef(false);
   const [unsent, setUnsent] = useState<UnsentField[]>([]);
   const [voice, setVoice] = useState<"idle" | "starting" | "recording" | "saving" | "transcribing">("idle");
+  /** While the microphone is on — asking, recording, saving, writing it out —
+   * the composer is the recorder and is pinned to the bottom of the screen
+   * (see the dock below). Read through a ref by effects that measure it. */
+  const pinned = voice !== "idle";
+  const pinnedRef = useRef(pinned);
+  pinnedRef.current = pinned;
   const [seconds, setSeconds] = useState(0);
   const [voiceError, setVoiceError] = useState("");
   const [restoreError, setRestoreError] = useState(false);
@@ -260,7 +284,9 @@ export function AskInfinity() {
   const readClockNow = (g = gen.current) => {
     void readClockVersion().then((v) => { if (isCurrent(g)) clockSeen.current = v; });
   };
-  const resetFieldUi = ({ keepInput = false }: { keepInput?: boolean } = {}) => {
+  /** A fresh screen for `person`: their conversation's cards start as they
+   * last chose on this phone (askCardsPref), not as the previous screen left them. */
+  const resetFieldUi = (person: string | null, { keepInput = false }: { keepInput?: boolean } = {}) => {
     gen.current += 1;
     recordAbort.current?.abort();
     recording.current?.cancel();
@@ -269,6 +295,11 @@ export function AskInfinity() {
     if (!keepInput) setInput("");
     setVoice("idle"); setThinking(false); setVoiceError(""); setRestoreError(false); setHeld(null);
     setLogOpen(false); logOpenRef.current = false;
+    // Words kept in the box count as typed ones (K2.2): Plan with AI's prompt
+    // stays with the cards put away, instead of the cards coming back over it
+    // when the account resolves (#656's kept prompt meeting #659's cards).
+    setCardsHidden((person ? readCardsHidden(person) : false) || (keepInput && input.trim() !== ""));
+    setShowAll(false); setJump(null);
     setMessages([{ who: "infinity", text: t("ask.greeting") }]);
     return gen.current;
   };
@@ -280,7 +311,7 @@ export function AskInfinity() {
     // prompt in the box before the account resolves, and wiping it here
     // landed a supervisor on an empty Ask (nightly e2e, red since Sep 17).
     // Any later change of account still starts with an empty box.
-    const g = resetFieldUi({ keepInput: !lastActor.current });
+    const g = resetFieldUi(userId, { keepInput: !lastActor.current });
     actor.current = userId;
     setUnsent([]);
     setConversation(null);
@@ -397,15 +428,63 @@ export function AskInfinity() {
 
   const index = useMemo(() => getBrainIndex(catalog), [catalog]);
 
-  useEffect(() => {
-    // New replies may arrive while the person is reading an earlier answer.
-    // Follow only when already near the end; never scroll on initial mount.
-    const end = threadEnd.current;
-    if (messages.length > lastMessageCount.current && end && end.getBoundingClientRect().top < window.innerHeight + 220) {
-      end.scrollIntoView({ block: "nearest" });
+  // --- Latest in view (lib/askLatest.ts) ---------------------------------------
+  // The newest thing in the conversation — the person's own words or
+  // transcript, the reply with its receipts, choice cards and clock buttons —
+  // comes into view as it arrives, above the daily log card and the action
+  // cards, which sit below the thread and used to leave it off screen. Someone
+  // who scrolled up to read older messages, or who is typing a daily log
+  // answer, keeps their place: the "New message" button offers it instead.
+  const seen = useRef<{ newest: ChatMsg; count: number } | null>(null);
+  useLayoutEffect(() => {
+    const before = seen.current;
+    const newest = messages[messages.length - 1];
+    seen.current = { newest, count: messages.length };
+    // Only a message ADDED at the end moves anything: not the first greeting,
+    // a fresh screen, a receipt changing state in place, or older turns a
+    // restore slots in ahead of what is already newest. A conversation that
+    // comes back after a reload does count, and opens on its latest turn.
+    if (!before || messages.length <= before.count || newest === before.newest) return;
+    const rows = threadRef.current?.querySelectorAll("[data-msg]");
+    if (!rows?.length) return;
+    // Where the previously newest message is now, found by identity: a restore
+    // puts older turns in front of it, so its old position means nothing.
+    const at = messages.lastIndexOf(before.newest);
+    const previous = spanOf(rows[at >= 0 ? at : before.count - 1]);
+    const band = visibleBand(pinnedRef.current ? dockRef.current : null);
+    const box = latestTarget(threadRef.current, statusRef.current, answersMine(messages), band);
+    if (!box) return;
+    const delta = revealDelta(box, band);
+    if (delta === 0) { setJump(null); return; }
+    const typing = document.activeElement;
+    if (readingHistory(previous, band) || (isTextEntry(typing) && typing !== inputRef.current)) {
+      setJump(delta > 0 ? "down" : "up");
+      return;
     }
-    lastMessageCount.current = messages.length;
+    setJump(null);
+    scrollPageBy(delta);
   }, [messages]);
+  // The button goes once the new message is on screen, however it got there.
+  useEffect(() => {
+    if (!jump) return;
+    let frame = 0;
+    const onScroll = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const band = visibleBand(pinnedRef.current ? dockRef.current : null);
+        const box = latestTarget(threadRef.current, statusRef.current, false, band);
+        if (box && inBand(box, band)) setJump(null);
+      });
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => { window.removeEventListener("scroll", onScroll); cancelAnimationFrame(frame); };
+  }, [jump]);
+  const jumpToLatest = () => {
+    setJump(null);
+    const band = visibleBand(pinnedRef.current ? dockRef.current : null);
+    const box = latestTarget(threadRef.current, statusRef.current, answersMine(messages), band);
+    if (box) scrollPageBy(revealDelta(box, band));
+  };
 
   // The label is shown translated; the query sent to send() stays the
   // original English phrase — the brain's keyword index (lib/brain,
@@ -629,6 +708,13 @@ export function AskInfinity() {
     if (voice !== "idle" || thinking || !uid) return;
     const g = gen.current;
     setVoiceError(""); setSeconds(0);
+    // A recording puts the action cards (and All actions) away for the
+    // conversation (K2.2) — and the keyboard: iOS keeps a pinned bar on the
+    // layout viewport, which runs on under an open keyboard, so the recorder
+    // would sit behind it.
+    setCardsHidden(true); setShowAll(false);
+    const typing = document.activeElement;
+    if (isTextEntry(typing)) typing.blur();
     readClockNow(g);
     recordAbort.current = new AbortController();
     // "starting" covers the microphone permission wait, which can sit on a
@@ -677,7 +763,7 @@ export function AskInfinity() {
   const startNewSetup = () => {
     const uid = actor.current;
     if (!uid || thinking || voice !== "idle") return;
-    resetFieldUi();
+    resetFieldUi(uid);
     setConversation(startNewConversation(uid));
     readClockNow();
   };
@@ -692,16 +778,40 @@ export function AskInfinity() {
   };
 
   // --- Action cards ----------------------------------------------------------
-  const composerBusy = input.trim() !== "" || voice !== "idle";
-  const cardsVisible = cardsForced || !composerBusy;
-  // Typing or recording hides the cards even after "Actions" reopened them;
-  // the next "Actions" tap brings them back.
-  useEffect(() => { if (composerBusy) setCardsForced(false); }, [composerBusy]);
+  // K2.2: the cards go the moment the composer has text, a recording starts or
+  // a card is tapped, and "Actions" brings them back. The owner, 2026-09-24:
+  // "Every time I click the microphone, a lot of other options open up when I
+  // previously minimized them" — they used to spring back whenever the box was
+  // empty again, so every send and every finished recording reopened them.
+  // Put away now means put away: a send, a reply, a recording ending or the
+  // box emptying never reopen them; only the Actions tap does. Hide and
+  // Actions are the person's own choice, remembered on this phone for them.
+  const typed = input.trim() !== "";
+  // It is STARTING to type that puts them away (a seeded prompt counts), not
+  // the box having words: once Actions brings them back over typed words they
+  // stay until the next time the box goes from empty to typed.
+  useEffect(() => { if (typed) { setCardsHidden(true); setShowAll(false); } }, [typed]);
+  const hideCards = () => {
+    setCardsHidden(true);
+    if (actor.current) rememberCardsHidden(actor.current, true);
+  };
+  const showCards = () => {
+    setCardsHidden(false);
+    if (actor.current) rememberCardsHidden(actor.current, false);
+  };
   const pickCard = (pick: CardPick) => {
     setShowAll(false);
-    setCardsForced(false);
+    setCardsHidden(true);
     send(pick.query, undefined, gen.current, { keepInput: true, operational: pick.operational });
   };
+  // One button, rendered where it can be seen: in the pinned recorder while
+  // that is up, otherwise in its own row just above the tab bar.
+  const jumpButton = jump ? (
+    <button type="button" className="ask-jump" onClick={jumpToLatest}>
+      {t("field.newMessage")}
+      {jump === "up" ? <ArrowUp size={18} aria-hidden="true" /> : <ArrowDown size={18} aria-hidden="true" />}
+    </button>
+  ) : null;
 
   return (
     <div className="page ask-page">
@@ -716,9 +826,9 @@ export function AskInfinity() {
       </header>
 
       {userId && <LearningPanel key={userId} projectId={learningJob} unitLabel={learningUnit} actorId={userId} onProject={setLearningJob} onUnit={setLearningUnit}/>}
-      <div className="ask-thread">
+      <div className="ask-thread" ref={threadRef}>
         {messages.map((m, i) => (
-          <div key={i} className={m.who === "me" ? "ask-msg mine" : "ask-msg"}>
+          <div key={i} data-msg={i} className={m.who === "me" ? "ask-msg mine" : "ask-msg"}>
             {/* Wave A4: plain progress lines while the model worked (tool
                 calls already finished by the time this renders — the
                 request isn't streamed — but the trace still reads as "here's
@@ -783,10 +893,9 @@ export function AskInfinity() {
               question: (learningWords || learningPrep.content.what_happened || learningPrep.content.issue || "Lesson write-up").slice(0, 8000),
               answer: (learningReply?.text ?? "").slice(0, 20000), sources: [] } }} />
         )}
-        <div role="status" aria-live="polite" className={thinking ? "ask-bubble" : undefined}>
+        <div ref={statusRef} role="status" aria-live="polite" className={thinking ? "ask-bubble" : undefined}>
           {thinking ? (es ? "Buscando una respuesta…" : "Finding an answer…") : ""}
         </div>
-        <div ref={threadEnd} />
       </div>
 
       {restoreError && <p className="muted" role="status">{t("field.restoreFailed")}</p>}
@@ -830,47 +939,68 @@ export function AskInfinity() {
           <button type="button" className="chip" aria-label={t("field.tag.clear")} onClick={() => setTag(null)}>×</button>
         </div>
       )}
-      {voice === "saving" && <p role="status" className="muted">{t("field.savingMemo")}</p>}
-      {voice === "transcribing" && <p role="status" className="muted">{t("field.transcribing")}</p>}
-
-      {/* Action cards (K2.2): four per role + All actions, gone the moment the
-          composer has text or a recording starts, back with the "Actions"
-          button. Tapping a card sends the card's own words and never touches
-          what was typed. */}
+      {/* Action cards (K2.2): four per role + All actions. Put away by typing,
+          a recording, a card tap or Hide; back ONLY with Actions — one button
+          that stays where it is either way. Tapping a card sends the card's
+          own words and never touches what was typed. */}
       {showAll ? (
         <AllActions rank={cardRank} lang={lang} running={running} questions={suggestions} onClose={() => setShowAll(false)} onPick={pickCard} />
-      ) : cardsVisible ? (
-        <ActionCards rank={cardRank} lang={lang} running={running} onPick={pickCard} onAll={() => setShowAll(true)} />
       ) : (
-        <div className="ask-suggestions">
-          <button type="button" className="chip" onClick={() => setCardsForced(true)}>{t("field.cards.reopen")}</button>
+        <div className="ask-actions">
+          <button type="button" className="ask-actions-toggle" aria-expanded={!cardsHidden} onClick={cardsHidden ? showCards : hideCards}>
+            {cardsHidden ? <ChevronDown size={18} aria-hidden="true" /> : <ChevronUp size={18} aria-hidden="true" />}
+            {t(cardsHidden ? "field.cards.reopen" : "field.cards.hide")}
+          </button>
+          {!cardsHidden && <ActionCards rank={cardRank} lang={lang} running={running} onPick={pickCard} onAll={() => setShowAll(true)} />}
         </div>
       )}
 
-      <div className="ask-input">
-        <input
-          aria-label={t("ask.inputPlaceholder")}
-          placeholder={t("ask.inputPlaceholder")}
-          value={input}
-          onChange={(e) => {
-            // Starting a message is when the phone notes the clock it is looking at.
-            if (!input && e.target.value) readClockNow();
-            setInput(e.target.value);
-          }}
-          onKeyDown={(e) => e.key === "Enter" && send(input)}
-        />
-        {userId && (voice === "recording" ? (
-          <button type="button" className="ask-send ask-mic recording" onClick={() => recording.current?.stop()} aria-label={t("field.stopRecording", { seconds })}>
-            <Square size={16} /> <span className="ask-mic-seconds">{seconds}s</span>
+      {/* "New message": a zero-height row that sticks just above the tab bar
+          while the composer is in its place at the end of the page. */}
+      {jumpButton && !pinned && <div className="ask-jump-row">{jumpButton}</div>}
+
+      {/* The composer. While the microphone is on it is the recorder, pinned
+          to the bottom of the screen over whatever is scrolled — the owner,
+          2026-09-24: "the chat bar that shows that it's recording should
+          follow me … I had to scroll to the bottom and not know that the
+          microphone was working." Only then: a sticky bar and an open iOS
+          keyboard fight (the bar stays on the layout viewport, under the
+          keyboard), and the mic is when the page is scrolled with nothing
+          to type. */}
+      <div ref={dockRef} className={pinned ? "ask-dock is-pinned" : "ask-dock"}>
+        {pinned && jumpButton}
+        {pinned && (
+          <p className="ask-dock-status" role="status" aria-live="polite">
+            {voice === "recording" && <span className="ask-rec-dot" aria-hidden="true" />}
+            {t(voice === "starting" ? "field.micStarting" : voice === "recording" ? "field.recordingNow" : voice === "saving" ? "field.savingMemo" : "field.transcribing")}
+          </p>
+        )}
+        <div className="ask-input">
+          <input
+            ref={inputRef}
+            aria-label={t("ask.inputPlaceholder")}
+            placeholder={t("ask.inputPlaceholder")}
+            value={input}
+            onChange={(e) => {
+              // Starting a message is when the phone notes the clock it is looking at.
+              if (!input && e.target.value) readClockNow();
+              setInput(e.target.value);
+            }}
+            onKeyDown={(e) => e.key === "Enter" && send(input)}
+          />
+          {userId && (voice === "recording" ? (
+            <button type="button" className="ask-send ask-mic recording" onClick={() => recording.current?.stop()} aria-label={t("field.stopRecording", { seconds })}>
+              <Square size={16} /> <span className="ask-mic-seconds">{seconds}s</span>
+            </button>
+          ) : (
+            <button type="button" className="ask-send ask-mic" disabled={thinking || voice !== "idle"} onClick={() => void startRecording()} aria-label={t("field.record")}>
+              <Mic size={18} />
+            </button>
+          ))}
+          <button type="button" className="ask-send" disabled={thinking || !input.trim()} onClick={() => send(input)} aria-label={t("ask.send")}>
+            ↑
           </button>
-        ) : (
-          <button type="button" className="ask-send ask-mic" disabled={thinking || voice !== "idle"} onClick={() => void startRecording()} aria-label={t("field.record")}>
-            <Mic size={18} />
-          </button>
-        ))}
-        <button type="button" className="ask-send" disabled={thinking || !input.trim()} onClick={() => send(input)} aria-label={t("ask.send")}>
-          ↑
-        </button>
+        </div>
       </div>
     </div>
   );

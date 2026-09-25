@@ -77,6 +77,11 @@ export const FIELD_CATALOG = {
   "field.stopRecording": { en: "Stop and send ({seconds}s)", es: "Detener y enviar ({seconds}s)" },
   "field.savingMemo": { en: "Saving your recording…", es: "Guardando tu grabación…" },
   "field.transcribing": { en: "Writing out what you said…", es: "Escribiendo lo que dijiste…" },
+  // The recorder pinned to the bottom of the screen (owner's note, 2026-09-24:
+  // "I had to scroll to the bottom and not know that the microphone was working").
+  "field.micStarting": { en: "Opening the microphone…", es: "Abriendo el micrófono…" },
+  "field.recordingNow": { en: "Recording — tap the square to stop and send", es: "Grabando: toca el cuadrado para detener y enviar" },
+  "field.newMessage": { en: "New message", es: "Mensaje nuevo" },
   "field.memo": { en: "Your recording", es: "Tu grabación" },
   "field.unsentTitle": { en: "Not sent yet — kept on this phone", es: "Aún no enviado; guardado en este teléfono" },
   "field.unsentHelp": { en: "Sending later keeps the original time. A late message never starts or stops a timer.", es: "Al enviarlo después se conserva la hora original. Un mensaje tardío nunca inicia ni detiene un temporizador." },
@@ -134,6 +139,7 @@ export const FIELD_CATALOG = {
   "field.cards.title": { en: "Actions", es: "Acciones" },
   "field.cards.all": { en: "All actions", es: "Todas las acciones" },
   "field.cards.reopen": { en: "Actions", es: "Acciones" },
+  "field.cards.hide": { en: "Hide actions", es: "Ocultar acciones" },
   "field.cards.close": { en: "Close", es: "Cerrar" },
   "field.cards.notYet": { en: "not in Ask yet (release {release})", es: "todavía no está en Ask (versión {release})" },
   "field.cards.useScreen": { en: "Use the {screen} screen for this", es: "Usa la pantalla {screen} para esto" },
