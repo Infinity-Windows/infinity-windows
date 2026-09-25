@@ -68,6 +68,7 @@ export const OP_LABEL_KEY: Record<OutboxOp, TKey> = {
   hex_portal_case: "stuck.op.hexPortalCase",
   hex_portal_outcome: "stuck.op.hexPortalOutcome",
   hex_learning_draft: "stuck.op.hexLearningDraft",
+  toolbox_sign: "stuck.op.toolboxSign",
 };
 
 /** The words for one outbox entry: its op, or for media its kind. */
@@ -141,6 +142,13 @@ function newestFirst(rows: StuckRow[]): StuckRow[] {
 export function buildStuckRows(inputs: StuckInputs, t: TFn): StuckSections {
   const needsYou: StuckRow[] = [];
   const waiting: StuckRow[] = [];
+  // Toolbox talk signatures Forge refused. What waits on one was never sent
+  // and never failed on its own (cascadeFailure holds it), so it is not
+  // "waiting for signal" either: it is waiting for that signature, which is
+  // listed under Needs you (offline toolbox signing, 2026-09-25).
+  const refusedSignatures = new Set(
+    inputs.writes.filter((e) => e.op === "toolbox_sign" && e.status === "failed").map((e) => e.id),
+  );
 
   for (const e of inputs.writes) {
     const failed = e.status === "failed";
@@ -152,7 +160,9 @@ export function buildStuckRows(inputs: StuckInputs, t: TFn): StuckSections {
         ? isPhotoConflictIndexError(e.lastError)
           ? t("photo.databaseRetry")
           : e.lastError
-        : null,
+        : e.dependsOn && refusedSignatures.has(e.dependsOn)
+          ? t("stuck.heldForSignature")
+          : null,
       source: "write",
       state: failed ? "failed" : e.status === "sending" ? "sending" : "waiting",
       sentAt: null,

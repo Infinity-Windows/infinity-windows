@@ -8,7 +8,6 @@ import { getMyProfile } from "../lib/install/api";
 import { isForemanPlus } from "../lib/install/types";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 import {
-  getTodayTalk,
   listIncidents,
   reportIncident,
   type SafetyTalk,
@@ -19,12 +18,13 @@ import { TalkContent } from "../components/safety/TalkContent";
 import {
   generateToolboxTalk,
   isGroupSignIn,
-  myTodayCompletion,
   signedRecordUrl,
-  submitToolboxCompletion,
+  signToolboxTalk,
   todayCompliance,
   updateTalkSections,
 } from "../lib/toolbox";
+import { useTodayTalk, useToolboxToday } from "../lib/useToolboxGate";
+import { ToolboxSignStatus } from "../components/clock/ToolboxSignStatus";
 import { getProfileName } from "../lib/timeclock";
 import { SignaturePad, type SignaturePadHandle } from "../components/SignaturePad";
 import { useT } from "../lib/i18n";
@@ -109,14 +109,13 @@ export function Safety() {
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const { effectiveRole } = useEffectiveRole();
   const lead = isForemanPlus(effectiveRole);
-  const talk = useQuery({ queryKey: ["todayTalk"], queryFn: getTodayTalk });
+  // Today's talk and today's signature, as every gate reads them: a talk
+  // kept ahead counts for today when the last read was yesterday's, and a
+  // signature still on this phone counts as signed (offline toolbox signing).
+  const talk = useTodayTalk();
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
 
-  const myDone = useQuery({
-    queryKey: ["toolboxToday", me.data?.id],
-    queryFn: () => myTodayCompletion(me.data!.id),
-    enabled: Boolean(me.data?.id),
-  });
+  const myDone = useToolboxToday(me.data?.id);
   const compliance = useQuery({
     queryKey: ["toolboxCompliance"],
     queryFn: todayCompliance,
@@ -154,9 +153,12 @@ export function Safety() {
   const [proj, setProj] = useState("");
   const [sent, setSent] = useState(false);
 
+  // The one sign path (offline toolbox signing, 2026-09-25): kept on the
+  // phone, sent from the outbox — at once with signal, later without. The
+  // card below turns into the signed card the moment it is kept.
   const sign = useMutation({
     mutationFn: () =>
-      submitToolboxCompletion({
+      signToolboxTalk({
         talk: talk.data!,
         profileId: me.data!.id,
         typedName: typedName.trim(),
@@ -166,7 +168,6 @@ export function Safety() {
       setAck(false);
       setTypedName("");
       sigRef.current?.clear();
-      queryClient.invalidateQueries({ queryKey: ["toolboxToday"] });
       queryClient.invalidateQueries({ queryKey: ["toolboxHistory"] });
       queryClient.invalidateQueries({ queryKey: ["toolboxCompliance"] });
     },
@@ -244,11 +245,16 @@ export function Safety() {
                 place the person it was made about ever sees it. Saying "Signed
                 today ✓" above a blank name told them they had signed something
                 they never saw. */}
-            <p className="ok" style={{ margin: 0 }}>
-              {isGroupSignIn(myDone.data)
-                ? t("toolbox.group.recordedTitle")
-                : "Signed today ✓"}
-            </p>
+            {myDone.pending ? (
+              /* Still on this phone: waiting to send, or refused and saying so. */
+              <ToolboxSignStatus done={myDone} />
+            ) : (
+              <p className="ok" style={{ margin: 0 }}>
+                {isGroupSignIn(myDone.data)
+                  ? t("toolbox.group.recordedTitle")
+                  : "Signed today ✓"}
+              </p>
+            )}
             <p className="muted" style={{ margin: "4px 0 8px" }}>
               {new Date(myDone.data.signed_at).toLocaleString()}
               {isGroupSignIn(myDone.data)

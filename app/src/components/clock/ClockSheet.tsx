@@ -26,15 +26,16 @@ import {
   enqueueClockIn,
   enqueueClockOut,
   pendingRefForShift,
+  todaysSignatureOnPhone,
 } from "../../lib/offline/outbox";
 import { ToolboxTalkNagBanner } from "../time/ToolboxTalkNagBanner";
 import { WrongClockBanner } from "../time/WrongClockBanner";
 import { ToolboxSignCard } from "./ToolboxSignCard";
+import { ToolboxSignStatus } from "./ToolboxSignStatus";
 import { ClockedInByLine } from "./ClockedInByLine";
 import { ClockQueueStatus } from "./ClockQueueStatus";
 import type { QueuedClockAction, RefusedClockAction } from "../../lib/clockQueueView";
-import { myTodayCompletion } from "../../lib/toolbox";
-import { getTodayTalk } from "../../lib/ops";
+import { useTodayTalk, useToolboxToday } from "../../lib/useToolboxGate";
 import { listMyOpeningsAllJobs, startOpeningWork } from "../../lib/install/api";
 import {
   formatPhaseClock,
@@ -201,16 +202,11 @@ export function ClockSheet({
   // The whole morning ritual lives in this sheet: today's talk (sign it here,
   // not on a separate page) and the assigned windows on the picked job (start
   // the first one in the same tap as the clock-in).
-  const todayTalk = useQuery({
-    queryKey: ["todayTalk"],
-    queryFn: getTodayTalk,
-    enabled: !shift,
-  });
-  const toolboxDone = useQuery({
-    queryKey: ["toolboxToday", profileId],
-    queryFn: () => myTodayCompletion(profileId!),
-    enabled: Boolean(profileId) && !shift,
-  });
+  // A signature still on this phone counts as signed, and today's talk comes
+  // from the days kept ahead when the last read was yesterday's
+  // (lib/useToolboxGate.ts, offline toolbox signing).
+  const todayTalk = useTodayTalk(!shift);
+  const toolboxDone = useToolboxToday(profileId, !shift);
   const myPhases = useQuery({
     queryKey: ["myActivePhases", profileId],
     queryFn: () => listMyActivePhases(profileId!),
@@ -277,6 +273,8 @@ export function ClockSheet({
   // the offline outbox and synced later. Callers show the right copy off this.
   type PunchResult = {
     queued: boolean;
+    /** Queued behind today's toolbox talk signature, still on this phone. */
+    behindSignature?: boolean;
     /** Opening whose install clock started in the same tap, when one did. */
     startedOpening?: string | null;
     startFailed?: boolean;
@@ -306,6 +304,15 @@ export function ClockSheet({
   // id to a uuid RPC (K0.4 — CurrentWork and Servicing had this guard; the
   // sheet did not).
   const shiftIsPending = () => isPendingShiftRef(shift?.id);
+
+  // Today's toolbox talk signed on this phone and not in Forge yet (offline
+  // toolbox signing, 2026-09-25). A clock-in sent straight to the server now
+  // would arrive before the signature and be refused on the toolbox gate —
+  // "complete today's toolbox talk" over a talk the person just signed — so
+  // every clock-in made here while one is on the phone queues behind it
+  // instead (enqueueClockIn with the profile id), and the outbox sends the
+  // signature first and the clock-in right after, at once with signal.
+  const signatureOnPhone = () => Boolean(todaysSignatureOnPhone(profileId));
 
   const openShiftKey = ["openShift", profileId] as const;
 
@@ -407,38 +414,43 @@ export function ClockSheet({
         initialPick?.punch && initialPick.projectId === projectId ? initialPick.punch : null;
       const punch = carried ? carriedPunch(carried, toolboxDone.data?.signed_at) : mintPunch();
       const geo = await captureGeoSoft();
-      try {
-        await clockIn(projectId, costCodeId, geo, noteText, jobMode, punch);
-        // Same tap starts the first window when one was picked. The clock-in
-        // stands even if this part fails — a refused start must never un-ring
-        // that bell, so the failure becomes a toast, not an error.
-        let startedOpening: string | null = null;
-        let startFailed = false;
-        if (pickedOpening && toolboxOk) {
-          try {
-            await startOpeningWork(pickedOpening.id);
-            startedOpening = pickedOpening.id;
-          } catch {
-            startFailed = true;
+      const behindSignature = signatureOnPhone();
+      if (!behindSignature) {
+        try {
+          await clockIn(projectId, costCodeId, geo, noteText, jobMode, punch);
+          // Same tap starts the first window when one was picked. The clock-in
+          // stands even if this part fails — a refused start must never un-ring
+          // that bell, so the failure becomes a toast, not an error.
+          let startedOpening: string | null = null;
+          let startFailed = false;
+          if (pickedOpening && toolboxOk) {
+            try {
+              await startOpeningWork(pickedOpening.id);
+              startedOpening = pickedOpening.id;
+            } catch {
+              startFailed = true;
+            }
           }
+          return { queued: false, startedOpening, startFailed };
+        } catch (e) {
+          if (!shouldQueue(e)) throw e;
         }
-        return { queued: false, startedOpening, startFailed };
-      } catch (e) {
-        if (!shouldQueue(e)) throw e;
-        const entryId = await enqueueClockIn({
-          projectId,
-          costCodeId,
-          lat: geo?.lat ?? null,
-          lng: geo?.lng ?? null,
-          note: noteText,
-          mode: jobMode,
-          punch,
-        });
-        setOptimisticShift(synthOpenShift(entryId, projectId, costCodeId, noteText));
-        // Offline: the punch is queued, but a unit start can't be confirmed
-        // against the server gate — they start it from My Work once in signal.
-        return { queued: true };
       }
+      const entryId = await enqueueClockIn({
+        projectId,
+        costCodeId,
+        lat: geo?.lat ?? null,
+        lng: geo?.lng ?? null,
+        note: noteText,
+        mode: jobMode,
+        punch,
+        profileId,
+      });
+      setOptimisticShift(synthOpenShift(entryId, projectId, costCodeId, noteText));
+      // Queued (no signal, or behind today's signature): a unit start can't
+      // be confirmed against the server gate — they start it from My Work
+      // once the clock-in is in.
+      return { queued: true, behindSignature };
     },
     onSuccess: (r) => {
       if (r.startedOpening && pickedOpening) {
@@ -447,7 +459,11 @@ export function ClockSheet({
         );
       } else {
         toastSuccess(
-          r.queued ? t("clock.toast.clockedInQueued") : t("clock.toast.clockedIn"),
+          r.behindSignature
+            ? t("clock.toast.clockedInAfterTalk")
+            : r.queued
+              ? t("clock.toast.clockedInQueued")
+              : t("clock.toast.clockedIn"),
         );
       }
       if (r.startFailed && pickedOpening) {
@@ -479,7 +495,7 @@ export function ClockSheet({
       const projectId = pickProjectId || null;
       const costCodeId = pickCostCodeId || null;
       const noteText = note.trim() || null;
-      if (!shiftIsPending()) {
+      if (!shiftIsPending() && !signatureOnPhone()) {
         try {
           // clock_in auto-closes the prior open shift, so switching leaves no gap.
           await clockIn(projectId, costCodeId, geo, noteText, null, punch);
@@ -496,6 +512,7 @@ export function ClockSheet({
         note: noteText,
         punch,
         afterShiftRef: shiftIsPending() ? shift!.id : null,
+        profileId,
       });
       setOptimisticShift(synthOpenShift(entryId, projectId, costCodeId, noteText));
       return { queued: true };
@@ -514,7 +531,7 @@ export function ClockSheet({
       const punch = mintPunch();
       const geo = await captureGeoSoft();
       const projectId = shift?.project_id ?? null;
-      if (!shiftIsPending()) {
+      if (!shiftIsPending() && !signatureOnPhone()) {
         try {
           await clockIn(projectId, costCodeId, geo, null, null, punch);
           return { queued: false };
@@ -529,6 +546,7 @@ export function ClockSheet({
         lng: geo?.lng ?? null,
         punch,
         afterShiftRef: shiftIsPending() ? shift!.id : null,
+        profileId,
       });
       setOptimisticShift(synthOpenShift(entryId, projectId, costCodeId));
       return { queued: true };
@@ -1287,10 +1305,14 @@ export function ClockSheet({
                   !toolboxDone.data && (
                     <ToolboxSignCard profileId={profileId} talk={todayTalk.data} />
                   )}
-                {!shift && Boolean(toolboxDone.data) && (
-                  /* SAFETY / toolbox — Spanish flagged for bilingual review. */
-                  <p className="clock-pick-summary">{t("clock.toolbox.signed")}</p>
-                )}
+                {!shift && Boolean(toolboxDone.data) &&
+                  (toolboxDone.pending ? (
+                    /* Signed on this phone, not in Forge yet — or refused. */
+                    <ToolboxSignStatus done={toolboxDone} />
+                  ) : (
+                    /* SAFETY / toolbox — Spanish flagged for bilingual review. */
+                    <p className="clock-pick-summary">{t("clock.toolbox.signed")}</p>
+                  ))}
 
                 {/* Optional note the worker can add for the office. */}
                 <label className="clock-row-label" htmlFor="clock-note">

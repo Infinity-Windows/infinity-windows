@@ -62,6 +62,13 @@ export const SAFETY_KEYS = [
   // above it came apart. Same family as clockblock.signFirst.
   "clockblock.signedPickCode",
   "toolbox.group.bySupervisor",
+  // Offline toolbox signing (2026-09-25): what a signature still on the phone
+  // says about itself, and why a crew can't be signed in as a group with no
+  // signal. Same claim as the sign card itself, so the same review.
+  "toolbox.status.pending",
+  "toolbox.status.sent",
+  "toolbox.status.refused",
+  "crewclock.in.offline",
 ] as const;
 
 export const CATALOG = {
@@ -315,6 +322,13 @@ export const CATALOG = {
     en: "Clocked in — we'll sync it when you're back online",
     es: "Entrada marcada — la sincronizamos cuando vuelvas a estar en línea",
   },
+  // A clock-in made while today's toolbox talk signature is still on the phone
+  // waits behind it in the outbox (offline toolbox signing, 2026-09-25): with
+  // signal both go in a second, without it both wait. True either way.
+  "clock.toast.clockedInAfterTalk": {
+    en: "Clocked in — it sends right after your toolbox talk signature",
+    es: "Entrada marcada — se envía justo después de la firma de tu charla de seguridad",
+  },
   // Shown when the clock-in also starts a specific unit ({code} is its work-order
   // mark, e.g. "1-2"). Was hard-coded English on the crew flow (slice 7 fix).
   "clock.toast.clockedInOnUnit": {
@@ -397,6 +411,22 @@ export const CATALOG = {
   "toolbox.sign": { en: "Sign", es: "Firmar" },
   "toolbox.signTalk": { en: "Sign today's talk", es: "Firmar la charla de hoy" },
   "toolbox.signing": { en: "Signing…", es: "Firmando…" },
+  // Offline toolbox signing (2026-09-25). A signature is kept on the phone
+  // first and sent from there — at once with signal, later without — so the
+  // card says which of the two it is. "Signed ✓" only once Forge has it.
+  "toolbox.status.label": { en: "Today's toolbox talk", es: "Charla de seguridad de hoy" },
+  "toolbox.status.pending": { en: "Signed — waiting to send", es: "Firmado — esperando enviar" },
+  "toolbox.status.sent": { en: "Signed ✓", es: "Firmado ✓" },
+  // A signature the phone gave up sending: Forge refused it, or it ran out of
+  // tries on a signal that showed bars and carried nothing. The clock-in
+  // behind it is held, not failed — this line is where the person learns
+  // both, and Stuck writes is where they fix it. {reason} is the reason as it
+  // was recorded (Forge's own sentence, when Forge said no).
+  "toolbox.status.refused": {
+    en: "Signed on this phone, but it couldn't be sent: {reason} Your clock-in waits for it.",
+    es: "Firmado en este teléfono, pero no se pudo enviar: {reason} Tu entrada espera a la firma.",
+  },
+  "toolbox.status.openStuck": { en: "Open Stuck writes", es: "Abrir Escrituras atascadas" },
 
   // ---- Clock-in block (the one big clock-in spot on every landing) ------
   "clockblock.title": { en: "Clock in", es: "Marcar entrada" },
@@ -1828,6 +1858,13 @@ export const CATALOG = {
   "crewclock.in.attestHelp": {
     en: "Required. Anyone who hasn't signed today gets today's talk recorded in your name.",
     es: "Obligatorio. A quien no haya firmado hoy se le registra la charla de hoy a tu nombre.",
+  },
+  // Group sign-in stays online-only (offline toolbox signing, v1): the roster
+  // clock-in files everybody's punch and attestation on the server in one go,
+  // and it is not queued. Each person can still sign on their own phone.
+  "crewclock.in.offline": {
+    en: "Group sign-in needs signal. With no signal, each person can sign today's talk on their own phone and clock in there.",
+    es: "La firma en grupo necesita señal. Sin señal, cada persona puede firmar la charla de hoy en su propio teléfono y marcar entrada ahí.",
   },
   "crewclock.in.move": {
     en: "Move anyone already on another job here",
@@ -3746,6 +3783,13 @@ export const CATALOG = {
   "notif.learningReview.title": {en:"Lesson write-up waiting for your review",es:"Lección esperando tu revisión"},
   "notif.learningReview.sub": {en:"{job} · from {name}",es:"{job} · de {name}"},
   "stuck.op.saveBuildFacts": { en: "Job fact", es: "Dato del trabajo" },
+  "stuck.op.toolboxSign": { en: "Toolbox talk signature", es: "Firma de la charla de seguridad" },
+  // A clock-in held behind a toolbox talk signature Forge refused: it was
+  // never sent, so it never failed on its own — it waits for the signature.
+  "stuck.heldForSignature": {
+    en: "Waiting for today's toolbox talk signature above, which couldn't send. Try it again and this goes right after it.",
+    es: "Esperando la firma de la charla de seguridad de hoy (arriba), que no se pudo enviar. Inténtala de nuevo y esto se envía justo después.",
+  },
   // ---- Supplies data helpers (installer-spanish-first-fourteen) --------
   // lib/ops.ts's onHandLabel/supplyHomeLabel are shared with Warehouse.tsx
   // (out of scope, on the allow-list) — `t` defaults to English so its
