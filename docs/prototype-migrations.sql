@@ -19501,9 +19501,9 @@ grant execute on function public.person_record_counts(uuid) to service_role;
 
 -- ===========================================================================
 -- 20261030030000_test_logins_see_practice_jobs.sql (mirrored)
--- A test login sees the practice job it may work on: a job that is both a
--- testing project and on the sandbox list. No other testing job, and nobody
--- else's view of the jobs list, changes.
+-- A test login that is a current crew login sees the practice job it may work
+-- on: a job that is both a testing project and on the sandbox list. No other
+-- testing job, and nobody else's view of the jobs list, changes.
 
 -- Let a test login see the practice job it is allowed to work on — and no
 -- other testing job.
@@ -19519,8 +19519,16 @@ grant execute on function public.person_record_counts(uuid) to service_role;
 -- its units. On 2026-09-24 the owner ran the phone drill on his own account
 -- with "View as Installer" instead.
 --
--- WHAT. One more alternative in the read rule: a test login sees a job that is
--- BOTH a testing project AND on the sandbox list. Nothing else moves:
+-- WHAT. One more alternative in the read rule: a test login that is a current
+-- crew login sees a job that is BOTH a testing project AND on the sandbox list.
+-- "Current crew login" is custom_work_internal(), the check the drill's own
+-- rows (custom units, sessions, history, crew records) already make of the
+-- reader: not a partner, not retired, access not revoked, a crew role. The test
+-- flag alone is not enough — is_test_profile() reads nothing but is_test, and a
+-- partner, a retired login or one whose access was revoked, with a token still
+-- in hand, must not be carried onto a practice job by it (Codex review of #657).
+-- is_test_profile() itself stays as it is: the analytics exclusions call it.
+-- Nothing else moves:
 --   * Everyone who is not a test login reads exactly the jobs they read before.
 --     The new alternative needs is_test_profile(auth.uid()), which is false for
 --     every real person: profiles.is_test is revoked from anon and
@@ -19532,8 +19540,14 @@ grant execute on function public.person_record_counts(uuid) to service_role;
 --     is hidden from a test login like any trashed job.
 --   * The partner branch is byte-identical (scripts/test_partner_wall.py pins
 --     it), and so is every other branch: rebuilt in full, never a diff.
--- No new function: is_test_profile() and is_sandbox_project() already exist,
--- pin their search_path, and are executable by authenticated and not by anon.
+-- No new function: is_test_profile(), custom_work_internal() and
+-- is_sandbox_project() already exist, pin their search_path, and are
+-- executable by authenticated and not by anon.
+--
+-- The branch's own `is_test` is implied: a job whose flag is false already
+-- passed `is_test = false`, and the column is NOT NULL. It is written out so
+-- the rule says what the owner asked for in his words, and so that a flag that
+-- could ever be unknown would count as no practice job at all.
 --
 -- THE CHILD TABLES follow on their own. The rows the drill reads under a job —
 -- custom units, their sessions and history, crew work records, Forge AI field
@@ -19564,10 +19578,11 @@ create policy "projects_select_visible" on projects
       or (
         is_test
         and public.is_test_profile(auth.uid())
+        and public.custom_work_internal()
         and public.is_sandbox_project(projects.id)
       )
     )
   );
 
 comment on column projects.is_test is
-  'Fake data for practice or QA — never a real job. Rows are invisible below supervisor (RLS, projects_select_visible), except to a test login (profiles.is_test) when the job is also on sandbox_projects (20261030030000), and their packages are excluded from every warehouse inventory figure client-side (app/src/lib/warehouse/testPartition.ts) since the child tables are not RLS-gated on this flag. Written only by set_project_test(); insert/update on this column are revoked from anon and authenticated, exactly like profiles.is_test (20260730120000).';
+  'Fake data for practice or QA — never a real job. Rows are invisible below supervisor (RLS, projects_select_visible), except to a test login (profiles.is_test) that is a current crew login (custom_work_internal()) when the job is also on sandbox_projects (20261030030000), and their packages are excluded from every warehouse inventory figure client-side (app/src/lib/warehouse/testPartition.ts) since the child tables are not RLS-gated on this flag. Written only by set_project_test(); insert/update on this column are revoked from anon and authenticated, exactly like profiles.is_test (20260730120000).';

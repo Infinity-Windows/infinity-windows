@@ -226,4 +226,4 @@ check("the migration adds no function (so none a signed-out caller could run)");
 assert.ok(!/create\s+(or\s+replace\s+)?function/i.test(await migration(NEW)));
 
 await db.close();
-console.log(`${checks} test-login visibility checks passed: the rule on master (read from 20260974000000) against ${NEW}, with the real custom-work unit policy. Helpers are restated stubs; no production database.`);
+console.log(`${checks} test-login visibility checks passed: the rule on master (read from 20260974000000) against ${NEW}, with the real custom-work unit policy and master's crew-login check (read from 20261024000000). The other helpers are restated stubs; no production database.`);
