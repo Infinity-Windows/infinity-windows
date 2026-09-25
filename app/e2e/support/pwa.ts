@@ -90,12 +90,34 @@ export function failedAppFiles(page: Page): string[] {
   return failed;
 }
 
-/** The entry chunk the page on screen is running, e.g. `assets/index-Ab12Cd34.js`. */
+/**
+ * Run `fn` in the page, or read "not known yet" (undefined) if the page is
+ * mid-navigation — the switch to the new build IS a navigation, and a
+ * reading that lands on it must not fail the test that is waiting for it
+ * (it did once, on a slower CI runner: "Execution context was destroyed").
+ * Any other failure is still an error.
+ */
+async function readPage<T>(page: Page, fn: () => T): Promise<T | undefined> {
+  try {
+    return await page.evaluate(fn);
+  } catch (err) {
+    if (/Execution context was destroyed|Target page, context or browser has been closed|navigation/i.test(String(err))) {
+      return undefined;
+    }
+    throw err;
+  }
+}
+
+/**
+ * The entry chunk the page on screen is running, e.g. `assets/index-Ab12Cd34.js`,
+ * or null while the page is between builds.
+ */
 export async function runningEntry(page: Page): Promise<string | null> {
-  return page.evaluate(() => {
+  const entry = await readPage(page, () => {
     const script = document.querySelector<HTMLScriptElement>('script[type="module"][src]');
     return script ? new URL(script.src).pathname.replace(/^\//, "") : null;
   });
+  return entry ?? null;
 }
 
 /** The sign-in button: the first thing a signed-out phone draws. */
@@ -114,5 +136,6 @@ export function updateBanner(page: Page) {
  * document is visible is exactly what the app sees on a return.
  */
 export async function nudgeUpdateCheck(page: Page): Promise<void> {
-  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+  // A page already switching over needs no nudge.
+  await readPage(page, () => document.dispatchEvent(new Event("visibilitychange")));
 }
