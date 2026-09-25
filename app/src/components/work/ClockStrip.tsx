@@ -9,6 +9,22 @@
 // startShiftOrQueue: the same clockIn RPC and outbox fallback as every other
 // clock-in in the app, never a fork.
 //
+// ONE PUNCH PER TAP (Release 0 — Codex review of #642, 2026-09-25). The
+// punch is stamped at the tap that starts the day, before the geolocation
+// wait: the Start day tap, or the signature when signing IS the clock-in
+// (today's timing — the talk is read off the clock, so the tap time is the
+// signature). The picks are read at that same moment and ride with it. The
+// live try, the queued fallback and the hand-off to the clock sheet all
+// carry that one punch, so a clock-in the server saved before its reply was
+// lost is answered as that shift, never made twice.
+//
+// NOTHING IS OFFERED UNTIL THE CLOCK IS KNOWN (same review). While the
+// shared clock state is still being read — the open shift, this phone's
+// queued punches, the saved copy of the app's data coming back off the
+// phone — the strip says it is recovering the clock and offers no Start day
+// and no clock options: a null shift then means "not known yet", not "off
+// the clock", and a tap in that gap made a second clock-in over the first.
+//
 // ON the clock it is the status line, Break / Resume and Clock out — all of
 // which open the same clock sheet as before, which owns the break types, the
 // injury flag and the runaway-shift finish. When the talk is still owed the
@@ -33,6 +49,8 @@ import {
   formatClock,
   isOnTheClock,
   listRecentJobs,
+  mintPunch,
+  type ClockPunch,
   type TimeShift,
 } from "../../lib/timeclock";
 import { pushToast, toastSuccess } from "../../lib/toast";
@@ -50,6 +68,12 @@ function clockInLabel(iso: string): string {
 export interface ClockStripProps {
   profileId: string;
   shift: TimeShift | null;
+  /**
+   * The shared clock state has settled (WorkScreen: useClock().loading is
+   * over and the saved data has been restored). False = `shift` is not known
+   * yet, and nothing that punches is offered.
+   */
+  clockKnown: boolean;
   /** Today's published job, to preselect (K1.3). */
   todayJobId: string | null;
   /** The schedule has answered (or failed) — priming waits for it, so the
@@ -61,7 +85,7 @@ export interface ClockStripProps {
   onShiftChanged: () => void;
 }
 
-export function ClockStrip({ profileId, shift, todayJobId, scheduleSettled, talk, gate, onShiftChanged }: ClockStripProps) {
+export function ClockStrip({ profileId, shift, clockKnown, todayJobId, scheduleSettled, talk, gate, onShiftChanged }: ClockStripProps) {
   const t = useT();
   const queryClient = useQueryClient();
   const onClock = isOnTheClock(shift);
@@ -125,17 +149,37 @@ export function ClockStrip({ profileId, shift, todayJobId, scheduleSettled, talk
   canStartRef.current = canStart;
   const plan = startDayPlan(gate);
 
+  /**
+   * What one Start day tap carries: its punch and the picks as they stood at
+   * that moment. Read at the tap, so the geolocation wait, a pick changed
+   * meanwhile or a hand-off to the sheet cannot turn it into another tap.
+   */
+  type StartTap = {
+    punch: ClockPunch;
+    projectId: string | null;
+    costCodeId: string | null;
+    note: string | null;
+    mode: JobMode | null;
+  };
+  const tapNow = (): StartTap => ({
+    punch: mintPunch(),
+    projectId: pick.projectId || null,
+    costCodeId: pick.costCodeId || null,
+    note: pick.note.trim() || null,
+    mode: effectiveClockInMode(project?.allowed_modes, pick.mode),
+  });
+
   const doStart = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (tap: StartTap) => {
       const geo = await captureGeoSoft();
-      const mode: JobMode | null = effectiveClockInMode(project?.allowed_modes, pick.mode);
       return startShiftOrQueue({
         profileId,
-        projectId: pick.projectId || null,
-        costCodeId: pick.costCodeId || null,
-        note: pick.note.trim() || null,
-        mode,
+        projectId: tap.projectId,
+        costCodeId: tap.costCodeId,
+        note: tap.note,
+        mode: tap.mode,
         geo,
+        punch: tap.punch,
         projects: projects.data ?? [],
         costCodes: costCodes.data ?? [],
       });
@@ -145,7 +189,7 @@ export function ClockStrip({ profileId, shift, todayJobId, scheduleSettled, talk
       if (r.queued) {
         // The phone shows the punch as real until Forge answers (K0.1 makes
         // that honest app-wide; here it is the same optimistic shift the
-        // clock sheet has always shown).
+        // clock sheet has always shown, from the punch's tap time).
         queryClient.setQueryData(["openShift", profileId], r.shift);
         toastSuccess(t("work.clock.queued"));
       } else {
@@ -153,20 +197,25 @@ export function ClockStrip({ profileId, shift, todayJobId, scheduleSettled, talk
       }
       onShiftChanged();
     },
-    onError: (e) => {
+    onError: (e, tap) => {
       // A server "no" (not a network gap): say why and hand off to the full
-      // sheet with the picks carried, as the classic block does.
+      // sheet with the picks carried, as the classic block does — and with
+      // this tap's id, so the sheet's retry is the same punch: if this one
+      // was saved before its reply was lost, the server answers with that
+      // shift instead of making a second.
       pushToast(t("clockblock.handoff", { reason: formatApiError(e) }), "error");
       openClockGlobally({
-        projectId: pick.projectId || null,
-        costCodeId: pick.costCodeId || null,
-        note: pick.note.trim() || null,
-        mode: effectiveClockInMode(project?.allowed_modes, pick.mode),
+        projectId: tap.projectId,
+        costCodeId: tap.costCodeId,
+        note: tap.note,
+        mode: tap.mode,
+        clientId: tap.punch.clientId,
       });
     },
   });
 
   const onStartDay = () => {
+    if (!clockKnown || doStart.isPending) return;
     if (!canStart) {
       setPicking(true);
       return;
@@ -175,8 +224,26 @@ export function ClockStrip({ profileId, shift, todayJobId, scheduleSettled, talk
       setShowSign(true);
       return;
     }
-    doStart.mutate();
+    // This tap IS the clock-in: stamped now, before the geolocation wait.
+    doStart.mutate(tapNow());
   };
+
+  // ---- Not known yet --------------------------------------------------------
+  if (!clockKnown) {
+    return (
+      <section
+        className="ws-card ws-clock ws-clock--recovering"
+        aria-label={t("work.clock.a11y")}
+        aria-busy="true"
+        data-testid="ws-clock"
+      >
+        <p className="ws-clock-label" role="status" data-testid="ws-clock-recovering">
+          {t("work.clock.recovering")}
+        </p>
+        <p className="ws-meta">{t("work.clock.recoveringSub")}</p>
+      </section>
+    );
+  }
 
   // ---- ON the clock --------------------------------------------------------
   if (shift && onClock) {
@@ -264,12 +331,14 @@ export function ClockStrip({ profileId, shift, todayJobId, scheduleSettled, talk
             talk={talk}
             onSigned={() => {
               // Signing IS the clock-in (today's timing). Picks are read at
-              // the moment the signature lands, as the classic block does.
+              // the moment the signature lands, as the classic block does,
+              // and so is the punch: the talk is read off the clock.
               if (!canStartRef.current) {
                 pushToast(t("clockblock.signedPickCode"), "error");
                 return;
               }
-              doStart.mutate();
+              if (doStart.isPending) return;
+              doStart.mutate(tapNow());
             }}
           />
         </div>

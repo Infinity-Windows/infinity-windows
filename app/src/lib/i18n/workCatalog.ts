@@ -53,6 +53,13 @@ export const WORK_CATALOG = {
   },
   "work.clock.saveFinish": { en: "Set finish time", es: "Poner hora de salida" },
   "work.clock.a11y": { en: "Your clock", es: "Tu reloj" },
+  // Shown while the clock is still being read (Codex review of #642): no
+  // Start day until Forge knows whether a shift is already open.
+  "work.clock.recovering": { en: "Recovering your clock…", es: "Recuperando tu reloj…" },
+  "work.clock.recoveringSub": {
+    en: "Checking your shift and anything saved on this phone before you start.",
+    es: "Revisando tu turno y lo guardado en este teléfono antes de empezar.",
+  },
   "work.toolbox.finish": { en: "Finish your toolbox talk", es: "Termina tu charla de seguridad" },
   "work.toolbox.finishHelp": {
     en: "You're on the clock. Sign today's talk to unlock unit work and prep time.",

@@ -8,7 +8,7 @@
 
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { IsRestoringProvider, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TimeShift } from "../../lib/timeclock";
@@ -20,6 +20,14 @@ const JOB = "job-1";
 
 // ---- the world this screen can see ---------------------------------------
 let shift: TimeShift | null = null;
+// The shared clock state (useClock().loading): true until the open-shift read
+// has answered and this phone's queued punches have been read (#644).
+let clockLoading = false;
+// The saved copy of the app's data still coming back off the phone
+// (PersistQueryClientProvider's restore window).
+let restoring = false;
+// Held open to prove the punch is stamped before the geolocation wait.
+let geoGate: Promise<void> | null = null;
 let talk: { id: string; title: string; body: string; talk_date: string } | null = null;
 let signed: { id: string } | null = null;
 let ruleDate: string | null = null;
@@ -44,7 +52,7 @@ vi.mock("react-router-dom", async (orig) => ({
 }));
 
 vi.mock("../../lib/clockContext", () => ({
-  useClock: () => ({ shift, profileId: ME, loading: false, isOpen: false, openClock: () => {}, closeClock: () => {}, refresh: () => {} }),
+  useClock: () => ({ shift, profileId: ME, loading: clockLoading, isOpen: false, openClock: () => {}, closeClock: () => {}, refresh: () => {} }),
   openClockGlobally: vi.fn(),
 }));
 vi.mock("../../lib/install/api", () => ({
@@ -87,12 +95,17 @@ vi.mock("../../lib/timeclock", async (orig) => ({
   listRecentJobs: async () => [{ projectId: JOB, jobCode: "OAKRIDGE", name: "Oakridge Apartments", costCodeId: "cc-gen", lastClockInAt: "" }],
   clockIn: (...a: unknown[]) => clockIn(...a),
 }));
-vi.mock("../../lib/geo", () => ({ captureGeoSoft: async () => ({}) }));
+vi.mock("../../lib/geo", () => ({
+  captureGeoSoft: async () => {
+    if (geoGate) await geoGate;
+    return {};
+  },
+}));
 vi.mock("../../lib/vehicles/api", () => ({ listVehicleLinksForAssignments: async () => [] }));
 vi.mock("../../lib/offline/outbox", () => ({
   pendingPhotos: async () => ({ count: 0, oldestAt: null }),
   subscribe: () => () => {},
-  enqueueClockIn: vi.fn(),
+  enqueueClockIn: vi.fn(async () => "entry-1"),
   pendingRefForShift: (id: string) => `pending:${id}`,
 }));
 vi.mock("../../lib/customWork/useWork", () => ({
@@ -117,11 +130,20 @@ vi.mock("../../lib/useEffectiveRole", () => ({
 }));
 vi.mock("../../components/install/LiveSummonsStrip", () => ({ LiveSummonsStrip: () => null }));
 vi.mock("../../components/clock/ToolboxSignCard", () => ({
-  ToolboxSignCard: ({ talk: tk }: { talk: { title: string } }) => <div data-testid="sign-card">Sign: {tk.title}</div>,
+  // The signature is a button here, so a test can say WHEN it landed.
+  ToolboxSignCard: ({ talk: tk, onSigned }: { talk: { title: string }; onSigned?: () => void }) => (
+    <div data-testid="sign-card">
+      <button type="button" data-testid="sign-now" onClick={() => onSigned?.()}>
+        Sign: {tk.title}
+      </button>
+    </div>
+  ),
 }));
 
 const { WorkScreen } = await import("./WorkScreen");
 const { pushToast } = await import("../../lib/toast");
+const { openClockGlobally } = await import("../../lib/clockContext");
+const { enqueueClockIn } = await import("../../lib/offline/outbox");
 
 function opening(over: Partial<ProjectOpening>): ProjectOpening {
   return {
@@ -175,6 +197,11 @@ let host: HTMLDivElement | null = null;
 
 beforeEach(() => {
   shift = null;
+  clockLoading = false;
+  restoring = false;
+  geoGate = null;
+  vi.mocked(openClockGlobally).mockClear();
+  vi.mocked(enqueueClockIn).mockClear();
   talk = null;
   signed = null;
   ruleDate = null;
@@ -195,27 +222,43 @@ afterEach(() => {
   host = null;
 });
 
-async function mount(): Promise<HTMLElement> {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  host = document.createElement("div");
-  document.body.appendChild(host);
-  root = createRoot(host);
-  await act(async () => {
-    root!.render(
-      <QueryClientProvider client={qc}>
-        <MemoryRouter>
-          <WorkScreen />
-        </MemoryRouter>
-      </QueryClientProvider>,
-    );
-  });
+let qc: QueryClient | null = null;
+const tree = () => (
+  <QueryClientProvider client={qc!}>
+    <IsRestoringProvider value={restoring}>
+      <MemoryRouter>
+        <WorkScreen />
+      </MemoryRouter>
+    </IsRestoringProvider>
+  </QueryClientProvider>
+);
+async function settle() {
   // Let every seeded query resolve.
   for (let i = 0; i < 3; i++) {
     await act(async () => {
       await new Promise((r) => setTimeout(r, 0));
     });
   }
+}
+async function mount(seed?: (client: QueryClient) => void): Promise<HTMLElement> {
+  qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  seed?.(qc);
+  host = document.createElement("div");
+  document.body.appendChild(host);
+  root = createRoot(host);
+  await act(async () => {
+    root!.render(tree());
+  });
+  await settle();
   return host;
+}
+/** The provider's answer changed (the clock was read): render again. */
+async function rerender(): Promise<HTMLElement> {
+  await act(async () => {
+    root!.render(tree());
+  });
+  await settle();
+  return host!;
 }
 
 const byTestId = (el: HTMLElement, id: string) => el.querySelector<HTMLElement>(`[data-testid="${id}"]`);
@@ -437,5 +480,161 @@ describe("WorkScreen (K1.2)", () => {
     expect(today$.textContent).toMatch(/Updated \d/);
     expect(today$.textContent).toContain("Changed");
     expect(byTestId(el, "ws-headsups")!.textContent).toContain("Your schedule changed");
+  });
+});
+
+// Codex review of #642 (2026-09-25). P1 3: nothing that punches is offered
+// until the shared clock state is known — a null shift before then means
+// "not read yet", and a tap in that gap was a second clock-in over the first.
+// P1 2: one punch per Start day tap, stamped at the tap (before the
+// geolocation wait), through the live try, the queue and the hand-off.
+describe("Start day and a clock that is not known yet (Codex review of #642)", () => {
+  const TALK = { id: "t1", title: "Ladders", body: "", talk_date: "2026-10-06" };
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+  const startDay = (el: HTMLElement) => byTestId(el, "ws-start-day");
+  type Punch = { clientId: string; tappedAt: string };
+  const punchOf = (call: number): Punch => clockIn.mock.calls[call][5] as Punch;
+
+  it("cold reload with a shift on the server: 'Recovering your clock', no Start day, then the shift itself", async () => {
+    clockLoading = true; // the open-shift read has not answered yet
+    signed = { id: "c1" };
+    const el = await mount();
+    expect(byTestId(el, "ws-clock-recovering")!.textContent).toContain("Recovering your clock");
+    expect(startDay(el)).toBeNull();
+    expect(el.textContent).not.toContain("More clock options");
+    // The read answers with the shift the server already holds.
+    clockLoading = false;
+    shift = openShift();
+    await rerender();
+    expect(byTestId(el, "ws-clock-recovering")).toBeNull();
+    expect(byTestId(el, "ws-clock")!.textContent).toContain("Clocked in 7:02");
+    expect(startDay(el)).toBeNull();
+    expect(clockIn).not.toHaveBeenCalled();
+    expect(enqueueClockIn).not.toHaveBeenCalled();
+  });
+
+  it("cold reload with a clock-in queued on this phone: recovering, then clocked in from the queue — never a second Start day", async () => {
+    clockLoading = true; // this phone's own queue has not been read yet (#644)
+    const el = await mount();
+    expect(byTestId(el, "ws-clock-recovering")).not.toBeNull();
+    expect(startDay(el)).toBeNull();
+    // The queue is read: the clock-in tapped with no signal is the shift.
+    clockLoading = false;
+    shift = { ...openShift(), id: "pending:entry-7" };
+    await rerender();
+    const strip = byTestId(el, "ws-clock")!;
+    expect(strip.textContent).toContain("Clocked in 7:02");
+    expect(strip.textContent).toContain("Saved on this phone");
+    expect(startDay(el)).toBeNull();
+    expect(clockIn).not.toHaveBeenCalled();
+    expect(enqueueClockIn).not.toHaveBeenCalled();
+  });
+
+  it("while the saved copy of the app's data is still coming back (idle, not 'loading'): no Start day", async () => {
+    restoring = true;
+    // Nothing restored yet: not even who this is — the screen waits.
+    let el = await mount();
+    expect(startDay(el)).toBeNull();
+    act(() => root?.unmount());
+    host?.remove();
+    // The person already known (a profile in memory) and the clock not:
+    // react-query calls a restoring query idle, so useClock().loading alone
+    // would read false here — the strip still says it is recovering.
+    el = await mount((client) =>
+      client.setQueryData(["myProfile"], { id: ME, display_name: "E2E", role: "installer", active: true }),
+    );
+    expect(byTestId(el, "ws-clock-recovering")).not.toBeNull();
+    expect(startDay(el)).toBeNull();
+    restoring = false;
+    await rerender();
+    expect(byTestId(el, "ws-clock-recovering")).toBeNull();
+    expect(startDay(el)).not.toBeNull();
+  });
+
+  it("stamps the punch at the Start day tap, before the geolocation wait, with the tap's picks and mode", async () => {
+    talk = TALK;
+    signed = { id: "c1" };
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-09-25T13:02:00.000Z") });
+    try {
+      let found!: () => void;
+      geoGate = new Promise<void>((r) => {
+        found = r;
+      });
+      const el = await mount();
+      await act(async () => startDay(el)!.click());
+      // The phone takes ten seconds to find itself.
+      vi.setSystemTime(new Date("2026-09-25T13:02:10.000Z"));
+      found();
+      await settle();
+      expect(clockIn).toHaveBeenCalledTimes(1);
+      const [projectId, costCodeId, , , mode] = clockIn.mock.calls[0];
+      expect([projectId, costCodeId, mode]).toEqual([JOB, "cc-gen", "data"]);
+      expect(punchOf(0).tappedAt).toBe("2026-09-25T13:02:00.000Z");
+      expect(punchOf(0).clientId).toMatch(UUID);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("unsigned with the rule off, signing IS the clock-in: the punch is stamped at the signature", async () => {
+    talk = TALK;
+    signed = null;
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-09-25T12:55:00.000Z") });
+    try {
+      const el = await mount();
+      await act(async () => startDay(el)!.click());
+      expect(clockIn).not.toHaveBeenCalled();
+      // Five minutes reading the talk, off the clock (today's timing).
+      vi.setSystemTime(new Date("2026-09-25T13:00:00.000Z"));
+      await act(async () => byTestId(el, "sign-now")!.click());
+      await settle();
+      expect(clockIn).toHaveBeenCalledTimes(1);
+      expect(punchOf(0).tappedAt).toBe("2026-09-25T13:00:00.000Z");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a reply that never came back: the queue gets the SAME punch and mode, and the phone's shift starts at the tap", async () => {
+    signed = { id: "c1" };
+    clockIn.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    const el = await mount();
+    await act(async () => startDay(el)!.click());
+    await settle();
+    expect(clockIn).toHaveBeenCalledTimes(1);
+    const punch = punchOf(0);
+    expect(enqueueClockIn).toHaveBeenCalledTimes(1);
+    const queued = vi.mocked(enqueueClockIn).mock.calls[0][0];
+    expect(queued.punch).toBe(punch);
+    expect(queued).toMatchObject({ projectId: JOB, costCodeId: "cc-gen", mode: "data" });
+    expect(qc!.getQueryData<TimeShift>(["openShift", ME])).toMatchObject({
+      id: "pending:entry-1",
+      clock_in_at: punch.tappedAt,
+      job_mode: "data",
+    });
+  });
+
+  it("a server no hands the clock sheet this tap's id, so its retry is the same punch", async () => {
+    signed = { id: "c1" };
+    clockIn.mockRejectedValueOnce(new Error("complete today's toolbox talk before clocking in"));
+    const el = await mount();
+    await act(async () => startDay(el)!.click());
+    await settle();
+    expect(enqueueClockIn).not.toHaveBeenCalled();
+    expect(openClockGlobally).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: JOB, costCodeId: "cc-gen", mode: "data", clientId: punchOf(0).clientId }),
+    );
+  });
+
+  it("two separate Start day taps are two punches", async () => {
+    signed = { id: "c1" };
+    clockIn.mockRejectedValueOnce(new Error("complete today's toolbox talk before clocking in"));
+    const el = await mount();
+    await act(async () => startDay(el)!.click());
+    await settle();
+    await act(async () => startDay(el)!.click());
+    await settle();
+    expect(clockIn).toHaveBeenCalledTimes(2);
+    expect(punchOf(0).clientId).not.toBe(punchOf(1).clientId);
   });
 });

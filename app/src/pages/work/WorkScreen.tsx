@@ -20,7 +20,7 @@
 // own chunk (lib/i18n/workCatalog.ts).
 
 import { useEffect, useMemo, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useIsRestoring, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ClockStrip } from "../../components/work/ClockStrip";
 import { HeadsUps } from "../../components/work/HeadsUps";
 import { LeadRow } from "../../components/work/LeadRow";
@@ -69,6 +69,16 @@ export function WorkScreen() {
   const { effectiveRole } = useEffectiveRole();
   const clock = useClock();
   const shift = clock.shift;
+  // Is the clock KNOWN yet? Not while the shared clock state is still being
+  // read — the open shift, and this phone's own queued punches (#644; both
+  // are useClock().loading) — and not while the saved copy of the app's data
+  // is still coming back off the phone: react-query reports a query that is
+  // restoring as idle rather than loading, so `loading` alone reads false for
+  // that moment while `shift` is still null. Until it is known, a null shift
+  // means "not read yet", and the strip offers no clock-in (Codex review of
+  // #642: a tap in that gap made a second clock-in over the first).
+  const restoring = useIsRestoring();
+  const clockKnown = !clock.loading && !restoring;
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const profileId = me.data?.id ?? null;
   const [now, setNow] = useState(Date.now());
@@ -225,6 +235,7 @@ export function WorkScreen() {
       <ClockStrip
         profileId={profileId}
         shift={shift}
+        clockKnown={clockKnown}
         todayJobId={todayJobId}
         scheduleSettled={schedule.isSuccess || schedule.isError}
         talk={todayTalk.data ?? null}
