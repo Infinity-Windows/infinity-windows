@@ -244,6 +244,15 @@ Both accounts **can** read the real jobs, including Black Desert and Smith
 Residence, and their plan sets. Every installer can; that is what an installer's
 job is, and opening a real plan set is the reason these logins exist.
 
+They can also see a job flagged as a **testing project**, but only one that is
+on the sandbox list too — the practice job (PECAN14), the one kind of job they
+may write. Every other testing job stays hidden from them, as it is from every
+installer and foreman; only supervisors and above see those. That is migration
+`20261030030000_test_logins_see_practice_jobs.sql`: before it, the practice job
+was invisible to the very logins fenced to it, so neither could pick it at
+clock-in. Seeing it gives them no new write — the fence above already let them
+write it.
+
 ## What the foreman cannot do, and how that is known
 
 | It cannot… | Because | Proved by |
