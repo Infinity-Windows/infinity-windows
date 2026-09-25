@@ -20,6 +20,10 @@ export const SCHEDULE_REVIEW_CATALOG = {
   "aiReview.drop": { en: "Drop", es: "Descartar" },
   "aiReview.dropping": { en: "Dropping…", es: "Descartando…" },
   "aiReview.dropFailed": { en: "{error} The draft is still here.", es: "{error} El borrador sigue aquí." },
+  // Drop reached the database and found the row no longer the draft the card
+  // was showing — another supervisor published or changed it meanwhile. It was
+  // NOT deleted; the list re-reads so the row shows as it is now.
+  "aiReview.dropChanged": { en: "This draft changed since you opened it — it may have been published. Nothing was dropped; the list has been refreshed.", es: "Este borrador cambió desde que lo abriste; puede que ya esté publicado. No se descartó nada; la lista se actualizó." },
   "aiReview.nobody": { en: "nobody assigned", es: "nadie asignado" },
   "aiReview.job": { en: "Job", es: "Obra" },
   "aiReview.outside": { en: "{n} more AI draft(s) outside these dates — move the dates to see them. Publish sends those too.", es: "{n} borrador(es) más de la IA fuera de estas fechas; cambia las fechas para verlos. Publicar también los envía." },

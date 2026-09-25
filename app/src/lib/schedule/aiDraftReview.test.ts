@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { aiDraftsForReview, aiReasonFromPayload, draftDaysLabel, isAiDraft } from "./aiDraftReview";
+import { aiDraftsForReview, draftDaysLabel, isAiDraft } from "./aiDraftReview";
 import type { ScheduleAssignment } from "./types";
 
 function make(over: Partial<ScheduleAssignment>): ScheduleAssignment {
@@ -54,21 +54,6 @@ describe("which rows the Review AI drafts card lists (K2.8)", () => {
     const list = aiDraftsForReview(drafts, WEEK, (id) => id === "planned");
     expect(list.inRange.map((a) => a.id)).toEqual(["free"]);
     expect(list.outside).toBe(0);
-  });
-});
-
-describe("the model's reason, read back from the draft's audit event", () => {
-  it("is the reason the draft tool stored, tidied", () => {
-    expect(aiReasonFromPayload({ ai: true, reason: "  Lead with wet glazing;\n keeps Team 1 together " })).toBe("Lead with wet glazing; keeps Team 1 together");
-  });
-  it("is null for an older AI draft, a human's event, a blank, or a shape nobody wrote", () => {
-    expect(aiReasonFromPayload({ ai: true })).toBeNull();
-    expect(aiReasonFromPayload({ ai: true, reason: "   " })).toBeNull();
-    expect(aiReasonFromPayload({ reason: "not from the AI" })).toBeNull();
-    expect(aiReasonFromPayload({ ai: true, reason: 7 })).toBeNull();
-    expect(aiReasonFromPayload(null)).toBeNull();
-    expect(aiReasonFromPayload("reason")).toBeNull();
-    expect(aiReasonFromPayload([{ ai: true, reason: "x" }])).toBeNull();
   });
 });
 

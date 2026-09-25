@@ -1,9 +1,10 @@
 // @vitest-environment happy-dom
 //
 // The Review AI drafts card (K2.8): what a supervisor reads for each AI
-// draft, that Keep is a mark on this screen only, that Drop is the board's
-// own delete and says so when refused, and that Publish hands off to the
-// page's one publish sheet rather than publishing anything itself.
+// draft, that Keep is a mark on this screen only, that Drop deletes only a
+// row still in draft (and says so when it changed or was refused), and that
+// Publish hands off to the page's one publish sheet rather than publishing
+// anything itself.
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -38,7 +39,7 @@ async function mount(over: Partial<AiDraftReviewProps> = {}) {
     reasons: new Map([["a", "Lead with wet glazing; keeps Team 1 together"]]),
     reasonsError: null,
     nameOf: (id) => (id === "ben" ? "Ben" : "Crew"),
-    onDrop: vi.fn(async () => undefined),
+    onDrop: vi.fn(async () => "dropped" as const),
     onPublish: vi.fn(),
     publishableCount: 3,
     formatError: (e) => `Could not remove it (${(e as Error).message}).`,
@@ -91,8 +92,8 @@ describe("the Review AI drafts card", () => {
     expect(props.onPublish).not.toHaveBeenCalled();
   });
 
-  it("Drop goes through the board's own delete; a refused drop says so in plain words and leaves the row", async () => {
-    const onDrop = vi.fn(async (a: ScheduleAssignment) => { if (a.id === "b") throw new Error("row security"); });
+  it("Drop goes through the conditional delete; a refused drop says so in plain words and leaves the row", async () => {
+    const onDrop = vi.fn(async (a: ScheduleAssignment) => { if (a.id === "b") throw new Error("row security"); return "dropped" as const; });
     await mount({ onDrop });
     await act(async () => buttons("Drop")[0].click());
     await settle();
@@ -103,6 +104,19 @@ describe("the Review AI drafts card", () => {
     expect(onDrop).toHaveBeenCalledWith(expect.objectContaining({ id: "b" }));
     expect(host!.querySelector("[role=alert]")?.textContent).toBe("Could not remove it (row security). The draft is still here.");
     expect(rows()).toHaveLength(2);
+  });
+
+  it("a Drop that finds the draft changed — published by someone else meanwhile — claims no delete and says so", async () => {
+    const onDrop = vi.fn(async () => "changed" as const);
+    await mount({ onDrop });
+    await act(async () => buttons("Keep")[0].click());
+    await act(async () => buttons("Drop")[0].click());
+    await settle();
+    expect(onDrop).toHaveBeenCalledWith(expect.objectContaining({ id: "a" }));
+    expect(host!.querySelector("[role=alert]")?.textContent).toBe("This draft changed since you opened it — it may have been published. Nothing was dropped; the list has been refreshed.");
+    // Its Keep mark is cleared: the page re-reads and the row shows as it is now.
+    expect(rows()[0].getAttribute("data-kept")).toBe("false");
+    expect(buttons("Kept")).toHaveLength(0);
   });
 
   it("Review & publish hands off to the page's one publish sheet and says what that sheet sends", async () => {
@@ -119,12 +133,15 @@ describe("the Review AI drafts card", () => {
 
   it("reads in Spanish", async () => {
     lang.current = "es";
-    await mount({ outside: 1 });
+    await mount({ outside: 1, onDrop: vi.fn(async () => "changed" as const) });
     expect(text()).toContain("Revisar borradores de la IA");
     expect(text()).toContain("2 por revisar");
     expect(text()).toContain("Sin motivo registrado");
     expect(buttons("Conservar")).toHaveLength(2);
     expect(buttons("Descartar")).toHaveLength(2);
+    await act(async () => buttons("Descartar")[0].click());
+    await settle();
+    expect(host!.querySelector("[role=alert]")?.textContent).toMatch(/^Este borrador cambió desde que lo abriste/);
     expect(text()).toContain("1 borrador(es) más de la IA fuera de estas fechas");
     expect(buttons("Revisar y publicar")).toHaveLength(1);
   });

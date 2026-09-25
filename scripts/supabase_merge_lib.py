@@ -667,6 +667,9 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     "receipts": None,
     "schedule_assignments": None,
     "schedule_events": None,
+    # One reason per AI draft, keyed by the draft it explains (K2.8,
+    # 20261032000000): the same assignment merged twice has one reason.
+    "schedule_ai_reasons": ("assignment_id",),
     "service_cases": None,
     "supply_orders": None,
     "task_sessions": None,

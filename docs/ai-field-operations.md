@@ -227,24 +227,45 @@ could never reach their tool by typing before.
 **Supervisor schedule review (K2.8, Q24).** Reviewing and publishing what
 Plan the schedule drafted happens on Scheduling, never in Ask (the boundary:
 no publishing). `draft_assignments` takes an optional `reason` per entry
-(one plain sentence, clipped at 160 characters) and writes it on the draft's
-'created' `schedule_events` payload as `{ai: true, reason}` — never on the
-crew-visible `note`. `components/schedule/AiDraftReview.tsx`, lazy-loaded on
-Scheduling for supervisors and owners only (`effectiveRole`), lists the AI
-drafts for the visible dates (`lib/schedule/aiDraftReview.ts`) with each
-reason (`listAiDraftReasons`; "No reason recorded" for older drafts), Keep (a
-mark on that screen only, no column), Drop (the board's own
-`deleteAssignment`), a count of AI drafts outside the dates, and a Publish
-button that opens the page's existing Review & publish sheet — the one
-publish path; the human's publish records approval and `created_via` stays
-on the row for good. The registry lists `review_schedule_drafts` as
-screen-only (`screenOnly: true`): no card, no tool, no release, "done on its
-screen, not in Ask" under All actions, and its own heading in the model's
-prompt. Two fixes on the publish path: `doPublish` shows a refused publish
-(`formatApiError`), and the board's Undo after Remove carries `created_via`
-back onto the row it re-creates. Copy: `scheduleReviewCatalog.ts` (loads
-with the card's chunk); announcement `20261032000000_ai_schedule_review_note`
-(ranks 2 and 3 only).
+(one plain sentence, clipped at 160 characters) and the executor writes it
+to **`schedule_ai_reasons`** (migration `20261032000000_ai_schedule_review`)
+on the caller's own scoped client — a table of its own because the reason is
+about people: its read policy admits supervisors and owners only (`not
+is_partner_user() and travel_is_supervisor()`), its insert policy the same
+people on their own AI drafts, no update and no delete (the row cascades
+away with the draft). Never on the crew-visible `note`, and never on
+`schedule_events`, which every non-partner login can read (20261003000000)
+— the first cut put it there and Codex's review of #646 read it back as an
+installer. The audit event keeps `{ai: true}` only; a reason that fails to
+store costs nothing but "No reason recorded" (the tool result says `reason
+not stored`). Proof: `scripts/verify-schedule-ai-reasons.mjs` (PGlite, the
+real migration: installer/foreman/partner/anon denied, supervisor/owner/
+admin read, cascade, the two-supervisor Drop) and the practice-run probe
+`scripts/dry-run-probes/pr-646-schedule-review.sql` (the live policy read
+back as the system; the two QA logins denied). `components/schedule/
+AiDraftReview.tsx`, lazy-loaded on Scheduling for supervisors and owners
+only (`effectiveRole`), lists the AI drafts for the visible dates
+(`lib/schedule/aiDraftReview.ts`) with each reason (`listAiDraftReasons`;
+"No reason recorded" for older drafts), Keep (a mark on that screen only, no
+column), Drop, a count of AI drafts outside the dates, and a Publish button
+that opens the page's existing Review & publish sheet — the one publish
+path; the human's publish records approval and `created_via` stays on the
+row for good. **Drop** is `dropDraftAssignment`: the delete carries `status
+= draft` and the `updated_at` the card rendered from, so a row another
+supervisor published meanwhile matches nothing; zero rows is the answer
+"this draft changed" (the card says so, nothing is deleted, the lists
+re-read) — the board's unconditional `deleteAssignment` is never used from
+the card. **Publish** (`doPublish`) tells a lost reply from a refusal
+(`lib/schedule/publishOutcome.ts`): a network failure re-reads the rows
+(`confirmPublished`) and the sheet reports published / partial /
+unconfirmed from what the database says; "Nothing was published" is said
+only for an error the database itself returned. The registry lists
+`review_schedule_drafts` as screen-only (`screenOnly: true`): no card, no
+tool, no release, "done on its screen, not in Ask" under All actions, and
+its own heading in the model's prompt. The board's Undo after Remove carries
+`created_via` back onto the row it re-creates. Copy:
+`scheduleReviewCatalog.ts` (loads with the card's chunk); announcement in
+the same migration (ranks 2 and 3 only).
 
 **Evaluation set.** `scripts/ask-eval/cases.json` + `scripts/ask-eval.mjs`:
 48 realistic requests through the real tool layer with a stubbed model (in

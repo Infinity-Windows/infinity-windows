@@ -8,6 +8,7 @@
 // created_via flag stays on the row for good (CONTEXT.md: AI-proposed).
 import { useState } from "react";
 import { Send, Sparkles } from "lucide-react";
+import type { DropDraftResult } from "../../lib/schedule/api";
 import type { ScheduleAssignment } from "../../lib/schedule/types";
 import { draftDaysLabel } from "../../lib/schedule/aiDraftReview";
 import { useScheduleReviewT } from "./scheduleReviewCatalog";
@@ -23,8 +24,11 @@ export interface AiDraftReviewProps {
   /** Plain words when the reasons could not be read; the drafts still show. */
   reasonsError: string | null;
   nameOf: (profileId: string) => string;
-  /** The board's own delete path; rejects with an error to show. */
-  onDrop: (draft: ScheduleAssignment) => Promise<void>;
+  /** Deletes the draft only if it is still the draft this card shows (status
+   * and revision checked at the database — lib/schedule/api
+   * dropDraftAssignment); "changed" means another supervisor published or
+   * edited it meanwhile and nothing was deleted. Rejects with an error to show. */
+  onDrop: (draft: ScheduleAssignment) => Promise<DropDraftResult>;
   /** Opens the page's Review & publish sheet — the one publish path. */
   onPublish: () => void;
   /** How many unpublished changes that sheet will send (AI drafts and the
@@ -52,7 +56,8 @@ export function AiDraftReview({ drafts, outside, reasons, reasonsError, nameOf, 
     setDropping(a.id);
     setDropError(null);
     try {
-      await onDrop(a);
+      const result = await onDrop(a);
+      if (result === "changed") setDropError(t("aiReview.dropChanged"));
       setKept((prev) => {
         if (!prev.has(a.id)) return prev;
         const next = new Set(prev);

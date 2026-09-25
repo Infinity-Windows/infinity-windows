@@ -60,8 +60,10 @@ import {
   digestMessage,
 } from "../lib/schedule/notify";
 import {
+  confirmPublished,
   createAssignment,
   deleteAssignment,
+  dropDraftAssignment,
   removeAssignmentDay,
   horizonRange,
   listAiDraftReasons,
@@ -71,6 +73,7 @@ import {
   updateAssignment,
 } from "../lib/schedule/api";
 import { aiDraftsForReview } from "../lib/schedule/aiDraftReview";
+import { isUnconfirmedPublishError, outcomeFromReadback, publishOutcomeMessage } from "../lib/schedule/publishOutcome";
 import type { ScheduleAssignment } from "../lib/schedule/types";
 import {
   linkVehicleToSchedule,
@@ -607,7 +610,28 @@ export function Scheduling() {
     setPublishing(true);
     setPublishError(null);
     try {
-      await publishAssignments(draftList.map((a) => a.id));
+      try {
+        await publishAssignments(draftList.map((a) => a.id));
+      } catch (e) {
+        // A refused publish (row security, a plan lock) used to end here
+        // silently, with the sheet still open and nothing to read: the
+        // supervisor tapped Publish again, or walked away believing it went.
+        // And a LOST REPLY is not a refusal: the update can have committed
+        // with the crew already looking at it, so the rows are re-read before
+        // anything is claimed — "Nothing was published" is said only when the
+        // database itself said no (lib/schedule/publishOutcome).
+        if (!isUnconfirmedPublishError(e)) {
+          setPublishError(publishOutcomeMessage({ kind: "refused", message: formatApiError(e) }));
+          return;
+        }
+        const readback = await confirmPublished(draftList.map((a) => a.id)).catch(() => null);
+        const outcome = outcomeFromReadback(readback);
+        if (outcome.kind !== "published") {
+          setPublishError(publishOutcomeMessage(outcome));
+          refresh();
+          return;
+        }
+      }
       const digests = buildPublishDigests(
         draftList.map((a) => ({
           id: a.id,
@@ -627,11 +651,6 @@ export function Scheduling() {
       }
       refresh();
       setPublishOpen(false);
-    } catch (e) {
-      // A refused publish (row security, a plan lock, no signal) used to end
-      // here silently, with the sheet still open and nothing to read: the
-      // supervisor tapped Publish again, or walked away believing it went.
-      setPublishError(formatApiError(e));
     } finally {
       setPublishing(false);
     }
@@ -652,9 +671,14 @@ export function Scheduling() {
     queryFn: () => listAiDraftReasons(aiReviewIds),
     enabled: canEdit && aiReviewIds.length > 0,
   });
+  // Drop deletes the row only while it is still the draft the card showed
+  // (status and revision checked at the database); "changed" means another
+  // supervisor published or edited it and nothing was deleted. Either way the
+  // lists re-read, so a row that went live leaves the card on its own.
   const dropAiDraft = async (a: ScheduleAssignment) => {
-    await deleteAssignment(a.id);
+    const result = await dropDraftAssignment(a);
     refresh();
+    return result;
   };
 
   // Everything currently in play (loaded window + all drafts), deduped. Drives
@@ -1269,7 +1293,7 @@ export function Scheduling() {
             )}
             {publishError && (
               <p className="warn-text" role="alert" style={{ margin: "0 0 10px" }}>
-                {publishError} Nothing was published.
+                {publishError}
               </p>
             )}
             <div className="sched-sheet-actions">
