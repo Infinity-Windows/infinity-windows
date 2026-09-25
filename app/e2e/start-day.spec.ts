@@ -124,6 +124,8 @@ test("a Start day whose reply is lost is sent again with the same id, mode and t
     return route.fallback();
   });
   await page.goto("/");
+  // Today's job primed first; with no job, Start day opens the picker.
+  await expect(page.getByTestId("ws-clock")).toContainText("OAKRIDGE · Oakridge Apartments Bldg C");
   await page.getByTestId("ws-start-day").click();
   // The phone could not know it was saved, so it kept the punch — and the
   // queue sends it again with the tap's own id, mode and tap time.
@@ -196,6 +198,10 @@ test("Start day with no signal stays on the phone; a reload with no signal shows
   const signal = await deadZone(page);
   await page.goto("/");
   await expect(page.getByTestId("ws-start-day")).toBeVisible();
+  // Today's job primed from the schedule before the signal goes: with no
+  // job picked, Start day rightly opens the job picker instead.
+  await expect(page.getByTestId("ws-clock")).toContainText("OAKRIDGE · Oakridge Apartments Bldg C");
+  await expect(page.getByTestId("ws-clock")).toContainText("000 — General");
 
   signal.dead = true;
   await context.setOffline(true);
