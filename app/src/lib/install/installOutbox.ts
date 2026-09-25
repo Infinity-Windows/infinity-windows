@@ -17,6 +17,7 @@ import {
 } from "../offline/outbox-core";
 import { drain, enqueueUpload, pendingMediaCount } from "../offline/outbox";
 import { stableId } from "../offline/stableId";
+import { signedInUserId } from "../signedIn";
 import { submitInstallEvent, type SubmitInstallParams } from "./api";
 
 export type InstallOutboxStep =
@@ -62,6 +63,15 @@ export interface InstallOutboxPayload {
   openingCode: string;
   assignedWindowId: string | null;
   createdBy: string | null;
+  /**
+   * The user id of the person who submitted this install, written when it is
+   * queued (2026-09-25). The media stage hands the unit's photos, memo and
+   * video over AS this person — it runs whenever the queue drains, which can
+   * be after they have signed out and someone else has signed in, and the
+   * outbox would otherwise make them the signed-in person's (Codex review of
+   * #660, P1 #2). Absent on records queued before it existed.
+   */
+  ownerId?: string;
   submitParams: SubmitInstallParams;
   points: InstallOutboxPoints | null;
   media: InstallOutboxMediaMeta[];
@@ -261,6 +271,7 @@ export function deserializeInstallOutbox(json: string): InstallOutboxRecord | nu
       assignedWindowId:
         typeof p.assignedWindowId === "string" ? p.assignedWindowId : null,
       createdBy: typeof p.createdBy === "string" ? p.createdBy : null,
+      ...(typeof p.ownerId === "string" && p.ownerId ? { ownerId: p.ownerId } : {}),
       submitParams: p.submitParams as SubmitInstallParams,
       points: (p.points as InstallOutboxPoints | null) ?? null,
       media: Array.isArray(p.media) ? (p.media as InstallOutboxMediaMeta[]) : [],
@@ -408,6 +419,9 @@ export async function enqueueInstall(
       openingCode: input.openingCode,
       assignedWindowId: input.assignedWindowId,
       createdBy: input.createdBy,
+      // Whoever is tapping Submit — the install, and everything captured
+      // for it, is theirs, whoever is signed in by the time it is sent.
+      ...(signedInUserId() ? { ownerId: signedInUserId()! } : {}),
       submitParams: input.submitParams,
       points: input.points,
       media,
@@ -653,6 +667,11 @@ async function runFlushPass(): Promise<InstallFlushResult> {
               installEventId: eventId,
               windowId: current.payload.assignedWindowId,
               createdBy: current.payload.createdBy,
+              // As the person who submitted the install — never whoever is
+              // signed in while this stage runs. A record from before owners
+              // were written names nobody (null), and the outbox then goes by
+              // the photographer's email alone.
+              ownerId: current.payload.ownerId ?? null,
               projectId: current.payload.projectId,
               lat: meta.lat ?? null,
               lng: meta.lng ?? null,

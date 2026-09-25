@@ -28,9 +28,9 @@ import {
 import { createDefaultStore, UnreadableOutboxEntryError } from "./outboxStore";
 import { logOfflineEvent } from "./telemetry";
 import { REQUEST_TIMEOUT_MS, uploadTimeoutMs } from "./weakSignal";
-import { launchUserId, signedInEmail, signedInUserId, subscribeSignedIn } from "../signedIn";
+import { signedInEmail, signedInUserId, subscribeSignedIn } from "../signedIn";
 import { clientWithToken, supabase } from "../supabase";
-import { belongsTo, needsAdoption, type Signer } from "./entryOwner";
+import { authorEvidence, belongsTo, ownershipOf, type Signer } from "./entryOwner";
 import type { JobMode } from "../types";
 import { recoverPhotoUpload } from "./recoverPhotoUploads";
 import { PhotoUploadReceipts } from "./photoUploadProgress";
@@ -144,28 +144,13 @@ const handlers: OpHandlers = Object.fromEntries(
       const { data } = await supabase.auth.getSession();
       const session = data.session;
       const signer: Signer = { userId: session?.user?.id ?? null, email: session?.user?.email ?? null };
-      if (!session || !belongsTo(entry, signer, launchUserId())) throw new HeldForOwnerError();
+      if (!session || !belongsTo(entry, signer)) throw new HeldForOwnerError();
       const handler = handlersFor(session.access_token, session.user.id)[op];
       if (!handler) throw new Error(`No handler for op "${op}"`);
       return handler(entry, ctx);
     },
   ]),
 );
-
-/**
- * Write the launch user onto older entries that name no owner at all (see
- * entryOwner.ts), so that the rule "whoever was signed in when the app
- * started" is decided once, on first sight, and a later launch signed in as
- * someone else cannot take them over. Nothing to do while nobody was signed
- * in at launch — those wait.
- */
-async function adoptUnownedEntries(): Promise<void> {
-  const owner = launchUserId();
-  if (!owner) return;
-  for (const e of await store.getAll()) {
-    if (needsAdoption(e)) await store.put({ ...e, ownerId: owner });
-  }
-}
 
 export async function getPhotoUploadProgress(ids: readonly string[]) {
   return photoReceipts.summarize(ids, await store.getAll(), signedInEmail());
@@ -176,6 +161,8 @@ const syncedListeners = new Set<() => void>();
 let cachedCounts: OpCounts = countsByOp([]);
 /** Entries on this phone that belong to someone other than whoever is signed in. */
 let cachedHeld = 0;
+/** Entries that name no owner at all (queued before owners were recorded). */
+let cachedUnknown = 0;
 
 /**
  * The clock punches still on this phone, readable without touching the store
@@ -264,10 +251,10 @@ async function refresh(): Promise<void> {
     // its own, and a queued clock-in of theirs must never show this person as
     // clocked in (K0.1 reads this snapshot).
     const signer = signerNow();
-    const launch = launchUserId();
-    const mine = all.filter((e) => belongsTo(e, signer, launch));
+    const mine = all.filter((e) => belongsTo(e, signer));
     cachedCounts = countsByOp(mine);
-    cachedHeld = all.length - mine.length;
+    cachedUnknown = all.filter((e) => ownershipOf(e, signer) === "unknown").length;
+    cachedHeld = all.length - mine.length - cachedUnknown;
     clockSnapshot = { entries: mine.filter((e) => isClockOp(e.op)), ready: true };
   } catch {
     /* keep last known counts */
@@ -311,6 +298,16 @@ export function getHeldCount(): number {
   return cachedHeld;
 }
 
+/**
+ * How many writes on this phone name no owner at all — queued by a build from
+ * before writes carried one, with nothing in them that says who saved them.
+ * Never sent as anyone (Codex review of #660, P1 #1); Stuck writes shows them
+ * and lets a person throw them away.
+ */
+export function getUnknownOwnerCount(): number {
+  return cachedUnknown;
+}
+
 /** Every write on this phone, oldest first — anyone's, in any state. */
 export async function listAll(): Promise<OutboxEntry[]> {
   return (await store.getAll()).sort((a, b) => a.createdAt - b.createdAt);
@@ -323,15 +320,19 @@ export async function listAll(): Promise<OutboxEntry[]> {
  */
 export async function listMine(): Promise<OutboxEntry[]> {
   const signer = signerNow();
-  const launch = launchUserId();
-  return (await listAll()).filter((e) => belongsTo(e, signer, launch));
+  return (await listAll()).filter((e) => belongsTo(e, signer));
 }
 
 /** The writes on this phone waiting for someone else to sign in, oldest first. */
 export async function listHeld(): Promise<OutboxEntry[]> {
   const signer = signerNow();
-  const launch = launchUserId();
-  return (await listAll()).filter((e) => !belongsTo(e, signer, launch));
+  return (await listAll()).filter((e) => ownershipOf(e, signer) === "theirs");
+}
+
+/** The writes on this phone that name no owner at all, oldest first. */
+export async function listUnknownOwner(): Promise<OutboxEntry[]> {
+  const signer = signerNow();
+  return (await listAll()).filter((e) => ownershipOf(e, signer) === "unknown");
 }
 
 /** Is a drain running right now? Synchronous, for a decision that must not
@@ -398,9 +399,26 @@ export class StableIdConflictError extends Error {
   }
 }
 
-/** Stamp whoever is signed in as the write's owner (2026-09-25, entryOwner.ts). */
+/**
+ * Whose write is this, decided as it is queued (2026-09-25, entryOwner.ts)?
+ *
+ * - An owner the caller names is kept exactly as named: a user id — the
+ *   install queue hands a unit's media over as the person who SUBMITTED the
+ *   install — or null for "nobody can say" (an install record from before
+ *   records carried one). Never replaced with whoever is signed in.
+ * - Otherwise the write is being made right now by whoever is signed in, and
+ *   is theirs — unless its payload names its author (a photo's createdBy) as
+ *   someone else. Then it is being handed over on that person's behalf, and
+ *   stamping the signed-in person would make it theirs: exactly how a unit's
+ *   photos went up under the wrong token (Codex review of #660, P1 #2). It
+ *   is left to that evidence instead.
+ */
 function withOwner(input: OutboxInput): OutboxInput {
-  return input.ownerId ? input : { ...input, ownerId: signedInUserId() };
+  if (input.ownerId !== undefined) return input;
+  const signer = signerNow();
+  const probe = makeEntry(input, "owner-probe", 0);
+  if (authorEvidence(probe) && ownershipOf(probe, signer) !== "mine") return { ...input, ownerId: null };
+  return { ...input, ownerId: signer.userId };
 }
 
 /** The parts of a queued write that say WHOSE it is and WHERE it goes. */
@@ -544,7 +562,6 @@ export async function drain(): Promise<void> {
   }
   draining = true;
   try {
-    await adoptUnownedEntries();
     do {
       drainAgain = false;
       const res = await drainUntilSettled(store, handlers, {
@@ -837,6 +854,14 @@ export interface UploadInput {
   blob: Blob;
   /** A stable id minted by the caller; see enqueue. Becomes attachments.client_id. */
   clientId?: string;
+  /**
+   * Whose photo this is, when the caller knows and it may not be whoever is
+   * signed in at the moment of the hand-off — the install queue's media stage
+   * (the install's submitter), the AI daily log's hand-off (the draft's
+   * owner). A user id, or null for "nobody can say". Left out, it is the
+   * signed-in person's (see withOwner).
+   */
+  ownerId?: string | null;
 }
 
 export function enqueueUpload(input: UploadInput): Promise<string> {
@@ -862,6 +887,7 @@ export function enqueueUpload(input: UploadInput): Promise<string> {
     {
       op: input.kind === "receipt" ? "receipt_upload" : "photo_upload",
       hasBlob: true,
+      ownerId: input.ownerId,
       payload: {
         bucket: input.bucket ?? "install-media",
         path: input.path,
@@ -1350,10 +1376,9 @@ export function enqueueIssuePhoto(input: {
 export async function listFailed(): Promise<OutboxEntry[]> {
   const all = await store.getAll();
   const signer = signerNow();
-  const launch = launchUserId();
   // Someone else's are not this person's to retry or throw away: listHeld.
   return all
-    .filter((e) => e.status === "failed" && belongsTo(e, signer, launch))
+    .filter((e) => e.status === "failed" && belongsTo(e, signer))
     .sort((a, b) => b.createdAt - a.createdAt);
 }
 

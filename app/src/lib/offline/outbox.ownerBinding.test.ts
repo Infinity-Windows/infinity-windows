@@ -41,9 +41,16 @@ function clientSendingAs(token: () => string | null) {
   };
   return {
     rpc: (fn: string, args: Record<string, unknown>) => request(fn, args),
+    functions: {
+      invoke: (fn: string, opts: { body: unknown }) => request(`function:${fn}`, { body: opts.body }),
+    },
     from: (table: string) => ({
       upsert: (row: Record<string, unknown>) => request(`upsert:${table}`, row),
       insert: (row: Record<string, unknown>) => request(`insert:${table}`, row),
+      // The memo path reads back the id of the row it just filed.
+      select: () => ({
+        eq: () => ({ maybeSingle: async () => ({ data: { id: `attachment-in-${table}` }, error: null }) }),
+      }),
     }),
     storage: {
       from: (bucket: string) => ({
@@ -81,11 +88,18 @@ let signedIn: FakeSession | null = A;
 vi.mock("../signedIn", () => ({
   signedInEmail: () => signedIn?.user.email ?? null,
   signedInUserId: () => signedIn?.user.id ?? null,
-  launchUserId: () => A.user.id,
   rememberSignedIn: () => {},
   subscribeSignedIn: () => () => {},
 }));
 vi.mock("./telemetry", () => ({ logOfflineEvent: () => {} }));
+/** Run while a memo's audio is prepared for transcription (Codex's P2 hook). */
+let duringSpeechAudio: (() => void) | null = null;
+vi.mock("../voiceAudio", () => ({
+  speechAudio: async (blob: Blob) => {
+    duringSpeechAudio?.();
+    return blob;
+  },
+}));
 
 const outbox = await import("./outbox");
 
@@ -119,6 +133,7 @@ beforeEach(async () => {
   await clearQueue();
   sent.length = 0;
   beforeRequest = null;
+  duringSpeechAudio = null;
 });
 
 describe("a queued write goes out only as the person who saved it", () => {
@@ -215,23 +230,85 @@ describe("a queued write goes out only as the person who saved it", () => {
     expect(entry).toMatchObject({ status: "queued", attemptCount: 0 });
   });
 
-  it("an older write with no owner is written over to whoever was signed in at launch, and waits for them", async () => {
-    // Queued by a build from before writes carried their owner.
+  it("an older write that names no one is never sent as anyone — not as the person on at launch, nor the next — and can be thrown away", async () => {
+    // Codex review of #660, P1 #1: a punch queued by a build from before
+    // writes carried their owner. A signed out; B is the first person the new
+    // build ever sees. It used to be adopted as B and sent with token-B.
     switchTo(null);
-    await outbox.enqueueClockIn({ projectId: "p1", costCodeId: "cc1", punch: PUNCH("old-punch") });
-    expect((await outbox.listAll())[0].ownerId).toBeUndefined();
+    await outbox.enqueueClockIn({ projectId: "p1", costCodeId: "cc1", punch: PUNCH("legacy-punch-of-A") });
+    const [legacy] = await outbox.listAll();
+    expect(legacy.ownerId).toBeUndefined();
 
-    // This launch began signed in as A (the mock's launch user); B is on now.
+    setOnline(true);
+    for (const who of [B, A, B]) {
+      switchTo(who);
+      await outbox.drain();
+    }
+    // Not as B, not as A — the phone cannot know whose it is.
+    expect(sent).toEqual([]);
+    const [still] = await outbox.listAll();
+    expect(still).toMatchObject({ id: legacy.id, status: "queued", attemptCount: 0, lastError: null });
+    expect(still.ownerId).toBeUndefined();
+    // Shown for what it is — owner unknown — not as anyone's own pending work.
+    expect((await outbox.listUnknownOwner()).map((e) => e.id)).toEqual([legacy.id]);
+    expect(outbox.getUnknownOwnerCount()).toBe(1);
+    expect(outbox.getHeldCount()).toBe(0);
+    expect(outbox.getCounts().clock).toBe(0);
+    expect(outbox.getClockQueueSnapshot().entries).toEqual([]);
+
+    // The way out is throwing it away, by hand.
+    await outbox.discardFailed(legacy.id);
+    expect(await outbox.listAll()).toEqual([]);
+    expect(outbox.getUnknownOwnerCount()).toBe(0);
+  });
+
+  it("install media handed over while someone else is signed in stays its photographer's, never the drainer's", async () => {
+    // Codex review of #660, P1 #2, at the hand-off boundary: A's photo,
+    // handed to the outbox by the install queue while B is signed in.
     switchTo(B);
+    const blob = new Blob(["A photo"], { type: "image/jpeg" });
+    await outbox.enqueueUpload({ id: "install-media-of-A", kind: "photo", path: "job/feed/a.jpg", contentType: "image/jpeg", projectId: "p1", installEventId: "install-A", createdBy: A.user.email, blob });
+    const [entry] = await outbox.listAll();
+    // Not stamped as B: the evidence it carries names A.
+    expect(entry.ownerId).toBeUndefined();
     setOnline(true);
     await outbox.drain();
     expect(sent).toEqual([]);
-    const [adopted] = await outbox.listAll();
-    expect(adopted.ownerId).toBe(A.user.id);
+    expect(outbox.getHeldCount()).toBe(1);
 
     switchTo(A);
     await outbox.drain();
-    expect(sent.filter((s) => s.fn === "clock_in")).toMatchObject([{ token: "token-A", args: { p_client_id: "old-punch" } }]);
+    expect(sent.map((s) => [s.fn, s.token])).toEqual([
+      ["upload:install-media", "token-A"],
+      ["upsert:attachments", "token-A"],
+    ]);
+  });
+
+  it("an owner named at hand-off is kept, whoever is signed in", async () => {
+    switchTo(B);
+    const blob = new Blob(["A photo"], { type: "image/jpeg" });
+    await outbox.enqueueUpload({ id: "install-media-2", kind: "photo", path: "job/feed/a2.jpg", contentType: "image/jpeg", projectId: "p1", installEventId: "install-A", createdBy: null, ownerId: A.user.id, blob });
+    expect((await outbox.listAll())[0].ownerId).toBe(A.user.id);
+    // And "nobody can say" is kept as that, too — never filled in with B.
+    await outbox.enqueueUpload({ id: "install-media-3", kind: "photo", path: "job/feed/a3.jpg", contentType: "image/jpeg", projectId: "p1", installEventId: "install-old", createdBy: null, ownerId: null, blob });
+    const third = (await outbox.listAll()).find((e) => e.id === "install-media-3")!;
+    expect(third.ownerId).toBeUndefined();
+    expect((await outbox.listUnknownOwner()).map((e) => e.id)).toEqual(["install-media-3"]);
+  });
+
+  it("a voice memo's transcript is asked for as the memo's owner, even if someone else signs in while its audio is prepared", async () => {
+    // Codex review of #660, P2 #3: transcription ran on the shared client, so
+    // a sign-in during speechAudio sent A's memo to the transcriber as B.
+    await outbox.enqueueUpload({ kind: "voice_memo", path: "job/feed/a.webm", contentType: "audio/webm", projectId: "p1", createdBy: A.user.email, blob: new Blob(["memo"], { type: "audio/webm" }) });
+    duringSpeechAudio = () => switchTo(B);
+    setOnline(true);
+    await outbox.drain();
+    await vi.waitFor(() => expect(sent.some((s) => s.fn === "function:transcribe-install-memo")).toBe(true));
+    expect(sent.map((s) => [s.fn, s.token])).toEqual([
+      ["upload:install-media", "token-A"],
+      ["upsert:attachments", "token-A"],
+      ["function:transcribe-install-memo", "token-A"],
+    ]);
   });
 
   it("an older photo with no owner goes out as the photographer it names, and no one else", async () => {

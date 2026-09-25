@@ -32,9 +32,6 @@ let userId: string | null = null;
  * same person signing in again after signing out. See signInMark.
  */
 let generation = 0;
-/** Who was signed in when this copy of the app first learned — see launchUserId. */
-let launch: string | null = null;
-let launchKnown = false;
 
 /**
  * Remember who is signed in. Called by App's auth plumbing — the boot
@@ -50,10 +47,6 @@ export function rememberSignedIn(session: SignedInSession | null): void {
   if (id !== userId) generation++;
   email = session?.user?.email ?? null;
   userId = id;
-  if (!launchKnown) {
-    launchKnown = true;
-    launch = userId;
-  }
   if (userId !== before) {
     for (const cb of listeners) {
       try {
@@ -132,14 +125,4 @@ export function signedInEmail(): string | null {
  */
 export function signedInUserId(): string | null {
   return userId;
-}
-
-/**
- * Who was signed in when this copy of the app started — the first answer
- * App's boot `getSession()` gave, null if nobody was. The one piece of
- * evidence left about a write queued by a build from before writes carried
- * their owner: see entryOwner.ts's rule for those.
- */
-export function launchUserId(): string | null {
-  return launch;
 }

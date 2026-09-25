@@ -12,7 +12,7 @@
 //
 // PURE. The runtime supplies who is signed in; this only answers the question.
 
-import type { OutboxEntry } from "./outbox-core";
+import type { OutboxEntry, OutboxOp } from "./outbox-core";
 
 /** Who is signed in right now, as far as the question needs. */
 export interface Signer {
@@ -20,38 +20,71 @@ export interface Signer {
   email: string | null;
 }
 
+/**
+ * mine    — the signed-in person's own write: it may go out, as them.
+ * theirs  — someone else's (or anyone's, while nobody is signed in): it waits
+ *           for its owner.
+ * unknown — a write that names no owner at all: never sent as anyone. The
+ *           only way out is a person throwing it away (Stuck writes).
+ */
+export type Ownership = "mine" | "theirs" | "unknown";
+
+/**
+ * The ops whose payload names its author, and the one field that does
+ * (Codex review of #660, P1 #1: evidence only where it really identifies the
+ * author, decided per op):
+ *
+ *   - photo_upload / receipt_upload carry `createdBy`, the photographer's
+ *     email, written at the shutter (or from the install record, for a unit's
+ *     media, and by the retired upload queue for its items);
+ *   - the Hex-Portal writes carry `actorId`, the author's user id, written
+ *     when the case, outcome or lesson was saved.
+ *
+ * Nothing else carries a name: a clock punch, a daily log, a receipt capture,
+ * a quiz result, a warehouse or pin move, a job fact, a damage photo. Those
+ * are this person's only when they carry `ownerId`.
+ */
+const AUTHOR_EMAIL_OPS: ReadonlySet<OutboxOp> = new Set<OutboxOp>(["photo_upload", "receipt_upload"]);
+const AUTHOR_ID_OPS: ReadonlySet<OutboxOp> = new Set<OutboxOp>([
+  "hex_portal_case",
+  "hex_portal_outcome",
+  "hex_learning_draft",
+]);
+
 function text(v: unknown): string | null {
-  return typeof v === "string" && v.trim() !== "" ? v : null;
+  return typeof v === "string" && v.trim() !== "" ? v.trim() : null;
+}
+
+/** The author the payload itself names, for the ops where it names one. */
+export function authorEvidence(entry: OutboxEntry): { userId: string } | { email: string } | null {
+  if (AUTHOR_ID_OPS.has(entry.op)) {
+    const id = text(entry.payload.actorId);
+    return id ? { userId: id } : null;
+  }
+  if (AUTHOR_EMAIL_OPS.has(entry.op)) {
+    const email = text(entry.payload.createdBy);
+    return email ? { email } : null;
+  }
+  return null;
 }
 
 /**
- * Does this entry belong to the person signed in now? Nobody signed in owns
- * nothing: with no session there is no one to send it as.
+ * Whose is it, for the person signed in now?
  *
- * An entry queued by this build or later carries `ownerId`, and only that
- * person may send it. An entry queued by an older build carries no owner, and
- * is judged on the evidence it does carry:
- *
- *   - `payload.actorId` (the Hex-Portal writes) is a user id already;
- *   - `payload.createdBy` (photos) is the photographer's email, compared
- *     without case, the way the photo-recovery rule compares it;
- *   - nothing at all (clock punches, warehouse writes, daily logs, pin moves):
- *     whoever was signed in when this copy of the app started. If nobody was,
- *     it waits. outbox.ts writes that person onto these entries the first time
- *     it sees them (`needsAdoption`), so a later launch signed in as someone
- *     else cannot take them over.
+ * `ownerId` — written when the write was queued, by this build or later —
+ * decides. An older entry without one is judged on the author its payload
+ * names (authorEvidence). An entry that names no one is `unknown`: who was
+ * signed in when this copy of the app started, or is signed in now, is not
+ * evidence of who queued it (Codex review of #660, P1 #1).
  */
-export function belongsTo(entry: OutboxEntry, signer: Signer, launchUserId: string | null): boolean {
-  if (!signer.userId) return false;
-  if (entry.ownerId) return entry.ownerId === signer.userId;
-  const actor = text(entry.payload.actorId);
-  if (actor) return actor === signer.userId;
-  const author = text(entry.payload.createdBy);
-  if (author) return signer.email != null && author.toLowerCase() === signer.email.toLowerCase();
-  return launchUserId != null && launchUserId === signer.userId;
+export function ownershipOf(entry: OutboxEntry, signer: Signer): Ownership {
+  const author = entry.ownerId ? { userId: entry.ownerId } : authorEvidence(entry);
+  if (!author) return "unknown";
+  if ("userId" in author) return signer.userId !== null && author.userId === signer.userId ? "mine" : "theirs";
+  return signer.email !== null && author.email.toLowerCase() === signer.email.trim().toLowerCase() ? "mine" : "theirs";
 }
 
-/** An older entry with no owner and no evidence of one — see belongsTo. */
-export function needsAdoption(entry: OutboxEntry): boolean {
-  return !entry.ownerId && !text(entry.payload.actorId) && !text(entry.payload.createdBy);
+/** May this entry go out as the person signed in now? */
+export function belongsTo(entry: OutboxEntry, signer: Signer): boolean {
+  return signer.userId !== null && ownershipOf(entry, signer) === "mine";
 }

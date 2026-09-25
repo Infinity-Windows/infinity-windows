@@ -43,7 +43,7 @@ const QUEUE_LABELS: Record<string, string> = {
 export function Diagnostics() {
   const t = useT();
   const { online, weak } = useConnection();
-  const { counts, held } = useOutbox();
+  const { counts, held, unknown } = useOutbox();
   const events = useSyncExternalStore(subscribeOfflineEvents, getOfflineEvents, () => NO_EVENTS);
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const [installs, setInstalls] = useState({ pending: 0, failed: 0 });
@@ -93,6 +93,8 @@ export function Diagnostics() {
   if (counts.deadLetter > 0) queues.push({ label: "Gave up", pending: 0, failed: counts.deadLetter });
   // Someone else's writes, waiting for them to sign in (2026-09-25).
   if (held > 0) queues.push({ label: t("diag.heldQueue"), pending: held, failed: 0 });
+  // Saved before an update, naming no one: never sent as anyone.
+  if (unknown > 0) queues.push({ label: t("diag.unknownOwnerQueue"), pending: unknown, failed: 0 });
   const nameOf = (id: string) => projects.data?.find((p) => p.id === id)?.job_code ?? projects.data?.find((p) => p.id === id)?.name ?? id.slice(0, 8);
   const savedJobs = Object.entries(saved)
     .sort((a, b) => b[1].at - a[1].at)
