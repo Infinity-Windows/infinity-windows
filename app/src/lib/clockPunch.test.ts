@@ -33,6 +33,7 @@ import {
   recordClockCheck,
 } from "./clockSkew";
 import { carriedPunch, isPendingShiftRef, mintPunch, newClockActionId } from "./clockPunch";
+import { pendingCompletionOf } from "./toolboxSign";
 
 const T0 = Date.UTC(2026, 8, 23, 12, 0, 0);
 
@@ -187,6 +188,39 @@ describe("a carried punch", () => {
     // Stamped the way every tap is: with this phone's current clock check.
     expect(sent.clockCheckedAt).toBe(new Date(T0 - 1000).toISOString());
     expect(sent.clockSkewMs).toBe(250);
+  });
+
+  // Offline toolbox signing (2026-09-25): a talk signed with no signal is
+  // still on the phone when the sheet sends the carried tap. The gates read it
+  // as today's completion (useToolboxToday), and its signing time — the
+  // phone's clock at the signature — is what the tap is re-stamped at, the
+  // same as for a signature Forge already has.
+  it("is stamped at a signature still on the phone, when that was made after the tap", () => {
+    const onPhone = pendingCompletionOf({
+      entryId: "sig-1",
+      clientId: "sig-1",
+      profileId: "me",
+      talkId: "t1",
+      typedName: "Dana",
+      signedAt: "2026-09-23T12:00:40.000Z",
+      status: "queued",
+      lastError: null,
+    });
+    const sent = carriedPunch(TAPPED, onPhone.signed_at);
+    expect(sent.clientId).toBe(TAPPED.clientId);
+    expect(sent.tappedAt).toBe("2026-09-23T12:00:40.000Z");
+    // Signed on the phone BEFORE the tap: the tap stands, untouched.
+    const early = pendingCompletionOf({
+      entryId: "sig-2",
+      clientId: "sig-2",
+      profileId: "me",
+      talkId: "t1",
+      typedName: "Dana",
+      signedAt: "2026-09-23T11:59:00.000Z",
+      status: "queued",
+      lastError: null,
+    });
+    expect(carriedPunch(TAPPED, early.signed_at)).toBe(TAPPED);
   });
 });
 
