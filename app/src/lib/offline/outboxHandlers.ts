@@ -22,6 +22,7 @@ import { getDailyLog, type DailyLog } from "../dailyLogs";
 import { mergeQueuedDailyLog, type QueuedDailyLog } from "../dailyLogMerge";
 import { CATALOG } from "../i18n/catalog";
 import { translate } from "../i18n/translate";
+import { signaturePngBytes } from "../toolboxSign";
 import {
   errorMessage,
   isNetworkError,
@@ -1413,7 +1414,106 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
     }
   };
 
+  // Today's toolbox talk, signed with no signal (20261033000000). Three steps,
+  // every one keyed by the signature's client id so the queue can send it
+  // blind as many times as a dead zone makes it:
+  //   1. the drawn signature, to a path made from the client id (upsert);
+  //   2. the PDF built on the phone at signing time — the record is exactly
+  //      what was signed — to its own path from the same id (upsert);
+  //   3. sign_toolbox_talk, which answers a repeat of the id with the row it
+  //      already made, refuses anybody but the signer, and judges the phone's
+  //      signing time.
+  // The row it resolves with goes to onSent, so the screens swap "Signed —
+  // waiting to send" for "Signed ✓" without waiting for a re-read.
+  const toolboxSign: OpHandler = async (entry, ctx) => {
+    const p = entry.payload;
+    const clientId = str(p.clientId);
+    const profileId = str(p.profileId);
+    const signaturePath = str(p.signaturePath);
+    const signatureDataUrl = str(p.signatureDataUrl);
+    const typedName = str(p.typedName)?.trim() || null;
+    if (!clientId || !profileId || !signaturePath || !signatureDataUrl || !typedName) {
+      throw tagPermanent(
+        new Error(
+          "This toolbox talk signature was saved on the phone without everything it needs, so it was not sent. " +
+            "Sign today's talk again.",
+        ),
+      );
+    }
+    const bucket = "toolbox-records";
+
+    const sig = await supabase.storage
+      .from(bucket)
+      .upload(signaturePath, signaturePngBytes(signatureDataUrl) as BlobPart, { contentType: "image/png", upsert: true });
+    if (sig.error) throw sig.error;
+
+    // A PDF that could not be built on the phone, or that is no longer in the
+    // phone's store, leaves the row without one rather than the signature
+    // unsent: the signature, the typed name and the snapshot are the record
+    // too, and a clock-in is waiting on this row.
+    let pdfPath = str(p.pdfPath);
+    const pdf = pdfPath && entry.hasBlob ? await ctx.getBlob() : null;
+    if (pdfPath && pdf) {
+      const up = await supabase.storage.from(bucket).upload(pdfPath, pdf, { contentType: "application/pdf", upsert: true });
+      if (up.error) throw up.error;
+    } else {
+      pdfPath = null;
+    }
+    stopIfAbandoned(ctx);
+
+    const fields = {
+      talkId: str(p.talkId),
+      snapshot: str(p.talkSnapshot),
+      signedAt: str(p.signedAt),
+    };
+    const res = await supabase.rpc("sign_toolbox_talk", {
+      p_client_id: clientId,
+      p_profile_id: profileId,
+      p_talk_id: fields.talkId,
+      p_typed_name: typedName,
+      p_signature_path: signaturePath,
+      p_pdf_path: pdfPath,
+      p_talk_snapshot: fields.snapshot,
+      p_signed_at: fields.signedAt,
+    });
+    if (!res.error) return res.data;
+    if (!isMissingFunction(res.error)) throw res.error;
+
+    // The app reached this phone before the migration reached the database —
+    // the backend deploy is its own workflow, and it has failed silently
+    // before. File the row the way the app always did rather than leave the
+    // crew unable to sign at all. The signature's path is made from its client
+    // id, so it is the key here: a resend finds the row it made. A lookup that
+    // could not be asked is retried, never answered with a blind insert.
+    const found = await supabase
+      .from("toolbox_completions")
+      .select("*")
+      .eq("profile_id", profileId)
+      .eq("signature_path", signaturePath)
+      .limit(1)
+      .maybeSingle();
+    if (found.error) throw found.error;
+    if (found.data) return found.data;
+    stopIfAbandoned(ctx);
+    const made = await supabase
+      .from("toolbox_completions")
+      .insert({
+        talk_id: fields.talkId,
+        profile_id: profileId,
+        typed_name: typedName,
+        signature_path: signaturePath,
+        pdf_path: pdfPath,
+        talk_snapshot: fields.snapshot,
+        signed_at: fields.signedAt,
+      })
+      .select("*")
+      .single();
+    if (made.error) throw made.error;
+    return made.data;
+  };
+
   return {
+    toolbox_sign: toolboxSign,
     clock_in: clockIn,
     clock_out: clockOut,
     break_start: breakStart,
