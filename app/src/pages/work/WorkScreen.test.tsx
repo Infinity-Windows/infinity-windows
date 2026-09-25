@@ -467,7 +467,10 @@ describe("WorkScreen (K1.2)", () => {
         created_by: null,
         published_at: new Date(Date.now() - 3 * 86400_000).toISOString(),
         created_at: "",
-        updated_at: new Date(Date.now() - 3600_000).toISOString(),
+        // An hour ago, but never before today's midnight: in the first hour
+        // after midnight an hour ago is yesterday, and Updated then reads
+        // "Thu 11:00 PM" — right for the card, wrong for this assertion.
+        updated_at: new Date(Math.max(Date.now() - 3600_000, new Date().setHours(0, 0, 0, 0))).toISOString(),
         members: [{ profile_id: ME, role: "installer", display_name: "E2E" }, { profile_id: "x", role: "foreman", display_name: "Sam" }],
         project: { id: JOB, job_code: "OAKRIDGE", name: "Oakridge Apartments", address: "1 Main St" },
       },
