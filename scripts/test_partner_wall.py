@@ -105,14 +105,26 @@ class TestTheWall(unittest.TestCase):
 
     def test_projects_keeps_its_own_grant_exception_not_the_mechanical_guard(self):
         # projects is exempt from the mechanical sweep on purpose (see THE
-        # WALL #4) — it should NOT carry the plain guard, it should carry
-        # the partner_job_grants exists() clause instead. This pins that the
-        # exception actually landed, not just that the table was skipped.
+        # WALL #4): a partner reads the row of a job granted to it. Since
+        # 20261030100000 the read rule keeps its two halves apart. The crew
+        # branches sit under `not public.is_partner_user()`, and a partner
+        # gets a job only through partner_has_job_grant(), a definer. It must
+        # be a definer because partner_job_grants is owner-read-only, so an
+        # inline select of it inside this policy, which runs under the
+        # partner's own row security, never finds the partner's grant.
+        # scripts/verify-partner-visibility.mjs checks what each login
+        # actually reads; this pins the shape.
         live = live_select_granting_tables()
         self.assertIn("projects", live)
-        using_texts = " ".join(p.using for p in live["projects"].values())
-        self.assertIn("partner_job_grants", using_texts)
-        self.assertIn("is_partner_user", using_texts)
+        self.assertEqual(list(live["projects"]), ["projects_select_visible"])
+        using = live["projects"]["projects_select_visible"].using
+        self.assertIn("public.partner_has_job_grant(projects.id)", using)
+        self.assertIn("not public.is_partner_user() and ( is_test = false or _is_supervisor(auth.uid())", using)
+        self.assertNotIn(
+            "from partner_job_grants", using,
+            "an inline select of partner_job_grants runs under the partner's own "
+            "row security and never finds its grant — ask partner_has_job_grant()",
+        )
 
     def test_daily_logs_excludes_partners_when_installers_can_report(self):
         live = live_select_granting_tables()

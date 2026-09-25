@@ -50,8 +50,12 @@ MIGRATIONS_DIR = REPO_ROOT / "supabase" / "migrations"
 #: does not touch, and why — see that migration's own header comment, which
 #: names this exact constant. Keep these two comments in sync.
 #:   - projects: a partner needs their granted rows readable (the app shell
-#:     names granted jobs); projects' own policy carries a hand-written
-#:     partner_job_grants exists() clause instead of the mechanical guard.
+#:     names granted jobs), so projects' read rule is hand-written instead of
+#:     carrying the mechanical guard. Since 20261030100000 it has two halves:
+#:     the crew branches under `not public.is_partner_user()`, and a partner
+#:     branch that asks partner_has_job_grant(), a definer. partner_job_grants
+#:     is owner-read-only, so a select of it written inline in the policy
+#:     never finds a partner's own grant.
 #:     READ THIS BEFORE ADDING A COLUMN TO `projects`. That policy is
 #:     row-level, and RLS has no column-level half: a granted builder reads
 #:     the WHOLE row, every column, present and future. THE WALL's own
