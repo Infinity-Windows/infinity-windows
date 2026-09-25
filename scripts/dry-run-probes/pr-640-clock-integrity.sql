@@ -1,7 +1,7 @@
 -- Probe for PR #640 (branch claude/r0-clock-integrity): the keyed clock RPCs
 -- of 20261028000000_clock_integrity.sql, called on the real database as the
--- QA installer on BLACK22, and rolled back. Each scenario is one the phone
--- will produce on one bar of signal:
+-- QA installer login on the practice job, and rolled back. Each scenario is
+-- one the phone will produce on one bar of signal:
 --   * the same clock-in client id twice makes ONE shift;
 --   * clock_out twice under one id leaves clock_out_at, break total and
 --     status where the first left them, and a new id after the close is
@@ -13,7 +13,18 @@
 --     phone 5 minutes off pays from arrival and is marked 'clock_off';
 --   * the ledger is unreadable to the login that wrote it;
 --   * person_record_counts still carries every key master has, plus the
---     ledger's.
+--     ledger's;
+--   * the timeline (Codex review of #640, 2026-09-24; second block): a
+--     clock-in tapped inside an approved shift starts at arrival, marked
+--     'overlaps_previous_shift', with the tap kept in the ledger; a clock-out
+--     or a second break tapped before a lunch that already ended pays from
+--     arrival, deducts the lunch once and is marked 'tap_out_of_order'; a
+--     lunch taken through the LEGACY signatures bounds a keyed clock-out too.
+-- The caller is qa.installer and nobody else: the database fences that login
+-- to the sandbox jobs, so even a rollback that failed could have punched no
+-- real person's clock. The run stops loudly if that login is missing or is
+-- not flagged as a test profile. Job codes and qa.* logins only in the
+-- output; the repository and its logs are public.
 -- Run: gh workflow run db-dry-run.yml -f ref=claude/r0-clock-integrity \
 --        -f migrations="supabase/migrations/20261028000000_clock_integrity.sql supabase/migrations/20261028010000_clock_integrity_note.sql" \
 --        -f probe=scripts/dry-run-probes/pr-640-clock-integrity.sql
@@ -21,6 +32,7 @@ do $$
 declare
   v_who uuid;
   v_job uuid;
+  v_job_code text;
   v_cost_code uuid;
   v_role text;
   v_shift public.time_shifts;
@@ -45,22 +57,54 @@ declare
 begin
   -- ---- setup, as the system -------------------------------------------------
   perform pg_temp.dry_run_as_system();
-  v_who := pg_temp.dry_run_pick('installer');
-  v_job := pg_temp.dry_run_job('BLACK22');
-  select id into v_cost_code from public.cost_codes order by id limit 1;
-  -- clock_in refuses anyone without today's toolbox talk; and a shift left
-  -- open from before would make the first clock-in start "at arrival"
-  -- (previous_shift_open) and confuse the tap-time check below.
+  -- The QA installer, by its login, and nobody else. Stop rather than fall
+  -- back to a real person: the whole point of this caller is the fence.
+  select u.id into v_who from auth.users u where u.email = 'qa.installer@crew.infinitywindows.app';
+  if v_who is null then
+    raise exception 'dry run: there is no qa.installer login to act as. Provision it (docs/test-account.md) and run again.';
+  end if;
+  if not public.is_test_profile(v_who) then
+    raise exception 'dry run: the qa.installer login is not flagged as a test profile. Stopping rather than punch a clock as a real person.';
+  end if;
+  select p.role into v_role from public.profiles p where p.id = v_who;
+  if v_role is distinct from 'installer' then
+    raise exception 'dry run: the qa.installer login has the role %, not installer.', coalesce(v_role, 'none');
+  end if;
+  -- The practice job: on the sandbox list AND flagged as testing, so the QA
+  -- login's fence and the job's own flag agree (MADMOOSE when this was written).
+  select p.id, p.job_code into v_job, v_job_code
+    from public.sandbox_projects s join public.projects p on p.id = s.project_id
+   where p.deleted_at is null and coalesce(p.is_test, false)
+   order by p.job_code
+   limit 1;
+  if v_job is null then
+    raise exception 'dry run: no job is both flagged as testing and on the sandbox list, so the QA login has nowhere to punch. Mark a practice job as testing in the app and run again.';
+  end if;
+  select id into v_cost_code from public.cost_codes order by active desc, code limit 1;
+  -- clock_in refuses anyone without today's toolbox talk.
   insert into public.toolbox_completions (profile_id, signed_at) values (v_who, now());
+  -- A clean timeline for the run, all of it rolled back: a shift this login
+  -- left open would make the first clock-in start "at arrival"
+  -- (previous_shift_open), and since the timeline guard a trusted tap two
+  -- hours old cannot follow a shift the same person closed today — this login
+  -- is shared by every test run there is, so its recent punches are voided
+  -- the way a supervisor would void a mistaken one.
   update public.time_shifts set clock_out_at = now(), status = 'submitted'
    where profile_id = v_who and status = 'open' and clock_out_at is null;
   get diagnostics v_n = row_count;
-  perform pg_temp.dry_run_check('setup: acting on BLACK22 as an installer login; open shifts closed first',
-    v_job is not null, v_n || ' open shift(s) closed for the run');
-  perform pg_temp.dry_run_check('schema: time_clock_actions exists and time_shifts.review_reason exists',
+  update public.time_shifts
+     set status = 'voided', voided_at = now(), voided_by = v_who,
+         voided_reason = 'database practice run: cleared for a clean timeline (rolled back)'
+   where profile_id = v_who and status <> 'voided'
+     and greatest(clock_in_at, clock_out_at) > now() - interval '1 day';
+  perform pg_temp.dry_run_check('setup: acting on the practice job as the QA installer login; its open shifts closed first',
+    v_job is not null, v_job_code || ', ' || v_n || ' open shift(s) closed for the run');
+  perform pg_temp.dry_run_check('schema: time_clock_actions exists, time_shifts.review_reason and time_shifts.last_punch_at exist',
     to_regclass('public.time_clock_actions') is not null
     and exists (select 1 from information_schema.columns where table_schema = 'public'
-                 and table_name = 'time_shifts' and column_name = 'review_reason'),
+                 and table_name = 'time_shifts' and column_name = 'review_reason')
+    and exists (select 1 from information_schema.columns where table_schema = 'public'
+                 and table_name = 'time_shifts' and column_name = 'last_punch_at'),
     null);
 
   -- ---- K0.2: the same clock-in id twice is one shift ----------------------------
@@ -69,11 +113,11 @@ begin
   v_shift := public.clock_in(p_project_id => v_job, p_cost_code_id => v_cost_code, p_photo => null,
     p_lat => null, p_lng => null, p_note => 'dry run', p_mode => 'data', p_client_id => v_id_in,
     p_tapped_at => null, p_clock_checked_at => null, p_clock_skew_ms => null);
-  perform pg_temp.dry_run_check('clock_in: keyed overload makes a shift on BLACK22 in data mode',
+  perform pg_temp.dry_run_check('clock_in: keyed overload makes a shift on the practice job in data mode',
     v_shift.id is not null and v_shift.project_id = v_job and v_shift.job_mode = 'data' and v_shift.client_id = v_id_in,
     'shift ' || v_shift.id);
-  perform pg_temp.dry_run_check('clock_in: no tap sent means arrival time and no review mark',
-    v_shift.review_reason is null and v_shift.clock_in_at = now(), coalesce(v_shift.review_reason, 'null'));
+  perform pg_temp.dry_run_check('clock_in: no tap sent means arrival time and no review mark, and the clock-in is the last punch',
+    v_shift.review_reason is null and v_shift.clock_in_at = now() and v_shift.last_punch_at = now(), coalesce(v_shift.review_reason, 'null'));
   v_again := public.clock_in(p_project_id => v_job, p_cost_code_id => v_cost_code, p_photo => null,
     p_lat => null, p_lng => null, p_note => 'different words, same tap', p_mode => 'data', p_client_id => v_id_in,
     p_tapped_at => null, p_clock_checked_at => null, p_clock_skew_ms => null);
@@ -153,6 +197,16 @@ begin
   v_out := public.clock_out(p_shift_id => v_break_shift.id, p_photo => null, p_injured => false, p_time_confirmed => true,
     p_break_seconds => 0, p_lat => null, p_lng => null, p_injury_note => null, p_client_id => v_id_out2,
     p_tapped_at => null, p_clock_checked_at => null, p_clock_skew_ms => null);
+  -- The shifts above all ended at arrival, and now() is one instant for the
+  -- whole run: a trusted tap two hours old would fall inside them. Void them
+  -- (rolled back) so the tap-time rule is judged on its own.
+  perform pg_temp.dry_run_as_system();
+  update public.time_shifts
+     set status = 'voided', voided_at = now(), voided_by = v_who,
+         voided_reason = 'database practice run: cleared for a clean timeline (rolled back)'
+   where profile_id = v_who and status <> 'voided'
+     and greatest(clock_in_at, clock_out_at) > now() - interval '1 day';
+  perform pg_temp.dry_run_act_as(v_who);
   -- (a) trusted: checked an hour ago, 30 s fast, tapped two hours before arrival.
   v_trusted := public.clock_in(p_project_id => v_job, p_cost_code_id => v_cost_code, p_photo => null,
     p_lat => null, p_lng => null, p_note => 'dry run 3', p_mode => 'data', p_client_id => v_id_in3,
@@ -212,4 +266,203 @@ begin
     v_n = 0, v_n || ' key(s) missing');
   perform pg_temp.dry_run_check('person_record_counts: counts the ledger rows this run wrote',
     (v_r->>'time_clock_actions.profile_id')::int >= 5, coalesce(v_r->>'time_clock_actions.profile_id', 'null') || ' ledger row(s)');
+end $$;
+
+-- ---- The timeline (Codex review of #640, 2026-09-24) ---------------------------------
+-- now() is one instant for the whole batch, so every arrival below is the same
+-- moment and every tap is an exact offset from it: the checks compare to the
+-- second, not within a tolerance. Between scenarios the QA login's fresh
+-- shifts are voided (rolled back with everything else) so each starts from a
+-- clean timeline, the way the scenarios happen to real people on real days.
+do $$
+declare
+  v_who uuid;
+  v_job uuid;
+  v_job_code text;
+  v_cost_code uuid;
+  v_xid text;
+  v_n int;
+  v_first public.time_shifts;
+  v_late public.time_shifts;
+  v_out public.time_shifts;
+  v_s public.time_shifts;
+  v_b public.time_shifts;
+  v_r jsonb;
+  v_ledger record;
+  v_reason text;
+  v_id_late uuid := gen_random_uuid();
+begin
+  -- ---- setup, as the system: the same login and job as the block above ---------------
+  perform pg_temp.dry_run_as_system();
+  v_xid := (txid_current() % 4294967296)::text;
+  select u.id into v_who from auth.users u where u.email = 'qa.installer@crew.infinitywindows.app';
+  if v_who is null or not public.is_test_profile(v_who) then
+    raise exception 'dry run: the qa.installer login is missing or is not flagged as a test profile. Stopping rather than punch a clock as a real person.';
+  end if;
+  select p.id, p.job_code into v_job, v_job_code
+    from public.sandbox_projects s join public.projects p on p.id = s.project_id
+   where p.deleted_at is null and coalesce(p.is_test, false)
+   order by p.job_code
+   limit 1;
+  if v_job is null then
+    raise exception 'dry run: no job is both flagged as testing and on the sandbox list.';
+  end if;
+  select id into v_cost_code from public.cost_codes order by active desc, code limit 1;
+  if not exists (select 1 from public.toolbox_completions where profile_id = v_who
+                  and (signed_at at time zone 'America/Denver')::date = (now() at time zone 'America/Denver')::date) then
+    insert into public.toolbox_completions (profile_id, signed_at) values (v_who, now());
+  end if;
+  update public.time_shifts set clock_out_at = now(), status = 'submitted'
+   where profile_id = v_who and status = 'open' and clock_out_at is null;
+  update public.time_shifts
+     set status = 'voided', voided_at = now(), voided_by = v_who,
+         voided_reason = 'database practice run: cleared for a clean timeline (rolled back)'
+   where profile_id = v_who and status <> 'voided'
+     and greatest(clock_in_at, clock_out_at) > now() - interval '1 day';
+  perform pg_temp.dry_run_check('timeline: setup on the practice job as the QA installer login', v_job is not null, v_job_code);
+
+  -- ---- 1. A clock-in tapped inside an approved shift -----------------------------------
+  -- The stale device: another phone or the office closed the day (3 h ago to
+  -- 2 h ago, approved), and this phone's clock-in tapped at 2 h 30 min ago
+  -- arrives now. Before the fix it started a second shift at that tap, unmarked.
+  perform pg_temp.dry_run_act_as(v_who);
+  v_first := public.clock_in(p_project_id => v_job, p_cost_code_id => v_cost_code, p_photo => null,
+    p_lat => null, p_lng => null, p_note => 'timeline 1', p_mode => 'data', p_client_id => gen_random_uuid(),
+    p_tapped_at => now() - interval '3 hours', p_clock_checked_at => now() - interval '1 hour', p_clock_skew_ms => 0);
+  perform pg_temp.dry_run_check('timeline: on a clean timeline a trusted clock-in pays from its tap, unmarked, and is the last punch',
+    v_first.review_reason is null and v_first.clock_in_at = now() - interval '3 hours' and v_first.last_punch_at = v_first.clock_in_at,
+    coalesce(v_first.review_reason, 'no mark'));
+  v_out := public.clock_out(p_shift_id => v_first.id, p_photo => null, p_injured => false, p_time_confirmed => true,
+    p_break_seconds => 0, p_lat => null, p_lng => null, p_injury_note => null, p_client_id => gen_random_uuid(),
+    p_tapped_at => now() - interval '2 hours', p_clock_checked_at => now() - interval '1 hour', p_clock_skew_ms => 0);
+  perform pg_temp.dry_run_check('timeline: its trusted clock-out ends it at its tap, unmarked',
+    v_out.review_reason is null and v_out.clock_out_at = now() - interval '2 hours' and v_out.status = 'submitted'
+    and v_out.last_punch_at = v_out.clock_out_at,
+    coalesce(v_out.review_reason, 'no mark') || ' / ' || v_out.status);
+  perform pg_temp.dry_run_as_system();
+  update public.time_shifts set status = 'approved', approved_at = now() where id = v_first.id;
+  perform pg_temp.dry_run_act_as(v_who);
+  v_late := public.clock_in(p_project_id => v_job, p_cost_code_id => v_cost_code, p_photo => null,
+    p_lat => null, p_lng => null, p_note => 'timeline 1, stale phone', p_mode => 'data', p_client_id => v_id_late,
+    p_tapped_at => now() - interval '150 minutes', p_clock_checked_at => now() - interval '1 hour', p_clock_skew_ms => 0);
+  perform pg_temp.dry_run_check('timeline: a clock-in tapped inside the approved shift starts at arrival and is marked overlaps_previous_shift',
+    v_late.clock_in_at = now() and v_late.review_reason = 'overlaps_previous_shift',
+    coalesce(v_late.review_reason, 'no mark') || ', starts ' || round(extract(epoch from (now() - v_late.clock_in_at))) || ' s before arrival');
+  perform pg_temp.dry_run_check('timeline: so the two shifts do not overlap', v_late.clock_in_at >= v_out.clock_out_at, null);
+  v_out := public.clock_out(p_shift_id => v_late.id, p_photo => null, p_injured => false, p_time_confirmed => true,
+    p_break_seconds => 0, p_lat => null, p_lng => null, p_injury_note => null, p_client_id => gen_random_uuid(),
+    p_tapped_at => null, p_clock_checked_at => null, p_clock_skew_ms => null);
+
+  perform pg_temp.dry_run_as_system();
+  select * into v_ledger from public.time_clock_actions where client_id = v_id_late;
+  perform pg_temp.dry_run_check('ledger: the tap the phone claimed is kept for the review, and pay did not use it',
+    v_ledger.used_tap_time = false and v_ledger.tapped_at = now() - interval '150 minutes'
+    and v_ledger.review_reason = 'overlaps_previous_shift',
+    coalesce(v_ledger.review_reason, 'no row'));
+  select reason into v_reason from public.time_shift_edits
+   where shift_id = v_late.id and field = 'review_reason' order by created_at limit 1;
+  perform pg_temp.dry_run_check('timeline: the audit line names the end the tap fell before and what the phone said',
+    v_reason like '%before the previous shift ended (%' and v_reason like '%The phone said %',
+    coalesce(left(v_reason, 140), 'no line'));
+  select * into v_first from public.time_shifts where id = v_first.id;
+  perform pg_temp.dry_run_check('timeline: the approved shift was not touched',
+    v_first.status = 'approved' and v_first.clock_out_at = now() - interval '2 hours', v_first.status);
+
+  -- ---- 2. A clock-out tapped before the lunch ended ------------------------------------
+  -- clock-in 3 h ago, lunch 2 h ago to 90 min ago, and a clock-out tapped
+  -- 100 min ago arrives now. Before the fix the shift ended ten minutes before
+  -- its own lunch did, kept the full 1,800 s deduction, and was not marked.
+  update public.time_shifts
+     set status = 'voided', voided_at = now(), voided_by = v_who,
+         voided_reason = 'database practice run: cleared for a clean timeline (rolled back)'
+   where profile_id = v_who and status <> 'voided'
+     and greatest(clock_in_at, clock_out_at) > now() - interval '1 day';
+  perform pg_temp.dry_run_act_as(v_who);
+  v_s := public.clock_in(p_project_id => v_job, p_cost_code_id => v_cost_code, p_photo => null,
+    p_lat => null, p_lng => null, p_note => 'timeline 2', p_mode => 'data', p_client_id => gen_random_uuid(),
+    p_tapped_at => now() - interval '3 hours', p_clock_checked_at => now() - interval '1 hour', p_clock_skew_ms => 0);
+  v_b := public.start_break(p_shift_id => v_s.id, p_break_type => 'lunch', p_client_id => gen_random_uuid(),
+    p_tapped_at => now() - interval '2 hours', p_clock_checked_at => now() - interval '1 hour', p_clock_skew_ms => 0);
+  v_r := public.end_break(p_shift_id => v_s.id, p_client_id => gen_random_uuid(),
+    p_tapped_at => now() - interval '90 minutes', p_clock_checked_at => now() - interval '1 hour', p_clock_skew_ms => 0);
+  perform pg_temp.dry_run_check('timeline: a trusted lunch is 1,800 s tap to tap, and the shift remembers when it ended',
+    v_r->>'outcome' = 'ended' and (v_r->'shift'->>'break_seconds')::int = 1800
+    and (v_r->'shift'->>'last_punch_at')::timestamptz = now() - interval '90 minutes'
+    and v_r->'shift'->>'break_started_at' is null,
+    coalesce(v_r->>'outcome', 'null') || ' / ' || coalesce(v_r->'shift'->>'break_seconds', 'null') || ' s');
+  v_out := public.clock_out(p_shift_id => v_s.id, p_photo => null, p_injured => false, p_time_confirmed => true,
+    p_break_seconds => null, p_lat => null, p_lng => null, p_injury_note => null, p_client_id => gen_random_uuid(),
+    p_tapped_at => now() - interval '100 minutes', p_clock_checked_at => now() - interval '1 hour', p_clock_skew_ms => 0);
+  perform pg_temp.dry_run_check('timeline: a clock-out tapped before the lunch ended pays from arrival, is marked tap_out_of_order, and deducts the lunch once',
+    v_out.clock_out_at = now() and v_out.review_reason = 'tap_out_of_order' and v_out.break_seconds = 1800,
+    coalesce(v_out.review_reason, 'no mark') || ' / ' || v_out.break_seconds || ' s / ends ' || round(extract(epoch from (now() - v_out.clock_out_at))) || ' s before arrival');
+  perform pg_temp.dry_run_as_system();
+  select reason into v_reason from public.time_shift_edits
+   where shift_id = v_s.id and field = 'review_reason' order by created_at limit 1;
+  perform pg_temp.dry_run_check('timeline: the audit line names the punch the tap fell before',
+    v_reason like '%before the shift''s last punch (%', coalesce(left(v_reason, 140), 'no line'));
+
+  -- ---- 3. A second break tapped before the first one ended ---------------------------
+  update public.time_shifts
+     set status = 'voided', voided_at = now(), voided_by = v_who,
+         voided_reason = 'database practice run: cleared for a clean timeline (rolled back)'
+   where profile_id = v_who and status <> 'voided'
+     and greatest(clock_in_at, clock_out_at) > now() - interval '1 day';
+  perform pg_temp.dry_run_act_as(v_who);
+  v_s := public.clock_in(p_project_id => v_job, p_cost_code_id => v_cost_code, p_photo => null,
+    p_lat => null, p_lng => null, p_note => 'timeline 3', p_mode => 'data', p_client_id => gen_random_uuid(),
+    p_tapped_at => now() - interval '3 hours', p_clock_checked_at => now() - interval '1 hour', p_clock_skew_ms => 0);
+  v_b := public.start_break(p_shift_id => v_s.id, p_break_type => 'lunch', p_client_id => gen_random_uuid(),
+    p_tapped_at => now() - interval '2 hours', p_clock_checked_at => now() - interval '1 hour', p_clock_skew_ms => 0);
+  v_r := public.end_break(p_shift_id => v_s.id, p_client_id => gen_random_uuid(),
+    p_tapped_at => now() - interval '90 minutes', p_clock_checked_at => now() - interval '1 hour', p_clock_skew_ms => 0);
+  v_b := public.start_break(p_shift_id => v_s.id, p_break_type => 'rest', p_client_id => gen_random_uuid(),
+    p_tapped_at => now() - interval '100 minutes', p_clock_checked_at => now() - interval '1 hour', p_clock_skew_ms => 0);
+  perform pg_temp.dry_run_check('timeline: a second break tapped before the first ended starts at arrival and is marked tap_out_of_order',
+    v_b.break_started_at = now() and v_b.review_reason = 'tap_out_of_order' and v_b.break_type = 'rest',
+    coalesce(v_b.review_reason, 'no mark'));
+  v_r := public.end_break(p_shift_id => v_s.id, p_client_id => gen_random_uuid(),
+    p_tapped_at => null, p_clock_checked_at => null, p_clock_skew_ms => null);
+  v_out := public.clock_out(p_shift_id => v_s.id, p_photo => null, p_injured => false, p_time_confirmed => true,
+    p_break_seconds => null, p_lat => null, p_lng => null, p_injury_note => null, p_client_id => gen_random_uuid(),
+    p_tapped_at => null, p_clock_checked_at => null, p_clock_skew_ms => null);
+  perform pg_temp.dry_run_check('timeline: the lunch is deducted once, not twice, through the second break and the clock-out',
+    v_r->>'outcome' = 'ended' and (v_r->'shift'->>'break_seconds')::int = 1800 and v_out.break_seconds = 1800,
+    coalesce(v_r->'shift'->>'break_seconds', 'null') || ' s after the second break, ' || v_out.break_seconds || ' s at clock-out');
+
+  -- ---- 4. A lunch through the LEGACY signatures bounds a keyed clock-out too ------------
+  perform pg_temp.dry_run_as_system();
+  update public.time_shifts
+     set status = 'voided', voided_at = now(), voided_by = v_who,
+         voided_reason = 'database practice run: cleared for a clean timeline (rolled back)'
+   where profile_id = v_who and status <> 'voided'
+     and greatest(clock_in_at, clock_out_at) > now() - interval '1 day';
+  perform pg_temp.dry_run_act_as(v_who);
+  v_s := public.clock_in(p_project_id => v_job, p_cost_code_id => v_cost_code, p_photo => null,
+    p_lat => null, p_lng => null, p_note => 'timeline 4', p_mode => 'data', p_client_id => gen_random_uuid(),
+    p_tapped_at => now() - interval '3 hours', p_clock_checked_at => now() - interval '1 hour', p_clock_skew_ms => 0);
+  v_b := public.start_break(v_s.id, 'lunch');
+  perform pg_temp.dry_run_check('timeline: the legacy start_break stamps the last punch',
+    v_b.break_started_at = now() and v_b.last_punch_at = now(), coalesce(v_b.last_punch_at::text, 'null'));
+  v_b := public.end_break(v_s.id);
+  perform pg_temp.dry_run_check('timeline: the legacy end_break clears the break and stamps the last punch again',
+    v_b.break_started_at is null and v_b.last_punch_at = now(), coalesce(v_b.last_punch_at::text, 'null'));
+  v_out := public.clock_out(p_shift_id => v_s.id, p_photo => null, p_injured => false, p_time_confirmed => true,
+    p_break_seconds => null, p_lat => null, p_lng => null, p_injury_note => null, p_client_id => gen_random_uuid(),
+    p_tapped_at => now() - interval '10 minutes', p_clock_checked_at => now() - interval '1 hour', p_clock_skew_ms => 0);
+  perform pg_temp.dry_run_check('timeline: a keyed clock-out tapped before that legacy lunch ended pays from arrival and is marked',
+    v_out.clock_out_at = now() and v_out.review_reason = 'tap_out_of_order', coalesce(v_out.review_reason, 'no mark'));
+
+  -- ---- the truth, as the system ----------------------------------------------------------
+  perform pg_temp.dry_run_as_system();
+  select count(*) into v_n from public.time_shifts
+   where profile_id = v_who and xmin::text = v_xid and clock_out_at is not null and clock_out_at < clock_in_at;
+  perform pg_temp.dry_run_check('timeline: no shift this run wrote ends before it starts', v_n = 0, v_n || ' bad row(s)');
+  select count(*) into v_n
+    from public.time_shifts a
+    join public.time_shifts b on b.profile_id = a.profile_id and b.id > a.id
+   where a.profile_id = v_who and a.xmin::text = v_xid and b.xmin::text = v_xid
+     and a.status <> 'voided' and b.status <> 'voided'
+     and a.clock_in_at < coalesce(b.clock_out_at, now()) and b.clock_in_at < coalesce(a.clock_out_at, now());
+  perform pg_temp.dry_run_check('timeline: no two shifts this run wrote overlap', v_n = 0, v_n || ' overlapping pair(s)');
 end $$;

@@ -20,6 +20,8 @@ import { supabase } from "../supabase";
 import { isMissingStagingBayError } from "../staging";
 import { getDailyLog, type DailyLog } from "../dailyLogs";
 import { mergeQueuedDailyLog, type QueuedDailyLog } from "../dailyLogMerge";
+import { CATALOG } from "../i18n/catalog";
+import { translate } from "../i18n/translate";
 import {
   errorMessage,
   type OpHandler,
@@ -312,6 +314,32 @@ function str(v: unknown): string | null {
   return typeof v === "string" ? v : null;
 }
 
+/**
+ * The tap's one-time id and time, read back off a queued clock action
+ * (Release 0, K0.2/K0.5 — see ClockPunchFields in outbox.ts). An entry with
+ * no id is refused, not sent unkeyed: the live try that ran before this entry
+ * was queued may already have gone through, and an unkeyed resend of it is
+ * the double punch this release exists to end — the take_supply rule (F1),
+ * applied to the clock.
+ */
+function punchOf(p: Record<string, unknown>, what: string) {
+  const clientId = str(p.clientId);
+  if (!clientId) {
+    throw tagPermanent(
+      new Error(
+        `This ${what} was saved on the phone without its id, so it was not sent — ` +
+          "sending it blind could have counted it twice. Do it again from the clock.",
+      ),
+    );
+  }
+  return {
+    p_client_id: clientId,
+    p_tapped_at: str(p.tappedAt),
+    p_clock_checked_at: str(p.clockCheckedAt),
+    p_clock_skew_ms: num(p.clockSkewMs),
+  };
+}
+
 export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
   const clockIn: OpHandler = async (entry) => {
     const p = entry.payload;
@@ -323,21 +351,28 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
       p_lng: num(p.lng),
     };
     const note = str(p.note);
-    // Tier 1: dedupe on client id AND persist the worker note (fully-migrated).
+    const punch = punchOf(p, "clock-in");
+    const mode = str(p.mode);
+    // Tier 1: the keyed overload (20261028000000) — id, note, mode AND the tap
+    // time, so a punch tapped at 7:02 in a dead zone is paid from 7:02.
     let res = await supabase.rpc("clock_in", {
       ...base,
-      p_client_id: entry.id,
       p_note: note,
+      p_mode: mode === "data" || mode === "tracking" ? mode : null,
+      ...punch,
     });
     if (res.error && isMissingFunction(res.error)) {
-      // Tier 2: note overload absent — dedupe on client id, drop the note.
-      res = await supabase.rpc("clock_in", { ...base, p_client_id: entry.id });
+      // Tier 2: that migration has not reached this database — the older keyed
+      // overload still dedupes on the id and keeps the note (mode and tap
+      // time are lost, which is what every queued punch before it recorded).
+      res = await supabase.rpc("clock_in", { ...base, p_client_id: punch.p_client_id, p_note: note });
     }
     if (res.error && isMissingFunction(res.error)) {
-      // Tier 3: idempotency migration absent too — best-effort plain punch.
-      res = await supabase.rpc("clock_in", base);
+      // Tier 3: note overload absent too — dedupe on the id alone. There is no
+      // tier below this: an unkeyed clock-in is never sent from the queue.
+      res = await supabase.rpc("clock_in", { ...base, p_client_id: punch.p_client_id });
     }
-    if (res.error) throw res.error;
+    if (res.error) throw missingGuard(res.error, "clock-in");
     const shiftId = (res.data as { id?: string } | null)?.id;
     if (shiftId) resolver.record(entry.id, shiftId);
   };
@@ -356,7 +391,8 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
   const clockOut: OpHandler = async (entry) => {
     const p = entry.payload;
     const shiftId = resolveShift(str(p.shiftRef));
-    const { error } = await supabase.rpc("clock_out", {
+    const punch = punchOf(p, "clock-out");
+    const base = {
       p_shift_id: shiftId,
       p_photo: null,
       p_injured: p.injured === true,
@@ -365,25 +401,48 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
       p_break_seconds: num(p.breakSeconds),
       p_lat: num(p.lat),
       p_lng: num(p.lng),
-    });
-    if (error) throw error;
+    };
+    let res = await supabase.rpc("clock_out", { ...base, ...punch });
+    if (res.error && isMissingFunction(res.error)) {
+      // Database behind the app: today's overload, today's behaviour.
+      res = await supabase.rpc("clock_out", base);
+    }
+    if (res.error) throw res.error;
   };
 
   const breakStart: OpHandler = async (entry) => {
     const p = entry.payload;
     const shiftId = resolveShift(str(p.shiftRef));
-    const { error } = await supabase.rpc("start_break", {
-      p_shift_id: shiftId,
-      p_break_type: str(p.breakType) ?? "other",
-    });
-    if (error) throw error;
+    const punch = punchOf(p, "break");
+    const base = { p_shift_id: shiftId, p_break_type: str(p.breakType) ?? "other" };
+    let res = await supabase.rpc("start_break", { ...base, ...punch });
+    if (res.error && isMissingFunction(res.error)) {
+      res = await supabase.rpc("start_break", base);
+    }
+    if (res.error) throw res.error;
   };
 
   const breakStop: OpHandler = async (entry) => {
     const p = entry.payload;
     const shiftId = resolveShift(str(p.shiftRef));
-    const { error } = await supabase.rpc("end_break", { p_shift_id: shiftId });
-    if (error) throw error;
+    const punch = punchOf(p, "break end");
+    let res = await supabase.rpc("end_break", { p_shift_id: shiftId, ...punch });
+    if (res.error && isMissingFunction(res.error)) {
+      res = await supabase.rpc("end_break", { p_shift_id: shiftId });
+      if (res.error) throw res.error;
+      return;
+    }
+    if (res.error) throw res.error;
+    const outcome = (res.data as { outcome?: string } | null)?.outcome;
+    if (outcome === "no_break_running") {
+      // K0.4: the server kept the request and marked the shift for the
+      // foreman; here it stays on /stuck, in the person's own words, rather
+      // than vanishing as "sent". Permanent — sending it again cannot find a
+      // break that was never there.
+      throw tagPermanent(new Error(translate(CATALOG, "en", "clock.error.noBreakRunning")));
+    }
+    // 'ended', and 'shift_closed' (the shift was clocked out meanwhile, which
+    // folded its running break): nothing left to do for either.
   };
 
   const upload: OpHandler = async (entry, ctx) => {

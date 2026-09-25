@@ -244,6 +244,37 @@ export const CATALOG = {
     en: "That finish time won't work.",
     es: "Esa hora de salida no funciona.",
   },
+  // Release 0 (K0.4): the server could not find a break to end. It kept the
+  // request and marked the shift for the foreman; the person reads why.
+  "clock.error.noBreakRunning": {
+    en: "We couldn't find the start of that break, so it wasn't ended. Your foreman will check your breaks.",
+    es: "No encontramos el inicio de ese descanso, así que no se cerró. Tu capataz revisará tus descansos.",
+  },
+  "clock.error.shiftAlreadyClosed": {
+    en: "That shift is already clocked out, so nothing changed.",
+    es: "Ese turno ya tiene la salida marcada, así que nada cambió.",
+  },
+  // A made-up shift id (a clock-in still on the phone) reached a server call.
+  // The screens queue instead of sending; this is the backstop's line.
+  "clock.error.clockPendingSync": {
+    en: "Your clock-in is still being sent. Wait a moment and try again.",
+    es: "Tu entrada todavía se está enviando. Espera un momento y vuelve a intentarlo.",
+  },
+  // The wrong-clock banner (T9, reworded for Release 0: since K0.5 a phone
+  // more than 2 minutes off is paid from arrival time and marked for review).
+  "wrongclock.title": {
+    en: "This device's clock looks wrong",
+    es: "El reloj de este dispositivo parece estar mal",
+  },
+  "wrongclock.body": {
+    en: "About {minutes} {unit} {direction}. Until it's fixed, punches from this phone are paid from the time they reach Forge and marked for review.",
+    es: "Unos {minutes} {unit} {direction}. Hasta que se corrija, las marcaciones de este teléfono se pagan desde la hora en que llegan a Forge y quedan marcadas para revisión.",
+  },
+  "wrongclock.minute": { en: "minute", es: "minuto" },
+  "wrongclock.minutes": { en: "minutes", es: "minutos" },
+  "wrongclock.ahead": { en: "ahead of the server", es: "adelantado respecto al servidor" },
+  "wrongclock.behind": { en: "behind the server", es: "atrasado respecto al servidor" },
+  "wrongclock.dismiss": { en: "Dismiss for today", es: "Ocultar por hoy" },
   "clock.toast.clockedIn": { en: "Clocked in", es: "Entrada marcada" },
   "clock.toast.clockedInQueued": {
     en: "Clocked in — we'll sync it when you're back online",
@@ -3132,6 +3163,42 @@ export const CATALOG = {
   "timecard.needsFinishTime": { en: "needs a finish time", es: "necesita hora de salida" },
   "timecard.injury": { en: "injury", es: "lesión" },
   "timecard.timeFlagged": { en: "time flagged by crew", es: "tiempo marcado por la cuadrilla" },
+  // Release 0 (K0.4/K0.5): the server's own "time needs review" mark and the
+  // reason behind it, one line per time_shifts.review_reason code.
+  "timecard.needsReview": { en: "time needs review", es: "tiempo por revisar" },
+  "timecard.review.clock_unchecked": {
+    en: "Paid from when it reached Forge — this phone's clock hadn't been checked in the last day.",
+    es: "Pagado desde que llegó a Forge — el reloj de este teléfono no se había verificado en el último día.",
+  },
+  "timecard.review.clock_off": {
+    en: "Paid from when it reached Forge — this phone's clock was more than 2 minutes off.",
+    es: "Pagado desde que llegó a Forge — el reloj de este teléfono estaba desfasado más de 2 minutos.",
+  },
+  "timecard.review.tap_after_arrival": {
+    en: "Paid from when it reached Forge — the phone's tap time was later than that.",
+    es: "Pagado desde que llegó a Forge — la hora del toque en el teléfono era posterior a esa.",
+  },
+  "timecard.review.tap_too_old": {
+    en: "Paid from when it reached Forge — the phone's tap time was more than 16 hours earlier.",
+    es: "Pagado desde que llegó a Forge — la hora del toque en el teléfono era de más de 16 horas antes.",
+  },
+  "timecard.review.tap_out_of_order": {
+    en: "Paid from when it reached Forge — the phone's tap time was before the shift's last punch.",
+    es: "Pagado desde que llegó a Forge — la hora del toque era anterior a la última marcación del turno.",
+  },
+  "timecard.review.overlaps_previous_shift": {
+    en: "Paid from when it reached Forge — the phone's tap time was before the previous shift ended, and a shift can't start inside another.",
+    es: "Pagado desde que llegó a Forge — la hora del toque era anterior al fin del turno anterior, y un turno no puede empezar dentro de otro.",
+  },
+  "timecard.review.previous_shift_open": {
+    en: "The previous shift was still open, so this one starts when it reached Forge.",
+    es: "El turno anterior seguía abierto, así que este empieza cuando llegó a Forge.",
+  },
+  "timecard.review.break_end_without_break": {
+    en: "A break end arrived with no break running. Check this shift's breaks.",
+    es: "Llegó un fin de descanso sin ningún descanso en curso. Revisa los descansos de este turno.",
+  },
+  "timecard.review.unknown": { en: "This punch needs a look.", es: "Esta marcación necesita revisión." },
   "timecard.editedByHistory": { en: "edited by {name} · history", es: "editado por {name} · historial" },
   "timecard.editedBy": { en: "edited by {name}", es: "editado por {name}" },
   "timecard.someone": { en: "someone", es: "alguien" },

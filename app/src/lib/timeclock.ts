@@ -9,8 +9,42 @@ import { TRAVEL_COST_CODE } from "./farFromJob";
 import { isMissingClockInOverload, normalizeNote } from "./timeclockNote";
 import type { TimecardExportShift } from "./timecardExport";
 import type { TimeEntryImportSource } from "./timeEntryExport";
+import { isPendingShiftRef, mintPunch, type ClockPunch } from "./clockPunch";
+import { CATALOG } from "./i18n/catalog";
+import { translate } from "./i18n/translate";
 
 export { isMissingClockInOverload, normalizeNote } from "./timeclockNote";
+export { carriedPunch, isPendingShiftRef, mintPunch, newClockActionId, type ClockPunch } from "./clockPunch";
+
+/**
+ * The server said no to a clock action, in a way the person needs to read
+ * (Release 0, 20261028000000). `code` is what a screen switches on to show the
+ * phrasebook line in the person's language; the message is the English line
+ * so a caller that only has formatApiError still shows a plain sentence.
+ */
+export class ClockRefusal extends Error {
+  readonly code: "no_break_running" | "shift_closed" | "clock_pending_sync";
+  constructor(code: ClockRefusal["code"]) {
+    super(translate(CATALOG, "en", CLOCK_REFUSAL_KEY[code]));
+    this.name = "ClockRefusal";
+    this.code = code;
+  }
+}
+
+export const CLOCK_REFUSAL_KEY = {
+  no_break_running: "clock.error.noBreakRunning",
+  shift_closed: "clock.error.shiftAlreadyClosed",
+  clock_pending_sync: "clock.error.clockPendingSync",
+} as const;
+
+/**
+ * The backstop behind every screen's own `pending:` guard: a made-up shift id
+ * must never reach a uuid RPC. Screens queue the action instead (ClockSheet,
+ * CurrentWork, Servicing); this catches any path that forgot to.
+ */
+function refuseIfPending(shiftId: string): void {
+  if (isPendingShiftRef(shiftId)) throw new ClockRefusal("clock_pending_sync");
+}
 
 export interface CostCode {
   id: string;
@@ -121,6 +155,14 @@ export interface TimeShift {
    */
   clocked_in_by?: string | null;
   clocked_out_by?: string | null;
+  /**
+   * "Time needs review" (Release 0, 20261028000000): a short code the timecard
+   * translates — the phone's tap time could not be trusted so pay used the
+   * time the punch reached Forge, or a break end arrived with no break
+   * running. Null is the ordinary punch. Optional so a database without the
+   * column reads as nothing to review.
+   */
+  review_reason?: string | null;
   projects?: { job_code: string; name: string } | null;
   cost_codes?: { code: string; label: string } | null;
   profiles?: { display_name: string } | null;
@@ -702,6 +744,28 @@ export interface ClockInPick {
   costCodeId: string | null;
   note: string | null;
   mode: JobMode | null;
+  /**
+   * The tap being handed over, WHOLE: its one-time id, its tap time and the
+   * clock check it was stamped with (K0.2/K0.5). The sheet sends this same
+   * punch and never re-stamps it. If the block's request was SAVED before its
+   * reply was lost, the server answers the repeat id with the shift it
+   * already made; if it never arrived, the sheet's send is still paid from
+   * the block's tap — re-stamping it at the sheet's own, later tap (Codex
+   * review of #640, 2026-09-25) lost the time in between. A fresh id here is
+   * how a hand-off used to become a double punch. Optional: an opener with
+   * no punch of its own passes none, and the sheet stamps its own tap.
+   */
+  punch?: ClockPunch | null;
+}
+
+/** The tap trio every keyed clock RPC takes beside its id (K0.5). */
+function punchArgs(p: ClockPunch) {
+  return {
+    p_client_id: p.clientId,
+    p_tapped_at: p.tappedAt,
+    p_clock_checked_at: p.clockCheckedAt,
+    p_clock_skew_ms: p.clockSkewMs,
+  };
 }
 
 export async function clockIn(
@@ -711,9 +775,14 @@ export async function clockIn(
   note?: string | null,
   // The work mode the worker picked when the job allows BOTH data and tracking
   // (standard-tracking-jobs slice 2). null on a single-mode job — the common
-  // case — and the punch takes the exact same path it always has.
+  // case.
   mode?: JobMode | null,
+  // The tap's one-time id and time (Release 0). A caller retrying a tap it
+  // already stamped passes the same punch; a caller with none gets a fresh one,
+  // so every direct punch is keyed even from screens that never think about it.
+  punch?: ClockPunch | null,
 ): Promise<TimeShift> {
+  const p = punch ?? mintPunch();
   const base = {
     p_project_id: projectId,
     p_cost_code_id: costCodeId,
@@ -723,30 +792,24 @@ export async function clockIn(
   };
   const cleanMode = mode === "data" || mode === "tracking" ? mode : null;
 
-  if (cleanMode) {
-    // Mode-carrying path (migration 20260970000000): note + mode. Fall back the
-    // same way the note path does if a database hasn't applied the migration —
-    // to note-only, then to a bare punch — so clock-in never breaks over it.
-    let res = await supabase.rpc("clock_in", {
-      ...base,
-      p_note: normalizeNote(note),
-      p_mode: cleanMode,
-    });
-    if (res.error && isMissingClockInOverload(res.error)) {
-      res = await supabase.rpc("clock_in", { ...base, p_note: normalizeNote(note) });
-      if (res.error && isMissingClockInOverload(res.error)) {
-        res = await supabase.rpc("clock_in", base);
-      }
-    }
-    if (res.error) throw res.error;
-    return res.data as TimeShift;
-  }
-
-  // Preferred path: persist the worker note (migration 20260723060000).
-  let res = await supabase.rpc("clock_in", { ...base, p_note: normalizeNote(note) });
+  // The keyed overload (20261028000000): id, note, mode and tap time, in one
+  // call. A repeat of this id is answered with the shift it already made.
+  let res = await supabase.rpc("clock_in", {
+    ...base,
+    p_note: normalizeNote(note),
+    p_mode: cleanMode,
+    ...punchArgs(p),
+  });
   if (res.error && isMissingClockInOverload(res.error)) {
-    // Migration not applied yet — punch in without the note so clock-in works.
-    res = await supabase.rpc("clock_in", base);
+    // That migration has not reached this database yet. The older keyed
+    // overloads (20260813000000) still dedupe on the id — they just cannot
+    // take the mode or the tap time — so the punch stays a one-time punch.
+    // What is deliberately NOT here any more is the bare, unkeyed fallback:
+    // an unkeyed clock-in is the double punch this whole release exists to end.
+    res = await supabase.rpc("clock_in", { ...base, p_client_id: p.clientId, p_note: normalizeNote(note) });
+    if (res.error && isMissingClockInOverload(res.error)) {
+      res = await supabase.rpc("clock_in", { ...base, p_client_id: p.clientId });
+    }
   }
   if (res.error) throw res.error;
   return res.data as TimeShift;
@@ -761,8 +824,11 @@ export async function clockOut(
     breakSeconds: number;
     geo?: GeoFix;
   },
+  punch?: ClockPunch | null,
 ): Promise<TimeShift> {
-  const { data, error } = await supabase.rpc("clock_out", {
+  refuseIfPending(shiftId);
+  const p = punch ?? mintPunch();
+  const base = {
     p_shift_id: shiftId,
     p_photo: null,
     p_injured: opts.injured,
@@ -771,9 +837,14 @@ export async function clockOut(
     p_break_seconds: opts.breakSeconds,
     p_lat: opts.geo?.lat ?? null,
     p_lng: opts.geo?.lng ?? null,
-  });
-  if (error) throw error;
-  return data as TimeShift;
+  };
+  let res = await supabase.rpc("clock_out", { ...base, ...punchArgs(p) });
+  if (res.error && isMissingClockInOverload(res.error)) {
+    // Database behind the app: today's overload, today's behaviour.
+    res = await supabase.rpc("clock_out", base);
+  }
+  if (res.error) throw res.error;
+  return res.data as TimeShift;
 }
 
 /**
@@ -1082,19 +1153,55 @@ export async function approveTimecardWeek(profileId: string, range: WeekRange, s
 export async function startBreak(
   shiftId: string,
   breakType: BreakType = "other",
+  punch?: ClockPunch | null,
 ): Promise<TimeShift> {
-  const { data, error } = await supabase.rpc("start_break", {
-    p_shift_id: shiftId,
-    p_break_type: breakType,
-  });
-  if (error) throw error;
-  return data as TimeShift;
+  refuseIfPending(shiftId);
+  const p = punch ?? mintPunch();
+  const base = { p_shift_id: shiftId, p_break_type: breakType };
+  let res = await supabase.rpc("start_break", { ...base, ...punchArgs(p) });
+  if (res.error && isMissingClockInOverload(res.error)) {
+    res = await supabase.rpc("start_break", base);
+  }
+  if (res.error) throw res.error;
+  return res.data as TimeShift;
 }
 
-export async function endBreak(shiftId: string): Promise<TimeShift> {
-  const { data, error } = await supabase.rpc("end_break", { p_shift_id: shiftId });
-  if (error) throw error;
-  return data as TimeShift;
+/** What the keyed end_break answers with (20261028000000). */
+export interface EndBreakResult {
+  outcome: "ended" | "no_break_running" | "shift_closed" | string;
+  shift: TimeShift;
+}
+
+/**
+ * End the running break. Refused — as a ClockRefusal the sheet can read —
+ * when there is no break to end: the server keeps the request and marks the
+ * shift for the foreman (K0.4), and the person sees why instead of a "Back on
+ * the clock" that was never true.
+ */
+export async function endBreak(shiftId: string, punch?: ClockPunch | null): Promise<TimeShift> {
+  refuseIfPending(shiftId);
+  const p = punch ?? mintPunch();
+  let res = await supabase.rpc("end_break", { p_shift_id: shiftId, ...punchArgs(p) });
+  if (res.error && isMissingClockInOverload(res.error)) {
+    // Database behind the app: the legacy end_break answers with the row itself.
+    res = await supabase.rpc("end_break", { p_shift_id: shiftId });
+    if (res.error) throw res.error;
+    return res.data as TimeShift;
+  }
+  if (res.error) throw res.error;
+  return readEndBreak(res.data);
+}
+
+/** Turn the keyed end_break's {outcome, shift} into a shift or a refusal. */
+export function readEndBreak(data: unknown): TimeShift {
+  const out = data as EndBreakResult | null;
+  if (!out || typeof out !== "object" || !("outcome" in out)) {
+    // A row rather than an envelope: the legacy shape, already a shift.
+    return data as TimeShift;
+  }
+  if (out.outcome === "no_break_running") throw new ClockRefusal("no_break_running");
+  if (out.outcome === "shift_closed") throw new ClockRefusal("shift_closed");
+  return out.shift;
 }
 
 /** Format seconds as H:MM:SS for the live timer. */

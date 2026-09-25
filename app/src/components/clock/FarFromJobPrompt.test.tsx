@@ -21,6 +21,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LanguageProvider } from "../../lib/i18n";
 import { subscribeToasts, type Toast } from "../../lib/toast";
+import { captureGeoSoft } from "../../lib/geo";
 import { FarFromJobPrompt } from "./FarFromJobPrompt";
 import type { TimeShift } from "../../lib/timeclock";
 
@@ -173,6 +174,8 @@ describe("the far-from-job switch survives no signal", () => {
       AWAY,
       "framing the back elevation",
       null,
+      // The tap's one-time id and time (Release 0, K0.2/K0.5).
+      expect.objectContaining({ clientId: expect.any(String), tappedAt: expect.any(String) }),
     );
   });
 
@@ -186,12 +189,18 @@ describe("the far-from-job switch survives no signal", () => {
       await Promise.resolve();
     });
 
+    // The queued switch carries the SAME id the live try sent (K0.2): if that
+    // try was saved before its reply was lost, the server answers the retry
+    // with the punch it already made.
+    const livePunch = clockIn.mock.calls[0][5] as { clientId: string };
     expect(enqueueClockIn).toHaveBeenCalledWith({
       projectId: "p1",
       costCodeId: "cc-travel",
       lat: AWAY.lat,
       lng: AWAY.lng,
       note: "framing the back elevation",
+      mode: null,
+      punch: expect.objectContaining({ clientId: livePunch.clientId }),
     });
     // Told it is saved, not told it failed.
     expect(mine()).toEqual([
@@ -221,5 +230,35 @@ describe("the far-from-job switch survives no signal", () => {
     expect(enqueueClockIn).not.toHaveBeenCalled();
     expect(mine().some((x) => x.startsWith("error:"))).toBe(true);
     expect(container.textContent).toContain("Switch to Travel");
+  });
+
+  it("stamps the switch at the tap, not when a slow location fix finally arrives", async () => {
+    // The fix takes nine seconds. The punch's tap time is the moment of the
+    // tap (Release 0, K0.5): pay uses it when it trusts the phone, and a punch
+    // stamped after the wait said the switch happened nine seconds late.
+    clockIn.mockResolvedValue({});
+    await mountAndAsk();
+    const tapAt = Date.parse("2026-09-24T19:30:00.000Z");
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(tapAt);
+    let answerFix!: (fix: object) => void;
+    vi.mocked(captureGeoSoft).mockImplementationOnce(
+      () => new Promise((resolve) => (answerFix = resolve)),
+    );
+    await act(async () => {
+      switchButton().click();
+      await Promise.resolve();
+    });
+    expect(clockIn).not.toHaveBeenCalled();
+    vi.setSystemTime(tapAt + 9_000);
+    await act(async () => {
+      answerFix({});
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(clockIn).toHaveBeenCalledTimes(1);
+    expect((clockIn.mock.calls[0][5] as { tappedAt: string }).tappedAt).toBe(
+      new Date(tapAt).toISOString(),
+    );
   });
 });

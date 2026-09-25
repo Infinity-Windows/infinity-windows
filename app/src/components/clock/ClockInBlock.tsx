@@ -44,12 +44,23 @@ import {
   getOpenShift,
   isOnTheClock,
   listRecentJobs,
+  mintPunch,
+  type ClockPunch,
 } from "../../lib/timeclock";
 import { getClockCostCodesForProject } from "../../lib/costCodes";
 import { useT } from "../../lib/i18n";
 import { effectiveClockInMode, normalizeModes, type JobMode } from "../../lib/jobModes";
 import { JobModeBadge } from "../JobModeBadge";
 import { ClockedInByLine } from "./ClockedInByLine";
+
+/** What one Start carries: its punch, and the picks as they stood at the tap. */
+type StartTap = {
+  punch: ClockPunch;
+  projectId: string | null;
+  costCodeId: string | null;
+  note: string | null;
+  mode: JobMode | null;
+};
 
 export function ClockInBlock() {
   const t = useT();
@@ -218,16 +229,37 @@ export function ClockInBlock() {
   const isBothMode = chosenModes.length >= 2;
   const effectiveMode = effectiveClockInMode(chosenProject?.allowed_modes, pickedMode);
 
+  // ONE PUNCH PER TAP (Release 0, K0.2/K0.5). A Start is stamped at the tap —
+  // or at the signature, when signing IS the clock-in — BEFORE the location
+  // wait below. That wait can run 12.5 seconds on a weak fix, and a punch
+  // stamped after it told the server the person clocked in up to 12.5
+  // seconds after they tapped; pay uses the tap time when it trusts the
+  // phone. The picks and the mode are read at that same moment and ride with
+  // the punch, so the live try and the hand-off to the sheet carry the one
+  // tap: a pick changed during the wait cannot turn it into another tap, and
+  // the sheet sends this same punch — answered as the shift already made if
+  // the server saved it before its reply was lost, and still paid from this
+  // tap if it never arrived (the same rule Start day follows).
+  //
+  // Read through a ref, like canStartRef: the signature lands in the sign
+  // card's mutation callback, which can be a closure from an earlier render.
+  const picksRef = useRef<Omit<StartTap, "punch">>({
+    projectId: null,
+    costCodeId: null,
+    note: null,
+    mode: null,
+  });
+  picksRef.current = {
+    projectId: pickProjectId || null,
+    costCodeId: pickCostCodeId || null,
+    note: note.trim() || null,
+    mode: effectiveMode,
+  };
+  const tapNow = (): StartTap => ({ punch: mintPunch(), ...picksRef.current });
   const doStart = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (tap: StartTap) => {
       const geo = await captureGeoSoft();
-      await clockIn(
-        pickProjectId || null,
-        pickCostCodeId || null,
-        geo,
-        note.trim() || null,
-        effectiveMode,
-      );
+      await clockIn(tap.projectId, tap.costCodeId, geo, tap.note, tap.mode, tap.punch);
     },
     onSuccess: () => {
       toastSuccess(t("clock.action.clockingIn"));
@@ -238,13 +270,17 @@ export function ClockInBlock() {
     // that). Hand off WITH the picks so the sheet opens pre-filled and the
     // person taps Start once, and say what happened: the old bare hand-off
     // opened an empty sheet in silence, which read as "the app forgot".
-    onError: (e) => {
+    // The hand-off carries the WHOLE punch, not just its id: the sheet's
+    // Start sends this tap, paid from this tap, even when this request never
+    // reached the server (see ClockInPick.punch).
+    onError: (e, tap) => {
       pushToast(t("clockblock.handoff", { reason: formatApiError(e) }), "error");
       openClockGlobally({
-        projectId: pickProjectId || null,
-        costCodeId: pickCostCodeId || null,
-        note: note.trim() || null,
-        mode: effectiveMode,
+        projectId: tap.projectId,
+        costCodeId: tap.costCodeId,
+        note: tap.note,
+        mode: tap.mode,
+        punch: tap.punch,
       });
     },
   });
@@ -668,7 +704,8 @@ export function ClockInBlock() {
                   pushToast(t("clockblock.signedPickCode"), "error");
                   return;
                 }
-                doStart.mutate();
+                // Signing IS the clock-in: stamped now, before the location wait.
+                doStart.mutate(tapNow());
               }}
             />
           </div>
@@ -691,7 +728,7 @@ export function ClockInBlock() {
           type="button"
           className="clock-btn primary big"
           disabled={busy || !canStart}
-          onClick={() => doStart.mutate()}
+          onClick={() => doStart.mutate(tapNow())}
         >
           {busy ? (
             t("clock.action.clockingIn")

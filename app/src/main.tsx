@@ -10,6 +10,7 @@ import { installServiceWorkerGuard } from "./lib/serviceWorkerGuard";
 import { startCrashMonitoring } from "./lib/monitoring/sentry";
 import { installPushChangeListener } from "./lib/permissions/pushSubscribe";
 import { installPreloadRecovery } from "./lib/pwa/preloadRecovery";
+import { installClockCheck } from "./lib/clockSkew";
 
 // Crash monitoring, started BEFORE anything mounts so a crash on the very first
 // paint is still caught. With VITE_SENTRY_DSN unset — the state this ships in —
@@ -32,6 +33,14 @@ installPushChangeListener();
 // gone. Reload once (never over unsaved work, never in a loop) instead of a
 // white screen. See lib/pwa/preloadRecovery.ts.
 installPreloadRecovery();
+
+// Release 0, K0.5: pay trusts a clock punch's tap time only when this phone
+// compared its clock with the server in the last 24 hours. The comparison is
+// cheap and throttles itself, so it runs at start, at sign-in, on coming back
+// to the foreground and when the network returns — a phone opened in the
+// morning with signal is still trusted for the evening clock-out in a dead
+// zone. Silent when offline: the last good check stands. See lib/clockSkew.ts.
+installClockCheck();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
