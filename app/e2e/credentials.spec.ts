@@ -12,7 +12,8 @@
 //       in one place on one row.
 //   O5  the summary line counts only checked, unexpired cards, and the text it
 //       copies carries no names.
-//   O1  a foreman reads everything and is offered no supervisor tap.
+//   O1  a foreman is kept out of the Roster (supervisor-only since #610), so
+//       no card and no supervisor tap reaches them there.
 //   O1  somebody adds their OWN card from My Work, it goes over with no verify
 //       flag, and the camera is offered on their own card and on nobody else's.
 //
@@ -338,25 +339,25 @@ test("a supervisor cannot check their OWN card, but can take the check back", as
   );
 });
 
-test("a foreman reads every card and is offered no supervisor tap", async ({ page }) => {
+test("a foreman is kept out of the Roster, so no card or supervisor tap reaches them there", async ({
+  page,
+}) => {
+  // The Roster (/crew) has been supervisor-only since #610 (Sep 16), and the
+  // owner confirmed it (2026-09-25): foremen do not open the Crew page. This
+  // used to prove a foreman read every card with no supervisor buttons; now
+  // it proves the door is shut, with the full set of cards on file that would
+  // show if it were not. Adding your own card also lives on My Work, which
+  // every role opens (the next test).
   await useSupabaseFixtures(page, { role: "foreman" });
   useCredentialFixtures(page);
   await page.goto("/crew");
 
-  // Knowing half the crew cannot go up in a lift is exactly what a foreman
-  // needs, so the cards are not hidden — only the buttons are.
-  await expect(row(page, "Maria").locator(".cred-chip.ok")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Not available for your role" })).toBeVisible();
+  await expect(page.locator(".cred-chip")).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^Mark checked$/ })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^Void$/ })).toHaveCount(0);
-  // Nor the PHOTO of a card. The bucket is cardholder-or-supervisor, and it
-  // refuses a read the same way it reports a missing file — so offering the
-  // button here would have been a tap that did nothing at all.
   await expect(page.getByRole("button", { name: /^See the card$/ })).toHaveCount(0);
-  // The summary is a number about the company, and it is written to be copied
-  // out of the app, so it stays supervisor+.
   await expect(page.locator(".cred-summary")).toHaveCount(0);
-  // A foreman may still add their own card — that write needs no rank.
-  await expect(page.getByRole("button", { name: /Add my card/i })).toHaveCount(1);
 });
 
 test("somebody adds their own card from My Work and it goes over unchecked", async ({

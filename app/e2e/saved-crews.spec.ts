@@ -120,7 +120,11 @@ test("a supervisor builds, edits, and deletes a saved crew on the Roster", async
   await expect(page.getByText("No saved crews yet — build one below.")).toBeVisible();
 });
 
-test("a foreman sees saved crews read-only — no New/Edit/Delete controls", async ({ page }) => {
+test("a foreman is kept out of the Roster, so saved crews stay with supervisors", async ({ page }) => {
+  // The Roster (/crew) has been supervisor-only since #610 (Sep 16), and the
+  // owner confirmed it (2026-09-25): foremen do not open the Crew page. This
+  // used to prove a foreman saw the crews read-only; now it proves the door is
+  // shut, with a crew on file that would show if it were not.
   await useSupabaseFixtures(page, { role: "foreman" });
   await page.route("**/rest/v1/saved_crews**", (route) =>
     json(
@@ -131,11 +135,10 @@ test("a foreman sees saved crews read-only — no New/Edit/Delete controls", asy
   );
 
   await page.goto("/crew");
-  await expect(page.getByRole("heading", { name: "Saved crews" })).toBeVisible();
-  await expect(page.getByText("Team 1")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Not available for your role" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Saved crews" })).toHaveCount(0);
+  await expect(page.getByText("Team 1")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "+ New crew" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Edit" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Delete" })).toHaveCount(0);
 });
 
 test("Plan with AI seeds Ask with the visible week — a placeholder, not sent", async ({ page }) => {
