@@ -153,6 +153,20 @@ export interface OutboxInput {
   hasBlob?: boolean;
 }
 
+/**
+ * The drain stopped waiting for a send (the send watchdog, 2026-09-25 — see
+ * drainStore). An ordinary retryable failure: the entry goes back in the
+ * queue with its backoff, counts one attempt, and the message is what the
+ * stuck-writes screen shows if it ever runs out of attempts. Plain words, and
+ * none of the words isRetryableError reads as permanent.
+ */
+export class SendTookTooLongError extends Error {
+  constructor() {
+    super("This was taking too long to send, so the phone stopped waiting and will try it again.");
+    this.name = "SendTookTooLongError";
+  }
+}
+
 /** Retry policy. Deliberately small + capped so the queue drains promptly. */
 export const MAX_ATTEMPTS = 8;
 export const BACKOFF_BASE_MS = 5_000; // 5s, 10s, 20s … capped
@@ -738,7 +752,17 @@ export interface OutboxStore {
  */
 export type OpHandler = (
   entry: OutboxEntry,
-  ctx: { getBlob: () => Promise<Blob | null> },
+  ctx: {
+    getBlob: () => Promise<Blob | null>;
+    /**
+     * Aborted once the drain has stopped waiting for this send (the send
+     * watchdog). The drain ignores whatever the handler does after that, and
+     * the entry is retried from the queue; a handler checks this before a
+     * second write that must not land late, beside its own retry. Absent when
+     * a handler is called outside a drain.
+     */
+    signal?: AbortSignal;
+  },
 ) => Promise<unknown>;
 
 export type OpHandlers = Partial<Record<OutboxOp, OpHandler>>;
@@ -765,7 +789,28 @@ export interface DrainOpts {
    * is whatever the handler resolved with (a clock handler's shift row).
    */
   onSent?: (entry: OutboxEntry, result: unknown) => void;
+  /**
+   * The send watchdog: how long one send may run before the drain stops
+   * waiting for it. Asked once as the send starts (`blobBytes` null) and again
+   * once the send has read its file back, with the file's size, so a big photo
+   * on one bar gets the time its size needs. Omitted, a drain waits for every
+   * send for as long as it takes — which is how a single send that never
+   * answered used to hold the queue until the app was relaunched.
+   */
+  sendDeadlineMs?: (entry: OutboxEntry, blobBytes: number | null) => number;
+  /** The watchdog gave up waiting on this send; it will be retried. */
+  onAbandoned?: (entry: OutboxEntry, deadlineMs: number) => void;
 }
+
+/** What one send came to — decided once, by whichever of the send or the
+ * watchdog got there first. */
+type SendOutcome =
+  | { kind: "sent"; result: unknown }
+  | { kind: "failed"; error: unknown }
+  | { kind: "abandoned"; deadlineMs: number };
+
+/** setTimeout's own ceiling (2^31-1 ms); anything longer fires at once. */
+const MAX_TIMER_MS = 2_147_483_647;
 
 function clockOf(opts: DrainOpts): () => number {
   const n = opts.now;
@@ -786,6 +831,28 @@ function clockOf(opts: DrainOpts): () => number {
  * a snapshot, and without this a punch tapped while photo one of three was
  * uploading waited for photos two and three as well — one re-read of a small
  * store per upload is nothing next to the upload.
+ *
+ * THE SEND WATCHDOG (2026-09-25, `opts.sendDeadlineMs`). One send at a time is
+ * the design, so one send that never answers used to hold the whole queue —
+ * and three steps inside a send had no time limit: reading the reply once it
+ * has started to arrive (timedFetch's deadline ends at the headers), the
+ * sign-in check supabase-js makes before every request, and opening the
+ * phone's database to read the photo back. The owner's phone sat on "Photos 5"
+ * for thirteen minutes back on Wi-Fi with nothing sent and nothing on the
+ * stuck-writes screen. Now each send races a deadline. If the deadline wins,
+ * the drain records an ordinary retryable failure (SendTookTooLongError, one
+ * attempt, the usual backoff), says so through onAbandoned, and moves on to
+ * the next entry — clock punches first, as always.
+ *
+ * The abandoned attempt is not cancelled — nothing here can cancel a fetch
+ * that supabase-js owns — so it may wake up later. Whatever it does then is
+ * ignored by the queue: its outcome is never recorded (no second "sent", no
+ * failure written over the retry's record, no entry brought back), a file
+ * read that answers late refuses to hand the photo over, a late "sending"
+ * mark does not start the handler, and `ctx.signal` is aborted so a handler
+ * can decline its own second write. What it may already have sent to the
+ * server is covered the way a reply lost to a dead zone always has been:
+ * every handler's write is keyed or checked so a resend lands once.
  */
 export async function drainStore(
   store: OutboxStore,
@@ -802,6 +869,112 @@ export async function drainStore(
   let deadLettered = 0;
   const tried = new Set<string>();
 
+  /**
+   * Record a failed (or abandoned) send: backoff or dead-letter.
+   *
+   * Stamp the failure from the clock NOW, not from the pass's opening read. A
+   * pass can hold a 25 MB photo upload for half a minute; a write that fails
+   * after it would otherwise get a retry time already in the past, and
+   * drainUntilSettled's next pass would try it again at once — burning one of
+   * its MAX_ATTEMPTS on the same dead signal.
+   */
+  const recordFailure = async (entry: OutboxEntry, err: unknown): Promise<void> => {
+    const next = applyFailure(entry, err, clock());
+    await store.put(next);
+    if (next.status === "failed") {
+      deadLettered += 1;
+      // Anything waiting on this can never be sent now. Fail it here rather
+      // than leaving it queued forever, invisible and uncounted.
+      const stranded = cascadeFailure(await store.getAll(), next.id);
+      for (const s of stranded) {
+        await store.put(s);
+        deadLettered += 1;
+      }
+    } else retried += 1;
+  };
+
+  /**
+   * Run one send — mark it sending, then the handler — racing the watchdog
+   * when one is asked for. Resolves with whichever finished first; the loser
+   * is ignored (see the watchdog note above).
+   */
+  const sendWithin = (entry: OutboxEntry, handler: OpHandler): Promise<SendOutcome> => {
+    const abort = new AbortController();
+    const { signal } = abort;
+    /** Told the file's size once the send has read it (the watchdog re-arms). */
+    let onBlob: ((blob: Blob | null) => void) | null = null;
+
+    const send = async (): Promise<SendOutcome> => {
+      await store.put(markSending(entry));
+      // The mark landed after the drain gave up (the phone's database answered
+      // late): starting the handler now would send beside the retry.
+      if (signal.aborted) return { kind: "abandoned", deadlineMs: 0 };
+      try {
+        const result = await handler(entry, {
+          getBlob: async () => {
+            const blob = await store.getBlob(entry.id);
+            // A read that answered after the drain gave up must not hand the
+            // photo over: the retry uploads it, not this attempt.
+            if (signal.aborted) throw new SendTookTooLongError();
+            onBlob?.(blob);
+            return blob;
+          },
+          signal,
+        });
+        return { kind: "sent", result };
+      } catch (error) {
+        return { kind: "failed", error };
+      }
+    };
+
+    const deadlineFor = opts.sendDeadlineMs;
+    if (!deadlineFor) return send();
+
+    return new Promise<SendOutcome>((resolve, reject) => {
+      const startedAt = Date.now();
+      let limit = deadlineFor(entry, null);
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      let decided = false;
+      const giveUp = () => {
+        if (decided) return;
+        decided = true;
+        abort.abort();
+        resolve({ kind: "abandoned", deadlineMs: limit });
+      };
+      const arm = () => {
+        if (timer !== undefined) clearTimeout(timer);
+        timer = undefined;
+        if (!Number.isFinite(limit)) return;
+        const left = Math.max(0, startedAt + limit - Date.now());
+        timer = setTimeout(giveUp, Math.min(left, MAX_TIMER_MS));
+      };
+      onBlob = (blob) => {
+        if (decided || !blob) return;
+        const sized = deadlineFor(entry, blob.size);
+        if (sized === limit) return;
+        limit = sized;
+        arm();
+      };
+      arm();
+      send().then(
+        (outcome) => {
+          if (decided) return; // woke up after the drain moved on: ignored
+          decided = true;
+          if (timer !== undefined) clearTimeout(timer);
+          resolve(outcome);
+        },
+        (err) => {
+          // The store itself failed (not the handler): the drain gives up on
+          // this pass, exactly as it did before the watchdog.
+          if (decided) return;
+          decided = true;
+          if (timer !== undefined) clearTimeout(timer);
+          reject(err);
+        },
+      );
+    });
+  };
+
   const attempt = async (entry: OutboxEntry): Promise<void> => {
     tried.add(entry.id);
     attempted += 1;
@@ -816,32 +989,18 @@ export async function drainStore(
       deadLettered += 1;
       return;
     }
-    await store.put(markSending(entry));
-    try {
-      const result = await handler(entry, { getBlob: () => store.getBlob(entry.id) });
+    const outcome = await sendWithin(entry, handler);
+    if (outcome.kind === "sent") {
       await store.delete(entry.id);
       sent += 1;
       // Confirmation is different from an absent entry (which may have been
       // discarded). A UI observer must never turn a successful write into a retry.
-      try { opts.onSent?.(entry, result); } catch { /* best-effort observer */ }
-    } catch (err) {
-      // Stamp the failure from the clock NOW, not from the pass's opening
-      // read. A pass can hold a 25 MB photo upload for half a minute; a write
-      // that fails after it would otherwise get a retry time already in the
-      // past, and drainUntilSettled's next pass would try it again at once —
-      // burning one of its MAX_ATTEMPTS on the same dead signal.
-      const next = applyFailure(entry, err, clock());
-      await store.put(next);
-      if (next.status === "failed") {
-        deadLettered += 1;
-        // Anything waiting on this can never be sent now. Fail it here rather
-        // than leaving it queued forever, invisible and uncounted.
-        const stranded = cascadeFailure(await store.getAll(), next.id);
-        for (const s of stranded) {
-          await store.put(s);
-          deadLettered += 1;
-        }
-      } else retried += 1;
+      try { opts.onSent?.(entry, outcome.result); } catch { /* best-effort observer */ }
+    } else if (outcome.kind === "failed") {
+      await recordFailure(entry, outcome.error);
+    } else {
+      await recordFailure(entry, new SendTookTooLongError());
+      try { opts.onAbandoned?.(entry, outcome.deadlineMs); } catch { /* best-effort observer */ }
     }
     opts.onChange?.();
   };

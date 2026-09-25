@@ -10,6 +10,11 @@
 // optionally a reload while still offline (the force-quit), then signal
 // returns and every photo must land: the bytes in the bucket, then the row.
 //
+// The third test is the watchdog (2026-09-25): one photo's send is held by a
+// read of the phone's own database that never answers — the kind of step
+// that had no time limit — and the other photos must still go, with the held
+// one following on its retry, all without a relaunch.
+//
 // The dead zone is made the way queued-clock.spec.ts makes it: every Supabase
 // call is refused outright, the app's own files are passed through so a reload
 // works offline, and the refusals are counted so a run where the app quietly
@@ -195,6 +200,8 @@ async function queuedOps(page: Page) {
     return rows.map((r) => {
       const m = JSON.parse(r.meta);
       return {
+        id: m.id as string,
+        createdAt: m.createdAt as number,
         op: m.op as string,
         status: m.status as string,
         attempts: m.attemptCount as number,
@@ -284,3 +291,78 @@ for (const reload of [false, true]) {
     expect(await queuedOps(page)).toEqual([]);
   });
 }
+
+/**
+ * One read of the outbox's own database that never answers, for one entry.
+ * Every other read, and every later read of the same entry, goes through.
+ * The first read inside a send is the "sending" mark's look-up of the stored
+ * photo (IndexedDbOutboxStore.put), so this holds the send at its start.
+ */
+async function holdableOutboxReads(page: Page) {
+  await page.addInitScript(() => {
+    const w = window as unknown as { __holdOutboxRead?: string | null; __heldOutboxRead?: boolean };
+    const realGet = IDBObjectStore.prototype.get;
+    IDBObjectStore.prototype.get = function (this: IDBObjectStore, key: IDBValidKey | IDBKeyRange) {
+      if (w.__holdOutboxRead && this.name === "entries" && key === w.__holdOutboxRead) {
+        w.__holdOutboxRead = null;
+        w.__heldOutboxRead = true;
+        return { result: undefined, error: null, readyState: "pending", onsuccess: null, onerror: null } as unknown as IDBRequest;
+      }
+      return realGet.call(this, key);
+    } as typeof IDBObjectStore.prototype.get;
+  });
+}
+
+test("a photo whose send never answers does not hold the others: they upload, and it follows on its retry", async ({
+  page,
+  context,
+}) => {
+  await page.clock.install();
+  await useSupabaseFixtures(page, { role: "installer" });
+  await hideWrongProjectBanner(page);
+  await stubGeolocationDenied(page);
+  await holdableOutboxReads(page);
+  const signal = new Signal();
+  const server = await fieldServer(page, signal);
+
+  await page.goto("/");
+  await expect(page.locator(".clockin-block")).toBeVisible();
+  await captureFab(page).click();
+  await captureSheet(page).getByRole("button", { name: /Find a job/ }).click();
+  await expect(captureSheet(page).getByRole("button", { name: /BLACK22/ }).first()).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  signal.dead = true;
+  await context.setOffline(true);
+  await clockInOffline(page);
+  await capturePhotos(page, 3);
+
+  const photos = (await queuedOps(page)).filter((q) => q.op === "photo_upload").sort((a, b) => a.createdAt - b.createdAt);
+  expect(photos).toHaveLength(3);
+  const held = photos[0];
+  await page.evaluate((id) => {
+    (window as unknown as { __holdOutboxRead?: string }).__holdOutboxRead = id;
+  }, held.id);
+
+  await signalReturns(page, signal);
+  await expect.poll(() => server.writes.filter((w) => w === "clock_in").length).toBe(1);
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { __heldOutboxRead?: boolean }).__heldOutboxRead === true))
+    .toBe(true);
+  // Stuck on that one read, nothing else goes.
+  await page.waitForTimeout(1_000);
+  expect(server.uploads).toHaveLength(0);
+
+  // Two and a half minutes later, with no relaunch: the other two are up.
+  await page.clock.fastForward("02:30");
+  await expect.poll(() => server.rows.length, { timeout: 30_000 }).toBe(2);
+  expect(server.rows.map((r) => r.client_id)).not.toContain(held.id);
+
+  // Its backoff passes and the next drain sends it: all three, once each.
+  await page.clock.fastForward("00:45");
+  await expect.poll(() => server.rows.length, { timeout: 30_000 }).toBe(3);
+  expect(new Set(server.rows.map((r) => r.client_id)).size).toBe(3);
+  expect(server.rows.map((r) => r.client_id)).toContain(held.id);
+  await expect(page.getByText(/Photos \d/)).toHaveCount(0);
+  expect(await queuedOps(page)).toEqual([]);
+});

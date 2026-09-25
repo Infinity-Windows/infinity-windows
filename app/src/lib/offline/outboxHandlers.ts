@@ -25,6 +25,7 @@ import { translate } from "../i18n/translate";
 import {
   errorMessage,
   isNetworkError,
+  SendTookTooLongError,
   type OpHandler,
   type OpHandlers,
   type OutboxEntry,
@@ -296,6 +297,23 @@ async function containerIsAlreadyAt(
   );
 }
 
+/**
+ * Stop before a write that must not land late (the send watchdog, 2026-09-25).
+ *
+ * The drain stops waiting for a send that has not answered in time and
+ * retries it from the queue, but it cannot cancel the old attempt — that is a
+ * fetch inside supabase-js. If the old attempt wakes up, its outcome is
+ * ignored; what it must not do is go on to its NEXT write beside the retry.
+ * For a keyed write that would only land twice on the same row, but a write
+ * built from an earlier read (a daily log merged with the server's text, a
+ * receipt resent with the amount it read) would put that stale read back over
+ * whatever changed in the meantime. So a handler with a second step checks in
+ * here first.
+ */
+function stopIfAbandoned(ctx: { signal?: AbortSignal }): void {
+  if (ctx.signal?.aborted) throw new SendTookTooLongError();
+}
+
 /** A network/permanent error tagged so the core's classifier can route it. */
 function tagPermanent(err: unknown): unknown {
   if (err && typeof err === "object") {
@@ -488,6 +506,7 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
       .from(bucket)
       .upload(path, blob, { contentType, upsert: true });
     if (upErr) throw upErr;
+    stopIfAbandoned(ctx);
 
     const row = {
       window_id: str(p.windowId),
@@ -594,6 +613,7 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
       .from(bucket)
       .upload(path, blob, { contentType, upsert: true });
     if (upErr) throw upErr;
+    stopIfAbandoned(ctx);
 
     const { error } = await supabase.rpc("file_receipt", {
       p_id: id,
@@ -633,6 +653,7 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
       .from(bucket)
       .upload(path, blob, { contentType, upsert: true });
     if (upErr) throw upErr;
+    stopIfAbandoned(ctx);
 
     const { error } = await supabase.rpc("set_receipt_document", {
       p_id: id,
@@ -649,7 +670,7 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
   // can never race ahead of extract-receipt filling amount/vendor/date a
   // moment later. See update_receipt's own comment in the migration for
   // why the RPC itself takes the full record rather than a sparse patch.
-  const receiptAnswer: OpHandler = async (entry) => {
+  const receiptAnswer: OpHandler = async (entry, ctx) => {
     const p = entry.payload;
     const receiptId = str(p.receiptId);
     if (!receiptId) {
@@ -677,6 +698,7 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
       category: string | null;
       note: string | null;
     };
+    stopIfAbandoned(ctx);
 
     const { error } = await supabase.rpc("update_receipt", {
       p_id: receiptId,
@@ -731,7 +753,7 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
    * cannot be fetched, the queued values go as they are — the ordinary
    * no-race outcome, which is also the overwhelmingly common one.
    */
-  const dailyLog: OpHandler = async (entry) => {
+  const dailyLog: OpHandler = async (entry, ctx) => {
     const p = entry.payload;
     const projectId = str(p.projectId);
     const logDate = str(p.logDate);
@@ -755,6 +777,7 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
       /* can't tell whether anybody raced — send what was typed */
     }
     const merged = mergeQueuedDailyLog(queued, server);
+    stopIfAbandoned(ctx);
 
     const { error } = await supabase.rpc("file_daily_log", {
       p_project_id: projectId,
@@ -1287,7 +1310,7 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
     }
   };
 
-  const moveContainer: OpHandler = async (entry) => {
+  const moveContainer: OpHandler = async (entry, ctx) => {
     const containerId = str(entry.payload.containerId);
     if (!containerId) {
       throw tagPermanent(new Error("This move is missing the container it was for"));
@@ -1295,6 +1318,7 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
     const parent = str(entry.payload.parentContainerId);
     const location = str(entry.payload.locationId);
     if (await containerIsAlreadyAt(containerId, parent, location)) return;
+    stopIfAbandoned(ctx);
     const { error } = await supabase.rpc("move_container", {
       p_container: containerId,
       p_parent: parent,
