@@ -234,7 +234,9 @@ test("a punch saved before owners were recorded is never sent as anyone, and Stu
   // Not shown as this person clocked in.
   await expect(page.locator(".tab.clock-on")).toHaveCount(0);
 
-  await page.locator(".sync-pill").first().click();
+  // Two pills render — the phone header's and the desktop rail's, hidden at
+  // this width: open the one a person can see.
+  await page.locator(".sync-pill:visible").first().click();
   await expect(page).toHaveURL(/\/stuck$/);
   const section = page.getByTestId("stuck-unknown");
   await expect(page.getByText("Saved before an update — Forge can't tell who saved it")).toBeVisible();
