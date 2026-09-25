@@ -203,26 +203,9 @@ export default defineConfig({
         // `esm-<hash>.js` after whatever file happened to be first, which is
         // not a thing a glob can name and not a thing anybody reading the
         // build output would recognise.
-        //
-        // Only the Sentry packages themselves go in it
-        // (includeDependenciesRecursively: false). A named chunk otherwise
-        // swallows everything its modules import that no other named chunk
-        // has claimed — and @sentry/react imports React. That is how React
-        // itself ended up inside `monitoring-*.js` (2026-09-25): every screen
-        // imported React from the crash monitor's chunk, so the entry loaded
-        // all 30 kB (gzipped) of a switched-off SDK before the first paint,
-        // and — with no DSN — the one chunk the service worker skips below
-        // was one the app could not start without. React now lands in an
-        // ordinary chunk, precached like the rest, and nothing but
-        // lib/monitoring/sentry.ts's dynamic import ever asks for this one.
-        codeSplitting: {
-          groups: [
-            {
-              name: 'monitoring',
-              test: /node_modules[\\/]@sentry/,
-              includeDependenciesRecursively: false,
-            },
-          ],
+        manualChunks(id: string) {
+          if (id.includes('node_modules/@sentry')) return 'monitoring'
+          return undefined
         },
       },
     },
