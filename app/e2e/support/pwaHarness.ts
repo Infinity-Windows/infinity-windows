@@ -10,10 +10,10 @@
 // was fine, and so was every dev-server spec, while every phone with the old
 // worker went black.
 //
-// Like GitHub Pages, it answers every file with `Cache-Control: max-age=600`,
-// serves a missing path as index.html with status 404 (Pages serves 404.html,
-// a byte-copy of index.html — see spaFallbackPlugin in vite.config.ts), and
-// ignores query strings.
+// Like GitHub Pages, it answers every file it has with `Cache-Control:
+// max-age=600`, serves a missing path as index.html with status 404 and no
+// caching header (Pages serves 404.html, a byte-copy of index.html — see
+// spaFallbackPlugin in vite.config.ts), and ignores query strings.
 //
 // Usage (from app/):
 //   node --experimental-strip-types e2e/support/pwaHarness.ts
@@ -190,7 +190,10 @@ function main(): void {
     res.writeHead(status, {
       "Content-Type": type,
       "Content-Length": Buffer.byteLength(body),
-      "Cache-Control": "max-age=600",
+      // Pages sends max-age=600 on everything it finds and no caching header
+      // at all on a 404 — which matters: a 404 with max-age would sit in the
+      // browser's cache for ten minutes and fail the next install too.
+      ...(status === 200 ? { "Cache-Control": "max-age=600" } : {}),
       "Access-Control-Allow-Origin": "*",
     });
     res.end(body);
