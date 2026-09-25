@@ -10,7 +10,7 @@ An open job clock makes the ordinary home route show Current Work. Explicit job/
 2. Tap **Start unit**, enter a number and type, and start. Unknown type, a generated temporary name, missing dimensions and an unassigned job are supported.
 3. Add dimensions, story, location, material, electrical components, complexity, access, approximate weight, equipment and its minutes, helper names, and notes when convenient. Types accept arbitrary text; the shared catalog is a suggestion, not a gate.
 4. Each helper joins on their own account and records their own interval. Entering helper names alone creates no hours.
-5. Finish into **Idle time** with a preset or typed description, switch to another unit, or stop. Breaks and clock-out end the active interval. Returning from a custom-work break requires a deliberate Start/Join.
+5. Tap **Unit complete ✓** to stop the timer as finished and mark the whole install complete (someone working another person's unit gets **Finished my part ✓**), finish into **Prep time** with a preset or typed description, switch to another unit, or stop. Breaks and clock-out end the active interval. Returning from a custom-work break requires a deliberate Start/Join.
 6. Use the job's Custom Data tab to review the crew timeline, correct records, export CSV, and inspect candidate hours/SQF by type.
 
 Foremen and above can add, rename, archive and restore reusable types. An installer can edit their own unit and their own accomplishment notes; foremen can edit the shared records. Foremen may correct closed activity intervals with a reason after the job clock is resolved. The server checks shift bounds, overlaps, job attribution and total captured time against the worked shift. These corrections never rewrite payroll.
