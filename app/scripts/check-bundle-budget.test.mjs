@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { BUDGET_GZIP_KB, checkBudget, findEntryChunk } from "./check-bundle-budget.mjs";
+import {
+  BUDGET_GZIP_KB,
+  checkBudget,
+  findEntryChunk,
+  firstScreenChunks,
+  missingFromPrecache,
+  staticImportsOf,
+} from "./check-bundle-budget.mjs";
 
 describe("findEntryChunk", () => {
   it("picks the hashed index-*.js entry out of a dist/assets listing", () => {
@@ -42,5 +49,56 @@ describe("checkBudget", () => {
     // route splitting landed; a jump like that should fail.
     const result = checkBudget(700 * 1024);
     expect(result.ok).toBe(false);
+  });
+});
+
+describe("staticImportsOf", () => {
+  it("reads the static imports out of a minified chunk, and never a dynamic one", () => {
+    const code =
+      'import{t as e}from"./rolldown-runtime-aKtaBQYM.js";import{n as r}from"./react-lCSYwAWP.js";' +
+      'import"./side-effect-B1.js";export{c as d}from"./shared-C2.js";' +
+      'const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/Scanner-DYdUZuY5.js"])))=>i.map(i=>d[i]);' +
+      'var Q=()=>import("./DispatchBoard-Q9.js");';
+    expect(staticImportsOf(code).sort()).toEqual([
+      "react-lCSYwAWP.js",
+      "rolldown-runtime-aKtaBQYM.js",
+      "shared-C2.js",
+      "side-effect-B1.js",
+    ]);
+  });
+});
+
+describe("firstScreenChunks", () => {
+  it("follows static imports all the way down and stops at dynamic ones", () => {
+    const chunks = new Map([
+      ["index-A.js", 'import{a}from"./react-B.js";import{b}from"./api-C.js";var l=()=>import("./Tab-D.js");'],
+      ["react-B.js", ""],
+      ["api-C.js", 'import{s}from"./supabase-E.js";'],
+      ["supabase-E.js", 'import{a}from"./react-B.js";'],
+      ["Tab-D.js", 'import{x}from"./heavy-F.js";'],
+    ]);
+    expect(firstScreenChunks("index-A.js", (f) => chunks.get(f)).sort()).toEqual([
+      "api-C.js",
+      "index-A.js",
+      "react-B.js",
+      "supabase-E.js",
+    ]);
+  });
+});
+
+describe("missingFromPrecache", () => {
+  it("flags a first-screen chunk the service worker skips — the 2026-09-25 shape", () => {
+    // React had landed in the crash monitor's chunk, which globIgnores keeps
+    // out of the precache while monitoring is off.
+    const sw =
+      'precacheAndRoute([{url:"assets/index-A.js",revision:null},{url:"assets/react-B.js",revision:null}]);';
+    expect(missingFromPrecache(["index-A.js", "react-B.js", "monitoring-M.js"], sw)).toEqual([
+      "monitoring-M.js",
+    ]);
+  });
+
+  it("is empty when every first-screen chunk is precached", () => {
+    const sw = '[{url:"assets/index-A.js"},{url:"assets/react-B.js"}]';
+    expect(missingFromPrecache(["index-A.js", "react-B.js"], sw)).toEqual([]);
   });
 });
