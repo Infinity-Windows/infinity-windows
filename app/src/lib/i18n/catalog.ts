@@ -2595,22 +2595,22 @@ export const CATALOG = {
   // sent as anyone. A person may throw it away; nothing sends it as them.
   "pill.unknownOwner": { en: "{count} saved before an update", es: "{count} de antes de una actualización" },
   "pill.unknownOwnerDetail": {
-    en: "Saved on this phone before an update, and Forge can't tell who saved it, so it won't send it under anyone's name. Open Stuck writes to see it.",
-    es: "Guardado en este teléfono antes de una actualización, y Forge no puede saber quién lo guardó, así que no lo enviará a nombre de nadie. Abre Escrituras atascadas para verlo.",
+    en: "Saved before an update, and Forge can't tell who saved it. See Stuck writes.",
+    es: "Guardado antes de una actualización; Forge no sabe quién lo guardó. Mira Escrituras atascadas.",
   },
   "stuck.unknown.title": {
     en: "Saved before an update — Forge can't tell who saved it",
     es: "Guardado antes de una actualización — Forge no puede saber quién lo guardó",
   },
   "stuck.unknown.body": {
-    en: "An older version of Forge saved these on this phone without noting who saved them, so Forge won't send them under anyone's name. If one was yours, tell your foreman what it was — a clock punch can be fixed on your timecard — then throw it away.",
-    es: "Una versión anterior de Forge guardó esto en este teléfono sin anotar quién lo guardó, así que Forge no lo enviará a nombre de nadie. Si algo era tuyo, dile a tu capataz qué era — una marca de reloj se puede corregir en tu tarjeta de horas — y luego elimínalo.",
+    en: "An older version didn't note who saved these, so Forge won't send them as anyone. If one was yours, tell your foreman, then throw it away.",
+    es: "Una versión anterior no anotó quién guardó esto, así que Forge no lo enviará a nombre de nadie. Si algo era tuyo, avísale a tu capataz y luego elimínalo.",
   },
   "diag.unknownOwnerQueue": { en: "Saved before an update, owner unknown", es: "Guardado antes de una actualización, sin dueño conocido" },
   "stuck.held.title": { en: "Saved by someone else on this phone", es: "Guardado por otra persona en este teléfono" },
   "stuck.held.body": {
-    en: "Waiting for the person who saved these to sign in. They go out under that person's name, never yours, and they stay on this phone until then.",
-    es: "Esperando a que la persona que guardó esto inicie sesión. Se envían a nombre de esa persona, nunca al tuyo, y se quedan en este teléfono hasta entonces.",
+    en: "Waiting for the person who saved these to sign in. They go out under their name, never yours.",
+    es: "Esperando a que la persona que guardó esto inicie sesión. Se envían a su nombre, nunca al tuyo.",
   },
   "diag.heldQueue": { en: "Waiting for another person to sign in", es: "Esperando a que otra persona inicie sesión" },
   "pill.weakSignal": { en: "Weak signal", es: "Señal débil" },
