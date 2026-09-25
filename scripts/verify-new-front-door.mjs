@@ -207,6 +207,11 @@ await db.exec("set check_function_bodies = on");
 await db.exec(await migration("20261031000000_new_front_door.sql"));
 
 const uid = (n) => `00000000-0000-4000-8000-00000000000${n}`;
+// The company-local day, exactly as set_paid_time_rule_date and the gate
+// compute it. `current_date` is the SESSION's day — UTC on a CI runner — and
+// from 18:00 in Denver it is already tomorrow there, so "yesterday" was
+// Denver's today and the past-date refusal went missing (CI, 2026-09-25 02:43 UTC).
+const TODAY = "(now() at time zone 'America/Denver')::date";
 const JOB = "00000000-0000-4000-8000-0000000000bb";
 const COST = "00000000-0000-4000-8000-0000000000cc";
 const OPENING = "00000000-0000-4000-8000-0000000000aa";
@@ -240,7 +245,7 @@ assert.equal((await one("select ui_design from profiles where id = $1", [uid(1)]
 for (const n of [1, 2, 3]) {
   await as(n);
   await assert.rejects(() => db.query("select set_new_design_switch('r1', false)"), /Only an owner/);
-  await assert.rejects(() => db.query("select set_paid_time_rule_date(current_date)"), /Only an owner/);
+  await assert.rejects(() => db.query(`select set_paid_time_rule_date(${TODAY})`), /Only an owner/);
 }
 await as(4);
 assert.equal((await one("select new_design_r1_enabled from company_settings")).new_design_r1_enabled, true);
@@ -263,14 +268,14 @@ assert.equal(await count("time_shifts"), 0);
 
 // The owner picks a date in the future: still today's timing until then.
 await as(4);
-await assert.rejects(() => db.query("select set_paid_time_rule_date(current_date - 1)"), /cannot start in the past/);
-await db.query("select set_paid_time_rule_date(current_date + 7)");
+await assert.rejects(() => db.query(`select set_paid_time_rule_date(${TODAY} - 1)`), /cannot start in the past/);
+await db.query(`select set_paid_time_rule_date(${TODAY} + 7)`);
 await as(1);
 await assert.rejects(punch, /toolbox talk/);
 
 // The date arrives: the Start day tap clocks in, unsigned, on every overload.
 await as(4);
-await db.query("select set_paid_time_rule_date(current_date)");
+await db.query(`select set_paid_time_rule_date(${TODAY})`);
 await as(1);
 const first = (await punch()).rows[0];
 assert.equal(first.profile_id, uid(1));
@@ -443,12 +448,12 @@ assert.equal(await count("time_shifts where profile_id = $1", [uid(5)]), 0, "key
 assert.equal(await count("time_clock_actions where client_id = $1", [k1]), 0, "keyed, refused: no ledger row");
 // A date still ahead: still today's timing.
 await as(4);
-await db.query("select set_paid_time_rule_date(current_date + 7)");
+await db.query(`select set_paid_time_rule_date(${TODAY} + 7)`);
 await as(5);
 await assert.rejects(() => keyed(k1), /toolbox talk/, "keyed, rule set for a day ahead: still refused unsigned");
 // The date arrives: the Start day tap clocks in unsigned through the keyed door.
 await as(4);
-await db.query("select set_paid_time_rule_date(current_date)");
+await db.query(`select set_paid_time_rule_date(${TODAY})`);
 await as(5);
 const s5 = await keyed(k1, { mode: "tracking" });
 assert.deepEqual([s5.profile_id, s5.client_id, s5.job_mode, s5.review_reason], [uid(5), k1, "tracking", null], "keyed, rule on, unsigned: clocks in");
