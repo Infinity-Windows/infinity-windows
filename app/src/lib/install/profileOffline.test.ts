@@ -74,6 +74,14 @@ describe("the profile the phone keeps (myProfile)", () => {
     await expect(getMyProfile()).rejects.toBe(auth.userError);
   });
 
+  it("throws when the auth server is too busy to say (429 'slow down', a 5xx) — that is not an answer either", async () => {
+    auth.user = null;
+    auth.userError = new AuthApiError("Request rate limit reached", 429, "over_request_rate_limit");
+    await expect(getMyProfile()).rejects.toBe(auth.userError);
+    auth.userError = new AuthApiError("upstream failed", 505, undefined);
+    await expect(getMyProfile()).rejects.toBe(auth.userError);
+  });
+
   it("still answers null when nobody is signed in, or the auth server says the sign-in is no good", async () => {
     auth.session = null;
     await expect(getMyProfile()).resolves.toBeNull();

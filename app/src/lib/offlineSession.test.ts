@@ -1,4 +1,4 @@
-// The three rules that keep a phone signed in with no signal (2026-09-24).
+// The rules that keep a phone signed in with no signal (2026-09-24).
 // The browser-level proof — a phone reopened in a dead zone the morning after
 // — is e2e/offline-session.spec.ts; these hold each rule on its own.
 
@@ -9,6 +9,7 @@ import {
   authStorageKey,
   createRenewalWatch,
   isRenewal,
+  readPhoneStorage,
   readStoredSession,
   RENEW_MARGIN_MS,
   RENEWAL_TROUBLE_WINDOW_MS,
@@ -77,13 +78,43 @@ describe("where the sign-in is kept", () => {
   });
 });
 
+describe("reading the phone's own localStorage", () => {
+  it("returns the window's localStorage when it can be read", () => {
+    const localStorage = storageWith(null);
+    expect(readPhoneStorage({ localStorage } as unknown as Window)).toBe(localStorage);
+  });
+
+  it("is null when there is no window", () => {
+    expect(readPhoneStorage(null)).toBeNull();
+    expect(readPhoneStorage(undefined)).toBeNull();
+  });
+
+  it("never throws, even when touching localStorage itself does — Safari private browsing and storage-locked webviews throw a SecurityError just reading the property, not only on a method call", () => {
+    const lockedDown: Pick<Window, "localStorage"> = {
+      get localStorage(): Storage {
+        throw new DOMException("blocked", "SecurityError");
+      },
+    };
+    expect(readPhoneStorage(lockedDown)).toBeNull();
+  });
+});
+
 describe("which session App holds", () => {
-  it("takes a real session whenever auth gives one", () => {
+  it("takes the session a sign-in, renewal or update just saved", () => {
     const fresh = session({ access_token: "renewed" });
-    expect(sessionToKeep({ from: "load", session: fresh }, expired())).toBe(fresh);
-    for (const event of ["INITIAL_SESSION", "SIGNED_IN", "TOKEN_REFRESHED", "USER_UPDATED"] as const) {
+    for (const event of ["SIGNED_IN", "TOKEN_REFRESHED", "USER_UPDATED"] as const) {
       expect(sessionToKeep({ from: "event", event, session: fresh }, null)).toBe(fresh);
     }
+  });
+
+  it("takes a getSession() or INITIAL_SESSION answer while the phone still holds that sign-in", () => {
+    // Renewed and saved: the answer and the phone agree.
+    const fresh = session({ access_token: "renewed" });
+    expect(sessionToKeep({ from: "load", session: fresh }, { ...fresh })).toBe(fresh);
+    expect(sessionToKeep({ from: "event", event: "INITIAL_SESSION", session: fresh }, { ...fresh })).toBe(fresh);
+    // They can arrive late, after the sign-in changed: then the phone decides
+    // (offlineSession.accountChange.test.ts has the account changes).
+    expect(sessionToKeep({ from: "load", session: fresh }, expired())).toEqual(expired());
   });
 
   it("stays signed in when the renewal could not reach the auth server — the phone still holds the sign-in", () => {
@@ -112,7 +143,7 @@ describe("getSession when the sign-in cannot be renewed", () => {
     const renewals = createRenewalWatch(() => now);
     let finish: (a: Answer) => void = () => {};
     const load = vi.fn(() => new Promise<Answer>((resolve) => (finish = resolve)));
-    const deps = { stored: () => stored, online: () => online, renewals, now: () => now };
+    const deps = { stored: () => stored, isRefused: () => false, online: () => online, renewals, now: () => now };
     return {
       getSession: answerSoonerWhenOffline(load, deps),
       load,
