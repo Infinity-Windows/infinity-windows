@@ -15,7 +15,7 @@
 //      talk") is the last tap: exactly ONE clock_in request leaves the phone,
 //      carrying the job and the cost code the person picked on the landing.
 //
-// WHY THIS IS RED on master (b6709ae) — the two lines that make it so:
+// WHY THIS WAS RED until #580 (master b6709ae) — the two lines that made it so:
 //   ClockInBlock.tsx:607  the held button's only action is
 //                         onClick={openClockGlobally}, and
 //   clockContext.tsx:119  openClockGlobally dispatches a bare `new Event(...)`
@@ -252,7 +252,18 @@ test("pick once, tap once: the talk comes up in the block and signing it is the 
   expect(clockIns[0].body.p_project_id).toBe(OAKRIDGE);
   expect(clockIns[0].body.p_cost_code_id).toBe(INSTALL);
 
-  // And the landing settles into the on-the-clock bar for that job.
-  await expect(page.locator(".clockin-bar")).toContainText("OAKRIDGE");
+  // And the phone moves on to Current Work for that job, with the nav's clock
+  // lit. Not the landing's on-the-clock bar: since #598 the landing hands an
+  // open shift straight to Current Work (RoleLanding in App.tsx), so the block
+  // and its bar unmount the moment the punch lands. The heading names the job
+  // by its name, not its code.
+  const currentWork = page.getByRole("heading", { name: "Current Work", exact: true });
+  await expect(currentWork).toBeVisible();
+  await expect(page.locator(".cw-heading", { has: currentWork })).toContainText(
+    "Oakridge Apartments Bldg C",
+  );
+  await expect(page.getByRole("button", { name: "On the clock", exact: true })).toHaveClass(
+    /\bclock-on\b/,
+  );
   expect(clockIns).toHaveLength(1);
 });
