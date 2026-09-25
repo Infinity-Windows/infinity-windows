@@ -313,6 +313,17 @@ export async function listAll(): Promise<OutboxEntry[]> {
   return (await store.getAll()).sort((a, b) => a.createdAt - b.createdAt);
 }
 
+/**
+ * This person's writes on this phone, any state, oldest first — what /stuck
+ * lists and offers to retry or throw away. Someone else's are listHeld: not
+ * this person's to decide.
+ */
+export async function listMine(): Promise<OutboxEntry[]> {
+  const signer = signerNow();
+  const launch = launchUserId();
+  return (await listAll()).filter((e) => belongsTo(e, signer, launch));
+}
+
 /** The writes on this phone waiting for someone else to sign in, oldest first. */
 export async function listHeld(): Promise<OutboxEntry[]> {
   const signer = signerNow();

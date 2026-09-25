@@ -21,7 +21,8 @@ import { useClock } from "../lib/clockContext";
 import { formatApiError } from "../lib/errors";
 import {
   discardFailed,
-  listAll,
+  listHeld,
+  listMine,
   recentlySent,
   retryFailed,
   sendNow,
@@ -31,6 +32,7 @@ import {
   buildStuckRows,
   queuedAgoLabel as queuedAgo,
   stateLabel,
+  writeLabel,
   type StuckRow,
 } from "../lib/offline/stuckRows";
 import {
@@ -98,7 +100,12 @@ export function StuckWrites() {
   const t = useT();
   const queryClient = useQueryClient();
   const { profileId } = useClock();
-  const writesQ = useQuery({ queryKey: ["queuedWrites"], queryFn: listAll });
+  // This person's own writes: every state, with Try again / Throw away where
+  // they apply. Someone else's work on this phone (2026-09-25) is read on its
+  // own and shown, never offered for retry or throwing away — it is not this
+  // person's to decide.
+  const writesQ = useQuery({ queryKey: ["queuedWrites"], queryFn: listMine });
+  const heldQ = useQuery({ queryKey: ["heldWrites"], queryFn: listHeld });
   // A stuck INSTALL is the worst case on this screen — it is the record that a
   // window got finished — so it belongs here even though it lives in its own
   // store with its own subscribe mechanism.
@@ -115,6 +122,7 @@ export function StuckWrites() {
   useEffect(() => {
     return subscribe(() => {
       void queryClient.invalidateQueries({ queryKey: ["queuedWrites"] });
+      void queryClient.invalidateQueries({ queryKey: ["heldWrites"] });
       // The migration out of the old store announces itself here too.
       void queryClient.invalidateQueries({ queryKey: ["queuedPersonal"] });
     });
@@ -232,7 +240,9 @@ export function StuckWrites() {
     t,
   );
   const loading = writesQ.isLoading || installsQ.isLoading || personalQ.isLoading;
-  const nothingToSend = sections.needsYou.length === 0 && sections.waiting.length === 0;
+  const held = heldQ.data ?? [];
+  const nothingToSend =
+    sections.needsYou.length === 0 && sections.waiting.length === 0 && held.length === 0;
 
   const renderRow = (e: StuckRow) => {
     const confirming = confirmingId === e.id;
@@ -377,6 +387,28 @@ export function StuckWrites() {
         <section aria-labelledby="stuck-sent">
           <h2 id="stuck-sent">{t("stuck.section.sent")}</h2>
           <ul className="unit-list">{sections.sent.map(renderRow)}</ul>
+        </section>
+      )}
+
+      {held.length > 0 && (
+        <section aria-labelledby="stuck-held-title" style={{ marginTop: 20 }}>
+          <h2 id="stuck-held-title" style={{ fontSize: 16 }}>{t("stuck.held.title")}</h2>
+          <p className="muted">{t("stuck.held.body")}</p>
+          <ul className="unit-list" data-testid="stuck-held">
+            {held.map((e) => (
+              <li key={e.id}>
+                <div className="find-row">
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontWeight: 600 }}>{writeLabel(e, t)}</div>
+                    <div className="muted" style={{ fontSize: 12.5 }}>
+                      {queuedAgo(e.createdAt, now, t)}
+                      {e.createdAt > 0 ? ` · ${fmtWhen(e.createdAt)}` : ""}
+                    </div>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
         </section>
       )}
     </div>

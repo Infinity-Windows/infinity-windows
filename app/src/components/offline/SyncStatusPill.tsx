@@ -39,6 +39,7 @@ import { totalPending } from "../../lib/offline/outbox-core";
 import { subscribe as subscribeOutbox } from "../../lib/offline/outbox";
 import { withConnection } from "../../lib/offline/pillConnection";
 import { combineQueues, PILL_DESTINATION } from "../../lib/offline/pillQueues";
+import { withHeld } from "../../lib/offline/pillHeld";
 import { useConnection } from "../../lib/offline/useWeakSignal";
 import {
   failedInstallCount,
@@ -244,14 +245,17 @@ function useLegacyUploadCount(): number {
 
 export function SyncStatusPill() {
   const t = useT();
-  const { counts, pill: outboxPill } = useOutbox();
+  const { counts, pill: outboxPill, held } = useOutbox();
   const { profileId } = useClock();
   const installs = useInstallOutboxCount();
   const custom = useCustomWorkCount(profileId);
   const service = useServicingCount(profileId);
   const legacy = useLegacyUploadCount();
+  // Someone else's queued work waits for them and is shown as theirs, never
+  // counted as this person's (2026-09-25, lib/offline/entryOwner.ts): it is
+  // already out of `counts`, and withHeld names it on the face.
   const combined = combineQueues(
-    outboxPill,
+    withHeld(outboxPill, held, t),
     {
       basePending: totalPending(counts),
       installsPending: installs.pending,
