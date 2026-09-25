@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { formatApiError } from "../lib/errors";
 import { supabase } from "../lib/supabase";
+import { signOutOnRequest } from "../lib/signOut";
 import { peekCrewInvite, redeemCrewInvite, type InvitePreview } from "../lib/crewAccess";
 import { usePreAuthT } from "../lib/i18n";
 import {
@@ -148,7 +149,7 @@ export function JoinCrew({
             <button
               className="button-like"
               onClick={() => {
-                void supabase.auth.signOut();
+                void signOutOnRequest();
                 setSignedInAs(null);
               }}
             >

@@ -1,7 +1,7 @@
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { useQuery } from "@tanstack/react-query";
 import type { Session } from "@supabase/supabase-js";
-import { Suspense, useEffect, useState, type ReactNode } from "react";
+import { Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 import { listProjectsAnyStatus } from "./lib/api";
 import { lazyRoute } from "./lib/pwa/lazyRoute";
 import { isTrackingOnly } from "./lib/jobModes";
@@ -53,6 +53,9 @@ import { FirstRunLanguagePicker } from "./components/LanguagePicker";
 import { ensureMyProfile } from "./lib/install/api";
 import { SkeletonCard } from "./components/ui/States";
 import { useIsPartnerUser } from "./lib/stg";
+import { signInOnThisPhone } from "./lib/supabase";
+import { sessionToKeep } from "./lib/offlineSession";
+import { signOutWasRequested } from "./lib/signOut";
 import "./index.css";
 
 /**
@@ -402,6 +405,16 @@ function SectionAura() {
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
+  /**
+   * The sign-in this phone is using — what App last held, or, before auth
+   * has answered at all, the one kept in storage at launch — for the auth
+   * listener, whose closure is from mount. A refusal of the renewal at launch
+   * signs out a phone that WAS signed in, and it is told so.
+   */
+  const [launchSignIn] = useState(signInOnThisPhone);
+  const held = useRef<Session | null>(launchSignIn);
+  /** The auth server ended this phone's sign-in; nobody tapped Sign out. */
+  const [signedOutByServer, setSignedOutByServer] = useState(false);
   // Password recovery: true when this load came from a reset email, or when
   // supabase fires PASSWORD_RECOVERY after picking the tokens out of the URL.
   const [recovery, setRecovery] = useState(() => isRecoveryLanding(LANDING_HASH));
@@ -453,22 +466,40 @@ export default function App() {
       void ensureMyProfile().catch(() => {});
       void prefetchWarehousePack();
     };
+    // Every answer auth gives goes through one rule, sessionToKeep: a real
+    // session wins, SIGNED_OUT is final, and any other "no session" defers to
+    // the sign-in still kept on this phone. supabase-js deletes that itself on
+    // a definite refusal and keeps it when the renewal only failed to reach
+    // the auth server — so no signal keeps a crew member signed in, on the
+    // profile and clock the phone saved (2026-09-24).
+    const hold = (next: Session | null) => {
+      held.current = next;
+      if (next) setSignedOutByServer(false);
+      rememberSignedIn(next);
+      setSession(next);
+    };
     supabase.auth.getSession().then(({ data }) => {
       // This is the ONE place the app asks who is signed in. Everywhere that
       // only wants a name on a record — the photo shutter above all — reads
       // lib/signedIn instead of making its own auth call, because an auth call
       // in the middle of a tap is a network round trip, and on a token that has
       // gone stale offline it is a long one that answers "nobody".
-      rememberSignedIn(data.session);
-      setSession(data.session);
+      const s = sessionToKeep({ from: "load", session: data.session }, signInOnThisPhone());
+      hold(s);
       setReady(true);
-      onSignedIn(data.session);
+      onSignedIn(s);
     });
     const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
       if (event === "PASSWORD_RECOVERY") setRecovery(true);
-      rememberSignedIn(s);
-      setSession(s);
-      onSignedIn(s);
+      // The server ended a sign-in this phone was using, and nobody tapped
+      // Sign out: straight to the sign-in screen, saying why.
+      if (event === "SIGNED_OUT" && held.current && !signOutWasRequested()) {
+        setSignedOutByServer(true);
+        setEntered(true);
+      }
+      const next = sessionToKeep({ from: "event", event, session: s }, signInOnThisPhone());
+      hold(next);
+      onSignedIn(next);
     });
     return () => sub.subscription.unsubscribe();
   }, []);
@@ -542,6 +573,7 @@ export default function App() {
       <SignIn
         initialMode={signInMode}
         initialNotice={landingNotice}
+        signedOut={signedOutByServer}
         onHaveInviteCode={() => setJoining(true)}
       />
     );

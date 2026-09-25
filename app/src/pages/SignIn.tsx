@@ -27,11 +27,19 @@ type Mode = "signin" | "request";
 export function SignIn({
   initialMode = "signin",
   initialNotice = null,
+  signedOut = false,
   onHaveInviteCode,
 }: {
   initialMode?: Mode;
   /** A plain sentence about how they landed here — e.g. an expired reset link. */
   initialNotice?: string | null;
+  /**
+   * The auth server ended this phone's sign-in — the login removed, the
+   * password changed, signed out everywhere — and nobody tapped Sign out
+   * (App.tsx). Said here, in their language, until they try to sign in.
+   * No signal never lands here: that keeps a phone signed in.
+   */
+  signedOut?: boolean;
   /**
    * For someone a supervisor added on the Crew access screen. They were texted a
    * link, but chat apps mangle links, so they can type the code instead. This is
@@ -53,6 +61,7 @@ export function SignIn({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(initialNotice);
+  const [showSignedOut, setShowSignedOut] = useState(signedOut);
   const [info, setInfo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -66,6 +75,7 @@ export function SignIn({
   const signIn = async () => {
     setBusy(true);
     setError(null);
+    setShowSignedOut(false);
     setInfo(null);
     const { error } = await supabase.auth.signInWithPassword({
       email,
@@ -282,6 +292,11 @@ export function SignIn({
             onKeyDown={(e) => e.key === "Enter" && signIn()}
           />
           {error && <p className="error">{error}</p>}
+          {!error && showSignedOut && (
+            <p className="error" role="alert">
+              {t("signin.signedOut")}
+            </p>
+          )}
           {info && <p className="muted">{info}</p>}
           <button className="primary big" onClick={signIn} disabled={busy}>
             {busy ? t("signin.signingIn") : t("signin.signIn")}

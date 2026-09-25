@@ -2856,6 +2856,14 @@ export const CATALOG = {
     en: "Password reset email sent — check your inbox, then Sign in.",
     es: "Correo de restablecimiento enviado — revisa tu bandeja de entrada y luego inicia sesión.",
   },
+  // The auth server ended this phone's sign-in on its own — the login was
+  // removed, its password changed, or it was signed out everywhere — rather
+  // than the person tapping Sign out (App.tsx, 2026-09-24). No signal never
+  // shows this: a phone with no signal stays signed in.
+  "signin.signedOut": {
+    en: "You've been signed out on this phone. Sign in again to keep going — if it won't let you in, ask your supervisor.",
+    es: "Se cerró tu sesión en este teléfono. Vuelve a iniciar sesión para continuar — si no te deja entrar, pregúntale a tu supervisor.",
+  },
   // ---- Join crew (installer-spanish-first-fourteen) --------------------
   // A new hire's first screen, reached from a texted link with no session
   // and no LanguageProvider — same usePreAuthT pattern as Sign in.

@@ -26,7 +26,7 @@ import { TomorrowStrip } from "../components/schedule/TomorrowStrip";
 import { TERMS } from "../lib/glossary";
 import { listMyProgress } from "../lib/learn";
 import { listLedger } from "../lib/points";
-import { supabase } from "../lib/supabase";
+import { signOutOnRequest } from "../lib/signOut";
 import { isOnTheClock, listShiftsToApprove } from "../lib/timeclock";
 import { useOpenShiftView } from "../lib/useOpenShiftView";
 import { listInstalledForQc } from "../lib/ops";
@@ -275,7 +275,7 @@ export function Home() {
             type="button"
             className="avatar-chip"
             title="Sign out"
-            onClick={() => supabase.auth.signOut()}
+            onClick={() => void signOutOnRequest()}
           >
             {initialsFrom(me.data?.display_name)}
           </button>
