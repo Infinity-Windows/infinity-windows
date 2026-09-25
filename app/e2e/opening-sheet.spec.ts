@@ -373,13 +373,22 @@ test("Chain: finishing with a queued next unit hands the clock to it", async ({
  * instead" — which is fine for the tests that only pick files, but hides the
  * one thing the chain test below has to see: WHICH slot the camera opened
  * itself to. A canvas stream is a real MediaStream and the <video> plays it.
+ *
+ * The canvas is PAINTED, over and over: a canvas stream only delivers a frame
+ * when something is drawn, and since #615 the camera offers its shutter only
+ * once a real frame has arrived (useCameraStream in PhotoCaptureSheet.tsx) —
+ * before that the button reads "Starting camera…". A canvas nobody draws on
+ * never gets there, which kept the chain test red every night from Sep 19.
+ * Same idea as photos-upload.spec.ts's warm-up camera.
  */
 async function stubCamera(page: Page) {
   await page.addInitScript(() => {
     const canvas = document.createElement("canvas");
     canvas.width = 64;
     canvas.height = 64;
-    canvas.getContext("2d");
+    const ctx = canvas.getContext("2d")!;
+    ctx.fillStyle = "#4a7";
+    setInterval(() => ctx.fillRect(0, 0, 64, 64), 50);
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
       value: {

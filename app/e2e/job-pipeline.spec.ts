@@ -285,7 +285,12 @@ test("the order a foreman puts the jobs in survives a reload", async ({ page }) 
   const fixtures = usePipelineFixtures(page);
   await page.goto("/projects");
 
-  expect(await cardOrder(page)).toEqual(["Sand Hollow", "Pecan Valley", "Black Desert"]);
+  // Polled, like the two reads below: the cards draw a moment after the page
+  // loads, and a single read straight after goto can find none at all ([]) —
+  // the nightly run's red here since Sep 16, before any reorder was tried.
+  await expect
+    .poll(() => cardOrder(page))
+    .toEqual(["Sand Hollow", "Pecan Valley", "Black Desert"]);
 
   // Move the third job to the top with the button, not a drag: a drag needs a
   // mouse and this list is read on a phone in gloves.

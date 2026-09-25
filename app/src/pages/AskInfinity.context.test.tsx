@@ -154,3 +154,34 @@ describe("the context tag", () => {
     expect(host!.querySelector(".ask-tag")).toBeNull();
   });
 });
+
+// Scheduling's "Plan with AI" (wave A4) arrives the same way the tag does, in
+// the navigation's state, and is typed into the box as a placeholder the
+// supervisor edits. The account resolves a moment AFTER arrival (the profile
+// read is async here, as on a phone), and that first nobody → somebody change
+// used to run the per-person reset and wipe the box: "Plan with AI" landed on
+// an empty Ask (nightly saved-crews.spec.ts:141, red since Sep 17).
+describe("the Plan with AI seed", () => {
+  const SEED = "Plan the week of Sep 28 — here's what I want: ";
+  const box = () => host!.querySelector<HTMLInputElement>(".ask-input input")!;
+
+  it("is still in the box, unsent, after the signed-in account resolves", async () => {
+    await mount({ seed: SEED });
+    expect(box().value).toBe(SEED);
+    // A placeholder, never sent on arrival: only Ask's own greeting.
+    expect(sent.calls).toHaveLength(0);
+    expect(host!.querySelectorAll(".ask-bubble")).toHaveLength(1);
+  });
+
+  it("is cleared, with the tag, when another account signs in on this phone", async () => {
+    await mount({ seed: SEED, ...tagState });
+    expect(box().value).toBe(SEED);
+    who.actor = "crew-2";
+    // With text in the box the cards step aside for the "Actions" chip; the
+    // tap is only a re-render, which re-reads the (mocked) session actor.
+    await act(async () => button("Actions")!.click());
+    await settle();
+    expect(box().value).toBe("");
+    expect(host!.querySelector(".ask-tag")).toBeNull();
+  });
+});

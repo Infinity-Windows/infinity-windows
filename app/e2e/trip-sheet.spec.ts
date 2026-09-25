@@ -68,7 +68,11 @@ test("Spanish trip navigation and the crew draft boundary", async ({ page }) => 
   await tripFixture(page, "draft");
   // This assertion exercises a fresh server response, separately from the
   // existing transit cache (30s freshness does not schedule a refetch timer).
-  await page.evaluate(() => localStorage.removeItem("wops-query-cache"));
+  // The phone's copy is cleared as the reloaded page STARTS, not before the
+  // reload: since #653 a page going away writes its pending copy back
+  // (pagehide), so a copy removed before reload() could come straight back
+  // with the published trip in it, and the draft was then never asked for.
+  await page.addInitScript(() => localStorage.removeItem("wops-query-cache"));
   await page.reload();
   await expect(page.getByText("No se encontró el viaje", { exact: true })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Secciones del viaje" })).toHaveCount(0);
