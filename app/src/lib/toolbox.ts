@@ -1,12 +1,16 @@
 // Toolbox talks: signed daily safety-talk completions. Builds a dated PDF
-// (talk content + drawn signature + typed name), archives it to the
-// 'toolbox-records' storage bucket, and records the completion row that the
-// server-side clock_in gate checks.
+// (talk content + drawn signature + typed name) at the moment of signing and
+// hands the whole signature to the phone's outbox, which archives it to the
+// 'toolbox-records' storage bucket and files the completion row that the
+// server-side clock_in gate checks — at once with signal, later without.
 import { PDFDocument, StandardFonts, rgb, type PDFFont } from "pdf-lib";
 import { supabase } from "./supabase";
 import { isMissingColumn } from "./schemaErrors";
 import type { SafetyTalk, TalkSections, TalkVisualAid } from "./ops";
 import { sendPush } from "./permissions/pushServer";
+import { enqueueToolboxSign, MAX_BLOB_BYTES } from "./offline/outbox";
+import { newClockActionId } from "./clockPunch";
+import { pendingCompletionOf, toolboxRecordPaths, type ToolboxCompletionView } from "./toolboxSign";
 
 const BUCKET = "toolbox-records";
 
@@ -62,12 +66,6 @@ export interface ComplianceRow {
   via: SignedVia;
   /** The supervisor who attested, when there is one and they are on the crew list. */
   signed_by_name: string | null;
-}
-
-function localDateStr(d = new Date()): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
-    d.getDate(),
-  ).padStart(2, "0")}`;
 }
 
 /** Today's signed completion for this user, if any (drives the clock-in gate). */
@@ -387,59 +385,73 @@ export async function buildToolboxPdf(opts: {
 }
 
 /**
- * Sign today's toolbox talk: build + archive the PDF, upload the signature
- * PNG, and record the completion row (which unlocks clock-in for today).
+ * Sign today's toolbox talk (offline toolbox signing, 2026-09-25).
+ *
+ * ONE path, with or without signal: the signature is kept in the phone's
+ * outbox and sent from there — at once when there is signal, when the truck
+ * finds some when there is not. The direct upload-then-insert this replaced
+ * failed with no signal, and then the person could not clock in either: the
+ * server's clock_in refuses the day's first punch without today's signature.
+ *
+ * Everything the record needs is decided HERE, at the moment of signing: a
+ * fresh client id (the key that makes a resend the same signature), the
+ * signing time by this phone's clock, the talk exactly as it reads now, and
+ * the PDF — built now, so the archive is what was signed even if a lead edits
+ * the talk before the phone finds signal. A PDF the phone cannot build never
+ * costs the signature: it is queued without one, and the row files without
+ * one. What comes back is the signature as the gates read it — signed, waiting
+ * to send.
  */
-export async function submitToolboxCompletion(opts: {
+export async function signToolboxTalk(opts: {
   talk: SafetyTalk;
   profileId: string;
   typedName: string;
   signatureDataUrl: string;
-}): Promise<ToolboxCompletion> {
-  const { talk, profileId, typedName, signatureDataUrl } = opts;
-  const signedAt = new Date();
-  const stamp = `${localDateStr(signedAt)}-${signedAt.getTime()}`;
-  const base = `${profileId}/${talk.id}`;
+  /** The signing moment; the phone's clock unless a test holds it still. */
+  now?: Date;
+}): Promise<ToolboxCompletionView> {
+  const { talk, profileId, signatureDataUrl } = opts;
+  const typedName = opts.typedName.trim();
+  const signedAt = opts.now ?? new Date();
+  const clientId = newClockActionId();
+  const { signaturePath, pdfPath } = toolboxRecordPaths(profileId, talk.id, clientId, signedAt);
 
-  const sigPath = `${base}/${stamp}-signature.png`;
-  const { error: sigErr } = await supabase.storage
-    .from(BUCKET)
-    .upload(sigPath, dataUrlToBytes(signatureDataUrl) as BlobPart, {
-      contentType: "image/png",
-      upsert: true,
-    });
-  if (sigErr) throw sigErr;
+  let pdf: Blob | null = null;
+  try {
+    const bytes = await buildToolboxPdf({ talk, typedName, signatureDataUrl, signedAt });
+    pdf = new Blob([bytes as BlobPart], { type: "application/pdf" });
+    // Past the outbox's cap a PDF cannot be kept offline; the signature can.
+    if (pdf.size > MAX_BLOB_BYTES) pdf = null;
+  } catch {
+    pdf = null;
+  }
 
-  const pdfBytes = await buildToolboxPdf({
-    talk,
+  const signedAtIso = signedAt.toISOString();
+  await enqueueToolboxSign(
+    {
+      clientId,
+      profileId,
+      talkId: talk.id,
+      talkDate: talk.talk_date ?? null,
+      typedName,
+      signedAt: signedAtIso,
+      talkSnapshot: talkSnapshot(talk),
+      signaturePath,
+      signatureDataUrl,
+      pdfPath: pdf ? pdfPath : null,
+    },
+    pdf,
+  );
+  return pendingCompletionOf({
+    entryId: clientId,
+    clientId,
+    profileId,
+    talkId: talk.id,
     typedName,
-    signatureDataUrl,
-    signedAt,
+    signedAt: signedAtIso,
+    status: "queued",
+    lastError: null,
   });
-  const pdfPath = `${base}/${stamp}.pdf`;
-  const { error: pdfErr } = await supabase.storage
-    .from(BUCKET)
-    .upload(pdfPath, pdfBytes as BlobPart, {
-      contentType: "application/pdf",
-      upsert: true,
-    });
-  if (pdfErr) throw pdfErr;
-
-  const { data, error } = await supabase
-    .from("toolbox_completions")
-    .insert({
-      talk_id: talk.id,
-      profile_id: profileId,
-      typed_name: typedName,
-      signature_path: sigPath,
-      pdf_path: pdfPath,
-      talk_snapshot: talkSnapshot(talk),
-      signed_at: signedAt.toISOString(),
-    })
-    .select("*")
-    .single();
-  if (error) throw error;
-  return data as ToolboxCompletion;
 }
 
 /** Ask the Edge Function to (re)generate rich educational content for a talk. */

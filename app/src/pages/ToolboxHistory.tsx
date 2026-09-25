@@ -19,11 +19,16 @@ interface DayTalk {
   talk_date: string;
 }
 
-async function listTalksSince(sinceISO: string): Promise<DayTalk[]> {
+async function listTalksSince(sinceISO: string, todayISO: string): Promise<DayTalk[]> {
+  // Never past today. The phone reads the next few days' talks ahead so it
+  // can sign with no signal (lib/toolboxAhead.ts, 2026-09-25), which makes
+  // those days' rows early — and a day that has not happened yet is not a
+  // missed day.
   const { data, error } = await supabase
     .from("safety_talks")
     .select("id, title, talk_date")
     .gte("talk_date", sinceISO)
+    .lte("talk_date", todayISO)
     .order("talk_date", { ascending: false });
   if (error) throw error;
   return (data ?? []) as DayTalk[];
@@ -61,9 +66,14 @@ export function ToolboxHistory() {
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   }, [days]);
 
+  const todayISO = useMemo(() => {
+    const d = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  }, []);
   const talks = useQuery({
-    queryKey: ["talkDays", sinceISO],
-    queryFn: () => listTalksSince(sinceISO),
+    queryKey: ["talkDays", sinceISO, todayISO],
+    queryFn: () => listTalksSince(sinceISO, todayISO),
   });
   const mine = useQuery({
     queryKey: ["toolboxHistory", me.data?.id],
@@ -78,9 +88,6 @@ export function ToolboxHistory() {
     for (const c of mine.data ?? []) {
       if (c.talk_id && !byTalkId.has(c.talk_id)) byTalkId.set(c.talk_id, c);
     }
-    const today = new Date();
-    const pad = (n: number) => String(n).padStart(2, "0");
-    const todayISO = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
     // One row per talk day; a day with a talk and no signature is "missed"
     // (today stays "pending" until it's over).
     const seen = new Set<string>();
@@ -94,7 +101,9 @@ export function ToolboxHistory() {
       group?: boolean;
     }[] = [];
     for (const t of talks.data ?? []) {
-      if (seen.has(t.talk_date)) continue;
+      // Belt to the query's braces: a copy of the list read before this
+      // build could still hold a day ahead.
+      if (t.talk_date > todayISO || seen.has(t.talk_date)) continue;
       seen.add(t.talk_date);
       const c = byTalkId.get(t.id);
       out.push({
@@ -109,7 +118,7 @@ export function ToolboxHistory() {
       });
     }
     return out;
-  }, [talks.data, mine.data]);
+  }, [talks.data, mine.data, todayISO]);
 
   const signedCount = rows.filter((r) => r.state === "signed").length;
   const missedCount = rows.filter((r) => r.state === "missed").length;

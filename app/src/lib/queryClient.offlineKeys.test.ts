@@ -54,6 +54,9 @@ import type { ScopeCounts } from "./scope";
 describe("offline cache: a gate and the fact that clears it travel together", () => {
   const PAIRS: Array<[string, string, string]> = [
     ["the toolbox talk", "todayTalk", "toolboxToday"],
+    // Offline toolbox signing (2026-09-25): the talk read ahead for a later
+    // day raises the same gate on that day, and the same signature clears it.
+    ["the toolbox talk read ahead", "toolboxTalk", "toolboxToday"],
     ["the flashing gate", "opening", "openingPhases"],
     ["what to install", "opening", "markSpecs"],
   ];

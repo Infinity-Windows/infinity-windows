@@ -86,6 +86,9 @@ function usedRoots(): Map<string, string> {
 // +1 on 2026-09-24: "myPinStatus" — the device lock's last known answer. Not
 // kept, an offline relaunch had nothing to go on: the lock sat on "Checking
 // device lock…" or, when the read failed, opened for a person who has a PIN.
+//
+// +1 on 2026-09-25: "toolboxTalk" — each day's talk, read ahead, so a phone
+// whose last signal was yesterday can sign today's talk with none.
 const EXPECTED_OFFLINE_ROOTS = [
   "serviceVisit", "serviceVisits",
   "customWorkUnits", "customWorkSessions", "customWorkTypes", "customWorkOpening", "customWorkRoster",
@@ -121,6 +124,7 @@ const EXPECTED_OFFLINE_ROOTS = [
   "todayTalk",
   "toolboxToday",
   "toolboxHistory",
+  "toolboxTalk",
   "openingPhases",
   "markSpecs",
   "planOutlines",

@@ -18,6 +18,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatApiError } from "../../lib/errors";
 import { isMissingFunction } from "../../lib/schemaErrors";
+import { isNetworkError } from "../../lib/offline/outbox-core";
 import { getMyProfile } from "../../lib/install/api";
 import { sendPush } from "../../lib/permissions/pushServer";
 import { getClockCostCodesForProject } from "../../lib/costCodes";
@@ -98,6 +99,11 @@ export function CrewClockBar({
   // be assumed to know one of them started on another site an hour ago.
   const [attested, setAttested] = useState(false);
   const [move, setMove] = useState(false);
+  // Clock in (group sign-in) tapped with no signal. It stays online-only in
+  // the first version of offline toolbox signing (2026-09-25): it files every
+  // person's punch AND the supervisor's attestation on the server in one go,
+  // and nothing about it is queued. Said plainly rather than a network error.
+  const [offlineTap, setOfflineTap] = useState(false);
   const [results, setResults] = useState<CrewClockOutcome[] | null>(null);
   // The people this sheet deliberately did NOT send, frozen at the moment the
   // button was pressed. It has to be a snapshot: onDone() clears the selection,
@@ -158,6 +164,7 @@ export function CrewClockBar({
     setResults(null);
     setSkipped([]);
     setAttested(false);
+    setOfflineTap(false);
     setMove(false);
     setSheet(which);
   };
@@ -235,7 +242,9 @@ export function CrewClockBar({
   const failureText = failure
     ? isMissingFunction(failure)
       ? t("crewclock.notReady")
-      : formatApiError(failure)
+      : doClockIn.error && isNetworkError(doClockIn.error)
+        ? t("crewclock.in.offline")
+        : formatApiError(failure)
     : null;
 
   return (
@@ -400,6 +409,9 @@ export function CrewClockBar({
                   </p>
                 )}
 
+                {offlineTap && !failureText && (
+                  <p className="error" data-testid="crewclock-offline">{t("crewclock.in.offline")}</p>
+                )}
                 {failureText && <p className="error">{failureText}</p>}
 
                 <div className="row-gap" style={{ marginTop: 12 }}>
@@ -414,6 +426,11 @@ export function CrewClockBar({
                       plan.willClockIn.length === 0
                     }
                     onClick={() => {
+                      if (typeof navigator !== "undefined" && navigator.onLine === false) {
+                        setOfflineTap(true);
+                        return;
+                      }
+                      setOfflineTap(false);
                       setSkipped(plan.elsewhere);
                       doClockIn.mutate();
                     }}

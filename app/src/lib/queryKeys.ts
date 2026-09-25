@@ -285,6 +285,7 @@ export const QUERY_KEY_ROOTS: QueryKeyRootEntry[] = [
   { root: "todayTalk", offline: true, why: "New modules — keep the installer's day usable in dead spots." },
   { root: "toolboxCompliance", offline: false },
   { root: "toolboxHistory", offline: true },
+  { root: "toolboxTalk", offline: true, why: "Each day's toolbox talk, today and the next three, read ahead while there is signal and kept under that day's own date (lib/toolboxAhead.ts). todayTalk has no date in its key, so a phone whose last signal was yesterday opened this morning with YESTERDAY's talk and nothing for today — it could not sign today's talk offline, and so could not clock in (offline toolbox signing, 2026-09-25)." },
   { root: "toolboxToday", offline: true, why: "The talk itself was cached but not whether YOU signed it, so after an offline reload the app could see a talk exists and not that the gate was already cleared — every Start install silently refused, with no message, for as long as there was no signal. That is the exact situation the offline work exists for (installer audit, 2026-08-17)." },
   { root: "tools", offline: true, why: "New modules — keep the installer's day usable in dead spots." },
   { root: "tracePlanImage", offline: false },

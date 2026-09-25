@@ -322,6 +322,13 @@ export const CATALOG = {
     en: "Clocked in — we'll sync it when you're back online",
     es: "Entrada marcada — la sincronizamos cuando vuelvas a estar en línea",
   },
+  // A clock-in made while today's toolbox talk signature is still on the phone
+  // waits behind it in the outbox (offline toolbox signing, 2026-09-25): with
+  // signal both go in a second, without it both wait. True either way.
+  "clock.toast.clockedInAfterTalk": {
+    en: "Clocked in — it sends right after your toolbox talk signature",
+    es: "Entrada marcada — se envía justo después de la firma de tu charla de seguridad",
+  },
   // Shown when the clock-in also starts a specific unit ({code} is its work-order
   // mark, e.g. "1-2"). Was hard-coded English on the crew flow (slice 7 fix).
   "clock.toast.clockedInOnUnit": {
