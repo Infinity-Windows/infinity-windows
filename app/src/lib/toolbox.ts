@@ -3,6 +3,7 @@
 // 'toolbox-records' storage bucket, and records the completion row that the
 // server-side clock_in gate checks.
 import { PDFDocument, StandardFonts, rgb, type PDFFont } from "pdf-lib";
+import { pdfSafeText } from "./pdfText";
 import { supabase } from "./supabase";
 import { isMissingColumn } from "./schemaErrors";
 import type { SafetyTalk, TalkSections, TalkVisualAid } from "./ops";
@@ -213,7 +214,9 @@ function wrapText(
   size: number,
   maxWidth: number,
 ): string[] {
-  const words = text.split(/\s+/).filter(Boolean);
+  // Measuring throws on a character the font lacks, exactly as drawing does,
+  // so the text is made drawable before either (lib/pdfText.ts).
+  const words = pdfSafeText(text, font).split(/\s+/).filter(Boolean);
   const lines: string[] = [];
   let line = "";
   for (const w of words) {
@@ -273,7 +276,7 @@ export async function buildToolboxPdf(opts: {
   const heading = (text: string) => {
     y -= 8;
     ensureSpace(16);
-    page.drawText(text, {
+    page.drawText(pdfSafeText(text, bold), {
       x: MARGIN,
       y: y - 13,
       size: 13,
@@ -290,7 +293,7 @@ export async function buildToolboxPdf(opts: {
       lines.forEach((ln, i) => {
         ensureSpace(size + 4);
         if (i === 0) {
-          page.drawText(marker, { x: MARGIN, y: y - size, size, font: bold });
+          page.drawText(pdfSafeText(marker, bold), { x: MARGIN, y: y - size, size, font: bold });
         }
         page.drawText(ln, {
           x: MARGIN + 16,
@@ -321,13 +324,15 @@ export async function buildToolboxPdf(opts: {
     heading("Step by step");
     s.steps.forEach((step, i) => bullets([step], `${i + 1}.`));
   }
+  // Plain + and x, not ✓ and ✗: Helvetica has no check mark, and the ✓ made
+  // every talk with a Do list impossible to sign (crew report, 2026-09-06).
   if (s.dos?.length) {
     heading("Do");
-    bullets(s.dos, "✓");
+    bullets(s.dos, "+");
   }
   if (s.donts?.length) {
     heading("Don't");
-    bullets(s.donts, "✗");
+    bullets(s.donts, "x");
   }
 
   const aids = talk.visual_aids_json ?? [];
@@ -369,7 +374,7 @@ export async function buildToolboxPdf(opts: {
     const w = Math.min(260, MAX_W);
     const h = Math.min(90, (sig.height / sig.width) * w);
     ensureSpace(h + 12);
-    page.drawText("Signature:", { x: MARGIN, y: y - 11, size: 10, font: regular });
+    page.drawText(pdfSafeText("Signature:", regular), { x: MARGIN, y: y - 11, size: 10, font: regular });
     y -= 16;
     page.drawImage(sig, { x: MARGIN, y: y - h, width: w, height: h });
     y -= h + 4;
