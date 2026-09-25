@@ -67,11 +67,13 @@ export function useTodayTalk(enabled = true): TodayTalkView {
     enabled: false,
   });
 
-  if (live.isSuccess && readToday(live.dataUpdatedAt, now)) {
+  // Any answer read today counts — also one a later refetch failed to
+  // refresh, which is the dead zone with bars this is for.
+  if (live.data !== undefined && readToday(live.dataUpdatedAt, now)) {
     return { data: live.data ?? null, isSuccess: true };
   }
   if (ahead.data !== undefined) return { data: ahead.data, isSuccess: true };
-  if (live.isSuccess && live.data && live.data.talk_date === today) {
+  if (live.data && live.data.talk_date === today) {
     return { data: live.data, isSuccess: true };
   }
   return { data: undefined, isSuccess: false };
@@ -139,5 +141,10 @@ export function useToolboxToday(profileId: string | null | undefined, enabled = 
     return { data: view, isSuccess: true, pending: true, refused: Boolean(view.sendFailed) };
   }
   if (!on) return { data: undefined, isSuccess: false, pending: false, refused: false };
-  return { data: query.isSuccess ? null : undefined, isSuccess: query.isSuccess, pending: false, refused: false };
+  // Any answer the phone holds says "not signed today" once it names no
+  // signature for today: a refetch that failed on bars-but-no-data keeps it,
+  // and yesterday's row is not today's. Only a phone with no answer at all
+  // does not know.
+  const known = query.data !== undefined;
+  return { data: known ? null : undefined, isSuccess: known, pending: false, refused: false };
 }

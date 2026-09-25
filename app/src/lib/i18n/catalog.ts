@@ -417,12 +417,14 @@ export const CATALOG = {
   "toolbox.status.label": { en: "Today's toolbox talk", es: "Charla de seguridad de hoy" },
   "toolbox.status.pending": { en: "Signed — waiting to send", es: "Firmado — esperando enviar" },
   "toolbox.status.sent": { en: "Signed ✓", es: "Firmado ✓" },
-  // A signature Forge refused. The clock-in behind it is held, not failed —
-  // this line is where the person learns both, and Stuck writes is where they
-  // fix it. {reason} is the server's own sentence.
+  // A signature the phone gave up sending: Forge refused it, or it ran out of
+  // tries on a signal that showed bars and carried nothing. The clock-in
+  // behind it is held, not failed — this line is where the person learns
+  // both, and Stuck writes is where they fix it. {reason} is the reason as it
+  // was recorded (Forge's own sentence, when Forge said no).
   "toolbox.status.refused": {
-    en: "Signed on this phone, but Forge didn't accept it: {reason} Your clock-in waits for it.",
-    es: "Firmado en este teléfono, pero Forge no lo aceptó: {reason} Tu entrada espera a la firma.",
+    en: "Signed on this phone, but it couldn't be sent: {reason} Your clock-in waits for it.",
+    es: "Firmado en este teléfono, pero no se pudo enviar: {reason} Tu entrada espera a la firma.",
   },
   "toolbox.status.openStuck": { en: "Open Stuck writes", es: "Abrir Escrituras atascadas" },
 
