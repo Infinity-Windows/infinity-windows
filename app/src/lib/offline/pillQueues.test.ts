@@ -7,13 +7,13 @@ const en: TFn = (key, vars) => translate(CATALOG, "en" as Lang, key, vars);
 const es: TFn = (key, vars) => translate(CATALOG, "es" as Lang, key, vars);
 
 const SYNCED: PillSummary = pillSummary({
-  clock: 0, photos: 0, memos: 0, receipts: 0, logs: 0, other: 0, deadLetter: 0, warehouse: 0,
+  clock: 0, photos: 0, memos: 0, receipts: 0, logs: 0, other: 0, deadLetter: 0, warehouse: 0, toolbox: 0,
 });
 const PHOTOS_WAITING: PillSummary = pillSummary({
-  clock: 0, photos: 2, memos: 0, receipts: 0, logs: 0, other: 0, deadLetter: 0, warehouse: 0,
+  clock: 0, photos: 2, memos: 0, receipts: 0, logs: 0, other: 0, deadLetter: 0, warehouse: 0, toolbox: 0,
 });
 const DEAD_LETTER: PillSummary = pillSummary({
-  clock: 0, photos: 0, memos: 0, receipts: 0, logs: 0, other: 0, deadLetter: 1, warehouse: 0,
+  clock: 0, photos: 0, memos: 0, receipts: 0, logs: 0, other: 0, deadLetter: 1, warehouse: 0, toolbox: 0,
 });
 
 const snap = (over: Partial<QueueSnapshot>): QueueSnapshot => ({ ...EMPTY_SNAPSHOT, ...over });
