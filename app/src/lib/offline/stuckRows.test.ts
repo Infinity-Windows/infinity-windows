@@ -200,3 +200,52 @@ describe("buildStuckRows — every queue, every state", () => {
     expect(stateLabel("sent", es)).toBe("Guardado en Forge");
   });
 });
+
+// Offline toolbox signing (2026-09-25): a signature Forge refused holds the
+// clock-in queued behind it. Both are listed, each honestly — the signature
+// under Needs you with Forge's reason, the clock-in under Waiting, saying it
+// is waiting for that signature rather than for signal.
+describe("a clock-in held behind a refused toolbox talk signature", () => {
+  const refused = write({
+    id: "sign-1",
+    op: "toolbox_sign",
+    payload: { clientId: "c1" },
+    status: "failed",
+    lastError: "This toolbox talk signature belongs to someone else on this phone.",
+    createdAt: NOW - 2 * HOUR,
+  });
+  const held = write({ id: "in-1", op: "clock_in", payload: {}, hasBlob: false, dependsOn: "sign-1", createdAt: NOW - HOUR });
+
+  it("names the signature, with Forge's reason, under Needs you", () => {
+    const { needsYou } = buildStuckRows({ ...EMPTY, writes: [refused, held] }, en);
+    expect(needsYou).toHaveLength(1);
+    expect(needsYou[0]).toMatchObject({
+      id: "sign-1",
+      label: "Toolbox talk signature",
+      state: "failed",
+      canRetry: true,
+      canDiscard: true,
+    });
+    expect(needsYou[0].detail).toContain("belongs to someone else");
+  });
+
+  it("keeps the clock-in under Waiting, saying what it waits for, in both languages", () => {
+    const { waiting } = buildStuckRows({ ...EMPTY, writes: [refused, held] }, en);
+    expect(waiting).toHaveLength(1);
+    expect(waiting[0]).toMatchObject({ id: "in-1", label: "Clock in", state: "waiting", canRetry: false, canDiscard: false });
+    expect(waiting[0].detail).toContain("toolbox talk signature");
+    const spanish = buildStuckRows({ ...EMPTY, writes: [refused, held] }, es).waiting[0];
+    expect(spanish.label).toBe("Marcar entrada");
+    expect(spanish.detail).toContain("firma de la charla de seguridad");
+  });
+
+  it("says nothing extra about a clock-in whose signature is merely waiting for signal", () => {
+    const waitingSign = { ...refused, status: "queued" as const, lastError: null };
+    const { waiting } = buildStuckRows({ ...EMPTY, writes: [waitingSign, held] }, en);
+    expect(waiting.map((r) => [r.id, r.detail])).toEqual([
+      ["in-1", null],
+      ["sign-1", null],
+    ]);
+    expect(waiting.find((r) => r.id === "sign-1")?.label).toBe("Toolbox talk signature");
+  });
+});

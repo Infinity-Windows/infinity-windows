@@ -103,7 +103,14 @@ export type OutboxOp =
   // A lesson write-up draft (20261026000000). Carries the revision the phone
   // last saw and a fixed action id, so a resend is the same save and a save
   // made stale by another screen dead-letters with its words intact.
-  | "hex_learning_draft";
+  | "hex_learning_draft"
+  // Today's toolbox talk, signed with no signal (20261033000000). clock_in
+  // refuses the day's first punch until the signature is on record, so this
+  // rides the clock lane AHEAD of every punch (see laneOf), and a clock-in
+  // tapped after it `dependsOn` it. Keyed by the phone's client id in the
+  // payload; the signature image and the PDF go to paths made from that id,
+  // with upsert, so a resend lands on the same files and the same row.
+  | "toolbox_sign";
 
 /**
  * queued   — waiting to be sent (respecting nextAttemptAt backoff)
@@ -122,6 +129,27 @@ export type OutboxStatus = "queued" | "sending" | "failed";
  */
 export function isClockOp(op: OutboxOp): boolean {
   return op === "clock_in" || op === "clock_out" || op === "break_start" || op === "break_stop";
+}
+
+/**
+ * The drain's lanes, in the order they go (K0.3; offline toolbox signing,
+ * 2026-09-25):
+ *   0 — today's toolbox talk signatures. clock_in refuses the day's first
+ *       punch without one on record, so a signature made with no signal must
+ *       reach the server before any punch — even one queued before it. A
+ *       signature never depends on a punch, so sending it first can only
+ *       help.
+ *   1 — the four clock punches, in tap order.
+ *   2 — everything else (photos, logs, warehouse moves).
+ */
+export function laneOf(op: OutboxOp): 0 | 1 | 2 {
+  if (op === "toolbox_sign") return 0;
+  return isClockOp(op) ? 1 : 2;
+}
+
+/** A write that goes ahead of the photos: a clock punch, or a signature. */
+export function isClockLaneOp(op: OutboxOp): boolean {
+  return laneOf(op) < 2;
 }
 
 export interface OutboxEntry {
@@ -369,8 +397,8 @@ export function dedupe(entries: OutboxEntry[]): OutboxEntry[] {
 }
 
 /**
- * Which entries are due to attempt right now: clock punches first, then
- * everything else, FIFO (createdAt) within each. Skips entries that are: not
+ * Which entries are due to attempt right now: toolbox talk signatures, then
+ * clock punches, then everything else, FIFO (createdAt) within each (laneOf). Skips entries that are: not
  * `queued`, not yet past their backoff window, or blocked behind an
  * unresolved `dependsOn` that is still in the queue.
  *
@@ -381,10 +409,17 @@ export function dedupe(entries: OutboxEntry[]): OutboxEntry[] {
  * queue. Order AMONG punches is still tap order, so a clock-in goes before
  * the break and the break before the clock-out, and `dependsOn` is judged
  * before the sort, so a clock-out still waits for the clock-in it hangs off.
+ *
+ * Signatures ahead of punches (offline toolbox signing, 2026-09-25): a
+ * clock-in that reaches the server before today's signature is refused on the
+ * toolbox gate, so a signature goes first even when a punch was queued before
+ * it (a re-signature after the first was thrown away, a clock-in tapped
+ * yesterday and sent today). A clock-in tapped after a signature also
+ * `dependsOn` it, which is what holds it while the signature is retrying.
  */
 export function dueEntries(entries: OutboxEntry[], now: number): OutboxEntry[] {
   const present = new Map(entries.map((e) => [e.id, e]));
-  const lane = (e: OutboxEntry) => (isClockOp(e.op) ? 0 : 1);
+  const lane = (e: OutboxEntry) => laneOf(e.op);
   return entries
     .filter((e) => e.status === "queued")
     .filter((e) => e.nextAttemptAt <= now)
@@ -417,6 +452,14 @@ export function cascadeFailure(
   entries: OutboxEntry[],
   failedId: string,
 ): OutboxEntry[] {
+  // A refused toolbox talk signature is the one failure that HOLDS what waits
+  // on it instead of failing it (offline toolbox signing, 2026-09-25). The
+  // clock-in behind it was never sent and must not be sent — the server would
+  // only refuse it on "complete today's toolbox talk" — but it is still a
+  // real tap, paid from its tap time once the signature goes through. So it
+  // stays queued, blocked by its dependsOn: Try again on the signature sends
+  // both, in order; Throw away releases it to be judged by the server.
+  if (entries.find((e) => e.id === failedId)?.op === "toolbox_sign") return [];
   const dead = new Set([failedId]);
   const out: OutboxEntry[] = [];
   // Oldest first, so a chain is walked in the order it was built.
@@ -479,6 +522,10 @@ export interface OpCounts {
    * from `other` rather than sharing it: the warehouse page says "3 not sent
    * yet" and must not be quoting somebody's queued pin-reset. */
   warehouse: number;
+  /** Toolbox talk signatures still on the phone (2026-09-25). Their own
+   * bucket, not `clock`: "Clock 2" over one punch and one signature would
+   * send a person looking for a second punch that does not exist. */
+  toolbox: number;
 }
 
 const EMPTY_COUNTS: OpCounts = {
@@ -490,6 +537,7 @@ const EMPTY_COUNTS: OpCounts = {
   other: 0,
   deadLetter: 0,
   warehouse: 0,
+  toolbox: 0,
 };
 
 /** The media kind an upload entry carries; a photo unless it says otherwise. */
@@ -512,6 +560,9 @@ export function countsByOp(entries: OutboxEntry[]): OpCounts {
       case "break_start":
       case "break_stop":
         c.clock += 1;
+        break;
+      case "toolbox_sign":
+        c.toolbox += 1;
         break;
       case "photo_upload":
         if (uploadKind(e) === "voice_memo") c.memos += 1;
@@ -564,6 +615,7 @@ type PendingCategory = Exclude<keyof OpCounts, "deadLetter">;
  */
 const PART_LABELS: Record<PendingCategory, (n: number) => string> = {
   clock: (n) => `Clock ${n}`,
+  toolbox: (n) => `Toolbox talk ${n}`,
   photos: (n) => `Photos ${n}`,
   memos: (n) => `Memos ${n}`,
   receipts: (n) => `Receipts ${n}`,
@@ -687,6 +739,7 @@ const OP_REGISTRY = {
   hex_portal_case: true,
   hex_portal_outcome: true,
   hex_learning_draft: true,
+  toolbox_sign: true,
 } as const satisfies Record<OutboxOp, true>;
 
 /** Every op the queue can carry — the single list tests enumerate. */
@@ -1043,9 +1096,11 @@ export async function drainStore(
 
   for (const entry of due) {
     if (tried.has(entry.id)) continue;
-    if (!isClockOp(entry.op)) {
+    if (!isClockLaneOp(entry.op)) {
+      // Punches — and today's toolbox talk signatures, which go ahead of
+      // them — that became due while this pass was running.
       const punches = dueEntries(await store.getAll(), clock()).filter(
-        (e) => isClockOp(e.op) && !tried.has(e.id),
+        (e) => isClockLaneOp(e.op) && !tried.has(e.id),
       );
       for (const punch of punches) await attempt(punch);
     }
