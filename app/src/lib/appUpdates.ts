@@ -18,6 +18,7 @@ export const INCLUDED_UPDATE_IDS = [
   '2026-09-25-unit-photos-send',
   '2026-09-25-ask-latest-in-view',
   '2026-09-25-pin-lock',
+  '2026-09-25-toolbox-signing',
 ] as const;
 export interface AppUpdate {
   id: string; published_on: string; audience: number[]; kind: 'fix' | 'improvement';
