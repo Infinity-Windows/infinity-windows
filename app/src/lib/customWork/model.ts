@@ -121,6 +121,12 @@ export interface WorkCommand {
   action: WorkAction;
   data: Record<string, unknown>;
   error?: string;
+  /** Client-only, never sent: this unit save is a "Unit complete" mark, so a
+   * refusal because someone else changed the unit can be rebuilt from the
+   * latest copy instead of stranding the completion (queue.ts). */
+  intent?: "complete-unit";
+  /** Set once a completion has been rebuilt, so it is rebuilt at most once. */
+  rebased?: boolean;
 }
 export const IDLE_REASONS = [
   "Gathering supplies",

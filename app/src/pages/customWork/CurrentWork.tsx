@@ -153,8 +153,13 @@ export function CurrentWork() {
   // complete — never a start, which reopens it (lib/customWork/complete.ts).
   const completeUnit = async () => {
     if (!active || !activeUnit) return;
-    await work.command("stop", finishedStop(active, new Date().toISOString(), finishNote, delay));
-    await work.command("unit", markCompleteUnit(activeUnit));
+    // Both steps land on this phone in one write BEFORE anything waits on the
+    // network: queued one after the other, closing the app on weak signal
+    // between them kept the stop and lost the complete mark.
+    await work.commandMany([
+      { action: "stop", data: finishedStop(active, new Date().toISOString(), finishNote, delay) },
+      { action: "unit", data: markCompleteUnit(activeUnit), intent: "complete-unit" },
+    ]);
     setFinishNote("");
     setDelay("");
     setOutcome("partial");

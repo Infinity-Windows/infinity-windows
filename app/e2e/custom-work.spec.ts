@@ -25,6 +25,8 @@ async function setupWork(
     sessions: [] as WorkSession[],
     offline: false,
     refuse: false,
+    // A reply that never comes back — weak signal, not a clean failure.
+    hang: false,
   };
   const types: WorkType[] = [
     { id: "fixed", label: "Fixed window", revision: 1, archived: false },
@@ -68,6 +70,7 @@ async function setupWork(
   );
   await page.route("**/rest/v1/rpc/custom_work_command", async (route) => {
     if (data.offline) return route.abort("internetdisconnected");
+    if (data.hang) return new Promise<void>(() => undefined);
     if (data.refuse)
       return route.fulfill({
         status: 400,
@@ -254,6 +257,51 @@ test("an installer marks a unit complete in one tap, and it stays complete", asy
   await page.reload();
   await expect(page.getByText("✓ Install complete", { exact: true })).toBeVisible();
   expect(data.units[0].facts.installation_complete).toBe("Yes");
+});
+
+// Codex's review of #648 (2026-09-24): the complete mark was queued only after
+// the stop's network reply, so closing the app on weak signal lost it. Both
+// steps must be on the device before anything waits on the network.
+test("Unit complete tapped while a reply hangs survives closing the app and lands when signal returns", async ({
+  page,
+}) => {
+  test.setTimeout(60000);
+  const { data } = await setupWork(page, "installer");
+  await page.goto("/");
+  await page.getByRole("button", { name: "+ Start unit", exact: true }).click();
+  await page.getByLabel("Unit number / name").fill("18");
+  await page.getByLabel("Type", { exact: true }).fill("Fixed window");
+  await page.getByRole("button", { name: "Start this unit", exact: true }).click();
+  const active = page.getByRole("region", { name: "Current activity" });
+  await expect(active.getByRole("heading", { name: "Unit 18" })).toBeVisible();
+  await expect(active.getByRole("button", { name: "Unit complete ✓", exact: true })).toBeEnabled();
+  // The stop's reply never arrives (Codex's case): the mark must already be
+  // saved on the device, not waiting behind that reply.
+  data.hang = true;
+  await active.getByRole("button", { name: "Unit complete ✓", exact: true }).click();
+  // Within seconds of the tap — before the app gives up on the hung reply and
+  // well before someone pockets the phone — both steps are already saved.
+  const soon = { timeout: 3000 };
+  const queued = () =>
+    page.evaluate(() =>
+      Object.keys(localStorage)
+        .filter((k) => k.startsWith("forge-custom-work-v1:"))
+        .flatMap((k) => (JSON.parse(localStorage.getItem(k) ?? "[]") as { action: string }[]).map((c) => c.action)),
+    );
+  await expect.poll(queued, soon).toEqual(["stop", "unit"]);
+  expect(data.units[0].facts.installation_complete).toBeUndefined();
+  // The app is closed and reopened, now with no signal at all.
+  data.hang = false;
+  data.offline = true;
+  await page.reload();
+  await expect.poll(queued).toEqual(["stop", "unit"]);
+  // Signal returns.
+  data.offline = false;
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await expect.poll(() => data.units[0]?.facts.installation_complete).toBe("Yes");
+  await expect.poll(() => data.sessions.filter((s) => !s.ended_at).length).toBe(0);
+  expect(data.sessions[0].outcome).toBe("finished");
+  await expect.poll(queued).toEqual([]);
 });
 
 test("choosing whole install complete in the unit form saves without starting a visit", async ({

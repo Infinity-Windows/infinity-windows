@@ -5,6 +5,7 @@ import { useClock } from "../clockContext";
 import { listWorkSessions, listWorkTypes, listWorkUnits } from "./api";
 import {
   enqueueWork,
+  enqueueWorkBatch,
   readWorkQueue,
   syncWork,
   WORK_QUEUE_EVENT,
@@ -100,6 +101,26 @@ export function useWork(projectId?: string) {
     },
     [user, sync],
   );
+  /** Dependent changes saved together before any network wait (see
+   * enqueueWorkBatch) — "Unit complete" is a stop plus the complete mark. */
+  const commandMany = useCallback(
+    async (
+      list: { action: WorkAction; data: Record<string, unknown>; intent?: WorkCommand["intent"] }[],
+    ) => {
+      if (!user) throw new Error("Sign in before saving work.");
+      await enqueueWorkBatch(
+        list.map((x) => ({
+          id: crypto.randomUUID(),
+          userId: user,
+          action: x.action,
+          data: x.data,
+          ...(x.intent ? { intent: x.intent } : {}),
+        })),
+      );
+      await sync();
+    },
+    [user, sync],
+  );
   const preview = useMemo(
     () => previewCommands(units.data ?? [], sessions.data ?? [], queue),
     [units.data, sessions.data, queue],
@@ -113,6 +134,7 @@ export function useWork(projectId?: string) {
     queue,
     queueError,
     command,
+    commandMany,
     refresh,
     sync,
     loading: units.isLoading || sessions.isLoading || types.isLoading,

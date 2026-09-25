@@ -62,6 +62,17 @@ export async function listWorkUnits(job?: string | null): Promise<WorkUnit[]> {
     return allRows<WorkUnit>("custom_work_units", UNIT_COLS.replace(",untimed_work_present", ""), job);
   }
 }
+/** One unit, fresh from the server — a "Unit complete" refused because the
+ * unit changed is rebuilt from this, so another person's edits survive. */
+export async function getWorkUnit(id: string): Promise<WorkUnit | null> {
+  const read = (cols: string) =>
+    supabase.from("custom_work_units").select(cols).eq("id", id).maybeSingle();
+  let { data, error } = await read(UNIT_COLS);
+  if (error && isMissingColumn(error))
+    ({ data, error } = await read(UNIT_COLS.replace(",untimed_work_present", "")));
+  if (error) throw error;
+  return (data as WorkUnit | null) ?? null;
+}
 export const listWorkSessions = (job?: string | null, profileId?: string) =>
   allRows<WorkSession>("custom_work_sessions", SESSION_COLS, job, profileId);
 export const listWorkTypes = () =>
