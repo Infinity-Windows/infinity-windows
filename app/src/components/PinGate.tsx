@@ -10,7 +10,13 @@ import {
   pinGateView,
   rememberUnlockInThisTab,
 } from "../lib/pinGate";
-import { signInMark, signedInUserId, stillSignedInAs, type SignInMark } from "../lib/signedIn";
+import {
+  signInGeneration,
+  signInMark,
+  signedInUserId,
+  stillSignedInAs,
+  type SignInMark,
+} from "../lib/signedIn";
 
 const PAD_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "⌫"] as const;
 
@@ -85,14 +91,17 @@ const ENDED = "ended";
  * rule and why. `userId` is the real signed-in login (App.tsx's session), never
  * a person being previewed — my_pin_status answers for auth.uid().
  *
- * One lock per person. Everything it holds — an unlock, digits typed, a check
- * on the wire — is the person's it was drawn for, so a different login gets a
- * fresh lock instead of the last person's state (Codex review of #651,
- * 2026-09-25).
+ * One lock per person AND per sign-in. Everything it holds — an unlock, digits
+ * typed, a check on the wire — belongs to the sign-in it was drawn for. Every
+ * sign-out, sign-in or switch of account moves lib/signedIn's generation, and
+ * a new generation gets a fresh lock, shut, even when it is the same person
+ * signing back in. An unlock that was already done used to survive a sign-out
+ * and sign-in of the same person that React took in one render, before it
+ * ever drew the sign-in screen (Codex reviews of #651, 2026-09-25).
  */
 export function PinGate({ userId, children }: { userId: string; children: React.ReactNode }) {
   return (
-    <PersonsPinGate key={userId} userId={userId}>
+    <PersonsPinGate key={`${userId}:${signInGeneration()}`} userId={userId}>
       {children}
     </PersonsPinGate>
   );
@@ -110,7 +119,14 @@ function PersonsPinGate({ userId, children }: { userId: string; children: React.
   // send them again. Memory only, like the digits being typed; cleared once
   // anybody has judged them.
   const lastTry = useRef("");
-  const [unlocked, setUnlocked] = useState(() => isUnlockedInThisTab(userId));
+  // The sign-in generation this lock was opened in. It opens for that sign-in
+  // only: a lock that finds the generation moved on is shut, whichever way it
+  // came to be drawn again — its own answer refreshing included, not only a
+  // new key from above.
+  const [openedIn, setOpenedIn] = useState(() =>
+    isUnlockedInThisTab(userId) ? signInGeneration() : null,
+  );
+  const unlocked = openedIn === signInGeneration();
   const [waitedOut, setWaitedOut] = useState(false);
   // False once this lock is gone — signed out, or another login drew its own.
   const drawn = useRef(true);
@@ -266,7 +282,9 @@ function PersonsPinGate({ userId, children }: { userId: string; children: React.
       setEntry("");
     } else {
       rememberUnlockInThisTab(userId);
-      setUnlocked(true);
+      // The digits have done their job; nothing keeps them.
+      setEntry("");
+      setOpenedIn(signIn.generation);
     }
   };
 

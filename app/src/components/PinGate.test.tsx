@@ -19,7 +19,7 @@
 // twelve hours opens the lock again. It is mocked here — what this file proves
 // is WHEN the lock asks it, and what it tells the person.
 
-import { act } from "react";
+import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -710,5 +710,165 @@ describe("a status read the server answers without a yes or a no", () => {
     await mount({ spanish: true });
     expect(text()).toContain("Forge no pudo revisar tu PIN. Inténtalo de nuevo.");
     expect(() => button("Intentar de nuevo")).not.toThrow();
+  });
+});
+
+// Codex's re-review of #651 (2026-09-25): an unlock that was already DONE
+// survived a sign-out and sign-in of the same person when React took both in
+// one go — before it ever drew the sign-in screen. The tab's unlock was
+// cleared and the sign-in generation moved, but the lock kept its in-memory
+// "unlocked" because the person was the same, and opened with no PIN asked.
+// An unlock belongs to one sign-in, not just one person.
+describe("an unlock ends with its sign-in, even when React never draws the sign-in screen", () => {
+  /** The lock as App draws it for Ana. */
+  const anasLock = () => (
+    <QueryClientProvider client={qc}>
+      <PinGate userId={USER}>
+        <p>THE APP</p>
+      </PinGate>
+    </QueryClientProvider>
+  );
+
+  it("sign-out and sign-in in one render: the lock is shut again and asks for the PIN", async () => {
+    api.myPinStatus.mockResolvedValue(true);
+    api.checkMyPin.mockResolvedValue({ ok: true });
+    await mount();
+    await typePin("4821");
+    expect(text()).toContain("THE APP");
+    api.checkMyPin.mockClear();
+
+    act(() => {
+      authSays("SIGNED_OUT", null);
+      root.render(<p>Sign in</p>);
+      authSays("SIGNED_IN", USER);
+      root.render(anasLock());
+    });
+    await settle();
+    expect(sessionStorage.getItem("wops-pin-unlocked")).toBeNull();
+    expect(api.checkMyPin).not.toHaveBeenCalled();
+    expect(text()).not.toContain("THE APP");
+    expect(text()).toContain("Enter your 4-digit PIN");
+  });
+
+  it("the same through App's own order — rememberSignedIn, syncPinLockWithAuth, then setSession", async () => {
+    api.myPinStatus.mockResolvedValue(true);
+    api.checkMyPin.mockResolvedValue({ ok: true });
+    let authEvent!: (event: string, userId: string | null) => void;
+    function AppLike() {
+      const [session, setSession] = useState<{ user: { id: string } } | null>({ user: { id: USER } });
+      authEvent = (event, userId) => {
+        authSays(event, userId);
+        setSession(userId ? { user: { id: userId } } : null);
+      };
+      return (
+        <QueryClientProvider client={qc}>
+          {session ? (
+            <PinGate userId={session.user.id}>
+              <p>THE APP</p>
+            </PinGate>
+          ) : (
+            <p>Sign in</p>
+          )}
+        </QueryClientProvider>
+      );
+    }
+    act(() => root.render(<AppLike />));
+    await settle();
+    await typePin("4821");
+    expect(text()).toContain("THE APP");
+    api.checkMyPin.mockClear();
+
+    act(() => {
+      authEvent("SIGNED_OUT", null);
+      authEvent("SIGNED_IN", USER);
+    });
+    await settle();
+    expect(sessionStorage.getItem("wops-pin-unlocked")).toBeNull();
+    expect(api.checkMyPin).not.toHaveBeenCalled();
+    expect(text()).not.toContain("THE APP");
+    expect(text()).toContain("Enter your 4-digit PIN");
+  });
+
+  it("an unlock the offline check gave ends the same way, and the next one needs a fresh check", async () => {
+    savedOnPhone(true);
+    api.myPinStatus.mockRejectedValue(NO_SIGNAL);
+    api.checkMyPin.mockResolvedValue({ ok: false, reason: "network" });
+    offline.checkPinOffline.mockResolvedValueOnce({ kind: "ok" });
+    await mount();
+    await typePin("4821");
+    expect(text()).toContain("THE APP");
+
+    act(() => {
+      authSays("SIGNED_OUT", null);
+      root.render(<p>Sign in</p>);
+      authSays("SIGNED_IN", USER);
+      root.render(anasLock());
+    });
+    await settle();
+    expect(text()).not.toContain("THE APP");
+    expect(text()).toContain("Enter your 4-digit PIN");
+    // The sign-out also reached the offline unlock, which wipes it (proven in
+    // offlinePin.test.ts): with no signal, nothing is left to open the lock.
+    expect(offline.syncOfflinePinWithAuth).toHaveBeenCalledWith("SIGNED_OUT", null);
+    await typePin("4821");
+    expect(offline.checkPinOffline).toHaveBeenCalledTimes(2);
+    expect(text()).toContain("No signal. Your PIN is checked online");
+    expect(text()).not.toContain("THE APP");
+  });
+
+  it("a lock that redraws by itself after a sign-out and back in, with nothing above it redrawn, is shut", async () => {
+    api.myPinStatus.mockResolvedValue(true);
+    api.checkMyPin.mockResolvedValue({ ok: true });
+    await mount();
+    await typePin("4821");
+    expect(text()).toContain("THE APP");
+
+    // Signed out and back in, and App never redraws — only the lock's own
+    // PIN-status answer refreshing redraws it.
+    authSays("SIGNED_OUT", null);
+    authSays("SIGNED_IN", USER);
+    await act(async () => {
+      await qc.refetchQueries({ queryKey: ["myPinStatus"] });
+    });
+    await settle();
+    expect(text()).not.toContain("THE APP");
+    expect(text()).toContain("Enter your 4-digit PIN");
+    // …and the pad it shows holds none of the digits that opened it before.
+    expect(container.querySelector<HTMLInputElement>("input.pin-input")?.value).toBe("");
+  });
+
+  it("a sign-out and back in during a check gives a fresh pad at once, not the old check's wait", async () => {
+    api.myPinStatus.mockResolvedValue(true);
+    // The check under way when the sign-in changes never answers.
+    api.checkMyPin.mockImplementationOnce(NEVER);
+    await mount();
+    await typePin("4821");
+    expect(text()).toContain("Checking your PIN…");
+
+    act(() => {
+      authSays("SIGNED_OUT", null);
+      root.render(<p>Sign in</p>);
+      authSays("SIGNED_IN", USER);
+      root.render(anasLock());
+    });
+    await settle();
+    expect(text()).toContain("Enter your 4-digit PIN");
+    expect(text()).not.toContain("Checking your PIN…");
+    api.checkMyPin.mockResolvedValueOnce({ ok: true });
+    await typePin("4821");
+    expect(text()).toContain("THE APP");
+  });
+
+  it("the same sign-in carrying on — a token refresh — keeps the lock open", async () => {
+    api.myPinStatus.mockResolvedValue(true);
+    api.checkMyPin.mockResolvedValue({ ok: true });
+    await mount();
+    await typePin("4821");
+    act(() => {
+      authSays("TOKEN_REFRESHED", USER);
+      root.render(anasLock());
+    });
+    await settle();
+    expect(text()).toContain("THE APP");
   });
 });

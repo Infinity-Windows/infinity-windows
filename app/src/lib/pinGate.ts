@@ -37,7 +37,10 @@ export type PinGateView =
   | "no-answer";
 
 export interface PinGateFacts {
-  /** This person entered the right PIN earlier in this tab (isUnlockedInThisTab). */
+  /**
+   * This person entered the right PIN in this tab, in the sign-in they are in
+   * now (isUnlockedInThisTab, tied to lib/signedIn's generation by PinGate).
+   */
   unlocked: boolean;
   /** The phone's saved copy is still being read back from storage. */
   restoring: boolean;

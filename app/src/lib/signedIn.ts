@@ -64,6 +64,15 @@ export function signInMark(): SignInMark {
 }
 
 /**
+ * The sign-in generation right now. The device lock ties an unlock to it, so
+ * an unlock ends with the sign-in it was made in — even when the next sign-in
+ * is the same person's.
+ */
+export function signInGeneration(): number {
+  return generation;
+}
+
+/**
  * Is `who` still the person signed in, with no sign-out and no other login
  * since `mark` was taken? False after ANY change of who is signed in, even
  * back to the same person. Work begun before that boundary belongs to a
