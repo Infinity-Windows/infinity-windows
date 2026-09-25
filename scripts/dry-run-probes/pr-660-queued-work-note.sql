@@ -1,6 +1,8 @@
--- PR #660: one crew note (docs/app-updates.md). Read it as the system to prove
--- it was stored exactly as written, then through row security as the QA
--- installer and the QA foreman: the same read the "What's new" popup makes.
+-- PR #660: one crew note (docs/app-updates.md), in
+-- supabase/migrations/20261030080000_queued_work_stays_yours_note.sql. Read it
+-- as the system to prove it was stored exactly as written, then through row
+-- security as the QA installer and the QA foreman: the same read the "What's
+-- new" popup makes.
 do $$
 declare
   v_installer uuid;
