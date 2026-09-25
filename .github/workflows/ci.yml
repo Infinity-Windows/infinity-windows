@@ -44,6 +44,12 @@ jobs:
       - name: Verify caller-scoped AI report queries
         run: node --experimental-strip-types ../scripts/verify-ask-reporting.mjs
 
+      # The Forge AI evaluation set against the real tool layer with a stubbed
+      # model (scripts/ask-eval/cases.json). Deterministic; a live-model run
+      # is manual and opt-in (--live), never here.
+      - name: Forge AI evaluation set (stubbed model)
+        run: node --experimental-strip-types ../scripts/ask-eval.mjs
+
   custom-work-sql:
     name: Custom work database invariants
     runs-on: ubuntu-latest
@@ -64,6 +70,7 @@ jobs:
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-custom-work.mjs
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-crew-unit-records.mjs
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-ai-field-operations.mjs
+      - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-ai-daily-logs.mjs
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-timecard-workflow.mjs
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-daily-reporting.mjs
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-dictation.mjs

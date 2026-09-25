@@ -92,6 +92,59 @@ export const FIELD_CATALOG = {
   "field.recordingNotKept": { en: "Your recording is NOT saved yet — this phone could not keep it and it has not reached the server. Keep this screen open and tap Send now, or download it.", es: "Tu grabación TODAVÍA NO está guardada: el teléfono no pudo conservarla y no llegó al servidor. Deja esta pantalla abierta y toca Enviar ahora, o descárgala." },
   "field.downloadRecording": { en: "Download recording", es: "Descargar grabación" },
   "field.stepFailed": { en: "Some steps may not have finished. Only the saved cards above were saved.", es: "Algunos pasos pueden no haber terminado. Solo se guardó lo que aparece arriba." },
+  // Daily log through Ask (K2.7).
+  "field.dailyNotRecorded": { en: "Those words were NOT added to your daily log draft — no saved message is behind them. Send them again.", es: "Esas palabras NO se agregaron a tu borrador del registro; no hay un mensaje guardado detrás. Envíalas otra vez." },
+  "field.dailyHide": { en: "Hide the daily log (your draft is kept)", es: "Ocultar el registro (tu borrador se conserva)" },
+  // Receipts (K2.5): three words, from the receipt's status, never from prose.
+  "field.receiptStatus.saved_in_forge": { en: "Saved in Forge", es: "Guardado en Forge" },
+  "field.receiptStatus.needs_choice": { en: "Needs your choice", es: "Necesita tu decisión" },
+  "field.receiptStatus.nothing_changed": { en: "Nothing changed", es: "No cambió nada" },
+  "field.checklistKept": { en: "Kept for this conversation — nothing saved to the job yet", es: "Guardado para esta conversación; todavía nada en la obra" },
+  "field.nothingSaved": { en: "Nothing was saved yet", es: "Todavía no se guardó nada" },
+  "field.nothingSavedHelp": { en: "Only a receipt card under a reply proves a change.", es: "Solo una tarjeta de recibo debajo de una respuesta demuestra un cambio." },
+  // One-tap clock buttons (K2.4). The AI offers; only the tap changes the clock.
+  "field.button.title": { en: "Job clock", es: "Reloj de trabajo" },
+  // Shown while the clock is still being read, instead of any claim about it.
+  "field.button.checking": { en: "Checking your clock…", es: "Revisando tu reloj…" },
+  "field.button.start_break": { en: "Start break", es: "Empezar descanso" },
+  "field.button.start_lunch": { en: "Start lunch break", es: "Empezar descanso de comida" },
+  "field.button.start_rest": { en: "Start rest break", es: "Empezar descanso corto" },
+  "field.button.end_break": { en: "End break", es: "Terminar descanso" },
+  "field.button.clock_in": { en: "Open job clock to clock in", es: "Abrir el reloj para marcar entrada" },
+  "field.button.clock_out": { en: "Open job clock to clock out", es: "Abrir el reloj para marcar salida" },
+  "field.button.openedClock": { en: "The job clock is open. It asks its usual questions there.", es: "El reloj de trabajo está abierto. Ahí hace sus preguntas de siempre." },
+  "field.button.done.start_break.saved": { en: "On break — saved in Forge.", es: "En descanso; guardado en Forge." },
+  "field.button.done.start_break.queued": { en: "On break — saved on this phone, sending when there is signal.", es: "En descanso; guardado en este teléfono, se envía cuando haya señal." },
+  "field.button.done.end_break.saved": { en: "Back on the clock — saved in Forge.", es: "De vuelta al trabajo; guardado en Forge." },
+  "field.button.done.end_break.queued": { en: "Back on the clock — saved on this phone, sending when there is signal.", es: "De vuelta al trabajo; guardado en este teléfono, se envía cuando haya señal." },
+  "field.button.refused.not_clocked_in": { en: "You're not clocked in, so there is no break to take. Nothing changed.", es: "No has marcado entrada, así que no hay descanso que tomar. No cambió nada." },
+  "field.button.refused.already_on_break": { en: "You're already on break. Nothing changed.", es: "Ya estás en descanso. No cambió nada." },
+  "field.button.refused.not_on_break": { en: "You're not on break. Nothing changed.", es: "No estás en descanso. No cambió nada." },
+  "field.button.refused.failed": { en: "That didn't go through. Nothing changed. Use the job clock.", es: "No se pudo. No cambió nada. Usa el reloj de trabajo." },
+  // The direct try died on the network (so it may have been saved) and the
+  // phone could not keep the punch to send again: neither "saved" nor
+  // "nothing changed" is known to be true.
+  "field.button.refused.unconfirmed": { en: "We couldn't tell whether that reached Forge, and this phone couldn't save it to send again. Open the job clock to check before you tap again.", es: "No pudimos saber si llegó a Forge, y este teléfono no pudo guardarlo para enviarlo otra vez. Abre el reloj de trabajo para revisar antes de volver a tocar." },
+  // The context tag (K2.3).
+  "field.tag.title": { en: "Asking about", es: "Preguntando sobre" },
+  "field.tag.clear": { en: "Clear the job tag", es: "Quitar la etiqueta de obra" },
+  "field.tag.unit": { en: "Unit {unit}", es: "Unidad {unit}" },
+  "field.tag.job": { en: "this job", es: "esta obra" },
+  // Action cards (K2.2) and All actions (K2.1).
+  "field.cards.title": { en: "Actions", es: "Acciones" },
+  "field.cards.all": { en: "All actions", es: "Todas las acciones" },
+  "field.cards.reopen": { en: "Actions", es: "Acciones" },
+  "field.cards.close": { en: "Close", es: "Cerrar" },
+  "field.cards.notYet": { en: "not in Ask yet (release {release})", es: "todavía no está en Ask (versión {release})" },
+  "field.cards.useScreen": { en: "Use the {screen} screen for this", es: "Usa la pantalla {screen} para esto" },
+  "field.cards.asks": { en: "Asks: {list}", es: "Pregunta: {list}" },
+  "field.cards.never": { en: "Forge AI never:", es: "Forge AI nunca:" },
+  "field.cards.questions": { en: "Quick questions", es: "Preguntas rápidas" },
+  "field.cards.receipt.saved_in_forge": { en: "Receipt: Saved in Forge", es: "Recibo: Guardado en Forge" },
+  "field.cards.receipt.saved_on_phone": { en: "Receipt: Saved on this phone until you tap Save, then Saved in Forge", es: "Recibo: Guardado en este teléfono hasta que toques Guardar, y después Guardado en Forge" },
+  "field.cards.receipt.needs_choice": { en: "Receipt: Needs your choice, then Saved in Forge", es: "Recibo: Necesita tu decisión, y después Guardado en Forge" },
+  "field.cards.receipt.read_only": { en: "Shows a card. Nothing changes.", es: "Muestra una tarjeta. No cambia nada." },
+  "field.cards.receipt.one_tap_button": { en: "Shows a button. Only your tap changes the clock.", es: "Muestra un botón. Solo tu toque cambia el reloj." },
 } as const satisfies Record<string, CatalogEntry>;
 export type FieldKey = keyof typeof FIELD_CATALOG;
 export type TKey = AppKey | FieldKey;

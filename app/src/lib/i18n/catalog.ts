@@ -4856,6 +4856,9 @@ export const CATALOG = {
   "ask.alsoWrittenDown": { en: "Also written down:", es: "También anotado:" },
   "ask.sources": { en: "Sources: {list}", es: "Fuentes: {list}" },
   "ask.inputPlaceholder": { en: "Ask about a window, a term, or how-to…", es: "Pregunta sobre una ventana, un término, o cómo hacer algo…" },
+  // K2.3: opening Ask from a job or unit carries that job/unit as a tag.
+  "ask.aboutJob": { en: "Ask Forge AI about this job", es: "Preguntar a Forge AI sobre esta obra" },
+  "ask.aboutUnit": { en: "Ask Forge AI", es: "Preguntar a Forge AI" },
   "ask.send": { en: "Send", es: "Enviar" },
 
   // lib/install/jobModelCache.ts — describeAge (JobModelViewer.tsx).

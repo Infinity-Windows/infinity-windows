@@ -5,6 +5,7 @@ import { openClockGlobally } from "../../lib/clockContext";
 import { guardedResolve, TimingPendingError, type FieldReceipt } from "../../lib/fieldAsk";
 import type { ChecklistItem, SetupChecklist } from "../../../../supabase/functions/_shared/fieldTools";
 import { differenceLabel, differenceText, optionText, reasonText } from "./fieldCardText";
+import { receiptStatus } from "../../lib/askReceiptGuard";
 
 const time = (iso?: string) => (iso ? new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "");
 
@@ -18,6 +19,9 @@ export function FieldChecklist({ checklist }: { checklist: SetupChecklist }) {
     <section className="field-card field-checklist" aria-label={t("field.checklist")}>
       <h3>{t("field.checklist")} · {open} {t("field.status.missing").toLowerCase()}</h3>
       <p className="muted">{t("field.checklistHelp")}</p>
+      {/* K2.5: a checklist is not a receipt. Answers live with the
+          conversation until a save returns a receipt card. */}
+      <p className="field-status muted">{t("field.checklistKept")}</p>
       <ul>
         {rows.map((item: ChecklistItem) => (
           <li key={item.key} className={`field-item field-${item.status}`}>
@@ -77,6 +81,8 @@ export function FieldReceiptCard({ receipt, onChange, timingPending }: {
   };
   return (
     <section className={`field-card field-receipt field-${receipt.status}`} aria-live="polite">
+      {/* K2.5: the real status in three words, from the receipt, first. */}
+      <p className={`field-status field-status-${receiptStatus(receipt)}`}><strong>{t(`field.receiptStatus.${receiptStatus(receipt)}` as TKey)}</strong></p>
       {waiting ? (
         <>
           <p className="field-choice-needed"><strong>{t("field.choiceNeeded")}</strong></p>

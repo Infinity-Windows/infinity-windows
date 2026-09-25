@@ -167,3 +167,22 @@ describe("what the Ask page and the model are told", () => {
     expect(describeResult({ status: "stale", message: "x" })).toContain("Nothing was changed");
   });
 });
+
+describe("the context tag (K2.3)", () => {
+  it("keeps real ids and trimmed labels, and is no tag at all without a job id", async () => {
+    const { contextTagFromInput, contextTagPrompt } = await import("../../../supabase/functions/_shared/fieldTools");
+    const JOB = "00000000-0000-4000-8000-000000000100", OPENING = "00000000-0000-4000-8000-000000000200";
+    expect(contextTagFromInput(null)).toBeNull();
+    expect(contextTagFromInput({ project_id: "black22", unit_label: "4" })).toBeNull();
+    expect(contextTagFromInput({ project_id: JOB.toUpperCase(), project_label: "  BLACK22 · Black Desert ", opening_id: OPENING, unit_label: "W-12" }))
+      .toEqual({ project_id: JOB, project_label: "BLACK22 · Black Desert", unit_id: null, opening_id: OPENING, unit_label: "W-12" });
+    // A unit id wins over a map unit id: one unit, one record.
+    expect(contextTagFromInput({ project_id: JOB, unit_id: OPENING, opening_id: OPENING })).toMatchObject({ unit_id: OPENING, opening_id: null });
+    expect(contextTagFromInput({ project_id: JOB, unit_id: "u4" })).toMatchObject({ unit_id: null, opening_id: null });
+    const prompt = contextTagPrompt(contextTagFromInput({ project_id: JOB, project_label: "Black Desert", opening_id: OPENING, unit_label: "W-12" })!);
+    expect(prompt).toContain(`job "Black Desert" (job id ${JOB})`);
+    expect(prompt).toContain(`Unit: W-12 (map unit id ${OPENING})`);
+    expect(prompt).toContain("name the job and unit in one short line");
+    expect(contextTagPrompt(contextTagFromInput({ project_id: JOB })!)).not.toContain("Unit:");
+  });
+});

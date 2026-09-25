@@ -30,8 +30,11 @@ Deno.serve(withSentry("transcribe-description", async req => {
     if (audio.size > DICTATION_MAX_BYTES) return jsonResponse({error: "audio_too_large"}, 413, cors);
     const extension = dictationExtension(audio.type);
     if (!extension) return jsonResponse({error: "unsupported_audio"}, 415, cors);
+    // "auto" (Ask's microphone, K2.6): the crew speaks English, Spanish or a
+    // mix, and forcing one language makes Whisper mangle the other. The
+    // dictation mics on text fields still send the field's language.
     const language = form.get("language");
-    if (language !== "en" && language !== "es") return jsonResponse({error: "invalid_language"}, 400, cors);
+    if (language !== "en" && language !== "es" && language !== "auto") return jsonResponse({error: "invalid_language"}, 400, cors);
     const key = requireOpenAI();
     const rate = await service.rpc("claim_description_dictation", {p_user_id: auth.user.id});
     if (rate.error) return jsonResponse({error: "temporarily_unavailable"}, 503, cors);
@@ -43,7 +46,7 @@ Deno.serve(withSentry("transcribe-description", async req => {
     const upload = new FormData();
     upload.append("file", audio, `description.${extension}`);
     upload.append("model", "whisper-1");
-    upload.append("language", language);
+    if (language !== "auto") upload.append("language", language);
     upload.append("response_format", "verbose_json");
     const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
       method: "POST", headers: {Authorization: `Bearer ${key}`}, body: upload,

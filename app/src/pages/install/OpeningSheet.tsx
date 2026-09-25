@@ -1456,6 +1456,12 @@ export function OpeningSheet() {
           <Link to={`/projects/${projectId}?tab=map`} className="button-like">
             Map
           </Link>
+          {/* K2.3: Ask opens tagged with this job and map unit, so the person
+              can say "set it up" or "I'm finished" without naming either. */}
+          <Link to="/ask" className="button-like"
+            state={{ askContext: { project_id: projectId, project_label: null, unit_id: null, opening_id: o.id, unit_label: o.opening_code } }}>
+            {t("ask.aboutUnit")}
+          </Link>
         </div>
         {!installed && (
           <nav className="hub-tabs" aria-label="Install steps">

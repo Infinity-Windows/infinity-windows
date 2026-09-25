@@ -696,6 +696,10 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     # One shared log per job per day (Q6) — the UNIQUE constraint IS the
     # natural key (Wave L, L1, 20260949000000).
     "daily_logs": ("project_id", "log_date"),
+    # A reviewed Forge AI addition to one shared log, keyed by the phone-minted
+    # id; a photo belongs to at most one addition.
+    "daily_log_contributions": None,
+    "daily_log_contribution_photos": ("photo_id",),
     # One row per (job, cost code) — the UNIQUE constraint IS the natural key
     # (standard-tracking-jobs slice 3, 20260973000000). Two projects that both
     # enable the same code are the same enablement once merged, not a

@@ -1,6 +1,6 @@
 import { supabase } from "./supabase";
 import { dictationExtension } from "../../../supabase/functions/_shared/dictation";
-import type { SetupChecklist, SetupDraft } from "../../../supabase/functions/_shared/fieldTools";
+import type { AskContextTag, SetupChecklist, SetupDraft } from "../../../supabase/functions/_shared/fieldTools";
 import type { LearningPrep } from "../../../supabase/functions/_shared/learningTools";
 import type { AskArtifact } from "../../../supabase/functions/_shared/askReporting";
 import type { KnowledgeSource } from "../../../supabase/functions/_shared/knowledge";
@@ -59,6 +59,8 @@ export interface FieldMeta {
   clock_version: number | null;
   clock_pending_sync: boolean;
   audio_path?: string | null;
+  /** The job/unit tag Ask was opened with (K2.3), if the person kept it. */
+  context?: AskContextTag | null;
 }
 
 const conversationKey = (userId: string) => `forge.ai-field.conversation.${userId}`;
@@ -159,8 +161,9 @@ export async function guardedResolve(
 
 export interface SavedTurn {
   id: string; transcript: string; input_kind: "text" | "voice"; sent_at: string; audio_path: string | null;
-  /** The whole saved reply: report/job-summary cards and sources come back too. */
-  reply: { answer?: string; toolActivity?: string[]; artifacts?: AskArtifact[]; sources?: KnowledgeSource[] } | null;
+  /** The whole saved reply: report/job-summary cards, sources and any one-tap
+   * clock buttons come back too. */
+  reply: { answer?: string; toolActivity?: string[]; artifacts?: AskArtifact[]; sources?: KnowledgeSource[]; buttons?: unknown } | null;
   captured: { checklist?: SetupChecklist | null; learning?: LearningPrep | null } | null; finished_at: string | null;
   receipts: FieldReceipt[];
 }

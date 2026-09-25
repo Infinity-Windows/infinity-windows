@@ -199,7 +199,9 @@ class TestSchemaParsing(unittest.TestCase):
         # jobs, and the recording-cleanup markers.
         # +2: immutable role walkthrough catalog and importer reservations.
         # +4: versioned learning reviews, events, deliveries and withdrawals.
-        self.assertEqual(len(SCHEMA.tables), 178)  # includes crew records, training, lesson reviews and the clock-tap ledger
+        # +1: the clock-tap ledger (Release 0, time_clock_actions).
+        # +2: Forge AI daily-log contributions and their photo links.
+        self.assertEqual(len(SCHEMA.tables), 180)  # includes crew records, training, lesson reviews, the clock-tap ledger and daily-log contributions
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 

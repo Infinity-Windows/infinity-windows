@@ -8,7 +8,7 @@ import {dictationExtension,readDictationBody,DICTATION_MAX_BYTES,DICTATION_MAX_S
 // boundaries so a test can never record crew data or charge a live account.
 function harness(options: {signedIn?:boolean;revoked?:boolean;retired?:boolean;quota?:boolean;budget?:boolean;providerStatus?:number}={}) {
   let handler: (r:Request)=>Promise<Response>;
-  let calls=0, releases=0, settles=0;
+  let calls=0, releases=0, settles=0; const languages:(string|null)[]=[];
   const source=readFileSync(new URL('../../../supabase/functions/transcribe-description/index.ts',import.meta.url),'utf8');
   const parsed=ts.createSourceFile('handler.ts',source,ts.ScriptTarget.Latest,true);
   let withoutImports=source;
@@ -25,10 +25,10 @@ function harness(options: {signedIn?:boolean;revoked?:boolean;retired?:boolean;q
     reserveAiSpend:async()=>({allowed:options.budget!==false,reservationId:'reservation'}),
     releaseAiSpend:async()=>{releases++;},settleAiSpend:async()=>{settles++;},notifyOwnersOfSpend:async()=>{},reportCaughtError:async()=>{},
     DICTATION_MAX_BYTES,DICTATION_MAX_SECONDS,dictationExtension,readDictationBody,AUDIO_MICROS_PER_SECOND:{'whisper-1':100},
-    fetch:async(_url:string,init:RequestInit)=>{calls++;expect((init.body as FormData).get('language')).toBe('es');return new Response(JSON.stringify({text:'Cuatro puertas.',duration:4}),{status:options.providerStatus??200});},
+    fetch:async(_url:string,init:RequestInit)=>{calls++;languages.push((init.body as FormData).get('language') as string|null);return new Response(JSON.stringify({text:'Cuatro puertas.',duration:4}),{status:options.providerStatus??200});},
   };
   vm.runInNewContext(code,context);
-  return {run:(r:Request)=>handler(r),counts:()=>({calls,releases,settles})};
+  return {run:(r:Request)=>handler(r),counts:()=>({calls,releases,settles}),languages};
 }
 function request(type='audio/mp4',language='es') {
   const form=new FormData();form.append('audio',new Blob(['test audio'],{type}),'description.mp4');form.append('language',language);
@@ -39,6 +39,8 @@ describe('description transcription boundary',()=>{
  for(const state of ['revoked','retired'] as const)it(`rejects a ${state} login`,async()=>{const h=harness({[state]:true});expect((await h.run(request())).status).toBe(403);expect(h.counts().calls).toBe(0);});
  it('validates format and language before spending',async()=>{const h=harness();expect((await h.run(request('text/html'))).status).toBe(415);expect((await h.run(request('audio/mp4','invalid'))).status).toBe(400);expect(h.counts().calls).toBe(0);});
  for(const gate of ['quota','budget'] as const)it(`honors the ${gate} limit`,async()=>{const h=harness({[gate]:false});expect((await h.run(request())).status).toBe(429);expect(h.counts().calls).toBe(0);});
- it('returns plain words and settles the transcription charge',async()=>{const h=harness();const r=await h.run(request());expect(r.status).toBe(200);expect(await r.json()).toEqual({text:'Cuatro puertas.'});expect(h.counts()).toEqual({calls:1,releases:0,settles:1});});
+ it('returns plain words and settles the transcription charge',async()=>{const h=harness();const r=await h.run(request());expect(r.status).toBe(200);expect(await r.json()).toEqual({text:'Cuatro puertas.'});expect(h.counts()).toEqual({calls:1,releases:0,settles:1});expect(h.languages).toEqual(['es']);});
+ // K2.6: Ask's microphone sends "auto" so English, Spanish or a mix is heard as spoken; the provider gets no forced language.
+ it('lets Ask send "auto" and then forces no language on the provider',async()=>{const h=harness();expect((await h.run(request('audio/mp4','auto'))).status).toBe(200);expect(h.languages).toEqual([null]);});
  it('releases the reservation on provider failure',async()=>{const h=harness({providerStatus:500});expect((await h.run(request())).status).toBe(502);expect(h.counts()).toEqual({calls:1,releases:1,settles:0});});
 });

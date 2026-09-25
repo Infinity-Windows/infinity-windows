@@ -10,6 +10,23 @@ import {
   type OutboxStore,
 } from "./outbox-core";
 
+/**
+ * insertIfAbsent found a row under the id that cannot be read back. Not an
+ * insertion (nothing was written) and not a match: the caller keeps its own
+ * copy and reports it, rather than taking a null "no row" as queued.
+ */
+export class UnreadableOutboxEntryError extends Error {
+  constructor(id: string) {
+    super(`An upload already waiting on this phone under ${id} could not be read. This photo is still on this phone.`);
+    this.name = "UnreadableOutboxEntryError";
+  }
+}
+function readExisting(id: string, meta: string): OutboxEntry {
+  const entry = deserializeEntry(meta);
+  if (!entry) throw new UnreadableOutboxEntryError(id);
+  return entry;
+}
+
 /** In-memory store — deterministic, for tests and SSR/no-IndexedDB fallback. */
 export class MemoryOutboxStore implements OutboxStore {
   private entries = new Map<string, string>(); // id -> serialized
@@ -27,6 +44,14 @@ export class MemoryOutboxStore implements OutboxStore {
   async put(entry: OutboxEntry, blob?: Blob | null): Promise<void> {
     this.entries.set(entry.id, serializeEntry(entry));
     if (blob != null) this.blobs.set(entry.id, blob);
+  }
+
+  async insertIfAbsent(entry: OutboxEntry, blob: Blob | null): Promise<OutboxEntry | null> {
+    const existing = this.entries.get(entry.id);
+    if (existing !== undefined) return readExisting(entry.id, existing);
+    this.entries.set(entry.id, serializeEntry(entry));
+    if (blob != null) this.blobs.set(entry.id, blob);
+    return null;
   }
 
   async getBlob(id: string): Promise<Blob | null> {
@@ -119,6 +144,26 @@ export class IndexedDbOutboxStore implements OutboxStore {
         blob: keepBlob,
       } satisfies Row);
       await txDone(tx);
+    } finally {
+      db.close();
+    }
+  }
+
+  /**
+   * Insert, or hand back the entry already under this id. One readwrite
+   * transaction: IndexedDB serialises it against every other tab and call, so
+   * two hand-offs of the same id can never both write, and an entry that is
+   * mid-upload is never replaced.
+   */
+  async insertIfAbsent(entry: OutboxEntry, blob: Blob | null): Promise<OutboxEntry | null> {
+    const db = await openDb();
+    try {
+      const tx = db.transaction(STORE, "readwrite");
+      const store = tx.objectStore(STORE);
+      const existing = (await asPromise(store.get(entry.id))) as Row | undefined;
+      if (!existing) store.add({ id: entry.id, meta: serializeEntry(entry), blob } satisfies Row);
+      await txDone(tx);
+      return existing ? readExisting(entry.id, existing.meta) : null;
     } finally {
       db.close();
     }

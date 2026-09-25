@@ -41,6 +41,18 @@ import { transcribeDescription } from "../lib/dictation";
 import { useUnsavedWorkWhile } from "../lib/pwa/useUnsavedWork";
 import { Mic, Square } from "lucide-react";
 import type { TimeShift } from "../lib/timeclock";
+import { useEffectiveRole } from "../lib/useEffectiveRole";
+import { roleRank } from "../lib/install/types";
+import { listWorkSessions, listWorkUnits } from "../lib/customWork/api";
+import { ActionCards, AllActions, type CardPick, type RunningUnit } from "../components/ask/ActionCards";
+import { contextTagFromInput, type AskContextTag } from "../../../supabase/functions/_shared/fieldTools";
+import { readClockButtons, type ClockButton } from "../../../supabase/functions/_shared/clockButtons";
+import { ClockButtons } from "../components/ask/ClockButtons";
+import { needsNothingSavedNotice } from "../lib/askReceiptGuard";
+import { AiDailyLogCard } from "../components/aiDailyLogs/AiDailyLogCard";
+import { useAiDailyLogDraft } from "../lib/aiDailyLogs/useAiDailyLogDraft";
+import { applyDailyLogReply, asksForDailyLog, dailyLogContextForMessage } from "../lib/aiDailyLogs/askBridge";
+import { signedInEmail } from "../lib/signedIn";
 
 // Every cached screen a field receipt may have changed (see FIELD_QUERY_ROOTS).
 const refreshFieldViews = () => { for (const root of FIELD_QUERY_ROOTS) void queryClient.invalidateQueries({ queryKey: [root] }); };
@@ -48,6 +60,12 @@ const refreshFieldViews = () => { for (const root of FIELD_QUERY_ROOTS) void que
 interface ChatMsg {
   /** Field work: database receipts and the checklist, never model claims. */
   field?: FieldReply;
+  /** One-tap job-clock buttons the reply offered (K2.4): the tap is the change. */
+  buttons?: ClockButton[];
+  /** The reply filled a draft on this phone (a lesson write-up, a daily log). */
+  draftApplied?: boolean;
+  /** The reply's daily-log answers had no saved message behind them: NOT recorded. */
+  dailyNotRecorded?: boolean;
   /** The saved original recording behind this message. */
   memoPath?: string | null;
   /** The field request this message was, so a reload never shows it twice. */
@@ -184,12 +202,34 @@ export function AskInfinity() {
   const threadEnd = useRef<HTMLDivElement>(null);
   const lastMessageCount = useRef(1);
   const location = useLocation();
+  // Action cards (K2.2): what the UI shows follows the effective role (an
+  // owner previewing "installer" sees installer cards), while every message
+  // is still sent as the real account — the cards only choose words.
+  const { effectiveRole } = useEffectiveRole();
+  const cardRank = roleRank(effectiveRole);
+  const [showAll, setShowAll] = useState(false);
+  /** The person tapped "Actions" while the composer had text: show the cards
+   * anyway until they tap one or start typing again. */
+  const [cardsForced, setCardsForced] = useState(false);
+  // Context tag (K2.3): the job (and maybe unit) Ask was opened from. Read
+  // through a ref inside send(), which closes over an older render.
+  const [tag, setTag] = useState<AskContextTag | null>(null);
+  const tagRef = useRef<AskContextTag | null>(null);
+  tagRef.current = tag;
+  const lastActor = useRef<string | null | undefined>(undefined);
 
   // --- Field work -----------------------------------------------------------
   // Everything below is scoped to the REAL signed-in account (not "view as"):
   // another person signing in on this phone sees none of it.
   const userId = profile.data?.id === sessionActor ? sessionActor : null;
   const [conversation, setConversation] = useState<string | null>(null);
+  // Daily log through Ask (K2.7). The controller is bound to the REAL
+  // signed-in person (never a role preview); the card shows while a draft is
+  // being built here, and `logOpenRef` is what send()/run() read, because
+  // they close over an older render.
+  const logs = useAiDailyLogDraft(userId && profile.data ? { userId, email: signedInEmail(), displayName: profile.data.display_name ?? null } : null);
+  const [logOpen, setLogOpen] = useState(false);
+  const logOpenRef = useRef(false);
   const [unsent, setUnsent] = useState<UnsentField[]>([]);
   const [voice, setVoice] = useState<"idle" | "starting" | "recording" | "saving" | "transcribing">("idle");
   const [seconds, setSeconds] = useState(0);
@@ -227,6 +267,7 @@ export function AskInfinity() {
     recording.current = null;
     clockSeen.current = null;
     setInput(""); setVoice("idle"); setThinking(false); setVoiceError(""); setRestoreError(false); setHeld(null);
+    setLogOpen(false); logOpenRef.current = false;
     setMessages([{ who: "infinity", text: t("ask.greeting") }]);
     return gen.current;
   };
@@ -236,6 +277,11 @@ export function AskInfinity() {
     actor.current = userId;
     setUnsent([]);
     setConversation(null);
+    // The tag belongs to the person who opened Ask with it (K2.3): a
+    // different account signing in on this phone starts without it. The first
+    // resolution of the account (nobody → somebody) keeps it.
+    if (lastActor.current && lastActor.current !== userId) setTag(null);
+    lastActor.current = userId;
     if (!userId) return;
     const conv = currentConversation(userId);
     setConversation(conv);
@@ -252,7 +298,7 @@ export function AskInfinity() {
         for (const turn of turns.filter((x) => !shown.has(x.id))) {
           restored.push({ who: "me", text: turn.transcript, memoPath: turn.audio_path, requestId: turn.id });
           if (turn.reply || turn.receipts.length)
-            restored.push({ who: "infinity", text: turn.reply?.answer ?? "", toolActivity: turn.reply?.toolActivity,
+            restored.push({ who: "infinity", text: turn.reply?.answer ?? "", toolActivity: turn.reply?.toolActivity, buttons: readClockButtons(turn.reply?.buttons),
               artifacts: (turn.reply?.artifacts ?? []).filter((a) => a && ["time_report", "job_summary"].includes(a.kind)).slice(0, 4),
               sources: turn.reply?.sources ?? [],
               field: { request_id: turn.id, receipts: turn.receipts, checklist: turn.captured?.checklist ?? null, learning: turn.captured?.learning ?? null } });
@@ -263,6 +309,17 @@ export function AskInfinity() {
     return () => { recordAbort.current?.abort(); recording.current?.cancel(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
+
+  // The running unit puts "Finish unit N" first (K2.2). Same query keys as
+  // useWork, so Current Work's cache answers this without a second fetch and
+  // no queue sync is started from here.
+  const mySessions = useQuery({ queryKey: ["customWorkSessions", userId, "mine"], queryFn: () => listWorkSessions(undefined, userId!), enabled: !!userId });
+  const myUnits = useQuery({ queryKey: ["customWorkUnits", userId, "all"], queryFn: () => listWorkUnits(undefined), enabled: !!userId });
+  const running = useMemo<RunningUnit | null>(() => {
+    const open = (mySessions.data ?? []).find((s) => s.profile_id === userId && !s.ended_at && s.unit_id);
+    const unit = open ? (myUnits.data ?? []).find((u) => u.id === open.unit_id) : null;
+    return unit ? { unitLabel: unit.label } : null;
+  }, [mySessions.data, myUnits.data, userId]);
 
   const fieldActive = messages.some((m) => !!m.field);
   const latestChecklist = [...messages].reverse().find((m) => m.field?.checklist)?.field?.checklist ?? null;
@@ -288,7 +345,7 @@ export function AskInfinity() {
       workQueue: readWorkQueue,
       shiftId: queryClient.getQueryData<TimeShift | null>(["openShift", uid])?.id,
     });
-    return { actor_id: uid, request_id: base.requestId, conversation_id: conversation, input_kind: kind, sent_at: base.sentAt, clock_version: base.clockVersion, clock_pending_sync: pending, audio_path: null };
+    return { actor_id: uid, request_id: base.requestId, conversation_id: conversation, input_kind: kind, sent_at: base.sentAt, clock_version: base.clockVersion, clock_pending_sync: pending, audio_path: null, context: tagRef.current };
   };
   /** Before any upload, transcription or Ask call: is this still the screen and
    * the signed-in account the message was captured under? */
@@ -310,8 +367,13 @@ export function AskInfinity() {
   // `state` object each time React Router delivers one), so re-rendering
   // this page for any other reason never stomps on something typed since.
   useEffect(() => {
-    const seed = (location.state as { seed?: string } | null)?.seed;
+    const state = location.state as { seed?: string; askContext?: unknown } | null;
+    const seed = state?.seed;
     if (typeof seed === "string" && seed) setInput(seed);
+    // K2.3: a job/unit screen hands over its tag the same way. Checked with the
+    // server's own reader, so a malformed one is no tag rather than a bad id.
+    const context = contextTagFromInput(state?.askContext);
+    if (context) setTag(context);
   }, [location.state]);
 
   // Freshen the bundled catalog whenever there is signal. The brain answers
@@ -359,13 +421,19 @@ export function AskInfinity() {
     [t],
   );
 
-  const send = (text: string, voiceMeta?: FieldMeta, sentFrom = gen.current) => {
+  /** `keepInput`: a card tap sends its own words and leaves whatever the
+   * person typed in the box (K2.2). `operational`: an action card is always a
+   * saved field request, whatever its words look like to the router. */
+  const send = (text: string, voiceMeta?: FieldMeta, sentFrom = gen.current, opts: { keepInput?: boolean; operational?: boolean } = {}) => {
     const q = text.trim();
     if (!q || thinking || !isCurrent(sentFrom)) return;
     const g = gen.current;
     const uid = actor.current;
     // Send was pressed now; this is the time and clock view the request carries.
-    const operationalNow = !!voiceMeta || isOperationalAsk(q, messages.some(m => Boolean(m.artifacts?.length)) || fieldActive);
+    // A daily-log message is a field request whatever its words look like:
+    // the saved request row is the evidence the log entry will list (K2.7).
+    const dailyLogMsg = logOpenRef.current || asksForDailyLog(q);
+    const operationalNow = !!voiceMeta || opts.operational === true || dailyLogMsg || isOperationalAsk(q, messages.some(m => Boolean(m.artifacts?.length)) || fieldActive);
     const pressed = voiceMeta ? null : operationalNow && uid ? pressSend() : null;
     const requestId = voiceMeta?.request_id ?? pressed?.requestId;
 
@@ -378,9 +446,10 @@ export function AskInfinity() {
       .slice(-8);
 
     setMessages((m) => [...m, { who: "me", text: q, memoPath: voiceMeta?.audio_path ?? null, requestId }]);
-    // A voice message sends itself when transcription finishes; whatever the
-    // person typed meanwhile is theirs and stays in the box.
-    if (!voiceMeta) setInput("");
+    // A voice message sends itself when transcription finishes, and a card
+    // sends its own words; whatever the person typed meanwhile is theirs and
+    // stays in the box.
+    if (!voiceMeta && !opts.keepInput) setInput("");
     setThinking(true);
 
     const online = typeof navigator === "undefined" ? true : navigator.onLine;
@@ -402,6 +471,14 @@ export function AskInfinity() {
       //    my truck. No network needed and no model involved.
       const operational = operationalNow;
       const meta = voiceMeta ?? (pressed ? await fieldMeta("text", pressed) : null);
+      // K2.7: while a daily-log draft is open, or when this message asks for
+      // one, the request carries the draft — built from the AWAITED fresh
+      // start(), never from a closed-over `logs.draft`, which is still null on
+      // the very first message ("Build my daily log — I set six frames with
+      // Ben") and would send the model no tool and lose those facts.
+      const suggestedJob = tagRef.current ? { projectId: tagRef.current.project_id, label: tagLabel(tagRef.current) } : null;
+      const daily = meta ? await dailyLogContextForMessage(logs, q, { cardOpen: logOpenRef.current, suggestedJob }) : { open: false, context: null };
+      if (daily.open && isCurrent(g)) { logOpenRef.current = true; setLogOpen(true); }
       // A text message the server did not get is kept on this phone under its
       // speaker — and if the phone cannot keep it, it goes back in the box.
       const keepText = async (error: string): Promise<boolean> => {
@@ -450,7 +527,17 @@ export function AskInfinity() {
           return { who: "infinity", text: t("field.otherAccount") };
         }
         try {
-          const { answer, sources, note, toolActivity, artifacts, field } = await askInfinity(q, history, meta ?? undefined);
+          const { answer, sources, note, toolActivity, artifacts, field, buttons, dailyLog } = await askInfinity(q, history, meta ?? undefined, { contextTag: tagRef.current, dailyLog: daily.context });
+          // The daily-log answers go into the draft only for this draft,
+          // account and conversation, and only with the saved message behind
+          // them; "missing_evidence" means the words were NOT recorded, and
+          // the reply says so rather than showing them as captured.
+          let draftApplied = false, dailyNotRecorded = false;
+          if (dailyLog && isCurrent(g)) {
+            const applied = applyDailyLogReply(logs, dailyLog);
+            draftApplied = applied.applied;
+            dailyNotRecorded = !applied.applied && applied.reason === "missing_evidence";
+          }
           if (meta) {
             void dropUnsent(meta.request_id).then(async () => { if (isCurrent(g) && uid) setUnsent(await listUnsent(uid)); }).catch(() => undefined);
             if (isCurrent(g)) { clockSeen.current = null; readClockNow(g); }
@@ -458,7 +545,7 @@ export function AskInfinity() {
             if (isCurrent(g) && field) setHeld((h) => (h?.meta.request_id === meta.request_id ? null : h));
             if (field?.receipts.length) refreshFieldViews();
           }
-          if (answer || artifacts?.length || field?.receipts.length || field?.checklist) return { who: "infinity", text: answer || note || "", sources, toolActivity, artifacts, field };
+          if (answer || artifacts?.length || field?.receipts.length || field?.checklist || buttons?.length || dailyLog) return { who: "infinity", text: answer || note || "", sources, toolActivity, artifacts, field, buttons, draftApplied, dailyNotRecorded };
           limitNote = note;
         } catch {
           if (meta) {
@@ -516,7 +603,9 @@ export function AskInfinity() {
         if (isCurrent(g)) setVoice("transcribing");
         const abort = new AbortController();
         recordAbort.current = abort;
-        return transcribeDescription(blob, lang, abort.signal);
+        // K2.6: English, Spanish or a mix — the provider hears which; the
+        // reply comes back in the language the person used.
+        return transcribeDescription(blob, "auto", abort.signal);
       },
       send: (words, path) => send(words, { ...meta, audio_path: path }, g),
     });
@@ -586,6 +675,27 @@ export function AskInfinity() {
     readClockNow();
   };
 
+  // --- Context tag -----------------------------------------------------------
+  /** "BLACK22 · Black Desert · Unit 4": the job's own words when the screen
+   * that opened Ask sent none, from the jobs list already cached here. */
+  const tagLabel = (x: AskContextTag): string => {
+    const cached = queryClient.getQueryData<Project[]>(["projects"])?.find((p) => p.id === x.project_id);
+    const job = x.project_label ?? (cached ? [cached.job_code, cached.name].filter(Boolean).join(" · ") : t("field.tag.job"));
+    return x.unit_label ? `${job} · ${t("field.tag.unit", { unit: x.unit_label })}` : job;
+  };
+
+  // --- Action cards ----------------------------------------------------------
+  const composerBusy = input.trim() !== "" || voice !== "idle";
+  const cardsVisible = cardsForced || !composerBusy;
+  // Typing or recording hides the cards even after "Actions" reopened them;
+  // the next "Actions" tap brings them back.
+  useEffect(() => { if (composerBusy) setCardsForced(false); }, [composerBusy]);
+  const pickCard = (pick: CardPick) => {
+    setShowAll(false);
+    setCardsForced(false);
+    send(pick.query, undefined, gen.current, { keepInput: true, operational: pick.operational });
+  };
+
   return (
     <div className="page ask-page">
       <header className="page-header">
@@ -622,6 +732,13 @@ export function AskInfinity() {
             {m.memoPath && <MemoPlayback path={m.memoPath} />}
             {m.field?.receipts.map((r) => <FieldReceiptCard key={r.action_id} receipt={r} onChange={updateReceipt} timingPending={timingPendingNow} />)}
             {m.field?.checklist && m.field.checklist === latestChecklist && <FieldChecklist checklist={m.field.checklist} />}
+            {m.buttons && m.buttons.length > 0 && <ClockButtons buttons={m.buttons} />}
+            {m.dailyNotRecorded && <p role="alert" className="cw-error">{t("field.dailyNotRecorded")}</p>}
+            {/* K2.5: words that read as done with nothing behind them are
+                contradicted here, automatically. */}
+            {m.who === "infinity" && needsNothingSavedNotice({ text: m.text, receipts: m.field?.receipts, artifacts: m.artifacts, draftApplied: m.draftApplied || !!m.field?.learning }) && (
+              <p className="field-nothing-saved" role="status"><strong>{t("field.nothingSaved")}</strong> · {t("field.nothingSavedHelp")}</p>
+            )}
             {m.portalNotice&&<p className="ask-sources muted">{m.portalNotice}</p>}
             {m.learning&&<LearningCard draft={m.learning}/>}
             {m.artifacts?.map(artifact => <ReportCard key={artifact.id} artifact={artifact}/>)}
@@ -694,16 +811,34 @@ export function AskInfinity() {
           </div>
         </section>
       )}
+      {logOpen && userId && (
+        <>
+          <AiDailyLogCard controller={logs} onAnswerByVoice={() => void startRecording()} />
+          <button type="button" className="chip" onClick={() => { setLogOpen(false); logOpenRef.current = false; }}>{t("field.dailyHide")}</button>
+        </>
+      )}
+      {tag && (
+        <div className="ask-tag" role="status">
+          <span className="muted">{t("field.tag.title")}</span> <strong>{tagLabel(tag)}</strong>
+          <button type="button" className="chip" aria-label={t("field.tag.clear")} onClick={() => setTag(null)}>×</button>
+        </div>
+      )}
       {voice === "saving" && <p role="status" className="muted">{t("field.savingMemo")}</p>}
       {voice === "transcribing" && <p role="status" className="muted">{t("field.transcribing")}</p>}
 
-      <div className="ask-suggestions">
-        {suggestions.map((s) => (
-          <button key={s.query} type="button" className="chip" onClick={() => send(s.query)}>
-            {s.label}
-          </button>
-        ))}
-      </div>
+      {/* Action cards (K2.2): four per role + All actions, gone the moment the
+          composer has text or a recording starts, back with the "Actions"
+          button. Tapping a card sends the card's own words and never touches
+          what was typed. */}
+      {showAll ? (
+        <AllActions rank={cardRank} lang={lang} running={running} questions={suggestions} onClose={() => setShowAll(false)} onPick={pickCard} />
+      ) : cardsVisible ? (
+        <ActionCards rank={cardRank} lang={lang} running={running} onPick={pickCard} onAll={() => setShowAll(true)} />
+      ) : (
+        <div className="ask-suggestions">
+          <button type="button" className="chip" onClick={() => setCardsForced(true)}>{t("field.cards.reopen")}</button>
+        </div>
+      )}
 
       <div className="ask-input">
         <input

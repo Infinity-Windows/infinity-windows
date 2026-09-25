@@ -1,17 +1,26 @@
 -- Probe for PR #641 (branch claude/r2-ai): append_daily_log_contribution from
 -- 20261030000000_ai_daily_log_contributions.sql, called on the real database
--- as the two QA logins on BLACK22, and rolled back. (A real installer cannot
--- reach BLACK22 at all — it is a testing project, hidden below supervisor —
--- so the two people who can both write there are the QA installer and the QA
+-- as the two QA logins on a sandbox job, and rolled back. (A real installer
+-- cannot reach a testing job at all — it is hidden below supervisor — so the
+-- two people who can both write there are the QA installer and the QA
 -- foreman; the last scenario proves the fence still holds for a real one.)
+-- The job is the harness's dry_run_sandbox_job(): whichever live job is both
+-- flagged as testing and on the sandbox list, never a fixed code (on
+-- 2026-09-24 BLACK22 had been unflagged, and a probe pinned to it failed on
+-- the fence instead of testing the change). The QA logins come from
+-- dry_run_pick, which stops the run in plain words when one has lost its
+-- role rather than hand back a real person (three runs of this probe died on
+-- that on 2026-09-23/24).
 --   * two different people contribute to the same job-day: both entries are
 --     kept, the second is appended under the first, the first author stays;
 --   * the same words under the same id again is already_saved, not a copy;
 --   * a stale revision writes nothing;
---   * person_record_counts still carries every key master has, plus the
---     contributions'.
+--   * person_record_counts still carries every key master has, Release 0's
+--     clock-tap ledger (#640, which merges first) and the contributions'.
+-- Since 2026-09-25 this branch sits on #644 → #640, so the practice run
+-- applies Release 0's two migrations first, as the deploy will:
 -- Run: gh workflow run db-dry-run.yml -f ref=claude/r2-ai \
---        -f migrations="supabase/migrations/20261030000000_ai_daily_log_contributions.sql supabase/migrations/20261030010000_ai_actions_note.sql" \
+--        -f migrations="supabase/migrations/20261028000000_clock_integrity.sql supabase/migrations/20261028010000_clock_integrity_note.sql supabase/migrations/20261030000000_ai_daily_log_contributions.sql supabase/migrations/20261030010000_ai_actions_note.sql" \
 --        -f probe=scripts/dry-run-probes/pr-641-ai-daily-log.sql
 do $$
 declare
@@ -19,6 +28,7 @@ declare
   v_second uuid;
   v_real uuid;
   v_job uuid;
+  v_job_code text;
   v_role text;
   v_rev_before bigint;
   v_r1 jsonb;
@@ -42,8 +52,10 @@ begin
   v_first := pg_temp.dry_run_pick('installer');
   v_second := pg_temp.dry_run_pick('foreman');
   v_real := pg_temp.dry_run_pick_real('installer');
-  v_job := pg_temp.dry_run_job('BLACK22');
-  perform pg_temp.dry_run_check('setup: two different people who may write on BLACK22', v_first <> v_second, null);
+  v_job := pg_temp.dry_run_sandbox_job();
+  select p.job_code into v_job_code from public.projects p where p.id = v_job;
+  perform pg_temp.dry_run_check('setup: the sandbox job the run writes on (and throws away)', true, v_job_code);
+  perform pg_temp.dry_run_check('setup: two different people who may write on the sandbox job', v_first <> v_second, null);
   perform pg_temp.dry_run_check('schema: daily_logs.revision, daily_log_contributions and the revision trigger exist',
     exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'daily_logs' and column_name = 'revision')
     and to_regclass('public.daily_log_contributions') is not null
@@ -51,7 +63,7 @@ begin
     null);
   select coalesce((select revision from public.daily_logs where project_id = v_job and log_date = current_date), 0)
     into v_rev_before;
-  perform pg_temp.dry_run_check('setup: BLACK22 has a log for today already, or not', true,
+  perform pg_temp.dry_run_check('setup: the sandbox job has a log for today already, or not', true,
     'revision before the run: ' || v_rev_before);
 
   -- ---- the first person contributes -------------------------------------------
@@ -124,7 +136,7 @@ begin
 
   -- ---- the fence: a real installer cannot reach the testing job ---------------------
   perform pg_temp.dry_run_act_as(v_real);
-  perform pg_temp.dry_run_expect_error('fence: a real installer is refused on BLACK22 (a testing job is not theirs to see)',
+  perform pg_temp.dry_run_expect_error('fence: a real installer is refused on the sandbox job (a testing job is not theirs to see)',
     format('select public.append_daily_log_contribution(%L::uuid, %L::uuid, %L::uuid, current_date, 0, %L::jsonb, %L, ''{}''::uuid[], ''{}''::uuid[])',
            gen_random_uuid(), v_real, v_job, '{"work_completed": {"status": "captured", "value": "Dry run: must not save"}}', 'Dry run: must not save'),
     'Choose an existing job');
@@ -149,9 +161,13 @@ begin
     'time_off_requests.profile_id','time_shift_edits.edited_by','time_shifts.profile_id','timecard_periods.profile_id',
     'toolbox_completions.profile_id','trip_crew.profile_id','unit_redos.pressed_by','unit_sessions.profile_id',
     'vehicle_drivers.profile_id','workflow_notice_outbox.profile_id','workflow_plan_revisions.actor','workflow_plans.created_by',
-    'daily_log_contributions.actor_id']) k where not (v_counts ? k);
-  perform pg_temp.dry_run_check('person_record_counts: keeps every key master has (learning references included) plus daily_log_contributions',
+    'time_clock_actions.profile_id', 'daily_log_contributions.actor_id']) k where not (v_counts ? k);
+  perform pg_temp.dry_run_check('person_record_counts: keeps every key master has (learning references included), the clock-tap ledger (#640) and daily_log_contributions',
     v_n = 0, v_n || ' key(s) missing');
+  select count(*) into v_n from public.time_clock_actions where profile_id = v_first;
+  perform pg_temp.dry_run_check('person_record_counts: counts the clock-tap ledger rows, not only names them',
+    (v_counts->>'time_clock_actions.profile_id')::int = v_n,
+    coalesce(v_counts->>'time_clock_actions.profile_id', 'null') || ' counted, ' || v_n || ' in the ledger');
   perform pg_temp.dry_run_check('person_record_counts: counts the contribution this run wrote',
     (v_counts->>'daily_log_contributions.actor_id')::int >= 1, coalesce(v_counts->>'daily_log_contributions.actor_id', 'null') || ' row(s)');
 end $$;

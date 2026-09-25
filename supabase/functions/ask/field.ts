@@ -3,7 +3,7 @@
 interface SupabaseClient {
   rpc(name: string, args: Record<string, unknown>): PromiseLike<{ data: unknown; error: unknown }>;
 }
-import { buildChecklist, completeAnswers, describeResult, fieldCommand, isUuid, mergeDraft, type SetupChecklist, type SetupDraft } from "../_shared/fieldTools.ts";
+import { buildChecklist, completeAnswers, describeResult, fieldCommand, isUuid, mergeDraft, type AskContextTag, type SetupChecklist, type SetupDraft } from "../_shared/fieldTools.ts";
 import { describeLearning, learningInput, mergeLearning, missingHeadings, normalizeLearning, type LearningPrep, type ReviewerLookup } from "../_shared/learningTools.ts";
 
 // Deliberately the caller-scoped client only: every read and write below runs as
@@ -44,6 +44,25 @@ export function newFieldState(requestId: string, receipts: Record<string, unknow
   const answers = (saved && typeof saved === "object" ? (saved as { answers?: SetupDraft }).answers : null) ?? null;
   const draft: SetupDraft = { job: answers?.job ?? null, unit: answers?.unit ? completeAnswers(answers.unit) : null };
   return { requestId, receipts, draft, savedUnit: null, checklist: draft.job || draft.unit ? buildChecklist(draft) : null, learning: savedLearning(saved) };
+}
+
+/**
+ * The context tag fills the setup's first answers (K2.3): the job, and the
+ * unit's number when the tag names one. Only blanks are filled — a job or unit
+ * the conversation already settled on is never replaced by a tag, so a tag
+ * left over from another screen cannot redirect answers already given.
+ */
+export function seedContextTag(state: FieldState, tag: AskContextTag): void {
+  let changed = false;
+  if (!state.draft.job?.project_id) {
+    state.draft.job = { name: state.draft.job?.name ?? tag.project_label, location: state.draft.job?.location ?? null, project_id: tag.project_id };
+    changed = true;
+  }
+  if (tag.unit_label && !state.draft.unit && state.draft.job?.project_id === tag.project_id) {
+    state.draft.unit = completeAnswers({ label: tag.unit_label });
+    changed = true;
+  }
+  if (changed) state.checklist = buildChecklist({ ...state.draft, saved: state.savedUnit });
 }
 
 /** A write-up kept from an earlier message, re-checked rather than trusted. */

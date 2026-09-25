@@ -1,8 +1,9 @@
 # Forge AI field operations (first installer loop)
 
 Owner decisions D08–D28 (September 22, 2026); planning pack
-`outputs/Forge-Vision-Planning-2026-09-22/`. Status: **candidate on branch
-`codex/ai-installer-operations`. Not deployed, not live-verified.**
+`outputs/Forge-Vision-Planning-2026-09-22/`. Shipped in PR #628. Release 2
+of the crew redesign ("the AI", `.scratch/crew-redesign/crew-redesign-spec.md`
+K2.1–K2.7, owner-approved 2026-09-23) builds on it — see "Release 2" below.
 
 ## What it does
 
@@ -133,6 +134,109 @@ nothing, and that a message naming another account is refused.
   timers late; the older clock outbox has no per-account binding (unchanged).
 - The Ask page's account/voice orchestration is covered by pure-function tests
   and the reviewer's browser spec, not by an in-repo browser test.
+
+## Release 2 — the AI (crew redesign K2.1–K2.7)
+
+**One list (K2.1).** `supabase/functions/_shared/askCapabilities.ts` is the
+capability registry: each action's roles, questions, what it changes, its
+receipt kind, its model tools, and whether it is live. The Ask function
+derives its tool list from it (`askToolNames` → `toolDefsFor`; a tool no
+capability claims never reaches the model — `askCapabilities.test.ts` pins
+both directions) and tells the model the same list the person's cards show,
+including what is NOT in Ask yet and which screen to use, who may use an
+action above their role, and the boundary. PERMISSION MIRROR is unchanged:
+tools are offered, executors refuse below rank.
+
+**Action cards (K2.2).** Four per role plus "All actions", from the registry
+(`components/ask/ActionCards.tsx`): installer Build a unit · Daily log · My
+hours; foreman Build a unit · Daily log; supervisor/owner Plan the schedule ·
+Job summary · Hours report. Take supplies (Release 4), Crew status and Units
+completed (Release 3) are absent from the cards and listed under All actions
+with "Use the <screen> for this". A running unit puts "Finish unit N" first.
+Cards hide as soon as the composer has text or a recording starts; "Actions"
+brings them back; a card sends its own words as a field request and never
+discards what was typed. A typed first message that names a unit and its type
+or size ("Unit 4 on Smith is a bifold door", "La unidad 4 es una puerta
+plegable", "unit 4 bifold 8 by six") is routed as the same field request
+without the card (`describesUnit` in `lib/askRouting.ts`); questions, hours or
+schedule talk and problem reports about a unit stay with the local answers —
+a miss costs one card tap, a false route saves a request nobody meant.
+
+**Context tag (K2.3).** The job page and the unit sheet open Ask with
+`location.state.askContext` (`contextTagFromInput` checks it). The tag rides
+with every message (`field.context` / `context_tag`), fills the setup's
+blanks only (`seedContextTag`), is named to the model with the rule to name
+the job and unit before the first save on them, and is dropped when another
+account signs in on the phone.
+
+**Boundary and one-tap buttons (K2.4).** The AI never changes a clock or
+break, signs a toolbox talk, approves, publishes or clocks anyone else; the
+registry test reads the Ask function's sources and fails on any such RPC.
+"Going to lunch" calls `offer_clock_button` (`_shared/clockButtons.ts`),
+which writes nothing; the reply carries `buttons`, the phone shows each only
+when it fits the real clock state (`lib/clockOneTap.ts`), and the tap uses
+the clock sheet's own path — `start_break`/`end_break`, or the same queued
+write with no signal; a `pending:` clock-in is refused. Clock in and clock
+out open the job clock, whose safety questions stay there.
+
+**Receipts (K2.5).** Every receipt card opens with Saved in Forge / Needs
+your choice / Nothing changed from `receipt.status` (`lib/askReceiptGuard.ts`);
+the checklist says it is kept for the conversation. A reply that reads as
+done (English or Spanish, sentence by sentence, conditionals and negations
+excused) with no receipt, report card or applied draft behind it gets
+"Nothing was saved yet" on the phone automatically.
+
+**Voice (K2.6).** Ask's microphone sends `language=auto` to
+`transcribe-description`, which then forces no language on the provider
+(dictation mics on text fields keep their field's language). The model
+answers in the language the person used and asks only about unclear
+quantities, sizes, people or variants.
+
+**Daily log (K2.7).** `docs/ai-daily-logs.md`. Every daily-log turn is a
+field request; the first message carries the draft from the awaited fresh
+`start()`; `readDailyLogContext` refuses another account's or conversation's
+draft; the reply's `daily_log` is applied only to this draft, account and
+conversation, and refused (and said so) without a saved message behind it;
+Save calls `append_daily_log_contribution` (migration 20261030000000).
+**Answers are saved in English** (owner decision 2026-09-24): the log is one
+company record the office reads, so the model translates faithfully — same
+facts, nothing added, names, numbers and unit codes exact — while the reply
+to the person stays in their language (K2.6). The person's own words are
+not lost: the field request keeps the recording and the transcript as the
+entry's evidence (`source_request_ids`).
+
+**What the model is told, after the first live scoring (2026-09-24).** Two
+models scored 31/48 live (`outputs/Forge-AI-Model-Scores-2026-09-24/`), and
+most misses were instruction gaps, fixed in the prompts and tool descriptions
+(`fieldTools.ts`, `aiDailyLog.ts`, `askCapabilities.ts`), not in the tools:
+a start/stop/finish request is acted on at once and the database's card or
+receipt speaks — the model never reads the clock and answers in prose
+instead (that is how the not-clocked-in, on-break and wrong-job cards never
+reached the phone); describing a unit is never a save (one model saved unit
+7 the person had only described); the job named in the message beats the
+draft and the clock (one model asked "did you mean Smythe?" after the person
+said Smythe, another quietly kept Smith); "I don't know X" always reaches
+the tool; a similar existing job still goes through `create_field_job` so
+the person gets the choice card; everything is "so far" / "en el borrador"
+until a receipt says done — never guardé, registré, anoté; screens are named
+exactly as the registry writes them. The router now sends "set up unit 2"
+and past work on a unit ("Ben and Ana installed unit 4 yesterday", the
+Record crew work card's job) as field requests — the two crew-record cases
+could never reach their tool by typing before.
+
+**Evaluation set.** `scripts/ask-eval/cases.json` + `scripts/ask-eval.mjs`:
+48 realistic requests through the real tool layer with a stubbed model (in
+CI) or, manually and opt-in, a real model (`--live`, `--only a,b,c` for a
+targeted spend). See the runner's header. Scoring: receipts, writes,
+buttons, tool calls and unknown-versus-missing are exact; text values
+(checklist values, daily-log answers) are compared normalized — case,
+punctuation, whitespace, one leading article, a plural "s" — because the
+office reads "Lift was late" and "The lift was late" the same, and a grader
+that fails them hides the misses that matter; daily-log answers must be
+English; a role-gated action passes refused by its tool OR never called and
+said to be someone else's (a write never passes). A stubbed trajectory that
+calls a tool the request never offered fails the case: that is how the two
+routing gaps above were found.
 
 ## Loading cost
 
