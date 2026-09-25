@@ -1,7 +1,7 @@
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { useQuery } from "@tanstack/react-query";
 import type { Session } from "@supabase/supabase-js";
-import { Suspense, useEffect, useRef, useState, type ReactNode } from "react";
+import { Suspense, useEffect, useState, type ReactNode } from "react";
 import { listProjectsAnyStatus } from "./lib/api";
 import { lazyRoute } from "./lib/pwa/lazyRoute";
 import { isTrackingOnly } from "./lib/jobModes";
@@ -53,8 +53,8 @@ import { FirstRunLanguagePicker } from "./components/LanguagePicker";
 import { ensureMyProfile } from "./lib/install/api";
 import { SkeletonCard } from "./components/ui/States";
 import { useIsPartnerUser } from "./lib/stg";
-import { signInOnThisPhone } from "./lib/supabase";
-import { sessionToKeep } from "./lib/offlineSession";
+import { onSignInRefused, signInRefused, storedSignIn } from "./lib/supabase";
+import { followSignIn } from "./lib/offlineSession";
 import { signOutWasRequested } from "./lib/signOut";
 import "./index.css";
 
@@ -405,14 +405,6 @@ function SectionAura() {
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
-  /**
-   * The sign-in this phone is using — what App last held, or, before auth
-   * has answered at all, the one kept in storage at launch — for the auth
-   * listener, whose closure is from mount. A refusal of the renewal at launch
-   * signs out a phone that WAS signed in, and it is told so.
-   */
-  const [launchSignIn] = useState(signInOnThisPhone);
-  const held = useRef<Session | null>(launchSignIn);
   /** The auth server ended this phone's sign-in; nobody tapped Sign out. */
   const [signedOutByServer, setSignedOutByServer] = useState(false);
   // Password recovery: true when this load came from a reset email, or when
@@ -466,42 +458,53 @@ export default function App() {
       void ensureMyProfile().catch(() => {});
       void prefetchWarehousePack();
     };
-    // Every answer auth gives goes through one rule, sessionToKeep: a real
-    // session wins, SIGNED_OUT is final, and any other "no session" defers to
-    // the sign-in still kept on this phone. supabase-js deletes that itself on
-    // a definite refusal and keeps it when the renewal only failed to reach
-    // the auth server — so no signal keeps a crew member signed in, on the
-    // profile and clock the phone saved (2026-09-24).
-    const hold = (next: Session | null) => {
-      held.current = next;
-      if (next) setSignedOutByServer(false);
-      rememberSignedIn(next);
-      setSession(next);
-    };
-    supabase.auth.getSession().then(({ data }) => {
-      // This is the ONE place the app asks who is signed in. Everywhere that
-      // only wants a name on a record — the photo shutter above all — reads
-      // lib/signedIn instead of making its own auth call, because an auth call
-      // in the middle of a tap is a network round trip, and on a token that has
-      // gone stale offline it is a long one that answers "nobody".
-      const s = sessionToKeep({ from: "load", session: data.session }, signInOnThisPhone());
-      hold(s);
-      setReady(true);
-      onSignedIn(s);
-    });
-    const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
-      if (event === "PASSWORD_RECOVERY") setRecovery(true);
-      // The server ended a sign-in this phone was using, and nobody tapped
-      // Sign out: straight to the sign-in screen, saying why.
-      if (event === "SIGNED_OUT" && held.current && !signOutWasRequested()) {
+    // Every answer auth gives goes through one follower (lib/offlineSession):
+    // a no-signal "no session" keeps the sign-in this phone still holds, so a
+    // crew member stays signed in on the profile and clock the phone saved;
+    // a sign-in the server refused is let go at once and explained; and an
+    // answer that arrives after a newer sign-in or sign-out is dropped, so a
+    // slow one can never bring the previous person back (2026-09-24/25).
+    const follow = followSignIn({
+      stored: storedSignIn,
+      isRefused: signInRefused,
+      hold: (next) => {
+        if (next) setSignedOutByServer(false);
+        rememberSignedIn(next);
+        setSession(next);
+      },
+      signedOutByServer: () => {
         setSignedOutByServer(true);
         setEntered(true);
-      }
-      const next = sessionToKeep({ from: "event", event, session: s }, signInOnThisPhone());
-      hold(next);
-      onSignedIn(next);
+      },
+      signOutWasRequested,
     });
-    return () => sub.subscription.unsubscribe();
+    const launchAnswer = follow.asking();
+    const launchAnswered = (answer: Session | null) => {
+      const s = launchAnswer(answer);
+      setReady(true);
+      if (s !== undefined) onSignedIn(s);
+    };
+    // This is the ONE place the app asks who is signed in. Everywhere that
+    // only wants a name on a record — the photo shutter above all — reads
+    // lib/signedIn instead of making its own auth call, because an auth call
+    // in the middle of a tap is a network round trip, and on a token that has
+    // gone stale offline it is a long one that answers "nobody". A question
+    // that fails outright (a phone whose storage is full cannot save a renewed
+    // sign-in) answers "nothing new" rather than leaving "Connecting…" up.
+    supabase.auth.getSession().then(
+      ({ data }) => launchAnswered(data.session),
+      () => launchAnswered(null),
+    );
+    const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
+      if (event === "PASSWORD_RECOVERY") setRecovery(true);
+      const next = follow.changed(event, s);
+      if (next !== undefined) onSignedIn(next);
+    });
+    const stopHearingRefusals = onSignInRefused((refreshToken) => follow.refused(refreshToken));
+    return () => {
+      sub.subscription.unsubscribe();
+      stopHearingRefusals();
+    };
   }, []);
 
   // Wave H (H2): the GC's page, ahead of EVERYTHING — ahead of the "Connecting…"

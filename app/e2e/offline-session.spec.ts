@@ -163,9 +163,18 @@ async function clockServer(page: Page): Promise<ClockServer> {
 
 /** The auth server's answer to "renew this sign-in", switchable mid-test. */
 async function tokenEndpoint(page: Page) {
-  const state = { answer: "renew" as "renew" | "refuse", asked: 0 };
+  const state = { answer: "renew" as "renew" | "refuse" | "slow-down", asked: 0 };
   await page.route("**/auth/v1/token**", (route) => {
     state.asked += 1;
+    if (state.answer === "slow-down") {
+      // Throttled: the auth server is busy, not saying no.
+      return route.fulfill({
+        status: 429,
+        contentType: "application/json",
+        headers: { "access-control-expose-headers": "x-supabase-api-version", "x-supabase-api-version": "2024-01-01" },
+        body: JSON.stringify({ code: "over_request_rate_limit", message: "Request rate limit reached" }),
+      });
+    }
     if (state.answer === "refuse") {
       // What the auth server says about a refresh token it has revoked.
       return route.fulfill({
@@ -328,12 +337,13 @@ async function yesterdayWithSignal(page: Page, saved: string[]) {
 
 test.use({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
 
-test("(a) an expired sign-in with no signal opens signed in, a clock-in waits on the phone, and goes out under the renewed sign-in when signal returns", async ({
-  page,
-  context,
-}) => {
-  test.setTimeout(240_000);
-  await useSupabaseFixtures(page, { role: "installer", session: "phone" });
+/**
+ * Yesterday with signal on `page`; this morning, on `again`, the sign-in run
+ * out and no bars: the app opens signed in on the saved profile, and a
+ * clock-in is saved on the phone. Returns with the dead zone still up. Both
+ * pages come with useSupabaseFixtures(…, { session: "phone" }) already on.
+ */
+async function clockInSavedWithNoSignal(page: Page, again: Page, context: BrowserContext) {
   // What the phone has to have kept to clock in tomorrow with no signal.
   await yesterdayWithSignal(page, ["myProfile", "projects", "recentJobs", "clockCostCodes"]);
   await putThePhoneAway(page);
@@ -342,8 +352,6 @@ test("(a) an expired sign-in with no signal opens signed in, a clock-in waits on
   await page.close();
 
   // This morning, on a site with no bars.
-  const again = await context.newPage();
-  await useSupabaseFixtures(again, { role: "installer", session: "phone" });
   await hideWrongProjectBanner(again);
   await stubGeolocationDenied(again);
   const server = await clockServer(again);
@@ -375,15 +383,21 @@ test("(a) an expired sign-in with no signal opens signed in, a clock-in waits on
   });
   expect(server.clockIns, "a punch reached the database with no signal").toHaveLength(0);
   expect(deadZone.refused, "the app was not actually cut off").toContain("/auth/v1/token");
+  return { again, server, auth, deadZone, seen };
+}
 
-  // Signal returns.
+/** Signal is back: the queued clock-in goes out once, under the renewed sign-in. */
+async function theClockInGoesOutRenewed(
+  context: BrowserContext,
+  { again, server, auth, deadZone, seen }: Awaited<ReturnType<typeof clockInSavedWithNoSignal>>,
+) {
   auth.answer = "renew";
   await deadZone.lift(context);
 
   // The sign-in is renewed, and the waiting clock-in goes out once — under
   // the renewed sign-in, carrying the job and code it was saved with.
   await expect
-    .poll(() => server.clockIns.length, { timeout: 180_000, message: "the queued clock-in never went out" })
+    .poll(() => server.clockIns.length, { timeout: 200_000, message: "the queued clock-in never went out" })
     .toBeGreaterThan(0);
   expect(server.clockIns).toHaveLength(1);
   expect(server.clockIns[0].authorization).toBe(`Bearer ${RENEWED.access_token}`);
@@ -393,6 +407,36 @@ test("(a) an expired sign-in with no signal opens signed in, a clock-in waits on
 
   // And nothing, offline or after, went to the database as nobody.
   expect(sentAsNobody(seen), "a request went out with no one's sign-in on it").toEqual([]);
+}
+
+test("(a) an expired sign-in with no signal opens signed in, a clock-in waits on the phone, and goes out under the renewed sign-in when signal returns", async ({
+  page,
+  context,
+}) => {
+  test.setTimeout(240_000);
+  await useSupabaseFixtures(page, { role: "installer", session: "phone" });
+  const again = await context.newPage();
+  await useSupabaseFixtures(again, { role: "installer", session: "phone" });
+  const phone = await clockInSavedWithNoSignal(page, again, context);
+  await theClockInGoesOutRenewed(context, phone);
+});
+
+test("(a2) signal returning while supabase-js is still waiting out a failed renewal: nothing goes out as nobody, and the clock-in waits for the renewal", async ({
+  page,
+  context,
+}) => {
+  test.setTimeout(330_000);
+  await useSupabaseFixtures(page, { role: "installer", session: "phone" });
+  const again = await context.newPage();
+  await useSupabaseFixtures(again, { role: "installer", session: "phone" });
+  const phone = await clockInSavedWithNoSignal(page, again, context);
+  // Let supabase-js spend its whole renewal budget (eight tries over about 25
+  // seconds) so it is sitting out its minute of "don't ask again" when the
+  // signal comes back — the usual state of a phone that has been in a dead
+  // zone for a while.
+  const tries = () => phone.deadZone.refused.filter((path) => path === "/auth/v1/token").length;
+  await expect.poll(tries, { timeout: 60_000, message: "supabase-js never gave up renewing" }).toBeGreaterThanOrEqual(8);
+  await theClockInGoesOutRenewed(context, phone);
 });
 
 test("(b) a good sign-in opened with no signal keeps the saved profile, so the clock is still there", async ({
@@ -455,4 +499,134 @@ test("(c) a sign-in the server has ended still signs the phone out, and says so 
   await expect(page.locator(".clockin-block")).toHaveCount(0);
   expect(auth.asked).toBeGreaterThan(0);
   expect(await storedSignIn(page)).toBeNull();
+});
+
+test("(d) a renewal that fails after someone else signed in never brings the last person back", async ({ page }) => {
+  await useSupabaseFixtures(page, { role: "installer", session: "phone" });
+  await hideWrongProjectBanner(page);
+  await stubGeolocationDenied(page);
+  await clockServer(page);
+  const B = {
+    ...FIXTURE_SESSION,
+    access_token: "e2e-B-access-token",
+    refresh_token: "e2e-B-refresh-token",
+    user: { ...FIXTURE_SESSION.user, id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", email: "person-b@example.test" },
+  };
+  // A's renewal hangs on a bad connection; B's sign-in gets through.
+  let held: Route | null = null;
+  await page.route("**/auth/v1/token**", async (route) => {
+    if (route.request().url().includes("grant_type=refresh_token")) {
+      held = route;
+      return;
+    }
+    return json(route, B, null);
+  });
+  await page.goto("/");
+  await expect(page.locator(".clockin-block")).toBeVisible();
+
+  // A has a minute left, so asking who is signed in means renewing first.
+  await page.evaluate(async (key) => {
+    const { supabase } = await import("/src/lib/supabase.ts" as string);
+    await supabase.auth.stopAutoRefresh();
+    const a = JSON.parse(window.localStorage.getItem(key) ?? "null");
+    a.expires_at = Math.floor(Date.now() / 1000) + 60;
+    window.localStorage.setItem(key, JSON.stringify(a));
+    (window as unknown as { __asked: Promise<unknown> }).__asked = supabase.auth.getSession();
+  }, FIXTURE_AUTH_KEY);
+  await expect.poll(() => held !== null).toBe(true);
+
+  // B signs in on this phone while A's question is still out…
+  await page.evaluate(async (email) => {
+    const { supabase } = await import("/src/lib/supabase.ts" as string);
+    const { error } = await supabase.auth.signInWithPassword({ email, password: "fixture" });
+    if (error) throw error;
+  }, B.user.email);
+  // …and then A's renewal fails to get through.
+  await held!.abort("internetdisconnected");
+
+  const late = await page.evaluate(async () => {
+    const asked = (await (window as unknown as { __asked: Promise<{ data: { session: { user: { id: string } } | null } }> })
+      .__asked) as { data: { session: { user: { id: string } } | null } };
+    const { signInOnThisPhone } = await import("/src/lib/supabase.ts" as string);
+    const { sessionToKeep } = await import("/src/lib/offlineSession.ts" as string);
+    const { signedInEmail } = await import("/src/lib/signedIn.ts" as string);
+    return {
+      answered: asked.data.session?.user.id ?? null,
+      onThePhone: signInOnThisPhone()?.user.id ?? null,
+      wouldHold: sessionToKeep({ from: "load", session: asked.data.session as never }, signInOnThisPhone())?.user.id ?? null,
+      appHolds: signedInEmail(),
+    };
+  });
+  expect(late.answered, "the late answer named the person who had left").toBeNull();
+  expect(late.onThePhone).toBe(B.user.id);
+  expect(late.wouldHold).toBe(B.user.id);
+  expect(late.appHolds).toBe(B.user.email);
+});
+
+test("(e) a sign-in the server refused while it still worked is not reopened with no signal after it runs out", async ({
+  page,
+  context,
+}) => {
+  await useSupabaseFixtures(page, { role: "installer", session: "phone" });
+  await hideWrongProjectBanner(page);
+  await clockServer(page);
+  const auth = await tokenEndpoint(page);
+  auth.answer = "refuse";
+  // 45 seconds left, so the app renews early — and the server says no.
+  await page.addInitScript((key) => {
+    const stored = JSON.parse(window.localStorage.getItem(key) ?? "null");
+    if (stored) {
+      stored.expires_at = Math.floor(Date.now() / 1000) + 45;
+      window.localStorage.setItem(key, JSON.stringify(stored));
+    }
+  }, FIXTURE_AUTH_KEY);
+  await page.goto("/");
+
+  // The phone lets go at once and says why…
+  await expect(page.getByText("You've been signed out on this phone")).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator(".clockin-block")).toHaveCount(0);
+  expect(auth.asked).toBeGreaterThan(0);
+  // …although supabase-js keeps the sign-in until its token runs out.
+  expect(await storedSignIn(page)).not.toBeNull();
+
+  // It runs out, and the phone is opened again on a site with no signal.
+  await putThePhoneAway(page);
+  await expireTheSignIn(page);
+  await page.close();
+  const again = await context.newPage();
+  await useSupabaseFixtures(again, { role: "installer", session: "phone" });
+  await hideWrongProjectBanner(again);
+  await clockServer(again);
+  await goToTheDeadZone(again);
+  await context.setOffline(true);
+  await again.goto("/");
+
+  await expect(again.getByText("You've been signed out on this phone")).toBeVisible({ timeout: 20_000 });
+  await expect(again.getByPlaceholder("Email")).toBeVisible();
+  await expect(again.locator(".clockin-block")).toHaveCount(0);
+});
+
+test("(f) an auth server asking the phone to slow down (429) does not sign anybody out", async ({ page, context }) => {
+  await useSupabaseFixtures(page, { role: "installer", session: "phone" });
+  await yesterdayWithSignal(page, ["myProfile", "recentJobs", "clockCostCodes"]);
+  await putThePhoneAway(page);
+  await expireTheSignIn(page);
+  await ageTheSavedCopy(page, 14);
+  await page.close();
+
+  // This morning, with signal — but the auth server is throttling renewals.
+  const again = await context.newPage();
+  await useSupabaseFixtures(again, { role: "installer", session: "phone" });
+  await hideWrongProjectBanner(again);
+  await stubGeolocationDenied(again);
+  await clockServer(again);
+  const auth = await tokenEndpoint(again);
+  auth.answer = "slow-down";
+  await again.goto("/");
+
+  await expect(again.locator(".clockin-block")).toBeVisible({ timeout: 15_000 });
+  await expect(again.getByText("You've been signed out on this phone")).toHaveCount(0);
+  await expect(again.getByPlaceholder("Email")).toHaveCount(0);
+  expect(auth.asked).toBeGreaterThan(0);
+  expect(await storedSignIn(again)).not.toBeNull();
 });

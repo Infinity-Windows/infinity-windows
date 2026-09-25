@@ -1,5 +1,5 @@
 import { transcribeInstallAttachment } from "./transcribe";
-import { isAuthRetryableFetchError, type User } from "@supabase/supabase-js";
+import { isAuthApiError, isAuthRetryableFetchError, type User } from "@supabase/supabase-js";
 import type { PDFDocumentProxy } from "pdfjs-dist/types/src/display/api";
 import { supabase } from "../supabase";
 import { filterToLiveProjects } from "../liveProjects";
@@ -144,13 +144,23 @@ async function signedInUser(): Promise<User | null> {
   // renewal retries before saying the same thing.
   const { data: kept, error: keptError } = await supabase.auth.getSession();
   if (!kept.session) {
-    if (isAuthRetryableFetchError(keptError)) throw keptError;
+    if (couldNotAsk(keptError)) throw keptError;
     return null;
   }
   const { data, error } = await supabase.auth.getUser();
   if (data.user) return data.user;
-  if (isAuthRetryableFetchError(error)) throw error;
+  if (couldNotAsk(error)) throw error;
   return null;
+}
+
+/**
+ * The auth server could not be asked, or could not answer just now: no signal,
+ * a timeout, 429 "slow down", a 5xx. None of those says who is signed in —
+ * the same line lib/offlineSession's classifyRenewal draws for renewals.
+ */
+function couldNotAsk(error: unknown): boolean {
+  if (isAuthRetryableFetchError(error)) return true;
+  return isAuthApiError(error) && (error.status === 408 || error.status === 429 || error.status >= 500);
 }
 
 /** Ensure the signed-in user has a profile row; return it. */
@@ -229,7 +239,7 @@ async function profileOf(user: User | null): Promise<Profile | null> {
  */
 export async function getRealProfile(): Promise<Profile | null> {
   const user = await signedInUser().catch((err: unknown) => {
-    if (isAuthRetryableFetchError(err)) return null;
+    if (couldNotAsk(err)) return null;
     throw err;
   });
   return profileOf(user);
