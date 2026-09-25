@@ -116,9 +116,12 @@ const photoReceipts = new PhotoUploadReceipts();
 
 /** The handlers for one access token; kept, since a drain sends many writes on one token. */
 let boundHandlers: { token: string; handlers: OpHandlers } | null = null;
-function handlersFor(token: string): OpHandlers {
+function handlersFor(token: string, userId: string): OpHandlers {
   if (boundHandlers?.token !== token) {
-    boundHandlers = { token, handlers: createSupabaseHandlers(resolver, clientWithToken(token)) };
+    boundHandlers = {
+      token,
+      handlers: createSupabaseHandlers(resolver, clientWithToken(token), { userId }),
+    };
   }
   return boundHandlers.handlers;
 }
@@ -142,7 +145,7 @@ const handlers: OpHandlers = Object.fromEntries(
       const session = data.session;
       const signer: Signer = { userId: session?.user?.id ?? null, email: session?.user?.email ?? null };
       if (!session || !belongsTo(entry, signer, launchUserId())) throw new HeldForOwnerError();
-      const handler = handlersFor(session.access_token)[op];
+      const handler = handlersFor(session.access_token, session.user.id)[op];
       if (!handler) throw new Error(`No handler for op "${op}"`);
       return handler(entry, ctx);
     },
