@@ -17,26 +17,36 @@
 import { expect, test, type Page } from "@playwright/test";
 import { useSupabaseFixtures } from "./support/supabaseFixtures";
 import { hideWrongProjectBanner } from "./support/specHelpers";
-import { pinStatusIs, typePin, usePinCheck } from "./support/pinFixtures";
+import { typePin } from "./support/pinFixtures";
 
 test.use({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
 
 const LOCK = "Enter your 4-digit PIN";
 
 /**
- * The server's side of set_my_pin: keep what was sent, and from then on answer
- * the lock's two questions the way the real server would. Each answer is
- * registered before the save is answered, so the refetch that follows a save
- * already hears the new one.
+ * The server's side of the PIN, answered in the browser: set_my_pin stores it
+ * (an empty PIN removes it), and the lock's two questions are answered from
+ * what is stored, the way the real server answers them. Returns every PIN
+ * that was sent, in order.
  */
-async function usePinSaves(page: Page): Promise<string[]> {
+async function usePinServer(page: Page): Promise<string[]> {
   const sent: string[] = [];
-  await page.route("**/rest/v1/rpc/set_my_pin", async (route) => {
+  let stored: string | null = null;
+  const reply = (body: unknown) => ({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify(body),
+  });
+  await page.route("**/rest/v1/rpc/set_my_pin", (route) => {
     const pin = (route.request().postDataJSON() as { p_pin?: string } | null)?.p_pin ?? "";
     sent.push(pin);
-    await pinStatusIs(page, pin !== "");
-    if (pin) await usePinCheck(page, pin);
-    return route.fulfill({ status: 200, contentType: "application/json", body: "null" });
+    stored = pin === "" ? null : pin;
+    return route.fulfill(reply(null));
+  });
+  await page.route("**/rest/v1/rpc/my_pin_status", (route) => route.fulfill(reply(stored !== null)));
+  await page.route("**/rest/v1/rpc/check_my_pin", (route) => {
+    const tried = (route.request().postDataJSON() as { p_pin?: string } | null)?.p_pin;
+    return route.fulfill(reply(stored !== null && tried === stored));
   });
   return sent;
 }
@@ -52,7 +62,7 @@ test("an installer sets a PIN in Settings, the lock asks for it, and Clear remov
 }) => {
   await useSupabaseFixtures(page, { role: "installer" });
   await hideWrongProjectBanner(page);
-  const sent = await usePinSaves(page);
+  const sent = await usePinServer(page);
   await page.goto("/settings");
 
   const settings = page.getByRole("heading", { name: "Settings", level: 1 });
