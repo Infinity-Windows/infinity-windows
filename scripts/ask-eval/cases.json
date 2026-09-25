@@ -784,10 +784,18 @@
       "utterance": "Start unit 4",
       "world": {
         "clock": null,
+        "draft": {
+          "job": "$SMITH",
+          "unit": {
+            "label": "4",
+            "type_label": "Bifold door"
+          }
+        },
         "savedUnits": [
           "4"
         ]
       },
+      "$comment": "The person is not clocked in, so no job clock names the job; with no draft either, both live models rightly asked which of three jobs unit 4 is on (2026-09-24) and the needs_clock card this case is about was never reached. In the real flow they set the unit up first (or opened Ask from the job), so the draft names Smith — and the test is now what it was meant to be: the model calls start_unit_work without pre-judging the clock, and the card says they are not clocked in.",
       "stub": {
         "tools": [
           {
@@ -1074,10 +1082,10 @@
           {
             "name": "record_daily_log_answers",
             "input": {
-              "work_completed": "Pusimos seis marcos en la pared este",
+              "work_completed": "We set six frames on the east wall",
               "units_stages": null,
               "people": "Ben",
-              "problems": "El elevador llegó tarde",
+              "problems": "The lift was late",
               "notes": null,
               "day_flow": null,
               "weather": null,
@@ -1089,16 +1097,18 @@
             }
           }
         ],
-        "text": "Anotado: seis marcos en la pared este con Ben; el elevador llegó tarde. ¿Qué unidades o etapas? Revisa la tarjeta y toca Guardar registro cuando esté bien."
+        "text": "En el borrador: seis marcos en la pared este con Ben; el elevador llegó tarde. ¿Qué unidades o etapas? Revisa la tarjeta y toca Guardar registro cuando esté bien."
       },
       "expect": {
         "dailyAnswers": {
           "people": "Ben"
         },
+        "dailyAnswersEnglish": true,
         "answerLang": "es",
         "noWrite": true,
         "noDoneClaim": true
-      }
+      },
+      "$comment": "Owner rule (2026-09-24): the answers go into the shared log in ENGLISH for the office — the stub now records the translation — while the reply to the person stays Spanish (K2.6) and their own words stay as evidence on the message (recording and transcript). The exact translation is not pinned ('the lift' or 'the elevator' are both right); the language is, and the name is. The stub reply says 'En el borrador' because 'Registré' reads as a claim of saving and the phone contradicts it."
     },
     {
       "id": "daily-log-mixed",
@@ -1139,8 +1149,10 @@
           "day_flow": "smooth",
           "weather": "Hot"
         },
+        "dailyAnswersEnglish": true,
         "noWrite": true
-      }
+      },
+      "$comment": "Owner rule (2026-09-24): saved in English whatever the mix spoken ('el clima estuvo caliente' → Hot; 'todo bien' → smooth, the all-good flow). One live model saved 'Unidades 3 y 4, etapa de flashing' and 'Caliente'; another wrote 'fine' for todo bien. Values are compared normalized (case, punctuation), so 'hot' passes and 'Caliente' does not."
     },
     {
       "id": "daily-log-unknown-people",
@@ -1231,8 +1243,10 @@
           "problems"
         ],
         "noWrite": true,
-        "asksQuestion": true
-      }
+        "asksQuestion": true,
+        "answerLang": "en"
+      },
+      "$comment": "answerLang added 2026-09-24: a live model answered this English card prompt in Spanish. K2.6 is the language the person used."
     },
     {
       "id": "lunch-en",
@@ -1502,7 +1516,7 @@
       "lang": "en",
       "rank": 0,
       "kind": "text",
-      "utterance": "Set up unit 2 on Smi",
+      "utterance": "Set up unit 2 on Sm",
       "world": {
         "clock": null
       },
@@ -1512,7 +1526,7 @@
             "name": "get_field_context",
             "input": {
               "project_id": null,
-              "search": "Smi"
+              "search": "Sm"
             }
           }
         ],
@@ -1520,12 +1534,13 @@
       },
       "expect": {
         "toolsNever": [
-          "record_setup_answers",
           "save_field_unit"
         ],
+        "draftJobNone": true,
         "asksQuestion": true,
         "noWrite": true
-      }
+      },
+      "$comment": "Cut off mid-word, as a phone keyboard does. It used to read 'Smi', which the job search — a substring match, in the real RPC (ilike) and in the fake alike — matches to Smith Residence ALONE, so the two-way tie this case is about never existed and a live model rightly took the single match (2026-09-24). 'Sm' matches both. Recording the unit's number while asking which job is the proctor rule, so record_setup_answers is allowed; the check is that no job is chosen for them (draftJobNone). Typed with no card: the router sends 'set up unit 2' as field work since the same day."
     },
     {
       "id": "unbuilt-take-supplies",
@@ -1607,7 +1622,8 @@
         "schedulingRefused": true,
         "noWrite": true,
         "noDoneClaim": true
-      }
+      },
+      "$comment": "schedulingRefused passes two ways (2026-09-24): the scheduling tool is called and refuses by rank (the stub), or no scheduling tool is called and the reply says it is a supervisor's. A live model did the second, exactly as the capability block tells it to, and was scored as a failure."
     },
     {
       "id": "my-hours",
@@ -1855,12 +1871,16 @@
       },
       "expect": {
         "receipts": [],
-        "toolErrors": [
+        "refusedOrNotCalled": [
           "record_crew_work"
+        ],
+        "mentions": [
+          "foreman"
         ],
         "noWrite": true,
         "noDoneClaim": true
-      }
+      },
+      "$comment": "Two right answers (2026-09-24): the tool is called and the executor refuses below foreman (the stub, exercising the wall), or the model — told by the capability block that this is foreman and above — never calls it and says who can. Both live models did the second and were scored as failures. A write never passes; the prose must name the foreman."
     },
     {
       "id": "lesson-en",
