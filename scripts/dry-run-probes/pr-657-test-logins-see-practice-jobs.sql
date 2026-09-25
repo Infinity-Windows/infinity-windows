@@ -1,13 +1,17 @@
 -- Probe for 20261030030000_test_logins_see_practice_jobs.sql (#657): a test
--- login sees the practice job — a job that is BOTH a testing project AND on
--- the sandbox list — with the rows under it that the drill opens; it sees no
--- other testing job; and nobody else's list of jobs changes by a single row.
+-- login that is a current crew login sees the practice job — a job that is
+-- BOTH a testing project AND on the sandbox list — with the rows under it that
+-- the drill opens; it sees no other testing job; a test flag on a partner, a
+-- retired login or one whose access was revoked opens nothing; and nobody
+-- else's list of jobs changes by a single row.
 --
 -- Every real person is only READ as. The only writes are the system's, rolled
 -- back with the batch like everything else: two throwaway jobs (one testing job
 -- off the sandbox list, one practice job in the trash), a custom unit on the
 -- practice job if it has none, each QA login's test flag cleared for one check,
--- and, last, the rule on master put back to compare every login against.
+-- the partner, revoked and retired marks set on each QA login for one check
+-- apiece and put back, and, last, the rule on master put back to compare every
+-- login against.
 -- Job codes and qa.* logins only in the output; people are counted, never named.
 --
 -- Run: gh workflow run db-dry-run.yml --repo Infinity-Windows/infinity-windows \
@@ -16,7 +20,7 @@
 --        -f probe=scripts/dry-run-probes/pr-657-test-logins-see-practice-jobs.sql
 
 -- ---------------------------------------------------------------------------
--- 1. The rule on the database, and the two helpers it calls
+-- 1. The rule on the database, and the three helpers its new branch calls
 -- ---------------------------------------------------------------------------
 do $$
 declare
@@ -27,8 +31,9 @@ begin
   perform pg_temp.dry_run_as_system();
   select qual into v_qual from pg_policies
    where schemaname = 'public' and tablename = 'projects' and policyname = 'projects_select_visible';
-  perform pg_temp.dry_run_check('rule: the jobs read rule has the new branch (a test login, a testing job, on the sandbox list)',
-    coalesce(v_qual ilike '%is_test_profile(auth.uid())%' and v_qual ilike '%is_sandbox_project(%', false), null);
+  perform pg_temp.dry_run_check('rule: the jobs read rule has the new branch (a test login that is a current crew login, a testing job, on the sandbox list)',
+    coalesce(v_qual ilike '%is_test_profile(auth.uid())%' and v_qual ilike '%custom_work_internal()%'
+      and v_qual ilike '%is_sandbox_project(%', false), null);
   perform pg_temp.dry_run_check('rule: the trash gate, the supervisor branch and the partner grant are all still in it',
     coalesce(v_qual ilike '%deleted_at IS NULL%' and v_qual ilike '%is_supervisor(auth.uid())%'
       and v_qual ilike '%partner_job_grants%' and v_qual ilike '%is_partner_user()%', false), null);
@@ -37,15 +42,23 @@ begin
   perform pg_temp.dry_run_check('rule: it is still the only rule that lets anyone read jobs', v_n = 1,
     v_n || ' read rule(s) on projects, expected 1');
   select count(*) into v_n from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-   where n.nspname = 'public' and p.proname in ('is_test_profile', 'is_sandbox_project')
+   where n.nspname = 'public' and p.proname in ('is_test_profile', 'custom_work_internal', 'is_sandbox_project')
      and p.prosecdef and exists (select 1 from unnest(p.proconfig) c where c like 'search_path=%');
-  perform pg_temp.dry_run_check('helpers: the two the rule calls are security definer with a pinned search path', v_n = 2,
-    v_n || ' of 2');
-  perform pg_temp.dry_run_check('helpers: a signed-out caller can run neither; a signed-in caller can run both',
+  perform pg_temp.dry_run_check('helpers: the three the new branch calls are security definer with a pinned search path', v_n = 3,
+    v_n || ' of 3');
+  perform pg_temp.dry_run_check('helpers: a signed-out caller can run none of them; a signed-in caller can run all three',
     not has_function_privilege('anon', 'public.is_test_profile(uuid)', 'execute')
+    and not has_function_privilege('anon', 'public.custom_work_internal()', 'execute')
     and not has_function_privilege('anon', 'public.is_sandbox_project(uuid)', 'execute')
     and has_function_privilege('authenticated', 'public.is_test_profile(uuid)', 'execute')
+    and has_function_privilege('authenticated', 'public.custom_work_internal()', 'execute')
     and has_function_privilege('authenticated', 'public.is_sandbox_project(uuid)', 'execute'), null);
+  -- The branch's own is_test only restates the rule while the column cannot be
+  -- unknown; this is the fact that makes it so on the real table.
+  select count(*) into v_n from information_schema.columns
+   where table_schema = 'public' and table_name = 'projects' and column_name = 'is_test' and is_nullable = 'NO';
+  perform pg_temp.dry_run_check('rule: projects.is_test is NOT NULL, so no job''s testing flag is ever unknown', v_n = 1,
+    v_n || ' of 1');
   select count(*), string_agg(p.job_code, ', ' order by p.job_code) into v_n, v_codes
     from public.projects p
    where coalesce(p.is_test, false) and p.deleted_at is null and public.is_sandbox_project(p.id);
@@ -181,7 +194,7 @@ begin
   for r in select * from (values ('installer'), ('foreman')) as t(role) loop
     -- A real person of the role, never a QA login; read as, never written as.
     -- Looked up here rather than by dry_run_pick_real, which stops the run
-    -- when a role has nobody: section 5 compares every login either way.
+    -- when a role has nobody: section 6 compares every login either way.
     perform pg_temp.dry_run_as_system();
     v_id := null;
     select p.id into v_id from public.profiles p
@@ -190,7 +203,7 @@ begin
      order by p.id
      limit 1;
     if v_id is null then
-      perform pg_temp.dry_run_check('a real ' || r.role || ': nobody holds the role (section 5 still compares every login)', true, null);
+      perform pg_temp.dry_run_check('a real ' || r.role || ': nobody holds the role (section 6 still compares every login)', true, null);
       continue;
     end if;
     v_role := pg_temp.dry_run_act_as(v_id);
@@ -252,7 +265,56 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------------
--- 5. Every login, this rule against the rule on master
+-- 5. A test flag opens nothing on a login that is not a current crew login
+-- ---------------------------------------------------------------------------
+-- Codex review of #657: is_test_profile() reads only the test flag, so the
+-- branch also asks custom_work_internal(). Each QA login is marked, one mark at
+-- a time and put back after, as a partner, as a login whose access was
+-- revoked, and as retired — its test flag left on — and must not see the
+-- practice job. Synthetic marks on the QA logins only, rolled back with the rest.
+do $$
+declare
+  v_job uuid;
+  r record;
+  f record;
+  v_id uuid;
+  v_role text;
+  v_n int;
+  v_u int;
+  v_partner boolean;
+  v_revoked timestamptz;
+  v_retired timestamptz;
+begin
+  perform pg_temp.dry_run_as_system();
+  v_job := pg_temp.dry_run_sandbox_job();
+  for r in select * from (values ('installer', 'qa.installer'), ('foreman', 'qa.foreman')) as t(role, login) loop
+    perform pg_temp.dry_run_as_system();
+    v_id := pg_temp.dry_run_pick(r.role);
+    select p.is_partner, p.access_revoked_at, p.retired_at into v_partner, v_revoked, v_retired
+      from public.profiles p where p.id = v_id;
+    for f in select * from (values (1, 'a partner'), (2, 'cut off (access revoked)'), (3, 'retired')) as t(n, label) loop
+      perform pg_temp.dry_run_as_system();
+      update public.profiles
+         set is_partner = case when f.n = 1 then true else v_partner end,
+             access_revoked_at = case when f.n = 2 then now() else v_revoked end,
+             retired_at = case when f.n = 3 then now() else v_retired end
+       where id = v_id;
+      v_role := pg_temp.dry_run_act_as(v_id);
+      select count(*) into v_n from public.projects where id = v_job;
+      select count(*) into v_u from public.custom_work_units where project_id = v_job;
+      perform pg_temp.dry_run_check(r.login || ' marked ' || f.label || ', test flag still on: the practice job and its units stay hidden',
+        v_n = 0 and v_u = 0 and public.is_test_profile(v_id),
+        v_n || ' job row(s), ' || v_u || ' unit(s), expected 0 and 0');
+      perform pg_temp.dry_run_as_system();
+      update public.profiles
+         set is_partner = v_partner, access_revoked_at = v_revoked, retired_at = v_retired
+       where id = v_id;
+    end loop;
+  end loop;
+end $$;
+
+-- ---------------------------------------------------------------------------
+-- 6. Every login, this rule against the rule on master
 -- ---------------------------------------------------------------------------
 -- Last, because it puts master's rule back (inside the batch, rolled back with
 -- it). Each person's list of jobs is read under both rules and compared, so
