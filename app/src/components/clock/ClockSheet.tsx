@@ -44,6 +44,7 @@ import {
 import {
   BREAK_TYPES,
   breakTypeLabel,
+  carriedPunch,
   clockIn,
   clockOut,
   CLOCK_REFUSAL_KEY,
@@ -381,13 +382,18 @@ export function ClockSheet({
         initialPick && initialPick.projectId === projectId
           ? (initialPick.mode ?? jobsOwnMode)
           : jobsOwnMode;
-      // One id per tap (K0.2). A pick carried from the landing block keeps the
-      // block's id: its punch may have been SAVED before the reply was lost,
-      // and the server answers a repeat of that id with the shift it made.
-      // Stamped here, before the location wait (see above).
-      const punch = mintPunch(
-        initialPick && initialPick.projectId === projectId ? initialPick.clientId : null,
-      );
+      // One punch per tap (K0.2/K0.5). A pick carried from the landing block
+      // IS the block's tap: the same punch — its id, its tap time and its
+      // clock check — never re-stamped at this later tap. If the block's
+      // request was SAVED before its reply was lost, the server answers this
+      // repeat with the shift it made; if it never arrived, this send is still
+      // paid from the block's tap (Codex review of #640, 2026-09-25) — or from
+      // today's talk, if it was signed here after that tap (carriedPunch).
+      // Only for the job it was tapped for: a different job picked here is a
+      // different punch, stamped now, before the location wait (see above).
+      const carried =
+        initialPick?.punch && initialPick.projectId === projectId ? initialPick.punch : null;
+      const punch = carried ? carriedPunch(carried, toolboxDone.data?.signed_at) : mintPunch();
       const geo = await captureGeoSoft();
       try {
         await clockIn(projectId, costCodeId, geo, noteText, jobMode, punch);

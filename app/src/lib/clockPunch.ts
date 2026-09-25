@@ -36,6 +36,26 @@ export function mintPunch(clientId?: string | null, nowMs = Date.now()): ClockPu
 }
 
 /**
+ * A tap handed from one screen to another (the landing block or Start day to
+ * the clock sheet), as it should be sent now. It is the SAME punch — its id,
+ * its tap time and its clock check, never re-stamped at the later screen's
+ * tap: a first request that never reached the server would otherwise be paid
+ * from that later tap (Codex review of #640, 2026-09-25).
+ *
+ * One exception: today's toolbox talk signed AFTER the tap. Then it is
+ * stamped at the signature instead, under the same id: paid time does not
+ * start before the talk, and signing is what made this clock-in possible —
+ * the rule the landing block and Start day follow when signing IS the
+ * clock-in. `signedAt` is the completion's signed_at, which the signing phone
+ * stamps with its own clock (lib/toolbox.ts), the same clock as the tap.
+ */
+export function carriedPunch(punch: ClockPunch, signedAt: string | null | undefined): ClockPunch {
+  const signedMs = signedAt ? Date.parse(signedAt) : Number.NaN;
+  if (!Number.isFinite(signedMs) || signedMs <= Date.parse(punch.tappedAt)) return punch;
+  return mintPunch(punch.clientId, signedMs);
+}
+
+/**
  * A shift id the phone made up for a clock-in that has not reached the server
  * yet (`pending:<outbox entry id>`, see lib/offline/outbox.ts). It is not a
  * uuid and no RPC may ever be handed it: the server answers "invalid input

@@ -14,7 +14,7 @@ import { CATALOG } from "./i18n/catalog";
 import { translate } from "./i18n/translate";
 
 export { isMissingClockInOverload, normalizeNote } from "./timeclockNote";
-export { isPendingShiftRef, mintPunch, newClockActionId, type ClockPunch } from "./clockPunch";
+export { carriedPunch, isPendingShiftRef, mintPunch, newClockActionId, type ClockPunch } from "./clockPunch";
 
 /**
  * The server said no to a clock action, in a way the person needs to read
@@ -745,13 +745,17 @@ export interface ClockInPick {
   note: string | null;
   mode: JobMode | null;
   /**
-   * The one-time id of the tap being handed over (K0.2). The block's punch may
-   * have been SAVED before its reply was lost, so the sheet retries the same
-   * id and the server answers with the shift it already made — a fresh id
-   * here is exactly how a hand-off used to become a double punch. Optional:
-   * older openers pass none and the sheet mints one.
+   * The tap being handed over, WHOLE: its one-time id, its tap time and the
+   * clock check it was stamped with (K0.2/K0.5). The sheet sends this same
+   * punch and never re-stamps it. If the block's request was SAVED before its
+   * reply was lost, the server answers the repeat id with the shift it
+   * already made; if it never arrived, the sheet's send is still paid from
+   * the block's tap — re-stamping it at the sheet's own, later tap (Codex
+   * review of #640, 2026-09-25) lost the time in between. A fresh id here is
+   * how a hand-off used to become a double punch. Optional: an opener with
+   * no punch of its own passes none, and the sheet stamps its own tap.
    */
-  clientId?: string | null;
+  punch?: ClockPunch | null;
 }
 
 /** The tap trio every keyed clock RPC takes beside its id (K0.5). */

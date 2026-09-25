@@ -44,7 +44,7 @@ vi.mock("../../lib/clockSkew", async (importOriginal) => {
 });
 
 import { ClockSheet } from "./ClockSheet";
-import type { ClockInPick } from "../../lib/timeclock";
+import type { ClockInPick, ClockPunch } from "../../lib/timeclock";
 
 let root: Root | null = null;
 let host: HTMLDivElement | null = null;
@@ -62,6 +62,14 @@ const CC1 = { id: "cc1", code: "100", label: "Install", active: true };
 const CC2 = { id: "cc2", code: "200", label: "Service call", active: true };
 const P1 = { id: "p1", job_code: "BLACK22", name: "Black Desert", address: null, status: "active", allowed_modes: ["data"] };
 const P2 = { id: "p2", job_code: "OAK-2", name: "Oakridge", address: null, status: "active", allowed_modes: ["data", "tracking"] };
+
+/** The landing block's tap, handed over whole (K0.2/K0.5). */
+const CARRIED: ClockPunch = {
+  clientId: "9b2f0c14-7d3a-4e51-8a06-3f2c9d1e4b77",
+  tappedAt: "2026-09-24T13:00:00.000Z",
+  clockCheckedAt: "2026-09-24T12:58:30.000Z",
+  clockSkewMs: 1500,
+};
 
 function todayLocalISO(): string {
   const d = new Date();
@@ -183,11 +191,12 @@ describe("the clock sheet opened with a carried pick", () => {
     ]);
   });
 
-  it("retries a carried pick under the id the landing block already sent, never a fresh one", async () => {
-    // The block's punch may have been SAVED before its reply was lost (K0.2).
-    // The sheet's Start must send the same id, so the server answers with the
-    // shift it already made instead of making a second one.
-    const el = mount({ projectId: "p2", costCodeId: "cc2", note: null, mode: "tracking", clientId: "tap-from-block" });
+  it("sends a carried pick's punch exactly as the landing block stamped it, never a re-stamped one", async () => {
+    // The block's punch may have been SAVED before its reply was lost (K0.2):
+    // the same id gets that shift back instead of a second one. Or it may
+    // never have arrived: then the block's tap time and clock check are what
+    // pay goes by, not this later tap (K0.5; Codex review of #640).
+    const el = mount({ projectId: "p2", costCodeId: "cc2", note: null, mode: "tracking", punch: CARRIED });
     await flush();
     await act(async () => {
       el.querySelector<HTMLButtonElement>(".clock-btn.primary.big")!.dispatchEvent(
@@ -196,18 +205,18 @@ describe("the clock sheet opened with a carried pick", () => {
     });
     await flush();
     expect(clockInSpy).toHaveBeenCalledTimes(1);
-    expect((clockInSpy.mock.calls[0] as unknown[])[5]).toEqual(expect.objectContaining({ clientId: "tap-from-block" }));
+    expect((clockInSpy.mock.calls[0] as unknown[])[5]).toEqual(CARRIED);
   });
 
-  it("queues a carried pick's job, cost code, note, mode and tap id when the punch fails offline", async () => {
+  it("queues a carried pick's job, cost code, note, mode and punch when the send fails offline", async () => {
     // The hand-off's reason for existing is the phone with no signal. The
     // punch fails, the outbox takes it, and the carried picks must be what
     // gets queued — not yesterday's job. The mode rides the queue since
     // 20261028000000 gave clock_in an overload that takes both p_client_id
     // and p_mode (the stated limit of 2026-09-06, closed by Release 0), and
-    // the queued punch carries the SAME id the live try sent.
+    // the queued punch is the block's own, untouched: same id, same tap time.
     clockInSpy.mockRejectedValueOnce(new Error("Failed to fetch"));
-    const el = mount({ projectId: "p2", costCodeId: "cc2", note: "gate 4411", mode: "tracking" });
+    const el = mount({ projectId: "p2", costCodeId: "cc2", note: "gate 4411", mode: "tracking", punch: CARRIED });
     await flush();
     await act(async () => {
       el.querySelector<HTMLButtonElement>(".clock-btn.primary.big")!.dispatchEvent(
@@ -216,7 +225,7 @@ describe("the clock sheet opened with a carried pick", () => {
     });
     await flush();
     expect(clockInSpy).toHaveBeenCalledTimes(1);
-    const livePunch = (clockInSpy.mock.calls[0] as unknown[])[5] as { clientId: string };
+    expect((clockInSpy.mock.calls[0] as unknown[])[5]).toEqual(CARRIED);
     expect(enqueueSpy).toHaveBeenCalledTimes(1);
     expect(enqueueSpy.mock.calls[0][0]).toEqual({
       projectId: "p2",
@@ -225,8 +234,25 @@ describe("the clock sheet opened with a carried pick", () => {
       lng: null,
       note: "gate 4411",
       mode: "tracking",
-      punch: expect.objectContaining({ clientId: livePunch.clientId, tappedAt: expect.any(String) }),
+      punch: CARRIED,
     });
+  });
+
+  it("stamps its own punch when the pick came without one", async () => {
+    // An opener with no tap of its own to hand over: the sheet's Start is the
+    // tap, and the live try and the queue share the one punch it stamps.
+    clockInSpy.mockRejectedValueOnce(new Error("Failed to fetch"));
+    const el = mount({ projectId: "p2", costCodeId: "cc2", note: null, mode: "tracking" });
+    await flush();
+    await act(async () => {
+      el.querySelector<HTMLButtonElement>(".clock-btn.primary.big")!.dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+    });
+    await flush();
+    const livePunch = (clockInSpy.mock.calls[0] as unknown[])[5] as ClockPunch;
+    expect(livePunch.clientId).not.toBe(CARRIED.clientId);
+    expect((enqueueSpy.mock.calls[0][0] as { punch: ClockPunch }).punch).toEqual(livePunch);
   });
 
   it("drops the carried mode when the person taps a different job in the sheet", async () => {
@@ -235,7 +261,7 @@ describe("the clock sheet opened with a carried pick", () => {
     // data only. The server records whatever p_mode it is sent, so the
     // tracking answer must stay with the job it was given for: BLACK22's
     // punch carries its own one mode (review, 2026-09-06).
-    const el = mount({ projectId: "p2", costCodeId: "cc1", note: null, mode: "tracking" });
+    const el = mount({ projectId: "p2", costCodeId: "cc1", note: null, mode: "tracking", punch: CARRIED });
     await flush();
     const chip = Array.from(el.querySelectorAll<HTMLButtonElement>(".clock-chip")).find(
       (b) => b.textContent?.includes("BLACK22"),
@@ -257,6 +283,9 @@ describe("the clock sheet opened with a carried pick", () => {
       "data",
       expect.objectContaining({ clientId: expect.any(String) }),
     ]);
+    // And the block's tap stays with the job it was tapped for: BLACK22 is a
+    // different punch, stamped at this tap, not OAK-2's carried one.
+    expect(((clockInSpy.mock.calls[0] as unknown[])[5] as ClockPunch).clientId).not.toBe(CARRIED.clientId);
   });
 
   it("opened bare, records a single-mode job's one mode and nothing for a both-mode job", async () => {

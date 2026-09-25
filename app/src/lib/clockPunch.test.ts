@@ -32,7 +32,7 @@ import {
   lastClockCheck,
   recordClockCheck,
 } from "./clockSkew";
-import { isPendingShiftRef, mintPunch, newClockActionId } from "./clockPunch";
+import { carriedPunch, isPendingShiftRef, mintPunch, newClockActionId } from "./clockPunch";
 
 const T0 = Date.UTC(2026, 8, 23, 12, 0, 0);
 
@@ -154,6 +154,39 @@ describe("the punch", () => {
     expect(isPendingShiftRef("11111111-2222-4333-8444-555555555555")).toBe(false);
     expect(isPendingShiftRef(null)).toBe(false);
     expect(isPendingShiftRef(undefined)).toBe(false);
+  });
+});
+
+// A tap handed from the landing block (or Start day) to the clock sheet is the
+// SAME punch when the sheet sends it — never re-stamped at the sheet's later
+// tap, which lost the time in between when the first request never arrived
+// (Codex review of #640). The one exception is today's talk signed after the
+// tap: paid time starts at the signature, under the same id.
+describe("a carried punch", () => {
+  const TAPPED = {
+    clientId: "9b2f0c14-7d3a-4e51-8a06-3f2c9d1e4b77",
+    tappedAt: "2026-09-23T12:00:00.000Z",
+    clockCheckedAt: "2026-09-23T11:58:30.000Z",
+    clockSkewMs: 1500,
+  };
+
+  it("is sent exactly as it was stamped when the talk was signed before the tap, or not at all", () => {
+    expect(carriedPunch(TAPPED, "2026-09-23T11:05:00.000Z")).toBe(TAPPED);
+    expect(carriedPunch(TAPPED, TAPPED.tappedAt)).toBe(TAPPED);
+    expect(carriedPunch(TAPPED, null)).toBe(TAPPED);
+    expect(carriedPunch(TAPPED, undefined)).toBe(TAPPED);
+    expect(carriedPunch(TAPPED, "not a time")).toBe(TAPPED);
+  });
+
+  it("is stamped at the signature, under the same id, when the talk was signed after the tap", () => {
+    recordClockCheck(T0 - 1000 + 250, T0 - 1000);
+    const signedAt = "2026-09-23T12:00:40.000Z";
+    const sent = carriedPunch(TAPPED, signedAt);
+    expect(sent.clientId).toBe(TAPPED.clientId);
+    expect(sent.tappedAt).toBe(signedAt);
+    // Stamped the way every tap is: with this phone's current clock check.
+    expect(sent.clockCheckedAt).toBe(new Date(T0 - 1000).toISOString());
+    expect(sent.clockSkewMs).toBe(250);
   });
 });
 

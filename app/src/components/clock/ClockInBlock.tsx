@@ -237,8 +237,9 @@ export function ClockInBlock() {
   // phone. The picks and the mode are read at that same moment and ride with
   // the punch, so the live try and the hand-off to the sheet carry the one
   // tap: a pick changed during the wait cannot turn it into another tap, and
-  // a punch the server saved before its reply was lost is retried by the
-  // sheet under the same id (the same rule Start day follows).
+  // the sheet sends this same punch — answered as the shift already made if
+  // the server saved it before its reply was lost, and still paid from this
+  // tap if it never arrived (the same rule Start day follows).
   //
   // Read through a ref, like canStartRef: the signature lands in the sign
   // card's mutation callback, which can be a closure from an earlier render.
@@ -269,6 +270,9 @@ export function ClockInBlock() {
     // that). Hand off WITH the picks so the sheet opens pre-filled and the
     // person taps Start once, and say what happened: the old bare hand-off
     // opened an empty sheet in silence, which read as "the app forgot".
+    // The hand-off carries the WHOLE punch, not just its id: the sheet's
+    // Start sends this tap, paid from this tap, even when this request never
+    // reached the server (see ClockInPick.punch).
     onError: (e, tap) => {
       pushToast(t("clockblock.handoff", { reason: formatApiError(e) }), "error");
       openClockGlobally({
@@ -276,7 +280,7 @@ export function ClockInBlock() {
         costCodeId: tap.costCodeId,
         note: tap.note,
         mode: tap.mode,
-        clientId: tap.punch.clientId,
+        punch: tap.punch,
       });
     },
   });

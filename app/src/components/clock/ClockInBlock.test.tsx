@@ -68,7 +68,7 @@ vi.mock("../../lib/toolbox", async (importOriginal) => {
 });
 
 import { ClockInBlock } from "./ClockInBlock";
-import type { TimeShift } from "../../lib/timeclock";
+import type { ClockPunch, TimeShift } from "../../lib/timeclock";
 
 let root: Root | null = null;
 let host: HTMLDivElement | null = null;
@@ -680,16 +680,23 @@ describe("the clock-in block", () => {
         .map(([ev]) => ev as CustomEvent)
         .filter((ev) => ev.type === "infinity:open-clock");
       expect(opened).toHaveLength(1);
-      // The hand-off carries the tap's one-time id (K0.2): the block's punch
-      // may have been saved before its reply was lost, and the sheet retrying
-      // the SAME id gets that shift back rather than making a second one.
-      const punchSent = (clockInSpy.mock.calls[0] as unknown[])[5] as { clientId: string };
+      // The hand-off carries the tap's WHOLE punch (K0.2/K0.5) — id, tap time
+      // and clock check. Saved before its reply was lost, the sheet's retry of
+      // that id gets the same shift back; never arrived, it is still paid from
+      // this tap and not from the sheet's later one (Codex review, 2026-09-25).
+      const punchSent = (clockInSpy.mock.calls[0] as unknown[])[5] as ClockPunch;
       expect(opened[0].detail).toEqual({
         projectId: "p1",
         costCodeId: "cc1",
         note: "gate code 4411",
         mode: "tracking",
-        clientId: punchSent.clientId,
+        punch: punchSent,
+      });
+      expect(punchSent).toEqual({
+        clientId: expect.any(String),
+        tappedAt: expect.any(String),
+        clockCheckedAt: null,
+        clockSkewMs: null,
       });
       expect(pushToastSpy).toHaveBeenCalledTimes(1);
       expect(String(pushToastSpy.mock.calls[0][0])).toContain("finish in the clock sheet");

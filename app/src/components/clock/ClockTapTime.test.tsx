@@ -15,9 +15,10 @@
 // does with a one-time id (20261028000000, proven on the real SQL by
 // scripts/verify-clock-integrity.mjs): the first call with an id makes a
 // shift, and a repeat of that id answers with the shift it already made. It
-// can also lose a reply AFTER saving — the case a retry exists for. Nothing
-// between the tap and the RPC is mocked: the real clockIn, the real location
-// wait, the real offline queue and its real sender.
+// can lose a reply AFTER saving, or lose the request BEFORE anything is saved
+// — the two cases a retry exists for, and the retry must be the same punch in
+// both. Nothing between the tap and the RPC is mocked: the real clockIn, the
+// real location wait, the real offline queue and its real sender.
 
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -54,6 +55,7 @@ vi.mock("../../lib/dailyLogNudge", () => ({ announceClockedOut: () => {} }));
 vi.mock("../time/ToolboxTalkNagBanner", () => ({ ToolboxTalkNagBanner: () => null }));
 
 import { supabase } from "../../lib/supabase";
+import { forgetClockCheck, recordClockCheck } from "../../lib/clockSkew";
 import type { ClockInPick, TimeShift } from "../../lib/timeclock";
 import { ClockInBlock } from "./ClockInBlock";
 import { ClockSheet } from "./ClockSheet";
@@ -74,6 +76,8 @@ const server = {
   calls: [] as { fn: string; args: Args }[],
   /** Save the next punch, then lose its reply on the way back. */
   loseNextReply: false,
+  /** Lose the next punch on the way there: nothing is saved. */
+  dropNextRequest: false,
 };
 const LOST = { data: null, error: { message: "TypeError: Failed to fetch", details: "", hint: "", code: "" } };
 
@@ -81,6 +85,10 @@ function fakeRpc(fn: string, args: Args = {}) {
   server.calls.push({ fn, args });
   if (fn === "server_now") return { data: iso(Date.now()), error: null };
   if (fn === "clock_in") {
+    if (server.dropNextRequest) {
+      server.dropNextRequest = false;
+      return LOST;
+    }
     const id = String(args.p_client_id);
     const again = server.shifts.get(id);
     if (again) return { data: again, error: null };
@@ -114,6 +122,12 @@ function fakeRpc(fn: string, args: Args = {}) {
 
 const clockInCalls = () => server.calls.filter((c) => c.fn === "clock_in").map((c) => c.args);
 
+/** The two ways a punch's first try fails that a retry must survive as the same punch. */
+const FAILURES = [
+  ["its reply is lost after the server saved it", () => (server.loseNextReply = true)],
+  ["its request never reached the server", () => (server.dropNextRequest = true)],
+] as const;
+
 // ---- a phone whose location fix is slow --------------------------------------
 
 /** How long this phone takes to find itself; null = it never answers. */
@@ -136,7 +150,10 @@ function todayLocal(): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-function client(): QueryClient {
+/** When today's talk was signed, by the signing phone's clock: 6:00, before any tap here. */
+const SIGNED_EARLY = iso(T0 - 3600_000);
+
+function client(opts: { signedAt?: string } = {}): QueryClient {
   const qc = new QueryClient({
     defaultOptions: {
       queries: { retry: false, gcTime: Infinity, staleTime: Infinity, refetchOnMount: false, refetchOnWindowFocus: false },
@@ -152,23 +169,26 @@ function client(): QueryClient {
   qc.setQueryData(["myActivePhases", "me"], []);
   // Today's talk is signed: the plain Start is the whole tap.
   qc.setQueryData(["todayTalk"], null);
-  qc.setQueryData(["toolboxToday", "me"], { id: "done1" });
+  qc.setQueryData(["toolboxToday", "me"], { id: "done1", signed_at: opts.signedAt ?? SIGNED_EARLY });
   return qc;
 }
 
-function render(ui: ReactNode): HTMLElement {
+function render(ui: ReactNode, opts: { signedAt?: string } = {}): HTMLElement {
   const host = document.createElement("div");
   document.body.appendChild(host);
   const root = createRoot(host);
-  act(() => root.render(<QueryClientProvider client={client()}><MemoryRouter>{ui}</MemoryRouter></QueryClientProvider>));
+  act(() => root.render(<QueryClientProvider client={client(opts)}><MemoryRouter>{ui}</MemoryRouter></QueryClientProvider>));
   roots.push(root);
   hosts.push(host);
   return host;
 }
 
-function mountSheet(opts: { shift?: TimeShift | null; initialPick?: ClockInPick | null } = {}): HTMLElement {
+function mountSheet(
+  opts: { shift?: TimeShift | null; initialPick?: ClockInPick | null; signedAt?: string } = {},
+): HTMLElement {
   return render(
     <ClockSheet profileId="me" shift={opts.shift ?? null} initialPick={opts.initialPick ?? null} onClose={() => {}} onChanged={() => {}} />,
+    { signedAt: opts.signedAt },
   );
 }
 
@@ -193,6 +213,7 @@ beforeEach(() => {
   server.shifts.clear();
   server.calls.length = 0;
   server.loseNextReply = false;
+  server.dropNextRequest = false;
   fixAfterMs = null;
   vi.spyOn(supabase, "rpc").mockImplementation(((fn: string, args?: Args) =>
     Promise.resolve(fakeRpc(fn, args))) as unknown as typeof supabase.rpc);
@@ -206,6 +227,10 @@ beforeEach(() => {
   });
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
   vi.setSystemTime(T0);
+  // This phone checked its clock a minute ago and ran 1.5 s ahead: every
+  // punch carries that check, so a punch re-stamped later would show it.
+  forgetClockCheck();
+  recordClockCheck(T0 - 60_000, T0 - 61_500);
 });
 
 afterEach(() => {
@@ -233,10 +258,13 @@ describe("the landing block's Start", () => {
     expect([...server.shifts.values()].map((s) => s.clock_in_at)).toEqual([iso(T0)]);
   });
 
-  it("is ONE shift when its reply is lost after the server saved it and the sheet sends it again", async () => {
-    // The block's punch is saved, the reply never comes back, and the block
-    // hands the tap to the sheet — the path a lost reply takes from here.
-    server.loseNextReply = true;
+  // The block's request fails either way, and the block hands the tap to the
+  // sheet — the path a failed Start takes from here. Saved or not, the
+  // sheet's Start must send the SAME punch: its id, its tap time and its
+  // clock check. With only the id carried, the never-arrived case was paid
+  // from the sheet's own later tap (Codex review of #640, 2026-09-25).
+  it.each(FAILURES)("is ONE shift, paid from its tap, when %s and the sheet sends it again", async (_how, fail) => {
+    fail();
     const handoffs: ClockInPick[] = [];
     const onOpen = (e: Event) => handoffs.push((e as CustomEvent<ClockInPick>).detail);
     window.addEventListener("infinity:open-clock", onOpen);
@@ -245,20 +273,76 @@ describe("the landing block's Start", () => {
       await tap(block, ".clock-btn.primary.big");
       await pass(12_500); // no fix at all: captureGeoSoft's backstop
       expect(clockInCalls()).toHaveLength(1);
-      expect(clockInCalls()[0].p_tapped_at).toBe(iso(T0));
+      const first = clockInCalls()[0];
+      expect(first.p_tapped_at).toBe(iso(T0));
       expect(handoffs).toHaveLength(1);
-      expect(handoffs[0]).toMatchObject({ projectId: "p1", costCodeId: "cc1", clientId: clockInCalls()[0].p_client_id });
+      // The whole punch rides the hand-off, not just its id.
+      expect(handoffs[0]).toEqual({
+        projectId: "p1",
+        costCodeId: "cc1",
+        note: null,
+        mode: "data",
+        punch: {
+          clientId: first.p_client_id,
+          tappedAt: iso(T0),
+          clockCheckedAt: iso(T0 - 61_500),
+          clockSkewMs: 1_500,
+        },
+      });
 
-      // Twenty seconds later the person taps Start on the sheet it opened.
+      // Twenty seconds later — the phone having checked its clock again
+      // meanwhile — the person taps Start on the sheet it opened.
       await pass(20_000);
+      recordClockCheck(Date.now(), Date.now());
       const sheet = mountSheet({ initialPick: handoffs[0] });
       await tap(sheet, ".clock-btn.primary.big");
       await pass(12_500);
-      const [first, second] = clockInCalls();
-      expect(second.p_client_id).toBe(first.p_client_id);
-      // One shift, paid from the block's tap: the repeat was answered with it.
+      const sent = clockInCalls();
+      expect(sent).toHaveLength(2);
+      // The sheet sent the block's punch as it came: same id, same tap time,
+      // same clock check — not the sheet tap's time or the newer check.
+      expect(sent[1]).toMatchObject({
+        p_client_id: first.p_client_id,
+        p_tapped_at: iso(T0),
+        p_clock_checked_at: iso(T0 - 61_500),
+        p_clock_skew_ms: 1_500,
+      });
+      // One shift, paid from the block's tap — whether the server answered
+      // the repeat with the shift it had saved, or saved it only now.
       expect(server.shifts.size).toBe(1);
       expect([...server.shifts.values()][0].clock_in_at).toBe(iso(T0));
+    } finally {
+      window.removeEventListener("infinity:open-clock", onOpen);
+    }
+  });
+
+  it("is paid from today's talk, under the same id, when the talk was signed after its tap and before the sheet sent it", async () => {
+    // The block's request never arrived, and before the sheet's Start the
+    // person signed today's talk (at 7:00:30). Paid time does not start
+    // before the talk: the effective tap is the later of the two — the rule
+    // the block and Start day follow when signing IS the clock-in.
+    server.dropNextRequest = true;
+    const handoffs: ClockInPick[] = [];
+    const onOpen = (e: Event) => handoffs.push((e as CustomEvent<ClockInPick>).detail);
+    window.addEventListener("infinity:open-clock", onOpen);
+    try {
+      const block = render(<ClockInBlock />);
+      await tap(block, ".clock-btn.primary.big");
+      await pass(12_500);
+      expect(handoffs).toHaveLength(1);
+      const first = clockInCalls()[0];
+
+      await pass(20_000);
+      const signedAt = iso(T0 + 30_000);
+      const sheet = mountSheet({ initialPick: handoffs[0], signedAt });
+      await tap(sheet, ".clock-btn.primary.big");
+      await pass(12_500);
+      const sent = clockInCalls();
+      expect(sent).toHaveLength(2);
+      expect(sent[1].p_client_id).toBe(first.p_client_id);
+      expect(sent[1].p_tapped_at).toBe(signedAt);
+      expect(server.shifts.size).toBe(1);
+      expect([...server.shifts.values()][0].clock_in_at).toBe(signedAt);
     } finally {
       window.removeEventListener("infinity:open-clock", onOpen);
     }
@@ -266,14 +350,14 @@ describe("the landing block's Start", () => {
 });
 
 describe("the clock sheet", () => {
-  it("stamps Start at the tap, and a reply lost after the server saved it is sent again from the queue as the same punch — one shift", async () => {
-    server.loseNextReply = true;
+  it.each(FAILURES)("stamps Start at the tap, and when %s the queue sends the same punch — one shift, paid from the tap", async (_how, fail) => {
+    fail();
     const el = mountSheet();
     await tap(el, ".clock-btn.primary.big");
     // The live try goes out after the location wait gives up …
     await pass(12_500);
-    // … is saved and loses its reply, so the sheet queues it, and the queue
-    // sends it straight away (the phone is online).
+    // … fails on the network (saved or not), so the sheet queues it, and the
+    // queue sends it straight away (the phone is online).
     await pass(1_000);
     const sent = clockInCalls();
     expect(sent).toHaveLength(2);
