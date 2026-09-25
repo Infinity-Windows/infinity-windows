@@ -9,7 +9,7 @@ import { DisplayModePicker } from "../components/DisplayModePicker";
 import { useDisplayMode, type DisplayLayout } from "../lib/displayMode";
 import { useT } from "../lib/i18n";
 import { BackChip } from "../components/BackChip";
-import { useMemo, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import { AlertTriangle, CalendarDays, ChevronLeft, ChevronRight, Plus, Send, Sparkles } from "lucide-react";
@@ -60,15 +60,20 @@ import {
   digestMessage,
 } from "../lib/schedule/notify";
 import {
+  confirmPublished,
   createAssignment,
   deleteAssignment,
+  dropDraftAssignment,
   removeAssignmentDay,
   horizonRange,
+  listAiDraftReasons,
   listAssignments,
   listDraftAssignments,
   publishAssignments,
   updateAssignment,
 } from "../lib/schedule/api";
+import { aiDraftsForReview } from "../lib/schedule/aiDraftReview";
+import { isUnconfirmedPublishError, outcomeFromReadback, publishOutcomeMessage } from "../lib/schedule/publishOutcome";
 import type { ScheduleAssignment } from "../lib/schedule/types";
 import {
   linkVehicleToSchedule,
@@ -83,8 +88,14 @@ import type { NewTripInput } from "../lib/travel/types";
 import { TripEditor } from "../components/travel/TripEditor";
 import { sendPush } from "../lib/permissions/pushServer";
 import { notifyLocal } from "../lib/permissions/notifyLocal";
+import { formatApiError } from "../lib/errors";
 
 type View = "agenda" | "board" | "week" | "month" | "timeline";
+
+// K2.8: the Review AI drafts card and its own copy load only for a
+// supervisor who has AI drafts to look at — never in the Scheduling chunk
+// every foreman opens to read the week.
+const AiDraftReview = lazy(() => import("../components/schedule/AiDraftReview").then((m) => ({ default: m.AiDraftReview })));
 
 function todayLocalISO(): string {
   const d = new Date();
@@ -128,6 +139,7 @@ export function Scheduling() {
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
+  const [publishError, setPublishError] = useState<string | null>(null);
   const [travelDraft, setTravelDraft] = useState<NewTripInput | null>(null);
   /** The day the calendar's memory panel is open for (C3) — Month view only. */
   const [dayPanelDate, setDayPanelDate] = useState<string | null>(null);
@@ -316,13 +328,16 @@ export function Scheduling() {
     return p && isSupervisorPlus(p.role) ? "foreman" : p?.role === "foreman" ? "foreman" : "installer";
   };
 
-  /** One-day draft for one person — the board's native unit. */
-  const createDayDraft = (personId: string, day: string, projectId: string) =>
+  /** One-day draft for one person — the board's native unit. `createdVia`
+   * is only ever the flag of a row being put BACK by Undo: the AI-proposed
+   * flag is permanent (CONTEXT.md), and Remove-then-Undo used to lose it. */
+  const createDayDraft = (personId: string, day: string, projectId: string, createdVia: "ai" | null = null) =>
     createAssignment({
       project_id: projectId,
       start_date: day,
       end_date: day,
       members: [{ profile_id: personId, role: roleOf(personId) }],
+      created_via: createdVia,
     });
 
   const moveChip = useMutation({
@@ -385,7 +400,7 @@ export function Scheduling() {
         return {
           label: "Removed — undo",
           run: async () => {
-            await createDayDraft(chip.personId, chip.day, chip.projectId);
+            await createDayDraft(chip.personId, chip.day, chip.projectId, a.created_via ?? null);
           },
         };
       }
@@ -593,8 +608,30 @@ export function Scheduling() {
     const draftList = (drafts.data ?? []).filter(a => !linkedPlan(a.id));
     if (draftList.length === 0) return;
     setPublishing(true);
+    setPublishError(null);
     try {
-      await publishAssignments(draftList.map((a) => a.id));
+      try {
+        await publishAssignments(draftList.map((a) => a.id));
+      } catch (e) {
+        // A refused publish (row security, a plan lock) used to end here
+        // silently, with the sheet still open and nothing to read: the
+        // supervisor tapped Publish again, or walked away believing it went.
+        // And a LOST REPLY is not a refusal: the update can have committed
+        // with the crew already looking at it, so the rows are re-read before
+        // anything is claimed — "Nothing was published" is said only when the
+        // database itself said no (lib/schedule/publishOutcome).
+        if (!isUnconfirmedPublishError(e)) {
+          setPublishError(publishOutcomeMessage({ kind: "refused", message: formatApiError(e) }));
+          return;
+        }
+        const readback = await confirmPublished(draftList.map((a) => a.id)).catch(() => null);
+        const outcome = outcomeFromReadback(readback);
+        if (outcome.kind !== "published") {
+          setPublishError(publishOutcomeMessage(outcome));
+          refresh();
+          return;
+        }
+      }
       const digests = buildPublishDigests(
         draftList.map((a) => ({
           id: a.id,
@@ -620,6 +657,36 @@ export function Scheduling() {
   }
 
   const draftList = useMemo(() => (drafts.data ?? []).filter(a => !planLinks.data?.assignments.some(l => l.assignment_id === a.id)), [drafts.data, planLinks.data]);
+
+  // K2.8: the AI's drafts for the visible dates, with the reason it stored on
+  // each draft's audit event. Keyed by the ids so a Drop re-reads exactly what
+  // is left; the drafts themselves come from the same read the publish bar uses.
+  const aiReview = useMemo(
+    () => aiDraftsForReview(drafts.data ?? [], range, (id) => !!planLinks.data?.assignments.some((l) => l.assignment_id === id)),
+    [drafts.data, range, planLinks.data],
+  );
+  const aiReviewIds = useMemo(() => aiReview.inRange.map((a) => a.id), [aiReview]);
+  const aiReasons = useQuery({
+    queryKey: ["scheduleAiReasons", aiReviewIds],
+    queryFn: () => listAiDraftReasons(aiReviewIds),
+    enabled: canEdit && aiReviewIds.length > 0,
+  });
+  // Drop deletes the row only while it is still the draft the card showed
+  // (status and revision checked at the database); "changed" means another
+  // supervisor published or edited it and nothing was deleted. Either way the
+  // lists re-read, so a row that went live leaves the card on its own — and
+  // when it was the LAST one, the card would unmount with the "this draft
+  // changed" sentence still unread. `reviewCardPinned` keeps the card up
+  // until the supervisor moves the dates (the e2e for the two-supervisor
+  // case caught the message vanishing).
+  const [reviewCardPinned, setReviewCardPinned] = useState(false);
+  useEffect(() => { setReviewCardPinned(false); }, [range.from, range.to]);
+  const dropAiDraft = async (a: ScheduleAssignment) => {
+    const result = await dropDraftAssignment(a);
+    if (result === "changed") setReviewCardPinned(true);
+    refresh();
+    return result;
+  };
 
   // Everything currently in play (loaded window + all drafts), deduped. Drives
   // the conflict banner, the red outlines and the pre-publish summary alike.
@@ -864,6 +931,22 @@ export function Scheduling() {
         </button>
       </div>
 
+      {canEdit && (aiReview.inRange.length > 0 || aiReview.outside > 0 || reviewCardPinned) && (
+        <Suspense fallback={null}>
+          <AiDraftReview
+            drafts={aiReview.inRange}
+            outside={aiReview.outside}
+            reasons={aiReasons.data ?? null}
+            reasonsError={aiReasons.isError ? formatApiError(aiReasons.error) : null}
+            nameOf={nameOf}
+            onDrop={dropAiDraft}
+            onPublish={() => { setPublishError(null); setPublishOpen(true); }}
+            publishableCount={draftList.length}
+            formatError={formatApiError}
+          />
+        </Suspense>
+      )}
+
       {(() => {
         const trucks = (assignments.data ?? []).filter(
           (a) => a.kind === "delivery",
@@ -1021,7 +1104,7 @@ export function Scheduling() {
               </span>
             )}
           </div>
-          <button className="button-like active-pill" onClick={() => setPublishOpen(true)}>
+          <button className="button-like active-pill" onClick={() => { setPublishError(null); setPublishOpen(true); }}>
             <Send size={15} aria-hidden /> Review &amp; Publish
           </button>
         </div>
@@ -1214,6 +1297,11 @@ export function Scheduling() {
               </div>
             ) : (
               <p className="ok" style={{ fontSize: 13 }}>No conflicts detected.</p>
+            )}
+            {publishError && (
+              <p className="warn-text" role="alert" style={{ margin: "0 0 10px" }}>
+                {publishError}
+              </p>
             )}
             <div className="sched-sheet-actions">
               <button className="button-like" onClick={() => setPublishOpen(false)} disabled={publishing}>
