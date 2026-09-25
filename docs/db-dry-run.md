@@ -21,8 +21,9 @@ then rolled back.
 1. Write a probe: copy `scripts/dry-run-probes/TEMPLATE.sql` to
    `scripts/dry-run-probes/pr-<number>-<what>.sql` and make it call every RPC
    the pull request adds or changes — as an installer, a foreman, whoever will
-   call it — on **BLACK22**, recording a check for every outcome. The template
-   explains the helpers and the rules.
+   call it — on **the sandbox job** (`pg_temp.dry_run_sandbox_job()`),
+   recording a check for every outcome. The template explains the helpers and
+   the rules.
 
 2. Run it from GitHub, which is the only place the management token lives:
 
@@ -60,7 +61,22 @@ Four outcomes, by exit code:
 | **ok, every check** (0) | The migration applied to the real schema and every RPC did what the probe expected. | Merge. |
 | **FAIL** (1) | A statement failed — the database's own error is printed, constraint name and all — or a check reported a failure, or the probe recorded no checks. | Fix the change (or the probe) and run again. |
 | **REFUSED** (2) | Nothing was sent. A migration or probe carried something that could escape the transaction, a file was missing, or the token or project was not set. | Read the reason; it says what to change. |
-| **COULD NOT TELL** (3) | Nothing was measured: no answer, a lock or statement timeout, a token or project problem. | Run again in a quieter minute. |
+| **COULD NOT TELL** (3) | Nothing was measured: no answer, a lock or statement timeout, a token or project problem — or the run stopped on a `dry run:` sentence while setting itself up, before the change was tried. | Run again in a quieter minute. After a `dry run:` sentence, fix what it names first (below). |
+
+### When the run stops on "dry run:"
+
+Rather than try the change under the wrong conditions, the harness stops with
+one plain sentence that starts `dry run:`. The report says the run **could not
+set itself up**. The change was never tried, so it is not called broken. The
+two you will meet:
+
+| It says | Why | Do |
+|---|---|---|
+| `no QA login has the installer role — set qa.installer (…) to Installer in the app` (or the same for the foreman) | That QA login's role was changed in the app. The picker used to hand back a real person instead, whom the database refuses on a testing job, so the run died on a sentence like "Choose an existing job for the daily log." that read as a product bug: three runs of #641's probe on 2026-09-23/24. | Set the login back to its role in the app. A probe that really means a real person calls `dry_run_pick_real`. |
+| `no job is both flagged as testing and on the sandbox list` | No live job is a testing project on the sandbox list, so the QA logins have nowhere to write. | A supervisor or above marks a practice job as testing in the app; that puts it on the sandbox list too. |
+
+A probe that cannot start for a reason of its own (nothing on the sandbox job
+to try the change on) stops the same way, with its own `dry run:` sentence.
 
 ## The guarantee
 
@@ -100,11 +116,15 @@ Honest limits:
   genuinely needs longer.
 - **It proves the SQL, not the pipeline.** Migration numbering, the CLI's
   history table and the edge functions are `deploy-backend.yml`'s to check.
-- **BLACK22 is the belt to these braces.** Everything is rolled back; probes
-  target the sandbox job anyway, so that even a rollback that failed could
-  have touched nothing real. The QA test logins (`docs/test-account.md`) are
-  the first choice of caller for the same reason: the database fences them to
-  the sandbox.
+- **The sandbox job is the belt to these braces.** Everything is rolled
+  back; probes write on the sandbox job anyway, so that even a rollback that
+  failed could have touched nothing real. `dry_run_sandbox_job()` reads it at
+  run time — the live job that is both flagged as testing and on the sandbox
+  list, PECAN14 first — because no code stays the sandbox for good: BLACK22
+  was, until 2026-09-24. The QA test logins (`docs/test-account.md`) are the
+  callers for the same reason: the database fences them to the sandbox. An
+  installer or a foreman is the QA login or nobody; the other roles have no
+  QA login, so their pick is a real person, rolled back like everything else.
 
 The token is never printed and never put on a command line: curl reads it
 from a private config file that is deleted on exit, and everything printed
