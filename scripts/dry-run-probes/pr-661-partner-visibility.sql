@@ -4,12 +4,12 @@
 -- partner reads exactly the jobs it read before (the QA logins still see the
 -- practice job, 20261030030000), and still edits the jobs it may edit.
 --
--- Every real person is only READ as. The only writes are the system's, rolled
--- back with the batch like everything else: three throwaway jobs, the two QA
--- logins marked as partners for one section (test flag cleared, grants given
--- to one of them, then all of it put back), one no-change edit of the
--- practice job by the QA installer, and, last, the read rule on master put
--- back to compare every login against.
+-- Every real person is only READ as. The only writes are rolled back with the
+-- batch like everything else: four throwaway jobs made by the system (one on
+-- the sandbox list, which the QA installer edits without changing anything),
+-- the two QA logins marked as partners for one section (test flag cleared,
+-- grants given to one of them, then all of it put back), and, last, the read
+-- rule on master put back to compare every login against.
 -- Counts only in the output: no names, no ids, no job codes.
 --
 -- Run: gh workflow run db-dry-run.yml --repo Infinity-Windows/infinity-windows \
