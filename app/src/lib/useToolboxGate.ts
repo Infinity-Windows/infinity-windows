@@ -21,8 +21,8 @@
 //     keeps too (20261033000000).
 
 import { useEffect, useSyncExternalStore } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { getTalkForDate, getTodayTalk, type SafetyTalk } from "./ops";
+import { skipToken, useQuery, useQueryClient } from "@tanstack/react-query";
+import { getTodayTalk, type SafetyTalk } from "./ops";
 import { myTodayCompletion } from "./toolbox";
 import {
   getToolboxQueueSnapshot,
@@ -59,12 +59,12 @@ export function useTodayTalk(enabled = true): TodayTalkView {
   const now = new Date();
   const today = localDateOf(now);
   const live = useQuery({ queryKey: ["todayTalk"], queryFn: getTodayTalk, enabled });
-  // Filled by lib/toolboxAhead.ts while there is signal; read here, never
-  // fetched from a screen, so a gate cannot fire a read of its own.
-  const ahead = useQuery({
+  // Filled by lib/toolboxAhead.ts while there is signal; only READ here
+  // (skipToken: a gate never fires a read of its own, and the reader stays
+  // off the first screen).
+  const ahead = useQuery<SafetyTalk | null>({
     queryKey: ["toolboxTalk", today],
-    queryFn: () => getTalkForDate(today),
-    enabled: false,
+    queryFn: skipToken,
   });
 
   // Any answer read today counts — also one a later refetch failed to

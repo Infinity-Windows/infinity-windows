@@ -5,14 +5,40 @@
 import { QueryClient } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const getTalkForDate = vi.fn();
-vi.mock("./ops", () => ({ getTalkForDate: (d: string) => getTalkForDate(d) }));
+// The two reads a day's talk comes from: the day's own row, then the
+// rotation (get_or_create_toolbox_talk_for_date) when there is none.
+const rowRead = vi.fn();
+const rotation = vi.fn();
+const answer = async (fn: typeof rowRead, date: string) => {
+  try {
+    return { data: await fn(date), error: null };
+  } catch (error) {
+    return { data: null, error };
+  }
+};
+vi.mock("./supabase", () => ({
+  supabase: {
+    from: () => ({
+      select: () => ({
+        eq: (_col: string, date: string) => ({
+          order: () => ({ limit: () => ({ maybeSingle: () => answer(rowRead, date) }) }),
+        }),
+      }),
+    }),
+    rpc: (_fn: string, args: { p_date: string }) => answer(rotation, args.p_date),
+  },
+  supabaseConfigured: true,
+}));
 
 const { TALK_DAYS_AHEAD, prefetchToolboxTalks, shouldPrefetchTalks, talkDatesAhead } = await import("./toolboxAhead");
 
+const talkFor = (d: string) => ({ id: `talk-${d}`, title: `Talk for ${d}`, body: "b", talk_date: d });
+
 beforeEach(() => {
-  getTalkForDate.mockReset();
-  getTalkForDate.mockImplementation(async (d: string) => ({ id: `talk-${d}`, title: `Talk for ${d}`, body: "b", talk_date: d }));
+  rowRead.mockReset();
+  rotation.mockReset();
+  rowRead.mockImplementation(async (d: string) => talkFor(d));
+  rotation.mockImplementation(async (d: string) => talkFor(d));
 });
 
 describe("which days", () => {
@@ -42,15 +68,20 @@ describe("keeping them on the phone", () => {
     for (const d of ["2026-09-25", "2026-09-26", "2026-09-27", "2026-09-28"]) {
       expect(qc.getQueryData(["toolboxTalk", d])).toMatchObject({ id: `talk-${d}`, talk_date: d });
     }
-    expect(getTalkForDate).toHaveBeenCalledTimes(4);
+    // One read per day: each day's own row answered, so the rotation was not asked.
+    expect(rowRead).toHaveBeenCalledTimes(4);
+    expect(rotation).not.toHaveBeenCalled();
   });
 
   it("keeps the days it could read when one of them fails, and never throws", async () => {
     const qc = client();
-    getTalkForDate.mockImplementation(async (d: string) => {
+    // No signal for one of the four reads: neither the row nor the rotation answers.
+    const flaky = async (d: string) => {
       if (d === "2026-09-26") throw new TypeError("Failed to fetch");
-      return { id: `talk-${d}`, title: "t", body: "b", talk_date: d };
-    });
+      return talkFor(d);
+    };
+    rowRead.mockImplementation(flaky);
+    rotation.mockImplementation(flaky);
     await expect(prefetchToolboxTalks(qc, new Date(2026, 8, 25, 6))).resolves.toBeUndefined();
     expect(qc.getQueryData(["toolboxTalk", "2026-09-25"])).toBeTruthy();
     expect(qc.getQueryData(["toolboxTalk", "2026-09-26"])).toBeUndefined();
@@ -59,7 +90,8 @@ describe("keeping them on the phone", () => {
 
   it("keeps a day with no talk as exactly that", async () => {
     const qc = client();
-    getTalkForDate.mockResolvedValue(null);
+    rowRead.mockResolvedValue(null);
+    rotation.mockResolvedValue(null);
     await prefetchToolboxTalks(qc, new Date(2026, 8, 25, 6));
     expect(qc.getQueryData(["toolboxTalk", "2026-09-27"])).toBeNull();
   });
@@ -69,7 +101,17 @@ describe("keeping them on the phone", () => {
     const at = new Date(2026, 8, 25, 6);
     await prefetchToolboxTalks(qc, at);
     await prefetchToolboxTalks(qc, at);
-    expect(getTalkForDate).toHaveBeenCalledTimes(4);
+    expect(rowRead).toHaveBeenCalledTimes(4);
+  });
+
+  it("asks the rotation for a day that has no row yet — and keeps what it makes", async () => {
+    const qc = client();
+    // Nobody has opened the 27th yet: no row, so the rotation makes one.
+    rowRead.mockImplementation(async (d: string) => (d === "2026-09-27" ? null : talkFor(d)));
+    await prefetchToolboxTalks(qc, new Date(2026, 8, 25, 6));
+    expect(rotation).toHaveBeenCalledTimes(1);
+    expect(rotation).toHaveBeenCalledWith("2026-09-27");
+    expect(qc.getQueryData(["toolboxTalk", "2026-09-27"])).toMatchObject({ id: "talk-2026-09-27" });
   });
 });
 

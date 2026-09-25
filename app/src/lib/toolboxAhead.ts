@@ -22,10 +22,30 @@
 // that opens the app with signal at least once over a weekend.
 
 import type { QueryClient } from "@tanstack/react-query";
-import { getTalkForDate } from "./ops";
+import { supabase } from "./supabase";
+import type { SafetyTalk } from "./ops";
 import { localDateOf } from "./toolboxSign";
 
 export const TALK_DAYS_AHEAD = 4;
+
+/**
+ * One date's talk: the date's own row, or the one the rotation makes for it
+ * — what getTodayTalk (lib/ops.ts) answers on that day. No "newest talk"
+ * fallback: that stands in for today on a database without the rotation, and
+ * is never some other day's talk. Throws when neither read answers, so
+ * nothing is kept for that day.
+ */
+export async function getTalkForDate(date: string): Promise<SafetyTalk | null> {
+  const { data, error } = await supabase
+    .from("safety_talks").select("*")
+    .eq("talk_date", date)
+    .order("created_at", { ascending: false }).limit(1).maybeSingle();
+  if (!error && data) return data as SafetyTalk;
+
+  const rpc = await supabase.rpc("get_or_create_toolbox_talk_for_date", { p_date: date });
+  if (rpc.error) throw rpc.error;
+  return (rpc.data as SafetyTalk | null) ?? null;
+}
 
 /** Half an hour between reads on the same day: signal comes and goes a lot. */
 export const TALK_PREFETCH_EVERY_MS = 30 * 60_000;

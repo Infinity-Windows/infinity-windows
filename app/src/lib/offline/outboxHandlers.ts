@@ -1478,38 +1478,22 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
     });
     if (!res.error) return res.data;
     if (!isMissingFunction(res.error)) throw res.error;
-
-    // The app reached this phone before the migration reached the database —
-    // the backend deploy is its own workflow, and it has failed silently
-    // before. File the row the way the app always did rather than leave the
-    // crew unable to sign at all. The signature's path is made from its client
-    // id, so it is the key here: a resend finds the row it made. A lookup that
-    // could not be asked is retried, never answered with a blind insert.
-    const found = await supabase
-      .from("toolbox_completions")
-      .select("*")
-      .eq("profile_id", profileId)
-      .eq("signature_path", signaturePath)
-      .limit(1)
-      .maybeSingle();
-    if (found.error) throw found.error;
-    if (found.data) return found.data;
+    // The app reached this phone before the migration reached the database
+    // (the backend deploy is its own workflow, and it has failed silently
+    // before): file it the way the app always did, rather than leave the crew
+    // unable to sign at all. Loaded only then, so it costs the first screen
+    // nothing.
     stopIfAbandoned(ctx);
-    const made = await supabase
-      .from("toolbox_completions")
-      .insert({
-        talk_id: fields.talkId,
-        profile_id: profileId,
-        typed_name: typedName,
-        signature_path: signaturePath,
-        pdf_path: pdfPath,
-        talk_snapshot: fields.snapshot,
-        signed_at: fields.signedAt,
-      })
-      .select("*")
-      .single();
-    if (made.error) throw made.error;
-    return made.data;
+    const { fileSignatureDirectly } = await import("./toolboxSignFallback");
+    return fileSignatureDirectly({
+      profileId,
+      talkId: fields.talkId,
+      typedName,
+      signaturePath,
+      pdfPath,
+      talkSnapshot: fields.snapshot,
+      signedAt: fields.signedAt,
+    });
   };
 
   return {
