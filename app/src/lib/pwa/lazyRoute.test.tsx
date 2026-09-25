@@ -185,3 +185,66 @@ describe("lazyRoute()", () => {
     expect(el.querySelector(".skeleton-block")).toBeNull();
   });
 });
+
+describe("lazyRoute(…, { keepLoaded: true }) — a tab that remounts on every switch", () => {
+  /** Unmount what `mount` put up, the way switching away from a tab does. */
+  function switchAway() {
+    act(() => root?.unmount());
+    host?.remove();
+    root = null;
+    host = null;
+  }
+
+  it("renders straight away on every later mount once one mount has loaded it", async () => {
+    const d = deferred<{ default: typeof Loaded }>();
+    const factory = vi.fn(() => d.promise);
+    const Tab = lazyRoute(factory, { keepLoaded: true });
+    const first = mount(<Tab />);
+    expect(first.querySelector(".skeleton-block")).not.toBeNull();
+    await act(async () => {
+      d.resolve({ default: Loaded });
+      await d.promise;
+    });
+    expect(first.textContent).toContain("Loaded!");
+
+    switchAway();
+    const again = mount(<Tab />);
+    // On the mount itself: no skeleton to hold for 300 ms, no second import.
+    expect(again.textContent).toContain("Loaded!");
+    expect(again.querySelector(".skeleton-block")).toBeNull();
+    expect(factory).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps nothing that has not loaded: a mount after a pending one imports afresh, deadline and all", () => {
+    const factory = vi.fn(() => deferred<{ default: typeof Loaded }>().promise);
+    const Tab = lazyRoute(factory, { keepLoaded: true });
+    mount(<Tab />);
+    switchAway();
+    const again = mount(<Tab />);
+    expect(factory).toHaveBeenCalledTimes(2);
+    expect(again.querySelector(".skeleton-block")).not.toBeNull();
+    act(() => {
+      vi.advanceTimersByTime(LAZY_ROUTE_TIMEOUT_MS);
+    });
+    expect(again.textContent).toContain("This didn't load on this signal.");
+  });
+
+  it("is off for routes: a route mounted again suspends and imports again, exactly as before", async () => {
+    const first = deferred<{ default: typeof Loaded }>();
+    // The second import is left pending: the point is that it is MADE, and
+    // that the route waits on it behind its skeleton, not what it returns.
+    const factory = vi
+      .fn(() => deferred<{ default: typeof Loaded }>().promise)
+      .mockImplementationOnce(() => first.promise);
+    const Screen = lazyRoute(factory);
+    mount(<Screen />);
+    await act(async () => {
+      first.resolve({ default: Loaded });
+      await first.promise;
+    });
+    switchAway();
+    const again = mount(<Screen />);
+    expect(factory).toHaveBeenCalledTimes(2);
+    expect(again.querySelector(".skeleton-block")).not.toBeNull();
+  });
+});

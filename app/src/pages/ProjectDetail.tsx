@@ -75,27 +75,28 @@ const MapsInteractive = lazy(() =>
 // whose package-count prefill brought the Model Studio's unit code and the 3D
 // fit-view renderer along with it.
 // Each goes through lazyRoute() so a tab that cannot load on one bar says so
-// after 20 seconds, with Try again, instead of a skeleton that never ends.
-// Their chunks are precached like every other, so each opens with no signal
-// once the app is installed.
+// after 20 seconds, with Try again, instead of a skeleton that never ends —
+// with keepLoaded, because a tab remounts on every switch and would otherwise
+// flash its skeleton each time (see lazyRoute). Their chunks are precached
+// like every other, so each opens with no signal once the app is installed.
 const TAB_LOADING = <SkeletonCard height={320} />;
 const DispatchBoard = lazyRoute(
   () => import("./install/DispatchBoard").then((m) => ({ default: m.DispatchBoard })),
-  { loadingFallback: TAB_LOADING },
+  { loadingFallback: TAB_LOADING, keepLoaded: true },
 );
 const SignatureEstimates = lazyRoute(
   () =>
     import("../components/install/SignatureEstimates").then((m) => ({
       default: m.SignatureEstimates,
     })),
-  { loadingFallback: TAB_LOADING },
+  { loadingFallback: TAB_LOADING, keepLoaded: true },
 );
 const PlanPackagesPanel = lazyRoute(
   () =>
     import("../components/warehouse/PlanPackagesPanel").then((m) => ({
       default: m.PlanPackagesPanel,
     })),
-  { loadingFallback: TAB_LOADING },
+  { loadingFallback: TAB_LOADING, keepLoaded: true },
 );
 import { ScrollTabs } from "../components/nav/ScrollTabs";
 import { PhotoFeed } from "../components/photos/PhotoFeed";
