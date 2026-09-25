@@ -98,26 +98,6 @@ export async function getTodayTalk(): Promise<SafetyTalk | null> {
   return legacy.data as SafetyTalk | null;
 }
 
-/**
- * One date's talk, for keeping on the phone ahead of time (offline toolbox
- * signing, 2026-09-25; lib/toolboxAhead.ts): the date's own row, or the one
- * the rotation makes for it — what getTodayTalk answers on that day. No
- * "newest talk" fallback: that stands in for today on a database without the
- * rotation, and is never some other day's talk. Throws when neither read
- * answers, so nothing is kept for that day.
- */
-export async function getTalkForDate(date: string): Promise<SafetyTalk | null> {
-  const { data, error } = await supabase
-    .from("safety_talks").select("*")
-    .eq("talk_date", date)
-    .order("created_at", { ascending: false }).limit(1).maybeSingle();
-  if (!error && data) return data as SafetyTalk;
-
-  const rpc = await supabase.rpc("get_or_create_toolbox_talk_for_date", { p_date: date });
-  if (rpc.error) throw rpc.error;
-  return (rpc.data as SafetyTalk | null) ?? null;
-}
-
 export async function listLibraryTalks(): Promise<LibraryTalk[]> {
   const { data, error } = await supabase
     .from("toolbox_talk_library").select("*")
