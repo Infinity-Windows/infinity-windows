@@ -15,6 +15,7 @@ export const INCLUDED_UPDATE_IDS = [
   '2026-09-23-clock-counts-once', '2026-09-23-time-needs-review',
   '2026-09-23-ai-daily-log', '2026-09-23-ask-actions',
   '2026-09-25-unit-complete', '2026-09-25-weak-signal-screen',
+  '2026-09-25-unit-photos-send',
 ] as const;
 export interface AppUpdate {
   id: string; published_on: string; audience: number[]; kind: 'fix' | 'improvement';
