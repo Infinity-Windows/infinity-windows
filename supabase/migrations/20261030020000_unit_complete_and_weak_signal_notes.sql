@@ -6,11 +6,14 @@
 -- (currentWork.*, lazyRoute.* in lib/i18n/catalog.ts), so a person can find
 -- them. "Save and start" is still untranslated on the unit form
 -- (UnitEditor.tsx), which is why the Spanish quotes it in English.
+-- Foremen and up see Unit complete on every unit; an installer sees it only on
+-- a unit they created (canEditUnit in lib/customWork/complete.ts), which is why
+-- the Finished my part sentence names installers (Codex review of #655).
 insert into public.app_release_notes(id,published_on,audience,kind,title_en,title_es,body_en,body_es,href) values
 ('2026-09-25-unit-complete','2026-09-25',array[0,1,2,3],'fix',
  'Unit complete in one tap, and it stays complete','Unidad terminada en un toque, y se queda terminada',
- 'While you work a unit, tap Unit complete ✓. It ends your visit and marks the whole install done in one step, and the list shows ✓ Install complete. Before, the Save and start button quietly reopened it. The tap is saved on your phone first, so losing signal or closing the app won''t undo it. If someone else created the unit, you see Finished my part ✓ instead: it ends your visit, and the unit''s creator or a foreman marks the install done.',
- 'Mientras trabajas una unidad, toca Unidad terminada ✓. Termina tu visita y marca toda la instalación como hecha en un solo paso, y la lista muestra ✓ Instalación terminada. Antes, el botón Save and start la volvía a abrir sin avisar. El toque se guarda primero en tu teléfono, así que perder la señal o cerrar la app no lo deshace. Si otra persona creó la unidad, ves Terminé mi parte ✓: termina tu visita, y quien creó la unidad o un capataz marca la instalación como hecha.',
+ 'While you work a unit, tap Unit complete ✓. It ends your visit and marks the whole install done in one step, and the list shows ✓ Install complete. Before, the Save and start button quietly reopened it. The tap is saved on your phone first, so losing signal or closing the app won''t undo it. If you''re an installer and someone else created the unit, you see Finished my part ✓ instead: it ends your visit, and the unit''s creator or a foreman marks the install done.',
+ 'Mientras trabajas una unidad, toca Unidad terminada ✓. Termina tu visita y marca toda la instalación como hecha en un solo paso, y la lista muestra ✓ Instalación terminada. Antes, el botón Save and start la volvía a abrir sin avisar. El toque se guarda primero en tu teléfono, así que perder la señal o cerrar la app no lo deshace. Si eres instalador y otra persona creó la unidad, ves Terminé mi parte ✓: termina tu visita, y quien creó la unidad o un capataz marca la instalación como hecha.',
  null) on conflict(id) do nothing;
 insert into public.app_release_notes(id,published_on,audience,kind,title_en,title_es,body_en,body_es,href) values
 ('2026-09-25-weak-signal-screen','2026-09-25',array[0,1,2,3],'fix',
