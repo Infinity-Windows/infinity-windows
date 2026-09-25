@@ -8,17 +8,23 @@
 -- by scripts/verify-schedule-ai-reasons.mjs on synthetic people, and here the
 -- system sets the scene (an AI draft on the sandbox job, and its reason), the
 -- policy is read back as the system, and the two QA logins prove the DENIAL
--- against the live policies: no rows on read, refused on write. If a QA login
--- has been given another role, the run stops loudly instead of acting as a
--- real person (that is what happened to #641's runs on 2026-09-24).
+-- against the live policies: no rows on read, refused on write. The harness's
+-- dry_run_pick stops the run loudly if a QA login has been given another role,
+-- instead of handing back a real person (that is what happened to #641's runs
+-- on 2026-09-24).
 --
--- The job is whichever job is both flagged as testing and on the sandbox list
--- (PECAN14 first, then BLACK22, then by code), the same rule #641's probe uses.
+-- The job is the harness's dry_run_sandbox_job(): whichever live job is both
+-- flagged as testing and on the sandbox list, never a fixed code.
 --
+-- The stack under this branch is #641 → #644 → #640 (2026-09-25), so the run
+-- applies every migration below it first, in number order, as the deploy will:
 -- Run: gh workflow run db-dry-run.yml --repo Infinity-Windows/infinity-windows \
 --        -f ref=claude/r2-schedule-review \
---        -f migrations="supabase/migrations/20261030000000_ai_daily_log_contributions.sql supabase/migrations/20261030010000_ai_actions_note.sql supabase/migrations/20261032000000_ai_schedule_review.sql" \
+--        -f migrations="supabase/migrations/20261028000000_clock_integrity.sql supabase/migrations/20261028010000_clock_integrity_note.sql supabase/migrations/20261030000000_ai_daily_log_contributions.sql supabase/migrations/20261030010000_ai_actions_note.sql supabase/migrations/20261031000000_new_front_door.sql supabase/migrations/20261032000000_ai_schedule_review.sql" \
 --        -f probe=scripts/dry-run-probes/pr-646-schedule-review.sql
+-- 20261031000000 is #642's (a sibling on #641 that merges before this one,
+-- by migration number), so that line needs a ref carrying both branches;
+-- leave it out to try this branch on its own.
 do $$
 declare
   v_installer uuid;
@@ -36,20 +42,8 @@ begin
   perform pg_temp.dry_run_as_system();
   v_installer := pg_temp.dry_run_pick('installer');
   v_foreman := pg_temp.dry_run_pick('foreman');
-  if not public.is_test_profile(v_installer) then
-    raise exception 'dry run: no QA login has the installer role, so the run would act as a real person. Set qa.installer (shown as "TEST — automation, do not assign") to Installer in the app and run again.';
-  end if;
-  if not public.is_test_profile(v_foreman) then
-    raise exception 'dry run: no QA login has the foreman role, so the run would act as a real person. Set qa.foreman (shown as "TEST — automation FOREMAN, do not assign") to Foreman in the app and run again.';
-  end if;
-  select p.id, p.job_code into v_job, v_job_code
-    from public.sandbox_projects s join public.projects p on p.id = s.project_id
-   where p.deleted_at is null and coalesce(p.is_test, false)
-   order by (p.job_code = 'PECAN14') desc, (p.job_code = 'BLACK22') desc, p.job_code
-   limit 1;
-  if v_job is null then
-    raise exception 'dry run: no job is both flagged as testing and on the sandbox list. Mark a practice job as testing in the app (that puts it on the sandbox list too) and run again.';
-  end if;
+  v_job := pg_temp.dry_run_sandbox_job();
+  select p.job_code into v_job_code from public.projects p where p.id = v_job;
   perform pg_temp.dry_run_check('setup: the sandbox job the run writes on (and throws away)', true, v_job_code);
 
   -- ---- the announcement ----------------------------------------------------------
