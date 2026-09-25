@@ -33,6 +33,9 @@ merge to master
 ├── Slack changelog ............ posts "Shipped to master" to #infinity-app-changelog
 ├── Deploy GitHub Pages ........ builds the app, stamps it with the commit sha,
 │                                publishes to infinity-windows.github.io
+│                                ├── read the live site the way a phone does:
+│                                │   this build? starts with no signal? starts
+│                                │   on a phone still holding the previous build?
 │                                └── phones pick it up (see "Reaching phones")
 └── Deploy backend
     ├── Deploy edge functions .. every folder in supabase/functions/
@@ -168,6 +171,54 @@ reported.
 To write that migration, someone with access should dump the real definition
 (`scripts/pgq.sh` is read-only and refuses to guess which project it is talking
 to) and commit it as a normal migration file.
+
+### Can every phone start it? — `scripts/verify-pages.sh`
+
+A green deploy is not a startable app. On 2026-09-25 `Deploy GitHub Pages`
+went green and every installed phone and laptop went black. The build was
+fine on its own: a fresh browser profile ran it, CI's browser tests (which run
+on the dev server, where there is no service worker) passed, the bundle was
+under budget. What broke only existed **between two builds**. A phone whose
+service worker still held the previous build loaded that build's `index.html`
+and entry from the worker's copy, and that entry asked the network for one
+file the worker had never saved — `assets/monitoring-BsbA4Bc6.js`, which the
+new deploy no longer had. The app could not start, so it could not notice the
+new build and update itself either. Rolled back within the hour (#667).
+
+Nothing in the pipeline had looked at the live site the way a phone does. Now,
+after every Pages deploy, the workflow's `verify` job asks the site three
+things, each with a fresh query string so GitHub's ten-minute CDN copy is
+bypassed (the same trick the app's own version check uses):
+
+1. **Is it this deploy?** `version.json` must name the commit just built,
+   retried for a minute — a deploy is reported live a little before every
+   edge has it. The previous build still being served is a failure, not a
+   "not yet".
+2. **Can a phone start it with no signal?** Every file `index.html` loads
+   before the first screen — the module script and each `modulepreload` —
+   must be named in the service worker's precache list (`sw.js`). That was
+   the bug #664 set out to fix: React had been folded into the crash
+   monitor's chunk, which the worker deliberately skips while monitoring is
+   off, so a cold start in a dead zone more than ten minutes after the last
+   load could not load the app at all.
+3. **Can a phone on the previous build still start it?** Every file under
+   `app/public/assets/` is one an older build's entry asks the network for;
+   each must come back 200 with the exact bytes the repo holds.
+   `app/scripts/check-kept-assets.mjs` says which files, why, and until when
+   (`monitoring-BsbA4Bc6.js` until 2026-11-01), and fails the build before
+   the deploy if one is missing, changed, or precached.
+
+Red here means the app **shipped** and people may not be able to open it, so
+its Slack message says to revert the merge first and read the cause second.
+Anything it could not measure — no answer from the site — fails, for the same
+reason an unanswered function probe does.
+
+The same two failures are also rehearsed before the merge, in a browser, by
+`app/playwright.pwa.config.ts`: a production build with its real service
+worker, reopened with no signal, and reopened after a deploy by a phone still
+holding the previous build's worker (`app/e2e/upgrade-path.pwa.ts`). Every
+other browser test runs on the dev server, which never registers a worker,
+and could not have seen either.
 
 ### Do people actually have it? — the build stamp
 
