@@ -209,6 +209,27 @@ describe("a queued write goes out only as the person who saved it", () => {
     expect(outbox.getHeldCount()).toBe(0);
   });
 
+  it("A's held clock-in and the clock-out waiting on it do not hold B up, and both go as A when A is back", async () => {
+    // Codex's held/dependent-clock check from the review of #660.
+    const ref = await outbox.enqueueClockIn({ projectId: "p1", costCodeId: "cc1", punch: PUNCH("held-A") });
+    await outbox.enqueueClockOut({ shiftRef: `pending:${ref}`, injured: false, timeConfirmed: true, breakSeconds: 0, punch: PUNCH("out-held-A") });
+    switchTo(B);
+    await outbox.enqueueClockIn({ projectId: "p2", costCodeId: "cc1", punch: PUNCH("own-B") });
+    setOnline(true);
+    await outbox.drain();
+    expect(sent.map((s) => [s.fn, s.token])).toEqual([["clock_in", "token-B"]]);
+    expect(await outbox.listAll()).toHaveLength(2);
+    // B is not shown A's punches as B's own.
+    expect(outbox.getClockQueueSnapshot().entries).toEqual([]);
+
+    switchTo(A);
+    sent.length = 0;
+    await outbox.drain();
+    expect(sent.map((s) => [s.fn, s.token])).toEqual([["clock_in", "token-A"], ["clock_out", "token-A"]]);
+    // The clock-out lands on the shift A's own clock-in became.
+    expect(sent[1].args.p_shift_id).toBe("shift-for-token-A");
+  });
+
   it("the token is fixed when the send starts: a sign-in in the middle of it cannot change whose write it is", async () => {
     await outbox.enqueueClockIn({ projectId: "p1", costCodeId: "cc1", punch: PUNCH("punch-A") });
     setOnline(true);
