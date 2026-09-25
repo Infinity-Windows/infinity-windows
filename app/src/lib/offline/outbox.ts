@@ -35,6 +35,7 @@ import {
   pendingShiftRef,
   type ShiftResolver,
 } from "./outboxHandlers";
+import { todaysPendingSignature, type PendingSignature, type ToolboxSignPayload } from "../toolboxSign";
 
 /** Cap on a single queued blob (photo/receipt). Bigger uploads fail loudly. */
 export const MAX_BLOB_BYTES = 25 * 1024 * 1024; // 25 MB
@@ -128,6 +129,43 @@ export function getClockQueueSnapshot(): ClockQueueSnapshot {
 }
 
 /**
+ * The toolbox talk signatures still on this phone (offline toolbox signing,
+ * 2026-09-25), readable without touching the store, the same way and for the
+ * same reason as the punches above: the gates render from it, so a talk signed
+ * with no signal opens the clock-in on this screen, after a reload and after a
+ * relaunch. `ready` has the clock snapshot's meaning; both are filled by the
+ * same read.
+ */
+export interface ToolboxQueueSnapshot {
+  entries: readonly OutboxEntry[];
+  ready: boolean;
+}
+let toolboxSnapshot: ToolboxQueueSnapshot = { entries: [], ready: false };
+
+export function getToolboxQueueSnapshot(): ToolboxQueueSnapshot {
+  return toolboxSnapshot;
+}
+
+/**
+ * This person's signature for today that is still on the phone — waiting,
+ * sending, or refused — or null. A clock-in made while one exists must not go
+ * to the server directly: it would arrive before the signature and be refused
+ * on the toolbox gate. It queues behind it instead (enqueueClockIn).
+ */
+export function todaysSignatureOnPhone(profileId: string | null | undefined): PendingSignature | null {
+  return todaysPendingSignature(toolboxSnapshot.entries, profileId);
+}
+
+/** A signature Forge has just filed, with the row it answered. */
+export type ToolboxSentListener = (entry: OutboxEntry, row: unknown) => void;
+const toolboxSentListeners = new Set<ToolboxSentListener>();
+
+export function subscribeToolboxSent(cb: ToolboxSentListener): () => void {
+  toolboxSentListeners.add(cb);
+  return () => toolboxSentListeners.delete(cb);
+}
+
+/**
  * A punch the server has just accepted, with the row it answered. Fires from
  * the drain BEFORE the queue notifies that the entry is gone, so a listener
  * that keeps the server's shift can take the row first and the screens never
@@ -190,9 +228,11 @@ async function refresh(): Promise<void> {
     const all = await store.getAll();
     cachedCounts = countsByOp(all);
     clockSnapshot = { entries: all.filter((e) => isClockOp(e.op)), ready: true };
+    toolboxSnapshot = { entries: all.filter((e) => e.op === "toolbox_sign"), ready: true };
   } catch {
     /* keep last known counts */
     if (!clockSnapshot.ready) clockSnapshot = { entries: clockSnapshot.entries, ready: true };
+    if (!toolboxSnapshot.ready) toolboxSnapshot = { entries: toolboxSnapshot.entries, ready: true };
   }
   for (const cb of listeners) {
     try {
@@ -439,6 +479,16 @@ export async function drain(): Promise<void> {
         onSent: (entry, result) => {
           photoReceipts.record(entry);
           recordSent(entry, Date.now());
+          if (entry.op === "toolbox_sign") {
+            for (const cb of toolboxSentListeners) {
+              try {
+                cb(entry, result);
+              } catch {
+                /* a listener must never break the queue */
+              }
+            }
+            return;
+          }
           if (!isClockOp(entry.op)) return;
           for (const cb of clockSentListeners) {
             try {
@@ -613,13 +663,35 @@ export interface ClockInInput {
    * paid from the moment it arrived rather than the moment it was tapped.
    */
   afterShiftRef?: string | null;
+  /**
+   * Who is clocking in (offline toolbox signing, 2026-09-25). When their
+   * signature for today is still on the phone, the clock-in waits for it
+   * (`dependsOn`): the server refuses the day's first clock-in until the
+   * signature is on record, and a signature Forge refuses must HOLD the
+   * clock-in rather than let it go out and fail on the toolbox gate. A switch
+   * behind a pending clock-in keeps waiting on that clock-in instead, which
+   * already waits on the signature.
+   */
+  profileId?: string | null;
+}
+
+/** The signature, still on the phone, that a clock-in by this person must follow. */
+async function signatureToFollow(profileId: string | null | undefined): Promise<string | null> {
+  if (!profileId) return null;
+  try {
+    return todaysPendingSignature(await store.getAll(), profileId)?.entryId ?? null;
+  } catch {
+    // The store could not be read: the snapshot is the next best answer.
+    return todaysSignatureOnPhone(profileId)?.entryId ?? null;
+  }
 }
 
 /** Enqueue a clock-in. Returns the entry id, usable as a pending shift ref. */
-export function enqueueClockIn(input: ClockInInput): Promise<string> {
+export async function enqueueClockIn(input: ClockInInput): Promise<string> {
+  const afterShift = input.afterShiftRef ? refDependency(input.afterShiftRef) : null;
   return enqueue({
     op: "clock_in",
-    dependsOn: input.afterShiftRef ? refDependency(input.afterShiftRef) : null,
+    dependsOn: afterShift ?? (await signatureToFollow(input.profileId)),
     payload: {
       projectId: input.projectId,
       costCodeId: input.costCodeId,
@@ -680,6 +752,41 @@ export function enqueueBreakStop(shiftRef: string, punch: ClockPunchFields): Pro
     dependsOn: refDependency(shiftRef),
     payload: { shiftRef, ...punchPayload(punch) },
   });
+}
+
+/**
+ * Keep today's toolbox talk signature on the phone and send it from here
+ * (offline toolbox signing, 2026-09-25) — at once when there is signal, later
+ * when there is not. There is no other way to sign: the direct upload-then-
+ * insert this replaced failed with no signal, and two paths would be two
+ * behaviours to keep honest.
+ *
+ * The entry's id IS the signature's client id, so the entry, its files and the
+ * row it files all carry one id, and handing the same signature over twice
+ * leaves the one entry already waiting. The PDF built at signing time rides as
+ * the entry's file; the drawn signature is small and rides in the payload.
+ */
+export function enqueueToolboxSign(input: ToolboxSignPayload, pdf: Blob | null): Promise<string> {
+  return enqueue(
+    {
+      op: "toolbox_sign",
+      hasBlob: pdf != null,
+      payload: {
+        clientId: input.clientId,
+        profileId: input.profileId,
+        talkId: input.talkId,
+        talkDate: input.talkDate,
+        typedName: input.typedName,
+        signedAt: input.signedAt,
+        talkSnapshot: input.talkSnapshot,
+        signaturePath: input.signaturePath,
+        signatureDataUrl: input.signatureDataUrl,
+        pdfPath: pdf ? input.pdfPath : null,
+      },
+    },
+    pdf,
+    { id: input.clientId },
+  );
 }
 
 export interface UploadInput {
