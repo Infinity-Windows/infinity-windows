@@ -45,6 +45,7 @@
 import { expect, test, type BrowserContext, type Page, type Route } from "@playwright/test";
 import { OFFLINE_PIN_ITERATIONS, OFFLINE_PIN_KEY, OFFLINE_PIN_TTL_MS } from "../src/lib/offlinePin";
 import { TEST_USER, useSupabaseFixtures } from "./support/supabaseFixtures";
+import { typePin } from "./support/pinFixtures";
 
 const SUPABASE = ["**/rest/v1/**", "**/auth/v1/**", "**/storage/v1/**", "**/functions/v1/**"];
 
@@ -123,12 +124,6 @@ async function usePinCheck(page: Page, pin: string) {
       body: JSON.stringify(body?.p_pin === pin),
     });
   });
-}
-
-async function typePin(page: Page, digits: string) {
-  for (const digit of digits) {
-    await page.locator(".pin-pad").getByRole("button", { name: digit, exact: true }).click();
-  }
 }
 
 type KeptUnlock = Record<string, unknown> & { salt: string; hash: string; issuedAt: number; expiresAt: number };

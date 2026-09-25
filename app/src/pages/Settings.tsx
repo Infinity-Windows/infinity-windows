@@ -5,8 +5,9 @@ import { BackChip } from "../components/BackChip";
 import { Link } from "react-router-dom";
 import { BuildIdentityCard } from "../components/BuildIdentityCard";
 import { PermissionsSettings } from "../components/permissions/PermissionsSettings";
+import { PinSetter } from "../components/PinGate";
 import { playSuccessTone, setSoundsEnabled, soundsEnabled } from "../lib/sound";
-import { useLanguage } from "../lib/i18n";
+import { useLanguage, useT } from "../lib/i18n";
 import type { Lang } from "../lib/i18n";
 
 type ThemeChoice = "system" | "light" | "dark";
@@ -46,7 +47,8 @@ function applyTheme(t: ThemeChoice) {
 export function Settings() {
   const [theme, setTheme] = useState<ThemeChoice>(readTheme);
   const [sounds, setSounds] = useState<boolean>(soundsEnabled);
-  const { lang, setLang, t } = useLanguage();
+  const { lang, setLang } = useLanguage();
+  const t = useT();
 
   return (
     <div className="page">
@@ -81,6 +83,18 @@ export function Settings() {
             </button>
           ))}
         </div>
+      </section>
+
+      {/* Your own PIN, for every role (2026-09-25). No role check on purpose:
+          it sat on the supervisor-only Roster, so installers and foremen could
+          not set one. It always acts for the real signed-in login, never a
+          role being previewed (PinSetter reads signedInUserId). */}
+      <section className="detail-card" style={{ marginBottom: 12 }}>
+        <h2 style={{ marginTop: 0, fontSize: 18 }}>{t("pin.setter.heading")}</h2>
+        <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
+          {t("pin.setter.help")}
+        </p>
+        <PinSetter />
       </section>
 
       <section className="detail-card" style={{ marginBottom: 12 }}>

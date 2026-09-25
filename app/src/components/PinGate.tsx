@@ -1,5 +1,5 @@
 import { useIsRestoring, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { checkMyPin, myPinStatus, setMyPin } from "../lib/install/api";
 import { getMyProfile } from "../lib/install/api";
 import { useT } from "../lib/i18n";
@@ -401,9 +401,15 @@ function PersonsPinGate({ userId, children }: { userId: string; children: React.
   );
 }
 
-/** Self-service control to set/clear your PIN (used on the Crew screen). */
+/**
+ * Set, change or remove your own PIN. On Settings, where every role can reach
+ * it: it sat on the Roster, supervisor-only since #610, so installers and
+ * foremen could not set a PIN at all (moved 2026-09-25).
+ */
 export function PinSetter() {
+  const t = useT();
   const queryClient = useQueryClient();
+  const inputId = useId();
   // The same answer the lock reads — and keeps for a relaunch with no signal —
   // so setting or clearing a PIN here changes what the lock does next time,
   // signal or not.
@@ -413,14 +419,15 @@ export function PinSetter() {
   const [saved, setSaved] = useState(false);
   return (
     <div style={{ marginTop: 8 }}>
-      <label className="field-label">
-        Your quick-unlock PIN {hasPin.data ? "(set)" : "(none)"}
+      <label className="field-label" htmlFor={inputId}>
+        {t("pin.setter.label")} {hasPin.data ? t("pin.setter.isSet") : t("pin.setter.none")}
       </label>
       <div className="row-gap">
         <input
+          id={inputId}
           inputMode="numeric"
           maxLength={4}
-          placeholder="4 digits"
+          placeholder={t("pin.setter.placeholder")}
           value={pin}
           onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
           style={{ maxWidth: 120, marginBottom: 0 }}
@@ -439,7 +446,7 @@ export function PinSetter() {
             hasPin.refetch();
           }}
         >
-          Save PIN
+          {t("pin.setter.save")}
         </button>
         {hasPin.data && (
           <button
@@ -452,13 +459,13 @@ export function PinSetter() {
               hasPin.refetch();
             }}
           >
-            Clear
+            {t("pin.setter.clear")}
           </button>
         )}
       </div>
       {saved && (
         <p className="ok" style={{ fontSize: 13 }}>
-          PIN saved.
+          {t("pin.setter.saved")}
         </p>
       )}
     </div>

@@ -25,7 +25,7 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { NAV, type RoutePath } from "../nav";
+import { NAV, menuForRole, type RoutePath } from "../nav";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 /** app/src — this file lives at app/src/lib/i18n/. */
@@ -145,6 +145,33 @@ describe("installer-floor screens speak Spanish (at least a little)", () => {
   it("every installer-floor nav id is mapped in ROUTE_FILES", () => {
     const unmapped = INSTALLER_ROUTES.map((d) => d.id).filter((id) => !ROUTE_FILES[id]);
     expect(unmapped).toEqual([]);
+  });
+});
+
+/**
+ * Pages on the installer's own menu that NAV does not list, so the loop above
+ * never sees them. Settings is one: every role reaches it from the menu, and
+ * since 2026-09-25 it is where an installer sets their own PIN.
+ */
+const OFF_NAV_MENU_FILES: Partial<Record<string, string[]>> = {
+  "/settings": ["pages/Settings.tsx"],
+};
+
+describe("pages on the installer's menu that NAV does not list speak Spanish too", () => {
+  it("each one is mapped, and calls useT(", () => {
+    const menuPaths = menuForRole("installer")
+      .flatMap((section) => section.items)
+      .map((item) => item.to)
+      .filter((to): to is RoutePath => Boolean(to));
+    const offNav = menuPaths.filter((to) => !NAV.some((d) => d.to === to));
+
+    const unmapped = offNav.filter((to) => !OFF_NAV_MENU_FILES[to]);
+    expect(unmapped, "add these to OFF_NAV_MENU_FILES").toEqual([]);
+    const untranslated = offNav.filter((to) => !OFF_NAV_MENU_FILES[to]!.some(hasUseT));
+    expect(untranslated, "these installer menu pages never call useT(").toEqual([]);
+    // It is the menu that sends an installer to Settings; if that changes,
+    // this list should change with it.
+    expect(offNav).toContain("/settings");
   });
 });
 
