@@ -236,8 +236,8 @@ async function signTheTalk(page: Page, scope: ReturnType<Page["locator"]>) {
   await sign.click();
 }
 
-async function setUp(page: Page) {
-  await useSupabaseFixtures(page, { role: "installer" });
+/** Everything but the signed-in fixture itself, which each test sets up first. */
+async function offlineWorld(page: Page) {
   await hideWrongProjectBanner(page);
   await stubGeolocationDenied(page);
   const signal = new Signal();
@@ -255,7 +255,8 @@ for (const [where, viewport] of [
     test("signs with no signal, clocks in behind the signature, survives a reload, and the server hears one signature then one clock-in", async ({
       page,
     }) => {
-      const { signal, server } = await setUp(page);
+      await useSupabaseFixtures(page, { role: "installer" });
+      const { signal, server } = await offlineWorld(page);
       await page.goto("/");
       const block = page.locator(".clockin-block");
       await expect(block).toBeVisible();
@@ -366,7 +367,8 @@ for (const [where, viewport] of [
     test("a signature the server refuses keeps the clock-in on the phone, says so, and Try again sends both in order", async ({
       page,
     }) => {
-      const { signal, server } = await setUp(page);
+      await useSupabaseFixtures(page, { role: "installer" });
+      const { signal, server } = await offlineWorld(page);
       await page.goto("/");
       const block = page.locator(".clockin-block");
       await expect(block).toBeVisible();
