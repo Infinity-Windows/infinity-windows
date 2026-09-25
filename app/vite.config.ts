@@ -203,9 +203,26 @@ export default defineConfig({
         // `esm-<hash>.js` after whatever file happened to be first, which is
         // not a thing a glob can name and not a thing anybody reading the
         // build output would recognise.
-        manualChunks(id: string) {
-          if (id.includes('node_modules/@sentry')) return 'monitoring'
-          return undefined
+        //
+        // Only the Sentry packages themselves go in it
+        // (includeDependenciesRecursively: false). A named chunk otherwise
+        // swallows everything its modules import that no other named chunk
+        // has claimed — and @sentry/react imports React. That is how React
+        // itself ended up inside `monitoring-*.js` (2026-09-25): every screen
+        // imported React from the crash monitor's chunk, so the entry loaded
+        // all 30 kB (gzipped) of a switched-off SDK before the first paint,
+        // and — with no DSN — the one chunk the service worker skips below
+        // was one the app could not start without. React now lands in an
+        // ordinary chunk, precached like the rest, and nothing but
+        // lib/monitoring/sentry.ts's dynamic import ever asks for this one.
+        codeSplitting: {
+          groups: [
+            {
+              name: 'monitoring',
+              test: /node_modules[\\/]@sentry/,
+              includeDependenciesRecursively: false,
+            },
+          ],
         },
       },
     },
@@ -259,6 +276,18 @@ export default defineConfig({
           // on and this line disappears, because then the chunk has to be on
           // the phone BEFORE the crash in the dead zone that needs it.
           ...(monitoringOn ? [] : ['assets/monitoring-*.js']),
+          // The file OLD phones still ask for — see scripts/check-kept-assets.mjs.
+          // Before the codeSplitting fix above, every build's entry statically
+          // imported `monitoring-BsbA4Bc6.js` (React lived in it), and a phone
+          // whose worker still serves that build's index.html loads that
+          // build's entry, which asks the NETWORK for this one file, because
+          // no worker ever precached it. The first deploy without it turned
+          // every such phone black — the app could not start, so it could
+          // not update itself either (2026-09-25, #664, rolled back in
+          // #667). `public/assets/` carries the exact bytes into every build
+          // until 2026-11-01. Never precached, in any configuration: only
+          // old workers ask for it, and they fetch it from the network.
+          'assets/monitoring-BsbA4Bc6.js',
         ],
         // Route-level code splitting (App.tsx) broke the old >2.8 MB app-shell
         // bundle into one small entry chunk plus per-route chunks, so nothing
