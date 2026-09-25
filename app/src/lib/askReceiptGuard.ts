@@ -51,6 +51,10 @@ const CLAIMS: RegExp[] = [
 const NOT_A_CLAIM: RegExp[] = [
   /\b(once|when|after|if|before|until|unless|as soon as|should)\s+(you|i|we|it|the|your)\b/i,
   /\b(will|would|could|can|may|might|shall|going to|about to|ready to|want me to|shall i|do you want|would you like)\b/i,
+  // "you'll need to log it there so it is recorded": the contraction is still
+  // the future, and \b never reaches "will" inside "you'll" — a live model's
+  // honest instruction was flagged as a claim on 2026-09-24.
+  /(?<!\p{L})(i|you|we|it|they|that|he|she|there)['’]ll(?!\p{L})/iu,
   /\b(not|nothing|nobody|never|no|hasn't|haven't|hadn't|wasn't|weren't|isn't|aren't|can't|cannot|couldn't|didn't|won't|wouldn't|don't|doesn't)\b/i,
   /\byet\b/i,
   /\?\s*$/,

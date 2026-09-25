@@ -47,6 +47,10 @@ describe("prose that claims a change", () => {
     "Puedo crear la obra si me dices la ubicación.",
     "Voy a guardar la unidad cuando confirmes el tipo.",
     "Flashing goes on before the frame is set; the sill pan is set first.",
+    // Future tense in a contraction is still the future (live finding, 2026-09-24).
+    "You'll need to log that withdrawal there so the Smith job's supply use is recorded.",
+    "I'll note it on unit 4 once you say how many.",
+    "It’ll be saved when you tap Save.",
   ];
   for (const text of honest) it(`does not claim: "${text}"`, () => expect(soundsDone(text)).toBe(false));
 

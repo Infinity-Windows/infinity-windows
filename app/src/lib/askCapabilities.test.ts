@@ -118,7 +118,7 @@ describe("the model's tool list derives from the registry", () => {
     expect(installer).toContain("Plan the schedule — supervisor and above");
     expect(installer).toContain("NEVER, whatever is asked");
     expect(installer).toContain("Only a tool result proves a change");
-    expect(installer).toContain("Answer in the language the person used");
+    expect(installer).toContain("Answer in the language of THIS message");
     const owner = capabilityPromptBlock(3);
     expect(owner).not.toContain("NOT FOR THIS ROLE");
     expect(owner).toContain("Crew status → the Team timecards screen");

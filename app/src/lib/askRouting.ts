@@ -11,7 +11,15 @@ export function isOperationalAsk(question: string, hasContext = false): boolean 
 // an action or a who-is-on-it question with it. Spanish forms include the
 // common conjugations crews actually say (empieza, terminé, construye, ¿quién…?).
 const UNIT = /\b(units?|unidad(es)?)\b/i;
-const UNIT_ACTION = /\b(start\w*|stop\w*|clock(ed)?\s+(in|into|on)|finish\w*|done\s+with|build\w*|create\w*|claim\w*|release\w*|help\w*|join\w*|work(ing)?\s+on|who('s|\s+is)|empiez\w*|empez\w*|comienz\w*|comenz\w*|inici\w*|termin\w*|acab\w*|constru\w*|cre[ao]\w*|reclam\w*|liber\w*|ayud\w*|qui[eé]n)/i;
+// "set up" / "configurar" are the Build a unit card's own words ("Set up the
+// unit I'm working on"); typed by hand they reached no field tool until the
+// live scoring of 2026-09-24 showed a model answering "Set up unit 2 on Smi"
+// with a report tool because that was all it had been given. Past work on a
+// unit — "Ben and Ana installed unit 4 yesterday", "trabajaron en la unidad
+// 4" — is the Record crew work card's whole job and routes the same way; the
+// past tense only, so "how do I install unit 4" / "¿cómo instalo la unidad
+// 4?" stay tips questions.
+const UNIT_ACTION = /\b(start\w*|stop\w*|clock(ed)?\s+(in|into|on)|finish\w*|done\s+with|build\w*|create\w*|set(ting)?\s+up|setup|claim\w*|release\w*|help\w*|join\w*|work(ing|ed)?\s+on|installed|who('s|\s+is)|empiez\w*|empez\w*|comienz\w*|comenz\w*|inici\w*|termin\w*|acab\w*|constru\w*|configur\w*|instal(?:ó|amos|aron)|trabaj(?:ó|amos|aron)\s+en|cre[ao]\w*|reclam\w*|liber\w*|ayud\w*|qui[eé]n)/i;
 const STANDALONE = /\b(timer|idle\s+time|(what|which)\s+units|new\s+(job|project)|(create|build)\s+(a\s+|the\s+)?(job|project)|temporizador|tiempo\s+muerto|nuev[ao]\s+(obra|proyecto)|(crea|construye)\s+(una\s+|la\s+)?(obra|proyecto))\b/i;
 
 // Writing up what happened so others learn from it (a lesson for review).

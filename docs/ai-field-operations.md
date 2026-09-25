@@ -198,10 +198,45 @@ field request; the first message carries the draft from the awaited fresh
 draft; the reply's `daily_log` is applied only to this draft, account and
 conversation, and refused (and said so) without a saved message behind it;
 Save calls `append_daily_log_contribution` (migration 20261030000000).
+**Answers are saved in English** (owner decision 2026-09-24): the log is one
+company record the office reads, so the model translates faithfully — same
+facts, nothing added, names, numbers and unit codes exact — while the reply
+to the person stays in their language (K2.6). The person's own words are
+not lost: the field request keeps the recording and the transcript as the
+entry's evidence (`source_request_ids`).
+
+**What the model is told, after the first live scoring (2026-09-24).** Two
+models scored 31/48 live (`outputs/Forge-AI-Model-Scores-2026-09-24/`), and
+most misses were instruction gaps, fixed in the prompts and tool descriptions
+(`fieldTools.ts`, `aiDailyLog.ts`, `askCapabilities.ts`), not in the tools:
+a start/stop/finish request is acted on at once and the database's card or
+receipt speaks — the model never reads the clock and answers in prose
+instead (that is how the not-clocked-in, on-break and wrong-job cards never
+reached the phone); describing a unit is never a save (one model saved unit
+7 the person had only described); the job named in the message beats the
+draft and the clock (one model asked "did you mean Smythe?" after the person
+said Smythe, another quietly kept Smith); "I don't know X" always reaches
+the tool; a similar existing job still goes through `create_field_job` so
+the person gets the choice card; everything is "so far" / "en el borrador"
+until a receipt says done — never guardé, registré, anoté; screens are named
+exactly as the registry writes them. The router now sends "set up unit 2"
+and past work on a unit ("Ben and Ana installed unit 4 yesterday", the
+Record crew work card's job) as field requests — the two crew-record cases
+could never reach their tool by typing before.
 
 **Evaluation set.** `scripts/ask-eval/cases.json` + `scripts/ask-eval.mjs`:
 48 realistic requests through the real tool layer with a stubbed model (in
-CI) or, manually and opt-in, a real model (`--live`). See the runner's header.
+CI) or, manually and opt-in, a real model (`--live`, `--only a,b,c` for a
+targeted spend). See the runner's header. Scoring: receipts, writes,
+buttons, tool calls and unknown-versus-missing are exact; text values
+(checklist values, daily-log answers) are compared normalized — case,
+punctuation, whitespace, one leading article, a plural "s" — because the
+office reads "Lift was late" and "The lift was late" the same, and a grader
+that fails them hides the misses that matter; daily-log answers must be
+English; a role-gated action passes refused by its tool OR never called and
+said to be someone else's (a write never passes). A stubbed trajectory that
+calls a tool the request never offered fails the case: that is how the two
+routing gaps above were found.
 
 ## Loading cost
 

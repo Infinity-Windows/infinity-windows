@@ -9,6 +9,11 @@ describe("routing field work to Forge AI", () => {
       "Empieza unidad 4 de aluminio en QA Example Deck", "Start unit 4", "stop my timer", "Claim unit four and start me",
       "what units are on this job?", "Start a new project", "I'm on idle time loading the truck", "Comienza la unidad 7",
       "Construye la unidad 5", "Crea una obra nueva", "detén mi temporizador", "join unit 3 as a helper",
+      // The Build a unit card's own words, typed (live finding, 2026-09-24).
+      "Set up unit 2 on Smi", "Set up the unit I'm working on", "Configurar la unidad 4",
+      // Past work on a unit is the Record crew work card's job (same finding:
+      // the eval's crew-record cases could never reach the tool by typing).
+      "Ben and Ana installed unit 4 yesterday", "Frank worked on unit 7 on Monday", "Ana y Ben instalaron la unidad 4 ayer", "Trabajaron en la unidad 4",
     ]) expect(isFieldAsk(q), q).toBe(true);
   });
   it("keeps install tips and 'my next unit' on the free local answers", () => {
@@ -77,7 +82,7 @@ describe("a typed description of a unit routes like the Build a unit card", () =
     for (const q of [
       "the door on unit 4 is leaking", "Unit 4 window glass cracked on delivery", "La ventana de la unidad 4 está rota",
       "Unit 4", "unit 4 aluminum", "Unit 4 in the garage", "Unit 4 by 5pm", "Unit 4 is done", "unit 4 looks good", "la unidad 4 está lista",
-      "I fixed unit 4", "fixed unit 4 this morning", "Fijo que la unidad 4 está lista", "Ben and Ana installed unit 4 yesterday", "My next unit",
+      "I fixed unit 4", "fixed unit 4 this morning", "Fijo que la unidad 4 está lista", "How do I install unit 4", "I'm installing unit 4", "My next unit",
       "I took three boxes of 2 inch screws from the shop for Smith", "going to lunch", "voy a comer", "clock me out", "Sign my toolbox talk for me",
     ]) {
       expect(describesUnit(q), q).toBe(false);
