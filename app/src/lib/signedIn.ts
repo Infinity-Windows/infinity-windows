@@ -32,6 +32,9 @@ let userId: string | null = null;
  * same person signing in again after signing out. See signInMark.
  */
 let generation = 0;
+/** Who was signed in when this copy of the app first learned — see launchUserId. */
+let launch: string | null = null;
+let launchKnown = false;
 
 /**
  * Remember who is signed in. Called by App's auth plumbing — the boot
@@ -43,9 +46,23 @@ let generation = 0;
  */
 export function rememberSignedIn(session: SignedInSession | null): void {
   const id = session?.user?.id ?? null;
+  const before = userId;
   if (id !== userId) generation++;
   email = session?.user?.email ?? null;
   userId = id;
+  if (!launchKnown) {
+    launchKnown = true;
+    launch = userId;
+  }
+  if (userId !== before) {
+    for (const cb of listeners) {
+      try {
+        cb();
+      } catch {
+        /* a listener must never break sign-in */
+      }
+    }
+  }
 }
 
 /** Who was signed in when a piece of work began. */
@@ -84,6 +101,16 @@ export function stillSignedInAs(mark: SignInMark, who: string): boolean {
   return mark.generation === generation && mark.userId === who && userId === who;
 }
 
+const listeners = new Set<() => void>();
+
+/** Told when the signed-in person changes (signed in, out, or somebody else). */
+export function subscribeSignedIn(cb: () => void): () => void {
+  listeners.add(cb);
+  return () => {
+    listeners.delete(cb);
+  };
+}
+
 /**
  * The signed-in person's email, or null before sign-in has resolved. Never
  * throws, never blocks, never touches the network — safe to call from inside a
@@ -100,7 +127,19 @@ export function signedInEmail(): string | null {
  * the same id to PinGate from its session, and the Crew screen's PIN setter
  * reads it here so a PIN change lands on the answer the lock keeps.
  * Same promises as signedInEmail: no await, no request.
+ * The outbox stamps it on every write it queues (2026-09-25), so the queue
+ * sends a write only as that person — see lib/offline/entryOwner.ts.
  */
 export function signedInUserId(): string | null {
   return userId;
+}
+
+/**
+ * Who was signed in when this copy of the app started — the first answer
+ * App's boot `getSession()` gave, null if nobody was. The one piece of
+ * evidence left about a write queued by a build from before writes carried
+ * their owner: see entryOwner.ts's rule for those.
+ */
+export function launchUserId(): string | null {
+  return launch;
 }

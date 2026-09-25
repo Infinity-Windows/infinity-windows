@@ -15,8 +15,10 @@ const storageUpload = vi.fn();
 const attachmentsUpsert = vi.fn();
 const attachmentsInsert = vi.fn();
 
-vi.mock("../supabase", () => ({
-  supabase: {
+vi.mock("../supabase", () => {
+  // The outbox sends a write only as the person who queued it, through a
+  // client bound to that person's token (2026-09-25): here, the same stub.
+  const supabase = {
     storage: {
       from: (bucket: string) => ({
         upload: (path: string, blob: Blob, opts: Record<string, unknown>) =>
@@ -28,9 +30,10 @@ vi.mock("../supabase", () => ({
         attachmentsUpsert(table, row, opts),
       insert: (row: Record<string, unknown>) => attachmentsInsert(table, row),
     }),
-  },
-  supabaseConfigured: true,
-}));
+    auth: { getSession: async () => ({ data: { session: { access_token: "test-token", user: { id: "test-user", email: "installer@example.com" } } }, error: null }) },
+  };
+  return { supabase, clientWithToken: () => supabase, supabaseConfigured: true };
+});
 
 const { createShiftResolver, createSupabaseHandlers } = await import("./outboxHandlers");
 const handlers = createSupabaseHandlers(createShiftResolver());
@@ -65,6 +68,11 @@ beforeEach(() => {
   attachmentsUpsert.mockResolvedValue({ data: null, error: null });
   attachmentsInsert.mockResolvedValue({ data: null, error: null });
 });
+
+// Somebody is signed in: the outbox stamps them as the owner of what they
+// queue, and sends it only as them (2026-09-25).
+const { rememberSignedIn } = await import("../signedIn");
+rememberSignedIn({ user: { id: "test-user", email: "installer@example.com" } });
 
 describe("a package photo queued through photo_upload", () => {
   it("uploads the bytes to install-media at the minted path", async () => {

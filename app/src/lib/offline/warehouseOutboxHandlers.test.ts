@@ -26,8 +26,10 @@ const rpc = vi.fn();
 /** One row read back by id, so a handler can ask "did this already land?" */
 const readRow = vi.fn<(table: string, id: string) => { data: unknown; error: unknown }>();
 
-vi.mock("../supabase", () => ({
-  supabase: {
+vi.mock("../supabase", () => {
+  // The outbox sends a write only as the person who queued it, through a
+  // client bound to that person's token (2026-09-25): here, the same stub.
+  const supabase = {
     rpc: (...args: unknown[]) => rpc(...args),
     from: (table: string) => ({
       select: () => ({
@@ -36,9 +38,10 @@ vi.mock("../supabase", () => ({
         }),
       }),
     }),
-  },
-  supabaseConfigured: true,
-}));
+    auth: { getSession: async () => ({ data: { session: { access_token: "test-token", user: { id: "test-user", email: "installer@example.com" } } }, error: null }) },
+  };
+  return { supabase, clientWithToken: () => supabase, supabaseConfigured: true };
+});
 
 const { createShiftResolver, createSupabaseHandlers } = await import("./outboxHandlers");
 
@@ -129,6 +132,11 @@ beforeEach(() => {
   readRow.mockReset();
   readRow.mockReturnValue({ data: null, error: null });
 });
+
+// Somebody is signed in: the outbox stamps them as the owner of what they
+// queue, and sends it only as them (2026-09-25).
+const { rememberSignedIn } = await import("../signedIn");
+rememberSignedIn({ user: { id: "test-user", email: "installer@example.com" } });
 
 describe("a queued tag", () => {
   it("sends every field the sticker carried", async () => {

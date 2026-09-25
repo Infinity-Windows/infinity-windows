@@ -9,22 +9,28 @@
 // retried and shown in one place.
 
 import {
+  ALL_OPS,
   retryEntry,
   type OutboxEntry,
   countsByOp,
   drainUntilSettled,
+  HeldForOwnerError,
   isClockOp,
   isPending,
   makeEntry,
   requeueStranded,
   type OpCounts,
+  type OpHandler,
+  type OpHandlers,
   type OutboxInput,
   type OutboxStore,
 } from "./outbox-core";
 import { createDefaultStore, UnreadableOutboxEntryError } from "./outboxStore";
 import { logOfflineEvent } from "./telemetry";
 import { REQUEST_TIMEOUT_MS, uploadTimeoutMs } from "./weakSignal";
-import { signedInEmail } from "../signedIn";
+import { launchUserId, signedInEmail, signedInUserId, subscribeSignedIn } from "../signedIn";
+import { clientWithToken, supabase } from "../supabase";
+import { belongsTo, needsAdoption, type Signer } from "./entryOwner";
 import type { JobMode } from "../types";
 import { recoverPhotoUpload } from "./recoverPhotoUploads";
 import { PhotoUploadReceipts } from "./photoUploadProgress";
@@ -94,8 +100,69 @@ if (SEND_DEADLINE_MS <= 6 * REQUEST_TIMEOUT_MS) {
 
 const store: OutboxStore = createDefaultStore();
 const resolver: ShiftResolver = createShiftResolver();
-const handlers = createSupabaseHandlers(resolver);
 const photoReceipts = new PhotoUploadReceipts();
+
+// --- whose write goes out as whom (2026-09-25) ----------------------------
+//
+// A write goes out only as the person who queued it — Codex review of #654,
+// finding 3: A clocked in with no signal, signed out, B signed in, and the
+// drain sent A's punch with B's token, so the server filed A's morning as
+// B's shift (clock_in keys the shift on auth.uid()). Every send now reads the
+// current session, checks it against the entry's owner (entryOwner.ts), and
+// sends through a client bound to that session's token for the whole send
+// (lib/supabase.ts clientWithToken). Someone else's write — or any write,
+// while nobody is signed in — is HeldForOwnerError: left exactly as it is,
+// not an attempt, not a failure, until its owner signs in again.
+
+/** The handlers for one access token; kept, since a drain sends many writes on one token. */
+let boundHandlers: { token: string; handlers: OpHandlers } | null = null;
+function handlersFor(token: string): OpHandlers {
+  if (boundHandlers?.token !== token) {
+    boundHandlers = { token, handlers: createSupabaseHandlers(resolver, clientWithToken(token)) };
+  }
+  return boundHandlers.handlers;
+}
+
+/** Who is signed in, from the memory App keeps current — for counting, not sending. */
+function signerNow(): Signer {
+  return { userId: signedInUserId(), email: signedInEmail() };
+}
+
+/**
+ * The drain's handlers: each one checks the owner against the session the
+ * auth client has NOW, then runs the real handler bound to that session's
+ * token. The check and the token come from the same session object, so they
+ * cannot disagree, and nothing after the check can swap the token out.
+ */
+const handlers: OpHandlers = Object.fromEntries(
+  ALL_OPS.map((op): [string, OpHandler] => [
+    op,
+    async (entry, ctx) => {
+      const { data } = await supabase.auth.getSession();
+      const session = data.session;
+      const signer: Signer = { userId: session?.user?.id ?? null, email: session?.user?.email ?? null };
+      if (!session || !belongsTo(entry, signer, launchUserId())) throw new HeldForOwnerError();
+      const handler = handlersFor(session.access_token)[op];
+      if (!handler) throw new Error(`No handler for op "${op}"`);
+      return handler(entry, ctx);
+    },
+  ]),
+);
+
+/**
+ * Write the launch user onto older entries that name no owner at all (see
+ * entryOwner.ts), so that the rule "whoever was signed in when the app
+ * started" is decided once, on first sight, and a later launch signed in as
+ * someone else cannot take them over. Nothing to do while nobody was signed
+ * in at launch — those wait.
+ */
+async function adoptUnownedEntries(): Promise<void> {
+  const owner = launchUserId();
+  if (!owner) return;
+  for (const e of await store.getAll()) {
+    if (needsAdoption(e)) await store.put({ ...e, ownerId: owner });
+  }
+}
 
 export async function getPhotoUploadProgress(ids: readonly string[]) {
   return photoReceipts.summarize(ids, await store.getAll(), signedInEmail());
@@ -104,6 +171,8 @@ export async function getPhotoUploadProgress(ids: readonly string[]) {
 const listeners = new Set<() => void>();
 const syncedListeners = new Set<() => void>();
 let cachedCounts: OpCounts = countsByOp([]);
+/** Entries on this phone that belong to someone other than whoever is signed in. */
+let cachedHeld = 0;
 
 /**
  * The clock punches still on this phone, readable without touching the store
@@ -188,8 +257,15 @@ function isOnline(): boolean {
 async function refresh(): Promise<void> {
   try {
     const all = await store.getAll();
-    cachedCounts = countsByOp(all);
-    clockSnapshot = { entries: all.filter((e) => isClockOp(e.op)), ready: true };
+    // Someone else's work is not this person's pending work: it is counted on
+    // its own, and a queued clock-in of theirs must never show this person as
+    // clocked in (K0.1 reads this snapshot).
+    const signer = signerNow();
+    const launch = launchUserId();
+    const mine = all.filter((e) => belongsTo(e, signer, launch));
+    cachedCounts = countsByOp(mine);
+    cachedHeld = all.length - mine.length;
+    clockSnapshot = { entries: mine.filter((e) => isClockOp(e.op)), ready: true };
   } catch {
     /* keep last known counts */
     if (!clockSnapshot.ready) clockSnapshot = { entries: clockSnapshot.entries, ready: true };
@@ -222,6 +298,28 @@ export function getCounts(): OpCounts {
   return cachedCounts;
 }
 
+/**
+ * How many writes on this phone belong to someone other than whoever is
+ * signed in (or to anybody, while nobody is). They wait for their owner; the
+ * pill, Stuck writes and /diagnostics say so instead of counting them as this
+ * person's.
+ */
+export function getHeldCount(): number {
+  return cachedHeld;
+}
+
+/** Every write on this phone, oldest first — anyone's, in any state. */
+export async function listAll(): Promise<OutboxEntry[]> {
+  return (await store.getAll()).sort((a, b) => a.createdAt - b.createdAt);
+}
+
+/** The writes on this phone waiting for someone else to sign in, oldest first. */
+export async function listHeld(): Promise<OutboxEntry[]> {
+  const signer = signerNow();
+  const launch = launchUserId();
+  return (await listAll()).filter((e) => !belongsTo(e, signer, launch));
+}
+
 /** Is a drain running right now? Synchronous, for a decision that must not
  * wait on the store: a reload mid-drain can replay a punch the server has
  * already taken. See lib/pwa/queuedWork.ts. */
@@ -249,10 +347,6 @@ export async function pendingMediaCount(): Promise<number> {
   return (await store.getAll()).filter((e) => e.op === "photo_upload" && isPending(e)).length;
 }
 
-/** Every entry on this phone, whatever its state — the /stuck screen's list. */
-export async function listAll(): Promise<OutboxEntry[]> {
-  return store.getAll();
-}
 
 /**
  * Job-clock writes still on this phone (waiting or failed), read from the
@@ -290,10 +384,17 @@ export class StableIdConflictError extends Error {
   }
 }
 
+/** Stamp whoever is signed in as the write's owner (2026-09-25, entryOwner.ts). */
+function withOwner(input: OutboxInput): OutboxInput {
+  return input.ownerId ? input : { ...input, ownerId: signedInUserId() };
+}
+
 /** The parts of a queued write that say WHOSE it is and WHERE it goes. */
 const IDENTITY_KEYS = ["createdBy", "projectId", "packageId", "windowId", "installEventId", "bucket", "path"] as const;
 function sameIdentity(a: OutboxEntry, b: OutboxEntry): boolean {
   if (a.op !== b.op) return false;
+  // Two different people handing over the same id is not the same photo.
+  if (a.ownerId && b.ownerId && a.ownerId !== b.ownerId) return false;
   return IDENTITY_KEYS.every((k) => {
     const x = a.payload[k] ?? null, y = b.payload[k] ?? null;
     if (k === "createdBy" && typeof x === "string" && typeof y === "string") return x.toLowerCase() === y.toLowerCase();
@@ -360,7 +461,7 @@ export async function enqueue(
   if (blob != null && !opts.uncapped) {
     if (blob.size > MAX_BLOB_BYTES) throw new BlobTooLargeError(blob.size);
   }
-  const entry = makeEntry(input, id, Date.now());
+  const entry = makeEntry(withOwner(input), id, Date.now());
   try {
     await store.put(entry, blob ?? null);
   } catch (err) {
@@ -387,7 +488,7 @@ async function enqueueStable(
   uncapped: boolean,
 ): Promise<string> {
   if (blob != null && !uncapped && blob.size > MAX_BLOB_BYTES) throw new BlobTooLargeError(blob.size);
-  const entry = makeEntry(input, id, Date.now());
+  const entry = makeEntry(withOwner(input), id, Date.now());
   let existing: OutboxEntry | null;
   try {
     if (store.insertIfAbsent) {
@@ -429,6 +530,7 @@ export async function drain(): Promise<void> {
   }
   draining = true;
   try {
+    await adoptUnownedEntries();
     do {
       drainAgain = false;
       const res = await drainUntilSettled(store, handlers, {
@@ -542,6 +644,13 @@ let intervalId: ReturnType<typeof setInterval> | null = null;
 export function initOutboxAutoFlush(): void {
   if (wired || typeof window === "undefined") return;
   wired = true;
+
+  // A different person signing in changes whose writes are theirs to send —
+  // recount at once, and send the ones that just became theirs.
+  subscribeSignedIn(() => {
+    void refresh();
+    if (isOnline()) void drain();
+  });
 
   window.addEventListener("online", () => void drain());
   document.addEventListener?.("visibilitychange", () => {
@@ -1226,8 +1335,11 @@ export function enqueueIssuePhoto(input: {
 /** Every write that gave up, newest first. */
 export async function listFailed(): Promise<OutboxEntry[]> {
   const all = await store.getAll();
+  const signer = signerNow();
+  const launch = launchUserId();
+  // Someone else's are not this person's to retry or throw away: listHeld.
   return all
-    .filter((e) => e.status === "failed")
+    .filter((e) => e.status === "failed" && belongsTo(e, signer, launch))
     .sort((a, b) => b.createdAt - a.createdAt);
 }
 
