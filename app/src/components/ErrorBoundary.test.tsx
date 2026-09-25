@@ -28,6 +28,17 @@ vi.mock("../lib/pwa/preloadRecovery", async (importOriginal) => {
   return { ...actual, recoverFromChunkLoadError: (...args: unknown[]) => recoverFromChunkLoadError(...args) };
 });
 
+// K0.7: Try again on a chunk-load crash reloads — the only thing that
+// actually recovers a REJECTED import — but must never do that over unsaved
+// work. Mocked the same DI-free way as recoverFromChunkLoadError above: this
+// file proves ErrorBoundary reacts correctly to what hasUnsavedWork() says,
+// not the claim/release bookkeeping unsavedWork.test.ts already covers.
+const hasUnsavedWork = vi.fn();
+vi.mock("../lib/pwa/unsavedWork", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/pwa/unsavedWork")>();
+  return { ...actual, hasUnsavedWork: (...args: unknown[]) => hasUnsavedWork(...args) };
+});
+
 let root: Root | null = null;
 let host: HTMLDivElement | null = null;
 
@@ -160,5 +171,51 @@ describe("ErrorBoundary and a failed chunk load", () => {
     const el = mountChunkBomb();
     expect(el.textContent).toContain("Something went wrong");
     expect(reportCrash).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("Try again on that crash screen (K0.7)", () => {
+  // A rejected import stays rejected for the life of the page — the browser's
+  // own module registry remembers it, the same reason production's
+  // vite:preloadError handler reloads instead of retrying softly (see
+  // preloadRecovery.ts). So once the crash screen is showing FOR A CHUNK-LOAD
+  // ERROR specifically, Try Again has to reload to mean anything — proved
+  // end to end (Studio actually coming back) in e2e/crash-screen.spec.ts;
+  // this file only pins WHEN ErrorBoundary decides to do that.
+  it("reloads when there is no unsaved work", () => {
+    recoverFromChunkLoadError.mockReturnValue("notify");
+    hasUnsavedWork.mockReturnValue(false);
+    const reload = vi.spyOn(window.location, "reload").mockImplementation(() => {});
+    const el = mountChunkBomb();
+    expect(el.textContent).toContain("Something went wrong");
+    click(el, "Try again");
+    expect(reload).toHaveBeenCalledTimes(1);
+    reload.mockRestore();
+  });
+
+  it("never reloads over unsaved work, even for a chunk-load error", () => {
+    recoverFromChunkLoadError.mockReturnValue("notify");
+    hasUnsavedWork.mockReturnValue(true);
+    const reload = vi.spyOn(window.location, "reload").mockImplementation(() => {});
+    const el = mountChunkBomb();
+    expect(el.textContent).toContain("Something went wrong");
+    click(el, "Try again");
+    expect(reload).not.toHaveBeenCalled();
+    reload.mockRestore();
+  });
+
+  it("an ordinary crash (not a chunk-load error) still just re-renders — no reload, unsaved work or not", () => {
+    // Guards the distinction itself: only isChunkLoadError(error) routes Try
+    // Again toward a reload. A plain bug must keep the cheap, instant path.
+    hasUnsavedWork.mockReturnValue(false);
+    const reload = vi.spyOn(window.location, "reload").mockImplementation(() => {});
+    exploding = true;
+    const el = mount();
+    expect(el.textContent).toContain("Something went wrong");
+    exploding = false;
+    click(el, "Try again");
+    expect(el.textContent).toContain("screen is back");
+    expect(reload).not.toHaveBeenCalled();
+    reload.mockRestore();
   });
 });

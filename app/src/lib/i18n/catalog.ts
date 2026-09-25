@@ -2536,6 +2536,28 @@ export const CATALOG = {
     es: "La app se actualizó mientras trabajabas. Termina y guarda, luego desliza hacia abajo para actualizar.",
   },
 
+  // --- A lazy screen that never gets its code (K0.7, 2026-09-23) -------------
+  // Shown by lib/pwa/lazyRoute.tsx in place of the ordinary loading skeleton
+  // once a lazily-loaded screen has been waiting past its deadline — one bar of
+  // signal in a conex, not a bug. Unlike the crash screen above, this sits
+  // INSIDE LanguageProvider (it is an ordinary part of the route tree), so it
+  // reads the live language through useT() like any other screen.
+  "lazyRoute.hung": {
+    en: "This didn't load on this signal.",
+    es: "Esto no se cargó con esta señal.",
+  },
+  "lazyRoute.tryAgain": { en: "Try again", es: "Intentar de nuevo" },
+  // Matches nav.group.work's "Trabajo" — the destination is "/", whichever of
+  // My Work / Home / Heartbeat that resolves to for this person's role.
+  "lazyRoute.goToWork": { en: "Go to Work", es: "Ir a Trabajo" },
+  // The way out OUTSIDE the router: the GC's public link (/gc/<token>) mounts
+  // before BrowserRouter, so its hung screen cannot offer Work — a builder has
+  // no login, and "/" would be the sign-in screen. Reopening the same address
+  // is a real navigation, which is also what clears a stuck chunk request.
+  // Read through useT()'s no-provider fallback there (English), since that
+  // page sits above LanguageProvider too.
+  "lazyRoute.openAgain": { en: "Open this link again", es: "Abrir este enlace de nuevo" },
+
   // --- The update banner (PR #632, hardened 2026-09-23) -----------------------
   // Mounted above LanguageProvider, so it reads the per-device cache directly —
   // see useBannerT in components/pwa/PwaBanners.tsx.
