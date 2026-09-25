@@ -17,9 +17,16 @@
 //
 // The geometry helpers are exported as PURE functions (operating on synthetic
 // grids / segment lists) so they can be unit-tested without a DOM/canvas.
+//
+// pdf.js is NOT imported at the top of this file. The pure helpers below are
+// reached from the job hub (through cad.ts and the 3D fit-view adapter), and
+// the job hub ships in the shell every phone downloads before its first
+// screen; a static import of pdf.js here, for one table of operator codes,
+// put all of pdf.js (~140 kB gzipped) on that download. The one function that
+// reads a page already holds a loaded pdf.js document, so the import inside
+// it resolves from the copy that is already running.
 
 import type { PDFDocumentProxy } from "pdfjs-dist/types/src/display/api";
-import { OPS } from "pdfjs-dist/legacy/build/pdf.mjs";
 
 export interface OutlinePoint {
   /** 0..1 across the page width. */
@@ -140,6 +147,7 @@ function applyMatrix(m: Matrix, x: number, y: number): [number, number] {
 async function extractWallSegments(
   page: Awaited<ReturnType<PDFDocumentProxy["getPage"]>>,
 ): Promise<WallSegment[]> {
+  const { OPS } = await import("pdfjs-dist/legacy/build/pdf.mjs");
   const opList = await page.getOperatorList();
   const viewport = page.getViewport({ scale: 1 });
   const base = viewport.transform as unknown as Matrix;
