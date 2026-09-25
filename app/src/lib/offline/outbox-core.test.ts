@@ -13,6 +13,7 @@ import {
   drainUntilSettled,
   dueEntries,
   errorCode,
+  HeldForOwnerError,
   isDeadLetter,
   isNetworkError,
   isPermanentSqlState,
@@ -844,5 +845,41 @@ describe("clock punches jump the queue (K0.3)", () => {
       { now: T0, onSent: (e, result) => seen.push([e.id, result]) },
     );
     expect(seen).toEqual([["in", { id: "shift-1", clock_in_at: "2026-09-23T13:02:00Z" }]]);
+  });
+});
+
+// --- someone else's write: held, through the same conditional write -------
+
+describe("an entry that is not the signed-in person's to send", () => {
+  it("is put back exactly as it was — not an attempt, not a failure, no backoff", async () => {
+    const store = new MemoryOutboxStore();
+    const held = entry({ id: "held", op: "photo_upload", attemptCount: 2, lastError: "earlier", nextAttemptAt: T0 - 1 });
+    await store.put(held);
+    const res = await drainStore(
+      store,
+      { photo_upload: async () => { throw new HeldForOwnerError(); } },
+      { now: T0 },
+    );
+    expect(await store.getAll()).toEqual([held]);
+    expect(res).toMatchObject({ sent: 0, retried: 0, deadLettered: 0, remaining: 1 });
+  });
+
+  it("puts it back only over its own 'sending' mark — never over something newer (the swap rule, #658)", async () => {
+    const store = new MemoryOutboxStore();
+    const held = entry({ id: "held", op: "photo_upload" });
+    await store.put(held);
+    const newer = { ...held, lastError: "changed by someone else meanwhile" };
+    await drainStore(
+      store,
+      {
+        photo_upload: async () => {
+          // While the owner check runs, the entry changes under the drain.
+          await store.put(newer);
+          throw new HeldForOwnerError();
+        },
+      },
+      { now: T0 },
+    );
+    expect(await store.getAll()).toEqual([newer]);
   });
 });
