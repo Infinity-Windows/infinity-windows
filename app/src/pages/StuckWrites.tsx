@@ -106,10 +106,13 @@ export function StuckWrites() {
   // own and shown, never offered for retry or throwing away — it is not this
   // person's to decide.
   const writesQ = useQuery({ queryKey: ["queuedWrites"], queryFn: listMine });
-  const heldQ = useQuery({ queryKey: ["heldWrites"], queryFn: listHeld });
-  // Saved before an update and naming no one (Codex review of #660, P1 #1):
-  // never sent as anyone. Shown, with Throw away as the one way out.
-  const unknownQ = useQuery({ queryKey: ["heldWrites", "unknown"], queryFn: listUnknownOwner });
+  // ...and work saved before an update that names no one (Codex review of
+  // #660, P1 #1): never sent as anyone. Shown, with Throw away as the one way
+  // out. One read for both.
+  const heldQ = useQuery({
+    queryKey: ["heldWrites"],
+    queryFn: async () => ({ held: await listHeld(), unknown: await listUnknownOwner() }),
+  });
   // A stuck INSTALL is the worst case on this screen — it is the record that a
   // window got finished — so it belongs here even though it lives in its own
   // store with its own subscribe mechanism.
@@ -202,12 +205,6 @@ export function StuckWrites() {
       row.source === "install" ? discardFailedInstall(row.id) : discardFailed(row.id),
     onSuccess: refreshAll,
   });
-  // Throwing away a write whose owner nobody can tell — the only thing this
-  // screen offers for one. There is deliberately no "send it as me".
-  const discardUnknown = useMutation({
-    mutationFn: (id: string) => discardFailed(id),
-    onSuccess: refreshAll,
-  });
   // "Send now": every queue gets one attempt this instant, backoff or not. A
   // person looking at bars is a better judge of the signal than the timer.
   const send = useMutation({
@@ -251,8 +248,8 @@ export function StuckWrites() {
     t,
   );
   const loading = writesQ.isLoading || installsQ.isLoading || personalQ.isLoading;
-  const held = heldQ.data ?? [];
-  const unknownOwner = unknownQ.data ?? [];
+  const held = heldQ.data?.held ?? [];
+  const unknownOwner = heldQ.data?.unknown ?? [];
   const nothingToSend =
     sections.needsYou.length === 0 &&
     sections.waiting.length === 0 &&
@@ -405,69 +402,35 @@ export function StuckWrites() {
         </section>
       )}
 
-      {held.length > 0 && (
-        <section aria-labelledby="stuck-held-title" style={{ marginTop: 20 }}>
-          <h2 id="stuck-held-title" style={{ fontSize: 16 }}>{t("stuck.held.title")}</h2>
-          <p className="muted">{t("stuck.held.body")}</p>
-          <ul className="unit-list" data-testid="stuck-held">
-            {held.map((e) => (
-              <li key={e.id}>
-                <div className="find-row">
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ fontWeight: 600 }}>{writeLabel(e, t)}</div>
-                    <div className="muted" style={{ fontSize: 12.5 }}>
-                      {queuedAgo(e.createdAt, now, t)}
-                      {e.createdAt > 0 ? ` · ${fmtWhen(e.createdAt)}` : ""}
-                    </div>
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {unknownOwner.length > 0 && (
-        <section aria-labelledby="stuck-unknown-title" style={{ marginTop: 20 }}>
-          <h2 id="stuck-unknown-title" style={{ fontSize: 16 }}>{t("stuck.unknown.title")}</h2>
-          <p className="muted">{t("stuck.unknown.body")}</p>
-          <ul className="unit-list" data-testid="stuck-unknown">
-            {unknownOwner.map((e) => {
-              const confirming = confirmingId === e.id;
-              const busy = discardUnknown.isPending && discardUnknown.variables === e.id;
-              return (
-                <li key={e.id}>
-                  <div className="find-row">
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ fontWeight: 600 }}>{writeLabel(e, t)}</div>
-                      <div className="muted" style={{ fontSize: 12.5 }}>
-                        {queuedAgo(e.createdAt, now, t)}
-                        {e.createdAt > 0 ? ` · ${fmtWhen(e.createdAt)}` : ""}
-                      </div>
-                    </div>
-                  </div>
-                  <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-                    <button
-                      type="button"
-                      className={`button-like${confirming ? " danger-outline" : ""}`}
-                      disabled={busy}
-                      onClick={() => {
-                        if (confirming) {
-                          setConfirmingId(null);
-                          discardUnknown.mutate(e.id);
-                        } else {
-                          setConfirmingId(e.id);
-                        }
-                      }}
-                    >
-                      {busy ? t("stuck.throwingAway") : confirming ? t("stuck.sureDeletes") : t("stuck.throwAway")}
-                    </button>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
+      {/* Someone else's work (read-only), then work saved before an update
+          that names no one (Throw away is the one way out). Same rows as
+          above; never a Try again, never "send it as me". */}
+      {([
+        ["held", held, false],
+        ["unknown", unknownOwner, true],
+      ] as const).map(([kind, list, canDiscard]) =>
+        list.length === 0 ? null : (
+          <section key={kind} aria-labelledby={`stuck-${kind}-title`} style={{ marginTop: 20 }}>
+            <h2 id={`stuck-${kind}-title`} style={{ fontSize: 16 }}>{t(`stuck.${kind}.title`)}</h2>
+            <p className="muted">{t(`stuck.${kind}.body`)}</p>
+            <ul className="unit-list" data-testid={`stuck-${kind}`}>
+              {list
+                .map((e): StuckRow => ({
+                  id: e.id,
+                  label: writeLabel(e, t),
+                  when: e.createdAt,
+                  detail: null,
+                  source: "write",
+                  state: "waiting",
+                  sentAt: null,
+                  canRetry: false,
+                  canDiscard,
+                  reviewTo: null,
+                }))
+                .map(renderRow)}
+            </ul>
+          </section>
+        ),
       )}
     </div>
   );
