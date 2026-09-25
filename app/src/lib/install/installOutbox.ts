@@ -17,6 +17,7 @@ import {
 } from "../offline/outbox-core";
 import { drain, enqueueUpload, pendingMediaCount } from "../offline/outbox";
 import { stableId } from "../offline/stableId";
+import { stillSignedInAs, type SignInMark } from "../signedIn";
 import { submitInstallEvent, type SubmitInstallParams } from "./api";
 
 export type InstallOutboxStep =
@@ -62,6 +63,15 @@ export interface InstallOutboxPayload {
   openingCode: string;
   assignedWindowId: string | null;
   createdBy: string | null;
+  /**
+   * The user id of the person who submitted this install, written when it is
+   * queued (2026-09-25). The media stage hands the unit's photos, memo and
+   * video over AS this person — it runs whenever the queue drains, which can
+   * be after they have signed out and someone else has signed in, and the
+   * outbox would otherwise make them the signed-in person's (Codex review of
+   * #660, P1 #2). Absent on records queued before it existed.
+   */
+  ownerId?: string;
   submitParams: SubmitInstallParams;
   points: InstallOutboxPoints | null;
   media: InstallOutboxMediaMeta[];
@@ -261,6 +271,7 @@ export function deserializeInstallOutbox(json: string): InstallOutboxRecord | nu
       assignedWindowId:
         typeof p.assignedWindowId === "string" ? p.assignedWindowId : null,
       createdBy: typeof p.createdBy === "string" ? p.createdBy : null,
+      ...(typeof p.ownerId === "string" && p.ownerId ? { ownerId: p.ownerId } : {}),
       submitParams: p.submitParams as SubmitInstallParams,
       points: (p.points as InstallOutboxPoints | null) ?? null,
       media: Array.isArray(p.media) ? (p.media as InstallOutboxMediaMeta[]) : [],
@@ -364,12 +375,39 @@ export async function failedInstallCount(): Promise<number> {
   return n;
 }
 
+/**
+ * Who is submitting an install — taken ONCE, at the Submit tap, before
+ * anything is awaited: the user id and email from the same session App keeps,
+ * with the sign-in mark (lib/signedIn.ts, #651) taken at that same moment.
+ * The install, its points and its photos are this person's; the save is
+ * refused if anyone signs out or in before it lands (Codex re-check of #660,
+ * P2: the owner used to be read from memory at save time and the photographer
+ * from two separate getUser() calls, and nothing checked they agreed).
+ */
+export interface InstallSubmitter {
+  userId: string;
+  email: string | null;
+  mark: SignInMark;
+}
+
+/** A save refused because it cannot say whose install this is. Plain words;
+ * the sheet shows them and keeps everything captured, so Submit can be tapped
+ * again from the right sign-in. */
+export class InstallSubmitterError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InstallSubmitterError";
+  }
+}
+
 export interface EnqueueInstallInput {
   openingId: string;
   projectId: string;
   openingCode: string;
   assignedWindowId: string | null;
   createdBy: string | null;
+  /** See InstallSubmitter. Null when nobody is signed in — refused. */
+  submitter: InstallSubmitter | null;
   submitParams: SubmitInstallParams;
   points: InstallOutboxPoints | null;
   media: Array<InstallOutboxMediaMeta & { blob: Blob }>;
@@ -382,6 +420,25 @@ export interface EnqueueInstallInput {
 export async function enqueueInstall(
   input: EnqueueInstallInput,
 ): Promise<InstallOutboxRecord> {
+  // Whose install is this? Exactly the person captured at the tap — and only
+  // if they are still the one signed in, with the photographer's email naming
+  // them too. Anything else is refused, not guessed: an owner made up from
+  // whoever is signed in by now is how B's token came to carry A's photos.
+  const who = input.submitter;
+  if (!who) {
+    throw new InstallSubmitterError("Sign in to submit this unit.");
+  }
+  if (!stillSignedInAs(who.mark, who.userId)) {
+    throw new InstallSubmitterError(
+      "The sign-in on this phone changed while this unit was saving. Sign in as the person who did it and tap Submit again.",
+    );
+  }
+  const photographer = input.createdBy?.trim().toLowerCase() ?? null;
+  if (photographer && photographer !== (who.email?.trim().toLowerCase() ?? null)) {
+    throw new InstallSubmitterError(
+      "This unit's photos name a different person than the one submitting it. Submit it again from your own sign-in.",
+    );
+  }
   const id = crypto.randomUUID();
   const clientKey = crypto.randomUUID();
   // Each item's outbox id is decided here, before anything is written, so
@@ -408,6 +465,9 @@ export async function enqueueInstall(
       openingCode: input.openingCode,
       assignedWindowId: input.assignedWindowId,
       createdBy: input.createdBy,
+      // The person captured at the Submit tap — the install, and everything
+      // captured for it, is theirs, whoever is signed in when it is sent.
+      ownerId: who.userId,
       submitParams: input.submitParams,
       points: input.points,
       media,
@@ -653,6 +713,11 @@ async function runFlushPass(): Promise<InstallFlushResult> {
               installEventId: eventId,
               windowId: current.payload.assignedWindowId,
               createdBy: current.payload.createdBy,
+              // As the person who submitted the install — never whoever is
+              // signed in while this stage runs. A record from before owners
+              // were written names nobody (null), and the outbox then goes by
+              // the photographer's email alone.
+              ownerId: current.payload.ownerId ?? null,
               projectId: current.payload.projectId,
               lat: meta.lat ?? null,
               lng: meta.lng ?? null,

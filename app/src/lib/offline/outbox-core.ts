@@ -144,6 +144,14 @@ export interface OutboxEntry {
   dependsOn?: string | null;
   /** True once a blob is stored alongside this entry (photo/receipt). */
   hasBlob?: boolean;
+  /**
+   * The user id of whoever was signed in when this was queued (2026-09-25).
+   * The drain sends it only as that person — never as whoever happens to be
+   * signed in when signal comes back (lib/offline/entryOwner.ts). Absent on
+   * entries queued by a build from before it existed; entryOwner.ts says how
+   * those are judged.
+   */
+  ownerId?: string;
 }
 
 export interface OutboxInput {
@@ -151,6 +159,22 @@ export interface OutboxInput {
   payload: Record<string, unknown>;
   dependsOn?: string | null;
   hasBlob?: boolean;
+  /** See OutboxEntry.ownerId. */
+  ownerId?: string | null;
+}
+
+/**
+ * The entry belongs to someone other than whoever is signed in now, or nobody
+ * is signed in (2026-09-25). Not a failure: the drain leaves the entry exactly
+ * as it was — no attempt counted, no backoff, no error — and it goes out when
+ * its owner is signed in again. Thrown by the runtime's owner check before a
+ * handler runs; never by a handler.
+ */
+export class HeldForOwnerError extends Error {
+  constructor() {
+    super("Waiting for the person who saved this to sign in.");
+    this.name = "HeldForOwnerError";
+  }
 }
 
 /**
@@ -203,6 +227,7 @@ export function makeEntry(
     nextAttemptAt: now,
     dependsOn: input.dependsOn ?? null,
     hasBlob: input.hasBlob ?? false,
+    ...(input.ownerId ? { ownerId: input.ownerId } : {}),
   };
 }
 
@@ -727,6 +752,7 @@ export function deserializeEntry(json: string): OutboxEntry | null {
       typeof r.nextAttemptAt === "number" ? r.nextAttemptAt : createdAt,
     dependsOn: typeof r.dependsOn === "string" ? r.dependsOn : null,
     hasBlob: r.hasBlob === true,
+    ...(typeof r.ownerId === "string" && r.ownerId ? { ownerId: r.ownerId } : {}),
   };
 }
 
@@ -835,7 +861,9 @@ type SendOutcome =
   | { kind: "failed"; error: unknown }
   | { kind: "abandoned"; deadlineMs: number }
   /** The entry changed between the pass's read and this send: not sent. */
-  | { kind: "stale" };
+  | { kind: "stale" }
+  /** Not the signed-in person's to send (HeldForOwnerError): left as it was. */
+  | { kind: "held" };
 
 /** setTimeout's own ceiling (2^31-1 ms); anything longer fires at once. */
 const MAX_TIMER_MS = 2_147_483_647;
@@ -958,6 +986,7 @@ export async function drainStore(
         });
         return { kind: "sent", result };
       } catch (error) {
+        if (error instanceof HeldForOwnerError) return { kind: "held" };
         return { kind: "failed", error };
       }
     };
@@ -1032,6 +1061,11 @@ export async function drainStore(
       // Confirmation is different from an absent entry (which may have been
       // discarded). A UI observer must never turn a successful write into a retry.
       try { opts.onSent?.(entry, outcome.result); } catch { /* best-effort observer */ }
+    } else if (outcome.kind === "held") {
+      // Someone else's write, or nobody signed in: put it back exactly as it
+      // was, over the "sending" mark this attempt wrote and nothing newer.
+      // Not an attempt, not a failure — it is waiting for a person.
+      await store.swap(entry.id, entry, entry);
     } else if (outcome.kind === "failed") {
       await recordFailure(entry, outcome.error);
     } else {

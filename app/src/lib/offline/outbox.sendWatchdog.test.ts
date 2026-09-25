@@ -11,8 +11,10 @@ import { PHOTO_UPLOAD_TIMEOUT_MS, REQUEST_TIMEOUT_MS, TIMED_UPLOAD_BUCKETS } fro
 
 const upload = vi.fn();
 const upsert = vi.fn();
-vi.mock("../supabase", () => ({
-  supabase: {
+vi.mock("../supabase", () => {
+  // The outbox sends a write only as the person who queued it, through a
+  // client bound to that person's token (2026-09-25): here, the same stub.
+  const supabase = {
     storage: {
       from: (bucket: string) => ({
         upload: (path: string, blob: Blob, opts: Record<string, unknown>) => upload(bucket, path, blob, opts),
@@ -22,10 +24,20 @@ vi.mock("../supabase", () => ({
       upsert: (row: Record<string, unknown>, opts: Record<string, unknown>) => upsert(table, row, opts),
       insert: () => Promise.resolve({ error: null }),
     }),
-  },
-  supabaseConfigured: true,
+    auth: {
+      getSession: async () => ({
+        data: { session: { access_token: "test-token", user: { id: "test-user", email: "installer@example.test" } } },
+        error: null,
+      }),
+    },
+  };
+  return { supabase, clientWithToken: () => supabase, supabaseConfigured: true };
+});
+vi.mock("../signedIn", () => ({
+  signedInEmail: () => "installer@example.test",
+  signedInUserId: () => "test-user",
+  subscribeSignedIn: () => () => {},
 }));
-vi.mock("../signedIn", () => ({ signedInEmail: () => "installer@example.test" }));
 const logged = vi.fn();
 vi.mock("./telemetry", () => ({ logOfflineEvent: (e: unknown) => logged(e) }));
 

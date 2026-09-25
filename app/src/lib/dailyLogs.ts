@@ -89,8 +89,13 @@ export async function listDailyLogsForRange(fromDate: string, toDate: string): P
 }
 
 /** One job-day's log, or null if nobody has filed it yet. */
-export async function getDailyLog(projectId: string, logDate: string): Promise<DailyLog | null> {
-  const { data, error } = await supabase
+export async function getDailyLog(
+  projectId: string,
+  logDate: string,
+  /** The outbox reads through the client its send is bound to (2026-09-25). */
+  client: typeof supabase = supabase,
+): Promise<DailyLog | null> {
+  const { data, error } = await client
     .from("daily_logs")
     .select(LOG_SELECT)
     .eq("project_id", projectId)

@@ -21,7 +21,9 @@ import { useClock } from "../lib/clockContext";
 import { formatApiError } from "../lib/errors";
 import {
   discardFailed,
-  listAll,
+  listHeld,
+  listMine,
+  listUnknownOwner,
   recentlySent,
   retryFailed,
   sendNow,
@@ -31,6 +33,7 @@ import {
   buildStuckRows,
   queuedAgoLabel as queuedAgo,
   stateLabel,
+  writeLabel,
   type StuckRow,
 } from "../lib/offline/stuckRows";
 import {
@@ -98,7 +101,18 @@ export function StuckWrites() {
   const t = useT();
   const queryClient = useQueryClient();
   const { profileId } = useClock();
-  const writesQ = useQuery({ queryKey: ["queuedWrites"], queryFn: listAll });
+  // This person's own writes: every state, with Try again / Throw away where
+  // they apply. Someone else's work on this phone (2026-09-25) is read on its
+  // own and shown, never offered for retry or throwing away — it is not this
+  // person's to decide.
+  const writesQ = useQuery({ queryKey: ["queuedWrites"], queryFn: listMine });
+  // ...and work saved before an update that names no one (Codex review of
+  // #660, P1 #1): never sent as anyone. Shown, with Throw away as the one way
+  // out. One read for both.
+  const heldQ = useQuery({
+    queryKey: ["heldWrites"],
+    queryFn: async () => ({ held: await listHeld(), unknown: await listUnknownOwner() }),
+  });
   // A stuck INSTALL is the worst case on this screen — it is the record that a
   // window got finished — so it belongs here even though it lives in its own
   // store with its own subscribe mechanism.
@@ -115,6 +129,7 @@ export function StuckWrites() {
   useEffect(() => {
     return subscribe(() => {
       void queryClient.invalidateQueries({ queryKey: ["queuedWrites"] });
+      void queryClient.invalidateQueries({ queryKey: ["heldWrites"] });
       // The migration out of the old store announces itself here too.
       void queryClient.invalidateQueries({ queryKey: ["queuedPersonal"] });
     });
@@ -153,6 +168,7 @@ export function StuckWrites() {
 
   const refreshAll = () => {
     void queryClient.invalidateQueries({ queryKey: ["queuedWrites"] });
+    void queryClient.invalidateQueries({ queryKey: ["heldWrites"] });
     void queryClient.invalidateQueries({ queryKey: ["queuedInstalls"] });
     void queryClient.invalidateQueries({ queryKey: ["queuedPersonal"] });
   };
@@ -232,7 +248,13 @@ export function StuckWrites() {
     t,
   );
   const loading = writesQ.isLoading || installsQ.isLoading || personalQ.isLoading;
-  const nothingToSend = sections.needsYou.length === 0 && sections.waiting.length === 0;
+  const held = heldQ.data?.held ?? [];
+  const unknownOwner = heldQ.data?.unknown ?? [];
+  const nothingToSend =
+    sections.needsYou.length === 0 &&
+    sections.waiting.length === 0 &&
+    held.length === 0 &&
+    unknownOwner.length === 0;
 
   const renderRow = (e: StuckRow) => {
     const confirming = confirmingId === e.id;
@@ -378,6 +400,37 @@ export function StuckWrites() {
           <h2 id="stuck-sent">{t("stuck.section.sent")}</h2>
           <ul className="unit-list">{sections.sent.map(renderRow)}</ul>
         </section>
+      )}
+
+      {/* Someone else's work (read-only), then work saved before an update
+          that names no one (Throw away is the one way out). Same rows as
+          above; never a Try again, never "send it as me". */}
+      {([
+        ["held", held, false],
+        ["unknown", unknownOwner, true],
+      ] as const).map(([kind, list, canDiscard]) =>
+        list.length === 0 ? null : (
+          <section key={kind} aria-labelledby={`stuck-${kind}-title`} style={{ marginTop: 20 }}>
+            <h2 id={`stuck-${kind}-title`} style={{ fontSize: 16 }}>{t(`stuck.${kind}.title`)}</h2>
+            <p className="muted">{t(`stuck.${kind}.body`)}</p>
+            <ul className="unit-list" data-testid={`stuck-${kind}`}>
+              {list
+                .map((e): StuckRow => ({
+                  id: e.id,
+                  label: writeLabel(e, t),
+                  when: e.createdAt,
+                  detail: null,
+                  source: "write",
+                  state: "waiting",
+                  sentAt: null,
+                  canRetry: false,
+                  canDiscard,
+                  reviewTo: null,
+                }))
+                .map(renderRow)}
+            </ul>
+          </section>
+        ),
       )}
     </div>
   );

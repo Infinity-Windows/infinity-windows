@@ -912,6 +912,11 @@ describe("the clock-in block", () => {
 // REAL outbox (its in-memory store under vitest) with the phone offline, so
 // this proves the block sees what the queue holds, not what a mock says.
 import { enqueueClockIn, enqueueClockOut, discardFailed } from "../../lib/offline/outbox";
+import { rememberSignedIn } from "../../lib/signedIn";
+
+// The person on this phone: what they queue is stamped as theirs, and only
+// their own queued punches show on their clock (2026-09-25, entryOwner.ts).
+rememberSignedIn({ user: { id: "me", email: "me@example.test" } });
 
 describe("a clock punch still on the phone (K0.1)", () => {
   const queuedIds: string[] = [];
