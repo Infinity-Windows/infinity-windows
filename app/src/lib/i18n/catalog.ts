@@ -2583,6 +2583,19 @@ export const CATALOG = {
     en: "No signal. Changes are saved on this phone and send when it returns.",
     es: "Sin señal. Los cambios se guardan en este teléfono y se envían cuando vuelva.",
   },
+  // Work on this phone that belongs to someone who is not signed in now
+  // (2026-09-25): it goes out only as that person, never as whoever is on.
+  "pill.held": { en: "{count} saved by someone else", es: "{count} de otra persona" },
+  "pill.heldDetail": {
+    en: "Saved on this phone by someone who isn't signed in now. It goes out when that person signs in again.",
+    es: "Guardado en este teléfono por alguien que no tiene la sesión abierta ahora. Se envía cuando esa persona vuelva a iniciar sesión.",
+  },
+  "stuck.held.title": { en: "Saved by someone else on this phone", es: "Guardado por otra persona en este teléfono" },
+  "stuck.held.body": {
+    en: "Waiting for the person who saved these to sign in. They go out under that person's name, never yours, and they stay on this phone until then.",
+    es: "Esperando a que la persona que guardó esto inicie sesión. Se envían a nombre de esa persona, nunca al tuyo, y se quedan en este teléfono hasta entonces.",
+  },
+  "diag.heldQueue": { en: "Waiting for another person to sign in", es: "Esperando a que otra persona inicie sesión" },
   "pill.weakSignal": { en: "Weak signal", es: "Señal débil" },
   "pill.weakDetail": {
     en: "Requests are timing out. Screens show the last saved copy.",

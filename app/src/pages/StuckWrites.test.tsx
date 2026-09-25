@@ -34,13 +34,16 @@ const q = vi.hoisted(() => ({
   work: [] as WorkCommand[],
   legacy: 0,
   sentWrites: [] as Array<{ entry: OutboxEntry; sentAt: number }>,
+  /** Someone else's writes on this phone (2026-09-25). */
+  held: [] as OutboxEntry[],
   sendNow: vi.fn(async () => {}),
   sendInstallsNow: vi.fn(async () => {}),
   retryWork: vi.fn(async () => true),
 }));
 
 vi.mock("../lib/offline/outbox", () => ({
-  listAll: async () => q.writes,
+  listMine: async () => q.writes,
+  listHeld: async () => q.held,
   retryFailed: async () => {},
   discardFailed: async () => {},
   subscribe: () => () => {},
@@ -120,6 +123,7 @@ beforeEach(() => {
   q.work = [];
   q.legacy = 0;
   q.sentWrites = [];
+  q.held = [];
   q.sendNow.mockClear();
   q.sendInstallsNow.mockClear();
   q.retryWork.mockClear();
@@ -356,5 +360,20 @@ describe("what is merely waiting (K0.6)", () => {
     expect(q.retryWork).toHaveBeenCalledWith("crew-1");
     // Never Throw away here: that queue exports before it removes.
     expect([...el.querySelectorAll("button")].map((b) => b.textContent)).not.toContain("Throw away");
+  });
+});
+
+describe("someone else's work on this phone", () => {
+  it("is shown as waiting for that person, with nothing to retry or throw away — and never as 'Nothing stuck'", async () => {
+    q.held = [
+      stuckWrite({ id: "h-1", op: "clock_in", status: "queued", attemptCount: 0, lastError: null, ownerId: "someone-else" }),
+    ];
+    const el = await mount();
+    expect(el.textContent).toContain("Saved by someone else on this phone");
+    expect(el.textContent).toContain("Waiting for the person who saved these to sign in");
+    const held = el.querySelector('[data-testid="stuck-held"]')!;
+    expect(held.textContent).toContain("Clock in");
+    expect(held.querySelectorAll("button")).toHaveLength(0);
+    expect(el.textContent).not.toContain("Nothing stuck");
   });
 });
