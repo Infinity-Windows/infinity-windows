@@ -16,7 +16,7 @@
 // is worse than failing loudly. A take with no key is a bug in whatever built
 // the entry, so it dead-letters where a foreman can see it.
 
-import { supabase } from "../supabase";
+import { supabase as sharedClient } from "../supabase";
 import { isMissingStagingBayError } from "../staging";
 import { getDailyLog, type DailyLog } from "../dailyLogs";
 import { mergeQueuedDailyLog, type QueuedDailyLog } from "../dailyLogMerge";
@@ -30,6 +30,14 @@ import {
   type OpHandlers,
   type OutboxEntry,
 } from "./outbox-core";
+
+/**
+ * The client a set of handlers sends through. The runtime hands in one bound
+ * to a single person's token for each send (2026-09-25, lib/supabase.ts
+ * clientWithToken), so a sign-in in the middle of a send cannot change whose
+ * write it is; left out, the shared client — for callers outside the drain.
+ */
+export type OutboxClient = typeof sharedClient;
 
 /** Resolves an offline clock-in entry id to the real server shift id. */
 export interface ShiftResolver {
@@ -177,7 +185,7 @@ interface TaggedNow {
  * say what did NOT make it (see the bind handler): the row's own fields are
  * the fingerprint of which tag won this sticker.
  */
-async function taggedNow(packageId: string): Promise<TaggedNow | undefined> {
+async function taggedNow(supabase: OutboxClient, packageId: string): Promise<TaggedNow | undefined> {
   const { data, error } = await supabase
     .from("packages")
     .select(
@@ -212,7 +220,7 @@ async function taggedNow(packageId: string): Promise<TaggedNow | undefined> {
  * A uuid on the stuck-writes screen is worth nothing — there is no screen that
  * takes one — so a failed read degrades to a phrase rather than to an id.
  */
-async function jobCode(projectId: string): Promise<string | null> {
+async function jobCode(supabase: OutboxClient, projectId: string): Promise<string | null> {
   const { data, error } = await supabase
     .from("projects")
     .select("job_code")
@@ -280,6 +288,7 @@ function detailsThatDidNotLand(
 
 /** True when a container is already sitting exactly where a queued move was sending it. */
 async function containerIsAlreadyAt(
+  supabase: OutboxClient,
   containerId: string,
   parent: string | null,
   location: string | null,
@@ -359,7 +368,10 @@ function punchOf(p: Record<string, unknown>, what: string) {
   };
 }
 
-export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
+export function createSupabaseHandlers(
+  resolver: ShiftResolver,
+  supabase: OutboxClient = sharedClient,
+): OpHandlers {
   const clockIn: OpHandler = async (entry) => {
     const p = entry.payload;
     const base = {
@@ -772,7 +784,7 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
 
     let server: DailyLog | null = null;
     try {
-      server = await getDailyLog(projectId, logDate);
+      server = await getDailyLog(projectId, logDate, supabase);
     } catch {
       /* can't tell whether anybody raced — send what was typed */
     }
@@ -1081,7 +1093,7 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
     }
     if (!res.error) return;
     if (isAlreadyAssigned(res.error)) {
-      const now = await taggedNow(packageId);
+      const now = await taggedNow(supabase, packageId);
       if (now === undefined) throw res.error; // could not ask → try again later
       if (now.projectId == null) throw res.error; // still blank → try again
       const sticker = now.serial ? `Sticker ${now.serial}` : "That sticker";
@@ -1120,7 +1132,7 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
         if (missing.length === 0) return;
         const mine = boneyard
           ? "the Boneyard"
-          : jobPhrase(await jobCode(projectId ?? ""));
+          : jobPhrase(await jobCode(supabase, projectId ?? ""));
         const it = missing.length === 1 ? "it" : "them";
         throw tagPermanent(
           new Error(
@@ -1133,8 +1145,8 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
       }
 
       const [other, mine] = await Promise.all([
-        jobCode(now.projectId),
-        projectId ? jobCode(projectId) : Promise.resolve(null),
+        jobCode(supabase, now.projectId),
+        projectId ? jobCode(supabase, projectId) : Promise.resolve(null),
       ]);
       const forMine = boneyard ? "the Boneyard" : jobPhrase(mine);
       throw tagPermanent(
@@ -1317,7 +1329,7 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
     }
     const parent = str(entry.payload.parentContainerId);
     const location = str(entry.payload.locationId);
-    if (await containerIsAlreadyAt(containerId, parent, location)) return;
+    if (await containerIsAlreadyAt(supabase, containerId, parent, location)) return;
     stopIfAbandoned(ctx);
     const { error } = await supabase.rpc("move_container", {
       p_container: containerId,
