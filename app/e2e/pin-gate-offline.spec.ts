@@ -20,6 +20,16 @@
 //   (e) twelve hours on it is gone, and the lock stays shut and says so;
 //   (f) signing out wipes it.
 //
+// And from Codex's review of #651 (2026-09-25):
+//   (g) an unlock belongs to one sign-in: signing out ends this tab's unlock,
+//       so signing back in on the same tab asks for the PIN again;
+//   (h) a server that answers the PIN-status question with neither a yes nor
+//       a no (a stale schema cache) keeps the lock shut, and says so without
+//       claiming the phone is offline;
+//   (i) an unlock this tab kept for somebody else — or the bare "1" an older
+//       build left, still there after the app updates itself in place — opens
+//       nothing.
+//
 // How the dead zone is made, and why a relaunch is a NEW PAGE:
 //   - Every Supabase call — auth included, a phone with no signal reaches
 //     nothing — is aborted by routes registered after the fixtures, and the
@@ -303,4 +313,77 @@ test("(f) signing out wipes the offline unlock from the phone", async ({ page })
   await page.getByRole("button", { name: "Open menu" }).click();
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect.poll(() => storedOfflineUnlock(page)).toBeNull();
+});
+
+test("(g) signing out ends this tab's unlock: signing back in on the same tab asks for the PIN again", async ({
+  page,
+}) => {
+  await useSupabaseFixtures(page, { role: "installer" });
+  await usePinCheck(page, "4821");
+  await unlockWithSignal(page);
+  expect(await page.evaluate(() => sessionStorage.getItem("wops-pin-unlocked"))).toBe(TEST_USER.id);
+
+  await page.getByRole("button", { name: "Open menu" }).click();
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect.poll(() => page.evaluate(() => sessionStorage.getItem("wops-pin-unlocked"))).toBeNull();
+
+  // Same tab, signing in again: the unlock went with the sign-out.
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await page.getByPlaceholder("Email").fill(TEST_USER.email);
+  await page.getByPlaceholder("Password").fill("any password the fixture accepts");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page.getByText("Enter your 4-digit PIN")).toBeVisible({ timeout: 15_000 });
+  await expect(theApp(page)).toHaveCount(0);
+
+  await typePin(page, "4821");
+  await expect(theApp(page)).toBeAttached();
+});
+
+test("(h) a PIN-status read answered with neither yes nor no keeps the lock shut, and Try again works", async ({
+  page,
+}) => {
+  await useSupabaseFixtures(page, { role: "installer" });
+  let answer: "missing" | "no PIN" = "missing";
+  await page.route("**/rest/v1/rpc/my_pin_status", (route) =>
+    answer === "missing"
+      ? route.fulfill({
+          status: 404,
+          contentType: "application/json",
+          body: JSON.stringify({
+            code: "PGRST202",
+            message: "Could not find the function public.my_pin_status without parameters in the schema cache",
+          }),
+        })
+      : route.fulfill({ status: 200, contentType: "application/json", body: "false" }),
+  );
+  await page.goto("/");
+
+  await expect(page.getByText("Forge couldn't check your PIN. Try again.")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("You're offline")).toHaveCount(0);
+  await expect(theApp(page)).toHaveCount(0);
+
+  answer = "no PIN";
+  await page.getByRole("button", { name: "Try again" }).click();
+  await expect(theApp(page)).toBeAttached({ timeout: 15_000 });
+});
+
+test("(i) an unlock this tab kept for somebody else, or an older build's bare \"1\", opens nothing", async ({
+  context,
+}) => {
+  for (const kept of ["1", "00000000-0000-4000-8000-0000000000b2"]) {
+    // A fresh tab each time: sessionStorage belongs to one tab.
+    const page = await context.newPage();
+    await useSupabaseFixtures(page, { role: "installer" });
+    await pinStatusIs(page, true);
+    await page.addInitScript((value) => {
+      if (!sessionStorage.getItem("seeded")) {
+        sessionStorage.setItem("seeded", "1");
+        sessionStorage.setItem("wops-pin-unlocked", value);
+      }
+    }, kept);
+    await page.goto("/");
+    await expect(page.getByText("Enter your 4-digit PIN"), `kept: ${kept}`).toBeVisible();
+    await expect(theApp(page)).toHaveCount(0);
+    await page.close();
+  }
 });
