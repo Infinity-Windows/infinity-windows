@@ -568,7 +568,7 @@ export default function App() {
           gate — so a new crew member picks their language before the app asks
           for anything else. It renders nothing once a choice exists. */}
       <FirstRunLanguagePicker />
-      <PinGate>
+      <PinGate userId={session.user.id}>
       <ViewAsRoleProvider>
       <BrowserRouter basename={routerBasename(import.meta.env.BASE_URL)}>
         <ClockProvider>

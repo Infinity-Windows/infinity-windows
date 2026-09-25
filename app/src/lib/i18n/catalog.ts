@@ -5100,6 +5100,26 @@ export const CATALOG = {
   "workflow.selectionHelp": { en: "Only unlinked drafts for this job appear. Select at least one work block and one trip. Work and travel keep separate dates.", es: "Solo aparecen borradores sin conectar para este trabajo. Selecciona al menos un bloque de trabajo y un viaje. El trabajo y los viajes conservan fechas separadas." },
   "workflow.connectReview": { en: "Connect and review", es: "Conectar y revisar" },
   "workflow.tripLinksError": { en: "Could not load connected trips", es: "No se pudieron cargar los viajes conectados" },
+
+  // The device lock (components/PinGate.tsx), 2026-09-24. It is the first
+  // thing a crew member sees on every launch, including the one with no signal.
+  "pin.checking": { en: "Checking device lock…", es: "Revisando el bloqueo del dispositivo…" },
+  "pin.enter": { en: "Enter your 4-digit PIN", es: "Escribe tu PIN de 4 dígitos" },
+  "pin.inputLabel": { en: "4-digit PIN", es: "PIN de 4 dígitos" },
+  "pin.delete": { en: "Delete", es: "Borrar" },
+  "pin.someone": { en: "Crew", es: "Equipo" },
+  "pin.checkingPin": { en: "Checking your PIN…", es: "Revisando tu PIN…" },
+  "pin.wrong": { en: "Wrong PIN — try again", es: "PIN incorrecto — inténtalo de nuevo" },
+  "pin.noSignal": {
+    en: "No signal. Your PIN is checked online, so Forge can't unlock until you have signal.",
+    es: "Sin señal. Tu PIN se revisa en línea, así que Forge no puede abrirse hasta que tengas señal.",
+  },
+  "pin.offlineTitle": { en: "You're offline", es: "Estás sin señal" },
+  "pin.offlineNeverChecked": {
+    en: "Connect to the internet once so Forge can check your device lock, then tap Try again.",
+    es: "Conéctate a internet una vez para que Forge revise el bloqueo de tu dispositivo y luego toca Intentar de nuevo.",
+  },
+  "pin.tryAgain": { en: "Try again", es: "Intentar de nuevo" },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */

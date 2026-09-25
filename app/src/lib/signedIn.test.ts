@@ -4,7 +4,7 @@
 // where the auth call this replaced would have stalled and then said "nobody".
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { rememberSignedIn, signedInEmail } from "./signedIn";
+import { rememberSignedIn, signedInEmail, signedInUserId } from "./signedIn";
 
 beforeEach(() => {
   rememberSignedIn(null);
@@ -30,9 +30,21 @@ describe("who took this photo", () => {
   });
 
   it("forgets on sign-out", () => {
-    rememberSignedIn({ user: { email: "installer@example.com" } });
+    rememberSignedIn({ user: { id: "u-1", email: "installer@example.com" } });
     rememberSignedIn(null);
     expect(signedInEmail()).toBeNull();
+    expect(signedInUserId()).toBeNull();
+  });
+
+  it("knows the signed-in id too, for the device lock's saved answer", () => {
+    expect(signedInUserId()).toBeNull();
+    rememberSignedIn({ user: { id: "u-1", email: "installer@example.com" } });
+    expect(signedInUserId()).toBe("u-1");
+    // A different login on the same phone is a different person.
+    rememberSignedIn({ user: { id: "u-2", email: "foreman@example.com" } });
+    expect(signedInUserId()).toBe("u-2");
+    rememberSignedIn({ user: { email: "installer@example.com" } });
+    expect(signedInUserId()).toBeNull();
   });
 
   it("says nobody rather than undefined when the account carries no email", () => {

@@ -82,11 +82,16 @@ function usedRoots(): Map<string, string> {
 // +2 since then: "buildFacts" (S4, job facts) — the job facts card reads
 // offline the same as the rest of the unit sheet; "myScheduleTomorrow" (S6,
 // the Tomorrow line) — same reasoning, one step earlier in the day.
+//
+// +1 on 2026-09-24: "myPinStatus" — the device lock's last known answer. Not
+// kept, an offline relaunch had nothing to go on: the lock sat on "Checking
+// device lock…" or, when the read failed, opened for a person who has a PIN.
 const EXPECTED_OFFLINE_ROOTS = [
   "serviceVisit", "serviceVisits",
   "customWorkUnits", "customWorkSessions", "customWorkTypes", "customWorkOpening", "customWorkRoster",
   "buildFacts",
   "myScheduleTomorrow",
+  "myPinStatus",
   "projects",
   "projectsAll",
   "openings",

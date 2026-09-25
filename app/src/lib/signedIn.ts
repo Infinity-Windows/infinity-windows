@@ -22,10 +22,11 @@
 /** The shape this module needs from a Supabase session. Structural on purpose:
  *  `Session | null` satisfies it, and the tests need no SDK. */
 export interface SignedInSession {
-  user?: { email?: string | null } | null;
+  user?: { id?: string | null; email?: string | null } | null;
 }
 
 let email: string | null = null;
+let userId: string | null = null;
 
 /**
  * Remember who is signed in. Called by App's auth plumbing — the boot
@@ -37,6 +38,7 @@ let email: string | null = null;
  */
 export function rememberSignedIn(session: SignedInSession | null): void {
   email = session?.user?.email ?? null;
+  userId = session?.user?.id ?? null;
 }
 
 /**
@@ -46,4 +48,14 @@ export function rememberSignedIn(session: SignedInSession | null): void {
  */
 export function signedInEmail(): string | null {
   return email;
+}
+
+/**
+ * The signed-in person's auth id, or null before sign-in has resolved — the
+ * REAL login, never a person being previewed. The device lock keys its saved
+ * answer on this (PinGate), because my_pin_status answers for auth.uid().
+ * Same promises as signedInEmail: no await, no request.
+ */
+export function signedInUserId(): string | null {
+  return userId;
 }

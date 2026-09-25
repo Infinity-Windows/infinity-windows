@@ -267,10 +267,24 @@ export async function listProfilesIncludingRemoved(): Promise<Profile[]> {
   return (data ?? []) as Profile[];
 }
 
-/** PIN status/verify happen server-side; the value never reaches the client. */
+/**
+ * PIN status/verify happen server-side; the value never reaches the client.
+ *
+ * Throws when the server could not be asked — no signal, a request that ran
+ * out of time, a token it would not take. This used to answer `false` for
+ * EVERY error, and PinGate opens on `false`: an app reopened with no signal let
+ * a person who has a PIN straight past the lock (2026-09-24). "Couldn't ask" is
+ * not "no". PinGate falls back to the last answer this phone got instead.
+ *
+ * The one error that IS an answer is a database that predates the RPC — no PIN
+ * feature there, so nobody has one.
+ */
 export async function myPinStatus(): Promise<boolean> {
   const { data, error } = await supabase.rpc("my_pin_status");
-  if (error) return false;
+  if (error) {
+    if (isMissingFunction(error)) return false;
+    throw error;
+  }
   return Boolean(data);
 }
 
