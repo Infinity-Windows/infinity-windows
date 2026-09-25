@@ -64,8 +64,16 @@ vi.mock("../supabase", () => ({
   // The shared client: the token on a request is whoever is signed in at the
   // moment it is sent — supabase-js's fetchWithAuth asks auth every time.
   supabase: clientSendingAs(() => current?.access_token ?? null),
-  // A client that only ever sends the one token it was made with.
-  clientWithToken: (token: string) => clientSendingAs(() => token),
+  // A client that only ever sends the one token it was made with — and, like
+  // the real one (supabase-js with `accessToken`), has no auth to ask.
+  clientWithToken: (token: string) => ({
+    ...clientSendingAs(() => token),
+    auth: new Proxy({}, {
+      get: (_t, prop) => {
+        throw new Error(`a client built with accessToken has no auth.${String(prop)}`);
+      },
+    }),
+  }),
   supabaseConfigured: true,
 }));
 
@@ -259,5 +267,22 @@ describe("a queued write goes out only as the person who saved it", () => {
     switchTo(B);
     expect(await outbox.listFailed()).toEqual([]);
     expect((await outbox.listHeld()).map((e) => e.id)).toEqual([entry.id]);
+  });
+
+  it("a Hex-Portal case goes out as the person who wrote it, without asking the bound client who that is", async () => {
+    const { saveLearningCase } = await import("../hexPortal");
+    await saveLearningCase(
+      { actorId: A.user.id, projectId: "p1", unitLabel: "U1", question: "q", answer: "a", sources: [] } as never,
+      "case-1",
+    );
+    switchTo(B);
+    setOnline(true);
+    await outbox.drain();
+    expect(sent).toEqual([]);
+
+    switchTo(A);
+    await outbox.drain();
+    expect(sent.map((s) => [s.fn, s.token])).toEqual([["hex_portal_save_case", "token-A"]]);
+    expect(await outbox.listAll()).toEqual([]);
   });
 });

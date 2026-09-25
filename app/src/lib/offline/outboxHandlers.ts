@@ -371,7 +371,21 @@ function punchOf(p: Record<string, unknown>, what: string) {
 export function createSupabaseHandlers(
   resolver: ShiftResolver,
   supabase: OutboxClient = sharedClient,
+  /**
+   * Whose session `supabase` is bound to, when it is. A client built with an
+   * access token has no auth to ask (supabase-js throws on any supabase.auth
+   * use), so the handlers that must know who is sending read it from here.
+   */
+  sender: { userId: string } | null = null,
 ): OpHandlers {
+  /** Who this send goes out as: the bound session's person, else auth's answer. */
+  const sendingAs = async (): Promise<string | null> => {
+    if (sender) return sender.userId;
+    const { data: { user }, error } = await supabase.auth.getUser();
+    if (error) throw error;
+    return user?.id ?? null;
+  };
+
   const clockIn: OpHandler = async (entry) => {
     const p = entry.payload;
     const base = {
@@ -1453,23 +1467,17 @@ export function createSupabaseHandlers(
     issue_photo_upload: issuePhoto,
     save_build_facts: saveBuildFacts,
     hex_portal_case: async (entry) => {
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
-      if (authError) throw authError;
-      if (!user || user.id !== entry.payload.actorId) throw tagPermanent(new Error("Sign in as the person who saved this learning case, then retry."));
+      if ((await sendingAs()) !== entry.payload.actorId) throw tagPermanent(new Error("Sign in as the person who saved this learning case, then retry."));
       const { error } = await supabase.rpc("hex_portal_save_case", entry.payload.args as Record<string, unknown>);
       if (error) throw missingGuard(error, "Hex-Portal case");
     },
     hex_portal_outcome: async (entry) => {
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
-      if (authError) throw authError;
-      if (!user || user.id !== entry.payload.actorId) throw tagPermanent(new Error("Sign in as the person who reported this outcome, then retry."));
+      if ((await sendingAs()) !== entry.payload.actorId) throw tagPermanent(new Error("Sign in as the person who reported this outcome, then retry."));
       const { error } = await supabase.rpc("hex_portal_save_outcome", entry.payload.args as Record<string, unknown>);
       if (error) throw missingGuard(error, "Hex-Portal outcome");
     },
     hex_learning_draft: async (entry) => {
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
-      if (authError) throw authError;
-      if (!user || user.id !== entry.payload.actorId) throw tagPermanent(new Error("Sign in as the person who wrote this lesson, then retry."));
+      if ((await sendingAs()) !== entry.payload.actorId) throw tagPermanent(new Error("Sign in as the person who wrote this lesson, then retry."));
       const { error } = await supabase.rpc("hex_learning_save_draft", entry.payload.args as Record<string, unknown>);
       if (error) throw missingGuard(error, "lesson write-up");
     },
