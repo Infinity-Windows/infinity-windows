@@ -45,15 +45,9 @@
 import { expect, test, type BrowserContext, type Page, type Route } from "@playwright/test";
 import { OFFLINE_PIN_ITERATIONS, OFFLINE_PIN_KEY, OFFLINE_PIN_TTL_MS } from "../src/lib/offlinePin";
 import { TEST_USER, useSupabaseFixtures } from "./support/supabaseFixtures";
+import { pinStatusIs, typePin, usePinCheck } from "./support/pinFixtures";
 
 const SUPABASE = ["**/rest/v1/**", "**/auth/v1/**", "**/storage/v1/**", "**/functions/v1/**"];
-
-/** Answer the PIN-status question the way this account would. */
-async function pinStatusIs(page: Page, hasPin: boolean) {
-  await page.route("**/rest/v1/rpc/my_pin_status", (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(hasPin) }),
-  );
-}
 
 interface DeadZone {
   /** Paths of every Supabase request the dead zone refused. */
@@ -111,24 +105,6 @@ async function lockAnswerIsOnThePhone(page: Page) {
 async function useNoSignalRelaunch(page: Page, hasPin: boolean): Promise<DeadZone> {
   await pinStatusIs(page, hasPin);
   return goToTheDeadZone(page);
-}
-
-/** The server's check, for an account whose PIN is `pin`. */
-async function usePinCheck(page: Page, pin: string) {
-  await page.route("**/rest/v1/rpc/check_my_pin", (route) => {
-    const body = route.request().postDataJSON() as { p_pin?: string } | null;
-    return route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(body?.p_pin === pin),
-    });
-  });
-}
-
-async function typePin(page: Page, digits: string) {
-  for (const digit of digits) {
-    await page.locator(".pin-pad").getByRole("button", { name: digit, exact: true }).click();
-  }
 }
 
 type KeptUnlock = Record<string, unknown> & { salt: string; hash: string; issuedAt: number; expiresAt: number };
