@@ -226,7 +226,6 @@ function PersonsPinGate({ userId, children }: { userId: string; children: React.
     } catch {
       offline = { kind: "none" };
     }
-    if (!stillOurs(signIn)) return ENDED;
     switch (offline.kind) {
       case "ok":
         return null;

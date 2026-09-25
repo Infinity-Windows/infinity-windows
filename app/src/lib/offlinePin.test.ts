@@ -18,7 +18,7 @@ import {
   syncOfflinePinWithAuth,
   type OfflinePinDeps,
 } from "./offlinePin";
-import { rememberSignedIn } from "./signedIn";
+import { rememberSignedIn, signInMark } from "./signedIn";
 
 const ANA = "00000000-0000-4000-8000-0000000000a1";
 const BEN = "00000000-0000-4000-8000-0000000000b2";
@@ -176,13 +176,24 @@ describe("with no signal", () => {
     expect(await checkPinOffline(ANA, PIN, phone())).toEqual({ kind: "ok" });
   });
 
-  it("moving the phone's date back does not stretch it; a clock a minute or two off is fine", async () => {
+  it("a clock that reads more than five minutes before it was made reads as expired; a minute or two off is fine", async () => {
     await rememberPinForOffline(ANA, PIN, phone());
     clock = T0 - 2 * 60_000;
     expect(await checkPinOffline(ANA, PIN, phone())).toEqual({ kind: "ok" });
     clock = T0 - HOUR;
     expect(await checkPinOffline(ANA, PIN, phone())).toEqual({ kind: "expired" });
     expect(saved()).toEqual({ v: 1, userId: ANA, expired: true });
+  });
+
+  it("a clock set back by less than that stretches the twelve hours — the known limit — and five tries still hold", async () => {
+    await rememberPinForOffline(ANA, PIN, phone());
+    // Really thirteen hours on, but somebody set the phone to read one.
+    clock = T0 + HOUR;
+    expect(await checkPinOffline(ANA, PIN, phone())).toEqual({ kind: "ok" });
+    // What no clock changes: five wrong tries end it.
+    for (const guess of ["1111", "2222", "3333", "4444"]) await checkPinOffline(ANA, guess, phone());
+    expect(await checkPinOffline(ANA, "5555", phone())).toEqual({ kind: "locked" });
+    expect(store.map.size).toBe(0);
   });
 
   it("another account can't use it — and finding one wipes it", async () => {
@@ -314,6 +325,78 @@ describe("five tries in all", () => {
     // Even the right PIN: five is five.
     expect(await checkPinOffline(ANA, PIN, phone({ subtle: counting }))).toEqual({ kind: "locked" });
     expect(derivations).toBe(5);
+    expect(store.map.size).toBe(0);
+  });
+});
+
+// Codex's review of #651 (2026-09-25): the lock's work is slow — a server check
+// can take fifteen seconds, a fingerprint a good part of one — and whatever it
+// finishes with is held to the sign-in it began in (lib/signedIn.ts).
+describe("held to the sign-in it began in", () => {
+  /** Web Crypto, counting how often a fingerprint is actually worked out. */
+  function countingCrypto() {
+    const subtle = globalThis.crypto.subtle;
+    const counter = { derived: 0 };
+    const crypto = {
+      importKey: subtle.importKey.bind(subtle),
+      deriveBits: (...args: Parameters<SubtleCrypto["deriveBits"]>) => {
+        counter.derived++;
+        return subtle.deriveBits(...args);
+      },
+    } as unknown as SubtleCrypto;
+    return { counter, crypto };
+  }
+
+  it("a yes for a sign-in that has already ended works nothing out and keeps nothing", async () => {
+    const asked = signInMark();
+    rememberSignedIn(null);
+    const { counter, crypto } = countingCrypto();
+    await rememberPinForOffline(ANA, PIN, phone({ signIn: asked, subtle: crypto }));
+    expect(counter.derived).toBe(0);
+    expect(store.map.size).toBe(0);
+  });
+
+  it("signing out while the first fingerprint is made keeps nothing, with nothing stored yet to wipe", async () => {
+    const making = rememberPinForOffline(ANA, PIN, phone());
+    rememberSignedIn(null);
+    await making;
+    expect(store.map.size).toBe(0);
+  });
+
+  it("the same person signing out and back in while it is made keeps nothing from before", async () => {
+    const making = rememberPinForOffline(ANA, PIN, phone());
+    rememberSignedIn(null);
+    rememberSignedIn({ user: { id: ANA } });
+    await making;
+    expect(store.map.size).toBe(0);
+  });
+
+  it("an offline check that lands after sign-out opens nothing and gives no try back", async () => {
+    await rememberPinForOffline(ANA, PIN, phone());
+    await checkPinOffline(ANA, "1111", phone());
+    const checking = checkPinOffline(ANA, PIN, phone());
+    rememberSignedIn(null);
+    expect(await checking).toEqual({ kind: "none" });
+    expect(saved()!.failures).toBe(2);
+  });
+
+  it("a check for a sign-in that has already ended spends no try and works nothing out", async () => {
+    await rememberPinForOffline(ANA, PIN, phone());
+    const asked = signInMark();
+    rememberSignedIn({ user: { id: BEN } });
+    rememberSignedIn({ user: { id: ANA } });
+    const { counter, crypto } = countingCrypto();
+    expect(await checkPinOffline(ANA, PIN, phone({ signIn: asked, subtle: crypto }))).toEqual({ kind: "none" });
+    expect(counter.derived).toBe(0);
+    expect(saved()!.failures).toBe(0);
+  });
+
+  it("the right PIN never brings back a fingerprint another tab wiped while it was being checked", async () => {
+    await rememberPinForOffline(ANA, PIN, phone());
+    const checking = checkPinOffline(ANA, PIN, phone());
+    // Another tab changed the PIN: a wipe this tab's own counter never sees.
+    store.map.delete(OFFLINE_PIN_KEY);
+    expect(await checking).toEqual({ kind: "none" });
     expect(store.map.size).toBe(0);
   });
 });

@@ -73,6 +73,7 @@ vi.mock("../lib/offlinePin", () => ({
 
 const { PinGate, PinSetter } = await import("./PinGate");
 const { rememberSignedIn } = await import("../lib/signedIn");
+const { syncPinLockWithAuth } = await import("../lib/pinGate");
 const { LanguageProvider } = await import("../lib/i18n");
 
 let container: HTMLElement;
@@ -495,5 +496,196 @@ describe("a check that lands after its lock is gone", () => {
     await settle();
     expect(offline.rememberPinForOffline).not.toHaveBeenCalled();
     expect(sessionStorage.getItem("wops-pin-unlocked")).toBeNull();
+  });
+});
+
+/**
+ * What App.tsx does at every auth event: tell lib/signedIn who is signed in
+ * now, then the lock (syncPinLockWithAuth). The offline unlock's own part is
+ * mocked here and proven in offlinePin.test.ts.
+ */
+function authSays(event: string, userId: string | null) {
+  rememberSignedIn(userId ? { user: { id: userId } } : null);
+  syncPinLockWithAuth(event, userId);
+}
+
+/** App draws the lock for whoever is signed in now. */
+async function lockFor(userId: string, app: string) {
+  act(() =>
+    root.render(
+      <QueryClientProvider client={qc}>
+        <PinGate userId={userId}>
+          <p>{app}</p>
+        </PinGate>
+      </QueryClientProvider>,
+    ),
+  );
+  await settle();
+}
+
+describe("signing out and switching accounts, as App does it", () => {
+  it("Ana unlocks, signs out, and Ben signs in on the same tab: Ben is asked for his own PIN", async () => {
+    api.myPinStatus.mockResolvedValue(true);
+    api.checkMyPin.mockResolvedValue({ ok: true });
+    await mount();
+    await typePin("4821");
+    expect(text()).toContain("THE APP");
+    expect(sessionStorage.getItem("wops-pin-unlocked")).toBe(USER);
+
+    authSays("SIGNED_OUT", null);
+    act(() => root.render(<p>Sign in</p>));
+    expect(sessionStorage.getItem("wops-pin-unlocked")).toBeNull();
+
+    api.checkMyPin.mockClear();
+    authSays("SIGNED_IN", BEN);
+    await lockFor(BEN, "BEN'S APP");
+    expect(text()).toContain("Enter your 4-digit PIN");
+    expect(text()).not.toContain("BEN'S APP");
+    expect(api.checkMyPin).not.toHaveBeenCalled();
+  });
+
+  it("the same person signing out and back in is asked for the PIN again", async () => {
+    api.myPinStatus.mockResolvedValue(true);
+    api.checkMyPin.mockResolvedValue({ ok: true });
+    await mount();
+    await typePin("4821");
+    expect(text()).toContain("THE APP");
+
+    authSays("SIGNED_OUT", null);
+    act(() => root.render(<p>Sign in</p>));
+    authSays("SIGNED_IN", USER);
+    await lockFor(USER, "THE APP");
+    expect(text()).toContain("Enter your 4-digit PIN");
+    expect(text()).not.toContain("THE APP");
+  });
+
+  it("another login with no sign-out between gets a fresh lock, and the tab's unlock is gone", async () => {
+    api.myPinStatus.mockResolvedValue(true);
+    api.checkMyPin.mockResolvedValue({ ok: true });
+    await mount();
+    await typePin("4821");
+    expect(text()).toContain("THE APP");
+
+    authSays("SIGNED_IN", BEN);
+    await lockFor(BEN, "BEN'S APP");
+    expect(sessionStorage.getItem("wops-pin-unlocked")).toBeNull();
+    expect(text()).toContain("Enter your 4-digit PIN");
+    expect(text()).not.toContain("BEN'S APP");
+  });
+
+  it("a check started for Ana that lands after Ben signed in never unlocks Ben", async () => {
+    api.myPinStatus.mockResolvedValue(true);
+    let answer!: (value: { ok: true }) => void;
+    api.checkMyPin.mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)));
+    await mount();
+    await typePin("4821");
+    expect(text()).toContain("Checking your PIN…");
+
+    authSays("SIGNED_IN", BEN);
+    await lockFor(BEN, "BEN'S APP");
+    expect(text()).toContain("Enter your 4-digit PIN");
+
+    await act(async () => answer({ ok: true }));
+    await settle();
+    expect(text()).toContain("Enter your 4-digit PIN");
+    expect(text()).not.toContain("BEN'S APP");
+    expect(sessionStorage.getItem("wops-pin-unlocked")).toBeNull();
+    expect(offline.rememberPinForOffline).not.toHaveBeenCalled();
+  });
+
+  it("a yes that lands after sign-out lets nobody in even if the lock is still on screen", async () => {
+    // The mark, on its own: App has heard SIGNED_OUT but not yet drawn the
+    // sign-in screen when the server's answer arrives.
+    api.myPinStatus.mockResolvedValue(true);
+    let answer!: (value: { ok: true }) => void;
+    api.checkMyPin.mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)));
+    await mount();
+    await typePin("4821");
+
+    authSays("SIGNED_OUT", null);
+    await act(async () => answer({ ok: true }));
+    await settle();
+    expect(text()).not.toContain("THE APP");
+    expect(sessionStorage.getItem("wops-pin-unlocked")).toBeNull();
+    expect(offline.rememberPinForOffline).not.toHaveBeenCalled();
+  });
+
+  it("an offline yes that lands after sign-out lets nobody in", async () => {
+    savedOnPhone(true);
+    api.myPinStatus.mockRejectedValue(NO_SIGNAL);
+    api.checkMyPin.mockResolvedValueOnce({ ok: false, reason: "network" });
+    let verdict!: (value: { kind: "ok" }) => void;
+    offline.checkPinOffline.mockImplementationOnce(() => new Promise((resolve) => (verdict = resolve)));
+    await mount();
+    await typePin("4821");
+    expect(offline.checkPinOffline).toHaveBeenCalledWith(USER, "4821", HELD_TO_USER);
+
+    authSays("SIGNED_OUT", null);
+    await act(async () => verdict({ kind: "ok" }));
+    await settle();
+    expect(text()).not.toContain("THE APP");
+    expect(sessionStorage.getItem("wops-pin-unlocked")).toBeNull();
+  });
+
+  it("a PIN-status answer that lands after another login is not kept as this person's", async () => {
+    savedOnPhone(true);
+    let answer!: (value: boolean) => void;
+    api.myPinStatus.mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)));
+    await mount();
+    expect(text()).toContain("Enter your 4-digit PIN");
+
+    // Ben signs in while Ana's re-check is out; it may have gone as Ben.
+    authSays("SIGNED_IN", BEN);
+    await act(async () => answer(false));
+    await settle();
+    expect(qc.getQueryData(["myPinStatus", USER])).toBe(true);
+    expect(offline.forgetOfflinePin).not.toHaveBeenCalled();
+  });
+});
+
+// Codex's review of #651 (2026-09-25): "the function is missing" is also what
+// PostgREST says about a stale schema cache, while the function is there and
+// the person has a PIN. install/api.ts now throws on it, marked as an answer
+// from the server (reason "error") rather than no signal.
+describe("a status read the server answers without a yes or a no", () => {
+  const MISSING_FUNCTION = {
+    message: "Could not find the function public.my_pin_status in the schema cache",
+    code: "PGRST202",
+    reason: "error",
+  };
+
+  it("never wears a saved yes down: the pad stays and the offline unlock is not wiped", async () => {
+    savedOnPhone(true);
+    api.myPinStatus.mockRejectedValue(MISSING_FUNCTION);
+    await mount();
+    await settle(60_000);
+    expect(text()).toContain("Enter your 4-digit PIN");
+    expect(text()).not.toContain("THE APP");
+    expect(qc.getQueryData(["myPinStatus", USER])).toBe(true);
+    expect(offline.forgetOfflinePin).not.toHaveBeenCalled();
+  });
+
+  it("with no saved answer the lock stays shut, says Forge couldn't check — not that you're offline — and Try again works", async () => {
+    savedOnPhone();
+    api.myPinStatus.mockRejectedValue(MISSING_FUNCTION);
+    await mount();
+    expect(text()).toContain("Forge couldn't check your PIN. Try again.");
+    expect(text()).not.toContain("You're offline");
+    expect(text()).not.toContain("THE APP");
+
+    api.myPinStatus.mockResolvedValue(true);
+    await act(async () => button("Try again").click());
+    await settle();
+    expect(text()).toContain("Enter your 4-digit PIN");
+    expect(text()).not.toContain("THE APP");
+  });
+
+  it("says it in Spanish to a Spanish reader", async () => {
+    localStorage.setItem("infinity.language", "es");
+    savedOnPhone();
+    api.myPinStatus.mockRejectedValue(MISSING_FUNCTION);
+    await mount({ spanish: true });
+    expect(text()).toContain("Forge no pudo revisar tu PIN. Inténtalo de nuevo.");
+    expect(() => button("Intentar de nuevo")).not.toThrow();
   });
 });

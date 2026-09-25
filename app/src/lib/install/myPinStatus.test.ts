@@ -91,6 +91,31 @@ describe("myPinStatus", () => {
       pinGateView({ unlocked: false, restoring: false, hasPin, asking: false, profileLoading: false, waitedOut: false }),
     ).toBe("no-answer");
   });
+
+  it("an answer that is neither true nor false is not a no either", async () => {
+    for (const data of [null, undefined, "false", 0, 1, [], {}]) {
+      rpc.result = { data, error: null, status: 200 };
+      await expect(myPinStatus(), `data ${JSON.stringify(data)}`).rejects.toMatchObject({ reason: "error" });
+    }
+  });
+
+  it("says which kind of failure it was, so the lock never tells somebody with signal they are offline", async () => {
+    const failing = (status: number, code = "") => ({
+      data: null,
+      error: { message: status ? "server said no" : "TypeError: Failed to fetch", code },
+      status,
+    });
+    // Could not reach the server, or it could not judge: the same line as checkMyPin.
+    for (const status of [0, 500, 502, 503, 504]) {
+      rpc.result = failing(status);
+      await expect(myPinStatus(), `status ${status}`).rejects.toMatchObject({ reason: "network" });
+    }
+    // The server answered, just not with a yes or a no.
+    for (const [status, code] of [[401, "PGRST301"], [403, "42501"], [404, "PGRST202"], [404, "42883"]] as const) {
+      rpc.result = failing(status, code);
+      await expect(myPinStatus(), `status ${status} ${code}`).rejects.toMatchObject({ reason: "error", code });
+    }
+  });
 });
 
 // Which failures count as "the server could not be reached" decides whether
