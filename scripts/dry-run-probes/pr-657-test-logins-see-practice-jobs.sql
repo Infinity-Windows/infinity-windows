@@ -179,8 +179,20 @@ begin
   end loop;
 
   for r in select * from (values ('installer'), ('foreman')) as t(role) loop
+    -- A real person of the role, never a QA login; read as, never written as.
+    -- Looked up here rather than by dry_run_pick_real, which stops the run
+    -- when a role has nobody: section 5 compares every login either way.
     perform pg_temp.dry_run_as_system();
-    v_id := pg_temp.dry_run_pick_real(r.role);
+    v_id := null;
+    select p.id into v_id from public.profiles p
+     where p.role = r.role and p.retired_at is null and p.access_revoked_at is null
+       and not coalesce(p.is_partner, false) and not coalesce(p.is_test, false)
+     order by p.id
+     limit 1;
+    if v_id is null then
+      perform pg_temp.dry_run_check('a real ' || r.role || ': nobody holds the role (section 5 still compares every login)', true, null);
+      continue;
+    end if;
     v_role := pg_temp.dry_run_act_as(v_id);
     select count(*) into v_n from public.projects where id = v_job or id = v_offlist;
     perform pg_temp.dry_run_check('a real ' || r.role || ': still sees neither the practice job nor any other testing job', v_n = 0,
@@ -190,11 +202,22 @@ begin
       v_n || ' unit(s), expected 0');
   end loop;
 
+  -- A supervisor, or an owner when nobody holds the supervisor role (the live
+  -- database had none on 2026-09-25, and dry_run_pick stops the run on that).
   perform pg_temp.dry_run_as_system();
-  v_id := pg_temp.dry_run_pick('supervisor');
+  select p.id into v_id from public.profiles p
+   where p.role in ('supervisor', 'owner')
+     and p.retired_at is null and p.access_revoked_at is null
+     and not coalesce(p.is_partner, false) and not coalesce(p.is_test, false)
+   order by (p.role = 'supervisor') desc, p.id
+   limit 1;
+  if v_id is null then
+    raise exception 'dry run: nobody holds the supervisor or owner role to check the testing jobs are still theirs to see';
+  end if;
   v_role := pg_temp.dry_run_act_as(v_id);
   select count(*) into v_n from public.projects where id in (v_job, v_offlist, v_trashed);
-  perform pg_temp.dry_run_check('a supervisor: still sees every testing job, the trashed one included', v_n = 3,
+  perform pg_temp.dry_run_check(case when v_role = 'owner' then 'an owner' else 'a ' || v_role end
+      || ': still sees every testing job, the trashed one included', v_n = 3,
     v_n || ' of 3');
   perform pg_temp.dry_run_as_system();
 end $$;
