@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BACKOFF_BASE_MS, BACKOFF_CAP_MS, MAX_ATTEMPTS } from "../offline/outbox-core";
+import { rememberSignedIn, signedInEmail, signInMark } from "../signedIn";
+
+// The installer submitting in every test below, unless a test signs in
+// somebody else itself (the owner tests at the end do).
+beforeEach(() => {
+  rememberSignedIn({ user: { id: "installer-1", email: "installer@crew.com" } });
+});
 import {
   applyInstallFailure,
   deserializeInstallOutbox,
@@ -275,6 +282,12 @@ const INPUT = {
   openingCode: "10",
   assignedWindowId: null,
   createdBy: "installer@crew.com",
+  /** Whoever is signed in, captured at the moment the input is used — as
+   * OpeningSheet captures it at the tap (every test signs someone in first). */
+  get submitter() {
+    const mark = signInMark();
+    return mark.userId ? { userId: mark.userId, email: signedInEmail(), mark } : null;
+  },
   submitParams: { openingId: "opening-1" },
   points: null,
   media: [],
@@ -673,7 +686,9 @@ describe("media goes out as the person who submitted the install", () => {
     vi.mocked(submitInstallEvent).mockRejectedValue(new TypeError("Failed to fetch"));
 
     rememberSignedIn({ user: { id: "installer-a", email: "a@crew.com" } });
-    const record = await enqueueInstall({ ...INPUT, createdBy: "a@crew.com", media: MEDIA });
+    const { signInMark } = await import("../signedIn");
+    const submitter = { userId: "installer-a", email: "a@crew.com", mark: signInMark() };
+    const record = await enqueueInstall({ ...INPUT, createdBy: "a@crew.com", submitter, media: MEDIA });
     expect(record.payload.ownerId).toBe("installer-a");
 
     // A signs out; B signs in; signal comes back and the queue drains.
@@ -712,5 +727,44 @@ describe("media goes out as the person who submitted the install", () => {
     // Null means "nobody can say" and is kept as that by the outbox; the
     // photographer's email on the upload is what decides who may send it.
     expect(outbox.handedOff.map((h) => h.ownerId)).toEqual([null]);
+  });
+
+  // Codex re-check of #660 (P2): enqueueInstall copied createdBy from the
+  // caller and took the owner from whoever memory held, without checking the
+  // two agreed. With B signed in and A's email as the photographer it saved
+  // {ownerId: B, createdBy: A} — and the photos went up under B's token.
+  it("refuses an install whose photographer is someone other than the person saving it — and saves nothing", async () => {
+    const { rememberSignedIn, signInMark } = await import("../signedIn");
+    const { enqueueInstall, listInstalls } = await import("./installOutbox");
+    rememberSignedIn({ user: { id: "installer-b", email: "b@crew.com" } });
+    const submitter = { userId: "installer-b", email: "b@crew.com", mark: signInMark() };
+    await expect(
+      enqueueInstall({ ...INPUT, createdBy: "a@crew.com", submitter, media: MEDIA }),
+    ).rejects.toThrow(/different person/);
+    expect(await listInstalls()).toEqual([]);
+  });
+
+  it("refuses the save when the sign-in changed after Submit was tapped — never the new person's", async () => {
+    const { rememberSignedIn, signInMark } = await import("../signedIn");
+    const { enqueueInstall, listInstalls } = await import("./installOutbox");
+    rememberSignedIn({ user: { id: "installer-a", email: "a@crew.com" } });
+    // A taps Submit: the identity is taken right then.
+    const submitter = { userId: "installer-a", email: "a@crew.com", mark: signInMark() };
+    // ...and while the sheet is still getting the install ready, B signs in.
+    rememberSignedIn({ user: { id: "installer-b", email: "b@crew.com" } });
+    await expect(
+      enqueueInstall({ ...INPUT, createdBy: "a@crew.com", submitter, media: MEDIA }),
+    ).rejects.toThrow(/sign-in on this phone changed/);
+    expect(await listInstalls()).toEqual([]);
+  });
+
+  it("refuses an install with no one to save it as", async () => {
+    const { rememberSignedIn } = await import("../signedIn");
+    const { enqueueInstall, listInstalls } = await import("./installOutbox");
+    rememberSignedIn({ user: { id: "installer-b", email: "b@crew.com" } });
+    await expect(
+      enqueueInstall({ ...INPUT, createdBy: "b@crew.com", submitter: null, media: MEDIA }),
+    ).rejects.toThrow(/Sign in/);
+    expect(await listInstalls()).toEqual([]);
   });
 });

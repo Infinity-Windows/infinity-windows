@@ -9,6 +9,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Link2 } from "lucide-react";
 import { type BeforeAfterValue } from "../../components/PhotoCaptureSheet";
+import { signedInEmail, signInMark } from "../../lib/signedIn";
 import {
   findWindowByCode,
   findWindowBySerial,
@@ -1048,14 +1049,21 @@ export function OpeningSheet() {
 
   const submit = useMutation({
     mutationFn: async () => {
+      // Who is submitting, taken ONCE, right at the tap and before anything is
+      // awaited: the id and email from the session App keeps, and the sign-in
+      // mark from that same moment. The install and its photos are saved as
+      // this person, and the save is refused if the sign-in changes before it
+      // lands (Codex re-check of #660: the photographer used to come from its
+      // own getUser() read, separately from the owner).
+      const mark = signInMark();
+      const submitter = mark.userId ? { userId: mark.userId, email: signedInEmail(), mark } : null;
       const o = opening.data;
       if (!o) throw new Error("Opening not loaded.");
 
       // Persist the FULL install (RPC args + media + points) locally first so a
       // dead zone cannot wipe the capture. Flush then attempts the network.
       const uid = (await supabase.auth.getUser()).data.user?.id ?? null;
-      const { data: userData } = await supabase.auth.getUser();
-      const createdBy = userData.user?.email ?? null;
+      const createdBy = submitter?.email ?? null;
       const stamp = Date.now();
 
       const media: Array<{
@@ -1139,6 +1147,7 @@ export function OpeningSheet() {
         openingCode: o.opening_code,
         assignedWindowId: o.assigned_window_id,
         createdBy,
+        submitter,
         submitParams: {
           openingId,
           // The chain target rides in the finish itself (server-side
