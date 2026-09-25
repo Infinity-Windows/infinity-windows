@@ -1,4 +1,5 @@
 import { transcribeInstallAttachment } from "./transcribe";
+import { isAuthRetryableFetchError, type User } from "@supabase/supabase-js";
 import type { PDFDocumentProxy } from "pdfjs-dist/types/src/display/api";
 import { supabase } from "../supabase";
 import { filterToLiveProjects } from "../liveProjects";
@@ -127,10 +128,34 @@ export function isMissingFunction(error: unknown): boolean {
   return isMissingSchemaFunction(error);
 }
 
+/**
+ * The signed-in user, or null when nobody is signed in. THROWS when the
+ * question could not be asked — no signal, or no answer in time.
+ *
+ * `getUser()` asks the auth server, and when it cannot reach it the answer is
+ * "no user" — the same words as "nobody is signed in". Taken at its word, that
+ * wrote a null over the profile the phone had saved, and every launch without
+ * signal emptied the screens that need the profile, the clock block first
+ * (2026-09-24). "Couldn't ask" is not "nobody".
+ */
+async function signedInUser(): Promise<User | null> {
+  // The session first: it answers at once when the sign-in cannot be renewed
+  // (lib/offlineSession.ts), where getUser() would sit behind half a minute of
+  // renewal retries before saying the same thing.
+  const { data: kept, error: keptError } = await supabase.auth.getSession();
+  if (!kept.session) {
+    if (isAuthRetryableFetchError(keptError)) throw keptError;
+    return null;
+  }
+  const { data, error } = await supabase.auth.getUser();
+  if (data.user) return data.user;
+  if (isAuthRetryableFetchError(error)) throw error;
+  return null;
+}
+
 /** Ensure the signed-in user has a profile row; return it. */
 export async function ensureMyProfile(): Promise<Profile | null> {
-  const { data: userData } = await supabase.auth.getUser();
-  const user = userData.user;
+  const user = await signedInUser();
   if (!user) return null;
 
   const { data: existing, error } = await readProfiles((cols) =>
@@ -184,10 +209,7 @@ export async function ensureMyProfile(): Promise<Profile | null> {
   return profile;
 }
 
-/** The signed-in user's own profile — NEVER affected by person preview. */
-export async function getRealProfile(): Promise<Profile | null> {
-  const { data: userData } = await supabase.auth.getUser();
-  const user = userData.user;
+async function profileOf(user: User | null): Promise<Profile | null> {
   if (!user) return null;
   const { data, error } = await readProfiles((cols) =>
     supabase.from("profiles").select(cols).eq("id", user.id).maybeSingle(),
@@ -196,8 +218,31 @@ export async function getRealProfile(): Promise<Profile | null> {
   return data as Profile | null;
 }
 
+/**
+ * The signed-in user's own profile — NEVER affected by person preview.
+ *
+ * With no signal to ask who is signed in, this still answers null, as it
+ * always has. Nothing keeps this one on the phone (queryKeys: myRealProfile),
+ * so there is no saved copy for the null to overwrite — and an error here,
+ * with no copy to fall back on, loops: every screen that mounts asks again,
+ * the landing drops back to "Loading…", and the screen that asked unmounts.
+ */
+export async function getRealProfile(): Promise<Profile | null> {
+  const user = await signedInUser().catch((err: unknown) => {
+    if (isAuthRetryableFetchError(err)) return null;
+    throw err;
+  });
+  return profileOf(user);
+}
+
+/**
+ * The profile every "my …" screen reads, and the one the phone KEEPS
+ * (queryKeys: myProfile). So it throws when there is no signal to ask who is
+ * signed in: React Query then keeps the saved copy, where a null would have
+ * been saved over it.
+ */
 export async function getMyProfile(): Promise<Profile | null> {
-  const me = await getRealProfile();
+  const me = await profileOf(await signedInUser());
 
   // Person preview (owner-only, session-scoped): every "my …" surface keys
   // off this profile, so returning the previewed person makes the whole app
