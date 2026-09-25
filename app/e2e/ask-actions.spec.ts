@@ -120,5 +120,40 @@ test("going to lunch: a Start break button, and the tap uses the clock RPC", asy
   expect(breaks).toHaveLength(0);
   await start.click();
   await expect(page.locator(".field-buttons")).toContainText("On break — saved in Forge.");
-  expect(breaks).toEqual([{ p_shift_id: shift.id, p_break_type: "lunch" }]);
+  // One keyed punch (Release 0): the tap's one-time id and tap time ride along.
+  expect(breaks).toHaveLength(1);
+  expect(breaks[0]).toMatchObject({ p_shift_id: shift.id, p_break_type: "lunch" });
+  expect(String(breaks[0].p_client_id)).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  expect(typeof breaks[0].p_tapped_at).toBe("string");
+});
+
+// Codex review of #641 (2026-09-25): the server saves the break and the reply
+// is lost. The phone keeps the tap and sends it again — with the SAME id, so
+// the server answers with the break it already started instead of a second.
+test("a Start break whose reply is lost is sent again with the same id, and is one break", async ({ page }) => {
+  await useSupabaseFixtures(page, { role: "installer" });
+  const shift = { id: "00000000-0000-4000-8000-000000000501", profile_id: USER, project_id: null, cost_code_id: null, clock_in_at: "2026-09-23T13:00:00Z", clock_out_at: null, break_seconds: 0, break_started_at: null, injured: null, time_confirmed: null, status: "open", created_at: "2026-09-23T13:00:00Z" };
+  await page.route("**/rest/v1/time_shifts**", (r) => json(r, shift, 1));
+  const sent: Record<string, unknown>[] = [];
+  const started = new Set<string>();
+  await page.route("**/rest/v1/rpc/start_break", async (route) => {
+    const body = route.request().postDataJSON() as Record<string, unknown>;
+    sent.push(body);
+    started.add(String(body.p_client_id));
+    // The first one is saved, and its reply never reaches the phone.
+    if (sent.length === 1) return route.abort("failed");
+    await json(route, { ...shift, break_started_at: "2026-09-23T17:00:00Z", break_type: "lunch" }, null);
+  });
+  await askAnswers(page, [{ answer: "Tap Start break below when you go.", buttons: [{ action: "start_break", break_type: "lunch" }] }]);
+  await page.goto("/ask");
+  await composer(page).fill("going to lunch");
+  await composer(page).press("Enter");
+  await page.getByRole("button", { name: "Start break", exact: true }).click();
+  // The phone could not know it was saved, so it says it kept it...
+  await expect(page.locator(".field-buttons")).toContainText("On break — saved on this phone");
+  // ...and the queue sends it again with the tap's own id.
+  await expect.poll(() => sent.length).toBe(2);
+  expect(sent[1].p_client_id).toBe(sent[0].p_client_id);
+  expect(sent[1].p_tapped_at).toBe(sent[0].p_tapped_at);
+  expect(started.size).toBe(1);
 });

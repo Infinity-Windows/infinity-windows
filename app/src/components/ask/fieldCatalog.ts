@@ -118,8 +118,11 @@ export const FIELD_CATALOG = {
   "field.button.refused.not_clocked_in": { en: "You're not clocked in, so there is no break to take. Nothing changed.", es: "No has marcado entrada, así que no hay descanso que tomar. No cambió nada." },
   "field.button.refused.already_on_break": { en: "You're already on break. Nothing changed.", es: "Ya estás en descanso. No cambió nada." },
   "field.button.refused.not_on_break": { en: "You're not on break. Nothing changed.", es: "No estás en descanso. No cambió nada." },
-  "field.button.refused.pending": { en: "Your clock-in is still sending from this phone. Let it sync, then tap again. Nothing changed.", es: "Tu entrada todavía se está enviando desde este teléfono. Deja que se sincronice y vuelve a tocar. No cambió nada." },
   "field.button.refused.failed": { en: "That didn't go through. Nothing changed. Use the job clock.", es: "No se pudo. No cambió nada. Usa el reloj de trabajo." },
+  // The direct try died on the network (so it may have been saved) and the
+  // phone could not keep the punch to send again: neither "saved" nor
+  // "nothing changed" is known to be true.
+  "field.button.refused.unconfirmed": { en: "We couldn't tell whether that reached Forge, and this phone couldn't save it to send again. Open the job clock to check before you tap again.", es: "No pudimos saber si llegó a Forge, y este teléfono no pudo guardarlo para enviarlo otra vez. Abre el reloj de trabajo para revisar antes de volver a tocar." },
   // The context tag (K2.3).
   "field.tag.title": { en: "Asking about", es: "Preguntando sobre" },
   "field.tag.clear": { en: "Clear the job tag", es: "Quitar la etiqueta de obra" },

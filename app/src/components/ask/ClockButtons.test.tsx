@@ -35,6 +35,8 @@ const deps: OneTapDeps = {
   queueBreakStart: async () => { calls.push("queue-start"); },
   queueBreakStop: async () => { calls.push("queue-end"); },
   shouldQueue: () => false,
+  resolveShiftRef: () => null,
+  mintPunch: () => ({ clientId: "9b2f0c14-7d3a-4e51-8a06-3f2c9d1e4b77", tappedAt: "2026-09-23T17:00:00.000Z", clockCheckedAt: null, clockSkewMs: null }),
 };
 
 let root: Root | null = null;
