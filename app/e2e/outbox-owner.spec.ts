@@ -179,3 +179,70 @@ test("signed out with a punch still on the phone: nothing goes out as nobody, an
   await expect.poll(() => clockIns.length).toBe(1);
   expect(clockIns[0]).toEqual({ authorization: `Bearer ${A_SESSION.access_token}`, clientId: "punch-of-A" });
 });
+
+test("a punch saved before owners were recorded is never sent as anyone, and Stuck writes offers only to throw it away", async ({ page }) => {
+  // Codex review of #660, P1 #1: an old build's punch names no one, and who
+  // happens to be signed in is not evidence of whose it is.
+  await useSupabaseFixtures(page, { role: "installer" });
+  await hideWrongProjectBanner(page);
+  await stubGeolocationDenied(page);
+  const clockIns = await server(page);
+
+  await page.goto("/");
+  await expect(page.locator(".clockin-block")).toBeVisible();
+  // What an older build left in the outbox: a clock-in with no ownerId.
+  await page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open("wops-write-outbox", 1);
+      req.onupgradeneeded = () => req.result.createObjectStore("entries", { keyPath: "id" });
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    const entry = {
+      v: 1,
+      id: "legacy-punch",
+      op: "clock_in",
+      payload: {
+        projectId: "ebf64f94-0413-4434-aeb3-1aff228fb5b3",
+        costCodeId: "22222222-bbbb-4bbb-8bbb-222222222222",
+        clientId: "legacy-punch-client-id",
+        tappedAt: new Date(Date.now() - 3_600_000).toISOString(),
+        clockCheckedAt: null,
+        clockSkewMs: null,
+      },
+      createdAt: Date.now() - 3_600_000,
+      attemptCount: 0,
+      lastError: null,
+      status: "queued",
+      nextAttemptAt: 0,
+      dependsOn: null,
+      hasBlob: false,
+    };
+    const tx = db.transaction("entries", "readwrite");
+    tx.objectStore("entries").put({ id: entry.id, meta: JSON.stringify(entry), blob: null });
+    await new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+  });
+
+  await drain(page);
+  await page.waitForTimeout(500);
+  expect(clockIns).toEqual([]);
+  await expect(page.locator(".sync-pill").first()).toContainText("1 saved before an update");
+  // Not shown as this person clocked in.
+  await expect(page.locator(".tab.clock-on")).toHaveCount(0);
+
+  await page.locator(".sync-pill").first().click();
+  await expect(page).toHaveURL(/\/stuck$/);
+  const section = page.getByTestId("stuck-unknown");
+  await expect(page.getByText("Saved before an update — Forge can't tell who saved it")).toBeVisible();
+  await expect(section).toContainText("Clock in");
+  await expect(section.getByRole("button")).toHaveText(["Throw away"]);
+  await section.getByRole("button", { name: "Throw away" }).click();
+  await section.getByRole("button", { name: "Sure? this deletes it" }).click();
+  await expect(section).toHaveCount(0);
+  expect(await queued(page)).toEqual([]);
+  expect(clockIns).toEqual([]);
+});

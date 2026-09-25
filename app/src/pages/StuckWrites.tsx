@@ -23,6 +23,7 @@ import {
   discardFailed,
   listHeld,
   listMine,
+  listUnknownOwner,
   recentlySent,
   retryFailed,
   sendNow,
@@ -106,6 +107,9 @@ export function StuckWrites() {
   // person's to decide.
   const writesQ = useQuery({ queryKey: ["queuedWrites"], queryFn: listMine });
   const heldQ = useQuery({ queryKey: ["heldWrites"], queryFn: listHeld });
+  // Saved before an update and naming no one (Codex review of #660, P1 #1):
+  // never sent as anyone. Shown, with Throw away as the one way out.
+  const unknownQ = useQuery({ queryKey: ["heldWrites", "unknown"], queryFn: listUnknownOwner });
   // A stuck INSTALL is the worst case on this screen — it is the record that a
   // window got finished — so it belongs here even though it lives in its own
   // store with its own subscribe mechanism.
@@ -161,6 +165,7 @@ export function StuckWrites() {
 
   const refreshAll = () => {
     void queryClient.invalidateQueries({ queryKey: ["queuedWrites"] });
+    void queryClient.invalidateQueries({ queryKey: ["heldWrites"] });
     void queryClient.invalidateQueries({ queryKey: ["queuedInstalls"] });
     void queryClient.invalidateQueries({ queryKey: ["queuedPersonal"] });
   };
@@ -195,6 +200,12 @@ export function StuckWrites() {
   const discard = useMutation({
     mutationFn: (row: StuckRow) =>
       row.source === "install" ? discardFailedInstall(row.id) : discardFailed(row.id),
+    onSuccess: refreshAll,
+  });
+  // Throwing away a write whose owner nobody can tell — the only thing this
+  // screen offers for one. There is deliberately no "send it as me".
+  const discardUnknown = useMutation({
+    mutationFn: (id: string) => discardFailed(id),
     onSuccess: refreshAll,
   });
   // "Send now": every queue gets one attempt this instant, backoff or not. A
@@ -241,8 +252,12 @@ export function StuckWrites() {
   );
   const loading = writesQ.isLoading || installsQ.isLoading || personalQ.isLoading;
   const held = heldQ.data ?? [];
+  const unknownOwner = unknownQ.data ?? [];
   const nothingToSend =
-    sections.needsYou.length === 0 && sections.waiting.length === 0 && held.length === 0;
+    sections.needsYou.length === 0 &&
+    sections.waiting.length === 0 &&
+    held.length === 0 &&
+    unknownOwner.length === 0;
 
   const renderRow = (e: StuckRow) => {
     const confirming = confirmingId === e.id;
@@ -408,6 +423,49 @@ export function StuckWrites() {
                 </div>
               </li>
             ))}
+          </ul>
+        </section>
+      )}
+
+      {unknownOwner.length > 0 && (
+        <section aria-labelledby="stuck-unknown-title" style={{ marginTop: 20 }}>
+          <h2 id="stuck-unknown-title" style={{ fontSize: 16 }}>{t("stuck.unknown.title")}</h2>
+          <p className="muted">{t("stuck.unknown.body")}</p>
+          <ul className="unit-list" data-testid="stuck-unknown">
+            {unknownOwner.map((e) => {
+              const confirming = confirmingId === e.id;
+              const busy = discardUnknown.isPending && discardUnknown.variables === e.id;
+              return (
+                <li key={e.id}>
+                  <div className="find-row">
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontWeight: 600 }}>{writeLabel(e, t)}</div>
+                      <div className="muted" style={{ fontSize: 12.5 }}>
+                        {queuedAgo(e.createdAt, now, t)}
+                        {e.createdAt > 0 ? ` · ${fmtWhen(e.createdAt)}` : ""}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      className={`button-like${confirming ? " danger-outline" : ""}`}
+                      disabled={busy}
+                      onClick={() => {
+                        if (confirming) {
+                          setConfirmingId(null);
+                          discardUnknown.mutate(e.id);
+                        } else {
+                          setConfirmingId(e.id);
+                        }
+                      }}
+                    >
+                      {busy ? t("stuck.throwingAway") : confirming ? t("stuck.sureDeletes") : t("stuck.throwAway")}
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         </section>
       )}

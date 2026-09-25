@@ -144,6 +144,9 @@ export async function queueSavedPhotos(draft: AiDailyLogDraft, deps: QueuePhotoD
         contentType: blob.type || "image/jpeg",
         projectId: draft.receipt.project_id,
         createdBy: who.email,
+        // The draft's owner, just checked above — named, so a sign-in landing
+        // between that check and the queue cannot change whose photo it is.
+        ownerId: who.userId,
         caption: photo.caption,
         lat: photo.lat,
         lng: photo.lng,

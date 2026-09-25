@@ -2590,6 +2590,23 @@ export const CATALOG = {
     en: "Saved on this phone by someone who isn't signed in now. It goes out when that person signs in again.",
     es: "Guardado en este teléfono por alguien que no tiene la sesión abierta ahora. Se envía cuando esa persona vuelva a iniciar sesión.",
   },
+  // Work queued by a build from before writes carried their owner, with
+  // nothing in it that says who saved it (Codex review of #660, P1 #1): never
+  // sent as anyone. A person may throw it away; nothing sends it as them.
+  "pill.unknownOwner": { en: "{count} saved before an update", es: "{count} de antes de una actualización" },
+  "pill.unknownOwnerDetail": {
+    en: "Saved on this phone before an update, and Forge can't tell who saved it, so it won't send it under anyone's name. Open Stuck writes to see it.",
+    es: "Guardado en este teléfono antes de una actualización, y Forge no puede saber quién lo guardó, así que no lo enviará a nombre de nadie. Abre Escrituras atascadas para verlo.",
+  },
+  "stuck.unknown.title": {
+    en: "Saved before an update — Forge can't tell who saved it",
+    es: "Guardado antes de una actualización — Forge no puede saber quién lo guardó",
+  },
+  "stuck.unknown.body": {
+    en: "An older version of Forge saved these on this phone without noting who saved them, so Forge won't send them under anyone's name. If one was yours, tell your foreman what it was — a clock punch can be fixed on your timecard — then throw it away.",
+    es: "Una versión anterior de Forge guardó esto en este teléfono sin anotar quién lo guardó, así que Forge no lo enviará a nombre de nadie. Si algo era tuyo, dile a tu capataz qué era — una marca de reloj se puede corregir en tu tarjeta de horas — y luego elimínalo.",
+  },
+  "diag.unknownOwnerQueue": { en: "Saved before an update, owner unknown", es: "Guardado antes de una actualización, sin dueño conocido" },
   "stuck.held.title": { en: "Saved by someone else on this phone", es: "Guardado por otra persona en este teléfono" },
   "stuck.held.body": {
     en: "Waiting for the person who saved these to sign in. They go out under that person's name, never yours, and they stay on this phone until then.",

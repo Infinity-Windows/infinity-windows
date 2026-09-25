@@ -245,7 +245,7 @@ function useLegacyUploadCount(): number {
 
 export function SyncStatusPill() {
   const t = useT();
-  const { counts, pill: outboxPill, held } = useOutbox();
+  const { counts, pill: outboxPill, held, unknown } = useOutbox();
   const { profileId } = useClock();
   const installs = useInstallOutboxCount();
   const custom = useCustomWorkCount(profileId);
@@ -255,7 +255,7 @@ export function SyncStatusPill() {
   // counted as this person's (2026-09-25, lib/offline/entryOwner.ts): it is
   // already out of `counts`, and withHeld names it on the face.
   const combined = combineQueues(
-    withHeld(outboxPill, held, t),
+    withHeld(outboxPill, { theirs: held, unknown }, t),
     {
       basePending: totalPending(counts),
       installsPending: installs.pending,

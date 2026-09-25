@@ -18,7 +18,6 @@ vi.mock("../supabase", () => {
 vi.mock("../signedIn", () => ({
   signedInEmail: () => "e2e@example.test",
   signedInUserId: () => "test-user",
-  launchUserId: () => "test-user",
   subscribeSignedIn: () => () => {},
 }));
 vi.mock("./telemetry", () => ({ logOfflineEvent: () => {} }));

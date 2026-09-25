@@ -36,6 +36,9 @@ const q = vi.hoisted(() => ({
   sentWrites: [] as Array<{ entry: OutboxEntry; sentAt: number }>,
   /** Someone else's writes on this phone (2026-09-25). */
   held: [] as OutboxEntry[],
+  /** Writes saved before an update, whose owner nobody can tell. */
+  unknown: [] as OutboxEntry[],
+  discarded: [] as string[],
   sendNow: vi.fn(async () => {}),
   sendInstallsNow: vi.fn(async () => {}),
   retryWork: vi.fn(async () => true),
@@ -44,8 +47,12 @@ const q = vi.hoisted(() => ({
 vi.mock("../lib/offline/outbox", () => ({
   listMine: async () => q.writes,
   listHeld: async () => q.held,
+  listUnknownOwner: async () => q.unknown,
   retryFailed: async () => {},
-  discardFailed: async () => {},
+  discardFailed: async (id: string) => {
+    q.discarded.push(id);
+    q.unknown = q.unknown.filter((e) => e.id !== id);
+  },
   subscribe: () => () => {},
   sendNow: q.sendNow,
   recentlySent: () => q.sentWrites,
@@ -124,6 +131,8 @@ beforeEach(() => {
   q.legacy = 0;
   q.sentWrites = [];
   q.held = [];
+  q.unknown = [];
+  q.discarded = [];
   q.sendNow.mockClear();
   q.sendInstallsNow.mockClear();
   q.retryWork.mockClear();
@@ -375,5 +384,36 @@ describe("someone else's work on this phone", () => {
     expect(held.textContent).toContain("Clock in");
     expect(held.querySelectorAll("button")).toHaveLength(0);
     expect(el.textContent).not.toContain("Nothing stuck");
+  });
+});
+
+describe("work saved before an update, whose owner Forge cannot tell", () => {
+  it("is shown as such, never sent as anyone, and can be thrown away — with the same second tap as any other", async () => {
+    // Codex review of #660, P1 #1. Nothing on the entry says who saved it,
+    // so the only way out a person gets is throwing it away, on purpose.
+    q.unknown = [
+      stuckWrite({ id: "u-1", op: "clock_in", status: "queued", attemptCount: 0, lastError: null }),
+    ];
+    const el = await mount();
+    expect(el.textContent).toContain("Saved before an update — Forge can't tell who saved it");
+    const section = el.querySelector('[data-testid="stuck-unknown"]')!;
+    expect(section.textContent).toContain("Clock in");
+    // No Try again, and no way to send it under this person's name.
+    const labels = [...section.querySelectorAll("button")].map((b) => b.textContent);
+    expect(labels).toEqual(["Throw away"]);
+    expect(el.textContent).not.toContain("Nothing stuck");
+
+    const tap = async () => {
+      await act(async () => {
+        [...section.querySelectorAll("button")][0].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+    };
+    await tap();
+    // One tap only asks.
+    expect(q.discarded).toEqual([]);
+    expect([...section.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Sure? this deletes it"]);
+    await tap();
+    expect(q.discarded).toEqual(["u-1"]);
   });
 });

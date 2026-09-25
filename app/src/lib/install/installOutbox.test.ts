@@ -17,18 +17,18 @@ vi.mock("./api", () => ({ submitInstallEvent: vi.fn() }));
 vi.mock("../points", () => ({ awardPoints: vi.fn(async () => {}) }));
 const outbox = vi.hoisted(() => ({
   /** Every hand-off the media stage made, in order, across every pass. */
-  handedOff: [] as Array<{ id?: string; kind: string; path: string; uncapped?: boolean }>,
+  handedOff: [] as Array<{ id?: string; kind: string; path: string; uncapped?: boolean; ownerId?: string | null }>,
   /** Throw on the hand-off with this path, once — a crash mid-stage. */
   failOnce: null as string | null,
   pendingMedia: 0,
 }));
 vi.mock("../offline/outbox", () => ({
-  enqueueUpload: vi.fn(async (input: { id?: string; kind: string; path: string; uncapped?: boolean }) => {
+  enqueueUpload: vi.fn(async (input: { id?: string; kind: string; path: string; uncapped?: boolean; ownerId?: string | null }) => {
     if (outbox.failOnce === input.path) {
       outbox.failOnce = null;
       throw new Error("Couldn't save this offline (storage may be full)");
     }
-    outbox.handedOff.push({ id: input.id, kind: input.kind, path: input.path, uncapped: input.uncapped });
+    outbox.handedOff.push({ id: input.id, kind: input.kind, path: input.path, uncapped: input.uncapped, ownerId: input.ownerId });
     return input.id ?? "minted";
   }),
   drain: vi.fn(async () => {}),
@@ -629,5 +629,88 @@ describe("media is handed to the global outbox under ids decided up front", () =
     const { drain } = await import("../offline/outbox");
     expect(vi.mocked(drain)).toHaveBeenCalled();
     expect(result.remainingUploads).toBe(2);
+  });
+});
+
+// --- whose media it is (Codex review of #660, P1 #2) -------------------------
+//
+// The media stage runs whenever the install queue drains — which can be after
+// the person who finished the unit has signed out and someone else has signed
+// in. It used to hand the media over with nobody named, and the outbox then
+// stamped whoever was signed in AT THAT MOMENT as its owner: A's photos went
+// up under B's token. The submitter is now written into the record when it is
+// queued, and every hand-off names them.
+describe("media goes out as the person who submitted the install", () => {
+  beforeEach(() => {
+    installFakeIndexedDb();
+    outbox.handedOff.length = 0;
+    outbox.failOnce = null;
+    outbox.pendingMedia = 0;
+  });
+
+  afterEach(async () => {
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+    const { rememberSignedIn } = await import("../signedIn");
+    rememberSignedIn(null);
+  });
+
+  const MEDIA = [
+    {
+      bucket: "install-media" as const,
+      path: "project-1/10/1-after.jpg",
+      contentType: "image/jpeg",
+      kind: "photo" as const,
+      blob: new Blob(["after"], { type: "image/jpeg" }),
+    },
+  ];
+
+  it("writes the submitter into the record, and hands the media over as them even when someone else is signed in by then", async () => {
+    const { rememberSignedIn } = await import("../signedIn");
+    const { enqueueInstall, sendInstallsNow, listInstalls } = await import("./installOutbox");
+    const { submitInstallEvent } = await import("./api");
+    // The RPC is not answering yet: the install waits on the phone.
+    vi.mocked(submitInstallEvent).mockRejectedValue(new TypeError("Failed to fetch"));
+
+    rememberSignedIn({ user: { id: "installer-a", email: "a@crew.com" } });
+    const record = await enqueueInstall({ ...INPUT, createdBy: "a@crew.com", media: MEDIA });
+    expect(record.payload.ownerId).toBe("installer-a");
+
+    // A signs out; B signs in; signal comes back and the queue drains.
+    rememberSignedIn({ user: { id: "installer-b", email: "b@crew.com" } });
+    vi.mocked(submitInstallEvent).mockResolvedValue({
+      id: "event-1",
+    } as unknown as Awaited<ReturnType<typeof submitInstallEvent>>);
+    const [waiting] = await listInstalls();
+    await sendInstallsNow();
+
+    expect(waiting?.payload.ownerId).toBe("installer-a");
+    expect(outbox.handedOff.map((h) => h.ownerId)).toEqual(["installer-a"]);
+  });
+
+  it("an install saved before owners were recorded hands its media over as nobody in particular — never as whoever drains it", async () => {
+    const { rememberSignedIn } = await import("../signedIn");
+    const { sendInstallsNow } = await import("./installOutbox");
+    const { submitInstallEvent } = await import("./api");
+    vi.mocked(submitInstallEvent).mockResolvedValue({
+      id: "event-1",
+    } as unknown as Awaited<ReturnType<typeof submitInstallEvent>>);
+
+    // A record written by the build before this one: no ownerId in it.
+    const rows = installFakeIndexedDb();
+    const old: InstallOutboxRecord = {
+      ...RECORD,
+      id: "old-record",
+      payload: { ...RECORD.payload, media: [{ ...RECORD.payload.media[0], kind: "photo", path: "project-1/W1/old.jpg" }] },
+    };
+    const meta = serializeInstallOutbox(old);
+    expect(JSON.parse(meta).payload.ownerId).toBeUndefined();
+    rows.set(old.id, { id: old.id, meta, blobs: [new Blob(["old"], { type: "image/jpeg" })] });
+
+    rememberSignedIn({ user: { id: "installer-b", email: "b@crew.com" } });
+    await sendInstallsNow();
+    // Null means "nobody can say" and is kept as that by the outbox; the
+    // photographer's email on the upload is what decides who may send it.
+    expect(outbox.handedOff.map((h) => h.ownerId)).toEqual([null]);
   });
 });
