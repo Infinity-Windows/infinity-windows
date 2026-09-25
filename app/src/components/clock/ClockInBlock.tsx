@@ -19,6 +19,12 @@ import { VoiceTextarea } from "../voice/VoiceTextarea";
 // same ToolboxSignCard the sheet mounts, and the signature triggers the
 // block's own clockIn with the picks already made. The sheet is still the
 // fallback when that punch is refused, and it now gets the picks carried in.
+//
+// The one punch the block DOES queue itself (offline toolbox signing,
+// 2026-09-25): a clock-in made while today's signature is still on the phone.
+// Sent straight to the server it would arrive before the signature and be
+// refused on the toolbox gate, so it goes into the outbox behind the
+// signature, which sends it right after — at once with signal.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -28,8 +34,8 @@ import { isForemanPlus } from "../../lib/install/types";
 import { createTrackingJob, listProjects } from "../../lib/api";
 import { matchingTrackingJobs } from "../../lib/quickJobs";
 import { requestJobForClockIn } from "../../lib/needJob";
-import { getTodayTalk } from "../../lib/ops";
-import { myTodayCompletion } from "../../lib/toolbox";
+import { useTodayTalk, useToolboxToday } from "../../lib/useToolboxGate";
+import { enqueueClockIn, todaysSignatureOnPhone } from "../../lib/offline/outbox";
 import { captureGeoIfGranted, captureGeoSoft } from "../../lib/geo";
 import { farFromJob, type DeviceFix } from "../../lib/jobProximity";
 import { pushToast, toastSuccess } from "../../lib/toast";
@@ -37,6 +43,7 @@ import { formatApiError } from "../../lib/errors";
 import { openClockGlobally } from "../../lib/clockContext";
 import { useOpenShiftView } from "../../lib/useOpenShiftView";
 import { ToolboxSignCard } from "./ToolboxSignCard";
+import { ToolboxSignStatus } from "./ToolboxSignStatus";
 import { ClockQueueStatus } from "./ClockQueueStatus";
 import {
   clockIn,
@@ -79,18 +86,12 @@ export function ClockInBlock() {
     enabled: Boolean(profileId),
   });
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
-  // Today's toolbox talk and whether this person signed it — only relevant off
-  // the clock (the first clock-in of the day is the gate).
-  const todayTalk = useQuery({
-    queryKey: ["todayTalk"],
-    queryFn: getTodayTalk,
-    enabled: !openShift.shift,
-  });
-  const toolboxDone = useQuery({
-    queryKey: ["toolboxToday", profileId],
-    queryFn: () => myTodayCompletion(profileId!),
-    enabled: Boolean(profileId) && !openShift.shift,
-  });
+  // Today's toolbox talk and whether this person signed it — only read off
+  // the clock (the first clock-in of the day is the gate). A signature still
+  // on this phone counts as signed (useToolboxToday), and today's talk comes
+  // from the days kept ahead when the last read was yesterday's.
+  const todayTalk = useTodayTalk(!openShift.shift);
+  const toolboxDone = useToolboxToday(profileId, !openShift.shift);
 
   const [pickProjectId, setPickProjectId] = useState<string>("");
   const [pickCostCodeId, setPickCostCodeId] = useState<string>("");
@@ -255,12 +256,30 @@ export function ClockInBlock() {
   };
   const tapNow = (): StartTap => ({ punch: mintPunch(), ...picksRef.current });
   const doStart = useMutation({
-    mutationFn: async (tap: StartTap) => {
+    mutationFn: async (tap: StartTap): Promise<{ behindSignature: boolean }> => {
       const geo = await captureGeoSoft();
+      // Today's signature is still on this phone: the punch waits behind it
+      // in the outbox (see the note at the top). It shows as clocked in at
+      // once, from the queue, like any queued punch (K0.1), and is paid from
+      // this tap.
+      if (todaysSignatureOnPhone(profileId)) {
+        await enqueueClockIn({
+          projectId: tap.projectId,
+          costCodeId: tap.costCodeId,
+          lat: geo?.lat ?? null,
+          lng: geo?.lng ?? null,
+          note: tap.note,
+          mode: tap.mode,
+          punch: tap.punch,
+          profileId,
+        });
+        return { behindSignature: true };
+      }
       await clockIn(tap.projectId, tap.costCodeId, geo, tap.note, tap.mode, tap.punch);
+      return { behindSignature: false };
     },
-    onSuccess: () => {
-      toastSuccess(t("clock.action.clockingIn"));
+    onSuccess: (r) => {
+      toastSuccess(t(r.behindSignature ? "clock.toast.clockedInAfterTalk" : "clock.action.clockingIn"));
       refresh();
     },
     // Whatever went wrong — offline, or a server no — the clock sheet is the
@@ -353,6 +372,8 @@ export function ClockInBlock() {
           <ClockedInByLine shift={shift} />
           {/* K0.1: the punch behind this bar is still on the phone. */}
           <ClockQueueStatus pending={openShift.pending} refused={openShift.refused} />
+          {/* …and so, maybe, is the signature it waits behind. */}
+          <ToolboxSignStatus done={toolboxDone} showSent={false} />
         </div>
         <span className="clockin-bar-timer" aria-label={t("clock.a11y.timeWorked")}>
           {formatClock(workSec)}
@@ -679,16 +700,18 @@ export function ClockInBlock() {
       {/* K0.1: off the clock because the clock-out is still on the phone, or
           because a punch was refused — said here, above the button. */}
       <ClockQueueStatus pending={openShift.pending} refused={openShift.refused} />
+      {/* Today's talk, once signed: waiting to send, refused, or in Forge. */}
+      {todayTalk.data && <ToolboxSignStatus done={toolboxDone} />}
 
       {toolboxKnownUnsigned ? (
         showSign && todayTalk.data && canStart ? (
           /* The tap already happened: the talk takes the button's place, and
              signing it IS the clock-in (onSigned → doStart with the picks
-             above). The card writes the signed row into the toolboxToday
-             cache before it calls onSigned, so this branch is gone in the
-             same render the punch starts and the signed branch below takes
-             over with its button held as "Clocking in…" — there is no window
-             for a second tap on Sign.
+             above). The signature is on the phone before onSigned runs, and
+             useToolboxToday counts it, so this branch is gone in the same
+             render the punch starts and the signed branch below takes over
+             with its button held as "Clocking in…" — there is no window for
+             a second tap on Sign, signal or none.
              Only while canStart: the pickers above stay live, and switching
              job can clear the cost code (the subset effect). The held button
              below is what says "pick a cost code"; without this guard the

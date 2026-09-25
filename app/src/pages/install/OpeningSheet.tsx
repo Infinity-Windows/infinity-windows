@@ -93,7 +93,7 @@ import {
   startBreak,
   type BreakType,
 } from "../../lib/timeclock";
-import { myTodayCompletion } from "../../lib/toolbox";
+import { useToolboxToday } from "../../lib/useToolboxGate";
 import { useClock } from "../../lib/clockContext";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import {
@@ -353,11 +353,9 @@ export function OpeningSheet() {
   // break without a round-trip.
   const clock = useClock();
 
-  const toolboxToday = useQuery({
-    queryKey: ["toolboxToday", myProfile.data?.id],
-    queryFn: () => myTodayCompletion(myProfile.data!.id),
-    enabled: Boolean(myProfile.data?.id),
-  });
+  // A signature still on this phone counts (offline toolbox signing): unit
+  // work opens the moment the talk is signed, signal or none.
+  const toolboxToday = useToolboxToday(myProfile.data?.id);
 
   // The gate the banner shows AND the gate the timer obeys, read from the same
   // place so the screen can never say "you can't start this" over a running

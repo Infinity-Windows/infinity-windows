@@ -37,20 +37,55 @@ vi.mock("../../lib/costCodes", () => ({
   getClockCostCodesForProject: vi.fn(async () => costCodesHolder.current),
 }));
 // The talk is signed IN the block now (2026-09-06), through the real
-// ToolboxSignCard. Its write (two storage uploads + an insert) becomes a
-// resolved spy that flips the "did I sign today?" read to the signed row —
-// the same order the server keeps — so a refetch after the sign sees a
-// signature, and a test that keeps the card mounted forever cannot pass by
+// ToolboxSignCard. Since offline toolbox signing (2026-09-25) a signature is
+// kept in the phone's outbox — the REAL one here, on its in-memory store — and
+// every gate counts it from there. The spy stands in only for building the
+// PDF: it puts a real signature on the phone, so the block reads the real
+// gate, and a test that keeps the card mounted forever cannot pass by
 // accident (review, 2026-09-06).
-const { submitSpy, pushToastSpy, completionHolder } = vi.hoisted(() => {
+const { submitSpy, pushToastSpy, completionHolder, signNow, geoHolder } = vi.hoisted(() => {
   const completionHolder = { current: null as unknown };
+  const signNow = async (opts: {
+    talk: { id: string };
+    profileId: string;
+    typedName: string;
+    signatureDataUrl: string;
+  }) => {
+    const { enqueueToolboxSign } = await import("../../lib/offline/outbox");
+    const clientId = crypto.randomUUID();
+    const signedAt = new Date().toISOString();
+    await enqueueToolboxSign(
+      {
+        clientId,
+        profileId: opts.profileId,
+        talkId: opts.talk.id,
+        talkDate: null,
+        typedName: opts.typedName,
+        signedAt,
+        talkSnapshot: "{}",
+        signaturePath: `${opts.profileId}/${opts.talk.id}/${clientId}-signature.png`,
+        signatureDataUrl: opts.signatureDataUrl,
+        pdfPath: null,
+      },
+      null,
+    );
+    return { id: `pending:${clientId}`, signed_at: signedAt, pending: true } as unknown;
+  };
   return {
     completionHolder,
-    submitSpy: vi.fn(async () => {
-      completionHolder.current = { id: "done1" };
-      return { id: "done1" } as unknown;
-    }),
+    signNow,
+    submitSpy: vi.fn(signNow),
     pushToastSpy: vi.fn(),
+    // The location wait before a punch: immediate unless a test holds it.
+    geoHolder: { current: null as null | Promise<unknown> },
+  };
+});
+vi.mock("../../lib/geo", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../lib/geo")>();
+  return {
+    ...actual,
+    captureGeoSoft: vi.fn(async () => (geoHolder.current ? geoHolder.current : {})),
+    captureGeoIfGranted: vi.fn(async () => null),
   };
 });
 // The refused-punch hand-off says what happened; catch the sentence.
@@ -62,30 +97,38 @@ vi.mock("../../lib/toolbox", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../lib/toolbox")>();
   return {
     ...actual,
-    submitToolboxCompletion: submitSpy,
+    signToolboxTalk: submitSpy,
     myTodayCompletion: vi.fn(async () => completionHolder.current),
   };
 });
 
 import { ClockInBlock } from "./ClockInBlock";
 import type { ClockPunch, TimeShift } from "../../lib/timeclock";
+import { discardFailed, listAll } from "../../lib/offline/outbox";
 
 let root: Root | null = null;
 let host: HTMLDivElement | null = null;
-/** The client behind the last mount, for reading what a sign wrote to it. */
-let lastQc: QueryClient | null = null;
 
-afterEach(() => {
+afterEach(async () => {
   act(() => root?.unmount());
   host?.remove();
   root = null;
   host = null;
-  lastQc = null;
   completionHolder.current = null;
+  geoHolder.current = null;
   clockInSpy.mockClear();
   submitSpy.mockClear();
   pushToastSpy.mockClear();
+  // A signature or punch one test left on the phone must not open the next
+  // test's gate.
+  for (const e of await listAll()) await discardFailed(e.id);
+  Object.defineProperty(navigator, "onLine", { value: true, configurable: true });
 });
+
+/** No signal: what the phone keeps stays on it (the outbox does not drain). */
+function noSignal() {
+  Object.defineProperty(navigator, "onLine", { value: false, configurable: true });
+}
 
 interface Seed {
   /** The signed-in role (slice 5 gates quick-create vs. "need a job"). */
@@ -135,7 +178,6 @@ function mount(seed: Seed = {}): HTMLElement {
   qc.setQueryData(["projects"], seed.projects ?? []);
   qc.setQueryData(["todayTalk"], seed.talk ?? null);
   qc.setQueryData(["toolboxToday", "me"], seed.toolboxDone ?? null);
-  lastQc = qc;
 
   host = document.createElement("div");
   document.body.appendChild(host);
@@ -370,7 +412,13 @@ describe("the clock-in block", () => {
     }
   });
 
-  it("signing fires one clockIn with the block's job, cost code, note and mode", async () => {
+  it("signing queues one clock-in behind the signature, with the block's job, cost code, note and mode", async () => {
+    // Offline toolbox signing (2026-09-25): the signature is kept on the
+    // phone, and the punch it triggers waits behind it in the outbox. Sent
+    // straight to the server, the punch would arrive before the signature
+    // and be refused on the toolbox gate. Driven with no signal so both stay
+    // on the phone where this can read them.
+    noSignal();
     const restore = stubCanvas();
     try {
       const el = mount({
@@ -412,47 +460,52 @@ describe("the clock-in block", () => {
         signatureDataUrl: "data:image/png;base64,AAAA",
       });
       // … and the punch left on its own, exactly once, with everything the
-      // block already knew. No second picker, no second button.
-      expect(clockInSpy).toHaveBeenCalledTimes(1);
-      expect(clockInSpy.mock.calls[0]).toEqual([
-        "p1",
-        "cc1",
-        expect.anything(),
-        "gate code 4411",
-        "tracking",
-        expect.objectContaining({ clientId: expect.any(String) }),
-      ]);
+      // block already knew — into the queue behind the signature, never
+      // straight to the server ahead of it.
+      expect(clockInSpy).not.toHaveBeenCalled();
+      const onPhone = await listAll();
+      const signature = onPhone.find((e) => e.op === "toolbox_sign")!;
+      const punches = onPhone.filter((e) => e.op === "clock_in");
+      expect(punches).toHaveLength(1);
+      expect(punches[0].dependsOn).toBe(signature.id);
+      expect(punches[0].payload).toMatchObject({
+        projectId: "p1",
+        costCodeId: "cc1",
+        note: "gate code 4411",
+        mode: "tracking",
+        clientId: expect.any(String),
+      });
+      // On the clock from the phone's own copy, saying the signature waits.
+      expect(el.querySelector(".clockin-bar")).toBeTruthy();
+      const status = el.querySelector(".toolbox-sign-status")!;
+      expect(status.getAttribute("data-state")).toBe("pending");
+      expect(status.textContent).toContain("Signed — waiting to send");
     } finally {
       restore();
     }
   });
 
   it("a second tap on Sign — during the sign or after it — cannot file a second signature or a second punch", async () => {
-    // The seconds between the signature landing and the punch landing are
-    // real on a phone: the punch waits on a GPS fix (up to 12.5 s) and then
-    // the network. In that window the card used to sit on screen with its
-    // Sign button live again, and a second tap filed a second signature AND a
-    // second clock_in — which auto-closes the shift the first one had just
-    // opened (review, 2026-09-06). Both halves of the window are driven here:
-    // the sign held open, then the punch held open.
+    // The seconds between the signature and the punch are real on a phone:
+    // the PDF is built, and the punch waits on a GPS fix (up to 12.5 s). In
+    // that window the card used to sit on screen with its Sign button live
+    // again, and a second tap filed a second signature AND a second clock_in
+    // — which auto-closes the shift the first one had just opened (review,
+    // 2026-09-06). Both halves of the window are driven here: the sign held
+    // open, then the punch held open on its location wait.
+    noSignal();
     const restore = stubCanvas();
     let finishSign!: () => void;
-    let finishPunch!: () => void;
+    let finishGeo!: () => void;
     submitSpy.mockImplementationOnce(
-      () =>
+      (opts) =>
         new Promise((resolve) => {
-          finishSign = () => {
-            completionHolder.current = { id: "done1" };
-            resolve({ id: "done1" });
-          };
+          finishSign = () => resolve(signNow(opts));
         }),
     );
-    clockInSpy.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          finishPunch = () => resolve({});
-        }),
-    );
+    geoHolder.current = new Promise((resolve) => {
+      finishGeo = () => resolve({});
+    });
     try {
       const el = mount({
         costCodes: [CC],
@@ -473,15 +526,16 @@ describe("the clock-in block", () => {
       // through a setTimeout(0) notification, so the held label is only
       // reliably on screen after a timer turn.
       await settle();
-      // While the signature is uploading: held, and a tap on it does nothing.
+      // While the signature is being kept: held, and a tap on it does nothing.
       expect(byText(el, "Signing…")?.disabled).toBe(true);
       await clickAndFlush(byText(el, "Signing…")!);
       expect(submitSpy).toHaveBeenCalledTimes(1);
 
       await act(async () => finishSign());
       await settle();
-      // The moment it lands: the card is gone from the block — no Sign button
-      // to tap twice — and the block's own button is held as the punch flies.
+      // The moment it is kept: the card is gone from the block — no Sign
+      // button to tap twice — and the block's own button is held as the
+      // punch waits on its location.
       expect(el.querySelector("canvas.sig-canvas")).toBeNull();
       expect(byText(el, "Sign today's talk")).toBeUndefined();
       const big = el.querySelector<HTMLButtonElement>(".clock-btn.primary.big")!;
@@ -489,31 +543,28 @@ describe("the clock-in block", () => {
       expect(big.disabled).toBe(true);
       await clickAndFlush(big);
 
-      await act(async () => finishPunch());
+      await act(async () => finishGeo());
       await settle();
       expect(submitSpy).toHaveBeenCalledTimes(1);
-      expect(clockInSpy).toHaveBeenCalledTimes(1);
+      const onPhone = await listAll();
+      expect(onPhone.filter((e) => e.op === "toolbox_sign")).toHaveLength(1);
+      expect(onPhone.filter((e) => e.op === "clock_in")).toHaveLength(1);
+      expect(clockInSpy).not.toHaveBeenCalled();
     } finally {
       restore();
     }
   });
 
-  it("knows the talk is signed without a network read, so a punch refused offline still hands off with the picks", async () => {
-    // Signal drops between the signature landing and the punch: the refetch
-    // the sign kicks off never returns (offlineFirst pauses it), and the
-    // punch is refused. Before the cache write in ToolboxSignCard the block
-    // — and the sheet it hands off to — still read "unsigned" off the last
-    // fetched value, so the sheet opened with Start held and today's talk
-    // asking to be signed again: the punch could not even be queued
-    // (review, 2026-09-06).
+  it("with no signal, the talk counts as signed at once and the punch waits behind it — no hand-off, no refused punch", async () => {
+    // The owner's field report (2026-09-25): a toolbox talk could not be
+    // signed with no signal, so nobody could clock in. Now the signature is
+    // kept on the phone and counts at once — no read from the server, which
+    // hangs here the whole time — and the punch queues behind it instead of
+    // going to the server, failing, and handing the sheet a job to redo.
+    noSignal();
     const restore = stubCanvas();
     const dispatch = vi.spyOn(window, "dispatchEvent");
-    submitSpy.mockImplementationOnce(async () => {
-      // From here on the "did I sign today?" read hangs forever.
-      completionHolder.current = new Promise(() => {});
-      return { id: "done1" } as unknown;
-    });
-    clockInSpy.mockRejectedValueOnce(new Error("Failed to fetch"));
+    completionHolder.current = new Promise(() => {});
     try {
       const el = mount({
         costCodes: [CC],
@@ -531,17 +582,14 @@ describe("the clock-in block", () => {
       await clickAndFlush(byText(el, "Sign today's talk")!);
       await settle();
 
-      // The signed row is in the shared cache — the same key the sheet and
-      // the on-the-clock nag read — with no read having come back.
-      expect(lastQc!.getQueryData(["toolboxToday", "me"])).toEqual({ id: "done1" });
       expect(el.querySelector("canvas.sig-canvas")).toBeNull();
-      // One punch tried, refused, and handed to the sheet with everything.
-      expect(clockInSpy).toHaveBeenCalledTimes(1);
+      expect(clockInSpy).not.toHaveBeenCalled();
       const opened = dispatch.mock.calls
         .map(([ev]) => ev as CustomEvent)
         .filter((ev) => ev.type === "infinity:open-clock");
-      expect(opened).toHaveLength(1);
-      expect(opened[0].detail).toMatchObject({ projectId: "p1", costCodeId: "cc1", mode: "tracking" });
+      expect(opened).toHaveLength(0);
+      expect(pushToastSpy).not.toHaveBeenCalled();
+      expect((await listAll()).map((e) => e.op).sort()).toEqual(["clock_in", "toolbox_sign"]);
     } finally {
       dispatch.mockRestore();
       restore();
@@ -618,15 +666,13 @@ describe("the clock-in block", () => {
     // (it is an option callback, on purpose). It must NOT clock in with a
     // null cost code off the picks the card was rendered with; the signature
     // stands, the person is told, and the plain Start is what is left.
+    noSignal();
     const restore = stubCanvas();
     let finishSign!: () => void;
     submitSpy.mockImplementationOnce(
-      () =>
+      (opts) =>
         new Promise((resolve) => {
-          finishSign = () => {
-            completionHolder.current = { id: "done1" };
-            resolve({ id: "done1" });
-          };
+          finishSign = () => resolve(signNow(opts));
         }),
     );
     try {
@@ -647,6 +693,7 @@ describe("the clock-in block", () => {
       await act(async () => finishSign());
       await settle();
       expect(clockInSpy).not.toHaveBeenCalled();
+      expect((await listAll()).filter((e) => e.op === "clock_in")).toHaveLength(0);
       expect(pushToastSpy).toHaveBeenCalledTimes(1);
       expect(String(pushToastSpy.mock.calls[0][0])).toContain("Pick a cost code to clock in");
       // Signed: the plain Start is offered, held until a code is picked.
@@ -911,7 +958,7 @@ describe("the clock-in block", () => {
 // on-the-clock bar and never offers the big button again. Driven through the
 // REAL outbox (its in-memory store under vitest) with the phone offline, so
 // this proves the block sees what the queue holds, not what a mock says.
-import { enqueueClockIn, enqueueClockOut, discardFailed } from "../../lib/offline/outbox";
+import { enqueueClockIn, enqueueClockOut } from "../../lib/offline/outbox";
 
 describe("a clock punch still on the phone (K0.1)", () => {
   const queuedIds: string[] = [];

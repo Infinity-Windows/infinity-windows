@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { HardHat } from "lucide-react";
 import type { SafetyTalk } from "../../lib/ops";
-import { submitToolboxCompletion } from "../../lib/toolbox";
+import { signToolboxTalk } from "../../lib/toolbox";
 import { SignaturePad, type SignaturePadHandle } from "../SignaturePad";
 import { formatApiError } from "../../lib/install/errors";
 import { TalkContent } from "../safety/TalkContent";
@@ -15,9 +15,16 @@ import { useT } from "../../lib/i18n";
  * The morning ritual is one flow — pick the job, pick the cost code, sign the
  * talk, pick your first window, start — so the signing lives HERE, not on a
  * separate page the sheet bounces you to. Same record as the Safety page's
- * flow (same submitToolboxCompletion: acknowledgment, typed name, drawn
- * signature, archived PDF); only the wrapper is compact. The full talk text
- * stays one tap away rather than filling the sheet.
+ * flow (same signToolboxTalk: acknowledgment, typed name, drawn signature,
+ * archived PDF); only the wrapper is compact. The full talk text stays one tap
+ * away rather than filling the sheet.
+ *
+ * Signing works with no signal (offline toolbox signing, 2026-09-25): the
+ * signature is kept on the phone and sent from the outbox, at once when there
+ * is signal. It counts as signed the moment it is kept — every gate reads
+ * today's signature through useToolboxToday, which counts one still on the
+ * phone — so this card is gone from its host in the same render, whatever the
+ * signal is doing.
  *
  * `onSigned` lets the host finish what the tap started: the landing block
  * passes its own clock-in, so signing IS the punch and nobody picks the job
@@ -42,26 +49,23 @@ export function ToolboxSignCard({
 
   const sign = useMutation({
     mutationFn: () =>
-      submitToolboxCompletion({
+      signToolboxTalk({
         talk,
         profileId,
         typedName: typedName.trim(),
         signatureDataUrl: sigRef.current!.toDataUrl(),
       }),
-    onSuccess: (row) => {
-      // Write the signed row into the cache BEFORE asking for a refetch, so
-      // every host — this card's own parent, the landing block, the sheet,
-      // the on-the-clock nag — knows the talk is signed in the same render,
-      // not one network round trip later. Two things hung on that gap
-      // (review, 2026-09-06): the landing block kept this card on screen with
-      // its button live until the refetch landed, so a second tap filed a
-      // second signature AND a second clock_in, which auto-closes the shift
-      // the first one had just opened; and a phone that lost signal right
-      // after the signature never got the refetch at all (offlineFirst
-      // pauses it), so the clock sheet it was handed to still read "unsigned"
-      // and held its Start — the punch could not even be queued.
-      queryClient.setQueryData(["toolboxToday", profileId], row);
-      queryClient.invalidateQueries({ queryKey: ["toolboxToday"] });
+    onSuccess: () => {
+      // No cache write and no re-read here any more. The signature is in the
+      // outbox by the time this runs, and every host — this card's own
+      // parent, the landing block, the sheet, the on-the-clock nag — reads it
+      // from there through useToolboxToday in the same render. That is what
+      // the old cache write was for (review, 2026-09-06): the landing block
+      // kept this card on screen with its button live until a refetch landed,
+      // so a second tap filed a second signature AND a second clock_in; and a
+      // phone that lost signal right after signing never got the refetch, so
+      // the sheet still read "unsigned". The outbox tells Forge's row to the
+      // cache itself once it is sent.
       queryClient.invalidateQueries({ queryKey: ["toolboxHistory"] });
       queryClient.invalidateQueries({ queryKey: ["toolboxCompliance"] });
       // Called from the mutation OPTION, not a per-call mutate(_, { onSuccess })

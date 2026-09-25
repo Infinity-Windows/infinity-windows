@@ -33,6 +33,7 @@ import { ViewAsRoleProvider } from "./lib/viewAsRole";
 import { useEffectiveRole } from "./lib/useEffectiveRole";
 import { supabase } from "./lib/supabase";
 import { rememberSignedIn } from "./lib/signedIn";
+import { initToolboxTalkPrefetch } from "./lib/toolboxAhead";
 import { syncPinLockWithAuth } from "./lib/pinGate";
 import { Home } from "./pages/Home";
 import { Landing } from "./pages/Landing";
@@ -453,6 +454,11 @@ export default function App() {
       if (!s) return;
       void ensureMyProfile().catch(() => {});
       void prefetchWarehousePack();
+      // Today's toolbox talk and the next three days', so a phone that loses
+      // signal before tomorrow morning can still sign tomorrow's talk (offline
+      // toolbox signing, 2026-09-25). Also re-read on focus and when signal
+      // returns; never blocks, never throws.
+      initToolboxTalkPrefetch(queryClient);
     };
     supabase.auth.getSession().then(({ data }) => {
       // This is the ONE place the app asks who is signed in. Everywhere that

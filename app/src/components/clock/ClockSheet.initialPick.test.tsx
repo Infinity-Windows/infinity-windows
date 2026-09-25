@@ -235,6 +235,9 @@ describe("the clock sheet opened with a carried pick", () => {
       note: "gate 4411",
       mode: "tracking",
       punch: CARRIED,
+      // Who is clocking in, so the queue can hold this behind today's toolbox
+      // talk signature when one is still on the phone (offline signing).
+      profileId: "me",
     });
   });
 

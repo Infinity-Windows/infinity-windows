@@ -1,7 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { ChevronRight, HardHat } from "lucide-react";
-import { myTodayCompletion } from "../../lib/toolbox";
+import { useToolboxToday } from "../../lib/useToolboxGate";
 
 /** Mon–Fri (local). Toolbox talks are a weekday compliance record. */
 function isWeekday(d = new Date()): boolean {
@@ -35,11 +34,9 @@ export function ToolboxTalkNagBanner({
   onNavigate?: () => void;
 }) {
   const enabled = Boolean(profileId) && clockedIn && isWeekday();
-  const completion = useQuery({
-    queryKey: ["toolboxToday", profileId],
-    queryFn: () => myTodayCompletion(profileId!),
-    enabled,
-  });
+  // A signature still on this phone is a signed talk (offline toolbox
+  // signing): nobody is nagged for a talk they signed in a dead zone.
+  const completion = useToolboxToday(profileId, enabled);
 
   // Only show once we know for sure today's talk is still outstanding.
   if (!enabled || !completion.isSuccess || completion.data) return null;
