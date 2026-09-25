@@ -153,7 +153,7 @@ function todayLocal(): string {
 /** When today's talk was signed, by the signing phone's clock: 6:00, before any tap here. */
 const SIGNED_EARLY = iso(T0 - 3600_000);
 
-function client(opts: { signedAt?: string } = {}): QueryClient {
+function client(opts: { signedAt?: string | null } = {}): QueryClient {
   const qc = new QueryClient({
     defaultOptions: {
       queries: { retry: false, gcTime: Infinity, staleTime: Infinity, refetchOnMount: false, refetchOnWindowFocus: false },
@@ -169,11 +169,15 @@ function client(opts: { signedAt?: string } = {}): QueryClient {
   qc.setQueryData(["myActivePhases", "me"], []);
   // Today's talk is signed: the plain Start is the whole tap.
   qc.setQueryData(["todayTalk"], null);
-  qc.setQueryData(["toolboxToday", "me"], { id: "done1", signed_at: opts.signedAt ?? SIGNED_EARLY });
+  // null: Forge has no signature for today (one may be on the phone).
+  qc.setQueryData(
+    ["toolboxToday", "me"],
+    opts.signedAt === null ? null : { id: "done1", signed_at: opts.signedAt ?? SIGNED_EARLY },
+  );
   return qc;
 }
 
-function render(ui: ReactNode, opts: { signedAt?: string } = {}): HTMLElement {
+function render(ui: ReactNode, opts: { signedAt?: string | null } = {}): HTMLElement {
   const host = document.createElement("div");
   document.body.appendChild(host);
   const root = createRoot(host);
@@ -184,7 +188,7 @@ function render(ui: ReactNode, opts: { signedAt?: string } = {}): HTMLElement {
 }
 
 function mountSheet(
-  opts: { shift?: TimeShift | null; initialPick?: ClockInPick | null; signedAt?: string } = {},
+  opts: { shift?: TimeShift | null; initialPick?: ClockInPick | null; signedAt?: string | null } = {},
 ): HTMLElement {
   return render(
     <ClockSheet profileId="me" shift={opts.shift ?? null} initialPick={opts.initialPick ?? null} onClose={() => {}} onChanged={() => {}} />,
@@ -427,5 +431,81 @@ describe("the clock sheet", () => {
     // Ten minutes of lunch — not ten minutes and nine seconds.
     expect(out[0].p_break_seconds).toBe(600);
     expect(out[0].p_lat).toBe(FIX.latitude);
+  });
+});
+
+
+// Offline toolbox signing (2026-09-25): the talk can now be signed with no
+// signal, and the signature waits on the phone. The rule above — paid time
+// starts no earlier than today's talk — has to hold for THAT signature too,
+// and the clock-in must not reach the server before it.
+describe("a clock-in behind today's talk signed with no signal", () => {
+  afterEach(async () => {
+    Object.defineProperty(navigator, "onLine", { value: true, configurable: true });
+    const { discardFailed, listAll } = await import("../../lib/offline/outbox");
+    for (const e of await listAll()) await discardFailed(e.id);
+  });
+
+  it("is paid from the signature, under the same id, and sent right after it when signal returns", async () => {
+    const { drain, enqueueToolboxSign } = await import("../../lib/offline/outbox");
+    vi.spyOn(supabase.storage, "from").mockReturnValue({
+      upload: async () => ({ data: { path: "x" }, error: null }),
+    } as unknown as ReturnType<typeof supabase.storage.from>);
+    server.dropNextRequest = true;
+    const handoffs: ClockInPick[] = [];
+    const onOpen = (e: Event) => handoffs.push((e as CustomEvent<ClockInPick>).detail);
+    window.addEventListener("infinity:open-clock", onOpen);
+    try {
+      // 7:00: the block's Start is tapped; that request never arrives.
+      const block = render(<ClockInBlock />, { signedAt: null });
+      await tap(block, ".clock-btn.primary.big");
+      await pass(12_500);
+      expect(handoffs).toHaveLength(1);
+      const first = clockInCalls()[0];
+
+      // The signal goes. At 7:00:30 today's talk is signed on the phone.
+      Object.defineProperty(navigator, "onLine", { value: false, configurable: true });
+      const signedAt = iso(T0 + 30_000);
+      await act(async () => {
+        await enqueueToolboxSign(
+          {
+            clientId: "0e9b8c7d-3333-4c4d-8e5f-000000000030",
+            profileId: "me",
+            talkId: "t1",
+            talkDate: todayLocal(),
+            typedName: "Dana",
+            signedAt,
+            talkSnapshot: "{}",
+            signaturePath: "me/t1/sig.png",
+            signatureDataUrl: "data:image/png;base64,iVBORw0KGgo=",
+            pdfPath: null,
+          },
+          null,
+        );
+      });
+
+      // The sheet's Start, still with no signal: queued behind the signature.
+      await pass(20_000);
+      const sheet = mountSheet({ initialPick: handoffs[0], signedAt: null });
+      await tap(sheet, ".clock-btn.primary.big");
+      await pass(12_500);
+      expect(clockInCalls()).toHaveLength(1);
+
+      // Signal returns: the signature first, then the clock-in behind it.
+      Object.defineProperty(navigator, "onLine", { value: true, configurable: true });
+      await act(async () => {
+        await drain();
+      });
+      await pass(1_000);
+      const order = server.calls.map((c) => c.fn).filter((fn) => fn === "sign_toolbox_talk" || fn === "clock_in");
+      expect(order).toEqual(["clock_in", "sign_toolbox_talk", "clock_in"]);
+      const sent = clockInCalls();
+      expect(sent[1].p_client_id).toBe(first.p_client_id);
+      expect(sent[1].p_tapped_at).toBe(signedAt);
+      expect(server.shifts.size).toBe(1);
+      expect([...server.shifts.values()][0].clock_in_at).toBe(signedAt);
+    } finally {
+      window.removeEventListener("infinity:open-clock", onOpen);
+    }
   });
 });
