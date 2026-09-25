@@ -467,10 +467,12 @@ describe("drainStore", () => {
     const store = new MemoryOutboxStore();
     await store.put(entry({ id: "a", createdAt: 10 }));
     const persistedStatuses: string[] = [];
-    const origPut = store.put.bind(store);
-    store.put = async (e, b) => {
-      persistedStatuses.push(e.status);
-      return origPut(e, b);
+    // The drain writes through swap (a write that only lands on the state it
+    // read — see OutboxStore.swap), so that is where the marker is seen.
+    const origSwap = store.swap.bind(store);
+    store.swap = async (id, expected, next) => {
+      persistedStatuses.push(next?.status ?? "deleted");
+      return origSwap(id, expected, next);
     };
     await drainStore(
       store,
@@ -478,7 +480,7 @@ describe("drainStore", () => {
       { now: T0 },
     );
     // sending is written before the successful send deletes the entry.
-    expect(persistedStatuses).toContain("sending");
+    expect(persistedStatuses).toEqual(["sending", "deleted"]);
   });
 });
 

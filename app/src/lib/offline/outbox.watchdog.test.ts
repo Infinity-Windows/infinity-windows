@@ -119,7 +119,21 @@ function punchHandler(server: FakeServer, calls: string[] = []): OpHandler {
 class FlakyDiskStore extends MemoryOutboxStore {
   hangBlobFor: string | null = null;
   hangSendingMarkFor: string | null = null;
+  /** Hold the write that records this entry's failed attempt. */
+  hangFailureFor: string | null = null;
   private wake: (() => void)[] = [];
+  /** Is this write one the test asked to hold? One-shot for each kind. */
+  private holds(next: OutboxEntry | null, id: string): boolean {
+    if (next && next.status === "sending" && id === this.hangSendingMarkFor) {
+      this.hangSendingMarkFor = null;
+      return true;
+    }
+    if (next && next.status !== "sending" && next.attemptCount > 0 && id === this.hangFailureFor) {
+      this.hangFailureFor = null;
+      return true;
+    }
+    return false;
+  }
   getBlob(id: string): Promise<Blob | null> {
     if (id === this.hangBlobFor) {
       this.hangBlobFor = null;
@@ -130,13 +144,22 @@ class FlakyDiskStore extends MemoryOutboxStore {
     return super.getBlob(id);
   }
   put(entry: OutboxEntry, blob?: Blob | null): Promise<void> {
-    if (entry.status === "sending" && entry.id === this.hangSendingMarkFor) {
-      this.hangSendingMarkFor = null;
+    if (this.holds(entry, entry.id)) {
       return new Promise((resolve) => {
         this.wake.push(() => void super.put(entry, blob).then(resolve));
       });
     }
     return super.put(entry, blob);
+  }
+  // A held write runs when the database answers — like an IndexedDB request
+  // queued behind an open that stalled — against whatever is stored THEN.
+  swap(id: string, expected: OutboxEntry | null, next: OutboxEntry | null): Promise<boolean> {
+    if (this.holds(next, id)) {
+      return new Promise((resolve) => {
+        this.wake.push(() => void super.swap(id, expected, next).then(resolve));
+      });
+    }
+    return super.swap(id, expected, next);
   }
   /** The database answers the calls it was holding, late. */
   answerLate() {
@@ -276,15 +299,27 @@ describe("the send watchdog", () => {
     expect(calls).toEqual([b.id]);
     expect([...server.rows.keys()]).toEqual([b.id]);
 
+    // What the watchdog wrote down: attempt 1, why, and when to try again.
+    const recorded = await entryById(store, a.id);
+    expect(recorded).toMatchObject({ status: "queued", attemptCount: 1 });
+    expect(recorded!.lastError).toMatch(/too long/i);
+    expect(recorded!.nextAttemptAt).toBeGreaterThan(Date.now());
+
     // The database finally answers the old write. The abandoned attempt must
-    // not start sending now, on its own, beside the queue.
+    // not start sending now, on its own, beside the queue — and its stale
+    // "sending" copy must not wind the entry back to attempt 0 with no reason
+    // and no backoff (Codex review of #658): what the watchdog recorded stands.
     store.answerLate();
     await vi.advanceTimersByTimeAsync(0);
     expect(calls).toEqual([b.id]);
+    expect(await entryById(store, a.id)).toEqual(recorded);
 
-    // Nothing is lost: the entry is still there (the late write only put back
-    // its pre-attempt copy), and the next pass sends it.
-    expect(await entryById(store, a.id)).not.toBeNull();
+    // ...until the retry: a pass before the backoff leaves it alone.
+    await drainStore(store, handlers, opts());
+    expect(calls).toEqual([b.id]);
+    expect(await entryById(store, a.id)).toEqual(recorded);
+
+    // Nothing is lost: once the backoff has passed, the next pass sends it.
     await vi.advanceTimersByTimeAsync(computeBackoffMs(1));
     await drainStore(store, handlers, opts());
     expect(server.rows.has(a.id)).toBe(true);
@@ -430,6 +465,47 @@ describe("the send watchdog", () => {
     expect(dead!.lastError).toMatch(/too long/i);
   });
 
+  it("a stale 'sending' write that lands after the retry sent the photo does not bring it back", async () => {
+    const store = new FlakyDiskStore();
+    const server = new FakeServer();
+    const a = await queue(store, "photo_upload");
+    store.hangSendingMarkFor = a.id;
+    const handlers = { photo_upload: photoHandler(server, null) };
+
+    const run = start(store, handlers, opts());
+    await vi.advanceTimersByTimeAsync(DEADLINE + 1);
+    await run.pass;
+    await vi.advanceTimersByTimeAsync(computeBackoffMs(1));
+    await drainStore(store, handlers, opts());
+    expect(server.rows.has(a.id)).toBe(true);
+    expect(await store.count()).toBe(0);
+
+    store.answerLate();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(await store.count()).toBe(0);
+    expect(server.rowWrites).toBe(1);
+  });
+
+  it("a failure record that lands after the entry was taken away does not bring it back", async () => {
+    const store = new FlakyDiskStore();
+    const a = await queue(store, "photo_upload");
+    store.hangFailureFor = a.id;
+    const handlers: OpHandlers = {
+      photo_upload: async () => {
+        throw new TypeError("Failed to fetch");
+      },
+    };
+    const run = start(store, handlers, opts());
+    await vi.advanceTimersByTimeAsync(0);
+    // While the failure record waits on the phone's database, the entry is
+    // taken away — sent by another tab, or thrown away by a person.
+    await store.delete(a.id);
+    store.answerLate();
+    await vi.advanceTimersByTimeAsync(0);
+    await run.pass;
+    expect(await store.count()).toBe(0);
+  });
+
   it("with no watchdog asked for, a drain waits for the send as it always has", async () => {
     const store = new MemoryOutboxStore();
     await queue(store, "photo_upload");
@@ -446,5 +522,41 @@ describe("the send watchdog", () => {
     finish();
     await vi.advanceTimersByTimeAsync(0);
     expect(run.settled()).toBe(true);
+  });
+});
+
+describe("a write that only lands on the state it was based on (MemoryOutboxStore.swap)", () => {
+  const photo = (over: Partial<OutboxEntry> = {}): OutboxEntry => ({
+    ...makeEntry({ op: "photo_upload", hasBlob: true, payload: { path: "p.jpg" } }, "e1", 1_000),
+    ...over,
+  });
+
+  it("writes when the stored entry is the one it read, keeping the photo beside it", async () => {
+    const store = new MemoryOutboxStore();
+    const blob = new Blob(["x"]);
+    const read = photo();
+    await store.put(read, blob);
+    expect(await store.swap("e1", read, { ...read, attemptCount: 1, lastError: "x" })).toBe(true);
+    expect((await store.getAll())[0]).toMatchObject({ attemptCount: 1, lastError: "x" });
+    expect(await store.getBlob("e1")).toBe(blob);
+  });
+
+  it("counts a 'sending' mark as the entry it marked, the way every read does", async () => {
+    const store = new MemoryOutboxStore();
+    const read = photo();
+    await store.put({ ...read, status: "sending" });
+    expect(await store.swap("e1", read, null)).toBe(true);
+    expect(await store.count()).toBe(0);
+  });
+
+  it("refuses when the entry has moved on, and when it is gone", async () => {
+    const store = new MemoryOutboxStore();
+    const read = photo();
+    await store.put({ ...read, attemptCount: 1, lastError: "newer" });
+    expect(await store.swap("e1", read, { ...read, status: "sending" })).toBe(false);
+    expect((await store.getAll())[0]).toMatchObject({ attemptCount: 1, lastError: "newer" });
+    await store.delete("e1");
+    expect(await store.swap("e1", read, read)).toBe(false);
+    expect(await store.count()).toBe(0);
   });
 });

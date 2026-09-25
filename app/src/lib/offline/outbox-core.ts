@@ -730,6 +730,22 @@ export function deserializeEntry(json: string): OutboxEntry | null {
   };
 }
 
+/**
+ * Is `current` still the entry `expected` was read as? Compared the way every
+ * read sees an entry — through deserializeEntry, so a "sending" mark counts as
+ * the queued entry it marked — and field for field, attempt count, error and
+ * backoff included. Both absent counts as the same.
+ *
+ * What makes the drain's writes conditional (OutboxStore.swap): a write based
+ * on an old read must never land over a newer one (Codex review of #658).
+ */
+export function sameState(current: OutboxEntry | null, expected: OutboxEntry | null): boolean {
+  if (current === null || expected === null) return current === expected;
+  const a = deserializeEntry(serializeEntry(current));
+  const b = deserializeEntry(serializeEntry(expected));
+  return a !== null && b !== null && serializeEntry(a) === serializeEntry(b);
+}
+
 // --- generic drain over any store + handler map --------------------------
 
 export interface OutboxStore {
@@ -742,6 +758,16 @@ export interface OutboxStore {
   insertIfAbsent?(entry: OutboxEntry, blob: Blob | null): Promise<OutboxEntry | null>;
   delete(id: string): Promise<void>;
   count(): Promise<number>;
+  /**
+   * Replace the entry under `id` with `next` — or delete it, when `next` is
+   * null — ONLY if what is stored now is still `expected` (sameState), in one
+   * atomic step; resolves whether it wrote. A stored photo stays with its
+   * entry. Every write the drain makes about an entry goes through here, so a
+   * write based on an old read — a "sending" mark that the phone's database
+   * finally answers after the watchdog recorded the attempt, a failure record
+   * for an entry that has since been sent or thrown away — changes nothing.
+   */
+  swap(id: string, expected: OutboxEntry | null, next: OutboxEntry | null): Promise<boolean>;
 }
 
 /**
@@ -807,7 +833,9 @@ export interface DrainOpts {
 type SendOutcome =
   | { kind: "sent"; result: unknown }
   | { kind: "failed"; error: unknown }
-  | { kind: "abandoned"; deadlineMs: number };
+  | { kind: "abandoned"; deadlineMs: number }
+  /** The entry changed between the pass's read and this send: not sent. */
+  | { kind: "stale" };
 
 /** setTimeout's own ceiling (2^31-1 ms); anything longer fires at once. */
 const MAX_TIMER_MS = 2_147_483_647;
@@ -880,15 +908,18 @@ export async function drainStore(
    */
   const recordFailure = async (entry: OutboxEntry, err: unknown): Promise<void> => {
     const next = applyFailure(entry, err, clock());
-    await store.put(next);
+    // Only over the entry this attempt read: if it was sent, thrown away or
+    // changed meanwhile, that newer state stands and this record is dropped.
+    if (!(await store.swap(entry.id, entry, next))) return;
     if (next.status === "failed") {
       deadLettered += 1;
       // Anything waiting on this can never be sent now. Fail it here rather
       // than leaving it queued forever, invisible and uncounted.
-      const stranded = cascadeFailure(await store.getAll(), next.id);
+      const snapshot = await store.getAll();
+      const stranded = cascadeFailure(snapshot, next.id);
       for (const s of stranded) {
-        await store.put(s);
-        deadLettered += 1;
+        const was = snapshot.find((e) => e.id === s.id) ?? null;
+        if (await store.swap(s.id, was, s)) deadLettered += 1;
       }
     } else retried += 1;
   };
@@ -905,7 +936,11 @@ export async function drainStore(
     let onBlob: ((blob: Blob | null) => void) | null = null;
 
     const send = async (): Promise<SendOutcome> => {
-      await store.put(markSending(entry));
+      // Marked only if the entry is still what this pass read. A mark the
+      // phone's database answers after the watchdog has recorded the attempt
+      // finds that newer record and writes nothing — it used to put back the
+      // pre-attempt copy, wiping the attempt, its reason and its backoff.
+      if (!(await store.swap(entry.id, entry, markSending(entry)))) return { kind: "stale" };
       // The mark landed after the drain gave up (the phone's database answered
       // late): starting the handler now would send beside the retry.
       if (signal.aborted) return { kind: "abandoned", deadlineMs: 0 };
@@ -981,17 +1016,18 @@ export async function drainStore(
     const handler = handlers[entry.op];
     if (!handler) {
       // No handler registered → dead-letter so it surfaces rather than looping.
-      await store.put({
-        ...entry,
-        status: "failed",
-        lastError: `No handler for op "${entry.op}"`,
-      });
-      deadLettered += 1;
+      const dead: OutboxEntry = { ...entry, status: "failed", lastError: `No handler for op "${entry.op}"` };
+      if (await store.swap(entry.id, entry, dead)) deadLettered += 1;
       return;
     }
     const outcome = await sendWithin(entry, handler);
-    if (outcome.kind === "sent") {
-      await store.delete(entry.id);
+    if (outcome.kind === "stale") {
+      // Changed under this pass (another tab, a person): the next pass reads
+      // it fresh. Nothing was sent.
+    } else if (outcome.kind === "sent") {
+      // The server has it. Delete the entry this attempt marked — not one
+      // that has changed since.
+      await store.swap(entry.id, entry, null);
       sent += 1;
       // Confirmation is different from an absent entry (which may have been
       // discarded). A UI observer must never turn a successful write into a retry.
