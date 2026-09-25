@@ -126,6 +126,16 @@ class TestTheWall(unittest.TestCase):
             "row security and never finds its grant — ask partner_has_job_grant()",
         )
 
+    def test_projects_writes_refuse_a_partner(self):
+        # THE WALL guarded the write side of every FOR ALL policy it swept;
+        # projects' per-command write rules were outside the sweep until
+        # 20261030100000. A partner never writes a job directly.
+        states, _unparsed = replay_policies()
+        policies = states["projects"].policies
+        self.assertIn("not public.is_partner_user()", policies["projects_insert"].check)
+        self.assertIn("not public.is_partner_user()", policies["projects_update"].using)
+        self.assertIn("not public.is_partner_user()", policies["projects_update"].check)
+
     def test_daily_logs_excludes_partners_when_installers_can_report(self):
         live = live_select_granting_tables()
         self.assertIn("daily_logs", live)

@@ -55,7 +55,8 @@ MIGRATIONS_DIR = REPO_ROOT / "supabase" / "migrations"
 #:     the crew branches under `not public.is_partner_user()`, and a partner
 #:     branch that asks partner_has_job_grant(), a definer. partner_job_grants
 #:     is owner-read-only, so a select of it written inline in the policy
-#:     never finds a partner's own grant.
+#:     never finds a partner's own grant. Its insert/update rules refuse a
+#:     partner outright.
 #:     READ THIS BEFORE ADDING A COLUMN TO `projects`. That policy is
 #:     row-level, and RLS has no column-level half: a granted builder reads
 #:     the WHOLE row, every column, present and future. THE WALL's own

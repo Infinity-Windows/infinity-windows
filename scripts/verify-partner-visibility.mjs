@@ -1,7 +1,7 @@
-// Disposable SQL checks for what a partner (builder) login may read on
-// `projects`: the rule on master before 20261030100000 against the rule it
-// writes. A partner reads a job only when the job is live and granted to that
-// login; nobody else's view of the jobs moves by a row. No network and no
+// Disposable SQL checks for what a partner (builder) login may read and write
+// on `projects`: the rules on master before 20261030100000 against the rules
+// it writes. A partner reads a job only when the job is live and granted to
+// that login; nobody else's view of the jobs moves by a row. No network and no
 // production database: the real migrations over stubs of the platform (auth,
 // profiles, the role helpers).
 //   PGLITE_MODULE=/path/to/pglite/dist/index.js node scripts/verify-partner-visibility.mjs
@@ -55,6 +55,10 @@ for (const f of ALL.filter((f) => f < NEW)) {
   if (text.includes(READ_CREATE)) { MASTER_READ = cut(text, READ_DROP, READ_CREATE); MASTER_FILE = f; }
 }
 assert.ok(MASTER_READ, "found the read rule on master");
+const MASTER_INSERT = cut(await migration("20260933000000_testing_projects.sql"),
+  'drop policy if exists "projects_insert" on projects;', 'create policy "projects_insert"');
+const MASTER_UPDATE = cut(await migration("20260959000000_project_trash.sql"),
+  'drop policy if exists "projects_update" on projects;', 'create policy "projects_update"');
 const GRANTS = cut(await migration("20260950000000_partner_wall.sql"),
   "create table if not exists partner_job_grants (", null,
   "grant select on table partner_job_grants to authenticated;");
@@ -97,10 +101,13 @@ create function _has_open_redo(p uuid) returns boolean language sql as $$select 
 create function attach_sandbox_guards() returns void language sql as $$select$$;
 alter table projects enable row level security;
 grant select on profiles,projects to authenticated;
+-- The columns a signed-in login may write, as 20260959000000 grants them (a subset).
+grant insert (job_code, name, notes) on projects to authenticated;
+grant update (name, notes) on projects to authenticated;
 `);
 await db.exec(GRANTS);
 await db.exec(await migration("20261011000000_custom_work.sql"));
-await db.exec(MASTER_READ);
+await db.exec(MASTER_READ + "\n" + MASTER_INSERT + "\n" + MASTER_UPDATE);
 
 const id = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 // Crew (the two QA test logins among them), and three partners: A holds
@@ -153,6 +160,29 @@ async function everyone() {
   for (const [who, uuid] of Object.entries(PEOPLE)) out[who] = { jobs: await seen(uuid), units: await unitsSeen(uuid) };
   return out;
 }
+// A write attempted as someone, always rolled back: how many rows it touched,
+// or the refusal.
+async function tryWrite(uuid, sql, params = []) {
+  await db.exec("begin");
+  try {
+    await as(uuid);
+    const r = await db.query(sql, params);
+    return { ok: true, n: r.affectedRows ?? r.rows.length };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  } finally {
+    await db.exec("reset role").catch(() => {});
+    await db.exec("rollback");
+  }
+}
+async function writes(uuid) {
+  const insert = await tryWrite(uuid, "insert into projects(job_code,name) values('ZZNEW','made here')");
+  const update = {};
+  for (const job of ["REAL_A", "REAL_B", "REAL_NONE"]) {
+    update[job] = await tryWrite(uuid, "update projects set notes='changed' where id=$1", [JOBS[job]]);
+  }
+  return { insert, update };
+}
 // What each partner should read: its own grants, live ones only, testing ones included.
 const GRANTED = { partnerA: ["REAL_A", "TEST_A"], partnerB: ["REAL_B"], partnerC: [] };
 function partnerProblems(snapshot) {
@@ -168,15 +198,17 @@ async function useRead(ruleSql) {
   await db.exec(ruleSql);
 }
 
-// ---- before: the rule on master ------------------------------------------------
+// ---- before: the rules on master ------------------------------------------------
 const old = await everyone();
+const oldWrites = {};
+for (const who of Object.keys(CREW)) oldWrites[who] = await writes(CREW[who]);
 
 // ---- after: the migration, and any later rebuild of the read rule ------------------
 await db.exec(NEW_SQL);
 if (LATEST_READ) await useRead(LATEST_READ);
 const now = await everyone();
 const rule = LATEST_FILE ? `${NEW} + the read rule of ${LATEST_FILE}` : NEW;
-const master = `the rule on master (from ${MASTER_FILE})`;
+const master = `the rules on master (read rule from ${MASTER_FILE})`;
 
 for (const who of Object.keys(CREW)) {
   check(`after (${rule}): ${who} reads exactly the jobs, and the custom units, it read before`);
@@ -199,6 +231,23 @@ check("after: one partner's grant is invisible to another");
 assert.ok(!now.partnerA.jobs.includes("REAL_B") && !now.partnerB.jobs.includes("REAL_A"));
 check("after: a granted job in the trash stays hidden from its partner");
 assert.ok(!now.partnerA.jobs.includes("TRASH_A"));
+
+// ---- writes -----------------------------------------------------------------------------
+for (const who of Object.keys(CREW)) {
+  check(`writes: ${who} inserts and updates jobs exactly as before`);
+  assert.deepEqual(await writes(CREW[who]), oldWrites[who]);
+}
+check("writes: before and after, an installer may add a job and edit a live one");
+assert.equal(oldWrites.installer.insert.ok, true);
+assert.equal(oldWrites.installer.update.REAL_NONE.n, 1);
+for (const who of Object.keys(PARTNERS)) {
+  const w = await writes(PARTNERS[who]);
+  check(`writes: ${who} cannot add a job`);
+  assert.equal(w.insert.ok, false);
+  assert.match(w.insert.error, /row-level security/);
+  check(`writes: ${who} changes no job, its granted ones included`);
+  for (const job of Object.keys(w.update)) assert.deepEqual(w.update[job], { ok: true, n: 0 }, `${who} ${job}`);
+}
 
 // ---- the rule answers to the grant, the partner flag and the trash, live -------------------
 check("a grant revoked hides the job at once; a grant added shows it");
@@ -267,7 +316,7 @@ check("and the rule itself is back in place and still passes");
 assert.deepEqual(partnerProblems(await everyone()), []);
 
 // ---- the migration is safe to run twice ------------------------------------------------------
-check("applied twice, the rule is the same and there is still one read rule on projects");
+check("applied twice, the rules are the same and there is still one read rule on projects");
 await db.exec(NEW_SQL);
 if (LATEST_READ) await useRead(LATEST_READ);
 assert.deepEqual(await everyone(), now);

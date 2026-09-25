@@ -19590,9 +19590,11 @@ comment on column projects.is_test is
 -- ===========================================================================
 -- 20261030100000_partner_sees_granted_jobs_only.sql (mirrored)
 -- A partner (builder) login reads the row of a job only when that job is live
--- and granted to it. Every crew login reads jobs exactly as before.
+-- and granted to it, and writes no job directly. Every crew login reads and
+-- writes jobs exactly as before.
 
--- A partner (builder) login reads a job only when that job was shared with it.
+-- A partner (builder) login reads a job only when that job was shared with it,
+-- and never writes a job directly.
 --
 -- WHAT A PARTNER IS FOR. CONTEXT.md, "The partner wall" (settled 2026-08-26/27,
 -- Q12/Q13): a partner sees the STG view of the jobs the owner granted it, one
@@ -19628,6 +19630,15 @@ comment on column projects.is_test is
 -- own grant rows" policy on partner_job_grants. It was not chosen: it would
 -- open a new direct read of that table (granted_by included), and this rule
 -- would then be only as right as that table's policy stays.
+--
+-- WRITES. projects' insert and update rules (20260933000000, 20260959000000)
+-- are older than partners, and projects is one of the two tables THE WALL left
+-- out of its sweep (daily_logs is the other), so they never got the guard the
+-- sweep folded into the write side of every FOR ALL policy it touched. A
+-- partner has no reason to write a job directly: its app reads through the
+-- stg_* projections and writes nothing. So both rules now refuse a partner.
+-- For every crew login they are unchanged. There is still no delete rule: a
+-- job is removed only through its definer RPCs (trash_project and the rest).
 --
 -- CHILD TABLES need nothing. Every one carries its own is_partner_user() guard
 -- (THE WALL's sweep; custom_work_internal() on the newer ones), so a partner
@@ -19679,3 +19690,13 @@ create policy "projects_select_visible" on projects
       )
     )
   );
+
+drop policy if exists "projects_insert" on projects;
+create policy "projects_insert" on projects
+  for insert to authenticated with check (not public.is_partner_user());
+
+drop policy if exists "projects_update" on projects;
+create policy "projects_update" on projects
+  for update to authenticated
+  using (deleted_at is null and not public.is_partner_user())
+  with check (not public.is_partner_user());
