@@ -76,6 +76,17 @@ function timeoutMs(): number {
  * deadline — most routes don't need one, but a couple (the Studio, the GC
  * link page) had their own wording worth keeping.
  *
+ * `keepLoaded` is for a lazy TAB inside a screen (the job hub's), which
+ * unmounts and mounts again every time somebody switches tabs. Each mount
+ * gets a fresh lazy descriptor (see below), and a fresh descriptor suspends
+ * even when its module is already loaded — which React then holds on screen
+ * for at least 300 ms, so every visit to the tab flashed its skeleton
+ * (measured 2026-09-25: 18 frames on every open). With it, once any mount
+ * has loaded the module, later mounts render it straight away; a load that
+ * failed or is still pending is untouched, so Try again and the deadline
+ * work exactly as before. Routes leave it off, and behave as they always
+ * have.
+ *
  * Typed exactly the way `React.lazy` itself is typed (`T extends
  * ComponentType<any>`, inferred from the resolved module) rather than a
  * separate `P extends object` props parameter: App.tsx's page components are
@@ -87,9 +98,18 @@ function timeoutMs(): number {
  */
 export function lazyRoute<T extends ComponentType<any>>(
   factory: () => Promise<{ default: T }>,
-  options: { loadingFallback?: ReactNode } = {},
+  options: { loadingFallback?: ReactNode; keepLoaded?: boolean } = {},
 ): T {
   const loading = options.loadingFallback;
+  // keepLoaded only: the component, once any mount's import has resolved.
+  let loaded: T | null = null;
+  const load = options.keepLoaded
+    ? () =>
+        factory().then((m) => {
+          loaded = m.default;
+          return m;
+        })
+    : factory;
   function LazyRoute(props: ComponentProps<T>) {
     // The lazy descriptor lives in STATE, not a module-level const: retrying
     // calls setLoaded with a brand new lazy(factory), which is a brand new
@@ -97,7 +117,7 @@ export function lazyRoute<T extends ComponentType<any>>(
     // to. (Passing a function to setState stores IT as the value, rather than
     // being read as an updater — the same trick the initializer form uses to
     // compute the first one lazily, once, on mount.)
-    const [Loaded, setLoaded] = useState<T>(() => lazy(factory) as unknown as T);
+    const [Loaded, setLoaded] = useState<T>(() => loaded ?? (lazy(load) as unknown as T));
     // `attempt` exists to be a Suspense `key`: changing it discards the WHOLE
     // subtree (fallback included), so a retry that is still waiting gets a
     // fresh skeleton and a fresh 20-second clock — not the "hung" message
@@ -105,7 +125,7 @@ export function lazyRoute<T extends ComponentType<any>>(
     const [attempt, setAttempt] = useState(0);
     const retry = () => {
       setAttempt((a) => a + 1);
-      setLoaded(() => lazy(factory) as unknown as T);
+      setLoaded(() => lazy(load) as unknown as T);
     };
     return (
       <Suspense

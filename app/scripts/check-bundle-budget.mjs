@@ -14,6 +14,17 @@
 // per-route chunks are SUPPOSED to grow as features are added — that is the
 // entire point of splitting them out. What must not silently regress is the
 // one file that loads before a route has even been chosen.
+//
+// That file is not alone, though: the bundler moves code the entry shares
+// with later screens into chunks of their own, and the entry imports those
+// statically, so a phone fetches every one of them before its first screen
+// too. Two things follow, and this script checks the first:
+//   - Each of those chunks has to be in the service worker's precache, or an
+//     app reopened with no signal cannot start. One wasn't (2026-09-25):
+//     React had been folded into the crash monitor's chunk, which the worker
+//     skips on purpose while monitoring is off. Fails the build.
+//   - Their total is the real first-screen download. It is printed, not
+//     budgeted — the budget stays on the one file.
 
 import { readdirSync, readFileSync } from "node:fs";
 import { gzipSync } from "node:zlib";
@@ -54,6 +65,47 @@ export function checkBudget(gzipBytes, budgetKb = BUDGET_GZIP_KB) {
   return { ok, gzipKb, message };
 }
 
+/**
+ * The chunks a built chunk imports STATICALLY — `import{…}from"./x.js"`,
+ * `import"./x.js"`, `export{…}from"./x.js"` — never a dynamic `import("./x.js")`,
+ * which only loads when the code reaches it. PURE. Matches the shape Vite's
+ * minified output has (sibling chunks, `./` paths); the tests pin it.
+ */
+export function staticImportsOf(code) {
+  const out = new Set();
+  const re = /(?:^|[;\s}])(?:import|export)\s*(?:[\w$*{}\s,]+?\s*from\s*)?["']\.\/([\w.-]+\.js)["']/g;
+  let m;
+  while ((m = re.exec(code))) out.add(m[1]);
+  return [...out];
+}
+
+/**
+ * The entry plus everything it statically imports, all the way down: what a
+ * phone downloads before its first screen. PURE — `readChunk(file)` returns a
+ * chunk's code (a test passes a Map's getter; main() reads dist/assets).
+ */
+export function firstScreenChunks(entry, readChunk) {
+  const seen = new Set([entry]);
+  const queue = [entry];
+  while (queue.length) {
+    for (const dep of staticImportsOf(readChunk(queue.shift()))) {
+      if (!seen.has(dep)) {
+        seen.add(dep);
+        queue.push(dep);
+      }
+    }
+  }
+  return [...seen];
+}
+
+/**
+ * Which of `chunks` the built service worker (dist/sw.js, where vite-plugin-pwa
+ * writes the precache manifest inline) never names. PURE.
+ */
+export function missingFromPrecache(chunks, swSource) {
+  return chunks.filter((file) => !swSource.includes(`assets/${file}`));
+}
+
 function main() {
   const assetsDir = join(root, "dist", "assets");
   let files;
@@ -77,6 +129,33 @@ function main() {
   const { ok, message } = checkBudget(gzip.length);
 
   console.log(`${entry}: raw ${(raw.length / 1024).toFixed(1)} kB, ${message}`);
+
+  const firstScreen = firstScreenChunks(entry, (f) => readFileSync(join(assetsDir, f), "utf8"));
+  const firstScreenGzip = firstScreen.reduce(
+    (sum, f) => sum + gzipSync(readFileSync(join(assetsDir, f)), { level: 9 }).length,
+    0,
+  );
+  console.log(
+    `first screen: the entry plus ${firstScreen.length - 1} chunks it imports, ` +
+      `${(firstScreenGzip / 1024).toFixed(1)} kB gzip in all (reported, not budgeted)`,
+  );
+  let sw;
+  try {
+    sw = readFileSync(join(root, "dist", "sw.js"), "utf8");
+  } catch {
+    console.error("No dist/sw.js — the precache check needs the service worker the build writes.");
+    process.exit(1);
+    return;
+  }
+  const missing = missingFromPrecache(firstScreen, sw);
+  if (missing.length) {
+    console.error(
+      `The app cannot start with no signal: its first screen needs ${missing.join(", ")}, ` +
+        `which the service worker does not precache. Check globIgnores in vite.config.ts ` +
+        `and which chunk the bundler put that code in.`,
+    );
+    process.exit(1);
+  }
   if (!ok) process.exit(1);
 }
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildFootprintPolygon,
+  extractBuildingOutline,
   clampOutlinePoint,
   collapseCollinear,
   cropEdges,
@@ -348,6 +349,52 @@ describe("segmentsToOccupancy + vector pipeline", () => {
     expect(poly).not.toBeNull();
     expect(isRectilinear(poly)).toBe(true);
     const box = bbox(poly.map(([c, r]) => ({ x: c / cols, y: r / rows })));
+    expect(box.minX).toBeGreaterThan(0.18);
+    expect(box.maxX).toBeLessThan(0.82);
+    expect(box.minY).toBeGreaterThan(0.18);
+    expect(box.maxY).toBeLessThan(0.82);
+  });
+});
+
+describe("extractBuildingOutline reads a CAD page's own vector walls", () => {
+  // pdf.js loads inside the vector reader now, not at the top of outline.ts
+  // (2026-09-25 — the module is reached from the job hub, which ships before
+  // a phone's first screen). This drives that reader end to end through a
+  // stand-in page: if the operator codes it imports on demand were missing or
+  // wrong, it would find no walls and fall back to rasterizing — which throws
+  // here, so the empty outline below would say so.
+  it("traces the footprint from the page's operator list", async () => {
+    const { OPS } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    const W = 1000;
+    const H = 700;
+    // Two nested rectangles — a wall with thickness — as pdf.js hands a path
+    // over: [op, [flat DrawOPS data], minMax], data being moveTo(0)/lineTo(1)/close(4).
+    const rect = (x0: number, y0: number, x1: number, y1: number) => [
+      OPS.constructPath,
+      [new Float32Array([0, x0, y0, 1, x1, y0, 1, x1, y1, 1, x0, y1, 4])],
+      null,
+    ];
+    const paths = [rect(250, 175, 750, 525), rect(262, 187, 738, 513)];
+    const page = {
+      getViewport: ({ scale }: { scale: number }) => ({
+        width: W * scale,
+        height: H * scale,
+        transform: [scale, 0, 0, scale, 0, 0],
+      }),
+      getOperatorList: async () => ({
+        fnArray: [OPS.save, ...paths.map((p) => p[0] as number), OPS.restore],
+        argsArray: [null, ...paths.map((p) => p), null],
+      }),
+      render: () => {
+        throw new Error("the raster fallback ran — the vector reader found no walls");
+      },
+    };
+    const doc = { getPage: async () => page } as unknown as Parameters<typeof extractBuildingOutline>[0];
+
+    const outline = await extractBuildingOutline(doc, 1);
+
+    expect(outline?.points.length).toBeGreaterThanOrEqual(4);
+    const box = bbox(outline!.points);
     expect(box.minX).toBeGreaterThan(0.18);
     expect(box.maxX).toBeLessThan(0.82);
     expect(box.minY).toBeGreaterThan(0.18);

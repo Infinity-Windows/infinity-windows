@@ -1,6 +1,17 @@
-import { Html5Qrcode, Html5QrcodeScannerState } from "html5-qrcode";
+import type { Html5Qrcode } from "html5-qrcode";
 import { useEffect, useRef, useState } from "react";
 import { parseQr, type QrPayload } from "../lib/qr";
+
+// The camera decoder (html5-qrcode with its bundled ZXing port, ~105 kB
+// gzipped) loads when a scanner opens, not with the app. This component is
+// imported by the warehouse Find bar, the scan sheet and the opening sheet's
+// Check step, all of which ship in the shell every phone downloads before its
+// first screen, so a static import here put the whole decoder on that
+// download for a camera most opens never start. The typed-ID box below needs
+// none of it and works the moment the component mounts. The decoder's chunk
+// is precached like every other, so scanning in a dead zone still works once
+// the app is installed.
+const CAMERA_UNAVAILABLE = "Camera unavailable. Type the ID below instead.";
 
 interface ScannerProps {
   onScan: (payload: QrPayload) => void;
@@ -25,38 +36,58 @@ export function Scanner({ onScan, hint, showManualEntry = true }: ScannerProps) 
   onScanRef.current = onScan;
 
   useEffect(() => {
-    const scanner = new Html5Qrcode(containerId.current);
     let stopped = false;
+    // Filled in once the decoder has loaded. The cleanup can run first (the
+    // sheet closed while the chunk was still arriving); then there is no
+    // camera to stop, and the load, finding `stopped`, never starts one.
+    let running: { scanner: Html5Qrcode; lib: typeof import("html5-qrcode") } | null = null;
 
-    scanner
-      .start(
-        { facingMode: "environment" },
-        { fps: 10, qrbox: { width: 220, height: 220 } },
-        (decoded) => {
-          const payload = parseQr(decoded);
-          if (payload) {
-            if (navigator.vibrate) navigator.vibrate(80);
-            onScanRef.current(payload);
-          }
-        },
-        () => {},
-      )
-      .catch((err) => {
-        if (!stopped) {
-          setError(
-            err?.message ??
-              "Camera unavailable. Type the ID below instead.",
-          );
+    import("html5-qrcode")
+      .then((lib) => {
+        if (stopped) return;
+        // A production build resolves a chunk that failed to load to nothing:
+        // preloadRecovery.ts has already dealt with the failure (reload once,
+        // or say so), so all that is left is keeping the typed box usable.
+        if (!lib) {
+          setError(CAMERA_UNAVAILABLE);
+          return;
         }
+        const scanner = new lib.Html5Qrcode(containerId.current);
+        running = { scanner, lib };
+        scanner
+          .start(
+            { facingMode: "environment" },
+            { fps: 10, qrbox: { width: 220, height: 220 } },
+            (decoded) => {
+              const payload = parseQr(decoded);
+              if (payload) {
+                if (navigator.vibrate) navigator.vibrate(80);
+                onScanRef.current(payload);
+              }
+            },
+            () => {},
+          )
+          .catch((err) => {
+            if (!stopped) {
+              setError(err?.message ?? CAMERA_UNAVAILABLE);
+            }
+          });
+      })
+      .catch(() => {
+        // The dev server's form of the same failure: the import rejects. Its
+        // message is a file address, not a sentence, so it is never shown.
+        if (!stopped) setError(CAMERA_UNAVAILABLE);
       });
 
     return () => {
       stopped = true;
+      if (!running) return;
+      const { scanner, lib } = running;
       try {
         const state = scanner.getState();
         if (
-          state === Html5QrcodeScannerState.SCANNING ||
-          state === Html5QrcodeScannerState.PAUSED
+          state === lib.Html5QrcodeScannerState.SCANNING ||
+          state === lib.Html5QrcodeScannerState.PAUSED
         ) {
           scanner
             .stop()
