@@ -1,97 +1,92 @@
-// A write only lands here once the outbox has given up on it (see the
-// "failed" status note in outbox-core.ts: "needs human attention, never
-// silently dropped"). Until this page existed, that promise was empty — a
-// dead-lettered clock punch just sat in IndexedDB forever, invisible to
-// everyone, which for a timecard is a payroll dispute nobody knew to have.
-// This page is the human at the other end of that promise: see what got
-// stuck, try it again, or decide it's not worth saving.
+// Everything this phone still has to send, and what it sent this session.
+//
+// This page began as the human at the other end of the outbox's "never
+// silently dropped" promise: a write that had given up sat in IndexedDB
+// forever, invisible, which for a timecard is a payroll dispute nobody knew
+// to have. It still does that — see what got stuck, try it again, or decide
+// it is not worth saving.
+//
+// Since K0.6 (2026-09-23) it is also the one honest list of what is merely
+// WAITING: every queue on the phone, each item with its age and its state
+// (saved on this phone → sending → saved in Forge). The sync pill opens here
+// whatever is queued (F5). Custom work and servicing keep their own review
+// screens — a refused command is exported there before it is ever removed —
+// so their rows link out rather than offering Throw away.
 
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import { BackChip } from "../components/BackChip";
+import { useClock } from "../lib/clockContext";
 import { formatApiError } from "../lib/errors";
 import {
   discardFailed,
-  listFailed,
+  listAll,
+  recentlySent,
   retryFailed,
+  sendNow,
   subscribe,
 } from "../lib/offline/outbox";
-import type { OutboxOp } from "../lib/offline/outbox-core";
-import { isPhotoConflictIndexError } from "../lib/offline/recoverPhotoUploads";
+import {
+  buildStuckRows,
+  queuedAgoLabel as queuedAgo,
+  stateLabel,
+  type StuckRow,
+} from "../lib/offline/stuckRows";
 import {
   discardFailedInstall,
-  listFailedInstalls,
+  isInstallSending,
+  listInstalls,
+  recentlySentInstalls,
   retryFailedInstall,
+  sendInstallsNow,
   subscribeSyncListeners,
 } from "../lib/install/installOutbox";
-import { useT, CATALOG, translate, type TFn, type TKey, type Lang } from "../lib/i18n";
+import { pendingLegacyUploadCount } from "../lib/install/legacyUploadQueue";
+import { readWorkQueue, retryWork, syncWork, WORK_QUEUE_EVENT } from "../lib/customWork/queue";
+import type { ServiceCommand } from "../lib/servicing/model";
+import { useT } from "../lib/i18n";
 
-const englishT: TFn = (key, vars) => translate(CATALOG, "en" as Lang, key, vars);
+/** The queues keyed by person: custom work, servicing, and what the retired
+ * upload store still holds. Servicing lives outside the shell bundle and is
+ * reached only from here, on demand. */
+interface PersonalQueues {
+  work: ReturnType<typeof readWorkQueue>;
+  service: ServiceCommand[];
+  serviceMedia: Array<{ id: string; filename: string; error?: string }>;
+  legacy: number;
+  /** A store this session could not read — said in its own plain words. */
+  unreadable: string[];
+}
 
-/**
- * Plain words for what a write WAS, not the op code it's stored under. Typed
- * as Record<OutboxOp, TKey> on purpose: adding a new op to OutboxOp without
- * adding it here is a compile error, so this screen can never show a foreman
- * a raw code word like "checkout_packages".
- */
-const OP_LABEL_KEY: Record<OutboxOp, TKey> = {
-  clock_in: "stuck.op.clockIn",
-  clock_out: "stuck.op.clockOut",
-  break_start: "stuck.op.breakStart",
-  break_stop: "stuck.op.breakStop",
-  // Reachable for real since 2026-09-05: fileDailyLog queues on no signal.
-  // Before that this op had no callers at all, so this label was a placeholder
-  // for a row that could never appear.
-  daily_log: "stuck.op.dailyLog",
-  photo_upload: "stuck.op.photoUpload",
-  receipt_upload: "stuck.op.receiptUpload",
-  // All three pin ops read the same to a foreman — a mark got moved back —
-  // the difference (one mark vs. the whole job) doesn't change what to do
-  // about it here.
-  pin_undo: "stuck.op.pinChange",
-  pin_reset_project: "stuck.op.pinChange",
-  pin_reset_opening: "stuck.op.pinChange",
-  store_packages: "stuck.op.storePackages",
-  checkout_packages: "stuck.op.checkoutPackages",
-  take_supply: "stuck.op.takeSupply",
-  bind_package: "stuck.op.bindPackage",
-  stage_packages: "stuck.op.stagePackages",
-  move_container: "stuck.op.moveContainer",
-  set_package_area: "stuck.op.setPackageArea",
-  set_package_note: "stuck.op.setPackageNote",
-  receive_minted: "stuck.op.receiveMinted",
-  pickup_takeoff: "stuck.op.pickupTakeoff",
-  issue_photo_upload: "stuck.op.issuePhotoUpload",
-  receipt_capture: "stuck.op.receiptCapture",
-  receipt_answer: "stuck.op.receiptAnswer",
-  // The original PDF, not the receipt itself — the receipt (page one, plus its
-  // amount and job) may already have landed, so this must not read as "Receipt"
-  // or a foreman would go looking for a receipt that is sitting on the table.
-  receipt_document_upload: "stuck.op.receiptDocumentUpload",
-  video_quiz_submit: "stuck.op.videoQuizSubmit",
-  save_build_facts: "stuck.op.saveBuildFacts",
-  hex_portal_case: "stuck.op.hexPortalCase",
-  hex_portal_outcome: "stuck.op.hexPortalOutcome",
-  hex_learning_draft: "stuck.op.hexLearningDraft",
-};
-
-/**
- * One row, whatever store it came from.
- *
- * There are TWO queues: the general offline outbox (clock punches, photos,
- * warehouse writes) and a separate one for finished installs, which persists
- * the RPC, the points and the media as a single durable record so a retry
- * can't half-apply. To the person holding the phone that distinction is
- * meaningless — something they did hasn't landed — so both are normalised
- * here and the list below never needs to know which store a row came from.
- */
-interface StuckRow {
-  id: string;
-  label: string;
-  when: number;
-  detail: string | null;
-  /** Which queue owns it, so retry/discard call the right pair. */
-  source: "write" | "install";
+async function readPersonalQueues(profileId: string | null): Promise<PersonalQueues> {
+  const out: PersonalQueues = { work: [], service: [], serviceMedia: [], legacy: 0, unreadable: [] };
+  try {
+    out.legacy = await pendingLegacyUploadCount();
+  } catch {
+    // Cannot be opened → cannot be moving anything either; nothing to list.
+  }
+  if (!profileId) return out;
+  try {
+    out.work = readWorkQueue(profileId);
+  } catch (e) {
+    out.unreadable.push(formatApiError(e));
+  }
+  try {
+    const [{ readServiceQueue }, { pendingServiceMedia }] = await Promise.all([
+      import("../lib/servicing/queue"),
+      import("../lib/servicing/mediaQueue"),
+    ]);
+    out.service = readServiceQueue(profileId);
+    out.serviceMedia = (await pendingServiceMedia(profileId)).map((m) => ({
+      id: m.id,
+      filename: m.filename,
+      error: m.error,
+    }));
+  } catch (e) {
+    out.unreadable.push(formatApiError(e));
+  }
+  return out;
 }
 
 function fmtWhen(ms: number): string {
@@ -99,80 +94,112 @@ function fmtWhen(ms: number): string {
   return Number.isNaN(d.getTime()) ? "" : d.toLocaleString();
 }
 
-/**
- * How long a write has been sitting here, in words rather than a timestamp.
- *
- * "Try again" replays a write exactly as it was written — the same packages,
- * the same job, the same numbers, decided whenever it was made. A stamp like
- * "8/14/2026, 4:12 PM" makes a person do that subtraction in their head while
- * standing in a warehouse, and most won't. Saying "queued 3 days ago" is the
- * one fact that changes the answer, so it goes on the row.
- *
- * This screen only ever REPORTS the age. It does not refuse an old write —
- * the check for whether a write still matches the world belongs on the
- * server, where the world actually is. Here, the person decides.
- *
- * Wording matches the rest of the app's "last seen" copy (vehicles, pin
- * history): just now / N min / N hr / N days. `t` defaults to English so the
- * plain function keeps a stable, testable identity even though the page now
- * calls it with the live language.
- */
-export function queuedAgoLabel(when: number, nowMs: number, t: TFn = englishT): string {
-  // Install rows carry a text timestamp that can be missing, and 0 would draw
-  // a confident "1/1/1970" — worse than admitting we don't know.
-  if (!Number.isFinite(when) || when <= 0) return t("stuck.queuedNoTime");
-  const min = Math.floor(Math.max(0, nowMs - when) / 60_000);
-  if (min < 1) return t("stuck.queuedJustNow");
-  if (min < 60) return t("stuck.queuedMinAgo", { min });
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return t("stuck.queuedHrAgo", { hr });
-  const days = Math.floor(hr / 24);
-  return days === 1 ? t("stuck.queuedDayAgo") : t("stuck.queuedDaysAgo", { days });
-}
-
 export function StuckWrites() {
   const t = useT();
   const queryClient = useQueryClient();
-  const failedQ = useQuery({ queryKey: ["failedWrites"], queryFn: listFailed });
+  const { profileId } = useClock();
+  const writesQ = useQuery({ queryKey: ["queuedWrites"], queryFn: listAll });
   // A stuck INSTALL is the worst case on this screen — it is the record that a
   // window got finished — so it belongs here even though it lives in its own
   // store with its own subscribe mechanism.
-  const installsQ = useQuery({
-    queryKey: ["failedInstalls"],
-    queryFn: listFailedInstalls,
+  const installsQ = useQuery({ queryKey: ["queuedInstalls"], queryFn: listInstalls });
+  const personalQ = useQuery({
+    queryKey: ["queuedPersonal", profileId],
+    queryFn: () => readPersonalQueues(profileId),
   });
 
-  // The outbox drains in the background (reconnect, focus, the slow interval
+  // The queues drain in the background (reconnect, focus, the slow interval
   // timer) — without this, a punch that finally goes through on a retry, or a
   // fresh one that just dead-lettered, wouldn't show up until the user backed
   // out of the page and back in.
   useEffect(() => {
     return subscribe(() => {
-      void queryClient.invalidateQueries({ queryKey: ["failedWrites"] });
+      void queryClient.invalidateQueries({ queryKey: ["queuedWrites"] });
+      // The migration out of the old store announces itself here too.
+      void queryClient.invalidateQueries({ queryKey: ["queuedPersonal"] });
     });
   }, [queryClient]);
 
   // The install queue notifies separately.
   useEffect(() => {
     return subscribeSyncListeners(() => {
-      void queryClient.invalidateQueries({ queryKey: ["failedInstalls"] });
+      void queryClient.invalidateQueries({ queryKey: ["queuedInstalls"] });
     });
   }, [queryClient]);
 
-  const refreshBoth = () => {
-    void queryClient.invalidateQueries({ queryKey: ["failedWrites"] });
-    void queryClient.invalidateQueries({ queryKey: ["failedInstalls"] });
+  // The per-person queues announce themselves on the window.
+  useEffect(() => {
+    const refresh = () => void queryClient.invalidateQueries({ queryKey: ["queuedPersonal"] });
+    window.addEventListener(WORK_QUEUE_EVENT, refresh);
+    window.addEventListener("storage", refresh);
+    let serviceEvent: string | null = null;
+    let disposed = false;
+    void import("../lib/servicing/queue")
+      .then(({ SERVICE_QUEUE_EVENT }) => {
+        if (disposed) return;
+        serviceEvent = SERVICE_QUEUE_EVENT;
+        window.addEventListener(SERVICE_QUEUE_EVENT, refresh);
+      })
+      .catch(() => {
+        // The servicing chunk failed to load: the other triggers still refresh.
+      });
+    return () => {
+      disposed = true;
+      window.removeEventListener(WORK_QUEUE_EVENT, refresh);
+      window.removeEventListener("storage", refresh);
+      if (serviceEvent) window.removeEventListener(serviceEvent, refresh);
+    };
+  }, [queryClient]);
+
+  const refreshAll = () => {
+    void queryClient.invalidateQueries({ queryKey: ["queuedWrites"] });
+    void queryClient.invalidateQueries({ queryKey: ["queuedInstalls"] });
+    void queryClient.invalidateQueries({ queryKey: ["queuedPersonal"] });
   };
 
   const retry = useMutation({
-    mutationFn: (row: StuckRow) =>
-      row.source === "install" ? retryFailedInstall(row.id) : retryFailed(row.id),
-    onSuccess: refreshBoth,
+    mutationFn: async (row: StuckRow) => {
+      switch (row.source) {
+        case "install":
+          return retryFailedInstall(row.id);
+        case "write":
+          return retryFailed(row.id);
+        case "work":
+          if (profileId) await retryWork(profileId);
+          return;
+        case "service":
+        case "serviceMedia": {
+          if (!profileId) return;
+          const [{ retryService, syncService }, { retryServiceMedia, flushServiceMedia }] =
+            await Promise.all([import("../lib/servicing/queue"), import("../lib/servicing/mediaQueue")]);
+          await retryService(profileId);
+          await retryServiceMedia(profileId);
+          await syncService(profileId);
+          await flushServiceMedia(profileId);
+          return;
+        }
+        case "legacy":
+          return;
+      }
+    },
+    onSuccess: refreshAll,
   });
   const discard = useMutation({
     mutationFn: (row: StuckRow) =>
       row.source === "install" ? discardFailedInstall(row.id) : discardFailed(row.id),
-    onSuccess: refreshBoth,
+    onSuccess: refreshAll,
+  });
+  // "Send now": every queue gets one attempt this instant, backoff or not. A
+  // person looking at bars is a better judge of the signal than the timer.
+  const send = useMutation({
+    mutationFn: async () => {
+      await Promise.all([
+        sendNow(),
+        sendInstallsNow(),
+        profileId ? syncWork(profileId).catch(() => false) : Promise.resolve(false),
+      ]);
+    },
+    onSettled: refreshAll,
   });
 
   // Throwing a write away deletes the only record that the work happened, so
@@ -189,26 +216,94 @@ export function StuckWrites() {
     return () => clearInterval(tick);
   }, []);
 
-  const entries: StuckRow[] = [
-    ...(failedQ.data ?? []).map((e) => ({
-      id: e.id,
-      label: t(OP_LABEL_KEY[e.op]),
-      when: e.createdAt,
-      detail: isPhotoConflictIndexError(e.lastError) ? t("photo.databaseRetry") : e.lastError,
-      source: "write" as const,
-    })),
-    ...(installsQ.data ?? []).map((r) => ({
-      id: r.id,
-      // Name the window, not the record: "Window W1 finished" is what the
-      // person actually did.
-      label: r.payload.openingCode
-        ? t("stuck.windowFinished", { code: r.payload.openingCode })
-        : t("stuck.windowFinishedNoCode"),
-      when: Date.parse(r.payload.createdAt ?? "") || 0,
-      detail: r.lastError,
-      source: "install" as const,
-    })),
-  ].sort((a, b) => b.when - a.when);
+  const personal = personalQ.data;
+  const sections = buildStuckRows(
+    {
+      writes: writesQ.data ?? [],
+      installs: installsQ.data ?? [],
+      isInstallSending,
+      work: personal?.work ?? [],
+      service: personal?.service ?? [],
+      serviceMedia: personal?.serviceMedia ?? [],
+      legacy: personal?.legacy ?? 0,
+      sentWrites: recentlySent(),
+      sentInstalls: recentlySentInstalls(),
+    },
+    t,
+  );
+  const loading = writesQ.isLoading || installsQ.isLoading || personalQ.isLoading;
+  const nothingToSend = sections.needsYou.length === 0 && sections.waiting.length === 0;
+
+  const renderRow = (e: StuckRow) => {
+    const confirming = confirmingId === e.id;
+    const busyRetry = retry.isPending && retry.variables?.id === e.id;
+    const busyDiscard = discard.isPending && discard.variables?.id === e.id;
+    return (
+      <li key={e.id} data-state={e.state}>
+        <div className="find-row">
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontWeight: 600 }}>{e.label}</div>
+            <div className={`stuck-state stuck-state-${e.state}`}>{stateLabel(e.state, t)}</div>
+            <div className="muted" style={{ fontSize: 12.5 }}>
+              {e.state === "sent" && e.sentAt
+                ? `${t("stuck.sentAt", { when: fmtWhen(e.sentAt) })}`
+                : `${queuedAgo(e.when, now, t)}${e.when > 0 ? ` · ${fmtWhen(e.when)}` : ""}`}
+            </div>
+            {e.detail && (
+              <div className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>
+                {e.detail}
+              </div>
+            )}
+          </div>
+        </div>
+        {(e.canRetry || e.canDiscard || e.reviewTo) && (
+          <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+            {e.canRetry && (
+              <button
+                type="button"
+                className="button-like"
+                disabled={busyRetry || busyDiscard}
+                onClick={() => {
+                  // A stray confirm shouldn't survive switching to Try
+                  // again on the same row.
+                  if (confirming) setConfirmingId(null);
+                  retry.mutate(e);
+                }}
+              >
+                {busyRetry ? t("stuck.tryingAgain") : t("stuck.tryAgain")}
+              </button>
+            )}
+            {e.canDiscard && (
+              <button
+                type="button"
+                className={`button-like${confirming ? " danger-outline" : ""}`}
+                disabled={busyRetry || busyDiscard}
+                onClick={() => {
+                  if (confirming) {
+                    setConfirmingId(null);
+                    discard.mutate(e);
+                  } else {
+                    setConfirmingId(e.id);
+                  }
+                }}
+              >
+                {busyDiscard
+                  ? t("stuck.throwingAway")
+                  : confirming
+                    ? t("stuck.sureDeletes")
+                    : t("stuck.throwAway")}
+              </button>
+            )}
+            {e.reviewTo && (
+              <Link className="button-like" to={e.reviewTo}>
+                {e.reviewTo === "/current-work" ? t("stuck.reviewCurrentWork") : t("stuck.reviewServicing")}
+              </Link>
+            )}
+          </div>
+        )}
+      </li>
+    );
+  };
 
   return (
     <div className="page">
@@ -223,12 +318,17 @@ export function StuckWrites() {
       <p className="muted">{t("stuck.explain1")}</p>
       <p className="muted">{t("stuck.explain2")}</p>
 
-      {(failedQ.isLoading || installsQ.isLoading) && <p className="muted">{t("stuck.checking")}</p>}
-      {failedQ.isError && (
+      {loading && <p className="muted">{t("stuck.checking")}</p>}
+      {(writesQ.isError || installsQ.isError || personalQ.isError) && (
         <p className="error">
-          {formatApiError(failedQ.error, t("stuck.checkError"))}
+          {formatApiError(writesQ.error ?? installsQ.error ?? personalQ.error, t("stuck.checkError"))}
         </p>
       )}
+      {personal?.unreadable.map((message) => (
+        <p className="error" key={message}>
+          {message}
+        </p>
+      ))}
       {retry.isError && (
         <p className="error">
           {formatApiError(retry.error, t("stuck.retryError"))}
@@ -239,71 +339,45 @@ export function StuckWrites() {
           {formatApiError(discard.error, t("stuck.discardError"))}
         </p>
       )}
+      {send.isError && (
+        <p className="error">
+          {formatApiError(send.error, t("stuck.sendNowError"))}
+        </p>
+      )}
 
-      {!failedQ.isLoading && !failedQ.isError && entries.length === 0 && (
+      {!loading && !writesQ.isError && nothingToSend && (
         <p className="muted">{t("stuck.nothingStuck")}</p>
       )}
 
-      {entries.length > 0 && (
-        <ul className="unit-list">
-          {entries.map((e) => {
-            const confirming = confirmingId === e.id;
-            const busyRetry = retry.isPending && retry.variables?.id === e.id;
-            const busyDiscard = discard.isPending && discard.variables?.id === e.id;
-            return (
-              <li key={e.id}>
-                <div className="find-row">
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ fontWeight: 600 }}>{e.label}</div>
-                    <div className="muted" style={{ fontSize: 12.5 }}>
-                      {queuedAgoLabel(e.when, now, t)}
-                      {e.when > 0 ? ` · ${fmtWhen(e.when)}` : ""}
-                    </div>
-                    {e.detail && (
-                      <div className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>
-                        {e.detail}
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-                  <button
-                    type="button"
-                    className="button-like"
-                    disabled={busyRetry || busyDiscard}
-                    onClick={() => {
-                      // A stray confirm shouldn't survive switching to Try
-                      // again on the same row.
-                      if (confirming) setConfirmingId(null);
-                      retry.mutate(e);
-                    }}
-                  >
-                    {busyRetry ? t("stuck.tryingAgain") : t("stuck.tryAgain")}
-                  </button>
-                  <button
-                    type="button"
-                    className={`button-like${confirming ? " danger-outline" : ""}`}
-                    disabled={busyRetry || busyDiscard}
-                    onClick={() => {
-                      if (confirming) {
-                        setConfirmingId(null);
-                        discard.mutate(e);
-                      } else {
-                        setConfirmingId(e.id);
-                      }
-                    }}
-                  >
-                    {busyDiscard
-                      ? t("stuck.throwingAway")
-                      : confirming
-                        ? t("stuck.sureDeletes")
-                        : t("stuck.throwAway")}
-                  </button>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+      {sections.needsYou.length > 0 && (
+        <section aria-labelledby="stuck-needs-you">
+          <h2 id="stuck-needs-you">{t("stuck.section.needsYou")}</h2>
+          <ul className="unit-list">{sections.needsYou.map(renderRow)}</ul>
+        </section>
+      )}
+
+      {sections.waiting.length > 0 && (
+        <section aria-labelledby="stuck-waiting">
+          <div className="find-row">
+            <h2 id="stuck-waiting" style={{ flex: 1 }}>{t("stuck.section.waiting")}</h2>
+            <button
+              type="button"
+              className="button-like"
+              disabled={send.isPending}
+              onClick={() => send.mutate()}
+            >
+              {send.isPending ? t("stuck.state.sending") : t("stuck.sendNow")}
+            </button>
+          </div>
+          <ul className="unit-list">{sections.waiting.map(renderRow)}</ul>
+        </section>
+      )}
+
+      {sections.sent.length > 0 && (
+        <section aria-labelledby="stuck-sent">
+          <h2 id="stuck-sent">{t("stuck.section.sent")}</h2>
+          <ul className="unit-list">{sections.sent.map(renderRow)}</ul>
+        </section>
       )}
     </div>
   );

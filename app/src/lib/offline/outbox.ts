@@ -2,8 +2,11 @@
 // store + Supabase handlers together, exposes enqueue helpers for each write,
 // and keeps the queue draining whenever connectivity returns.
 //
-// This is deliberately a SEPARATE module from the install-flow outbox
-// (lib/install/*), which is untouched.
+// The install-flow outbox (lib/install/installOutbox.ts) is a separate store
+// that persists a finished install as one durable record; once the install
+// RPC has landed it hands the unit's photos, memo and video to THIS queue
+// (K0.6, 2026-09-23), so every piece of media on the phone is counted,
+// retried and shown in one place.
 
 import {
   retryEntry,
@@ -24,6 +27,7 @@ import { signedInEmail } from "../signedIn";
 import type { JobMode } from "../types";
 import { recoverPhotoUpload } from "./recoverPhotoUploads";
 import { PhotoUploadReceipts } from "./photoUploadProgress";
+import { migrateLegacyUploads } from "../install/legacyUploadQueue";
 import {
   createShiftResolver,
   createSupabaseHandlers,
@@ -87,6 +91,33 @@ let draining = false;
 /** Somebody asked for a drain while one was running — see drain(). */
 let drainAgain = false;
 let wired = false;
+
+/**
+ * A write that reached the server this session, newest first.
+ *
+ * The third state of "Saved on this phone → Sending → Saved in Forge" (K0.6).
+ * An entry that has been sent is DELETED from the store, so without this the
+ * /stuck screen could only ever show the first two — a photo that had just
+ * gone through simply vanished from the list, which reads the same as one
+ * that was thrown away. Session-only and bounded: it is a receipt for the
+ * person holding the phone right now, not a log.
+ */
+export interface SentWrite {
+  entry: OutboxEntry;
+  sentAt: number;
+}
+const RECENTLY_SENT_MAX = 50;
+const recentlySentWrites: SentWrite[] = [];
+
+function recordSent(entry: OutboxEntry, sentAt: number): void {
+  recentlySentWrites.unshift({ entry, sentAt });
+  if (recentlySentWrites.length > RECENTLY_SENT_MAX) recentlySentWrites.length = RECENTLY_SENT_MAX;
+}
+
+/** Writes that reached the server this session, newest first. */
+export function recentlySent(): readonly SentWrite[] {
+  return recentlySentWrites;
+}
 
 function newId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -156,6 +187,20 @@ export async function pendingWriteCount(): Promise<number> {
 }
 
 /**
+ * Unit photos, memos and videos still on this phone (queued or mid-send).
+ * What the opening sheet's "N upload(s) waiting for signal" line counts —
+ * the number the retired upload queue used to answer.
+ */
+export async function pendingMediaCount(): Promise<number> {
+  return (await store.getAll()).filter((e) => e.op === "photo_upload" && isPending(e)).length;
+}
+
+/** Every entry on this phone, whatever its state — the /stuck screen's list. */
+export async function listAll(): Promise<OutboxEntry[]> {
+  return store.getAll();
+}
+
+/**
  * Job-clock writes still on this phone (waiting or failed), read from the
  * durable store rather than the cached counts, which are empty until the first
  * refresh after a reload. A queued break or clock-out carries the REAL shift id,
@@ -213,30 +258,52 @@ export class OutboxStorageError extends Error {
   }
 }
 
+export interface EnqueueOptions {
+  /**
+   * The entry id, when the CALLER has to decide it. The id is the idempotency
+   * key, and a caller that can be re-run after a crash — the install outbox's
+   * media stage — must hand in the same id each time, so the re-run finds the
+   * entry already waiting and leaves it, instead of adding a second one (see
+   * lib/offline/stableId.ts and enqueueStable). Left out, a fresh id is
+   * minted here, which is right for every tap.
+   */
+  id?: string;
+  /**
+   * Skip the 25 MB cap. For media a person has ALREADY captured as part of a
+   * finished install: refusing the walkthrough video at hand-off would lose
+   * it after the install itself has landed, and the retired upload queue
+   * never had a cap for it to fail. Not for a fresh photo — that one can be
+   * retaken smaller.
+   */
+  uncapped?: boolean;
+}
+
 /**
  * Add a write to the outbox. Returns the entry id (the idempotency key).
  * Immediately attempts a drain when online so healthy connections write
  * straight through.
  *
  * Most callers let the queue mint the id. A caller that must survive its own
- * retry — the Forge AI daily log hands a photo over only after a Save whose
- * response can be lost — passes the id it minted when the photo was taken:
- * the same id already waiting here is left exactly as it is, and one that has
+ * retry passes the id it decided (EnqueueOptions.id): the Forge AI daily log
+ * hands a photo over only after a Save whose response can be lost, and the
+ * install outbox's media stage can be re-run after a crash. Either way the
+ * same id already waiting here is left exactly as it is, and one that has
  * already been sent uploads to the same path and upserts the same
  * attachments.client_id, so neither becomes a second photo.
  */
 export async function enqueue(
   input: OutboxInput,
   blob?: Blob | null,
-  options: { id?: string } = {},
+  opts: EnqueueOptions = {},
 ): Promise<string> {
-  if (options.id) {
-    const run = stableChain.then(() => enqueueStable(input, blob ?? null, options.id!));
+  if (opts.id) {
+    const id = opts.id;
+    const run = stableChain.then(() => enqueueStable(input, blob ?? null, id, opts.uncapped === true));
     stableChain = run.catch(() => undefined);
     return run;
   }
   const id = newId();
-  if (blob != null) {
+  if (blob != null && !opts.uncapped) {
     if (blob.size > MAX_BLOB_BYTES) throw new BlobTooLargeError(blob.size);
   }
   const entry = makeEntry(input, id, Date.now());
@@ -259,8 +326,13 @@ export async function enqueue(
  * reload mid hand-off) is the entry already waiting — returned untouched, even
  * mid-upload. Anything else under that id is a conflict, never success.
  */
-async function enqueueStable(input: OutboxInput, blob: Blob | null, id: string): Promise<string> {
-  if (blob != null && blob.size > MAX_BLOB_BYTES) throw new BlobTooLargeError(blob.size);
+async function enqueueStable(
+  input: OutboxInput,
+  blob: Blob | null,
+  id: string,
+  uncapped: boolean,
+): Promise<string> {
+  if (blob != null && !uncapped && blob.size > MAX_BLOB_BYTES) throw new BlobTooLargeError(blob.size);
   const entry = makeEntry(input, id, Date.now());
   let existing: OutboxEntry | null;
   try {
@@ -309,6 +381,7 @@ export async function drain(): Promise<void> {
         onChange: () => void refresh(),
         onSent: (entry, result) => {
           photoReceipts.record(entry);
+          recordSent(entry, Date.now());
           if (!isClockOp(entry.op)) return;
           for (const cb of clockSentListeners) {
             try {
@@ -345,8 +418,29 @@ export async function drain(): Promise<void> {
   }
 }
 
-/** Re-queue anything left mid-flight by a reload, then drain. Call on startup. */
+/**
+ * Re-queue anything left mid-flight by a reload, bring in whatever the
+ * retired upload queue still holds, then drain. Call on startup.
+ *
+ * The migration runs FIRST, before the drain, so a phone that comes back
+ * from a week in a dead zone sends its old unit photos in the same pass as
+ * everything else — and so they are counted by the pill from the first
+ * paint rather than after the next tick.
+ */
 export async function recoverAndDrain(): Promise<void> {
+  try {
+    const moved = await migrateLegacyUploads(store);
+    if (moved.moved > 0 || moved.left > 0) {
+      logOfflineEvent({
+        type: "flush",
+        scope: "old-upload-queue",
+        count: moved.moved,
+        message: moved.left > 0 ? `${moved.left} could not be moved yet` : "moved to the outbox",
+      });
+    }
+  } catch {
+    /* the old store could not be opened; nothing to move this session */
+  }
   try {
     const all = await store.getAll();
     const now = Date.now();
@@ -356,6 +450,27 @@ export async function recoverAndDrain(): Promise<void> {
     }
   } catch {
     /* ignore */
+  }
+  await refresh();
+  await drain();
+}
+
+/**
+ * A person tapped "Send now" on /stuck: every queued entry becomes due this
+ * instant, backoff or not, and a drain starts. The backoff exists so a phone
+ * does not hammer a dead signal on its own; a person who can see bars and is
+ * watching the screen is a better judge of the signal than the timer is.
+ */
+export async function sendNow(): Promise<void> {
+  const now = Date.now();
+  try {
+    for (const e of await store.getAll()) {
+      if (e.status === "queued" && e.nextAttemptAt > now) {
+        await store.put({ ...e, nextAttemptAt: now });
+      }
+    }
+  } catch {
+    /* the drain below still runs over whatever was already due */
   }
   await refresh();
   await drain();
@@ -511,7 +626,17 @@ export function enqueueBreakStop(shiftRef: string, punch: ClockPunchFields): Pro
 }
 
 export interface UploadInput {
-  kind: "photo" | "receipt";
+  /**
+   * A receipt files as an attachment of kind `document`. A voice memo and a
+   * video are a finished unit's evidence (K0.6): they used to ride a queue of
+   * their own and now ride this one, under the same handler as a photo, with
+   * the memo's transcription kicked off once its row lands.
+   */
+  kind: "photo" | "receipt" | "voice_memo" | "video";
+  /** See EnqueueOptions.id — only for a caller that must decide the id. */
+  id?: string;
+  /** See EnqueueOptions.uncapped — only for media already captured. */
+  uncapped?: boolean;
   bucket?: string;
   path: string;
   contentType: string;
@@ -562,7 +687,7 @@ export function enqueueUpload(input: UploadInput): Promise<string> {
         path: input.path,
         contentType: input.contentType,
         // attachments.kind has no 'receipt' — receipts store as 'document'.
-        kind: input.kind === "receipt" ? "document" : "photo",
+        kind: input.kind === "receipt" ? "document" : input.kind,
         windowId: input.windowId ?? null,
         installEventId: input.installEventId ?? null,
         createdBy: input.createdBy ?? null,
@@ -576,7 +701,8 @@ export function enqueueUpload(input: UploadInput): Promise<string> {
       },
     },
     input.blob,
-    input.clientId ? { id: input.clientId } : {},
+    // `clientId` is the AI daily log's name for the same caller-decided id.
+    { id: input.id ?? input.clientId, uncapped: input.uncapped },
   );
 }
 

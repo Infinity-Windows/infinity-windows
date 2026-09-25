@@ -9,8 +9,8 @@ const q = vi.hoisted(() => ({
   outboxDraining: false,
   installsPending: 0,
   installsFlushing: false,
+  /** Items still in the retired upload store, not yet moved to the outbox. */
   uploadsPending: 0,
-  uploadsFlushing: false,
   work: [] as Array<{ error?: string }>,
   service: [] as Array<{ error?: string }>,
   media: [] as Array<{ error?: string }>,
@@ -45,9 +45,8 @@ vi.mock("../install/installOutbox", () => ({
     return () => q.installListeners.delete(cb);
   },
 }));
-vi.mock("../install/queue", () => ({
-  isFlushingUploads: () => q.uploadsFlushing,
-  pendingUploadCount: async () => {
+vi.mock("../install/legacyUploadQueue", () => ({
+  pendingLegacyUploadCount: async () => {
     maybeThrow("uploads");
     return q.uploadsPending;
   },
@@ -81,7 +80,6 @@ beforeEach(() => {
   q.installsPending = 0;
   q.installsFlushing = false;
   q.uploadsPending = 0;
-  q.uploadsFlushing = false;
   q.work = [];
   q.service = [];
   q.media = [];
@@ -100,9 +98,10 @@ describe("readQueuedWork", () => {
     expect(blocksReload(r)).toBe(false);
   });
 
-  it("adds up every queue, the legacy upload queue included", async () => {
-    // The sync pill never counted wops-upload-queue; a reload does not care
-    // which pill a photo is missing from.
+  it("adds up every queue, what is still in the old upload store included", async () => {
+    // An item the outbox has not moved out of wops-upload-queue yet is still
+    // a photo that has not been sent; a reload does not care which store it
+    // is waiting in.
     q.outboxPending = 1;
     q.installsPending = 2;
     q.uploadsPending = 3;
@@ -117,7 +116,6 @@ describe("readQueuedWork", () => {
   it.each([
     ["the main outbox", () => (q.outboxDraining = true)],
     ["the install outbox", () => (q.installsFlushing = true)],
-    ["the upload queue", () => (q.uploadsFlushing = true)],
   ])("reports %s draining even when every count is zero", async (_label, arrange) => {
     // A drain that has just removed its last row is still a drain: the
     // server may hold the write while the phone has not finished recording
@@ -163,10 +161,8 @@ describe("isSendingNow", () => {
     // The hold banner's Refresh asks this at the tap; a store read would be
     // too slow and could itself fail.
     q.outboxPending = 5;
+    q.uploadsPending = 5;
     expect(isSendingNow()).toBe(false);
-    q.uploadsFlushing = true;
-    expect(isSendingNow()).toBe(true);
-    q.uploadsFlushing = false;
     q.outboxDraining = true;
     expect(isSendingNow()).toBe(true);
     q.outboxDraining = false;

@@ -9,11 +9,12 @@
 // paths may fire while a queue holds anything or a drain is running. The
 // banner asks again the moment a queue changes (`subscribeQueuedWork`).
 //
-// There are more queues than the sync pill counts. The pill folds in the main
-// outbox, the install outbox and custom work; the legacy upload queue
-// (`wops-upload-queue`, install photos and voice memos) and the servicing
-// evidence store are read here too, because a reload does not care which pill
-// a write is missing from.
+// Every queue is read here, the same set the sync pill counts since K0.6: the
+// main outbox (unit photos and voice memos included — they used to sit in a
+// queue of their own, `wops-upload-queue`, which is now read only until its
+// last item has been moved into the outbox), the install outbox, custom work,
+// and the servicing command and evidence stores. A reload does not care which
+// pill a write is missing from.
 //
 // Two judgement calls, both deliberate:
 //
@@ -33,7 +34,7 @@ import {
   pendingInstallCount,
   subscribeSyncListeners,
 } from "../install/installOutbox";
-import { isFlushingUploads, pendingUploadCount } from "../install/queue";
+import { pendingLegacyUploadCount } from "../install/legacyUploadQueue";
 import { readWorkQueue, WORK_QUEUE_EVENT } from "../customWork/queue";
 
 export interface QueuedWork {
@@ -49,15 +50,16 @@ export function blocksReload(q: QueuedWork): boolean {
 }
 
 /**
- * Is a drain or flush running at this instant? Synchronous — the three flags
+ * Is a drain or flush running at this instant? Synchronous — the two flags
  * are module state, never the stores — so the hold banner's Refresh button can
- * ask one last time as it is tapped. Items merely WAITING (offline, or the
- * legacy upload queue with nothing flushing it) are safe to reload over: they
- * are durable and nothing is mid-request. The duplicate-send risk is only a
- * drain in flight.
+ * ask one last time as it is tapped. Items merely WAITING (offline, or in the
+ * old upload store before their move) are safe to reload over: they are
+ * durable and nothing is mid-request. The duplicate-send risk is only a drain
+ * in flight, and the old store is never drained — only moved, by the outbox's
+ * own startup, which the outbox flag covers.
  */
 export function isSendingNow(): boolean {
-  return isDraining() || isFlushingInstalls() || isFlushingUploads();
+  return isDraining() || isFlushingInstalls();
 }
 
 async function count(read: () => Promise<number> | number): Promise<number> {
@@ -78,7 +80,8 @@ export async function readQueuedWork(userId: string | null): Promise<QueuedWork>
   const reads: Array<Promise<number>> = [
     count(pendingWriteCount),
     count(pendingInstallCount),
-    count(pendingUploadCount),
+    // Non-zero only until the first start after the update has moved them.
+    count(() => pendingLegacyUploadCount()),
   ];
   if (userId) {
     reads.push(

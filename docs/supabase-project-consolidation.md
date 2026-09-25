@@ -249,7 +249,7 @@ Each bucket has a specific consumer in the app, so the failure is predictable:
 
 | Bucket | Where the app uses it | What breaks if the files are missing |
 | --- | --- | --- |
-| `plansets` | `app/src/lib/install/api.ts` line 577 (upload), line 611 (download), line 911; queued for offline in `app/src/lib/install/queue.ts` line 9 and `installOutbox.ts` line 16 | The plan viewer and the project map go blank. `project_plansets` rows would still exist, so the app would list four plansets and fail to open any of them — worse than showing none |
+| `plansets` | `app/src/lib/install/api.ts` line 577 (upload), line 611 (download), line 911; queued for offline in `app/src/lib/install/installOutbox.ts` (media rides `lib/offline/outbox.ts` since K0.6) | The plan viewer and the project map go blank. `project_plansets` rows would still exist, so the app would list four plansets and fail to open any of them — worse than showing none |
 | `install-media` | `app/src/lib/photos.ts` line 49, `app/src/lib/install/api.ts` line 2413, `app/src/lib/offline/outbox.ts` line 294, `outboxHandlers.ts` line 151, `OpeningSheet.tsx` lines 422–471, `PhotoCaptureSheet.tsx` line 144 | Nothing today — the bucket is empty. **But the bucket itself must exist on the new project**, or the very first install photo anyone takes fails to upload |
 | `toolbox-records` | `app/src/lib/toolbox.ts` line 10 | The one completed toolbox talk loses its signed PDF, which is the record you would want if anyone ever asked to see proof of the talk |
 | `trip-attachments` | `app/src/lib/travel/api.ts` line 29 | Nothing today — empty. Bucket must still exist |

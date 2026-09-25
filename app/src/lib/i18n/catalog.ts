@@ -2553,6 +2553,31 @@ export const CATALOG = {
     en: "Showing the last saved copy — the last refresh failed.",
     es: "Mostrando la última copia guardada — la última actualización falló.",
   },
+  // ---- The sync pill over every queue (K0.6) ----------------------------
+  "pill.installQueuedOne": { en: "1 install queued", es: "1 instalación en espera" },
+  "pill.installsQueuedMany": { en: "{n} installs queued", es: "{n} instalaciones en espera" },
+  "pill.installNeedsYouOne": { en: "1 install needs you", es: "1 instalación te necesita" },
+  "pill.installsNeedYouMany": { en: "{n} installs need you", es: "{n} instalaciones te necesitan" },
+  "pill.workQueuedOne": { en: "1 work change queued", es: "1 cambio de trabajo en espera" },
+  "pill.workQueuedMany": { en: "{n} work changes queued", es: "{n} cambios de trabajo en espera" },
+  "pill.workNeedsReview": { en: "Work needs review", es: "El trabajo necesita revisión" },
+  "pill.serviceQueuedOne": { en: "1 service change queued", es: "1 cambio de servicio en espera" },
+  "pill.serviceQueuedMany": { en: "{n} service changes queued", es: "{n} cambios de servicio en espera" },
+  "pill.serviceNeedsReview": { en: "Service work needs review", es: "El servicio necesita revisión" },
+  "pill.oldUploadsQueued": { en: "Old uploads {n}", es: "Subidas antiguas {n}" },
+  "pill.needsYouDetail": {
+    en: "Something on this phone couldn't send and needs you. Open this to see it.",
+    es: "Algo en este teléfono no se pudo enviar y te necesita. Ábrelo para verlo.",
+  },
+  "pill.waitingDetailOne": {
+    en: "1 change is saved on this phone and waiting to send. Open this to see it.",
+    es: "1 cambio está guardado en este teléfono y en espera de enviarse. Ábrelo para verlo.",
+  },
+  "pill.waitingDetailMany": {
+    en: "{n} changes are saved on this phone and waiting to send. Open this to see them.",
+    es: "{n} cambios están guardados en este teléfono y en espera de enviarse. Ábrelo para verlos.",
+  },
+  "pill.openStatus": { en: "open sync status", es: "abrir el estado de sincronización" },
   "pill.noSignal": { en: "No signal", es: "Sin señal" },
   "pill.noSignalDetail": {
     en: "No signal. Changes are saved on this phone and send when it returns.",
@@ -3650,9 +3675,39 @@ export const CATALOG = {
   "stuck.title": { en: "Stuck writes", es: "Escrituras atascadas" },
   "stuck.back": { en: "Back", es: "Atrás" },
   "stuck.explain1": {
-    en: "These are saves that never made it to the server — a clock punch, a photo, a plan change. Nothing here was thrown away on its own; each one is waiting for you to try it again or throw it away yourself.",
-    es: "Estos son guardados que nunca llegaron al servidor — un marcaje de reloj, una foto, un cambio de plano. Nada aquí se eliminó por su cuenta; cada uno espera que tú lo intentes de nuevo o lo elimines.",
+    en: "Everything this phone still has to send is listed here — a clock punch, a photo, a memo, a finished window. What is waiting sends on its own once there is signal. What couldn't send after several tries waits for you to try it again or throw it away yourself; nothing here is thrown away on its own.",
+    es: "Aquí está todo lo que este teléfono todavía tiene que enviar — un marcaje de reloj, una foto, una nota de voz, una ventana terminada. Lo que está en espera se envía solo en cuanto hay señal. Lo que no se pudo enviar después de varios intentos espera que tú lo intentes de nuevo o lo elimines; nada aquí se elimina por su cuenta.",
   },
+  // ---- Every queue, every state (K0.6) -----------------------------------
+  "stuck.state.waiting": { en: "Saved on this phone", es: "Guardado en este teléfono" },
+  "stuck.state.sending": { en: "Sending…", es: "Enviando…" },
+  "stuck.state.failed": { en: "Couldn't send — needs you", es: "No se pudo enviar — te necesita" },
+  "stuck.state.sent": { en: "Saved in Forge", es: "Guardado en Forge" },
+  "stuck.sentAt": { en: "Saved in Forge at {when}", es: "Guardado en Forge a las {when}" },
+  "stuck.section.needsYou": { en: "Needs you", es: "Te necesita" },
+  "stuck.section.waiting": { en: "Waiting to send", es: "En espera de enviarse" },
+  "stuck.section.sent": {
+    en: "Saved in Forge since you opened the app",
+    es: "Guardado en Forge desde que abriste la app",
+  },
+  "stuck.sendNow": { en: "Send now", es: "Enviar ahora" },
+  "stuck.sendNowError": {
+    en: "Couldn't start sending. Check your signal and try again.",
+    es: "No se pudo empezar a enviar. Revisa tu señal e intenta de nuevo.",
+  },
+  "stuck.op.voiceMemo": { en: "Voice memo", es: "Nota de voz" },
+  // i18n-same-on-purpose: "video" is the same word in the crew's Spanish.
+  "stuck.op.video": { en: "Video", es: "Video" },
+  "stuck.customWork": { en: "Work change", es: "Cambio de trabajo" },
+  "stuck.serviceChange": { en: "Service change", es: "Cambio de servicio" },
+  "stuck.serviceEvidence": { en: "Service photo, memo or video", es: "Foto, nota o video de servicio" },
+  "stuck.oldUploads": { en: "Old uploads still to move: {n}", es: "Subidas antiguas por mover: {n}" },
+  "stuck.oldUploadsHint": {
+    en: "These move into the send line when the app starts. If they stay here, free up some space on this phone and open the app again.",
+    es: "Estas pasan a la fila de envío cuando la app arranca. Si siguen aquí, libera espacio en este teléfono y abre la app de nuevo.",
+  },
+  "stuck.reviewCurrentWork": { en: "Review in Current Work", es: "Revisar en Trabajo actual" },
+  "stuck.reviewServicing": { en: "Review in Servicing", es: "Revisar en Servicio" },
   "stuck.explain2": {
     en: "Try again sends a write exactly as it was written, with the details from the moment it was made. Check how long one has been waiting before you send it — an old write may not match what is there now.",
     es: "Intentar de nuevo envía el guardado exactamente como se escribió, con los datos del momento en que se hizo. Revisa cuánto tiempo lleva esperando antes de enviarlo — uno viejo puede no coincidir con lo que hay ahora.",

@@ -228,7 +228,7 @@ essentially immediately on the next time someone looks at their phone.**
 | Situation | What happens |
 | --- | --- |
 | Unsaved work in progress | **Asks.** Never reloads. No exceptions. |
-| Anything still queued or being sent (any outbox, the upload queue, custom work, servicing) | **Holds**, then decides again the moment the queues change. A reload mid-drain can send a clock punch twice. The hold banner still offers Refresh and dismiss — Refresh is disabled only while a drain is actually in flight, since what is merely waiting is durable. |
+| Anything still queued or being sent (any outbox — unit photos and memos ride the main one since K0.6 — custom work, servicing) | **Holds**, then decides again the moment the queues change. A reload mid-drain can send a clock punch twice. The hold banner still offers Refresh and dismiss — Refresh is disabled only while a drain is actually in flight, since what is merely waiting is durable. |
 | Nothing unsaved, app was out of sight ≥ 60s | **Reloads itself.** The user comes back to the new version. |
 | Nothing unsaved, just opened or just signed in (≤ 90s, nothing typed), on the sign-in screen or the Work landing with no sheet open | **Reloads itself**, once nobody has tapped for a few seconds. Dismissing the banner turns this off. |
 | Nothing unsaved, on the sign-in screen | **Reloads itself**, same conditions. |
@@ -264,9 +264,11 @@ Two more registries feed it, both added after an independent review
   itself). The "just opened" and "sign-in screen" paths need it; the older
   "came back after a minute away" path does not.
 - `lib/pwa/queuedWork.ts` — everything still waiting to be sent or mid-send,
-  across every queue, including the legacy upload queue the sync pill never
-  counted. Failed items do not count (a reload cannot resend them), and a queue
-  that cannot be opened reads as empty (it cannot be draining either).
+  across every queue — the same set the sync pill counts since K0.6
+  (2026-09-23), when unit photos and voice memos moved off their own
+  never-counted queue onto the main outbox. Failed items do not count (a
+  reload cannot resend them), and a queue that cannot be opened reads as
+  empty (it cannot be draining either).
 
 The version check itself runs one request at a time with an eight-second
 deadline, and an update that is already downloaded is decided on **before** the

@@ -321,6 +321,24 @@ describe("countsByOp + pillSummary (p1-12 status pill)", () => {
     expect(pillSummary(c).label).toBe("Photos 1");
   });
 
+  // K0.6: a unit's voice memo rides photo_upload (same handler, same client
+  // id, same attachments row) but must not be announced as a photo — an
+  // installer reading "Photos 1" after recording a memo goes looking for a
+  // photo that does not exist.
+  it("names a voice memo as a memo, and a walkthrough video as a photo", () => {
+    const c = countsByOp([
+      entry({ id: "1", op: "photo_upload", payload: { kind: "voice_memo" } }),
+      entry({ id: "2", op: "photo_upload", payload: { kind: "video" } }),
+      entry({ id: "3", op: "photo_upload", payload: { kind: "photo" } }),
+      // An entry queued before `kind` was always written: a photo.
+      entry({ id: "4", op: "photo_upload", payload: {} }),
+    ]);
+    expect(c.memos).toBe(1);
+    expect(c.photos).toBe(3);
+    expect(totalPending(c)).toBe(4);
+    expect(pillSummary(c).label).toBe("Photos 3 · Memos 1");
+  });
+
   it("reads warehouse work out alongside everything else", () => {
     const s = pillSummary(
       countsByOp([

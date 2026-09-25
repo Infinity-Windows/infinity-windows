@@ -24,6 +24,7 @@ import { CATALOG } from "../i18n/catalog";
 import { translate } from "../i18n/translate";
 import {
   errorMessage,
+  isNetworkError,
   type OpHandler,
   type OpHandlers,
   type OutboxEntry,
@@ -460,6 +461,28 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
     if (!path) throw tagPermanent(new Error("Upload is missing a storage path"));
     const blob = await ctx.getBlob();
     if (!blob) throw tagPermanent(new Error("Upload is missing its file"));
+    const storagePath = `${bucket}/${path}`;
+
+    // An item moved out of the retired upload queue (lib/install/
+    // legacyUploadQueue.ts) may have been filed already: that queue inserted
+    // the row FIRST and removed its item after, and a voice memo whose row
+    // came back unreadable stayed in it forever over a row that was saved.
+    // Its id is new to the server, so the client-id dedupe below cannot know
+    // that; the storage path can. A row under this path means the old queue
+    // got there, and sending again would be the duplicate this whole change
+    // exists to prevent. A read the server refuses falls through to the
+    // ordinary write — the one thing this must never do is drop a photo on
+    // the strength of a question it could not get answered.
+    if (p.legacyUpload === true) {
+      const existing = await supabase
+        .from("attachments")
+        .select("id")
+        .eq("storage_path", storagePath)
+        .limit(1)
+        .maybeSingle();
+      if (existing.error && isNetworkError(existing.error)) throw existing.error;
+      if (!existing.error && existing.data?.id) return;
+    }
 
     const { error: upErr } = await supabase.storage
       .from(bucket)
@@ -470,7 +493,7 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
       window_id: str(p.windowId),
       install_event_id: str(p.installEventId),
       kind: str(p.kind) ?? "photo",
-      storage_path: `${bucket}/${path}`,
+      storage_path: storagePath,
       created_by: str(p.createdBy),
     };
     // Additive geo/feed columns (20260721002000), plus package_id (pick 28,
@@ -515,6 +538,37 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
       );
     }
     if (res.error) throw res.error;
+
+    // A voice memo's transcript starts here, once — and only AFTER the write
+    // above has been confirmed without asking for the row back. The retired
+    // queue asked for the id on the insert itself (INSERT … RETURNING), which
+    // made the write depend on the SELECT policy: a memo filed under a null
+    // created_by was saved and then refused on the way out, and the queue
+    // retried it forever over its own row. Here the row is confirmed first;
+    // the id is a separate read, and a read that fails costs only the kick-
+    // off, which lib/install/transcriptions.ts retries on its own schedule.
+    //
+    // The transcription itself is NOT awaited. It can take up to a minute on
+    // one bar, and this handler runs inside the one drain every write shares
+    // — a clock-out queued behind a memo must not wait on a transcript it has
+    // nothing to do with. A transcription that fails is left for the retry.
+    if (row.kind === "voice_memo") {
+      try {
+        const saved = await supabase
+          .from("attachments")
+          .select("id")
+          .eq("client_id", entry.id)
+          .maybeSingle();
+        if (saved.data?.id) {
+          const { transcribeInstallAttachment } = await import("../install/transcribe");
+          void transcribeInstallAttachment(saved.data.id, blob).catch(() => {
+            // Left untranscribed for retryTranscriptions().
+          });
+        }
+      } catch {
+        // Left untranscribed for retryTranscriptions().
+      }
+    }
   };
 
   // --- Wave P: a snapped receipt --------------------------------------

@@ -17,7 +17,8 @@ import { BuildIdentityCard } from "../components/BuildIdentityCard";
 import { listProjects } from "../lib/api";
 import { useT } from "../lib/i18n";
 import { failedInstallCount, pendingInstallCount, subscribeSyncListeners } from "../lib/install/installOutbox";
-import { pendingTranscriptionCount, pendingUploadCount } from "../lib/install/queue";
+import { pendingLegacyUploadCount } from "../lib/install/legacyUploadQueue";
+import { pendingTranscriptionCount } from "../lib/install/transcriptions";
 import { buildDiagnosticsReport } from "../lib/offline/diagnosticsReport";
 import { readSavedJobs, type SavedJobRecord } from "../lib/offline/jobPack";
 import { getOfflineEvents, subscribeOfflineEvents, summarizeOfflineEvents, type OfflineEvent } from "../lib/offline/telemetry";
@@ -32,6 +33,7 @@ const NO_EVENTS: readonly OfflineEvent[] = [];
 const QUEUE_LABELS: Record<string, string> = {
   clock: "Clock",
   photos: "Photos",
+  memos: "Voice memos",
   receipts: "Receipts",
   logs: "Daily logs",
   warehouse: "Warehouse",
@@ -56,7 +58,7 @@ export function Diagnostics() {
     void Promise.all([pendingInstallCount(), failedInstallCount()])
       .then(([pending, failed]) => setInstalls({ pending, failed }))
       .catch(() => undefined);
-    void Promise.all([pendingUploadCount(), pendingTranscriptionCount()])
+    void Promise.all([pendingLegacyUploadCount(), pendingTranscriptionCount()])
       .then(([pending, transcriptions]) => setUploads({ pending, transcriptions }))
       .catch(() => undefined);
   }, []);
@@ -83,8 +85,10 @@ export function Diagnostics() {
       .filter(([k, v]) => k !== "deadLetter" && typeof v === "number")
       .map(([k, v]) => ({ label: QUEUE_LABELS[k] ?? k, pending: v as number, failed: 0 })),
     { label: "Installs", pending: installs.pending, failed: installs.failed },
-    { label: "Install photos", pending: uploads.pending, failed: 0 },
-    { label: "Voice memos", pending: uploads.transcriptions, failed: 0 },
+    // Items still in the retired upload store: non-zero only on a phone whose
+    // first start after the update has not moved them into the outbox yet.
+    { label: "Old upload queue", pending: uploads.pending, failed: 0 },
+    { label: "Memos awaiting transcript", pending: uploads.transcriptions, failed: 0 },
   ];
   if (counts.deadLetter > 0) queues.push({ label: "Gave up", pending: 0, failed: counts.deadLetter });
   const nameOf = (id: string) => projects.data?.find((p) => p.id === id)?.job_code ?? projects.data?.find((p) => p.id === id)?.name ?? id.slice(0, 8);

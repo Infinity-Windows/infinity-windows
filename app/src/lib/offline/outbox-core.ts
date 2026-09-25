@@ -5,7 +5,8 @@
 //
 // The runtime (outbox.ts) wires this core to an IndexedDB-backed store and a
 // map of Supabase op handlers. The install-flow outbox (lib/install/*) is a
-// separate module and is intentionally left untouched.
+// separate module that shares this file's retry policy and, since K0.6, hands
+// its media to the runtime once the install itself has landed.
 
 /**
  * Every kind of write the outbox can carry.
@@ -448,6 +449,14 @@ export function retryEntry(entry: OutboxEntry, now: number): OutboxEntry {
 export interface OpCounts {
   clock: number;
   photos: number;
+  /**
+   * Voice memos (K0.6, 2026-09-23). A unit's memo rides `photo_upload` with
+   * `kind: "voice_memo"` — same handler, same client id, same attachments
+   * row — but an installer who recorded a memo and reads "Photos 1" on the
+   * pill goes looking for a photo that does not exist. Its own bucket, so the
+   * pill says what is actually waiting.
+   */
+  memos: number;
   receipts: number;
   logs: number;
   other: number;
@@ -461,12 +470,19 @@ export interface OpCounts {
 const EMPTY_COUNTS: OpCounts = {
   clock: 0,
   photos: 0,
+  memos: 0,
   receipts: 0,
   logs: 0,
   other: 0,
   deadLetter: 0,
   warehouse: 0,
 };
+
+/** The media kind an upload entry carries; a photo unless it says otherwise. */
+export function uploadKind(entry: OutboxEntry): "photo" | "voice_memo" | "video" | "document" {
+  const kind = entry.payload.kind;
+  return kind === "voice_memo" || kind === "video" || kind === "document" ? kind : "photo";
+}
 
 /** Roll a queue up into per-category pending counts for the status pill. */
 export function countsByOp(entries: OutboxEntry[]): OpCounts {
@@ -484,6 +500,9 @@ export function countsByOp(entries: OutboxEntry[]): OpCounts {
         c.clock += 1;
         break;
       case "photo_upload":
+        if (uploadKind(e) === "voice_memo") c.memos += 1;
+        else c.photos += 1;
+        break;
       case "issue_photo_upload":
         c.photos += 1;
         break;
@@ -532,6 +551,7 @@ type PendingCategory = Exclude<keyof OpCounts, "deadLetter">;
 const PART_LABELS: Record<PendingCategory, (n: number) => string> = {
   clock: (n) => `Clock ${n}`,
   photos: (n) => `Photos ${n}`,
+  memos: (n) => `Memos ${n}`,
   receipts: (n) => `Receipts ${n}`,
   logs: (n) => (n === 1 ? "1 log queued" : `${n} logs queued`),
   warehouse: (n) => `Warehouse ${n}`,

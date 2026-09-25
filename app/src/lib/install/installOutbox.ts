@@ -1,6 +1,11 @@
 // Offline install outbox: persist the full install intent (RPC args + media
 // blobs + points) in IndexedDB BEFORE touching the network, then flush in
 // ordered, idempotent steps. Crews in dead zones no longer lose installs.
+//
+// Once the install RPC and the points have landed, the media is handed to the
+// global outbox (lib/offline/outbox.ts) under ids decided when the install was
+// queued, and this record is removed. Until K0.6 (2026-09-23) it went to a
+// queue of its own that nothing counted and nothing could retry by hand.
 
 import { awardPoints, type PointEntry } from "../points";
 import {
@@ -10,8 +15,9 @@ import {
   isRetryableError,
   MAX_ATTEMPTS,
 } from "../offline/outbox-core";
+import { drain, enqueueUpload, pendingMediaCount } from "../offline/outbox";
+import { stableId } from "../offline/stableId";
 import { submitInstallEvent, type SubmitInstallParams } from "./api";
-import { enqueueUpload, flushQueue, type QueuedUploadMeta } from "./queue";
 
 export type InstallOutboxStep =
   | "queued"
@@ -24,6 +30,16 @@ export interface InstallOutboxMediaMeta {
   path: string;
   contentType: string;
   kind: "photo" | "voice_memo" | "video";
+  /**
+   * The outbox entry id this item will be queued under — decided ONCE, at
+   * enqueueInstall, and written into the record. The media stage can run
+   * again after a crash (the record is removed only after every item is
+   * queued), and a stage that minted a fresh id each time queued the same
+   * photo twice under two ids: two rows on the server, no error anywhere.
+   * Records written before this field existed derive theirs from the
+   * install's clientKey and the item's position — see mediaClientId.
+   */
+  clientId?: string;
   /** Additive geo/feed fields captured at snap time (photos only). */
   lat?: number | null;
   lng?: number | null;
@@ -368,7 +384,12 @@ export async function enqueueInstall(
 ): Promise<InstallOutboxRecord> {
   const id = crypto.randomUUID();
   const clientKey = crypto.randomUUID();
-  const media = input.media.map(({ blob: _b, ...meta }) => meta);
+  // Each item's outbox id is decided here, before anything is written, so
+  // every later hand-off of this record queues the same ids.
+  const media = input.media.map(({ blob: _b, ...meta }) => ({
+    ...meta,
+    clientId: meta.clientId ?? crypto.randomUUID(),
+  }));
   const blobs = input.media.map((m) => m.blob);
   const record: InstallOutboxRecord = {
     id,
@@ -405,7 +426,7 @@ export async function enqueueInstall(
  *
  * It used to be a boolean: a flush that arrived while one was running
  * returned `failedNow: []` on the spot, having attempted nothing. The 30s
- * background flush (lib/install/queue.ts) means that is not a rare window —
+ * background flush (initInstallOutboxAutoFlush) means that is not a rare window —
  * tap Submit while one is in flight and the sheet was told "queued", showed
  * "saved on this device", and the refusal that was coming landed in the next
  * background pass, which throws its refusals away. That is the exact bug this
@@ -499,6 +520,48 @@ export function isFlushingInstalls(): boolean {
   return flushesInFlight > 0;
 }
 
+/**
+ * The record a pass is attempting right now. Per record, not per flush, so
+ * /stuck can say "Sending" against the one install that is actually on the
+ * wire and "Saved on this phone" against the ones waiting their turn.
+ */
+const sendingIds = new Set<string>();
+
+export function isInstallSending(id: string): boolean {
+  return sendingIds.has(id);
+}
+
+/**
+ * Installs that reached the server this session, newest first — the third
+ * state of "Saved on this phone → Sending → Saved in Forge" for a record that
+ * is deleted once it is done. Session-only and bounded, like the sibling
+ * queue's recentlySent().
+ */
+export interface SentInstall {
+  id: string;
+  openingCode: string;
+  createdAt: string;
+  sentAt: number;
+}
+const RECENTLY_SENT_MAX = 50;
+const recentlySent: SentInstall[] = [];
+
+export function recentlySentInstalls(): readonly SentInstall[] {
+  return recentlySent;
+}
+
+/**
+ * The outbox id one media item is queued under. Written into the record at
+ * enqueueInstall for anything queued since K0.6; derived, deterministically,
+ * for the records already sitting on phones from before it — so those get
+ * the same crash-safety without a rewrite of what is on disk.
+ */
+async function mediaClientId(record: InstallOutboxRecord, index: number): Promise<string> {
+  const given = record.payload.media[index]?.clientId;
+  if (given) return given;
+  return stableId(`${record.payload.clientKey}:media:${index}`);
+}
+
 async function runFlushPass(): Promise<InstallFlushResult> {
   let synced = 0;
   const failedNow: InstallRefusal[] = [];
@@ -535,6 +598,8 @@ async function runFlushPass(): Promise<InstallFlushResult> {
     for (const { row, record } of due) {
       let current = record;
       const blobs = row.blobs ?? [];
+      sendingIds.add(current.id);
+      notifySyncListeners();
       try {
         // RPC
         if (stageToAttempt(current.step) === "rpc") {
@@ -563,34 +628,49 @@ async function runFlushPass(): Promise<InstallFlushResult> {
           await putRecord(current, blobs);
         }
 
-        // Hand media to the upload queue, then drop the install record
+        // Hand media to the global outbox, then drop the install record.
+        // Every item goes in under the id this record already carries for
+        // it, so running this stage again after a crash replaces the entries
+        // it queued the first time instead of adding to them. The outbox
+        // write is durable before the next item is touched, and the record
+        // is removed only after the last one — there is no moment where a
+        // photo exists in neither store.
         if (stageToAttempt(current.step) === "media") {
           const eventId = current.installEventId;
           for (let i = 0; i < current.payload.media.length; i++) {
             const meta = current.payload.media[i];
             const blob = blobs[i];
             if (!meta || !blob) continue;
-            await enqueueUpload(
-              {
-                bucket: meta.bucket,
-                path: meta.path,
-                contentType: meta.contentType,
-                kind: meta.kind,
-                installEventId: eventId,
-                windowId: current.payload.assignedWindowId,
-                createdBy: current.payload.createdBy,
-                projectId: current.payload.projectId,
-                lat: meta.lat ?? null,
-                lng: meta.lng ?? null,
-                accuracyM: meta.accuracyM ?? null,
-                takenAt: meta.takenAt ?? null,
-              } satisfies Omit<QueuedUploadMeta, "id" | "createdAt">,
+            await enqueueUpload({
+              id: await mediaClientId(current, i),
+              // Already captured, already part of a filed install: refusing
+              // a walkthrough video for its size here would lose it.
+              uncapped: true,
+              kind: meta.kind,
+              bucket: meta.bucket,
+              path: meta.path,
+              contentType: meta.contentType,
+              installEventId: eventId,
+              windowId: current.payload.assignedWindowId,
+              createdBy: current.payload.createdBy,
+              projectId: current.payload.projectId,
+              lat: meta.lat ?? null,
+              lng: meta.lng ?? null,
+              accuracyM: meta.accuracyM ?? null,
+              takenAt: meta.takenAt ?? null,
               blob,
-            );
+            });
           }
           current = { ...current, step: "media_done" };
           await putRecord(current, blobs);
           await removeRecord(current.id);
+          recentlySent.unshift({
+            id: current.id,
+            openingCode: current.payload.openingCode,
+            createdAt: current.payload.createdAt,
+            sentAt: Date.now(),
+          });
+          if (recentlySent.length > RECENTLY_SENT_MAX) recentlySent.length = RECENTLY_SENT_MAX;
           synced++;
         }
       } catch (err) {
@@ -616,12 +696,70 @@ async function runFlushPass(): Promise<InstallFlushResult> {
           // that finds a refusal is not always the pass they started.
           unclaimedRefusals.set(current.id, err);
         }
+      } finally {
+        sendingIds.delete(current.id);
       }
     }
   } finally {
+    sendingIds.clear();
     notifySyncListeners();
   }
   return { synced, remaining: await pendingInstallCount(), failedNow };
+}
+
+let autoFlushWired = false;
+
+/**
+ * Keep this queue draining from EVERY screen: on reconnect, when the app
+ * comes back into view, and on a slow interval (flaky LTE can keep `onLine`
+ * true while every request fails). Once per session.
+ *
+ * Until K0.6 this wiring lived in the retired upload queue and was started
+ * only by the opening sheet, so an install queued in a dead zone was retried
+ * only while that sheet was open — close it, and the record waited for the
+ * next time somebody opened a window. The sync pill starts it now, and the
+ * pill is on every screen.
+ *
+ * Only the install queue. The transcription retry that used to ride the same
+ * timer stays with the opening sheet (lib/install/transcriptions.ts): it asks
+ * the server for every memo still missing a transcript, company-wide for a
+ * foreman, and running that from every screen of every office session every
+ * thirty seconds is not what "send from any screen" meant.
+ */
+export function initInstallOutboxAutoFlush(): void {
+  if (autoFlushWired || typeof window === "undefined") return;
+  autoFlushWired = true;
+  window.addEventListener("online", () => void flushInstallOutbox());
+  document.addEventListener?.("visibilitychange", () => {
+    if (document.visibilityState === "visible") void flushInstallOutbox();
+  });
+  window.setInterval(() => {
+    if (navigator.onLine) void flushInstallOutbox();
+  }, 30_000);
+  if (navigator.onLine) void flushInstallOutbox();
+}
+
+/** For tests. */
+export function stopInstallOutboxAutoFlush(): void {
+  autoFlushWired = false;
+}
+
+/**
+ * A person tapped "Send now" on /stuck: every pending install becomes due
+ * this instant and a pass starts. Same reasoning as the sibling queue's
+ * sendNow — the backoff protects a dead signal from the phone, and a person
+ * looking at bars knows more than the timer does.
+ */
+export async function sendInstallsNow(): Promise<void> {
+  const now = Date.now();
+  for (const row of await listRows()) {
+    const record = deserializeInstallOutbox(row.meta);
+    if (record && record.status === "pending" && record.nextAttemptAt > now) {
+      await putRecord({ ...record, nextAttemptAt: now }, row.blobs ?? []);
+    }
+  }
+  notifySyncListeners();
+  await flushInstallOutbox();
 }
 
 // --- stuck installs: seeing them, and doing something about them ---------
@@ -630,17 +768,22 @@ async function runFlushPass(): Promise<InstallFlushResult> {
 // same shape of question (what gave up, can I try it again, can I throw it
 // away) for the sibling outbox that carries installs instead of shifts/photos.
 
-/** Every install that gave up, newest first. */
-export async function listFailedInstalls(): Promise<InstallOutboxRecord[]> {
+/** Every install still on this phone, whatever its state, newest first. */
+export async function listInstalls(): Promise<InstallOutboxRecord[]> {
   const rows = await listRows();
-  const failed: InstallOutboxRecord[] = [];
+  const records: InstallOutboxRecord[] = [];
   for (const row of rows) {
     const record = deserializeInstallOutbox(row.meta);
-    if (record && record.status === "failed") failed.push(record);
+    if (record) records.push(record);
   }
-  return failed.sort(
+  return records.sort(
     (a, b) => Date.parse(b.payload.createdAt) - Date.parse(a.payload.createdAt),
   );
+}
+
+/** Every install that gave up, newest first. */
+export async function listFailedInstalls(): Promise<InstallOutboxRecord[]> {
+  return (await listInstalls()).filter((r) => r.status === "failed");
 }
 
 /**
@@ -710,11 +853,16 @@ export async function submitInstallViaOutbox(
 }> {
   const record = await enqueueInstall(input);
   const flush = await flushInstallOutbox();
-  const uploads = await flushQueue();
+  // The media is in the global outbox now (or still behind the RPC). Give it
+  // one attempt while the person is standing there — with signal, the toast
+  // then says "recorded" rather than "queued" — and report what is still
+  // waiting. `drain` returns at once if a drain is already running, in which
+  // case the count is honest about that: waiting, not lost.
+  await drain();
   return {
     queued: flush.remaining > 0,
     remainingInstalls: flush.remaining,
-    remainingUploads: uploads.remaining,
+    remainingUploads: await pendingMediaCount(),
     refused: claimRefusal(record.id),
   };
 }
