@@ -2,7 +2,6 @@ import { VoiceTextarea } from "../components/voice/VoiceTextarea";
 import { BackChip } from "../components/BackChip";
 import { JobExecutionPanel } from "../components/projects/JobExecutionPanel";
 import { JobTimecardExport } from "../components/timecard/JobTimecardExport";
-import { PlanPackagesPanel } from "../components/warehouse/PlanPackagesPanel";
 import { JobPackagesPanel } from "../components/warehouse/JobPackagesPanel";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
@@ -59,6 +58,7 @@ import { listRoster } from "../lib/chat/api";
 import { mergeJobPeople } from "../lib/whoOnJob";
 import { CalendarClock, Plane, Truck, Users } from "lucide-react";
 import { SkeletonCard } from "../components/ui/States";
+import { lazyRoute } from "../lib/pwa/lazyRoute";
 
 // Lazy: the Maps Interactive tab pulls in pdf.js (via ProjectMap/PlansPanel,
 // for the planset sheets it overlays) — a phone opening this job's overview
@@ -68,8 +68,35 @@ import { SkeletonCard } from "../components/ui/States";
 const MapsInteractive = lazy(() =>
   import("./install/MapsInteractive").then((m) => ({ default: m.MapsInteractive })),
 );
-import { DispatchBoard } from "./install/DispatchBoard";
-import { SignatureEstimates } from "../components/install/SignatureEstimates";
+// Lazy for the same reason: three tabs only the shop or a lead opens, which
+// were about 11 kB (gzipped) of the entry chunk every phone downloads before
+// its first screen — the dispatch board (leads only), the cohort estimates on
+// the brain tab (leads only) and the package planner on the warehouse tab,
+// whose package-count prefill brought the Model Studio's unit code and the 3D
+// fit-view renderer along with it.
+// Each goes through lazyRoute() so a tab that cannot load on one bar says so
+// after 20 seconds, with Try again, instead of a skeleton that never ends.
+// Their chunks are precached like every other, so each opens with no signal
+// once the app is installed.
+const TAB_LOADING = <SkeletonCard height={320} />;
+const DispatchBoard = lazyRoute(
+  () => import("./install/DispatchBoard").then((m) => ({ default: m.DispatchBoard })),
+  { loadingFallback: TAB_LOADING },
+);
+const SignatureEstimates = lazyRoute(
+  () =>
+    import("../components/install/SignatureEstimates").then((m) => ({
+      default: m.SignatureEstimates,
+    })),
+  { loadingFallback: TAB_LOADING },
+);
+const PlanPackagesPanel = lazyRoute(
+  () =>
+    import("../components/warehouse/PlanPackagesPanel").then((m) => ({
+      default: m.PlanPackagesPanel,
+    })),
+  { loadingFallback: TAB_LOADING },
+);
 import { ScrollTabs } from "../components/nav/ScrollTabs";
 import { PhotoFeed } from "../components/photos/PhotoFeed";
 import { PhotoKindTabs } from "../components/photos/PhotoKindTabs";
