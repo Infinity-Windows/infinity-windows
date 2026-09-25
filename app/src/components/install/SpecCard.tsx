@@ -11,7 +11,8 @@
 // "elevation" from the spec drawing above). Skipped in compact form — a
 // dense list is no place to mount a 3D render.
 
-import { lazy, Suspense } from "react";
+import { Suspense } from "react";
+import { lazyOptional } from "../../lib/pwa/lazyOptional";
 import {
   checkSpecSize,
   PRINTED_SIZE_EXTRA_KEYS,
@@ -27,8 +28,11 @@ import { MarkDrawing } from "./MarkDrawing";
 // load for a picture most marks don't even have yet. Suspense fallback is
 // `null`: that's exactly what the crop itself renders before it has
 // anything to show (see MarkElevationCrop's own effect), so there is no
-// visible loading flicker to add.
-const MarkElevationCrop = lazy(() =>
+// visible loading flicker to add. lazyOptional, not lazy: when that big
+// download fails on one bar of signal, the card shows without the picture
+// instead of the whole app, and a half-filled opening sheet, giving way to
+// the crash screen (crash report 8WEYC, lib/pwa/lazyOptional.tsx).
+const MarkElevationCrop = lazyOptional(() =>
   import("./MarkElevationCrop").then((m) => ({ default: m.MarkElevationCrop })),
 );
 

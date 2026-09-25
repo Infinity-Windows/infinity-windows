@@ -1,5 +1,7 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { lazyOptional } from "../../lib/pwa/lazyOptional";
+import { PartDidNotLoad } from "../../lib/pwa/lazyOptionalFallback";
 import { useQuery } from "@tanstack/react-query";
 import {
   Wrench,
@@ -43,8 +45,11 @@ import { ServiceTripEditor } from "./TripEditor";
 import { ServiceMediaCapture } from "./MediaCapture";
 import { ServiceTimeReview } from "./TimeReview";
 import "./servicing.css";
-const LegacyService = lazy(() =>
-  import("../Service").then((m) => ({ default: m.Service })),
+// A failed download says so in this view instead of taking the app down
+// (lib/pwa/lazyOptional.tsx).
+const LegacyService = lazyOptional(
+  () => import("../Service").then((m) => ({ default: m.Service })),
+  <PartDidNotLoad />,
 );
 export function Servicing() {
   const t = useT(),

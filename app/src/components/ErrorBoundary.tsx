@@ -63,6 +63,10 @@ export class ErrorBoundary extends Component<Props, State> {
     // screen rather than the same one-time reload production gets. Seen
     // twice in full e2e runs under the dev server, 2026-09-07
     // (.../StudioList.tsx) — that's what made it worth fixing here.
+    // Production lands here too since crash report 8WEYC: when
+    // preloadRecovery.ts only notifies, it lets the failed import throw
+    // (shouldSwallowPreloadError), so a route's failure arrives as the chunk
+    // failure it is rather than as React reading `.default` off undefined.
     if (isChunkLoadError(error)) {
       const decision = recoverFromChunkLoadError();
       if (decision === "reload") {

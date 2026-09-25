@@ -7,7 +7,8 @@
 // while this tab is open, and nothing here calls a points, quiz, clearance or
 // "watched" write. A design preview is not study time and not an instruction.
 
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { lazyOptional } from "../../lib/pwa/lazyOptional";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Clapperboard } from "lucide-react";
 import { listTrainingVideos, trainingRoleRank, visibleTrainingVideos, type TrainingVideo } from "../../lib/appTraining";
@@ -18,7 +19,9 @@ import { useUsingForgeT, type UsingForgeT } from "./usingForgeCopy";
 import { DesignPreviewNotice, TrainingPlayer } from "./TrainingPlayer";
 import "./usingForge.css";
 
-const TrainingImporter = lazy(() => import("./TrainingImporter"));
+// An extra under the walkthroughs, so a failed download hides only itself
+// (lib/pwa/lazyOptional.tsx).
+const TrainingImporter = lazyOptional(() => import("./TrainingImporter"));
 
 export default function UsingForge() {
   const t = useUsingForgeT();
