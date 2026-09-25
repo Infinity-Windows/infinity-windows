@@ -73,9 +73,41 @@ function tapTimeOf(e: OutboxEntry): string {
   return str(e.payload.tappedAt) ?? new Date(e.createdAt).toISOString();
 }
 
+/**
+ * Which server shift a `pending:<entry id>` ref stands for, once known. The
+ * sender keeps this map (lib/offline/outboxHandlers.ts, createShiftResolver,
+ * persisted on the phone) and writes to it the moment a queued clock-in is
+ * accepted. A break or clock-out queued behind that clock-in carries the
+ * pending ref for life, and once the clock-in has left the queue nothing in
+ * the queue names it any more — only this map still knows the ref is the
+ * server's row. Without it, a queued clock-out showed "clocked in, clock-out
+ * on its way" over a shift the phone was about to close, and kept showing
+ * it across relaunches (Codex review of #644, 2026-09-24).
+ */
+export type ShiftRefResolver = (ref: string) => string | null;
+
+/**
+ * Pending refs learned during one merge pass: a queued clock-in whose tap the
+ * server already holds (the reply was lost, or the entry is still being
+ * deleted) is the server's row, so the punches behind it that name
+ * `pending:<its entry id>` belong to that row too. Learned here rather than
+ * from the resolver because at that instant the sender may not have recorded
+ * it yet.
+ */
+type PendingAliases = Map<string, string>;
+
 /** Does this queued break / clock-out belong to the shift the view shows? */
-function refMatches(shift: TimeShift, ref: string | null): boolean {
-  return ref != null && ref === shift.id;
+function refMatches(
+  shift: TimeShift,
+  ref: string | null,
+  aliases: PendingAliases,
+  resolve: ShiftRefResolver | undefined,
+): boolean {
+  if (ref == null) return false;
+  if (ref === shift.id) return true;
+  if (!ref.startsWith(PENDING_SHIFT_PREFIX)) return false;
+  const real = aliases.get(ref) ?? resolve?.(ref) ?? null;
+  return real != null && real === shift.id;
 }
 
 function wholeSecondsBetween(fromIso: string, toIso: string): number {
@@ -134,6 +166,8 @@ function applyQueued(
   tappedAt: string,
   profileId: string,
   lookups: ClockNameLookups,
+  aliases: PendingAliases,
+  resolve: ShiftRefResolver | undefined,
 ): TimeShift | null {
   const p = e.payload;
   switch (kind) {
@@ -144,11 +178,14 @@ function applyQueued(
       // clock-in will close, a made-up shift from a previous merge — gives
       // way to the queued punch.
       const clientId = str(p.clientId);
-      if (shift && shift.status === "open" && clientId && shift.client_id === clientId) return shift;
+      if (shift && shift.status === "open" && clientId && shift.client_id === clientId) {
+        aliases.set(PENDING_SHIFT_PREFIX + e.id, shift.id);
+        return shift;
+      }
       return shiftFromQueuedClockIn(e, tappedAt, profileId, lookups);
     }
     case "break_start": {
-      if (!shift || !refMatches(shift, str(p.shiftRef)) || shift.break_started_at) return shift;
+      if (!shift || !refMatches(shift, str(p.shiftRef), aliases, resolve) || shift.break_started_at) return shift;
       const breakType = str(p.breakType);
       return {
         ...shift,
@@ -157,7 +194,7 @@ function applyQueued(
       };
     }
     case "break_stop": {
-      if (!shift || !refMatches(shift, str(p.shiftRef)) || !shift.break_started_at) return shift;
+      if (!shift || !refMatches(shift, str(p.shiftRef), aliases, resolve) || !shift.break_started_at) return shift;
       return {
         ...shift,
         break_seconds: (shift.break_seconds ?? 0) + wholeSecondsBetween(shift.break_started_at, tappedAt),
@@ -166,8 +203,22 @@ function applyQueued(
       };
     }
     case "clock_out":
-      return shift && refMatches(shift, str(p.shiftRef)) ? null : shift;
+      return shift && refMatches(shift, str(p.shiftRef), aliases, resolve) ? null : shift;
   }
+}
+
+export interface MergeClockQueueOptions {
+  profileId: string | null;
+  lookups?: ClockNameLookups;
+  /**
+   * The sender's memory of which server shift each queued clock-in became.
+   * Pass the outbox's own (lib/offline/outbox.ts, resolveShiftRef) so the
+   * screens and the sender agree on what a pending ref means after the
+   * clock-in has landed and left the queue. Without one, a punch behind a
+   * clock-in that has already left the queue cannot be placed and leaves the
+   * server's row as it is.
+   */
+  resolveShiftRef?: ShiftRefResolver;
 }
 
 /**
@@ -181,10 +232,11 @@ function applyQueued(
 export function mergeClockQueue(
   server: TimeShift | null | undefined,
   entries: readonly OutboxEntry[],
-  opts: { profileId: string | null; lookups?: ClockNameLookups },
+  opts: MergeClockQueueOptions,
 ): ClockQueueView {
   const lookups = opts.lookups ?? {};
   const profileId = opts.profileId ?? server?.profile_id ?? "";
+  const aliases: PendingAliases = new Map();
   let shift: TimeShift | null = server ?? null;
   let pending: QueuedClockAction | null = null;
   const refused: RefusedClockAction[] = [];
@@ -198,7 +250,7 @@ export function mergeClockQueue(
       refused.push({ kind, entryId: e.id, tappedAt, reason: e.lastError });
       continue;
     }
-    shift = applyQueued(shift, e, kind, tappedAt, profileId, lookups);
+    shift = applyQueued(shift, e, kind, tappedAt, profileId, lookups, aliases, opts.resolveShiftRef);
     pending = { kind, entryId: e.id, tappedAt, sending: e.status === "sending" };
   }
   return { shift, pending, refused };

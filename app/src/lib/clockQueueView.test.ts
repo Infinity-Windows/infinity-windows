@@ -193,6 +193,99 @@ describe("a break and a clock-out still on the phone", () => {
   });
 });
 
+// Codex review of #644 (2026-09-24): a break or clock-out queued behind a
+// clock-in keeps that clock-in's `pending:` ref for life, and once the
+// clock-in has landed and left the queue only the sender's resolver still
+// knows which server row the ref means. The merge used to compare the ref
+// with the server's uuid alone, so from that moment on every punch behind
+// the clock-in was silently dropped from the view: "clocked in, clock-out on
+// its way" over a shift the phone was about to close, across relaunches.
+describe("every sync point of a day queued on the phone", () => {
+  const lunch = entry({ op: "break_start", id: "b1", createdAt: 2, payload: { shiftRef: "pending:x", breakType: "lunch", tappedAt: T(17, 0) } });
+  const back = entry({ op: "break_stop", id: "b2", createdAt: 3, payload: { shiftRef: "pending:x", tappedAt: T(17, 30) } });
+  const out = entry({ op: "clock_out", id: "o1", createdAt: 4, payload: { shiftRef: "pending:x", tappedAt: T(22, 2) } });
+  const day = [queuedClockIn(), lunch, back, out];
+  /** The server's row once the clock-in has landed, and as each later punch lands. */
+  const landed = serverShift({ id: "s1", client_id: CLIENT, clock_in_at: T(13, 2), created_at: T(13, 2) });
+  const onLunch = serverShift({ ...landed, break_started_at: T(17, 0), break_type: "lunch" });
+  const backAtWork = serverShift({ ...landed, break_seconds: 30 * 60 });
+  const serverAfter: Array<TimeShift | null> = [null, landed, onLunch, backAtWork, null];
+  /** What the sender recorded the moment the clock-in was accepted. */
+  const resolver = (ref: string) => (ref === "pending:x" ? "s1" : null);
+  const nothingYet = () => null;
+
+  for (let landedCount = 0; landedCount <= 4; landedCount++) {
+    it(`with ${landedCount} of the 4 punches landed and gone from the queue, the day still ends off the clock`, () => {
+      const view = mergeClockQueue(serverAfter[landedCount], day.slice(landedCount), {
+        profileId: "me",
+        resolveShiftRef: landedCount > 0 ? resolver : nothingYet,
+      });
+      expect(view.shift).toBeNull();
+      expect(view.pending).toEqual(landedCount < 4 ? expect.objectContaining({ kind: "clock_out", entryId: "o1" }) : null);
+      expect(view.refused).toEqual([]);
+    });
+  }
+
+  it("the clock-in landed and left, only the lunch on the phone: on break on the server's row", () => {
+    const view = mergeClockQueue(landed, [lunch], { profileId: "me", resolveShiftRef: resolver });
+    expect(view.shift).toMatchObject({ id: "s1", break_started_at: T(17, 0), break_type: "lunch" });
+    expect(view.pending?.kind).toBe("break_start");
+  });
+
+  it("the clock-in landed and left, lunch and return on the phone: back at work on the server's row, lunch banked", () => {
+    const view = mergeClockQueue(landed, [lunch, back], { profileId: "me", resolveShiftRef: resolver });
+    expect(view.shift).toMatchObject({ id: "s1", break_started_at: null, break_type: null, break_seconds: 30 * 60 });
+    expect(view.pending?.kind).toBe("break_stop");
+  });
+
+  it("the clock-in and lunch landed, the return on the phone: back at work, never a stale 'on break'", () => {
+    const view = mergeClockQueue(onLunch, [back], { profileId: "me", resolveShiftRef: resolver });
+    expect(view.shift).toMatchObject({ id: "s1", break_started_at: null, break_seconds: 30 * 60 });
+  });
+
+  it("Codex's reproduction: clock-in confirmed and removed, a clock-out with its old pending ref left — off the clock", () => {
+    const row = serverShift({ id: "server-shift", client_id: "tap-id", clock_in_at: "2026-09-24T07:00:00Z" });
+    const queuedOut = entry({ op: "clock_out", id: "out", createdAt: 2, payload: { shiftRef: "pending:in", tappedAt: "2026-09-24T16:00:00Z" } });
+    const view = mergeClockQueue(row, [queuedOut], {
+      profileId: "me",
+      resolveShiftRef: (ref) => (ref === "pending:in" ? "server-shift" : null),
+    });
+    expect(view.shift).toBeNull();
+    expect(view.pending).toMatchObject({ kind: "clock_out", entryId: "out" });
+  });
+
+  it("the server already holds the clock-in while its entry is still in the queue (reply delayed): the punches behind it land on that row before the sender has recorded anything", () => {
+    const sending = queuedClockIn({ status: "sending" });
+    const all = mergeClockQueue(landed, [sending, lunch, back, out], { profileId: "me", resolveShiftRef: nothingYet });
+    expect(all.shift).toBeNull();
+    expect(all.pending?.kind).toBe("clock_out");
+    const toLunch = mergeClockQueue(landed, [sending, lunch], { profileId: "me", resolveShiftRef: nothingYet });
+    expect(toLunch.shift).toMatchObject({ id: "s1", break_started_at: T(17, 0) });
+    expect(toLunch.pending?.kind).toBe("break_start");
+  });
+
+  it("a relaunch reads the same answer back: the queue rows off disk, the resolver off disk, the server's row read fresh", () => {
+    const rows = [lunch, back, out].map(serializeEntry).map((json) => deserializeEntry(json)!);
+    const view = mergeClockQueue(landed, rows, { profileId: "me", resolveShiftRef: resolver });
+    expect(view.shift).toBeNull();
+    expect(view.pending?.kind).toBe("clock_out");
+  });
+
+  it("a pending ref nobody can place leaves the server's row alone and still says the punch is on its way — the sender cannot send it either", () => {
+    const view = mergeClockQueue(landed, [out], { profileId: "me", resolveShiftRef: nothingYet });
+    expect(view.shift?.id).toBe("s1");
+    expect(view.pending?.kind).toBe("clock_out");
+    // And with no resolver at all (a caller that has none), the same.
+    expect(mergeClockQueue(landed, [out], { profileId: "me" }).shift?.id).toBe("s1");
+  });
+
+  it("a ref for some OTHER clock-in's shift is not this shift, even through the resolver", () => {
+    const other = entry({ op: "clock_out", id: "o9", createdAt: 9, payload: { shiftRef: "pending:y", tappedAt: T(22, 2) } });
+    const view = mergeClockQueue(landed, [other], { profileId: "me", resolveShiftRef: (ref) => (ref === "pending:y" ? "s2" : null) });
+    expect(view.shift?.id).toBe("s1");
+  });
+});
+
 describe("a punch the phone gave up on", () => {
   it("is not applied, and is reported with its reason so the person can read why", () => {
     const refused = queuedClockIn({ status: "failed", lastError: "Sign today's toolbox talk first." });

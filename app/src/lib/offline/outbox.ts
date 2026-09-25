@@ -705,6 +705,19 @@ export function pendingRefForShift(clockInEntryId: string): string {
   return pendingShiftRef(clockInEntryId);
 }
 
+/**
+ * Which server shift a queued clock-in became, for a `pending:<entry id>`
+ * ref, or null while it has not landed (K0.1). The same memory the drain
+ * uses to send the break and clock-out queued behind that clock-in, handed
+ * to the clock screens' merge so both read a pending ref the same way once
+ * the clock-in has left the queue — the screens used to compare the ref
+ * with the server's uuid alone and lose every punch behind a landed
+ * clock-in (Codex review of #644, 2026-09-24).
+ */
+export function resolveShiftRef(ref: string): string | null {
+  return resolver.resolve(ref);
+}
+
 /** If a shift ref is a pending clock-in, the entry it depends on; else none. */
 function refDependency(shiftRef: string): string | null {
   const prefix = "pending:";

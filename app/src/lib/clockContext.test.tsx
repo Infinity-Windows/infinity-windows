@@ -46,12 +46,16 @@ const fake = vi.hoisted(() => {
   const queueListeners = new Set<() => void>();
   const sentListeners = new Set<(entry: unknown, result: unknown) => void>();
   const syncedListeners = new Set<() => void>();
-  const state = { snapshot: { entries: [] as unknown[], ready: true } };
+  const state = { snapshot: { entries: [] as unknown[], ready: true }, shiftMap: {} as Record<string, string> };
   return {
     state,
     setQueue(entries: unknown[], ready = true) {
       state.snapshot = { entries, ready };
       for (const cb of queueListeners) cb();
+    },
+    /** What the sender writes down the moment a queued clock-in is accepted. */
+    recordShift(clockInEntryId: string, shiftId: string) {
+      state.shiftMap[clockInEntryId] = shiftId;
     },
     confirm(entry: unknown, result: unknown) {
       for (const cb of sentListeners) cb(entry, result);
@@ -74,6 +78,7 @@ const fake = vi.hoisted(() => {
         return () => syncedListeners.delete(cb);
       },
       initOutboxAutoFlush: () => {},
+      resolveShiftRef: (ref: string) => state.shiftMap[ref.replace(/^pending:/, "")] ?? null,
     },
   };
 });
@@ -114,6 +119,7 @@ afterEach(() => {
 
 beforeEach(() => {
   rendered = [];
+  fake.state.shiftMap = {};
   fake.setQueue([], true);
 });
 
@@ -301,5 +307,44 @@ describe("a clock punch still on the phone (K0.1)", () => {
     expect(probe(el).getAttribute("data-pending")).toBe("break_start");
     act(() => openClockGlobally());
     expect(el.querySelector(".probe-sheet")?.getAttribute("data-pending")).toBe("break_start");
+  });
+
+  // Codex review of #644 (2026-09-24): the clock-in lands, its entry leaves
+  // the queue, and the clock-out queued behind it still names the clock-in's
+  // pending ref. The provider used to show "clocked in, clock-out on its way"
+  // from that moment on, across relaunches, over a shift the phone was about
+  // to close.
+  it("after the clock-in has landed and left the queue, the clock-out behind it still reads as off the clock — now, after the re-read, and after a relaunch", () => {
+    const el = mount(null);
+    const entry = queued("clock_in", { projectId: "p1", costCodeId: "cc1", clientId: "c1" }, { id: "x" });
+    const out = queued("clock_out", { shiftRef: "pending:x", clientId: "c2" }, { id: "o", createdAt: 2 });
+    act(() => fake.setQueue([entry, out]));
+    expect(probe(el).getAttribute("data-shift")).toBe("none");
+    expect(probe(el).getAttribute("data-pending")).toBe("clock_out");
+
+    // The drain: the sender records what the clock-in became, the row is
+    // installed, then the entry leaves the queue.
+    const row = serverShift({ id: "shift-1", client_id: "c1", clock_in_at: TAP, projects: null });
+    fake.recordShift("x", "shift-1");
+    act(() => fake.confirm(entry, row));
+    expect(probe(el).getAttribute("data-shift")).toBe("none");
+    act(() => fake.setQueue([out]));
+    expect(probe(el).getAttribute("data-shift")).toBe("none");
+    expect(probe(el).getAttribute("data-pending")).toBe("clock_out");
+    expect(qc!.getQueryData(["openShift", "me"])).toMatchObject({ id: "shift-1" });
+    // Never a moment of "on the clock" once the clock-out was tapped.
+    expect(rendered).not.toContain("shift-1");
+
+    // The re-read after the drain: the server still says open (it has not
+    // heard the clock-out) — the queued clock-out still wins.
+    act(() => qc!.setQueryData(["openShift", "me"], serverShift({ id: "shift-1", client_id: "c1", clock_in_at: TAP })));
+    expect(probe(el).getAttribute("data-shift")).toBe("none");
+
+    // A relaunch with the signal gone again: the queue and the sender's map
+    // read back off disk, the server's row from the cache.
+    act(() => root?.unmount());
+    const again = mount(serverShift({ id: "shift-1", client_id: "c1", clock_in_at: TAP }));
+    expect(probe(again).getAttribute("data-shift")).toBe("none");
+    expect(probe(again).getAttribute("data-pending")).toBe("clock_out");
   });
 });
