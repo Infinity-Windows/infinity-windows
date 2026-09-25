@@ -4,20 +4,23 @@
 -- cannot reach a testing job at all — it is hidden below supervisor — so the
 -- two people who can both write there are the QA installer and the QA
 -- foreman; the last scenario proves the fence still holds for a real one.)
--- The job is whichever job is both flagged as testing and on the sandbox list
--- (PECAN14 first — the owner restored it on 2026-09-24 as the practice job, so
--- a run never needs MADMOOSE, a real job flagged as testing — then BLACK22 if
--- it is flagged again, then by code), never a fixed code: on 2026-09-24
--- BLACK22 had been unflagged, and a probe pinned to it failed on the fence
--- instead of testing the change.
+-- The job is the harness's dry_run_sandbox_job(): whichever live job is both
+-- flagged as testing and on the sandbox list, never a fixed code (on
+-- 2026-09-24 BLACK22 had been unflagged, and a probe pinned to it failed on
+-- the fence instead of testing the change). The QA logins come from
+-- dry_run_pick, which stops the run in plain words when one has lost its
+-- role rather than hand back a real person (three runs of this probe died on
+-- that on 2026-09-23/24).
 --   * two different people contribute to the same job-day: both entries are
 --     kept, the second is appended under the first, the first author stays;
 --   * the same words under the same id again is already_saved, not a copy;
 --   * a stale revision writes nothing;
---   * person_record_counts still carries every key master has, plus the
---     contributions'.
+--   * person_record_counts still carries every key master has, Release 0's
+--     clock-tap ledger (#640, which merges first) and the contributions'.
+-- Since 2026-09-25 this branch sits on #644 → #640, so the practice run
+-- applies Release 0's two migrations first, as the deploy will:
 -- Run: gh workflow run db-dry-run.yml -f ref=claude/r2-ai \
---        -f migrations="supabase/migrations/20261030000000_ai_daily_log_contributions.sql supabase/migrations/20261030010000_ai_actions_note.sql" \
+--        -f migrations="supabase/migrations/20261028000000_clock_integrity.sql supabase/migrations/20261028010000_clock_integrity_note.sql supabase/migrations/20261030000000_ai_daily_log_contributions.sql supabase/migrations/20261030010000_ai_actions_note.sql" \
 --        -f probe=scripts/dry-run-probes/pr-641-ai-daily-log.sql
 do $$
 declare
@@ -49,24 +52,8 @@ begin
   v_first := pg_temp.dry_run_pick('installer');
   v_second := pg_temp.dry_run_pick('foreman');
   v_real := pg_temp.dry_run_pick_real('installer');
-  select p.id, p.job_code into v_job, v_job_code
-    from public.sandbox_projects s join public.projects p on p.id = s.project_id
-   where p.deleted_at is null and coalesce(p.is_test, false)
-   order by (p.job_code = 'PECAN14') desc, (p.job_code = 'BLACK22') desc, p.job_code
-   limit 1;
-  if v_job is null then
-    raise exception 'dry run: no job is both flagged as testing and on the sandbox list, so the QA logins have nowhere to write. Mark a practice job as testing in the app (that puts it on the sandbox list too) and run again.';
-  end if;
-  -- dry_run_pick falls back to a real person when no QA login holds the role,
-  -- and a real person is refused on a testing job with the same sentence this
-  -- probe is here to test. On 2026-09-24 qa.installer had been set to foreman
-  -- and three runs died on that refusal. Stop loudly instead.
-  if not public.is_test_profile(v_first) then
-    raise exception 'dry run: no QA login has the installer role, so the run would act as a real person. Set qa.installer (shown as "TEST — automation, do not assign") to Installer in the app and run again.';
-  end if;
-  if not public.is_test_profile(v_second) then
-    raise exception 'dry run: no QA login has the foreman role, so the run would act as a real person. Set qa.foreman (shown as "TEST — automation FOREMAN, do not assign") to Foreman in the app and run again.';
-  end if;
+  v_job := pg_temp.dry_run_sandbox_job();
+  select p.job_code into v_job_code from public.projects p where p.id = v_job;
   perform pg_temp.dry_run_check('setup: the sandbox job the run writes on (and throws away)', true, v_job_code);
   perform pg_temp.dry_run_check('setup: two different people who may write on the sandbox job', v_first <> v_second, null);
   perform pg_temp.dry_run_check('schema: daily_logs.revision, daily_log_contributions and the revision trigger exist',
@@ -174,9 +161,13 @@ begin
     'time_off_requests.profile_id','time_shift_edits.edited_by','time_shifts.profile_id','timecard_periods.profile_id',
     'toolbox_completions.profile_id','trip_crew.profile_id','unit_redos.pressed_by','unit_sessions.profile_id',
     'vehicle_drivers.profile_id','workflow_notice_outbox.profile_id','workflow_plan_revisions.actor','workflow_plans.created_by',
-    'daily_log_contributions.actor_id']) k where not (v_counts ? k);
-  perform pg_temp.dry_run_check('person_record_counts: keeps every key master has (learning references included) plus daily_log_contributions',
+    'time_clock_actions.profile_id', 'daily_log_contributions.actor_id']) k where not (v_counts ? k);
+  perform pg_temp.dry_run_check('person_record_counts: keeps every key master has (learning references included), the clock-tap ledger (#640) and daily_log_contributions',
     v_n = 0, v_n || ' key(s) missing');
+  select count(*) into v_n from public.time_clock_actions where profile_id = v_first;
+  perform pg_temp.dry_run_check('person_record_counts: counts the clock-tap ledger rows, not only names them',
+    (v_counts->>'time_clock_actions.profile_id')::int = v_n,
+    coalesce(v_counts->>'time_clock_actions.profile_id', 'null') || ' counted, ' || v_n || ' in the ledger');
   perform pg_temp.dry_run_check('person_record_counts: counts the contribution this run wrote',
     (v_counts->>'daily_log_contributions.actor_id')::int >= 1, coalesce(v_counts->>'daily_log_contributions.actor_id', 'null') || ' row(s)');
 end $$;

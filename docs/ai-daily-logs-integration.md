@@ -25,6 +25,10 @@ force on its own base:
   `'daily_log_contributions.actor_id', (select count(*) from daily_log_contributions where actor_id = p_id),`
 - training (PR 629, merged at `9b55c94`) may also have added retention keys;
   check master before resolving.
+- clock integrity (Release 0, PR #640): `20261028000000_clock_integrity.sql`
+  adds `'time_clock_actions.profile_id'` (the clock-tap ledger cascades off
+  profiles). #640 merges first, and since this branch was rebased onto it
+  (2026-09-25) the 20261030 definition carries that key too.
 
 Migrations apply in name order, so **whichever file is last replaces the others
 entirely**: shipped as-is, 20261030 would silently DROP the learning (and any

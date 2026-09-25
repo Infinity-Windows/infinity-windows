@@ -411,9 +411,11 @@ grant execute on function public.daily_log_contribution_photo_status(uuid) to au
 -- ---------------------------------------------------------------------------
 -- 6. Registrations: person removal counts, sandbox fence
 -- ---------------------------------------------------------------------------
--- The UNION of every restatement on master — 20261026000000 (learning review,
--- which itself carried 20261024000000's field-operations keys and the service,
--- hex-portal, time-off and reminder keys) — plus this file's one line.
+-- The UNION of every restatement before this file — 20261026000000 on master
+-- (learning review, which itself carried 20261024000000's field-operations
+-- keys and the service, hex-portal, time-off and reminder keys) and
+-- 20261028000000 (Release 0's clock-tap ledger, time_clock_actions.profile_id,
+-- which merges first) — plus this file's one line.
 -- Migrations apply in name order, so whichever file is last REPLACES the
 -- function entirely: a copy taken from one side would silently drop the
 -- other's keys and let a person with those records be hard-deleted.
@@ -451,6 +453,8 @@ as $$
     'workflow_plan_revisions.actor', (select count(*) from workflow_plan_revisions where actor = p_id),
     'workflow_notice_outbox.profile_id', (select count(*) from workflow_notice_outbox where profile_id = p_id),
     -- Time and money.
+    'time_clock_actions.profile_id',
+      (select count(*) from time_clock_actions where profile_id = p_id),
     'time_shifts.profile_id',
       (select count(*) from time_shifts where profile_id = p_id),
     'unit_sessions.profile_id',
