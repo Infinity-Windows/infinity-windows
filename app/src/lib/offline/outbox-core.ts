@@ -112,6 +112,17 @@ export type OutboxOp =
  */
 export type OutboxStatus = "queued" | "sending" | "failed";
 
+/**
+ * The four clock punches. They are the one kind of write here whose timing
+ * is the record — a clock-out that lands twenty minutes late is twenty
+ * minutes of somebody's pay — so the drain sends them ahead of everything
+ * else (K0.3), and the clock screens read them back to show a punch that is
+ * still on the phone as real (K0.1).
+ */
+export function isClockOp(op: OutboxOp): boolean {
+  return op === "clock_in" || op === "clock_out" || op === "break_start" || op === "break_stop";
+}
+
 export interface OutboxEntry {
   /** Client-generated stable id — the idempotency key. Survives retries. */
   id: string;
@@ -343,12 +354,22 @@ export function dedupe(entries: OutboxEntry[]): OutboxEntry[] {
 }
 
 /**
- * Which entries are due to attempt right now, in FIFO (createdAt) order.
- * Skips entries that are: not `queued`, not yet past their backoff window, or
- * blocked behind an unresolved `dependsOn` that is still in the queue.
+ * Which entries are due to attempt right now: clock punches first, then
+ * everything else, FIFO (createdAt) within each. Skips entries that are: not
+ * `queued`, not yet past their backoff window, or blocked behind an
+ * unresolved `dependsOn` that is still in the queue.
+ *
+ * Punches first (K0.3, 2026-09-23): the drain is one lane, so a clock-out
+ * tapped after three photos used to sit behind three two-minute uploads on a
+ * bad link — and on a link that bad the photos often failed, which pushed the
+ * punch to the next pass and the one after. The four clock ops now jump the
+ * queue. Order AMONG punches is still tap order, so a clock-in goes before
+ * the break and the break before the clock-out, and `dependsOn` is judged
+ * before the sort, so a clock-out still waits for the clock-in it hangs off.
  */
 export function dueEntries(entries: OutboxEntry[], now: number): OutboxEntry[] {
   const present = new Map(entries.map((e) => [e.id, e]));
+  const lane = (e: OutboxEntry) => (isClockOp(e.op) ? 0 : 1);
   return entries
     .filter((e) => e.status === "queued")
     .filter((e) => e.nextAttemptAt <= now)
@@ -359,7 +380,9 @@ export function dueEntries(entries: OutboxEntry[], now: number): OutboxEntry[] {
       // If it is still present (queued/sending/failed) → keep waiting.
       return dep == null;
     })
-    .sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
+    .sort(
+      (a, b) => lane(a) - lane(b) || a.createdAt - b.createdAt || a.id.localeCompare(b.id),
+    );
 }
 
 /**
@@ -684,11 +707,16 @@ export interface OutboxStore {
   count(): Promise<number>;
 }
 
-/** A handler performs the real network write for one op. Throws on failure. */
+/**
+ * A handler performs the real network write for one op. Throws on failure.
+ * Whatever it resolves with is handed to `onSent` beside the entry — the
+ * clock handlers resolve with the shift row the server answered, so the
+ * screens can show the confirmed punch without waiting for a re-read.
+ */
 export type OpHandler = (
   entry: OutboxEntry,
   ctx: { getBlob: () => Promise<Blob | null> },
-) => Promise<void>;
+) => Promise<unknown>;
 
 export type OpHandlers = Partial<Record<OutboxOp, OpHandler>>;
 
@@ -709,8 +737,11 @@ export interface DrainResult {
 export interface DrainOpts {
   now?: number | (() => number);
   onChange?: () => void;
-  /** A server write succeeded and its local queue entry was removed. */
-  onSent?: (entry: OutboxEntry) => void;
+  /**
+   * A server write succeeded and its local queue entry was removed. `result`
+   * is whatever the handler resolved with (a clock handler's shift row).
+   */
+  onSent?: (entry: OutboxEntry, result: unknown) => void;
 }
 
 function clockOf(opts: DrainOpts): () => number {
@@ -721,9 +752,17 @@ function clockOf(opts: DrainOpts): () => number {
 }
 
 /**
- * Attempt every due entry once, FIFO. Success → delete; failure → backoff or
- * dead-letter. This is the whole drainer, decoupled from IndexedDB/Supabase so
- * it can be exercised with an in-memory store and fake handlers.
+ * Attempt every due entry once — punches first, then the rest, FIFO within
+ * each (see dueEntries). Success → delete; failure → backoff or dead-letter.
+ * This is the whole drainer, decoupled from IndexedDB/Supabase so it can be
+ * exercised with an in-memory store and fake handlers.
+ *
+ * Before each NON-clock entry the store is read again for punches that became
+ * due while the pass was running (K0.3): tapped during a photo upload, or a
+ * clock-out just unblocked by the clock-in this pass sent. The pass works from
+ * a snapshot, and without this a punch tapped while photo one of three was
+ * uploading waited for photos two and three as well — one re-read of a small
+ * store per upload is nothing next to the upload.
  */
 export async function drainStore(
   store: OutboxStore,
@@ -734,11 +773,15 @@ export async function drainStore(
   const now = clock();
   const all = await store.getAll();
   const due = dueEntries(all, now);
+  let attempted = 0;
   let sent = 0;
   let retried = 0;
   let deadLettered = 0;
+  const tried = new Set<string>();
 
-  for (const entry of due) {
+  const attempt = async (entry: OutboxEntry): Promise<void> => {
+    tried.add(entry.id);
+    attempted += 1;
     const handler = handlers[entry.op];
     if (!handler) {
       // No handler registered → dead-letter so it surfaces rather than looping.
@@ -748,16 +791,16 @@ export async function drainStore(
         lastError: `No handler for op "${entry.op}"`,
       });
       deadLettered += 1;
-      continue;
+      return;
     }
     await store.put(markSending(entry));
     try {
-      await handler(entry, { getBlob: () => store.getBlob(entry.id) });
+      const result = await handler(entry, { getBlob: () => store.getBlob(entry.id) });
       await store.delete(entry.id);
       sent += 1;
       // Confirmation is different from an absent entry (which may have been
       // discarded). A UI observer must never turn a successful write into a retry.
-      try { opts.onSent?.(entry); } catch { /* best-effort observer */ }
+      try { opts.onSent?.(entry, result); } catch { /* best-effort observer */ }
     } catch (err) {
       // Stamp the failure from the clock NOW, not from the pass's opening
       // read. A pass can hold a 25 MB photo upload for half a minute; a write
@@ -778,10 +821,21 @@ export async function drainStore(
       } else retried += 1;
     }
     opts.onChange?.();
+  };
+
+  for (const entry of due) {
+    if (tried.has(entry.id)) continue;
+    if (!isClockOp(entry.op)) {
+      const punches = dueEntries(await store.getAll(), clock()).filter(
+        (e) => isClockOp(e.op) && !tried.has(e.id),
+      );
+      for (const punch of punches) await attempt(punch);
+    }
+    await attempt(entry);
   }
 
   return {
-    attempted: due.length,
+    attempted,
     sent,
     retried,
     deadLettered,

@@ -42,6 +42,7 @@ import {
   getTravelCostCode,
   getJobLastGeo,
   isOnTheClock,
+  isPendingShiftRef,
   listCostCodes,
   mintPunch,
   touchShiftLocation,
@@ -88,7 +89,11 @@ export function FarFromJobPrompt({
 
   const shiftId = shift?.id ?? null;
   const projectId = shift?.project_id ?? null;
-  const onClock = isOnTheClock(shift);
+  // Not while the clock-in itself is still on the phone (K0.1): the switch
+  // below is a direct clock_in, and sent ahead of a queued one it would be the
+  // shift that clock-in has to close. The question can wait for signal; the
+  // person's location is stamped by the foreground check either way.
+  const onClock = isOnTheClock(shift) && !isPendingShiftRef(shiftId);
 
   /**
    * The cost-code library, warmed while the person is on the clock.

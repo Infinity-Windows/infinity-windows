@@ -27,7 +27,8 @@ import { TERMS } from "../lib/glossary";
 import { listMyProgress } from "../lib/learn";
 import { listLedger } from "../lib/points";
 import { supabase } from "../lib/supabase";
-import { getOpenShift, isOnTheClock, listShiftsToApprove } from "../lib/timeclock";
+import { isOnTheClock, listShiftsToApprove } from "../lib/timeclock";
+import { useOpenShiftView } from "../lib/useOpenShiftView";
 import { listInstalledForQc } from "../lib/ops";
 import { getHeartbeat } from "../lib/heartbeat";
 import { listAssignments } from "../lib/schedule/api";
@@ -78,11 +79,8 @@ export function Home() {
   const supervisorPlus = isSupervisorPlus(role);
   const profileId = me.data?.id;
 
-  const openShift = useQuery({
-    queryKey: ["openShift", profileId],
-    queryFn: () => getOpenShift(profileId!),
-    enabled: Boolean(profileId),
-  });
+  // The server's shift with this phone's queued punches applied (K0.1).
+  const openShift = useOpenShiftView(profileId ?? null);
   const openings = useQuery({
     queryKey: ["myOpenings", profileId],
     queryFn: () => listMyOpeningsAllJobs(profileId!),
@@ -294,7 +292,7 @@ export function Home() {
           signed-in person's own schedule, per the three-landings rule. */}
       <TomorrowStrip />
 
-      <ToolboxTalkNagBanner profileId={profileId} clockedIn={isOnTheClock(openShift.data)} />
+      <ToolboxTalkNagBanner profileId={profileId} clockedIn={isOnTheClock(openShift.shift)} />
 
       <LogTodayChip />
 

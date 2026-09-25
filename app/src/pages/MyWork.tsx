@@ -52,7 +52,7 @@ import { blockedUnits, listSessionsForOpenings } from "../lib/install/sessions";
 import {
   type ProjectOpening,
 } from "../lib/install/types";
-import { getOpenShift } from "../lib/timeclock";
+import { useOpenShiftView } from "../lib/useOpenShiftView";
 import { listMyPublished } from "../lib/schedule/api";
 import { formatScheduleTime } from "../lib/schedule/dates";
 import { listVehicleLinksForAssignments } from "../lib/vehicles/api";
@@ -126,11 +126,9 @@ export function MyWork() {
   });
 
   const todayISO = todayLocalISO();
-  const openShift = useQuery({
-    queryKey: ["openShift", me.data?.id],
-    queryFn: () => getOpenShift(me.data!.id),
-    enabled: Boolean(me.data?.id),
-  });
+  // The server's shift with this phone's queued punches applied (K0.1), so
+  // the landing folds and unfolds with the same clock the block shows.
+  const openShift = useOpenShiftView(me.data?.id ?? null);
   const todayPublished = useQuery({
     queryKey: ["mySchedule", me.data?.id, todayISO, todayISO],
     queryFn: () => listMyPublished(me.data!.id, todayISO, todayISO),
@@ -455,9 +453,9 @@ export function MyWork() {
           person who just filmed a unit going in is standing on this screen.
           Above the fold while a shift is open (S6 gate red 2026-09-07 caught
           it hidden in the More fold); folds away when nobody is on the clock. */}
-      {Boolean(openShift.data) && <SendRecordingButton />}
+      {Boolean(openShift.shift) && <SendRecordingButton />}
 
-      {Boolean(openShift.data) && todayAssignment && (
+      {Boolean(openShift.shift) && todayAssignment && (
         <div className="today-strip home-card">
           <div className="home-card-top">
             <span className="next-label">{t("mywork.today")}</span>
@@ -763,7 +761,7 @@ export function MyWork() {
             (see above) and is NOT repeated here. Off the clock it is a rare
             action and folds away with the rest. e2e recordings-by-link.spec
             pins the on-the-clock placement. */}
-        {!openShift.data && (
+        {!openShift.shift && (
           <div className="mywork-more-section">
             <h2>{t("mywork.more.sendRecording")}</h2>
             <SendRecordingButton />
@@ -776,7 +774,7 @@ export function MyWork() {
           Layout's ordinary top-mounted strip. Stops rotating (one line,
           held) while a shift is open. */}
       {isInstallerLanding && (
-        <CoreValuesStrip pathname="/" staticMode={Boolean(openShift.data)} />
+        <CoreValuesStrip pathname="/" staticMode={Boolean(openShift.shift)} />
       )}
 
       {unsubmit && (

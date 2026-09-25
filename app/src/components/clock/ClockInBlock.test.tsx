@@ -905,3 +905,72 @@ describe("the clock-in block", () => {
     expect(byText(el, "WARR-1")).toBeTruthy();
   });
 });
+
+// K0.1: a clock-in still on the phone counts as real. The block reads the
+// same merged view the provider does, so once a punch is queued it shows the
+// on-the-clock bar and never offers the big button again. Driven through the
+// REAL outbox (its in-memory store under vitest) with the phone offline, so
+// this proves the block sees what the queue holds, not what a mock says.
+import { enqueueClockIn, enqueueClockOut, discardFailed } from "../../lib/offline/outbox";
+
+describe("a clock punch still on the phone (K0.1)", () => {
+  const queuedIds: string[] = [];
+  const PUNCH = {
+    clientId: "9b2f0c14-7d3a-4e51-8a06-3f2c9d1e4b77",
+    tappedAt: "2026-09-23T13:02:00.000Z",
+    clockCheckedAt: null,
+    clockSkewMs: null,
+  };
+  const goOffline = () => Object.defineProperty(navigator, "onLine", { value: false, configurable: true });
+
+  afterEach(async () => {
+    for (const id of queuedIds.splice(0)) await discardFailed(id);
+    Object.defineProperty(navigator, "onLine", { value: true, configurable: true });
+  });
+
+  it("shows the bar, the tap time and 'saved on this phone' — and no Start button — once a clock-in is queued", async () => {
+    goOffline();
+    const el = mount({
+      costCodes: [CC],
+      recents: [recent("cc1")],
+      projects: [{ id: "p1", job_code: "BLACK22", name: "Black Desert", address: null, status: "active", allowed_modes: ["data"] }],
+    });
+    expect(el.querySelector(".clock-btn.primary.big")).toBeTruthy();
+
+    await act(async () => {
+      queuedIds.push(await enqueueClockIn({ projectId: "p1", costCodeId: "cc1", punch: PUNCH }));
+    });
+
+    expect(el.querySelector(".clock-btn.primary.big")).toBeNull();
+    expect(el.querySelector(".clockin-block")).toBeNull();
+    const bar = el.querySelector(".clockin-bar")!;
+    expect(bar).toBeTruthy();
+    expect(bar.textContent).toContain("BLACK22");
+    const line = bar.querySelector(".clock-queue-line")!;
+    expect(line.getAttribute("data-kind")).toBe("clock_in");
+    expect(line.textContent).toContain("saved on this phone");
+    expect(line.textContent).toContain(new Date(PUNCH.tappedAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }));
+    // Counting from the tap, not from zero.
+    expect(el.querySelector(".clockin-bar-timer")?.textContent).not.toBe("0:00:00");
+  });
+
+  it("shows the person off the clock, with the clock-out saved on this phone, once a clock-out is queued", async () => {
+    goOffline();
+    const el = mount({ shift: openShift(2), costCodes: [CC], recents: [recent("cc1")] });
+    expect(el.querySelector(".clockin-bar")).toBeTruthy();
+
+    await act(async () => {
+      queuedIds.push(
+        await enqueueClockOut({ shiftRef: "s1", injured: false, timeConfirmed: true, breakSeconds: 0, punch: PUNCH }),
+      );
+    });
+
+    expect(el.querySelector(".clockin-bar")).toBeNull();
+    const block = el.querySelector(".clockin-block")!;
+    expect(block).toBeTruthy();
+    const line = block.querySelector(".clock-queue-line")!;
+    expect(line.getAttribute("data-kind")).toBe("clock_out");
+    expect(line.textContent).toContain("Clocked out");
+    expect(line.textContent).toContain("saved on this phone");
+  });
+});
