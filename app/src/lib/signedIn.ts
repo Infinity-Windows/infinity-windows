@@ -52,8 +52,10 @@ export function signedInEmail(): string | null {
 
 /**
  * The signed-in person's auth id, or null before sign-in has resolved — the
- * REAL login, never a person being previewed. The device lock keys its saved
- * answer on this (PinGate), because my_pin_status answers for auth.uid().
+ * REAL login, never a person being previewed. The device lock's saved answer
+ * is keyed on this id, because my_pin_status answers for auth.uid(): App hands
+ * the same id to PinGate from its session, and the Crew screen's PIN setter
+ * reads it here so a PIN change lands on the answer the lock keeps.
  * Same promises as signedInEmail: no await, no request.
  */
 export function signedInUserId(): string | null {
