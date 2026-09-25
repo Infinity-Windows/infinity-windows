@@ -5,6 +5,7 @@
 
 import {
   deserializeEntry,
+  sameState,
   serializeEntry,
   type OutboxEntry,
   type OutboxStore,
@@ -56,6 +57,21 @@ export class MemoryOutboxStore implements OutboxStore {
 
   async getBlob(id: string): Promise<Blob | null> {
     return this.blobs.get(id) ?? null;
+  }
+
+  async swap(id: string, expected: OutboxEntry | null, next: OutboxEntry | null): Promise<boolean> {
+    const stored = this.entries.get(id);
+    const current = stored === undefined ? null : deserializeEntry(stored);
+    // An unreadable row matches nothing: it is not the entry anyone read.
+    if (stored !== undefined && current === null) return false;
+    if (!sameState(current, expected)) return false;
+    if (next) {
+      this.entries.set(id, serializeEntry(next));
+    } else {
+      this.entries.delete(id);
+      this.blobs.delete(id);
+    }
+    return true;
   }
 
   async delete(id: string): Promise<void> {
@@ -176,6 +192,34 @@ export class IndexedDbOutboxStore implements OutboxStore {
         db.transaction(STORE).objectStore(STORE).get(id),
       )) as Row | undefined;
       return row?.blob ?? null;
+    } finally {
+      db.close();
+    }
+  }
+
+  /**
+   * Compare and write in ONE readwrite transaction, like insertIfAbsent:
+   * IndexedDB runs it against every other write to this store, so the read
+   * that decides and the write it allows cannot be split by another write —
+   * least of all by one that was queued behind a stalled open and runs late.
+   */
+  async swap(id: string, expected: OutboxEntry | null, next: OutboxEntry | null): Promise<boolean> {
+    const db = await openDb();
+    try {
+      const tx = db.transaction(STORE, "readwrite");
+      const store = tx.objectStore(STORE);
+      const row = (await asPromise(store.get(id))) as Row | undefined;
+      const current = row ? deserializeEntry(row.meta) : null;
+      const ok = !(row && current === null) && sameState(current, expected);
+      if (ok) {
+        if (next) {
+          store.put({ id, meta: serializeEntry(next), blob: row?.blob ?? null } satisfies Row);
+        } else {
+          store.delete(id);
+        }
+      }
+      await txDone(tx);
+      return ok;
     } finally {
       db.close();
     }

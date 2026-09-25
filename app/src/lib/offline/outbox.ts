@@ -23,6 +23,7 @@ import {
 } from "./outbox-core";
 import { createDefaultStore, UnreadableOutboxEntryError } from "./outboxStore";
 import { logOfflineEvent } from "./telemetry";
+import { REQUEST_TIMEOUT_MS, uploadTimeoutMs } from "./weakSignal";
 import { signedInEmail } from "../signedIn";
 import type { JobMode } from "../types";
 import { recoverPhotoUpload } from "./recoverPhotoUploads";
@@ -37,6 +38,59 @@ import {
 
 /** Cap on a single queued blob (photo/receipt). Bigger uploads fail loudly. */
 export const MAX_BLOB_BYTES = 25 * 1024 * 1024; // 25 MB
+
+// --- the send watchdog's limits (2026-09-25) -----------------------------
+//
+// How long one send may run before the drain stops waiting for it and moves
+// on to the next (outbox-core.ts, drainStore). The one rule these obey: the
+// watchdog must never be the tighter limit on a send that is slow but still
+// moving. It exists for the steps with NO limit at all — a reply that stops
+// arriving after its headers, a sign-in check stuck on the auth lock, a
+// phone database that never opens — so each number sits above the limits
+// timedFetch already puts on every request inside the send.
+
+/**
+ * A send that only talks to the database. Every request in it has a 15 s
+ * deadline to its reply (REQUEST_TIMEOUT_MS); the busiest handler makes five
+ * of them (bind_package: the bind, its older-signature fallback, a read-back
+ * and two job-code lookups), and a token refresh can add one more — ninety
+ * seconds at the very worst. Two minutes is over that with room to spare.
+ */
+export const SEND_DEADLINE_MS = 2 * 60_000;
+
+/**
+ * The slowest upload still treated as healthy, for a bucket timedFetch puts
+ * no deadline on (issue-photos: a damage photo goes up as the file the camera
+ * gave, not a stamped copy). 4 KB/s, 32 kbit/s. The two-minute cap every job
+ * photo already has (PHOTO_UPLOAD_TIMEOUT_MS, on a 2000 px stamped JPEG)
+ * asks for more than that, so this is the more patient of the two.
+ */
+export const SLOWEST_UPLOAD_BYTES_PER_SEC = 4 * 1024;
+
+/**
+ * The watchdog's limit for one send. Asked with no size when the send starts,
+ * and again with the file's size once the send has read it back: the calls
+ * before and after an upload get a database send's time each, and the upload
+ * itself gets its bucket's own deadline — or, where there is none, the time
+ * its size takes at SLOWEST_UPLOAD_BYTES_PER_SEC.
+ */
+export function sendDeadlineMs(entry: OutboxEntry, blobBytes: number | null): number {
+  if (blobBytes == null) return SEND_DEADLINE_MS;
+  const bucket = typeof entry.payload.bucket === "string" ? entry.payload.bucket : "install-media";
+  const transfer = uploadTimeoutMs(bucket) ?? Math.ceil((blobBytes / SLOWEST_UPLOAD_BYTES_PER_SEC) * 1000);
+  return 2 * SEND_DEADLINE_MS + transfer;
+}
+
+/** The line /diagnostics shows under Recent events when the watchdog steps in. */
+export function abandonedSendMessage(entry: OutboxEntry, deadlineMs: number): string {
+  return `${entry.op} took over ${Math.round(deadlineMs / 1000)} s to send — stopped waiting, will retry`;
+}
+
+// Held to the numbers it is built from, so raising a request deadline cannot
+// quietly make the watchdog the tighter one.
+if (SEND_DEADLINE_MS <= 6 * REQUEST_TIMEOUT_MS) {
+  throw new Error("SEND_DEADLINE_MS must stay above six request deadlines");
+}
 
 const store: OutboxStore = createDefaultStore();
 const resolver: ShiftResolver = createShiftResolver();
@@ -378,6 +432,9 @@ export async function drain(): Promise<void> {
     do {
       drainAgain = false;
       const res = await drainUntilSettled(store, handlers, {
+        sendDeadlineMs,
+        onAbandoned: (entry, deadlineMs) =>
+          logOfflineEvent({ type: "timeout", scope: "outbox", message: abandonedSendMessage(entry, deadlineMs) }),
         onChange: () => void refresh(),
         onSent: (entry, result) => {
           photoReceipts.record(entry);

@@ -22,6 +22,19 @@ export const WEAK_SIGNAL_WINDOW_MS = 20_000;
 export const REQUEST_TIMEOUT_MS = 15_000;
 export const PHOTO_UPLOAD_TIMEOUT_MS = 120_000;
 
+/**
+ * The buckets whose uploads get PHOTO_UPLOAD_TIMEOUT_MS. Every other bucket's
+ * upload has no deadline here at all (issue-photos, for one), which the
+ * outbox's send watchdog has to know: it may never be the tighter limit on an
+ * upload that is merely slow.
+ */
+export const TIMED_UPLOAD_BUCKETS: readonly string[] = ["install-media", "service-media", "ai-field-memos"];
+
+/** The deadline an upload into this bucket gets from timedFetch, or null for none. */
+export function uploadTimeoutMs(bucket: string): number | null {
+  return TIMED_UPLOAD_BUCKETS.includes(bucket) ? PHOTO_UPLOAD_TIMEOUT_MS : null;
+}
+
 let lastWeakAt = 0;
 let lastOkAt = 0;
 const listeners = new Set<() => void>();
@@ -111,9 +124,9 @@ export async function timedFetch(
 ): Promise<Response> {
   const url = urlOf(input);
   const method = (init?.method ?? (typeof Request !== "undefined" && input instanceof Request ? input.method : "GET")).toUpperCase();
-  const fieldMemoUpload = url.includes("/storage/v1/object/ai-field-memos/") && (method === "POST" || method === "PUT");
-  const photoUpload = (fieldMemoUpload || url.includes("/storage/v1/object/install-media/") || url.includes("/storage/v1/object/service-media/")) &&
-    (method === "POST" || method === "PUT");
+  const isWrite = method === "POST" || method === "PUT";
+  const fieldMemoUpload = isWrite && url.includes("/storage/v1/object/ai-field-memos/");
+  const photoUpload = isWrite && TIMED_UPLOAD_BUCKETS.some((bucket) => url.includes(`/storage/v1/object/${bucket}/`));
   const d: TimedFetchDeps = {
     fetch: deps?.fetch ?? globalThis.fetch.bind(globalThis),
     timeoutMs: deps?.timeoutMs ?? (photoUpload ? PHOTO_UPLOAD_TIMEOUT_MS : REQUEST_TIMEOUT_MS),
