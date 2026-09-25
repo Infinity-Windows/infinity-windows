@@ -49,7 +49,10 @@ begin
     insert into storage.objects (bucket_id, name) values ('ai-field-memos', v_qa::text || '/00000000-0000-4000-8000-000000000001/memo.webm');
     v_ok := true; v_msg := 'saved';
   exception when others then v_ok := false; v_msg := sqlstate || ' ' || sqlerrm; end;
-  perform pg_temp.dry_run_check('test login: an Ask voice memo in its own folder (information: the memo bucket has its own crew-login rule)', true, v_msg);
+  -- Asserted, not reported: a literal true here could not show the memo was
+  -- saved (Codex review of #649, 2026-09-25). The memo bucket's own crew-login
+  -- rule still applies on top, and a QA login is a crew login.
+  perform pg_temp.dry_run_check('test login: saves an Ask voice memo in its own folder', v_ok, v_msg);
   perform pg_temp.dry_run_expect_error('test login: refused in a real person''s folder',
     format('insert into storage.objects (bucket_id, name) values (%L, %L)', 'toolbox-records', v_real::text || '/dry-run/talk/signature.png'),
     'row-level security');
