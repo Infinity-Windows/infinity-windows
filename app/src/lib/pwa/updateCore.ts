@@ -87,6 +87,14 @@ export const HOLD_RECHECK_MS = 15 * 1000;
  */
 export const RETURN_CARRY_MS = 45 * 1000;
 
+/**
+ * How long a waiting worker gets to take over after it is told to. Activating
+ * takes milliseconds; ten seconds is generous for a slow phone. When nothing
+ * has taken over by then, the banner looks again from scratch rather than
+ * offering the same Refresh: the worker it was talking to may be gone.
+ */
+export const TAKEOVER_TIMEOUT_MS = 10 * 1000;
+
 /** What to do about a possible update. */
 export type UpdateAction =
   /** Nothing to do. */

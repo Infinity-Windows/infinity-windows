@@ -8,7 +8,8 @@
   "ignorePatterns": [
     "src/lib/fitview/fitviewRenderer.ts",
     "src/lib/fitview/traceRenderer.ts",
-    "src/lib/modelstudio/vendor/**"
+    "src/lib/modelstudio/vendor/**",
+    "public/assets/**"
   ],
   "rules": {
     "react/rules-of-hooks": "error",
