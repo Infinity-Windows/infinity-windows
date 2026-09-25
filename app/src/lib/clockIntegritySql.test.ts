@@ -122,9 +122,43 @@ describe("the review codes the server writes are the ones the timecard can say",
   });
 
   it("uses only those codes in its own bodies", () => {
-    const written = [...SQL.matchAll(/'(clock_unchecked|clock_off|tap_after_arrival|tap_too_old|tap_out_of_order|previous_shift_open|break_end_without_break)'/g)];
-    expect(written.length).toBeGreaterThan(7);
-    expect(SQL).not.toMatch(/review_reason = '(?!clock_unchecked|clock_off|tap_after_arrival|tap_too_old|tap_out_of_order|previous_shift_open|break_end_without_break)/);
+    const written = [...SQL.matchAll(/'(clock_unchecked|clock_off|tap_after_arrival|tap_too_old|tap_out_of_order|overlaps_previous_shift|previous_shift_open|break_end_without_break)'/g)];
+    expect(written.length).toBeGreaterThan(8);
+    expect(SQL).not.toMatch(/review_reason = '(?!clock_unchecked|clock_off|tap_after_arrival|tap_too_old|tap_out_of_order|overlaps_previous_shift|previous_shift_open|break_end_without_break)/);
+  });
+});
+
+// Codex review of #640 (2026-09-24): a trusted tap was judged against nothing
+// when no shift was open, and against the running break only when one was —
+// so a clock-in could start inside a completed shift, and a clock-out or a
+// second break could land inside a lunch that had already ended. The
+// behaviour is proven in scripts/verify-clock-integrity.mjs; this keeps the
+// shape that makes it possible from being edited away.
+describe("every punch is judged against the whole timeline", () => {
+  const keyed = (name: string) => functions().find((f) => f.name === name && /security definer/.test(f.text))!;
+  const legacy = (name: string) => functions().find((f) => f.name === name && !/security definer/.test(f.text))!;
+
+  it("a clock-in reads the person's timeline under a per-person lock and refuses to start inside a shift that still counts", () => {
+    const f = keyed("clock_in");
+    expect(f.text).toContain("pg_advisory_xact_lock(hashtextextended('clock_in:' || v_uid::text, 0))");
+    expect(f.text).toContain("where profile_id = v_uid and status <> 'voided'");
+    expect(f.text).toContain("'overlaps_previous_shift'");
+    // The lock is taken before the replay lookup, so a tap resent neck and
+    // neck with itself waits for the first copy and then finds its shift.
+    expect(f.text.indexOf("pg_advisory_xact_lock")).toBeLessThan(f.text.indexOf("from public.time_clock_actions a"));
+  });
+
+  it("every clock RPC, legacy signatures included, stamps the shift's last punch", () => {
+    for (const f of [keyed("clock_in"), keyed("clock_out"), legacy("clock_out"), keyed("start_break"), legacy("start_break"), keyed("end_break"), legacy("end_break")]) {
+      expect(f.text, f.name).toContain("last_punch_at");
+    }
+    expect(SQL).toContain("alter table public.time_shifts add column if not exists last_punch_at timestamptz;");
+  });
+
+  it("a clock-out and a break start bound on that stamp, not only on the break still running", () => {
+    expect(keyed("clock_out").text).toContain("greatest(v_open.clock_in_at, v_open.break_started_at, v_open.last_punch_at)");
+    expect(keyed("start_break").text).toContain("greatest(v_open.clock_in_at, v_open.last_punch_at)");
+    expect(keyed("end_break").text).toContain("greatest(v_open.break_started_at, v_open.last_punch_at)");
   });
 });
 

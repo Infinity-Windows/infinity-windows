@@ -43,6 +43,7 @@ const REVIEW_REASON_KEY: Record<string, TKey> = {
   tap_after_arrival: "timecard.review.tap_after_arrival",
   tap_too_old: "timecard.review.tap_too_old",
   tap_out_of_order: "timecard.review.tap_out_of_order",
+  overlaps_previous_shift: "timecard.review.overlaps_previous_shift",
   previous_shift_open: "timecard.review.previous_shift_open",
   break_end_without_break: "timecard.review.break_end_without_break",
 };

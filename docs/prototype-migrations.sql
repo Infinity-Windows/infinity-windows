@@ -18635,8 +18635,19 @@ commit;
 --     online punch; the correction is what makes "precedes" fair;
 --   * the tap is no older than shift_cap_hours() (16 h) — no single shift runs
 --     longer, so a tap older than that cannot belong to the shift it claims;
---   * the tap is not before the shift's last recorded event (its clock-in, or
---     the break it is ending).
+--   * the tap is not before the shift's last accepted punch — its clock-in,
+--     the break it is ending, or a break it already finished. That last one
+--     is time_shifts.last_punch_at (section 1b): break_started_at is CLEARED
+--     when a break ends, so without it a clock-out tapped ten minutes before
+--     the lunch ended looked in order and was paid from that tap, inside a
+--     lunch it also deducted in full (Codex review of #640, 2026-09-24);
+--   * for a clock-in, the tap is not before the end of this person's PREVIOUS
+--     shift. A completed or approved shift is part of the timeline too: a
+--     start tapped inside it would pay that stretch twice — the stale-device
+--     case, where another phone or the office closed the day and this phone's
+--     earlier clock-in arrives after. Judged under a per-person lock, so two
+--     clock-ins arriving together cannot both find the timeline clear (same
+--     review). The tap the phone claimed stays in the ledger for the review.
 -- A punch that sends NO tap at all is an old bundle, not a suspicious phone:
 -- arrival time, no review mark — exactly what every punch recorded before
 -- this migration.
@@ -18653,13 +18664,31 @@ alter table public.time_shifts add constraint time_shifts_review_reason_check
     'clock_off',                -- phone was more than 2 minutes off at the check
     'tap_after_arrival',        -- corrected tap is later than the server received it
     'tap_too_old',              -- tap older than the shift cap
-    'tap_out_of_order',         -- tap before the shift's last recorded event
+    'tap_out_of_order',         -- tap before the shift's last accepted punch
+    'overlaps_previous_shift',  -- clock-in tapped before this person's previous shift ended
     'previous_shift_open',      -- a dangling shift had to be closed at arrival first
     'break_end_without_break'   -- a break end arrived with no running break
   ));
 
 comment on column public.time_shifts.review_reason is
   'K0.4/K0.5 (20261028000000): why this punch needs a foreman''s look — a code the app translates, null when nothing does. Set by the clock RPCs when a tap time could not be trusted (pay used arrival time) or a break end had no running break. Never cleared by the clock; the row keeps its history.';
+
+-- ---------------------------------------------------------------------------
+-- 1b. time_shifts.last_punch_at — the shift's last accepted punch
+-- ---------------------------------------------------------------------------
+-- The pay time of the last punch this shift accepted: its clock-in, a break
+-- start, a break end, and finally its clock-out. The tap-time rule refuses a
+-- tap earlier than this. It has to be its own column: break_started_at is
+-- cleared when a break ends, so a shift with a finished lunch looked, to the
+-- rule, like a shift with no lunch at all, and the ledger cannot stand in —
+-- a punch through a legacy signature leaves no ledger row. Every clock RPC
+-- below stamps it, the legacy overloads included. Null on a shift made by
+-- one of the older clock_in overloads (not rebuilt here); greatest() treats
+-- a null as absent, so those bound on clock_in_at exactly as before.
+alter table public.time_shifts add column if not exists last_punch_at timestamptz;
+
+comment on column public.time_shifts.last_punch_at is
+  'K0.5 (20261028000000): the pay time of the last punch this shift accepted — clock-in, break start, break end, clock-out — stamped by every clock RPC, legacy signatures included. The tap-time rule refuses a tap earlier than this; break_started_at cannot serve because it is cleared when a break ends. Null only on shifts made by an older clock_in overload.';
 
 -- ---------------------------------------------------------------------------
 -- 2. The ledger
@@ -18777,8 +18806,10 @@ revoke all on function public._flag_shift_for_review(uuid, text, text) from publ
 
 -- The sentence the audit line carries for each code. English on purpose: the
 -- audit trail is English throughout (edited_note, closed_reason); the app
--- translates the CODE on the timecard.
-create or replace function public._clock_review_sentence(p_reason text, p_tapped_at timestamptz, p_arrived_at timestamptz)
+-- translates the CODE on the timecard. p_not_before is the punch the tap fell
+-- before — the shift's last punch, or the end of the previous shift — named
+-- in the line so the foreman fixing the time can see both times at once.
+create or replace function public._clock_review_sentence(p_reason text, p_tapped_at timestamptz, p_arrived_at timestamptz, p_not_before timestamptz)
 returns text
 language sql
 stable
@@ -18789,14 +18820,15 @@ as $$
     when 'clock_off' then 'Pay used the time this punch reached Forge (' || to_char(p_arrived_at at time zone 'America/Denver', 'HH12:MI AM') || ') because the phone''s clock was more than 2 minutes off. The phone said ' || to_char(p_tapped_at at time zone 'America/Denver', 'HH12:MI AM') || '.'
     when 'tap_after_arrival' then 'Pay used the time this punch reached Forge (' || to_char(p_arrived_at at time zone 'America/Denver', 'HH12:MI AM') || ') because the phone''s tap time was later than that. The phone said ' || to_char(p_tapped_at at time zone 'America/Denver', 'HH12:MI AM') || '.'
     when 'tap_too_old' then 'Pay used the time this punch reached Forge (' || to_char(p_arrived_at at time zone 'America/Denver', 'HH12:MI AM') || ') because the phone''s tap time was more than ' || public.shift_cap_hours() || ' hours earlier. The phone said ' || to_char(p_tapped_at at time zone 'America/Denver', 'YYYY-MM-DD HH12:MI AM') || '.'
-    when 'tap_out_of_order' then 'Pay used the time this punch reached Forge (' || to_char(p_arrived_at at time zone 'America/Denver', 'HH12:MI AM') || ') because the phone''s tap time was before the shift''s last punch. The phone said ' || to_char(p_tapped_at at time zone 'America/Denver', 'HH12:MI AM') || '.'
+    when 'tap_out_of_order' then 'Pay used the time this punch reached Forge (' || to_char(p_arrived_at at time zone 'America/Denver', 'HH12:MI AM') || ') because the phone''s tap time was before the shift''s last punch' || coalesce(' (' || to_char(p_not_before at time zone 'America/Denver', 'HH12:MI AM') || ')', '') || '. The phone said ' || to_char(p_tapped_at at time zone 'America/Denver', 'HH12:MI AM') || '.'
+    when 'overlaps_previous_shift' then 'Pay used the time this punch reached Forge (' || to_char(p_arrived_at at time zone 'America/Denver', 'HH12:MI AM') || ') because the phone''s tap time was before the previous shift ended' || coalesce(' (' || to_char(p_not_before at time zone 'America/Denver', 'HH12:MI AM') || ')', '') || ', and a shift starting inside another would pay that time twice. The phone said ' || to_char(p_tapped_at at time zone 'America/Denver', 'HH12:MI AM') || '.'
     when 'previous_shift_open' then 'The previous shift was still open, so this clock-in starts when it reached Forge (' || to_char(p_arrived_at at time zone 'America/Denver', 'HH12:MI AM') || ') rather than at the phone''s tap time.'
     when 'break_end_without_break' then 'A break end arrived at ' || to_char(p_arrived_at at time zone 'America/Denver', 'HH12:MI AM') || ' with no break running, so nothing was ended. Check this shift''s breaks.'
     else 'This punch needs a look.'
   end
 $$;
 
-revoke all on function public._clock_review_sentence(text, timestamptz, timestamptz) from public, anon, authenticated;
+revoke all on function public._clock_review_sentence(text, timestamptz, timestamptz, timestamptz) from public, anon, authenticated;
 
 -- ---------------------------------------------------------------------------
 -- 4. clock_in with a client id, a mode and the tap trio
@@ -18829,6 +18861,7 @@ declare
   v_shift public.time_shifts;
   v_pick public.clock_time_pick;
   v_had_open boolean;
+  v_previous_end timestamptz;
 begin
   if v_uid is null then
     raise exception 'Sign in before clocking in.';
@@ -18839,6 +18872,12 @@ begin
   if p_client_id is null then
     raise exception 'This clock-in is missing its id. Update the app and try again.';
   end if;
+
+  -- One person, one clock-in at a time, until this transaction ends. Two
+  -- devices sending clock-ins together — or one tap resent neck and neck
+  -- with itself — would otherwise both read the timeline below before either
+  -- had written to it, and the second would not see the first's shift.
+  perform pg_advisory_xact_lock(hashtextextended('clock_in:' || v_uid::text, 0));
 
   -- The same tap arriving twice: answer with the shift it already made.
   select ts.* into v_shift
@@ -18877,16 +18916,29 @@ begin
     v_pick := (now(), false, 'previous_shift_open')::public.clock_time_pick;
   else
     v_pick := public._clock_pick_time(p_tapped_at, p_clock_checked_at, p_clock_skew_ms, null);
+    -- The end of this person's timeline: the latest moment any shift that
+    -- still counts reached (a voided one has left every total; a completed
+    -- or approved one has not). A trusted tap before it would start this
+    -- shift inside the previous one and pay the overlap twice — the stale
+    -- device whose earlier clock-in arrives after another phone or the
+    -- office closed the day. Arrival instead, marked, with the tap kept in
+    -- the ledger for the review. An untrusted tap is already arrival time.
+    select max(greatest(clock_in_at, clock_out_at)) into v_previous_end
+      from public.time_shifts
+     where profile_id = v_uid and status <> 'voided';
+    if v_pick.used_tap and v_previous_end is not null and v_pick.pay_at < v_previous_end then
+      v_pick := (now(), false, 'overlaps_previous_shift')::public.clock_time_pick;
+    end if;
   end if;
 
   insert into public.time_shifts
     (profile_id, project_id, cost_code_id, clock_in_photo, clock_in_lat, clock_in_lng,
-     note, job_mode, client_id, clock_in_at, review_reason)
+     note, job_mode, client_id, clock_in_at, last_punch_at, review_reason)
   values
     (v_uid, p_project_id, p_cost_code_id, p_photo, p_lat, p_lng,
      nullif(btrim(p_note), ''),
      case when p_mode in ('data', 'tracking') then p_mode else null end,
-     p_client_id, v_pick.pay_at, v_pick.reason)
+     p_client_id, v_pick.pay_at, v_pick.pay_at, v_pick.reason)
   returning * into v_shift;
 
   insert into public.time_clock_actions
@@ -18898,7 +18950,7 @@ begin
 
   if v_pick.reason is not null then
     perform public._flag_shift_for_review(v_shift.id, v_pick.reason,
-      public._clock_review_sentence(v_pick.reason, p_tapped_at, now()));
+      public._clock_review_sentence(v_pick.reason, p_tapped_at, now(), v_previous_end));
   end if;
 
   return v_shift;
@@ -18916,7 +18968,9 @@ comment on function public.clock_in(uuid, uuid, text, double precision, double p
 -- ---------------------------------------------------------------------------
 -- 5a) Legacy signature (20260921000000), body verbatim plus the guard: only an
 -- OPEN shift closes. A second arrival finds nothing to update and says so,
--- instead of moving clock_out_at and re-submitting an approved week.
+-- instead of moving clock_out_at and re-submitting an approved week. Plus the
+-- last-punch stamp (section 1b): a stale bundle's punch is a punch, and a
+-- keyed punch tapped before it must be able to see it.
 create or replace function public.clock_out(
   p_shift_id uuid,
   p_photo text default null,
@@ -18932,6 +18986,7 @@ declare v_shift public.time_shifts;
 begin
   update public.time_shifts
   set clock_out_at = now(),
+      last_punch_at = now(),
       clock_out_photo = coalesce(p_photo, clock_out_photo),
       injured = p_injured,
       injury_note = case when p_injured then nullif(trim(coalesce(p_injury_note, '')), '') else null end,
@@ -18982,6 +19037,7 @@ declare
   v_open public.time_shifts;
   v_shift public.time_shifts;
   v_pick public.clock_time_pick;
+  v_not_before timestamptz;
 begin
   if v_uid is null then
     raise exception 'Sign in before clocking out.';
@@ -19010,11 +19066,15 @@ begin
     raise exception 'This shift was already clocked out. Nothing was changed.';
   end if;
 
-  v_pick := public._clock_pick_time(p_tapped_at, p_clock_checked_at, p_clock_skew_ms,
-                                    greatest(v_open.clock_in_at, coalesce(v_open.break_started_at, v_open.clock_in_at)));
+  -- Not before the shift's last punch: the clock-in, the break still running,
+  -- or the end of a break already finished (last_punch_at — the break columns
+  -- are cleared when a break ends, and were once all this looked at).
+  v_not_before := greatest(v_open.clock_in_at, v_open.break_started_at, v_open.last_punch_at);
+  v_pick := public._clock_pick_time(p_tapped_at, p_clock_checked_at, p_clock_skew_ms, v_not_before);
 
   update public.time_shifts ts
   set clock_out_at = v_pick.pay_at,
+      last_punch_at = v_pick.pay_at,
       clock_out_photo = coalesce(p_photo, ts.clock_out_photo),
       injured = p_injured,
       injury_note = case when p_injured then nullif(trim(coalesce(p_injury_note, '')), '') else null end,
@@ -19044,7 +19104,7 @@ begin
 
   if v_pick.reason is not null then
     perform public._flag_shift_for_review(v_shift.id, v_pick.reason,
-      public._clock_review_sentence(v_pick.reason, p_tapped_at, now()));
+      public._clock_review_sentence(v_pick.reason, p_tapped_at, now(), v_not_before));
   end if;
 
   return v_shift;
@@ -19061,7 +19121,9 @@ comment on function public.clock_out(uuid, text, boolean, boolean, int, double p
 -- 6. start_break — guarded legacy signature, and the keyed one
 -- ---------------------------------------------------------------------------
 -- 6a) Legacy (20260811010000), verbatim plus: only an open shift takes a
--- break. The phase pause it carries is unchanged.
+-- break, and a break that starts here stamps last_punch_at (section 1b; a
+-- break already running keeps its stamp, as it keeps its start). The phase
+-- pause it carries is unchanged.
 create or replace function public.start_break(
   p_shift_id uuid,
   p_break_type text default 'other'
@@ -19071,7 +19133,8 @@ declare v public.time_shifts;
 begin
   update public.time_shifts
   set break_started_at = coalesce(break_started_at, now()),
-      break_type = coalesce(break_type, p_break_type)
+      break_type = coalesce(break_type, p_break_type),
+      last_punch_at = case when break_started_at is null then now() else last_punch_at end
   where id = p_shift_id and profile_id = auth.uid()
     and status = 'open' and clock_out_at is null
   returning * into v;
@@ -19110,6 +19173,7 @@ declare
   v_shift public.time_shifts;
   v_pick public.clock_time_pick;
   v_outcome text;
+  v_not_before timestamptz;
 begin
   if v_uid is null then
     raise exception 'Sign in before starting a break.';
@@ -19143,9 +19207,14 @@ begin
     v_outcome := 'already_on_break';
     v_pick := (now(), false, null)::public.clock_time_pick;
   else
-    v_pick := public._clock_pick_time(p_tapped_at, p_clock_checked_at, p_clock_skew_ms, v_open.clock_in_at);
+    -- Not before the clock-in, nor before a break this shift already finished
+    -- (last_punch_at): a second break tapped inside the first would deduct
+    -- that time twice.
+    v_not_before := greatest(v_open.clock_in_at, v_open.last_punch_at);
+    v_pick := public._clock_pick_time(p_tapped_at, p_clock_checked_at, p_clock_skew_ms, v_not_before);
     update public.time_shifts ts
        set break_started_at = v_pick.pay_at,
+           last_punch_at = v_pick.pay_at,
            break_type = coalesce(ts.break_type, case when p_break_type in ('lunch', 'rest', 'other') then p_break_type else 'other' end),
            review_reason = coalesce(ts.review_reason, v_pick.reason)
      where ts.id = v_open.id
@@ -19167,7 +19236,7 @@ begin
 
   if v_pick.reason is not null then
     perform public._flag_shift_for_review(v_shift.id, v_pick.reason,
-      public._clock_review_sentence(v_pick.reason, p_tapped_at, now()));
+      public._clock_review_sentence(v_pick.reason, p_tapped_at, now(), v_not_before));
   end if;
 
   return v_shift;
@@ -19186,7 +19255,8 @@ comment on function public.start_break(uuid, text, uuid, timestamptz, timestampt
 -- 7a) Legacy (20260718040000), verbatim plus: no running break is an error,
 -- never a silent success. (A raise cannot leave a flag behind, so the flag
 -- lives on the keyed overload the app uses; this one still stops the silent
--- half for a stale bundle.)
+-- half for a stale bundle.) Plus the last-punch stamp (section 1b): this is
+-- the punch that clears break_started_at, so it is the one the stamp exists for.
 create or replace function public.end_break(p_shift_id uuid)
 returns public.time_shifts language plpgsql set search_path = public, pg_temp as $$
 declare v public.time_shifts;
@@ -19195,7 +19265,8 @@ begin
   set break_seconds = break_seconds
         + greatest(0, extract(epoch from (now() - break_started_at))::int),
       break_started_at = null,
-      break_type = null
+      break_type = null,
+      last_punch_at = now()
   where id = p_shift_id and profile_id = auth.uid() and break_started_at is not null
   returning * into v;
   if v is null then
@@ -19231,6 +19302,7 @@ declare
   v_shift public.time_shifts;
   v_pick public.clock_time_pick;
   v_prior text;
+  v_not_before timestamptz;
 begin
   if v_uid is null then
     raise exception 'Sign in before ending a break.';
@@ -19272,18 +19344,21 @@ begin
     values
       (p_client_id, v_open.id, v_uid, 'break_end', 'no_break_running', p_tapped_at, now(), p_clock_checked_at, p_clock_skew_ms, 'break_end_without_break');
     perform public._flag_shift_for_review(v_open.id, 'break_end_without_break',
-      public._clock_review_sentence('break_end_without_break', p_tapped_at, now()));
+      public._clock_review_sentence('break_end_without_break', p_tapped_at, now(), null));
     select * into v_shift from public.time_shifts where id = v_open.id;
     return jsonb_build_object('outcome', 'no_break_running', 'shift', to_jsonb(v_shift));
   end if;
 
-  v_pick := public._clock_pick_time(p_tapped_at, p_clock_checked_at, p_clock_skew_ms, v_open.break_started_at);
+  -- Not before the break it is ending (which is also the shift's last punch).
+  v_not_before := greatest(v_open.break_started_at, v_open.last_punch_at);
+  v_pick := public._clock_pick_time(p_tapped_at, p_clock_checked_at, p_clock_skew_ms, v_not_before);
 
   update public.time_shifts ts
      set break_seconds = ts.break_seconds
            + greatest(0, extract(epoch from (v_pick.pay_at - ts.break_started_at))::int),
          break_started_at = null,
          break_type = null,
+         last_punch_at = v_pick.pay_at,
          review_reason = coalesce(ts.review_reason, v_pick.reason)
    where ts.id = v_open.id
   returning * into v_shift;
@@ -19297,7 +19372,7 @@ begin
 
   if v_pick.reason is not null then
     perform public._flag_shift_for_review(v_shift.id, v_pick.reason,
-      public._clock_review_sentence(v_pick.reason, p_tapped_at, now()));
+      public._clock_review_sentence(v_pick.reason, p_tapped_at, now(), v_not_before));
   end if;
 
   return jsonb_build_object('outcome', 'ended', 'shift', to_jsonb(v_shift));

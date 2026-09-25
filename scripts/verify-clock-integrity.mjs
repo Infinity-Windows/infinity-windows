@@ -15,7 +15,12 @@
 //   * the legacy signatures refuse a second close and a break with no start;
 //   * payroll: existing rows' hours are byte-identical across the migration, and
 //     an ordinary online punch pays the same hours through the keyed overloads as
-//     through the legacy ones.
+//     through the legacy ones;
+//   * the timeline (Codex review of #640, 2026-09-24): a clock-in tapped inside
+//     a completed or approved shift starts at arrival and is marked, a voided
+//     shift no longer counts, and a clock-out or second break tapped before a
+//     break that already ended — through the keyed OR the legacy signature —
+//     pays from arrival, deducts the break once and is marked.
 import { readFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 const { PGlite } = await import(process.env.PGLITE_MODULE ?? '@electric-sql/pglite');
@@ -73,6 +78,18 @@ const roles=['installer','foreman','supervisor','owner'];
 for (let i=0;i<roles.length;i++) await db.query('insert into profiles(id,role,display_name) values($1,$2,$3)',[id(i+1),roles[i],roles[i]]);
 await db.query('insert into profiles(id,role,is_partner,display_name) values($1,$2,true,$3)',[id(9),'installer','partner']);
 for (const i of [1,2,3,4,9]) await db.query('insert into toolbox_completions values($1,now())',[id(i)]);
+// A fresh installer for each timeline case. A trusted tap two hours old cannot
+// follow a shift the same person closed a moment ago — that IS the overlap the
+// guard exists to catch — so the tap-time cases each start from an empty
+// timeline rather than from the previous case's clock-out.
+let nextFresh=10;
+async function fresh() {
+  const n=nextFresh++;
+  await admin();
+  await db.query('insert into profiles(id,role,display_name) values($1,$2,$3)',[id(n),'installer','installer '+n]);
+  await db.query('insert into toolbox_completions values($1,now())',[id(n)]);
+  return n;
+}
 let checks=0;
 async function admin() { await db.exec("reset role; select set_config('request.jwt.claim.sub','',false)"); }
 async function asUser(i) { await admin(); await db.query("select set_config('request.jwt.claim.sub',$1,false)",[id(i)]); await db.exec('set role authenticated'); }
@@ -244,81 +261,256 @@ ok((await shift(s.id)).break_seconds>=afterFirst,'break #2 was added to the tota
 equal((await shift(s.id)).review_reason,'break_end_without_break','the first reason on the row is the one that stays');
 
 // --- K0.5: the tap-time rule ------------------------------------------------
+// Each case is a fresh person (see fresh()): the cases used to run back to back
+// on one person, and a trusted tap two hours old right after that person's
+// clock-out at arrival is exactly what the timeline guard below refuses.
 async function trusted(person,n,over={}) {
   return clockIn(person,uuid(n),{tap:new Date(Date.now()-2*3600e3).toISOString(),checked:new Date(Date.now()-3600e3).toISOString(),skew:30000,...over});
 }
+let who=await fresh();
 // (a) trusted: checked an hour ago, 30 s fast, tapped two hours before arrival.
-s=await trusted(3,20);
+s=await trusted(who,20);
 near(s.clock_in_at,new Date(Date.now()-2*3600e3-30000),5000,'pay uses the tap time, corrected by the measured 30 s');
 equal(s.review_reason,null,'a trusted tap is not marked');
 equal((await ledger(uuid(20))).used_tap_time,true);
 near((await ledger(uuid(20))).tapped_at,new Date(Date.now()-2*3600e3),5000,"the phone's own tap time is kept as said");
 near((await ledger(uuid(20))).arrived_at,new Date(),5000,'and the arrival time beside it');
-await clockOut(3,s.id,uuid(21),{breakSeconds:0});
+near((await shift(s.id)).last_punch_at,s.clock_in_at,0,'the clock-in is the shift\'s last punch');
+await clockOut(who,s.id,uuid(21),{breakSeconds:0});
+near((await shift(s.id)).last_punch_at,(await shift(s.id)).clock_out_at,0,'and then the clock-out is');
 // (b) the phone was 5 minutes off at its check.
-s=await trusted(3,22,{skew:300000});
+who=await fresh();
+s=await trusted(who,22,{skew:300000});
 near(s.clock_in_at,new Date(),5000,'more than 2 minutes off: pay uses arrival');
 equal(s.review_reason,'clock_off');
 edits=await read("select reason from time_shift_edits where shift_id=$1",[s.id]);
 ok(/more than 2 minutes off/.test(edits[0].reason),'the audit line explains which rule failed: '+edits[0].reason);
-await clockOut(3,s.id,uuid(23),{breakSeconds:0});
+await clockOut(who,s.id,uuid(23),{breakSeconds:0});
 // (c) the last check is 30 hours old.
-s=await trusted(3,24,{checked:new Date(Date.now()-30*3600e3).toISOString()});
+who=await fresh();
+s=await trusted(who,24,{checked:new Date(Date.now()-30*3600e3).toISOString()});
 near(s.clock_in_at,new Date(),5000,'a check older than a day: arrival');
 equal(s.review_reason,'clock_unchecked');
-await clockOut(3,s.id,uuid(25),{breakSeconds:0});
+await clockOut(who,s.id,uuid(25),{breakSeconds:0});
 // (c2) never checked at all.
-s=await trusted(3,26,{checked:null,skew:null});
+who=await fresh();
+s=await trusted(who,26,{checked:null,skew:null});
 equal(s.review_reason,'clock_unchecked','never checked: arrival, marked');
-await clockOut(3,s.id,uuid(27),{breakSeconds:0});
+await clockOut(who,s.id,uuid(27),{breakSeconds:0});
 // (d) the tap is five minutes AFTER arrival (a clock that jumped since the check).
-s=await trusted(3,28,{tap:new Date(Date.now()+300e3).toISOString(),skew:0});
+who=await fresh();
+s=await trusted(who,28,{tap:new Date(Date.now()+300e3).toISOString(),skew:0});
 near(s.clock_in_at,new Date(),5000,'a tap later than arrival: arrival');
 equal(s.review_reason,'tap_after_arrival');
-await clockOut(3,s.id,uuid(29),{breakSeconds:0});
+await clockOut(who,s.id,uuid(29),{breakSeconds:0});
 // (d2) a tap 40 s "after" arrival on a phone known to be 40 s fast IS a tap
 // before arrival, and must not be marked — otherwise every online punch from a
 // slightly fast phone would land on the foreman's desk.
-s=await trusted(3,30,{tap:new Date(Date.now()+40e3).toISOString(),skew:41000});
+who=await fresh();
+s=await trusted(who,30,{tap:new Date(Date.now()+40e3).toISOString(),skew:41000});
 equal(s.review_reason,null,'a known skew is corrected before "precedes arrival" is judged');
 equal((await ledger(uuid(30))).used_tap_time,true);
-await clockOut(3,s.id,uuid(31),{breakSeconds:0});
+await clockOut(who,s.id,uuid(31),{breakSeconds:0});
 // (e) the tap is 20 hours old: no shift runs that long.
-s=await trusted(3,32,{tap:new Date(Date.now()-20*3600e3).toISOString()});
+who=await fresh();
+s=await trusted(who,32,{tap:new Date(Date.now()-20*3600e3).toISOString()});
 near(s.clock_in_at,new Date(),5000,'older than the shift cap: arrival');
 equal(s.review_reason,'tap_too_old');
-await clockOut(3,s.id,uuid(33),{breakSeconds:0});
+await clockOut(who,s.id,uuid(33),{breakSeconds:0});
 // (f) a clock-out whose tap is before the clock-in.
-s=await trusted(3,34);
-closed=await clockOut(3,s.id,uuid(35),{breakSeconds:0,tap:new Date(Date.now()-3*3600e3).toISOString(),checked:new Date(Date.now()-3600e3).toISOString(),skew:0});
+who=await fresh();
+s=await trusted(who,34);
+closed=await clockOut(who,s.id,uuid(35),{breakSeconds:0,tap:new Date(Date.now()-3*3600e3).toISOString(),checked:new Date(Date.now()-3600e3).toISOString(),skew:0});
 near(closed.clock_out_at,new Date(),5000,'a clock-out tapped before its clock-in: arrival');
 equal(closed.review_reason,'tap_out_of_order');
 // (g) a trusted clock-out is paid from its tap (an hour before it arrived).
-s=await trusted(3,36);
-closed=await clockOut(3,s.id,uuid(37),{breakSeconds:0,tap:new Date(Date.now()-3600e3).toISOString(),checked:new Date(Date.now()-3600e3).toISOString(),skew:0});
+who=await fresh();
+s=await trusted(who,36);
+closed=await clockOut(who,s.id,uuid(37),{breakSeconds:0,tap:new Date(Date.now()-3600e3).toISOString(),checked:new Date(Date.now()-3600e3).toISOString(),skew:0});
 near(closed.clock_out_at,new Date(Date.now()-3600e3),5000,'a trusted clock-out pays from the tap');
 equal(closed.review_reason,null);
 // (h) a trusted break: started 90 minutes ago (tap), ended 30 minutes ago (tap) → 60 min of break.
-s=await trusted(3,38);
-b=await startBreak(3,s.id,uuid(39),{tap:new Date(Date.now()-90*60e3).toISOString(),checked:new Date(Date.now()-3600e3).toISOString(),skew:0});
+who=await fresh();
+s=await trusted(who,38);
+b=await startBreak(who,s.id,uuid(39),{tap:new Date(Date.now()-90*60e3).toISOString(),checked:new Date(Date.now()-3600e3).toISOString(),skew:0});
 near(b.break_started_at,new Date(Date.now()-90*60e3),5000,'break start pays from the tap');
-r=await endBreak(3,s.id,uuid(40),{tap:new Date(Date.now()-30*60e3).toISOString(),checked:new Date(Date.now()-3600e3).toISOString(),skew:0});
+near(b.last_punch_at,b.break_started_at,0,'a break start is the shift\'s last punch');
+r=await endBreak(who,s.id,uuid(40),{tap:new Date(Date.now()-30*60e3).toISOString(),checked:new Date(Date.now()-3600e3).toISOString(),skew:0});
 equal(r.outcome,'ended');
 ok(Math.abs(r.shift.break_seconds-3600)<=5,'the break is the tap-to-tap length, not the arrival-to-arrival length: '+r.shift.break_seconds);
 equal(r.shift.review_reason,null);
+near(r.shift.last_punch_at,new Date(Date.now()-30*60e3),5000,'the break end is remembered as the last punch after the break columns are cleared');
 // (h2) a break end tapped before its start.
-b=await startBreak(3,s.id,uuid(41),{tap:new Date(Date.now()-10*60e3).toISOString(),checked:new Date(Date.now()-3600e3).toISOString(),skew:0});
-r=await endBreak(3,s.id,uuid(42),{tap:new Date(Date.now()-20*60e3).toISOString(),checked:new Date(Date.now()-3600e3).toISOString(),skew:0});
+b=await startBreak(who,s.id,uuid(41),{tap:new Date(Date.now()-10*60e3).toISOString(),checked:new Date(Date.now()-3600e3).toISOString(),skew:0});
+r=await endBreak(who,s.id,uuid(42),{tap:new Date(Date.now()-20*60e3).toISOString(),checked:new Date(Date.now()-3600e3).toISOString(),skew:0});
 equal(r.outcome,'ended'); equal(r.shift.review_reason,'tap_out_of_order','a break end tapped before its start: arrival, marked');
-await clockOut(3,s.id,uuid(43),{breakSeconds:null});
+await clockOut(who,s.id,uuid(43),{breakSeconds:null});
 // (i) a clock-in that has to close a still-open shift first starts at arrival.
-s=await trusted(3,44);
-let next=await trusted(3,45);
+who=await fresh();
+s=await trusted(who,44);
+let next=await trusted(who,45);
 near(next.clock_in_at,new Date(),5000,'the previous shift was open: this one starts at arrival, not two hours ago');
 equal(next.review_reason,'previous_shift_open');
 equal((await shift(s.id)).status,'submitted','and the previous one was closed by the dangling-shift guard as before');
 ok((await shift(next.id)).clock_in_at>=(await shift(s.id)).clock_out_at,'no overlap between the two shifts');
-await clockOut(3,next.id,uuid(46),{breakSeconds:0});
+await clockOut(who,next.id,uuid(46),{breakSeconds:0});
+
+// --- The timeline (Codex review of #640, 2026-09-24) -------------------------
+// Finding 1: a trusted clock-in used to be judged against nothing when no shift
+// was open, so a shift T-120m → T-60m followed by a clock-in tapped at T-90m
+// started a second shift at T-90m, unmarked, and paid the half hour twice.
+const ago=m=>new Date(Date.now()-m*60e3).toISOString();
+const check=ago(60);
+const at=(m)=>({tap:ago(m),checked:check,skew:0});
+who=await fresh();
+let first=await clockIn(who,uuid(70),at(120));
+near(first.clock_in_at,ago(120),5000,'a first shift on a clean timeline starts at its tap');
+closed=await clockOut(who,first.id,uuid(71),{breakSeconds:0,...at(60)});
+near(closed.clock_out_at,ago(60),5000,'and ends at its tap');
+let late=await clockIn(who,uuid(72),at(90));
+near(late.clock_in_at,new Date(),5000,'a clock-in tapped inside the completed shift starts at arrival, not at its tap');
+equal(late.review_reason,'overlaps_previous_shift','and is marked for the foreman');
+ok(late.clock_in_at>=closed.clock_out_at,'so the two shifts do not overlap');
+equal((await ledger(uuid(72))).used_tap_time,false);
+near((await ledger(uuid(72))).tapped_at,ago(90),5000,'the tap the phone claimed is kept in the ledger for the review');
+equal((await ledger(uuid(72))).review_reason,'overlaps_previous_shift');
+edits=await read("select reason from time_shift_edits where shift_id=$1",[late.id]);
+equal(edits.length,1);
+ok(/before the previous shift ended \(\d{2}:\d{2} [AP]M\)/.test(edits[0].reason),'the audit line names the end it fell before: '+edits[0].reason);
+ok(/The phone said \d{2}:\d{2} [AP]M/.test(edits[0].reason),'and what the phone said');
+equal((await shift(first.id)).clock_out_at.toISOString(),closed.clock_out_at.toISOString(),'the completed shift was not touched');
+await clockOut(who,late.id,uuid(73),{breakSeconds:0});
+// The same against an APPROVED shift: approval is no protection on its own.
+who=await fresh();
+first=await clockIn(who,uuid(74),at(120));
+await clockOut(who,first.id,uuid(75),{breakSeconds:0,...at(60)});
+await admin(); await db.query("update time_shifts set status='approved',approved_by=$2,approved_at=now() where id=$1",[first.id,id(3)]);
+late=await clockIn(who,uuid(76),at(90));
+equal(late.review_reason,'overlaps_previous_shift','an approved shift is part of the timeline too');
+near(late.clock_in_at,new Date(),5000,'arrival, not the tap');
+equal((await shift(first.id)).status,'approved','and the approved shift is untouched');
+await clockOut(who,late.id,uuid(77),{breakSeconds:0});
+// A shift the office closed by hand (no ledger row, no tap) bounds the timeline
+// the same way: the guard reads time_shifts, not the ledger.
+who=await fresh();
+first=await clockIn(who,uuid(78),at(120));
+await admin(); await db.query("update time_shifts set clock_out_at=$2,status='submitted' where id=$1",[first.id,ago(60)]);
+late=await clockIn(who,uuid(79),at(90));
+equal(late.review_reason,'overlaps_previous_shift','a shift the office closed is a completed shift');
+await clockOut(who,late.id,uuid(80),{breakSeconds:0});
+// The guard is exact: a tap AFTER the previous end is still trusted.
+who=await fresh();
+first=await clockIn(who,uuid(81),at(120));
+await clockOut(who,first.id,uuid(82),{breakSeconds:0,...at(60)});
+late=await clockIn(who,uuid(83),at(45));
+near(late.clock_in_at,ago(45),5000,'a clock-in tapped after the previous shift ended pays from its tap');
+equal(late.review_reason,null,'and is not marked');
+await clockOut(who,late.id,uuid(84),{breakSeconds:0});
+// A voided shift has left every total, so it has left the timeline too.
+who=await fresh();
+first=await clockIn(who,uuid(85),at(120));
+await clockOut(who,first.id,uuid(86),{breakSeconds:0,...at(60)});
+await admin(); await db.query("update time_shifts set status='voided',voided_at=now(),voided_by=$2,voided_reason='entered on the wrong day' where id=$1",[first.id,id(3)]);
+late=await clockIn(who,uuid(87),at(90));
+near(late.clock_in_at,ago(90),5000,'a voided shift no longer bounds the timeline');
+equal(late.review_reason,null);
+await clockOut(who,late.id,uuid(88),{breakSeconds:0});
+// An untrusted tap is arrival time anyway, and arrival cannot overlap: the
+// reason the phone earned stays, it is not replaced by the overlap.
+who=await fresh();
+first=await clockIn(who,uuid(89),at(120));
+await clockOut(who,first.id,uuid(90),{breakSeconds:0,...at(60)});
+late=await clockIn(who,uuid(91),{tap:ago(90),checked:check,skew:300000});
+equal(late.review_reason,'clock_off','a phone 5 minutes off is marked for that, not for the overlap its tap would have made');
+await clockOut(who,late.id,uuid(92),{breakSeconds:0});
+// The timeline is read under a lock on the person, held to the end of the
+// transaction, so two clock-ins arriving together take turns. (One connection
+// here; the lock is proven held, not contended.)
+who=await fresh();
+await db.exec('begin');
+await asUser(who);
+await db.query(KEYED_IN,[uuid(90),uuid(91),'locked','data',uuid(93),null,null,null]);
+await db.exec('reset role');
+let locks=(await db.query("select count(*)::int n from pg_locks where locktype='advisory' and pid=pg_backend_pid()")).rows[0].n;
+ok(locks>=1,'clock_in holds an advisory lock while its transaction is open');
+await db.exec('commit');
+await admin();
+locks=(await db.query("select count(*)::int n from pg_locks where locktype='advisory' and pid=pg_backend_pid()")).rows[0].n;
+equal(locks,0,'and lets go of it at commit');
+await clockOut(who,(await row('select id from time_shifts where client_id=$1',[uuid(93)])).id,uuid(94),{breakSeconds:0});
+
+// Finding 2: the lower bound used clock_in_at and the RUNNING break only, and
+// end_break clears break_started_at — so clock-in T-180m, lunch T-120m → T-90m,
+// then a clock-out tapped at T-100m ended the shift ten minutes before its own
+// lunch ended, kept the full 1,800 s deduction and was not marked.
+who=await fresh();
+s=await clockIn(who,uuid(95),at(180));
+b=await startBreak(who,s.id,uuid(96),at(120));
+r=await endBreak(who,s.id,uuid(97),at(90));
+equal(r.outcome,'ended');
+ok(Math.abs(r.shift.break_seconds-1800)<=5,'a 30-minute lunch: '+r.shift.break_seconds);
+equal(r.shift.break_started_at,null);
+near(r.shift.last_punch_at,ago(90),5000,'the shift remembers when the lunch ended');
+closed=await clockOut(who,s.id,uuid(98),{breakSeconds:null,...at(100)});
+near(closed.clock_out_at,new Date(),5000,'a clock-out tapped before the lunch ended pays from arrival');
+equal(closed.review_reason,'tap_out_of_order','and is marked');
+ok(new Date(closed.clock_out_at)>=new Date(ago(90)),'so the shift ends after its lunch did');
+ok(Math.abs(closed.break_seconds-1800)<=5,'and the lunch is deducted once: '+closed.break_seconds);
+edits=await read("select reason from time_shift_edits where shift_id=$1",[s.id]);
+ok(/before the shift's last punch \(\d{2}:\d{2} [AP]M\)/.test(edits[0].reason),'the audit line names the punch it fell before: '+edits[0].reason);
+// A second break tapped before the first one ended: arrival, marked, and the
+// first break is not deducted a second time.
+who=await fresh();
+s=await clockIn(who,uuid(99),at(180));
+await startBreak(who,s.id,uuid(100),at(120));
+r=await endBreak(who,s.id,uuid(101),at(90));
+b=await startBreak(who,s.id,uuid(102),{type:'rest',...at(100)});
+near(b.break_started_at,new Date(),5000,'a break tapped before the last one ended starts at arrival');
+equal(b.review_reason,'tap_out_of_order');
+r=await endBreak(who,s.id,uuid(103));
+equal(r.outcome,'ended');
+ok(r.shift.break_seconds>=1800&&r.shift.break_seconds<=1800+10,'the lunch is deducted once and the second break is its real, near-zero length: '+r.shift.break_seconds);
+closed=await clockOut(who,s.id,uuid(104),{breakSeconds:null});
+ok(closed.break_seconds<=1800+10,'…and still once at clock-out: '+closed.break_seconds);
+// A break tapped AFTER the first one ended is still trusted.
+who=await fresh();
+s=await clockIn(who,uuid(105),at(180));
+await startBreak(who,s.id,uuid(106),at(120));
+await endBreak(who,s.id,uuid(107),at(90));
+b=await startBreak(who,s.id,uuid(108),{type:'rest',...at(45)});
+near(b.break_started_at,ago(45),5000,'a second break tapped after the first ended pays from its tap');
+equal(b.review_reason,null);
+r=await endBreak(who,s.id,uuid(109),at(30));
+ok(Math.abs(r.shift.break_seconds-(1800+900))<=5,'both breaks, each once: '+r.shift.break_seconds);
+await clockOut(who,s.id,uuid(110),{breakSeconds:null});
+// A legacy punch is a punch: a break started and ended through the old
+// signatures (no ledger row, no tap) still bounds a keyed clock-out.
+who=await fresh();
+s=await clockIn(who,uuid(111),at(180));
+await asUser(who);
+await db.query("select start_break($1,'lunch')",[s.id]);
+near((await shift(s.id)).last_punch_at,new Date(),5000,'the legacy break start stamps the last punch');
+await asUser(who);
+await db.query('select end_break($1)',[s.id]);
+equal((await shift(s.id)).break_started_at,null);
+near((await shift(s.id)).last_punch_at,new Date(),5000,'and the legacy break end stamps it again');
+closed=await clockOut(who,s.id,uuid(112),{breakSeconds:null,...at(10)});
+equal(closed.review_reason,'tap_out_of_order','a clock-out tapped before a legacy break end pays from arrival');
+near(closed.clock_out_at,new Date(),5000);
+// And the legacy clock-out stamps it too, for whatever reads the row next.
+who=await fresh();
+s=await clockIn(who,uuid(113),at(180));
+await asUser(who);
+await db.query('select clock_out($1,null,false,true,0,null,null,null)',[s.id]);
+near((await shift(s.id)).last_punch_at,(await shift(s.id)).clock_out_at,0,'the legacy clock-out is the last punch');
+// A break still running at clock-out is folded from the tap, as before.
+who=await fresh();
+s=await clockIn(who,uuid(114),at(180));
+await startBreak(who,s.id,uuid(115),at(60));
+closed=await clockOut(who,s.id,uuid(116),{breakSeconds:null,...at(30)});
+near(closed.clock_out_at,ago(30),5000,'a clock-out tapped after the running break started pays from its tap');
+ok(Math.abs(closed.break_seconds-1800)<=5,'and the running break is folded from tap to tap: '+closed.break_seconds);
+equal(closed.review_reason,null);
 
 // --- Refusals ---------------------------------------------------------------
 await denied(()=>clockIn(9,uuid(50)),/Not available for your account/);
@@ -339,17 +531,21 @@ await admin();
 // the request by a few milliseconds), and the two paths can be compared to the
 // second rather than within a tolerance.
 await clockOut(2,breakShift,uuid(59),{breakSeconds:0}); // person 2 still had the break-section shift open
+// Fresh people for the two keyed punches: a tap taken this millisecond can be
+// a few microseconds before the previous shift's clock-out at arrival, and the
+// timeline guard would (rightly) refuse that tap.
+const sameWho=await fresh(), fastWho=await fresh();
 const tapNow=new Date().toISOString(), tapFast=new Date(Date.now()+45000).toISOString();
 await db.exec('begin');
 await asUser(4);
 const legacy=(await db.query("select * from clock_in(p_project_id=>$1,p_cost_code_id=>$2,p_photo=>null,p_lat=>null,p_lng=>null,p_note=>'legacy',p_mode=>'data')",[uuid(90),uuid(91)])).rows[0];
 await db.query('select clock_out($1,null,false,true,0,null,null,null)',[legacy.id]);
-await asUser(2);
+await asUser(sameWho);
 const keyedSame=(await db.query(KEYED_IN,[uuid(90),uuid(91),'keyed','data',uuid(60),tapNow,tapNow,0])).rows[0];
 await db.query(KEYED_OUT,[keyedSame.id,0,uuid(61),tapNow,tapNow,0]);
 // And a phone 45 s fast: both ends are corrected by the same skew, so the hours
 // do not move.
-await asUser(3);
+await asUser(fastWho);
 const keyedFast=(await db.query(KEYED_IN,[uuid(90),uuid(91),'fast','data',uuid(62),tapFast,tapNow,45000])).rows[0];
 await db.query(KEYED_OUT,[keyedFast.id,0,uuid(63),tapFast,tapNow,45000]);
 await admin();

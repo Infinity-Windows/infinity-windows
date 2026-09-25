@@ -3164,6 +3164,10 @@ export const CATALOG = {
     en: "Paid from when it reached Forge — the phone's tap time was before the shift's last punch.",
     es: "Pagado desde que llegó a Forge — la hora del toque era anterior a la última marcación del turno.",
   },
+  "timecard.review.overlaps_previous_shift": {
+    en: "Paid from when it reached Forge — the phone's tap time was before the previous shift ended, and a shift can't start inside another.",
+    es: "Pagado desde que llegó a Forge — la hora del toque era anterior al fin del turno anterior, y un turno no puede empezar dentro de otro.",
+  },
   "timecard.review.previous_shift_open": {
     en: "The previous shift was still open, so this one starts when it reached Forge.",
     es: "El turno anterior seguía abierto, así que este empieza cuando llegó a Forge.",
