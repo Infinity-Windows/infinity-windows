@@ -606,7 +606,10 @@ export function createSupabaseHandlers(
           .maybeSingle();
         if (saved.data?.id) {
           const { transcribeInstallAttachment } = await import("../install/transcribe");
-          void transcribeInstallAttachment(saved.data.id, blob).catch(() => {
+          // Through THIS send's client, bound to the memo owner's token, for
+          // the whole fire-and-forget life of the call: the audio conversion
+          // inside it can outlast a sign-in (Codex review of #660, P2 #3).
+          void transcribeInstallAttachment(saved.data.id, blob, supabase).catch(() => {
             // Left untranscribed for retryTranscriptions().
           });
         }
