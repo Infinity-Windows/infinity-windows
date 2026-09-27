@@ -1,4 +1,5 @@
 import type { ComponentType } from "react";
+import type { TKey } from "./i18n/catalog";
 import {
   Activity,
   AlertTriangle,
@@ -397,6 +398,10 @@ export type MenuAction = "open-clock";
 
 export interface MenuItem {
   label: string;
+  /** Catalog key for the label, so the Spanish menu reads Spanish. Rows
+   *  without one are still English-only (only rows an installer can reach
+   *  are translated so far; 2026-09-27). */
+  labelKey?: TKey;
   Icon: IconComponent;
   /** Registry path — gated via canAccess. Omit when `action` is set. */
   to?: RoutePath;
@@ -547,11 +552,11 @@ const MENU_DEF: MenuSection[] = [
     collapsible: true,
     Icon: SlidersHorizontal,
     items: [
-      { to: "/notifications", label: "Notifications", Icon: Bell },
-      { to: "/suggestions", label: "Suggestions", Icon: Lightbulb },
-      { to: "/stuck", label: "Stuck writes", Icon: AlertTriangle },
-      { to: "/diagnostics", label: "Diagnostics", Icon: Activity },
-      { to: "/settings", label: "Settings", Icon: SlidersHorizontal },
+      { to: "/notifications", label: "Notifications", labelKey: "nav.item.notifications", Icon: Bell },
+      { to: "/suggestions", label: "Suggestions", labelKey: "nav.item.suggestions", Icon: Lightbulb },
+      { to: "/stuck", label: "Stuck writes", labelKey: "nav.item.stuck", Icon: AlertTriangle },
+      { to: "/diagnostics", label: "Diagnostics", labelKey: "nav.item.diagnostics", Icon: Activity },
+      { to: "/settings", label: "Settings", labelKey: "nav.item.settings", Icon: SlidersHorizontal },
       // Importing window types is data admin, not warehouse work (ticket 08).
       { to: "/catalog", label: "Catalog", Icon: BookOpen },
       { to: "/admin", label: "Admin", Icon: ShieldCheck },

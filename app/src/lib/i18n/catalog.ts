@@ -4059,6 +4059,13 @@ export const CATALOG = {
   "nav.group.work": { en: "Work", es: "Trabajo" },
   "nav.group.me": { en: "Me", es: "Yo" },
   "nav.group.help": { en: "Help", es: "Ayuda" },
+  // Menu rows an installer can reach (Account group). Other menu rows are
+  // still English-only; see MenuItem.labelKey in lib/nav.ts.
+  "nav.item.notifications": { en: "Notifications", es: "Notificaciones" },
+  "nav.item.suggestions": { en: "Suggestions", es: "Sugerencias" },
+  "nav.item.stuck": { en: "Stuck writes", es: "Envíos atascados" },
+  "nav.item.diagnostics": { en: "Diagnostics", es: "Diagnóstico" },
+  "nav.item.settings": { en: "Settings", es: "Ajustes" },
   // ---- S3b — Spanish on Warehouse, storage/*, Ask (2026-09-07) ------------
   // The rest of the floor test's allow-list: Warehouse.tsx, the storage/*
   // detail screens it fans out to, AskInfinity.tsx, JobModelViewer.tsx, and
