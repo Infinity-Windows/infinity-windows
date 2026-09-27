@@ -2581,6 +2581,14 @@ export const CATALOG = {
     en: "{n} changes are saved on this phone and waiting to send. Open this to see them.",
     es: "{n} cambios están guardados en este teléfono y en espera de enviarse. Ábrelo para verlos.",
   },
+  // The resting state. outbox-core builds it in English (it is pure and has
+  // no language); combineQueues swaps these in, so Spanish readers stopped
+  // seeing "All synced" in English (2026-09-25 Spanish review).
+  "pill.allSynced": { en: "All synced", es: "Todo sincronizado" },
+  "pill.allSyncedDetail": {
+    en: "All changes are saved and synced.",
+    es: "Todos los cambios están guardados y sincronizados.",
+  },
   "pill.openStatus": { en: "open sync status", es: "abrir el estado de sincronización" },
   "pill.noSignal": { en: "No signal", es: "Sin señal" },
   "pill.noSignalDetail": {
