@@ -124,6 +124,10 @@ export const CATALOG = {
   "unitEditor.installComplete": { en: "Whole install complete (all visits)", es: "Toda la instalación terminada (todas las visitas)" },
   "unitEditor.completeHint": { en: "Yes means the whole install is done. Saving will not start a new visit.", es: "Sí significa que toda la instalación está terminada. Guardar no inicia una nueva visita." },
   "unitEditor.saveComplete": { en: "Save — install complete ✓", es: "Guardar — instalación terminada ✓" },
+  // The unit form's main button was English-only until the 2026-09-25 Spanish
+  // review: Save and start on a unit that exists, Start this unit on a new one.
+  "unitEditor.saveAndStart": { en: "Save and start", es: "Guardar y empezar" },
+  "unitEditor.startThisUnit": { en: "Start this unit", es: "Empezar esta unidad" },
 
   // ---- First-login language picker -------------------------------------
   "picker.heading": { en: "Choose your language", es: "Elige tu idioma" },
