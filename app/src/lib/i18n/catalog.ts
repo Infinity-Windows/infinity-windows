@@ -118,10 +118,10 @@ export const CATALOG = {
   // started a new visit that reopened it, so no unit ever stayed complete.
   "currentWork.unitComplete": { en: "Unit complete ✓", es: "Unidad terminada ✓" },
   "currentWork.finishedMyPart": { en: "Finished my part ✓", es: "Terminé mi parte ✓" },
-  "currentWork.foremanCompletes": { en: "Your foreman, or whoever added this unit, marks the whole install complete.", es: "Tu capataz, o quien agregó esta unidad, marca la instalación completa." },
+  "currentWork.foremanCompletes": { en: "Your foreman, or whoever added this unit, marks the whole install complete.", es: "Tu capataz, o quien agregó esta unidad, marca toda la instalación como terminada." },
   "currentWork.installComplete": { en: "✓ Install complete", es: "✓ Instalación terminada" },
   "currentWork.startAgain": { en: "Start again (reopens it)", es: "Empezar de nuevo (la reabre)" },
-  "unitEditor.installComplete": { en: "Whole install complete (all visits)", es: "Instalación completa (todas las visitas)" },
+  "unitEditor.installComplete": { en: "Whole install complete (all visits)", es: "Toda la instalación terminada (todas las visitas)" },
   "unitEditor.completeHint": { en: "Yes means the whole install is done. Saving will not start a new visit.", es: "Sí significa que toda la instalación está terminada. Guardar no inicia una nueva visita." },
   "unitEditor.saveComplete": { en: "Save — install complete ✓", es: "Guardar — instalación terminada ✓" },
 
@@ -252,7 +252,7 @@ export const CATALOG = {
   },
   "clock.error.shiftAlreadyClosed": {
     en: "That shift is already clocked out, so nothing changed.",
-    es: "Ese turno ya tiene la salida marcada, así que nada cambió.",
+    es: "Ese turno ya tiene la salida marcada, así que no cambió nada.",
   },
   // A made-up shift id (a clock-in still on the phone) reached a server call.
   // The screens queue instead of sending; this is the backstop's line.
@@ -293,7 +293,7 @@ export const CATALOG = {
   },
   "clock.refused.link": {
     en: "See it under Stuck writes",
-    es: "Míralo en Escrituras atascadas",
+    es: "Míralo en Envíos atascados",
   },
   // The wrong-clock banner (T9, reworded for Release 0: since K0.5 a phone
   // more than 2 minutes off is paid from arrival time and marked for review).
@@ -3234,7 +3234,7 @@ export const CATALOG = {
   },
   "timecard.review.clock_off": {
     en: "Paid from when it reached Forge — this phone's clock was more than 2 minutes off.",
-    es: "Pagado desde que llegó a Forge — el reloj de este teléfono estaba desfasado más de 2 minutos.",
+    es: "Pagado desde que llegó a Forge — el reloj de este teléfono estaba adelantado o atrasado más de 2 minutos.",
   },
   "timecard.review.tap_after_arrival": {
     en: "Paid from when it reached Forge — the phone's tap time was later than that.",
@@ -3673,8 +3673,8 @@ export const CATALOG = {
   "stuck.op.videoQuizSubmit": { en: "Quiz result", es: "Resultado del cuestionario" },
   "stuck.windowFinished": { en: "Window {code} finished", es: "Ventana {code} terminada" },
   "stuck.windowFinishedNoCode": { en: "Window finished", es: "Ventana terminada" },
-  "stuck.offlineWrites": { en: "Offline writes", es: "Escrituras sin conexión" },
-  "stuck.title": { en: "Stuck writes", es: "Escrituras atascadas" },
+  "stuck.offlineWrites": { en: "Offline writes", es: "Envíos sin conexión" },
+  "stuck.title": { en: "Stuck writes", es: "Envíos atascados" },
   "stuck.back": { en: "Back", es: "Atrás" },
   "stuck.explain1": {
     en: "Everything this phone still has to send is listed here — a clock punch, a photo, a memo, a finished window. What is waiting sends on its own once there is signal. What couldn't send after several tries waits for you to try it again or throw it away yourself; nothing here is thrown away on its own.",
@@ -3714,10 +3714,10 @@ export const CATALOG = {
     en: "Try again sends a write exactly as it was written, with the details from the moment it was made. Check how long one has been waiting before you send it — an old write may not match what is there now.",
     es: "Intentar de nuevo envía el guardado exactamente como se escribió, con los datos del momento en que se hizo. Revisa cuánto tiempo lleva esperando antes de enviarlo — uno viejo puede no coincidir con lo que hay ahora.",
   },
-  "stuck.checking": { en: "Checking for stuck writes…", es: "Buscando escrituras atascadas…" },
+  "stuck.checking": { en: "Checking for stuck writes…", es: "Buscando envíos atascados…" },
   "stuck.checkError": {
     en: "Couldn't check for stuck writes. Try again shortly.",
-    es: "No se pudo buscar escrituras atascadas. Intenta de nuevo en un momento.",
+    es: "No se pudo buscar envíos atascados. Intenta de nuevo en un momento.",
   },
   "stuck.retryError": {
     en: "Couldn't try that write again. Try again shortly.",
