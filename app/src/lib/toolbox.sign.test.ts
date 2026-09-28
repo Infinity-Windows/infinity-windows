@@ -34,7 +34,7 @@ vi.mock("./supabase", () => ({
   supabaseConfigured: true,
 }));
 
-const { signToolboxTalk, talkSnapshot } = await import("./toolbox");
+const { NotTodaysTalkError, signToolboxTalk, talkSnapshot } = await import("./toolbox");
 
 // A 1x1 transparent PNG, as the signature pad would hand one over.
 const SIGNATURE =
@@ -119,8 +119,9 @@ describe("signing today's talk", () => {
   });
 
   it("gives every signature its own client id", async () => {
-    await signToolboxTalk({ talk: plainTalk, profileId: ME, typedName: "Dana", signatureDataUrl: SIGNATURE });
-    await signToolboxTalk({ talk: plainTalk, profileId: ME, typedName: "Dana", signatureDataUrl: SIGNATURE });
+    const now = new Date(2026, 8, 25, 7);
+    await signToolboxTalk({ talk: plainTalk, profileId: ME, typedName: "Dana", signatureDataUrl: SIGNATURE, now });
+    await signToolboxTalk({ talk: plainTalk, profileId: ME, typedName: "Dana", signatureDataUrl: SIGNATURE, now });
     expect(enqueued[0].input.clientId).not.toBe(enqueued[1].input.clientId);
   });
 
@@ -198,5 +199,37 @@ describe("signing today's talk", () => {
     });
     // Signed, waiting to send — the gates open just as they do with a PDF.
     expect(view).toMatchObject({ id: `pending:${input.clientId}`, pending: true, sendFailed: false });
+  });
+});
+
+// Codex review of #666 (2026-09-27), finding 2, at the moment of signing: a
+// card left open across midnight still holds yesterday's talk, and signing it
+// after midnight stamped TODAY's time on it — which opened today's clock-in
+// with a talk nobody read today. A talk is signed only on the day it was
+// handed out for (`for_day`, set by the gate; a talk that came some other way
+// is judged by its own date).
+describe("a talk from another day", () => {
+  it("is refused, and nothing is kept, when a card left open across midnight is signed", async () => {
+    const talk = { ...plainTalk, for_day: "2026-09-25" };
+    await expect(
+      signToolboxTalk({ talk, profileId: ME, typedName: "Dana", signatureDataUrl: SIGNATURE, now: new Date(2026, 8, 26, 0, 0, 30) }),
+    ).rejects.toBeInstanceOf(NotTodaysTalkError);
+    expect(enqueued).toHaveLength(0);
+    expect(network).not.toHaveBeenCalled();
+  });
+
+  it("is judged by its own date when nothing says which day it was handed out for", async () => {
+    await expect(
+      signToolboxTalk({ talk: plainTalk, profileId: ME, typedName: "Dana", signatureDataUrl: SIGNATURE, now: new Date(2026, 8, 26, 7) }),
+    ).rejects.toBeInstanceOf(NotTodaysTalkError);
+    expect(enqueued).toHaveLength(0);
+  });
+
+  it("is signed when it was handed out as today's talk (a database with no talk of its own for today)", async () => {
+    const talk = { ...plainTalk, talk_date: "2026-08-01", for_day: "2026-09-25" };
+    await signToolboxTalk({ talk, profileId: ME, typedName: "Dana", signatureDataUrl: SIGNATURE, now: new Date(2026, 8, 25, 7) });
+    expect(enqueued).toHaveLength(1);
+    // The record keeps the talk's own date; the signature is today's.
+    expect(enqueued[0].input.talkDate).toBe("2026-08-01");
   });
 });

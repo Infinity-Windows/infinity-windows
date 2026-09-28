@@ -35,7 +35,12 @@ import {
   pendingShiftRef,
   type ShiftResolver,
 } from "./outboxHandlers";
-import { todaysPendingSignature, type PendingSignature, type ToolboxSignPayload } from "../toolboxSign";
+import {
+  todaysPendingSignature,
+  type PendingSignature,
+  type ToolboxCompletionView,
+  type ToolboxSignPayload,
+} from "../toolboxSign";
 
 /** Cap on a single queued blob (photo/receipt). Bigger uploads fail loudly. */
 export const MAX_BLOB_BYTES = 25 * 1024 * 1024; // 25 MB
@@ -154,6 +159,74 @@ export function getToolboxQueueSnapshot(): ToolboxQueueSnapshot {
  */
 export function todaysSignatureOnPhone(profileId: string | null | undefined): PendingSignature | null {
   return todaysPendingSignature(toolboxSnapshot.entries, profileId);
+}
+
+/**
+ * The last signature Forge confirmed for each person, from the row
+ * sign_toolbox_talk answered — kept in memory and on the phone (one small key
+ * each), recorded here in the drain the moment Forge answers, whatever screen
+ * is open. The gates read it beside Forge's own answer (useToolboxToday), so
+ * a read that asked before the signature was filed, a gate that was not on
+ * screen when it was sent, or a reload cannot turn a confirmed signature back
+ * into "not signed" — which, with the signature already gone from this
+ * queue, asked the person to sign again (Codex review of #666). The gates
+ * count it only for the day it was signed.
+ */
+const CONFIRMED_PREFIX = "forge.toolbox.confirmed.";
+const confirmedSignatures = new Map<string, ToolboxCompletionView | null>();
+
+function asConfirmedRow(v: unknown): ToolboxCompletionView | null {
+  const r = v as { profile_id?: unknown; signed_at?: unknown } | null;
+  return r && typeof r === "object" && typeof r.profile_id === "string" && typeof r.signed_at === "string"
+    ? (v as ToolboxCompletionView)
+    : null;
+}
+
+/** This person's last confirmed signature, or null. The same object until it changes. */
+export function confirmedSignatureFor(profileId: string | null | undefined): ToolboxCompletionView | null {
+  if (!profileId) return null;
+  if (confirmedSignatures.has(profileId)) return confirmedSignatures.get(profileId) ?? null;
+  let row: ToolboxCompletionView | null = null;
+  try {
+    const raw = localStorage.getItem(CONFIRMED_PREFIX + profileId);
+    row = raw ? asConfirmedRow(JSON.parse(raw)) : null;
+  } catch {
+    row = null;
+  }
+  confirmedSignatures.set(profileId, row);
+  return row;
+}
+
+function recordConfirmedSignature(v: unknown): void {
+  const row = asConfirmedRow(v);
+  if (!row) return;
+  confirmedSignatures.set(row.profile_id as string, row);
+  try {
+    localStorage.setItem(CONFIRMED_PREFIX + (row.profile_id as string), JSON.stringify(row));
+  } catch {
+    // Storage full or blocked: memory carries this session.
+  }
+  for (const cb of listeners) {
+    try {
+      cb();
+    } catch {
+      /* a listener must never break the queue */
+    }
+  }
+}
+
+/** For tests: forget confirmations — and, unless memoryOnly, the phone's copies. */
+export function forgetConfirmedSignatures(opts: { memoryOnly?: boolean } = {}): void {
+  confirmedSignatures.clear();
+  if (opts.memoryOnly) return;
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i);
+      if (key?.startsWith(CONFIRMED_PREFIX)) localStorage.removeItem(key);
+    }
+  } catch {
+    /* nothing to forget */
+  }
 }
 
 /** A signature Forge has just filed, with the row it answered. */
@@ -480,6 +553,7 @@ export async function drain(): Promise<void> {
           photoReceipts.record(entry);
           recordSent(entry, Date.now());
           if (entry.op === "toolbox_sign") {
+            recordConfirmedSignature(result);
             for (const cb of toolboxSentListeners) {
               try {
                 cb(entry, result);

@@ -10,7 +10,7 @@ import type { SafetyTalk, TalkSections, TalkVisualAid } from "./ops";
 import { sendPush } from "./permissions/pushServer";
 import { enqueueToolboxSign, MAX_BLOB_BYTES } from "./offline/outbox";
 import { newClockActionId } from "./clockPunch";
-import { pendingCompletionOf, toolboxRecordPaths, type ToolboxCompletionView } from "./toolboxSign";
+import { localDateOf, pendingCompletionOf, toolboxRecordPaths, type ToolboxCompletionView } from "./toolboxSign";
 
 const BUCKET = "toolbox-records";
 
@@ -388,6 +388,14 @@ export async function buildToolboxPdf(opts: {
   return doc.save();
 }
 
+/** A talk handed out for another day was about to be signed (see signToolboxTalk). */
+export class NotTodaysTalkError extends Error {
+  constructor() {
+    super("This is another day's toolbox talk. Today's talk is on the screen now — read it and sign that one.");
+    this.name = "NotTodaysTalkError";
+  }
+}
+
 /**
  * Sign today's toolbox talk (offline toolbox signing, 2026-09-25).
  *
@@ -417,6 +425,14 @@ export async function signToolboxTalk(opts: {
   const { talk, profileId, signatureDataUrl } = opts;
   const typedName = opts.typedName.trim();
   const signedAt = opts.now ?? new Date();
+  // A talk is signed on the day it was handed out for. A card left open
+  // across midnight still holds yesterday's talk, and signing it would stamp
+  // today's time on a talk nobody read today — and open today's clock-in with
+  // it (Codex review of #666). Refused before anything is kept; the screen
+  // moves to today's talk. A talk that came some other way is judged by its
+  // own date. The server refuses the same thing (20261033000000).
+  const talkDay = talk.for_day ?? talk.talk_date ?? null;
+  if (talkDay && talkDay !== localDateOf(signedAt)) throw new NotTodaysTalkError();
   const clientId = newClockActionId();
   const { signaturePath, pdfPath } = toolboxRecordPaths(profileId, talk.id, clientId, signedAt);
 

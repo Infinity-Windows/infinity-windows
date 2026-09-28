@@ -59,6 +59,7 @@ import { forgetClockCheck, recordClockCheck } from "../../lib/clockSkew";
 import type { ClockInPick, TimeShift } from "../../lib/timeclock";
 import { ClockInBlock } from "./ClockInBlock";
 import { ClockSheet } from "./ClockSheet";
+import { localDateOf } from "../../lib/toolboxSign";
 
 const P1 = { id: "p1", job_code: "BLACK22", name: "Black Desert", address: null, status: "active", allowed_modes: ["data"] };
 
@@ -168,7 +169,7 @@ function client(opts: { signedAt?: string | null } = {}): QueryClient {
   qc.setQueryData(["myOpenings", "me"], []);
   qc.setQueryData(["myActivePhases", "me"], []);
   // Today's talk is signed: the plain Start is the whole tap.
-  qc.setQueryData(["todayTalk"], null);
+  qc.setQueryData(["todayTalk", localDateOf(new Date())], null);
   // null: Forge has no signature for today (one may be on the phone).
   qc.setQueryData(
     ["toolboxToday", "me"],

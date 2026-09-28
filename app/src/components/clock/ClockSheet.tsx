@@ -1303,7 +1303,11 @@ export function ClockSheet({
                     exists today). */}
                 {!shift && profileId && todayTalk.data && toolboxDone.isSuccess &&
                   !toolboxDone.data && (
-                    <ToolboxSignCard profileId={profileId} talk={todayTalk.data} />
+                    <ToolboxSignCard
+                      key={`${todayTalk.data.id}:${todayTalk.data.for_day ?? ""}`}
+                      profileId={profileId}
+                      talk={todayTalk.data}
+                    />
                   )}
                 {!shift && Boolean(toolboxDone.data) &&
                   (toolboxDone.pending ? (

@@ -2,7 +2,7 @@ import { VoiceTextarea } from "../components/voice/VoiceTextarea";
 import { BackChip } from "../components/BackChip";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { listProjects } from "../lib/api";
 import { getMyProfile } from "../lib/install/api";
 import { isForemanPlus } from "../lib/install/types";
@@ -18,6 +18,7 @@ import { TalkContent } from "../components/safety/TalkContent";
 import {
   generateToolboxTalk,
   isGroupSignIn,
+  NotTodaysTalkError,
   signedRecordUrl,
   signToolboxTalk,
   todayCompliance,
@@ -171,7 +172,22 @@ export function Safety() {
       queryClient.invalidateQueries({ queryKey: ["toolboxHistory"] });
       queryClient.invalidateQueries({ queryKey: ["toolboxCompliance"] });
     },
+    // A new day started with the page open: nothing was kept (lib/toolbox.ts).
+    // Ask for today's talk again; the form clears when it arrives (below).
+    onError: (e) => {
+      if (e instanceof NotTodaysTalkError) void queryClient.invalidateQueries({ queryKey: ["todayTalk"] });
+    },
   });
+
+  // The pledge, the name and the signature were for the talk on the screen.
+  // When the day's talk changes under them (midnight, a lead re-pointing the
+  // day), they start over.
+  const talkKey = talk.data ? `${talk.data.id}:${talk.data.for_day ?? ""}` : "";
+  useEffect(() => {
+    setAck(false);
+    setTypedName("");
+    sigRef.current?.clear();
+  }, [talkKey]);
 
   const regen = useMutation({
     mutationFn: () => generateToolboxTalk({ talkId: talk.data!.id, topic: talk.data!.title }),
@@ -299,7 +315,11 @@ export function Safety() {
               </button>
             </div>
             {sign.isError && (
-              <p className="error">Couldn't save: {formatApiError(sign.error)}</p>
+              <p className="error">
+                {sign.error instanceof NotTodaysTalkError
+                  ? t("toolbox.wrongDay")
+                  : `Couldn't save: ${formatApiError(sign.error)}`}
+              </p>
             )}
             <button
               className="primary big"

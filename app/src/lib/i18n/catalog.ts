@@ -69,6 +69,7 @@ export const SAFETY_KEYS = [
   "toolbox.status.sent",
   "toolbox.status.refused",
   "crewclock.in.offline",
+  "toolbox.wrongDay",
 ] as const;
 
 export const CATALOG = {
@@ -429,6 +430,12 @@ export const CATALOG = {
   "toolbox.status.refused": {
     en: "Signed on this phone, but it couldn't be sent: {reason} Your clock-in waits for it.",
     es: "Firmado en este teléfono, pero no se pudo enviar: {reason} Tu entrada espera a la firma.",
+  },
+  // A new day started while the talk was open (Codex review of #666):
+  // yesterday's talk is not signed after midnight. Nothing was kept.
+  "toolbox.wrongDay": {
+    en: "A new day has started, so this is yesterday's talk. Today's talk is on the screen now — read it and sign that one.",
+    es: "Empezó un nuevo día, así que esta es la charla de ayer. La charla de hoy ya está en la pantalla — léela y firma esa.",
   },
   "toolbox.status.openStuck": { en: "Open Stuck writes", es: "Abrir Envíos atascados" },
 

@@ -720,6 +720,10 @@ export function ClockInBlock() {
              The card comes back on its own once the picks are whole again. */
           <div ref={signRef}>
             <ToolboxSignCard
+              // A fresh card when the day's talk changes (midnight, a lead
+              // re-pointing the day): the pledge and the signature were for
+              // the talk that was on the screen.
+              key={`${todayTalk.data.id}:${todayTalk.data.for_day ?? ""}`}
               profileId={profileId}
               talk={todayTalk.data}
               onSigned={() => {

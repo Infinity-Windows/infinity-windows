@@ -44,6 +44,7 @@ vi.mock("../../lib/clockSkew", async (importOriginal) => {
 });
 
 import { ClockSheet } from "./ClockSheet";
+import { localDateOf } from "../../lib/toolboxSign";
 import type { ClockInPick, ClockPunch } from "../../lib/timeclock";
 
 let root: Root | null = null;
@@ -94,7 +95,7 @@ function mount(initialPick: ClockInPick | null, opts: { talk?: unknown } = {}): 
   qc.setQueryData(["mySchedule", "me", today, today], [
     { id: "sched1", project_id: "p1", project: { job_code: "BLACK22", name: "Black Desert" } },
   ]);
-  qc.setQueryData(["todayTalk"], opts.talk ?? null);
+  qc.setQueryData(["todayTalk", localDateOf(new Date())], opts.talk ?? null);
   qc.setQueryData(["toolboxToday", "me"], { id: "done1" });
   qc.setQueryData(["myOpenings", "me"], []);
 

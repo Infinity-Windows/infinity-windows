@@ -105,6 +105,7 @@ vi.mock("../../lib/toolbox", async (importOriginal) => {
 import { ClockInBlock } from "./ClockInBlock";
 import type { ClockPunch, TimeShift } from "../../lib/timeclock";
 import { discardFailed, listAll } from "../../lib/offline/outbox";
+import { localDateOf } from "../../lib/toolboxSign";
 
 let root: Root | null = null;
 let host: HTMLDivElement | null = null;
@@ -176,7 +177,7 @@ function mount(seed: Seed = {}): HTMLElement {
   }
   qc.setQueryData(["recentJobs", "me"], seed.recents ?? []);
   qc.setQueryData(["projects"], seed.projects ?? []);
-  qc.setQueryData(["todayTalk"], seed.talk ?? null);
+  qc.setQueryData(["todayTalk", localDateOf(new Date())], seed.talk ?? null);
   qc.setQueryData(["toolboxToday", "me"], seed.toolboxDone ?? null);
 
   host = document.createElement("div");

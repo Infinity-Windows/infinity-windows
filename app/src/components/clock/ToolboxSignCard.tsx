@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { HardHat } from "lucide-react";
 import type { SafetyTalk } from "../../lib/ops";
-import { signToolboxTalk } from "../../lib/toolbox";
+import { NotTodaysTalkError, signToolboxTalk } from "../../lib/toolbox";
 import { SignaturePad, type SignaturePadHandle } from "../SignaturePad";
 import { formatApiError } from "../../lib/install/errors";
 import { TalkContent } from "../safety/TalkContent";
@@ -75,6 +75,15 @@ export function ToolboxSignCard({
       // then silently never fire. Option callbacks survive.
       onSigned?.();
     },
+    // A new day started while this card was open: nothing was kept. Ask the
+    // host for today's talk again — its read is keyed by the day, so the
+    // re-render lands on today's talk, and a host that keys this card by the
+    // talk and its day swaps in a fresh, empty card for it.
+    onError: (e) => {
+      if (e instanceof NotTodaysTalkError) {
+        void queryClient.invalidateQueries({ queryKey: ["todayTalk"] });
+      }
+    },
   });
 
   const canSubmit = ack && typedName.trim().length > 1 && !sigEmpty;
@@ -117,7 +126,11 @@ export function ToolboxSignCard({
       />
       <label className="field-label">{t("toolbox.sign")}</label>
       <SignaturePad ref={sigRef} onChange={setSigEmpty} />
-      {sign.isError && <p className="error">{formatApiError(sign.error)}</p>}
+      {sign.isError && (
+        <p className="error">
+          {sign.error instanceof NotTodaysTalkError ? t("toolbox.wrongDay") : formatApiError(sign.error)}
+        </p>
+      )}
       <button
         type="button"
         className="button-like active-pill"
