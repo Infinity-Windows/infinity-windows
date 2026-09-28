@@ -74,6 +74,10 @@ export interface NewAssignmentInput {
   color?: string | null;
   note?: string | null;
   members: AssignmentMember[];
+  /** Only the board's Undo after Remove sets this, to put back the AI flag
+   * on a row it re-creates — the flag is permanent (CONTEXT.md: AI-proposed)
+   * and a human's own new row never carries it. */
+  created_via?: "ai" | null;
 }
 
 export interface AssignmentPatch {

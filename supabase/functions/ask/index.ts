@@ -1124,8 +1124,24 @@ async function executeDraftAssignments(
       // audit is optional, matches lib/schedule/api.ts's own logEvent
     }
 
+    // The model's reason (K2.8) goes to schedule_ai_reasons, NOT onto the row's
+    // `note` (crew-visible) and NOT onto the audit event above (every login
+    // can read schedule_events — 20261003000000). Its own table carries the
+    // supervisor-only read policy, and this insert runs on the caller's scoped
+    // client, so the same policy is what lets a supervisor write it. A reason
+    // that fails to store never costs the draft: the card shows "No reason
+    // recorded" and the model is told, so it can say so.
+    let reasonStored = entry.reason === null;
+    if (entry.reason !== null) {
+      const { error: reasonError } = await client
+        .from("schedule_ai_reasons")
+        .insert({ assignment_id: assignmentId, reason: entry.reason, created_by: callerUid });
+      reasonStored = !reasonError;
+      if (reasonError) console.error("draft reason not stored", assignmentId, reasonError);
+    }
+
     drafted++;
-    results.push({ ...entry, ok: true });
+    results.push(reasonStored ? { ...entry, ok: true } : { ...entry, ok: true, note: "reason not stored" });
     const claimed = claimedThisCall.get(entry.profile_id) ?? [];
     claimed.push({ start: entry.date, end: entry.date, project_id: entry.project_id });
     claimedThisCall.set(entry.profile_id, claimed);

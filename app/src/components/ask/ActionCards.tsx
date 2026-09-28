@@ -57,12 +57,12 @@ export function AllActions({ rank, lang, running, onPick, onClose, questions }: 
         <button type="button" className="chip" onClick={onClose}>{t("field.cards.close")}</button>
       </div>
       <ul className="ask-all-list">
-        {rows.map(({ capability: c, live, useScreen }) => (
+        {rows.map(({ capability: c, live, useScreen, screenOnly }) => (
           <li key={c.id} className={live ? "ask-all-row" : "ask-all-row ask-all-row-off"}>
             {live ? (
               <button type="button" className="ask-card" onClick={() => onPick({ query: c.prompt[lang], operational: true })}>{cardLabel(c, lang, running)}</button>
             ) : (
-              <p className="ask-all-name"><strong>{cardLabel(c, lang, running)}</strong> · {t("field.cards.notYet", { release: c.release ?? "" })}</p>
+              <p className="ask-all-name"><strong>{cardLabel(c, lang, running)}</strong> · {screenOnly ? t("field.cards.onScreen") : t("field.cards.notYet", { release: c.release ?? "" })}</p>
             )}
             <p className="muted">{c.changes[lang]}</p>
             <p className="muted">{t(`field.cards.receipt.${c.receipt}` as TKey)}</p>
