@@ -5139,6 +5139,22 @@ export const CATALOG = {
     en: "Forge couldn't check your PIN. Try again.",
     es: "Forge no pudo revisar tu PIN. Inténtalo de nuevo.",
   },
+  // Setting your own PIN (PinSetter in components/PinGate.tsx), on Settings
+  // since 2026-09-25 so every role can reach it: it sat on the Roster, which
+  // has been supervisor-only since #610, so installers and foremen could not
+  // set one at all. The English is word for word what it always said.
+  "pin.setter.heading": { en: "PIN lock", es: "Bloqueo con PIN" },
+  "pin.setter.help": {
+    en: "With a PIN, Forge asks for it each time it opens.",
+    es: "Con un PIN, Forge te lo pide cada vez que se abre.",
+  },
+  "pin.setter.label": { en: "Your quick-unlock PIN", es: "Tu PIN de desbloqueo rápido" },
+  "pin.setter.isSet": { en: "(set)", es: "(configurado)" },
+  "pin.setter.none": { en: "(none)", es: "(ninguno)" },
+  "pin.setter.placeholder": { en: "4 digits", es: "4 dígitos" },
+  "pin.setter.save": { en: "Save PIN", es: "Guardar PIN" },
+  "pin.setter.clear": { en: "Clear", es: "Quitar PIN" },
+  "pin.setter.saved": { en: "PIN saved.", es: "PIN guardado." },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */

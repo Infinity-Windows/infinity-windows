@@ -404,7 +404,7 @@ describe("the shift-long offline unlock (owner's decision, 2026-09-24)", () => {
     expect(text()).toContain("THE APP");
   });
 
-  it("changing or removing the PIN on the Crew screen wipes the offline unlock kept for the old one", async () => {
+  it("changing or removing the PIN in Settings wipes the offline unlock kept for the old one", async () => {
     rememberSignedIn({ user: { id: USER } });
     api.myPinStatus.mockResolvedValue(true);
     api.setMyPin.mockResolvedValue(undefined);

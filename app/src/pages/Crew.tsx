@@ -22,7 +22,6 @@ import {
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { formatRate, indexPayRates, listPayRates, salaryForMonth } from "../lib/payRates";
 import { CompensationPanel } from "../components/crew/CompensationPanel";
-import { PinSetter } from "../components/PinGate";
 import { SavedCrewsSection } from "../components/schedule/SavedCrewsSection";
 import { useT } from "../lib/i18n";
 import {
@@ -155,7 +154,8 @@ export function Crew() {
         </p>
       )}
 
-      <PinSetter />
+      {/* Your own PIN is set on Settings now, where every role can reach it;
+          this page has been supervisor-only since #610 (2026-09-25). */}
 
       {grantError && <p className="error">{grantError}</p>}
 
