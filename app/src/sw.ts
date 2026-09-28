@@ -53,12 +53,39 @@ registerRoute(
 // available — Refresh" banner (see PwaBanners). The waiting worker only takes
 // over when the client explicitly asks via a SKIP_WAITING message (posted by
 // PwaBanners, directly and through vite-plugin-pwa's updateServiceWorker(true)).
-// Once activated it claims all open clients — and then brings the page that
-// asked onto the new build itself. That page reloads on the controller
-// change too, when it can; a page on the build before 2026-09-25 cannot
-// (lib/pwa/takeover.ts says why), and the worker is the only new code it
-// runs. Only the page that asked: a tab that did not is left where it is.
-const takeover = createTakeoverReload(self.clients);
+// Once activated it claims all open clients. The page that asked reloads
+// itself on the controller change when it can; a page on a build from before
+// 2026-09-28 cannot (lib/pwa/takeover.ts says why), and the worker is the
+// only new code it runs, so the worker brings that page across itself — but
+// only when the page has not reloaded by then. Doing both made two racing
+// navigations, and the loser could take the new build's imports with it.
+// Only the page that asked: a tab that did not is left where it is.
+const takeover = createTakeoverReload(self.clients, { activated: whenActivated });
+
+/**
+ * Resolves once this worker has left "activating" — every activate
+ * waitUntil has settled, so fetches reach it from now on — or after a
+ * minute, whatever happened. Polled rather than awaited inside the
+ * activation, which is where takeover.finish() must never wait (below).
+ */
+function whenActivated(): Promise<void> {
+  const started = Date.now();
+  return new Promise((resolve) => {
+    const look = () => {
+      if (self.registration.active?.state !== "activating" || Date.now() - started > 60_000) resolve();
+      else setTimeout(look, 100);
+    };
+    look();
+  });
+}
+
+// A page loading from this worker: most often the page that asked for the
+// switch, reloading itself, which the takeover must not interrupt. Only
+// watched, never answered: the routes above answer it.
+self.addEventListener("fetch", (event) => {
+  if (event.request.mode === "navigate") takeover.navigationSeen();
+});
+
 self.addEventListener("message", (event) => {
   if ((event.data as { type?: string } | undefined)?.type === "SKIP_WAITING") {
     takeover.asked(event.source as { id: string } | null);
@@ -72,7 +99,9 @@ self.addEventListener("activate", (event) => {
       // this worker has to answer, and a worker answers no fetch until its
       // activation has finished. Awaiting it inside waitUntil deadlocked —
       // the page sat on a navigation that could never complete (found in
-      // the upgrade harness, 2026-09-25).
+      // the upgrade harness, 2026-09-25). It now also waits for that
+      // activation to finish before it decides anything, so inside
+      // waitUntil it would hold the activation for a full minute.
       void takeover.finish();
     }),
   );
