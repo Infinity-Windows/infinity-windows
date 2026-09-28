@@ -50,6 +50,46 @@ async function seedPhoto(page: Page) {
   }, { id: PHOTO, email: TEST_USER.email, project: PROJECT, png: TINY_PNG_BASE64 });
 }
 
+async function makeClockOwnerlessLikeLegacyBuild(page: Page) {
+  // The harness's "old" build is current master, which now stamps ownerId.
+  // A pre-#660 clock entry had the same v1 row/punch payload but no ownerId;
+  // clock_out's payload has no author field to infer one from on upgrade.
+  await page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open("wops-write-outbox", 1);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const tx = db.transaction("entries", "readwrite");
+    const request = tx.objectStore("entries").getAll();
+    try {
+      await new Promise<void>((resolve, reject) => {
+        request.onsuccess = () => {
+          try {
+            const clocks = (request.result as { id: string; meta: string; blob?: Blob }[])
+              .filter((row) => JSON.parse(row.meta).op === "clock_out");
+            if (clocks.length !== 1) throw new Error(`expected one queued clock-out, found ${clocks.length}`);
+            const row = clocks[0];
+            const meta = JSON.parse(row.meta) as { ownerId?: string; payload?: { profileId?: string } };
+            if (meta.payload?.profileId) throw new Error("clock-out payload now names an owner; update this legacy fixture");
+            delete meta.ownerId;
+            tx.objectStore("entries").put({ ...row, meta: JSON.stringify(meta) });
+          } catch (error) {
+            reject(error);
+            tx.abort();
+          }
+        };
+        request.onerror = () => reject(request.error);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error);
+      });
+    } finally {
+      db.close();
+    }
+  });
+}
+
 async function queuedIds(page: Page): Promise<string[]> {
   return page.evaluate(async () => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -99,9 +139,12 @@ async function queuedSnapshot(page: Page) {
   });
 }
 
-test("old queued clock and photo survive upgrade; the ownerless clock stays held while the named photo sends", async ({ page, context, request }) => {
+for (const legacyOwnerless of [true, false]) {
+test(legacyOwnerless
+  ? "legacy ownerless clock stays held while its photo sends after upgrade"
+  : "owned clock and photo each send once under their original owner after upgrade", async ({ page, context, request }) => {
   const { builds } = await harnessState(request);
-  const state = { backendDown: false, refused: 0, writes: [] as string[], clockOuts: [] as unknown[], photos: [] as unknown[] };
+  const state = { backendDown: false, refused: 0, writes: [] as string[], clockOuts: [] as unknown[], clockTokens: [] as (string | undefined)[], photos: [] as unknown[] };
   await useSupabaseFixtures(page, { role: "installer" });
   await hideWrongProjectBanner(page);
   await stubGeolocationDenied(page);
@@ -124,6 +167,7 @@ test("old queued clock and photo survive upgrade; the ownerless clock stays held
   await page.route("**/rest/v1/rpc/clock_out**", (r) => {
     state.writes.push("clock_out");
     state.clockOuts.push(r.request().postDataJSON());
+    state.clockTokens.push(r.request().headers()["authorization"]);
     activeShift = null;
     return json(r, { ...openShift, status: "submitted", clock_out_at: new Date().toISOString() }, null);
   });
@@ -165,6 +209,9 @@ test("old queued clock and photo survive upgrade; the ownerless clock stays held
   const pending = await queuedIds(page);
   expect(pending).toHaveLength(2);
   expect(pending).toContain(PHOTO);
+  const fromCurrentOldBuild = await queuedSnapshot(page);
+  expect(fromCurrentOldBuild.find((row) => row.id !== PHOTO)?.ownerId).toBe(TEST_USER.id);
+  if (legacyOwnerless) await makeClockOwnerlessLikeLegacyBuild(page);
   const before = await queuedSnapshot(page);
   expect(before.find((row) => row.id === PHOTO)).toMatchObject({
     op: "photo_upload", owner: TEST_USER.email, projectId: PROJECT,
@@ -173,7 +220,7 @@ test("old queued clock and photo survive upgrade; the ownerless clock stays held
   expect(before.find((row) => row.id === PHOTO)?.blobBytes.length).toBeGreaterThan(0);
   const clock = before.find((row) => row.id !== PHOTO);
   expect(clock?.op).toBe("clock_out");
-  expect(clock?.ownerId).toBeNull();
+  expect(clock?.ownerId).toBe(legacyOwnerless ? null : TEST_USER.id);
   expect(clock?.tappedAt).toEqual(expect.any(String));
   expect(clock?.clientId).toEqual(expect.any(String));
   expect(state.writes).toEqual([]);
@@ -191,7 +238,7 @@ test("old queued clock and photo survive upgrade; the ownerless clock stays held
   expect(await queuedIds(page)).toEqual(pending);
   expect(await queuedSnapshot(page)).toEqual(before);
   await expect(page.locator(".sync-pill-text:visible").first()).toContainText("Photos 1");
-  await expect(page.locator(".sync-pill-text:visible").first()).toContainText("1 saved before an update");
+  await expect(page.locator(".sync-pill-text:visible").first()).toContainText(legacyOwnerless ? "1 saved before an update" : "Clock 1");
   expect(state.writes).toEqual([]);
 
   const failed = failedAppFiles(page);
@@ -200,26 +247,33 @@ test("old queued clock and photo survive upgrade; the ownerless clock stays held
   expect(await queuedIds(page)).toEqual(pending);
   expect(await queuedSnapshot(page)).toEqual(before);
   await expect(page.locator(".sync-pill-text:visible").first()).toContainText("Photos 1");
-  await expect(page.locator(".sync-pill-text:visible").first()).toContainText("1 saved before an update");
+  await expect(page.locator(".sync-pill-text:visible").first()).toContainText(legacyOwnerless ? "1 saved before an update" : "Clock 1");
   expect(failed, "the signed-in shell asked for a file missing from the new worker cache").toEqual([]);
 
   await context.setOffline(false);
   state.backendDown = false;
   await page.evaluate(() => window.dispatchEvent(new Event("online")));
   await expect.poll(() => state.photos.length, { timeout: 60_000 }).toBe(1);
-  // The old build could not record the clock-out's owner. #660 must leave it
-  // untouched rather than file time under whoever happens to be signed in.
-  expect(state.clockOuts).toEqual([]);
-  expect(await queuedIds(page)).toEqual([clock?.id]);
-  expect((await queuedSnapshot(page)).find((row) => row.id === clock?.id)).toEqual(clock);
+  if (legacyOwnerless) {
+    // A pre-#660 clock-out cannot safely be filed under the current signer.
+    expect(state.clockOuts).toEqual([]);
+    expect(await queuedIds(page)).toEqual([clock?.id]);
+    expect((await queuedSnapshot(page)).find((row) => row.id === clock?.id)).toEqual(clock);
+  } else {
+    await expect.poll(() => state.clockOuts.length, { timeout: 60_000 }).toBe(1);
+    expect(state.clockOuts[0]).toMatchObject({ p_shift_id: SHIFT, p_client_id: clock?.clientId, p_tapped_at: clock?.tappedAt });
+    expect(state.clockTokens).toEqual(["Bearer e2e-fixture-access-token"]);
+    await expect.poll(() => queuedIds(page), { timeout: 60_000 }).toEqual([]);
+  }
   expect(state.refused).toBeGreaterThan(0);
   expect(state.photos[0]).toMatchObject({
     client_id: PHOTO, created_by: TEST_USER.email, project_id: PROJECT, kind: "photo",
   });
   await page.reload();
-  expect(state.clockOuts).toHaveLength(0);
+  expect(state.clockOuts).toHaveLength(legacyOwnerless ? 0 : 1);
   expect(state.photos).toHaveLength(1);
 });
+}
 
 test("a clock-in saved by the current build keeps its owner and tap time through an offline relaunch", async ({ page, context, request }) => {
   const sent: Array<{ authorization: string | undefined; body: Record<string, unknown> }> = [];
