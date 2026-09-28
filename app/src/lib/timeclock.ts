@@ -787,6 +787,11 @@ export async function clockIn(
   // already stamped passes the same punch; a caller with none gets a fresh one,
   // so every direct punch is keyed even from screens that never think about it.
   punch?: ClockPunch | null,
+  // The client every RPC in this call goes out on (defaults to the ambient,
+  // session-following client). Start day binds this to a client frozen on one
+  // access token (lib/supabase.ts clientWithToken), so a sign-in landing mid-call
+  // cannot change whose token the fallback attempts carry — see startShift.ts.
+  client: typeof supabase = supabase,
 ): Promise<TimeShift> {
   const p = punch ?? mintPunch();
   const base = {
@@ -800,7 +805,7 @@ export async function clockIn(
 
   // The keyed overload (20261028000000): id, note, mode and tap time, in one
   // call. A repeat of this id is answered with the shift it already made.
-  let res = await supabase.rpc("clock_in", {
+  let res = await client.rpc("clock_in", {
     ...base,
     p_note: normalizeNote(note),
     p_mode: cleanMode,
@@ -812,9 +817,9 @@ export async function clockIn(
     // take the mode or the tap time — so the punch stays a one-time punch.
     // What is deliberately NOT here any more is the bare, unkeyed fallback:
     // an unkeyed clock-in is the double punch this whole release exists to end.
-    res = await supabase.rpc("clock_in", { ...base, p_client_id: p.clientId, p_note: normalizeNote(note) });
+    res = await client.rpc("clock_in", { ...base, p_client_id: p.clientId, p_note: normalizeNote(note) });
     if (res.error && isMissingClockInOverload(res.error)) {
-      res = await supabase.rpc("clock_in", { ...base, p_client_id: p.clientId });
+      res = await client.rpc("clock_in", { ...base, p_client_id: p.clientId });
     }
   }
   if (res.error) throw res.error;
