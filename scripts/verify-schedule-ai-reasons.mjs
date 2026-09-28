@@ -1,4 +1,4 @@
-// The wall around Forge AI's schedule reasons (K2.8, 20261032000000) against
+// The wall around Forge AI's schedule reasons (K2.8, 20261035000000) against
 // the real migration in a disposable PGlite database. Synthetic people and
 // jobs only; no network, no crew data.
 //   PGLITE_MODULE=/path/to/@electric-sql/pglite/dist/index.js node scripts/verify-schedule-ai-reasons.mjs
