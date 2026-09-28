@@ -2,7 +2,6 @@ import { VoiceTextarea } from "../components/voice/VoiceTextarea";
 import { BackChip } from "../components/BackChip";
 import { JobExecutionPanel } from "../components/projects/JobExecutionPanel";
 import { JobTimecardExport } from "../components/timecard/JobTimecardExport";
-import { PlanPackagesPanel } from "../components/warehouse/PlanPackagesPanel";
 import { JobPackagesPanel } from "../components/warehouse/JobPackagesPanel";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Suspense, useEffect, useMemo, useState } from "react";
@@ -74,8 +73,29 @@ const MapsInteractive = lazyOptional(
   () => import("./install/MapsInteractive").then((m) => ({ default: m.MapsInteractive })),
   <PartDidNotLoad />,
 );
-import { DispatchBoard } from "./install/DispatchBoard";
-import { SignatureEstimates } from "../components/install/SignatureEstimates";
+// Same reasoning as MapsInteractive above, for three more tabs a phone lands
+// on rarely: the dispatch board (foreman+ only, one job tab of several), the
+// signature-estimates cohort ladder (also foreman+, inside Brain), and the
+// warehouse plan-packages panel (every crew role, but only the Warehouse
+// tab). None is needed to see the job hub itself.
+const DispatchBoard = lazyOptional(
+  () => import("./install/DispatchBoard").then((m) => ({ default: m.DispatchBoard })),
+  <PartDidNotLoad />,
+);
+const SignatureEstimates = lazyOptional(
+  () =>
+    import("../components/install/SignatureEstimates").then((m) => ({
+      default: m.SignatureEstimates,
+    })),
+  <PartDidNotLoad />,
+);
+const PlanPackagesPanel = lazyOptional(
+  () =>
+    import("../components/warehouse/PlanPackagesPanel").then((m) => ({
+      default: m.PlanPackagesPanel,
+    })),
+  <PartDidNotLoad />,
+);
 import { ScrollTabs } from "../components/nav/ScrollTabs";
 import { PhotoFeed } from "../components/photos/PhotoFeed";
 import { PhotoKindTabs } from "../components/photos/PhotoKindTabs";
@@ -416,10 +436,12 @@ export function ProjectDetail() {
               one of the eighteen functions that opened, and this panel is its
               only door — a promise the installer day map makes out loud.
               Burning stays foreman+ and is gated inside the panel. */}
-          <PlanPackagesPanel
-            projectId={projectId}
-            jobCode={project?.job_code ?? null}
-          />
+          <Suspense fallback={<SkeletonCard height={200} />}>
+            <PlanPackagesPanel
+              projectId={projectId}
+              jobCode={project?.job_code ?? null}
+            />
+          </Suspense>
           {isLead && <ReorderNeedsPanel projectId={projectId} />}
           {/* The unit chain's panels lived here — pre-issue, the delivery
               reconciliation, unload, and the load-to-truck tab (ticket 21,
@@ -431,7 +453,11 @@ export function ProjectDetail() {
         </>
       )}
 
-      {tab === "dispatch" && isLead && <DispatchBoard projectId={projectId} />}
+      {tab === "dispatch" && isLead && (
+        <Suspense fallback={<SkeletonCard height={320} />}>
+          <DispatchBoard projectId={projectId} />
+        </Suspense>
+      )}
 
       {tab === "logs" && (
         <DailyLogsTab
@@ -478,7 +504,11 @@ export function ProjectDetail() {
       {tab === "brain" && (
         <div>
           {/* Foreman+ only (standing decision): the cohort ladder's numbers. */}
-          {isLead && <SignatureEstimates projectId={projectId} />}
+          {isLead && (
+            <Suspense fallback={<SkeletonCard height={160} />}>
+              <SignatureEstimates projectId={projectId} />
+            </Suspense>
+          )}
           <p className="muted">
             Type brain cards — tips and times from installs on this job&apos;s
             window types.
