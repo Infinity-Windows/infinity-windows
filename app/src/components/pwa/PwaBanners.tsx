@@ -22,8 +22,10 @@ import {
   HOLD_RECHECK_MS,
   RETURN_CARRY_MS,
   SETTLE_MS,
+  TAKEOVER_TIMEOUT_MS,
   VERSION_POLL_INTERVAL_MS,
 } from "../../lib/pwa/updateCore";
+import { reloadPage } from "../../lib/pwa/reload";
 import { hasUnsavedWork } from "../../lib/pwa/unsavedWork";
 import { onSafeSurface, subscribeSafeSurface } from "../../lib/pwa/safeSurface";
 import {
@@ -128,6 +130,33 @@ function useBannerT(): (key: TKey) => string {
  *      waiting could be neither applied nor offered. The worker is read first;
  *      the version request is one-at-a-time with a deadline.
  *
+ * And on 2026-09-25, after the owner tapped Refresh seven times and the banner
+ * kept coming back:
+ *
+ *  10. The reload after the new worker takes over is this banner's own job.
+ *      It used to be vite-plugin-pwa's, and that reload only exists when
+ *      workbox-window has announced the worker as "waiting" — which it does
+ *      200 ms after the worker installs, and only if it is still waiting
+ *      then. The automatic paths above apply within milliseconds of the
+ *      install, so the worker had already taken over by the time
+ *      workbox-window looked, nothing was announced, no reload was ever
+ *      attached, and the page sat on the old shell under the new worker.
+ *      Ten seconds later this banner offered Refresh again, and Refresh
+ *      posts to the waiting worker — of which there was no longer one.
+ *      (Two more shapes end the same way: a page whose first-ever worker
+ *      registered before any worker was in control, and a worker that
+ *      installs after an earlier download failed halfway.) Now the waiting
+ *      worker is asked directly, the page reloads itself the moment the
+ *      controller changes, and when nothing has taken over after
+ *      TAKEOVER_TIMEOUT_MS the banner looks again from scratch instead of
+ *      re-offering a Refresh that cannot work — reading "is a worker
+ *      waiting" from the registration alone, because the plugin's flag is
+ *      sticky and was still saying yes about a worker long since in charge.
+ *      The new worker also brings the page that asked across itself when it
+ *      activates (src/sw.ts), which is what reaches a phone still running
+ *      the page from before this fix. app/e2e/upgrade-path.pwa.ts
+ *      reproduces all three against real workers.
+ *
  * The safety rule lives in updateCore.ts, with the reasoning about why an
  * installer's in-memory capture outranks being up to date.
  */
@@ -166,8 +195,15 @@ function PwaUpdateBanner() {
   // registration callback, the installing worker's state change, the timers.
   const evaluateRef = useRef<(returning: boolean) => Promise<void>>(async () => {});
 
+  // The worker in control when the switch was asked for, and whether this
+  // page has already been sent to reload: a controller change is only ever
+  // acted on once, and only after applyNow.
+  const controllerAtApply = useRef<ServiceWorker | null>(null);
+  const reloading = useRef(false);
+  const takeover = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const {
-    needRefresh: [needRefresh],
+    needRefresh: [needRefresh, setNeedRefresh],
     updateServiceWorker,
   } = useRegisterSW({
     onRegisteredSW(_swUrl, reg) {
@@ -188,15 +224,79 @@ function PwaUpdateBanner() {
     applying.current = true;
     holding.current = false;
     setShown("applying");
-    // `true` posts SKIP_WAITING and reloads. A bare location.reload() would
-    // NOT help: the old worker still controls the page and would serve the
-    // same cached shell straight back.
+    controllerAtApply.current = navigator.serviceWorker?.controller ?? null;
+    // Ask the waiting worker to take over. Both ways, on purpose: the
+    // plugin's helper posts through workbox-window, which is only there once
+    // its chunk has loaded, and the message itself is one line. A bare
+    // reload would NOT help — the old worker still controls the page and
+    // would serve the same cached shell straight back. The reload comes when
+    // the controller changes (the effect below), not from the plugin: its
+    // own reload exists only for a worker workbox-window saw waiting 200 ms
+    // after it installed, which the automatic paths beat (note 10 above).
     void apply.current(true);
-    // If the takeover never happens, say so instead of "Updating…" forever.
-    setTimeout(() => {
+    void (async () => {
+      try {
+        const reg =
+          registration.current ?? (await navigator.serviceWorker?.getRegistration()) ?? null;
+        reg?.waiting?.postMessage({ type: "SKIP_WAITING" });
+      } catch {
+        // No registration to ask. The fallback below looks again.
+      }
+    })();
+    // Nothing has taken over after TAKEOVER_TIMEOUT_MS: look again from
+    // scratch rather than re-offering the same Refresh. The plugin's flag
+    // is dropped first — it is sticky, and a worker that took over without
+    // a reload, or that another tab applied, leaves it pointing at nothing.
+    if (takeover.current) clearTimeout(takeover.current);
+    takeover.current = setTimeout(() => {
+      takeover.current = null;
+      if (reloading.current) return;
+      const controller = navigator.serviceWorker?.controller ?? null;
+      if (controller && controller !== controllerAtApply.current) {
+        // It did take over — the change just went unheard (a listener
+        // attached late). The old shell is still on screen; finish the job.
+        reloading.current = true;
+        reloadPage();
+        return;
+      }
       applying.current = false;
-      setShown("ready");
-    }, 10_000);
+      // Not "ready": that was the seven-times banner. Nothing is known to be
+      // waiting until the look below says so.
+      setShown("none");
+      setNeedRefresh(false);
+      void (async () => {
+        try {
+          const reg = registration.current ?? (await navigator.serviceWorker?.getRegistration());
+          if (reg) await withDeadline(reg.update(), UPDATE_CHECK_TIMEOUT_MS);
+        } catch {
+          // Offline, or no registration: the evaluation below decides on
+          // what the phone has.
+        }
+        void evaluateRef.current(false);
+      })();
+    }, TAKEOVER_TIMEOUT_MS);
+  }, [setNeedRefresh]);
+
+  // The reload that finishes an update, owned here: the moment the worker in
+  // control changes after applyNow asked for that, the page reloads onto it.
+  // Never on a change this banner did not ask for — another tab applying an
+  // update while someone here is mid-capture must not reload this page; the
+  // next decision cycle handles that on its own terms.
+  useEffect(() => {
+    const sw = navigator.serviceWorker;
+    if (!sw?.addEventListener) return;
+    const onControllerChange = () => {
+      if (!applying.current || reloading.current) return;
+      reloading.current = true;
+      if (takeover.current) clearTimeout(takeover.current);
+      reloadPage();
+    };
+    sw.addEventListener("controllerchange", onControllerChange);
+    return () => {
+      sw.removeEventListener("controllerchange", onControllerChange);
+      if (takeover.current) clearTimeout(takeover.current);
+      takeover.current = null;
+    };
   }, []);
 
   // Refresh from the hold banner. The button reflects the last look at the
@@ -276,7 +376,10 @@ function PwaUpdateBanner() {
       // waiting is actionable on its own; only the question "is there a newer
       // build to go and get" needs the network, and on one bar that request
       // can take a very long time to answer or fail.
-      const waiting = needRefresh || Boolean(reg?.waiting);
+      // The registration alone, never the plugin's flag: that flag is sticky,
+      // and on 2026-09-25 it kept saying "waiting" about a worker that had
+      // already taken over (note 10). The flag still triggers this cycle.
+      const waiting = Boolean(reg?.waiting);
       const published = waiting ? null : await check.run();
       if (cancelled) return;
       const queued = waiting ? await readQueuedWork(userId.current) : null;
@@ -404,7 +507,7 @@ function PwaUpdateBanner() {
     // The landing mounting a moment after the app opened, with an update
     // already waiting: the check that ran at open found no safe screen yet.
     const unsubscribeSurface = subscribeSafeSurface(() => {
-      if (onSafeSurface() && (needRefresh || registration.current?.waiting)) {
+      if (onSafeSurface() && registration.current?.waiting) {
         void evaluate(false);
       }
     });
