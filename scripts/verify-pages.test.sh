@@ -52,6 +52,12 @@ HTML
 precacheAndRoute([{url:"assets/index-Ab12Cd34.js",revision:null},{url:"assets/react-lCSYwAWP.js",revision:null},{url:"assets/rolldown-runtime-aKtaBQYM.js",revision:null},{url:"index.html",revision:"abc"}]);
 JS
   printf '{"buildId":"deadbeef","builtAt":"2026-09-25T20:13:58.518Z"}' >"$root/site/version.json"
+  # The first-screen files themselves. The check fetches each one; a site
+  # that only NAMES them (an earlier version of this fixture) is a deploy
+  # caught halfway, and passed (independent review of #669, 2026-09-27).
+  printf 'import{t}from"./rolldown-runtime-aKtaBQYM.js";import{r}from"./react-lCSYwAWP.js";\n' >"$root/site/assets/index-Ab12Cd34.js"
+  printf 'export const r=1;\n' >"$root/site/assets/react-lCSYwAWP.js"
+  printf 'export const t=1;\n' >"$root/site/assets/rolldown-runtime-aKtaBQYM.js"
   printf 'import{t}from"./rolldown-runtime-aKtaBQYM.js";export{t};\n' >"$root/kept/monitoring-BsbA4Bc6.js"
   cp "$root/kept/monitoring-BsbA4Bc6.js" "$root/site/assets/monitoring-BsbA4Bc6.js"
 
@@ -162,6 +168,27 @@ sed -i.bak 's#<link rel="modulepreload" crossorigin href="/assets/react-lCSYwAWP
 run
 expect_rc 1 && expect_first_line "A phone with no signal cannot start the app: index.html loads 1 file(s) the service worker never saves" &&
   expect_contains "assets/monitoring-Xy98Zw76.js" && expect_contains "globIgnores" && pass
+
+new_case "the new entry is named everywhere but not on the site — a deploy caught halfway"
+# version.json, index.html and sw.js are all the new build's; the entry 404s.
+# This passed before the check fetched anything (independent review of #669).
+rm "$root/site/assets/index-Ab12Cd34.js"
+run
+expect_rc 1 && expect_first_line "A phone cannot start the app: 1 of the files index.html loads first is not on the site" &&
+  expect_contains "assets/index-Ab12Cd34.js (answered 404)" && expect_contains "Re-run Deploy GitHub Pages" && pass
+
+new_case "a modulepreload the site does not have fails the same way"
+rm "$root/site/assets/react-lCSYwAWP.js"
+run
+expect_rc 1 && expect_first_line "A phone cannot start the app: 1 of the files index.html loads first is not on the site" &&
+  expect_contains "assets/react-lCSYwAWP.js (answered 404)" && pass
+
+new_case "a first-screen file that comes back as an HTML page is missing, whatever the status says"
+# Some hosts answer a missing path with the 404 page and a 200.
+printf '<!doctype html>\n<html><body>Site not found</body></html>' >"$root/site/assets/react-lCSYwAWP.js"
+run
+expect_rc 1 && expect_first_line "A phone cannot start the app: 1 of the files index.html loads first is not on the site" &&
+  expect_contains "assets/react-lCSYwAWP.js (answered 200 with an HTML page, not JavaScript)" && pass
 
 new_case "the file old phones ask for is gone from the site"
 rm "$root/site/assets/monitoring-BsbA4Bc6.js"

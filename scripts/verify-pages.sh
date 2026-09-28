@@ -180,6 +180,31 @@ if [ "${#not_precached[@]}" -gt 0 ]; then
     "Check globIgnores in app/vite.config.ts and which chunk the bundler put that" \
     "code in — see the codeSplitting note there for the 2026-09-25 case."
 fi
+
+# Named in the precache is not the same as there. A deploy caught halfway
+# serves version.json, index.html and sw.js and answers 404 for the new entry
+# — a fresh phone cannot render, and the new worker cannot finish its
+# precache (independent review of #669, 2026-09-27). So every first-screen
+# file is fetched too. Pages answers a missing path with its 404 page, which
+# is HTML: a body that starts like a document is as missing as a 404.
+not_served=()
+while IFS= read -r file; do
+  [ -n "$file" ] || continue
+  status="$(fetch "$file" "$tmp/first-screen.js")"
+  if [ "$status" != "200" ]; then
+    not_served+=("$file (answered ${status:-nothing})")
+  elif head -c 512 "$tmp/first-screen.js" | tr -d '[:space:]' | grep -qiE '^(<!doctype|<html)'; then
+    not_served+=("$file (answered 200 with an HTML page, not JavaScript)")
+  fi
+done <<<"$first_screen"
+if [ "${#not_served[@]}" -gt 0 ]; then
+  fail "A phone cannot start the app: ${#not_served[@]} of the files index.html loads first is not on the site" \
+    "index.html names these, the service worker lists them, and the site does not serve them:" \
+    "${not_served[@]/#/  }" \
+    "" \
+    "A deploy caught halfway looks like this; so does a build whose assets were" \
+    "never uploaded. Re-run Deploy GitHub Pages, then this check."
+fi
 first_screen_count="$(printf '%s\n' "$first_screen" | grep -c .)"
 
 # --- 3. Can a phone on the previous build still start it? --------------------
@@ -212,7 +237,7 @@ done
 
 echo "site:  $URL"
 echo "build: $live_build"
-echo "A phone with no signal can start it: all $first_screen_count first-screen files are in the service worker's precache."
+echo "A phone with no signal can start it: all $first_screen_count first-screen files are in the service worker's precache and on the site."
 if [ "${#kept_ok[@]}" -gt 0 ]; then
   echo "A phone on the previous build can start it: ${kept_ok[@]+"${kept_ok[*]}"} served with the exact bytes."
 else

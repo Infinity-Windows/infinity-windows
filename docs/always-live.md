@@ -196,7 +196,11 @@ bypassed (the same trick the app's own version check uses):
    "not yet".
 2. **Can a phone start it with no signal?** Every file `index.html` loads
    before the first screen — the module script and each `modulepreload` —
-   must be named in the service worker's precache list (`sw.js`). That was
+   must be named in the service worker's precache list (`sw.js`) **and** come
+   back from the site as JavaScript: a deploy caught halfway serves the new
+   `index.html` and `sw.js` and answers 404 (or the HTML 404 page) for the new
+   entry, which no fresh phone can render and no new worker can finish
+   precaching (independent review of #669, 2026-09-27). That was
    the bug #664 set out to fix: React had been folded into the crash
    monitor's chunk, which the worker deliberately skips while monitoring is
    off, so a cold start in a dead zone more than ten minutes after the last
