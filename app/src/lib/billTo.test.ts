@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { billToCells, canManageBillTo, canSeeBillTo, type ProjectBillTo } from "./billTo";
 
-// The screen's copy of can_see_bill_to / can_manage_bill_to (20261035000000).
+// The screen's copy of can_see_bill_to / can_manage_bill_to (20261030105000).
 // The database is the lock; these only decide what a screen offers, so they
 // must never say yes where the database says no.
 describe("who sees and who changes a job's bill-to", () => {

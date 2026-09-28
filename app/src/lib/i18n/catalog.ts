@@ -1591,7 +1591,7 @@ export const CATALOG = {
   "gc.brand.label": { en: "The GC sees us as", es: "El GC nos ve como" },
   "gc.brand.stg": { en: "STG Windows & Doors", es: "STG Windows & Doors" },
   "gc.brand.forge": { en: "Forge Windows and Doors", es: "Forge Windows and Doors" },
-  // Who a job's labor is billed to (20261035000000). Supervisors, the owner and
+  // Who a job's labor is billed to (20261030105000). Supervisors, the owner and
   // "Sees costs" holders only. Customer names stay as QuickBooks spells them.
   "billto.label": { en: "Bills to", es: "Se le cobra a" },
   "billto.save": { en: "Save", es: "Guardar" },

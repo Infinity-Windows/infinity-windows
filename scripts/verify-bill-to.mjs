@@ -1,5 +1,5 @@
 // Disposable PostgreSQL-compatible proof of who may read and change a job's
-// bill-to (20261035000000_bill_to_customers.sql); never uses Supabase.
+// bill-to (20261030105000_bill_to_customers.sql); never uses Supabase.
 // npm install --prefix /tmp/forge-bill-to-db-check @electric-sql/pglite
 // PGLITE_MODULE=/tmp/forge-bill-to-db-check/node_modules/@electric-sql/pglite/dist/index.js node scripts/verify-bill-to.mjs
 import { readFile } from "node:fs/promises";
@@ -47,7 +47,7 @@ await db.exec(`
   insert into projects(id, job_code, deleted_at) values
     ('${OLD_JOB}','OLD1',null), ('${TRASHED_JOB}','GONE1',now());
 `);
-const migration = await readFile(new URL("../supabase/migrations/20261035000000_bill_to_customers.sql", import.meta.url), "utf8");
+const migration = await readFile(new URL("../supabase/migrations/20261030105000_bill_to_customers.sql", import.meta.url), "utf8");
 await db.exec(migration);
 // Idempotent: a second run changes nothing.
 await db.exec(migration);

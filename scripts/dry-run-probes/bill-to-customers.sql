@@ -1,5 +1,5 @@
--- Per-job "Bills to" (20261035000000_bill_to_customers.sql and its note,
--- 20261035010000_bill_to_note.sql). Proves on the real schema, as the people
+-- Per-job "Bills to" (20261030105000_bill_to_customers.sql and its note,
+-- 20261030106000_bill_to_note.sql). Proves on the real schema, as the people
 -- who will call them:
 --   * the list is seeded with the two names only and every existing job
 --     defaults to STG Windows and Doors (COUNTS only: this log is public);

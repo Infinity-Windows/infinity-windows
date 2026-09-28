@@ -103,10 +103,10 @@ const CASCADE_COVERED: Record<string, string> = {
   project_labor_targets: "ON DELETE CASCADE from projects (20261009000000)",
   project_stage_progress: "ON DELETE CASCADE from projects (20261009000000)",
   project_execution_history: "ON DELETE CASCADE from projects (20261009000000)",
-  // 20261035000000: who the job bills to, and the log of changes to it. The
+  // 20261030105000: who the job bills to, and the log of changes to it. The
   // job's row is keyed by the job (like project_pipeline); both go with it.
-  project_bill_to: "ON DELETE CASCADE from projects (the pk is the FK, 20261035000000)",
-  project_bill_to_history: "ON DELETE CASCADE from projects (20261035000000)",
+  project_bill_to: "ON DELETE CASCADE from projects (the pk is the FK, 20261030105000)",
+  project_bill_to_history: "ON DELETE CASCADE from projects (20261030105000)",
   install_events: "ON DELETE CASCADE from project_openings",
   qc_checks: "ON DELETE CASCADE from project_openings",
   opening_phases: "ON DELETE CASCADE from project_openings",

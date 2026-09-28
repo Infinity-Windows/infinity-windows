@@ -19702,7 +19702,7 @@ create policy "projects_update" on projects
   with check (not public.is_partner_user());
 
 -- ===========================================================================
--- 20261035000000_bill_to_customers.sql (mirrored)
+-- 20261030105000_bill_to_customers.sql (mirrored)
 -- Who each job's labor is billed to: a supervisor-managed list of customers
 -- (retired, never deleted), one NOT NULL bill-to per job defaulting to STG
 -- Windows and Doors, and a log of every change, readable only by supervisors,
@@ -19790,7 +19790,7 @@ as $$
 $$;
 
 comment on function public.can_see_bill_to(uuid) is
-  'True when this person may read who a job bills to: a supervisor, the owner, or somebody the owner granted "Sees costs" (profiles.can_see_costs) - never a builder login, a retired or a revoked login. The single predicate every bill-to policy calls (20261035000000).';
+  'True when this person may read who a job bills to: a supervisor, the owner, or somebody the owner granted "Sees costs" (profiles.can_see_costs) - never a builder login, a retired or a revoked login. The single predicate every bill-to policy calls (20261030105000).';
 
 revoke all on function public.can_see_bill_to(uuid) from public, anon;
 grant execute on function public.can_see_bill_to(uuid) to authenticated, service_role;
@@ -19894,7 +19894,7 @@ create index if not exists project_bill_to_customer_idx
   on public.project_bill_to (bill_to_customer_id);
 
 comment on table public.project_bill_to is
-  'Who this job''s labor is billed to: one row per job, NOT NULL, default STG Windows and Doors (20261035000000). A side table, not a projects column, because projects is read whole by every crew phone and by builder logins. Read by can_see_bill_to(); written only by the default trigger on projects and by set_project_bill_to (supervisor+).';
+  'Who this job''s labor is billed to: one row per job, NOT NULL, default STG Windows and Doors (20261030105000). A side table, not a projects column, because projects is read whole by every crew phone and by builder logins. Read by can_see_bill_to(); written only by the default trigger on projects and by set_project_bill_to (supervisor+).';
 
 create table if not exists public.project_bill_to_history (
   id bigint generated always as identity primary key,
@@ -19945,7 +19945,7 @@ end;
 $$;
 
 comment on function public.project_bill_to_default() is
-  'AFTER INSERT on projects: gives the new job the default bill-to (STG Windows and Doors), so no create path can leave a job without one (20261035000000).';
+  'AFTER INSERT on projects: gives the new job the default bill-to (STG Windows and Doors), so no create path can leave a job without one (20261030105000).';
 
 revoke all on function public.project_bill_to_default() from public, anon, authenticated;
 
@@ -20069,7 +20069,7 @@ end;
 $$;
 
 comment on function public.save_bill_to_customer(uuid, text, text, text) is
-  'Supervisor+: add a bill-to customer (p_id null) or change one''s name, billing email or QuickBooks customer id (digits). Blank email/id means none (20261035000000).';
+  'Supervisor+: add a bill-to customer (p_id null) or change one''s name, billing email or QuickBooks customer id (digits). Blank email/id means none (20261030105000).';
 
 revoke all on function public.save_bill_to_customer(uuid, text, text, text) from public, anon;
 grant execute on function public.save_bill_to_customer(uuid, text, text, text) to authenticated;
@@ -20121,7 +20121,7 @@ end;
 $$;
 
 comment on function public.set_bill_to_customer_retired(uuid, boolean) is
-  'Supervisor+: retire a bill-to customer (it can no longer be picked for a job) or bring it back. Never deletes. The default customer cannot be retired (20261035000000).';
+  'Supervisor+: retire a bill-to customer (it can no longer be picked for a job) or bring it back. Never deletes. The default customer cannot be retired (20261030105000).';
 
 revoke all on function public.set_bill_to_customer_retired(uuid, boolean) from public, anon;
 grant execute on function public.set_bill_to_customer_retired(uuid, boolean) to authenticated;
@@ -20192,7 +20192,7 @@ end;
 $$;
 
 comment on function public.set_project_bill_to(uuid, uuid) is
-  'Supervisor+: choose who a job''s labor is billed to, from the active bill-to list, and log who changed it and when (project_bill_to_history). No-op when unchanged (20261035000000).';
+  'Supervisor+: choose who a job''s labor is billed to, from the active bill-to list, and log who changed it and when (project_bill_to_history). No-op when unchanged (20261030105000).';
 
 revoke all on function public.set_project_bill_to(uuid, uuid) from public, anon;
 grant execute on function public.set_project_bill_to(uuid, uuid) to authenticated;

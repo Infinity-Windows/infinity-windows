@@ -1,4 +1,4 @@
-// Who a job bills to (20261035000000): the "Bills to" field on a job's GC card
+// Who a job bills to (20261030105000): the "Bills to" field on a job's GC card
 // and the two columns it adds to the Job timecards file.
 //
 // Proved here, against the fixture server (never the shared database):

@@ -1,4 +1,4 @@
-// Who a job's labor is billed to (migration 20261035000000, owner decisions
+// Who a job's labor is billed to (migration 20261030105000, owner decisions
 // Q1-Q4 of 2026-09-25).
 //
 // The Friday invoice script reads the "Job timecards" export and bills each job

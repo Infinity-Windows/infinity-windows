@@ -741,7 +741,7 @@ Nothing auto-deletes, and every import is undoable as a batch that keeps
 whatever somebody had already matched.
 
 **Bill-to** — the company a job's LABOR is invoiced to (settled
-2026-09-25, owner decisions Q1-Q4; `project_bill_to`, 20261035000000).
+2026-09-25, owner decisions Q1-Q4; `project_bill_to`, 20261030105000).
 Chosen from the **bill-to list** (`bill_to_customers`: a name spelled
 exactly as QuickBooks spells it, an optional billing email, an optional
 QuickBooks customer id as bare digits). Every job has exactly one; it starts

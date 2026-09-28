@@ -106,7 +106,7 @@ jobs:
       # with this one.
       - run: npm run e2e -- clock-in-once.spec.ts crew-clock.spec.ts
       # Who a job bills to: the job page field and the two Job timecards
-      # columns the Friday invoice script reads (20261035000000). Its own step
+      # columns the Friday invoice script reads (20261030105000). Its own step
       # for the reason given above.
       - run: npm run e2e -- bill-to.spec.ts
       - uses: actions/upload-artifact@v4

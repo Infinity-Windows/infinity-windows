@@ -1,5 +1,5 @@
 -- Supervisor and owner announcement for the per-job bill-to
--- (20261035000000, docs/app-updates.md), in the same change as the feature.
+-- (20261030105000, docs/app-updates.md), in the same change as the feature.
 -- Audiences [2,3] only: supervisors and the owner are the people who set it,
 -- and who a job bills to is money that installers and foremen do not see. The
 -- menu names the page "Cost codes" in both languages, so the Spanish quotes it
