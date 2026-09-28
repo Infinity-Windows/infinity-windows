@@ -75,9 +75,9 @@ export function checkBudget(gzipBytes, budgetKb = BUDGET_GZIP_KB) {
  * Basenames of chunks a built file statically imports — `import ... from
  * "./chunk-hash.js"` or a bare `import "./chunk-hash.js"` — in Vite/rolldown
  * output. PURE (source text in, basenames out). Deliberately does NOT match
- * a dynamic `import("./chunk.js")` call: that syntax is exactly a
- * React.lazy()/lazyOptional() split, code that is SUPPOSED to wait for its
- * route or tab rather than load with everything else. Same pattern already
+ * a dynamic `import("./chunk.js")` call. Some are route/tab splits while
+ * others are started by app effects; neither is part of this static graph.
+ * Same pattern already
  * proven against this build's real output in check-kept-assets.test.mjs.
  */
 export function staticImportsOf(source) {
@@ -177,7 +177,7 @@ function main() {
   }
   const closureKb = closureGzipBytes / 1024;
   console.log(
-    `first-screen JS: ${closure.length} chunk(s), ${closureKb.toFixed(1)} kB gzip ` +
+    `first-screen static JS: ${closure.length} chunk(s), ${closureKb.toFixed(1)} kB gzip ` +
       `(budget ${FIRST_SCREEN_GZIP_KB} kB)`,
   );
   if (closureKb > FIRST_SCREEN_GZIP_KB) {
