@@ -206,6 +206,18 @@ describe("a queued write goes out only as the person who saved it", () => {
     expect((await outbox.listAll())[0]).toMatchObject({ id: bad.clientId, attemptCount: 0, status: "queued" });
     expect((await outbox.listUnknownOwner()).map((e) => e.id)).toEqual([bad.clientId]);
   });
+
+  it("a clock-in depends on A's valid legacy signature but never a quarantined conflicting-owner row", async () => {
+    const bad = toolboxSignature(A.user.id, "eeeeeeee-0000-4000-8000-00000000000e");
+    await outbox.enqueue({ op: "toolbox_sign", ownerId: B.user.id, payload: bad }, undefined, { id: bad.clientId });
+    const first = await outbox.enqueueClockIn({ projectId: "p1", costCodeId: "cc1", punch: PUNCH("clock-after-bad"), profileId: A.user.id });
+    expect((await outbox.listAll()).find((e) => e.id === first)?.dependsOn).toBeNull();
+
+    const legacy = toolboxSignature(A.user.id, "ffffffff-0000-4000-8000-00000000000f");
+    await outbox.enqueue({ op: "toolbox_sign", ownerId: null, payload: legacy }, undefined, { id: legacy.clientId });
+    const second = await outbox.enqueueClockIn({ projectId: "p1", costCodeId: "cc1", punch: PUNCH("clock-after-legacy"), profileId: A.user.id });
+    expect((await outbox.listAll()).find((e) => e.id === second)?.dependsOn).toBe(legacy.clientId);
+  });
   it("A's queued clock-in is not sent as B after A signs out and B signs in — it waits, untouched", async () => {
     await outbox.enqueueClockIn({ projectId: "p1", costCodeId: "cc1", punch: PUNCH("punch-A") });
     switchTo(B);

@@ -943,8 +943,13 @@ export interface ClockInInput {
 /** The signature, still on the phone, that a clock-in by this person must follow. */
 async function signatureToFollow(profileId: string | null | undefined): Promise<string | null> {
   if (!profileId) return null;
+  // Use the requested clock-in owner, not whoever happens to be signed in
+  // after the store read. A row with ownerId B but payload.profileId A is
+  // quarantined by entryOwner and must not hold A's punch forever.
+  const signer: Signer = { userId: profileId, email: null };
   try {
-    return todaysPendingSignature(await store.getAll(), profileId)?.entryId ?? null;
+    const mine = (await store.getAll()).filter((e) => belongsTo(e, signer));
+    return todaysPendingSignature(mine, profileId)?.entryId ?? null;
   } catch {
     // The store could not be read: the snapshot is the next best answer.
     return todaysSignatureOnPhone(profileId)?.entryId ?? null;
