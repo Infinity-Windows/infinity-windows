@@ -39,6 +39,20 @@ vi.mock("virtual:pwa-register/react", async () => {
   };
 });
 
+// The reload that finishes a switch, counted instead of losing the document.
+const reload = vi.hoisted(() => ({ count: 0 }));
+vi.mock("../../lib/pwa/reload", () => ({
+  reloadPage: () => {
+    reload.count += 1;
+  },
+}));
+// Ten seconds of real time is too long to wait for in a test; the constant is
+// what the banner reads, so it is the constant that shrinks.
+vi.mock("../../lib/pwa/updateCore", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../lib/pwa/updateCore")>()),
+  TAKEOVER_TIMEOUT_MS: 300,
+}));
+
 type AuthListener = (event: string, session: { user: { id: string } } | null) => void;
 const auth = vi.hoisted(() => ({ listener: null as AuthListener | null }));
 vi.mock("../../lib/supabase", () => ({
@@ -109,6 +123,15 @@ const registration = {
   update: vi.fn(async () => {}),
 };
 
+/** navigator.serviceWorker: the registration, the worker in control, and the controllerchange event. */
+class FakeServiceWorkerContainer extends EventTarget {
+  controller: object | null = { id: "the worker in control" };
+  getRegistration = async () => registration;
+}
+let container = new FakeServiceWorkerContainer();
+/** A worker waiting to take over, which can be asked to. */
+const waitingWorker = () => ({ postMessage: vi.fn() });
+
 let root: Root | null = null;
 let host: HTMLDivElement | null = null;
 let visibility: DocumentVisibilityState = "visible";
@@ -163,7 +186,9 @@ beforeEach(() => {
   pwa.registered = null;
   registration.waiting = null;
   registration.installing = null;
-  registration.update.mockClear();
+  // mockReset, not mockClear: one case gives update() an implementation that
+  // puts a worker in waiting, and it must not leak into the cases after it.
+  registration.update.mockReset();
   auth.listener = null;
   queue.waiting = 0;
   queue.sending = false;
@@ -175,9 +200,11 @@ beforeEach(() => {
     configurable: true,
     get: () => visibility,
   });
+  reload.count = 0;
+  container = new FakeServiceWorkerContainer();
   Object.defineProperty(navigator, "serviceWorker", {
     configurable: true,
-    value: { getRegistration: async () => registration },
+    value: container,
   });
   vi.stubGlobal(
     "fetch",
@@ -639,5 +666,99 @@ describe("the service worker and the network", () => {
     });
     await mount();
     expect(updateServiceWorker).toHaveBeenCalledWith(true);
+  });
+});
+
+describe("finishing the switch (2026-09-25: Refresh seven times, banner every time)", () => {
+  // The new worker took over, the page never reloaded onto it, and the banner
+  // offered a Refresh that posted to a waiting worker there no longer was.
+  // e2e/upgrade-path.pwa.ts reproduces it against real workers; this is the
+  // wiring: ask the worker directly, reload on the controller change, and look
+  // again from scratch when nothing has taken over.
+  const wait = async (ms: number) => {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, ms));
+    });
+    await settle();
+  };
+  const controllerChanged = async () => {
+    await act(async () => {
+      container.dispatchEvent(new Event("controllerchange"));
+    });
+    await settle();
+  };
+
+  it("asks the waiting worker directly, then reloads the page itself when it takes over", async () => {
+    onSafeScreen();
+    const worker = waitingWorker();
+    registration.waiting = worker;
+    await mount();
+    expect(updateServiceWorker).toHaveBeenCalledWith(true);
+    expect(worker.postMessage).toHaveBeenCalledWith({ type: "SKIP_WAITING" });
+    expect(reload.count).toBe(0);
+    await controllerChanged();
+    expect(reload.count).toBe(1);
+    // A second change — another tab, a claim — is not a second reload.
+    await controllerChanged();
+    expect(reload.count).toBe(1);
+  });
+
+  it("never reloads on a controller change it did not ask for", async () => {
+    // Another tab applied an update while this one may be mid-capture. The
+    // next decision cycle handles it on its own terms.
+    await mount();
+    await controllerChanged();
+    expect(reload.count).toBe(0);
+  });
+
+  it("finishes the switch if the worker took over while nobody was listening", async () => {
+    onSafeScreen();
+    registration.waiting = waitingWorker();
+    await mount();
+    expect(text()).toContain("Updating Forge Windows");
+    // The controller changed, but the event went unheard.
+    registration.waiting = null;
+    container.controller = { id: "the new worker" };
+    await wait(400);
+    expect(reload.count).toBe(1);
+  });
+
+  it("looks again instead of offering the same Refresh when nothing took over", async () => {
+    // The 2026-09-25 loop's last step: the plugin's sticky flag said an
+    // update was waiting, nothing was, and the banner said "A new version
+    // is available" every ten seconds.
+    onSafeScreen();
+    registration.waiting = waitingWorker();
+    await mount();
+    expect(text()).toContain("Updating Forge Windows");
+    registration.waiting = null;
+    await act(async () => pwa.setNeedRefresh?.(true));
+    await wait(400);
+    expect(reload.count).toBe(0);
+    expect(registration.update).toHaveBeenCalled();
+    expect(text()).not.toContain("A new version is available");
+    expect(text()).not.toContain("Updating Forge Windows");
+    expect(updateServiceWorker).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers Refresh again only while a worker really is still waiting", async () => {
+    // The message never reached it (workbox-window's chunk had not loaded,
+    // say). Looking again finds it still waiting, so the offer stands — and
+    // the next tap asks it directly.
+    onSafeScreen();
+    claimUnsavedWork();
+    const worker = waitingWorker();
+    registration.waiting = worker;
+    await mount();
+    expect(text()).toContain("A new version is available");
+    const refresh = Array.from(host!.querySelectorAll<HTMLButtonElement>("button")).find((b) =>
+      b.classList.contains("pwa-banner-action"),
+    )!;
+    await tap(refresh);
+    expect(worker.postMessage).toHaveBeenCalledWith({ type: "SKIP_WAITING" });
+    expect(text()).toContain("Updating Forge Windows");
+    await wait(400);
+    expect(reload.count).toBe(0);
+    expect(text()).toContain("A new version is available");
   });
 });
