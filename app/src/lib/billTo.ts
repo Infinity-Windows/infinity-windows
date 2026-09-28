@@ -93,16 +93,22 @@ export async function listBillToCustomers(): Promise<{ known: boolean; rows: Bil
   return { known: true, rows: (data ?? []) as BillToCustomer[] };
 }
 
-/** One job's bill-to, or null when this database has no bill-to yet. */
-export async function getProjectBillTo(projectId: string): Promise<ProjectBillTo | null> {
+/**
+ * One job's bill-to. `known: false` is a database with no bill-to yet (the
+ * field is not offered); `row: null` on a known database is a job somebody
+ * left without one, which the field shows as "Not set" rather than hiding.
+ */
+export async function getProjectBillTo(
+  projectId: string,
+): Promise<{ known: boolean; row: ProjectBillTo | null }> {
   const { data, error } = await supabase
     .from("project_bill_to")
     .select(PROJECT_BILL_TO_COLS)
     .eq("project_id", projectId)
     .maybeSingle();
-  if (isMissingTable(error, ...TABLES)) return null;
+  if (isMissingTable(error, ...TABLES)) return { known: false, row: null };
   if (error) throw error;
-  return (data as unknown as ProjectBillTo | null) ?? null;
+  return { known: true, row: (data as unknown as ProjectBillTo | null) ?? null };
 }
 
 /** The newest changes first: who changed it, from what, to what, when. */

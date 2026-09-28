@@ -1587,6 +1587,19 @@ export const CATALOG = {
   "gc.brand.label": { en: "The GC sees us as", es: "El GC nos ve como" },
   "gc.brand.stg": { en: "STG Windows & Doors", es: "STG Windows & Doors" },
   "gc.brand.forge": { en: "Forge Windows and Doors", es: "Forge Windows and Doors" },
+  // Who a job's labor is billed to (20261035000000). Supervisors, the owner and
+  // "Sees costs" holders only. Customer names stay as QuickBooks spells them.
+  "billto.label": { en: "Bills to", es: "Se le cobra a" },
+  "billto.save": { en: "Save", es: "Guardar" },
+  "billto.saved": { en: "Saved", es: "Guardado" },
+  "billto.retired": { en: "retired", es: "retirado" },
+  "billto.notSet": { en: "Not set", es: "Sin asignar" },
+  "billto.qbId": { en: "QuickBooks ID {id}", es: "ID de QuickBooks {id}" },
+  "billto.noQbId": { en: "No QuickBooks ID yet", es: "Todavía sin ID de QuickBooks" },
+  "billto.never": { en: "Not changed since the job was made.", es: "No ha cambiado desde que se creó el trabajo." },
+  "billto.changed": { en: "{from} → {to}, by {who}, {date}", es: "{from} → {to}, por {who}, {date}" },
+  "billto.someone": { en: "someone", es: "alguien" },
+  "billto.manageList": { en: "Edit the bill-to list", es: "Editar la lista de clientes a cobrar" },
   // The thread. Never crew chat — said on the card, because the two boxes look
   // alike and sending the wrong one to the wrong audience is the mistake.
   "gc.thread.heading": { en: "Messages with the GC", es: "Mensajes con el GC" },

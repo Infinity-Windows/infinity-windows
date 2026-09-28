@@ -45,6 +45,7 @@ import {
 } from "../../lib/gc";
 import { gcLinkUrl } from "../../lib/gcToken";
 import { GcContactFields } from "./GcContactFields";
+import { ProjectBillToField } from "./ProjectBillToField";
 import { shortDay } from "../../lib/pipeline";
 import type { Project } from "../../lib/types";
 
@@ -341,6 +342,9 @@ export function GcPanel({
 
       {/* The link half: foreman+ only. An installer reading what the GC said is
           useful; an installer emailing him is not. */}
+      {/* Who the job bills to sits right above the name the GC sees us as.
+          The field hides itself from anybody who may not see it. */}
+      <ProjectBillToField projectId={projectId} />
       {isLead && <GcLinkPanel projectId={projectId} project={project} />}
     </section>
   );
