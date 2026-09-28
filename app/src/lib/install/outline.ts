@@ -19,7 +19,17 @@
 // grids / segment lists) so they can be unit-tested without a DOM/canvas.
 
 import type { PDFDocumentProxy } from "pdfjs-dist/types/src/display/api";
-import { OPS } from "pdfjs-dist/legacy/build/pdf.mjs";
+// OPS is a plain numeric-enum object (not the pdf.js worker/rendering
+// machinery), but importing it still pulls in the pdf.js module graph.
+// Keep pure outline helpers usable without making their callers load pdf.js;
+// the operator list reader loads the module when vector extraction runs.
+let opsPromise: Promise<typeof import("pdfjs-dist/legacy/build/pdf.mjs").OPS> | null = null;
+function loadOps() {
+  if (!opsPromise) {
+    opsPromise = import("pdfjs-dist/legacy/build/pdf.mjs").then((m) => m.OPS);
+  }
+  return opsPromise;
+}
 
 export interface OutlinePoint {
   /** 0..1 across the page width. */
@@ -140,6 +150,7 @@ function applyMatrix(m: Matrix, x: number, y: number): [number, number] {
 async function extractWallSegments(
   page: Awaited<ReturnType<PDFDocumentProxy["getPage"]>>,
 ): Promise<WallSegment[]> {
+  const OPS = await loadOps();
   const opList = await page.getOperatorList();
   const viewport = page.getViewport({ scale: 1 });
   const base = viewport.transform as unknown as Matrix;
