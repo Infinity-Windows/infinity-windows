@@ -53,6 +53,10 @@ export const FIELD_CATALOG = {
   "field.choiceNeeded": { en: "Your choice is needed — nothing has changed yet", es: "Se necesita tu decisión; todavía no cambió nada" },
   "field.openClock": { en: "Open job clock", es: "Abrir reloj de trabajo" },
   "field.choiceFailed": { en: "That choice was not saved. Nothing changed from it; try again.", es: "Esa decisión no se guardó. No cambió nada; intenta de nuevo." },
+  // SAFETY — a tapped Start now / Join as helper the server refused because
+  // today's toolbox talk is not signed (_unit_work_gate / _prep_time_gate,
+  // 20261031000000). Points at the talk; Spanish flagged for bilingual review.
+  "field.toolboxRefused": { en: "Today's toolbox talk isn't signed yet, so nothing was started. Sign it under Finish your toolbox talk on Work, then ask again.", es: "La charla de seguridad de hoy todavía no está firmada, así que no se empezó nada. Fírmala en Termina tu charla de seguridad en Trabajo y vuelve a preguntar." },
   "field.receipt.created": { en: "Job created: {name}. Supervisors were mentioned in its job chat ({count}).", es: "Obra creada: {name}. Se mencionó a supervisores en su chat ({count})." },
   "field.receipt.used_existing": { en: "Using the existing job {name}.", es: "Se usa la obra existente {name}." },
   "field.receipt.created_unit": { en: "Unit {label} saved.", es: "Unidad {label} guardada." },

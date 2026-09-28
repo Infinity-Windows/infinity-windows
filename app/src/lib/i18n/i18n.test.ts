@@ -13,6 +13,9 @@ import {
   type Catalog,
 } from "./translate";
 import { CATALOG, SAFETY_KEYS } from "./catalog";
+// The Work screen's phrasebook registers itself into CATALOG on load; some
+// SAFETY_KEYS live there (Release 1), so the checks below need it loaded.
+import "./workCatalog";
 import { buildDeleteConfirmMessage } from "../projectTrash";
 
 describe("translate()", () => {
@@ -112,7 +115,7 @@ describe("the seeded crew-flow catalog", () => {
 
   it("carries BOTH languages for every key — non-empty en AND es", () => {
     for (const key of keys) {
-      const entry = CATALOG[key];
+      const entry = (CATALOG as Record<string, { en: string; es: string }>)[key];
       expect(entry.en, `en for ${key}`).toBeTruthy();
       expect(entry.es, `es for ${key}`).toBeTruthy();
     }
@@ -120,7 +123,7 @@ describe("the seeded crew-flow catalog", () => {
 
   it("has both locales present for every SAFETY key", () => {
     for (const key of SAFETY_KEYS) {
-      const entry = CATALOG[key];
+      const entry = (CATALOG as Record<string, { en: string; es: string }>)[key];
       expect(entry, `safety key ${key} exists in the catalog`).toBeDefined();
       expect(entry.en, `en for safety key ${key}`).toBeTruthy();
       expect(entry.es, `es for safety key ${key}`).toBeTruthy();

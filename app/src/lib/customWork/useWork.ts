@@ -2,8 +2,10 @@ import { formatApiError } from "../errors";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useClock } from "../clockContext";
+import { isToolboxGateError } from "../install/installTimer";
 import { listWorkSessions, listWorkTypes, listWorkUnits } from "./api";
 import {
+  dropWorkCommand,
   enqueueWork,
   enqueueWorkBatch,
   readWorkQueue,
@@ -91,13 +93,23 @@ export function useWork(projectId?: string) {
   const command = useCallback(
     async (action: WorkAction, data: Record<string, unknown>) => {
       if (!user) throw new Error("Sign in before saving work.");
-      await enqueueWork({
-        id: crypto.randomUUID(),
-        userId: user,
-        action,
-        data,
-      });
+      const id = crypto.randomUUID();
+      await enqueueWork({ id, userId: user, action, data });
       await sync();
+      // A refused request normally stays queued, with its error, for review
+      // (queue.ts) — the captured times are what a foreman reviews. The one
+      // refusal with nothing to review is the toolbox signature: a unit or
+      // Prep-time start turned away because today's talk is not signed
+      // (20261031000000; under the paid-time rule a person can be on the
+      // clock unsigned). Nothing was written, and a retry after signing
+      // would carry the unsigned tap's time — so that request is dropped,
+      // and the refusal is thrown to the tap that sent it so the screen can
+      // say it in the phone's words and point at the talk.
+      const refused = readWorkQueue(user).find((c) => c.id === id)?.error;
+      if (refused && isToolboxGateError(refused)) {
+        await dropWorkCommand(user, id);
+        throw new Error(refused);
+      }
     },
     [user, sync],
   );

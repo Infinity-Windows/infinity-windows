@@ -2,7 +2,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("./api", () => ({ sendWorkCommand: vi.fn(), getWorkUnit: vi.fn() }));
 import { getWorkUnit, sendWorkCommand } from "./api";
-import { enqueueWork, enqueueWorkBatch, readWorkQueue, syncWork, retryWork } from "./queue";
+import { dropWorkCommand, enqueueWork, enqueueWorkBatch, readWorkQueue, syncWork, retryWork } from "./queue";
 import { finishedStop, markCompleteUnit } from "./complete";
 import type { WorkCommand, WorkUnit } from "./model";
 const command = {
@@ -68,6 +68,14 @@ describe("durable work queue", () => {
     } finally {
       vi.stubGlobal("localStorage", original);
     }
+  });
+  it("drops one request by id and leaves the rest, in order", async () => {
+    await enqueueWork(command);
+    await enqueueWork({ ...command, id: "two" });
+    await enqueueWork({ ...command, id: "three" });
+    await dropWorkCommand("worker-a", "two");
+    expect(readWorkQueue("worker-a").map((c) => c.id)).toEqual(["one", "three"]);
+    expect(readWorkQueue("worker-b")).toEqual([]);
   });
   it("leaves offline changes pending without sending", async () => {
     await enqueueWork(command);

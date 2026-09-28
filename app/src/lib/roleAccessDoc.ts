@@ -36,6 +36,19 @@ export function generateRoleAccessDoc(): string {
     }
     lines.push("");
 
+    // Release 1 (crew redesign K1.1): the same five for every role once a
+    // person switches to the new design. The clock is a top-bar badge there,
+    // so no Clock tab is listed.
+    lines.push("**Bottom bar (phone, new design):**");
+    lines.push("");
+    for (const tab of bottomBarForRole(role, "new")) {
+      if (tab.kind === "menu") lines.push(`- ${tab.label ?? "Menu"} (opens the drawer)`);
+      else if (tab.kind === "capture") lines.push("- Capture (quick-capture sheet)");
+      else if (tab.kind === "clock") lines.push("- Clock (time tracking sheet)");
+      else lines.push(`- ${tab.label} (\`${tab.to}\`)`);
+    }
+    lines.push("");
+
     lines.push("**Menu drawer:**");
     lines.push("");
     const menuItems = menuForRole(role).flatMap((s) => s.items);
