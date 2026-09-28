@@ -8,6 +8,8 @@ import { customTimeRange, includesJob, type JobSelection } from "../../lib/timeR
 import { buildTimeEntriesCsv, completedExportShifts, durationText, groupTimeEntriesByJob, timeEntriesHtml, timeEntrySeconds } from "../../lib/timeEntryExport";
 import { formatApiError } from "../../lib/errors";
 import { useT } from "../../lib/i18n";
+import { useEffectiveRole } from "../../lib/useEffectiveRole";
+import { allProjectBillToKey, canSeeBillTo, listProjectBillToCells } from "../../lib/billTo";
 
 type Person = { id: string; display_name: string };
 function download(blob: Blob, name: string) {
@@ -37,6 +39,19 @@ export function TimeEntryExportDialog({ fromDate, throughDate, people, person, b
   const end = !allTime && !range.error ? range.endIso : null;
   const noJobs = byJob && jobs?.length === 0;
   const projects = useQuery({ queryKey: ["projectsAll"], queryFn: listProjectsAnyStatus, enabled: byJob });
+  // Who each job bills to rides on the Job timecards file only, and only for
+  // somebody allowed to see it (lib/billTo.ts; the database decides the same
+  // thing again). Both date modes get it: full history and custom dates build
+  // the same file. Wait for the role before offering the file, or a fast tap
+  // could save one without the columns the Friday invoice script reads.
+  const { effectiveRole, grants, isLoading: roleLoading } = useEffectiveRole();
+  const billToAllowed = byJob && canSeeBillTo(effectiveRole, grants);
+  const billTo = useQuery({
+    queryKey: allProjectBillToKey, queryFn: listProjectBillToCells, enabled: billToAllowed,
+    staleTime: 0, refetchOnMount: "always",
+  });
+  // Null is a database without bill-to yet: the old columns, which the script reads fine.
+  const billToCells = billToAllowed ? (billTo.data ?? undefined) : undefined;
   const period = allTime ? t("timereport.allTime") : `${from} – ${through}`;
   const query = useQuery({
     queryKey: ["timeEntryExport", person?.id ?? "team", start, end],
@@ -52,9 +67,9 @@ export function TimeEntryExportDialog({ fromDate, throughDate, people, person, b
   const completed = completedExportShifts(selected);
   const unresolved = selected.filter(s => s.status !== "voided" && !s.clock_out_at).length;
   const total = completed.reduce((n, s) => n + timeEntrySeconds(s), 0);
-  const loading = query.isFetching || (byJob && projects.isFetching);
-  const readError = query.error ?? (byJob ? projects.error : null);
-  const ready = !rangeError && !noJobs && query.isSuccess && !loading && !readError && (!byJob || projects.isSuccess);
+  const loading = query.isFetching || (byJob && (projects.isFetching || roleLoading)) || (billToAllowed && billTo.isFetching);
+  const readError = query.error ?? (byJob ? projects.error : null) ?? (billToAllowed ? billTo.error : null);
+  const ready = !rangeError && !noJobs && query.isSuccess && !loading && !readError && (!byJob || projects.isSuccess) && (!billToAllowed || billTo.isSuccess);
   const blocked = !ready || !completed.length || busy;
   const fileStem = `${byJob ? "JobTimecards" : "TimeEntries"}(${allTime ? "all-time" : `${from}-${through}`})`;
   function toggle(id: string) {
@@ -68,7 +83,7 @@ export function TimeEntryExportDialog({ fromDate, throughDate, people, person, b
       const zip = new JSZip();
       if (byJob) {
         for (const job of groupTimeEntriesByJob(completed)) {
-          zip.file(`${safeName(job.label)}-${job.id}-${fileStem}.csv`, buildTimeEntriesCsv(job.shifts, timeZone));
+          zip.file(`${safeName(job.label)}-${job.id}-${fileStem}.csv`, buildTimeEntriesCsv(job.shifts, timeZone, "", false, billToCells));
         }
       } else for (const id of new Set(completed.map(s => s.profile_id))) {
           const rows = completed.filter(s => s.profile_id === id);
@@ -119,11 +134,12 @@ export function TimeEntryExportDialog({ fromDate, throughDate, people, person, b
       {completed.some(s => s.status !== "approved") && <p>{t("timeexport.unapproved")}</p>}
     </div>}
     <p className="muted">{t("timeexport.contents")}</p>
+    {billToCells && <p className="muted" data-testid="export-bill-to-note">{t("timeexport.billTo")}</p>}
     <div className="time-export-actions">
-      <button className="primary" disabled={blocked} onClick={() => download(new Blob([buildTimeEntriesCsv(completed, timeZone, person?.display_name, byJob)], { type: "text/csv;charset=utf-8" }), `${safeName(person?.display_name ?? "Forge")}-${fileStem}.csv`)}>{t("timeexport.csv")}</button>
+      <button className="primary" disabled={blocked} onClick={() => download(new Blob([buildTimeEntriesCsv(completed, timeZone, person?.display_name, byJob, billToCells)], { type: "text/csv;charset=utf-8" }), `${safeName(person?.display_name ?? "Forge")}-${fileStem}.csv`)}>{t("timeexport.csv")}</button>
       {!person && <button disabled={blocked} onClick={() => void separateFiles()}>{t(byJob ? "timeexport.jobsZip" : "timeexport.zip")}</button>}
       <button disabled={blocked} onClick={print}>{t("timeexport.pdf")}</button>
-      <button disabled={loading || Boolean(rangeError) || noJobs} onClick={() => { setActionError(null); void query.refetch(); if (byJob) void projects.refetch(); }}>{t("timereport.refresh")}</button>
+      <button disabled={loading || Boolean(rangeError) || noJobs} onClick={() => { setActionError(null); void query.refetch(); if (byJob) void projects.refetch(); if (billToAllowed) void billTo.refetch(); }}>{t("timereport.refresh")}</button>
     </div>
   </Sheet>;
 }

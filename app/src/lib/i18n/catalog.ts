@@ -3200,6 +3200,7 @@ export const CATALOG = {
   "timeexport.unfinished": { en: "{n} unfinished entries are excluded. Finish those timecards before including them in payroll.", es: "Se excluyen {n} registros sin terminar. Completa esas tarjetas antes de incluirlas en la nómina." },
   "timeexport.unapproved": { en: "Includes entries awaiting approval or correction. Check the Status column before payroll.", es: "Incluye registros pendientes de aprobación o corrección. Revisa la columna Status antes de procesar la nómina." },
   "timeexport.contents": { en: "Detailed entries with employee, start, end, breaks, total, project, cost code, and description. CSV also includes status and time zone. Removed entries are excluded. Exporting does not approve hours.", es: "Registros detallados con empleado, inicio, fin, descansos, total, trabajo, código de costo y descripción. El CSV también incluye estado y zona horaria. Se excluyen los registros eliminados. Exportar no aprueba las horas." },
+  "timeexport.billTo": { en: "Job timecards also end with who each job bills to: Bill To and Bill To QuickBooks ID.", es: "Las horas por trabajo también terminan con a quién se le cobra cada trabajo: Bill To y Bill To QuickBooks ID." },
   "timeexport.csv": { en: "Download CSV", es: "Descargar CSV" },
   "timeexport.zip": { en: "Separate CSV for each person · ZIP", es: "CSV separado por persona · ZIP" },
   "timeexport.pdf": { en: "Forge preview / PDF", es: "Vista Forge / PDF" },
