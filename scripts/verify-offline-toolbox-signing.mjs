@@ -15,6 +15,9 @@
 //   * a signature made offline earlier today, sent now, opens today's
 //     clock-in through the real keyed clock_in;
 //   * a talk deleted since the phone kept it still files, with no talk;
+//   * a talk is signed for its own day: one dated another day than the day
+//     the signature would count for is refused, when that day has its own —
+//     yesterday's talk signed after midnight cannot open today's clock-in;
 //   * the migration applies twice, and rows that exist before it keep every
 //     value they had.
 import { readFile } from 'node:fs/promises';
@@ -84,8 +87,13 @@ const people={installer:1,foreman:2,partner:9,late:3,other:4};
 await db.query('insert into profiles(id,role,display_name) values($1,$2,$3),($4,$5,$6),($7,$8,$9),($10,$11,$12)',
   [id(1),'installer','installer',id(2),'foreman','foreman',id(3),'installer','late',id(4),'installer','other']);
 await db.query('insert into profiles(id,role,is_partner,display_name) values($1,$2,true,$3)',[id(9),'installer','partner']);
-const TALK=uuid(50), GONE=uuid(51);
-await db.query("insert into safety_talks(id,title,body) values($1,'Ladders','Three points of contact.')",[TALK]);
+const TALK=uuid(50), GONE=uuid(51), TALK_YESTERDAY=uuid(52), TALK_3_DAYS_AGO=uuid(53);
+// Each talk on its own company (America/Denver) day, the way the rotation
+// dates them — spelled out, so the run does not depend on the clock's zone.
+const denverDay=(daysAgo)=>`((now() at time zone 'America/Denver')::date - ${daysAgo})`;
+await db.query(`insert into safety_talks(id,title,body,talk_date) values($1,'Ladders','Three points of contact.',${denverDay(0)})`,[TALK]);
+await db.query(`insert into safety_talks(id,title,body,talk_date) values($1,'Glass','Carry it on edge.',${denverDay(1)})`,[TALK_YESTERDAY]);
+await db.query(`insert into safety_talks(id,title,body,talk_date) values($1,'Knives','Blade away.',${denverDay(3)})`,[TALK_3_DAYS_AGO]);
 
 // A row that exists before the migration: a group sign-in and an old
 // self-signature. Both must come through with every value they had.
@@ -199,9 +207,10 @@ const bare=await sign(1,{client:uuid(13),at:null});
 near(bare.signed_at,await nowMs(),5_000,'no phone time means signed now');
 equal(bare.signed_at_note,null);
 
-// More than a day late: kept for the day it was signed, noted.
+// More than a day late: kept for the day it was signed, noted — signing
+// that day's own talk.
 const lateClaim=new Date((await nowMs())-3*24*3600_000).toISOString();
-const late=await sign(3,{client:uuid(14),at:lateClaim});
+const late=await sign(3,{client:uuid(14),at:lateClaim,talk:TALK_3_DAYS_AGO});
 equal(new Date(late.signed_at).toISOString(),lateClaim,'a signature that arrives three days late keeps its own day');
 equal(late.signed_at_note,'arrived_late','and says it came in late');
 await asUser(3);
@@ -210,6 +219,21 @@ equal((await row('select count(*)::int n from time_shifts where profile_id=$1',[
 await sign(3,{client:uuid(15),at:new Date().toISOString()});
 await asUser(3);
 ok((await db.query(KEYED_IN,[uuid(90),uuid(91),'data',uuid(21)])).rows[0].id,'today\'s own signature does');
+
+// --- A talk is signed for its own day (Codex review of #666) ------------------
+// Yesterday's talk, signed after midnight, would count for today: refused,
+// with nothing kept, when today has a talk of its own.
+await denied(()=>sign(4,{client:uuid(30),talk:TALK_YESTERDAY,at:new Date().toISOString()}),/toolbox talk of/);
+// Today's talk, signed with a time three days back, would count for that day —
+// which has its own talk: refused too.
+await denied(()=>sign(4,{client:uuid(31),talk:TALK,at:lateClaim}),/toolbox talk of/);
+equal((await row('select count(*)::int n from toolbox_completions where client_id in ($1,$2)',[uuid(30),uuid(31)])).n,0,'a signature refused for its day leaves no row');
+// A day with no talk of its own (an empty library, a database older than the
+// rotation) takes whatever talk the phone showed, as it always has.
+const noTalkDay=new Date((await nowMs())-5*24*3600_000).toISOString();
+const legacy=await sign(4,{client:uuid(32),talk:TALK,at:noTalkDay});
+equal(legacy.talk_id,TALK,'a day with no talk of its own files the talk the phone showed');
+equal(legacy.signed_at_note,'arrived_late');
 
 // --- A talk deleted since the phone kept it ----------------------------------
 const orphan=await sign(4,{client:uuid(16),talk:GONE});

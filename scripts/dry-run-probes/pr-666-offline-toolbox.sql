@@ -9,6 +9,9 @@
 --   * a phone clock running ahead: filed at arrival, noted phone_clock_ahead;
 --   * a signature that arrives three days late: kept on its own day, noted
 --     arrived_late — and it does NOT open today's clock-in;
+--   * a talk is signed for its own day (Codex review of #666): yesterday's
+--     talk signed now, or today's talk with a time three days back, is
+--     refused, since each of those days has a talk of its own;
 --   * a talk deleted since the phone kept it: filed with no talk;
 --   * nobody else can send it: another person, an anonymous caller, a path
 --     in somebody else's folder — all refused;
@@ -28,6 +31,8 @@ declare
   v_job_code text;
   v_cost_code uuid;
   v_talk uuid;
+  v_talk_yesterday uuid;
+  v_talk_late uuid;
   v_role text;
   v_today date := (now() at time zone 'America/Denver')::date;
   v_earlier timestamptz;
@@ -63,6 +68,20 @@ begin
   if v_talk is null then
     raise exception 'dry run: there is no toolbox talk for today and the rotation made none (empty library?), so there is nothing to sign.';
   end if;
+  -- Yesterday's talk and the talk of the day three days back, the same way:
+  -- the day's own row, or the one the rotation makes for it (rolled back).
+  select id into v_talk_yesterday from public.safety_talks where talk_date = v_today - 1 order by created_at desc limit 1;
+  if v_talk_yesterday is null then
+    select (public.get_or_create_toolbox_talk_for_date(v_today - 1)).id into v_talk_yesterday;
+  end if;
+  select id into v_talk_late from public.safety_talks
+   where talk_date = (v_late_at at time zone 'America/Denver')::date order by created_at desc limit 1;
+  if v_talk_late is null then
+    select (public.get_or_create_toolbox_talk_for_date((v_late_at at time zone 'America/Denver')::date)).id into v_talk_late;
+  end if;
+  if v_talk_yesterday is null or v_talk_late is null then
+    raise exception 'dry run: the rotation made no talk for yesterday or for three days back (empty library?), so the own-day rule has nothing to check.';
+  end if;
   -- A clean day for this login, all of it rolled back: no signature of its
   -- own for today (so the clock-in below is opened by the probe's signature
   -- and nothing else), and no open shift.
@@ -96,8 +115,8 @@ begin
   -- ---- a late signature first: kept on its day, and it opens nothing today -------
   v_role := pg_temp.dry_run_act_as(v_who);
   perform pg_temp.dry_run_check('acting as the QA installer', v_role = 'installer' and current_user = 'authenticated', v_role);
-  v_late := public.sign_toolbox_talk(v_c, v_who, v_talk, 'QA Installer',
-    v_who::text || '/' || v_talk::text || '/late-' || v_c::text || '-signature.png', null, '{"title":"late"}', v_late_at);
+  v_late := public.sign_toolbox_talk(v_c, v_who, v_talk_late, 'QA Installer',
+    v_who::text || '/' || v_talk_late::text || '/late-' || v_c::text || '-signature.png', null, '{"title":"late"}', v_late_at);
   perform pg_temp.dry_run_check('three days late: kept on the day it was signed, noted arrived_late',
     v_late.signed_at = v_late_at and v_late.signed_at_note = 'arrived_late' and v_late.phone_signed_at = v_late_at,
     coalesce(v_late.signed_at_note, 'no note'));
@@ -125,6 +144,16 @@ begin
   perform pg_temp.dry_run_check('a phone an hour ahead: filed at arrival, noted phone_clock_ahead, its claim kept',
     v_ahead.signed_at = now() and v_ahead.signed_at_note = 'phone_clock_ahead' and v_ahead.phone_signed_at = v_ahead_at,
     coalesce(v_ahead.signed_at_note, 'no note'));
+
+  -- ---- a talk is signed for its own day ----------------------------------------------
+  perform pg_temp.dry_run_expect_error('yesterday''s talk signed now is refused: it would count for today, which has its own talk',
+    format('select public.sign_toolbox_talk(%L::uuid, %L::uuid, %L::uuid, %L, %L, null, null, now())',
+      gen_random_uuid(), v_who, v_talk_yesterday, 'QA Installer', v_who::text || '/y/y-signature.png'),
+    'toolbox talk of');
+  perform pg_temp.dry_run_expect_error('today''s talk with a time three days back is refused: that day has its own talk',
+    format('select public.sign_toolbox_talk(%L::uuid, %L::uuid, %L::uuid, %L, %L, null, null, %L::timestamptz)',
+      gen_random_uuid(), v_who, v_talk, 'QA Installer', v_who::text || '/y/z-signature.png', v_late_at),
+    'toolbox talk of');
 
   -- ---- a talk deleted since the phone kept it ----------------------------------------
   v_orphan := public.sign_toolbox_talk(v_d, v_who, gen_random_uuid(), 'QA Installer',

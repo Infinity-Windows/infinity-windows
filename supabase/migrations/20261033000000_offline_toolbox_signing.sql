@@ -48,6 +48,16 @@
 --     was made (lib/useToolboxGate.ts).
 --   * no phone time at all: signing now.
 --
+-- A TALK IS SIGNED FOR ITS OWN DAY (Codex review of #666, 2026-09-27). A
+-- phone left open across midnight still shows yesterday's talk; signed after
+-- midnight, it would be filed with today's time and open today's clock-in
+-- with a talk nobody read today. The phone refuses that before anything is
+-- kept (lib/toolbox.ts), and so does this function: a signature whose talk is
+-- dated another day than the one it is filed for is refused — when that day
+-- has a talk of its own. A day with none (an empty library, a database older
+-- than the rotation) takes whatever talk the phone showed, as it always has,
+-- and a talk deleted since the phone kept it still files with no talk.
+--
 -- AFTER MIDNIGHT. clock_in judges its gate by the day the clock-in ARRIVES,
 -- and that is unchanged here. A signature made at 11:50 PM and a clock-in
 -- tapped at 11:55 PM, both sent after midnight, file the signature for the day
@@ -99,6 +109,8 @@ declare
   v_folder text;
   v_row public.toolbox_completions;
   v_talk uuid;
+  v_talk_day date;
+  v_day date;
   v_at timestamptz;
   v_note text;
 begin
@@ -143,7 +155,7 @@ begin
   -- A lead can re-point a day's talk after the phone kept it (assignTalk
   -- deletes an unsigned instance). The person signed what the phone showed
   -- them; the snapshot says what that was.
-  select st.id into v_talk from public.safety_talks st where st.id = p_talk_id;
+  select st.id, st.talk_date into v_talk, v_talk_day from public.safety_talks st where st.id = p_talk_id;
 
   if p_signed_at is null then
     v_at := v_now;
@@ -155,6 +167,16 @@ begin
     v_note := 'arrived_late';
   else
     v_at := least(p_signed_at, v_now);
+  end if;
+
+  -- The day this signature will count for — the day clock_in's gate reads —
+  -- must be its talk's own day (see A TALK IS SIGNED FOR ITS OWN DAY above).
+  v_day := (v_at at time zone 'America/Denver')::date;
+  if v_talk is not null and v_talk_day is distinct from v_day
+     and exists (select 1 from public.safety_talks st where st.talk_date = v_day) then
+    raise exception 'This signature is for the toolbox talk of %, but it would count for %. Sign that day''s own talk.',
+      to_char(v_talk_day, 'FMMonth FMDD'), to_char(v_day, 'FMMonth FMDD')
+      using errcode = '22023';
   end if;
 
   insert into public.toolbox_completions
@@ -172,4 +194,4 @@ revoke all on function public.sign_toolbox_talk(uuid, uuid, uuid, text, text, te
 grant execute on function public.sign_toolbox_talk(uuid, uuid, uuid, text, text, text, text, timestamptz) to authenticated;
 
 comment on function public.sign_toolbox_talk(uuid, uuid, uuid, text, text, text, text, timestamptz) is
-  'File a toolbox talk signature from the phone''s outbox (20261033000000). The caller must be the signer; a repeat of the client id returns the signature already filed; a talk deleted since the phone kept it files with talk_id null. signed_at: the phone''s time, clamped to arrival; arrival if the phone''s time is more than 2 minutes ahead (signed_at_note phone_clock_ahead); the phone''s time, noted arrived_late, if it arrived more than 24 hours later.';
+  'File a toolbox talk signature from the phone''s outbox (20261033000000). The caller must be the signer; a repeat of the client id returns the signature already filed; a talk deleted since the phone kept it files with talk_id null. signed_at: the phone''s time, clamped to arrival; arrival if the phone''s time is more than 2 minutes ahead (signed_at_note phone_clock_ahead); the phone''s time, noted arrived_late, if it arrived more than 24 hours later. Refused when the talk is dated another day than the one the signature counts for (its America/Denver day) and that day has a talk of its own.';
