@@ -30,6 +30,7 @@ await db.exec(`
   create function public.role_rank(p_role text) returns int language sql immutable as $$
     select case p_role when 'owner' then 3 when 'big_boss' then 3 when 'supervisor' then 2 when 'admin' then 2
       when 'foreman' then 1 when 'lead' then 1 else 0 end $$;
+  create function public.is_partner_user() returns boolean language sql security definer set search_path = public as $$ select coalesce((select is_partner from profiles where id = auth.uid()), false) $$;
   -- The real fence is checked by scripts/test_sandbox_guard.py.
   create function public.attach_sandbox_guards() returns void language sql as $$ select $$;
   insert into profiles(id, role, can_see_costs, is_partner, retired_at, access_revoked_at) values

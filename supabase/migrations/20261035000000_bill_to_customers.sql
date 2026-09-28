@@ -247,6 +247,9 @@ create trigger project_bill_to_default
 -- ===========================================================================
 -- 4. Row security: read by can_see_bill_to(), written by nobody directly
 -- ===========================================================================
+-- Every policy also names is_partner_user() out loud, as the partner wall
+-- (20260950000000, scripts/test_partner_wall.py) requires of every SELECT
+-- policy, even though can_see_bill_to() already refuses a builder login.
 alter table public.bill_to_customers enable row level security;
 alter table public.project_bill_to enable row level security;
 alter table public.project_bill_to_history enable row level security;
@@ -267,17 +270,17 @@ grant all on table public.project_bill_to_history to service_role;
 drop policy if exists bill_to_customers_read on public.bill_to_customers;
 create policy bill_to_customers_read on public.bill_to_customers
   for select to authenticated
-  using (public.can_see_bill_to(auth.uid()));
+  using (not public.is_partner_user() and public.can_see_bill_to(auth.uid()));
 
 drop policy if exists project_bill_to_read on public.project_bill_to;
 create policy project_bill_to_read on public.project_bill_to
   for select to authenticated
-  using (public.can_see_bill_to(auth.uid()));
+  using (not public.is_partner_user() and public.can_see_bill_to(auth.uid()));
 
 drop policy if exists project_bill_to_history_read on public.project_bill_to_history;
 create policy project_bill_to_history_read on public.project_bill_to_history
   for select to authenticated
-  using (public.can_see_bill_to(auth.uid()));
+  using (not public.is_partner_user() and public.can_see_bill_to(auth.uid()));
 
 
 -- ===========================================================================
