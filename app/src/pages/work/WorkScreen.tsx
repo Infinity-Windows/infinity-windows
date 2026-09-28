@@ -37,13 +37,13 @@ import { getMyProfile, listMyOpeningsAllJobs, listOpenings } from "../../lib/ins
 import { blockedUnits, listSessionsForOpenings } from "../../lib/install/sessions";
 import { isForemanPlus } from "../../lib/install/types";
 import { pendingPhotos, subscribe as subscribeOutbox } from "../../lib/offline/outbox";
-import { getTodayTalk, listQcQueue } from "../../lib/ops";
+import { listQcQueue } from "../../lib/ops";
 import { paidTimeRuleActive } from "../../lib/paidTimeRule";
 import { useSafeSurface } from "../../lib/pwa/useSafeSurface";
 import { listMyPublished } from "../../lib/schedule/api";
 import { addDaysISO } from "../../lib/schedule/dates";
 import { isOnTheClock } from "../../lib/timeclock";
-import { myTodayCompletion } from "../../lib/toolbox";
+import { useTodayTalk, useToolboxToday } from "../../lib/useToolboxGate";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import { headsUps } from "../../lib/work/headsUps";
 import { chooseNextUp } from "../../lib/work/nextUp";
@@ -111,16 +111,12 @@ export function WorkScreen() {
       : null;
 
   // The morning gate: today's talk, whether it is signed, and the rule.
-  const todayTalk = useQuery({ queryKey: ["todayTalk"], queryFn: () => getTodayTalk() });
-  const toolboxDone = useQuery({
-    queryKey: ["toolboxToday", profileId],
-    queryFn: () => myTodayCompletion(profileId!),
-    enabled: Boolean(profileId),
-  });
+  const todayTalk = useTodayTalk();
+  const toolboxDone = useToolboxToday(profileId);
   const settings = useQuery({ queryKey: ["companySettings"], queryFn: getCompanySettings });
   const gate: StartDayInput = {
     talkExists: todayTalk.isSuccess ? todayTalk.data !== null : null,
-    signedToday: toolboxDone.isSuccess ? Boolean(toolboxDone.data) : null,
+    signedToday: toolboxDone.isSuccess ? Boolean(toolboxDone.data) && !toolboxDone.refused : null,
     ruleActive: paidTimeRuleActive(settings.data, today),
   };
   const locked = unitWorkLocked(gate);
@@ -240,6 +236,7 @@ export function WorkScreen() {
         scheduleSettled={schedule.isSuccess || schedule.isError}
         talk={todayTalk.data ?? null}
         gate={gate}
+        toolboxDone={toolboxDone}
         onShiftChanged={onShiftChanged}
       />
       <TodayCard

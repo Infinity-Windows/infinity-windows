@@ -11,11 +11,12 @@
 // made instead of a second one. Deliberately thin: it never forks the punch.
 
 import { isNetworkError } from "../offline/outbox-core";
-import { enqueueClockIn, pendingRefForShift } from "../offline/outbox";
+import { enqueueClockIn, pendingRefForShift, todaysSignatureOnPhone } from "../offline/outbox";
 import { clockIn, type ClockPunch, type CostCode, type TimeShift } from "../timeclock";
 import type { GeoFix } from "../geo";
 import type { JobMode } from "../jobModes";
 import type { Project } from "../types";
+import { signedInUserId } from "../signedIn";
 
 export interface StartShiftInput {
   profileId: string;
@@ -80,6 +81,27 @@ export function synthesizeQueuedShift(
 
 /** Clock in now, or — with no signal — save the punch on the phone. */
 export async function startShiftOrQueue(i: StartShiftInput): Promise<StartShiftResult> {
+  // The geolocation wait can outlive an account switch on a shared phone.
+  // Never let that old tap use the new account's live token or queue owner.
+  if (signedInUserId() !== i.profileId) {
+    throw new Error("This clock-in belongs to another account on this phone. Sign in again before clocking in.");
+  }
+  // A signature still on this phone must reach Forge first. Sending this
+  // clock-in live would be refused by the server gate before that dependency
+  // can drain; the outbox preserves the tap's punch and owner on both writes.
+  if (todaysSignatureOnPhone(i.profileId)) {
+    const entryId = await enqueueClockIn({
+      projectId: i.projectId,
+      costCodeId: i.costCodeId,
+      lat: i.geo.lat ?? null,
+      lng: i.geo.lng ?? null,
+      note: i.note,
+      mode: i.mode,
+      punch: i.punch,
+      profileId: i.profileId,
+    });
+    return { queued: true, shift: synthesizeQueuedShift(entryId, i, i.punch.tappedAt) };
+  }
   try {
     const shift = await clockIn(i.projectId, i.costCodeId, i.geo, i.note, i.mode, i.punch);
     return { queued: false, shift };
@@ -95,6 +117,7 @@ export async function startShiftOrQueue(i: StartShiftInput): Promise<StartShiftR
       note: i.note,
       mode: i.mode,
       punch: i.punch,
+      profileId: i.profileId,
     });
     return { queued: true, shift: synthesizeQueuedShift(entryId, i, i.punch.tappedAt) };
   }

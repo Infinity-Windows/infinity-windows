@@ -30,6 +30,9 @@ let restoring = false;
 let geoGate: Promise<void> | null = null;
 let talk: { id: string; title: string; body: string; talk_date: string } | null = null;
 let signed: { id: string } | null = null;
+let pendingSign = false;
+let refusedSign = false;
+let signedInId = ME;
 let ruleDate: string | null = null;
 let myOpenings: ProjectOpening[] = [];
 let units: WorkUnit[] = [];
@@ -74,6 +77,11 @@ vi.mock("../../lib/toolbox", () => ({
   myTodayCompletion: async () => signed,
   submitToolboxCompletion: vi.fn(),
 }));
+vi.mock("../../lib/useToolboxGate", () => ({
+  useTodayTalk: () => ({ data: talk, isSuccess: true }),
+  useToolboxToday: () => ({ data: signed, isSuccess: true, pending: pendingSign, refused: refusedSign }),
+}));
+vi.mock("../../lib/signedIn", () => ({ signedInUserId: () => signedInId }));
 vi.mock("../../lib/companySettings", () => ({
   getCompanySettings: async () => ({
     id: 1,
@@ -105,6 +113,7 @@ vi.mock("../../lib/vehicles/api", () => ({ listVehicleLinksForAssignments: async
 vi.mock("../../lib/offline/outbox", () => ({
   pendingPhotos: async () => ({ count: 0, oldestAt: null }),
   subscribe: () => () => {},
+  todaysSignatureOnPhone: () => pendingSign ? { entryId: "signature-1" } : null,
   enqueueClockIn: vi.fn(async () => "entry-1"),
   pendingRefForShift: (id: string) => `pending:${id}`,
 }));
@@ -204,6 +213,9 @@ beforeEach(() => {
   vi.mocked(enqueueClockIn).mockClear();
   talk = null;
   signed = null;
+  pendingSign = false;
+  refusedSign = false;
+  signedInId = ME;
   ruleDate = null;
   myOpenings = [];
   units = [];
@@ -609,12 +621,38 @@ describe("Start day and a clock that is not known yet (Codex review of #642)", (
     expect(enqueueClockIn).toHaveBeenCalledTimes(1);
     const queued = vi.mocked(enqueueClockIn).mock.calls[0][0];
     expect(queued.punch).toBe(punch);
-    expect(queued).toMatchObject({ projectId: JOB, costCodeId: "cc-gen", mode: "data" });
+    expect(queued).toMatchObject({ projectId: JOB, costCodeId: "cc-gen", mode: "data", profileId: ME });
     expect(qc!.getQueryData<TimeShift>(["openShift", ME])).toMatchObject({
       id: "pending:entry-1",
       clock_in_at: punch.tappedAt,
       job_mode: "data",
     });
+  });
+
+  it("a signature still on the phone makes Start day queue behind it without a live clock-in", async () => {
+    talk = TALK;
+    signed = { id: "signature-1" };
+    pendingSign = true;
+    const el = await mount();
+    await act(async () => startDay(el)!.click());
+    await settle();
+    expect(clockIn).not.toHaveBeenCalled();
+    expect(enqueueClockIn).toHaveBeenCalledWith(expect.objectContaining({ profileId: ME, punch: expect.any(Object) }));
+    expect(el.querySelector('.toolbox-sign-status[data-state="pending"]')).not.toBeNull();
+    expect(qc!.getQueryData<TimeShift>(["openShift", ME])?.id).toBe("pending:entry-1");
+  });
+
+  it("a Start day tap cannot clock in as a new account after the location wait", async () => {
+    signed = { id: "c1" };
+    let releaseGeo!: () => void;
+    geoGate = new Promise<void>((resolve) => { releaseGeo = resolve; });
+    const el = await mount();
+    await act(async () => startDay(el)!.click());
+    signedInId = "bbbbbbbb-0000-4000-8000-00000000000b";
+    releaseGeo();
+    await settle();
+    expect(clockIn).not.toHaveBeenCalled();
+    expect(enqueueClockIn).not.toHaveBeenCalled();
   });
 
   it("a server no hands the clock sheet this tap's whole punch, so its retry is the same punch", async () => {

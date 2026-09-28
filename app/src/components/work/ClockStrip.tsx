@@ -57,6 +57,8 @@ import { pushToast, toastSuccess } from "../../lib/toast";
 import { isPendingShiftId, startDayPlan, type StartDayInput } from "../../lib/work/startDay";
 import { startShiftOrQueue } from "../../lib/work/startShift";
 import { ToolboxSignCard } from "../clock/ToolboxSignCard";
+import { ToolboxSignStatus } from "../clock/ToolboxSignStatus";
+import type { ToolboxTodayView } from "../../lib/useToolboxGate";
 import { JobPickSheet, type JobPick } from "./JobPickSheet";
 
 function clockInLabel(iso: string): string {
@@ -81,11 +83,12 @@ export interface ClockStripProps {
   scheduleSettled: boolean;
   talk: SafetyTalk | null;
   gate: StartDayInput;
+  toolboxDone: ToolboxTodayView;
   /** Refetch the shift and everything keyed off it after a punch. */
   onShiftChanged: () => void;
 }
 
-export function ClockStrip({ profileId, shift, clockKnown, todayJobId, scheduleSettled, talk, gate, onShiftChanged }: ClockStripProps) {
+export function ClockStrip({ profileId, shift, clockKnown, todayJobId, scheduleSettled, talk, gate, toolboxDone, onShiftChanged }: ClockStripProps) {
   const t = useT();
   const queryClient = useQueryClient();
   const onClock = isOnTheClock(shift);
@@ -271,6 +274,7 @@ export function ClockStrip({ profileId, shift, clockKnown, todayJobId, scheduleS
             </span>
           </div>
           {pending && <p className="ws-meta">{t("work.clock.queued")}</p>}
+          <ToolboxSignStatus done={toolboxDone} showSent={false} />
           <div className="ws-clock-actions">
             <button type="button" className="ws-btn ws-btn--primary" onClick={() => openClockGlobally()}>
               {onBreak ? <Play size={20} aria-hidden /> : <Coffee size={20} aria-hidden />}{" "}
@@ -359,6 +363,8 @@ export function ClockStrip({ profileId, shift, clockKnown, todayJobId, scheduleS
           {canStart && plan === "clock-in-then-sign" && <p className="ws-meta ws-center">{t("work.clock.paidFromTap")}</p>}
         </>
       )}
+
+      <ToolboxSignStatus done={toolboxDone} showSent={false} />
 
       <button type="button" className="ws-link" onClick={() => openClockGlobally()}>
         {t("work.clock.moreOptions")}

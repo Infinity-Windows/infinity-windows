@@ -147,6 +147,15 @@ beforeEach(async () => {
 });
 
 describe("a queued write goes out only as the person who saved it", () => {
+  it("Work counts only the current person's pending photos on a shared phone", async () => {
+    await outbox.enqueue({ op: "photo_upload", ownerId: A.user.id, hasBlob: true, payload: { path: "a/photo.jpg" } }, new Blob(["a"]));
+    switchTo(B);
+    await outbox.enqueue({ op: "photo_upload", ownerId: B.user.id, hasBlob: true, payload: { path: "b/photo.jpg" } }, new Blob(["b"]));
+    expect((await outbox.pendingPhotos()).count).toBe(1);
+    switchTo(A);
+    expect((await outbox.pendingPhotos()).count).toBe(1);
+  });
+
   it("a stale A screen cannot save A's signature or clock-in after B signs in", async () => {
     switchTo(B);
     await expect(outbox.enqueueToolboxSign(toolboxSignature(A.user.id), null)).rejects.toThrow(/another account/);

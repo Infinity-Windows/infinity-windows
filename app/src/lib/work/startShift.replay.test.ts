@@ -16,7 +16,7 @@ vi.mock("../supabase", () => {
     rpc: (...args: unknown[]) => rpc(...args),
     auth: {
       getSession: async () => ({
-        data: { session: { access_token: "test-token", user: { id: "e2e-user", email: "e2e@example.test" } } },
+        data: { session: { access_token: "test-token", user: { id: "00000000-0000-4000-8000-0000000000e2", email: "e2e@example.test" } } },
         error: null,
       }),
     },
@@ -25,7 +25,7 @@ vi.mock("../supabase", () => {
 });
 vi.mock("../signedIn", () => ({
   signedInEmail: () => "e2e@example.test",
-  signedInUserId: () => "e2e-user",
+  signedInUserId: () => "00000000-0000-4000-8000-0000000000e2",
   subscribeSignedIn: () => () => {},
 }));
 vi.mock("../offline/telemetry", () => ({ logOfflineEvent: () => {} }));
