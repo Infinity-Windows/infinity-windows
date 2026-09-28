@@ -52,7 +52,12 @@ import { pendingLegacyUploadCount } from "../lib/install/legacyUploadQueue";
 import { readWorkQueue, retryWork, syncWork, WORK_QUEUE_EVENT } from "../lib/customWork/queue";
 import type { ServiceCommand } from "../lib/servicing/model";
 import type { OutboxEntry } from "../lib/offline/outbox-core";
-import { useT } from "../lib/i18n";
+import {
+  buildLegacyClockRecoveryRecord,
+  formatLegacyClockRecoveryText,
+  isUnknownClockEntry,
+} from "../lib/offline/legacyClockRecovery";
+import { useT, type TFn } from "../lib/i18n";
 
 /** The queues keyed by person: custom work, servicing, and what the retired
  * upload store still holds. Servicing lives outside the shell bundle and is
@@ -101,6 +106,69 @@ function fmtWhen(ms: number): string {
   return Number.isNaN(d.getTime()) ? "" : d.toLocaleString();
 }
 
+/**
+ * A legacy clock punch with no known owner (Codex review of #660, P1 #1):
+ * unlike every other unknown-owner row, it never offers Throw away or Try
+ * again — a clock punch is the one write where deleting it can lose the only
+ * record a real punch happened. Instead it shows the whitelisted facts and a
+ * copyable/downloadable recovery record for manual reconciliation. Reads the
+ * entry only; never retries, discards, or replays it.
+ */
+function ClockRecoveryRow({ entry, t }: { entry: OutboxEntry; t: TFn }) {
+  const [copied, setCopied] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
+  const record = buildLegacyClockRecoveryRecord(entry);
+  const text = formatLegacyClockRecoveryText(record, t);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyFailed(false);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopyFailed(true);
+    }
+  };
+
+  return (
+    <li key={entry.id} data-testid={`stuck-unknown-clock-${entry.id}`}>
+      <div style={{ fontWeight: 600 }}>{writeLabel(entry, t)}</div>
+      <div className="muted" style={{ fontSize: 12.5 }}>{t("stuck.unknownClock.ownerUnknown")}</div>
+      <p className="muted" style={{ fontSize: 12.5 }}>{t("stuck.unknownClock.recordLabel")}</p>
+      <pre
+        style={{
+          whiteSpace: "pre-wrap",
+          overflowWrap: "anywhere",
+          fontSize: 14,
+          lineHeight: 1.45,
+          fontFamily: "inherit",
+          background: "var(--card-raised)",
+          color: "var(--text)",
+          padding: 8,
+          borderRadius: 6,
+          userSelect: "text",
+        }}
+      >
+        {text}
+      </pre>
+      <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+        <button type="button" className="button-like" onClick={() => void copy()}>
+          {copied ? t("stuck.unknownClock.copied") : t("stuck.unknownClock.copy")}
+        </button>
+        <a
+          className="button-like"
+          href={`data:text/plain;charset=utf-8,${encodeURIComponent(text)}`}
+          download={`legacy-clock-${entry.id}.txt`}
+        >
+          {t("stuck.unknownClock.download")}
+        </a>
+      </div>
+      {copyFailed && <p className="error" style={{ fontSize: 12.5 }}>{t("stuck.unknownClock.copyError")}</p>}
+    </li>
+  );
+}
+
 export function StuckWrites() {
   const t = useT();
   const queryClient = useQueryClient();
@@ -111,8 +179,9 @@ export function StuckWrites() {
   // person's to decide.
   const writesQ = useQuery({ queryKey: ["queuedWrites"], queryFn: listMine });
   // ...and work saved before an update that names no one (Codex review of
-  // #660, P1 #1): never sent as anyone. Shown, with Throw away as the one way
-  // out. One read for both, finished units included (Codex's full re-check).
+  // #660, P1 #1): never sent as anyone. Legacy clock punches keep a recovery
+  // record here; other unknown writes may be discarded after two taps. One
+  // read for both, finished units included (Codex's full re-check).
   const heldQ = useQuery({
     queryKey: ["heldWrites"],
     queryFn: async () => ({
@@ -257,9 +326,9 @@ export function StuckWrites() {
     t,
   );
   const loading = writesQ.isLoading || installsQ.isLoading || personalQ.isLoading;
-  // Someone else's work (read-only), then work saved before an update that
-  // names no one (Throw away is the one way out). Same rows as above; never a
-  // Try again, never "send it as me".
+  // Someone else's work (read-only), then non-clock work saved before an
+  // update that names no one. Same rows as above; never a Try again or
+  // "send it as me". Legacy clock rows use ClockRecoveryRow instead.
   const othersRows = (entries: OutboxEntry[], installs: InstallOutboxRecord[], canDiscard: boolean): StuckRow[] => [
     ...entries.map((e): StuckRow => ({
       id: e.id,
@@ -287,12 +356,19 @@ export function StuckWrites() {
     })),
   ];
   const held = othersRows(heldQ.data?.held ?? [], heldQ.data?.installs.held ?? [], false);
-  const unknownOwner = othersRows(heldQ.data?.unknown ?? [], heldQ.data?.installs.unknown ?? [], true);
+  // A legacy CLOCK punch with no known owner never gets Throw away — see
+  // ClockRecoveryRow. Everything else unknown-owner keeps the existing
+  // two-tap Throw away behavior via othersRows.
+  const allUnknown = heldQ.data?.unknown ?? [];
+  const unknownClockEntries = allUnknown.filter(isUnknownClockEntry);
+  const unknownOtherEntries = allUnknown.filter((e) => !isUnknownClockEntry(e));
+  const unknownOwner = othersRows(unknownOtherEntries, heldQ.data?.installs.unknown ?? [], true);
   const nothingToSend =
     sections.needsYou.length === 0 &&
     sections.waiting.length === 0 &&
     held.length === 0 &&
-    unknownOwner.length === 0;
+    unknownOwner.length === 0 &&
+    unknownClockEntries.length === 0;
 
   const renderRow = (e: StuckRow) => {
     const confirming = confirmingId === e.id;
@@ -440,19 +516,38 @@ export function StuckWrites() {
         </section>
       )}
 
-      {([
-        ["held", held],
-        ["unknown", unknownOwner],
-      ] as const).map(([kind, list]) =>
-        list.length === 0 ? null : (
-          <section key={kind} aria-labelledby={`stuck-${kind}-title`} style={{ marginTop: 20 }}>
-            <h2 id={`stuck-${kind}-title`} style={{ fontSize: 16 }}>{t(`stuck.${kind}.title`)}</h2>
-            <p className="muted">{t(`stuck.${kind}.body`)}</p>
-            <ul className="unit-list" data-testid={`stuck-${kind}`}>
-              {list.map(renderRow)}
-            </ul>
-          </section>
-        ),
+      {held.length > 0 && (
+        <section aria-labelledby="stuck-held-title" style={{ marginTop: 20 }}>
+          <h2 id="stuck-held-title" style={{ fontSize: 16 }}>{t("stuck.held.title")}</h2>
+          <p className="muted">{t("stuck.held.body")}</p>
+          <ul className="unit-list" data-testid="stuck-held">
+            {held.map(renderRow)}
+          </ul>
+        </section>
+      )}
+
+      {(unknownOwner.length > 0 || unknownClockEntries.length > 0) && (
+        <section aria-labelledby="stuck-unknown-title" style={{ marginTop: 20 }}>
+          <h2 id="stuck-unknown-title" style={{ fontSize: 16 }}>{t("stuck.unknown.title")}</h2>
+          {unknownOwner.length > 0 && (
+            <>
+              <p className="muted">{t("stuck.unknown.body")}</p>
+              <ul className="unit-list" data-testid="stuck-unknown">
+                {unknownOwner.map(renderRow)}
+              </ul>
+            </>
+          )}
+          {unknownClockEntries.length > 0 && (
+            <>
+              <p className="muted">{t("stuck.unknownClock.body")}</p>
+              <ul className="unit-list" data-testid="stuck-unknown-clock">
+                {unknownClockEntries.map((e) => (
+                  <ClockRecoveryRow key={e.id} entry={e} t={t} />
+                ))}
+              </ul>
+            </>
+          )}
+        </section>
       )}
     </div>
   );

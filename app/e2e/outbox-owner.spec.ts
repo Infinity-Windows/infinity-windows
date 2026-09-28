@@ -180,10 +180,11 @@ test("signed out with a punch still on the phone: nothing goes out as nobody, an
   expect(clockIns[0]).toEqual({ authorization: `Bearer ${A_SESSION.access_token}`, clientId: "punch-of-A" });
 });
 
-test("a punch saved before owners were recorded is never sent as anyone, and Stuck writes offers only to throw it away", async ({ page }) => {
+test("a punch saved before owners were recorded stays on the phone with a recovery record", async ({ page }) => {
   // Codex review of #660, P1 #1: an old build's punch names no one, and who
   // happens to be signed in is not evidence of whose it is.
   await useSupabaseFixtures(page, { role: "installer" });
+  await page.emulateMedia({ colorScheme: "dark" });
   await hideWrongProjectBanner(page);
   await stubGeolocationDenied(page);
   const clockIns = await server(page);
@@ -206,9 +207,11 @@ test("a punch saved before owners were recorded is never sent as anyone, and Stu
         projectId: "ebf64f94-0413-4434-aeb3-1aff228fb5b3",
         costCodeId: "22222222-bbbb-4bbb-8bbb-222222222222",
         clientId: "legacy-punch-client-id",
-        tappedAt: new Date(Date.now() - 3_600_000).toISOString(),
+        tappedAt: "2026-09-20T14:03:00.000Z",
         clockCheckedAt: null,
         clockSkewMs: null,
+        injuryNote: "private-medical-detail",
+        authToken: "private-access-token",
       },
       createdAt: Date.now() - 3_600_000,
       attemptCount: 0,
@@ -238,13 +241,34 @@ test("a punch saved before owners were recorded is never sent as anyone, and Stu
   // this width: open the one a person can see.
   await page.locator(".sync-pill:visible").first().click();
   await expect(page).toHaveURL(/\/stuck$/);
-  const section = page.getByTestId("stuck-unknown");
+  const section = page.getByTestId("stuck-unknown-clock");
+  const recoveryDetail = section.locator("pre");
+  const recoveryColors = await recoveryDetail.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return { background: style.backgroundColor, text: style.color };
+  });
+  expect(recoveryColors).toEqual({ background: "oklch(0.185 0.018 35)", text: "oklch(0.94 0.005 40)" });
+  await test.info().attach("legacy-clock-dark-phone", {
+    body: await page.screenshot({ fullPage: true }),
+    contentType: "image/png",
+  });
   await expect(page.getByText("Saved before an update — Forge can't tell who saved it")).toBeVisible();
   await expect(section).toContainText("Clock in");
-  await expect(section.getByRole("button")).toHaveText(["Throw away"]);
-  await section.getByRole("button", { name: "Throw away" }).click();
-  await section.getByRole("button", { name: "Sure? this deletes it" }).click();
-  await expect(section).toHaveCount(0);
-  expect(await queued(page)).toEqual([]);
+  await expect(section).toContainText("Owner: UNKNOWN");
+  await expect(section).toContainText("legacy-punch-client-id");
+  await expect(section).toContainText("2026-09-20T14:03:00.000Z");
+  await expect(section).not.toContainText("private-medical-detail");
+  await expect(section).not.toContainText("private-access-token");
+  await expect(section.getByRole("button", { name: "Throw away" })).toHaveCount(0);
+  await expect(section.getByRole("button", { name: "Try again" })).toHaveCount(0);
+  await expect(section.getByRole("button", { name: "Copy record" })).toBeVisible();
+  const download = section.getByRole("link", { name: "Download record" });
+  await expect(download).toHaveAttribute("download", "legacy-clock-legacy-punch.txt");
+  const record = decodeURIComponent((await download.getAttribute("href")) ?? "");
+  expect(record).toContain("legacy-punch-client-id");
+  expect(record).toContain("2026-09-20T14:03:00.000Z");
+  expect(record).not.toContain("private-");
+  await section.getByRole("button", { name: "Copy record" }).click();
+  expect(await queued(page)).toEqual([{ clientId: "legacy-punch-client-id", ownerId: null, status: "queued", attempts: 0 }]);
   expect(clockIns).toEqual([]);
 });

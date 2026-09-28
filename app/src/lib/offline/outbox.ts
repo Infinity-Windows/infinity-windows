@@ -301,8 +301,9 @@ export function getHeldCount(): number {
 /**
  * How many writes on this phone name no owner at all — queued by a build from
  * before writes carried one, with nothing in them that says who saved them.
- * Never sent as anyone (Codex review of #660, P1 #1); Stuck writes shows them
- * and lets a person throw them away.
+ * Never sent as anyone (Codex review of #660, P1 #1); Stuck writes shows them.
+ * Legacy clock punches keep a recovery record and have no discard button;
+ * other unknown-owner writes still offer a deliberate two-tap discard.
  */
 export function getUnknownOwnerCount(): number {
   return cachedUnknown;

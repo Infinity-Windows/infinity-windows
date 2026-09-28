@@ -423,13 +423,15 @@ describe("work saved before an update, whose owner Forge cannot tell", () => {
   it("is shown as such, never sent as anyone, and can be thrown away — with the same second tap as any other", async () => {
     // Codex review of #660, P1 #1. Nothing on the entry says who saved it,
     // so the only way out a person gets is throwing it away, on purpose.
+    // Non-clock op on purpose: a legacy CLOCK punch gets a different UI
+    // (the recovery record below), never Throw away.
     q.unknown = [
-      stuckWrite({ id: "u-1", op: "clock_in", status: "queued", attemptCount: 0, lastError: null }),
+      stuckWrite({ id: "u-1", op: "daily_log", status: "queued", attemptCount: 0, lastError: null }),
     ];
     const el = await mount();
     expect(el.textContent).toContain("Saved before an update — Forge can't tell who saved it");
     const section = el.querySelector('[data-testid="stuck-unknown"]')!;
-    expect(section.textContent).toContain("Clock in");
+    expect(section.textContent).toContain("Daily log");
     // No Try again, and no way to send it under this person's name.
     const labels = [...section.querySelectorAll("button")].map((b) => b.textContent);
     expect(labels).toEqual(["Throw away"]);
@@ -475,5 +477,84 @@ describe("work saved before an update, whose owner Forge cannot tell", () => {
     expect(q.discarded).toEqual([]);
     await tap();
     expect(q.discarded).toEqual(["i-anon"]);
+  });
+});
+
+describe("a legacy clock punch whose owner Forge cannot tell", () => {
+  it("shows usable details and a recovery record instead of Throw away or Try again, with original ids/timestamps intact and secrets omitted", async () => {
+    q.unknown = [
+      stuckWrite({
+        id: "clock-u-1",
+        op: "clock_out",
+        status: "queued",
+        attemptCount: 0,
+        lastError: null,
+        createdAt: Date.now() - 4 * DAY,
+        payload: {
+          clientId: "client-legacy-1",
+          tappedAt: "2026-09-20T14:03:00.000Z",
+          projectId: "proj-legacy-9",
+          costCodeId: "cc-legacy-3",
+          shiftRef: "shift-legacy-77",
+          breakSeconds: 1800,
+          injured: true,
+          injuryNote: "private-medical-detail",
+          note: "private-freeform-note",
+          labels: ["private-label"],
+          authToken: "super-secret-access-token",
+          refreshToken: "super-secret-refresh-token",
+        },
+      }),
+    ];
+    const el = await mount();
+    const section = el.querySelector('[data-testid="stuck-unknown-clock"]')!;
+    expect(section).toBeTruthy();
+    expect(section.textContent).toContain("Clock out");
+    expect(section.textContent).toContain("UNKNOWN");
+    // The whitelisted facts survive, untouched.
+    expect(section.textContent).toContain("clock-u-1");
+    expect(section.textContent).toContain("client-legacy-1");
+    expect(section.textContent).toContain("2026-09-20T14:03:00.000Z");
+    expect(section.textContent).toContain("proj-legacy-9");
+    expect(section.textContent).toContain("shift-legacy-77");
+    expect(section.textContent).toContain("1800");
+    // Never the secrets, and never the raw payload's key names.
+    expect(section.textContent).not.toContain("super-secret");
+    expect(section.textContent).not.toContain("authToken");
+    expect(section.textContent).not.toContain("refreshToken");
+    expect(section.textContent).not.toContain("private-");
+    // No retry/discard/replay is exposed for this row.
+    const buttons = [...section.querySelectorAll("button")].map((b) => b.textContent);
+    expect(buttons).not.toContain("Throw away");
+    expect(buttons).not.toContain("Try again");
+    expect(buttons).not.toContain("Sure? this deletes it");
+    // Nothing acted on it just from being rendered.
+    expect(q.discarded).toEqual([]);
+    expect(el.textContent).not.toContain("Nothing stuck");
+  });
+
+  it("never triggers a discard even if the row's own buttons are clicked", async () => {
+    q.unknown = [
+      stuckWrite({
+        id: "clock-u-2",
+        op: "clock_in",
+        status: "queued",
+        attemptCount: 0,
+        lastError: null,
+        payload: { clientId: "client-legacy-2", tappedAt: "2026-09-21T08:00:00.000Z" },
+      }),
+    ];
+    const el = await mount();
+    const section = el.querySelector('[data-testid="stuck-unknown-clock"]')!;
+    const buttons = [...section.querySelectorAll("button")];
+    for (const button of buttons) {
+      await act(async () => {
+        button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+    }
+    expect(q.discarded).toEqual([]);
+    expect(q.sendNow).not.toHaveBeenCalled();
+    expect(q.unknown.map((entry) => entry.id)).toEqual(["clock-u-2"]);
   });
 });

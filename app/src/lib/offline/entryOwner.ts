@@ -25,7 +25,8 @@ export interface Signer {
  * theirs  — someone else's (or anyone's, while nobody is signed in): it waits
  *           for its owner.
  * unknown — a write that names no owner at all: never sent as anyone. The
- *           only way out is a person throwing it away (Stuck writes).
+ *           Stuck writes holds it for manual review. Legacy clock punches
+ *           also get a recovery record and cannot be discarded there.
  */
 export type Ownership = "mine" | "theirs" | "unknown";
 

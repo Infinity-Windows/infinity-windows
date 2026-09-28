@@ -2618,6 +2618,75 @@ export const CATALOG = {
     en: "An older version didn't note who saved these, so Forge won't send them as anyone. If one was yours, tell your foreman, then throw it away.",
     es: "Una versión anterior no anotó quién guardó esto, así que Forge no lo enviará a nombre de nadie. Si algo era tuyo, avísale a tu capataz y luego elimínalo.",
   },
+  // A legacy CLOCK punch with no known owner is different from every other
+  // unknown-owner row: throwing it away can make a real clock-in or
+  // clock-out disappear with nothing left for payroll to reconstruct. These
+  // never offer Throw away or Try again — only a factual record a foreman
+  // can use to reconcile by hand.
+  "stuck.unknownClock.body": {
+    en: "A clock punch from an older version — Forge doesn't know whose it is and will never send it or delete it automatically. Check the record below against the person and the server timecard before reconciling this by hand.",
+    es: "Un marcaje de reloj de una versión anterior — Forge no sabe de quién es y nunca lo enviará ni lo eliminará automáticamente. Revisa el registro de abajo con la persona y el reporte de horas del servidor antes de conciliarlo a mano.",
+  },
+  "stuck.unknownClock.ownerUnknown": {
+    en: "Owner: UNKNOWN. This record does not prove who made this punch and does not update payroll by itself.",
+    es: "Dueño: DESCONOCIDO. Este registro no prueba quién hizo este marcaje ni actualiza la nómina por sí solo.",
+  },
+  "stuck.unknownClock.recordLabel": { en: "Recovery record", es: "Registro de recuperación" },
+  "stuck.unknownClock.copy": { en: "Copy record", es: "Copiar registro" },
+  "stuck.unknownClock.copied": { en: "Copied", es: "Copiado" },
+  "stuck.unknownClock.copyError": {
+    en: "Couldn't copy — select the text below by hand.",
+    es: "No se pudo copiar — selecciona el texto de abajo a mano.",
+  },
+  "stuck.unknownClock.download": { en: "Download record", es: "Descargar registro" },
+  // The copyable/downloadable recovery record itself — same rule as every
+  // other installer-facing screen: localized through t()/CATALOG, never an
+  // English block dropped into a Spanish-reading foreman's UI. The tapped-at
+  // "local" line is explicitly the CURRENT device zone AT EXPORT time — the
+  // legacy payload never recorded the zone the punch actually happened in,
+  // so the wording must never claim otherwise.
+  "stuck.unknownClock.record.header": {
+    en: "Forge — legacy clock punch recovery record",
+    es: "Forge — registro de recuperación de un marcaje de reloj antiguo",
+  },
+  "stuck.unknownClock.record.ownerLine": {
+    en: "Owner: UNKNOWN — does not prove who made this punch and does not update payroll by itself.",
+    es: "Dueño: DESCONOCIDO — no prueba quién hizo este marcaje ni actualiza la nómina por sí solo.",
+  },
+  "stuck.unknownClock.record.action": { en: "Action: {value}", es: "Acción: {value}" },
+  "stuck.unknownClock.record.entryId": { en: "Entry id: {value}", es: "Id de la entrada: {value}" },
+  "stuck.unknownClock.record.clientId": { en: "Client id: {value}", es: "Id del cliente: {value}" },
+  "stuck.unknownClock.record.tappedDevice": {
+    en: "Tapped at (device, untouched): {value}",
+    es: "Marcado en (dispositivo, sin modificar): {value}",
+  },
+  "stuck.unknownClock.record.tappedLocalNow": {
+    en: "Same instant in this device's CURRENT time zone at export ({tz}) — not necessarily the zone the punch happened in: {value}",
+    es: "El mismo instante en la zona horaria ACTUAL de este dispositivo al exportar ({tz}) — no necesariamente la zona en la que ocurrió el marcaje: {value}",
+  },
+  "stuck.unknownClock.record.clockChecked": {
+    en: "Device clock last checked: {value}",
+    es: "Última verificación del reloj del dispositivo: {value}",
+  },
+  "stuck.unknownClock.record.clockSkew": {
+    en: "Device clock skew: {value} ms",
+    es: "Desfase del reloj del dispositivo: {value} ms",
+  },
+  "stuck.unknownClock.record.queuedAt": { en: "Queued on phone: {value}", es: "En espera en el teléfono: {value}" },
+  "stuck.unknownClock.record.unknownTime": { en: "unknown (unreadable time on this device)", es: "desconocido (hora no legible en este dispositivo)" },
+  "stuck.unknownClock.record.projectId": { en: "Project id: {value}", es: "Id del proyecto: {value}" },
+  "stuck.unknownClock.record.costCodeId": { en: "Cost code id: {value}", es: "Id del código de costo: {value}" },
+  "stuck.unknownClock.record.shiftRef": { en: "Shift ref: {value}", es: "Referencia de turno: {value}" },
+  "stuck.unknownClock.record.breakType": { en: "Break type: {value}", es: "Tipo de descanso: {value}" },
+  "stuck.unknownClock.record.breakSeconds": { en: "Break seconds: {value}", es: "Segundos de descanso: {value}" },
+  "stuck.unknownClock.record.footer1": {
+    en: "A foreman must verify the person and the existing server timecard before",
+    es: "Un capataz debe verificar a la persona y el reporte de horas existente en el servidor antes de",
+  },
+  "stuck.unknownClock.record.footer2": {
+    en: "reconciling this by hand. This record alone never creates or changes a timecard.",
+    es: "conciliar esto a mano. Este registro por sí solo nunca crea ni cambia un reporte de horas.",
+  },
   "diag.unknownOwnerQueue": { en: "Saved before an update, owner unknown", es: "Guardado antes de una actualización, sin dueño conocido" },
   "stuck.held.title": { en: "Saved by someone else on this phone", es: "Guardado por otra persona en este teléfono" },
   "stuck.held.body": {
