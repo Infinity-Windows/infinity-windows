@@ -22,7 +22,7 @@
 // Refresh has nothing left to post to. They were reproduced here first and
 // fixed in PwaBanners.tsx; see the notes on each.
 
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Worker } from "@playwright/test";
 import {
   cutTheNetwork,
   expireBrowserCache,
@@ -43,6 +43,25 @@ function countLoads(page: Page): { loads: () => number } {
     n += 1;
   });
   return { loads: () => n };
+}
+
+/**
+ * Count the page's own document navigations from now on, including one that
+ * another navigation cancels (it never fires `load`, so countLoads misses
+ * it). The switch to a new build must be ONE navigation. On 2026-09-28 it
+ * was two: the page reloaded itself when the new worker took control, the
+ * worker navigated it as well, the second cancelled the first, and three of
+ * the new entry's imports were aborted along the way. The new build never
+ * started, and the app stayed blank until it was reopened. That race is
+ * lost only sometimes, but both navigations happen every time, so counting
+ * them fails every time.
+ */
+function countNavigations(page: Page): { navigations: () => string[] } {
+  const seen: string[] = [];
+  page.on("request", (req) => {
+    if (req.isNavigationRequest() && req.frame() === page.mainFrame()) seen.push(req.url());
+  });
+  return { navigations: () => [...seen] };
 }
 
 /** After the switch: the new build stays, nothing reloads again, no banner returns. */
@@ -106,6 +125,7 @@ test("a phone on the previous build opens the app after a deploy, then switches 
 
   // Then it notices the new build, downloads it, and — on the sign-in screen,
   // where there is nothing to lose — switches over by itself.
+  const { navigations } = countNavigations(page);
   await expect
     .poll(() => runningEntry(page), {
       timeout: 120_000,
@@ -138,6 +158,7 @@ test("a phone on the previous build opens the app after a deploy, then switches 
 
   // Once: no second reload, no banner asking again.
   await expectSettledOn(page, builds.new.entry, loads);
+  expect(navigations(), "the switch was more than one navigation: two racing reloads can leave the new build blank").toHaveLength(1);
 
   // And the new worker is the one in charge now: the next open with no
   // signal comes entirely from the new build's copy.
@@ -170,6 +191,7 @@ test("a phone whose very first session sees a deploy switches over, instead of o
   // A deploy lands while the app is open; the person comes back to it.
   await serveBuild(request, "new");
   const { loads } = countLoads(page);
+  const { navigations } = countNavigations(page);
   await nudgeUpdateCheck(page);
   await expect
     .poll(() => runningEntry(page), {
@@ -179,6 +201,80 @@ test("a phone whose very first session sees a deploy switches over, instead of o
     })
     .toBe(builds.new.entry);
   await expectSettledOn(page, builds.new.entry, loads);
+  expect(navigations(), "the switch was more than one navigation: two racing reloads can leave the new build blank").toHaveLength(1);
+});
+
+test("an in-flight self reload is not cancelled when the new worker's shell lookup takes five seconds", async ({
+  page,
+  context,
+  request,
+}) => {
+  const { builds } = await harnessState(request);
+  await serveBuild(request, "old");
+  await page.goto("/");
+  await expect(signInButton(page)).toBeVisible();
+  await serviceWorkerReady(page);
+
+  // Instrument the newly installed worker before its navigation route runs.
+  // A slow response used to hide the first reload from the observer until
+  // after the grace period, when the worker started a second navigation.
+  const instrumented = new Promise<Worker>((resolve, reject) => {
+    context.on("serviceworker", (worker) => {
+      void worker.evaluate(() => {
+        const probe = self as unknown as { __slowShellLookups: number; registration: ServiceWorkerRegistration };
+        probe.__slowShellLookups = 0;
+        const original = CacheStorage.prototype.match;
+        CacheStorage.prototype.match = async function (request, options) {
+          const url = request instanceof Request ? request.url : String(request);
+          if (new URL(url, self.location.href).pathname === "/index.html" && probe.registration.active?.state === "activated") {
+            probe.__slowShellLookups += 1;
+            await new Promise((done) => setTimeout(done, 5_000));
+          }
+          return original.call(this, request, options);
+        };
+      }).then(() => resolve(worker), reject);
+    });
+  });
+
+  await serveBuild(request, "new");
+  const { navigations } = countNavigations(page);
+  await nudgeUpdateCheck(page);
+  const worker = await instrumented;
+  await expect.poll(() => runningEntry(page), { timeout: 60_000 }).toBe(builds.new.entry);
+  await expect(signInButton(page)).toBeVisible();
+  expect(await worker.evaluate(() => (self as unknown as { __slowShellLookups: number }).__slowShellLookups)).toBeGreaterThan(0);
+  expect(navigations(), "the worker cancelled an in-flight self reload").toHaveLength(1);
+});
+
+test("a second tab on the same URL can reload without suppressing the asking tab", async ({
+  page,
+  context,
+  request,
+}) => {
+  const { builds } = await harnessState(request);
+  await serveBuild(request, "old");
+  await page.goto("/");
+  await expect(signInButton(page)).toBeVisible();
+  await serviceWorkerReady(page);
+  const other = await context.newPage();
+  await other.goto("/");
+  await expect(signInButton(other)).toBeVisible();
+  await serviceWorkerReady(other);
+  expect(other.url()).toBe(page.url());
+
+  await page.exposeFunction("reloadOtherTab", async () => { await other.reload(); });
+  await page.evaluate(() => {
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      void (window as unknown as { reloadOtherTab: () => Promise<void> }).reloadOtherTab();
+    }, { once: true });
+  });
+  await serveBuild(request, "new");
+  const { navigations } = countNavigations(page);
+  await nudgeUpdateCheck(page);
+  await expect.poll(() => runningEntry(page), { timeout: 60_000 }).toBe(builds.new.entry);
+  await expect.poll(() => runningEntry(other), { timeout: 60_000 }).toBe(builds.new.entry);
+  await expect(signInButton(page)).toBeVisible();
+  expect(navigations(), "the asking tab must switch exactly once").toHaveLength(1);
 });
 
 test("a download that broke halfway does not leave Refresh doing nothing afterwards", async ({
@@ -233,6 +329,7 @@ test("a download that broke halfway does not leave Refresh doing nothing afterwa
   // app switches to it — on the sign-in screen, by itself.
   await serveBuild(request, "new");
   const { loads } = countLoads(page);
+  const { navigations } = countNavigations(page);
   await nudgeUpdateCheck(page);
   await expect
     .poll(() => runningEntry(page), {
@@ -242,4 +339,5 @@ test("a download that broke halfway does not leave Refresh doing nothing afterwa
     })
     .toBe(builds.new.entry);
   await expectSettledOn(page, builds.new.entry, loads);
+  expect(navigations(), "the switch was more than one navigation: two racing reloads can leave the new build blank").toHaveLength(1);
 });

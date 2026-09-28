@@ -20,12 +20,43 @@ import { registerRoute, NavigationRoute } from "workbox-routing";
 import { CacheFirst } from "workbox-strategies";
 import { ExpirationPlugin } from "workbox-expiration";
 import { resolveNotificationUrl } from "./lib/pwa/basePaths";
-import { createTakeoverReload } from "./lib/pwa/takeover";
+import { createTakeoverReload, TAKEOVER_DEADLINE_MS } from "./lib/pwa/takeover";
 import { isPrivateTrainingMediaUrl } from "./lib/privateMedia";
 
 declare const self: ServiceWorkerGlobalScope & {
   __WB_MANIFEST: Array<{ url: string; revision: string | null }>;
 };
+
+// Update flow (registerType: 'prompt'): a freshly installed worker WAITS
+// instead of skipping straight to active, so the app can surface an "update
+// available — Refresh" banner (see PwaBanners). The waiting worker only takes
+// over when the client explicitly asks via a SKIP_WAITING message (posted by
+// PwaBanners, directly and through vite-plugin-pwa's updateServiceWorker(true)).
+// Once activated it claims all open clients. The page that asked reloads
+// itself on the controller change when it can; a page on a build from before
+// 2026-09-28 cannot (lib/pwa/takeover.ts says why), and the worker is the
+// only new code it runs, so the worker brings that page across itself — but
+// only when the page has not reloaded by then. Doing both made two racing
+// navigations, and the loser could take the new build's imports with it.
+// Only the page that asked: a tab that did not is left where it is.
+const takeover = createTakeoverReload(self.clients, { activated: whenActivated });
+
+// A page loading from this worker: most often the page that asked for the
+// switch, reloading itself, which the takeover must not interrupt. Only
+// watched, never answered: the routes registered below answer it.
+//
+// Registered BEFORE precacheAndRoute()/registerRoute(), on purpose. Workbox's
+// navigation route calls `event.respondWith()`, which stops the fetch event
+// from reaching any listener registered after it — a real-worker
+// reproduction (Claude Peer Review, 2026-09-24) showed a listener registered
+// after Workbox seeing ZERO navigations for a reload Workbox answered, which
+// made the takeover blind to the very reload it exists to observe. Listeners
+// run in registration order; this one never calls `respondWith` or
+// `preventDefault`, so registering it first only means it gets to LOOK
+// before Workbox responds — routing is unaffected.
+self.addEventListener("fetch", (event) => {
+  if (event.request.mode === "navigate") takeover.navigationSeen(event.clientId);
+});
 
 // --- Precache the app shell (offline-first) ---------------------------------
 cleanupOutdatedCaches();
@@ -48,32 +79,76 @@ registerRoute(
   }),
 );
 
-// Update flow (registerType: 'prompt'): a freshly installed worker WAITS
-// instead of skipping straight to active, so the app can surface an "update
-// available — Refresh" banner (see PwaBanners). The waiting worker only takes
-// over when the client explicitly asks via a SKIP_WAITING message (posted by
-// PwaBanners, directly and through vite-plugin-pwa's updateServiceWorker(true)).
-// Once activated it claims all open clients — and then brings the page that
-// asked onto the new build itself. That page reloads on the controller
-// change too, when it can; a page on the build before 2026-09-25 cannot
-// (lib/pwa/takeover.ts says why), and the worker is the only new code it
-// runs. Only the page that asked: a tab that did not is left where it is.
-const takeover = createTakeoverReload(self.clients);
+/**
+ * Resolves only after THIS worker has activated and can answer fetches.
+ *
+ * Deliberately NOT `self.registration.active?.state !== "activating"`: that
+ * reads the registration's current active worker, which — right up until
+ * THIS worker's own activate event fires — is still the PREVIOUS worker,
+ * sitting at `state: "activated"`. Polling that resolved immediately, before
+ * this worker had activated at all, so `finish()` could look up and navigate
+ * a client before this worker was actually answering fetches. A promise this
+ * worker's own `activate` listener resolves (below) can only resolve for
+ * ITS activation.
+ */
+let resolveActivated: () => void;
+const activatedPromise = new Promise<void>((resolve) => {
+  resolveActivated = resolve;
+});
+async function whenActivated(): Promise<void> {
+  const deadline = Date.now() + TAKEOVER_DEADLINE_MS;
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("worker activation timed out")), TAKEOVER_DEADLINE_MS);
+    void activatedPromise.then(() => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
+  // Our activate listener resolves after clients.claim(), but Workbox may
+  // have other activate.waitUntil work. Fetches are delivered only once the
+  // worker reaches "activated", so wait for that state as well.
+  while (self.registration.active?.state !== "activated") {
+    if (Date.now() >= deadline) throw new Error("worker activation timed out");
+    await new Promise<void>((resolve) => setTimeout(resolve, 50));
+  }
+}
+
+// The original SKIP_WAITING message owns the whole normal completion through
+// its OWN event.waitUntil — skipWaiting, waiting for activation, the grace
+// period, the decision to navigate. A duplicate ask (the same source
+// resending, or a second tab/window asking this worker later) still calls
+// skipWaiting() — harmless and idempotent, there is only
+// ever one waiting worker to promote — but owns none of that and gets no
+// waitUntil chain of its own: it cannot reset the deadline, restart the
+// grace period, or cause a second navigation (see takeover.ts).
 self.addEventListener("message", (event) => {
   if ((event.data as { type?: string } | undefined)?.type === "SKIP_WAITING") {
-    takeover.asked(event.source as { id: string } | null);
-    void self.skipWaiting();
+    const owns = takeover.asked(event.source as { id: string } | null);
+    if (owns) {
+      event.waitUntil(
+        (async () => {
+          await self.skipWaiting();
+          await takeover.finish();
+        })(),
+      );
+    } else {
+      void self.skipWaiting();
+    }
   }
 });
+
+// Our activate listener only claims clients, then signals whenActivated()
+// to wait for the whole activation. It must NEVER itself await the grace
+// period or a navigation: the page's reload is a navigation this worker has
+// to answer, and a worker answers no fetch until its activation has
+// finished, so awaiting either one inside activate's waitUntil deadlocks the
+// activation itself (found in the upgrade harness, 2026-09-25). finish()
+// runs from the SKIP_WAITING message event instead (above), which is free
+// to wait — resolveActivated() is a plain call, not awaited here.
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     self.clients.claim().then(() => {
-      // Started here, NOT awaited: the reload it asks for is a navigation
-      // this worker has to answer, and a worker answers no fetch until its
-      // activation has finished. Awaiting it inside waitUntil deadlocked —
-      // the page sat on a navigation that could never complete (found in
-      // the upgrade harness, 2026-09-25).
-      void takeover.finish();
+      resolveActivated();
     }),
   );
 });
