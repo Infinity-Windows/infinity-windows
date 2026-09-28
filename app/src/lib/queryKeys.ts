@@ -119,6 +119,12 @@ export const QUERY_KEY_ROOTS: QueryKeyRootEntry[] = [
   { root: "fleetFinancials", offline: false },
   { root: "fleetServiceRecords", offline: false },
   { root: "foremanContacts", offline: false },
+  // Who a job bills to (20261034000000). Money, read only by supervisors, the
+  // owner and "Sees costs" holders, so never kept in a phone's saved cache
+  // where the next person to sign in on that phone could read it.
+  { root: "billToCustomers", offline: false, why: "Money: readable only by supervisors, the owner and Sees-costs holders, so never persisted where another account on the same phone could read it." },
+  { root: "projectBillTo", offline: false, why: "Money: readable only by supervisors, the owner and Sees-costs holders, so never persisted where another account on the same phone could read it." },
+  { root: "projectBillToHistory", offline: false, why: "Money: readable only by supervisors, the owner and Sees-costs holders, so never persisted where another account on the same phone could read it." },
   { root: "gcCheckins", offline: false },
   { root: "gcCheckinsLatest", offline: false },
   { root: "gcLink", offline: false },

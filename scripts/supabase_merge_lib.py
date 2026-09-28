@@ -766,6 +766,15 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     "project_stage_progress": ("project_id", "stage_key"),
     # Separate changes remain separate audit events, even with identical notes.
     "project_execution_history": None,
+    # -- Who a job's labor is billed to (20261030105000). The list is matched by
+    # -- the invoice script on its NAME (unique, case-insensitive), so the name
+    # -- is the natural key: two databases holding "Strata" hold one customer.
+    # -- The per-job row has project_id as its primary key, like
+    # -- project_pipeline. Its change log is append-only events, like
+    # -- project_execution_history above: two identical changes are two changes.
+    "bill_to_customers": ("name",),
+    "project_bill_to": ("project_id",),
+    "project_bill_to_history": None,
     # -- Learning time (20260993000000). The UNIQUE constraint IS the natural
     # -- key: one row per person per visit per item, so two databases holding
     # -- the same (person, visit, item) hold the same sitting, and a union that

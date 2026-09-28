@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getMyProfile } from "../lib/install/api";
 import { isSupervisorPlus } from "../lib/install/types";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
+import { BillToCustomersCard } from "../components/billing/BillToCustomersCard";
 import { pushToast, toastError } from "../lib/toast";
 import {
   createCostCode,
@@ -327,6 +328,10 @@ export function CostCodes() {
           Use ↑ / ↓ on the All tab to set the order codes appear in the picker.
         </p>
       )}
+
+      {/* Who jobs bill to: the other company-wide list supervisors and the
+          owner run (20261030105000). The job page links here (#bill-to). */}
+      <BillToCustomersCard />
     </div>
   );
 }
