@@ -53,14 +53,26 @@ vi.mock("../../lib/install/phases", async (importOriginal) => {
 vi.mock("../../lib/install/sessions", () => ({ getMyOpenSession: vi.fn(async () => null) }));
 vi.mock("../../lib/dailyLogNudge", () => ({ announceClockedOut: () => {} }));
 vi.mock("../time/ToolboxTalkNagBanner", () => ({ ToolboxTalkNagBanner: () => null }));
+// The queue sends a punch only as the person who tapped it, through a client
+// bound to their token (2026-09-25). These tests watch the shared client's
+// rpc, so the bound client is that same one.
+vi.mock("../../lib/supabase", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../../lib/supabase")>();
+  return { ...real, clientWithToken: () => real.supabase };
+});
 
 import { supabase } from "../../lib/supabase";
+import { rememberSignedIn } from "../../lib/signedIn";
 import { forgetClockCheck, recordClockCheck } from "../../lib/clockSkew";
 import type { ClockInPick, TimeShift } from "../../lib/timeclock";
+import type { Session } from "@supabase/supabase-js";
 import { ClockInBlock } from "./ClockInBlock";
 import { ClockSheet } from "./ClockSheet";
 
 const P1 = { id: "p1", job_code: "BLACK22", name: "Black Desert", address: null, status: "active", allowed_modes: ["data"] };
+
+/** Who taps: the fake server files every shift as "me". */
+const ME = { access_token: "me-token", user: { id: "me", email: "me@example.test" } };
 
 /** 7:00 in the morning, Denver: the moment of the tap. */
 const T0 = Date.parse("2026-09-24T13:00:00.000Z");
@@ -217,6 +229,12 @@ beforeEach(() => {
   fixAfterMs = null;
   vi.spyOn(supabase, "rpc").mockImplementation(((fn: string, args?: Args) =>
     Promise.resolve(fakeRpc(fn, args))) as unknown as typeof supabase.rpc);
+  // The person who taps is signed in: the phone knows them, and so does auth.
+  rememberSignedIn(ME);
+  vi.spyOn(supabase.auth, "getSession").mockResolvedValue({
+    data: { session: ME as unknown as Session },
+    error: null,
+  } as Awaited<ReturnType<typeof supabase.auth.getSession>>);
   // happy-dom has no geolocation; this phone has one, and it is slow. The
   // permission reads "prompt", so the block's advisory "near the job?" check
   // asks for nothing on its own.

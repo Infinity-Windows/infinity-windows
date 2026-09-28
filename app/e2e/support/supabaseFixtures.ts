@@ -161,6 +161,15 @@ const TEST_PROFILE = {
 
 export interface FixtureOptions {
   /**
+   * Where the sign-in lives. "pinned" (the default) answers every read of the
+   * auth key with a session that runs until 2035, so nothing ever refreshes
+   * mid-test. "phone" writes that session into localStorage once, the way a
+   * real sign-in does, and then leaves it alone — supabase-js may renew it, a
+   * spec may expire it, a refusal may delete it. For specs about the sign-in
+   * itself (offline-session.spec.ts).
+   */
+  session?: "pinned" | "phone";
+  /**
    * Role the fixture user signs in as. Defaults to installer (fewest powers —
    * see TEST_USER above); a spec for a gated screen (Model Studio is
    * supervisor+) names the weakest role that can reach it.
@@ -204,6 +213,16 @@ const SESSION = {
   refresh_token: "e2e-fixture-refresh-token",
   user: TEST_USER,
 };
+
+/** The fixture sign-in, for a spec that builds its own variant of it. */
+export const FIXTURE_SESSION = SESSION;
+
+/**
+ * The key supabase-js keeps the sign-in under in this build:
+ * `sb-<first label of VITE_SUPABASE_URL's host>-auth-token`, and
+ * playwright.config.ts points the app at https://e2efixture.supabase.co.
+ */
+export const FIXTURE_AUTH_KEY = "sb-e2efixture-auth-token";
 
 export function jobFixtures(): JobFixture[] {
   return JOB_CODES.map((jobCode) => {
@@ -316,16 +335,22 @@ export async function useSupabaseFixtures(
   // squarely on top of the drawing, and a screenshot of a modal proves nothing
   // about the map.
   await page.addInitScript(
-    ({ session, tipKeys, lang }) => {
+    ({ session, tipKeys, lang, pinned, authKey }) => {
       const raw = JSON.stringify(session);
-      const proto = Object.getPrototypeOf(window.localStorage);
-      const original = proto.getItem;
-      proto.getItem = function patched(this: Storage, key: string) {
-        if (this === window.localStorage && /^sb-.+-auth-token$/.test(key)) {
-          return raw;
-        }
-        return original.call(this, key);
-      };
+      if (pinned) {
+        const proto = Object.getPrototypeOf(window.localStorage);
+        const original = proto.getItem;
+        proto.getItem = function patched(this: Storage, key: string) {
+          if (this === window.localStorage && /^sb-.+-auth-token$/.test(key)) {
+            return raw;
+          }
+          return original.call(this, key);
+        };
+      } else if (window.localStorage.getItem(authKey) === null) {
+        // Once, like a sign-in. A relaunch (a new page in the same context)
+        // finds whatever the app or the spec left there and keeps it.
+        window.localStorage.setItem(authKey, raw);
+      }
       window.localStorage.setItem("infinity-perm-wizard-choice", "completed");
       window.localStorage.setItem(
         "infinity:dismissed-tips",
@@ -340,7 +365,13 @@ export async function useSupabaseFixtures(
       // cache marks the choice as made, so it never overlays a fixture.
       window.localStorage.setItem("infinity.language", lang);
     },
-    { session: SESSION, tipKeys: DISMISSED_TIPS, lang: opts.language ?? "en" },
+    {
+      session: SESSION,
+      tipKeys: DISMISSED_TIPS,
+      lang: opts.language ?? "en",
+      pinned: (opts.session ?? "pinned") === "pinned",
+      authKey: FIXTURE_AUTH_KEY,
+    },
   );
 
   await page.route("**/auth/v1/**", (route) => {

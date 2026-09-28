@@ -21,7 +21,9 @@ import { useClock } from "../lib/clockContext";
 import { formatApiError } from "../lib/errors";
 import {
   discardFailed,
-  listAll,
+  listHeld,
+  listMine,
+  listUnknownOwner,
   recentlySent,
   retryFailed,
   sendNow,
@@ -31,21 +33,31 @@ import {
   buildStuckRows,
   queuedAgoLabel as queuedAgo,
   stateLabel,
+  windowFinishedLabel,
+  writeLabel,
   type StuckRow,
 } from "../lib/offline/stuckRows";
 import {
   discardFailedInstall,
   isInstallSending,
-  listInstalls,
+  listMyInstalls,
+  listOthersInstalls,
   recentlySentInstalls,
   retryFailedInstall,
   sendInstallsNow,
   subscribeSyncListeners,
+  type InstallOutboxRecord,
 } from "../lib/install/installOutbox";
 import { pendingLegacyUploadCount } from "../lib/install/legacyUploadQueue";
 import { readWorkQueue, retryWork, syncWork, WORK_QUEUE_EVENT } from "../lib/customWork/queue";
 import type { ServiceCommand } from "../lib/servicing/model";
-import { useT } from "../lib/i18n";
+import type { OutboxEntry } from "../lib/offline/outbox-core";
+import {
+  buildLegacyClockRecoveryRecord,
+  formatLegacyClockRecoveryText,
+  isUnknownClockEntry,
+} from "../lib/offline/legacyClockRecovery";
+import { useT, type TFn } from "../lib/i18n";
 
 /** The queues keyed by person: custom work, servicing, and what the retired
  * upload store still holds. Servicing lives outside the shell bundle and is
@@ -94,15 +106,94 @@ function fmtWhen(ms: number): string {
   return Number.isNaN(d.getTime()) ? "" : d.toLocaleString();
 }
 
+/**
+ * A legacy clock punch with no known owner (Codex review of #660, P1 #1):
+ * unlike every other unknown-owner row, it never offers Throw away or Try
+ * again — a clock punch is the one write where deleting it can lose the only
+ * record a real punch happened. Instead it shows the whitelisted facts and a
+ * copyable/downloadable recovery record for manual reconciliation. Reads the
+ * entry only; never retries, discards, or replays it.
+ */
+function ClockRecoveryRow({ entry, t }: { entry: OutboxEntry; t: TFn }) {
+  const [copied, setCopied] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
+  const record = buildLegacyClockRecoveryRecord(entry);
+  const text = formatLegacyClockRecoveryText(record, t);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyFailed(false);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopyFailed(true);
+    }
+  };
+
+  return (
+    <li key={entry.id} data-testid={`stuck-unknown-clock-${entry.id}`}>
+      <div style={{ fontWeight: 600 }}>{writeLabel(entry, t)}</div>
+      <div className="muted" style={{ fontSize: 12.5 }}>{t("stuck.unknownClock.ownerUnknown")}</div>
+      <p className="muted" style={{ fontSize: 12.5 }}>{t("stuck.unknownClock.recordLabel")}</p>
+      <pre
+        style={{
+          whiteSpace: "pre-wrap",
+          overflowWrap: "anywhere",
+          fontSize: 14,
+          lineHeight: 1.45,
+          fontFamily: "inherit",
+          background: "var(--card-raised)",
+          color: "var(--text)",
+          padding: 8,
+          borderRadius: 6,
+          userSelect: "text",
+        }}
+      >
+        {text}
+      </pre>
+      <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+        <button type="button" className="button-like" onClick={() => void copy()}>
+          {copied ? t("stuck.unknownClock.copied") : t("stuck.unknownClock.copy")}
+        </button>
+        <a
+          className="button-like"
+          href={`data:text/plain;charset=utf-8,${encodeURIComponent(text)}`}
+          download={`legacy-clock-${entry.id}.txt`}
+        >
+          {t("stuck.unknownClock.download")}
+        </a>
+      </div>
+      {copyFailed && <p className="error" style={{ fontSize: 12.5 }}>{t("stuck.unknownClock.copyError")}</p>}
+    </li>
+  );
+}
+
 export function StuckWrites() {
   const t = useT();
   const queryClient = useQueryClient();
   const { profileId } = useClock();
-  const writesQ = useQuery({ queryKey: ["queuedWrites"], queryFn: listAll });
+  // This person's own writes: every state, with Try again / Throw away where
+  // they apply. Someone else's work on this phone (2026-09-25) is read on its
+  // own and shown, never offered for retry or throwing away — it is not this
+  // person's to decide.
+  const writesQ = useQuery({ queryKey: ["queuedWrites"], queryFn: listMine });
+  // ...and work saved before an update that names no one (Codex review of
+  // #660, P1 #1): never sent as anyone. Legacy clock punches keep a recovery
+  // record here; other unknown writes may be discarded after two taps. One
+  // read for both, finished units included (Codex's full re-check).
+  const heldQ = useQuery({
+    queryKey: ["heldWrites"],
+    queryFn: async () => ({
+      held: await listHeld(),
+      unknown: await listUnknownOwner(),
+      installs: await listOthersInstalls(),
+    }),
+  });
   // A stuck INSTALL is the worst case on this screen — it is the record that a
   // window got finished — so it belongs here even though it lives in its own
-  // store with its own subscribe mechanism.
-  const installsQ = useQuery({ queryKey: ["queuedInstalls"], queryFn: listInstalls });
+  // store with its own subscribe mechanism. This person's own, like the writes.
+  const installsQ = useQuery({ queryKey: ["queuedInstalls"], queryFn: listMyInstalls });
   const personalQ = useQuery({
     queryKey: ["queuedPersonal", profileId],
     queryFn: () => readPersonalQueues(profileId),
@@ -115,6 +206,7 @@ export function StuckWrites() {
   useEffect(() => {
     return subscribe(() => {
       void queryClient.invalidateQueries({ queryKey: ["queuedWrites"] });
+      void queryClient.invalidateQueries({ queryKey: ["heldWrites"] });
       // The migration out of the old store announces itself here too.
       void queryClient.invalidateQueries({ queryKey: ["queuedPersonal"] });
     });
@@ -124,6 +216,7 @@ export function StuckWrites() {
   useEffect(() => {
     return subscribeSyncListeners(() => {
       void queryClient.invalidateQueries({ queryKey: ["queuedInstalls"] });
+      void queryClient.invalidateQueries({ queryKey: ["heldWrites"] });
     });
   }, [queryClient]);
 
@@ -153,6 +246,7 @@ export function StuckWrites() {
 
   const refreshAll = () => {
     void queryClient.invalidateQueries({ queryKey: ["queuedWrites"] });
+    void queryClient.invalidateQueries({ queryKey: ["heldWrites"] });
     void queryClient.invalidateQueries({ queryKey: ["queuedInstalls"] });
     void queryClient.invalidateQueries({ queryKey: ["queuedPersonal"] });
   };
@@ -232,7 +326,49 @@ export function StuckWrites() {
     t,
   );
   const loading = writesQ.isLoading || installsQ.isLoading || personalQ.isLoading;
-  const nothingToSend = sections.needsYou.length === 0 && sections.waiting.length === 0;
+  // Someone else's work (read-only), then non-clock work saved before an
+  // update that names no one. Same rows as above; never a Try again or
+  // "send it as me". Legacy clock rows use ClockRecoveryRow instead.
+  const othersRows = (entries: OutboxEntry[], installs: InstallOutboxRecord[], canDiscard: boolean): StuckRow[] => [
+    ...entries.map((e): StuckRow => ({
+      id: e.id,
+      label: writeLabel(e, t),
+      when: e.createdAt,
+      detail: null,
+      source: "write",
+      state: "waiting",
+      sentAt: null,
+      canRetry: false,
+      canDiscard,
+      reviewTo: null,
+    })),
+    ...installs.map((r): StuckRow => ({
+      id: r.id,
+      label: windowFinishedLabel(r.payload.openingCode, t),
+      when: Date.parse(r.payload.createdAt ?? "") || 0,
+      detail: null,
+      source: "install",
+      state: "waiting",
+      sentAt: null,
+      canRetry: false,
+      canDiscard,
+      reviewTo: null,
+    })),
+  ];
+  const held = othersRows(heldQ.data?.held ?? [], heldQ.data?.installs.held ?? [], false);
+  // A legacy CLOCK punch with no known owner never gets Throw away — see
+  // ClockRecoveryRow. Everything else unknown-owner keeps the existing
+  // two-tap Throw away behavior via othersRows.
+  const allUnknown = heldQ.data?.unknown ?? [];
+  const unknownClockEntries = allUnknown.filter(isUnknownClockEntry);
+  const unknownOtherEntries = allUnknown.filter((e) => !isUnknownClockEntry(e));
+  const unknownOwner = othersRows(unknownOtherEntries, heldQ.data?.installs.unknown ?? [], true);
+  const nothingToSend =
+    sections.needsYou.length === 0 &&
+    sections.waiting.length === 0 &&
+    held.length === 0 &&
+    unknownOwner.length === 0 &&
+    unknownClockEntries.length === 0;
 
   const renderRow = (e: StuckRow) => {
     const confirming = confirmingId === e.id;
@@ -377,6 +513,40 @@ export function StuckWrites() {
         <section aria-labelledby="stuck-sent">
           <h2 id="stuck-sent">{t("stuck.section.sent")}</h2>
           <ul className="unit-list">{sections.sent.map(renderRow)}</ul>
+        </section>
+      )}
+
+      {held.length > 0 && (
+        <section aria-labelledby="stuck-held-title" style={{ marginTop: 20 }}>
+          <h2 id="stuck-held-title" style={{ fontSize: 16 }}>{t("stuck.held.title")}</h2>
+          <p className="muted">{t("stuck.held.body")}</p>
+          <ul className="unit-list" data-testid="stuck-held">
+            {held.map(renderRow)}
+          </ul>
+        </section>
+      )}
+
+      {(unknownOwner.length > 0 || unknownClockEntries.length > 0) && (
+        <section aria-labelledby="stuck-unknown-title" style={{ marginTop: 20 }}>
+          <h2 id="stuck-unknown-title" style={{ fontSize: 16 }}>{t("stuck.unknown.title")}</h2>
+          {unknownOwner.length > 0 && (
+            <>
+              <p className="muted">{t("stuck.unknown.body")}</p>
+              <ul className="unit-list" data-testid="stuck-unknown">
+                {unknownOwner.map(renderRow)}
+              </ul>
+            </>
+          )}
+          {unknownClockEntries.length > 0 && (
+            <>
+              <p className="muted">{t("stuck.unknownClock.body")}</p>
+              <ul className="unit-list" data-testid="stuck-unknown-clock">
+                {unknownClockEntries.map((e) => (
+                  <ClockRecoveryRow key={e.id} entry={e} t={t} />
+                ))}
+              </ul>
+            </>
+          )}
         </section>
       )}
     </div>

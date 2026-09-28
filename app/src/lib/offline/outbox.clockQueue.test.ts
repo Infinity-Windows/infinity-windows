@@ -9,11 +9,17 @@ import { mergeClockQueue } from "../clockQueueView";
 import type { TimeShift } from "../timeclock";
 
 const rpc = vi.fn();
-vi.mock("../supabase", () => ({
-  supabase: { rpc: (...args: unknown[]) => rpc(...args) },
-  supabaseConfigured: true,
+vi.mock("../supabase", () => {
+  // The outbox sends a write only as the person who queued it, through a
+  // client bound to that person's token (2026-09-25): here, the same stub.
+  const supabase = { rpc: (...args: unknown[]) => rpc(...args), auth: { getSession: async () => ({ data: { session: { access_token: "test-token", user: { id: "test-user", email: "installer@example.com" } } }, error: null }) } };
+  return { supabase, clientWithToken: () => supabase, supabaseConfigured: true };
+});
+vi.mock("../signedIn", () => ({
+  signedInEmail: () => "e2e@example.test",
+  signedInUserId: () => "test-user",
+  subscribeSignedIn: () => () => {},
 }));
-vi.mock("../signedIn", () => ({ signedInEmail: () => "e2e@example.test" }));
 vi.mock("./telemetry", () => ({ logOfflineEvent: () => {} }));
 
 const outbox = await import("./outbox");

@@ -13,17 +13,20 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { OutboxEntry } from "./outbox-core";
 
 const upload = vi.fn();
-vi.mock("../supabase", () => ({
-  supabase: {
+vi.mock("../supabase", () => {
+  // The outbox sends a write only as the person who queued it, through a
+  // client bound to that person's token (2026-09-25): here, the same stub.
+  const supabase = {
     storage: {
       from: (bucket: string) => ({
         upload: (path: string, blob: Blob, opts: Record<string, unknown>) =>
           upload(bucket, path, blob, opts),
       }),
     },
-  },
-  supabaseConfigured: true,
-}));
+    auth: { getSession: async () => ({ data: { session: { access_token: "test-token", user: { id: "test-user", email: "installer@example.com" } } }, error: null }) },
+  };
+  return { supabase, clientWithToken: () => supabase, supabaseConfigured: true };
+});
 
 const { createShiftResolver, createSupabaseHandlers } = await import("./outboxHandlers");
 const handlers = createSupabaseHandlers(createShiftResolver());
@@ -57,6 +60,11 @@ beforeEach(() => {
   upload.mockReset();
   upload.mockResolvedValue({ data: { path: "x" }, error: null });
 });
+
+// Somebody is signed in: the outbox stamps them as the owner of what they
+// queue, and sends it only as them (2026-09-25).
+const { rememberSignedIn } = await import("../signedIn");
+rememberSignedIn({ user: { id: "test-user", email: "installer@example.com" } });
 
 describe("the queued damage photo", () => {
   it("puts the bytes at exactly the path the issue already points at", async () => {

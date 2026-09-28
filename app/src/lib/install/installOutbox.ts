@@ -12,12 +12,16 @@ import {
   computeBackoffMs,
   errorMessage,
   isNetworkError,
+  isPending,
   isRetryableError,
   MAX_ATTEMPTS,
 } from "../offline/outbox-core";
-import { drain, enqueueUpload, pendingMediaCount } from "../offline/outbox";
+import { drain, enqueueUpload, listAll } from "../offline/outbox";
 import { stableId } from "../offline/stableId";
-import { submitInstallEvent, type SubmitInstallParams } from "./api";
+import { signedInEmail, signedInUserId, stillSignedInAs, subscribeSignedIn, type SignInMark } from "../signedIn";
+import type { Ownership, Signer } from "../offline/entryOwner";
+import { submitInstallEvent, type InstallSendAs, type SubmitInstallParams } from "./api";
+import { clientWithToken, supabase } from "../supabase";
 
 export type InstallOutboxStep =
   | "queued"
@@ -62,6 +66,15 @@ export interface InstallOutboxPayload {
   openingCode: string;
   assignedWindowId: string | null;
   createdBy: string | null;
+  /**
+   * The user id of the person who submitted this install, written when it is
+   * queued (2026-09-25). The media stage hands the unit's photos, memo and
+   * video over AS this person — it runs whenever the queue drains, which can
+   * be after they have signed out and someone else has signed in, and the
+   * outbox would otherwise make them the signed-in person's (Codex review of
+   * #660, P1 #2). Absent on records queued before it existed.
+   */
+  ownerId?: string;
   submitParams: SubmitInstallParams;
   points: InstallOutboxPoints | null;
   media: InstallOutboxMediaMeta[];
@@ -261,6 +274,7 @@ export function deserializeInstallOutbox(json: string): InstallOutboxRecord | nu
       assignedWindowId:
         typeof p.assignedWindowId === "string" ? p.assignedWindowId : null,
       createdBy: typeof p.createdBy === "string" ? p.createdBy : null,
+      ...(typeof p.ownerId === "string" && p.ownerId ? { ownerId: p.ownerId } : {}),
       submitParams: p.submitParams as SubmitInstallParams,
       points: (p.points as InstallOutboxPoints | null) ?? null,
       media: Array.isArray(p.media) ? (p.media as InstallOutboxMediaMeta[]) : [],
@@ -364,12 +378,39 @@ export async function failedInstallCount(): Promise<number> {
   return n;
 }
 
+/**
+ * Who is submitting an install — taken ONCE, at the Submit tap, before
+ * anything is awaited: the user id and email from the same session App keeps,
+ * with the sign-in mark (lib/signedIn.ts, #651) taken at that same moment.
+ * The install, its points and its photos are this person's; the save is
+ * refused if anyone signs out or in before it lands (Codex re-check of #660,
+ * P2: the owner used to be read from memory at save time and the photographer
+ * from two separate getUser() calls, and nothing checked they agreed).
+ */
+export interface InstallSubmitter {
+  userId: string;
+  email: string | null;
+  mark: SignInMark;
+}
+
+/** A save refused because it cannot say whose install this is. Plain words;
+ * the sheet shows them and keeps everything captured, so Submit can be tapped
+ * again from the right sign-in. */
+export class InstallSubmitterError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InstallSubmitterError";
+  }
+}
+
 export interface EnqueueInstallInput {
   openingId: string;
   projectId: string;
   openingCode: string;
   assignedWindowId: string | null;
   createdBy: string | null;
+  /** See InstallSubmitter. Null when nobody is signed in — refused. */
+  submitter: InstallSubmitter | null;
   submitParams: SubmitInstallParams;
   points: InstallOutboxPoints | null;
   media: Array<InstallOutboxMediaMeta & { blob: Blob }>;
@@ -382,6 +423,25 @@ export interface EnqueueInstallInput {
 export async function enqueueInstall(
   input: EnqueueInstallInput,
 ): Promise<InstallOutboxRecord> {
+  // Whose install is this? Exactly the person captured at the tap — and only
+  // if they are still the one signed in, with the photographer's email naming
+  // them too. Anything else is refused, not guessed: an owner made up from
+  // whoever is signed in by now is how B's token came to carry A's photos.
+  const who = input.submitter;
+  if (!who) {
+    throw new InstallSubmitterError("Sign in to submit this unit.");
+  }
+  if (!stillSignedInAs(who.mark, who.userId)) {
+    throw new InstallSubmitterError(
+      "The sign-in on this phone changed while this unit was saving. Sign in as the person who did it and tap Submit again.",
+    );
+  }
+  const photographer = input.createdBy?.trim().toLowerCase() ?? null;
+  if (photographer && photographer !== (who.email?.trim().toLowerCase() ?? null)) {
+    throw new InstallSubmitterError(
+      "This unit's photos name a different person than the one submitting it. Submit it again from your own sign-in.",
+    );
+  }
   const id = crypto.randomUUID();
   const clientKey = crypto.randomUUID();
   // Each item's outbox id is decided here, before anything is written, so
@@ -408,6 +468,9 @@ export async function enqueueInstall(
       openingCode: input.openingCode,
       assignedWindowId: input.assignedWindowId,
       createdBy: input.createdBy,
+      // The person captured at the Submit tap — the install, and everything
+      // captured for it, is theirs, whoever is signed in when it is sent.
+      ownerId: who.userId,
       submitParams: input.submitParams,
       points: input.points,
       media,
@@ -417,6 +480,58 @@ export async function enqueueInstall(
   await putRecord(record, blobs);
   notifySyncListeners();
   return record;
+}
+
+/**
+ * Whose queued install this is, for the person signed in now — the install
+ * queue's copy of the outbox's rule (lib/offline/entryOwner.ts), so the pill,
+ * Stuck writes and the send all give the same answer.
+ *
+ * `ownerId`, written at Submit since #660, decides. A record saved before
+ * installs carried it goes by the one name it does carry, the submitter's
+ * email. A record naming nobody is `unknown`: never sent as anyone, and only
+ * a person throwing it away clears it.
+ */
+export function installOwnership(record: InstallOutboxRecord, signer: Signer): Ownership {
+  const owner = record.payload.ownerId;
+  if (owner) return signer.userId !== null && owner === signer.userId ? "mine" : "theirs";
+  const named = record.payload.createdBy?.trim().toLowerCase();
+  if (!named) return "unknown";
+  return signer.email !== null && named === signer.email.trim().toLowerCase() ? "mine" : "theirs";
+}
+
+/**
+ * Who a queued install may go out as right now, or null to leave it exactly
+ * as it is (Codex's full re-check of #660, P1).
+ *
+ * The media already went out as the submitter; the install RPC before it did
+ * not. It sent finish_unit through the shared client with the installer read
+ * from whoever was signed in THEN, so A's unit, submitted with no signal and
+ * sent after B signed in, was filed as B's — and finish_unit closes the
+ * caller's unit session, so B's task time could move too.
+ *
+ * Now the session is read once, the record's owner is checked against it
+ * (installOwnership), and the RPC and the points go out through a client
+ * locked to that session's token, with the installer taken from that same
+ * session. A sign-in landing after this check cannot change whose install it
+ * is. Someone else's install, one naming nobody, or any install while nobody
+ * is signed in (or the session cannot be read) is skipped whole: no stage
+ * moves, no attempt is counted, no wait is set.
+ */
+async function installSender(record: InstallOutboxRecord): Promise<InstallSendAs | null> {
+  let session;
+  try {
+    ({
+      data: { session },
+    } = await supabase.auth.getSession());
+  } catch {
+    return null;
+  }
+  const id = session?.user?.id;
+  if (!session || !id) return null;
+  const email = session.user.email ?? null;
+  if (installOwnership(record, { userId: id, email }) !== "mine") return null;
+  return { client: clientWithToken(session.access_token), installer: { id, email } };
 }
 
 /**
@@ -587,15 +702,18 @@ async function runFlushPass(): Promise<InstallFlushResult> {
       due.push({ row, record });
     }
 
-    // No session refresh here on purpose. This drain used to open with one,
-    // and it was doing nothing: supabase-js asks auth for the session before
-    // EVERY request it sends (`fetchWithAuth` → `_getSessionToken` →
-    // `auth.getSession()`), and `getSession()` refreshes a token that has
-    // actually expired. So `submitInstallEvent` below already sends with a
-    // fresh token; a pass-level call only moved the same work a few lines
-    // earlier. What used to lose an install here was the word "jwt" in the
-    // permanent-error list — see isRetryableError — not a missing refresh.
+    // No separate session refresh here on purpose. Each install's own
+    // installSender reads the session with `auth.getSession()`, which
+    // refreshes a token that has actually expired, and the send then goes
+    // through a client locked to exactly that token — so the RPC goes out
+    // fresh AND as the person the check passed. A token that expires mid-send
+    // fails that send, and the next pass reads a fresh session. What used to
+    // lose an install here was the word "jwt" in the permanent-error list —
+    // see isRetryableError — not a missing refresh.
     for (const { row, record } of due) {
+      // Not the signed-in person's (or nobody is signed in): left untouched.
+      const sender = await installSender(record);
+      if (!sender) continue;
       let current = record;
       const blobs = row.blobs ?? [];
       sendingIds.add(current.id);
@@ -603,7 +721,7 @@ async function runFlushPass(): Promise<InstallFlushResult> {
       try {
         // RPC
         if (stageToAttempt(current.step) === "rpc") {
-          const event = await submitInstallEvent(current.payload.submitParams);
+          const event = await submitInstallEvent(current.payload.submitParams, sender);
           current = {
             ...current,
             step: "rpc_done",
@@ -619,7 +737,7 @@ async function runFlushPass(): Promise<InstallFlushResult> {
           const pts = current.payload.points;
           if (pts && pts.entries.length > 0) {
             try {
-              await awardPoints(pts.profileId, pts.entries, pts.ref, pts.status);
+              await awardPoints(pts.profileId, pts.entries, pts.ref, pts.status, sender.client);
             } catch {
               // Left unawarded; step still advances so media can sync.
             }
@@ -653,6 +771,12 @@ async function runFlushPass(): Promise<InstallFlushResult> {
               installEventId: eventId,
               windowId: current.payload.assignedWindowId,
               createdBy: current.payload.createdBy,
+              // As the person who submitted the install — never whoever is
+              // signed in while this stage runs. A record from before owners
+              // were written reached this stage only because its submitter
+              // email is the signed-in person's (installSender), so its media
+              // is bound to that same person's id.
+              ownerId: current.payload.ownerId ?? sender.installer.id,
               projectId: current.payload.projectId,
               lat: meta.lat ?? null,
               lng: meta.lng ?? null,
@@ -708,6 +832,7 @@ async function runFlushPass(): Promise<InstallFlushResult> {
 }
 
 let autoFlushWired = false;
+let stopSignedInFlush: (() => void) | null = null;
 
 /**
  * Keep this queue draining from EVERY screen: on reconnect, when the app
@@ -729,6 +854,13 @@ let autoFlushWired = false;
 export function initInstallOutboxAutoFlush(): void {
   if (autoFlushWired || typeof window === "undefined") return;
   autoFlushWired = true;
+  // A different person signing in changes whose installs are theirs to send:
+  // recount the pill at once, and send the ones that just became theirs —
+  // the person who submitted is back, and should not wait for the timer.
+  stopSignedInFlush = subscribeSignedIn(() => {
+    notifySyncListeners();
+    if (navigator.onLine) void flushInstallOutbox();
+  });
   window.addEventListener("online", () => void flushInstallOutbox());
   document.addEventListener?.("visibilitychange", () => {
     if (document.visibilityState === "visible") void flushInstallOutbox();
@@ -742,6 +874,8 @@ export function initInstallOutboxAutoFlush(): void {
 /** For tests. */
 export function stopInstallOutboxAutoFlush(): void {
   autoFlushWired = false;
+  stopSignedInFlush?.();
+  stopSignedInFlush = null;
 }
 
 /**
@@ -779,6 +913,49 @@ export async function listInstalls(): Promise<InstallOutboxRecord[]> {
   return records.sort(
     (a, b) => Date.parse(b.payload.createdAt) - Date.parse(a.payload.createdAt),
   );
+}
+
+/** Who is signed in, from the memory App keeps current — for counting and
+ * listing. Sending reads the session itself (installSender). */
+function signerNow(): Signer {
+  return { userId: signedInUserId(), email: signedInEmail() };
+}
+
+/**
+ * This person's installs on this phone, any state — what /stuck lists and
+ * offers to retry or throw away. Someone else's are listOthersInstalls: not
+ * this person's to decide.
+ */
+export async function listMyInstalls(): Promise<InstallOutboxRecord[]> {
+  const signer = signerNow();
+  return (await listInstalls()).filter((r) => installOwnership(r, signer) === "mine");
+}
+
+/** Installs waiting for someone else to sign in, and installs naming nobody. */
+export async function listOthersInstalls(): Promise<{ held: InstallOutboxRecord[]; unknown: InstallOutboxRecord[] }> {
+  const signer = signerNow();
+  const all = await listInstalls();
+  return {
+    held: all.filter((r) => installOwnership(r, signer) === "theirs"),
+    unknown: all.filter((r) => installOwnership(r, signer) === "unknown"),
+  };
+}
+
+/**
+ * The pill's numbers: this person's installs still going out and given up
+ * on, and — in any state — someone else's and ones naming nobody, which the
+ * pill names as such instead of counting them as this person's queued work.
+ */
+export async function installCounts(): Promise<{ pending: number; failed: number; theirs: number; unknown: number }> {
+  const signer = signerNow();
+  const counts = { pending: 0, failed: 0, theirs: 0, unknown: 0 };
+  for (const r of await listInstalls()) {
+    const whose = installOwnership(r, signer);
+    if (whose !== "mine") counts[whose]++;
+    else if (r.status === "failed") counts.failed++;
+    else counts.pending++;
+  }
+  return counts;
 }
 
 /** Every install that gave up, newest first. */
@@ -829,6 +1006,34 @@ export async function discardFailedInstall(id: string): Promise<void> {
 }
 
 /**
+ * Is THIS install — not any other one on the phone — still in its store after
+ * a flush? True whether it is pending (waiting out a backoff, or partway
+ * through RPC → points → media) or failed/given-up; false only once the
+ * whole chain landed and the record was removed. Scoped by id so a DIFFERENT
+ * record — held for another owner, or just slower — can't make this one's
+ * result say "still queued" when it isn't.
+ */
+async function isInstallStillQueued(id: string): Promise<boolean> {
+  const rows = await listRows();
+  return rows.some((row) => row.id === id);
+}
+
+/**
+ * How many of THIS install's own media are still waiting to upload, matched
+ * by the stable clientIds assigned at enqueueInstall — the same ids the media
+ * stage queues them under (mediaClientId) — so another install's photos, held
+ * for a different owner or just queued ahead of this one, can't inflate it.
+ */
+async function ownPendingMediaCount(media: InstallOutboxMediaMeta[]): Promise<number> {
+  const ids = new Set(
+    media.map((m) => m.clientId).filter((id): id is string => Boolean(id)),
+  );
+  if (ids.size === 0) return 0;
+  const all = await listAll();
+  return all.filter((e) => ids.has(e.id) && isPending(e)).length;
+}
+
+/**
  * Enqueue then immediately attempt flush (online path). Returns whether the
  * install RPC completed this call, or is waiting for signal — and, when the
  * server refused THIS install outright, the error that says why.
@@ -842,6 +1047,15 @@ export async function discardFailedInstall(id: string): Promise<void> {
  * own `failedNow`, because the pass that discovers the verdict is not always
  * the one this call started — the 30s background flush can reach the record
  * first. Either way the answer belongs to the person standing there.
+ *
+ * Every field here is about THIS submission, not the phone's whole queue
+ * (Codex review of #660 follow-up): A's install stranded on the phone, or
+ * A's media still uploading, used to leak into B's own successful submit
+ * through the phone-wide `flush.remaining` / `pendingMediaCount()`, so B was
+ * told their own just-landed install was "only saved on this device". The
+ * general, phone-wide counts still exist — pendingInstallCount, failedInstallCount,
+ * pendingMediaCount — for the header pill and /stuck; this return value is
+ * deliberately narrower than those.
  */
 export async function submitInstallViaOutbox(
   input: EnqueueInstallInput,
@@ -852,17 +1066,18 @@ export async function submitInstallViaOutbox(
   refused: InstallRefusal | null;
 }> {
   const record = await enqueueInstall(input);
-  const flush = await flushInstallOutbox();
+  await flushInstallOutbox();
   // The media is in the global outbox now (or still behind the RPC). Give it
   // one attempt while the person is standing there — with signal, the toast
   // then says "recorded" rather than "queued" — and report what is still
   // waiting. `drain` returns at once if a drain is already running, in which
   // case the count is honest about that: waiting, not lost.
   await drain();
+  const queued = await isInstallStillQueued(record.id);
   return {
-    queued: flush.remaining > 0,
-    remainingInstalls: flush.remaining,
-    remainingUploads: await pendingMediaCount(),
+    queued,
+    remainingInstalls: queued ? 1 : 0,
+    remainingUploads: await ownPendingMediaCount(record.payload.media),
     refused: claimRefusal(record.id),
   };
 }

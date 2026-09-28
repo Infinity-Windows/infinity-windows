@@ -15,10 +15,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { isRetryableError, type OutboxEntry } from "./outbox-core";
 
 const rpc = vi.fn();
-vi.mock("../supabase", () => ({
-  supabase: { rpc: (...args: unknown[]) => rpc(...args) },
-  supabaseConfigured: true,
-}));
+vi.mock("../supabase", () => {
+  // The outbox sends a write only as the person who queued it, through a
+  // client bound to that person's token (2026-09-25): here, the same stub.
+  const supabase = { rpc: (...args: unknown[]) => rpc(...args), auth: { getSession: async () => ({ data: { session: { access_token: "test-token", user: { id: "test-user", email: "installer@example.com" } } }, error: null }) } };
+  return { supabase, clientWithToken: () => supabase, supabaseConfigured: true };
+});
 
 const { createShiftResolver, createSupabaseHandlers } = await import("./outboxHandlers");
 
@@ -49,6 +51,11 @@ beforeEach(() => {
   rpc.mockReset();
   rpc.mockResolvedValue({ data: { id: "supply-1" }, error: null });
 });
+
+// Somebody is signed in: the outbox stamps them as the owner of what they
+// queue, and sends it only as them (2026-09-25).
+const { rememberSignedIn } = await import("../signedIn");
+rememberSignedIn({ user: { id: "test-user", email: "installer@example.com" } });
 
 describe("the queued supply take", () => {
   it("sends the key the take was minted with", async () => {

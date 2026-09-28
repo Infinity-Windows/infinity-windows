@@ -6,7 +6,7 @@
 // says "STG Windows & Doors" and never "Forge Windows").
 import { useState } from "react";
 import { LogOut } from "lucide-react";
-import { supabase } from "../../lib/supabase";
+import { signOutOnRequest } from "../../lib/signOut";
 import { ScrollTabs } from "../../components/nav/ScrollTabs";
 import { StgJobProgress } from "./StgJobProgress";
 import { StgCalendarTab } from "./StgCalendarTab";
@@ -29,7 +29,7 @@ export function StgApp() {
           className="capture-close"
           aria-label="Sign out"
           title="Sign out"
-          onClick={() => void supabase.auth.signOut()}
+          onClick={() => void signOutOnRequest()}
         >
           <LogOut size={18} />
         </button>

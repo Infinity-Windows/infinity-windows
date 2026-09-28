@@ -12,6 +12,7 @@ export const INCLUDED_UPDATE_IDS = [
   '2026-09-21-team-reports', '2026-09-21-leave-review',
   '2026-09-22-update-popup', '2026-09-22-ask-text', '2026-09-22-export-scroll',
   '2026-09-23-using-forge-previews',
+  '2026-09-25-signed-in-offline',
   '2026-09-23-clock-counts-once', '2026-09-23-time-needs-review',
   '2026-09-23-ai-daily-log', '2026-09-23-ask-actions',
   '2026-09-25-unit-complete', '2026-09-25-weak-signal-screen',
@@ -20,6 +21,9 @@ export const INCLUDED_UPDATE_IDS = [
   '2026-09-25-pin-lock',
   '2026-09-25-toolbox-signing',
   '2026-09-25-pin-setting',
+  '2026-09-25-queued-work-stays-yours',
+  '2026-09-28-legacy-clock-recovery',
+  '2026-09-28-update-reload',
 ] as const;
 export interface AppUpdate {
   id: string; published_on: string; audience: number[]; kind: 'fix' | 'improvement';

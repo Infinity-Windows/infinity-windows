@@ -1,4 +1,5 @@
 import { transcribeInstallAttachment } from "./transcribe";
+import { isAuthApiError, isAuthRetryableFetchError, type User } from "@supabase/supabase-js";
 import type { PDFDocumentProxy } from "pdfjs-dist/types/src/display/api";
 import { supabase } from "../supabase";
 import { filterToLiveProjects } from "../liveProjects";
@@ -16,6 +17,7 @@ import { extractSpecsDeterministic } from "./specsDeterministic";
 import { parseSpecPageStatuses, type SpecPageStatus } from "./specPageStatus";
 import { pendingPages, type StoredPageProgress } from "./extractionProgress";
 import { formatApiError } from "./errors";
+import { errorMessage, isPermanentSqlState } from "../offline/outbox-core";
 import { visionMarksToDrafts, type RawVisionMark } from "./specsVision";
 import type { DiscrepancyKind } from "./specReconciliation";
 import { elevationAppearances, type ElevationAppearance } from "./elevationViews";
@@ -94,8 +96,8 @@ let profileCols = PROFILE_COLS;
 // a literal) loses PostgREST's row inference — the callers below cast, exactly
 // as they already did when they passed the constant straight in.
 async function readProfiles(
-  run: (cols: string) => PromiseLike<{ data: unknown; error: unknown }>,
-): Promise<{ data: unknown; error: unknown }> {
+  run: (cols: string) => PromiseLike<{ data: unknown; error: unknown; status?: unknown }>,
+): Promise<{ data: unknown; error: unknown; status?: unknown }> {
   let result = await run(profileCols);
   // One retry per optional column, so a database missing all of them still
   // lands on a list it can answer rather than failing on the second one.
@@ -127,10 +129,44 @@ export function isMissingFunction(error: unknown): boolean {
   return isMissingSchemaFunction(error);
 }
 
+/**
+ * The signed-in user, or null when nobody is signed in. THROWS when the
+ * question could not be asked — no signal, or no answer in time.
+ *
+ * `getUser()` asks the auth server, and when it cannot reach it the answer is
+ * "no user" — the same words as "nobody is signed in". Taken at its word, that
+ * wrote a null over the profile the phone had saved, and every launch without
+ * signal emptied the screens that need the profile, the clock block first
+ * (2026-09-24). "Couldn't ask" is not "nobody".
+ */
+async function signedInUser(): Promise<User | null> {
+  // The session first: it answers at once when the sign-in cannot be renewed
+  // (lib/offlineSession.ts), where getUser() would sit behind half a minute of
+  // renewal retries before saying the same thing.
+  const { data: kept, error: keptError } = await supabase.auth.getSession();
+  if (!kept.session) {
+    if (couldNotAsk(keptError)) throw keptError;
+    return null;
+  }
+  const { data, error } = await supabase.auth.getUser();
+  if (data.user) return data.user;
+  if (couldNotAsk(error)) throw error;
+  return null;
+}
+
+/**
+ * The auth server could not be asked, or could not answer just now: no signal,
+ * a timeout, 429 "slow down", a 5xx. None of those says who is signed in —
+ * the same line lib/offlineSession's classifyRenewal draws for renewals.
+ */
+function couldNotAsk(error: unknown): boolean {
+  if (isAuthRetryableFetchError(error)) return true;
+  return isAuthApiError(error) && (error.status === 408 || error.status === 429 || error.status >= 500);
+}
+
 /** Ensure the signed-in user has a profile row; return it. */
 export async function ensureMyProfile(): Promise<Profile | null> {
-  const { data: userData } = await supabase.auth.getUser();
-  const user = userData.user;
+  const user = await signedInUser();
   if (!user) return null;
 
   const { data: existing, error } = await readProfiles((cols) =>
@@ -184,20 +220,114 @@ export async function ensureMyProfile(): Promise<Profile | null> {
   return profile;
 }
 
-/** The signed-in user's own profile — NEVER affected by person preview. */
-export async function getRealProfile(): Promise<Profile | null> {
-  const { data: userData } = await supabase.auth.getUser();
-  const user = userData.user;
+/**
+ * postgrest-js's failure result is `{ data, error, status }` — the HTTP status
+ * lives on the RESULT, never on `PostgrestError` itself (message/details/hint/
+ * code only). `profileOf` only has the `error` to throw onward, so the status
+ * rides along on it, attached at this one boundary — same object, same
+ * identity, nothing else a caller catches changes. It is what
+ * getRealProfile's isProfileReadNetworkFailure reads to tell a busy server
+ * (408/429/5xx) from an actual denial (401/403) below.
+ */
+function withReadStatus<E>(error: E, status: unknown): E {
+  if (error && typeof error === "object" && typeof status === "number") {
+    (error as { status?: number }).status = status;
+  }
+  return error;
+}
+
+async function profileOf(user: User | null): Promise<Profile | null> {
   if (!user) return null;
-  const { data, error } = await readProfiles((cols) =>
+  const { data, error, status } = await readProfiles((cols) =>
     supabase.from("profiles").select(cols).eq("id", user.id).maybeSingle(),
   );
-  if (error) throw error;
+  if (error) throw withReadStatus(error, status);
   return data as Profile | null;
 }
 
+/**
+ * Is a `profiles` row-read failure "could not ask" (no signal) rather than a
+ * real answer from the server? Used only by getRealProfile's fallback below.
+ *
+ * Deliberately narrower than lib/offline/outbox-core's isNetworkError, which
+ * treats `navigator.onLine === false` as sufficient on its own — right for a
+ * WRITE the queue can retry later regardless of what the error says, wrong for
+ * a READ: an offline browser can still be holding a REAL 401/403 (RLS shut
+ * this role out, a role change) from the last request that reached the
+ * server, and that answer must not be swallowed just because the phone is
+ * offline right now. So a denial — an HTTP status, a permanent Postgres
+ * SQLSTATE (22/23/42, the same list isRetryableError treats as final), or its
+ * wording — is real no matter what navigator.onLine says, and only a message
+ * that actually reads as a fetch failure counts as "could not ask". Not
+ * `err instanceof TypeError` either: a programming bug throws TypeError too,
+ * and that must surface, not vanish as "offline". `.status` here is the one
+ * `withReadStatus` attached below, not a field PostgrestError ever carries
+ * itself.
+ *
+ * The phrase list below is exact, known browser/runtime fetch-failure
+ * wordings only — never a bare "connection", "timeout" or "offline". Those
+ * three swallowed a plain programming TypeError once already (a typo'd
+ * property access reading `'connection'` off `undefined`, caught here as a
+ * profile-read failure): ordinary English words a bug's message can contain
+ * for reasons that have nothing to do with the network.
+ *
+ * 408 (request timeout), 429 ("slow down") and 5xx are the server saying it
+ * could not answer just now, not answering the question — the same class
+ * `couldNotAsk` above already treats that way for the auth call. Checked by
+ * status, never by wording, so "Rate limit reached" or "Upstream unavailable"
+ * settle the read exactly like a fetch failure, without widening the message
+ * regex to catch words a genuine 4xx denial could also happen to contain.
+ */
+function isProfileReadNetworkFailure(err: unknown): boolean {
+  const rec = err && typeof err === "object" ? (err as { status?: unknown; code?: unknown }) : null;
+  const status = typeof rec?.status === "number" ? rec.status : null;
+  if (status === 401 || status === 403) return false;
+  if (status === 408 || status === 429 || (status !== null && status >= 500)) return true;
+  if (isPermanentSqlState(typeof rec?.code === "string" ? rec.code : null)) return false;
+  const msg = errorMessage(err).toLowerCase();
+  if (/permission denied|not authorized|forbidden|row-level security/.test(msg)) return false;
+  return /failed to fetch|networkerror when attempting to fetch|load failed|fetch failed|the network connection was lost|err_internet_disconnected|err_network_changed|err_connection_(refused|reset|closed|aborted)|err_name_not_resolved|request timed out|timed out while fetching/.test(
+    msg,
+  );
+}
+
+/**
+ * The signed-in user's own profile — NEVER affected by person preview.
+ *
+ * With no signal to ask who is signed in, this still answers null, as it
+ * always has. Nothing keeps this one on the phone (queryKeys: myRealProfile),
+ * so there is no saved copy for the null to overwrite — and an error here,
+ * with no copy to fall back on, loops: every screen that mounts asks again,
+ * the landing drops back to "Loading…", and the screen that asked unmounts.
+ *
+ * That loop is not just theoretical for the auth question above — the profile
+ * ROW read (profileOf) can fail the exact same way with a warm, still-valid
+ * sign-in (the auth answer cached, only the `profiles` read refused). Under
+ * `networkMode: "offlineFirst"` a thrown, unhandled rejection here leaves the
+ * query's retry PAUSED rather than settled, so `isLoading` never clears and
+ * RoleLanding is stuck on "Loading…" for as long as the phone has no signal.
+ * Same fix as above, same reason: a read that could not be asked answers null
+ * — but a read that WAS answered, even a refusal, is never hidden as that.
+ */
+export async function getRealProfile(): Promise<Profile | null> {
+  const user = await signedInUser().catch((err: unknown) => {
+    if (couldNotAsk(err)) return null;
+    throw err;
+  });
+  return profileOf(user).catch((err: unknown) => {
+    if (isProfileReadNetworkFailure(err)) return null;
+    throw err;
+  });
+}
+
+/**
+ * The profile every "my …" screen reads, and the one the phone KEEPS
+ * (queryKeys: myProfile). So it throws when there is no signal to ask who is
+ * signed in: React Query then keeps the saved copy, where a null would have
+ * been saved over it.
+ */
 export async function getMyProfile(): Promise<Profile | null> {
-  const me = await getRealProfile();
+  const me = await profileOf(await signedInUser());
 
   // Person preview (owner-only, session-scoped): every "my …" surface keys
   // off this profile, so returning the previewed person makes the whole app
@@ -3674,15 +3804,31 @@ export const CREDIT_NOT_LIVE_YET =
   "under someone else's name yet. Let the person who installed it file it, or " +
   "try again in a few minutes.";
 
+/**
+ * Who a queued install is sent as (2026-09-27, Codex's full re-check of #660):
+ * a client locked to the submitter's session token (lib/supabase.ts
+ * clientWithToken), and the installer read from that same session. The
+ * install queue only builds one after checking the saved owner is the person
+ * signed in, so nothing here asks auth who is signed in by the time the
+ * request leaves — finish_unit files the install under the caller and closes
+ * the CALLER's unit session.
+ */
+export interface InstallSendAs {
+  client: typeof supabase;
+  installer: { id: string; email: string | null };
+}
+
 export async function submitInstallEvent(
   params: SubmitInstallParams,
+  via?: InstallSendAs,
 ): Promise<InstallEvent> {
   const credited = params.creditedTo ?? null;
+  const db = via?.client ?? supabase;
   const args = {
     p_opening_id: params.openingId,
     p_next_opening_id: params.nextOpeningId ?? null,
-    p_installer: await actor(),
-    p_installer_id: await actorId(),
+    p_installer: via ? via.installer.email : await actor(),
+    p_installer_id: via ? via.installer.id : await actorId(),
     p_estimate_minutes: params.estimateMinutes ?? null,
     p_quality_grade: params.qualityGrade ?? null,
     p_difficulty: params.difficulty ?? null,
@@ -3699,7 +3845,7 @@ export async function submitInstallEvent(
   // own work therefore makes the same fifteen-argument call it always did, so a
   // phone running ahead of the migration still finishes units — which is the
   // rule for every feature here.
-  const { data, error } = await supabase.rpc(
+  const { data, error } = await db.rpc(
     "finish_unit",
     credited ? { ...args, p_credited_to: credited } : args,
   );

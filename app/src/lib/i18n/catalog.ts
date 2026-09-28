@@ -2595,6 +2595,105 @@ export const CATALOG = {
     en: "No signal. Changes are saved on this phone and send when it returns.",
     es: "Sin señal. Los cambios se guardan en este teléfono y se envían cuando vuelva.",
   },
+  // Work on this phone that belongs to someone who is not signed in now
+  // (2026-09-25): it goes out only as that person, never as whoever is on.
+  "pill.held": { en: "{count} saved by someone else", es: "{count} de otra persona" },
+  "pill.heldDetail": {
+    en: "Saved on this phone by someone who isn't signed in now. It goes out when that person signs in again.",
+    es: "Guardado en este teléfono por alguien que no tiene la sesión abierta ahora. Se envía cuando esa persona vuelva a iniciar sesión.",
+  },
+  // Work queued by a build from before writes carried their owner, with
+  // nothing in it that says who saved it (Codex review of #660, P1 #1): never
+  // sent as anyone. A person may throw it away; nothing sends it as them.
+  "pill.unknownOwner": { en: "{count} saved before an update", es: "{count} de antes de una actualización" },
+  "pill.unknownOwnerDetail": {
+    en: "Saved before an update, and Forge can't tell who saved it. See Stuck writes.",
+    es: "Guardado antes de una actualización; Forge no sabe quién lo guardó. Mira Escrituras atascadas.",
+  },
+  "stuck.unknown.title": {
+    en: "Saved before an update — Forge can't tell who saved it",
+    es: "Guardado antes de una actualización — Forge no puede saber quién lo guardó",
+  },
+  "stuck.unknown.body": {
+    en: "An older version didn't note who saved these, so Forge won't send them as anyone. If one was yours, tell your foreman, then throw it away.",
+    es: "Una versión anterior no anotó quién guardó esto, así que Forge no lo enviará a nombre de nadie. Si algo era tuyo, avísale a tu capataz y luego elimínalo.",
+  },
+  // A legacy CLOCK punch with no known owner is different from every other
+  // unknown-owner row: throwing it away can make a real clock-in or
+  // clock-out disappear with nothing left for payroll to reconstruct. These
+  // never offer Throw away or Try again — only a factual record a foreman
+  // can use to reconcile by hand.
+  "stuck.unknownClock.body": {
+    en: "A clock punch from an older version — Forge doesn't know whose it is and will never send it or delete it automatically. Check the record below against the person and the server timecard before reconciling this by hand.",
+    es: "Un marcaje de reloj de una versión anterior — Forge no sabe de quién es y nunca lo enviará ni lo eliminará automáticamente. Revisa el registro de abajo con la persona y el reporte de horas del servidor antes de conciliarlo a mano.",
+  },
+  "stuck.unknownClock.ownerUnknown": {
+    en: "Owner: UNKNOWN. This record does not prove who made this punch and does not update payroll by itself.",
+    es: "Dueño: DESCONOCIDO. Este registro no prueba quién hizo este marcaje ni actualiza la nómina por sí solo.",
+  },
+  "stuck.unknownClock.recordLabel": { en: "Recovery record", es: "Registro de recuperación" },
+  "stuck.unknownClock.copy": { en: "Copy record", es: "Copiar registro" },
+  "stuck.unknownClock.copied": { en: "Copied", es: "Copiado" },
+  "stuck.unknownClock.copyError": {
+    en: "Couldn't copy — select the text below by hand.",
+    es: "No se pudo copiar — selecciona el texto de abajo a mano.",
+  },
+  "stuck.unknownClock.download": { en: "Download record", es: "Descargar registro" },
+  // The copyable/downloadable recovery record itself — same rule as every
+  // other installer-facing screen: localized through t()/CATALOG, never an
+  // English block dropped into a Spanish-reading foreman's UI. The tapped-at
+  // "local" line is explicitly the CURRENT device zone AT EXPORT time — the
+  // legacy payload never recorded the zone the punch actually happened in,
+  // so the wording must never claim otherwise.
+  "stuck.unknownClock.record.header": {
+    en: "Forge — legacy clock punch recovery record",
+    es: "Forge — registro de recuperación de un marcaje de reloj antiguo",
+  },
+  "stuck.unknownClock.record.ownerLine": {
+    en: "Owner: UNKNOWN — does not prove who made this punch and does not update payroll by itself.",
+    es: "Dueño: DESCONOCIDO — no prueba quién hizo este marcaje ni actualiza la nómina por sí solo.",
+  },
+  "stuck.unknownClock.record.action": { en: "Action: {value}", es: "Acción: {value}" },
+  "stuck.unknownClock.record.entryId": { en: "Entry id: {value}", es: "Id de la entrada: {value}" },
+  "stuck.unknownClock.record.clientId": { en: "Client id: {value}", es: "Id del cliente: {value}" },
+  "stuck.unknownClock.record.tappedDevice": {
+    en: "Tapped at (device, untouched): {value}",
+    es: "Marcado en (dispositivo, sin modificar): {value}",
+  },
+  "stuck.unknownClock.record.tappedLocalNow": {
+    en: "Same instant in this device's CURRENT time zone at export ({tz}) — not necessarily the zone the punch happened in: {value}",
+    es: "El mismo instante en la zona horaria ACTUAL de este dispositivo al exportar ({tz}) — no necesariamente la zona en la que ocurrió el marcaje: {value}",
+  },
+  "stuck.unknownClock.record.clockChecked": {
+    en: "Device clock last checked: {value}",
+    es: "Última verificación del reloj del dispositivo: {value}",
+  },
+  "stuck.unknownClock.record.clockSkew": {
+    en: "Device clock skew: {value} ms",
+    es: "Desfase del reloj del dispositivo: {value} ms",
+  },
+  "stuck.unknownClock.record.queuedAt": { en: "Queued on phone: {value}", es: "En espera en el teléfono: {value}" },
+  "stuck.unknownClock.record.unknownTime": { en: "unknown (unreadable time on this device)", es: "desconocido (hora no legible en este dispositivo)" },
+  "stuck.unknownClock.record.projectId": { en: "Project id: {value}", es: "Id del proyecto: {value}" },
+  "stuck.unknownClock.record.costCodeId": { en: "Cost code id: {value}", es: "Id del código de costo: {value}" },
+  "stuck.unknownClock.record.shiftRef": { en: "Shift ref: {value}", es: "Referencia de turno: {value}" },
+  "stuck.unknownClock.record.breakType": { en: "Break type: {value}", es: "Tipo de descanso: {value}" },
+  "stuck.unknownClock.record.breakSeconds": { en: "Break seconds: {value}", es: "Segundos de descanso: {value}" },
+  "stuck.unknownClock.record.footer1": {
+    en: "A foreman must verify the person and the existing server timecard before",
+    es: "Un capataz debe verificar a la persona y el reporte de horas existente en el servidor antes de",
+  },
+  "stuck.unknownClock.record.footer2": {
+    en: "reconciling this by hand. This record alone never creates or changes a timecard.",
+    es: "conciliar esto a mano. Este registro por sí solo nunca crea ni cambia un reporte de horas.",
+  },
+  "diag.unknownOwnerQueue": { en: "Saved before an update, owner unknown", es: "Guardado antes de una actualización, sin dueño conocido" },
+  "stuck.held.title": { en: "Saved by someone else on this phone", es: "Guardado por otra persona en este teléfono" },
+  "stuck.held.body": {
+    en: "Waiting for the person who saved these to sign in. They go out under their name, never yours.",
+    es: "Esperando a que la persona que guardó esto inicie sesión. Se envían a su nombre, nunca al tuyo.",
+  },
+  "diag.heldQueue": { en: "Waiting for another person to sign in", es: "Esperando a que otra persona inicie sesión" },
   "pill.weakSignal": { en: "Weak signal", es: "Señal débil" },
   "pill.weakDetail": {
     en: "Requests are timing out. Screens show the last saved copy.",
@@ -2894,6 +2993,14 @@ export const CATALOG = {
   "signin.resetSent": {
     en: "Password reset email sent — check your inbox, then Sign in.",
     es: "Correo de restablecimiento enviado — revisa tu bandeja de entrada y luego inicia sesión.",
+  },
+  // The auth server ended this phone's sign-in on its own — the login was
+  // removed, its password changed, or it was signed out everywhere — rather
+  // than the person tapping Sign out (App.tsx, 2026-09-24). No signal never
+  // shows this: a phone with no signal stays signed in.
+  "signin.signedOut": {
+    en: "You've been signed out on this phone. Sign in again to keep going — if it won't let you in, ask your supervisor.",
+    es: "Se cerró tu sesión en este teléfono. Vuelve a iniciar sesión para continuar — si no te deja entrar, pregúntale a tu supervisor.",
   },
   // ---- Join crew (installer-spanish-first-fourteen) --------------------
   // A new hire's first screen, reached from a texted link with no session

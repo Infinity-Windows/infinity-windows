@@ -72,6 +72,9 @@ vi.mock("../install/transcribe", () => ({ transcribeInstallAttachment: transcrib
 
 const { createShiftResolver, createSupabaseHandlers } = await import("./outboxHandlers");
 const handlers = createSupabaseHandlers(createShiftResolver());
+/** The client these handlers send through — the transcript must use it too
+ * (Codex review of #660, P2 #3: in the drain it is bound to the memo owner). */
+const { supabase: sendingClient } = await import("../supabase");
 
 const BLOB = new Blob(["memo"], { type: "audio/webm" });
 const ctx = { getBlob: async () => BLOB };
@@ -125,7 +128,7 @@ describe("a unit's voice memo through the upload handler", () => {
     });
     // The id was read back by client id — a second read, never RETURNING.
     expect(db.reads).toEqual([{ column: "client_id", value: "aaaaaaaa-0000-4000-8000-000000000001" }]);
-    expect(transcribe).toHaveBeenCalledWith("att-1", BLOB);
+    expect(transcribe).toHaveBeenCalledWith("att-1", BLOB, sendingClient);
   });
 
   it("still counts as sent when the id cannot be read back", async () => {
@@ -175,7 +178,7 @@ describe("an item moved out of the retired upload queue", () => {
     await handlers.photo_upload!(moved(), ctx);
     expect(db.uploads).toHaveLength(1);
     expect(db.upserts).toHaveLength(1);
-    expect(transcribe).toHaveBeenCalledWith("att-1", BLOB);
+    expect(transcribe).toHaveBeenCalledWith("att-1", BLOB, sendingClient);
   });
 
   it("is filed normally when the server refuses to answer the question", async () => {

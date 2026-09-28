@@ -23,6 +23,7 @@
 //   IW_PWA_OLD_REF    git ref of the "old" build (default origin/master —
 //                     what the crew is running when a pull request opens)
 //   IW_PWA_REUSE=1    keep both builds from the last run instead of rebuilding
+//   IW_PWA_CACHE      private cache directory for parallel isolated checkouts
 //   IW_PWA_DROP       comma-separated paths to DELETE from the new build after
 //                     building it — how to watch upgrade-path.pwa.ts fail the
 //                     way 2026-09-25 did:
@@ -50,7 +51,7 @@ import { fileURLToPath } from "node:url";
 
 const app = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const repo = resolve(app, "..");
-const cache = join(app, "node_modules", ".cache", "pwa-e2e");
+const cache = resolve(process.env.IW_PWA_CACHE ?? join(app, "node_modules", ".cache", "pwa-e2e"));
 const PORT = Number(process.env.IW_MAP_PORT ?? 5186);
 const OLD_REF = process.env.IW_PWA_OLD_REF ?? "origin/master";
 const REUSE = process.env.IW_PWA_REUSE === "1";

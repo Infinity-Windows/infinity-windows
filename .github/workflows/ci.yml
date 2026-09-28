@@ -110,6 +110,10 @@ jobs:
       # their own, so a branch appending to the long list above doesn't collide
       # with this one.
       - run: npm run e2e -- clock-in-once.spec.ts crew-clock.spec.ts
+      # Expired sign-ins and shared-phone queues need their own browser gate:
+      # they can lose a saved punch or send it as the next person even while
+      # the ordinary clock screen tests remain green.
+      - run: npm run e2e -- offline-session.spec.ts outbox-owner.spec.ts
       # The INSTALLED app: two production builds with their service workers,
       # from the build the crew is running (master) to this one — reopened
       # with no signal, and reopened after the deploy by a phone still holding

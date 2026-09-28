@@ -34,24 +34,42 @@ const q = vi.hoisted(() => ({
   work: [] as WorkCommand[],
   legacy: 0,
   sentWrites: [] as Array<{ entry: OutboxEntry; sentAt: number }>,
+  /** Someone else's writes on this phone (2026-09-25). */
+  held: [] as OutboxEntry[],
+  /** Writes saved before an update, whose owner nobody can tell. */
+  unknown: [] as OutboxEntry[],
+  /** Someone else's finished units on this phone (Codex re-check of #660). */
+  heldInstalls: [] as InstallOutboxRecord[],
+  /** Finished units saved before an update that name no one. */
+  unknownInstalls: [] as InstallOutboxRecord[],
+  discarded: [] as string[],
   sendNow: vi.fn(async () => {}),
   sendInstallsNow: vi.fn(async () => {}),
   retryWork: vi.fn(async () => true),
 }));
 
 vi.mock("../lib/offline/outbox", () => ({
-  listAll: async () => q.writes,
+  listMine: async () => q.writes,
+  listHeld: async () => q.held,
+  listUnknownOwner: async () => q.unknown,
   retryFailed: async () => {},
-  discardFailed: async () => {},
+  discardFailed: async (id: string) => {
+    q.discarded.push(id);
+    q.unknown = q.unknown.filter((e) => e.id !== id);
+  },
   subscribe: () => () => {},
   sendNow: q.sendNow,
   recentlySent: () => q.sentWrites,
 }));
 
 vi.mock("../lib/install/installOutbox", () => ({
-  listInstalls: async () => q.installs,
+  listMyInstalls: async () => q.installs,
+  listOthersInstalls: async () => ({ held: q.heldInstalls, unknown: q.unknownInstalls }),
   retryFailedInstall: async () => {},
-  discardFailedInstall: async () => {},
+  discardFailedInstall: async (id: string) => {
+    q.discarded.push(id);
+    q.unknownInstalls = q.unknownInstalls.filter((r) => r.id !== id);
+  },
   subscribeSyncListeners: () => () => {},
   isInstallSending: (id: string) => q.sendingInstalls.has(id),
   recentlySentInstalls: () => [],
@@ -120,6 +138,11 @@ beforeEach(() => {
   q.work = [];
   q.legacy = 0;
   q.sentWrites = [];
+  q.held = [];
+  q.unknown = [];
+  q.heldInstalls = [];
+  q.unknownInstalls = [];
+  q.discarded = [];
   q.sendNow.mockClear();
   q.sendInstallsNow.mockClear();
   q.retryWork.mockClear();
@@ -356,5 +379,182 @@ describe("what is merely waiting (K0.6)", () => {
     expect(q.retryWork).toHaveBeenCalledWith("crew-1");
     // Never Throw away here: that queue exports before it removes.
     expect([...el.querySelectorAll("button")].map((b) => b.textContent)).not.toContain("Throw away");
+  });
+});
+
+describe("someone else's work on this phone", () => {
+  it("is shown as waiting for that person, with nothing to retry or throw away — and never as 'Nothing stuck'", async () => {
+    q.held = [
+      stuckWrite({ id: "h-1", op: "clock_in", status: "queued", attemptCount: 0, lastError: null, ownerId: "someone-else" }),
+    ];
+    const el = await mount();
+    expect(el.textContent).toContain("Saved by someone else on this phone");
+    expect(el.textContent).toContain("Waiting for the person who saved these to sign in");
+    const held = el.querySelector('[data-testid="stuck-held"]')!;
+    expect(held.textContent).toContain("Clock in");
+    expect(held.querySelectorAll("button")).toHaveLength(0);
+    expect(el.textContent).not.toContain("Nothing stuck");
+  });
+
+  it("includes someone else's finished unit — shown once, as theirs, with nothing to retry or throw away even after it failed", async () => {
+    // Codex's full re-check of #660: an install is sent only as the person
+    // who submitted it, so it is not this person's to retry or throw away.
+    q.heldInstalls = [
+      {
+        id: "i-held",
+        payload: { openingCode: "W8", createdAt: new Date(Date.now() - 5 * 60_000).toISOString(), ownerId: "someone-else" },
+        step: "queued",
+        installEventId: null,
+        attemptCount: 8,
+        lastError: "Failed to fetch",
+        status: "failed",
+      } as unknown as InstallOutboxRecord,
+    ];
+    const el = await mount();
+    const held = el.querySelector('[data-testid="stuck-held"]')!;
+    expect(held.textContent).toContain("Window W8 finished");
+    expect(held.querySelectorAll("button")).toHaveLength(0);
+    expect(el.textContent!.split("Window W8 finished")).toHaveLength(2);
+    expect(el.textContent).not.toContain("Nothing stuck");
+  });
+});
+
+describe("work saved before an update, whose owner Forge cannot tell", () => {
+  it("is shown as such, never sent as anyone, and can be thrown away — with the same second tap as any other", async () => {
+    // Codex review of #660, P1 #1. Nothing on the entry says who saved it,
+    // so the only way out a person gets is throwing it away, on purpose.
+    // Non-clock op on purpose: a legacy CLOCK punch gets a different UI
+    // (the recovery record below), never Throw away.
+    q.unknown = [
+      stuckWrite({ id: "u-1", op: "daily_log", status: "queued", attemptCount: 0, lastError: null }),
+    ];
+    const el = await mount();
+    expect(el.textContent).toContain("Saved before an update — Forge can't tell who saved it");
+    const section = el.querySelector('[data-testid="stuck-unknown"]')!;
+    expect(section.textContent).toContain("Daily log");
+    // No Try again, and no way to send it under this person's name.
+    const labels = [...section.querySelectorAll("button")].map((b) => b.textContent);
+    expect(labels).toEqual(["Throw away"]);
+    expect(el.textContent).not.toContain("Nothing stuck");
+
+    const tap = async () => {
+      await act(async () => {
+        [...section.querySelectorAll("button")][0].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+    };
+    await tap();
+    // One tap only asks.
+    expect(q.discarded).toEqual([]);
+    expect([...section.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Sure? this deletes it"]);
+    await tap();
+    expect(q.discarded).toEqual(["u-1"]);
+  });
+
+  it("includes a finished unit that names no one: Throw away is the one way out, on the second tap", async () => {
+    q.unknownInstalls = [
+      {
+        id: "i-anon",
+        payload: { openingCode: "W9", createdAt: new Date(Date.now() - 5 * 60_000).toISOString(), createdBy: null },
+        step: "queued",
+        installEventId: null,
+        attemptCount: 0,
+        lastError: null,
+        status: "pending",
+      } as unknown as InstallOutboxRecord,
+    ];
+    const el = await mount();
+    const section = el.querySelector('[data-testid="stuck-unknown"]')!;
+    expect(section.textContent).toContain("Window W9 finished");
+    expect([...section.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Throw away"]);
+    const tap = async () => {
+      await act(async () => {
+        [...section.querySelectorAll("button")][0].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+    };
+    await tap();
+    expect(q.discarded).toEqual([]);
+    await tap();
+    expect(q.discarded).toEqual(["i-anon"]);
+  });
+});
+
+describe("a legacy clock punch whose owner Forge cannot tell", () => {
+  it("shows usable details and a recovery record instead of Throw away or Try again, with original ids/timestamps intact and secrets omitted", async () => {
+    q.unknown = [
+      stuckWrite({
+        id: "clock-u-1",
+        op: "clock_out",
+        status: "queued",
+        attemptCount: 0,
+        lastError: null,
+        createdAt: Date.now() - 4 * DAY,
+        payload: {
+          clientId: "client-legacy-1",
+          tappedAt: "2026-09-20T14:03:00.000Z",
+          projectId: "proj-legacy-9",
+          costCodeId: "cc-legacy-3",
+          shiftRef: "shift-legacy-77",
+          breakSeconds: 1800,
+          injured: true,
+          injuryNote: "private-medical-detail",
+          note: "private-freeform-note",
+          labels: ["private-label"],
+          authToken: "super-secret-access-token",
+          refreshToken: "super-secret-refresh-token",
+        },
+      }),
+    ];
+    const el = await mount();
+    const section = el.querySelector('[data-testid="stuck-unknown-clock"]')!;
+    expect(section).toBeTruthy();
+    expect(section.textContent).toContain("Clock out");
+    expect(section.textContent).toContain("UNKNOWN");
+    // The whitelisted facts survive, untouched.
+    expect(section.textContent).toContain("clock-u-1");
+    expect(section.textContent).toContain("client-legacy-1");
+    expect(section.textContent).toContain("2026-09-20T14:03:00.000Z");
+    expect(section.textContent).toContain("proj-legacy-9");
+    expect(section.textContent).toContain("shift-legacy-77");
+    expect(section.textContent).toContain("1800");
+    // Never the secrets, and never the raw payload's key names.
+    expect(section.textContent).not.toContain("super-secret");
+    expect(section.textContent).not.toContain("authToken");
+    expect(section.textContent).not.toContain("refreshToken");
+    expect(section.textContent).not.toContain("private-");
+    // No retry/discard/replay is exposed for this row.
+    const buttons = [...section.querySelectorAll("button")].map((b) => b.textContent);
+    expect(buttons).not.toContain("Throw away");
+    expect(buttons).not.toContain("Try again");
+    expect(buttons).not.toContain("Sure? this deletes it");
+    // Nothing acted on it just from being rendered.
+    expect(q.discarded).toEqual([]);
+    expect(el.textContent).not.toContain("Nothing stuck");
+  });
+
+  it("never triggers a discard even if the row's own buttons are clicked", async () => {
+    q.unknown = [
+      stuckWrite({
+        id: "clock-u-2",
+        op: "clock_in",
+        status: "queued",
+        attemptCount: 0,
+        lastError: null,
+        payload: { clientId: "client-legacy-2", tappedAt: "2026-09-21T08:00:00.000Z" },
+      }),
+    ];
+    const el = await mount();
+    const section = el.querySelector('[data-testid="stuck-unknown-clock"]')!;
+    const buttons = [...section.querySelectorAll("button")];
+    for (const button of buttons) {
+      await act(async () => {
+        button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+    }
+    expect(q.discarded).toEqual([]);
+    expect(q.sendNow).not.toHaveBeenCalled();
+    expect(q.unknown.map((entry) => entry.id)).toEqual(["clock-u-2"]);
   });
 });

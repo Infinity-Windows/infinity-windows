@@ -78,7 +78,7 @@ export const QUERY_KEY_ROOTS: QueryKeyRootEntry[] = [
   { root: "chatUnread", offline: false },
   { root: "checkoutReasons", offline: false },
   { root: "clearances", offline: false },
-  { root: "clockCostCodes", offline: false },
+  { root: "clockCostCodes", offline: true, why: "The clock's cost-code list (2026-09-24). The clock will not start without a code, and this list was never kept: opened on a site with no signal — a crew member's first launch of the morning — the clock showed no codes at all, so a punch could not even be saved on the phone to send later." },
   { root: "clockSkewMs", offline: false },
   { root: "clockedInAnywhere", offline: false },
   { root: "clockedInOnJob", offline: false },
@@ -105,9 +105,11 @@ export const QUERY_KEY_ROOTS: QueryKeyRootEntry[] = [
   { root: "dispatch", offline: false },
   { root: "educationProgress", offline: false },
   { root: "elevationViews", offline: true, why: "The flat map's two other reads (ticket 05, 2026-09-06): the traced building outline and the elevation views the pins hang off. The openings were cached and these were not, so the map offline drew pins on nothing." },
-  // The /stuck screen's three reads, every state of every queue (K0.6). Read
+  // The /stuck screen's reads, every state of every queue (K0.6). Read
   // from the phone's own stores, never from the server, so there is nothing
-  // to keep offline — the stores ARE the offline copy.
+  // to keep offline — the stores ARE the offline copy. heldWrites is someone
+  // else's work on this phone (2026-09-25).
+  { root: "heldWrites", offline: false },
   { root: "queuedInstalls", offline: false },
   { root: "queuedPersonal", offline: false },
   { root: "queuedWrites", offline: false },
@@ -230,7 +232,7 @@ export const QUERY_KEY_ROOTS: QueryKeyRootEntry[] = [
   { root: "receiptJobSuggestions", offline: false },
   { root: "receipts-feed", offline: false },
   { root: "receipts-office", offline: false },
-  { root: "recentJobs", offline: false },
+  { root: "recentJobs", offline: true, why: "The clock's recent jobs (2026-09-24), which make clocking in one tap: the clock opens on yesterday's job and code. Not kept, a morning launch with no signal opened it on no job at all. Keyed by the person, so it is only ever their own." },
   { root: "recordEvents", offline: false },
   { root: "recordMedia", offline: false },
   { root: "removedOpenings", offline: false },
