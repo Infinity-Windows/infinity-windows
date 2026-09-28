@@ -82,6 +82,18 @@ vi.mock("../../lib/useToolboxGate", () => ({
   useToolboxToday: () => ({ data: signed, isSuccess: true, pending: pendingSign, refused: refusedSign }),
 }));
 vi.mock("../../lib/signedIn", () => ({ signedInUserId: () => signedInId }));
+vi.mock("../../lib/supabase", () => ({
+  supabase: {
+    auth: {
+      getSession: async () => ({
+        data: { session: { access_token: "fixture-token", user: { id: signedInId } } },
+        error: null,
+      }),
+    },
+  },
+  clientWithToken: () => ({ rpc: vi.fn() }),
+  supabaseConfigured: true,
+}));
 vi.mock("../../lib/companySettings", () => ({
   getCompanySettings: async () => ({
     id: 1,
@@ -344,6 +356,19 @@ describe("WorkScreen (K1.2)", () => {
     expect(byTestId(el, "ws-headsups")!.textContent).toContain("Toolbox talk not signed yet");
     // The card under the clock says what the signature unlocks: both.
     expect(byTestId(el, "ws-finish-talk")!.textContent).toContain("unlock unit work and prep time");
+  });
+
+  it("a locally signed talk remains counted when sending needs attention, with the refusal visible", async () => {
+    shift = openShift();
+    talk = { id: "t1", title: "Ladders", body: "", talk_date: "2026-10-06" };
+    signed = { id: "pending-c1" };
+    pendingSign = true;
+    refusedSign = true;
+    myOpenings = [opening({})];
+    const el = await mount();
+    expect(byTestId(el, "ws-finish-talk")).toBeNull();
+    expect(el.querySelector('.toolbox-sign-status[data-state="refused"]')).not.toBeNull();
+    expect(byTestId(el, "ws-unit-start")!.hasAttribute("disabled")).toBe(false);
   });
 
   // Prep time waits for the signature exactly like unit work (owner,

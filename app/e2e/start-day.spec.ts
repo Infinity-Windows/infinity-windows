@@ -60,7 +60,7 @@ test("unsigned, rule off (today's timing): Start day opens the talk; signing it 
   await expect(page.getByTestId("ws-clock")).toContainText("Clocked in");
   await expect(page.getByTestId("ws-finish-talk")).toHaveCount(0);
   await expect(page.getByTestId("ws-unit-start")).toBeEnabled();
-  expect(world.signatures).toBe(1);
+  await expect.poll(() => world.signatures).toBe(1);
   expect(world.clockIns).toHaveLength(1);
 });
 
@@ -88,7 +88,9 @@ test("unsigned, rule ON: paid time starts at the tap; the talk waits on the cloc
   await expect(page.getByTestId("ws-finish-talk")).toHaveCount(0);
   await expect(page.getByTestId("ws-unit-start")).toBeEnabled();
   expect(world.clockIns).toHaveLength(1);
-  expect(world.signatures).toBe(1);
+  // Unit work unlocks from the signature held on this phone; the keyed RPC
+  // follows asynchronously and still must reach Forge exactly once.
+  await expect.poll(() => world.signatures).toBe(1);
 });
 
 test("the rule scheduled for a future day still runs today's timing", async ({ page }) => {

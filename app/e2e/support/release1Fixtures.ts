@@ -58,6 +58,7 @@ export interface MorningWorld {
 
 export async function morningFixtures(page: Page, opts: MorningOptions = {}): Promise<MorningWorld> {
   const world: MorningWorld = { clockIns: [], workCommands: [], designWrites: [], signatures: 0 };
+  const savedToolboxByClientId = new Map<string, Record<string, unknown>>();
   let signed: Record<string, unknown> | null = opts.signed
     ? { id: "44444444-dddd-4ddd-8ddd-444444444444", profile_id: TEST_USER.id, talk_id: TALK.id, signed_at: new Date().toISOString(), signed_via: "self" }
     : null;
@@ -153,6 +154,28 @@ export async function morningFixtures(page: Page, opts: MorningOptions = {}): Pr
     const accept = r.request().headers()["accept"] ?? "";
     if (accept.includes("pgrst.object")) return json(r, signed, signed ? 1 : 0);
     return json(r, signed ? [signed] : [], signed ? 1 : 0);
+  });
+  // Offline signing uses the keyed RPC, even with a live connection. A repeat
+  // of the same client ID returns its first row, just as the migration does.
+  await page.route((url) => /\/rest\/v1\/rpc\/sign_toolbox_talk(\?|$)/.test(url.href), (r) => {
+    const body = (r.request().postDataJSON() ?? {}) as Record<string, unknown>;
+    const clientId = String(body.p_client_id ?? "");
+    let row = savedToolboxByClientId.get(clientId);
+    if (!row) {
+      row = {
+        id: "44444444-dddd-4ddd-8ddd-444444444444",
+        client_id: clientId,
+        profile_id: body.p_profile_id,
+        talk_id: body.p_talk_id,
+        typed_name: body.p_typed_name,
+        signed_at: body.p_signed_at,
+        signed_via: "self",
+      };
+      savedToolboxByClientId.set(clientId, row);
+      signed = row;
+      world.signatures++;
+    }
+    return json(r, row, 1);
   });
   await page.route("**/storage/v1/object/toolbox-records/**", (r) => json(r, { Key: "toolbox-records/e2e" }, null));
   await page.route("**/rest/v1/time_shifts**", (r) => {

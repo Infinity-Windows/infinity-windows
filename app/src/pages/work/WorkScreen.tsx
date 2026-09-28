@@ -116,7 +116,10 @@ export function WorkScreen() {
   const settings = useQuery({ queryKey: ["companySettings"], queryFn: getCompanySettings });
   const gate: StartDayInput = {
     talkExists: todayTalk.isSuccess ? todayTalk.data !== null : null,
-    signedToday: toolboxDone.isSuccess ? Boolean(toolboxDone.data) && !toolboxDone.refused : null,
+    // A signature saved on this phone counts while it waits for Forge, even
+    // when sending needs attention. The refusal stays visible on the status
+    // line; server-side work gates remain authoritative once online.
+    signedToday: toolboxDone.isSuccess ? Boolean(toolboxDone.data) : null,
     ruleActive: paidTimeRuleActive(settings.data, today),
   };
   const locked = unitWorkLocked(gate);
