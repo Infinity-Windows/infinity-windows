@@ -159,7 +159,11 @@ export function Layout() {
     role === realMe.data?.role
       ? { costs: realMe.data?.can_see_costs === true, pay: realMe.data?.can_see_pay === true }
       : {},
-  );
+  ).map((section) => ({
+    ...section,
+    // Rows with a catalog key read in the person's language (lib/nav.ts).
+    items: section.items.map((item) => (item.labelKey ? { ...item, label: t(item.labelKey) } : item)),
+  }));
   const isActionActive = (action: MenuAction) => (action === "open-clock" ? clock.isOpen : false);
   const onMenuAction = (action: MenuAction) => {
     if (action === "open-clock") {

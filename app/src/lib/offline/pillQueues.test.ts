@@ -20,8 +20,18 @@ const snap = (over: Partial<QueueSnapshot>): QueueSnapshot => ({ ...EMPTY_SNAPSH
 
 describe("combineQueues — one honest status", () => {
   it("leaves a phone with nothing anywhere at All synced", () => {
-    expect(combineQueues(SYNCED, EMPTY_SNAPSHOT, en)).toBe(SYNCED);
+    expect(combineQueues(SYNCED, EMPTY_SNAPSHOT, en)).toEqual(SYNCED);
     expect(combineQueues(SYNCED, EMPTY_SNAPSHOT, en).label).toBe("All synced");
+  });
+
+  // outbox-core is pure and English-only; the resting state used to reach a
+  // Spanish reader as "All synced" (2026-09-25 Spanish review).
+  it("says Todo sincronizado to a Spanish reader", () => {
+    expect(combineQueues(SYNCED, EMPTY_SNAPSHOT, es)).toEqual({
+      tone: "synced",
+      label: "Todo sincronizado",
+      detail: "Todos los cambios están guardados y sincronizados.",
+    });
   });
 
   // The rule that matters: not one of these may read "All synced".

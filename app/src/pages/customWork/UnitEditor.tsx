@@ -324,7 +324,11 @@ export function UnitEditor({
             disabled={busy || (recordOnly && !name.trim())}
             onClick={() => void save(!recordOnly)}
           >
-            {recordOnly ? t("crewRecord.continue") : unit ? "Save and start" : "Start this unit"}
+            {recordOnly
+              ? t("crewRecord.continue")
+              : unit
+                ? t("unitEditor.saveAndStart")
+                : t("unitEditor.startThisUnit")}
           </button>
         )}
         {!recordOnly && !completeChosen && <button disabled={busy} onClick={() => void save(false)}>
