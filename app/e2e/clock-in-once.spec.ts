@@ -139,6 +139,30 @@ async function morningFixtures(page: Page): Promise<ClockInCall[]> {
     json(r, { Key: "toolbox-records/e2e" }, null),
   );
 
+  // Since offline toolbox signing (2026-09-25) the signature is kept in the
+  // phone's outbox and filed through sign_toolbox_talk — at once, with signal
+  // — ahead of the clock-in it triggers. The row it answers is the one the
+  // "did I sign today?" read returns from then on.
+  await page.route(
+    (url) => /\/rest\/v1\/rpc\/sign_toolbox_talk(\?|$)/.test(url.href),
+    (r) => {
+      const body = (r.request().postDataJSON() ?? {}) as Record<string, unknown>;
+      signed = {
+        id: "44444444-dddd-4ddd-8ddd-444444444444",
+        talk_id: body.p_talk_id ?? null,
+        profile_id: body.p_profile_id ?? null,
+        client_id: body.p_client_id ?? null,
+        typed_name: body.p_typed_name ?? null,
+        signature_path: body.p_signature_path ?? null,
+        pdf_path: body.p_pdf_path ?? null,
+        talk_snapshot: body.p_talk_snapshot ?? null,
+        signed_at: body.p_signed_at ?? new Date().toISOString(),
+        signed_via: "self",
+      };
+      return json(r, signed, null);
+    },
+  );
+
   // One table, two readers: the open-shift lookup and the recent-jobs list.
   // Told apart by the URL, not the Accept header — postgrest-js sends a GET
   // maybeSingle() as plain application/json and takes the first row itself,

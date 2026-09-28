@@ -458,6 +458,17 @@ export default function App() {
       if (!s) return;
       void ensureMyProfile().catch(() => {});
       void prefetchWarehousePack();
+      // Today's toolbox talk and the next three days', so a phone that loses
+      // signal before tomorrow morning can still sign tomorrow's talk (offline
+      // toolbox signing, 2026-09-25). Also re-read on focus and when signal
+      // returns; never blocks, never throws. Loaded on first use, like the
+      // warehouse pack's readers: nothing on the first screen waits for it,
+      // and the entry chunk stays the size it was.
+      void import("./lib/toolboxAhead")
+        .then(({ initToolboxTalkPrefetch }) => initToolboxTalkPrefetch(queryClient))
+        .catch(() => {
+          // The chunk did not load on this signal: the next sign-in asks again.
+        });
     };
     // Every answer auth gives goes through one follower (lib/offlineSession):
     // a no-signal "no session" keeps the sign-in this phone still holds, so a

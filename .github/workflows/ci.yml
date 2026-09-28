@@ -86,6 +86,9 @@ jobs:
       - run: python3 scripts/test_time_entry_import.py
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-time-entry-import.mjs
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-clock-integrity.mjs
+      # Offline toolbox signing (20261033000000): one signature per client id,
+      # only the signer, the sign-time rule, and the real clock_in gate.
+      - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-offline-toolbox-signing.mjs
 
   trip-browser:
     name: Forge workflow on phone and desktop
@@ -123,6 +126,9 @@ jobs:
       # is shallow and the harness builds it (app/e2e/support/pwaHarness.ts).
       - run: git fetch --depth=1 origin master
       - run: npx playwright test --config playwright.pwa.config.ts
+      # Signing today's toolbox talk with no signal, and the clock-in behind
+      # it (2026-09-25). Its own step for the same reason as the one above.
+      - run: npm run e2e -- offline-toolbox-signing.spec.ts
       - uses: actions/upload-artifact@v4
         if: always()
         with:

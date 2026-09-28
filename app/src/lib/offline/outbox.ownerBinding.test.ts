@@ -110,6 +110,16 @@ const PUNCH = (clientId: string) => ({
   clockSkewMs: null,
 });
 
+const TOOLBOX_ID = "cccccccc-0000-4000-8000-00000000000c";
+function toolboxSignature(profileId: string, clientId = TOOLBOX_ID) {
+  return {
+    clientId, profileId, talkId: "dddddddd-0000-4000-8000-00000000000d",
+    talkDate: "2026-09-25", typedName: "A Installer", signedAt: new Date().toISOString(),
+    talkSnapshot: "{}", signaturePath: `${profileId}/talk/${clientId}-signature.png`,
+    signatureDataUrl: "data:image/png;base64,iVBORw0KGgo=", pdfPath: null,
+  };
+}
+
 function setOnline(value: boolean) {
   Object.defineProperty(navigator, "onLine", { value, configurable: true });
 }
@@ -137,6 +147,65 @@ beforeEach(async () => {
 });
 
 describe("a queued write goes out only as the person who saved it", () => {
+  it("a stale A screen cannot save A's signature or clock-in after B signs in", async () => {
+    switchTo(B);
+    await expect(outbox.enqueueToolboxSign(toolboxSignature(A.user.id), null)).rejects.toThrow(/another account/);
+    await expect(outbox.enqueueClockIn({ projectId: "p1", costCodeId: "cc1", punch: PUNCH("stale-A"), profileId: A.user.id })).rejects.toThrow(/another account/);
+    expect(await outbox.listAll()).toEqual([]);
+  });
+
+  it("A's toolbox signature and dependent punch stay held for B, then send with A's fixed token", async () => {
+    const sig = toolboxSignature(A.user.id);
+    await outbox.enqueueToolboxSign(sig, null);
+    const punchId = await outbox.enqueueClockIn({ projectId: "p1", costCodeId: "cc1", punch: PUNCH("toolbox-punch-A"), profileId: A.user.id });
+    expect((await outbox.listAll()).find((e) => e.id === punchId)?.dependsOn).toBe(sig.clientId);
+    expect((await outbox.listAll()).find((e) => e.id === sig.clientId)?.ownerId).toBe(A.user.id);
+
+    switchTo(B);
+    setOnline(true);
+    await outbox.drain();
+    expect(sent).toEqual([]);
+    expect((await outbox.listAll()).every((e) => e.attemptCount === 0 && e.status === "queued")).toBe(true);
+    expect(outbox.todaysSignatureOnPhone(B.user.id)).toBeNull();
+
+    switchTo(A);
+    beforeRequest = async () => switchTo(B); // account changes during the first upload
+    await outbox.drain();
+    expect(sent.map((s) => [s.fn, s.token])).toEqual([
+      ["upload:toolbox-records", "token-A"],
+      ["sign_toolbox_talk", "token-A"],
+    ]);
+    expect(sent[1].args.p_profile_id).toBe(A.user.id);
+    expect((await outbox.listAll()).find((e) => e.id === punchId)?.status).toBe("queued");
+    switchTo(A);
+    await outbox.drain();
+    expect(sent.filter((s) => s.fn === "clock_in").map((s) => s.token)).toEqual(["token-A"]);
+    expect(await outbox.listAll()).toEqual([]);
+  });
+
+  it("an ownerless older signature follows its payload signer, while a conflicting owner is quarantined", async () => {
+    const legacy = toolboxSignature(A.user.id);
+    await outbox.enqueue({ op: "toolbox_sign", ownerId: null, payload: legacy }, undefined, { id: legacy.clientId });
+    switchTo(B);
+    setOnline(true);
+    await outbox.drain();
+    expect(sent).toEqual([]);
+    expect((await outbox.listAll())[0].attemptCount).toBe(0);
+    switchTo(A);
+    await outbox.drain();
+    expect(sent.map((s) => [s.fn, s.token])).toEqual([["upload:toolbox-records", "token-A"], ["sign_toolbox_talk", "token-A"]]);
+
+    sent.length = 0;
+    setOnline(false);
+    const bad = toolboxSignature(A.user.id, "eeeeeeee-0000-4000-8000-00000000000e");
+    await outbox.enqueue({ op: "toolbox_sign", ownerId: B.user.id, payload: bad }, undefined, { id: bad.clientId });
+    switchTo(B);
+    setOnline(true);
+    await outbox.drain();
+    expect(sent).toEqual([]);
+    expect((await outbox.listAll())[0]).toMatchObject({ id: bad.clientId, attemptCount: 0, status: "queued" });
+    expect((await outbox.listUnknownOwner()).map((e) => e.id)).toEqual([bad.clientId]);
+  });
   it("A's queued clock-in is not sent as B after A signs out and B signs in — it waits, untouched", async () => {
     await outbox.enqueueClockIn({ projectId: "p1", costCodeId: "cc1", punch: PUNCH("punch-A") });
     switchTo(B);

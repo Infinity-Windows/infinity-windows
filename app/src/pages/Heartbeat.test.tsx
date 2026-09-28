@@ -17,6 +17,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HeartbeatSnapshot, HeartbeatTask } from "../lib/heartbeat";
 import { liveCrewHref } from "../lib/heartbeat";
 import { Heartbeat } from "./Heartbeat";
+import { localDateOf } from "../lib/toolboxSign";
 
 // The page opens a realtime firehose across every job's openings. That is a
 // live WebSocket to the server and has nothing to do with what a row says, so
@@ -101,7 +102,7 @@ function mount(tasks: HeartbeatTask[]): HTMLElement {
   qc.setQueryData(["clockCostCodes", "all"], []);
   qc.setQueryData(["recentJobs", "me"], []);
   qc.setQueryData(["projects"], []);
-  qc.setQueryData(["todayTalk"], null);
+  qc.setQueryData(["todayTalk", localDateOf(new Date())], null);
   qc.setQueryData(["toolboxToday", "me"], null);
 
   host = document.createElement("div");

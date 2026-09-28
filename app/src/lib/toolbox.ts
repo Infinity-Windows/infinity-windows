@@ -8,6 +8,9 @@ import { supabase } from "./supabase";
 import { isMissingColumn } from "./schemaErrors";
 import type { SafetyTalk, TalkSections, TalkVisualAid } from "./ops";
 import { sendPush } from "./permissions/pushServer";
+import { enqueueToolboxSign, MAX_BLOB_BYTES } from "./offline/outbox";
+import { newClockActionId } from "./clockPunch";
+import { localDateOf, pendingCompletionOf, toolboxRecordPaths, type ToolboxCompletionView } from "./toolboxSign";
 
 const BUCKET = "toolbox-records";
 
@@ -63,12 +66,6 @@ export interface ComplianceRow {
   via: SignedVia;
   /** The supervisor who attested, when there is one and they are on the crew list. */
   signed_by_name: string | null;
-}
-
-function localDateStr(d = new Date()): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
-    d.getDate(),
-  ).padStart(2, "0")}`;
 }
 
 /** Today's signed completion for this user, if any (drives the clock-in gate). */
@@ -391,60 +388,93 @@ export async function buildToolboxPdf(opts: {
   return doc.save();
 }
 
+/** A talk handed out for another day was about to be signed (see signToolboxTalk). */
+export class NotTodaysTalkError extends Error {
+  constructor() {
+    super("This is another day's toolbox talk. Today's talk is on the screen now — read it and sign that one.");
+    this.name = "NotTodaysTalkError";
+  }
+}
+
 /**
- * Sign today's toolbox talk: build + archive the PDF, upload the signature
- * PNG, and record the completion row (which unlocks clock-in for today).
+ * Sign today's toolbox talk (offline toolbox signing, 2026-09-25).
+ *
+ * ONE path, with or without signal: the signature is kept in the phone's
+ * outbox and sent from there — at once when there is signal, when the truck
+ * finds some when there is not. The direct upload-then-insert this replaced
+ * failed with no signal, and then the person could not clock in either: the
+ * server's clock_in refuses the day's first punch without today's signature.
+ *
+ * Everything the record needs is decided HERE, at the moment of signing: a
+ * fresh client id (the key that makes a resend the same signature), the
+ * signing time by this phone's clock, the talk exactly as it reads now, and
+ * the PDF — built now, so the archive is what was signed even if a lead edits
+ * the talk before the phone finds signal. A PDF the phone genuinely cannot
+ * build never costs the signature: it is queued without one, and the row files
+ * without one. What comes back is the signature as the gates read it — signed,
+ * waiting to send.
  */
-export async function submitToolboxCompletion(opts: {
+export async function signToolboxTalk(opts: {
   talk: SafetyTalk;
   profileId: string;
   typedName: string;
   signatureDataUrl: string;
-}): Promise<ToolboxCompletion> {
-  const { talk, profileId, typedName, signatureDataUrl } = opts;
-  const signedAt = new Date();
-  const stamp = `${localDateStr(signedAt)}-${signedAt.getTime()}`;
-  const base = `${profileId}/${talk.id}`;
+  /** The signing moment; the phone's clock unless a test holds it still. */
+  now?: Date;
+}): Promise<ToolboxCompletionView> {
+  const { talk, profileId, signatureDataUrl } = opts;
+  const typedName = opts.typedName.trim();
+  const signedAt = opts.now ?? new Date();
+  // A talk is signed on the day it was handed out for. A card left open
+  // across midnight still holds yesterday's talk, and signing it would stamp
+  // today's time on a talk nobody read today — and open today's clock-in with
+  // it (Codex review of #666). Refused before anything is kept; the screen
+  // moves to today's talk. A talk that came some other way is judged by its
+  // own date. The server refuses the same thing (20261033000000).
+  const talkDay = talk.for_day ?? talk.talk_date ?? null;
+  if (talkDay && talkDay !== localDateOf(signedAt)) throw new NotTodaysTalkError();
+  const clientId = newClockActionId();
+  const { signaturePath, pdfPath } = toolboxRecordPaths(profileId, talk.id, clientId, signedAt);
 
-  const sigPath = `${base}/${stamp}-signature.png`;
-  const { error: sigErr } = await supabase.storage
-    .from(BUCKET)
-    .upload(sigPath, dataUrlToBytes(signatureDataUrl) as BlobPart, {
-      contentType: "image/png",
-      upsert: true,
-    });
-  if (sigErr) throw sigErr;
+  let pdf: Blob | null = null;
+  try {
+    const bytes = await buildToolboxPdf({ talk, typedName, signatureDataUrl, signedAt });
+    pdf = new Blob([bytes as BlobPart], { type: "application/pdf" });
+    // Past the outbox's cap a PDF cannot be kept offline; the signature can.
+    if (pdf.size > MAX_BLOB_BYTES) pdf = null;
+  } catch {
+    // Only a genuine build failure lands here. What a talk says never does:
+    // every string is made drawable first (lib/pdfText.ts), so Do/Don't lists
+    // and check marks get their PDF like any other talk.
+    pdf = null;
+  }
 
-  const pdfBytes = await buildToolboxPdf({
-    talk,
+  const signedAtIso = signedAt.toISOString();
+  await enqueueToolboxSign(
+    {
+      clientId,
+      profileId,
+      talkId: talk.id,
+      talkDate: talk.talk_date ?? null,
+      typedName,
+      signedAt: signedAtIso,
+      talkSnapshot: talkSnapshot(talk),
+      signaturePath,
+      signatureDataUrl,
+      pdfPath: pdf ? pdfPath : null,
+    },
+    pdf,
+  );
+  return pendingCompletionOf({
+    entryId: clientId,
+    clientId,
+    profileId,
+    talkId: talk.id,
     typedName,
-    signatureDataUrl,
-    signedAt,
+    signedAt: signedAtIso,
+    status: "queued",
+    lastError: null,
   });
-  const pdfPath = `${base}/${stamp}.pdf`;
-  const { error: pdfErr } = await supabase.storage
-    .from(BUCKET)
-    .upload(pdfPath, pdfBytes as BlobPart, {
-      contentType: "application/pdf",
-      upsert: true,
-    });
-  if (pdfErr) throw pdfErr;
-
-  const { data, error } = await supabase
-    .from("toolbox_completions")
-    .insert({
-      talk_id: talk.id,
-      profile_id: profileId,
-      typed_name: typedName,
-      signature_path: sigPath,
-      pdf_path: pdfPath,
-      talk_snapshot: talkSnapshot(talk),
-      signed_at: signedAt.toISOString(),
-    })
-    .select("*")
-    .single();
-  if (error) throw error;
-  return data as ToolboxCompletion;
 }
 
 /** Ask the Edge Function to (re)generate rich educational content for a talk. */

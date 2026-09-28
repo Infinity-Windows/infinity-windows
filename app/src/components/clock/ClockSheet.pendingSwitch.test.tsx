@@ -54,6 +54,7 @@ vi.mock("../../lib/clockSkew", async (importOriginal) => {
 });
 
 import { ClockSheet } from "./ClockSheet";
+import { localDateOf } from "../../lib/toolboxSign";
 import type { TimeShift } from "../../lib/timeclock";
 
 let root: Root | null = null;
@@ -100,7 +101,7 @@ function mount(s: TimeShift): HTMLElement {
   qc.setQueryData(["recentJobs", "me"], []);
   qc.setQueryData(["myActivePhases", "me"], []);
   qc.setQueryData(["toolboxToday", "me"], { id: "done1" });
-  qc.setQueryData(["todayTalk"], null);
+  qc.setQueryData(["todayTalk", localDateOf(new Date())], null);
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);

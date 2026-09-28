@@ -41,6 +41,12 @@ import {
   pendingShiftRef,
   type ShiftResolver,
 } from "./outboxHandlers";
+import {
+  todaysPendingSignature,
+  type PendingSignature,
+  type ToolboxCompletionView,
+  type ToolboxSignPayload,
+} from "../toolboxSign";
 
 /** Cap on a single queued blob (photo/receipt). Bigger uploads fail loudly. */
 export const MAX_BLOB_BYTES = 25 * 1024 * 1024; // 25 MB
@@ -187,6 +193,158 @@ export function getClockQueueSnapshot(): ClockQueueSnapshot {
 }
 
 /**
+ * The toolbox talk signatures still on this phone (offline toolbox signing,
+ * 2026-09-25), readable without touching the store, the same way and for the
+ * same reason as the punches above: the gates render from it, so a talk signed
+ * with no signal opens the clock-in on this screen, after a reload and after a
+ * relaunch. `ready` has the clock snapshot's meaning; both are filled by the
+ * same read.
+ */
+export interface ToolboxQueueSnapshot {
+  entries: readonly OutboxEntry[];
+  ready: boolean;
+}
+let toolboxSnapshot: ToolboxQueueSnapshot = { entries: [], ready: false };
+
+export function getToolboxQueueSnapshot(): ToolboxQueueSnapshot {
+  return toolboxSnapshot;
+}
+
+/**
+ * This person's signature for today that is still on the phone — waiting,
+ * sending, or refused — or null. A clock-in made while one exists must not go
+ * to the server directly: it would arrive before the signature and be refused
+ * on the toolbox gate. It queues behind it instead (enqueueClockIn).
+ */
+export function todaysSignatureOnPhone(profileId: string | null | undefined): PendingSignature | null {
+  return todaysPendingSignature(toolboxSnapshot.entries, profileId);
+}
+
+/**
+ * The last signature Forge confirmed for each person, from the row
+ * sign_toolbox_talk answered — kept in memory and on the phone (one small key
+ * each), recorded here in the drain the moment Forge answers, whatever screen
+ * is open. The gates read it beside Forge's own answer (useToolboxToday), so
+ * a read that asked before the signature was filed, a gate that was not on
+ * screen when it was sent, or a reload cannot turn a confirmed signature back
+ * into "not signed" — which, with the signature already gone from this
+ * queue, asked the person to sign again (Codex review of #666). The gates
+ * count it only for the day it was signed.
+ *
+ * Recorded in signing-time order, never arrival order (gate-races repro): an
+ * earlier day's signature left on the phone failed or backed off can answer
+ * AFTER a later day's already-confirmed one, and must not replace it. See
+ * signingTimeAtLeast.
+ */
+const CONFIRMED_PREFIX = "forge.toolbox.confirmed.";
+const confirmedSignatures = new Map<string, ToolboxCompletionView | null>();
+
+function asConfirmedRow(v: unknown): ToolboxCompletionView | null {
+  const r = v as { profile_id?: unknown; signed_at?: unknown } | null;
+  return r && typeof r === "object" && typeof r.profile_id === "string" && typeof r.signed_at === "string"
+    ? (v as ToolboxCompletionView)
+    : null;
+}
+
+/**
+ * True when `candidateIso` names a signing time that may stand in for
+ * `currentIso` — the same moment or later, never merely the one that answered
+ * last. A phone can have an old day's signature still queued (failed, or
+ * backed off) behind a day it has already signed and had confirmed; that old
+ * signature reaching the server AFTER today's must not un-confirm today
+ * (Codex review of #666, gate-races). A malformed candidate is refused
+ * outright — an ordering call cannot be made on it — and a malformed or
+ * absent current loses to any valid candidate.
+ */
+export function signingTimeAtLeast(candidateIso: unknown, currentIso: unknown): boolean {
+  const candidate = typeof candidateIso === "string" ? Date.parse(candidateIso) : NaN;
+  if (!Number.isFinite(candidate)) return false;
+  const current = typeof currentIso === "string" ? Date.parse(currentIso) : NaN;
+  if (!Number.isFinite(current)) return true;
+  return candidate >= current;
+}
+
+function persistedConfirmedSignature(profileId: string): ToolboxCompletionView | null {
+  try {
+    const raw = localStorage.getItem(CONFIRMED_PREFIX + profileId);
+    const row = raw ? asConfirmedRow(JSON.parse(raw)) : null;
+    return row?.profile_id === profileId && Number.isFinite(Date.parse(row.signed_at)) ? row : null;
+  } catch {
+    return null;
+  }
+}
+
+/** This person's last confirmed signature, or null. The same object until it changes. */
+export function confirmedSignatureFor(profileId: string | null | undefined): ToolboxCompletionView | null {
+  if (!profileId) return null;
+  if (confirmedSignatures.has(profileId)) return confirmedSignatures.get(profileId) ?? null;
+  const row = persistedConfirmedSignature(profileId);
+  confirmedSignatures.set(profileId, row);
+  return row;
+}
+
+function recordConfirmedSignature(v: unknown): void {
+  const row = asConfirmedRow(v);
+  if (!row) return;
+  const profileId = row.profile_id as string;
+  // An older day's signature (failed, backed off, retried late) can answer
+  // AFTER a newer one this same person already has confirmed. Ordered by
+  // signing time, never by which reply arrived last, or the late one would
+  // erase the newer confirmation this profile is already holding.
+  // Another open tab may have stored a newer signature since this tab cached
+  // its last read. Consult storage again at the write boundary; the cached
+  // Map alone cannot order confirmations across tabs.
+  const remembered = confirmedSignatureFor(profileId);
+  const persisted = persistedConfirmedSignature(profileId);
+  const newest = persisted && signingTimeAtLeast(persisted.signed_at, remembered?.signed_at) ? persisted : remembered;
+  if (!signingTimeAtLeast(row.signed_at, newest?.signed_at)) {
+    if (newest && newest !== remembered) {
+      confirmedSignatures.set(profileId, newest);
+      for (const cb of listeners) {
+        try { cb(); } catch { /* a listener must never break the queue */ }
+      }
+    }
+    return;
+  }
+  confirmedSignatures.set(profileId, row);
+  try {
+    localStorage.setItem(CONFIRMED_PREFIX + profileId, JSON.stringify(row));
+  } catch {
+    // Storage full or blocked: memory carries this session.
+  }
+  for (const cb of listeners) {
+    try {
+      cb();
+    } catch {
+      /* a listener must never break the queue */
+    }
+  }
+}
+
+/** For tests: forget confirmations — and, unless memoryOnly, the phone's copies. */
+export function forgetConfirmedSignatures(opts: { memoryOnly?: boolean } = {}): void {
+  confirmedSignatures.clear();
+  if (opts.memoryOnly) return;
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i);
+      if (key?.startsWith(CONFIRMED_PREFIX)) localStorage.removeItem(key);
+    }
+  } catch {
+    /* nothing to forget */
+  }
+}
+
+/** A signature Forge has just filed, with the row it answered. */
+export type ToolboxSentListener = (entry: OutboxEntry, row: unknown) => void;
+const toolboxSentListeners = new Set<ToolboxSentListener>();
+
+export function subscribeToolboxSent(cb: ToolboxSentListener): () => void {
+  toolboxSentListeners.add(cb);
+  return () => toolboxSentListeners.delete(cb);
+}
+
+/**
  * A punch the server has just accepted, with the row it answered. Fires from
  * the drain BEFORE the queue notifies that the entry is gone, so a listener
  * that keeps the server's shift can take the row first and the screens never
@@ -248,17 +406,22 @@ async function refresh(): Promise<void> {
   try {
     const all = await store.getAll();
     // Someone else's work is not this person's pending work: it is counted on
-    // its own, and a queued clock-in of theirs must never show this person as
-    // clocked in (K0.1 reads this snapshot).
+    // its own, and a queued clock-in or toolbox signature of theirs must never
+    // show this person as clocked in or signed (K0.1, and the toolbox gate,
+    // both read this snapshot). A switch away holds the other person's queued
+    // signature untouched — it stays out of this snapshot until they are
+    // signed in again to see it, exactly like their clock punches.
     const signer = signerNow();
     const mine = all.filter((e) => belongsTo(e, signer));
     cachedCounts = countsByOp(mine);
     cachedUnknown = all.filter((e) => ownershipOf(e, signer) === "unknown").length;
     cachedHeld = all.length - mine.length - cachedUnknown;
     clockSnapshot = { entries: mine.filter((e) => isClockOp(e.op)), ready: true };
+    toolboxSnapshot = { entries: mine.filter((e) => e.op === "toolbox_sign"), ready: true };
   } catch {
     /* keep last known counts */
     if (!clockSnapshot.ready) clockSnapshot = { entries: clockSnapshot.entries, ready: true };
+    if (!toolboxSnapshot.ready) toolboxSnapshot = { entries: toolboxSnapshot.entries, ready: true };
   }
   for (const cb of listeners) {
     try {
@@ -573,6 +736,17 @@ export async function drain(): Promise<void> {
         onSent: (entry, result) => {
           photoReceipts.record(entry);
           recordSent(entry, Date.now());
+          if (entry.op === "toolbox_sign") {
+            recordConfirmedSignature(result);
+            for (const cb of toolboxSentListeners) {
+              try {
+                cb(entry, result);
+              } catch {
+                /* a listener must never break the queue */
+              }
+            }
+            return;
+          }
           if (!isClockOp(entry.op)) return;
           for (const cb of clockSentListeners) {
             try {
@@ -754,13 +928,40 @@ export interface ClockInInput {
    * paid from the moment it arrived rather than the moment it was tapped.
    */
   afterShiftRef?: string | null;
+  /**
+   * Who is clocking in (offline toolbox signing, 2026-09-25). When their
+   * signature for today is still on the phone, the clock-in waits for it
+   * (`dependsOn`): the server refuses the day's first clock-in until the
+   * signature is on record, and a signature Forge refuses must HOLD the
+   * clock-in rather than let it go out and fail on the toolbox gate. A switch
+   * behind a pending clock-in keeps waiting on that clock-in instead, which
+   * already waits on the signature.
+   */
+  profileId?: string | null;
+}
+
+/** The signature, still on the phone, that a clock-in by this person must follow. */
+async function signatureToFollow(profileId: string | null | undefined): Promise<string | null> {
+  if (!profileId) return null;
+  try {
+    return todaysPendingSignature(await store.getAll(), profileId)?.entryId ?? null;
+  } catch {
+    // The store could not be read: the snapshot is the next best answer.
+    return todaysSignatureOnPhone(profileId)?.entryId ?? null;
+  }
 }
 
 /** Enqueue a clock-in. Returns the entry id, usable as a pending shift ref. */
-export function enqueueClockIn(input: ClockInInput): Promise<string> {
+export async function enqueueClockIn(input: ClockInInput): Promise<string> {
+  const currentUserId = signerNow().userId;
+  if (input.profileId && currentUserId && input.profileId !== currentUserId) {
+    throw new Error("This clock-in belongs to another account on this phone. Sign in again before clocking in.");
+  }
+  const afterShift = input.afterShiftRef ? refDependency(input.afterShiftRef) : null;
   return enqueue({
     op: "clock_in",
-    dependsOn: input.afterShiftRef ? refDependency(input.afterShiftRef) : null,
+    ...(input.profileId ? { ownerId: input.profileId } : {}),
+    dependsOn: afterShift ?? (await signatureToFollow(input.profileId)),
     payload: {
       projectId: input.projectId,
       costCodeId: input.costCodeId,
@@ -821,6 +1022,47 @@ export function enqueueBreakStop(shiftRef: string, punch: ClockPunchFields): Pro
     dependsOn: refDependency(shiftRef),
     payload: { shiftRef, ...punchPayload(punch) },
   });
+}
+
+/**
+ * Keep today's toolbox talk signature on the phone and send it from here
+ * (offline toolbox signing, 2026-09-25) — at once when there is signal, later
+ * when there is not. There is no other way to sign: the direct upload-then-
+ * insert this replaced failed with no signal, and two paths would be two
+ * behaviours to keep honest.
+ *
+ * The entry's id IS the signature's client id, so the entry, its files and the
+ * row it files all carry one id, and handing the same signature over twice
+ * leaves the one entry already waiting. The PDF built at signing time rides as
+ * the entry's file; the drawn signature is small and rides in the payload.
+ */
+export function enqueueToolboxSign(input: ToolboxSignPayload, pdf: Blob | null): Promise<string> {
+  if (!input.profileId?.trim()) return Promise.reject(new Error("A toolbox signature needs its signer before it can be saved."));
+  const currentUserId = signerNow().userId;
+  if (currentUserId && currentUserId !== input.profileId) {
+    return Promise.reject(new Error("This toolbox signature belongs to another account on this phone. Sign in again before signing."));
+  }
+  return enqueue(
+    {
+      op: "toolbox_sign",
+      ownerId: input.profileId,
+      hasBlob: pdf != null,
+      payload: {
+        clientId: input.clientId,
+        profileId: input.profileId,
+        talkId: input.talkId,
+        talkDate: input.talkDate,
+        typedName: input.typedName,
+        signedAt: input.signedAt,
+        talkSnapshot: input.talkSnapshot,
+        signaturePath: input.signaturePath,
+        signatureDataUrl: input.signatureDataUrl,
+        pdfPath: pdf ? input.pdfPath : null,
+      },
+    },
+    pdf,
+    { id: input.clientId },
+  );
 }
 
 export interface UploadInput {
