@@ -15,8 +15,8 @@ import type { PublishReadback } from "./api";
 export type PublishOutcome =
   /** Every row the publish was sent for is confirmed published: treat as success. */
   | { kind: "published"; ids: string[] }
-  /** The database confirmed some, and the rest are still drafts. */
-  | { kind: "partial"; published: string[]; drafts: string[] }
+  /** The database confirmed some as published; the rest are still drafts or were canceled. */
+  | { kind: "partial"; published: string[]; drafts: string[]; canceled: string[] }
   /** The reply was lost and the re-read failed too, or some rows could not be read back. */
   | { kind: "unconfirmed" }
   /** The database answered and said no; nothing changed. */
@@ -36,13 +36,18 @@ export function isUnconfirmedPublishError(err: unknown): boolean {
  * Decide from what the re-read found. `readback` is null when the re-read
  * itself failed — the phone still has no signal — so nothing is known.
  * A row that could not be read back (deleted meanwhile, or hidden by row
- * security) is also "not confirmed": better to say so than to guess either way.
+ * security) is also "not confirmed": better to say so than to guess either
+ * way. A canceled row is a concrete database answer, not an unknown — but it
+ * is never "published" either, so it never counts toward success and never
+ * drives a crew notification.
  */
 export function outcomeFromReadback(readback: PublishReadback | null): PublishOutcome {
   if (!readback) return { kind: "unconfirmed" };
   if (readback.missing.length > 0) return { kind: "unconfirmed" };
-  if (readback.drafts.length === 0) return { kind: "published", ids: readback.published };
-  return { kind: "partial", published: readback.published, drafts: readback.drafts };
+  if (readback.drafts.length === 0 && readback.canceled.length === 0) {
+    return { kind: "published", ids: readback.published };
+  }
+  return { kind: "partial", published: readback.published, drafts: readback.drafts, canceled: readback.canceled };
 }
 
 /** The sentence the sheet shows for an outcome that is not plain success. */
@@ -50,8 +55,15 @@ export function publishOutcomeMessage(outcome: Exclude<PublishOutcome, { kind: "
   switch (outcome.kind) {
     case "refused":
       return `${outcome.message} Nothing was published.`;
-    case "partial":
-      return `Published ${outcome.published.length} of ${outcome.published.length + outcome.drafts.length}; ${outcome.drafts.length} still draft. Tap Publish again when you have signal.`;
+    case "partial": {
+      const total = outcome.published.length + outcome.drafts.length + outcome.canceled.length;
+      const parts = [`Published ${outcome.published.length} of ${total}.`];
+      if (outcome.drafts.length > 0) parts.push(`${outcome.drafts.length} still draft — tap Publish again when you have signal.`);
+      if (outcome.canceled.length > 0) {
+        parts.push(`${outcome.canceled.length} ${outcome.canceled.length === 1 ? "was" : "were"} canceled and could not be published.`);
+      }
+      return parts.join(" ");
+    }
     case "unconfirmed":
       return "We couldn't confirm whether this was published — the reply never arrived. When you have signal, refresh and check the board before publishing again.";
   }

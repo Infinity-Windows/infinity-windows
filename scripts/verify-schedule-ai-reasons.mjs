@@ -16,21 +16,31 @@ const read = (path) => readFile(new URL('../' + path, import.meta.url), 'utf8');
 const migration = (name) => read('supabase/migrations/' + name);
 
 await db.exec(await read('scripts/tests/schedule-ai-reasons/setup.sql'));
-const reasons = await migration('20261032000000_ai_schedule_review.sql');
+const reasons = await migration('20261035000000_ai_schedule_review.sql');
 await db.exec(reasons);
 await db.exec(reasons); // the deploy can be retried
 
 const id = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const ANA = 1, FRANK = 2, SAM = 3, OWEN = 4, PARTNER = 5, ADMIN = 6, RETIRED = 7;
+const REVOKED_SUP = 8, RETIRED_OWNER = 9, REVOKED_OWNER = 10, OFF_TODAY_SUP = 11;
 const people = [[ANA, 'installer', 'Ana'], [FRANK, 'foreman', 'Frank'], [SAM, 'supervisor', 'Sam'], [OWEN, 'owner', 'Owen'],
   // A partner login given the supervisor role by mistake is still a partner: the wall wins.
-  [PARTNER, 'supervisor', 'Builder'], [ADMIN, 'admin', 'Adele'], [RETIRED, 'supervisor', 'Rae']];
+  [PARTNER, 'supervisor', 'Builder'], [ADMIN, 'admin', 'Adele'], [RETIRED, 'supervisor', 'Rae'],
+  // A still-valid JWT does not expire the moment access is pulled — these four
+  // prove the database, not just the token, refuses them (Codex's review of #646).
+  [REVOKED_SUP, 'supervisor', 'Vic'], [RETIRED_OWNER, 'owner', 'Rory'], [REVOKED_OWNER, 'owner', 'Vera'],
+  // Off today (profiles.active=false) is not access removed — this one stays allowed.
+  [OFF_TODAY_SUP, 'supervisor', 'Odette']];
 for (const [n, role, name] of people) {
   await db.query('insert into profiles(id, role, display_name) values($1,$2,$3)', [id(n), role, name]);
   await db.query('insert into auth.users(id, email) values($1,$2)', [id(n), `${name.toLowerCase()}@example.test`]);
 }
 await db.query('update profiles set is_partner=true where id=$1', [id(PARTNER)]);
 await db.query('update profiles set retired_at=now() where id=$1', [id(RETIRED)]);
+await db.query('update profiles set access_revoked_at=now() where id=$1', [id(REVOKED_SUP)]);
+await db.query('update profiles set retired_at=now() where id=$1', [id(RETIRED_OWNER)]);
+await db.query('update profiles set access_revoked_at=now() where id=$1', [id(REVOKED_OWNER)]);
+await db.query('update profiles set active=false where id=$1', [id(OFF_TODAY_SUP)]);
 const JOB = id(90);
 await db.query("insert into projects(id,name,job_code) values ($1,'Synthetic A','SYN-A')", [JOB]);
 const AI_DRAFT = id(601), HUMAN_DRAFT = id(602), AI_PUBLISHED = id(603), RACE = id(604);
@@ -101,6 +111,32 @@ await denied(() => insertReason(RACE, 'Frank tries', id(FRANK)), '42501');
 await as(PARTNER);
 equal(await readReasons(), [], 'a partner login gets no rows even with the supervisor role');
 await denied(() => insertReason(RACE, 'Builder tries', id(PARTNER)), '42501');
+
+// ---- A still-valid JWT does not mean access wasn't pulled --------------------
+// travel_is_supervisor() checks role only, not retired_at / access_revoked_at.
+// schedule_ai_reasons_active_supervisor() adds that check server-side, so a
+// revoked or retired supervisor or owner is refused even while their token
+// still verifies — the exact gap Codex's review of #646 found.
+await as(RETIRED);
+equal(await readReasons(), [], 'a retired supervisor with a still-valid JWT gets no rows');
+await denied(() => insertReason(RACE, 'Rae tries', id(RETIRED)), '42501');
+await as(REVOKED_SUP);
+equal(await readReasons(), [], 'a revoked supervisor with a still-valid JWT gets no rows');
+await denied(() => insertReason(RACE, 'Vic tries', id(REVOKED_SUP)), '42501');
+await as(RETIRED_OWNER);
+equal(await readReasons(), [], 'a retired owner with a still-valid JWT gets no rows');
+await denied(() => insertReason(RACE, 'Rory tries', id(RETIRED_OWNER)), '42501');
+await as(REVOKED_OWNER);
+equal(await readReasons(), [], 'a revoked owner with a still-valid JWT gets no rows');
+await denied(() => insertReason(RACE, 'Vera tries', id(REVOKED_OWNER)), '42501');
+// Off today (profiles.active=false) is the Crew page's On site switch, not
+// login access (restore_access clears access_revoked_at without touching it,
+// docs/ai-field-operations.md) — this active supervisor stays allowed.
+await as(OFF_TODAY_SUP);
+equal((await readReasons()).length, 2, 'active=false alone (off today) does not lose read access');
+await insertReason(AI_PUBLISHED, 'Odette, off today, still records a reason', id(OFF_TODAY_SUP));
+equal((await db.query('select count(*)::int n from schedule_ai_reasons where assignment_id=$1', [AI_PUBLISHED])).rows[0].n, 1, 'and can still write one');
+
 await as('anon');
 await denied(() => readReasons(), '42501');
 // The crew-readable audit table stays readable — and is exactly why the reason is not on it.

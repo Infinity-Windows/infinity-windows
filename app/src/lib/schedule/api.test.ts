@@ -146,13 +146,43 @@ describe("a publish whose reply was lost", () => {
     expect(caught).toEqual(LOST);
     expect(isUnconfirmedPublishError(caught)).toBe(true);
     const readback = await confirmPublished(["a", "b"]);
-    expect(readback).toEqual({ published: ["a", "b"], drafts: [], missing: [] });
+    expect(readback).toEqual({ published: ["a", "b"], drafts: [], canceled: [], missing: [] });
     expect(outcomeFromReadback(readback)).toEqual({ kind: "published", ids: ["a", "b"] });
     // The audit rows the lost reply never let publishAssignments write.
     expect(calls.filter((c) => c.table === "schedule_events" && c.op === "insert").map((c) => (c.args[0] as { assignment_id: string; kind: string }))).toEqual([
       { assignment_id: "a", actor: "me", kind: "published", payload: null },
       { assignment_id: "b", actor: "me", kind: "published", payload: null },
     ]);
+  });
+  it("a row was canceled while the reply was lost: the re-read tells it apart from published, and its audit row is never written", async () => {
+    respond = (table, ops) => {
+      if (table === "schedule_assignments" && ops.includes("update")) return { data: null, error: LOST };
+      if (table === "schedule_assignments") return { data: [{ id: "a", status: "published" }, { id: "b", status: "canceled" }], error: null };
+      return { data: null, error: null };
+    };
+    await publishAssignments(["a", "b"]).catch(() => {});
+    const readback = await confirmPublished(["a", "b"]);
+    expect(readback).toEqual({ published: ["a"], drafts: [], canceled: ["b"], missing: [] });
+    expect(outcomeFromReadback(readback)).toEqual({ kind: "partial", published: ["a"], drafts: [], canceled: ["b"] });
+    // Only the confirmed publish gets an audit row; the canceled row gets none.
+    expect(calls.filter((c) => c.table === "schedule_events" && c.op === "insert").map((c) => (c.args[0] as { assignment_id: string }).assignment_id)).toEqual(["a"]);
+  });
+  it("a canceled row read back on its own is never counted as published", async () => {
+    respond = (table) => table === "schedule_assignments" ? { data: [{ id: "a", status: "canceled" }], error: null } : { data: null, error: null };
+    expect(await confirmPublished(["a"])).toEqual({ published: [], drafts: [], canceled: ["a"], missing: [] });
+    expect(calls.some((c) => c.table === "schedule_events")).toBe(false);
+  });
+  it("the update reports success with zero matched rows (every id was already canceled or published elsewhere): nothing is claimed and no audit row is written", async () => {
+    respond = (table, ops) => table === "schedule_assignments" && ops.includes("update") ? { data: [], error: null } : { data: null, error: null };
+    const matched = await publishAssignments(["a", "b"]);
+    expect(matched).toEqual([]);
+    expect(calls.some((c) => c.table === "schedule_events")).toBe(false);
+  });
+  it("the update matches only some of the requested ids: only the matched ones are logged as published", async () => {
+    respond = (table, ops) => table === "schedule_assignments" && ops.includes("update") ? { data: [{ id: "a" }], error: null } : { data: null, error: null };
+    const matched = await publishAssignments(["a", "b"]);
+    expect(matched).toEqual(["a"]);
+    expect(calls.filter((c) => c.table === "schedule_events" && c.op === "insert").map((c) => (c.args[0] as { assignment_id: string }).assignment_id)).toEqual(["a"]);
   });
   it("a database refusal is confirmed: nothing to re-read — and it is never mistaken for a missing table and 'published' locally", async () => {
     // The refusal names the table, which isMissingTable's wording fallback
@@ -167,13 +197,15 @@ describe("a publish whose reply was lost", () => {
   });
   it("a table that is genuinely not there yet still falls back to the browser-local store", async () => {
     respond = () => ({ data: null, error: { code: "42P01", message: 'relation "public.schedule_assignments" does not exist' } });
-    await expect(publishAssignments(["a"])).resolves.toBeUndefined();
+    await expect(publishAssignments(["a"])).resolves.toEqual(["a"]);
   });
-  it("the re-read sorts rows into published, still draft and not readable", async () => {
-    respond = (table) => table === "schedule_assignments" ? { data: [{ id: "a", status: "published" }, { id: "b", status: "draft" }], error: null } : { data: null, error: null };
-    expect(await confirmPublished(["a", "b", "c"])).toEqual({ published: ["a"], drafts: ["b"], missing: ["c"] });
+  it("the re-read sorts rows into published, still draft, canceled and not readable", async () => {
+    respond = (table) => table === "schedule_assignments"
+      ? { data: [{ id: "a", status: "published" }, { id: "b", status: "draft" }, { id: "d", status: "canceled" }], error: null }
+      : { data: null, error: null };
+    expect(await confirmPublished(["a", "b", "c", "d"])).toEqual({ published: ["a"], drafts: ["b"], canceled: ["d"], missing: ["c"] });
     expect(calls.filter((c) => c.table === "schedule_assignments").map((c) => c.op)).toEqual(["select", "in"]);
-    expect(await confirmPublished([])).toEqual({ published: [], drafts: [], missing: [] });
+    expect(await confirmPublished([])).toEqual({ published: [], drafts: [], canceled: [], missing: [] });
   });
   it("a re-read that fails throws, so the caller knows it knows nothing", async () => {
     respond = () => ({ data: null, error: LOST });

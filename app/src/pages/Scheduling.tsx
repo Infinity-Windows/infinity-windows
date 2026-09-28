@@ -610,8 +610,28 @@ export function Scheduling() {
     setPublishing(true);
     setPublishError(null);
     try {
+      const requestedIds = draftList.map((a) => a.id);
+      let confirmedIds: string[];
       try {
-        await publishAssignments(draftList.map((a) => a.id));
+        const matched = await publishAssignments(requestedIds);
+        if (matched.length === requestedIds.length) {
+          confirmedIds = matched;
+        } else {
+          // The database said yes with no error, but matched fewer rows than
+          // asked — some were canceled, or already published, since the sheet
+          // was opened. A zero-row "success" used to be indistinguishable from
+          // a real one, and every requested id got an audit row and a push
+          // whether or not anything actually happened to it. Re-read before
+          // notifying the crew about rows that were never touched.
+          const readback = await confirmPublished(requestedIds).catch(() => null);
+          const outcome = outcomeFromReadback(readback);
+          if (outcome.kind !== "published") {
+            setPublishError(publishOutcomeMessage(outcome));
+            refresh();
+            return;
+          }
+          confirmedIds = outcome.ids;
+        }
       } catch (e) {
         // A refused publish (row security, a plan lock) used to end here
         // silently, with the sheet still open and nothing to read: the
@@ -624,20 +644,23 @@ export function Scheduling() {
           setPublishError(publishOutcomeMessage({ kind: "refused", message: formatApiError(e) }));
           return;
         }
-        const readback = await confirmPublished(draftList.map((a) => a.id)).catch(() => null);
+        const readback = await confirmPublished(requestedIds).catch(() => null);
         const outcome = outcomeFromReadback(readback);
         if (outcome.kind !== "published") {
           setPublishError(publishOutcomeMessage(outcome));
           refresh();
           return;
         }
+        confirmedIds = outcome.ids;
       }
       const digests = buildPublishDigests(
-        draftList.map((a) => ({
-          id: a.id,
-          status: a.status,
-          members: a.members.map((m) => ({ profile_id: m.profile_id })),
-        })),
+        draftList
+          .filter((a) => confirmedIds.includes(a.id))
+          .map((a) => ({
+            id: a.id,
+            status: a.status,
+            members: a.members.map((m) => ({ profile_id: m.profile_id })),
+          })),
       );
       for (const d of digests) {
         const msg = digestMessage(d.assignmentIds.length);

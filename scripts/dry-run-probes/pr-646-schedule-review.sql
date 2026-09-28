@@ -1,5 +1,5 @@
 -- Probe for PR #646 (branch claude/r2-schedule-review): the schedule_ai_reasons
--- table and its supervisor-only wall from 20261032000000_ai_schedule_review.sql,
+-- table and its supervisor-only wall from 20261035000000_ai_schedule_review.sql,
 -- plus the announcement, tried on the real database and rolled back.
 --
 -- Who acts. There is no QA supervisor login (docs/test-account.md: installer
@@ -16,11 +16,13 @@
 -- The job is the harness's dry_run_sandbox_job(): whichever live job is both
 -- flagged as testing and on the sandbox list, never a fixed code.
 --
--- The stack under this branch is #641 → #644 → #640 (2026-09-25), so the run
+-- This probe now lives on the merged phone-integration branch (#646 into
+-- codex/schedule-phone-integration, 2026-09-28), sitting after billing's
+-- bill-to migrations and the offline toolbox-signing work, so the run
 -- applies every migration below it first, in number order, as the deploy will:
 -- Run: gh workflow run db-dry-run.yml --repo Infinity-Windows/infinity-windows \
---        -f ref=claude/r2-schedule-review \
---        -f migrations="supabase/migrations/20261028000000_clock_integrity.sql supabase/migrations/20261028010000_clock_integrity_note.sql supabase/migrations/20261030000000_ai_daily_log_contributions.sql supabase/migrations/20261030010000_ai_actions_note.sql supabase/migrations/20261031000000_new_front_door.sql supabase/migrations/20261032000000_ai_schedule_review.sql" \
+--        -f ref=codex/schedule-phone-integration \
+--        -f migrations="supabase/migrations/20261028000000_clock_integrity.sql supabase/migrations/20261028010000_clock_integrity_note.sql supabase/migrations/20261030000000_ai_daily_log_contributions.sql supabase/migrations/20261030010000_ai_actions_note.sql supabase/migrations/20261031000000_new_front_door.sql supabase/migrations/20261033000000_offline_toolbox_signing.sql supabase/migrations/20261033010000_offline_toolbox_signing_note.sql supabase/migrations/20261034000000_bill_to_customers.sql supabase/migrations/20261034010000_bill_to_note.sql supabase/migrations/20261035000000_ai_schedule_review.sql" \
 --        -f probe=scripts/dry-run-probes/pr-646-schedule-review.sql
 -- 20261031000000 is #642's (a sibling on #641 that merges before this one,
 -- by migration number), so that line needs a ref carrying both branches;
@@ -67,9 +69,14 @@ begin
   perform pg_temp.dry_run_check('policy: exactly a supervisor read and a supervisor insert, nothing else',
     v_policies = 'schedule_ai_reasons_supervisor_read:SELECT,schedule_ai_reasons_supervisor_write:INSERT',
     coalesce(v_policies, 'none'));
-  perform pg_temp.dry_run_check('policy: both name the partner guard and the supervisor rank',
+  perform pg_temp.dry_run_check('policy: both route through the active-supervisor helper (partner guard, rank, and revoked/retired access all checked server-side)',
     (select count(*) from pg_policies where schemaname = 'public' and tablename = 'schedule_ai_reasons'
-       and coalesce(qual, with_check) like '%is_partner_user()%' and coalesce(qual, with_check) like '%travel_is_supervisor()%') = 2, null);
+       and coalesce(qual, with_check) like '%schedule_ai_reasons_active_supervisor()%') = 2, null);
+  perform pg_temp.dry_run_check('helper: schedule_ai_reasons_active_supervisor names the partner guard, the supervisor rank, and both access-state columns',
+    (select prosrc from pg_proc where proname = 'schedule_ai_reasons_active_supervisor') like '%is_partner_user()%'
+    and (select prosrc from pg_proc where proname = 'schedule_ai_reasons_active_supervisor') like '%travel_is_supervisor()%'
+    and (select prosrc from pg_proc where proname = 'schedule_ai_reasons_active_supervisor') like '%retired_at is null%'
+    and (select prosrc from pg_proc where proname = 'schedule_ai_reasons_active_supervisor') like '%access_revoked_at is null%', null);
   perform pg_temp.dry_run_check('grants: authenticated may select and insert, never update or delete; anon nothing',
     has_table_privilege('authenticated', 'public.schedule_ai_reasons', 'select')
     and has_table_privilege('authenticated', 'public.schedule_ai_reasons', 'insert')

@@ -43,14 +43,32 @@ alter table public.schedule_ai_reasons enable row level security;
 revoke all on public.schedule_ai_reasons from public, anon, authenticated;
 grant select, insert on public.schedule_ai_reasons to authenticated;
 
--- Readers: an active supervisor or owner who is not a partner login. The
--- partner guard is THE WALL's rule for every crew-readable table (20260950);
--- travel_is_supervisor() is the same rank check the schedule tables' own
--- write policies use (20261003000000).
+-- travel_is_supervisor() (20260723) checks role only — it was built for a
+-- feature with no separate access-revocation state at the time, and still
+-- has none. It does not ask retired_at / access_revoked_at, so a supervisor
+-- or owner whose access was pulled but who still holds a valid JWT (the
+-- token does not expire the moment access is revoked) stayed able to read
+-- and write here. custom_work_internal() (20261024) already drew this same
+-- line for the AI field tools; this is the same rule scoped to this table,
+-- not a change to travel_is_supervisor() itself, which other trip/travel
+-- policies still rely on as-is. profiles.active is On site / Off today
+-- (Crew.tsx) — not login access — and is deliberately not checked here: an
+-- active supervisor who is off today still reviews AI drafts.
+create or replace function public.schedule_ai_reasons_active_supervisor()
+returns boolean
+language sql stable security definer set search_path = public, pg_temp as $$
+  select not public.is_partner_user() and public.travel_is_supervisor() and exists (
+    select 1 from public.profiles where id = auth.uid()
+      and retired_at is null and access_revoked_at is null)
+$$;
+revoke all on function public.schedule_ai_reasons_active_supervisor() from public, anon;
+grant execute on function public.schedule_ai_reasons_active_supervisor() to authenticated;
+
+-- Readers: an active supervisor or owner who is not a partner login.
 drop policy if exists schedule_ai_reasons_supervisor_read on public.schedule_ai_reasons;
 create policy schedule_ai_reasons_supervisor_read on public.schedule_ai_reasons
   for select to authenticated
-  using (not public.is_partner_user() and public.travel_is_supervisor());
+  using (public.schedule_ai_reasons_active_supervisor());
 
 -- Writers: the same people, for a reason they are recording themselves, on a
 -- row that IS an AI draft. The Ask function's executor runs on the caller's
@@ -62,8 +80,7 @@ drop policy if exists schedule_ai_reasons_supervisor_write on public.schedule_ai
 create policy schedule_ai_reasons_supervisor_write on public.schedule_ai_reasons
   for insert to authenticated
   with check (
-    not public.is_partner_user()
-    and public.travel_is_supervisor()
+    public.schedule_ai_reasons_active_supervisor()
     and created_by = auth.uid()
     and exists (
       select 1 from public.schedule_assignments a

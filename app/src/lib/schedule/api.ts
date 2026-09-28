@@ -458,29 +458,41 @@ export async function dropDraftAssignment(a: Pick<ScheduleAssignment, "id" | "up
   return "dropped";
 }
 
-/** Flip the given draft assignments to published and stamp published_at. */
-export async function publishAssignments(ids: string[]): Promise<void> {
-  if (ids.length === 0) return;
-  const { error } = await supabase
+/**
+ * Flip the given draft assignments to published and stamp published_at.
+ * Returns the ids the database actually matched and flipped — never the
+ * full input list on faith. A row already canceled (or published by someone
+ * else) since the sheet was opened matches neither the id list's intent nor
+ * the `status = 'draft'` filter, so the UPDATE simply skips it; without
+ * reading the matched ids back, that zero-row success looked identical to a
+ * real publish and both logged an audit row and sent the crew a push for a
+ * row nothing happened to.
+ */
+export async function publishAssignments(ids: string[]): Promise<string[]> {
+  if (ids.length === 0) return [];
+  const { data, error } = await supabase
     .from("schedule_assignments")
     .update({ status: "published", published_at: nowISO(), updated_at: nowISO() })
     .in("id", ids)
-    .eq("status", "draft");
+    .eq("status", "draft")
+    .select("id");
   if (error) {
     if (isMissingScheduleTable(error)) {
       localStore.publish(ids);
-      return;
+      return ids;
     }
     throw error;
   }
-  for (const id of ids) await logEvent({ assignment_id: id, kind: "published" });
+  const matched = ((data ?? []) as { id: string }[]).map((row) => row.id);
+  for (const id of matched) await logEvent({ assignment_id: id, kind: "published" });
+  return matched;
 }
 
 /** The model's reason for each AI draft (K2.8), from schedule_ai_reasons —
  * its own table because the reason is about PEOPLE and only a supervisor or
  * owner may read it: the row's `note` is crew-visible, and so is every
  * schedule_events row (20261003000000), which is where the first cut kept it.
- * The wall is the table's read policy (20261032000000), not this function: a
+ * The wall is the table's read policy (20261035000000), not this function: a
  * login below supervisor gets no rows back, never an error. Keyed by
  * assignment id; a draft the model gave no reason for, or one older than the
  * table, is simply absent. A missing table reads as no reasons, the way
@@ -505,10 +517,12 @@ export async function listAiDraftReasons(ids: string[]): Promise<Map<string, str
 
 /** What the database says about each id a publish was sent for. */
 export interface PublishReadback {
-  /** Now published (or further along): the publish reached the database. */
+  /** Now published (or further along: in_progress, done) — a confirmed publish. */
   published: string[];
   /** Still draft: the publish did not reach them. */
   drafts: string[];
+  /** Canceled — a concrete answer, but never a publish and never crew-notified. */
+  canceled: string[];
   /** Not readable any more (deleted meanwhile, or hidden): not confirmed. */
   missing: string[];
 }
@@ -520,9 +534,16 @@ export interface PublishReadback {
  * could already see the schedule. This is the only honest answer: ask the
  * database what happened. Throws when the read itself fails — the caller then
  * knows only that it does not know.
+ *
+ * Only 'published', 'in_progress' and 'done' count as a confirmed publish.
+ * 'canceled' used to fall into the same `else` as those three — every
+ * non-draft status read as "published", so a row a supervisor (or someone
+ * else) canceled while the reply was in flight was written to the audit log
+ * and pushed to the crew as published. It is not a draft either, so it must
+ * be told apart explicitly rather than by process of elimination.
  */
 export async function confirmPublished(ids: string[]): Promise<PublishReadback> {
-  const out: PublishReadback = { published: [], drafts: [], missing: [] };
+  const out: PublishReadback = { published: [], drafts: [], canceled: [], missing: [] };
   if (ids.length === 0) return out;
   const { data, error } = await supabase
     .from("schedule_assignments")
@@ -531,14 +552,18 @@ export async function confirmPublished(ids: string[]): Promise<PublishReadback> 
   if (error) throw error;
   const seen = new Map<string, string>();
   for (const row of (data ?? []) as { id: string; status: string }[]) seen.set(row.id, row.status);
+  const CONFIRMED_PUBLISHED = new Set(["published", "in_progress", "done"]);
   for (const id of ids) {
     const status = seen.get(id);
     if (status === undefined) out.missing.push(id);
     else if (status === "draft") out.drafts.push(id);
-    else out.published.push(id);
+    else if (status === "canceled") out.canceled.push(id);
+    else if (CONFIRMED_PUBLISHED.has(status)) out.published.push(id);
+    else out.missing.push(id);
   }
   // The audit rows publishAssignments writes AFTER its update never ran when
-  // the reply was lost; write them for what the database confirms.
+  // the reply was lost; write them for what the database confirms. Never for
+  // drafts, canceled or unreadable rows — nothing happened to those.
   for (const id of out.published) await logEvent({ assignment_id: id, kind: "published" });
   return out;
 }

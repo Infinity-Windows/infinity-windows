@@ -21,20 +21,32 @@ describe("telling a lost reply from a refusal", () => {
 
 describe("the outcome after a re-read", () => {
   it("every row published: success, exactly as if the reply had arrived", () => {
-    expect(outcomeFromReadback({ published: ["a", "b"], drafts: [], missing: [] })).toEqual({ kind: "published", ids: ["a", "b"] });
+    expect(outcomeFromReadback({ published: ["a", "b"], drafts: [], canceled: [], missing: [] })).toEqual({ kind: "published", ids: ["a", "b"] });
   });
   it("some still draft: partial, and the sheet says how many", () => {
-    const outcome = outcomeFromReadback({ published: ["a"], drafts: ["b", "c"], missing: [] });
-    expect(outcome).toEqual({ kind: "partial", published: ["a"], drafts: ["b", "c"] });
-    expect(publishOutcomeMessage(outcome as Exclude<typeof outcome, { kind: "published" }>)).toBe("Published 1 of 3; 2 still draft. Tap Publish again when you have signal.");
+    const outcome = outcomeFromReadback({ published: ["a"], drafts: ["b", "c"], canceled: [], missing: [] });
+    expect(outcome).toEqual({ kind: "partial", published: ["a"], drafts: ["b", "c"], canceled: [] });
+    expect(publishOutcomeMessage(outcome as Exclude<typeof outcome, { kind: "published" }>)).toBe("Published 1 of 3. 2 still draft — tap Publish again when you have signal.");
   });
   it("no re-read at all, or a row it could not read back: unconfirmed — no claim either way", () => {
     expect(outcomeFromReadback(null)).toEqual({ kind: "unconfirmed" });
-    expect(outcomeFromReadback({ published: ["a"], drafts: [], missing: ["b"] })).toEqual({ kind: "unconfirmed" });
+    expect(outcomeFromReadback({ published: ["a"], drafts: [], canceled: [], missing: ["b"] })).toEqual({ kind: "unconfirmed" });
     expect(publishOutcomeMessage({ kind: "unconfirmed" })).toContain("couldn't confirm whether this was published");
     expect(publishOutcomeMessage({ kind: "unconfirmed" })).not.toContain("Nothing was published");
   });
   it("only a confirmed refusal says nothing was published", () => {
     expect(publishOutcomeMessage({ kind: "refused", message: "You don't have permission to do that." })).toBe("You don't have permission to do that. Nothing was published.");
+  });
+  it("a canceled row is a concrete answer, never mistaken for published, and never blocks re-reading forever like 'missing' does", () => {
+    const outcome = outcomeFromReadback({ published: [], drafts: [], canceled: ["a"], missing: [] });
+    expect(outcome).toEqual({ kind: "partial", published: [], drafts: [], canceled: ["a"] });
+    expect(publishOutcomeMessage(outcome as Exclude<typeof outcome, { kind: "published" }>))
+      .toBe("Published 0 of 1. 1 was canceled and could not be published.");
+  });
+  it("a mix of published and canceled: the message counts each correctly and never says 'published' for the canceled one", () => {
+    const outcome = outcomeFromReadback({ published: ["a"], drafts: [], canceled: ["b", "c"], missing: [] });
+    expect(outcome).toEqual({ kind: "partial", published: ["a"], drafts: [], canceled: ["b", "c"] });
+    expect(publishOutcomeMessage(outcome as Exclude<typeof outcome, { kind: "published" }>))
+      .toBe("Published 1 of 3. 2 were canceled and could not be published.");
   });
 });

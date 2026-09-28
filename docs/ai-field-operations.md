@@ -239,7 +239,7 @@ could never reach their tool by typing before.
 Plan the schedule drafted happens on Scheduling, never in Ask (the boundary:
 no publishing). `draft_assignments` takes an optional `reason` per entry
 (one plain sentence, clipped at 160 characters) and the executor writes it
-to **`schedule_ai_reasons`** (migration `20261032000000_ai_schedule_review`)
+to **`schedule_ai_reasons`** (migration `20261035000000_ai_schedule_review`)
 on the caller's own scoped client — a table of its own because the reason is
 about people: its read policy admits supervisors and owners only (`not
 is_partner_user() and travel_is_supervisor()`), its insert policy the same
