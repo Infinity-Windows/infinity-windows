@@ -2,6 +2,7 @@ import { shiftHours } from "../../../supabase/functions/_shared/timeMath.ts";
 import type { TimeShift } from "./timeclock";
 import { splitDisplayName } from "./gustoExport";
 import { NO_JOB } from "./timeReportFilters";
+import type { BillToCells } from "./billTo";
 
 /** Original source evidence is immutable; corrections use the ordinary shift fields. */
 export interface TimeEntryImportSource {
@@ -17,6 +18,17 @@ export const TIME_ENTRY_COLUMNS = [
   "Customer", "Project Number", "Project", "Cost Code", "Cost Code Desc.",
   "Equipment", "Add-Ons", "Description", "Status", "Time Zone",
 ] as const;
+
+/**
+ * Appended AFTER "Time Zone" on the Job timecards export, and only for
+ * somebody allowed to see who a job bills to (lib/billTo.ts). The order, the
+ * spelling and the position are a contract with the Friday invoice script
+ * (forge-stg-invoice, week.py): the name exactly as the list shows it, then
+ * the bare QuickBooks customer id or a blank. Everything before them stays
+ * exactly as it was, and an export without them is the old file, which the
+ * script already knows how to read.
+ */
+export const BILL_TO_COLUMNS = ["Bill To", "Bill To QuickBooks ID"] as const;
 
 export function durationText(seconds: number): string {
   const n = Math.max(0, Math.round(seconds));
@@ -57,8 +69,12 @@ export function groupTimeEntriesByJob(shifts: TimeShift[]) {
   return [...groups.values()].sort((a, b) => a.label.localeCompare(b.label) || a.id.localeCompare(b.id));
 }
 
-export function buildTimeEntryRows(shifts: TimeShift[], timeZone: string, fallbackName = "", byJob = false): string[][] {
-  const rows: string[][] = [[...TIME_ENTRY_COLUMNS]];
+/**
+ * `billTo`, when given, adds the two BILL_TO_COLUMNS: each entry's job looked
+ * up by id, blank for time on no job. Leave it out and the file is unchanged.
+ */
+export function buildTimeEntryRows(shifts: TimeShift[], timeZone: string, fallbackName = "", byJob = false, billTo?: ReadonlyMap<string, BillToCells>): string[][] {
+  const rows: string[][] = [billTo ? [...TIME_ENTRY_COLUMNS, ...BILL_TO_COLUMNS] : [...TIME_ENTRY_COLUMNS]];
   const jobOrder = new Map(groupTimeEntriesByJob(shifts).map((job, i) => [job.id, i]));
   for (const s of completedExportShifts(shifts).sort((a, b) =>
     (byJob ? (jobOrder.get(a.project_id ?? NO_JOB) ?? 0) - (jobOrder.get(b.project_id ?? NO_JOB) ?? 0) : 0) ||
@@ -76,6 +92,10 @@ export function buildTimeEntryRows(shifts: TimeShift[], timeZone: string, fallba
       s.cost_codes?.code ?? original["Cost Code"] ?? "", s.cost_codes?.label ?? original["Cost Code Desc."] ?? "",
       original.Equipment ?? "", original["Add-Ons"] ?? "", description, s.status, timeZone,
     ]);
+    if (billTo) {
+      const cells = s.project_id ? billTo.get(s.project_id) : undefined;
+      rows[rows.length - 1].push(cells?.name ?? "", cells?.quickbooksId ?? "");
+    }
   }
   return rows;
 }
@@ -86,8 +106,8 @@ function csvCell(value: string): string {
   return /[",\n\r]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
 }
 
-export function buildTimeEntriesCsv(shifts: TimeShift[], timeZone: string, fallbackName = "", byJob = false): string {
-  return "\uFEFF" + buildTimeEntryRows(shifts, timeZone, fallbackName, byJob).map(row => row.map(csvCell).join(",")).join("\r\n");
+export function buildTimeEntriesCsv(shifts: TimeShift[], timeZone: string, fallbackName = "", byJob = false, billTo?: ReadonlyMap<string, BillToCells>): string {
+  return "\uFEFF" + buildTimeEntryRows(shifts, timeZone, fallbackName, byJob, billTo).map(row => row.map(csvCell).join(",")).join("\r\n");
 }
 
 const esc = (value: string) => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");

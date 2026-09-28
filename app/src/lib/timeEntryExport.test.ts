@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { TimeShift } from "./timeclock";
-import { buildTimeEntriesCsv, buildTimeEntryRows, durationText, groupTimeEntriesByJob, timeEntriesHtml } from "./timeEntryExport";
+import { BILL_TO_COLUMNS, TIME_ENTRY_COLUMNS, buildTimeEntriesCsv, buildTimeEntryRows, durationText, groupTimeEntriesByJob, timeEntriesHtml } from "./timeEntryExport";
+import type { BillToCells } from "./billTo";
 const shift = (over: Partial<TimeShift> = {}): TimeShift => ({
   id: "shift-1", profile_id: "person-1", project_id: "job-1", cost_code_id: "code-1",
   clock_in_at: "2026-09-01T13:00:00Z", clock_out_at: "2026-09-01T21:30:00Z",
@@ -67,3 +68,51 @@ describe("detailed time-entry exports", () => {
     expect(html).toContain("Unassigned time");
   });
 });
+
+// The contract with the Friday invoice script (forge-stg-invoice, week.py),
+// agreed 2026-09-25: two columns appended after "Time Zone", named exactly so,
+// holding the list name and the bare QuickBooks id — and nothing else moves.
+describe("bill-to columns on the Job timecards export", () => {
+  const OLD_HEADER = ["Employee Id", "First Name", "Last Name", "Start", "End", "Break", "Total",
+    "Customer", "Project Number", "Project", "Cost Code", "Cost Code Desc.",
+    "Equipment", "Add-Ons", "Description", "Status", "Time Zone"];
+  const billTo = new Map<string, BillToCells>([
+    ["job-1", { name: "STG Windows and Doors", quickbooksId: "4" }],
+    ["job-2", { name: "Strata", quickbooksId: "" }],
+  ]);
+
+  it("appends exactly Bill To then Bill To QuickBooks ID after Time Zone", () => {
+    expect(TIME_ENTRY_COLUMNS).toEqual(OLD_HEADER);
+    expect(BILL_TO_COLUMNS).toEqual(["Bill To", "Bill To QuickBooks ID"]);
+    const [header] = buildTimeEntryRows([shift()], "America/Denver", "", true, billTo);
+    expect(header).toEqual([...OLD_HEADER, "Bill To", "Bill To QuickBooks ID"]);
+    const csv = buildTimeEntriesCsv([shift()], "America/Denver", "", true, billTo);
+    expect(csv.split("\r\n")[0]).toBe("\uFEFF" + [...OLD_HEADER, "Bill To", "Bill To QuickBooks ID"].join(","));
+  });
+
+  it("writes the job's list name and bare digits, a blank id until one is typed, and leaves every other cell alone", () => {
+    const plain = buildTimeEntryRows([shift(), shift({ id: "s2", project_id: "job-2", projects: { job_code: "J2", name: "Hill" } })], "America/Denver", "", true);
+    const rows = buildTimeEntryRows([shift(), shift({ id: "s2", project_id: "job-2", projects: { job_code: "J2", name: "Hill" } })], "America/Denver", "", true, billTo);
+    expect(rows.slice(1).map(r => r.slice(0, 17))).toEqual(plain.slice(1));
+    expect(rows.slice(1).map(r => [r[8], r[17], r[18]])).toEqual([["J2", "Strata", ""], ["JOB-1", "STG Windows and Doors", "4"]]);
+    const csvLines = buildTimeEntriesCsv([shift()], "America/Denver", "", true, billTo).split("\r\n");
+    expect(csvLines[1].endsWith(",America/Denver,STG Windows and Doors,4")).toBe(true);
+  });
+
+  it("never guesses a bill-to from the job's customer or builder: no job, or a job it was not told about, is blank", () => {
+    const imported = shift({ id: "s3", project_id: null, projects: null, source_import: { source: "busybusy", file: "f.csv", row: 2, timeZone: "America/Denver", original: { Customer: "Richardson Brothers", Project: "New site" } } });
+    const unknown = shift({ id: "s4", project_id: "job-9", projects: { job_code: "J9", name: "Nine" } });
+    const rows = buildTimeEntryRows([imported, unknown], "America/Denver", "", true, billTo);
+    for (const row of rows.slice(1)) expect(row.slice(17)).toEqual(["", ""]);
+    expect(rows.slice(1).some(r => r[7] === "Richardson Brothers")).toBe(true);
+  });
+
+  it("leaves both columns off entirely when the exporter cannot see bill-to", () => {
+    const rows = buildTimeEntryRows([shift()], "America/Denver", "", true);
+    expect(rows[0]).toEqual(OLD_HEADER);
+    expect(rows[1]).toHaveLength(17);
+    const csv = buildTimeEntriesCsv([shift()], "America/Denver", "", true);
+    expect(csv).not.toContain("Bill To");
+  });
+});
+
