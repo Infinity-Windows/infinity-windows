@@ -637,7 +637,7 @@ export function Scheduling() {
           partialMessage = publishOutcomeMessage(
             readback
               ? { kind: "partial", published: matched, drafts: readback.drafts, canceled: readback.canceled, total: requestedIds.length }
-              : { kind: "unconfirmed" },
+              : { kind: "partial", published: matched, drafts: [], canceled: [], total: requestedIds.length },
           );
         }
       } catch (e) {

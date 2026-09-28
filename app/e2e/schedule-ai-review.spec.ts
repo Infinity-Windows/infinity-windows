@@ -254,6 +254,34 @@ test("publish matches A and skips B (B is unreadable by the time of the click â€
   expect(pushes[0]).toMatchObject({ profileIds: [TEST_USER.id] });
 });
 
+test("A publishes while B changes and the status re-read fails: A's known success is still shown and notified", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 844 });
+  await useSupabaseFixtures(page, { role: "supervisor" });
+  await hideWrongProjectBanner(page);
+  const a = withReason(), b = older();
+  const { patches, pushes, rows } = await useScheduleFixtures(page, [a, b]);
+  await page.route("**/rest/v1/schedule_ai_reasons**", r => json(r, [{ assignment_id: a.id, reason: "Lead with wet glazing" }]));
+
+  await page.goto("/scheduling");
+  const card = page.getByTestId("ai-draft-review");
+  await expect(card).toContainText("2 to review");
+  rows.find(x => x.id === b.id)!.status = "canceled";
+  await page.route("**/rest/v1/schedule_assignments**", r => {
+    if (new URL(r.request().url()).searchParams.get("select") === "id,status") return r.abort("connectionclosed");
+    return r.fallback();
+  });
+
+  await card.getByRole("button", { name: "Review & publish" }).click();
+  const sheet = page.locator(".sched-sheet");
+  await sheet.getByRole("button", { name: "Publish 2", exact: true }).click();
+
+  await expect(sheet.getByRole("alert")).toContainText("Published 1 of 2.");
+  await expect(sheet.getByRole("alert")).toContainText("The other entry changed or could not be confirmed.");
+  expect(patches).toHaveLength(1);
+  expect(pushes).toHaveLength(1);
+  expect(pushes[0]).toMatchObject({ profileIds: [TEST_USER.id] });
+});
+
 test("a lost reply, re-read afterward: A is confirmed published and notified, B is missing and never claimed either way", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 844 });
   await useSupabaseFixtures(page, { role: "supervisor" });
