@@ -541,8 +541,17 @@ export interface PublishReadback {
  * else) canceled while the reply was in flight was written to the audit log
  * and pushed to the crew as published. It is not a draft either, so it must
  * be told apart explicitly rather than by process of elimination.
+ *
+ * `auditConfirmed` defaults true for the lost-reply case this was built for:
+ * the re-read stands in for a reply that genuinely never arrived, so a row
+ * it finds published is this action's own publish, and the audit row
+ * `publishAssignments` never got to write belongs there. Callers pass
+ * `false` when this is instead a status-only read on rows THIS action's own
+ * PATCH did not match (Scheduling.tsx's partial-match message) — a row
+ * already published by someone else must not gain a second "published"
+ * audit event credited to whoever is reading it back.
  */
-export async function confirmPublished(ids: string[]): Promise<PublishReadback> {
+export async function confirmPublished(ids: string[], auditConfirmed = true): Promise<PublishReadback> {
   const out: PublishReadback = { published: [], drafts: [], canceled: [], missing: [] };
   if (ids.length === 0) return out;
   const { data, error } = await supabase
@@ -564,7 +573,9 @@ export async function confirmPublished(ids: string[]): Promise<PublishReadback> 
   // The audit rows publishAssignments writes AFTER its update never ran when
   // the reply was lost; write them for what the database confirms. Never for
   // drafts, canceled or unreadable rows — nothing happened to those.
-  for (const id of out.published) await logEvent({ assignment_id: id, kind: "published" });
+  if (auditConfirmed) {
+    for (const id of out.published) await logEvent({ assignment_id: id, kind: "published" });
+  }
   return out;
 }
 

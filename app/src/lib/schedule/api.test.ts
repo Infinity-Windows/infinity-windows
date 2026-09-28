@@ -163,13 +163,33 @@ describe("a publish whose reply was lost", () => {
     await publishAssignments(["a", "b"]).catch(() => {});
     const readback = await confirmPublished(["a", "b"]);
     expect(readback).toEqual({ published: ["a"], drafts: [], canceled: ["b"], missing: [] });
-    expect(outcomeFromReadback(readback)).toEqual({ kind: "partial", published: ["a"], drafts: [], canceled: ["b"] });
+    expect(outcomeFromReadback(readback)).toEqual({ kind: "partial", published: ["a"], drafts: [], canceled: ["b"], total: 2 });
     // Only the confirmed publish gets an audit row; the canceled row gets none.
+    expect(calls.filter((c) => c.table === "schedule_events" && c.op === "insert").map((c) => (c.args[0] as { assignment_id: string }).assignment_id)).toEqual(["a"]);
+  });
+  it("a row is missing while the reply was lost: the confirmed publish still gets an audit row, and the missing one never becomes 'unconfirmed' for everything", async () => {
+    respond = (table, ops) => {
+      if (table === "schedule_assignments" && ops.includes("update")) return { data: null, error: LOST };
+      // "b" is absent from the re-read entirely — deleted, or hidden by row security.
+      if (table === "schedule_assignments") return { data: [{ id: "a", status: "published" }], error: null };
+      return { data: null, error: null };
+    };
+    await publishAssignments(["a", "b"]).catch(() => {});
+    const readback = await confirmPublished(["a", "b"]);
+    expect(readback).toEqual({ published: ["a"], drafts: [], canceled: [], missing: ["b"] });
+    expect(outcomeFromReadback(readback)).toEqual({ kind: "partial", published: ["a"], drafts: [], canceled: [], total: 2 });
+    // "a" is confirmed published and gets its audit row; "b" gets none, and
+    // its being missing never blocks "a"'s own confirmed audit row.
     expect(calls.filter((c) => c.table === "schedule_events" && c.op === "insert").map((c) => (c.args[0] as { assignment_id: string }).assignment_id)).toEqual(["a"]);
   });
   it("a canceled row read back on its own is never counted as published", async () => {
     respond = (table) => table === "schedule_assignments" ? { data: [{ id: "a", status: "canceled" }], error: null } : { data: null, error: null };
     expect(await confirmPublished(["a"])).toEqual({ published: [], drafts: [], canceled: ["a"], missing: [] });
+    expect(calls.some((c) => c.table === "schedule_events")).toBe(false);
+  });
+  it("a status-only read of someone else's already published row does not attribute a new audit event to this supervisor", async () => {
+    respond = (table) => table === "schedule_assignments" ? { data: [{ id: "a", status: "published" }], error: null } : { data: null, error: null };
+    expect(await confirmPublished(["a"], false)).toEqual({ published: ["a"], drafts: [], canceled: [], missing: [] });
     expect(calls.some((c) => c.table === "schedule_events")).toBe(false);
   });
   it("the update reports success with zero matched rows (every id was already canceled or published elsewhere): nothing is claimed and no audit row is written", async () => {

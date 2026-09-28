@@ -628,10 +628,15 @@ export function Scheduling() {
           // this action did not publish it, so it must not ride along on
           // this action's crew notification.
           const unmatchedIds = requestedIds.filter((id) => !matched.includes(id));
-          const readback = await confirmPublished(unmatchedIds).catch(() => null);
+          // This read is for the status message only: a row another supervisor
+          // already published must not gain a second audit event under us
+          // (confirmPublished's auditConfirmed=false), and must not inflate
+          // this click's own published count either — `published` below is
+          // `matched`, never matched plus whatever the read-back found.
+          const readback = await confirmPublished(unmatchedIds, false).catch(() => null);
           partialMessage = publishOutcomeMessage(
             readback
-              ? { kind: "partial", published: [...matched, ...readback.published], drafts: readback.drafts, canceled: readback.canceled }
+              ? { kind: "partial", published: matched, drafts: readback.drafts, canceled: readback.canceled, total: requestedIds.length }
               : { kind: "unconfirmed" },
           );
         }
