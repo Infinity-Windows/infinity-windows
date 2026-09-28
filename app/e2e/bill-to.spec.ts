@@ -21,7 +21,7 @@ test.setTimeout(60_000);
 
 const id = (n: number) => `cccccccc-cccc-4ccc-8ccc-${String(n).padStart(12, "0")}`;
 const JOB = id(10);
-const STG = { id: id(30), name: "STG Windows and Doors", billing_email: null, quickbooks_customer_id: "4", is_default: true, retired_at: null };
+const STG = { id: id(30), name: "STG Windows and Doors", billing_email: null, quickbooks_customer_id: "1234", is_default: true, retired_at: null };
 const STRATA = { id: id(31), name: "Strata", billing_email: null, quickbooks_customer_id: null, is_default: false, retired_at: null };
 
 type Role = "foreman" | "supervisor";
@@ -98,7 +98,7 @@ test("a supervisor sees the job's bill-to, changes it to Strata, and sees who ch
   const field = page.getByTestId("bill-to-field");
   const picker = field.getByRole("combobox", { name: "Bills to" });
   await expect(picker).toHaveValue(STG.id);
-  await expect(field).toContainText("QuickBooks ID 4");
+  await expect(field).toContainText("QuickBooks ID 1234");
   await expect(field).toContainText("Not changed since the job was made.");
   await expect(field.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
   await picker.selectOption({ label: "Strata" });
@@ -126,7 +126,7 @@ test("a supervisor's Job timecards file ends with Bill To and its QuickBooks ID,
   expect(custom.name).toBe("Forge-JobTimecards(2026-09-14-2026-09-15).csv");
   const [header, row] = custom.csv.replace(/^﻿/, "").split("\r\n");
   expect(header).toBe("Employee Id,First Name,Last Name,Start,End,Break,Total,Customer,Project Number,Project,Cost Code,Cost Code Desc.,Equipment,Add-Ons,Description,Status,Time Zone,Bill To,Bill To QuickBooks ID");
-  expect(row.endsWith(",approved,America/Denver,STG Windows and Doors,4")).toBe(true);
+  expect(row.endsWith(",approved,America/Denver,STG Windows and Doors,1234")).toBe(true);
   await expect(custom.dialog.getByTestId("export-bill-to-note")).toBeVisible();
 
   await custom.dialog.getByRole("button", { name: "Full job history", exact: true }).click();

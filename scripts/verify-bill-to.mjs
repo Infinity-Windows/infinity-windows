@@ -161,8 +161,8 @@ await denied(`select public.save_bill_to_customer(null,'Other Co','not an email'
 await denied(`select public.save_bill_to_customer(null,'   ',null,null)`, /name/);
 await denied(`select public.save_bill_to_customer(gen_random_uuid(),'Nobody',null,null)`, /not on the bill-to list/);
 // Typing STG's QuickBooks id and email in the app; blanks clear them again.
-await db.exec(`select public.save_bill_to_customer('${STG}','STG Windows and Doors','billing@example.com','4')`);
-assert.equal((await one(`select quickbooks_customer_id q from bill_to_customers where id = '${STG}'`)).q, "4"); checks++;
+await db.exec(`select public.save_bill_to_customer('${STG}','STG Windows and Doors','billing@example.com','1234')`);
+assert.equal((await one(`select quickbooks_customer_id q from bill_to_customers where id = '${STG}'`)).q, "1234"); checks++;
 await db.exec(`select public.save_bill_to_customer('${made.id}','Hyer Homes','','')`);
 row = await one(`select billing_email, quickbooks_customer_id from bill_to_customers where id = '${made.id}'`);
 assert.deepEqual([row.billing_email, row.quickbooks_customer_id], [null, null]); checks++;

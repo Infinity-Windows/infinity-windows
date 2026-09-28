@@ -39,8 +39,8 @@ describe("the two export cells", () => {
   });
 
   it("is the list name exactly, then the bare QuickBooks id", () => {
-    expect(billToCells(row({ id: "c-1", name: "STG Windows and Doors", quickbooks_customer_id: "4", retired_at: null })))
-      .toEqual({ name: "STG Windows and Doors", quickbooksId: "4" });
+    expect(billToCells(row({ id: "c-1", name: "STG Windows and Doors", quickbooks_customer_id: "1234", retired_at: null })))
+      .toEqual({ name: "STG Windows and Doors", quickbooksId: "1234" });
   });
 
   it("writes a blank id until somebody types one, and keeps a retired customer's name", () => {

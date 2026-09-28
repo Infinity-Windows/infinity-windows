@@ -77,7 +77,7 @@ describe("bill-to columns on the Job timecards export", () => {
     "Customer", "Project Number", "Project", "Cost Code", "Cost Code Desc.",
     "Equipment", "Add-Ons", "Description", "Status", "Time Zone"];
   const billTo = new Map<string, BillToCells>([
-    ["job-1", { name: "STG Windows and Doors", quickbooksId: "4" }],
+    ["job-1", { name: "STG Windows and Doors", quickbooksId: "1234" }],
     ["job-2", { name: "Strata", quickbooksId: "" }],
   ]);
 
@@ -94,9 +94,9 @@ describe("bill-to columns on the Job timecards export", () => {
     const plain = buildTimeEntryRows([shift(), shift({ id: "s2", project_id: "job-2", projects: { job_code: "J2", name: "Hill" } })], "America/Denver", "", true);
     const rows = buildTimeEntryRows([shift(), shift({ id: "s2", project_id: "job-2", projects: { job_code: "J2", name: "Hill" } })], "America/Denver", "", true, billTo);
     expect(rows.slice(1).map(r => r.slice(0, 17))).toEqual(plain.slice(1));
-    expect(rows.slice(1).map(r => [r[8], r[17], r[18]])).toEqual([["J2", "Strata", ""], ["JOB-1", "STG Windows and Doors", "4"]]);
+    expect(rows.slice(1).map(r => [r[8], r[17], r[18]])).toEqual([["J2", "Strata", ""], ["JOB-1", "STG Windows and Doors", "1234"]]);
     const csvLines = buildTimeEntriesCsv([shift()], "America/Denver", "", true, billTo).split("\r\n");
-    expect(csvLines[1].endsWith(",America/Denver,STG Windows and Doors,4")).toBe(true);
+    expect(csvLines[1].endsWith(",America/Denver,STG Windows and Doors,1234")).toBe(true);
   });
 
   it("never guesses a bill-to from the job's customer or builder: no job, or a job it was not told about, is blank", () => {

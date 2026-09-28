@@ -118,7 +118,8 @@ create table if not exists public.bill_to_customers (
   -- invoice script matches on it when no id has been typed yet.
   name text not null,
   billing_email text,
-  -- Bare digits (STG is 4, Strata 6 in QuickBooks today). Text, not a number,
+  -- Bare digits, as QuickBooks shows them; typed in the app, never seeded
+  -- here (the repo is public). Text, not a number,
   -- so the export writes exactly what was typed and a spreadsheet never turns
   -- it into 4.0.
   quickbooks_customer_id text,
@@ -318,7 +319,7 @@ begin
       using errcode = '22023';
   end if;
   if v_qb is not null and v_qb !~ '^[0-9]{1,20}$' then
-    raise exception 'The QuickBooks customer ID is digits only, like 4. Leave it blank if you do not know it.'
+    raise exception 'The QuickBooks customer ID is digits only. Leave it blank if you do not know it.'
       using errcode = '22023';
   end if;
   if exists (select 1 from public.bill_to_customers c
