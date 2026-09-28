@@ -61,6 +61,12 @@ const TALK = {
 
 const hoursAgo = (h: number) => new Date(Date.now() - h * 3600_000).toISOString();
 
+/** A moment's day on this machine's calendar — the browser's, in these runs. */
+function localDay(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 /** Yesterday's punch, so the landing primes itself with BLACK22 + General. */
 const RECENT_SHIFTS = [
   { project_id: BLACK22, cost_code_id: GENERAL, clock_in_at: hoursAgo(26), projects: { job_code: "BLACK22", name: "Black Desert" } },
@@ -334,13 +340,16 @@ for (const [where, viewport] of [
       expect(sign.p_profile_id).toBe(TEST_USER.id);
       expect(sign.p_talk_id).toBe(TALK_ID);
       expect(sign.p_typed_name).toBe("E2E Fixture");
-      // The files went where the row says, at paths made from the signature's id.
-      expect(sign.p_signature_path).toBe(`${TEST_USER.id}/${TALK_ID}/${dayISO(0)}-${sign.p_client_id}-signature.png`);
+      // The files went where the row says, at paths made from the signature's
+      // id and the day it was signed (not the day this line runs: a run that
+      // crosses midnight signed on the day before).
+      const signedDay = localDay(new Date(String(sign.p_signed_at)));
+      expect(sign.p_signature_path).toBe(`${TEST_USER.id}/${TALK_ID}/${signedDay}-${sign.p_client_id}-signature.png`);
       const uploaded = server.uploads.map((u) => u.path);
       expect(uploaded).toContain(sign.p_signature_path);
       // Check marks and all, the talk's PDF was built on the phone and filed
       // with the row.
-      expect(sign.p_pdf_path).toBe(`${TEST_USER.id}/${TALK_ID}/${dayISO(0)}-${sign.p_client_id}.pdf`);
+      expect(sign.p_pdf_path).toBe(`${TEST_USER.id}/${TALK_ID}/${signedDay}-${sign.p_client_id}.pdf`);
       expect(uploaded).toContain(sign.p_pdf_path);
       // The talk exactly as it was signed, check marks and all.
       expect(String(sign.p_talk_snapshot)).toContain("Wear cut sleeves ✓");
