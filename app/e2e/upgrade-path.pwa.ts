@@ -60,6 +60,11 @@ test("a phone on the previous build opens the app after a deploy, then switches 
   context,
   request,
 }) => {
+  const bootErrors: string[] = [];
+  page.on("pageerror", (error) => bootErrors.push(`pageerror: ${error.stack ?? error.message}`));
+  page.on("console", (message) => {
+    if (message.type() === "error") bootErrors.push(`console: ${message.text()}`);
+  });
   const { builds } = await harnessState(request);
   expect(builds.old.entry, "the two builds are different builds").not.toBe(builds.new.entry);
 
@@ -97,6 +102,7 @@ test("a phone on the previous build opens the app after a deploy, then switches 
     "files the previous build's shell asked today's server for and did not get — the 2026-09-25 black screen",
   ).toEqual([]);
   expect(started, "the previous build's shell never drew its first screen").toBe(true);
+  bootErrors.length = 0;
 
   // Then it notices the new build, downloads it, and — on the sign-in screen,
   // where there is nothing to lose — switches over by itself.
@@ -106,7 +112,29 @@ test("a phone on the previous build opens the app after a deploy, then switches 
       message: "the app never switched to the new build",
     })
     .toBe(builds.new.entry);
-  await expect(signInButton(page)).toBeVisible();
+  try {
+    await expect(signInButton(page)).toBeVisible();
+  } catch (error) {
+    // A script tag only proves HTML parsed. If the new shell is blank, keep
+    // the browser evidence that distinguishes a failed import from a stalled
+    // mount or a later runtime error.
+    const state = await page.evaluate(() => ({
+      readyState: document.readyState,
+      rootText: document.getElementById("root")?.textContent?.slice(0, 500) ?? null,
+      rootChildren: document.getElementById("root")?.childElementCount ?? null,
+      entry: document.querySelector<HTMLScriptElement>('script[type="module"][src]')?.src ?? null,
+      controller: navigator.serviceWorker.controller?.scriptURL ?? null,
+      resources: performance.getEntriesByType("resource")
+        .filter((entry) => /\.(js|css)(\?|$)/.test(entry.name))
+        .slice(-12)
+        .map((entry) => ({ name: entry.name, duration: entry.duration })),
+    })).catch((readError) => ({ readError: String(readError) }));
+    await test.info().attach("new-build-boot.json", {
+      body: JSON.stringify({ state, bootErrors, failedAppFiles: failed }, null, 2),
+      contentType: "application/json",
+    });
+    throw error;
+  }
 
   // Once: no second reload, no banner asking again.
   await expectSettledOn(page, builds.new.entry, loads);
