@@ -73,10 +73,14 @@ begin
   perform pg_temp.dry_run_as_system();
 end $$;
 
--- 2. A supervisor runs the list and changes the sandbox job.
+-- 2. A supervisor (or the owner) runs the list and changes the sandbox job. The live
+--    database may have nobody whose role is exactly "supervisor" (the first
+--    run on 2026-09-28 stopped on that), so the legacy "admin" and then the
+--    owner stand in: the same door, can_manage_bill_to(), lets all three in.
 do $$
 declare
   v_sup uuid;
+  v_as text;
   v_job uuid;
   v_stg uuid;
   v_strata uuid;
@@ -86,20 +90,31 @@ declare
   v_new_job uuid;
 begin
   perform pg_temp.dry_run_as_system();
-  v_sup := pg_temp.dry_run_pick('supervisor');
+  foreach v_as in array array['supervisor', 'admin', 'owner'] loop
+    begin
+      v_sup := pg_temp.dry_run_pick(v_as);
+    exception when others then
+      v_sup := null;
+    end;
+    exit when v_sup is not null;
+  end loop;
+  if v_sup is null then
+    raise exception 'dry run: nobody is a supervisor, an admin or an owner to act as';
+  end if;
+  perform pg_temp.dry_run_check(format('acting as a manager: role %s', v_as), true, null);
   v_job := pg_temp.dry_run_sandbox_job();
   select id into v_stg from public.bill_to_customers where is_default;
   select id into v_strata from public.bill_to_customers where name = 'Strata';
 
   perform pg_temp.dry_run_act_as(v_sup);
-  perform pg_temp.dry_run_check('a supervisor may see bill-to',
+  perform pg_temp.dry_run_check('the manager may see and change bill-to',
     public.can_see_bill_to(auth.uid()) and public.can_manage_bill_to(auth.uid()), null);
 
   select count(*) into v_n from public.bill_to_customers;
-  perform pg_temp.dry_run_check('a supervisor reads the list', v_n = 2,
+  perform pg_temp.dry_run_check('the manager reads the list', v_n = 2,
     format('expected 2, got %s', v_n));
   select count(*) into v_n from public.project_bill_to where project_id = v_job;
-  perform pg_temp.dry_run_check('a supervisor reads the sandbox job''s bill-to', v_n = 1,
+  perform pg_temp.dry_run_check('the manager reads the sandbox job''s bill-to', v_n = 1,
     format('expected 1, got %s', v_n));
 
   -- Add a customer, the way the Cost codes card does.
@@ -142,9 +157,9 @@ begin
     format('select public.set_bill_to_customer_retired(%L::uuid, true)', v_stg), 'cannot be retired');
 
   -- No direct writes, even for a supervisor.
-  perform pg_temp.dry_run_expect_error('a supervisor cannot write the list directly',
+  perform pg_temp.dry_run_expect_error('the manager cannot write the list directly',
     'insert into public.bill_to_customers (name) values (''Direct Dry Run Co'')', 'permission denied');
-  perform pg_temp.dry_run_expect_error('a supervisor cannot write a job''s bill-to directly',
+  perform pg_temp.dry_run_expect_error('the manager cannot write a job''s bill-to directly',
     format('update public.project_bill_to set bill_to_customer_id = %L::uuid where project_id = %L::uuid', v_stg, v_job),
     'permission denied');
   perform pg_temp.dry_run_expect_error('nobody deletes a customer',
