@@ -41,7 +41,7 @@ export function isUnconfirmedPublishError(err: unknown): boolean {
  * is never "published" either, so it never counts toward success and never
  * drives a crew notification.
  */
-export function outcomeFromReadback(readback: PublishReadback | null): PublishOutcome {
+export function outcomeFromReadback(readback: PublishReadback | null): Exclude<PublishOutcome, { kind: "refused" }> {
   if (!readback) return { kind: "unconfirmed" };
   if (readback.missing.length > 0) return { kind: "unconfirmed" };
   if (readback.drafts.length === 0 && readback.canceled.length === 0) {

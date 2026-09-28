@@ -612,25 +612,28 @@ export function Scheduling() {
     try {
       const requestedIds = draftList.map((a) => a.id);
       let confirmedIds: string[];
+      // Set only when some requested row did not get published by THIS
+      // click — shown to the supervisor, but never a reason to skip
+      // notifying the crew for the ids that did.
+      let partialMessage: string | null = null;
       try {
         const matched = await publishAssignments(requestedIds);
-        if (matched.length === requestedIds.length) {
-          confirmedIds = matched;
-        } else {
+        confirmedIds = matched;
+        if (matched.length < requestedIds.length) {
           // The database said yes with no error, but matched fewer rows than
-          // asked — some were canceled, or already published, since the sheet
-          // was opened. A zero-row "success" used to be indistinguishable from
-          // a real one, and every requested id got an audit row and a push
-          // whether or not anything actually happened to it. Re-read before
-          // notifying the crew about rows that were never touched.
-          const readback = await confirmPublished(requestedIds).catch(() => null);
-          const outcome = outcomeFromReadback(readback);
-          if (outcome.kind !== "published") {
-            setPublishError(publishOutcomeMessage(outcome));
-            refresh();
-            return;
-          }
-          confirmedIds = outcome.ids;
+          // asked — some were canceled, or already published, since the
+          // sheet was opened. Read the rest back only to tell the supervisor
+          // the truth: a row this click did not match is never added to
+          // confirmedIds, even if it turns out to already be published —
+          // this action did not publish it, so it must not ride along on
+          // this action's crew notification.
+          const unmatchedIds = requestedIds.filter((id) => !matched.includes(id));
+          const readback = await confirmPublished(unmatchedIds).catch(() => null);
+          partialMessage = publishOutcomeMessage(
+            readback
+              ? { kind: "partial", published: [...matched, ...readback.published], drafts: readback.drafts, canceled: readback.canceled }
+              : { kind: "unconfirmed" },
+          );
         }
       } catch (e) {
         // A refused publish (row security, a plan lock) used to end here
@@ -646,12 +649,23 @@ export function Scheduling() {
         }
         const readback = await confirmPublished(requestedIds).catch(() => null);
         const outcome = outcomeFromReadback(readback);
-        if (outcome.kind !== "published") {
+        if (outcome.kind === "unconfirmed") {
           setPublishError(publishOutcomeMessage(outcome));
           refresh();
           return;
         }
-        confirmedIds = outcome.ids;
+        // The re-read stands in for the lost reply, so rows it confirms as
+        // published here ARE this action's own publish. Canceled or missing
+        // rows among them never count — they never enter `published`.
+        confirmedIds = outcome.kind === "published" ? outcome.ids : outcome.published;
+        if (outcome.kind !== "published") partialMessage = publishOutcomeMessage(outcome);
+      }
+      if (confirmedIds.length === 0) {
+        // Nothing was actually published by this click — not by a lost-reply
+        // re-read either. Say so if there's something to say; claim nothing.
+        if (partialMessage) setPublishError(partialMessage);
+        refresh();
+        return;
       }
       const digests = buildPublishDigests(
         draftList
@@ -673,7 +687,11 @@ export function Scheduling() {
         });
       }
       refresh();
-      setPublishOpen(false);
+      if (partialMessage) {
+        setPublishError(partialMessage);
+      } else {
+        setPublishOpen(false);
+      }
     } finally {
       setPublishing(false);
     }

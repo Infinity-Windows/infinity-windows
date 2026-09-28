@@ -28,6 +28,8 @@ interface Patch { ids: string | null; status: string | null; body: unknown }
 async function useScheduleFixtures(page: Page, rows: Record<string, unknown>[], opts: { onDelete?: (d: Drop) => Record<string, unknown>[] } = {}) {
   const deletes: Drop[] = [];
   const patches: Patch[] = [];
+  const pushes: unknown[] = [];
+  await page.route("**/functions/v1/send-push", r => { pushes.push(r.request().postDataJSON()); return json(r, { ok: true }); });
   await page.route("**/rest/v1/projects**", r => json(r, [project]));
   await page.route("**/rest/v1/workflow_plan_assignments**", r => json(r, []));
   await page.route("**/rest/v1/workflow_plan_trips**", r => json(r, []));
@@ -46,14 +48,20 @@ async function useScheduleFixtures(page: Page, rows: Record<string, unknown>[], 
     }
     if (method === "PATCH") {
       patches.push({ ids: url.searchParams.get("id"), status: url.searchParams.get("status"), body: r.request().postDataJSON() });
-      for (const x of rows) if (x.status === "draft") { x.status = "published"; x.updated_at = new Date().toISOString(); }
-      return json(r, null);
+      // PostgREST's real reply to an UPDATE with .select("id") is the rows
+      // the WHERE clause actually matched — never every row asked for. A
+      // canceled row (or one already published) never matches
+      // `status = 'draft'`, so it is absent here even though it was in the
+      // request's id list.
+      const matched = rows.filter(x => x.status === "draft");
+      for (const x of matched) { x.status = "published"; x.updated_at = new Date().toISOString(); }
+      return json(r, matched.map(x => ({ id: x.id })));
     }
     if (url.searchParams.get("select") === "id,status") return json(r, rows.map(x => ({ id: x.id, status: x.status })));
     const wantDraft = url.searchParams.get("status") === "eq.draft";
     return json(r, rows.filter(x => !wantDraft || x.status === "draft"));
   });
-  return { deletes, patches, rows };
+  return { deletes, patches, pushes, rows };
 }
 
 for (const width of [375, 1280]) {
@@ -121,6 +129,65 @@ test("two supervisors: the other one published first, so a stale Drop deletes no
   // The re-read shows it as it is now — published, so no longer up for review.
   await expect(card).toContainText("No AI drafts in these dates.");
   expect(rows[0].status).toBe("published");
+});
+
+test("publish matches A and skips B (B was canceled between opening the sheet and tapping Publish): A's crew is notified, B's is not, and the sheet says so truthfully", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 844 });
+  await useSupabaseFixtures(page, { role: "supervisor" });
+  await hideWrongProjectBanner(page);
+  const a = withReason(), b = older();
+  const { patches, pushes, rows } = await useScheduleFixtures(page, [a, b]);
+  await page.route("**/rest/v1/schedule_ai_reasons**", r => json(r, [{ assignment_id: a.id, reason: "Lead with wet glazing" }]));
+
+  await page.goto("/scheduling");
+  const card = page.getByTestId("ai-draft-review");
+  await expect(card).toContainText("2 to review");
+  // Someone else cancels B after the sheet's already-fetched list was drawn,
+  // and before this supervisor taps Publish — the PATCH's WHERE clause will
+  // not match it, exactly as a real `status = 'draft'` filter would not.
+  rows.find(x => x.id === b.id)!.status = "canceled";
+
+  await card.getByRole("button", { name: "Review & publish" }).click();
+  const sheet = page.locator(".sched-sheet");
+  await sheet.getByRole("button", { name: "Publish 2", exact: true }).click();
+
+  // A truthful count, and the sheet stays open — this was not a clean success.
+  await expect(sheet.getByRole("alert")).toContainText("Published 1 of 2.");
+  await expect(sheet.getByRole("alert")).toContainText("1 was canceled and could not be published.");
+  await expect(sheet).toBeVisible();
+  expect(patches).toHaveLength(1);
+  expect(rows.find(x => x.id === a.id)!.status).toBe("published");
+  expect(rows.find(x => x.id === b.id)!.status).toBe("canceled");
+  // A's crew (TEST_USER) gets the push; B's crew (Ben Fixture) never does —
+  // this action did not publish B, whatever its status turns out to be.
+  expect(pushes).toHaveLength(1);
+  expect(pushes[0]).toMatchObject({ profileIds: [TEST_USER.id] });
+});
+
+test("publish matches nobody (every requested row was already canceled): nobody is notified and nothing is claimed as published", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 844 });
+  await useSupabaseFixtures(page, { role: "supervisor" });
+  await hideWrongProjectBanner(page);
+  const a = withReason(), b = older();
+  const { patches, pushes, rows } = await useScheduleFixtures(page, [a, b]);
+  await page.route("**/rest/v1/schedule_ai_reasons**", r => json(r, []));
+
+  await page.goto("/scheduling");
+  const card = page.getByTestId("ai-draft-review");
+  await expect(card).toContainText("2 to review");
+  rows.forEach(x => { x.status = "canceled"; });
+
+  await card.getByRole("button", { name: "Review & publish" }).click();
+  const sheet = page.locator(".sched-sheet");
+  await sheet.getByRole("button", { name: "Publish 2", exact: true }).click();
+
+  // The PATCH itself answered with zero matched rows (a real, not-lost
+  // reply) — nothing was published, and nobody rings for it.
+  await expect(sheet.getByRole("alert")).toContainText("Published 0 of 2.");
+  await expect(sheet.getByRole("alert")).toContainText("2 were canceled and could not be published.");
+  await expect(sheet).toBeVisible();
+  expect(patches).toHaveLength(1);
+  expect(pushes).toEqual([]);
 });
 
 test("a publish the server committed but whose reply was lost is confirmed by re-reading, not called a failure", async ({ page }) => {
