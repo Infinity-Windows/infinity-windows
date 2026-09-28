@@ -20,8 +20,9 @@
 //      unsent, both are said honestly, and Try again sends both, in order.
 //
 // The talk carries Do and Don't lists and a check mark in its words (the
-// coordinator's ask, 2026-09-25): the PDF's standard fonts cannot draw every
-// character a talk can hold, and a signature must never depend on that.
+// coordinator's ask, 2026-09-25) — the kind of talk that could not become a
+// PDF until lib/pdfText.ts (#665). It is filed WITH its PDF now; signing
+// without one is only for a PDF that genuinely fails to build.
 //
 // The dead zone is made the way queued-clock.spec.ts makes it: every Supabase
 // call is refused outright while the signal is off, the app's own files pass
@@ -337,10 +338,10 @@ for (const [where, viewport] of [
       expect(sign.p_signature_path).toBe(`${TEST_USER.id}/${TALK_ID}/${dayISO(0)}-${sign.p_client_id}-signature.png`);
       const uploaded = server.uploads.map((u) => u.path);
       expect(uploaded).toContain(sign.p_signature_path);
-      if (sign.p_pdf_path !== null) {
-        expect(sign.p_pdf_path).toBe(`${TEST_USER.id}/${TALK_ID}/${dayISO(0)}-${sign.p_client_id}.pdf`);
-        expect(uploaded).toContain(sign.p_pdf_path);
-      }
+      // Check marks and all, the talk's PDF was built on the phone and filed
+      // with the row.
+      expect(sign.p_pdf_path).toBe(`${TEST_USER.id}/${TALK_ID}/${dayISO(0)}-${sign.p_client_id}.pdf`);
+      expect(uploaded).toContain(sign.p_pdf_path);
       // The talk exactly as it was signed, check marks and all.
       expect(String(sign.p_talk_snapshot)).toContain("Wear cut sleeves ✓");
       // Signed when it was signed, not when it arrived …
