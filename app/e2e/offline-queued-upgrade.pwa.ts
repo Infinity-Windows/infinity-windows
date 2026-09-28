@@ -84,10 +84,12 @@ async function queuedSnapshot(page: Page) {
     return Promise.all(rows.map(async (row) => {
       const meta = JSON.parse(row.meta) as {
         op: string;
+        ownerId?: string;
         payload?: { createdBy?: string; projectId?: string; tappedAt?: string; clientId?: string };
       };
       return {
-        id: row.id, op: meta.op, owner: meta.payload?.createdBy ?? null,
+        id: row.id, op: meta.op, ownerId: meta.ownerId ?? null,
+        owner: meta.payload?.createdBy ?? null,
         projectId: meta.payload?.projectId ?? null,
         tappedAt: meta.payload?.tappedAt ?? null, clientId: meta.payload?.clientId ?? null,
         blobType: row.blob?.type ?? null,
@@ -97,7 +99,7 @@ async function queuedSnapshot(page: Page) {
   });
 }
 
-test("fixture-signed-in queued clock and photo survive upgrade, offline relaunch, and reconnection", async ({ page, context, request }) => {
+test("old queued clock and photo survive upgrade; the ownerless clock stays held while the named photo sends", async ({ page, context, request }) => {
   const { builds } = await harnessState(request);
   const state = { backendDown: false, refused: 0, writes: [] as string[], clockOuts: [] as unknown[], photos: [] as unknown[] };
   await useSupabaseFixtures(page, { role: "installer" });
@@ -171,6 +173,7 @@ test("fixture-signed-in queued clock and photo survive upgrade, offline relaunch
   expect(before.find((row) => row.id === PHOTO)?.blobBytes.length).toBeGreaterThan(0);
   const clock = before.find((row) => row.id !== PHOTO);
   expect(clock?.op).toBe("clock_out");
+  expect(clock?.ownerId).toBeNull();
   expect(clock?.tappedAt).toEqual(expect.any(String));
   expect(clock?.clientId).toEqual(expect.any(String));
   expect(state.writes).toEqual([]);
@@ -187,8 +190,8 @@ test("fixture-signed-in queued clock and photo survive upgrade, offline relaunch
   await expect.poll(() => runningEntry(page), { timeout: 120_000 }).toBe(builds.new.entry);
   expect(await queuedIds(page)).toEqual(pending);
   expect(await queuedSnapshot(page)).toEqual(before);
-  await expect(page.locator(".sync-pill-text:visible").first()).toContainText("Clock 1");
   await expect(page.locator(".sync-pill-text:visible").first()).toContainText("Photos 1");
+  await expect(page.locator(".sync-pill-text:visible").first()).toContainText("1 saved before an update");
   expect(state.writes).toEqual([]);
 
   const failed = failedAppFiles(page);
@@ -196,35 +199,92 @@ test("fixture-signed-in queued clock and photo survive upgrade, offline relaunch
   await page.reload();
   expect(await queuedIds(page)).toEqual(pending);
   expect(await queuedSnapshot(page)).toEqual(before);
-  await expect(page.locator(".sync-pill-text:visible").first()).toContainText("Clock 1");
   await expect(page.locator(".sync-pill-text:visible").first()).toContainText("Photos 1");
+  await expect(page.locator(".sync-pill-text:visible").first()).toContainText("1 saved before an update");
   expect(failed, "the signed-in shell asked for a file missing from the new worker cache").toEqual([]);
 
   await context.setOffline(false);
   state.backendDown = false;
   await page.evaluate(() => window.dispatchEvent(new Event("online")));
-  await expect.poll(() => state.clockOuts.length, { timeout: 60_000 }).toBe(1);
   await expect.poll(() => state.photos.length, { timeout: 60_000 }).toBe(1);
-  // The photo was queued a minute before the clock-out. The outbox must send
-  // the timekeeping change first despite that earlier photo timestamp.
-  expect(state.writes[0]).toBe("clock_out");
-  expect(await queuedIds(page)).toEqual([]);
+  // The old build could not record the clock-out's owner. #660 must leave it
+  // untouched rather than file time under whoever happens to be signed in.
+  expect(state.clockOuts).toEqual([]);
+  expect(await queuedIds(page)).toEqual([clock?.id]);
+  expect((await queuedSnapshot(page)).find((row) => row.id === clock?.id)).toEqual(clock);
   expect(state.refused).toBeGreaterThan(0);
-  expect(state.clockOuts[0]).toMatchObject({
-    p_tapped_at: clock?.tappedAt, p_client_id: clock?.clientId,
-  });
   expect(state.photos[0]).toMatchObject({
     client_id: PHOTO, created_by: TEST_USER.email, project_id: PROJECT, kind: "photo",
   });
   await page.reload();
-  expect(state.clockOuts).toHaveLength(1);
+  expect(state.clockOuts).toHaveLength(0);
   expect(state.photos).toHaveLength(1);
 });
 
-test("known #654 gap: a warmed signed-in landing should reopen without a profile response", async ({ page, context, request }) => {
-  // #654 owns the profile/session fix. Keep this acceptance check executable
-  // against the production bundle without turning #669's release suite red.
-  // Remove test.fail when #654 lands, then require the assertion to pass.
+test("a clock-in saved by the current build keeps its owner and tap time through an offline relaunch", async ({ page, context, request }) => {
+  const sent: Array<{ authorization: string | undefined; body: Record<string, unknown> }> = [];
+  let backendDown = false;
+  await useSupabaseFixtures(page, { role: "installer" });
+  await hideWrongProjectBanner(page);
+  await stubGeolocationDenied(page);
+  await page.route("**/rest/v1/safety_talks**", (r) =>
+    json(r, (r.request().headers()["accept"] ?? "").includes("pgrst.object") ? null : [], 0));
+  await page.route("**/rest/v1/toolbox_completions**", (r) => json(r, [], 0));
+  await page.route("**/rest/v1/cost_codes**", (r) => json(r, [
+    { id: COST_CODE, code: "000", label: "General", description: null, active: true, sort_order: 5, is_general: true },
+  ], 1));
+  await page.route("**/rest/v1/project_cost_codes**", (r) => json(r, [], 0));
+  await page.route("**/rest/v1/time_shifts**", (r) => {
+    const status = new URL(r.request().url()).searchParams.get("status") ?? "";
+    return json(r, status.startsWith("in.") ? [] : [{
+      project_id: PROJECT, cost_code_id: COST_CODE,
+      clock_in_at: new Date(Date.now() - 26 * 3600_000).toISOString(),
+      projects: { job_code: "BLACK22", name: "Black Desert" },
+    }], 0);
+  });
+  await page.route(/\/rest\/v1\/rpc\/server_now(\?|$)/, (r) => json(r, new Date().toISOString(), null));
+  await page.route(/\/rest\/v1\/rpc\/clock_in(\?|$)/, (r) => {
+    sent.push({ authorization: r.request().headers()["authorization"], body: r.request().postDataJSON() });
+    return json(r, { id: SHIFT, status: "open" }, null);
+  });
+  await page.route(/https:\/\/e2efixture\.supabase\.co\/(rest|storage|functions)\/v1\//, (r) =>
+    backendDown ? r.abort("internetdisconnected") : r.fallback());
+
+  await serveBuild(request, "new");
+  await page.goto("/");
+  await expect(page.locator(".clockin-block .clock-btn.primary.big")).toBeEnabled();
+  await serviceWorkerReady(page);
+  backendDown = true;
+  await context.setOffline(true);
+  await page.locator(".clockin-block .clock-btn.primary.big").click();
+  await expect(page.locator(".clock-sheet")).toBeVisible();
+  await page.locator(".clock-sheet .clock-btn.primary.big").click();
+  await expect(page.getByText("Clocked in — we'll sync it when you're back online")).toBeVisible();
+  const saved = await queuedSnapshot(page);
+  expect(saved).toHaveLength(1);
+  expect(saved[0]).toMatchObject({ op: "clock_in", ownerId: TEST_USER.id });
+  expect(saved[0]?.tappedAt).toEqual(expect.any(String));
+  expect(saved[0]?.clientId).toEqual(expect.any(String));
+  expect(sent).toEqual([]);
+
+  const failed = failedAppFiles(page);
+  await cutTheNetwork(page, context);
+  await page.reload();
+  expect(failed).toEqual([]);
+  expect(await queuedSnapshot(page)).toEqual(saved);
+  expect(sent).toEqual([]);
+  await context.setOffline(false);
+  backendDown = false;
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await expect.poll(() => sent.length, { timeout: 60_000 }).toBe(1);
+  expect(sent[0]?.authorization).toBe("Bearer e2e-fixture-access-token");
+  expect(sent[0]?.body).toMatchObject({ p_tapped_at: saved[0]?.tappedAt, p_client_id: saved[0]?.clientId });
+  expect(await queuedIds(page)).toEqual([]);
+  await page.reload();
+  expect(sent).toHaveLength(1);
+});
+
+test("a warmed signed-in landing reopens offline when the profile server cannot answer", async ({ page, context, request }) => {
   await useSupabaseFixtures(page, { role: "installer" });
   await hideWrongProjectBanner(page);
   await serveBuild(request, "new");
@@ -245,6 +305,5 @@ test("known #654 gap: a warmed signed-in landing should reopen without a profile
   await page.reload();
   expect(failed, "new-build app files missing from the worker cache").toEqual([]);
   await expect.poll(() => refused).toBeGreaterThan(0);
-  test.fail(true, "#654 must make the signed-in landing usable without a profile response");
   await expect(page.locator(".clockin-block"), "the signed-in landing remains visible offline").toBeVisible({ timeout: 8_000 });
 });

@@ -150,6 +150,39 @@ describe("App follows the newest word on who is signed in", () => {
     expect(r.last()).toBe(A);
   });
 
+  it("an online sign-in works when the phone cannot expose localStorage", () => {
+    const r = rig(null);
+    const launch = r.follow.asking();
+    // Auth can keep this session in memory even though the browser denies
+    // storage. The SIGNED_IN event is the current answer; a late launch answer
+    // still cannot overwrite it.
+    expect(r.follow.changed("SIGNED_IN", A)).toBe(A);
+    expect(r.last()).toBe(A);
+    expect(launch(null)).toBeUndefined();
+    expect(r.last()).toBe(A);
+  });
+
+  it("A's late refusal cannot sign B out or move the PIN gate after B signs in", () => {
+    const moves: Array<{ id: string | null; why: string }> = [];
+    let stored: Session | null = A;
+    let notices = 0;
+    const follow = followSignIn({
+      stored: () => stored,
+      isRefused: () => false,
+      hold: (session, why) => moves.push({ id: session?.user.id ?? null, why }),
+      signedOutByServer: () => { notices += 1; },
+      signOutWasRequested: () => false,
+    });
+    follow.asking()(A);
+    stored = B;
+    follow.changed("SIGNED_IN", B);
+    const before = [...moves];
+    follow.refused(A.refresh_token);
+    expect(moves).toEqual(before);
+    expect(moves.at(-1)).toEqual({ id: "B", why: "SIGNED_IN" });
+    expect(notices).toBe(0);
+  });
+
   it("a sign-out the server forced is explained; one the person asked for is not", () => {
     const forced = rig(A);
     forced.follow.asking()(A);

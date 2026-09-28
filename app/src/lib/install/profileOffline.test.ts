@@ -17,6 +17,11 @@ const auth = vi.hoisted(() => ({
   user: null as unknown,
   userError: null as unknown,
   getUserCalls: 0,
+  // The `profiles` row read failing on its own — a warm, still-valid sign-in,
+  // but no signal to reach PostgREST. postgrest-js never rejects; it resolves
+  // `{ data: null, error }`, which is what this mimics.
+  profileError: null as unknown,
+  profileStatus: 200,
 }));
 
 const ROW = { id: "u-1", display_name: "E2E Fixture", role: "installer" };
@@ -24,7 +29,10 @@ const ROW = { id: "u-1", display_name: "E2E Fixture", role: "installer" };
 vi.mock("../supabase", () => {
   const builder: Record<string, unknown> = {};
   for (const m of ["select", "eq", "maybeSingle", "insert", "single"]) builder[m] = () => builder;
-  builder.then = (resolve: (value: unknown) => void) => resolve({ data: ROW, error: null });
+  builder.then = (resolve: (value: unknown) => void) =>
+    resolve(auth.profileError
+      ? { data: null, error: auth.profileError, status: auth.profileStatus }
+      : { data: ROW, error: null, status: 200 });
   return {
     supabase: {
       auth: {
@@ -53,6 +61,8 @@ beforeEach(() => {
   auth.user = USER;
   auth.userError = null;
   auth.getUserCalls = 0;
+  auth.profileError = null;
+  auth.profileStatus = 200;
 });
 
 describe("the profile the phone keeps (myProfile)", () => {
@@ -109,6 +119,55 @@ describe("the real profile (myRealProfile — not kept on the phone)", () => {
 
   it("reads normally with signal", async () => {
     await expect(getRealProfile()).resolves.toEqual(ROW);
+  });
+
+  // review-pr654: a warm, still-valid sign-in (auth answers fine — often from
+  // the fixture/session cache) but the `profiles` row itself can't be read
+  // (no signal). Before this fix that rejection went unhandled: under
+  // networkMode "offlineFirst" a query whose first attempt throws stays
+  // PAUSED rather than settled while offline, so useEffectiveRole's isLoading
+  // never clears and RoleLanding is stuck on "Loading…" forever
+  // (e2e/offline-queued-upgrade.pwa.ts, "known #654 gap" test).
+  it("answers null, not a rejection, when the sign-in is fine but the profile row can't be read", async () => {
+    auth.profileError = { message: "Failed to fetch" };
+    await expect(getRealProfile()).resolves.toBeNull();
+  });
+
+  it("settles the role read when the profile server temporarily cannot answer (408, 429, 5xx)", async () => {
+    for (const status of [408, 429, 503]) {
+      // Postgrest-js puts HTTP status on the result, not on result.error.
+      auth.profileStatus = status;
+      auth.profileError = { message: status === 429 ? "Rate limit reached" : "Upstream unavailable", code: "" };
+      await expect(getRealProfile()).resolves.toBeNull();
+    }
+  });
+
+  it("still rejects a real (non-network) profile-read failure", async () => {
+    auth.profileError = { message: "permission denied for table profiles", code: "42501" };
+    await expect(getRealProfile()).rejects.toBe(auth.profileError);
+  });
+
+  it("does not hide a server permission denial just because the browser reports offline", async () => {
+    vi.stubGlobal("navigator", { onLine: false });
+    try {
+      for (const status of [401, 403]) {
+        auth.profileStatus = status;
+        auth.profileError = { message: "Access rejected", code: "" };
+        await expect(getRealProfile()).rejects.toBe(auth.profileError);
+      }
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("does not mistake a programming TypeError mentioning connection for a network outage", async () => {
+    auth.profileError = new TypeError("Cannot read properties of undefined (reading 'connection')");
+    await expect(getRealProfile()).rejects.toBe(auth.profileError);
+  });
+
+  it("unlike getRealProfile, getMyProfile still throws on the same read failure — it is the one the phone keeps, and a throw is what protects the cached copy", async () => {
+    auth.profileError = { message: "Failed to fetch" };
+    await expect(getMyProfile()).rejects.toBe(auth.profileError);
   });
 });
 
