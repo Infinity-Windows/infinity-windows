@@ -107,7 +107,13 @@ export function combineQueues(base: PillSummary, q: QueueSnapshot, t: TFn): Pill
     q.servicePending +
     q.legacyPending;
 
-  if (!failed && pending === 0) return base;
+  // The calm resting state gets its words here, in the person's language:
+  // outbox-core is pure and only ever says "All synced" in English.
+  if (!failed && pending === 0) {
+    return base.tone === "synced"
+      ? { tone: "synced", label: t("pill.allSynced"), detail: t("pill.allSyncedDetail") }
+      : base;
+  }
 
   const tone: PillTone = failed ? "attention" : "syncing";
   const waiting =

@@ -11,6 +11,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { UnitEditor } from "./UnitEditor";
 import type { WorkUnit } from "../../lib/customWork/model";
+import { LanguageContext, type LanguageContextValue } from "../../lib/i18n/context";
+import { CATALOG, translate, type Lang } from "../../lib/i18n";
 
 const unit: WorkUnit = {
   id: "u4", project_id: "job-1", opening_id: null, created_by: "me", label: "4", type_label: "Bifold door",
@@ -30,16 +32,28 @@ afterEach(() => {
   container.remove();
 });
 
-function mount(u: WorkUnit | undefined, onSave: (v: Record<string, unknown>, start: boolean) => Promise<void>) {
+function mount(
+  u: WorkUnit | undefined,
+  onSave: (v: Record<string, unknown>, start: boolean) => Promise<void>,
+  lang: Lang = "en",
+) {
   // Seeded and never stale: the form must not reach for a network in a test.
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
   qc.setQueryData(["projects"], [{ id: "job-1", name: "Pine Hollow" }]);
   qc.setQueryData(["customWorkRoster"], []);
+  const language: LanguageContextValue = {
+    lang,
+    t: (key, vars) => translate(CATALOG, lang, key, vars),
+    setLang: () => {},
+    needsChoice: false,
+  };
   act(() =>
     root.render(
-      <QueryClientProvider client={qc}>
-        <UnitEditor unit={u} jobId="job-1" types={[]} busy={false} onSave={onSave} onCancel={() => undefined} />
-      </QueryClientProvider>,
+      <LanguageContext.Provider value={language}>
+        <QueryClientProvider client={qc}>
+          <UnitEditor unit={u} jobId="job-1" types={[]} busy={false} onSave={onSave} onCancel={() => undefined} />
+        </QueryClientProvider>
+      </LanguageContext.Provider>,
     ),
   );
 }
@@ -88,5 +102,22 @@ describe("marking the whole install complete in the unit form", () => {
     mount(unit, onSave);
     await act(async () => button("Save and start")!.click());
     expect(onSave.mock.calls[0][1]).toBe(true);
+  });
+});
+
+// The main button was English-only until the 2026-09-25 Spanish review.
+describe("the unit form's main button in Spanish", () => {
+  it("reads Guardar y empezar on a unit that exists, and still starts a visit", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    mount(unit, onSave, "es");
+    expect(button("Save and start")).toBeUndefined();
+    await act(async () => button("Guardar y empezar")!.click());
+    expect(onSave.mock.calls[0][1]).toBe(true);
+  });
+
+  it("reads Empezar esta unidad on a new unit", () => {
+    mount(undefined, vi.fn(), "es");
+    expect(button("Empezar esta unidad")).toBeTruthy();
+    expect(button("Start this unit")).toBeUndefined();
   });
 });

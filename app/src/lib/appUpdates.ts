@@ -19,6 +19,7 @@ export const INCLUDED_UPDATE_IDS = [
   '2026-09-25-ask-latest-in-view',
   '2026-09-25-pin-lock',
   '2026-09-25-toolbox-signing',
+  '2026-09-25-pin-setting',
   '2026-09-27-bill-to',
 ] as const;
 export interface AppUpdate {

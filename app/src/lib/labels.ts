@@ -1,6 +1,7 @@
 // Generates printable label PDFs (4x2 inch landscape labels, one per page,
 // sized for thermal printers like the Rollo; also fine on letter sheets).
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { pdfSafeText } from "./pdfText";
 import {
   encodeContainerSerialQr,
   encodeLocationQr,
@@ -62,15 +63,21 @@ async function buildLabelPdf(labels: LabelSpec[]): Promise<Uint8Array> {
     const maxWidth = LABEL_W - textX - 8;
     let cursorY = LABEL_H - 22;
 
+    // The words are typed by people, emoji and arrows included, and the
+    // built-in font throws on anything outside WinAnsi, measuring as well as
+    // drawing (lib/pdfText.ts). The QR above keeps the value as typed: it is
+    // what a scan looks up.
+    const heroText = pdfSafeText(label.hero.text, bold);
+
     // Hero: shrink to fit the available width.
     let heroSize = label.hero.maxSize;
     while (
       heroSize > 12 &&
-      bold.widthOfTextAtSize(label.hero.text, heroSize) > maxWidth
+      bold.widthOfTextAtSize(heroText, heroSize) > maxWidth
     ) {
       heroSize -= 1;
     }
-    page.drawText(label.hero.text, {
+    page.drawText(heroText, {
       x: textX,
       y: cursorY - heroSize + 4,
       size: heroSize,
@@ -81,13 +88,14 @@ async function buildLabelPdf(labels: LabelSpec[]): Promise<Uint8Array> {
 
     for (const line of label.lines) {
       const font = line.bold ? bold : regular;
+      const text = pdfSafeText(line.text, font);
       let size = line.size;
-      while (size > 7 && font.widthOfTextAtSize(line.text, size) > maxWidth) {
+      while (size > 7 && font.widthOfTextAtSize(text, size) > maxWidth) {
         size -= 1;
       }
       cursorY -= size;
       const [r, g, b] = line.color ?? [0.2, 0.2, 0.2];
-      page.drawText(line.text, {
+      page.drawText(text, {
         x: textX,
         y: cursorY,
         size,
@@ -189,42 +197,48 @@ export async function containerPostersPdf(
       height: qrSize,
     });
 
+    // Drawable words, the QR untouched: same reason as buildLabelPdf above.
+    const name = pdfSafeText(c.name, bold);
+    const serial = pdfSafeText(c.serial, bold);
+    const address = c.address ? pdfSafeText(c.address, regular) : null;
+    const scanLine = pdfSafeText("Scan to open this container in the app", regular);
+
     let nameSize = 54;
-    while (nameSize > 18 && bold.widthOfTextAtSize(c.name, nameSize) > W - 72) {
+    while (nameSize > 18 && bold.widthOfTextAtSize(name, nameSize) > W - 72) {
       nameSize -= 2;
     }
-    page.drawText(c.name, {
-      x: (W - bold.widthOfTextAtSize(c.name, nameSize)) / 2,
+    page.drawText(name, {
+      x: (W - bold.widthOfTextAtSize(name, nameSize)) / 2,
       y: H - 84,
       size: nameSize,
       font: bold,
       color: rgb(0, 0, 0),
     });
-    page.drawText(c.serial, {
-      x: (W - bold.widthOfTextAtSize(c.serial, 30)) / 2,
+    page.drawText(serial, {
+      x: (W - bold.widthOfTextAtSize(serial, 30)) / 2,
       y: H - qrSize - 170,
       size: 30,
       font: bold,
       color: rgb(0, 0, 0),
     });
-    if (c.address) {
+    if (address) {
       let addrSize = 18;
       while (
         addrSize > 10 &&
-        regular.widthOfTextAtSize(c.address, addrSize) > W - 72
+        regular.widthOfTextAtSize(address, addrSize) > W - 72
       ) {
         addrSize -= 1;
       }
-      page.drawText(c.address, {
-        x: (W - regular.widthOfTextAtSize(c.address, addrSize)) / 2,
+      page.drawText(address, {
+        x: (W - regular.widthOfTextAtSize(address, addrSize)) / 2,
         y: H - qrSize - 200,
         size: addrSize,
         font: regular,
         color: rgb(0.25, 0.25, 0.25),
       });
     }
-    page.drawText("Scan to open this container in the app", {
-      x: (W - regular.widthOfTextAtSize("Scan to open this container in the app", 14)) / 2,
+    page.drawText(scanLine, {
+      x: (W - regular.widthOfTextAtSize(scanLine, 14)) / 2,
       y: 48,
       size: 14,
       font: regular,
