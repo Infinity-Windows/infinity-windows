@@ -171,6 +171,11 @@ export function todaysSignatureOnPhone(profileId: string | null | undefined): Pe
  * into "not signed" — which, with the signature already gone from this
  * queue, asked the person to sign again (Codex review of #666). The gates
  * count it only for the day it was signed.
+ *
+ * Recorded in signing-time order, never arrival order (gate-races repro): an
+ * earlier day's signature left on the phone failed or backed off can answer
+ * AFTER a later day's already-confirmed one, and must not replace it. See
+ * signingTimeAtLeast.
  */
 const CONFIRMED_PREFIX = "forge.toolbox.confirmed.";
 const confirmedSignatures = new Map<string, ToolboxCompletionView | null>();
@@ -182,17 +187,39 @@ function asConfirmedRow(v: unknown): ToolboxCompletionView | null {
     : null;
 }
 
+/**
+ * True when `candidateIso` names a signing time that may stand in for
+ * `currentIso` — the same moment or later, never merely the one that answered
+ * last. A phone can have an old day's signature still queued (failed, or
+ * backed off) behind a day it has already signed and had confirmed; that old
+ * signature reaching the server AFTER today's must not un-confirm today
+ * (Codex review of #666, gate-races). A malformed candidate is refused
+ * outright — an ordering call cannot be made on it — and a malformed or
+ * absent current loses to any valid candidate.
+ */
+export function signingTimeAtLeast(candidateIso: unknown, currentIso: unknown): boolean {
+  const candidate = typeof candidateIso === "string" ? Date.parse(candidateIso) : NaN;
+  if (!Number.isFinite(candidate)) return false;
+  const current = typeof currentIso === "string" ? Date.parse(currentIso) : NaN;
+  if (!Number.isFinite(current)) return true;
+  return candidate >= current;
+}
+
+function persistedConfirmedSignature(profileId: string): ToolboxCompletionView | null {
+  try {
+    const raw = localStorage.getItem(CONFIRMED_PREFIX + profileId);
+    const row = raw ? asConfirmedRow(JSON.parse(raw)) : null;
+    return row?.profile_id === profileId && Number.isFinite(Date.parse(row.signed_at)) ? row : null;
+  } catch {
+    return null;
+  }
+}
+
 /** This person's last confirmed signature, or null. The same object until it changes. */
 export function confirmedSignatureFor(profileId: string | null | undefined): ToolboxCompletionView | null {
   if (!profileId) return null;
   if (confirmedSignatures.has(profileId)) return confirmedSignatures.get(profileId) ?? null;
-  let row: ToolboxCompletionView | null = null;
-  try {
-    const raw = localStorage.getItem(CONFIRMED_PREFIX + profileId);
-    row = raw ? asConfirmedRow(JSON.parse(raw)) : null;
-  } catch {
-    row = null;
-  }
+  const row = persistedConfirmedSignature(profileId);
   confirmedSignatures.set(profileId, row);
   return row;
 }
@@ -200,9 +227,29 @@ export function confirmedSignatureFor(profileId: string | null | undefined): Too
 function recordConfirmedSignature(v: unknown): void {
   const row = asConfirmedRow(v);
   if (!row) return;
-  confirmedSignatures.set(row.profile_id as string, row);
+  const profileId = row.profile_id as string;
+  // An older day's signature (failed, backed off, retried late) can answer
+  // AFTER a newer one this same person already has confirmed. Ordered by
+  // signing time, never by which reply arrived last, or the late one would
+  // erase the newer confirmation this profile is already holding.
+  // Another open tab may have stored a newer signature since this tab cached
+  // its last read. Consult storage again at the write boundary; the cached
+  // Map alone cannot order confirmations across tabs.
+  const remembered = confirmedSignatureFor(profileId);
+  const persisted = persistedConfirmedSignature(profileId);
+  const newest = persisted && signingTimeAtLeast(persisted.signed_at, remembered?.signed_at) ? persisted : remembered;
+  if (!signingTimeAtLeast(row.signed_at, newest?.signed_at)) {
+    if (newest && newest !== remembered) {
+      confirmedSignatures.set(profileId, newest);
+      for (const cb of listeners) {
+        try { cb(); } catch { /* a listener must never break the queue */ }
+      }
+    }
+    return;
+  }
+  confirmedSignatures.set(profileId, row);
   try {
-    localStorage.setItem(CONFIRMED_PREFIX + (row.profile_id as string), JSON.stringify(row));
+    localStorage.setItem(CONFIRMED_PREFIX + profileId, JSON.stringify(row));
   } catch {
     // Storage full or blocked: memory carries this session.
   }

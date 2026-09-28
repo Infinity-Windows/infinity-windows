@@ -377,3 +377,106 @@ describe("a signature Forge has confirmed", () => {
     expect(seen!.done).toMatchObject({ data: null, isSuccess: true, pending: false });
   });
 });
+
+// gate-races repro (Codex review of #666): a failed or backed-off day-old
+// signature can be retried and confirm by Forge AFTER a later day's signature
+// this same person already has confirmed. That late reply must not write
+// yesterday over today, in the outbox's memory or in this cache — and a
+// remounted gate, or one rehydrated after a reload, must still read today.
+describe("a late old-day confirmation arriving after today's is already confirmed", () => {
+  it("keeps another tab's newer persisted confirmation when this tab's memory is stale", async () => {
+    const earlier = signature({ signedAt: new Date(Date.now() - 2 * DAY).toISOString() });
+    await outbox.enqueueToolboxSign(earlier, null);
+    rpc.mockImplementation(async (_fn: string, args: Record<string, string>) => ({
+      data: { id: args.p_client_id, profile_id: ME, signed_at: args.p_signed_at }, error: null,
+    }));
+    online();
+    await outbox.drain();
+    expect(outbox.confirmedSignatureFor(ME)?.id).toBe(earlier.clientId);
+
+    const today = { id: "newer-from-another-tab", profile_id: ME, signed_at: new Date().toISOString() };
+    localStorage.setItem("forge.toolbox.confirmed." + ME, JSON.stringify(today));
+    offline();
+    const yesterday = signature({ signedAt: new Date(Date.now() - DAY).toISOString() });
+    await outbox.enqueueToolboxSign(yesterday, null);
+    online();
+    await outbox.drain();
+
+    expect(JSON.parse(localStorage.getItem("forge.toolbox.confirmed." + ME) ?? "null")).toMatchObject(today);
+    expect(outbox.confirmedSignatureFor(ME)).toMatchObject(today);
+    forgetConfirmedSignatures({ memoryOnly: true });
+    expect(outbox.confirmedSignatureFor(ME)).toMatchObject(today);
+  });
+
+  it("does not un-confirm the mounted gate, or a remount after reload", async () => {
+    const qc = client();
+    qc.setQueryData(["toolboxToday", ME], null);
+    mount(qc);
+
+    const old = signature({ signedAt: new Date(Date.now() - DAY).toISOString(), talkId: TALK_YESTERDAY.id, talkDate: TALK_YESTERDAY.talk_date });
+    await act(async () => {
+      await outbox.enqueueToolboxSign(old, null);
+    });
+    rpc.mockResolvedValue({ data: null, error: { code: "42501", message: "temporary refusal" } });
+    online();
+    await act(async () => {
+      await outbox.drain();
+    });
+    expect((await outbox.listAll())[0].status).toBe("failed");
+
+    offline();
+    const today = signature();
+    await act(async () => {
+      await outbox.enqueueToolboxSign(today, null);
+    });
+    rpc.mockImplementation(async (_fn: string, args: Record<string, string>) => ({
+      data: { id: args.p_client_id === today.clientId ? "today-confirmed" : "old-confirmed", profile_id: ME, signed_at: args.p_signed_at },
+      error: null,
+    }));
+    online();
+    await act(async () => {
+      await outbox.drain();
+    });
+    expect(seen!.done.data?.id).toBe("today-confirmed");
+
+    // The old, failed signature is retried and now goes through — late.
+    await act(async () => {
+      await outbox.retryFailed(old.clientId);
+      await outbox.drain();
+    });
+    expect(await outbox.listAll()).toEqual([]);
+    expect(seen!.done.data?.id).toBe("today-confirmed");
+    expect((qc.getQueryData(["toolboxToday", ME]) as { id?: string } | null)?.id).toBe("today-confirmed");
+
+    // Reload: memory is gone, the phone's own copy is not.
+    act(() => root?.unmount());
+    forgetConfirmedSignatures({ memoryOnly: true });
+    const reloaded = client();
+    reloaded.setQueryData(["toolboxToday", ME], null);
+    mount(reloaded);
+    expect(seen!.done.data?.id).toBe("today-confirmed");
+  });
+
+  it("keeps another profile's confirmation separate from this one's gate", async () => {
+    const OTHER = "someone-else";
+    const otherConfirmed = { id: "other-confirmed", profile_id: OTHER, signed_at: new Date(Date.now() - DAY).toISOString() };
+    localStorage.setItem("forge.toolbox.confirmed." + OTHER, JSON.stringify(otherConfirmed));
+    const qc = client();
+    qc.setQueryData(["toolboxToday", ME], null);
+    mount(qc);
+
+    const mine = signature();
+    await act(async () => {
+      await outbox.enqueueToolboxSign(mine, null);
+    });
+    rpc.mockResolvedValue({ data: { id: "mine-confirmed", profile_id: ME, signed_at: mine.signedAt }, error: null });
+    online();
+    await act(async () => {
+      await outbox.drain();
+    });
+    expect(seen!.done.data?.id).toBe("mine-confirmed");
+
+    expect(seen!.done.data?.id).toBe("mine-confirmed");
+    expect(outbox.confirmedSignatureFor(OTHER)).toMatchObject(otherConfirmed);
+  });
+});

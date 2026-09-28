@@ -35,6 +35,13 @@
 //     that was (`for_day`), a signature is refused on any other day
 //     (lib/toolbox.ts), and an open screen moves to the new day's talk at
 //     midnight by itself.
+//
+// A third race, from proving the above (gate-races repro): a signature from
+// an EARLIER day, left on the phone failed or backed off, could confirm AFTER
+// a later day's already-confirmed one and overwrite it — in the outbox's
+// per-person memory and on the phone, and in this cache, whichever a screen
+// happened to still be reading. Both writes are now ordered by signing time,
+// never by which reply answers last (outbox.ts's signingTimeAtLeast).
 
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { skipToken, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -44,6 +51,7 @@ import {
   confirmedSignatureFor,
   getToolboxQueueSnapshot,
   initOutboxAutoFlush,
+  signingTimeAtLeast,
   subscribe,
   subscribeToolboxSent,
 } from "./offline/outbox";
@@ -180,6 +188,12 @@ export function useToolboxToday(profileId: string | null | undefined, enabled = 
         const r = sent as { profile_id?: unknown; signed_at?: unknown } | null;
         if (!r || typeof r.profile_id !== "string" || typeof r.signed_at !== "string") return;
         const key = ["toolboxToday", r.profile_id];
+        // An old day's signature can confirm AFTER a newer one this same
+        // profile already has cached here (queued, then failed, then
+        // retried late). Ordered by signing time, never arrival, so the
+        // late reply cannot write yesterday over today's cached row.
+        const current = qc.getQueryData<{ signed_at?: unknown } | null>(key);
+        if (!signingTimeAtLeast(r.signed_at, current?.signed_at)) return;
         void qc.cancelQueries({ queryKey: key, exact: true });
         qc.setQueryData(key, r);
       }),

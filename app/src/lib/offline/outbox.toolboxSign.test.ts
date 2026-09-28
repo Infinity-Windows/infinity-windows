@@ -17,7 +17,11 @@ vi.mock("../supabase", () => ({
   },
   supabaseConfigured: true,
 }));
-vi.mock("../signedIn", () => ({ signedInEmail: () => "e2e@example.test" }));
+// Mutable so a test can model a shared phone's real, sequential sign-ins
+// (owner review of the ordering fix's cross-account case) — never two
+// profiles' writes pending at once under one identity.
+const identity = vi.hoisted(() => ({ email: "e2e@example.test" }));
+vi.mock("../signedIn", () => ({ signedInEmail: () => identity.email }));
 vi.mock("./telemetry", () => ({ logOfflineEvent: () => {} }));
 
 const outbox = await import("./outbox");
@@ -200,5 +204,53 @@ describe("when signal comes back", () => {
     await outbox.retryFailed(sig.clientId);
     await vi.waitFor(async () => expect((await outbox.listAll()).length).toBe(0));
     expect(order).toEqual(["sign_toolbox_talk", "clock_in"]);
+  });
+});
+
+// gate-races repro (Codex review of #666): a day-old signature left on the
+// phone failed or backed off can confirm AFTER a later day's already-confirmed
+// one — the outbox must keep the newer one by signing time, not the one that
+// answered last.
+describe("an old day's signature confirming after a newer one", () => {
+  beforeEach(() => {
+    outbox.forgetConfirmedSignatures();
+    offline();
+  });
+  afterEach(() => outbox.forgetConfirmedSignatures());
+
+  it("does not overwrite this profile's already-confirmed later signature", async () => {
+    const DAY = 24 * 3600_000;
+    const today = signature();
+    const old = signature({ signedAt: new Date(Date.now() - DAY).toISOString() });
+
+    await outbox.enqueueToolboxSign(today, null);
+    rpc.mockResolvedValue({ data: { id: "today-confirmed", profile_id: ME, signed_at: today.signedAt }, error: null });
+    online();
+    await outbox.drain();
+    expect(outbox.confirmedSignatureFor(ME)).toMatchObject({ id: "today-confirmed" });
+
+    offline();
+    await outbox.enqueueToolboxSign(old, null);
+    rpc.mockResolvedValue({ data: { id: "old-confirmed", profile_id: ME, signed_at: old.signedAt }, error: null });
+    online();
+    await outbox.drain();
+
+    // Both signatures still reached the server (the old one filed for its
+    // own day) — only the LOCAL confirmed-signature memory stays on today's.
+    expect(await outbox.listAll()).toEqual([]);
+    expect(outbox.confirmedSignatureFor(ME)).toMatchObject({ id: "today-confirmed" });
+  });
+
+  it("does not file this profile's old-day confirmation for another profile", async () => {
+    const OTHER = "2b1c9f0e-1111-4a2b-8c3d-000000000009";
+    const DAY = 24 * 3600_000;
+    const mineOld = signature({ signedAt: new Date(Date.now() - DAY).toISOString() });
+    await outbox.enqueueToolboxSign(mineOld, null);
+    rpc.mockResolvedValue({ data: { id: "mine-old-confirmed", profile_id: ME, signed_at: mineOld.signedAt }, error: null });
+    online();
+    await outbox.drain();
+
+    expect(outbox.confirmedSignatureFor(ME)).toMatchObject({ id: "mine-old-confirmed" });
+    expect(outbox.confirmedSignatureFor(OTHER)).toBeNull();
   });
 });
