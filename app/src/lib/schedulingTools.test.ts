@@ -4,10 +4,12 @@ import {
   DRAFT_ASSIGNMENTS_TOOL,
   GET_SCHEDULING_PICTURE_TOOL,
   MAX_DRAFT_ENTRIES,
+  MAX_DRAFT_REASON_CHARS,
   parseDateRangeInput,
   parseDraftEntriesInput,
   SCHEDULING_MIN_RANK,
   SCHEDULING_REFUSAL,
+  SCHEDULING_SYSTEM_PROMPT,
   SCHEDULING_TOOLS,
   schedulingRefusal,
 } from "../../../supabase/functions/_shared/schedulingTools.ts";
@@ -77,7 +79,30 @@ describe("parseDraftEntriesInput", () => {
     });
     expect(result.formatError).toBeNull();
     expect(result.errors).toEqual([]);
-    expect(result.entries).toEqual([{ project_id: PROJECT, profile_id: PROFILE, date: "2026-09-01" }]);
+    expect(result.entries).toEqual([{ project_id: PROJECT, profile_id: PROFILE, date: "2026-09-01", reason: null }]);
+  });
+
+  // K2.8: the supervisor reads the model's reason on the Review AI drafts
+  // card, so it is kept per entry — trimmed, clipped, never a cause to refuse.
+  it("keeps a short plain-words reason per entry, trimmed and clipped, and null when none was given", () => {
+    const long = "x".repeat(MAX_DRAFT_REASON_CHARS + 40);
+    const result = parseDraftEntriesInput({
+      entries: [
+        { project_id: PROJECT, profile_id: PROFILE, date: "2026-09-01", reason: "  Lead with wet glazing;\n keeps Team 1 together  " },
+        { project_id: PROJECT, profile_id: PROFILE, date: "2026-09-02", reason: long },
+        { project_id: PROJECT, profile_id: PROFILE, date: "2026-09-03", reason: "   " },
+        { project_id: PROJECT, profile_id: PROFILE, date: "2026-09-04", reason: 42 },
+        { project_id: PROJECT, profile_id: PROFILE, date: "2026-09-05" },
+      ],
+    });
+    expect(result.errors).toEqual([]);
+    expect(result.entries.map((e) => e.reason)).toEqual([
+      "Lead with wet glazing; keeps Team 1 together",
+      "x".repeat(MAX_DRAFT_REASON_CHARS),
+      null,
+      null,
+      null,
+    ]);
   });
 
   it("reports a whole-input format error for a non-array entries", () => {
@@ -136,11 +161,16 @@ describe("the tool JSON shapes", () => {
     expect(GET_SCHEDULING_PICTURE_TOOL.input_schema.required).toEqual(["from", "to"]);
   });
 
-  it("draft_assignments requires entries, each with project_id/profile_id/date", () => {
+  it("draft_assignments requires entries, each with project_id/profile_id/date, and asks for a reason on each", () => {
     expect(DRAFT_ASSIGNMENTS_TOOL.input_schema.required).toEqual(["entries"]);
-    const items = (DRAFT_ASSIGNMENTS_TOOL.input_schema.properties as Record<string, { items: { required: string[] } }>)
+    const items = (DRAFT_ASSIGNMENTS_TOOL.input_schema.properties as Record<string, { items: { required: string[]; properties: Record<string, { description: string }> } }>)
       .entries.items;
     expect(items.required).toEqual(["project_id", "profile_id", "date"]);
+    // Optional in the schema (an older prompt still drafts), asked for in
+    // words: the supervisor's Review AI drafts card shows it per row.
+    expect(items.properties.reason.description).toContain(String(MAX_DRAFT_REASON_CHARS));
+    expect(DRAFT_ASSIGNMENTS_TOOL.description).toContain("Review AI drafts");
+    expect(SCHEDULING_SYSTEM_PROMPT).toContain("Give every draft_assignments entry a `reason`");
   });
 
   it("clear_ai_drafts requires from/to and leaves project_id optional", () => {

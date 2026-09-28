@@ -201,7 +201,10 @@ class TestSchemaParsing(unittest.TestCase):
         # +4: versioned learning reviews, events, deliveries and withdrawals.
         # +1: the clock-tap ledger (Release 0, time_clock_actions).
         # +2: Forge AI daily-log contributions and their photo links.
-        self.assertEqual(len(SCHEMA.tables), 183)  # includes crew records, training, lesson reviews, the clock-tap ledger, daily-log contributions and the bill-to list
+        # +1: schedule_ai_reasons — why Forge AI drafted each schedule row,
+        # readable by supervisors and owners only (K2.8, renumbered to
+        # 20261035000000 to land after the bill-to migrations).
+        self.assertEqual(len(SCHEMA.tables), 184)  # includes crew records, training, lesson reviews, the clock-tap ledger, daily-log contributions, the bill-to list and AI schedule reasons
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 
