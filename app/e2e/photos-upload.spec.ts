@@ -395,6 +395,22 @@ test("updating recovers the photographer's old index failure once with its origi
   await page.reload();
   await expect.poll(()=>rows.length).toBe(1);
   expect(rows[0]).toMatchObject({client_id:id,storage_path:`install-media/${BLACK22.projectId}/feed/original.png`,created_by:TEST_USER.email});
+  // The fixture counts the row when the request ARRIVES; the app lets the
+  // photo leave its queue only once the reply is in. A reload in between
+  // leaves it unconfirmed, and the next load sends it again: correct, since
+  // the server keeps one row per client id. That was this test failing on CI
+  // (2026-09-28, #660's run): the reload came 16 ms after the POST. So wait
+  // for the photo to leave the queue, then prove a reload doesn't send it again.
+  await expect.poll(()=>page.evaluate(async(id)=>{
+    const db=await new Promise<IDBDatabase>((resolve,reject)=>{
+      const request=indexedDB.open("wops-write-outbox");
+      request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);
+    });
+    try{
+      const count=db.transaction("entries","readonly").objectStore("entries").count(id);
+      return await new Promise<number>((resolve,reject)=>{count.onsuccess=()=>resolve(count.result);count.onerror=()=>reject(count.error);});
+    }finally{db.close();}
+  },id),{message:"the sent photo never left the phone's queue"}).toBe(0);
   await page.reload();
   await expect(page.getByRole("button",{name:"Add photo",exact:true})).toBeVisible();
   expect(rows).toHaveLength(1);
