@@ -114,3 +114,17 @@ export async function retryWork(user: string) {
 export async function discardWorkQueue(user: string) {
   await locked(user, async () => saveQueue(user, []));
 }
+/**
+ * Drop ONE queued request by id, leaving everything behind it in place. For
+ * the one refusal that has nothing to review — a start Forge turned away
+ * because today's toolbox talk is not signed (see useWork.command): nothing
+ * was written, and a retry after signing would carry the unsigned tap's time.
+ */
+export async function dropWorkCommand(user: string, id: string) {
+  await locked(user, async () =>
+    saveQueue(
+      user,
+      readWorkQueue(user).filter((c) => c.id !== id),
+    ),
+  );
+}

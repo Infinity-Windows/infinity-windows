@@ -106,6 +106,12 @@ export function MySchedule() {
       )}
       {schedule.isLoading || me.isLoading ? (
         <SkeletonList rows={4} />
+      ) : schedule.isError && !schedule.data ? (
+        // F2 (crew redesign, 2026-09-23): a failed load used to render the
+        // error banner above AND "Nothing scheduled yet" below it, and the
+        // second line is the one a person believes. With no data at all the
+        // banner is the whole answer.
+        null
       ) : agenda.length === 0 ? (
         <EmptyState
           icon={<CalendarClock size={22} />}

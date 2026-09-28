@@ -35,6 +35,14 @@ describe("whose queued write is it", () => {
     }
   });
 
+  it("a legacy toolbox signature follows its signer, while conflicting or missing signer evidence is held", () => {
+    const legacy = entry("toolbox_sign", { profileId: A.userId });
+    expect(ownershipOf(legacy, A)).toBe("mine");
+    expect(ownershipOf(legacy, B)).toBe("theirs");
+    expect(ownershipOf(entry("toolbox_sign", { profileId: A.userId }, B.userId), B)).toBe("unknown");
+    expect(ownershipOf(entry("toolbox_sign", {}, B.userId), B)).toBe("unknown");
+  });
+
   it("an older photo or receipt upload belongs to the photographer's email, in any case", () => {
     for (const op of ["photo_upload", "receipt_upload"] as const) {
       const e = entry(op, { createdBy: "A@Example.TEST" });

@@ -3,6 +3,17 @@
 import type { TFn, TKey } from "./fieldCatalog";
 import type { FieldReceipt } from "../../lib/fieldAsk";
 import { FACT_LABELS, factText } from "../../lib/customWork/model";
+import { formatApiError } from "../../lib/errors";
+import { isToolboxGateError } from "../../lib/install/installTimer";
+
+/** Why a tapped choice was not applied, in the reader's language. Forge's own
+ * refusal for an unsigned toolbox talk — a unit or prep-time start on the
+ * clock (20261031000000) — is said in words that point at the talk; any other
+ * refusal keeps the server's sentence after the generic line. */
+export function choiceFailureText(t: TFn, e: unknown): string {
+  if (isToolboxGateError(e)) return t("field.toolboxRefused");
+  return `${t("field.choiceFailed")} ${formatApiError(e)}`;
+}
 
 const KEYED = new Set(["label", "type_label", "components", "material", "width_in", "height_in", "area_source", "story", "opening_direction", "electrical", "access", "complexity", "equipment_needed"]);
 const REASONS = ["similar_job", "fact_conflict", "plan_conflict", "identity", "claimed", "needs_clock", "wrong_job", "on_break", "confirm_time"];

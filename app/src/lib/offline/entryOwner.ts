@@ -39,17 +39,24 @@ export type Ownership = "mine" | "theirs" | "unknown";
  *     email, written at the shutter (or from the install record, for a unit's
  *     media, and by the retired upload queue for its items);
  *   - the Hex-Portal writes carry `actorId`, the author's user id, written
- *     when the case, outcome or lesson was saved.
+ *     when the case, outcome or lesson was saved;
+ *   - toolbox_sign carries `profileId`, the signer's user id, and a signature
+ *     the server refuses for anybody else (2026-09-25, offline toolbox
+ *     signing) — including one queued before `ownerId` existed at all. A
+ *     legacy signature with no `ownerId` reads its own `profileId` instead,
+ *     so it is "mine" the moment that same profile signs back in, rather than
+ *     forever "unknown".
  *
  * Nothing else carries a name: a clock punch, a daily log, a receipt capture,
  * a quiz result, a warehouse or pin move, a job fact, a damage photo. Those
  * are this person's only when they carry `ownerId`.
  */
 const AUTHOR_EMAIL_OPS: ReadonlySet<OutboxOp> = new Set<OutboxOp>(["photo_upload", "receipt_upload"]);
-const AUTHOR_ID_OPS: ReadonlySet<OutboxOp> = new Set<OutboxOp>([
-  "hex_portal_case",
-  "hex_portal_outcome",
-  "hex_learning_draft",
+const AUTHOR_ID_FIELD: ReadonlyMap<OutboxOp, string> = new Map([
+  ["hex_portal_case", "actorId"],
+  ["hex_portal_outcome", "actorId"],
+  ["hex_learning_draft", "actorId"],
+  ["toolbox_sign", "profileId"],
 ]);
 
 function text(v: unknown): string | null {
@@ -58,8 +65,9 @@ function text(v: unknown): string | null {
 
 /** The author the payload itself names, for the ops where it names one. */
 export function authorEvidence(entry: OutboxEntry): { userId: string } | { email: string } | null {
-  if (AUTHOR_ID_OPS.has(entry.op)) {
-    const id = text(entry.payload.actorId);
+  const idField = AUTHOR_ID_FIELD.get(entry.op);
+  if (idField) {
+    const id = text(entry.payload[idField]);
     return id ? { userId: id } : null;
   }
   if (AUTHOR_EMAIL_OPS.has(entry.op)) {
@@ -79,6 +87,10 @@ export function authorEvidence(entry: OutboxEntry): { userId: string } | { email
  * evidence of who queued it (Codex review of #660, P1 #1).
  */
 export function ownershipOf(entry: OutboxEntry, signer: Signer): Ownership {
+  if (entry.op === "toolbox_sign") {
+    const profileId = text(entry.payload.profileId);
+    if (!profileId || (entry.ownerId && entry.ownerId !== profileId)) return "unknown";
+  }
   const author = entry.ownerId ? { userId: entry.ownerId } : authorEvidence(entry);
   if (!author) return "unknown";
   if ("userId" in author) return signer.userId !== null && author.userId === signer.userId ? "mine" : "theirs";

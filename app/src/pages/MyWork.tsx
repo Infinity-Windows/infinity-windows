@@ -16,6 +16,7 @@ import { LogTodayChip } from "../components/dailyLogs/LogTodayChip";
 import { SendRecordingButton } from "../components/learn/SendRecordingButton";
 import { DirectionsButton } from "../components/maps/DirectionsButton";
 import { TomorrowStrip } from "../components/schedule/TomorrowStrip";
+import { TryNewDesignCard } from "../components/design/TryNewDesignCard";
 import { roleRank } from "../lib/nav";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 import {
@@ -428,6 +429,9 @@ export function MyWork() {
           card that takes its place. Everything that isn't "what do I do
           right now" moved down, most of it into the More fold below. */}
       <LiveSummonsStrip />
+      {/* Release 1 (K-X2): the one-time invitation to the new design. Renders
+          nothing once switched, dismissed, or while the owner has it off. */}
+      <TryNewDesignCard />
       <CrewStartBar />
       <ClockInBlock />
 

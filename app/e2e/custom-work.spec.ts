@@ -168,17 +168,20 @@ for (const role of ["installer", "foreman", "supervisor", "owner"] as const) {
     await active
       .getByLabel("Outcome", { exact: true })
       .selectOption("finished");
+    // "Prep time" on screen, "Idle time" in the record: K1.5 renamed every
+    // user-facing occurrence, the classic Current Work included (ADR-0012 §7),
+    // while the stored stage and `kind: "idle"` stayed exactly as they were.
+    // The same slice gave both screens ONE list of six one-tap reasons
+    // (PREP_REASONS), so "Moving windows/material" became "Hauling".
     await active
-      .getByRole("button", { name: "Finish → Idle time", exact: true })
+      .getByRole("button", { name: "Finish → Prep time", exact: true })
       .click();
+    await page.getByRole("button", { name: "Hauling", exact: true }).click();
     await page
-      .getByRole("button", { name: "Moving windows/material", exact: true })
-      .click();
-    await page
-      .getByRole("button", { name: "Start idle time", exact: true })
+      .getByRole("button", { name: "Start prep time", exact: true })
       .click();
     await expect(
-      active.getByRole("heading", { name: "Idle time", exact: true }),
+      active.getByRole("heading", { name: "Prep time", exact: true }),
     ).toBeVisible();
     await expect.poll(() => data.sessions.length).toBe(2);
     await expect
@@ -187,7 +190,7 @@ for (const role of ["installer", "foreman", "supervisor", "owner"] as const) {
     expect(data.sessions[0].ended_at).toBe(data.sessions[1].started_at);
     await page.reload();
     await expect(
-      active.getByRole("heading", { name: "Idle time", exact: true }),
+      active.getByRole("heading", { name: "Prep time", exact: true }),
     ).toBeVisible();
     await page.goto(`/projects/${projectId}?tab=custom-data`);
     await expect(

@@ -23,7 +23,7 @@ import {
 } from "../../lib/install/phases";
 import { PhotoCaptureSheet } from "../../components/PhotoCaptureSheet";
 import type { ProjectOpening } from "../../lib/install/types";
-import { isClockGateError } from "../../lib/install/installTimer";
+import { isClockGateError, isToolboxGateError } from "../../lib/install/installTimer";
 import { formatApiError } from "../../lib/install/errors";
 import { toastSuccess } from "../../lib/toast";
 import { useUnsavedWorkWhile } from "../../lib/pwa/useUnsavedWork";
@@ -110,11 +110,15 @@ export function FlashRun() {
   const start = useMutation({
     mutationFn: () => startOpeningPhase(current!.id, "flashing"),
     onSuccess: refresh,
+    // Under the paid-time rule "on the clock" no longer means "signed", so
+    // the two refusals get their own words: the talk, or the clock.
     onError: (e) =>
       setMessage(
-        isClockGateError(e)
-          ? "Clock in and sign today's toolbox talk to start a flash run."
-          : formatApiError(e),
+        isToolboxGateError(e)
+          ? "Sign today's toolbox talk to start a flash run."
+          : isClockGateError(e)
+            ? "Clock in and sign today's toolbox talk to start a flash run."
+            : formatApiError(e),
       ),
   });
 
@@ -126,7 +130,13 @@ export function FlashRun() {
   const resumeIt = useMutation({
     mutationFn: () => resumeOpeningPhase(current!.id, "flashing"),
     onSuccess: refresh,
-    onError: (e) => setMessage(formatApiError(e)),
+    // A phase paused yesterday asks for today's signature before it runs again.
+    onError: (e) =>
+      setMessage(
+        isToolboxGateError(e)
+          ? "Sign today's toolbox talk to pick this flash run back up."
+          : formatApiError(e),
+      ),
   });
 
   const submit = useMutation({

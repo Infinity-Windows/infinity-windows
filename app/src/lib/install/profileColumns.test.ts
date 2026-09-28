@@ -32,6 +32,11 @@ const GRANTED_SELECT_COLUMNS = [
   // crew_access_directory on the Crew access screen. Never UPDATE — the
   // manage-crew-access edge function is the one writer, like access_revoked_at.
   "retired_at",
+  // 20261031000000_new_front_door.sql granted SELECT (ui_design) to the
+  // authenticated role: a person reads their own front-door choice so the app
+  // can render it. Never UPDATE — set_my_ui_design is the one writer, exactly
+  // like language before it.
+  "ui_design",
   "created_at",
   "updated_at",
 ];

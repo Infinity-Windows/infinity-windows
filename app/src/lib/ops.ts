@@ -32,6 +32,14 @@ export interface SafetyTalk {
   watch_for?: string[] | null;
   stop_work_line?: string | null;
   pledge?: string | null;
+  /**
+   * The phone's day this talk was handed out for, as "today's talk"
+   * (lib/useToolboxGate.ts sets it; never stored). Signing is refused on any
+   * other day (lib/toolbox.ts): a card left open across midnight still holds
+   * yesterday's talk. Usually equal to talk_date; not on a database with no
+   * talk of its own for the day, where the newest talk stands in.
+   */
+  for_day?: string | null;
 }
 
 /** A reusable talk from the library (browse/assign surface). */
@@ -75,10 +83,11 @@ function localTalkDate(): string {
  * rotation RPC creates one (assignment override -> weekday category ->
  * weekly rotation; weekends walk the whole library). Falls back to the old
  * newest-row behavior when the rotation isn't migrated yet, so an
- * unmigrated build degrades to exactly what it did before.
+ * unmigrated build degrades to exactly what it did before. `today` is the
+ * day asked about, decided by the caller BEFORE the request goes out, so an
+ * answer that arrives after midnight is still that day's answer.
  */
-export async function getTodayTalk(): Promise<SafetyTalk | null> {
-  const today = localTalkDate();
+export async function getTodayTalk(today: string = localTalkDate()): Promise<SafetyTalk | null> {
   const { data, error } = await supabase
     .from("safety_talks").select("*")
     .eq("talk_date", today)

@@ -170,7 +170,7 @@ export function CustomData({ projectId }: { projectId: string }) {
       <div className="cw-heading">
         <div>
           <h2>Custom Data</h2>
-          <p>Unit work and idle time captured by the crew.</p>
+          <p>Unit work and prep time captured by the crew.</p>
         </div>
         <Link className="cw-link" to={`/current-work?job=${projectId}`}>
           Start / record work
@@ -209,7 +209,7 @@ export function CustomData({ projectId }: { projectId: string }) {
                 ).toFixed(1)}
                 h
               </strong>
-              <span>Closed idle man-hours</span>
+              <span>Closed prep-time man-hours</span>
             </div>
             <div>
               <strong>
@@ -378,7 +378,7 @@ export function CustomData({ projectId }: { projectId: string }) {
                   <strong>
                     {names.get(s.profile_id) ?? "Worker"} ·{" "}
                     {s.kind === "idle"
-                      ? "Idle time"
+                      ? "Prep time"
                       : (allUnits.find((u) => u.id === s.unit_id)?.label ??
                         "Unit")}
                   </strong>

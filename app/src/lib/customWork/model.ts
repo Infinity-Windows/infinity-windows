@@ -128,18 +128,19 @@ export interface WorkCommand {
   /** Set once a completion has been rebuilt, so it is rebuilt at most once. */
   rebased?: boolean;
 }
-export const IDLE_REASONS = [
-  "Gathering supplies",
-  "Moving windows/material",
-  "Loading or unloading",
-  "Equipment setup",
-  "Driving / errand",
-  "Waiting on material",
-  "Waiting on equipment",
-  "Opening not ready",
-  "Cleanup",
-  "Coordination / planning",
-];
+/**
+ * Prep time's one-tap reasons (crew redesign K1.5, 2026-09-23): job work
+ * that isn't on one unit. Stored as the session's description, in English,
+ * whatever language the phone speaks — reports and the AI read one word.
+ * "Waiting on material / equipment / opening not ready" left this list on
+ * purpose: waiting on an outside cause is a BLOCK on the unit, not prep time.
+ * The stored stage identifier for these sessions is still "Idle time";
+ * only what the screen calls it changed.
+ */
+export const PREP_REASONS = ["Gathering", "Hauling", "Setup", "Errand", "Cleanup", "Other"] as const;
+export type PrepReason = (typeof PREP_REASONS)[number];
+/** The classic Current Work chips read the same six, so the two screens agree. */
+export const IDLE_REASONS: readonly string[] = PREP_REASONS;
 export const WORK_STAGES = [
   "Installing",
   "Preparation",

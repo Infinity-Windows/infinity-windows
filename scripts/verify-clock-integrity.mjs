@@ -99,9 +99,10 @@ async function denied(fn,pattern) { await assert.rejects(fn,pattern?{message:pat
 const equal=(a,b,msg)=>{assert.deepEqual(a,b,msg);checks++;};
 const ok=(v,msg)=>{assert.ok(v,msg);checks++;};
 const near=(a,b,ms,msg)=>{assert.ok(Math.abs(new Date(a).getTime()-new Date(b).getTime())<=ms,`${msg}: ${a} vs ${b}`);checks++;};
+let nextSeedId=900;
 async function seed(person=1,over={}) {
   await admin();
-  const r={id:uuid(900+checks+Math.floor(Math.random()*1000)),profile_id:id(person),project_id:uuid(90),cost_code_id:uuid(91),clock_in_at:'2026-09-14T14:00:13Z',clock_out_at:'2026-09-14T22:00:41Z',break_seconds:1800,status:'submitted',...over};
+  const r={id:uuid(nextSeedId++),profile_id:id(person),project_id:uuid(90),cost_code_id:uuid(91),clock_in_at:'2026-09-14T14:00:13Z',clock_out_at:'2026-09-14T22:00:41Z',break_seconds:1800,status:'submitted',...over};
   const keys=Object.keys(r);
   await db.query(`insert into time_shifts(${keys.join(',')}) values(${keys.map((_,i)=>'$'+(i+1)).join(',')})`,Object.values(r));
   return r.id;

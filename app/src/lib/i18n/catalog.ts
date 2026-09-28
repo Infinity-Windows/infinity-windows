@@ -15,6 +15,8 @@
 // flag on any safety string you add here.
 
 import type { CatalogEntry } from "./translate";
+import type { WorkKey } from "./workCatalog";
+import type { DesignKey } from "./designCatalog";
 
 /**
  * Keys whose Spanish still needs a bilingual crew member to verify it — the
@@ -39,6 +41,12 @@ export const SAFETY_KEYS = [
   "toolbox.signTalk",
   "toolbox.signing",
   "opening.action.signToolbox",
+  "opening.action.signTalkHeading",
+  "opening.action.signTalkFirst",
+  "work.toolbox.refused",
+  "work.prep.locked",
+  "work.prep.refused",
+  "currentWork.signTalkFirst",
   // Wave O: the names of the safety cards themselves. A crew member reads these
   // to decide whether the card in their wallet is the one being asked for, and
   // "protección contra caídas" is the phrase a fall-protection class is sold
@@ -62,6 +70,24 @@ export const SAFETY_KEYS = [
   // above it came apart. Same family as clockblock.signFirst.
   "clockblock.signedPickCode",
   "toolbox.group.bySupervisor",
+  // Offline toolbox signing (2026-09-25): what a signature still on the phone
+  // says about itself, and why a crew can't be signed in as a group with no
+  // signal. Same claim as the sign card itself, so the same review.
+  "toolbox.status.pending",
+  "toolbox.status.sent",
+  "toolbox.status.refused",
+  "crewclock.in.offline",
+  "toolbox.wrongDay",
+  // Release 1's Start day (K1.3): the lines that tell a person the talk
+  // comes first, or that paid time already started and the talk is owed, and
+  // the lock on unit work until it is signed. Same family as
+  // clockblock.signFirst; a bilingual crew member checks them in the pilot week.
+  "work.clock.willOpenTalk",
+  "work.clock.paidFromTap",
+  "work.toolbox.finish",
+  "work.toolbox.finishHelp",
+  "work.toolbox.locked",
+  "work.headsUp.toolbox",
 ] as const;
 
 export const CATALOG = {
@@ -107,12 +133,12 @@ export const CATALOG = {
   "servicing.title": { en: "Servicing", es: "Servicio técnico" },
   "currentWork.title": { en: "Current Work", es: "Trabajo actual" },
   "currentWork.startUnit": { en: "+ Start unit", es: "+ Iniciar unidad" },
-  "currentWork.idle": { en: "Idle time", es: "Tiempo entre unidades" },
+  "currentWork.idle": { en: "Prep time", es: "Tiempo de preparación" },
   "currentWork.map": { en: "Open map", es: "Abrir mapa" },
   "currentWork.stop": { en: "Stop activity", es: "Detener actividad" },
   "currentWork.clock": { en: "Clock in / resume", es: "Registrar entrada / continuar" },
   "currentWork.manageClock": { en: "Job clock / break", es: "Reloj del trabajo / descanso" },
-  "currentWork.finishIdle": { en: "Finish → Idle time", es: "Terminar → Tiempo entre unidades" },
+  "currentWork.finishIdle": { en: "Finish → Prep time", es: "Terminar → Tiempo de preparación" },
   "currentWork.editUnit": { en: "Edit unit details", es: "Editar detalles de la unidad" },
   // One tap to finish a unit (2026-09-24): the old path saved "complete" and
   // started a new visit that reopened it, so no unit ever stayed complete.
@@ -128,6 +154,33 @@ export const CATALOG = {
   // review: Save and start on a unit that exists, Start this unit on a new one.
   "unitEditor.saveAndStart": { en: "Save and start", es: "Guardar y empezar" },
   "unitEditor.startThisUnit": { en: "Start this unit", es: "Empezar esta unidad" },
+  // K1.5 / F3 (2026-09-23): Prep time — "job work that isn't on one unit" —
+  // is ONE term in one Spanish rendering everywhere; these replace the
+  // English-only lines Current Work carried.
+  "currentWork.prep.help": {
+    en: "Job work that isn't on one unit — gathering, hauling, setup, errands, cleanup.",
+    es: "Trabajo del proyecto que no es de una sola unidad: juntar material, acarrear, preparar, mandados, limpieza.",
+  },
+  "currentWork.prep.what": { en: "What are you doing?", es: "¿Qué estás haciendo?" },
+  "currentWork.prep.placeholder": {
+    en: "Choose a reason or describe your work",
+    es: "Elige una razón o describe tu trabajo",
+  },
+  "currentWork.prep.start": { en: "Start prep time", es: "Iniciar tiempo de preparación" },
+  "currentWork.prep.cancel": { en: "Cancel", es: "Cancelar" },
+  "currentWork.prep.footnote": {
+    en: "Unit and prep-time activity explain your job clock; they do not add extra payroll hours. Finishing a record does not approve QC or award points.",
+    es: "La actividad de unidades y de tiempo de preparación explica tu reloj del trabajo; no agrega horas de nómina. Terminar un registro no aprueba QC ni otorga puntos.",
+  },
+  // SAFETY / toolbox — the server's refusal on Current Work when a person is
+  // ON the clock but today's talk is not signed (the paid-time rule allows
+  // that order; _unit_work_gate and _prep_time_gate, 20261031000000). One
+  // sentence for a unit or a prep-time start. Spanish flagged for bilingual
+  // review.
+  "currentWork.signTalkFirst": {
+    en: "Sign today's toolbox talk before starting work. Your clock keeps running.",
+    es: "Firma la charla de seguridad de hoy antes de empezar a trabajar. Tu reloj sigue corriendo.",
+  },
 
   // ---- First-login language picker -------------------------------------
   "picker.heading": { en: "Choose your language", es: "Elige tu idioma" },
@@ -319,6 +372,13 @@ export const CATALOG = {
     en: "Clocked in — we'll sync it when you're back online",
     es: "Entrada marcada — la sincronizamos cuando vuelvas a estar en línea",
   },
+  // A clock-in made while today's toolbox talk signature is still on the phone
+  // waits behind it in the outbox (offline toolbox signing, 2026-09-25): with
+  // signal both go in a second, without it both wait. True either way.
+  "clock.toast.clockedInAfterTalk": {
+    en: "Clocked in — it sends right after your toolbox talk signature",
+    es: "Entrada marcada — se envía justo después de la firma de tu charla de seguridad",
+  },
   // Shown when the clock-in also starts a specific unit ({code} is its work-order
   // mark, e.g. "1-2"). Was hard-coded English on the crew flow (slice 7 fix).
   "clock.toast.clockedInOnUnit": {
@@ -401,6 +461,28 @@ export const CATALOG = {
   "toolbox.sign": { en: "Sign", es: "Firmar" },
   "toolbox.signTalk": { en: "Sign today's talk", es: "Firmar la charla de hoy" },
   "toolbox.signing": { en: "Signing…", es: "Firmando…" },
+  // Offline toolbox signing (2026-09-25). A signature is kept on the phone
+  // first and sent from there — at once with signal, later without — so the
+  // card says which of the two it is. "Signed ✓" only once Forge has it.
+  "toolbox.status.label": { en: "Today's toolbox talk", es: "Charla de seguridad de hoy" },
+  "toolbox.status.pending": { en: "Signed — waiting to send", es: "Firmado — esperando enviar" },
+  "toolbox.status.sent": { en: "Signed ✓", es: "Firmado ✓" },
+  // A signature the phone gave up sending: Forge refused it, or it ran out of
+  // tries on a signal that showed bars and carried nothing. The clock-in
+  // behind it is held, not failed — this line is where the person learns
+  // both, and Stuck writes is where they fix it. {reason} is the reason as it
+  // was recorded (Forge's own sentence, when Forge said no).
+  "toolbox.status.refused": {
+    en: "Signed on this phone, but it couldn't be sent: {reason} Your clock-in waits for it.",
+    es: "Firmado en este teléfono, pero no se pudo enviar: {reason} Tu entrada espera a la firma.",
+  },
+  // A new day started while the talk was open (Codex review of #666):
+  // yesterday's talk is not signed after midnight. Nothing was kept.
+  "toolbox.wrongDay": {
+    en: "A new day has started, so this is yesterday's talk. Today's talk is on the screen now — read it and sign that one.",
+    es: "Empezó un nuevo día, así que esta es la charla de ayer. La charla de hoy ya está en la pantalla — léela y firma esa.",
+  },
+  "toolbox.status.openStuck": { en: "Open Stuck writes", es: "Abrir Envíos atascados" },
 
   // ---- Clock-in block (the one big clock-in spot on every landing) ------
   "clockblock.title": { en: "Clock in", es: "Marcar entrada" },
@@ -745,6 +827,17 @@ export const CATALOG = {
   "opening.action.clockInFirst": {
     en: "Clock in first to start",
     es: "Marca entrada primero para empezar",
+  },
+  // SAFETY / toolbox — the server's refusal when a person is ON the clock
+  // but today's talk is not signed (the paid-time rule allows that order;
+  // _unit_work_gate, 20261031000000). Spanish flagged for bilingual review.
+  "opening.action.signTalkHeading": {
+    en: "Toolbox talk not signed yet",
+    es: "Charla de seguridad sin firmar",
+  },
+  "opening.action.signTalkFirst": {
+    en: "Sign today's toolbox talk to start this unit. Your clock keeps running.",
+    es: "Firma la charla de seguridad de hoy para empezar esta unidad. Tu reloj sigue corriendo.",
   },
   "opening.action.lunch": { en: "Lunch", es: "Almuerzo" },
   "opening.action.break": { en: "Break", es: "Descanso" },
@@ -1832,6 +1925,13 @@ export const CATALOG = {
   "crewclock.in.attestHelp": {
     en: "Required. Anyone who hasn't signed today gets today's talk recorded in your name.",
     es: "Obligatorio. A quien no haya firmado hoy se le registra la charla de hoy a tu nombre.",
+  },
+  // Group sign-in stays online-only (offline toolbox signing, v1): the roster
+  // clock-in files everybody's punch and attestation on the server in one go,
+  // and it is not queued. Each person can still sign on their own phone.
+  "crewclock.in.offline": {
+    en: "Group sign-in needs signal. With no signal, each person can sign today's talk on their own phone and clock in there.",
+    es: "La firma en grupo necesita señal. Sin señal, cada persona puede firmar la charla de hoy en su propio teléfono y marcar entrada ahí.",
   },
   "crewclock.in.move": {
     en: "Move anyone already on another job here",
@@ -3867,6 +3967,13 @@ export const CATALOG = {
   "notif.learningReview.title": {en:"Lesson write-up waiting for your review",es:"Lección esperando tu revisión"},
   "notif.learningReview.sub": {en:"{job} · from {name}",es:"{job} · de {name}"},
   "stuck.op.saveBuildFacts": { en: "Job fact", es: "Dato del trabajo" },
+  "stuck.op.toolboxSign": { en: "Toolbox talk signature", es: "Firma de la charla de seguridad" },
+  // A clock-in held behind a toolbox talk signature Forge refused: it was
+  // never sent, so it never failed on its own — it waits for the signature.
+  "stuck.heldForSignature": {
+    en: "Waiting for today's toolbox talk signature above, which couldn't send. Try it again and this goes right after it.",
+    es: "Esperando la firma de la charla de seguridad de hoy (arriba), que no se pudo enviar. Inténtala de nuevo y esto se envía justo después.",
+  },
   // ---- Supplies data helpers (installer-spanish-first-fourteen) --------
   // lib/ops.ts's onHandLabel/supplyHomeLabel are shared with Warehouse.tsx
   // (out of scope, on the allow-list) — `t` defaults to English so its
@@ -5281,7 +5388,49 @@ export const CATALOG = {
   "pin.setter.save": { en: "Save PIN", es: "Guardar PIN" },
   "pin.setter.clear": { en: "Clear", es: "Quitar PIN" },
   "pin.setter.saved": { en: "PIN saved.", es: "PIN guardado." },
+  // ---- Release 1, the new front door (crew redesign spec, 2026-09-23) ----
+  "design.try.title": { en: "Try the new Forge", es: "Prueba el nuevo Forge" },
+  "design.try.body": {
+    en: "One screen with your clock, today's job and your next unit. Your work saves the same either way, and you can switch back any time in Settings.",
+    es: "Una sola pantalla con tu reloj, el trabajo de hoy y tu siguiente unidad. Tu trabajo se guarda igual de las dos formas y puedes volver cuando quieras en Ajustes.",
+  },
+  "design.try.yes": { en: "Try it", es: "Probarlo" },
+  "design.try.no": { en: "Not now", es: "Ahora no" },
+  // K1.1: the phone bar in the new design.
+  "nav.work": { en: "Work", es: "Trabajo" },
+  "nav.schedule": { en: "Schedule", es: "Horario" },
+  "nav.ask": { en: "Ask", es: "Preguntar" },
+  "nav.more": { en: "More", es: "Más" },
+  "nav.more.a11y": { en: "Open more", es: "Abrir más" },
+  // K1.1: the top-bar clock badge that opens break / clock out from any screen.
+  "clockBadge.in": { en: "Clocked in {time}", es: "Entrada {time}" },
+  "clockBadge.break": { en: "On break", es: "En descanso" },
+  "clockBadge.finish": { en: "Finish time?", es: "¿Hora de salida?" },
+  "clockBadge.a11y": {
+    en: "Clocked in at {time} — open break or clock out",
+    es: "Entrada a las {time}: abrir descanso o salida",
+  },
+  "clockBadge.a11yBreak": {
+    en: "On break — open the clock",
+    es: "En descanso: abrir el reloj",
+  },
 } satisfies Record<string, CatalogEntry>;
 
-/** Every key the catalog knows. Later slices widen this by adding entries. */
-export type TKey = keyof typeof CATALOG;
+/**
+ * Every key the catalog knows. Later slices widen this by adding entries —
+ * or, for a lazy route, by registering a second file (workCatalog.ts): its
+ * keys are part of this type through a type-only import, which costs the
+ * entry chunk nothing, while its strings ride in the route's own chunk.
+ */
+export type TKey = keyof typeof CATALOG | WorkKey | DesignKey;
+
+/**
+ * Add a lazily loaded phrasebook to the live catalog. Called at module load
+ * by the file that owns the strings, before any component that uses them
+ * renders. Mutates CATALOG in place on purpose: every `t` — the provider's
+ * and the no-provider fallback's — reads this one object by reference, so a
+ * copy would be a phrasebook nobody consults.
+ */
+export function registerCatalog(extra: Record<string, CatalogEntry>): void {
+  Object.assign(CATALOG as Record<string, CatalogEntry>, extra);
+}
