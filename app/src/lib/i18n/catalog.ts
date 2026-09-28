@@ -430,7 +430,7 @@ export const CATALOG = {
     en: "Signed on this phone, but it couldn't be sent: {reason} Your clock-in waits for it.",
     es: "Firmado en este teléfono, pero no se pudo enviar: {reason} Tu entrada espera a la firma.",
   },
-  "toolbox.status.openStuck": { en: "Open Stuck writes", es: "Abrir Escrituras atascadas" },
+  "toolbox.status.openStuck": { en: "Open Stuck writes", es: "Abrir Envíos atascados" },
 
   // ---- Clock-in block (the one big clock-in spot on every landing) ------
   "clockblock.title": { en: "Clock in", es: "Marcar entrada" },
