@@ -33,21 +33,25 @@ import {
   buildStuckRows,
   queuedAgoLabel as queuedAgo,
   stateLabel,
+  windowFinishedLabel,
   writeLabel,
   type StuckRow,
 } from "../lib/offline/stuckRows";
 import {
   discardFailedInstall,
   isInstallSending,
-  listInstalls,
+  listMyInstalls,
+  listOthersInstalls,
   recentlySentInstalls,
   retryFailedInstall,
   sendInstallsNow,
   subscribeSyncListeners,
+  type InstallOutboxRecord,
 } from "../lib/install/installOutbox";
 import { pendingLegacyUploadCount } from "../lib/install/legacyUploadQueue";
 import { readWorkQueue, retryWork, syncWork, WORK_QUEUE_EVENT } from "../lib/customWork/queue";
 import type { ServiceCommand } from "../lib/servicing/model";
+import type { OutboxEntry } from "../lib/offline/outbox-core";
 import { useT } from "../lib/i18n";
 
 /** The queues keyed by person: custom work, servicing, and what the retired
@@ -108,15 +112,19 @@ export function StuckWrites() {
   const writesQ = useQuery({ queryKey: ["queuedWrites"], queryFn: listMine });
   // ...and work saved before an update that names no one (Codex review of
   // #660, P1 #1): never sent as anyone. Shown, with Throw away as the one way
-  // out. One read for both.
+  // out. One read for both, finished units included (Codex's full re-check).
   const heldQ = useQuery({
     queryKey: ["heldWrites"],
-    queryFn: async () => ({ held: await listHeld(), unknown: await listUnknownOwner() }),
+    queryFn: async () => ({
+      held: await listHeld(),
+      unknown: await listUnknownOwner(),
+      installs: await listOthersInstalls(),
+    }),
   });
   // A stuck INSTALL is the worst case on this screen — it is the record that a
   // window got finished — so it belongs here even though it lives in its own
-  // store with its own subscribe mechanism.
-  const installsQ = useQuery({ queryKey: ["queuedInstalls"], queryFn: listInstalls });
+  // store with its own subscribe mechanism. This person's own, like the writes.
+  const installsQ = useQuery({ queryKey: ["queuedInstalls"], queryFn: listMyInstalls });
   const personalQ = useQuery({
     queryKey: ["queuedPersonal", profileId],
     queryFn: () => readPersonalQueues(profileId),
@@ -139,6 +147,7 @@ export function StuckWrites() {
   useEffect(() => {
     return subscribeSyncListeners(() => {
       void queryClient.invalidateQueries({ queryKey: ["queuedInstalls"] });
+      void queryClient.invalidateQueries({ queryKey: ["heldWrites"] });
     });
   }, [queryClient]);
 
@@ -248,8 +257,37 @@ export function StuckWrites() {
     t,
   );
   const loading = writesQ.isLoading || installsQ.isLoading || personalQ.isLoading;
-  const held = heldQ.data?.held ?? [];
-  const unknownOwner = heldQ.data?.unknown ?? [];
+  // Someone else's work (read-only), then work saved before an update that
+  // names no one (Throw away is the one way out). Same rows as above; never a
+  // Try again, never "send it as me".
+  const othersRows = (entries: OutboxEntry[], installs: InstallOutboxRecord[], canDiscard: boolean): StuckRow[] => [
+    ...entries.map((e): StuckRow => ({
+      id: e.id,
+      label: writeLabel(e, t),
+      when: e.createdAt,
+      detail: null,
+      source: "write",
+      state: "waiting",
+      sentAt: null,
+      canRetry: false,
+      canDiscard,
+      reviewTo: null,
+    })),
+    ...installs.map((r): StuckRow => ({
+      id: r.id,
+      label: windowFinishedLabel(r.payload.openingCode, t),
+      when: Date.parse(r.payload.createdAt ?? "") || 0,
+      detail: null,
+      source: "install",
+      state: "waiting",
+      sentAt: null,
+      canRetry: false,
+      canDiscard,
+      reviewTo: null,
+    })),
+  ];
+  const held = othersRows(heldQ.data?.held ?? [], heldQ.data?.installs.held ?? [], false);
+  const unknownOwner = othersRows(heldQ.data?.unknown ?? [], heldQ.data?.installs.unknown ?? [], true);
   const nothingToSend =
     sections.needsYou.length === 0 &&
     sections.waiting.length === 0 &&
@@ -402,32 +440,16 @@ export function StuckWrites() {
         </section>
       )}
 
-      {/* Someone else's work (read-only), then work saved before an update
-          that names no one (Throw away is the one way out). Same rows as
-          above; never a Try again, never "send it as me". */}
       {([
-        ["held", held, false],
-        ["unknown", unknownOwner, true],
-      ] as const).map(([kind, list, canDiscard]) =>
+        ["held", held],
+        ["unknown", unknownOwner],
+      ] as const).map(([kind, list]) =>
         list.length === 0 ? null : (
           <section key={kind} aria-labelledby={`stuck-${kind}-title`} style={{ marginTop: 20 }}>
             <h2 id={`stuck-${kind}-title`} style={{ fontSize: 16 }}>{t(`stuck.${kind}.title`)}</h2>
             <p className="muted">{t(`stuck.${kind}.body`)}</p>
             <ul className="unit-list" data-testid={`stuck-${kind}`}>
-              {list
-                .map((e): StuckRow => ({
-                  id: e.id,
-                  label: writeLabel(e, t),
-                  when: e.createdAt,
-                  detail: null,
-                  source: "write",
-                  state: "waiting",
-                  sentAt: null,
-                  canRetry: false,
-                  canDiscard,
-                  reviewTo: null,
-                }))
-                .map(renderRow)}
+              {list.map(renderRow)}
             </ul>
           </section>
         ),

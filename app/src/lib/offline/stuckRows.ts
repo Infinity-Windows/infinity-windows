@@ -138,6 +138,12 @@ function newestFirst(rows: StuckRow[]): StuckRow[] {
     .map(({ row }) => row);
 }
 
+/** Name the window, not the record: "Window W1 finished" is what the person
+ * actually did. */
+export function windowFinishedLabel(code: string | null | undefined, t: TFn): string {
+  return code ? t("stuck.windowFinished", { code }) : t("stuck.windowFinishedNoCode");
+}
+
 export function buildStuckRows(inputs: StuckInputs, t: TFn): StuckSections {
   const needsYou: StuckRow[] = [];
   const waiting: StuckRow[] = [];
@@ -167,11 +173,7 @@ export function buildStuckRows(inputs: StuckInputs, t: TFn): StuckSections {
     const failed = r.status === "failed";
     const row: StuckRow = {
       id: r.id,
-      // Name the window, not the record: "Window W1 finished" is what the
-      // person actually did.
-      label: r.payload.openingCode
-        ? t("stuck.windowFinished", { code: r.payload.openingCode })
-        : t("stuck.windowFinishedNoCode"),
+      label: windowFinishedLabel(r.payload.openingCode, t),
       when: Date.parse(r.payload.createdAt ?? "") || 0,
       detail: failed ? r.lastError : null,
       source: "install",
@@ -263,9 +265,7 @@ export function buildStuckRows(inputs: StuckInputs, t: TFn): StuckSections {
     })),
     ...inputs.sentInstalls.map((i) => ({
       id: `sent:${i.id}`,
-      label: i.openingCode
-        ? t("stuck.windowFinished", { code: i.openingCode })
-        : t("stuck.windowFinishedNoCode"),
+      label: windowFinishedLabel(i.openingCode, t),
       when: Date.parse(i.createdAt ?? "") || 0,
       detail: null,
       source: "install" as const,

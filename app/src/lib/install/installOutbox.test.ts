@@ -6,6 +6,8 @@ import { rememberSignedIn, signedInEmail, signInMark } from "../signedIn";
 // somebody else itself (the owner tests at the end do).
 beforeEach(() => {
   rememberSignedIn({ user: { id: "installer-1", email: "installer@crew.com" } });
+  auth.session = { access_token: "token-installer-1", user: { id: "installer-1", email: "installer@crew.com" } };
+  auth.afterRead = null;
 });
 import {
   applyInstallFailure,
@@ -21,6 +23,29 @@ import {
 // is under test: the RPC that files the install, the points award, and the
 // global outbox the media is handed to.
 vi.mock("./api", () => ({ submitInstallEvent: vi.fn() }));
+// The session the install queue checks before it sends (2026-09-27), and the
+// client it sends through: locked to one token, the way lib/supabase.ts's
+// clientWithToken is. `afterRead` runs right after the check reads the
+// session — a sign-in landing while the send is being prepared.
+const auth = vi.hoisted(() => ({
+  session: null as null | { access_token: string; user: { id: string; email: string } },
+  afterRead: null as null | (() => void),
+}));
+vi.mock("../supabase", () => ({
+  supabase: {
+    auth: {
+      getSession: async () => {
+        const session = auth.session;
+        const after = auth.afterRead;
+        auth.afterRead = null;
+        after?.();
+        return { data: { session }, error: null };
+      },
+    },
+  },
+  clientWithToken: (token: string) => ({ boundTo: token }),
+  supabaseConfigured: true,
+}));
 vi.mock("../points", () => ({ awardPoints: vi.fn(async () => {}) }));
 const outbox = vi.hoisted(() => ({
   /** Every hand-off the media stage made, in order, across every pass. */
@@ -678,32 +703,43 @@ describe("media goes out as the person who submitted the install", () => {
     },
   ];
 
-  it("writes the submitter into the record, and hands the media over as them even when someone else is signed in by then", async () => {
+  it("writes the submitter into the record, holds the install while someone else is signed in, and hands the media over as the submitter", async () => {
     const { rememberSignedIn } = await import("../signedIn");
     const { enqueueInstall, sendInstallsNow, listInstalls } = await import("./installOutbox");
     const { submitInstallEvent } = await import("./api");
     // The RPC is not answering yet: the install waits on the phone.
     vi.mocked(submitInstallEvent).mockRejectedValue(new TypeError("Failed to fetch"));
 
-    rememberSignedIn({ user: { id: "installer-a", email: "a@crew.com" } });
+    const A = { access_token: "token-A", user: { id: "installer-a", email: "a@crew.com" } };
+    rememberSignedIn(A);
+    auth.session = A;
     const { signInMark } = await import("../signedIn");
     const submitter = { userId: "installer-a", email: "a@crew.com", mark: signInMark() };
     const record = await enqueueInstall({ ...INPUT, createdBy: "a@crew.com", submitter, media: MEDIA });
     expect(record.payload.ownerId).toBe("installer-a");
 
-    // A signs out; B signs in; signal comes back and the queue drains.
-    rememberSignedIn({ user: { id: "installer-b", email: "b@crew.com" } });
+    // A signs out; B signs in; signal comes back and the queue drains —
+    // and A's install waits, whole (Codex's full re-check of #660).
+    const B = { access_token: "token-B", user: { id: "installer-b", email: "b@crew.com" } };
+    rememberSignedIn(B);
+    auth.session = B;
     vi.mocked(submitInstallEvent).mockResolvedValue({
       id: "event-1",
     } as unknown as Awaited<ReturnType<typeof submitInstallEvent>>);
-    const [waiting] = await listInstalls();
     await sendInstallsNow();
-
+    const [waiting] = await listInstalls();
     expect(waiting?.payload.ownerId).toBe("installer-a");
+    expect(outbox.handedOff).toEqual([]);
+
+    // A is back: the install goes, and its media is handed over as A.
+    rememberSignedIn(A);
+    auth.session = A;
+    await sendInstallsNow();
     expect(outbox.handedOff.map((h) => h.ownerId)).toEqual(["installer-a"]);
+    expect(await listInstalls()).toEqual([]);
   });
 
-  it("an install saved before owners were recorded hands its media over as nobody in particular — never as whoever drains it", async () => {
+  it("an install saved before owners were recorded hands its media over as the person its submitter email names — never as whoever drains it", async () => {
     const { rememberSignedIn } = await import("../signedIn");
     const { sendInstallsNow } = await import("./installOutbox");
     const { submitInstallEvent } = await import("./api");
@@ -722,11 +758,21 @@ describe("media goes out as the person who submitted the install", () => {
     expect(JSON.parse(meta).payload.ownerId).toBeUndefined();
     rows.set(old.id, { id: old.id, meta, blobs: [new Blob(["old"], { type: "image/jpeg" })] });
 
-    rememberSignedIn({ user: { id: "installer-b", email: "b@crew.com" } });
+    // B drains: not B's install, so nothing moves (Codex's full re-check of
+    // #660) — the media is not handed over as B, or as anyone.
+    const B = { access_token: "token-B", user: { id: "installer-b", email: "b@crew.com" } };
+    rememberSignedIn(B);
+    auth.session = B;
     await sendInstallsNow();
-    // Null means "nobody can say" and is kept as that by the outbox; the
-    // photographer's email on the upload is what decides who may send it.
-    expect(outbox.handedOff.map((h) => h.ownerId)).toEqual([null]);
+    expect(outbox.handedOff).toEqual([]);
+
+    // The person the record names (installer@crew.com) drains: it goes, and
+    // the media is bound to that person's id — the check just matched them.
+    const named = { access_token: "token-1", user: { id: "installer-1", email: "installer@crew.com" } };
+    rememberSignedIn(named);
+    auth.session = named;
+    await sendInstallsNow();
+    expect(outbox.handedOff.map((h) => h.ownerId)).toEqual(["installer-1"]);
   });
 
   // Codex re-check of #660 (P2): enqueueInstall copied createdBy from the
@@ -766,5 +812,173 @@ describe("media goes out as the person who submitted the install", () => {
       enqueueInstall({ ...INPUT, createdBy: "b@crew.com", submitter: null, media: MEDIA }),
     ).rejects.toThrow(/Sign in/);
     expect(await listInstalls()).toEqual([]);
+  });
+});
+
+// --- the install itself goes out only as the person who submitted it -------
+//
+// Codex's full re-check of #660 (P1): the media hand-off went out as the
+// submitter, but the install RPC before it did not. flushInstallOutbox sent
+// finish_unit through the shared client, and submitInstallEvent read the
+// installer's id and email from whoever was signed in THEN. A submits with no
+// signal, B signs in, and A's unit was filed as B's — and finish_unit closes
+// the CALLER's unit session, so B's task time could move too.
+describe("an install goes out only as the person who submitted it", () => {
+  const A = { access_token: "token-A", user: { id: "installer-a", email: "a@crew.com" } };
+  const B = { access_token: "token-B", user: { id: "installer-b", email: "b@crew.com" } };
+  function signIn(who: typeof A | null) {
+    rememberSignedIn(who);
+    auth.session = who;
+  }
+  const POINTS = { profileId: "installer-a", entries: [{ kind: "install" as const, points: 20 }], ref: "opening-1", status: "pending" as const };
+
+  beforeEach(() => {
+    installFakeIndexedDb();
+    outbox.handedOff.length = 0;
+    outbox.failOnce = null;
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+  });
+
+  async function landsWhenCalled() {
+    const { submitInstallEvent } = await import("./api");
+    vi.mocked(submitInstallEvent).mockResolvedValue({
+      id: "event-1",
+    } as unknown as Awaited<ReturnType<typeof submitInstallEvent>>);
+    return submitInstallEvent;
+  }
+
+  it("while B is signed in, A's install is not sent, no stage moves and no retry is used — and it goes out as A, on A's token, when A is back", async () => {
+    const submit = await landsWhenCalled();
+    const { awardPoints } = await import("../points");
+    const { enqueueInstall, sendInstallsNow, listInstalls } = await import("./installOutbox");
+    signIn(A);
+    const record = await enqueueInstall({ ...INPUT, createdBy: A.user.email, points: POINTS, media: [] });
+
+    signIn(B);
+    await sendInstallsNow();
+    expect(submit).not.toHaveBeenCalled();
+    const [held] = await listInstalls();
+    expect(held).toMatchObject({
+      id: record.id,
+      step: "queued",
+      attemptCount: 0,
+      lastError: null,
+      status: "pending",
+      nextAttemptAt: record.nextAttemptAt,
+    });
+
+    signIn(A);
+    await sendInstallsNow();
+    expect(submit).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(submit).mock.calls[0][1]).toEqual({
+      client: { boundTo: "token-A" },
+      installer: { id: "installer-a", email: "a@crew.com" },
+    });
+    // The points go through the same locked client.
+    expect(vi.mocked(awardPoints).mock.calls[0][4]).toEqual({ boundTo: "token-A" });
+    expect(await listInstalls()).toEqual([]);
+  });
+
+  it("a sign-in landing while the send is being prepared cannot change whose install it is", async () => {
+    const submit = await landsWhenCalled();
+    const { enqueueInstall, sendInstallsNow } = await import("./installOutbox");
+    signIn(A);
+    await enqueueInstall({ ...INPUT, createdBy: A.user.email, media: [] });
+    // A's session passes the check — and B signs in straight after.
+    auth.afterRead = () => signIn(B);
+    await sendInstallsNow();
+    expect(submit).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(submit).mock.calls[0][1]).toEqual({
+      client: { boundTo: "token-A" },
+      installer: { id: "installer-a", email: "a@crew.com" },
+    });
+  });
+
+  it("with nobody signed in, nothing is sent and nothing is used up", async () => {
+    const submit = await landsWhenCalled();
+    const { enqueueInstall, sendInstallsNow, listInstalls } = await import("./installOutbox");
+    signIn(A);
+    await enqueueInstall({ ...INPUT, createdBy: A.user.email, media: [] });
+    signIn(null);
+    await sendInstallsNow();
+    expect(submit).not.toHaveBeenCalled();
+    expect((await listInstalls())[0]).toMatchObject({ step: "queued", attemptCount: 0 });
+  });
+
+  it("an install saved before owners were recorded goes out only as the person its submitter email names — and with no email, it waits", async () => {
+    const submit = await landsWhenCalled();
+    const { sendInstallsNow, listInstalls } = await import("./installOutbox");
+    const rows = installFakeIndexedDb();
+    const named: InstallOutboxRecord = { ...RECORD, id: "old-named", payload: { ...RECORD.payload, media: [], points: null, createdBy: "a@crew.com" } };
+    const anonymous: InstallOutboxRecord = { ...RECORD, id: "old-anon", payload: { ...RECORD.payload, media: [], points: null, createdBy: null } };
+    for (const r of [named, anonymous]) {
+      expect(JSON.parse(serializeInstallOutbox(r)).payload.ownerId).toBeUndefined();
+      rows.set(r.id, { id: r.id, meta: serializeInstallOutbox(r), blobs: [] });
+    }
+
+    signIn(B);
+    await sendInstallsNow();
+    expect(submit).not.toHaveBeenCalled();
+
+    signIn(A);
+    await sendInstallsNow();
+    expect(submit).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(submit).mock.calls[0][1]).toMatchObject({ installer: { id: "installer-a" } });
+    // The one that names nobody is still waiting, untouched.
+    const left = await listInstalls();
+    expect(left.map((r) => r.id)).toEqual(["old-anon"]);
+    expect(left[0]).toMatchObject({ step: "queued", attemptCount: 0 });
+  });
+
+  it("counts and lists someone else's install as theirs, and one naming nobody as unknown — never as this person's queued work", async () => {
+    const { enqueueInstall, installCounts, listMyInstalls, listOthersInstalls } = await import("./installOutbox");
+    const rows = installFakeIndexedDb();
+    signIn(A);
+    const mine = await enqueueInstall({ ...INPUT, createdBy: A.user.email, media: [] });
+    const anonymous: InstallOutboxRecord = { ...RECORD, id: "old-anon", payload: { ...RECORD.payload, media: [], points: null, createdBy: null } };
+    rows.set(anonymous.id, { id: anonymous.id, meta: serializeInstallOutbox(anonymous), blobs: [] });
+
+    signIn(B);
+    expect(await installCounts()).toEqual({ pending: 0, failed: 0, theirs: 1, unknown: 1 });
+    expect(await listMyInstalls()).toEqual([]);
+    const others = await listOthersInstalls();
+    expect(others.held.map((r) => r.id)).toEqual([mine.id]);
+    expect(others.unknown.map((r) => r.id)).toEqual(["old-anon"]);
+
+    signIn(A);
+    expect(await installCounts()).toEqual({ pending: 1, failed: 0, theirs: 0, unknown: 1 });
+    expect((await listMyInstalls()).map((r) => r.id)).toEqual([mine.id]);
+  });
+
+  it("when the person who submitted signs back in, their install goes at once — not on the next 30-second tick", async () => {
+    const submit = await landsWhenCalled();
+    const { enqueueInstall, flushInstallOutbox, initInstallOutboxAutoFlush, stopInstallOutboxAutoFlush } = await import("./installOutbox");
+    // The interval never fires here: only the sign-in can start the pass.
+    vi.stubGlobal("window", { addEventListener: () => {}, setInterval: () => 0 });
+    vi.stubGlobal("document", { addEventListener: () => {}, visibilityState: "visible" });
+    vi.stubGlobal("navigator", { onLine: true });
+    signIn(A);
+    await enqueueInstall({ ...INPUT, createdBy: A.user.email, media: [] });
+    signIn(B);
+    try {
+      initInstallOutboxAutoFlush();
+      await flushInstallOutbox();
+      expect(submit).not.toHaveBeenCalled();
+
+      signIn(A);
+      await vi.waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+      expect(vi.mocked(submit).mock.calls[0][1]).toMatchObject({ installer: { id: "installer-a" } });
+    } finally {
+      stopInstallOutboxAutoFlush();
+    }
+    // Stopped means stopped: a later sign-in starts nothing.
+    signIn(B);
+    signIn(A);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(submit).toHaveBeenCalledTimes(1);
   });
 });

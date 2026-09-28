@@ -42,26 +42,24 @@ import { combineQueues, PILL_DESTINATION } from "../../lib/offline/pillQueues";
 import { withHeld } from "../../lib/offline/pillHeld";
 import { useConnection } from "../../lib/offline/useWeakSignal";
 import {
-  failedInstallCount,
   initInstallOutboxAutoFlush,
-  pendingInstallCount,
+  installCounts,
   subscribeSyncListeners,
 } from "../../lib/install/installOutbox";
 import { pendingLegacyUploadCount } from "../../lib/install/legacyUploadQueue";
 
-/** Live count of installs waiting in the install outbox — and the drain that
- * empties it, started here so it runs from every screen. */
-function useInstallOutboxCount(): { pending: number; failed: number } {
-  const [count, setCount] = useState({ pending: 0, failed: 0 });
+/** Live count of installs waiting in the install outbox — this person's, and
+ * apart from them anyone else's — and the drain that empties it, started here
+ * so it runs from every screen. */
+function useInstallOutboxCount(): { pending: number; failed: number; theirs: number; unknown: number } {
+  const [count, setCount] = useState({ pending: 0, failed: 0, theirs: 0, unknown: 0 });
   useEffect(() => {
     initInstallOutboxAutoFlush();
     let cancelled = false;
     const refresh = () => {
-      void Promise.all([pendingInstallCount(), failedInstallCount()]).then(
-        ([pending, failed]) => {
-          if (!cancelled) setCount({ pending, failed });
-        },
-      );
+      void installCounts().then((next) => {
+        if (!cancelled) setCount(next);
+      });
     };
     refresh();
     const unsubscribe = subscribeSyncListeners(refresh);
@@ -255,7 +253,7 @@ export function SyncStatusPill() {
   // counted as this person's (2026-09-25, lib/offline/entryOwner.ts): it is
   // already out of `counts`, and withHeld names it on the face.
   const combined = combineQueues(
-    withHeld(outboxPill, { theirs: held, unknown }, t),
+    withHeld(outboxPill, { theirs: held + installs.theirs, unknown: unknown + installs.unknown }, t),
     {
       basePending: totalPending(counts),
       installsPending: installs.pending,

@@ -3674,15 +3674,31 @@ export const CREDIT_NOT_LIVE_YET =
   "under someone else's name yet. Let the person who installed it file it, or " +
   "try again in a few minutes.";
 
+/**
+ * Who a queued install is sent as (2026-09-27, Codex's full re-check of #660):
+ * a client locked to the submitter's session token (lib/supabase.ts
+ * clientWithToken), and the installer read from that same session. The
+ * install queue only builds one after checking the saved owner is the person
+ * signed in, so nothing here asks auth who is signed in by the time the
+ * request leaves — finish_unit files the install under the caller and closes
+ * the CALLER's unit session.
+ */
+export interface InstallSendAs {
+  client: typeof supabase;
+  installer: { id: string; email: string | null };
+}
+
 export async function submitInstallEvent(
   params: SubmitInstallParams,
+  via?: InstallSendAs,
 ): Promise<InstallEvent> {
   const credited = params.creditedTo ?? null;
+  const db = via?.client ?? supabase;
   const args = {
     p_opening_id: params.openingId,
     p_next_opening_id: params.nextOpeningId ?? null,
-    p_installer: await actor(),
-    p_installer_id: await actorId(),
+    p_installer: via ? via.installer.email : await actor(),
+    p_installer_id: via ? via.installer.id : await actorId(),
     p_estimate_minutes: params.estimateMinutes ?? null,
     p_quality_grade: params.qualityGrade ?? null,
     p_difficulty: params.difficulty ?? null,
@@ -3699,7 +3715,7 @@ export async function submitInstallEvent(
   // own work therefore makes the same fifteen-argument call it always did, so a
   // phone running ahead of the migration still finishes units — which is the
   // rule for every feature here.
-  const { data, error } = await supabase.rpc(
+  const { data, error } = await db.rpc(
     "finish_unit",
     credited ? { ...args, p_credited_to: credited } : args,
   );

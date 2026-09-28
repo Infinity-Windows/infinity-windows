@@ -114,6 +114,9 @@ export async function awardPoints(
   // thing that confirms points. A "confirmed" default here would only be a
   // lie about what happens next.
   status: PointStatus = "pending",
+  /** A queued install's locked client (install/api.ts InstallSendAs), so the
+   * award goes out as the install's submitter; the shared one otherwise. */
+  client: typeof supabase = supabase,
 ): Promise<void> {
   if (entries.length === 0) return;
   if (!ref) {
@@ -122,7 +125,7 @@ export async function awardPoints(
     // future caller finds out at once instead of losing points in silence.
     throw new Error("Install points have to name the window they were earned on.");
   }
-  const { error } = await supabase.rpc("award_install_points", {
+  const { error } = await client.rpc("award_install_points", {
     p_ref: ref,
     p_entries: entries,
     p_status: status,

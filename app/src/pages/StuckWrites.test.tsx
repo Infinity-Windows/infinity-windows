@@ -38,6 +38,10 @@ const q = vi.hoisted(() => ({
   held: [] as OutboxEntry[],
   /** Writes saved before an update, whose owner nobody can tell. */
   unknown: [] as OutboxEntry[],
+  /** Someone else's finished units on this phone (Codex re-check of #660). */
+  heldInstalls: [] as InstallOutboxRecord[],
+  /** Finished units saved before an update that name no one. */
+  unknownInstalls: [] as InstallOutboxRecord[],
   discarded: [] as string[],
   sendNow: vi.fn(async () => {}),
   sendInstallsNow: vi.fn(async () => {}),
@@ -59,9 +63,13 @@ vi.mock("../lib/offline/outbox", () => ({
 }));
 
 vi.mock("../lib/install/installOutbox", () => ({
-  listInstalls: async () => q.installs,
+  listMyInstalls: async () => q.installs,
+  listOthersInstalls: async () => ({ held: q.heldInstalls, unknown: q.unknownInstalls }),
   retryFailedInstall: async () => {},
-  discardFailedInstall: async () => {},
+  discardFailedInstall: async (id: string) => {
+    q.discarded.push(id);
+    q.unknownInstalls = q.unknownInstalls.filter((r) => r.id !== id);
+  },
   subscribeSyncListeners: () => () => {},
   isInstallSending: (id: string) => q.sendingInstalls.has(id),
   recentlySentInstalls: () => [],
@@ -132,6 +140,8 @@ beforeEach(() => {
   q.sentWrites = [];
   q.held = [];
   q.unknown = [];
+  q.heldInstalls = [];
+  q.unknownInstalls = [];
   q.discarded = [];
   q.sendNow.mockClear();
   q.sendInstallsNow.mockClear();
@@ -385,6 +395,28 @@ describe("someone else's work on this phone", () => {
     expect(held.querySelectorAll("button")).toHaveLength(0);
     expect(el.textContent).not.toContain("Nothing stuck");
   });
+
+  it("includes someone else's finished unit — shown once, as theirs, with nothing to retry or throw away even after it failed", async () => {
+    // Codex's full re-check of #660: an install is sent only as the person
+    // who submitted it, so it is not this person's to retry or throw away.
+    q.heldInstalls = [
+      {
+        id: "i-held",
+        payload: { openingCode: "W8", createdAt: new Date(Date.now() - 5 * 60_000).toISOString(), ownerId: "someone-else" },
+        step: "queued",
+        installEventId: null,
+        attemptCount: 8,
+        lastError: "Failed to fetch",
+        status: "failed",
+      } as unknown as InstallOutboxRecord,
+    ];
+    const el = await mount();
+    const held = el.querySelector('[data-testid="stuck-held"]')!;
+    expect(held.textContent).toContain("Window W8 finished");
+    expect(held.querySelectorAll("button")).toHaveLength(0);
+    expect(el.textContent!.split("Window W8 finished")).toHaveLength(2);
+    expect(el.textContent).not.toContain("Nothing stuck");
+  });
 });
 
 describe("work saved before an update, whose owner Forge cannot tell", () => {
@@ -415,5 +447,33 @@ describe("work saved before an update, whose owner Forge cannot tell", () => {
     expect([...section.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Sure? this deletes it"]);
     await tap();
     expect(q.discarded).toEqual(["u-1"]);
+  });
+
+  it("includes a finished unit that names no one: Throw away is the one way out, on the second tap", async () => {
+    q.unknownInstalls = [
+      {
+        id: "i-anon",
+        payload: { openingCode: "W9", createdAt: new Date(Date.now() - 5 * 60_000).toISOString(), createdBy: null },
+        step: "queued",
+        installEventId: null,
+        attemptCount: 0,
+        lastError: null,
+        status: "pending",
+      } as unknown as InstallOutboxRecord,
+    ];
+    const el = await mount();
+    const section = el.querySelector('[data-testid="stuck-unknown"]')!;
+    expect(section.textContent).toContain("Window W9 finished");
+    expect([...section.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Throw away"]);
+    const tap = async () => {
+      await act(async () => {
+        [...section.querySelectorAll("button")][0].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+    };
+    await tap();
+    expect(q.discarded).toEqual([]);
+    await tap();
+    expect(q.discarded).toEqual(["i-anon"]);
   });
 });
