@@ -64,11 +64,19 @@ $$;
 revoke all on function public.schedule_ai_reasons_active_supervisor() from public, anon;
 grant execute on function public.schedule_ai_reasons_active_supervisor() to authenticated;
 
--- Readers: an active supervisor or owner who is not a partner login.
+-- Readers: an active supervisor or owner who is not a partner login. The
+-- helper (schedule_ai_reasons_active_supervisor) already rejects a partner
+-- login internally, but scripts/test_partner_wall.py and
+-- scripts/advisory-rules.sh's THE WALL check both grep every crew-readable
+-- policy's own predicate text for the literal `not public.is_partner_user()`
+-- guard — a helper call alone does not satisfy it, and the parser is not
+-- getting smarter about it. The explicit guard is redundant with the helper
+-- at runtime (belt and suspenders, not a second door) and is what keeps this
+-- table listed inside the wall by every tool that checks for it.
 drop policy if exists schedule_ai_reasons_supervisor_read on public.schedule_ai_reasons;
 create policy schedule_ai_reasons_supervisor_read on public.schedule_ai_reasons
   for select to authenticated
-  using (public.schedule_ai_reasons_active_supervisor());
+  using (not public.is_partner_user() and public.schedule_ai_reasons_active_supervisor());
 
 -- Writers: the same people, for a reason they are recording themselves, on a
 -- row that IS an AI draft. The Ask function's executor runs on the caller's
@@ -80,7 +88,8 @@ drop policy if exists schedule_ai_reasons_supervisor_write on public.schedule_ai
 create policy schedule_ai_reasons_supervisor_write on public.schedule_ai_reasons
   for insert to authenticated
   with check (
-    public.schedule_ai_reasons_active_supervisor()
+    not public.is_partner_user()
+    and public.schedule_ai_reasons_active_supervisor()
     and created_by = auth.uid()
     and exists (
       select 1 from public.schedule_assignments a
