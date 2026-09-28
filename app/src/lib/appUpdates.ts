@@ -27,6 +27,7 @@ export const INCLUDED_UPDATE_IDS = [
   '2026-09-28-legacy-clock-recovery',
   '2026-09-25-offline-toolbox-signing',
   '2026-09-28-update-reload',
+  '2026-09-27-bill-to',
 ] as const;
 export interface AppUpdate {
   id: string; published_on: string; audience: number[]; kind: 'fix' | 'improvement';

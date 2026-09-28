@@ -69,6 +69,7 @@ jobs:
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-hex-learning-review.mjs
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-test-login-visibility.mjs
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-app-updates.mjs
+      - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-bill-to.mjs
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-app-training-videos.mjs
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-app-training-importer.mjs
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-servicing.mjs
@@ -118,6 +119,10 @@ jobs:
       # they can lose a saved punch or send it as the next person even while
       # the ordinary clock screen tests remain green.
       - run: npm run e2e -- offline-session.spec.ts outbox-owner.spec.ts
+      # Who a job bills to: the job page field and the two Job timecards
+      # columns the Friday invoice script reads (20261034000000). Its own step
+      # for the reason given above.
+      - run: npm run e2e -- bill-to.spec.ts
       # The INSTALLED app: two production builds with their service workers,
       # from the build the crew is running (master) to this one — reopened
       # with no signal, and reopened after the deploy by a phone still holding
