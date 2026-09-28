@@ -401,10 +401,10 @@ export async function buildToolboxPdf(opts: {
  * fresh client id (the key that makes a resend the same signature), the
  * signing time by this phone's clock, the talk exactly as it reads now, and
  * the PDF — built now, so the archive is what was signed even if a lead edits
- * the talk before the phone finds signal. A PDF the phone cannot build never
- * costs the signature: it is queued without one, and the row files without
- * one. What comes back is the signature as the gates read it — signed, waiting
- * to send.
+ * the talk before the phone finds signal. A PDF the phone genuinely cannot
+ * build never costs the signature: it is queued without one, and the row files
+ * without one. What comes back is the signature as the gates read it — signed,
+ * waiting to send.
  */
 export async function signToolboxTalk(opts: {
   talk: SafetyTalk;
@@ -427,6 +427,9 @@ export async function signToolboxTalk(opts: {
     // Past the outbox's cap a PDF cannot be kept offline; the signature can.
     if (pdf.size > MAX_BLOB_BYTES) pdf = null;
   } catch {
+    // Only a genuine build failure lands here. What a talk says never does:
+    // every string is made drawable first (lib/pdfText.ts), so Do/Don't lists
+    // and check marks get their PDF like any other talk.
     pdf = null;
   }
 

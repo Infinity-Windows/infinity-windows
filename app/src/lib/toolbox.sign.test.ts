@@ -6,10 +6,14 @@
 //     the PDF all ride in one queued entry, keyed by a fresh client id, with
 //     files at paths made from that id;
 //   * nothing here touches the network — no upload, no insert;
-//   * a talk whose PDF the phone cannot build still signs: the signature is
-//     never lost to the PDF.
+//   * a talk with Do/Don't lists and check marks makes its PDF like any other
+//     talk (lib/pdfText.ts), and so does a bad picture or a blank signature
+//     image (the builder's own fallbacks);
+//   * only a genuine failure to build the PDF signs without one — and then
+//     the signature is never lost to the PDF.
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { PDFDocument, PDFPage } from "pdf-lib";
 import type { SafetyTalk } from "./ops";
 import type { ToolboxSignPayload } from "./toolboxSign";
 
@@ -46,8 +50,10 @@ const plainTalk: SafetyTalk = {
 };
 
 // The talk the coordinator flagged (2026-09-25): Do/Don't lists, and a check
-// mark in the words themselves. The PDF's standard fonts cannot draw every
-// character a talk can hold, and a signature must not depend on that.
+// mark in the words themselves. The PDF's standard font has no check mark,
+// and until lib/pdfText.ts (#665) a talk like this could not become a PDF at
+// all. Now its PDF draws ✓ as + and ✗ as x, while the snapshot keeps every
+// character exactly as signed.
 const doDontTalk: SafetyTalk = {
   ...plainTalk,
   id: "7d0f3a2e-2222-4b3c-9d4e-000000000003",
@@ -63,6 +69,22 @@ beforeEach(() => {
   enqueued.length = 0;
   network.mockClear();
 });
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+/** The first bytes of the queued PDF: "%PDF-" for a real one. */
+async function pdfHead(pdf: Blob | null): Promise<string> {
+  return new TextDecoder().decode(new Uint8Array(await pdf!.arrayBuffer()).slice(0, 5));
+}
+
+/** Every string drawn onto the PDF's pages while `run` ran, in order. */
+async function drawnWhile(run: () => Promise<unknown>): Promise<string[]> {
+  const drawText = vi.spyOn(PDFPage.prototype, "drawText");
+  await run();
+  return drawText.mock.calls.map((c) => String(c[0]));
+}
 
 describe("signing today's talk", () => {
   it("queues one entry with everything the record needs, keyed by a fresh client id — and sends nothing itself", async () => {
@@ -91,8 +113,7 @@ describe("signing today's talk", () => {
     });
     // The PDF was built here, at the moment of signing.
     expect(pdf?.type).toBe("application/pdf");
-    const head = new TextDecoder().decode(new Uint8Array(await pdf!.arrayBuffer()).slice(0, 5));
-    expect(head).toBe("%PDF-");
+    expect(await pdfHead(pdf)).toBe("%PDF-");
     // What the gates read back right away: signed, waiting to send.
     expect(view).toMatchObject({ id: `pending:${input.clientId}`, signed_at: now.toISOString(), pending: true, sendFailed: false });
   });
@@ -103,30 +124,79 @@ describe("signing today's talk", () => {
     expect(enqueued[0].input.clientId).not.toBe(enqueued[1].input.clientId);
   });
 
-  it("signs a talk with Do/Don't lists and a check mark in it, keeping the talk exactly as it was", async () => {
-    await signToolboxTalk({ talk: doDontTalk, profileId: ME, typedName: "Dana Reyes", signatureDataUrl: SIGNATURE });
+  it("builds the PDF for a talk with Do/Don't lists and a check mark in it, keeping the talk exactly as it was", async () => {
+    const now = new Date(2026, 8, 25, 6, 55, 12);
+    const drawn = await drawnWhile(() =>
+      signToolboxTalk({ talk: doDontTalk, profileId: ME, typedName: "Dana Reyes", signatureDataUrl: SIGNATURE, now }),
+    );
     expect(enqueued).toHaveLength(1);
     const { input, pdf } = enqueued[0];
+    // The record keeps the talk exactly as it read: check marks and all.
     const snap = JSON.parse(input.talkSnapshot) as { title: string; sections: { dos: string[]; donts: string[] } };
     expect(snap.title).toBe("Glass handling ✓");
     expect(snap.sections.dos).toContain("Wear cut sleeves ✓");
     expect(snap.sections.donts).toContain("Don't carry it flat ✗");
     expect(input.signatureDataUrl).toBe(SIGNATURE);
-    // The PDF and its path travel together: both, or — when the phone could
-    // not build one — neither, and the row files without a PDF.
-    expect(input.pdfPath === null).toBe(pdf === null);
+    // And the PDF was built — this talk no longer falls back to signing
+    // without one. The PDF and its path travel together.
+    expect(pdf?.type).toBe("application/pdf");
+    expect(await pdfHead(pdf)).toBe("%PDF-");
+    expect(input.pdfPath).toBe(`${ME}/${doDontTalk.id}/2026-09-25-${input.clientId}.pdf`);
+    // Drawn in characters the font has: + marks each Do, x each Don't, and
+    // the check marks in the words read as + and x.
+    expect(drawn.filter((s) => s === "+")).toHaveLength(2);
+    expect(drawn.filter((s) => s === "x")).toHaveLength(2);
+    expect(drawn).toContain("Glass handling +");
+    expect(drawn).toContain("Carry glass on edge + never flat.");
+    expect(drawn).toContain("Wear cut sleeves +");
+    expect(drawn).toContain("Don't carry it flat x");
+    expect(drawn).toContain("Signed by: Dana Reyes");
+    expect(drawn.join(" ")).not.toMatch(/[✓✗]/);
   });
 
-  it("still signs when the PDF cannot be built at all", async () => {
-    const broken: SafetyTalk = {
+  it("builds the PDF even with a picture that is not one and a blank signature image", async () => {
+    const badPicture: SafetyTalk = {
       ...plainTalk,
-      // A visual aid that claims to be a PNG and is not one is skipped by the
-      // builder; a signature image that is not one is the builder's own
-      // fallback. What must never happen is the throw reaching the person.
+      // A visual aid that claims to be a PNG and is not one is drawn as its
+      // prompt; a signature image that is not one prints a note in its place.
+      // Both are the builder's own fallbacks — neither costs the PDF.
       visual_aids_json: [{ prompt: "diagram", url: "data:image/png;base64,bm90IGEgcG5n" }],
     };
-    await signToolboxTalk({ talk: broken, profileId: ME, typedName: "Dana", signatureDataUrl: "data:image/png;base64," });
+    const now = new Date(2026, 8, 25, 6, 55, 12);
+    const drawn = await drawnWhile(() =>
+      signToolboxTalk({ talk: badPicture, profileId: ME, typedName: "Dana", signatureDataUrl: "data:image/png;base64,", now }),
+    );
     expect(enqueued).toHaveLength(1);
-    expect(enqueued[0].input.typedName).toBe("Dana");
+    const { input, pdf } = enqueued[0];
+    expect(input.typedName).toBe("Dana");
+    expect(await pdfHead(pdf)).toBe("%PDF-");
+    expect(input.pdfPath).toBe(`${ME}/${plainTalk.id}/2026-09-25-${input.clientId}.pdf`);
+    expect(drawn).toContain("Diagram: diagram");
+    expect(drawn).toContain("(signature image unavailable)");
+  });
+
+  it("signs without a PDF only when building one genuinely fails — the signature is never lost to it", async () => {
+    vi.spyOn(PDFDocument, "create").mockRejectedValueOnce(new Error("Out of memory"));
+    const now = new Date(2026, 8, 25, 6, 55, 12);
+    const view = await signToolboxTalk({ talk: plainTalk, profileId: ME, typedName: "Dana Reyes", signatureDataUrl: SIGNATURE, now });
+    expect(network).not.toHaveBeenCalled();
+    expect(enqueued).toHaveLength(1);
+    const { input, pdf } = enqueued[0];
+    // No PDF, and no path naming a file that is not there: the row files
+    // without one.
+    expect(pdf).toBeNull();
+    expect(input.pdfPath).toBeNull();
+    // Everything else the record needs is still here.
+    expect(input).toMatchObject({
+      profileId: ME,
+      talkId: plainTalk.id,
+      typedName: "Dana Reyes",
+      signedAt: now.toISOString(),
+      talkSnapshot: talkSnapshot(plainTalk),
+      signatureDataUrl: SIGNATURE,
+      signaturePath: `${ME}/${plainTalk.id}/2026-09-25-${input.clientId}-signature.png`,
+    });
+    // Signed, waiting to send — the gates open just as they do with a PDF.
+    expect(view).toMatchObject({ id: `pending:${input.clientId}`, pending: true, sendFailed: false });
   });
 });
