@@ -7,7 +7,8 @@
 // mocking idiom as receiptOutbox.test.ts.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { isRetryableError, SendTookTooLongError, type OutboxEntry } from "./outbox-core";
+import { drainStore, isRetryableError, SendTookTooLongError, type OutboxEntry } from "./outbox-core";
+import { MemoryOutboxStore } from "./outboxStore";
 
 const storageUpload = vi.fn();
 const rpc = vi.fn();
@@ -215,46 +216,115 @@ describe("what Forge answers", () => {
   });
 });
 
+// Codex review of #666 (2026-09-27), finding 3: the old-database fallback
+// (look the row up by its signature file, then insert it) was two steps with
+// nothing unique behind them, so an attempt the watchdog had given up on
+// could wake after its retry had filed the row and file it again. The
+// fallback is gone: sign_toolbox_talk ships in the same change, and a
+// signature waits on the phone — keyed, retried — until Forge has it.
+/** PostgREST's answer while the function has not reached the database. */
+const MISSING = { code: "PGRST202", message: "Could not find the function public.sign_toolbox_talk(...) in the schema cache" };
+
 describe("a database that has not got sign_toolbox_talk yet", () => {
-  const MISSING = { code: "PGRST202", message: "Could not find the function public.sign_toolbox_talk(...) in the schema cache" };
-
-  it("files the row the way the app did before, once — a resend finds it by its signature file", async () => {
+  it("keeps the signature on the phone to try again, and writes nothing around the keyed call", async () => {
     rpc.mockResolvedValue({ data: null, error: MISSING });
-    const stored: Record<string, unknown>[] = [];
-    lookup.mockImplementation(async (_table: string, _cols: string, where: Record<string, string>) => ({
-      data: stored.find((r) => r.profile_id === where.profile_id && r.signature_path === where.signature_path) ?? null,
-      error: null,
-    }));
-    insert.mockImplementation(async (_table: string, row: Record<string, unknown>) => {
-      const made = { id: `row-${stored.length + 1}`, ...row };
-      stored.push(made);
-      return { data: made, error: null };
-    });
-
-    const first = await send();
-    const second = await send();
-    expect(stored).toHaveLength(1);
-    expect(second).toEqual(first);
-    expect(insert).toHaveBeenCalledTimes(1);
-    expect(insert.mock.calls[0]).toEqual([
-      "toolbox_completions",
-      {
-        talk_id: TALK,
-        profile_id: ME,
-        typed_name: "Dana Reyes",
-        signature_path: SIG_PATH,
-        pdf_path: PDF_PATH,
-        talk_snapshot: '{"id":"t","title":"Ladders"}',
-        signed_at: SIGNED_AT,
-      },
-    ]);
+    const err = await send().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(Error);
+    // Retried with the ordinary backoff, not given up on the first try …
+    expect(isRetryableError(err)).toBe(true);
+    // … said in plain words on Stuck writes if it ever runs out of tries …
+    expect((err as Error).message).toMatch(/safe on this phone/);
+    expect((err as Error).message).not.toMatch(/schema cache|PGRST/);
+    // … and never filed some other way.
+    expect(lookup).not.toHaveBeenCalled();
+    expect(insert).not.toHaveBeenCalled();
   });
 
-  it("keeps trying when that lookup could not be asked, rather than inserting blind", async () => {
-    rpc.mockResolvedValue({ data: null, error: MISSING });
-    lookup.mockResolvedValue({ data: null, error: new TypeError("Failed to fetch") });
-    const err = await send().catch((e: unknown) => e);
-    expect(isRetryableError(err)).toBe(true);
+  it("is sent by the first retry after the function reaches the database, once", async () => {
+    const store = new MemoryOutboxStore();
+    await store.put(entry());
+    rpc.mockResolvedValueOnce({ data: null, error: MISSING });
+    const first = await drainStore(store, handlers, { now: 0 });
+    expect(first).toMatchObject({ sent: 0, retried: 1 });
+    const rows = idempotentServer();
+    const second = await drainStore(store, handlers, { now: 10 * 60_000 });
+    expect(second.sent).toBe(1);
+    expect(rows.size).toBe(1);
+    expect(await store.getAll()).toEqual([]);
     expect(insert).not.toHaveBeenCalled();
+  });
+});
+
+// Codex's reproduction, as written against the fallback: the function is
+// missing throughout, the first attempt's lookup stalls past the watchdog,
+// the retry files the row, and the stalled attempt wakes and files it again.
+// Realistic lookup and insert stubs, so a fallback would duplicate here.
+describe("Codex's fallback race (the function missing throughout)", () => {
+  it("files nothing twice — nothing is filed around the keyed call at all", async () => {
+    rpc.mockResolvedValue({ data: null, error: MISSING });
+    const rows: Record<string, unknown>[] = [];
+    let lookups = 0;
+    let release!: () => void;
+    const stalled = new Promise<void>((r) => (release = r));
+    lookup.mockImplementation(async (_t: string, _c: string, where: Record<string, string>) => {
+      // Answered by the database when the request arrives; only the reply is
+      // late — the way a dead zone delays one.
+      const found = rows.find((r) => r.signature_path === where.signature_path) ?? null;
+      if (++lookups === 1) await stalled;
+      return { data: found, error: null };
+    });
+    insert.mockImplementation(async (_t: string, row: Record<string, unknown>) => {
+      rows.push(row);
+      return { data: { id: rows.length, ...row }, error: null };
+    });
+    const store = new MemoryOutboxStore();
+    await store.put(entry({ ...PAYLOAD, pdfPath: null }, false));
+
+    await drainStore(store, handlers, { now: 0, sendDeadlineMs: () => 30 });
+    await drainStore(store, handlers, { now: 1_000_000, sendDeadlineMs: () => 1_000 });
+    release();
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(rows).toHaveLength(0);
+    expect(insert).not.toHaveBeenCalled();
+    // Still on the phone, waiting for the function — not lost, not doubled.
+    const [left] = await store.getAll();
+    expect(left).toMatchObject({ id: CLIENT, status: "queued" });
+    expect(left.lastError).toMatch(/safe on this phone/);
+  });
+});
+
+// The watchdog replay, on the real drain and the real handler: the first
+// attempt's keyed call stops answering, the drain gives up on it and the
+// retry files the signature; then the first attempt wakes. It must not file
+// anything a second time — the keyed call answers a repeat of the client id
+// with the row it already made, and there is no other write left to make.
+describe("a send the watchdog gave up on, waking after its retry", () => {
+  it("files one signature, whether the old call wakes with the row or with the missing function", async () => {
+    const rows = idempotentServer();
+    const answer = rpc.getMockImplementation()!;
+    let wakeOld!: (v: unknown) => void;
+    const oldCall = new Promise((r) => (wakeOld = r));
+    rpc.mockImplementationOnce(() => oldCall);
+    const store = new MemoryOutboxStore();
+    await store.put(entry({ ...PAYLOAD, pdfPath: null }, false));
+
+    const first = await drainStore(store, handlers, { now: 0, sendDeadlineMs: () => 30 });
+    expect(first).toMatchObject({ sent: 0, retried: 1 });
+    const second = await drainStore(store, handlers, { now: 10 * 60_000, sendDeadlineMs: () => 1_000 });
+    expect(second.sent).toBe(1);
+    expect(rows.size).toBe(1);
+
+    // The first attempt wakes with the missing function …
+    wakeOld({ data: null, error: MISSING });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(rows.size).toBe(1);
+    expect(insert).not.toHaveBeenCalled();
+    expect(lookup).not.toHaveBeenCalled();
+    // … and a replay of the whole send (a reload mid-send) is still that one row.
+    await answer("sign_toolbox_talk", { p_profile_id: ME, p_client_id: CLIENT });
+    await send(entry({ ...PAYLOAD, pdfPath: null }, false), { blob: null });
+    expect(rows.size).toBe(1);
+    expect(await store.getAll()).toEqual([]);
   });
 });

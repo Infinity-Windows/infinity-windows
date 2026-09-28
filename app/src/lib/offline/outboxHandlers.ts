@@ -1478,22 +1478,24 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
     });
     if (!res.error) return res.data;
     if (!isMissingFunction(res.error)) throw res.error;
-    // The app reached this phone before the migration reached the database
-    // (the backend deploy is its own workflow, and it has failed silently
-    // before): file it the way the app always did, rather than leave the crew
-    // unable to sign at all. Loaded only then, so it costs the first screen
-    // nothing.
-    stopIfAbandoned(ctx);
-    const { fileSignatureDirectly } = await import("./toolboxSignFallback");
-    return fileSignatureDirectly({
-      profileId,
-      talkId: fields.talkId,
-      typedName,
-      signaturePath,
-      pdfPath,
-      talkSnapshot: fields.snapshot,
-      signedAt: fields.signedAt,
-    });
+    // The app reached this phone before sign_toolbox_talk reached the
+    // database. It ships in the same change, and the backend deploys on the
+    // same merge (about three minutes, against the web app's one and a half),
+    // so this is a gap of minutes: the signature waits here, keyed, and the
+    // ordinary backoff retries it — about a quarter of an hour of tries —
+    // before it asks for a person, in these words, on Stuck writes. Its
+    // clock-in waits behind it, paid from its tap.
+    //
+    // There is deliberately no second way to file it. The one this replaced
+    // (look the row up by its signature file, then insert it) had nothing
+    // unique behind it on a database without this migration, so an attempt
+    // the watchdog had given up on could wake after its retry and file the
+    // signature twice (Codex review of #666); and it skipped the signer
+    // check this function makes.
+    throw new Error(
+      "This toolbox talk signature is waiting for an update to reach Forge. It is safe on this phone " +
+        "and sends by itself once the update is in; if it is still here, press Try again later.",
+    );
   };
 
   return {
