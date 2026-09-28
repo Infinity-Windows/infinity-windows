@@ -12,10 +12,11 @@ import {
   computeBackoffMs,
   errorMessage,
   isNetworkError,
+  isPending,
   isRetryableError,
   MAX_ATTEMPTS,
 } from "../offline/outbox-core";
-import { drain, enqueueUpload, pendingMediaCount } from "../offline/outbox";
+import { drain, enqueueUpload, listAll } from "../offline/outbox";
 import { stableId } from "../offline/stableId";
 import { signedInEmail, signedInUserId, stillSignedInAs, subscribeSignedIn, type SignInMark } from "../signedIn";
 import type { Ownership, Signer } from "../offline/entryOwner";
@@ -1005,6 +1006,34 @@ export async function discardFailedInstall(id: string): Promise<void> {
 }
 
 /**
+ * Is THIS install — not any other one on the phone — still in its store after
+ * a flush? True whether it is pending (waiting out a backoff, or partway
+ * through RPC → points → media) or failed/given-up; false only once the
+ * whole chain landed and the record was removed. Scoped by id so a DIFFERENT
+ * record — held for another owner, or just slower — can't make this one's
+ * result say "still queued" when it isn't.
+ */
+async function isInstallStillQueued(id: string): Promise<boolean> {
+  const rows = await listRows();
+  return rows.some((row) => row.id === id);
+}
+
+/**
+ * How many of THIS install's own media are still waiting to upload, matched
+ * by the stable clientIds assigned at enqueueInstall — the same ids the media
+ * stage queues them under (mediaClientId) — so another install's photos, held
+ * for a different owner or just queued ahead of this one, can't inflate it.
+ */
+async function ownPendingMediaCount(media: InstallOutboxMediaMeta[]): Promise<number> {
+  const ids = new Set(
+    media.map((m) => m.clientId).filter((id): id is string => Boolean(id)),
+  );
+  if (ids.size === 0) return 0;
+  const all = await listAll();
+  return all.filter((e) => ids.has(e.id) && isPending(e)).length;
+}
+
+/**
  * Enqueue then immediately attempt flush (online path). Returns whether the
  * install RPC completed this call, or is waiting for signal — and, when the
  * server refused THIS install outright, the error that says why.
@@ -1018,6 +1047,15 @@ export async function discardFailedInstall(id: string): Promise<void> {
  * own `failedNow`, because the pass that discovers the verdict is not always
  * the one this call started — the 30s background flush can reach the record
  * first. Either way the answer belongs to the person standing there.
+ *
+ * Every field here is about THIS submission, not the phone's whole queue
+ * (Codex review of #660 follow-up): A's install stranded on the phone, or
+ * A's media still uploading, used to leak into B's own successful submit
+ * through the phone-wide `flush.remaining` / `pendingMediaCount()`, so B was
+ * told their own just-landed install was "only saved on this device". The
+ * general, phone-wide counts still exist — pendingInstallCount, failedInstallCount,
+ * pendingMediaCount — for the header pill and /stuck; this return value is
+ * deliberately narrower than those.
  */
 export async function submitInstallViaOutbox(
   input: EnqueueInstallInput,
@@ -1028,17 +1066,18 @@ export async function submitInstallViaOutbox(
   refused: InstallRefusal | null;
 }> {
   const record = await enqueueInstall(input);
-  const flush = await flushInstallOutbox();
+  await flushInstallOutbox();
   // The media is in the global outbox now (or still behind the RPC). Give it
   // one attempt while the person is standing there — with signal, the toast
   // then says "recorded" rather than "queued" — and report what is still
   // waiting. `drain` returns at once if a drain is already running, in which
   // case the count is honest about that: waiting, not lost.
   await drain();
+  const queued = await isInstallStillQueued(record.id);
   return {
-    queued: flush.remaining > 0,
-    remainingInstalls: flush.remaining,
-    remainingUploads: await pendingMediaCount(),
+    queued,
+    remainingInstalls: queued ? 1 : 0,
+    remainingUploads: await ownPendingMediaCount(record.payload.media),
     refused: claimRefusal(record.id),
   };
 }
