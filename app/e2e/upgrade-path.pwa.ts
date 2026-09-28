@@ -22,7 +22,7 @@
 // Refresh has nothing left to post to. They were reproduced here first and
 // fixed in PwaBanners.tsx; see the notes on each.
 
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Worker } from "@playwright/test";
 import {
   cutTheNetwork,
   expireBrowserCache,
@@ -202,6 +202,79 @@ test("a phone whose very first session sees a deploy switches over, instead of o
     .toBe(builds.new.entry);
   await expectSettledOn(page, builds.new.entry, loads);
   expect(navigations(), "the switch was more than one navigation: two racing reloads can leave the new build blank").toHaveLength(1);
+});
+
+test("an in-flight self reload is not cancelled when the new worker's shell lookup takes five seconds", async ({
+  page,
+  context,
+  request,
+}) => {
+  const { builds } = await harnessState(request);
+  await serveBuild(request, "old");
+  await page.goto("/");
+  await expect(signInButton(page)).toBeVisible();
+  await serviceWorkerReady(page);
+
+  // Instrument the newly installed worker before its navigation route runs.
+  // A slow response used to hide the first reload from the observer until
+  // after the grace period, when the worker started a second navigation.
+  const instrumented = new Promise<Worker>((resolve, reject) => {
+    context.on("serviceworker", (worker) => {
+      void worker.evaluate(() => {
+        const probe = self as unknown as { __slowShellLookups: number; registration: ServiceWorkerRegistration };
+        probe.__slowShellLookups = 0;
+        const original = CacheStorage.prototype.match;
+        CacheStorage.prototype.match = async function (request, options) {
+          const url = request instanceof Request ? request.url : String(request);
+          if (new URL(url, self.location.href).pathname === "/index.html" && probe.registration.active?.state === "activated") {
+            probe.__slowShellLookups += 1;
+            await new Promise((done) => setTimeout(done, 5_000));
+          }
+          return original.call(this, request, options);
+        };
+      }).then(() => resolve(worker), reject);
+    });
+  });
+
+  await serveBuild(request, "new");
+  const { navigations } = countNavigations(page);
+  await nudgeUpdateCheck(page);
+  const worker = await instrumented;
+  await expect.poll(() => runningEntry(page), { timeout: 60_000 }).toBe(builds.new.entry);
+  await expect(signInButton(page)).toBeVisible();
+  expect(await worker.evaluate(() => (self as unknown as { __slowShellLookups: number }).__slowShellLookups)).toBeGreaterThan(0);
+  expect(navigations(), "the worker cancelled an in-flight self reload").toHaveLength(1);
+});
+
+test("a second tab on the same URL can reload without suppressing the asking tab", async ({
+  page,
+  context,
+  request,
+}) => {
+  const { builds } = await harnessState(request);
+  await serveBuild(request, "old");
+  await page.goto("/");
+  await expect(signInButton(page)).toBeVisible();
+  await serviceWorkerReady(page);
+  const other = await context.newPage();
+  await other.goto("/");
+  await expect(signInButton(other)).toBeVisible();
+  await serviceWorkerReady(other);
+  expect(other.url()).toBe(page.url());
+
+  await page.exposeFunction("reloadOtherTab", async () => { await other.reload(); });
+  await page.evaluate(() => {
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      void (window as unknown as { reloadOtherTab: () => Promise<void> }).reloadOtherTab();
+    }, { once: true });
+  });
+  await serveBuild(request, "new");
+  const { navigations } = countNavigations(page);
+  await nudgeUpdateCheck(page);
+  await expect.poll(() => runningEntry(page), { timeout: 60_000 }).toBe(builds.new.entry);
+  await expect.poll(() => runningEntry(other), { timeout: 60_000 }).toBe(builds.new.entry);
+  await expect(signInButton(page)).toBeVisible();
+  expect(navigations(), "the asking tab must switch exactly once").toHaveLength(1);
 });
 
 test("a download that broke halfway does not leave Refresh doing nothing afterwards", async ({
