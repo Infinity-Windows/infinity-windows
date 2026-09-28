@@ -45,6 +45,25 @@ function countLoads(page: Page): { loads: () => number } {
   return { loads: () => n };
 }
 
+/**
+ * Count the page's own document navigations from now on, including one that
+ * another navigation cancels (it never fires `load`, so countLoads misses
+ * it). The switch to a new build must be ONE navigation. On 2026-09-28 it
+ * was two: the page reloaded itself when the new worker took control, the
+ * worker navigated it as well, the second cancelled the first, and three of
+ * the new entry's imports were aborted along the way. The new build never
+ * started, and the app stayed blank until it was reopened. That race is
+ * lost only sometimes, but both navigations happen every time, so counting
+ * them fails every time.
+ */
+function countNavigations(page: Page): { navigations: () => string[] } {
+  const seen: string[] = [];
+  page.on("request", (req) => {
+    if (req.isNavigationRequest() && req.frame() === page.mainFrame()) seen.push(req.url());
+  });
+  return { navigations: () => [...seen] };
+}
+
 /** After the switch: the new build stays, nothing reloads again, no banner returns. */
 async function expectSettledOn(page: Page, entry: string, loads: () => number) {
   const after = loads();
@@ -106,6 +125,7 @@ test("a phone on the previous build opens the app after a deploy, then switches 
 
   // Then it notices the new build, downloads it, and — on the sign-in screen,
   // where there is nothing to lose — switches over by itself.
+  const { navigations } = countNavigations(page);
   await expect
     .poll(() => runningEntry(page), {
       timeout: 120_000,
@@ -138,6 +158,7 @@ test("a phone on the previous build opens the app after a deploy, then switches 
 
   // Once: no second reload, no banner asking again.
   await expectSettledOn(page, builds.new.entry, loads);
+  expect(navigations(), "the switch was more than one navigation: two racing reloads can leave the new build blank").toHaveLength(1);
 
   // And the new worker is the one in charge now: the next open with no
   // signal comes entirely from the new build's copy.
@@ -170,6 +191,7 @@ test("a phone whose very first session sees a deploy switches over, instead of o
   // A deploy lands while the app is open; the person comes back to it.
   await serveBuild(request, "new");
   const { loads } = countLoads(page);
+  const { navigations } = countNavigations(page);
   await nudgeUpdateCheck(page);
   await expect
     .poll(() => runningEntry(page), {
@@ -179,6 +201,7 @@ test("a phone whose very first session sees a deploy switches over, instead of o
     })
     .toBe(builds.new.entry);
   await expectSettledOn(page, builds.new.entry, loads);
+  expect(navigations(), "the switch was more than one navigation: two racing reloads can leave the new build blank").toHaveLength(1);
 });
 
 test("a download that broke halfway does not leave Refresh doing nothing afterwards", async ({
@@ -233,6 +256,7 @@ test("a download that broke halfway does not leave Refresh doing nothing afterwa
   // app switches to it — on the sign-in screen, by itself.
   await serveBuild(request, "new");
   const { loads } = countLoads(page);
+  const { navigations } = countNavigations(page);
   await nudgeUpdateCheck(page);
   await expect
     .poll(() => runningEntry(page), {
@@ -242,4 +266,5 @@ test("a download that broke halfway does not leave Refresh doing nothing afterwa
     })
     .toBe(builds.new.entry);
   await expectSettledOn(page, builds.new.entry, loads);
+  expect(navigations(), "the switch was more than one navigation: two racing reloads can leave the new build blank").toHaveLength(1);
 });
