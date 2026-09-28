@@ -740,6 +740,19 @@ to one receipt — always a proposal until somebody presses the button.
 Nothing auto-deletes, and every import is undoable as a batch that keeps
 whatever somebody had already matched.
 
+**Bill-to** — the company a job's LABOR is invoiced to (settled
+2026-09-25, owner decisions Q1-Q4; `project_bill_to`, 20261035000000).
+Chosen from the **bill-to list** (`bill_to_customers`: a name spelled
+exactly as QuickBooks spells it, an optional billing email, an optional
+QuickBooks customer id as bare digits). Every job has exactly one; it starts
+as the default, STG Windows and Doors, and only a supervisor or the owner
+changes it, each change logged with who and when. It is NOT the job's
+customer, builder or GC — those are who the house is for and who we talk
+to, and an invoice once went to the builder because something guessed from
+them. Readable by supervisors, the owner and Sees costs; a customer is
+retired, never deleted. The Job timecards export carries it as its last two
+columns, `Bill To` and `Bill To QuickBooks ID`, for the Friday invoice run.
+
 ## The job pipeline
 
 Settled 2026-09-03, wave J (transcripts program, Q8 + Q9 — grilled and
