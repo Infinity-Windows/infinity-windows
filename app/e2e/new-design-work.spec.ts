@@ -153,8 +153,10 @@ test("a rejected new-unit start does not replay an unsigned timer after toolbox 
   await page.locator("#ws-new-unit-type").fill("Bifold");
   await page.getByRole("button", { name: "Save & start", exact: true }).click();
   await expect(page.getByTestId("ws-unit").getByRole("alert")).toContainText("Forge won't start a unit until today's toolbox talk is signed");
-  const pending = await page.evaluate((userId) => JSON.parse(localStorage.getItem(`forge-custom-work-v1:${userId}`) ?? "[]") as { action: string }[], TEST_USER.id);
-  expect(pending.some((c) => c.action === "start")).toBe(false);
+  await expect.poll(() => page.evaluate((userId) => {
+    const pending = JSON.parse(localStorage.getItem(`forge-custom-work-v1:${userId}`) ?? "[]") as { action: string }[];
+    return pending.some((c) => c.action === "start");
+  }, TEST_USER.id)).toBe(false);
 });
 
 test("K-X4: every target ≥48px (primary 56), every text ≥16px, sunlight contrast — measured", async ({ page }) => {
