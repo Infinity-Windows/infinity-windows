@@ -135,6 +135,28 @@ test("Save & start keeps the new unit and its timer together on a phone without 
   await context.setOffline(false);
 });
 
+test("a rejected new-unit start does not replay an unsigned timer after toolbox signing", async ({ page }) => {
+  await useSupabaseFixtures(page, { role: "installer", uiDesign: "new" });
+  await hideWrongProjectBanner(page);
+  await morningFixtures(page, { signed: true, openShift: true, myOpening: true });
+  await page.route((url) => /\/rest\/v1\/rpc\/custom_work_command(\?|$)/.test(url.href), (route) => {
+    const body = route.request().postDataJSON() as { p_action?: string };
+    return body.p_action === "start"
+      ? route.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify({ code: "P0001", message: "Sign today's toolbox talk before starting work on a unit." }) })
+      : route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify("ok") });
+  });
+  await page.goto("/");
+  const add = page.getByTestId("ws-unit-new");
+  await expect(add).toBeEnabled();
+  await add.click();
+  await page.locator("#ws-new-unit-label").fill("GATED-UNIT-4098");
+  await page.locator("#ws-new-unit-type").fill("Bifold");
+  await page.getByRole("button", { name: "Save & start", exact: true }).click();
+  await expect(page.getByTestId("ws-unit").getByRole("alert")).toContainText("Forge won't start a unit until today's toolbox talk is signed");
+  const pending = await page.evaluate((userId) => JSON.parse(localStorage.getItem(`forge-custom-work-v1:${userId}`) ?? "[]") as { action: string }[], TEST_USER.id);
+  expect(pending.some((c) => c.action === "start")).toBe(false);
+});
+
 test("K-X4: every target ≥48px (primary 56), every text ≥16px, sunlight contrast — measured", async ({ page }) => {
   await useSupabaseFixtures(page, { role: "installer", uiDesign: "new" });
   await hideWrongProjectBanner(page);

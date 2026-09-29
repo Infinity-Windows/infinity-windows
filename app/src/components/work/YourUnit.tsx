@@ -24,6 +24,7 @@ import { useT } from "../../lib/i18n";
 import "../../lib/i18n/workCatalog";
 import { matchingUnits } from "../../lib/customWork/matchUnits";
 import { clockText, seconds, type WorkType, type WorkUnit } from "../../lib/customWork/model";
+import { dropWorkCommand, readWorkQueue } from "../../lib/customWork/queue";
 import type { WorkStore } from "../../lib/customWork/useWork";
 import { formatApiError } from "../../lib/errors";
 import { pushToast } from "../../lib/toast";
@@ -324,6 +325,23 @@ export function YourUnit({ nextUp, locked, jobId, shift, work, now }: YourUnitPr
                 await work.command("unit", saveUnit);
               }
               setAdding(false);
+              // A server refusal stays in the offline queue for review. Tell
+              // the worker immediately; for a missing toolbox signature the
+              // refused start can never be replayed at its old timestamp.
+              const failed = work.user ? readWorkQueue(work.user).find((c) =>
+                c.error && (
+                  (c.action === "unit" && c.data.id === unit.id) ||
+                  (c.action === "start" && c.data.unit_id === unit.id)
+                ),
+              ) : undefined;
+              if (failed?.error) {
+                if (failed.action === "start" && isToolboxGateError(failed.error) && work.user) {
+                  await dropWorkCommand(work.user, failed.id);
+                  setError(refusedForTalk());
+                } else {
+                  setError(formatApiError(failed.error));
+                }
+              }
             } catch (e) {
               setError(isToolboxGateError(e) ? refusedForTalk() : formatApiError(e));
             } finally {
