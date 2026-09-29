@@ -297,7 +297,7 @@ export function YourUnit({ nextUp, locked, jobId, shift, work, now }: YourUnitPr
                 created_at: new Date().toISOString(),
                 updated_at: new Date().toISOString(),
               };
-              await work.command("unit", {
+              const saveUnit = {
                 id: unit.id,
                 revision: 0,
                 project_id: unit.project_id,
@@ -306,19 +306,24 @@ export function YourUnit({ nextUp, locked, jobId, shift, work, now }: YourUnitPr
                 type_label: unit.type_label,
                 facts: {},
                 reason: "Field capture",
-              });
-              // The unit is saved at this point. Close the form before any
-              // separate timer request so a refused start cannot make a
-              // second tap create the same unit again.
-              setAdding(false);
+              };
               if (start && shift) {
-                await work.command("start", {
-                  id: crypto.randomUUID(), shift_id: shift.id, unit_id: unit.id,
-                  project_id: unit.project_id, expected_session_id: work.active?.id ?? null,
-                  at: new Date().toISOString(), stage: "Installing", participation: "install",
-                  description: "", delay_reason: "",
-                });
+                // A new unit and its timer must survive together if the app
+                // closes mid-sync. This saves both commands on the device in
+                // one write before either waits on the network.
+                await work.commandMany([
+                  { action: "unit", data: saveUnit },
+                  { action: "start", data: {
+                    id: crypto.randomUUID(), shift_id: shift.id, unit_id: unit.id,
+                    project_id: unit.project_id, expected_session_id: work.active?.id ?? null,
+                    at: new Date().toISOString(), stage: "Installing", participation: "install",
+                    description: "", delay_reason: "",
+                  } },
+                ]);
+              } else {
+                await work.command("unit", saveUnit);
               }
+              setAdding(false);
             } catch (e) {
               setError(isToolboxGateError(e) ? refusedForTalk() : formatApiError(e));
             } finally {

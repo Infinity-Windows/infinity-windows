@@ -3,7 +3,7 @@
 // screen rule (K-X4) measured on what actually rendered.
 
 import { expect, test } from "@playwright/test";
-import { useSupabaseFixtures } from "./support/supabaseFixtures";
+import { TEST_USER, useSupabaseFixtures } from "./support/supabaseFixtures";
 import { hideWrongProjectBanner, stubGeolocationDenied } from "./support/specHelpers";
 import { morningFixtures } from "./support/release1Fixtures";
 import { measureCrewRule } from "./support/crewRule";
@@ -112,6 +112,27 @@ test("a worker can save a new unit beside Next up without changing the job clock
   await expect.poll(() => world.workCommands.filter((c) => c.p_action === "unit").length).toBe(1);
   expect(world.workCommands.some((c) => c.p_action === "start")).toBe(false);
   expect(world.clockIns).toHaveLength(0);
+});
+
+test("Save & start keeps the new unit and its timer together on a phone without service", async ({ page, context }) => {
+  await useSupabaseFixtures(page, { role: "installer", uiDesign: "new" });
+  await hideWrongProjectBanner(page);
+  await morningFixtures(page, { signed: true, openShift: true, myOpening: true });
+  await page.goto("/");
+  const add = page.getByTestId("ws-unit-new");
+  await expect(add).toBeEnabled();
+  await add.click();
+  await page.locator("#ws-new-unit-label").fill("OFFLINE-UNIT-4097");
+  await page.locator("#ws-new-unit-type").fill("Slider");
+  await context.setOffline(true);
+  await page.getByRole("button", { name: "Save & start", exact: true }).click();
+  await expect.poll(() => page.evaluate((userId) => {
+    const saved = localStorage.getItem(`forge-custom-work-v1:${userId}`);
+    const commands = saved ? JSON.parse(saved) as { action: string; data: { unit_id?: string; id?: string } }[] : [];
+    return commands.length === 2 && commands[0].action === "unit" && commands[1].action === "start"
+      && commands[1].data.unit_id === commands[0].data.id;
+  }, TEST_USER.id)).toBe(true);
+  await context.setOffline(false);
 });
 
 test("K-X4: every target ≥48px (primary 56), every text ≥16px, sunlight contrast — measured", async ({ page }) => {
