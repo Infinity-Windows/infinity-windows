@@ -84,13 +84,19 @@ test("the bottom bar stays at the phone edge and the final Work action clears it
   await morningFixtures(page, { signed: true, openShift: true, myOpening: true });
   await page.goto("/");
   await expect(page.getByTestId("ws-lead")).toBeVisible();
-  await page.evaluate(() => window.scrollTo({ top: document.scrollingElement?.scrollHeight ?? 0, behavior: "instant" }));
-  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
-  const positions = await page.evaluate(() => {
+  const measure = () => page.evaluate(() => {
+    // Schedule and photo heads-ups can settle after the first paint and grow
+    // the page. Scroll again while measuring its actual final position.
+    window.scrollTo({ top: document.scrollingElement?.scrollHeight ?? 0, behavior: "instant" });
     const bar = document.querySelector("nav.tabbar")!.getBoundingClientRect();
     const finalAction = document.querySelector('[data-testid="ws-lead"]')!.getBoundingClientRect();
     return { barTop: bar.top, barBottom: bar.bottom, lastBottom: finalAction.bottom, visibleHeight: window.visualViewport?.height ?? innerHeight };
   });
+  await expect.poll(async () => {
+    const p = await measure();
+    return p.lastBottom < p.barTop - 8;
+  }).toBe(true);
+  const positions = await measure();
   expect(positions.barBottom).toBeLessThanOrEqual(positions.visibleHeight + 1);
   expect(positions.barBottom).toBeGreaterThan(positions.visibleHeight - 2);
   expect(positions.lastBottom).toBeLessThan(positions.barTop - 8);
