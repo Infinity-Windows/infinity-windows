@@ -35,8 +35,9 @@ import { useT } from "../../lib/i18n";
 import "../../lib/i18n/workCatalog";
 import { getMyProfile, listMyOpeningsAllJobs, listOpenings } from "../../lib/install/api";
 import { blockedUnits, listSessionsForOpenings } from "../../lib/install/sessions";
+import { subscribeSyncListeners } from "../../lib/install/installOutbox";
 import { isForemanPlus } from "../../lib/install/types";
-import { pendingPhotos, subscribe as subscribeOutbox } from "../../lib/offline/outbox";
+import { subscribe as subscribeOutbox } from "../../lib/offline/outbox";
 import { listQcQueue } from "../../lib/ops";
 import { paidTimeRuleActive } from "../../lib/paidTimeRule";
 import { useSafeSurface } from "../../lib/pwa/useSafeSurface";
@@ -46,6 +47,7 @@ import { isOnTheClock } from "../../lib/timeclock";
 import { useTodayTalk, useToolboxToday } from "../../lib/useToolboxGate";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import { headsUps } from "../../lib/work/headsUps";
+import { pendingWorkPhotos } from "../../lib/work/pendingWorkPhotos";
 import { chooseNextUp } from "../../lib/work/nextUp";
 import { unitWorkLocked, type StartDayInput } from "../../lib/work/startDay";
 import { pickTodayEntries } from "../../lib/work/today";
@@ -174,12 +176,14 @@ export function WorkScreen() {
   const [photos, setPhotos] = useState<{ count: number; oldestAt: number | null }>({ count: 0, oldestAt: null });
   useEffect(() => {
     let live = true;
-    const read = () => void pendingPhotos().then((p) => live && setPhotos(p)).catch(() => {});
+    const read = () => void pendingWorkPhotos().then((p) => live && setPhotos(p)).catch(() => {});
     read();
     const off = subscribeOutbox(read);
+    const offInstalls = subscribeSyncListeners(read);
     return () => {
       live = false;
       off();
+      offInstalls();
     };
   }, []);
   const lead = isForemanPlus(effectiveRole);

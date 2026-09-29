@@ -1641,16 +1641,23 @@ const PHOTO_OPS = new Set(["photo_upload", "issue_photo_upload"]);
  * until the first refresh after a reload — the moment Work first draws.
  */
 export async function pendingPhotos(): Promise<{ count: number; oldestAt: number | null }> {
+  const photos = await pendingPhotoEntries();
+  return {
+    count: photos.length,
+    oldestAt: photos.length ? Math.min(...photos.map((e) => e.createdAt)) : null,
+  };
+}
+
+/** Owner-scoped identities for deduplicating photos during the install →
+ * upload-queue handoff. Neither IDs nor records leave this device. */
+export async function pendingPhotoEntries(): Promise<{ id: string; createdAt: number }[]> {
   // Capture the viewer before the async store read. A shared phone may switch
   // accounts while it opens, and another person's photos are not this user's
   // Work heads-up.
   const signer = signerNow();
   const all = await store.getAll();
   const photos = all.filter((e) => PHOTO_OPS.has(e.op) && isPending(e) && belongsTo(e, signer));
-  return {
-    count: photos.length,
-    oldestAt: photos.length ? Math.min(...photos.map((e) => e.createdAt)) : null,
-  };
+  return photos.map(({ id, createdAt }) => ({ id, createdAt }));
 }
 
 /**

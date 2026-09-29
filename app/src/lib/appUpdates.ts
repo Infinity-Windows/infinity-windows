@@ -31,6 +31,7 @@ export const INCLUDED_UPDATE_IDS = [
   '2026-09-24-ai-schedule-review',
   '2026-09-28-faster-first-open',
   '2026-09-29-phone-work-unit-plan',
+  '2026-09-29-install-photo-queue-visibility',
 ] as const;
 export interface AppUpdate {
   id: string; published_on: string; audience: number[]; kind: 'fix' | 'improvement';
