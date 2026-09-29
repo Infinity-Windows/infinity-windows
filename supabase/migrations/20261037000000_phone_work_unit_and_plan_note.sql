@@ -8,5 +8,5 @@ values
    'Add a unit from Work','Agregar una unidad desde Trabajo',
    'You can add a unit from Work even when another unit is suggested. Save its number and type, or save and start working on it. The bottom bar now follows the visible phone screen, and large plan sheets open with less work up front.',
    'Puedes agregar una unidad desde Trabajo aunque se sugiera otra. Guarda su número y tipo, o guárdala y comienza a trabajar. La barra inferior ahora sigue la pantalla visible del teléfono, y los planos grandes se abren con menos carga inicial.',
-   '/')
+   null)
 on conflict (id) do nothing;
