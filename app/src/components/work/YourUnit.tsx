@@ -264,6 +264,12 @@ export function YourUnit({ nextUp, locked, jobId, shift, work, now }: YourUnitPr
   return (
     <section className="ws-card ws-unit" aria-label={t("work.unit.heading")} data-testid="ws-unit">
       {error && <p className="ws-error" role="alert">{error}</p>}
+      {work.queue[0]?.error && (
+        <div className="ws-error" role="alert" data-testid="ws-unit-sync-error">
+          <p>{t("work.unit.syncRefused")}: {isToolboxGateError(work.queue[0].error) ? t("work.toolbox.refused") : work.queue[0].error}</p>
+          <button type="button" className="ws-btn" onClick={() => navigate("/stuck")}>{t("work.unit.reviewSync")}</button>
+        </div>
+      )}
       {body}
       {nextUp.kind === "running" && jobId && (
         <button type="button" className="ws-btn ws-unit-add" disabled={blocked} onClick={() => setAdding(true)} data-testid="ws-unit-new">
