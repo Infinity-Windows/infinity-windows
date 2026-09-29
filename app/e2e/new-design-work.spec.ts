@@ -78,6 +78,42 @@ test("on the clock: the badge in the top bar, Today's facts, Next up from the pl
   await expect(page.locator(".core-values-strip, .values-strip")).toHaveCount(0);
 });
 
+test("the bottom bar stays at the phone edge and the final Work action clears it after scrolling", async ({ page }) => {
+  await useSupabaseFixtures(page, { role: "foreman", uiDesign: "new" });
+  await hideWrongProjectBanner(page);
+  await morningFixtures(page, { signed: true, openShift: true, myOpening: true });
+  await page.goto("/");
+  await expect(page.getByTestId("ws-lead")).toBeVisible();
+  await page.evaluate(() => window.scrollTo({ top: document.scrollingElement?.scrollHeight ?? 0, behavior: "instant" }));
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+  const positions = await page.evaluate(() => {
+    const bar = document.querySelector("nav.tabbar")!.getBoundingClientRect();
+    const finalAction = document.querySelector('[data-testid="ws-lead"]')!.getBoundingClientRect();
+    return { barTop: bar.top, barBottom: bar.bottom, lastBottom: finalAction.bottom, visibleHeight: window.visualViewport?.height ?? innerHeight };
+  });
+  expect(positions.barBottom).toBeLessThanOrEqual(positions.visibleHeight + 1);
+  expect(positions.barBottom).toBeGreaterThan(positions.visibleHeight - 2);
+  expect(positions.lastBottom).toBeLessThan(positions.barTop - 8);
+});
+
+test("a worker can save a new unit beside Next up without changing the job clock", async ({ page }) => {
+  await useSupabaseFixtures(page, { role: "installer", uiDesign: "new" });
+  await hideWrongProjectBanner(page);
+  const world = await morningFixtures(page, { signed: true, openShift: true, myOpening: true });
+  await page.goto("/");
+  const add = page.getByTestId("ws-unit-new");
+  await expect(add).toBeEnabled();
+  await add.click();
+  await page.locator("#ws-new-unit-label").fill("E2E-UNIT-4096");
+  await page.locator("#ws-new-unit-type").fill("Bifold");
+  const save = page.getByRole("button", { name: "Save unit", exact: true });
+  await expect(save).toBeEnabled({ timeout: 5_000 });
+  await save.click();
+  await expect.poll(() => world.workCommands.filter((c) => c.p_action === "unit").length).toBe(1);
+  expect(world.workCommands.some((c) => c.p_action === "start")).toBe(false);
+  expect(world.clockIns).toHaveLength(0);
+});
+
 test("K-X4: every target ≥48px (primary 56), every text ≥16px, sunlight contrast — measured", async ({ page }) => {
   await useSupabaseFixtures(page, { role: "installer", uiDesign: "new" });
   await hideWrongProjectBanner(page);

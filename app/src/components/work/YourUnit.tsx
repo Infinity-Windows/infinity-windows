@@ -131,6 +131,7 @@ export function YourUnit({ nextUp, locked, jobId, shift, work, now }: YourUnitPr
     });
 
   const blocked = busy || work.loading || Boolean(work.queueError) || Boolean(work.queue[0]?.error);
+  const canStartNewUnit = clockState === "ok" && !locked && !blocked;
   const clockHint =
     clockState === "off"
       ? t("work.quick.needJob")
@@ -201,15 +202,16 @@ export function YourUnit({ nextUp, locked, jobId, shift, work, now }: YourUnitPr
           {/* One tap: start the timer and open the sheet. A refused start (a
               gate the sheet clears) still opens the sheet, with the reason
               said — so there is no separate "Open" button to choose between. */}
-          <button
-            type="button"
-            className="ws-btn ws-btn--primary"
-            disabled={locked || clockState !== "ok" || startOpening.isPending}
-            onClick={() => startOpening.mutate(o)}
-            data-testid="ws-unit-start"
-          >
-            <Play size={20} aria-hidden /> {startOpening.isPending ? t("work.unit.starting") : t("work.unit.start")}
-          </button>
+          <div className="ws-unit-action-row">
+            <button type="button" className="ws-btn ws-btn--primary"
+              disabled={locked || clockState !== "ok" || startOpening.isPending}
+              onClick={() => startOpening.mutate(o)} data-testid="ws-unit-start">
+              <Play size={20} aria-hidden /> {startOpening.isPending ? t("work.unit.starting") : t("work.unit.start")}
+            </button>
+            <button type="button" className="ws-btn" disabled={!jobId || blocked} onClick={() => setAdding(true)} data-testid="ws-unit-new">
+              <Plus size={18} aria-hidden /> {t("work.unit.new")}
+            </button>
+          </div>
         </>
       );
     } else {
@@ -225,15 +227,16 @@ export function YourUnit({ nextUp, locked, jobId, shift, work, now }: YourUnitPr
           {(u.facts.location || u.facts.story) && <p className="ws-meta">{u.facts.location || u.facts.story}</p>}
           {lockedLine}
           {!locked && clockHint && <p className="ws-meta">{clockHint}</p>}
-          <button
-            type="button"
-            className="ws-btn ws-btn--primary"
-            disabled={locked || clockState !== "ok" || blocked}
-            onClick={() => void startUnit(u)}
-            data-testid="ws-unit-start"
-          >
-            <Play size={20} aria-hidden /> {t("work.unit.start")}
-          </button>
+          <div className="ws-unit-action-row">
+            <button type="button" className="ws-btn ws-btn--primary"
+              disabled={locked || clockState !== "ok" || blocked}
+              onClick={() => void startUnit(u)} data-testid="ws-unit-start">
+              <Play size={20} aria-hidden /> {t("work.unit.start")}
+            </button>
+            <button type="button" className="ws-btn" disabled={!jobId || blocked} onClick={() => setAdding(true)} data-testid="ws-unit-new">
+              <Plus size={18} aria-hidden /> {t("work.unit.new")}
+            </button>
+          </div>
         </>
       );
     }
@@ -247,7 +250,7 @@ export function YourUnit({ nextUp, locked, jobId, shift, work, now }: YourUnitPr
         <button
           type="button"
           className="ws-btn ws-btn--primary"
-          disabled={!jobId || locked || clockState !== "ok" || blocked}
+          disabled={!jobId || blocked}
           onClick={() => setAdding(true)}
           data-testid="ws-unit-new"
         >
@@ -261,20 +264,27 @@ export function YourUnit({ nextUp, locked, jobId, shift, work, now }: YourUnitPr
     <section className="ws-card ws-unit" aria-label={t("work.unit.heading")} data-testid="ws-unit">
       {error && <p className="ws-error" role="alert">{error}</p>}
       {body}
+      {nextUp.kind === "running" && jobId && (
+        <button type="button" className="ws-btn ws-unit-add" disabled={blocked} onClick={() => setAdding(true)} data-testid="ws-unit-new">
+          <Plus size={18} aria-hidden /> {t("work.unit.new")}
+        </button>
+      )}
       {adding && jobId && (
         <NewUnitSheet
           jobId={jobId}
           units={work.units}
           types={work.types}
           busy={blocked}
+          canStart={canStartNewUnit}
           onClose={() => setAdding(false)}
           onUseExisting={(u) => {
             setAdding(false);
             void startUnit(u);
           }}
-          onCreate={(label, type) => {
-            setAdding(false);
-            void run(async () => {
+          onCreate={async (label, type, start) => {
+            setBusy(true);
+            setError("");
+            try {
               const unit: WorkUnit = {
                 id: crypto.randomUUID(),
                 project_id: jobId,
@@ -297,8 +307,23 @@ export function YourUnit({ nextUp, locked, jobId, shift, work, now }: YourUnitPr
                 facts: {},
                 reason: "Field capture",
               });
-              await startUnit(unit);
-            });
+              // The unit is saved at this point. Close the form before any
+              // separate timer request so a refused start cannot make a
+              // second tap create the same unit again.
+              setAdding(false);
+              if (start && shift) {
+                await work.command("start", {
+                  id: crypto.randomUUID(), shift_id: shift.id, unit_id: unit.id,
+                  project_id: unit.project_id, expected_session_id: work.active?.id ?? null,
+                  at: new Date().toISOString(), stage: "Installing", participation: "install",
+                  description: "", delay_reason: "",
+                });
+              }
+            } catch (e) {
+              setError(isToolboxGateError(e) ? refusedForTalk() : formatApiError(e));
+            } finally {
+              setBusy(false);
+            }
           }}
         />
       )}
@@ -316,6 +341,7 @@ function NewUnitSheet({
   units,
   types,
   busy,
+  canStart,
   onClose,
   onUseExisting,
   onCreate,
@@ -324,9 +350,10 @@ function NewUnitSheet({
   units: readonly WorkUnit[];
   types: readonly WorkType[];
   busy: boolean;
+  canStart: boolean;
   onClose: () => void;
   onUseExisting: (u: WorkUnit) => void;
-  onCreate: (label: string, type: string) => void;
+  onCreate: (label: string, type: string, start: boolean) => Promise<void>;
 }) {
   const t = useT();
   const [label, setLabel] = useState("");
@@ -351,7 +378,7 @@ function NewUnitSheet({
           <p className="ws-meta">{t("work.unit.duplicate")}</p>
           <div className="ws-chip-row ws-chip-row--wrap">
             {dupes.slice(0, 6).map((u) => (
-              <button key={u.id} type="button" className="ws-chip ws-chip--on" onClick={() => onUseExisting(u)}>
+              <button key={u.id} type="button" className="ws-chip ws-chip--on" disabled={!canStart} onClick={() => onUseExisting(u)}>
                 {t("work.unit.useExisting", { label: `${u.label} · ${u.type_label}` })}
               </button>
             ))}
@@ -373,11 +400,17 @@ function NewUnitSheet({
       <button
         type="button"
         className="ws-btn ws-btn--primary"
-        disabled={busy || !label.trim() || exact}
-        onClick={() => onCreate(label.trim(), type.trim())}
+        disabled={busy || !label.trim() || !type.trim() || exact}
+        onClick={() => void onCreate(label.trim(), type.trim(), false)}
       >
-        <Play size={20} aria-hidden /> {t("work.unit.start")}
+        <Plus size={20} aria-hidden /> {t("work.unit.save")}
       </button>
+      {canStart && (
+        <button type="button" className="ws-btn" disabled={busy || !label.trim() || !type.trim() || exact}
+          onClick={() => void onCreate(label.trim(), type.trim(), true)}>
+          <Play size={20} aria-hidden /> {t("work.unit.saveStart")}
+        </button>
+      )}
       <button type="button" className="ws-btn ws-btn--ghost" onClick={onClose}>
         {t("work.prep.cancel")}
       </button>

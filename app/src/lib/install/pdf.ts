@@ -68,7 +68,10 @@ export async function renderPageCanvas(
 ): Promise<HTMLCanvasElement> {
   const page = await doc.getPage(pageNumber);
   const base = page.getViewport({ scale: 1 });
-  const scale = targetWidth / base.width;
+  // Tall architectural sheets can exhaust iOS WebKit even at a moderate
+  // width. Bound the total pixels as well as the width before allocating.
+  const maxPixels = 4_000_000;
+  const scale = Math.min(targetWidth / base.width, Math.sqrt(maxPixels / (base.width * base.height)));
   const viewport = page.getViewport({ scale });
 
   const canvas = document.createElement("canvas");
@@ -76,6 +79,7 @@ export async function renderPageCanvas(
   canvas.height = Math.ceil(viewport.height);
   const ctx = canvas.getContext("2d")!;
   await page.render({ canvas, canvasContext: ctx, viewport }).promise;
+  page.cleanup();
 
   return canvas;
 }
@@ -86,12 +90,21 @@ export async function renderPageImage(
   pageNumber: number,
   targetWidth = 1600,
 ): Promise<{ dataUrl: string; width: number; height: number }> {
-  const canvas = await renderPageCanvas(doc, pageNumber, targetWidth);
-  return {
-    dataUrl: canvas.toDataURL("image/png"),
-    width: canvas.width,
-    height: canvas.height,
-  };
+  const phone = typeof window !== "undefined" && window.matchMedia?.("(max-width: 859px)").matches;
+  const canvas = await renderPageCanvas(doc, pageNumber, Math.min(targetWidth, phone ? 1024 : targetWidth));
+  try {
+    return {
+      // JPEG is far smaller than a PNG data URL for plan backgrounds. Marks
+      // remain separate vector overlays and retain their exact coordinates.
+      dataUrl: canvas.toDataURL("image/jpeg", 0.86),
+      width: canvas.width,
+      height: canvas.height,
+    };
+  } finally {
+    // A second page must not retain the first page's large backing store.
+    canvas.width = 0;
+    canvas.height = 0;
+  }
 }
 
 /**

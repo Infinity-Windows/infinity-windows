@@ -111,6 +111,8 @@ export const WORK_CATALOG = {
   "work.unit.pause": { en: "Pause", es: "Pausar" },
   "work.unit.finish": { en: "Finish", es: "Terminar" },
   "work.unit.new": { en: "New unit", es: "Nueva unidad" },
+  "work.unit.save": { en: "Save unit", es: "Guardar unidad" },
+  "work.unit.saveStart": { en: "Save & start", es: "Guardar y empezar" },
   "work.unit.newHelp": {
     en: "Nothing matched on this job. Add the unit you're starting.",
     es: "Nada coincide en este trabajo. Agrega la unidad que vas a empezar.",
