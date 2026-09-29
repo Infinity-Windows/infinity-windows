@@ -232,6 +232,9 @@ export function previewCommands(
   const us = new Map(units.map((u) => [u.id, { ...u }]));
   const ss = new Map(sessions.map((s) => [s.id, { ...s }]));
   for (const c of commands) {
+    // The server refused this command. Later queued commands have not run
+    // either, so none of them may masquerade as confirmed active work.
+    if (c.error) break;
     const d = c.action === "crew_record" ? {
       ...c.data.unit as Record<string, unknown>,
       ...((c.data.outcome !== "assigned") ? { untimed_work_present: true } : {}),

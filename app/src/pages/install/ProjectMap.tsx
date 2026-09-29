@@ -199,6 +199,9 @@ function isHandDrawnOutline(features: unknown): boolean {
 export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   const { projectId = "" } = useParams();
   const t = useT();
+  // The crew's iPhone should open a drawing without parsing every page of two
+  // plansets first. Page numbers and saved pins remain available below.
+  const phonePlanMode = typeof window !== "undefined" && window.matchMedia?.("(max-width: 859px)").matches;
   const queryClient = useQueryClient();
   // Standalone /map is its own route, so it needs its own subscription; when
   // embedded, ProjectDetail already has one and a second would be a duplicate.
@@ -593,23 +596,29 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
           const buildingDoc = await withPlanTimeout(
             downloadPlanset(buildingPdf).then(loadPdf),
           );
-          const buildingText = await extractAllText(buildingDoc);
+          const buildingText = phonePlanMode ? [] : await extractAllText(buildingDoc);
           if (cancelled) return;
           buildingDocRef.current = buildingDoc;
           setBuildingPageCount(buildingDoc.numPages);
           // Marked plans carry their numbers as annotations, which the text
           // layer never shows — count those too or an annotation-marked
           // supplier looks like it has one numbered drawing.
-          const buildingCallouts = await extractPlanMarkCallouts(buildingDoc);
-          const detectedFloorPages = findFloorPlanPages(
-            buildingText,
-            buildingCallouts,
-          );
+          const detectedFloorPages = phonePlanMode
+            ? []
+            : findFloorPlanPages(buildingText, await extractPlanMarkCallouts(buildingDoc));
           setFloorPages(detectedFloorPages);
-          initialPage = detectedFloorPages[0] ?? 1;
+          // The saved pin page is already the crew's page of interest. On a
+          // phone we do not scan every page's annotations just to choose it.
+          const pinnedPage = (openings.data ?? [])
+            .filter((o) => o.pin_x != null && o.pin_y != null && o.page_number != null)
+            .map((o) => o.page_number as number)
+            .sort((a, b) => a - b)[0];
+          initialPage = phonePlanMode
+            ? pinnedPage && pinnedPage <= buildingDoc.numPages ? pinnedPage : 1
+            : (detectedFloorPages[0] ?? 1);
         }
 
-        if (specsPdf) {
+        if (specsPdf && !phonePlanMode) {
           const specsDoc = await withPlanTimeout(
             downloadPlanset(specsPdf).then(loadPdf),
           );
@@ -639,6 +648,46 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     };
   }, [buildingPdf?.id, specsPdf?.id, planAttempt]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Phone details are loaded only when requested. Keeping both full PDFs and
+  // both all-page text layers live on first open caused WebKit to restart on
+  // large jobs before a worker could even reach the clock controls.
+  useEffect(() => {
+    if (!phonePlanMode || view !== "details" || !specsPdf || specsDocRef.current) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { loadPdf } = await import("../../lib/install/pdf");
+        const doc = await withPlanTimeout(downloadPlanset(specsPdf).then(loadPdf));
+        if (cancelled) { void doc.cleanup(); return; }
+        specsDocRef.current = doc;
+        setSpecsPageCount(doc.numPages);
+        setDocsReady((ready) => ready + 1);
+      } catch (e) {
+        if (!cancelled) setPlanError(planLoadMessage(e));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [phonePlanMode, view, specsPdf?.id, planAttempt]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!phonePlanMode || view !== "details") return;
+    const doc = specsDocRef.current;
+    if (!doc || page < 1 || page > doc.numPages || specsText.some((row) => row.pageNumber === page)) return;
+    let cancelled = false;
+    void import("../../lib/install/pdf").then(({ extractPageText }) => extractPageText(doc, page))
+      .then((text) => {
+        if (!cancelled) setSpecsText((rows) => [...rows.filter((row) => row.pageNumber !== page), { pageNumber: page, text }]);
+      }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [phonePlanMode, view, page, docsReady, specsText]);
+
+  useEffect(() => () => {
+    void buildingDocRef.current?.cleanup();
+    void specsDocRef.current?.cleanup();
+    buildingDocRef.current = null;
+    specsDocRef.current = null;
+  }, []);
+
   /**
    * Jobs whose plans were read before the elevation reference existed have
    * openings but no reference rows, and nobody is going to re-upload a planset
@@ -654,7 +703,10 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   const buildingPdfId = buildingPdf?.id ?? null;
   const storedElevations = elevationViews.data;
   useEffect(() => {
-    if (!isLead || !buildingPdfId || !elevationViews.isFetched) return;
+    // Automatic elevation backfill scans the entire PDF. Leave that office
+    // maintenance task to the desktop so opening a job on an iPhone stays
+    // bounded to the page the worker requested.
+    if (phonePlanMode || !isLead || !buildingPdfId || !elevationViews.isFetched) return;
     const doc = buildingDocRef.current;
     if (!doc) return;
     if (backfilledElevations.current === buildingPdfId) return;
@@ -692,6 +744,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     docsReady,
     projectId,
     queryClient,
+    phonePlanMode,
   ]);
 
   // Trace the building outline for the active floor page (cached per page).
@@ -956,11 +1009,13 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
         .map((o) => o.page_number as number),
     ),
   ].sort((a, b) => a - b);
+  const everyBuildingPage = Array.from({ length: buildingPageCount }, (_, index) => index + 1);
+  const everySpecsPage = Array.from({ length: specsPageCount }, (_, index) => index + 1);
   const visiblePages =
     view === "details"
-      ? detailPages.length > 0
+      ? phonePlanMode ? everySpecsPage : detailPages.length > 0
         ? detailPages
-        : Array.from({ length: specsPageCount }, (_, index) => index + 1)
+        : everySpecsPage
       : view === "building"
         ? /*
            * Same fix as the outline view below: once any opening on the job has
@@ -969,7 +1024,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
            * in the pager too, or the "Original plan" view looks like it lost
            * them.
            */
-          mergePageLists(floorPages, pinnedPlanPages, buildingPageCount)
+          phonePlanMode ? everyBuildingPage : mergePageLists(floorPages, pinnedPlanPages, buildingPageCount)
         : /*
            * The outline view pages by the sheets the PDF reader thinks are floor
            * plans, PLUS any sheet that actually carries marks. Oakridge's marks
@@ -978,7 +1033,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
            * reach the marks at all. A page with marks on it is a page a crew
            * needs, whatever the detector concluded.
            */
-          mergePageLists(floorPages, pinnedPlanPages, buildingPageCount);
+          phonePlanMode ? everyBuildingPage : mergePageLists(floorPages, pinnedPlanPages, buildingPageCount);
   const pageIndex = Math.max(0, visiblePages.indexOf(page));
   const activePlanset = view === "details" ? specsPdf : buildingPdf;
   const activeDetail = details.find((detail) => detail.pageNumber === page);
@@ -1259,10 +1314,10 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     // above for why "pages with pins" alone isn't enough once any mark is placed.
     const pages =
       next === "details"
-        ? detailPages.length > 0
+        ? phonePlanMode ? everySpecsPage : detailPages.length > 0
           ? detailPages
-          : Array.from({ length: specsPageCount }, (_, index) => index + 1)
-        : mergePageLists(floorPages, pinnedPlanPages, buildingPageCount);
+          : everySpecsPage
+        : phonePlanMode ? everyBuildingPage : mergePageLists(floorPages, pinnedPlanPages, buildingPageCount);
     setPage(nextPage ?? pages[0] ?? 1);
     setPdfZoom(1);
     setOutlineZoom(OUTLINE_ZOOM_DEFAULT);

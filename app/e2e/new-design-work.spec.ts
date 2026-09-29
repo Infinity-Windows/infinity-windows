@@ -3,7 +3,7 @@
 // screen rule (K-X4) measured on what actually rendered.
 
 import { expect, test } from "@playwright/test";
-import { useSupabaseFixtures } from "./support/supabaseFixtures";
+import { TEST_USER, useSupabaseFixtures } from "./support/supabaseFixtures";
 import { hideWrongProjectBanner, stubGeolocationDenied } from "./support/specHelpers";
 import { morningFixtures } from "./support/release1Fixtures";
 import { measureCrewRule } from "./support/crewRule";
@@ -76,6 +76,87 @@ test("on the clock: the badge in the top bar, Today's facts, Next up from the pl
   // would be wrong here, and the values strip is not this screen's job.
   await expect(page.getByText("Tap Clock to start your shift")).toHaveCount(0);
   await expect(page.locator(".core-values-strip, .values-strip")).toHaveCount(0);
+});
+
+test("the bottom bar stays at the phone edge and the final Work action clears it after scrolling", async ({ page }) => {
+  await useSupabaseFixtures(page, { role: "foreman", uiDesign: "new" });
+  await hideWrongProjectBanner(page);
+  await morningFixtures(page, { signed: true, openShift: true, myOpening: true });
+  await page.goto("/");
+  await expect(page.getByTestId("ws-lead")).toBeVisible();
+  await page.evaluate(() => window.scrollTo({ top: document.scrollingElement?.scrollHeight ?? 0, behavior: "instant" }));
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+  const positions = await page.evaluate(() => {
+    const bar = document.querySelector("nav.tabbar")!.getBoundingClientRect();
+    const finalAction = document.querySelector('[data-testid="ws-lead"]')!.getBoundingClientRect();
+    return { barTop: bar.top, barBottom: bar.bottom, lastBottom: finalAction.bottom, visibleHeight: window.visualViewport?.height ?? innerHeight };
+  });
+  expect(positions.barBottom).toBeLessThanOrEqual(positions.visibleHeight + 1);
+  expect(positions.barBottom).toBeGreaterThan(positions.visibleHeight - 2);
+  expect(positions.lastBottom).toBeLessThan(positions.barTop - 8);
+});
+
+test("a worker can save a new unit beside Next up without changing the job clock", async ({ page }) => {
+  await useSupabaseFixtures(page, { role: "installer", uiDesign: "new" });
+  await hideWrongProjectBanner(page);
+  const world = await morningFixtures(page, { signed: true, openShift: true, myOpening: true });
+  await page.goto("/");
+  const add = page.getByTestId("ws-unit-new");
+  await expect(add).toBeEnabled();
+  await add.click();
+  await page.locator("#ws-new-unit-label").fill("E2E-UNIT-4096");
+  await page.locator("#ws-new-unit-type").fill("Bifold");
+  const save = page.getByRole("button", { name: "Save unit", exact: true });
+  await expect(save).toBeEnabled({ timeout: 5_000 });
+  await save.click();
+  await expect.poll(() => world.workCommands.filter((c) => c.p_action === "unit").length).toBe(1);
+  expect(world.workCommands.some((c) => c.p_action === "start")).toBe(false);
+  expect(world.clockIns).toHaveLength(0);
+});
+
+test("Save & start keeps the new unit and its timer together on a phone without service", async ({ page, context }) => {
+  await useSupabaseFixtures(page, { role: "installer", uiDesign: "new" });
+  await hideWrongProjectBanner(page);
+  await morningFixtures(page, { signed: true, openShift: true, myOpening: true });
+  await page.goto("/");
+  const add = page.getByTestId("ws-unit-new");
+  await expect(add).toBeEnabled();
+  await add.click();
+  await page.locator("#ws-new-unit-label").fill("OFFLINE-UNIT-4097");
+  await page.locator("#ws-new-unit-type").fill("Slider");
+  await context.setOffline(true);
+  await page.getByRole("button", { name: "Save & start", exact: true }).click();
+  await expect.poll(() => page.evaluate((userId) => {
+    const saved = localStorage.getItem(`forge-custom-work-v1:${userId}`);
+    const commands = saved ? JSON.parse(saved) as { action: string; data: { unit_id?: string; id?: string } }[] : [];
+    return commands.length === 2 && commands[0].action === "unit" && commands[1].action === "start"
+      && commands[1].data.unit_id === commands[0].data.id;
+  }, TEST_USER.id)).toBe(true);
+  await context.setOffline(false);
+});
+
+test("a rejected new-unit start does not replay an unsigned timer after toolbox signing", async ({ page }) => {
+  await useSupabaseFixtures(page, { role: "installer", uiDesign: "new" });
+  await hideWrongProjectBanner(page);
+  await morningFixtures(page, { signed: true, openShift: true, myOpening: true });
+  await page.route((url) => /\/rest\/v1\/rpc\/custom_work_command(\?|$)/.test(url.href), (route) => {
+    const body = route.request().postDataJSON() as { p_action?: string };
+    return body.p_action === "start"
+      ? route.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify({ code: "P0001", message: "Sign today's toolbox talk before starting work on a unit." }) })
+      : route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify("ok") });
+  });
+  await page.goto("/");
+  const add = page.getByTestId("ws-unit-new");
+  await expect(add).toBeEnabled();
+  await add.click();
+  await page.locator("#ws-new-unit-label").fill("GATED-UNIT-4098");
+  await page.locator("#ws-new-unit-type").fill("Bifold");
+  await page.getByRole("button", { name: "Save & start", exact: true }).click();
+  await expect(page.getByTestId("ws-unit").getByRole("alert")).toContainText("Forge won't start a unit until today's toolbox talk is signed");
+  await expect.poll(() => page.evaluate((userId) => {
+    const pending = JSON.parse(localStorage.getItem(`forge-custom-work-v1:${userId}`) ?? "[]") as { action: string }[];
+    return pending.some((c) => c.action === "start");
+  }, TEST_USER.id)).toBe(false);
 });
 
 test("K-X4: every target ≥48px (primary 56), every text ≥16px, sunlight contrast — measured", async ({ page }) => {

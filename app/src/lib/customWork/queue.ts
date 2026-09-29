@@ -3,6 +3,7 @@ import type { WorkCommand } from "./model";
 import { markCompleteUnit } from "./complete";
 import { formatApiError } from "../errors";
 import { isNetworkError } from "../offline/outbox-core";
+import { isToolboxGateError } from "../install/installTimer";
 
 const prefix = "forge-custom-work-v1:";
 export const WORK_QUEUE_EVENT = "forge:custom-work-queue";
@@ -105,7 +106,12 @@ export async function retryWork(user: string) {
   await locked(user, async () =>
     saveQueue(
       user,
-      readWorkQueue(user).map((c) => ({ ...c, error: undefined })),
+      readWorkQueue(user)
+        // A start rejected for an unsigned toolbox talk never happened. It
+        // must not be resent later with the time of the original tap, even if
+        // the refusal arrived after an offline save and app reload.
+        .filter((c) => !(c.action === "start" && c.error && isToolboxGateError(c.error)))
+        .map((c) => ({ ...c, error: undefined })),
     ),
   );
   return syncWork(user);

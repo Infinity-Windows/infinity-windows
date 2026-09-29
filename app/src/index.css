@@ -277,7 +277,7 @@ a:hover {
    * right under the button instead of clearing it. --overlay-gap is the
    * same breathing room every other overlay in this file gets.
    */
-  padding-bottom: calc(72px + 34px + var(--overlay-gap) + var(--safe-bottom));
+  padding-bottom: calc(72px + 34px + var(--overlay-gap) + var(--safe-bottom) + var(--visual-bottom-inset, 0px));
 }
 
 .page {
@@ -5396,11 +5396,11 @@ button.clock-out {
    Capture (+) button, which rides 14px above the bar with a 4px ring; on a
    laptop, where the tab bar is display:none, 16px off the bottom. The margin
    and padding cancel out, so pinning it never shifts the text box. */
-.ask-page { --ask-dock-bottom: calc(var(--above-tabbar) + 22px); }
+.ask-page { --ask-dock-bottom: calc(var(--above-tabbar) + var(--visual-bottom-inset, 0px) + 22px); }
 @media (min-width: 860px) {
   .ask-page { --ask-dock-bottom: calc(16px + var(--safe-bottom)); }
 }
-:root[data-display-layout="phone"] .ask-page { --ask-dock-bottom: calc(var(--above-tabbar) + 22px); }
+:root[data-display-layout="phone"] .ask-page { --ask-dock-bottom: calc(var(--above-tabbar) + var(--visual-bottom-inset, 0px) + 22px); }
 .ask-dock { position: relative; }
 .ask-dock.is-pinned {
   position: sticky;
@@ -6526,7 +6526,7 @@ body {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: 0;
+  bottom: var(--visual-bottom-inset, 0px);
   z-index: 50;
   display: grid;
   grid-template-columns: repeat(5, 1fr);
@@ -6661,7 +6661,7 @@ body {
   left: 0;
   right: 0;
   top: 0;
-  bottom: var(--above-tabbar);
+  bottom: calc(var(--above-tabbar) + var(--visual-bottom-inset, 0px));
   z-index: 60;
   background: oklch(0.08 0.012 35 / 0.62);
 }
@@ -6669,7 +6669,7 @@ body {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: var(--above-tabbar);
+  bottom: calc(var(--above-tabbar) + var(--visual-bottom-inset, 0px));
   z-index: 61;
   display: flex;
   flex-direction: column;
@@ -6744,7 +6744,7 @@ body {
   left: 0;
   right: 0;
   top: 0;
-  bottom: var(--above-tabbar);
+  bottom: calc(var(--above-tabbar) + var(--visual-bottom-inset, 0px));
   z-index: 60;
   background: oklch(0.08 0.012 35 / 0.62);
 }
@@ -6752,7 +6752,7 @@ body {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: var(--above-tabbar);
+  bottom: calc(var(--above-tabbar) + var(--visual-bottom-inset, 0px));
   z-index: 61;
   background: var(--card-raised);
   border: 1px solid var(--border);
@@ -8206,7 +8206,7 @@ body {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: var(--above-tabbar);
+  bottom: calc(var(--above-tabbar) + var(--visual-bottom-inset, 0px));
   z-index: 61;
   background: var(--card-raised);
   border: 1px solid var(--border);
@@ -13158,7 +13158,7 @@ button.stage-chip {
    scrolling under it never looks clipped. */
 .sheet-pinned {
   position: sticky;
-  bottom: var(--above-tabbar);
+  bottom: calc(var(--above-tabbar) + var(--visual-bottom-inset, 0px));
   z-index: 15;
   padding: 10px 0 12px;
   background: linear-gradient(to top, var(--bg) 65%, transparent);
@@ -13191,7 +13191,7 @@ button.stage-chip {
   left: 0;
   right: 0;
   top: 0;
-  bottom: var(--above-tabbar);
+  bottom: calc(var(--above-tabbar) + var(--visual-bottom-inset, 0px));
   z-index: 60;
   background: oklch(0.08 0.012 35 / 0.62);
 }
@@ -13199,7 +13199,7 @@ button.stage-chip {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: var(--above-tabbar);
+  bottom: calc(var(--above-tabbar) + var(--visual-bottom-inset, 0px));
   z-index: 61;
   background: var(--card-raised);
   border: 1px solid var(--border);
@@ -13267,7 +13267,7 @@ button.stage-chip {
   display: grid; max-width: 640px; margin-inline: auto;
 }
 :root[data-display-layout="phone"] .sync-strip { display: flex; }
-:root[data-display-layout="phone"] .ask-fab { bottom: calc(var(--above-tabbar) + 14px); }
+:root[data-display-layout="phone"] .ask-fab { bottom: calc(var(--above-tabbar) + var(--visual-bottom-inset, 0px) + 14px); }
 :root[data-display-layout="phone"] .sched-sheet-backdrop { padding: 0; align-items: stretch; }
 :root[data-display-layout="phone"] .sched-sheet {
   max-width: 640px; border-radius: 0; max-height: 100dvh; height: 100dvh;

@@ -89,6 +89,20 @@ describe("durable work queue", () => {
     expect(sendWorkCommand).not.toHaveBeenCalled();
     expect(readWorkQueue("worker-a")).toHaveLength(1);
   });
+  it("never replays an offline unit start refused later for an unsigned toolbox talk", async () => {
+    const unit = { ...command, id: "unit-1", action: "unit" as const, data: { id: "new-unit", project_id: "job-1" } };
+    const start = { ...command, id: "start-1", action: "start" as const, data: { id: "session-1", unit_id: "new-unit", at: "2026-09-29T08:00:00Z" } };
+    await enqueueWorkBatch([unit, start]);
+    vi.mocked(sendWorkCommand).mockResolvedValueOnce("ok").mockRejectedValueOnce(
+      new Error("Sign today's toolbox talk before starting work on a unit."),
+    );
+    expect(await syncWork("worker-a")).toBe(false);
+    expect(readWorkQueue("worker-a")[0]).toMatchObject({ id: "start-1", error: expect.stringContaining("toolbox talk") });
+    vi.mocked(sendWorkCommand).mockResolvedValue("ok");
+    expect(await retryWork("worker-a")).toBe(true);
+    expect(readWorkQueue("worker-a")).toEqual([]);
+    expect(vi.mocked(sendWorkCommand).mock.calls.map(([c]) => c.id)).toEqual(["unit-1", "start-1"]);
+  });
 });
 
 // "Unit complete" is a stop plus the unit's complete mark. Codex's review of
@@ -203,4 +217,3 @@ describe("Unit complete survives weak signal and reloads", () => {
     expect(readWorkQueue("worker-a")[0].error).toContain("Only the author");
   });
 });
-

@@ -478,12 +478,24 @@ describe("WorkScreen (K1.2)", () => {
     expect(alert?.textContent).not.toContain(REFUSAL);
   });
 
-  it("K1.4: nothing matches → the blank New unit door, only then", async () => {
+  it("K1.4: nothing matches → the blank New unit door", async () => {
     shift = openShift();
     signed = { id: "c1" };
     const el = await mount();
     expect(byTestId(el, "ws-unit-new")).not.toBeNull();
     expect(byTestId(el, "ws-unit")!.textContent).toContain("Nothing matched on this job.");
+  });
+
+  it("keeps New unit available beside a suggested unit without starting its timer", async () => {
+    shift = openShift();
+    signed = { id: "c1" };
+    myOpenings = [opening({})];
+    const el = await mount();
+    expect(byTestId(el, "ws-unit")!.textContent).toContain("W7");
+    await act(async () => byTestId(el, "ws-unit-new")!.click());
+    expect(el.querySelector("#ws-new-unit-label")).not.toBeNull();
+    expect(startOpeningWork).not.toHaveBeenCalled();
+    expect(workCommand).not.toHaveBeenCalled();
   });
 
   it("Today reads the published assignment with its Updated time and a Changed tag", async () => {

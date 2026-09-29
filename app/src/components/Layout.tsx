@@ -86,6 +86,34 @@ export function Layout() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [captureOpen, setCaptureOpen] = useState(false);
 
+  // iOS browser chrome changes the *visible* viewport while scrolling. Its
+  // layout viewport can remain taller, leaving a fixed bar in the middle of
+  // what the worker sees. Keep the bar at the visual viewport's bottom and
+  // reserve the same space under the last Work action.
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    let frame = 0;
+    const update = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const inset = Math.max(0, window.innerHeight - viewport.offsetTop - viewport.height);
+        document.documentElement.style.setProperty("--visual-bottom-inset", `${Math.round(inset)}px`);
+      });
+    };
+    update();
+    viewport.addEventListener("resize", update);
+    viewport.addEventListener("scroll", update);
+    window.addEventListener("resize", update);
+    return () => {
+      cancelAnimationFrame(frame);
+      viewport.removeEventListener("resize", update);
+      viewport.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+      document.documentElement.style.removeProperty("--visual-bottom-inset");
+    };
+  }, []);
+
   // First-run permissions onboarding: auto-open once when warranted; also
   // re-openable from Settings via the shared wizard bus.
   const wizardOpen = useSyncExternalStore(subscribeWizard, getWizardOpen, getWizardOpen);

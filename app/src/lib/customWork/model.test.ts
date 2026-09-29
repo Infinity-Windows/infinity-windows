@@ -114,6 +114,21 @@ describe("custom work labor", () => {
       "Frame set",
     );
   });
+  it("does not show a refused start or commands stuck behind it as running time", () => {
+    const running = session("me", 0, null);
+    const result = previewCommands([unit], [running], [
+      { id: "refused", userId: "me", action: "start", error: "Current work changed", data: {
+        id: "unsaved", shift_id: "shift", unit_id: unit.id, project_id: "job",
+        expected_session_id: running.id, at: new Date(30 * 60000).toISOString(),
+      } },
+      { id: "blocked", userId: "me", action: "start", data: {
+        id: "later", shift_id: "shift", unit_id: unit.id, project_id: "job",
+        expected_session_id: "unsaved", at: new Date(45 * 60000).toISOString(),
+      } },
+    ]);
+    expect(result.sessions.find((s) => s.id === running.id)?.ended_at).toBeNull();
+    expect(result.sessions.some((s) => s.id === "unsaved" || s.id === "later")).toBe(false);
+  });
   it("attribution keeps the original shift rather than rewriting payroll", () => {
     const result = previewCommands(
       [{ ...unit, project_id: null }],

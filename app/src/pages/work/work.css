@@ -321,6 +321,14 @@
   font-size: 28px;
   font-variant-numeric: tabular-nums;
 }
+.ws-unit-action-row { display: flex; gap: 8px; min-width: 0; }
+.ws-unit-action-row .ws-btn { min-width: 0; padding-inline: 8px; }
+.ws-unit-add {
+  align-self: stretch;
+  margin-top: 6px;
+  background: transparent;
+  border-color: var(--border);
+}
 
 /* 4. The quick buttons and the lead row. */
 .ws-quick-wrap { display: flex; flex-direction: column; gap: 8px; }
