@@ -276,7 +276,7 @@ class FunctionSecretsTest(unittest.TestCase):
         # Connected publication adds one worker, reusing the existing VAPID keys.
         # Description dictation reuses the existing OpenAI transcription key.
         # Lesson delivery (hex-portal-review) reuses HEX_PORTAL_SITES_TOKEN.
-        self.assertEqual(len(names), 28)
+        self.assertEqual(len(names), 30)
         self.assertIn("crew-reminder-sweep", names)
         self.assertIn("deliver-workflow-notices", names)
         self.assertIn("ask", names)
@@ -417,11 +417,11 @@ class FunctionSecretsTest(unittest.TestCase):
         self.assertEqual(r["required"], ["ANTHROPIC_API_KEY"])
         self.assertIn("OPENAI_API_KEY", r["optional"])
 
-    def test_only_embeddings_and_whisper_still_require_openai(self):
+    def test_audio_embeddings_and_qc_vision_require_openai(self):
         reqs = fs.all_requirements()
         self.assertEqual(
             fs.needing(reqs, "OPENAI_API_KEY"),
-            ["ingest-knowledge", "transcribe-description", "transcribe-install-memo"],
+            ["ingest-knowledge", "live-ask-session", "review-qc-photo", "transcribe-description", "transcribe-install-memo"],
         )
 
     def test_the_repo_wide_required_set_is_exactly_these_five(self):
@@ -501,9 +501,9 @@ class PlainEnglishNames(unittest.TestCase):
             "video summaries and quizzes|window-type tips|install voice memos",
         )
 
-    def test_the_openai_headline_names_only_what_claude_cannot_do(self):
+    def test_the_openai_headline_names_specialized_features(self):
         got = fs.features_needing(fs.all_requirements(), "OPENAI_API_KEY")
-        self.assertEqual(got, "adding documents to the brain|dictating descriptions|install voice memos")
+        self.assertEqual(got, "adding documents to the brain|live spoken Ask|reviewing install photos|dictating descriptions|install voice memos")
 
     def test_an_unknown_function_falls_back_to_its_directory_name(self):
         self.assertEqual(fs.feature_name("not-a-function"), "not-a-function")

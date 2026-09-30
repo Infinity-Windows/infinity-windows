@@ -61,6 +61,7 @@ export const MODEL_PRICES: Record<string, ModelPrice> = {
   "claude-sonnet-5": { inPerToken: 2, outPerToken: 10 },
   "gpt-5.6-terra": { inPerToken: 2, outPerToken: 12 },
   "gpt-6-astra": { inPerToken: 10, outPerToken: 50 },
+  "gpt-6.1-sol": { inPerToken: 2, outPerToken: 10 },
   "gpt-4o-mini": { inPerToken: 0.15, outPerToken: 0.6 },
   "gpt-4o": { inPerToken: 2.5, outPerToken: 10 },
   "text-embedding-3-small": { inPerToken: 0.02, outPerToken: 0 },
@@ -82,11 +83,18 @@ export function costMicros(
   return Math.round(inTok * price.inPerToken + outTok * price.outPerToken);
 }
 
-/** A flat image-generation charge (gpt-image-1, 1024x1024) in micro-dollars. */
+/** Conservative reservation/fallback for a GPT Image 2.5 training diagram.
+ * Actual successful calls settle from the Images API token usage. */
 export const IMAGE_MICROS = 40_000;
 
-/** Audio is billed by duration, not tokens: Whisper costs $0.006/minute. */
-export const AUDIO_MICROS_PER_SECOND: Record<string, number> = { "whisper-1": 100 };
+/** Audio is billed by duration: Whisper $0.006/min, GPT Transcribe $0.0045/min. */
+export const AUDIO_MICROS_PER_SECOND: Record<string, number> = {
+  "whisper-1": 100,
+  "gpt-transcribe": 75,
+};
+
+/** GPT-Live 1 is billed on full session duration at $0.05/minute. */
+export const LIVE_MICROS_PER_SECOND: Record<string, number> = { "gpt-live-1": 50_000 / 60 };
 
 // ---------------------------------------------------------------------------
 // Per-function estimates, booked before the call and reconciled after
@@ -104,8 +112,14 @@ export interface FunctionSpend {
 }
 
 export const FUNCTION_SPEND: Record<string, FunctionSpend> = {
+  "live-ask-session": {
+    kind: "question", provider: "openai", model: "gpt-live-1", estimateMicros: 150_000,
+  },
+  "review-qc-photo": {
+    kind: "content", provider: "openai", model: "gpt-6.1-sol", estimateMicros: 20_000,
+  },
   "transcribe-description": {
-    kind: "content", provider: "openai", model: "whisper-1", estimateMicros: 18_000,
+    kind: "content", provider: "openai", model: "gpt-transcribe", estimateMicros: 13_500,
   },
   // 12k tokens in / 300 out on Claude = 2.7 cents, the exact figure the
   // investigation costed the runaway on.

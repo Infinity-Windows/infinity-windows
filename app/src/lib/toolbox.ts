@@ -15,6 +15,37 @@ import { localDateOf, pendingCompletionOf, toolboxRecordPaths, type ToolboxCompl
 const BUCKET = "toolbox-records";
 
 /**
+ * A generated illustration, plus reviewer state. Lives inside the existing
+ * `visual_aids_json` jsonb column (no migration: jsonb tolerates unknown
+ * keys, and every reader that doesn't know about these three just ignores
+ * them). `approved` is explicit-`false`-to-hide: a talk generated before this
+ * feature shipped has no `approved` key at all, and treating "absent" as
+ * "hidden" would blank out every illustration already on record. Only a
+ * FRESH or FRESHLY-REVISED illustration is born with `approved: false`.
+ */
+export interface ReviewableVisualAid extends TalkVisualAid {
+  approved?: boolean;
+  approvedBy?: string | null;
+  approvedAt?: string | null;
+}
+
+/**
+ * The illustrations crew are allowed to see: legacy aids (no `approved` key)
+ * and foreman-approved ones. A pending aid — `approved === false`, whether
+ * it's a brand-new generation or one a foreman sent back for revision — is
+ * invisible here even though it's still sitting in the database, which is
+ * the whole point of a reviewer-controlled editor. Used for on-screen
+ * rendering AND for what gets baked into the signed PDF / talk snapshot, so
+ * a crew member's signed record never contains an illustration a foreman
+ * hasn't signed off on.
+ */
+export function visibleVisualAids(talk: SafetyTalk): TalkVisualAid[] {
+  return (talk.visual_aids_json ?? []).filter(
+    (a) => (a as ReviewableVisualAid).approved !== false,
+  );
+}
+
+/**
  * How today's talk got onto somebody's record.
  *
  * 'self' is the real thing: they read it on their own phone, typed their name
@@ -200,7 +231,7 @@ export function talkSnapshot(talk: SafetyTalk): string {
     title: talk.title,
     body: talk.body,
     sections: talk.sections_json ?? null,
-    visual_aids: (talk.visual_aids_json ?? []).map((v) => v.prompt),
+    visual_aids: visibleVisualAids(talk).map((v) => v.prompt),
     talk_date: talk.talk_date,
   });
 }
@@ -332,7 +363,7 @@ export async function buildToolboxPdf(opts: {
     bullets(s.donts, "x");
   }
 
-  const aids = talk.visual_aids_json ?? [];
+  const aids = visibleVisualAids(talk);
   if (aids.length) {
     heading("Visual aids");
     for (const aid of aids) {
@@ -477,17 +508,38 @@ export async function signToolboxTalk(opts: {
   });
 }
 
-/** Ask the Edge Function to (re)generate rich educational content for a talk. */
+/**
+ * Ask the Edge Function to (re)generate rich educational content for a talk.
+ *
+ * The regen is safe to re-run on a talk a foreman has already curated: the
+ * function preserves any illustration marked `approved` and leaves hand-edited
+ * sections_json alone (see updateTalkSections's `edited` stamp) rather than
+ * silently overwriting either. `sections_locked` on the result tells the
+ * caller that happened, and `images` only counts freshly generated pictures,
+ * never ones kept as-is.
+ */
 export async function generateToolboxTalk(params: {
   talkId?: string;
   topic?: string;
-}): Promise<{ talk_id: string; title: string; images: number; aids: number }> {
+}): Promise<{
+  talk_id: string;
+  title: string;
+  images: number;
+  aids: number;
+  sections_locked?: boolean;
+}> {
   const { data, error } = await supabase.functions.invoke("generate-toolbox-talk", {
     body: { talk_id: params.talkId, topic: params.topic },
   });
   if (error) throw error;
   if (data?.error) throw new Error(String(data.error));
-  const result = data as { talk_id: string; title: string; images: number; aids: number };
+  const result = data as {
+    talk_id: string;
+    title: string;
+    images: number;
+    aids: number;
+    sections_locked?: boolean;
+  };
   // Web-push seam: when a lead publishes a BRAND-NEW toolbox talk (no talkId =
   // fresh topic), broadcast to every subscribed device so crew get pinged to
   // sign it before clock-in — even with the app closed. Regenerating an
@@ -505,11 +557,82 @@ export async function generateToolboxTalk(params: {
   return result;
 }
 
-/** Save foreman edits to a talk's structured content (kept editable by leads). */
+/**
+ * Save foreman edits to a talk's structured content (kept editable by leads).
+ *
+ * Stamps `edited: true` into the saved sections_json. That flag is the only
+ * thing standing between a foreman's hand-written wording and the next tap
+ * of "Generate educational content (AI)" — generate-toolbox-talk reads it and
+ * skips overwriting sections_json when it's set, exactly the same way an
+ * approved illustration survives a regen. Once a talk has been hand-edited,
+ * every later save here keeps re-stamping it, so it never un-locks itself.
+ */
 export async function updateTalkSections(
   talkId: string,
   patch: { title?: string; sections_json?: TalkSections; visual_aids_json?: TalkVisualAid[] },
 ): Promise<void> {
-  const { error } = await supabase.from("safety_talks").update(patch).eq("id", talkId);
+  const withLock = patch.sections_json
+    ? { ...patch, sections_json: { ...patch.sections_json, edited: true } as TalkSections }
+    : patch;
+  const { error } = await supabase.from("safety_talks").update(withLock).eq("id", talkId);
   if (error) throw error;
+}
+
+/**
+ * Foreman+ decides whether crew can see one generated illustration.
+ * Read-modify-write on the small `visual_aids_json` array — the same
+ * lightweight pattern `updateTalkSections` already uses on this table; a
+ * migration-backed RPC would be overbuilt for an array this size.
+ */
+export async function setVisualAidApproval(
+  talkId: string,
+  aidIndex: number,
+  approved: boolean,
+  approvedBy: string,
+): Promise<void> {
+  const { data, error } = await supabase
+    .from("safety_talks")
+    .select("visual_aids_json")
+    .eq("id", talkId)
+    .single();
+  if (error) throw error;
+  const aids = ((data?.visual_aids_json ?? []) as ReviewableVisualAid[]).slice();
+  if (!aids[aidIndex]) throw new Error("That illustration no longer exists on this talk.");
+  aids[aidIndex] = {
+    ...aids[aidIndex],
+    approved,
+    approvedBy: approved ? approvedBy : null,
+    approvedAt: approved ? new Date().toISOString() : null,
+  };
+  const { error: upErr } = await supabase
+    .from("safety_talks")
+    .update({ visual_aids_json: aids })
+    .eq("id", talkId);
+  if (upErr) throw upErr;
+}
+
+/**
+ * Foreman+ revises one illustration's prompt and asks for a fresh picture.
+ * Priced and gated as a single image (not the whole talk's estimate) via the
+ * Edge Function's `action: "illustration"` path. The replacement always
+ * comes back needing review — a changed image is a NEW image, never
+ * auto-approved just because the slot it's replacing was.
+ */
+export async function regenerateVisualAid(params: {
+  talkId: string;
+  aidIndex: number;
+  prompt: string;
+}): Promise<{ ok: boolean; url: string | null }> {
+  const { data, error } = await supabase.functions.invoke("generate-toolbox-talk", {
+    body: {
+      action: "illustration",
+      talk_id: params.talkId,
+      aid_index: params.aidIndex,
+      prompt: params.prompt.trim(),
+    },
+  });
+  if (error) throw error;
+  if (data?.error) throw new Error(String(data.error));
+  if (data?.ok === false) throw new Error("Couldn't generate that illustration. Try again.");
+  return data as { ok: boolean; url: string | null };
 }

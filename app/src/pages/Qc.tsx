@@ -12,11 +12,36 @@ import { openServiceCase } from "../lib/service";
 import { CATS, TERMS } from "../lib/glossary";
 import { pushToast, toastError } from "../lib/toast";
 import { SkeletonList } from "../components/ui/States";
+import { supabase } from "../lib/supabase";
 
 // listQcQueue's range is (0, limit-1) from the start, not an offset cursor —
 // so "load more" here just re-asks for a bigger limit rather than tracking a
 // page number. Simple, and matches how the query itself is built.
 const QC_PAGE_SIZE = 50;
+
+interface QcPhotoReview {
+  review: {
+    summary: string;
+    visible_checks: string[];
+    questions_for_foreman: string[];
+    limitation: string;
+  };
+  photoId: string;
+  photoCreatedAt: string;
+  openingId: string;
+}
+
+async function reviewQcPhoto(openingId: string): Promise<QcPhotoReview> {
+  const { data, error } = await supabase.functions.invoke("review-qc-photo", {
+    body: { openingId }, signal: AbortSignal.timeout(100_000),
+  });
+  if (error) throw error;
+  if (data?.error === "no_after_photo" || data?.error === "no_install_photo") {
+    throw new Error("Add an after-install photo to this opening before asking AI to review it.");
+  }
+  if (data?.error) throw new Error(String(data.note ?? data.error));
+  return data as QcPhotoReview;
+}
 
 export function Qc() {
   const queryClient = useQueryClient();
@@ -35,6 +60,18 @@ export function Qc() {
   // Which opening is mid-callback (awaiting a root-cause term), and the picked term.
   const [callbackFor, setCallbackFor] = useState<{ id: string; code: string } | null>(null);
   const [rootTerm, setRootTerm] = useState("");
+  const [photoReviewFor, setPhotoReviewFor] = useState<string | null>(null);
+  const [photoReview, setPhotoReview] = useState<QcPhotoReview | null>(null);
+  const [photoReviewError, setPhotoReviewError] = useState<string | null>(null);
+  const reviewPhoto = useMutation({
+    mutationFn: reviewQcPhoto,
+    onSuccess: (result) => { setPhotoReviewFor(result.openingId); setPhotoReview(result); setPhotoReviewError(null); },
+    onError: (error: Error, openingId) => {
+      setPhotoReviewFor(openingId);
+      setPhotoReview(null);
+      setPhotoReviewError(error.message);
+    },
+  });
   // After a callback is logged, offer to open a linked warranty/service case so
   // QC and after-service tracking don't diverge. Only offerable when the opening
   // is backed by a physical window unit (assigned_window_id).
@@ -175,6 +212,18 @@ export function Qc() {
                 )}
               </div>
               <div className="row-gap" style={{ marginLeft: "auto" }}>
+                <button
+                  className="button-like"
+                  disabled={reviewPhoto.isPending}
+                  onClick={() => {
+                    setPhotoReviewFor(o.id);
+                    setPhotoReview(null);
+                    setPhotoReviewError(null);
+                    reviewPhoto.mutate(o.id);
+                  }}
+                >
+                  {reviewPhoto.isPending && reviewPhoto.variables === o.id ? "Reviewing photo…" : "AI photo review"}
+                </button>
                 <button className="button-like qc-pass" onClick={() => decide.mutate({ id: o.id, status: "passed" })}>Pass ✓</button>
                 <button
                   className="button-like qc-callback"
@@ -186,6 +235,31 @@ export function Qc() {
                   Callback
                 </button>
               </div>
+              {photoReviewFor === o.id && (photoReview || photoReviewError) && (
+                <div className="detail-card" style={{ marginTop: 8, width: "100%" }}>
+                  <strong>Photo review suggestion</strong>
+                  {photoReviewError ? (
+                    <p className="muted">{photoReviewError} <Link to={`/projects/${o.project_id}/opening/${o.id}`}>Open this opening</Link></p>
+                  ) : photoReview && (
+                    <>
+                      <p>{photoReview.review.summary}</p>
+                      {photoReview.review.visible_checks.length > 0 && <>
+                        <strong>Visible details</strong>
+                        <ul>{photoReview.review.visible_checks.map((item, i) => <li key={i}>{item}</li>)}</ul>
+                      </>}
+                      {photoReview.review.questions_for_foreman.length > 0 && <>
+                        <strong>Check in person</strong>
+                        <ul>{photoReview.review.questions_for_foreman.map((item, i) => <li key={i}>{item}</li>)}</ul>
+                      </>}
+                      <p className="muted" style={{ fontSize: 12 }}>{photoReview.review.limitation}</p>
+                      <p className="muted" style={{ fontSize: 12 }}>
+                        Based on an after photo saved {new Date(photoReview.photoCreatedAt).toLocaleString()}.{" "}
+                        <Link to={`/projects/${o.project_id}/opening/${o.id}`}>Open the photo and full record</Link> before deciding.
+                      </p>
+                    </>
+                  )}
+                </div>
+              )}
               {callbackFor?.id === o.id && (
                 <div className="detail-card" style={{ marginTop: 8, width: "100%" }}>
                   <label className="field-label">Root-cause term (pushed to crew decks)</label>

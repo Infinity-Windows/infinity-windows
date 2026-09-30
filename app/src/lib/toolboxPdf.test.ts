@@ -127,4 +127,31 @@ describe("buildToolboxPdf", () => {
     const undrawable = [...drawn.join("")].filter((ch) => !charset.has(ch.codePointAt(0)!));
     expect(undrawable).toEqual([]);
   });
+
+  // Training illustration editor (2026-09-30): the signed PDF is the audit
+  // record of what the crew member actually saw, so an illustration a
+  // foreman hasn't approved must never reach it — even though it's still
+  // sitting in the talk's own visual_aids_json.
+  it("never draws an illustration still waiting on foreman review", async () => {
+    const aids: import("./toolbox").ReviewableVisualAid[] = [
+      { prompt: "Approved ladder diagram", approved: true },
+      { prompt: "Draft diagram, not reviewed yet", approved: false },
+    ];
+    const withPending = talk({
+      sections_json: { intro: "Face the ladder when climbing." },
+      visual_aids_json: aids,
+    });
+
+    const { drawn } = await drawnWhile(() =>
+      buildToolboxPdf({
+        talk: withPending,
+        typedName: "Ana Perez",
+        signatureDataUrl: SIGNATURE,
+        signedAt: new Date(2026, 8, 30, 7, 0),
+      }),
+    );
+
+    expect(drawn).toContain("Diagram: Approved ladder diagram");
+    expect(drawn.join(" ")).not.toContain("Draft diagram, not reviewed yet");
+  });
 });
