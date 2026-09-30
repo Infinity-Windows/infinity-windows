@@ -69,6 +69,7 @@ test("Ask actions clear the fixed composer on a Face ID phone", async ({ page })
   // inset so a fixed composer cannot cover the last action at max scroll.
   await page.addStyleTag({ content: ":root { --safe-bottom: 34px !important; }" });
   await expect(page.locator(".ask-dock")).toBeVisible();
+  await expect(page.locator(".ask-actions")).toBeVisible();
   const positions = await page.evaluate(() => {
     window.scrollTo({ top: document.scrollingElement!.scrollHeight, behavior: "instant" });
     return {
