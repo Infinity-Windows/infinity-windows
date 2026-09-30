@@ -86,10 +86,11 @@ export function Layout() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [captureOpen, setCaptureOpen] = useState(false);
 
-  // iOS browser chrome changes the *visible* viewport while scrolling. Its
-  // layout viewport can remain taller, leaving a fixed bar in the middle of
-  // what the worker sees. Keep the bar at the visual viewport's bottom and
-  // reserve the same space under the last Work action.
+  // Only the on-screen keyboard needs a visual-viewport correction. Safari's
+  // browser chrome also changes visualViewport while a page scrolls; applying
+  // that difference to the fixed tab bar lifted it into the middle of photos
+  // and Ask, leaving scrollable content underneath. With no editable focused,
+  // CSS bottom: 0 is the stable phone edge.
   useEffect(() => {
     const viewport = window.visualViewport;
     if (!viewport) return;
@@ -97,7 +98,16 @@ export function Layout() {
     const update = () => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
-        const inset = Math.max(0, window.innerHeight - viewport.offsetTop - viewport.height);
+        const focused = document.activeElement;
+        const editing = focused instanceof HTMLElement &&
+          (focused.matches("input, textarea") || focused.isContentEditable);
+        // Pinch zoom also shrinks visualViewport. That must never masquerade
+        // as a keyboard and move navigation over the page.
+        const keyboardOpen = editing && viewport.scale <= 1.05 &&
+          window.innerHeight - viewport.height > 120;
+        const inset = keyboardOpen
+          ? Math.max(0, window.innerHeight - viewport.offsetTop - viewport.height)
+          : 0;
         document.documentElement.style.setProperty("--visual-bottom-inset", `${Math.round(inset)}px`);
       });
     };
@@ -105,11 +115,15 @@ export function Layout() {
     viewport.addEventListener("resize", update);
     viewport.addEventListener("scroll", update);
     window.addEventListener("resize", update);
+    document.addEventListener("focusin", update);
+    document.addEventListener("focusout", update);
     return () => {
       cancelAnimationFrame(frame);
       viewport.removeEventListener("resize", update);
       viewport.removeEventListener("scroll", update);
       window.removeEventListener("resize", update);
+      document.removeEventListener("focusin", update);
+      document.removeEventListener("focusout", update);
       document.documentElement.style.removeProperty("--visual-bottom-inset");
     };
   }, []);

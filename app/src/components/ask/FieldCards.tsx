@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useFieldT as useT, type TKey } from "./fieldCatalog";
 import { openClockGlobally } from "../../lib/clockContext";
 import { guardedResolve, TimingPendingError, type FieldReceipt } from "../../lib/fieldAsk";
@@ -12,28 +12,36 @@ const time = (iso?: string) => (iso ? new Date(iso).toLocaleTimeString([], { hou
 export function FieldChecklist({ checklist }: { checklist: SetupChecklist }) {
   const t = useT();
   const rows = [...(checklist.job ?? []), ...(checklist.unit ?? [])].filter((i) => i.status !== "not_applicable");
-  if (!rows.length) return null;
   const open = rows.filter((i) => i.status === "missing").length;
+  // Open a new incomplete checklist once. Later answers must not snap it shut
+  // while someone is reading, and a manual collapse remains their choice.
+  const initiallyOpen = useRef(open > 0);
+  if (!rows.length) return null;
   return (
-    <section className="field-card field-checklist" aria-label={t("field.checklist")}>
-      <h3>{t("field.checklist")} · {open} {t("field.status.missing").toLowerCase()}</h3>
-      <p className="muted">{t("field.checklistHelp")}</p>
-      {/* K2.5: a checklist is not a receipt. Answers live with the
-          conversation until a save returns a receipt card. */}
-      <p className="field-status muted">{t("field.checklistKept")}</p>
-      <ul>
-        {rows.map((item: ChecklistItem) => (
-          <li key={item.key} className={`field-item field-${item.status}`}>
-            <span className="field-item-label">{t(`field.key.${item.key}` as TKey)}</span>
-            <span className="field-item-value">
-              {item.status === "captured" ? item.value : t(`field.status.${item.status}` as TKey)}
-              {item.from_plans ? ` · ${t("field.fromPlans")}` : ""}
-              {item.status === "missing" && item.required_before_timing ? ` · ${t("field.beforeTiming")}` : ""}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </section>
+    <details className="field-card field-checklist" aria-label={t("field.checklist")} open={initiallyOpen.current}>
+      <summary>
+        <span>{t("field.checklist")}</span>
+        <strong>{open} {t("field.status.missing").toLowerCase()}</strong>
+      </summary>
+      <div className="field-checklist-body">
+        <p className="muted">{t("field.checklistHelp")}</p>
+        {/* K2.5: a checklist is not a receipt. Answers live with the
+            conversation until a save returns a receipt card. */}
+        <p className="field-status muted">{t("field.checklistKept")}</p>
+        <ul>
+          {rows.map((item: ChecklistItem) => (
+            <li key={item.key} className={`field-item field-${item.status}`}>
+              <span className="field-item-label">{t(`field.key.${item.key}` as TKey)}</span>
+              <span className="field-item-value">
+                {item.status === "captured" ? item.value : t(`field.status.${item.status}` as TKey)}
+                {item.from_plans ? ` · ${t("field.fromPlans")}` : ""}
+                {item.status === "missing" && item.required_before_timing ? ` · ${t("field.beforeTiming")}` : ""}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </details>
   );
 }
 

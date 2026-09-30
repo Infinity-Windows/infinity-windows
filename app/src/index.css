@@ -5133,22 +5133,31 @@ button.clock-out {
 
 /* --- Ask Infinity chat --- */
 
+.ask-page {
+  max-width: 760px;
+}
+.ask-page .page-header {
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
 .ask-thread {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin: 8px 0 14px;
+  gap: 20px;
+  margin: 18px 0 22px;
 }
 
 .ask-bubble {
-  max-width: 82%;
+  max-width: min(90%, 620px);
   align-self: flex-start;
   background: var(--card-raised);
   border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 11px 13px;
-  font-size: 14px;
-  line-height: 1.5;
+  border-radius: 18px 18px 18px 5px;
+  padding: 14px 16px;
+  font-size: 16px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
 }
 
 .ask-bubble.mine {
@@ -5156,13 +5165,15 @@ button.clock-out {
   background: var(--accent);
   color: var(--ink);
   border-color: var(--accent);
+  border-radius: 18px 18px 5px 18px;
 }
 
 .ask-msg {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 4px;
+  gap: 8px;
+  width: 100%;
 }
 
 .ask-msg.mine {
@@ -5172,8 +5183,9 @@ button.clock-out {
 .ask-sources {
   margin: 0;
   padding: 0 4px;
-  font-size: 11.5px;
-  max-width: 82%;
+  font-size: 12px;
+  line-height: 1.45;
+  max-width: 90%;
 }
 
 /* Wave A4: the scheduling AI's plain progress trace ("Reading the week…"),
@@ -5181,9 +5193,11 @@ button.clock-out {
    below one, mirrored to the other side. */
 .ask-progress {
   margin: 0 0 2px;
-  padding: 0 4px;
-  font-size: 11.5px;
-  max-width: 82%;
+  padding: 2px 0 2px 10px;
+  border-left: 2px solid var(--accent-line);
+  font-size: 12px;
+  line-height: 1.4;
+  max-width: 90%;
   display: flex;
   flex-direction: column;
   gap: 1px;
@@ -5192,7 +5206,7 @@ button.clock-out {
 /* The other two answers the brain found. A keyword search is sometimes wrong,
    so the installer gets to pick rather than being handed one answer as gospel. */
 .ask-alternates {
-  max-width: 82%;
+  max-width: 90%;
   padding: 0 4px;
 }
 
@@ -5311,7 +5325,7 @@ button.clock-out {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
-  margin-bottom: 12px;
+  margin-bottom: 0;
 }
 .ask-card {
   min-height: 56px;
@@ -5324,7 +5338,9 @@ button.clock-out {
   font-weight: 600;
   text-align: left;
   cursor: pointer;
+  transition: background var(--motion), border-color var(--motion);
 }
+.ask-card:hover { background: var(--card-hot); border-color: var(--accent-line); }
 .ask-card-primary {
   border: 2px solid var(--accent);
   font-weight: 700;
@@ -5337,7 +5353,7 @@ button.clock-out {
    button; the × is a 44 px chip so a gloved thumb can hit it. */
 .ask-tag { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; font-size: 16px; }
 .ask-tag .chip { min-width: 44px; min-height: 44px; font-size: 18px; }
-.ask-all-actions { margin-bottom: 12px; }
+.ask-all-actions { margin: 0; }
 .ask-all-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .ask-all-list { list-style: none; margin: 8px 0 0; padding: 0; }
 .ask-all-row { padding: 10px 0; border-top: 1px solid var(--border); }
@@ -5352,6 +5368,48 @@ button.clock-out {
   gap: 8px;
   align-items: center;
 }
+
+.ask-page .field-checklist {
+  width: min(100%, 620px);
+  padding: 0;
+  overflow: hidden;
+}
+.field-checklist summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 56px;
+  padding: 12px 16px;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 650;
+  list-style: none;
+}
+.field-checklist summary::-webkit-details-marker { display: none; }
+.field-checklist summary::after {
+  content: "⌄";
+  color: var(--muted);
+  font-size: 20px;
+  line-height: 1;
+  order: 2;
+}
+.field-checklist[open] summary::after { transform: rotate(180deg); }
+.field-checklist summary strong {
+  margin-left: auto;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.field-checklist-body {
+  padding: 0 16px 14px;
+  border-top: 1px solid var(--border);
+}
+.field-checklist .field-item { align-items: start; }
+.field-checklist .field-item-label,
+.field-checklist .field-item-value { min-width: 0; }
+.field-checklist .field-item-value { overflow-wrap: anywhere; }
 
 .ask-input input {
   margin-bottom: 0;
@@ -5447,11 +5505,96 @@ button.clock-out {
   align-items: center;
   gap: 6px;
   min-height: 48px;
-  margin-bottom: 8px;
+  margin-bottom: 0;
   padding: 0 16px;
   border-radius: 999px;
   font-size: 16px;
   font-weight: 600;
+}
+.ask-actions {
+  margin: 22px 0 14px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--card);
+}
+.ask-actions-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.ask-actions-toggle,
+.ask-new-setup {
+  min-height: 48px;
+  border-radius: 12px;
+  font-size: 14px;
+}
+.ask-new-setup {
+  padding: 0 14px;
+  color: var(--accent);
+  border: 1px solid var(--accent-line);
+  background: var(--accent-soft);
+}
+.ask-actions:has(.ask-actions-toggle[aria-expanded="false"]) .ask-actions-head { margin-bottom: 0; }
+.ask-page .ask-dock:not(.is-pinned) {
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--card);
+}
+.ask-page .ask-input input {
+  min-width: 0;
+  min-height: 52px;
+  border-radius: 12px;
+}
+@media (max-width: 420px) {
+  .ask-page .field-item { flex-wrap: wrap; gap: 3px; }
+  .ask-page .field-item-value { text-align: left; }
+  .ask-page .ask-card { font-size: 14px; }
+}
+/* The composer is the primary control on a phone. Keep it available while
+   reading a long answer or checklist; the conversation and actions scroll
+   behind it, with enough end clearance to reach the final control. */
+@media (max-width: 859px) {
+  .ask-page { padding-bottom: 154px; }
+  .ask-page .ask-dock,
+  .ask-page .ask-dock.is-pinned {
+    position: fixed;
+    left: 50%;
+    bottom: calc(var(--above-tabbar) + var(--visual-bottom-inset, 0px) + 22px);
+    width: min(calc(100vw - 32px), 728px);
+    margin: 0;
+    padding: 8px;
+    transform: translateX(-50%);
+    z-index: 49;
+  }
+  .ask-page .ask-jump-row {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: calc(var(--above-tabbar) + var(--visual-bottom-inset, 0px) + 100px);
+  }
+}
+:root[data-display-layout="phone"] .ask-page { padding-bottom: 154px; }
+:root[data-display-layout="phone"] .ask-page .ask-dock,
+:root[data-display-layout="phone"] .ask-page .ask-dock.is-pinned {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--above-tabbar) + var(--visual-bottom-inset, 0px) + 22px);
+  width: min(calc(100vw - 32px), 608px);
+  margin: 0;
+  padding: 8px;
+  transform: translateX(-50%);
+  z-index: 49;
+}
+:root[data-display-layout="phone"] .ask-page .ask-jump-row {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--above-tabbar) + var(--visual-bottom-inset, 0px) + 100px);
 }
 /* "New message": a zero-height sticky row, so it takes no room at the end of
    the page; the button hangs just above it (or above the pinned recorder). */
