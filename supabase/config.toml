@@ -99,6 +99,10 @@ verify_jwt = true
 # Off until LIVE_ASK_ENABLED=true and the pilot build flag is enabled.
 verify_jwt = true
 
+[functions.live-ask-expiry]
+# Parameterless due-only cron target. It cannot choose which session to end.
+verify_jwt = false
+
 [functions.crew-reminder-sweep]
 # Parameterless, due-only, leased reminder delivery; no caller-controlled input.
 verify_jwt = false

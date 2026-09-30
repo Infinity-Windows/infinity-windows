@@ -39,7 +39,7 @@ vi.mock("../lib/useEffectiveRole", () => ({
 }));
 vi.mock("../lib/customWork/api", () => ({ listWorkSessions: async () => [], listWorkUnits: async () => [] }));
 vi.mock("../lib/api", () => ({ listProjects: async () => [{ id: JOB, job_code: "SMITH", name: "Smith Residence" }] }));
-vi.mock("../lib/signedIn", () => ({ signedInEmail: () => "ana@example.test", rememberSignedIn: () => {} }));
+vi.mock("../lib/signedIn", () => ({ signedInEmail: () => "ana@example.test", signedInUserId: () => "ana", subscribeSignedIn: () => () => {}, rememberSignedIn: () => {} }));
 vi.mock("../lib/useAskSessionActor", () => ({ useAskSessionActor: () => USER }));
 vi.mock("../components/hexPortal/LearningPanel", () => ({ LearningPanel: () => null }));
 vi.mock("../components/hexPortal/LearningCard", () => ({ LearningCard: () => null }));

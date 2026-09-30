@@ -1,15 +1,17 @@
 import type { LiveEndReason, LiveStatus } from "./liveAskSession";
 
 /**
- * Live Ask is a gated pilot. It shows only in a build made with
- * VITE_LIVE_ASK_PILOT=true AND only works once the server's own switch is on
+ * Live Ask is a gated pilot. Production builds expose the entry point to
+ * the real owner; VITE_LIVE_ASK_PILOT=false is the emergency build switch.
+ * A session only works once the server's own switch is on
  * (live-ask-session: LIVE_ASK_ENABLED and its OpenAI credential).
  * The Ask page also limits the button to the real owner account, and the
  * server repeats that check. No crew announcement goes out until the pilot
  * is verified end to end.
  */
 export function liveAskPilotEnabled(env: Record<string, unknown> = import.meta.env): boolean {
-  return env.VITE_LIVE_ASK_PILOT === "true";
+  if (env.VITE_LIVE_ASK_PILOT === "false") return false;
+  return env.VITE_LIVE_ASK_PILOT === "true" || env.PROD === true;
 }
 
 // The strings live beside the feature, not in the shared field catalog, while
@@ -24,6 +26,7 @@ const EN = {
   ended: "Live conversation ended.",
   endedCap: "Live conversation ended at the time limit. Tap Start to talk again.",
   endedAccount: "Live conversation ended because the signed-in account changed.",
+  endedBackground: "Live conversation ended when this phone went to the background. Tap Start to talk again.",
   failed: "Live conversation stopped. Anything already said is saved or kept on this phone. Tap Start to try again.",
   notConfigured: "Live conversation isn't turned on for Forge yet. Use the microphone button instead.",
   limit: "Live conversation isn't available — the AI limit for today or this month is reached.",
@@ -43,6 +46,7 @@ const ES: Record<Key, string> = {
   ended: "Conversación en vivo terminada.",
   endedCap: "La conversación en vivo llegó al límite de tiempo. Toca Iniciar para hablar otra vez.",
   endedAccount: "La conversación en vivo terminó porque cambió la cuenta.",
+  endedBackground: "La conversación en vivo terminó al salir de esta pantalla. Toca Iniciar para hablar otra vez.",
   failed: "La conversación en vivo se detuvo. Lo ya dicho está guardado o en este teléfono. Toca Iniciar para intentarlo otra vez.",
   notConfigured: "La conversación en vivo todavía no está activada en Forge. Usa el botón del micrófono.",
   limit: "La conversación en vivo no está disponible — se alcanzó el límite de IA de hoy o del mes.",
@@ -64,7 +68,7 @@ export function liveStatusLine(es: boolean, status: LiveStatus, detail?: LiveEnd
     case "live": return liveText(es, "live");
     case "unstable": return liveText(es, "unstable");
     case "ended":
-      return liveText(es, detail === "cap" ? "endedCap" : detail === "account" ? "endedAccount" : "ended");
+      return liveText(es, detail === "cap" ? "endedCap" : detail === "account" ? "endedAccount" : detail === "background" ? "endedBackground" : "ended");
     case "failed":
       switch (detail) {
         case "live_not_configured": return liveText(es, "notConfigured");

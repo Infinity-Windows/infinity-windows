@@ -25,6 +25,7 @@ function rig(opts: { exchange?: LiveDeps["exchange"]; micDelay?: Promise<void> }
   let segment = 0;
   const recorder = { cut: vi.fn(async () => new Blob([`seg-${++segment}`], { type: "audio/webm" })), stop: vi.fn() };
   const timers: { fn: () => void; ms: number; live: boolean }[] = [];
+  let hidden: (() => void) | null = null;
   const played: (MediaStream | null)[] = [];
   const exchange = vi.fn(opts.exchange ?? (async () => ({ sdp: "v=0 answer", maxSeconds: 180 })));
   const deps: LiveDeps = {
@@ -35,6 +36,7 @@ function rig(opts: { exchange?: LiveDeps["exchange"]; micDelay?: Promise<void> }
     playRemote: (s) => { played.push(s); },
     setTimer: (fn, ms) => { const t = { fn, ms, live: true }; timers.push(t); return t; },
     clearTimer: (h) => { (h as { live: boolean }).live = false; },
+    watchPageHidden: (fn) => { hidden = fn; return () => { hidden = null; }; },
   };
   const statuses: [LiveStatus, string | undefined][] = [];
   const handleTurn = vi.fn(async (turn: { itemId: string; audio: Blob | null }) => `RESULT for ${turn.itemId} (${turn.audio ? await turn.audio.text() : "no audio"})`);
@@ -42,7 +44,7 @@ function rig(opts: { exchange?: LiveDeps["exchange"]; micDelay?: Promise<void> }
   const connect = (state: string) => { pc.connectionState = state; pc.onconnectionstatechange?.(); };
   const flush = async () => { for (let i = 0; i < 10; i++) await Promise.resolve(); };
   const session = startLiveSession({ deps, onStatus: (s, d) => statuses.push([s, d]), handleTurn, notHeard: () => "NOT HEARD" });
-  return { session, track, channel, pc, recorder, timers, played, exchange, sent, statuses, handleTurn, emit, connect, flush };
+  return { session, track, channel, pc, recorder, timers, played, exchange, sent, statuses, handleTurn, emit, connect, flush, hide: () => hidden?.() };
 }
 
 const started = { type: "session.started", session: { id: "live-test" } };
@@ -131,6 +133,18 @@ describe("startLiveSession", () => {
     expect(JSON.parse(r.sent.at(-1)!)).toEqual({ type: "session.close" });
   });
 
+  it("closes the microphone and provider session before a phone backgrounds", async () => {
+    const r = rig();
+    await r.flush();
+    r.emit(started);
+    r.hide();
+    expect(r.statuses.at(-1)).toEqual(["ended", "background"]);
+    expect(r.track.stop).toHaveBeenCalled();
+    expect(JSON.parse(r.sent.at(-1)!)).toEqual({ type: "session.close" });
+    r.hide();
+    expect(r.sent).toHaveLength(1);
+  });
+
   it("rides out a blip, and ends (no paid auto-reconnect) when the connection fails", async () => {
     const r = rig();
     await r.flush();
@@ -167,10 +181,12 @@ describe("startLiveSession", () => {
 });
 
 describe("liveAskPilot", () => {
-  it("is off unless the build turns it on", () => {
+  it("exposes the owner pilot in production, with a build-time stop switch", () => {
     expect(liveAskPilotEnabled({})).toBe(false);
     expect(liveAskPilotEnabled({ VITE_LIVE_ASK_PILOT: "1" })).toBe(false);
     expect(liveAskPilotEnabled({ VITE_LIVE_ASK_PILOT: "true" })).toBe(true);
+    expect(liveAskPilotEnabled({ PROD: true })).toBe(true);
+    expect(liveAskPilotEnabled({ PROD: true, VITE_LIVE_ASK_PILOT: "false" })).toBe(false);
   });
 
   it("explains every way a session ends, in English and Spanish", () => {

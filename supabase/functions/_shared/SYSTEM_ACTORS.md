@@ -33,3 +33,7 @@ bullet. Keep that shape.
 - `crew-reminder-sweep` — parameterless one-minute cron target. SQL decides
   due lunch breaks and committed time-off notices; leases serialize delivery.
   No request body, recipient or message is accepted (`verify_jwt = false`).
+- `live-ask-expiry` — parameterless one-minute cron target. It can only hang up
+  provider sessions whose server-recorded three-minute deadline has passed.
+  It accepts no session ID or other request data; repeat calls only retry a
+  due hangup (`verify_jwt = false`).

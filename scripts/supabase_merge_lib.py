@@ -443,6 +443,7 @@ def auth_dependent_tables(schema: Schema) -> list[str]:
 #: Every table the migrations declare has an entry; `test_supabase_merge.py`
 #: fails if a new migration adds a table and leaves it out.
 DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
+    "live_ask_provider_sessions": ("id",),  # provider-issued identity, not a per-project UUID
     "hex_portal_cases": None,
     "hex_portal_outcomes": None,
     "hex_portal_guidance_flags": ("guidance_id", "revision"),
