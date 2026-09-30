@@ -206,6 +206,11 @@ function PwaUpdateBanner() {
     needRefresh: [needRefresh, setNeedRefresh],
     updateServiceWorker,
   } = useRegisterSW({
+    // This component owns the one reload on controllerchange, with a timed
+    // fallback if that event was missed. Workbox also reloads on `controlling`
+    // unless this callback is supplied; two reloads can abort the new shell's
+    // module imports and leave the screen blank during an update.
+    onNeedReload: () => undefined,
     onRegisteredSW(_swUrl, reg) {
       registration.current = reg ?? null;
       // The first check may already have run and found no registration. If

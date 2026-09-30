@@ -20,14 +20,16 @@ import { claimOverlay, claimSafeSurface, resetSafeSurface } from "../../lib/pwa/
 
 const pwa = vi.hoisted(() => ({
   registered: null as null | ((url: string, reg: unknown) => void),
+  onNeedReload: null as null | (() => void),
   setNeedRefresh: null as null | ((value: boolean) => void),
   updateServiceWorker: (() => Promise.resolve()) as (reload?: boolean) => Promise<void>,
 }));
 vi.mock("virtual:pwa-register/react", async () => {
   const React = await import("react");
   return {
-    useRegisterSW: (options: { onRegisteredSW: (url: string, reg: unknown) => void }) => {
+    useRegisterSW: (options: { onRegisteredSW: (url: string, reg: unknown) => void; onNeedReload?: () => void }) => {
       pwa.registered = options.onRegisteredSW;
+      pwa.onNeedReload = options.onNeedReload ?? null;
       const [needRefresh, setNeedRefresh] = React.useState(false);
       pwa.setNeedRefresh = setNeedRefresh;
       return {
@@ -695,6 +697,10 @@ describe("finishing the switch (2026-09-25: Refresh seven times, banner every ti
     await mount();
     expect(updateServiceWorker).toHaveBeenCalledWith(true);
     expect(worker.postMessage).toHaveBeenCalledWith({ type: "SKIP_WAITING" });
+    expect(reload.count).toBe(0);
+    // Workbox's own controlling callback must not cause a competing reload.
+    expect(pwa.onNeedReload).toBeTypeOf("function");
+    pwa.onNeedReload?.();
     expect(reload.count).toBe(0);
     await controllerChanged();
     expect(reload.count).toBe(1);

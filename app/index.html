@@ -23,6 +23,39 @@
         if (meta) meta.setAttribute("content", dark ? "#1a1512" : "#f6f1ea");
       } catch (e) {}
     </script>
+    <script>
+      // The module entry can be cancelled during a service-worker takeover,
+      // before React or its error handler can run. Recover an empty shell once
+      // after the browser finishes loading; queued work lives in IndexedDB.
+      window.addEventListener("load", function () {
+        window.setTimeout(function () {
+          var root = document.getElementById("root");
+          if (!root || document.documentElement.dataset.forgeBootStarted === "1" ||
+              root.childElementCount > 0 || root.textContent.trim()) return;
+          var entry = document.querySelector('script[type="module"][src]');
+          var key = "wops-empty-boot-retry:" + (entry ? entry.getAttribute("src") : "unknown");
+          var now = Date.now();
+          var last = 0;
+          try {
+            last = Number(sessionStorage.getItem(key) || 0);
+            if (now - last > 60000) {
+              sessionStorage.setItem(key, String(now));
+              window.location.reload();
+              return;
+            }
+          } catch (e) {
+            // Storage can be unavailable in private browsing. Offer a retry.
+          }
+          var message = document.createElement("p");
+          message.textContent = "Forge couldn't finish opening.";
+          var retry = document.createElement("button");
+          retry.type = "button";
+          retry.textContent = "Try again";
+          retry.onclick = function () { window.location.reload(); };
+          root.append(message, retry);
+        }, 8000);
+      });
+    </script>
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Forge Windows" />

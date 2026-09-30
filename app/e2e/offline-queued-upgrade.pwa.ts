@@ -25,8 +25,15 @@ async function seedPhoto(page: Page) {
   // already saved on the phone keeps its exact bytes and owner through update.
   await page.evaluate(async ({ id, email, project, png }) => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open("wops-write-outbox", 1);
-      request.onupgradeneeded = () => request.result.createObjectStore("entries", { keyPath: "id" });
+      // The old app has already opened this database. Let the browser use
+      // its current schema, whether that old build used v1 or v2. The
+      // separate v1 recovery spec covers the actual schema migration.
+      const request = indexedDB.open("wops-write-outbox");
+      request.onupgradeneeded = () => {
+        if (!request.result.objectStoreNames.contains("entries")) {
+          request.result.createObjectStore("entries", { keyPath: "id" });
+        }
+      };
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });
