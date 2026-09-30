@@ -1,9 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
-import { useSupabaseFixtures, TEST_USER } from "./support/supabaseFixtures";
+import { useSupabaseFixtures as installSupabaseFixtures, TEST_USER } from "./support/supabaseFixtures";
 import { json, hideWrongProjectBanner } from "./support/specHelpers";
 
-async function useTimeConflictFixtures(page: Page, secondStart: string, secondEnd: string | null = "17:00:00") {
-  await useSupabaseFixtures(page, { role: "supervisor" });
+async function installConflictFixtures(page: Page, secondStart: string, secondEnd: string | null = "17:00:00") {
+  await installSupabaseFixtures(page, { role: "supervisor" });
   await hideWrongProjectBanner(page);
   const day = new Date().toLocaleDateString("en-CA");
   const project = { id: "fixture-job", job_code: "TIME-TEST", name: "Fixture job" };
@@ -27,7 +27,7 @@ async function useTimeConflictFixtures(page: Page, secondStart: string, secondEn
 
 for (const start of ["13:00:00", "12:00:00"]) {
   test(`same-day shifts beginning ${start} after a noon finish have no conflict banner or publish warning`, async ({ page }) => {
-    await useTimeConflictFixtures(page, start);
+    await installConflictFixtures(page, start);
     await expect(page.locator(".sched-conflict-banner")).toHaveCount(0);
     await page.getByRole("button", { name: /Review & publish/i }).click();
     await expect(page.getByText(/Heads-up: .*double-booked/)).toHaveCount(0);
@@ -36,7 +36,7 @@ for (const start of ["13:00:00", "12:00:00"]) {
 }
 
 test("overlapping shifts warn; changing the editor time to the boundary clears its warning", async ({ page }) => {
-  await useTimeConflictFixtures(page, "11:00:00");
+  await installConflictFixtures(page, "11:00:00");
   await expect(page.locator(".sched-conflict-banner")).toContainText("1 double-booking");
   await page.locator(".sched-conflict-banner").getByRole("button", { name: "Fix", exact: true }).click();
   const dialog = page.getByRole("dialog");
