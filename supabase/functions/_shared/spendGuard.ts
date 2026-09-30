@@ -47,11 +47,9 @@ export interface TokenUsage {
 // ---------------------------------------------------------------------------
 // Prices
 // ---------------------------------------------------------------------------
-// Micro-dollars (millionths of a dollar) per token, so the interesting small
-// numbers survive: synthesising tips for one window type costs $0.0009, which
-// rounds to zero in cents. Figures from docs/ask-infinity-token-free.md Part 5,
-// checked 29 July 2026. Claude's $2/$10 is introductory until 31 Aug 2026 and
-// becomes $3/$15 — update the two numbers here when it does; nothing else moves.
+// Micro-dollars (millionths of a dollar) per token, so small costs survive.
+// Anthropic made Sonnet 5's $2/$10 per million-token pricing permanent on
+// 10 Aug 2026; checked against its model docs on 30 Sep 2026.
 interface ModelPrice {
   inPerToken: number;
   outPerToken: number;

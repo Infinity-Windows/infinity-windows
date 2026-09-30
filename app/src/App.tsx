@@ -89,7 +89,6 @@ const Schedule = lazyRoute(() => import("./pages/work/Schedule").then((m) => ({ 
 // needs at 6 AM with no signal — it is precached like every other route, and
 // the two write-recovery screens (StuckWrites, Diagnostics) stay eager.
 const Settings = lazyRoute(() => import("./pages/Settings").then((m) => ({ default: m.Settings })));
-const AskInfinity = lazyRoute(() => import("./pages/AskInfinity").then((m) => ({ default: m.AskInfinity })));
 const AskMisses = lazyRoute(() => import("./pages/AskMisses").then((m) => ({ default: m.AskMisses })));
 const Knowledge = lazyRoute(() => import("./pages/Knowledge").then((m) => ({ default: m.Knowledge })));
 const AiSpend = lazyRoute(() => import("./pages/AiSpend").then((m) => ({ default: m.AiSpend })));
@@ -676,7 +675,7 @@ export default function App() {
             <Route path="/warehouse" element={<Warehouse />} />
             {/* One list per hub number: /warehouse/on-hand, /putaway, /staged,
                 /damaged. Anything else redirects back to the hub. */}
-            <Route path="/ask" element={<AskInfinity />} />
+            <Route path="/ask" element={null} />
             <Route
               path="/ask-misses"
               element={

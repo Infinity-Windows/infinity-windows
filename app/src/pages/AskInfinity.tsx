@@ -60,6 +60,16 @@ import { startLiveSession, type LiveEndReason, type LiveSession, type LiveStatus
 import { liveCommentary, type LiveTurnOutcome } from "../lib/liveAskCommentary";
 import { liveAskPilotEnabled, liveStatusLine, liveText } from "../lib/liveAskPilot";
 
+export interface LiveAskShellState {
+  status: LiveStatus;
+  detail?: LiveEndReason | string;
+  saving: boolean;
+  needsClock: boolean;
+  muted: boolean;
+  expiring: boolean;
+}
+export interface LiveAskShellControls { end(): void; toggleMute(): void }
+
 // Every cached screen a field receipt may have changed (see FIELD_QUERY_ROOTS).
 const refreshFieldViews = () => { for (const root of FIELD_QUERY_ROOTS) void queryClient.invalidateQueries({ queryKey: [root] }); };
 
@@ -204,7 +214,11 @@ function MemoPlayback({ path }: { path: string }) {
   );
 }
 
-export function AskInfinity() {
+export function AskInfinity({ active = true, onLiveState, registerLiveControls }: {
+  active?: boolean;
+  onLiveState?: (state: LiveAskShellState) => void;
+  registerLiveControls?: (controls: LiveAskShellControls | null) => void;
+} = {}) {
   const t = useT();
   const es = useLanguage().lang === "es";
   const profile = useQuery({queryKey:["myRealProfile"],queryFn:getRealProfile});
@@ -266,8 +280,28 @@ export function AskInfinity() {
   const [live, setLive] = useState<{ status: LiveStatus; detail?: LiveEndReason | string }>({ status: "idle" });
   const liveRef = useRef<LiveSession | null>(null);
   const liveOn = live.status === "starting" || live.status === "live" || live.status === "unstable";
+  const [liveMuted, setLiveMuted] = useState(false);
+  const [liveExpiring, setLiveExpiring] = useState(false);
   /** Live turns cut from the microphone and not yet sent or kept on the phone. */
   const [liveSaving, setLiveSaving] = useState(0);
+  const needsClock = messages.some((m) => m.field?.receipts.some((r) =>
+    r.status === "needs_choice" && (r.reason === "wrong_job" || r.reason === "needs_clock")));
+  useEffect(() => {
+    onLiveState?.({ status: live.status, detail: live.detail, saving: liveSaving > 0, needsClock, muted: liveMuted, expiring: liveExpiring });
+  }, [live.status, live.detail, liveSaving, needsClock, liveMuted, liveExpiring, onLiveState]);
+  useEffect(() => {
+    if (!registerLiveControls) return;
+    registerLiveControls({
+      end: () => liveRef.current?.end("user"),
+      toggleMute: () => {
+        const session = liveRef.current;
+        if (!session) return;
+        session.setMuted(!session.muted);
+        setLiveMuted(session.muted);
+      },
+    });
+    return () => registerLiveControls(null);
+  }, [registerLiveControls]);
   /** While the microphone is on — asking, recording, saving, writing it out —
    * the composer is the recorder and is pinned to the bottom of the screen
    * (see the dock below). Read through a ref by effects that measure it. */
@@ -426,6 +460,7 @@ export function AskInfinity() {
   // `state` object each time React Router delivers one), so re-rendering
   // this page for any other reason never stomps on something typed since.
   useEffect(() => {
+    if (!active) return;
     const state = location.state as { seed?: string; askContext?: unknown } | null;
     const seed = state?.seed;
     if (typeof seed === "string" && seed) setInput(seed);
@@ -433,7 +468,10 @@ export function AskInfinity() {
     // server's own reader, so a malformed one is no tag rather than a bad id.
     const context = contextTagFromInput(state?.askContext);
     if (context) setTag(context);
-  }, [location.state]);
+  }, [location.state, active]);
+  // A tag from a prior unit must not silently follow a worker across Work or
+  // Schedule. New context can be supplied on the next visit to Ask.
+  useEffect(() => { if (!active) setTag(null); }, [active]);
 
   // Freshen the bundled catalog whenever there is signal. The brain answers
   // fine without this ever succeeding.
@@ -458,6 +496,7 @@ export function AskInfinity() {
   // answer, keeps their place: the "New message" button offers it instead.
   const seen = useRef<{ newest: ChatMsg; count: number } | null>(null);
   useLayoutEffect(() => {
+    if (!active) return;
     const before = seen.current;
     const newest = messages[messages.length - 1];
     seen.current = { newest, count: messages.length };
@@ -484,10 +523,10 @@ export function AskInfinity() {
     }
     setJump(null);
     scrollPageBy(delta);
-  }, [messages]);
+  }, [messages, active]);
   // The button goes once the new message is on screen, however it got there.
   useEffect(() => {
-    if (!jump) return;
+    if (!active || !jump) return;
     let frame = 0;
     const onScroll = () => {
       cancelAnimationFrame(frame);
@@ -499,7 +538,7 @@ export function AskInfinity() {
     };
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => { window.removeEventListener("scroll", onScroll); cancelAnimationFrame(frame); };
-  }, [jump]);
+  }, [jump, active]);
   const jumpToLatest = () => {
     setJump(null);
     const band = visibleBand(pinnedRef.current ? dockRef.current : null);
@@ -826,7 +865,10 @@ export function AskInfinity() {
     const audio = turn.audio;
     setLiveSaving((n) => n + 1);
     try {
-      const meta = await fieldMeta("voice", pressSend());
+      // A worker may have changed the job clock on another Forge screen
+      // during this same call. Bind this utterance to the current version.
+      const clockVersion = await readClockVersion();
+      const meta = await fieldMeta("voice", { requestId: crypto.randomUUID(), sentAt: new Date().toISOString(), clockVersion });
       if (!meta || meta.actor_id !== uid || !isCurrent(g)) return say({ kind: "other_account" });
       let reply: Promise<ChatMsg | null> = Promise.resolve(null);
       const result = await runVoiceSteps({
@@ -867,19 +909,22 @@ export function AskInfinity() {
     const typing = document.activeElement;
     if (isTextEntry(typing)) typing.blur();
     readClockNow(g);
+    setLiveMuted(false); setLiveExpiring(false);
     setLive({ status: "starting" });
     const session: LiveSession = startLiveSession({
       onStatus: (status, detail) => {
         if (liveRef.current !== session) return;
-        if (status === "ended" || status === "failed") liveRef.current = null;
+        if (status === "ended" || status === "failed") { liveRef.current = null; setLiveMuted(false); setLiveExpiring(false); }
         setLive({ status, detail });
       },
       handleTurn: (turn) => liveTurn(turn, g, uid),
       notHeard: () => liveCommentary("", { kind: "not_heard" }),
+      onTimeLimitSoon: () => setLiveExpiring(true),
     });
     liveRef.current = session;
   };
-  // Leaving Ask ends the conversation: microphone, speaker and connection.
+  // Only a real shell unmount ends the conversation. Route changes keep this
+  // component mounted so the same microphone and paid session survive.
   useEffect(() => () => liveRef.current?.end("unmount"), []);
   const heldUrl = useMemo(() => (held ? URL.createObjectURL(held.blob) : null), [held]);
   useEffect(() => () => { if (heldUrl) URL.revokeObjectURL(heldUrl); }, [heldUrl]);

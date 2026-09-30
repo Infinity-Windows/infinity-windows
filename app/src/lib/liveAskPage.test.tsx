@@ -5,7 +5,7 @@
 // request — and that request is an ordinary VOICE request bound to the
 // signed-in account, answered through the same send() as push-to-talk. Words
 // with no recording are never sent. The live conversation ends with the
-// account and with the page, and push-to-talk stays as it was.
+// account or a real unmount, while same-app navigation keeps it alive.
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -89,9 +89,9 @@ import { AskInfinity } from "../pages/AskInfinity";
 let root: Root | null = null;
 let host: HTMLDivElement | null = null;
 const settle = async () => { for (let i = 0; i < 8; i += 1) await act(async () => { await new Promise((r) => setTimeout(r, 0)); }); };
-const render = () => root!.render(
+const render = (active = true) => root!.render(
   <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-    <MemoryRouter><AskInfinity /></MemoryRouter>
+    <MemoryRouter><AskInfinity active={active} /></MemoryRouter>
   </QueryClientProvider>,
 );
 const mount = async () => {
@@ -127,6 +127,19 @@ afterEach(() => {
 });
 
 describe("Live Ask on the Ask page", () => {
+  it("keeps one live session when the shell hides Ask to show another screen", async () => {
+    await mount();
+    await startLive();
+    const live = state.live!;
+    await act(async () => render(false));
+    await settle();
+    expect(state.live).toBe(live);
+    expect(live.end).not.toHaveBeenCalled();
+    await act(async () => render(true));
+    await settle();
+    expect(state.live).toBe(live);
+    expect(live.end).not.toHaveBeenCalled();
+  });
   it("is not offered unless the pilot is on", async () => {
     state.pilot = false;
     await mount();
