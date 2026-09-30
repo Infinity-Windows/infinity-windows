@@ -31,6 +31,7 @@ import {
   type OpHandlers,
   type OutboxEntry,
 } from "./outbox-core";
+import { readPhotoBytes } from "./readPhotoBytes";
 
 /**
  * The client a set of handlers sends through. The runtime hands in one bound
@@ -537,7 +538,7 @@ export function createSupabaseHandlers(
     let uploadBody: Blob | ArrayBuffer = blob;
     if (isPhoto && blob.size <= 25 * 1024 * 1024) {
       try {
-        uploadBody = await blob.arrayBuffer();
+        uploadBody = await readPhotoBytes(blob, ctx.signal);
       } catch (err) {
         // A WebKit read can fail under temporary memory pressure. Retain the
         // original Blob and retry; only a completed empty/short read proves

@@ -36,7 +36,7 @@ export function recoverTransportFailedPhoto(entry: OutboxEntry, now: number): Ou
   if (entry.status !== "failed" || !entry.hasBlob ||
       !(entry.op === "issue_photo_upload" ||
         (entry.op === "photo_upload" && uploadKind(entry) === "photo")) ||
-      !/failed to fetch|networkerror|network error|load failed|fetch failed|timeout|timed out|offline|connection/i.test(entry.lastError ?? "") ||
+      !/failed to fetch|networkerror|network error|load failed|fetch failed|timeout|timed out|taking too long to send|offline|connection/i.test(entry.lastError ?? "") ||
       !isRetryableError(new Error(entry.lastError ?? ""))) return entry;
   return retryEntry(entry, now);
 }

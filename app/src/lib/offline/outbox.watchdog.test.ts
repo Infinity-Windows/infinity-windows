@@ -450,10 +450,10 @@ describe("the send watchdog", () => {
     expect(await entryById(store, a.id)).toMatchObject({ status: "queued", attemptCount: 1 });
   });
 
-  it("an entry that hangs every time gives up after the usual number of tries and says why", async () => {
+  it("a non-photo entry that hangs every time gives up after the usual number of tries and says why", async () => {
     const store = new MemoryOutboxStore();
-    const a = await queue(store, "photo_upload");
-    const handlers: OpHandlers = { photo_upload: () => new Promise(() => {}) };
+    const a = await queue(store, "clock_in");
+    const handlers: OpHandlers = { clock_in: () => new Promise(() => {}) };
     for (let i = 0; i < 8; i++) {
       const run = start(store, handlers, opts());
       await vi.advanceTimersByTimeAsync(DEADLINE + 1);
@@ -463,6 +463,19 @@ describe("the send watchdog", () => {
     const dead = await entryById(store, a.id);
     expect(dead).toMatchObject({ status: "failed", attemptCount: 8 });
     expect(dead!.lastError).toMatch(/too long/i);
+  });
+
+  it("keeps a camera photo for another retry after eight watchdog timeouts", async () => {
+    const store = new MemoryOutboxStore();
+    const photo = await queue(store, "photo_upload");
+    const handlers: OpHandlers = { photo_upload: () => new Promise(() => {}) };
+    for (let i = 0; i < 8; i++) {
+      const run = start(store, handlers, opts());
+      await vi.advanceTimersByTimeAsync(DEADLINE + 1);
+      expect(run.settled()).toBe(true);
+      await vi.advanceTimersByTimeAsync(5 * 60_000);
+    }
+    expect(await entryById(store, photo.id)).toMatchObject({ status: "queued", attemptCount: 8 });
   });
 
   it("a stale 'sending' write that lands after the retry sent the photo does not bring it back", async () => {

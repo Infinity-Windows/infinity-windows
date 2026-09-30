@@ -345,9 +345,10 @@ export function isRetryableError(err: unknown): boolean {
  */
 export function isNetworkError(err: unknown): boolean {
   if (typeof navigator !== "undefined" && navigator.onLine === false) return true;
+  if (err instanceof SendTookTooLongError) return true;
   if (err instanceof TypeError) return true; // fetch() network failure
   const msg = errorMessage(err).toLowerCase();
-  return /failed to fetch|networkerror|network error|load failed|fetch failed|timeout|timed out|offline|connection/.test(
+  return /failed to fetch|networkerror|network error|load failed|fetch failed|timeout|timed out|taking too long to send|offline|connection/.test(
     msg,
   );
 }

@@ -54,4 +54,10 @@ describe("recovery of old transport-failed photos", () => {
     expect(recoverTransportFailedPhoto({ ...before, lastError: "permission denied" }, 50).status).toBe("failed");
     expect(recoverTransportFailedPhoto({ ...before, payload: { kind: "video" } }, 50).status).toBe("failed");
   });
+  it("revives photos abandoned by the old watchdog without changing their identity", () => {
+    const before = { ...failed(), lastError: "This was taking too long to send, so the phone stopped waiting and will try it again.", payload: { kind: "photo", path: "original.jpg" } };
+    expect(recoverTransportFailedPhoto(before, 50)).toMatchObject({
+      id: before.id, status: "queued", createdAt: before.createdAt, payload: before.payload,
+    });
+  });
 });

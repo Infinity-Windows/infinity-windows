@@ -89,6 +89,35 @@ describe("timedFetch", () => {
     expect(onOk).toHaveBeenCalledWith(43);
   });
 
+  it.each(["install-media/job/photo.jpg", "service-media/job/photo.jpg"])(
+    "bounds a photo response body stalled after headers: %s",
+    async (path) => {
+      const onOk = vi.fn(), onTimeout = vi.fn();
+      const first = timedFetch(`https://x.supabase.co/storage/v1/object/${path}`, { method: "POST" }, {
+        fetch: async () => new Response(new ReadableStream({ start() {} }), { status: 200 }),
+        timeoutMs: 100, now: () => 42, onTimeout, onOk,
+      }).catch((error: unknown) => error);
+      await vi.advanceTimersByTimeAsync(101);
+      expect(await first).toBeInstanceOf(TypeError);
+      expect(onTimeout).toHaveBeenCalledWith(42);
+      expect(onOk).not.toHaveBeenCalled();
+      const second = await timedFetch(`https://x.supabase.co/storage/v1/object/${path}`, { method: "POST" }, {
+        fetch: async () => new Response('{"Key":"job/photo.jpg"}', { status: 200 }),
+        timeoutMs: 100, now: () => 43, onTimeout, onOk,
+      });
+      expect(await second.json()).toEqual({ Key: "job/photo.jpg" });
+    },
+  );
+
+  it("releases an upload even when fetch ignores abort", async () => {
+    const pending = timedFetch("https://x.supabase.co/storage/v1/object/install-media/job/photo.jpg", { method: "POST" }, {
+      fetch: async () => new Promise<Response>(() => {}),
+      timeoutMs: 100, now: () => 42, onTimeout: vi.fn(), onOk: vi.fn(),
+    }).catch((error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(101);
+    expect(await pending).toBeInstanceOf(TypeError);
+  });
+
   it("aborts a stalled gallery signing request so one image cannot hold the gallery forever", async () => {
     const onTimeout = vi.fn();
     const result = timedFetch("https://x.supabase.co/storage/v1/object/sign/install-media/photo.jpg", {method:"POST"}, {
