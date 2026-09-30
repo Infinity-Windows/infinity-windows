@@ -254,6 +254,9 @@ describe("dueEntries (FIFO drain ordering + backoff + dependencies)", () => {
       entry({ id: "d", createdAt: 40, status: "failed" }), // dead-letter
     ];
     expect(dueEntries(list, T0).map((e) => e.id)).toEqual(["a", "c"]);
+    // An explicit tap can try backoff entries without changing the saved
+    // record, but it still cannot revive failed work or skip dependencies.
+    expect(dueEntries(list, T0, true).map((e) => e.id)).toEqual(["a", "b", "c"]);
   });
 
   it("holds an entry behind an unresolved dependency, releasing it once the dependency leaves the queue", () => {
@@ -262,6 +265,7 @@ describe("dueEntries (FIFO drain ordering + backoff + dependencies)", () => {
       entry({ id: "clockout", createdAt: 20, op: "clock_out", dependsOn: "clockin" }),
     ];
     expect(dueEntries(withDep, T0).map((e) => e.id)).toEqual(["clockin"]);
+    expect(dueEntries(withDep, T0, true).map((e) => e.id)).toEqual(["clockin"]);
 
     // clock-in has synced and been removed → clock-out becomes due.
     const afterSync = [entry({ id: "clockout", createdAt: 20, op: "clock_out", dependsOn: "clockin" })];
@@ -599,6 +603,18 @@ describe("drainUntilSettled", () => {
     expect(res.attempted).toBe(1);
     expect(res.retried).toBe(1);
     expect(res.remaining).toBe(2);
+  });
+
+  it("a forced manual pass tries a backed-off photo once and preserves a new backoff after failure", async () => {
+    const store = new MemoryOutboxStore();
+    await store.put(entry({ id: "photo", op: "photo_upload", nextAttemptAt: T0 + 60_000 }));
+    let calls = 0;
+    const res = await drainUntilSettled(store, {
+      photo_upload: async () => { calls += 1; throw new TypeError("Load failed"); },
+    }, { now: T0, forceDue: true });
+    expect(calls).toBe(1);
+    expect(res).toMatchObject({ attempted: 1, retried: 1, sent: 0 });
+    expect((await store.getAll())[0]).toMatchObject({ status: "queued", attemptCount: 1 });
   });
 
   it("gives up on a handler that keeps queueing more, after MAX_DRAIN_PASSES", async () => {

@@ -9,7 +9,7 @@
 // away. Never persisted: it is about THIS session, and a phone's storage is
 // for the job, not for logs.
 
-export type OfflineEventType = "timeout" | "saved-copy" | "flush" | "save-job" | "reload";
+export type OfflineEventType = "timeout" | "saved-copy" | "flush" | "save-job" | "reload" | "queue";
 
 export interface OfflineEvent {
   type: OfflineEventType;

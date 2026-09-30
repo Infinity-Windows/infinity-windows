@@ -450,12 +450,12 @@ export function dedupe(entries: OutboxEntry[]): OutboxEntry[] {
  * yesterday and sent today). A clock-in tapped after a signature also
  * `dependsOn` it, which is what holds it while the signature is retrying.
  */
-export function dueEntries(entries: OutboxEntry[], now: number): OutboxEntry[] {
+export function dueEntries(entries: OutboxEntry[], now: number, forceDue = false): OutboxEntry[] {
   const present = new Map(entries.map((e) => [e.id, e]));
   const lane = (e: OutboxEntry) => laneOf(e.op);
   return entries
     .filter((e) => e.status === "queued")
-    .filter((e) => e.nextAttemptAt <= now)
+    .filter((e) => forceDue || e.nextAttemptAt <= now)
     .filter((e) => {
       if (!e.dependsOn) return true;
       const dep = present.get(e.dependsOn);
@@ -896,6 +896,12 @@ export interface DrainResult {
  */
 export interface DrainOpts {
   now?: number | (() => number);
+  /** A person's explicit Send now bypasses backoff for one pass without
+   * rewriting large photo blobs in IndexedDB first. */
+  forceDue?: boolean;
+  /** A send began; useful for showing progress before a slow upload ends. */
+  onAttempt?: (entry: OutboxEntry) => void;
+  onHeld?: (entry: OutboxEntry) => void;
   onChange?: () => void;
   /**
    * A server write succeeded and its local queue entry was removed. `result`
@@ -979,7 +985,7 @@ export async function drainStore(
   const clock = clockOf(opts);
   const now = clock();
   const all = await store.getAll();
-  const due = dueEntries(all, now);
+  const due = dueEntries(all, now, opts.forceDue);
   let attempted = 0;
   let sent = 0;
   let retried = 0;
@@ -1110,6 +1116,7 @@ export async function drainStore(
       if (await store.swap(entry.id, entry, dead)) deadLettered += 1;
       return;
     }
+    try { opts.onAttempt?.(entry); } catch { /* observers cannot stop sends */ }
     const outcome = await sendWithin(entry, handler);
     if (outcome.kind === "stale") {
       // Changed under this pass (another tab, a person): the next pass reads
@@ -1127,6 +1134,7 @@ export async function drainStore(
       // was, over the "sending" mark this attempt wrote and nothing newer.
       // Not an attempt, not a failure — it is waiting for a person.
       await store.swap(entry.id, entry, entry);
+      try { opts.onHeld?.(entry); } catch { /* observers cannot stop sends */ }
     } else if (outcome.kind === "failed") {
       await recordFailure(entry, outcome.error);
     } else {
@@ -1189,7 +1197,9 @@ export async function drainUntilSettled(
 ): Promise<DrainResult> {
   const total: DrainResult = { attempted: 0, sent: 0, retried: 0, deadLettered: 0, remaining: 0 };
   for (let pass = 0; pass < MAX_DRAIN_PASSES; pass++) {
-    const res = await drainStore(store, handlers, opts);
+    // A manual retry forces only the first pass. Later passes respect normal
+    // backoff, so a failure cannot burn all attempts in one tap.
+    const res = await drainStore(store, handlers, pass === 0 ? opts : { ...opts, forceDue: false });
     total.attempted += res.attempted;
     total.sent += res.sent;
     total.retried += res.retried;
