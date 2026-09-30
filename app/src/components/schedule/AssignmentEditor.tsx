@@ -178,10 +178,12 @@ export function AssignmentEditor({
       id: assignment?.id ?? "__new__",
       start_date: startDate,
       end_date: normalizedEnd,
+      start_time: startTime.trim() ? startTime : null,
+      end_time: endTime || null,
       members: members.map((m) => ({ profile_id: m.profile_id })),
     };
     return conflictingMembersFor(target, others);
-  }, [assignment?.id, startDate, normalizedEnd, members, others]);
+  }, [assignment?.id, startDate, normalizedEnd, startTime, endTime, members, others]);
 
   const canSave = projectId !== "" && members.length > 0 && Boolean(startDate) && validTimes;
 

@@ -1,7 +1,9 @@
 // Pure double-booking / conflict detection. Given a set of assignments (each
-// with a date range and its ad-hoc members), find every person booked on two
-// overlapping assignments. The board WARNS but never blocks, so this only ever
-// reports — it never mutates or filters.
+// with a date range, an optional daily clock window, and its ad-hoc members),
+// find every person booked on two overlapping assignments. Two assignments on
+// the same day only conflict if their daily hours actually overlap — the
+// board WARNS but never blocks, so this only ever reports — it never mutates
+// or filters.
 
 import { rangesOverlap } from "./dates";
 
@@ -26,6 +28,14 @@ export interface ConflictAssignment {
   id: string;
   start_date: string;
   end_date: string;
+  /** Daily clock window applied to every day in the range ("HH:MM" or
+   * "HH:MM:SS"). Missing, malformed, or not a well-formed start/end pair is
+   * treated as unknown — conservatively, the whole day — since legacy
+   * assignments predate these columns. A caller that manually re-projects a
+   * `ScheduleAssignment` into this shape must carry these through or every
+   * shared day will conservatively read as booked. */
+  start_time?: string | null;
+  end_time?: string | null;
   members: { profile_id: string }[];
 }
 
@@ -42,12 +52,50 @@ export interface PersonConflict {
   assignmentIds: string[];
 }
 
-/** True when two assignments share any day. */
+/** Parse a "HH:MM" or "HH:MM:SS" clock string to seconds since midnight, or
+ * null when it isn't well-formed. */
+function parseClockSeconds(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const match = /^(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(value);
+  if (!match) return null;
+  const h = Number(match[1]);
+  const m = Number(match[2]);
+  const s = Number(match[3] ?? 0);
+  if (h > 23 || m > 59 || s > 59) return null;
+  return h * 3600 + m * 60 + s;
+}
+
+/** An assignment's daily clock window in seconds-since-midnight, or null when
+ * it isn't known well enough to narrow (missing, malformed, or end at/before
+ * start) — callers then treat the whole day as booked. */
+function dailyWindow(a: ConflictAssignment): { start: number; end: number } | null {
+  const start = parseClockSeconds(a.start_time);
+  const end = parseClockSeconds(a.end_time);
+  if (start === null || end === null || end <= start) return null;
+  return { start, end };
+}
+
+/** True when two assignments' daily clock windows overlap on a shared day.
+ * An unknown window (either side) is conservative: it's treated as occupying
+ * the whole day, so it always overlaps. Known windows use a half-open
+ * comparison, so a shift ending exactly when another starts doesn't clash. */
+function dailyTimesOverlap(a: ConflictAssignment, b: ConflictAssignment): boolean {
+  const aWindow = dailyWindow(a);
+  const bWindow = dailyWindow(b);
+  if (!aWindow || !bWindow) return true;
+  return aWindow.start < bWindow.end && bWindow.start < aWindow.end;
+}
+
+/** True when two assignments share any day AND, on that shared day, their
+ * daily clock windows overlap. */
 export function assignmentsOverlap(
   a: ConflictAssignment,
   b: ConflictAssignment,
 ): boolean {
-  return rangesOverlap(a.start_date, a.end_date, b.start_date, b.end_date);
+  return (
+    rangesOverlap(a.start_date, a.end_date, b.start_date, b.end_date) &&
+    dailyTimesOverlap(a, b)
+  );
 }
 
 /**

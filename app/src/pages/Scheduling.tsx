@@ -748,6 +748,8 @@ export function Scheduling() {
         id: a.id,
         start_date: a.start_date,
         end_date: a.end_date,
+        start_time: a.start_time,
+        end_time: a.end_time,
         members: a.members.map((m) => ({ profile_id: m.profile_id })),
       })),
     [knownById],
