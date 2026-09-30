@@ -72,7 +72,7 @@ describe("the queued damage photo", () => {
     expect(upload).toHaveBeenCalledWith(
       "issue-photos",
       "job-1/pkg-1-1000.jpg",
-      BLOB,
+      expect.any(ArrayBuffer),
       { contentType: "image/jpeg", upsert: true },
     );
   });
@@ -129,7 +129,7 @@ describe("the path survives being queued", () => {
     expect(upload).toHaveBeenCalledWith(
       "issue-photos",
       "job-1/pkg-1-1000.jpg",
-      blob,
+      expect.any(ArrayBuffer),
       { contentType: "image/jpeg", upsert: true },
     );
   });

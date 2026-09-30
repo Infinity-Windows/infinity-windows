@@ -1,4 +1,4 @@
-import { retryEntry, type OutboxEntry } from "./outbox-core";
+import { isRetryableError, retryEntry, uploadKind, type OutboxEntry } from "./outbox-core";
 
 const REPAIR = "photoConflictIndexRepaired20260918";
 const INDEX_ERROR = "there is no unique or exclusion constraint matching the on conflict specification";
@@ -27,4 +27,16 @@ export function recoverPhotoUpload(
     ...retryEntry(entry, now),
     payload: { ...entry.payload, [REPAIR]: true },
   };
+}
+
+/** Recover old camera photos that hit the eight-attempt limit on a weak
+ * connection. Only transport errors qualify; a server refusal stays visible
+ * for manual resolution. The caller also verifies ownership and file bytes. */
+export function recoverTransportFailedPhoto(entry: OutboxEntry, now: number): OutboxEntry {
+  if (entry.status !== "failed" || !entry.hasBlob ||
+      !(entry.op === "issue_photo_upload" ||
+        (entry.op === "photo_upload" && uploadKind(entry) === "photo")) ||
+      !/failed to fetch|networkerror|network error|load failed|fetch failed|timeout|timed out|offline|connection/i.test(entry.lastError ?? "") ||
+      !isRetryableError(new Error(entry.lastError ?? ""))) return entry;
+  return retryEntry(entry, now);
 }

@@ -529,9 +529,29 @@ export function createSupabaseHandlers(
       if (!existing.error && existing.data?.id) return;
     }
 
+    // iOS WebKit can fail a multipart upload made directly from a Blob
+    // restored from IndexedDB. A bounded photo is already capped at 25 MB;
+    // reading its bytes and sending an ArrayBuffer avoids that FormData path.
+    // Leave video and voice as streaming Blobs so they are not copied into RAM.
+    const isPhoto = (str(p.kind) ?? "photo") === "photo";
+    let uploadBody: Blob | ArrayBuffer = blob;
+    if (isPhoto && blob.size <= 25 * 1024 * 1024) {
+      try {
+        uploadBody = await blob.arrayBuffer();
+      } catch (err) {
+        // A WebKit read can fail under temporary memory pressure. Retain the
+        // original Blob and retry; only a completed empty/short read proves
+        // the saved bytes are unusable.
+        throw new TypeError(`Saved photo could not be read yet: ${errorMessage(err)}`);
+      }
+      if (uploadBody.byteLength === 0 || uploadBody.byteLength !== blob.size) {
+        throw tagPermanent(new Error("Saved photo file is empty or incomplete"));
+      }
+      stopIfAbandoned(ctx);
+    }
     const { error: upErr } = await supabase.storage
       .from(bucket)
-      .upload(path, blob, { contentType, upsert: true });
+      .upload(path, uploadBody, { contentType, upsert: true });
     if (upErr) throw upErr;
     stopIfAbandoned(ctx);
 
@@ -556,17 +576,30 @@ export function createSupabaseHandlers(
       taken_at: str(p.takenAt),
       caption: str(p.caption),
     };
-    // Tier 1: dedupe on client_id AND persist geo (fully-migrated DB).
+    // Keep the same client_id through each schema fallback. A reply can be
+    // lost after the server committed the row, so a replay must never become
+    // a second plain INSERT merely because an optional column is missing.
     let res = await supabase
       .from("attachments")
       .upsert({ ...geoRow, client_id: entry.id }, { onConflict: "client_id" });
     if (res.error && isMissingColumn(res.error)) {
-      // Tier 2: geo present but client_id column absent — plain insert with geo.
+      res = await supabase.from("attachments")
+        .upsert({ ...row, project_id: str(p.projectId), client_id: entry.id }, { onConflict: "client_id" });
+    }
+    if (res.error && isMissingColumn(res.error)) {
+      res = await supabase.from("attachments")
+        .upsert({ ...row, client_id: entry.id }, { onConflict: "client_id" });
+    }
+    if (res.error && isMissingColumn(res.error)) {
+      // Only a first attempt may use the older non-idempotent schema. Once a
+      // send has been attempted, we cannot prove that a lost reply did not
+      // leave a row behind. Keep the photo on the phone for a schema repair.
+      if (entry.attemptCount > 0) {
+        throw tagPermanent(new Error("Photo retry needs the server's client_id column; the saved photo remains on this phone"));
+      }
       res = await supabase.from("attachments").insert(geoRow);
     }
     if (res.error && isMissingColumn(res.error)) {
-      // Tier 3: geo columns absent too — base insert. Storage upsert already
-      // prevents duplicate blobs, so a rare double row is the worst case.
       res = await supabase.from("attachments").insert(row);
     }
     // There is no tier for this one, deliberately. A check violation means the
@@ -1376,9 +1409,22 @@ export function createSupabaseHandlers(
     const blob = await ctx.getBlob();
     if (!blob) throw tagPermanent(new Error("This photo is missing its file"));
 
+    let uploadBody: Blob | ArrayBuffer = blob;
+    if (blob.size <= 25 * 1024 * 1024) {
+      try {
+        uploadBody = await blob.arrayBuffer();
+      } catch (err) {
+        throw new TypeError(`Saved photo could not be read yet: ${errorMessage(err)}`);
+      }
+      if (uploadBody.byteLength === 0 || uploadBody.byteLength !== blob.size) {
+        throw tagPermanent(new Error("Saved photo file is empty or incomplete"));
+      }
+      stopIfAbandoned(ctx);
+    }
+
     const { error } = await supabase.storage
       .from(bucket)
-      .upload(path, blob, { contentType, upsert: true });
+      .upload(path, uploadBody, { contentType, upsert: true });
     if (error) throw error;
   };
 

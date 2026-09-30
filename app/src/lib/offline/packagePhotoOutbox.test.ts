@@ -86,7 +86,7 @@ describe("a package photo queued through photo_upload", () => {
     expect(storageUpload).toHaveBeenCalledWith(
       "install-media",
       "packages/pkg-1/1000-ab12cd.jpg",
-      BLOB,
+      expect.any(ArrayBuffer),
       { contentType: "image/jpeg", upsert: true },
     );
   });

@@ -202,6 +202,19 @@ describe("applyFailure (retry with backoff → dead-letter)", () => {
     expect(isDeadLetter(next)).toBe(true);
   });
 
+  it("keeps a camera photo with its file queued after repeated transport failures", () => {
+    let photo = entry({ op: "photo_upload", hasBlob: true, payload: { kind: "photo" } });
+    for (let i = 0; i < MAX_ATTEMPTS + 2; i++) {
+      photo = applyFailure(photo, new TypeError("Load failed"), T0 + i);
+    }
+    expect(photo.status).toBe("queued");
+    expect(photo.hasBlob).toBe(true);
+    expect(photo.nextAttemptAt).toBeGreaterThan(T0);
+    expect(applyFailure(photo, new TypeError("Saved photo could not be read yet"), T0).status).toBe("queued");
+    expect(applyFailure(photo, new Error("permission denied"), T0).status).toBe("failed");
+    expect(applyFailure(entry({ op: "photo_upload", hasBlob: true, payload: { kind: "video" }, attemptCount: MAX_ATTEMPTS - 1 }), new TypeError("Load failed"), T0).status).toBe("failed");
+  });
+
   it("dead-letters immediately on a permanent error", () => {
     const next = applyFailure(entry(), new Error("duplicate key value"), T0);
     expect(next.status).toBe("failed");

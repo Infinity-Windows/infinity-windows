@@ -16,8 +16,9 @@ import type { OutboxEntry } from "./outbox-core";
 type Answer = { data: { id: string } | null; error: { message: string; code?: string } | null };
 
 const db = vi.hoisted(() => ({
-  uploads: [] as Array<{ bucket: string; path: string }>,
+  uploads: [] as Array<{ bucket: string; path: string; body: Blob | ArrayBuffer }>,
   upserts: [] as Array<Record<string, unknown>>,
+  upsertOptions: [] as Array<{ onConflict?: string } | undefined>,
   /** Answer to "is there a row under this storage path already?" */
   byPath: { data: null, error: null } as Answer,
   /** Answer to "what is the id of the row filed under this client id?" */
@@ -48,15 +49,16 @@ vi.mock("../supabase", () => {
     supabase: {
       storage: {
         from: (bucket: string) => ({
-          upload: async (path: string) => {
-            db.uploads.push({ bucket, path });
+          upload: async (path: string, body: Blob | ArrayBuffer) => {
+            db.uploads.push({ bucket, path, body });
             return { error: null };
           },
         }),
       },
       from: () => ({
-        upsert: async (row: Record<string, unknown>) => {
+        upsert: async (row: Record<string, unknown>, options?: { onConflict?: string }) => {
           db.upserts.push(row);
+          db.upsertOptions.push(options);
           return { error: null };
         },
         insert: async () => ({ error: null }),
@@ -107,6 +109,7 @@ function memo(over: Partial<OutboxEntry> = {}): OutboxEntry {
 beforeEach(() => {
   db.uploads.length = 0;
   db.upserts.length = 0;
+  db.upsertOptions.length = 0;
   db.reads.length = 0;
   db.byPath = { data: null, error: null };
   db.byClientId = { data: null, error: null };
@@ -118,7 +121,7 @@ describe("a unit's voice memo through the upload handler", () => {
   it("files the row under the entry's client id, then starts its transcript", async () => {
     db.byClientId = { data: { id: "att-1" }, error: null };
     await handlers.photo_upload!(memo(), ctx);
-    expect(db.uploads).toEqual([{ bucket: "install-media", path: "project-1/10/1-memo.webm" }]);
+    expect(db.uploads).toEqual([{ bucket: "install-media", path: "project-1/10/1-memo.webm", body: BLOB }]);
     expect(db.upserts).toHaveLength(1);
     expect(db.upserts[0]).toMatchObject({
       kind: "voice_memo",
@@ -154,6 +157,22 @@ describe("a unit's voice memo through the upload handler", () => {
     expect(db.reads).toEqual([]);
     expect(transcribe).not.toHaveBeenCalled();
     expect(db.upserts.map((r) => r.kind)).toEqual(["photo", "video"]);
+    expect(db.uploads[0]?.body).toBeInstanceOf(ArrayBuffer);
+    expect(db.uploads[1]?.body).toBe(BLOB);
+    expect(new TextDecoder().decode(db.uploads[0]?.body as ArrayBuffer)).toBe("memo");
+  });
+
+  it("reuses the exact attachment key when the server committed but its reply was lost", async () => {
+    const photo = memo({ payload: { ...memo().payload, kind: "photo" } });
+    await handlers.photo_upload!(photo, ctx);
+    await handlers.photo_upload!(photo, ctx);
+    expect(db.upserts).toHaveLength(2);
+    expect(db.upserts.map(row => row.client_id)).toEqual([photo.id, photo.id]);
+    expect(db.upserts.map(row => row.storage_path)).toEqual([
+      "install-media/project-1/10/1-memo.webm",
+      "install-media/project-1/10/1-memo.webm",
+    ]);
+    expect(db.upsertOptions).toEqual([{ onConflict: "client_id" }, { onConflict: "client_id" }]);
   });
 });
 
@@ -201,5 +220,18 @@ describe("an item moved out of the retired upload queue", () => {
   it("never asks the question for an item queued by the outbox itself", async () => {
     await handlers.photo_upload!(memo({ payload: { ...memo().payload, kind: "photo" } }), ctx);
     expect(db.reads).toEqual([]);
+  });
+});
+
+describe("an issue photo restored from the phone", () => {
+  it("uploads bytes without multipart FormData and keeps the original path", async () => {
+    await handlers.issue_photo_upload!(memo({
+      op: "issue_photo_upload",
+      payload: { bucket: "issue-photos", path: "issue/123.jpg", contentType: "image/jpeg" },
+    }), ctx);
+    expect(db.uploads).toHaveLength(1);
+    expect(db.uploads[0]).toMatchObject({ bucket: "issue-photos", path: "issue/123.jpg" });
+    expect(db.uploads[0]?.body).toBeInstanceOf(ArrayBuffer);
+    expect(new TextDecoder().decode(db.uploads[0]?.body as ArrayBuffer)).toBe("memo");
   });
 });
