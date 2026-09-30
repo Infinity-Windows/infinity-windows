@@ -61,9 +61,16 @@ export interface LiveOptions {
   handleTurn(turn: LiveTurn): Promise<string>;
   /** Spoken when a delegation never matched a finished utterance. */
   notHeard(): string;
+  /** A warning before the booked session reaches its hard expiry. */
+  onTimeLimitSoon?(): void;
 }
 
-export interface LiveSession { end(reason?: LiveEndReason): void; readonly status: LiveStatus }
+export interface LiveSession {
+  end(reason?: LiveEndReason): void;
+  setMuted(muted: boolean): void;
+  readonly muted: boolean;
+  readonly status: LiveStatus;
+}
 
 export function startLiveSession(options: LiveOptions): LiveSession {
   const deps: LiveDeps = { ...browserDeps(), ...options.deps };
@@ -75,6 +82,7 @@ export function startLiveSession(options: LiveOptions): LiveSession {
   let peer: LivePeer | null = null;
   let rec: SegmentRecorder | null = null;
   let closing = false;
+  let muted = false;
   const stopWatchingPage = deps.watchPageHidden(() => end("background"));
   // Ask requests run one at a time, in the order they were said.
   let queue: Promise<void> = Promise.resolve();
@@ -145,10 +153,19 @@ export function startLiveSession(options: LiveOptions): LiveSession {
     set(reason === "connection" || reason === "error" ? "failed" : "ended", reason);
   };
 
+  const setMuted = (next: boolean) => {
+    if (status === "ended" || status === "failed") return;
+    muted = next;
+    // The recorder keeps running on this same stream and captures silence
+    // while muted; the call stays paid and connected until End is tapped.
+    stream?.getAudioTracks().forEach((track) => { track.enabled = !next; });
+  };
+
   void (async () => {
     try {
       stream = await deps.getMicrophone();
       if (abort.signal.aborted) { teardown(); return; }
+      if (muted) stream.getAudioTracks().forEach((track) => { track.enabled = false; });
       peer = deps.createPeer();
       const { pc, channel } = peer;
       stream.getAudioTracks().forEach((t) => pc.addTrack(t, stream!));
@@ -184,6 +201,7 @@ export function startLiveSession(options: LiveOptions): LiveSession {
       if (abort.signal.aborted) return;
       await pc.setRemoteDescription({ type: "answer", sdp: answer.sdp });
       const cap = Math.min(Math.max(1, answer.maxSeconds), DICTATION_MAX_SECONDS);
+      if (cap > 30) timer(() => options.onTimeLimitSoon?.(), (cap - 30) * 1000);
       timer(() => end("cap"), cap * 1000);
     } catch (e) {
       if (abort.signal.aborted) return;
@@ -192,7 +210,7 @@ export function startLiveSession(options: LiveOptions): LiveSession {
     }
   })();
 
-  return { end, get status() { return status; } };
+  return { end, setMuted, get muted() { return muted; }, get status() { return status; } };
 }
 
 // ---------------------------------------------------------------------------

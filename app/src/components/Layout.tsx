@@ -1,6 +1,6 @@
 import { AppUpdates } from "./updates/AppUpdates";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   CalendarDays,
@@ -9,10 +9,14 @@ import {
   Coffee,
   Hammer,
   LayoutGrid,
+  Mic,
   Menu as MenuIcon,
   Plus,
   ScanLine,
   Sparkles,
+  MicOff,
+  Radio,
+  Square,
 } from "lucide-react";
 import { getMyProfile, getRealProfile, listMyOpeningsAllJobs, listProfiles } from "../lib/install/api";
 import { openingReadiness } from "../lib/install/fit";
@@ -42,6 +46,9 @@ import { ScanFab } from "./nav/ScanFab";
 import { FeatureTip } from "./assistant/FeatureTip";
 import { SyncStatusPill } from "./offline/SyncStatusPill";
 import { OnboardingWizard } from "./permissions/OnboardingWizard";
+import type { LiveAskShellControls, LiveAskShellState } from "../pages/AskInfinity";
+import { liveStatusLine } from "../lib/liveAskPilot";
+import { useLanguage } from "../lib/i18n";
 import {
   closeOnboardingWizard,
   getWizardOpen,
@@ -60,6 +67,8 @@ const TAB_ICONS: Record<string, ReactNode> = {
   jobs: <LayoutGrid size={20} />,
   photos: <Camera size={20} />,
 };
+const PersistentAskInfinity = lazy(() => import("../pages/AskInfinity").then((m) => ({ default: m.AskInfinity })));
+const idleLiveAsk: LiveAskShellState = { status: "idle", saving: false, needsClock: false, muted: false, expiring: false };
 
 /**
  * Infinity Windows app shell — reskinned to the "Horizon Windows Hub" visual
@@ -83,6 +92,20 @@ export function Layout() {
   const { layout } = useDisplayMode();
   const location = useLocation();
   const navigate = useNavigate();
+  const es = useLanguage().lang === "es";
+  const isAsk = location.pathname === "/ask";
+  const [askMounted, setAskMounted] = useState(isAsk);
+  const [liveAsk, setLiveAsk] = useState<LiveAskShellState>(idleLiveAsk);
+  const showLiveMini = !isAsk && realMe.data?.role === "owner" && liveAsk.status !== "idle" && !(liveAsk.status === "ended" && liveAsk.detail === "user");
+  const liveControls = useRef<LiveAskShellControls | null>(null);
+  useEffect(() => { if (isAsk) setAskMounted(true); }, [isAsk]);
+  const onLiveState = useCallback((next: LiveAskShellState) => {
+    setLiveAsk((old) => Object.keys(next).every((key) =>
+      old[key as keyof LiveAskShellState] === next[key as keyof LiveAskShellState]) ? old : next);
+  }, []);
+  const registerLiveControls = useCallback((controls: LiveAskShellControls | null) => {
+    liveControls.current = controls;
+  }, []);
   const [menuOpen, setMenuOpen] = useState(false);
   const [captureOpen, setCaptureOpen] = useState(false);
 
@@ -424,6 +447,11 @@ export function Layout() {
             </div>
           ) : null}
           <AppUpdates />
+          {(askMounted || isAsk) && <div hidden={!isAsk} aria-hidden={!isAsk} className="persistent-ask">
+            <Suspense fallback={isAsk ? <p>Opening Ask Infinity…</p> : null}>
+              <PersistentAskInfinity active={isAsk} onLiveState={onLiveState} registerLiveControls={registerLiveControls} />
+            </Suspense>
+          </div>}
           <Outlet />
         </main>
       </div>
@@ -432,8 +460,23 @@ export function Layout() {
           Ask is a bar tab there, and a second door stacked over it was fat.
           It stays on the desktop layout, whose rail has no bar, and on the
           classic design everywhere. */}
-      {!(isNewDesign && layout === "phone") && <GlobalAskFab />}
+      {!showLiveMini && !(isNewDesign && layout === "phone") && <GlobalAskFab />}
       <ScanFab />
+      {showLiveMini && (
+        <div className={`live-ask-mini${captureOpen ? " capture-open" : ""}`} role="region" aria-label={es ? "Conversación en vivo" : "Live conversation"}>
+          <button type="button" className="live-ask-mini-main" onClick={() => navigate("/ask")}>
+            <Radio size={18} className={liveAsk.status === "live" || liveAsk.status === "unstable" ? "live-ask-mini-pulse" : ""} aria-hidden="true" />
+            <span>{liveAsk.saving ? (es ? "Guardando…" : "Saving…") : liveAsk.expiring && liveAsk.status === "live" ? (es ? "Termina pronto" : "Ending soon") : liveStatusLine(es, liveAsk.status, liveAsk.detail)}</span>
+          </button>
+          {liveAsk.needsClock && <button type="button" className="live-ask-mini-action" onClick={() => { setCaptureOpen(false); clock.openClock(); }}>
+            {es ? "Abrir reloj de trabajo" : "Open job clock"}
+          </button>}
+          {(liveAsk.status === "starting" || liveAsk.status === "live" || liveAsk.status === "unstable") && <div className="live-ask-mini-controls">
+            <button type="button" onClick={() => liveControls.current?.toggleMute()} aria-label={liveAsk.muted ? (es ? "Activar micrófono" : "Unmute microphone") : (es ? "Silenciar micrófono" : "Mute microphone")}>{liveAsk.muted ? <MicOff size={16} aria-hidden="true" /> : <Mic size={16} aria-hidden="true" />} {liveAsk.muted ? (es ? "Activar" : "Unmute") : (es ? "Silenciar" : "Mute")}</button>
+            <button type="button" onClick={() => liveControls.current?.end()} aria-label={es ? "Terminar conversación" : "End conversation"}><Square size={14} aria-hidden="true" /> {es ? "Terminar" : "End"}</button>
+          </div>}
+        </div>
+      )}
 
       {/* The first-run tip for "/" describes the classic landing ("Tap Clock
           to start your shift"); on the new design's Work screen it would be

@@ -7,7 +7,7 @@ import { liveAskPilotEnabled, liveStatusLine } from "./liveAskPilot";
 
 /** A fake phone: microphone, peer connection, data channel, recorder, timers. */
 function rig(opts: { exchange?: LiveDeps["exchange"]; micDelay?: Promise<void> } = {}) {
-  const track = { stop: vi.fn(), kind: "audio" };
+  const track = { stop: vi.fn(), kind: "audio", enabled: true };
   const stream = { getTracks: () => [track], getAudioTracks: () => [track] } as unknown as MediaStream;
   const sent: string[] = [];
   const channel = {
@@ -131,6 +131,21 @@ describe("startLiveSession", () => {
     expect(r.statuses.at(-1)).toEqual(["ended", "cap"]);
     expect(r.track.stop).toHaveBeenCalled();
     expect(JSON.parse(r.sent.at(-1)!)).toEqual({ type: "session.close" });
+  });
+
+  it("mutes the same microphone without ending or reconnecting the paid session", async () => {
+    const r = rig();
+    await r.flush();
+    r.emit(started);
+    r.session.setMuted(true);
+    expect(r.session.muted).toBe(true);
+    expect(r.track.enabled).toBe(false);
+    expect(r.session.status).toBe("live");
+    expect(r.exchange).toHaveBeenCalledTimes(1);
+    r.session.setMuted(false);
+    expect(r.track.enabled).toBe(true);
+    r.session.end();
+    expect(r.track.stop).toHaveBeenCalled();
   });
 
   it("closes the microphone and provider session before a phone backgrounds", async () => {
