@@ -56,7 +56,7 @@ async function makeClockOwnerlessLikeLegacyBuild(page: Page) {
   // clock_out's payload has no author field to infer one from on upgrade.
   await page.evaluate(async () => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open("wops-write-outbox", 1);
+      const request = indexedDB.open("wops-write-outbox");
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });
@@ -93,7 +93,7 @@ async function makeClockOwnerlessLikeLegacyBuild(page: Page) {
 async function queuedIds(page: Page): Promise<string[]> {
   return page.evaluate(async () => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open("wops-write-outbox", 1);
+      const request = indexedDB.open("wops-write-outbox");
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });
@@ -111,7 +111,7 @@ async function queuedIds(page: Page): Promise<string[]> {
 async function queuedSnapshot(page: Page) {
   return page.evaluate(async () => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open("wops-write-outbox", 1);
+      const request = indexedDB.open("wops-write-outbox");
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });

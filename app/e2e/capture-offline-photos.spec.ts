@@ -186,7 +186,7 @@ async function clockInOffline(page: Page) {
 async function queuedOps(page: Page) {
   return page.evaluate(async () => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const req = indexedDB.open("wops-write-outbox", 1);
+      const req = indexedDB.open("wops-write-outbox");
       req.onupgradeneeded = () => req.result.createObjectStore("entries", { keyPath: "id" });
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
