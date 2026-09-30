@@ -190,7 +190,7 @@ async function seedQueuedPhotos(page: Page, count: number) {
   await page.evaluate(
     async ({ count, email, project, png }) => {
       const db = await new Promise<IDBDatabase>((resolve, reject) => {
-        const request = indexedDB.open("wops-write-outbox", 1);
+        const request = indexedDB.open("wops-write-outbox");
         request.onupgradeneeded = () => request.result.createObjectStore("entries", { keyPath: "id" });
         request.onsuccess = () => resolve(request.result);
         request.onerror = () => reject(request.error);

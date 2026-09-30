@@ -194,7 +194,7 @@ test("a punch saved before owners were recorded stays on the phone with a recove
   // What an older build left in the outbox: a clock-in with no ownerId.
   await page.evaluate(async () => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const req = indexedDB.open("wops-write-outbox", 1);
+      const req = indexedDB.open("wops-write-outbox");
       req.onupgradeneeded = () => req.result.createObjectStore("entries", { keyPath: "id" });
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);

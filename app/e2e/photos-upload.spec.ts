@@ -383,7 +383,7 @@ test("updating recovers the photographer's old index failure once with its origi
   const id="ab111111-1111-4111-8111-111111111111";
   await page.evaluate(async({id,email,project,png})=>{
     const db=await new Promise<IDBDatabase>((resolve,reject)=>{
-      const request=indexedDB.open("wops-write-outbox",1);
+      const request=indexedDB.open("wops-write-outbox");
       request.onupgradeneeded=()=>request.result.createObjectStore("entries",{keyPath:"id"});
       request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);
     });

@@ -336,7 +336,7 @@ test("the real IndexedDB queue refuses an unreadable row under a stable id inste
   const result = await page.evaluate(async () => {
     const id = "11111111-2222-4333-8444-555555555555";
     const open = () => new Promise<IDBDatabase>((resolve, reject) => {
-      const r = indexedDB.open("wops-write-outbox", 1);
+      const r = indexedDB.open("wops-write-outbox");
       r.onupgradeneeded = () => { if (!r.result.objectStoreNames.contains("entries")) r.result.createObjectStore("entries", { keyPath: "id" }); };
       r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error);
     });
