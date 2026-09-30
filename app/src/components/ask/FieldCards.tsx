@@ -20,7 +20,7 @@ export function FieldChecklist({ checklist }: { checklist: SetupChecklist }) {
   return (
     <details className="field-card field-checklist" aria-label={t("field.checklist")} open={initiallyOpen.current}>
       <summary>
-        <span>{t("field.checklist")}</span>
+        <h3>{t("field.checklist")}</h3>
         <strong>{open} {t("field.status.missing").toLowerCase()}</strong>
       </summary>
       <div className="field-checklist-body">

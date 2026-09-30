@@ -5163,8 +5163,8 @@ export const CATALOG = {
   "ask.report.suggestHours": { en: "Show my hours this week", es: "Muéstrame mis horas de esta semana" },
   "ask.report.suggestJob": { en: "Summarize a job", es: "Resumir una obra" },
   "ask.greeting": {
-    en: "Tell me what you're working on. I can help with units, daily logs, hours, and job questions by voice or text.",
-    es: "Dime en qué estás trabajando. Puedo ayudarte con unidades, registros diarios, horas y preguntas sobre obras por voz o texto.",
+    en: "Tell me what you're working on. I can help with units, daily logs, hours, and job questions by voice or text. Live answers follow your access and need a connection; installation notes work offline.",
+    es: "Dime en qué estás trabajando. Puedo ayudarte con unidades, registros diarios, horas y preguntas sobre obras por voz o texto. Las respuestas en vivo respetan tu acceso y necesitan conexión; las notas de instalación funcionan sin señal.",
   },
   "ask.suggestion.singleHung": { en: "Single hung tips", es: "Consejos de single hung" },
   "ask.suggestion.flashing": { en: "What is flashing?", es: "¿Qué es el flashing?" },

@@ -61,6 +61,24 @@ test("cards for an installer, gone while typing, back with Actions, and a card t
   expect((await page.getByRole("button", { name: "Hide actions" }).boundingBox())!.height).toBeGreaterThanOrEqual(48);
 });
 
+test("Ask actions clear the fixed composer on a Face ID phone", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await useSupabaseFixtures(page, { role: "installer", uiDesign: "new" });
+  await page.goto("/ask");
+  // Headless browsers report zero safe area; model the real home-indicator
+  // inset so a fixed composer cannot cover the last action at max scroll.
+  await page.addStyleTag({ content: ":root { --safe-bottom: 34px !important; }" });
+  await expect(page.locator(".ask-dock")).toBeVisible();
+  const positions = await page.evaluate(() => {
+    window.scrollTo({ top: document.scrollingElement!.scrollHeight, behavior: "instant" });
+    return {
+      actionsBottom: document.querySelector(".ask-actions")!.getBoundingClientRect().bottom,
+      dockTop: document.querySelector(".ask-dock")!.getBoundingClientRect().top,
+    };
+  });
+  expect(positions.actionsBottom).toBeLessThan(positions.dockTop - 8);
+});
+
 test("All actions says which actions still live on a screen, and what Forge AI never does", async ({ page }) => {
   await useSupabaseFixtures(page, { role: "foreman" });
   await askAnswers(page, []);

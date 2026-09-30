@@ -5402,6 +5402,7 @@ button.clock-out {
   font-weight: 600;
   white-space: nowrap;
 }
+.field-checklist summary h3 { margin: 0; font-size: inherit; }
 .field-checklist-body {
   padding: 0 16px 14px;
   border-top: 1px solid var(--border);
@@ -5559,7 +5560,7 @@ button.clock-out {
    reading a long answer or checklist; the conversation and actions scroll
    behind it, with enough end clearance to reach the final control. */
 @media (max-width: 859px) {
-  .ask-page { padding-bottom: 154px; }
+  .ask-page { padding-bottom: calc(var(--above-tabbar) + 132px); }
   .ask-page .ask-dock,
   .ask-page .ask-dock.is-pinned {
     position: fixed;
@@ -5578,7 +5579,7 @@ button.clock-out {
     bottom: calc(var(--above-tabbar) + var(--visual-bottom-inset, 0px) + 100px);
   }
 }
-:root[data-display-layout="phone"] .ask-page { padding-bottom: 154px; }
+:root[data-display-layout="phone"] .ask-page { padding-bottom: calc(var(--above-tabbar) + 132px); }
 :root[data-display-layout="phone"] .ask-page .ask-dock,
 :root[data-display-layout="phone"] .ask-page .ask-dock.is-pinned {
   position: fixed;
