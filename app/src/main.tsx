@@ -13,6 +13,10 @@ import { installPreloadRecovery } from "./lib/pwa/preloadRecovery";
 import { installClockCheck } from "./lib/clockSkew";
 import { installSaveOnLeave } from "./lib/queryClient";
 
+// The inline boot guard only retries when the entry never ran at all. Once
+// imports finished and this line runs, React and its error boundary own errors.
+document.documentElement.dataset.forgeBootStarted = "1";
+
 // Crash monitoring, started BEFORE anything mounts so a crash on the very first
 // paint is still caught. With VITE_SENTRY_DSN unset — the state this ships in —
 // this returns immediately and the SDK is never even fetched, so nothing about
