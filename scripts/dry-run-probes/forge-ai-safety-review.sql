@@ -16,6 +16,10 @@ begin
     returning id into v_talk;
 
   perform pg_temp.dry_run_act_as(v_installer);
+  select count(*) into v_n from public.app_release_notes
+    where id in ('2026-09-30-voice-descriptions','2026-09-30-qc-photo-suggestions','2026-09-30-safety-picture-review');
+  perform pg_temp.dry_run_check('installer sees only the voice note', v_n = 1,
+    format('expected 1 visible release note, got %s', v_n));
   update public.safety_talks
     set visual_aids_json = '[{"prompt":"test","approved":true}]'::jsonb
     where id = v_talk;
@@ -25,6 +29,10 @@ begin
 
   perform pg_temp.dry_run_as_system();
   perform pg_temp.dry_run_act_as(v_foreman);
+  select count(*) into v_n from public.app_release_notes
+    where id in ('2026-09-30-voice-descriptions','2026-09-30-qc-photo-suggestions','2026-09-30-safety-picture-review');
+  perform pg_temp.dry_run_check('foreman sees all three field notes', v_n = 3,
+    format('expected 3 visible release notes, got %s', v_n));
   update public.safety_talks
     set visual_aids_json = '[{"prompt":"test","approved":true}]'::jsonb
     where id = v_talk;
