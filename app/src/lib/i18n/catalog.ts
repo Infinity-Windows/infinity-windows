@@ -3934,6 +3934,7 @@ export const CATALOG = {
   // ---- Every queue, every state (K0.6) -----------------------------------
   "stuck.state.waiting": { en: "Saved on this phone", es: "Guardado en este teléfono" },
   "stuck.state.sending": { en: "Sending…", es: "Enviando…" },
+  "stuck.lastTry": { en: "Last try: {error}", es: "Último intento: {error}" },
   "stuck.state.failed": { en: "Couldn't send — needs you", es: "No se pudo enviar — te necesita" },
   "stuck.state.sent": { en: "Saved in Forge", es: "Guardado en Forge" },
   "stuck.sentAt": { en: "Saved in Forge at {when}", es: "Guardado en Forge a las {when}" },

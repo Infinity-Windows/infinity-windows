@@ -168,7 +168,7 @@ export function buildStuckRows(inputs: StuckInputs, t: TFn): StuckSections {
           : e.lastError
         : e.dependsOn && refusedSignatures.has(e.dependsOn)
           ? t("stuck.heldForSignature")
-          : null,
+          : e.lastError ? t("stuck.lastTry", { error: e.lastError }) : null,
       source: "write",
       state: failed ? "failed" : e.status === "sending" ? "sending" : "waiting",
       sentAt: null,

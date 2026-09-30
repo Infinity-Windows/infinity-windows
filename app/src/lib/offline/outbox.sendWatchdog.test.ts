@@ -76,6 +76,52 @@ afterEach(() => {
 });
 
 describe("the send watchdog on the phone's runtime", () => {
+  it("Send now retries a backed-off photo without waiting or rewriting its saved blob", async () => {
+    setOnline(false);
+    const id = await outbox.enqueueUpload({ kind: "photo", path: `${PROJECT}/feed/manual.jpg`, contentType: "image/jpeg", projectId: PROJECT, createdBy: "installer@example.test", blob: PHOTO });
+    upload.mockResolvedValueOnce({ data: null, error: new TypeError("Load failed") });
+    upload.mockResolvedValue({ data: {}, error: null });
+    upsert.mockResolvedValue({ error: null });
+    setOnline(true);
+    await outbox.drain();
+    expect(outbox.getCounts().photos).toBe(1);
+    expect(upload).toHaveBeenCalledTimes(1);
+    await outbox.sendNow();
+    expect(upload).toHaveBeenCalledTimes(2);
+    expect(outbox.getCounts().photos).toBe(0);
+    expect(upsert.mock.calls[0][1]).toMatchObject({ client_id: id });
+  });
+
+  it("keeps a manual retry requested during another upload and sends it afterward", async () => {
+    setOnline(false);
+    await outbox.enqueueUpload({ kind: "photo", path: `${PROJECT}/feed/backoff.jpg`, contentType: "image/jpeg", projectId: PROJECT, createdBy: "installer@example.test", blob: PHOTO });
+    upload.mockResolvedValueOnce({ data: null, error: new TypeError("Load failed") });
+    upsert.mockResolvedValue({ error: null });
+    setOnline(true);
+    await outbox.drain();
+    expect(outbox.getCounts().photos).toBe(1);
+
+    setOnline(false);
+    await outbox.enqueueUpload({ kind: "photo", path: `${PROJECT}/feed/active.jpg`, contentType: "image/jpeg", projectId: PROJECT, createdBy: "installer@example.test", blob: PHOTO });
+    let finishActive: ((reply: { data: object; error: null }) => void) | undefined;
+    upload.mockImplementation((_bucket: string, path: string) => path.endsWith("active.jpg")
+      ? new Promise((resolve) => { finishActive = resolve; })
+      : Promise.resolve({ data: {}, error: null }));
+    setOnline(true);
+    const active = outbox.drain();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(finishActive).toBeTypeOf("function");
+    await outbox.sendNow();
+    finishActive!({ data: {}, error: null });
+    await active;
+    expect(upload.mock.calls.map((c) => c[1])).toEqual([
+      `${PROJECT}/feed/backoff.jpg`,
+      `${PROJECT}/feed/active.jpg`,
+      `${PROJECT}/feed/backoff.jpg`,
+    ]);
+    expect(outbox.getCounts().photos).toBe(0);
+  });
+
   it("gives up on a photo whose upload reply never arrives, sends the next one, says so in Recent events, and lands the first on its retry — once", async () => {
     setOnline(false);
     const first = await outbox.enqueueUpload({ kind: "photo", path: `${PROJECT}/feed/1.jpg`, contentType: "image/jpeg", projectId: PROJECT, createdBy: "installer@example.test", blob: PHOTO });

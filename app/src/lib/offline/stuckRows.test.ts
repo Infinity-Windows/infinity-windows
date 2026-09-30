@@ -91,6 +91,11 @@ describe("buildStuckRows — every queue, every state", () => {
     expect(stateLabel("sending", en)).toBe("Sending…");
   });
 
+  it("shows the last retry error while a photo remains queued", () => {
+    const { waiting } = buildStuckRows({ ...EMPTY, writes: [write({ lastError: "Load failed", attemptCount: 2 })] }, en);
+    expect(waiting[0]).toMatchObject({ state: "waiting", detail: "Last try: Load failed" });
+  });
+
   it("keeps a write that gave up under needs-you, with Try again and Throw away", () => {
     const { needsYou, waiting } = buildStuckRows(
       { ...EMPTY, writes: [write({ status: "failed", lastError: "Failed to fetch" })] },

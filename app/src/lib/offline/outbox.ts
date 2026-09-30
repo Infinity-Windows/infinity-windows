@@ -361,6 +361,7 @@ export function subscribeClockSent(cb: ClockSentListener): () => void {
 let draining = false;
 /** Somebody asked for a drain while one was running — see drain(). */
 let drainAgain = false;
+let forceNextDrain = false;
 let wired = false;
 
 /**
@@ -718,18 +719,38 @@ async function enqueueStable(
  * covers a pass that sent nothing, when a write queued during it would
  * otherwise sit behind the failures of unrelated entries.
  */
-export async function drain(): Promise<void> {
-  if (!isOnline()) return;
+export function drain(): Promise<void> {
+  return runDrain(false);
+}
+
+async function runDrain(forceDue: boolean): Promise<void> {
+  if (!isOnline()) {
+    if (forceDue) logOfflineEvent({ type: "queue", scope: "outbox", message: "Send now paused: phone reports offline" });
+    return;
+  }
   if (draining) {
     drainAgain = true;
+    forceNextDrain ||= forceDue;
+    if (forceDue) logOfflineEvent({ type: "queue", scope: "outbox", message: "Send now waiting for the current send to finish" });
     return;
   }
   draining = true;
+  forceNextDrain ||= forceDue;
   try {
     do {
       drainAgain = false;
+      const forceThisPass = forceNextDrain;
+      forceNextDrain = false;
+      if (forceThisPass) logOfflineEvent({ type: "queue", scope: "outbox", message: "Send now started checking saved writes" });
       const res = await drainUntilSettled(store, handlers, {
+        forceDue: forceThisPass,
         sendDeadlineMs,
+        onAttempt: (entry) => {
+          if (forceThisPass || entry.op === "photo_upload") {
+            logOfflineEvent({ type: "queue", scope: "outbox", message: `Started ${entry.op}` });
+          }
+        },
+        onHeld: (entry) => logOfflineEvent({ type: "queue", scope: "outbox", message: `${entry.op} is waiting for its owner's sign-in` }),
         onAbandoned: (entry, deadlineMs) =>
           logOfflineEvent({ type: "timeout", scope: "outbox", message: abandonedSendMessage(entry, deadlineMs) }),
         onChange: () => void refresh(),
@@ -765,6 +786,9 @@ export async function drain(): Promise<void> {
           message: res.deadLettered > 0 ? `${res.deadLettered} gave up` : res.retried > 0 ? `${res.retried} will retry` : undefined,
         });
       }
+      if (forceThisPass && res.attempted === 0) {
+        logOfflineEvent({ type: "queue", scope: "outbox", message: "No saved writes were ready to send; checking for blockers" });
+      }
       if (res.sent > 0) {
         for (const cb of syncedListeners) {
           try {
@@ -775,11 +799,29 @@ export async function drain(): Promise<void> {
         }
       }
     } while (drainAgain && isOnline());
-  } catch {
-    /* transient — next trigger retries */
+  } catch (error) {
+    logOfflineEvent({ type: "queue", scope: "outbox", message: `Queue stopped before finishing: ${error instanceof Error ? error.message : "unknown error"}` });
   } finally {
     draining = false;
-    await refresh();
+    try {
+      await refresh();
+    } catch {
+      // A failed display refresh must never strand an explicit retry.
+    }
+    if (!isOnline()) {
+      // An old manual tap must not bypass backoff on a later reconnect.
+      drainAgain = false;
+      forceNextDrain = false;
+      return;
+    }
+    // A tap can land after the do/while check but before this cleanup ends.
+    // Carry that explicit request into a fresh pass instead of losing it.
+    if (drainAgain && !draining && isOnline()) {
+      const force = forceNextDrain;
+      drainAgain = false;
+      forceNextDrain = false;
+      void runDrain(force);
+    }
   }
 }
 
@@ -852,18 +894,10 @@ async function recoverFailedTransportPhotos(): Promise<void> {
  * watching the screen is a better judge of the signal than the timer is.
  */
 export async function sendNow(): Promise<void> {
-  const now = Date.now();
-  try {
-    for (const e of await store.getAll()) {
-      if (e.status === "queued" && e.nextAttemptAt > now) {
-        await store.put({ ...e, nextAttemptAt: now });
-      }
-    }
-  } catch {
-    /* the drain below still runs over whatever was already due */
-  }
-  await refresh();
-  await drain();
+  // Select saved work without rewriting its IndexedDB row. That row includes
+  // the original Blob, so moving four retry timestamps can itself stall iOS.
+  logOfflineEvent({ type: "queue", scope: "outbox", message: "Send now tapped" });
+  await runDrain(true);
 }
 
 let intervalId: ReturnType<typeof setInterval> | null = null;
