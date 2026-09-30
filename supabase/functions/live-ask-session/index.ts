@@ -70,6 +70,7 @@ Deno.serve(withSentry("live-ask-session", async (req) => {
   const reservation = gate.reservationId;
   let reached = false;
   let createdSessionId: string | null = null;
+  let expiryRegistered = false;
   try {
     const key = requireOpenAI();
     reached = true;
@@ -93,16 +94,26 @@ Deno.serve(withSentry("live-ask-session", async (req) => {
       // A paid session without a server expiry record must never reach a phone.
       throw new Error("live_expiry_registration_failed");
     }
+    expiryRegistered = true;
     await settleAiSpend(service, reservation, null, MODEL, Math.ceil(((MAX_SECONDS + 60) / 60) * MICROS_PER_MINUTE));
     return jsonResponse({ sdp: answer, maxSeconds: MAX_SECONDS }, 200, cors);
   } catch (error) {
     if (createdSessionId) {
       const key = requireOpenAI();
-      const stopped = await fetch(`https://api.openai.com/v1/live/sessions/${encodeURIComponent(createdSessionId)}/hangup`, {
-        method: "POST", headers: { Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(10_000),
-      }).catch(() => null);
-      if (stopped?.ok || stopped?.status === 404 || stopped?.status === 409) {
+      let stopped = false;
+      for (let attempt = 0; attempt < 2 && !stopped; attempt++) {
+        const response = await fetch(`https://api.openai.com/v1/live/sessions/${encodeURIComponent(createdSessionId)}/hangup`, {
+          method: "POST", headers: { Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(10_000),
+        }).catch(() => null);
+        stopped = !!(response?.ok || response?.status === 404 || response?.status === 409);
+        if (!stopped && attempt === 0) await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+      if (stopped) {
         await service.from("live_ask_provider_sessions").update({ closed_at: new Date().toISOString() }).eq("id", createdSessionId);
+      } else if (!expiryRegistered) {
+        // No ledger row exists for the reaper. Keep the opaque provider ID in
+        // server logs so an operator can close this exceptional orphan.
+        console.error("live_ask_orphan_possible", createdSessionId);
       }
     }
     // Reached the provider: the money comes back, the call count stays (a
