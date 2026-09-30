@@ -109,6 +109,7 @@ const CASCADE_COVERED: Record<string, string> = {
   project_bill_to_history: "ON DELETE CASCADE from projects (20261034000000)",
   install_events: "ON DELETE CASCADE from project_openings",
   qc_checks: "ON DELETE CASCADE from project_openings",
+  qc_decision_events: "ON DELETE CASCADE from project_openings (20261041000000)",
   opening_phases: "ON DELETE CASCADE from project_openings",
   opening_notes: "ON DELETE CASCADE from project_openings",
   unit_redos: "ON DELETE CASCADE from project_openings",

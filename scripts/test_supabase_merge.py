@@ -204,7 +204,7 @@ class TestSchemaParsing(unittest.TestCase):
         # +1: schedule_ai_reasons — why Forge AI drafted each schedule row,
         # readable by supervisors and owners only (K2.8, renumbered to
         # 20261035000000 to land after the bill-to migrations).
-        self.assertEqual(len(SCHEMA.tables), 185)  # includes the server-owned Live Ask expiry ledger
+        self.assertEqual(len(SCHEMA.tables), 186)  # includes QC decision history
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 

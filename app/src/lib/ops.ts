@@ -566,10 +566,12 @@ export async function listQcPassedOpeningIds(projectId: string): Promise<string[
   );
 }
 
-export async function setQc(openingId: string, status: "passed" | "callback", note?: string): Promise<void> {
-  const { error } = await supabase.from("qc_checks").upsert(
-    { project_opening_id: openingId, status, note: note ?? null, checked_at: new Date().toISOString() },
-    { onConflict: "project_opening_id" },
-  );
+export async function setQc(openingId: string, status: "passed" | "callback", decisionId: string, note?: string): Promise<void> {
+  const { error } = await supabase.rpc("record_qc_decision", {
+    p_decision_id: decisionId,
+    p_opening_id: openingId,
+    p_status: status,
+    p_note: note ?? null,
+  });
   if (error) throw error;
 }
