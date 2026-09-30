@@ -380,7 +380,14 @@ export function applyFailure(
   const attemptCount = entry.attemptCount + 1;
   const retryable = isRetryableError(err);
   const exhausted = attemptCount >= MAX_ATTEMPTS;
-  const dead = !retryable || exhausted;
+  // A camera photo may spend days on a weak connection. Exhausting eight
+  // transport attempts must not strand its only copy on the phone forever.
+  // Server refusals and missing files still need a person to resolve them.
+  const photoTransport = entry.hasBlob &&
+    (entry.op === "issue_photo_upload" ||
+      (entry.op === "photo_upload" && uploadKind(entry) === "photo")) &&
+    isNetworkError(err);
+  const dead = !retryable || (exhausted && !photoTransport);
   return {
     ...entry,
     attemptCount,

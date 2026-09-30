@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyFailure, deserializeEntry, serializeEntry, type OutboxEntry } from "./outbox-core";
-import { recoverPhotoUpload } from "./recoverPhotoUploads";
+import { recoverPhotoUpload, recoverTransportFailedPhoto } from "./recoverPhotoUploads";
 import { MemoryOutboxStore } from "./outboxStore";
 
 const EMAIL = "worker@example.test";
@@ -35,5 +35,23 @@ describe("recovery after the attachment index repair",()=>{
     const repaired=recoverPhotoUpload(failed(),EMAIL,20);
     const failedAgain=deserializeEntry(serializeEntry(applyFailure(repaired,failure,30)))!;
     expect(recoverPhotoUpload(failedAgain,EMAIL,40)).toBe(failedAgain);
+  });
+});
+
+describe("recovery of old transport-failed photos", () => {
+  it("preserves the file and identity and cannot overwrite a sent entry", async () => {
+    const before = { ...failed(), lastError: "Load failed", payload: { createdBy: EMAIL, path: "original.jpg", kind: "photo" } };
+    const store = new MemoryOutboxStore();
+    await store.put(before, new Blob(["original-photo"]));
+    const recovered = recoverTransportFailedPhoto(before, 50);
+    expect(await store.swap(before.id, before, recovered)).toBe(true);
+    expect(recovered).toMatchObject({ id: before.id, createdAt: before.createdAt, status: "queued", payload: before.payload });
+    expect(await (await store.getBlob(before.id))?.text()).toBe("original-photo");
+    expect(await store.swap(before.id, before, recovered)).toBe(false);
+  });
+  it("leaves permanent refusals and non-photo media for manual review", () => {
+    const before = { ...failed(), lastError: "Load failed", payload: { kind: "photo" } };
+    expect(recoverTransportFailedPhoto({ ...before, lastError: "permission denied" }, 50).status).toBe("failed");
+    expect(recoverTransportFailedPhoto({ ...before, payload: { kind: "video" } }, 50).status).toBe("failed");
   });
 });

@@ -32,7 +32,7 @@ import { signedInEmail, signedInUserId, subscribeSignedIn } from "../signedIn";
 import { clientWithToken, supabase } from "../supabase";
 import { authorEvidence, belongsTo, ownershipOf, type Signer } from "./entryOwner";
 import type { JobMode } from "../types";
-import { recoverPhotoUpload } from "./recoverPhotoUploads";
+import { recoverPhotoUpload, recoverTransportFailedPhoto } from "./recoverPhotoUploads";
 import { PhotoUploadReceipts } from "./photoUploadProgress";
 import { migrateLegacyUploads } from "../install/legacyUploadQueue";
 import {
@@ -811,13 +811,38 @@ export async function recoverAndDrain(): Promise<void> {
     const now = Date.now();
     for (const e of all) {
       const fixed = recoverPhotoUpload(requeueStranded(e, now), signedInEmail(), now);
-      if (fixed !== e) await store.put(fixed);
+      if (fixed !== e) await store.swap(e.id, e, fixed);
     }
   } catch {
     /* ignore */
   }
+  await recoverFailedTransportPhotos();
   await refresh();
   await drain();
+}
+
+/** Give old transport-failed camera photos another chance once their owner is
+ * signed in. Preserve the original file, path, timestamp and idempotency key.
+ * A compare-and-swap cannot resurrect a photo sent or removed meanwhile. */
+async function recoverFailedTransportPhotos(): Promise<void> {
+  const signer = signerNow();
+  if (!signer.userId) return;
+  try {
+    const now = Date.now();
+    for (const entry of await store.getAll()) {
+      const next = recoverTransportFailedPhoto(entry, now);
+      if (next === entry || !belongsTo(entry, signer)) continue;
+      try {
+        const blob = await store.getBlob(entry.id);
+        if (!blob || blob.size === 0) continue;
+        await store.swap(entry.id, entry, next);
+      } catch {
+        /* One unreadable file must not block recovery of the other photos. */
+      }
+    }
+  } catch {
+    /* A later sign-in or queue refresh can try again; nothing is discarded. */
+  }
 }
 
 /**
@@ -854,8 +879,11 @@ export function initOutboxAutoFlush(): void {
   // A different person signing in changes whose writes are theirs to send —
   // recount at once, and send the ones that just became theirs.
   subscribeSignedIn(() => {
-    void refresh();
-    if (isOnline()) void drain();
+    void (async () => {
+      await recoverFailedTransportPhotos();
+      await refresh();
+      if (isOnline()) await drain();
+    })().catch(() => { /* A later focus or reconnect will retry. */ });
   });
 
   window.addEventListener("online", () => void drain());
