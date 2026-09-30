@@ -313,6 +313,15 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
   const [restoreError, setRestoreError] = useState(false);
   const recording = useRef<VoiceRecording | null>(null);
   const recordAbort = useRef<AbortController | null>(null);
+  // Push-to-talk has no across-app indicator. Keep the old page-leave safety
+  // behavior for that recorder; only the explicitly started live call travels.
+  useEffect(() => {
+    if (active || (voice !== "starting" && voice !== "recording")) return;
+    recordAbort.current?.abort();
+    recording.current?.cancel();
+    recording.current = null;
+    setVoice("idle");
+  }, [active, voice]);
   /** A recording the phone could not keep yet: held in memory until it is
    * saved on the phone or on the server, never silently dropped. */
   const [held, setHeld] = useState<{ blob: Blob; meta: FieldMeta } | null>(null);

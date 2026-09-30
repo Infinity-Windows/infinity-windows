@@ -97,12 +97,13 @@ vi.mock("../lib/fieldAsk", () => ({
 const mic = vi.hoisted(() => ({
   onComplete: null as null | ((blob: Blob) => void),
   resolveStart: null as null | (() => void),
+  cancel: vi.fn(),
 }));
 vi.mock("../lib/voiceRecording", () => ({
   startVoiceRecording: (options: { onComplete: (blob: Blob) => void }) =>
     new Promise<{ stop: () => void; cancel: () => void }>((resolve) => {
       mic.onComplete = options.onComplete;
-      mic.resolveStart = () => resolve({ stop: () => {}, cancel: () => {} });
+      mic.resolveStart = () => resolve({ stop: () => {}, cancel: mic.cancel });
     }),
 }));
 vi.mock("../lib/dictation", () => ({
@@ -149,6 +150,7 @@ beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   mic.onComplete = null;
   mic.resolveStart = null;
+  mic.cancel.mockClear();
   phone.canKeep = false;
   phone.transcribe = false;
   phone.transcribedWith = null;
@@ -188,6 +190,22 @@ describe("Ask's voice message and unsaved work", () => {
     await settle();
     expect(host!.querySelector('button[aria-label^="Stop and send"]')).not.toBeNull();
     expect(unsavedWorkClaims()).toBe(1);
+  });
+
+  it("cancels push-to-talk when Ask is hidden, so no unseen recording continues", async () => {
+    await mount();
+    await act(async () => micButton()!.click());
+    await act(async () => mic.resolveStart?.());
+    await settle();
+    expect(unsavedWorkClaims()).toBe(1);
+    await act(async () => root!.render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter><AskInfinity active={false} /></MemoryRouter>
+      </QueryClientProvider>,
+    ));
+    await settle();
+    expect(mic.cancel).toHaveBeenCalledOnce();
+    expect(unsavedWorkClaims()).toBe(0);
   });
 
   it("keeps the claim for a recording the phone could not keep", async () => {
