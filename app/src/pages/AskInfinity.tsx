@@ -4,7 +4,7 @@ import {LearningPanel} from "../components/hexPortal/LearningPanel";
 import {LearningCard} from "../components/hexPortal/LearningCard";
 import {LearningReviewForm} from "../components/hexPortal/LearningReviewForm";
 import {findPortalGuidance,type PortalSource,type LearningDraft} from "../lib/hexPortal";
-import { clearPortalGuidanceCache, readOfflineGuidance, rememberVerifiedGuidance } from "../lib/hexPortalCache";
+import { clearPortalGuidanceCache, forgetVerifiedGuidance, readOfflineGuidance, rememberVerifiedGuidance } from "../lib/hexPortalCache";
 import "../components/hexPortal/hexPortal.css";
 import type { AskArtifact } from "../../../supabase/functions/_shared/askReporting.ts";
 import { ReportCard } from "../components/ask/ReportCard";
@@ -580,7 +580,8 @@ export function AskInfinity() {
             portalNotice=es?"Guía revisada de Hexcore · revisiones exactas":"Reviewed Hexcore guidance · exact revisions";
             return {who:"infinity",text:result.items.map(d=>`${d.title} — revision ${d.revision}\n${d.answer}\n\n${d.applicability}\nEvidence: ${d.evidence}\nReview through: ${d.reviewBy}`).join("\n\n"),portalSources:result.items.map(d=>({id:d.id,title:d.title,kind:"hex-portal",revision:d.revision}))};
           }
-          clearPortalGuidanceCache();
+          if(result.enabled) await forgetVerifiedGuidance(learningContext.actorId,learningContext.projectId,q).catch(()=>undefined);
+          else clearPortalGuidanceCache();
           portalNotice=result.enabled?(es?"Todavía no hay una lección revisada que coincida. Respuesta normal de Ask.":"No matching reviewed lesson yet. Normal Ask answer."):(es?"Hex-Portal no está activado para este trabajo. Respuesta normal de Ask.":"Hex-Portal is not enabled for this job. Normal Ask answer.");
         }catch{ clearPortalGuidanceCache(); portalNotice=es?"No se pudo consultar Hexcore. Esta respuesta no usa lecciones revisadas.":"Could not check Hexcore. This answer does not use reviewed lessons."; }
       }

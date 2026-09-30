@@ -7,7 +7,7 @@ vi.mock("./signedIn", () => ({
   subscribeSignedIn: (fn: () => void) => { identity.changed.push(fn); return () => {}; },
 }));
 
-import { clearPortalGuidanceCache, GUIDANCE_CACHE_MAX_AGE_MS, readOfflineGuidance, rememberVerifiedGuidance } from "./hexPortalCache";
+import { clearPortalGuidanceCache, forgetVerifiedGuidance, GUIDANCE_CACHE_MAX_AGE_MS, readOfflineGuidance, rememberVerifiedGuidance } from "./hexPortalCache";
 
 const project = "6f718a92-6a20-42b8-91cf-16e60c3a91cd";
 const lesson = {
@@ -51,6 +51,15 @@ describe("HexCore reviewed-guidance phone copy", () => {
     expect(await readOfflineGuidance("owner-a", project, "sill", 1001)).toBeNull();
     identity.user = null;
     identity.changed.forEach((fn) => fn());
+  });
+
+  it("removes a no-longer-matching question without erasing a different checked lesson", async () => {
+    await rememberVerifiedGuidance("owner-a", project, "sill", [lesson], 1000);
+    await rememberVerifiedGuidance("owner-a", project, "head", [{ ...lesson, revision: 4 }], 1001);
+    await forgetVerifiedGuidance("owner-a", project, "sill");
+    Object.defineProperty(navigator, "onLine", { configurable: true, value: false });
+    expect(await readOfflineGuidance("owner-a", project, "sill", 1002)).toBeNull();
+    expect((await readOfflineGuidance("owner-a", project, "head", 1002))?.items[0].revision).toBe(4);
   });
 
   it("refuses malformed or oversized guidance", async () => {

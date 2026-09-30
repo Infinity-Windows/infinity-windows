@@ -45,6 +45,14 @@ export function clearPortalGuidanceCache(): void {
   try { storage()?.removeItem(KEY); } catch { /* unavailable storage */ }
 }
 
+export async function forgetVerifiedGuidance(userId: string, projectId: string, question: string): Promise<void> {
+  if (signedInUserId() !== userId) return;
+  const hash = await questionHash(projectId, question);
+  const cache = readStore();
+  if (!hash || cache?.ownerId !== userId) return;
+  writeStore({ ownerId: userId, rows: cache.rows.filter((row) => row.projectId !== projectId || row.questionHash !== hash) });
+}
+
 /** Store only an exact live response that passed both server access checks. */
 export async function rememberVerifiedGuidance(userId: string, projectId: string, question: string, items: PortalGuidance[], now = Date.now()): Promise<void> {
   if (signedInUserId() !== userId || items.length < 1 || items.length > 3 || !items.every(validItem)) return;
