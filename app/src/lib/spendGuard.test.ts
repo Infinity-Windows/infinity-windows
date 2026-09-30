@@ -6,6 +6,7 @@ import {
   IMAGE_MICROS,
   MODEL_PRICES,
   AUDIO_MICROS_PER_SECOND,
+  LIVE_MICROS_PER_SECOND,
   readVerdict,
   releaseAiSpend,
   reserveAiSpend,
@@ -62,7 +63,7 @@ describe("FUNCTION_SPEND", () => {
       .filter(([, v]) => v.kind === "question")
       .map(([k]) => k)
       .sort();
-    expect(questions).toEqual(["ask", "generate-toolbox-talk", "studio-assist"]);
+    expect(questions).toEqual(["ask", "generate-toolbox-talk", "live-ask-session", "studio-assist"]);
   });
 
   it("estimates Ask at exactly the investigation's per-question cost", () => {
@@ -87,17 +88,17 @@ describe("FUNCTION_SPEND", () => {
   // thirteen times more per word than gpt-4o-mini did. If a function's provider
   // and its price tag ever disagree, the owner's spend screen reports money the
   // company is not being charged — or misses money it is.
-  it("keeps embeddings and dictation on OpenAI, with text generation on Claude", () => {
+  it("meters the added OpenAI QC vision call alongside embeddings and dictation", () => {
     const openai = Object.entries(FUNCTION_SPEND)
       .filter(([, v]) => v.provider === "openai")
       .map(([k]) => k)
       .sort();
-    expect(openai).toEqual(["ingest-knowledge", "transcribe-description"]);
+    expect(openai).toEqual(["ingest-knowledge", "live-ask-session", "review-qc-photo", "transcribe-description"]);
   });
 
   it("uses a model whose price we actually know for every function", () => {
     for (const [name, spend] of Object.entries(FUNCTION_SPEND)) {
-      expect([...Object.keys(MODEL_PRICES), ...Object.keys(AUDIO_MICROS_PER_SECOND)], name).toContain(spend.model);
+      expect([...Object.keys(MODEL_PRICES), ...Object.keys(AUDIO_MICROS_PER_SECOND), ...Object.keys(LIVE_MICROS_PER_SECOND)], name).toContain(spend.model);
     }
   });
 

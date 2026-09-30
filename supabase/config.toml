@@ -13,6 +13,9 @@ verify_jwt = true
 [functions.extract-receipt]
 verify_jwt = true
 
+[functions.review-qc-photo]
+verify_jwt = true
+
 [functions.generate-howto]
 verify_jwt = true
 
@@ -90,6 +93,10 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.transcribe-description]
+verify_jwt = true
+
+[functions.live-ask-session]
+# Off until LIVE_ASK_ENABLED=true and the pilot build flag is enabled.
 verify_jwt = true
 
 [functions.crew-reminder-sweep]

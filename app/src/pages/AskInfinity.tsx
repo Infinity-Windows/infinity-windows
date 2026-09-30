@@ -39,7 +39,7 @@ import { readWorkQueue } from "../lib/customWork/queue";
 import { startVoiceRecording, type VoiceRecording } from "../lib/voiceRecording";
 import { transcribeDescription } from "../lib/dictation";
 import { useUnsavedWorkWhile } from "../lib/pwa/useUnsavedWork";
-import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, Mic, Square } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, Mic, Radio, Square } from "lucide-react";
 import { inBand, isTextEntry, readingHistory, revealDelta, revealTarget, scrollPageBy, spanOf, unionSpan, visibleBand, type Span } from "../lib/askLatest";
 import { readCardsHidden, rememberCardsHidden } from "../lib/askCardsPref";
 import type { TimeShift } from "../lib/timeclock";
@@ -55,6 +55,9 @@ import { AiDailyLogCard } from "../components/aiDailyLogs/AiDailyLogCard";
 import { useAiDailyLogDraft } from "../lib/aiDailyLogs/useAiDailyLogDraft";
 import { applyDailyLogReply, asksForDailyLog, dailyLogContextForMessage } from "../lib/aiDailyLogs/askBridge";
 import { signedInEmail } from "../lib/signedIn";
+import { startLiveSession, type LiveEndReason, type LiveSession, type LiveStatus, type LiveTurn } from "../lib/liveAskSession";
+import { liveCommentary, type LiveTurnOutcome } from "../lib/liveAskCommentary";
+import { liveAskPilotEnabled, liveStatusLine, liveText } from "../lib/liveAskPilot";
 
 // Every cached screen a field receipt may have changed (see FIELD_QUERY_ROOTS).
 const refreshFieldViews = () => { for (const root of FIELD_QUERY_ROOTS) void queryClient.invalidateQueries({ queryKey: [root] }); };
@@ -212,6 +215,9 @@ export function AskInfinity() {
     { who: "infinity", text: t("ask.greeting") },
   ]);
   const [thinking, setThinking] = useState(false);
+  /** `thinking`, readable the instant it changes: a live turn queued behind
+   * the previous reply calls send() before React has re-rendered. */
+  const busyRef = useRef(false);
   const threadRef = useRef<HTMLDivElement>(null);
   /** "Finding an answer…" — part of the newest thing on screen while it shows. */
   const statusRef = useRef<HTMLDivElement>(null);
@@ -250,10 +256,20 @@ export function AskInfinity() {
   const logOpenRef = useRef(false);
   const [unsent, setUnsent] = useState<UnsentField[]>([]);
   const [voice, setVoice] = useState<"idle" | "starting" | "recording" | "saving" | "transcribing">("idle");
+  // Live Ask (pilot, lib/liveAskSession.ts): a spoken conversation whose every
+  // finished utterance is saved as a memo and then sent through send() below.
+  // Pilot builds offer this only to the real owner login. The server repeats
+  // the role check, so a client-side switch cannot enroll other crew.
+  const livePilot = liveAskPilotEnabled() && profile.data?.role === "owner";
+  const [live, setLive] = useState<{ status: LiveStatus; detail?: LiveEndReason | string }>({ status: "idle" });
+  const liveRef = useRef<LiveSession | null>(null);
+  const liveOn = live.status === "starting" || live.status === "live" || live.status === "unstable";
+  /** Live turns cut from the microphone and not yet sent or kept on the phone. */
+  const [liveSaving, setLiveSaving] = useState(0);
   /** While the microphone is on — asking, recording, saving, writing it out —
    * the composer is the recorder and is pinned to the bottom of the screen
    * (see the dock below). Read through a ref by effects that measure it. */
-  const pinned = voice !== "idle";
+  const pinned = voice !== "idle" || liveOn;
   const pinnedRef = useRef(pinned);
   pinnedRef.current = pinned;
   const [seconds, setSeconds] = useState(0);
@@ -270,7 +286,7 @@ export function AskInfinity() {
   // automatic app update must not reload over any of it (independent review,
   // 2026-09-23). Released by durability or by the person, never by the mic
   // merely stopping.
-  useUnsavedWorkWhile(voice !== "idle" || held !== null);
+  useUnsavedWorkWhile(voice !== "idle" || held !== null || liveOn || liveSaving > 0);
   /** The clock version read when this message was started (typing or recording). */
   const clockSeen = useRef<number | null>(null);
   // Every async completion checks it still belongs to the account and setup it
@@ -288,6 +304,9 @@ export function AskInfinity() {
    * last chose on this phone (askCardsPref), not as the previous screen left them. */
   const resetFieldUi = (person: string | null, { keepInput = false }: { keepInput?: boolean } = {}) => {
     gen.current += 1;
+    busyRef.current = false;
+    // The microphone and speaker close with the screen they were opened on.
+    liveRef.current?.end("account");
     recordAbort.current?.abort();
     recording.current?.cancel();
     recording.current = null;
@@ -509,10 +528,12 @@ export function AskInfinity() {
 
   /** `keepInput`: a card tap sends its own words and leaves whatever the
    * person typed in the box (K2.2). `operational`: an action card is always a
-   * saved field request, whatever its words look like to the router. */
-  const send = (text: string, voiceMeta?: FieldMeta, sentFrom = gen.current, opts: { keepInput?: boolean; operational?: boolean } = {}) => {
+   * saved field request, whatever its words look like to the router.
+   * Resolves to the reply shown, or null when nothing was sent or shown. */
+  const send = (text: string, voiceMeta?: FieldMeta, sentFrom = gen.current, opts: { keepInput?: boolean; operational?: boolean } = {}): Promise<ChatMsg | null> => {
     const q = text.trim();
-    if (!q || thinking || !isCurrent(sentFrom)) return;
+    if (!q || busyRef.current || !isCurrent(sentFrom)) return Promise.resolve(null);
+    busyRef.current = true;
     const g = gen.current;
     const uid = actor.current;
     // Send was pressed now; this is the time and clock view the request carries.
@@ -648,15 +669,23 @@ export function AskInfinity() {
       return brainMessage(outcome, limitNote);
     };
 
-    void run()
-      .then((reply) => isCurrent(g) && setMessages((m) => [...m, {...reply,portalNotice,...learningContext&&!reply.artifacts?.length?{learning:{...learningContext,answer:reply.text,sources:reply.portalSources??(reply.sources?.length?reply.sources.map(source=>({id:source.path.slice(0,160),title:source.title.slice(0,300),kind:"reference" as const})):(reply.hits??[]).map(hit=>({id:hit.entry.id.slice(0,160),title:hit.entry.title.slice(0,300),kind:"reference" as const})))}}:{}}]))
+    return run()
+      .then((reply) => {
+        if (!isCurrent(g)) return null;
+        setMessages((m) => [...m, {...reply,portalNotice,...learningContext&&!reply.artifacts?.length?{learning:{...learningContext,answer:reply.text,sources:reply.portalSources??(reply.sources?.length?reply.sources.map(source=>({id:source.path.slice(0,160),title:source.title.slice(0,300),kind:"reference" as const})):(reply.hits??[]).map(hit=>({id:hit.entry.id.slice(0,160),title:hit.entry.title.slice(0,300),kind:"reference" as const})))}}:{}}]);
+        return reply;
+      })
       .catch(() => {
         if (isCurrent(g)) setMessages((m) => [...m, { who: "infinity", text: t("ask.somethingWentWrong") }]);
+        return null;
       })
       // A reply from before an account change or new setup must not end the
       // new screen's "thinking" state.
-      .finally(() => { if (isCurrent(g)) setThinking(false); });
+      .finally(() => { if (isCurrent(g)) { busyRef.current = false; setThinking(false); } });
   };
+  // Live turns call the newest send(), not the one their session started with.
+  const sendRef = useRef(send);
+  sendRef.current = send;
 
   // --- Voice: the recording is evidence first, then words -------------------
   const lang = useLanguage().lang;
@@ -693,7 +722,7 @@ export function AskInfinity() {
         // reply comes back in the language the person used.
         return transcribeDescription(blob, "auto", abort.signal);
       },
-      send: (words, path) => send(words, { ...meta, audio_path: path }, g),
+      send: (words, path) => { void send(words, { ...meta, audio_path: path }, g); },
     });
     if (!isCurrent(g)) return;
     setVoice("idle");
@@ -705,7 +734,7 @@ export function AskInfinity() {
   };
   const startRecording = async () => {
     const uid = actor.current;
-    if (voice !== "idle" || thinking || !uid) return;
+    if (voice !== "idle" || thinking || liveRef.current || !uid) return;
     const g = gen.current;
     setVoiceError(""); setSeconds(0);
     // A recording puts the action cards (and All actions) away for the
@@ -741,7 +770,7 @@ export function AskInfinity() {
   };
   const retryUnsent = async (item: UnsentField) => {
     const uid = actor.current;
-    if (thinking || voice !== "idle" || !uid || item.userId !== uid) return;
+    if (thinking || voice !== "idle" || liveRef.current || !uid || item.userId !== uid) return;
     const g = gen.current;
     // Kept messages always belong to the account that recorded them.
     let meta: FieldMeta = { ...item.meta, actor_id: item.userId };
@@ -751,18 +780,93 @@ export function AskInfinity() {
       try { meta = { ...meta, audio_path: await uploadMemo(uid, meta.request_id, item.audio) }; }
       catch { if (isCurrent(g)) setVoiceError(t("field.needsConnection")); return; }
     }
-    if (await stillOwner(g, uid)) send(item.text, meta, g);
+    if (await stillOwner(g, uid)) void send(item.text, meta, g);
   };
   const discardUnsent = async (item: UnsentField) => {
     const g = gen.current, uid = actor.current;
     await dropUnsent(item.meta.request_id).catch(() => undefined);
     if (isCurrent(g) && uid) setUnsent(await listUnsent(uid).catch(() => []));
   };
+  // --- Live Ask: the same evidence order as the recorder, per utterance -------
+  /**
+   * One finished utterance from a live conversation, in the recorder's order:
+   * kept on the phone, the original saved to the speaker's private folder,
+   * and only then transcribed through Forge's own dictation endpoint and sent
+   * through send() as a VOICE request — which the database refuses without
+   * that saved recording (ai_field_begin). GPT-Live emits partial transcript
+   * deltas without a final-turn marker, so those are never used as an Ask
+   * request. Everything else is runVoiceSteps unchanged,
+   * including the ownership check before each outside call. Resolves to what
+   * the voice may say, built from the receipts (liveAskCommentary).
+   */
+  const liveTurn = async (turn: LiveTurn, g: number, uid: string): Promise<string> => {
+    let spokenText = "";
+    const say = (outcome: LiveTurnOutcome) => liveCommentary(spokenText, outcome);
+    // No recording, no request: the words alone are not evidence.
+    if (!turn.audio) return say({ kind: "kept", keptOnPhone: false });
+    const audio = turn.audio;
+    setLiveSaving((n) => n + 1);
+    try {
+      const meta = await fieldMeta("voice", pressSend());
+      if (!meta || meta.actor_id !== uid || !isCurrent(g)) return say({ kind: "other_account" });
+      let reply: Promise<ChatMsg | null> = Promise.resolve(null);
+      const result = await runVoiceSteps({
+        stillOwner: () => stillOwner(g, uid),
+        keep: async (text, error) => {
+          try {
+            await keepUnsent({ userId: uid, meta, text, audio, error });
+            if (isCurrent(g)) setUnsent(await listUnsent(uid).catch(() => []));
+            return true;
+          } catch {
+            // The phone cannot keep it: held in memory with the download card,
+            // exactly like a recorder message the phone could not keep.
+            if (isCurrent(g)) setHeld({ blob: audio, meta });
+            return false;
+          }
+        },
+        upload: () => uploadMemo(uid, meta.request_id, audio),
+        transcribe: async () => { spokenText = await transcribeDescription(audio, "auto", new AbortController().signal); return spokenText; },
+        send: (words, path) => { reply = sendRef.current(words, { ...meta, audio_path: path }, g); },
+      });
+      if (result.outcome === "not_owner") return say({ kind: "other_account" });
+      if (result.outcome !== "sent") return say({ kind: "kept", keptOnPhone: result.keptOnPhone });
+      const shown = await reply;
+      // Not sent (another message was still going): it stays kept to send.
+      if (!shown) return say({ kind: "kept", keptOnPhone: result.keptOnPhone });
+      if (isCurrent(g) && shown.field) setHeld((h) => (h?.meta.request_id === meta.request_id ? null : h));
+      return say({ kind: "answered", reply: { text: shown.text, receipts: shown.field?.receipts, buttons: shown.buttons?.length, artifacts: shown.artifacts?.length } });
+    } finally {
+      setLiveSaving((n) => Math.max(0, n - 1));
+    }
+  };
+  const startLive = () => {
+    const uid = actor.current;
+    if (!livePilot || !uid || liveRef.current || voice !== "idle" || busyRef.current) return;
+    const g = gen.current;
+    // Like the recorder: the cards and the keyboard go away.
+    setCardsHidden(true); setShowAll(false);
+    const typing = document.activeElement;
+    if (isTextEntry(typing)) typing.blur();
+    readClockNow(g);
+    setLive({ status: "starting" });
+    const session: LiveSession = startLiveSession({
+      onStatus: (status, detail) => {
+        if (liveRef.current !== session) return;
+        if (status === "ended" || status === "failed") liveRef.current = null;
+        setLive({ status, detail });
+      },
+      handleTurn: (turn) => liveTurn(turn, g, uid),
+      notHeard: () => liveCommentary("", { kind: "not_heard" }),
+    });
+    liveRef.current = session;
+  };
+  // Leaving Ask ends the conversation: microphone, speaker and connection.
+  useEffect(() => () => liveRef.current?.end("unmount"), []);
   const heldUrl = useMemo(() => (held ? URL.createObjectURL(held.blob) : null), [held]);
   useEffect(() => () => { if (heldUrl) URL.revokeObjectURL(heldUrl); }, [heldUrl]);
   const startNewSetup = () => {
     const uid = actor.current;
-    if (!uid || thinking || voice !== "idle") return;
+    if (!uid || thinking || voice !== "idle" || liveRef.current) return;
     resetFieldUi(uid);
     setConversation(startNewConversation(uid));
     readClockNow();
@@ -802,7 +906,7 @@ export function AskInfinity() {
   const pickCard = (pick: CardPick) => {
     setShowAll(false);
     setCardsHidden(true);
-    send(pick.query, undefined, gen.current, { keepInput: true, operational: pick.operational });
+    void send(pick.query, undefined, gen.current, { keepInput: true, operational: pick.operational });
   };
   // One button, rendered where it can be seen: in the pinned recorder while
   // that is up, otherwise in its own row just above the tab bar.
@@ -906,14 +1010,14 @@ export function AskInfinity() {
           {unsent.map((u) => (
             <div key={u.meta.request_id} className="field-unsent-row">
               <span>{u.text || t("field.memo")} · {new Date(u.meta.sent_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span>
-              <button type="button" disabled={thinking || voice !== "idle"} onClick={() => void retryUnsent(u)}>{t("field.sendNow")}</button>
+              <button type="button" disabled={thinking || voice !== "idle" || liveOn} onClick={() => void retryUnsent(u)}>{t("field.sendNow")}</button>
               <button type="button" onClick={() => void discardUnsent(u)}>{t("field.discard")}</button>
             </div>
           ))}
         </section>
       )}
       {fieldActive && userId && (
-        <button type="button" className="chip" disabled={thinking || voice !== "idle"} onClick={startNewSetup}>
+        <button type="button" className="chip" disabled={thinking || voice !== "idle" || liveOn} onClick={startNewSetup}>
           {t("field.newSetup")}
         </button>
       )}
@@ -969,7 +1073,14 @@ export function AskInfinity() {
           to type. */}
       <div ref={dockRef} className={pinned ? "ask-dock is-pinned" : "ask-dock"}>
         {pinned && jumpButton}
-        {pinned && (
+        {livePilot && userId && live.status !== "idle" && (
+          <p className="ask-dock-status" role="status" aria-live="polite">
+            {liveOn && live.status !== "starting" && <span className="ask-rec-dot" aria-hidden="true" />}
+            {liveStatusLine(es, live.status, live.detail)}
+            {liveSaving > 0 && ` · ${liveText(es, "saving")}`}
+          </p>
+        )}
+        {voice !== "idle" && (
           <p className="ask-dock-status" role="status" aria-live="polite">
             {voice === "recording" && <span className="ask-rec-dot" aria-hidden="true" />}
             {t(voice === "starting" ? "field.micStarting" : voice === "recording" ? "field.recordingNow" : voice === "saving" ? "field.savingMemo" : "field.transcribing")}
@@ -986,21 +1097,35 @@ export function AskInfinity() {
               if (!input && e.target.value) readClockNow();
               setInput(e.target.value);
             }}
-            onKeyDown={(e) => e.key === "Enter" && send(input)}
+            onKeyDown={(e) => { if (e.key === "Enter" && !liveOn) void send(input); }}
           />
           {userId && (voice === "recording" ? (
             <button type="button" className="ask-send ask-mic recording" onClick={() => recording.current?.stop()} aria-label={t("field.stopRecording", { seconds })}>
               <Square size={16} /> <span className="ask-mic-seconds">{seconds}s</span>
             </button>
           ) : (
-            <button type="button" className="ask-send ask-mic" disabled={thinking || voice !== "idle"} onClick={() => void startRecording()} aria-label={t("field.record")}>
+            <button type="button" className="ask-send ask-mic" disabled={thinking || voice !== "idle" || liveOn} onClick={() => void startRecording()} aria-label={t("field.record")}>
               <Mic size={18} />
             </button>
           ))}
-          <button type="button" className="ask-send" disabled={thinking || !input.trim()} onClick={() => send(input)} aria-label={t("ask.send")}>
+          <button type="button" className="ask-send" disabled={thinking || !input.trim() || liveOn} onClick={() => void send(input)} aria-label={t("ask.send")}>
             ↑
           </button>
         </div>
+        {/* Live Ask (pilot): an explicit Start and End, never always-on. */}
+        {livePilot && userId && (
+          <div className="ask-live">
+            {liveOn ? (
+              <button type="button" className="chip recording" onClick={() => liveRef.current?.end("user")} aria-label={liveText(es, "end")}>
+                <Square size={14} aria-hidden="true" /> {liveText(es, "end")}
+              </button>
+            ) : (
+              <button type="button" className="chip" disabled={thinking || voice !== "idle"} onClick={startLive} aria-label={liveText(es, "start")}>
+                <Radio size={14} aria-hidden="true" /> {liveText(es, "start")} · <span className="muted">{liveText(es, "pilot")}</span>
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

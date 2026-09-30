@@ -3,6 +3,7 @@
 // and legacy talks keep their sections/body render.
 
 import { TALK_CATEGORY_LABELS, type SafetyTalk } from "../../lib/ops";
+import { visibleVisualAids } from "../../lib/toolbox";
 
 /**
  * A library talk renders Horizon's tiered layout: briefing paragraphs,
@@ -53,7 +54,10 @@ export function TalkContent({ talk }: { talk: SafetyTalk }) {
     );
   }
   const s = talk.sections_json ?? null;
-  const aids = talk.visual_aids_json ?? [];
+  // Never the raw column: a generated-but-not-yet-approved illustration must
+  // not reach crew, here or in the compact clock-sheet sign card that also
+  // renders through this component (lib/toolbox.ts).
+  const aids = visibleVisualAids(talk);
   if (!s || (!s.intro && !s.key_hazards?.length && !s.steps?.length)) {
     return <p className="muted" style={{ margin: 0, lineHeight: 1.65 }}>{talk.body}</p>;
   }

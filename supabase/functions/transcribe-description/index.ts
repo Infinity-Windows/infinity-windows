@@ -30,9 +30,8 @@ Deno.serve(withSentry("transcribe-description", async req => {
     if (audio.size > DICTATION_MAX_BYTES) return jsonResponse({error: "audio_too_large"}, 413, cors);
     const extension = dictationExtension(audio.type);
     if (!extension) return jsonResponse({error: "unsupported_audio"}, 415, cors);
-    // "auto" (Ask's microphone, K2.6): the crew speaks English, Spanish or a
-    // mix, and forcing one language makes Whisper mangle the other. The
-    // dictation mics on text fields still send the field's language.
+    // "auto" (Ask's microphone, K2.6) permits English, Spanish or a mix.
+    // Text-field dictation still hints its selected language.
     const language = form.get("language");
     if (language !== "en" && language !== "es" && language !== "auto") return jsonResponse({error: "invalid_language"}, 400, cors);
     const key = requireOpenAI();
@@ -45,18 +44,23 @@ Deno.serve(withSentry("transcribe-description", async req => {
     reservation = gate.reservationId;
     const upload = new FormData();
     upload.append("file", audio, `description.${extension}`);
-    upload.append("model", "whisper-1");
-    if (language !== "auto") upload.append("language", language);
-    upload.append("response_format", "verbose_json");
+    upload.append("model", "gpt-transcribe");
+    if (language === "auto") {
+      upload.append("languages[]", "en");
+      upload.append("languages[]", "es");
+    } else upload.append("language", language);
+    for (const term of ["sill pan", "rough opening", "flashing tape", "jamb", "shim", "glazing", "weep hole"])
+      upload.append("keywords[]", term);
+    upload.append("response_format", "json");
     const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
       method: "POST", headers: {Authorization: `Bearer ${key}`}, body: upload,
       signal: AbortSignal.timeout(60_000),
     });
     if (!response.ok) throw new Error(`transcription_provider_${response.status}`);
     const result = await response.json();
-    const duration = Number(result.duration);
+    const duration = Number(result.usage?.type === "duration" ? result.usage.seconds : result.duration);
     // Provider duration, never a phone-supplied claim, determines the charge.
-    await settleAiSpend(service, reservation, null, "whisper-1", Math.ceil((Number.isFinite(duration) ? Math.max(0, duration) : DICTATION_MAX_SECONDS) * AUDIO_MICROS_PER_SECOND["whisper-1"]));
+    await settleAiSpend(service, reservation, null, "gpt-transcribe", Math.ceil((Number.isFinite(duration) ? Math.max(0, duration) : DICTATION_MAX_SECONDS) * AUDIO_MICROS_PER_SECOND["gpt-transcribe"]));
     reservation = null;
     if (duration > DICTATION_MAX_SECONDS + 5) return jsonResponse({error: "recording_too_long"}, 413, cors);
     const text = typeof result.text === "string" ? result.text.trim() : "";

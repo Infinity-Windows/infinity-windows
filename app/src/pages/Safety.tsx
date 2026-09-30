@@ -19,10 +19,13 @@ import {
   generateToolboxTalk,
   isGroupSignIn,
   NotTodaysTalkError,
+  regenerateVisualAid,
+  setVisualAidApproval,
   signedRecordUrl,
   signToolboxTalk,
   todayCompliance,
   updateTalkSections,
+  type ReviewableVisualAid,
 } from "../lib/toolbox";
 import { useTodayTalk, useToolboxToday } from "../lib/useToolboxGate";
 import { ToolboxSignStatus } from "../components/clock/ToolboxSignStatus";
@@ -97,6 +100,117 @@ function TalkEditor({ talk, onSaved }: { talk: SafetyTalk; onSaved: () => void }
       <button className="primary big" disabled={save.isPending} onClick={() => save.mutate()}>
         {save.isPending ? "Saving…" : "Save content"}
       </button>
+    </div>
+  );
+}
+
+/**
+ * Reviewer-controlled illustration editor. Crew never see a generated
+ * diagram until a foreman+ approves it here (TalkContent / toolbox.ts's
+ * visibleVisualAids hides anything not explicitly approved) — this is the
+ * one place that approval happens. Revising the prompt and regenerating
+ * always lands back in "needs review", even for a slot that was approved
+ * before: the new picture is not the one that got approved.
+ */
+function IllustrationReview({
+  talk,
+  profileId,
+  onChanged,
+}: {
+  talk: SafetyTalk;
+  profileId: string;
+  onChanged: () => void;
+}) {
+  const aids = (talk.visual_aids_json ?? []) as ReviewableVisualAid[];
+  const [drafts, setDrafts] = useState<Record<number, string>>({});
+
+  const regen = useMutation({
+    mutationFn: (index: number) =>
+      regenerateVisualAid({
+        talkId: talk.id,
+        aidIndex: index,
+        prompt: drafts[index] ?? aids[index]?.prompt ?? "",
+      }),
+    onSuccess: onChanged,
+  });
+  const approve = useMutation({
+    mutationFn: (args: { index: number; approved: boolean }) =>
+      setVisualAidApproval(talk.id, args.index, args.approved, profileId),
+    onSuccess: onChanged,
+  });
+
+  if (!aids.length) return null;
+
+  return (
+    <div className="detail-card" style={{ marginTop: 10 }}>
+      <label className="field-label">Illustration review</label>
+      <p className="muted" style={{ margin: "0 0 8px", fontSize: 12 }}>
+        Crew only sees an illustration once you approve it here.
+      </p>
+      {aids.map((a, i) => {
+        const approved = a.approved === true;
+        const pending = a.approved === false;
+        return (
+          <div key={i} className="detail-card" style={{ margin: "0 0 10px" }}>
+            {a.url ? (
+              <img
+                src={a.url}
+                alt={a.prompt}
+                style={{ maxWidth: 200, display: "block", marginBottom: 6 }}
+              />
+            ) : (
+              <p className="muted" style={{ fontSize: 12 }}>
+                No image generated — crew would see a described placeholder only.
+              </p>
+            )}
+            <p className={pending ? "warn-text" : "ok"} style={{ fontSize: 12, fontWeight: 700, margin: "0 0 4px" }}>
+              {approved
+                ? "Approved — crew can see this"
+                : pending
+                  ? "Needs review — hidden from crew"
+                  : "Shown to crew (from before review was required)"}
+            </p>
+            <label className="field-label">Prompt</label>
+            <VoiceTextarea
+              value={drafts[i] ?? a.prompt}
+              onChange={(e) => setDrafts((d) => ({ ...d, [i]: e.target.value }))}
+              rows={2}
+            />
+            <div className="grade-row" style={{ marginTop: 6 }}>
+              <button
+                type="button"
+                className="button-like"
+                disabled={regen.isPending}
+                onClick={() => regen.mutate(i)}
+              >
+                {regen.isPending && regen.variables === i ? "Generating…" : "Regenerate this image"}
+              </button>
+              {approved ? (
+                <button
+                  type="button"
+                  className="button-like"
+                  disabled={approve.isPending}
+                  onClick={() => approve.mutate({ index: i, approved: false })}
+                >
+                  Unapprove
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={approve.isPending || !a.url}
+                  onClick={() => approve.mutate({ index: i, approved: true })}
+                >
+                  Approve for crew
+                </button>
+              )}
+            </div>
+            {regen.isError && regen.variables === i && (
+              <p className="error" style={{ fontSize: 12 }}>{formatApiError(regen.error)}</p>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -194,6 +308,13 @@ export function Safety() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["todayTalk"] }),
   });
 
+  // How many generated illustrations on today's talk are still waiting on a
+  // foreman — crew never see these (TalkContent / toolbox.ts's
+  // visibleVisualAids), so this is the only place that count is visible.
+  const pendingAidCount = (
+    (talk.data?.visual_aids_json ?? []) as ReviewableVisualAid[]
+  ).filter((a) => a.approved === false).length;
+
   const report = useMutation({
     mutationFn: () =>
       reportIncident({ profileId: me.data?.id, projectId: proj || null, description: desc, severity: sev }),
@@ -237,7 +358,21 @@ export function Safety() {
               <button className="button-like" onClick={() => setEditing((v) => !v)}>
                 {editing ? "Close editor" : "Edit content"}
               </button>
+              {pendingAidCount > 0 && (
+                <span className="muted" style={{ fontSize: 12, alignSelf: "center" }}>
+                  {pendingAidCount} illustration{pendingAidCount === 1 ? "" : "s"} awaiting review
+                </span>
+              )}
             </div>
+          )}
+          {lead && regen.data && (
+            <p className="muted" style={{ fontSize: 12, margin: "6px 0 0" }}>
+              {regen.data.sections_locked
+                ? "Your edited wording was kept — only illustrations were refreshed."
+                : "Content regenerated."}
+              {regen.data.images > 0 &&
+                ` ${regen.data.images} new illustration${regen.data.images === 1 ? "" : "s"} need review below.`}
+            </p>
           )}
         </div>
       ) : (
@@ -251,6 +386,14 @@ export function Safety() {
             setEditing(false);
             queryClient.invalidateQueries({ queryKey: ["todayTalk"] });
           }}
+        />
+      )}
+
+      {lead && editing && talk.data && me.data && (
+        <IllustrationReview
+          talk={talk.data}
+          profileId={me.data.id}
+          onChanged={() => queryClient.invalidateQueries({ queryKey: ["todayTalk"] })}
         />
       )}
 

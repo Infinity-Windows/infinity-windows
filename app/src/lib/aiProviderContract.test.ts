@@ -6,10 +6,8 @@ import { describe, expect, it } from "vitest";
 /**
  * Which AI company each feature is on.
  *
- * The decision: every word the app generates is written by Claude, and OpenAI is
- * kept for exactly the three jobs Anthropic cannot do — embeddings for the
- * company brain, Whisper for voice memos, and the safety-talk diagrams. Two AI
- * bills for the same work is the thing being removed.
+ * The existing long-form text workflow remains on Claude. OpenAI serves
+ * embeddings, audio, images, and the new optional QC photo second look.
  *
  * Source-contract assertions rather than behaviour tests, for the same reason
  * onboardingContract.test.ts is: no unit test can honestly prove a live function
@@ -74,7 +72,7 @@ describe("no text generation is left on OpenAI", () => {
   });
 });
 
-describe("the three things OpenAI is still for", () => {
+describe("OpenAI's specialized jobs", () => {
   it("keeps embeddings on text-embedding-3-small, the shape the brain is stored in", () => {
     const openai = read("_shared/openai.ts");
     expect(openai).toContain("api.openai.com/v1/embeddings");
