@@ -4,8 +4,9 @@ import type { LiveEndReason, LiveStatus } from "./liveAskSession";
  * Live Ask is a gated pilot. It shows only in a build made with
  * VITE_LIVE_ASK_PILOT=true AND only works once the server's own switch is on
  * (live-ask-session: LIVE_ASK_ENABLED and its OpenAI credential).
- * Nobody on the crew sees a Live button until both are true, and no crew
- * announcement goes out for it until the pilot is verified end to end.
+ * The Ask page also limits the button to the real owner account, and the
+ * server repeats that check. No crew announcement goes out until the pilot
+ * is verified end to end.
  */
 export function liveAskPilotEnabled(env: Record<string, unknown> = import.meta.env): boolean {
   return env.VITE_LIVE_ASK_PILOT === "true";

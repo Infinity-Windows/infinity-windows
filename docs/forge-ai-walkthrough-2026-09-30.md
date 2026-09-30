@@ -24,7 +24,7 @@ This is a fixture-backed review of the Forge app and the five AI ideas the owner
 
 ## Live voice pilot limits
 
-- The pilot requires a build with `VITE_LIVE_ASK_PILOT=true` and server `LIVE_ASK_ENABLED=true`. Neither is enabled by this branch. Test with the owner's account and a consented device before exposing it to crew.
+- The pilot requires a build with `VITE_LIVE_ASK_PILOT=true` and server `LIVE_ASK_ENABLED=true`. Neither is enabled by this branch. Both the button and the server limit pilot access to the real owner account. Test with a consented device before exposing it to crew.
 - The server reserves and records the full three-minute session cap against the spend guard. Short sessions can therefore appear more expensive in Forge than the provider's final seconds. Actual provider billing is separate; add a trusted reconciliation path before using Forge's figure as actual spend.
 - A provider delegation is the turn boundary; partial live transcripts are never treated as saved evidence. If a browser cannot cut a playable segment, Forge cannot send that turn. Confirm this behavior on Safari and a noisy field connection.
 - Real photo judgment, accents, safety diagrams, and crew usefulness remain unmeasured by the synthetic checks.

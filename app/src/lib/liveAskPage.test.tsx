@@ -15,6 +15,7 @@ import type { LiveOptions, LiveTurn } from "./liveAskSession";
 
 const state = vi.hoisted(() => ({
   user: "crew-1",
+  role: "owner",
   pilot: true,
   log: [] as string[],
   asked: [] as { q: string; meta: Record<string, unknown> | undefined }[],
@@ -25,7 +26,7 @@ vi.mock("./queryClient", async () => {
   const { QueryClient } = await import("@tanstack/react-query");
   return { queryClient: new QueryClient({ defaultOptions: { queries: { retry: false } } }) };
 });
-vi.mock("./install/api", () => ({ getRealProfile: async () => ({ id: state.user, name: "Crew", role: "installer" }) }));
+vi.mock("./install/api", () => ({ getRealProfile: async () => ({ id: state.user, name: "Crew", role: state.role }) }));
 vi.mock("./useAskSessionActor", () => ({ useAskSessionActor: () => state.user }));
 vi.mock("../components/hexPortal/LearningPanel", () => ({ LearningPanel: () => null }));
 vi.mock("../components/hexPortal/LearningCard", () => ({ LearningCard: () => null }));
@@ -115,7 +116,7 @@ const turn = async (t: LiveTurn) => {
 
 beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-  Object.assign(state, { user: "crew-1", pilot: true, log: [], asked: [], live: null });
+  Object.assign(state, { user: "crew-1", role: "owner", pilot: true, log: [], asked: [], live: null });
   vi.stubGlobal("URL", { ...URL, createObjectURL: () => "blob:held", revokeObjectURL: () => {} });
 });
 afterEach(() => {
@@ -128,6 +129,13 @@ afterEach(() => {
 describe("Live Ask on the Ask page", () => {
   it("is not offered unless the pilot is on", async () => {
     state.pilot = false;
+    await mount();
+    expect(button("Start live conversation")).toBeNull();
+    expect(button("Record a voice message")).not.toBeNull();
+  });
+
+  it("is hidden from installer accounts even in a pilot build", async () => {
+    state.role = "installer";
     await mount();
     expect(button("Start live conversation")).toBeNull();
     expect(button("Record a voice message")).not.toBeNull();

@@ -45,8 +45,12 @@ Deno.serve(withSentry("live-ask-session", async (req) => {
   if (!caller) return jsonResponse({ error: "sign_in_required" }, 401, cors);
   // `active` is On site / Off today, not login access: gate on these two.
   const { data: profile, error: profileError } = await caller.from("profiles")
-    .select("id, access_revoked_at, retired_at").eq("id", auth.user.id).maybeSingle();
-  if (profileError || !profile || profile.access_revoked_at || profile.retired_at) return jsonResponse({ error: "access_unavailable" }, 403, cors);
+    .select("id, is_partner, access_revoked_at, retired_at").eq("id", auth.user.id).maybeSingle();
+  if (profileError || !profile || profile.is_partner || profile.access_revoked_at || profile.retired_at) return jsonResponse({ error: "access_unavailable" }, 403, cors);
+  // Keep the pilot limited to the owner even if a client build exposes the
+  // button. The wider crew release needs its own field acceptance first.
+  const { data: rank, error: rankError } = await caller.rpc("my_role_rank");
+  if (rankError || typeof rank !== "number" || rank < 3) return jsonResponse({ error: "owner_pilot_only" }, 403, cors);
 
   const config = liveEnabled((k) => Deno.env.get(k));
   if (!config) return jsonResponse({ error: "live_not_configured" }, 503, cors);

@@ -258,7 +258,9 @@ export function AskInfinity() {
   const [voice, setVoice] = useState<"idle" | "starting" | "recording" | "saving" | "transcribing">("idle");
   // Live Ask (pilot, lib/liveAskSession.ts): a spoken conversation whose every
   // finished utterance is saved as a memo and then sent through send() below.
-  const livePilot = liveAskPilotEnabled();
+  // Pilot builds offer this only to the real owner login. The server repeats
+  // the role check, so a client-side switch cannot enroll other crew.
+  const livePilot = liveAskPilotEnabled() && profile.data?.role === "owner";
   const [live, setLive] = useState<{ status: LiveStatus; detail?: LiveEndReason | string }>({ status: "idle" });
   const liveRef = useRef<LiveSession | null>(null);
   const liveOn = live.status === "starting" || live.status === "live" || live.status === "unstable";
