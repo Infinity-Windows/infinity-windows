@@ -6,7 +6,7 @@ const { PGlite } = await import(process.env.PGLITE_MODULE ?? '@electric-sql/pgli
 const db = new PGlite();
 const id = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const actor = { installer: id(1), foreman: id(2), supervisor: id(3), partner: id(4), revoked: id(5), testForeman: id(6) };
-const opening = { fresh: id(101), old: id(102), realForTest: id(103), atomic: id(104) };
+const opening = { fresh: id(101), old: id(102), realForTest: id(103), atomic: id(104), legacy: id(105) };
 const job = { sandbox: id(201), real: id(202) };
 let checks = 0;
 
@@ -93,7 +93,7 @@ for (const [name, role, extra] of [
 await db.query('insert into sandbox_projects values($1)', [job.sandbox]);
 for (const [name, projectId] of [
   ['fresh', job.sandbox], ['old', job.sandbox],
-  ['realForTest', job.real], ['atomic', job.sandbox],
+  ['realForTest', job.real], ['atomic', job.sandbox], ['legacy', job.sandbox],
 ]) await db.query('insert into project_openings(id,project_id,status) values($1,$2,$3)', [opening[name], projectId, 'installed']);
 await db.query("insert into qc_checks(project_opening_id,status,note) values($1,'callback','Old issue')", [opening.old]);
 for (const name of ['fresh', 'atomic']) await db.query("insert into points_ledger(ref,status) values($1,'pending')", [opening[name]]);
@@ -121,12 +121,28 @@ equal((await read("select status,note,reviewer_id,source from qc_decision_events
   { status: 'callback', note: 'Old issue', reviewer_id: null, source: 'legacy_snapshot' });
 await as('installer');
 await denied(() => db.query("insert into qc_checks(project_opening_id,status) values($1,'passed')", [opening.fresh]));
-await denied(() => db.query("update qc_checks set status='passed' where project_opening_id=$1", [opening.old]));
+equal((await db.query("update qc_checks set status='passed' where project_opening_id=$1", [opening.old])).affectedRows, 0);
 await denied(() => db.query("delete from qc_checks where project_opening_id=$1", [opening.old]));
 await denied(() => db.query("select record_qc_decision($1,$2,'passed',null)", [id(301), opening.fresh]));
 equal((await db.query('select status from qc_checks where project_opening_id=$1', [opening.old])).rows[0].status, 'callback');
 equal((await db.query('select * from qc_decision_events')).rows.length, 0);
 await denied(() => db.query("insert into qc_decision_events(id,project_opening_id,status,decided_at,source) values($1,$2,'passed',now(),'review')", [id(302), opening.fresh]));
+
+// An old phone's direct upsert still works for a foreman. The server stamps
+// its true reviewer/time, writes a legacy-client event, and ignores a repeat.
+await as('foreman');
+await db.query("insert into qc_checks(project_opening_id,status,note,checked_by,checked_at) values($1,'passed','Legacy pass',$2,'2000-01-01T00:00:00Z')", [opening.legacy, actor.installer]);
+equal((await read('select checked_by, checked_at > $2 as server_time from qc_checks where project_opening_id=$1', [opening.legacy, '2026-09-01T00:00:00Z']))[0],
+  { checked_by: actor.foreman, server_time: true });
+equal((await read('select source,reviewer_id from qc_decision_events where project_opening_id=$1', [opening.legacy]))[0],
+  { source: 'legacy_client', reviewer_id: actor.foreman });
+await as('foreman');
+await db.query("insert into qc_checks(project_opening_id,status,note) values($1,'passed','Legacy pass') on conflict(project_opening_id) do update set status=excluded.status,note=excluded.note", [opening.legacy]);
+equal((await read('select count(*)::int as n from qc_decision_events where project_opening_id=$1', [opening.legacy]))[0].n, 1);
+await as('foreman');
+await denied(() => db.query('update qc_checks set project_opening_id=$2 where project_opening_id=$1', [opening.legacy, opening.fresh]));
+await denied(() => db.query('update qc_checks set note=$2 where project_opening_id=$1', [opening.legacy, 'x'.repeat(4001)]));
+equal((await read('select project_opening_id from qc_checks where project_opening_id=$1', [opening.legacy]))[0].project_opening_id, opening.legacy);
 
 await decide('foreman', 303, 'fresh', 'passed', 'Looks good');
 equal((await read('select status,note,checked_by,checked_at is not null as stamped from qc_checks where project_opening_id=$1', [opening.fresh]))[0],
@@ -139,6 +155,9 @@ await decide('foreman', 303, 'fresh', 'passed', 'Looks good');
 equal((await read('select count(*)::int as n from qc_decision_events where project_opening_id=$1', [opening.fresh]))[0].n, 2);
 equal((await read('select status from qc_checks where project_opening_id=$1', [opening.fresh]))[0].status, 'callback');
 await denied(() => decide('foreman', 303, 'fresh', 'callback', 'Different payload'));
+await denied(() => decide('foreman', 303, 'atomic', 'passed', 'Looks good'));
+equal((await read('select count(*)::int as n from qc_checks where project_opening_id=$1', [opening.atomic]))[0].n, 0);
+await denied(() => decide('installer', 303, 'fresh', 'passed', 'Looks good'));
 await denied(() => decide('partner', 305, 'fresh', 'passed'));
 await denied(() => decide('revoked', 306, 'fresh', 'passed'));
 await denied(() => decide('testForeman', 307, 'realForTest', 'passed'));
