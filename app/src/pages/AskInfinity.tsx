@@ -308,6 +308,13 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
   const pinned = voice !== "idle" || liveOn;
   const pinnedRef = useRef(pinned);
   pinnedRef.current = pinned;
+  // The phone composer is always visible, even between recordings. Replies
+  // must land above it rather than behind it; desktop keeps the old band when
+  // the composer is in normal page flow.
+  const askBand = () => {
+    const dock = dockRef.current;
+    return visibleBand(dock && (pinnedRef.current || window.getComputedStyle(dock).position === "fixed") ? dock : null);
+  };
   const [seconds, setSeconds] = useState(0);
   const [voiceError, setVoiceError] = useState("");
   const [restoreError, setRestoreError] = useState(false);
@@ -520,7 +527,7 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
     // puts older turns in front of it, so its old position means nothing.
     const at = messages.lastIndexOf(before.newest);
     const previous = spanOf(rows[at >= 0 ? at : before.count - 1]);
-    const band = visibleBand(pinnedRef.current ? dockRef.current : null);
+    const band = askBand();
     const box = latestTarget(threadRef.current, statusRef.current, answersMine(messages), band);
     if (!box) return;
     const delta = revealDelta(box, band);
@@ -540,7 +547,7 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
     const onScroll = () => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
-        const band = visibleBand(pinnedRef.current ? dockRef.current : null);
+        const band = askBand();
         const box = latestTarget(threadRef.current, statusRef.current, false, band);
         if (box && inBand(box, band)) setJump(null);
       });
@@ -550,7 +557,7 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
   }, [jump, active]);
   const jumpToLatest = () => {
     setJump(null);
-    const band = visibleBand(pinnedRef.current ? dockRef.current : null);
+    const band = askBand();
     const box = latestTarget(threadRef.current, statusRef.current, answersMine(messages), band);
     if (box) scrollPageBy(revealDelta(box, band));
   };
@@ -1025,7 +1032,7 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
             </div>
             {m.memoPath && <MemoPlayback path={m.memoPath} />}
             {m.field?.receipts.map((r) => <FieldReceiptCard key={r.action_id} receipt={r} onChange={updateReceipt} timingPending={timingPendingNow} />)}
-            {m.field?.checklist && m.field.checklist === latestChecklist && <FieldChecklist checklist={m.field.checklist} />}
+            {m.field?.checklist && m.field.checklist === latestChecklist && <FieldChecklist key={m.field.request_id} checklist={m.field.checklist} />}
             {m.buttons && m.buttons.length > 0 && <ClockButtons buttons={m.buttons} />}
             {m.dailyNotRecorded && <p role="alert" className="cw-error">{t("field.dailyNotRecorded")}</p>}
             {/* K2.5: words that read as done with nothing behind them are
@@ -1089,11 +1096,6 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
           ))}
         </section>
       )}
-      {fieldActive && userId && (
-        <button type="button" className="chip" disabled={thinking || voice !== "idle" || liveOn} onClick={startNewSetup}>
-          {t("field.newSetup")}
-        </button>
-      )}
       {voiceError && <p role="alert" className="cw-error">{voiceError}</p>}
       {held && userId && (
         <section className="field-card field-unsent" role="alert">
@@ -1121,13 +1123,23 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
           that stays where it is either way. Tapping a card sends the card's
           own words and never touches what was typed. */}
       {showAll ? (
-        <AllActions rank={cardRank} lang={lang} running={running} questions={suggestions} onClose={() => setShowAll(false)} onPick={pickCard} />
+        <div className="ask-actions">
+          {fieldActive && userId && (
+            <button type="button" className="ask-new-setup" disabled={thinking || voice !== "idle" || liveOn} onClick={startNewSetup}>{t("field.newSetup")}</button>
+          )}
+          <AllActions rank={cardRank} lang={lang} running={running} questions={suggestions} onClose={() => setShowAll(false)} onPick={pickCard} />
+        </div>
       ) : (
         <div className="ask-actions">
-          <button type="button" className="ask-actions-toggle" aria-expanded={!cardsHidden} onClick={cardsHidden ? showCards : hideCards}>
-            {cardsHidden ? <ChevronDown size={18} aria-hidden="true" /> : <ChevronUp size={18} aria-hidden="true" />}
-            {t(cardsHidden ? "field.cards.reopen" : "field.cards.hide")}
-          </button>
+          <div className="ask-actions-head">
+            <button type="button" className="ask-actions-toggle" aria-expanded={!cardsHidden} onClick={cardsHidden ? showCards : hideCards}>
+              {cardsHidden ? <ChevronDown size={18} aria-hidden="true" /> : <ChevronUp size={18} aria-hidden="true" />}
+              {t(cardsHidden ? "field.cards.reopen" : "field.cards.hide")}
+            </button>
+            {fieldActive && userId && (
+              <button type="button" className="ask-new-setup" disabled={thinking || voice !== "idle" || liveOn} onClick={startNewSetup}>{t("field.newSetup")}</button>
+            )}
+          </div>
           {!cardsHidden && <ActionCards rank={cardRank} lang={lang} running={running} onPick={pickCard} onAll={() => setShowAll(true)} />}
         </div>
       )}

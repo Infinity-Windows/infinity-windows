@@ -102,6 +102,36 @@ test("the bottom bar stays at the phone edge and the final Work action clears it
   expect(positions.lastBottom).toBeLessThan(positions.barTop - 8);
 });
 
+test("browser chrome moving during a scroll does not lift the bottom bar over content", async ({ page }) => {
+  await useSupabaseFixtures(page, { role: "foreman", uiDesign: "new" });
+  await hideWrongProjectBanner(page);
+  await morningFixtures(page, { signed: true, openShift: true, myOpening: true });
+  await page.goto("/");
+  await expect(page.locator("nav.tabbar")).toBeVisible();
+
+  // Safari reports a shorter visual viewport when its chrome moves. The tab
+  // bar should react to a keyboard, not to this ordinary scroll measurement.
+  await page.evaluate(() => {
+    Object.defineProperty(window.visualViewport!, "height", { configurable: true, value: innerHeight - 170 });
+    window.visualViewport!.dispatchEvent(new Event("resize"));
+    window.scrollTo(0, document.scrollingElement!.scrollHeight);
+    window.visualViewport!.dispatchEvent(new Event("scroll"));
+  });
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--visual-bottom-inset").trim())).toBe("0px");
+  const position = await page.locator("nav.tabbar").evaluate((bar) => bar.getBoundingClientRect().bottom);
+  expect(position).toBeCloseTo(667, 0);
+
+  // A focused input during pinch zoom still is not proof of a keyboard.
+  await page.evaluate(() => {
+    const input = document.createElement("input");
+    document.body.append(input);
+    input.focus();
+    Object.defineProperty(window.visualViewport!, "scale", { configurable: true, value: 2 });
+    window.visualViewport!.dispatchEvent(new Event("resize"));
+  });
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--visual-bottom-inset").trim())).toBe("0px");
+});
+
 test("a worker can save a new unit beside Next up without changing the job clock", async ({ page }) => {
   await useSupabaseFixtures(page, { role: "installer", uiDesign: "new" });
   await hideWrongProjectBanner(page);
