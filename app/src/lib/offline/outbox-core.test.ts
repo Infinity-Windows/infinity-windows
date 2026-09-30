@@ -26,6 +26,7 @@ import {
   pillSummary,
   requeueStranded,
   retryEntry,
+  SendTookTooLongError,
   serializeEntry,
   totalPending,
   type OpHandlers,
@@ -108,6 +109,17 @@ describe("error classification", () => {
     expect(isNetworkError(new TypeError("Failed to fetch"))).toBe(true);
     expect(isNetworkError(new Error("NetworkError when attempting to fetch"))).toBe(true);
     expect(isNetworkError(new Error("duplicate key value"))).toBe(false);
+    expect(isNetworkError(new SendTookTooLongError())).toBe(true);
+  });
+
+  it("keeps an abandoned camera photo queued after eight watchdog attempts", () => {
+    let entry = makeEntry({ op: "photo_upload", payload: { kind: "photo", path: "job/photo.jpg" }, hasBlob: true }, "saved-photo", T0);
+    for (let attempt = 0; attempt < MAX_ATTEMPTS + 2; attempt++) {
+      entry = applyFailure(entry, new SendTookTooLongError(), T0 + attempt * 360_000);
+    }
+    expect(entry.status).toBe("queued");
+    expect(entry.attemptCount).toBe(MAX_ATTEMPTS + 2);
+    expect(entry.payload.path).toBe("job/photo.jpg");
   });
 
   // 2026-09-02: finish_unit refused an install with P0001 and a sentence no
