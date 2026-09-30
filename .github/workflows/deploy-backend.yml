@@ -194,6 +194,8 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ASK_AI_PROVIDER: ${{ secrets.ASK_AI_PROVIDER }}
           ASK_OPENAI_MODEL: ${{ secrets.ASK_OPENAI_MODEL }}
+          # Reversible owner-only Live Ask pilot switch. Missing means off.
+          LIVE_ASK_ENABLED: ${{ vars.LIVE_ASK_ENABLED }}
           HEX_PORTAL_SITES_TOKEN: ${{ secrets.HEX_PORTAL_SITES_TOKEN }}
           VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
           VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}

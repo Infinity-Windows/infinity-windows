@@ -12,8 +12,9 @@ import { DICTATION_MAX_SECONDS } from "../_shared/dictation.ts";
  * OFF unless LIVE_ASK_ENABLED=true. The endpoint and JSON session/transport
  * shape were checked against OpenAI's GPT-Live WebRTC guide (2026-09-30).
  *
- * Money: the session books its full 180-second cap at the published $0.05/min
- * rate, conservatively. Actual usage arrives on the browser data channel;
+ * Money: the session books four minutes at the published $0.05/min rate:
+ * the 180-second cap plus up to one minute for the server expiry sweep.
+ * Actual usage arrives on the browser data channel;
  * a future trusted reconciliation path must replace this cap charge before
  * the owner's spend screen can call it actual. Unmetered starts are refused.
  */
@@ -68,6 +69,7 @@ Deno.serve(withSentry("live-ask-session", async (req) => {
   if (!gate.reservationId) return jsonResponse({ error: "live_unmetered" }, 503, cors);
   const reservation = gate.reservationId;
   let reached = false;
+  let createdSessionId: string | null = null;
   try {
     const key = requireOpenAI();
     reached = true;
@@ -81,10 +83,28 @@ Deno.serve(withSentry("live-ask-session", async (req) => {
     });
     const result = await response.json().catch(() => null);
     const answer = result?.transport?.sdp;
-    if (!response.ok || typeof answer !== "string" || !answer.startsWith("v=")) throw new Error(`live_provider_${response.status}`);
-    await settleAiSpend(service, reservation, null, MODEL, Math.ceil((MAX_SECONDS / 60) * MICROS_PER_MINUTE));
+    const sessionId = result?.session?.id;
+    if (!response.ok || typeof answer !== "string" || !answer.startsWith("v=") || typeof sessionId !== "string" || !/^live_[A-Za-z0-9_-]{1,120}$/.test(sessionId)) throw new Error(`live_provider_${response.status}`);
+    createdSessionId = sessionId;
+    const registered = await service.from("live_ask_provider_sessions").insert({
+      id: sessionId, expires_at: new Date(Date.now() + MAX_SECONDS * 1000).toISOString(),
+    });
+    if (registered.error) {
+      // A paid session without a server expiry record must never reach a phone.
+      throw new Error("live_expiry_registration_failed");
+    }
+    await settleAiSpend(service, reservation, null, MODEL, Math.ceil(((MAX_SECONDS + 60) / 60) * MICROS_PER_MINUTE));
     return jsonResponse({ sdp: answer, maxSeconds: MAX_SECONDS }, 200, cors);
   } catch (error) {
+    if (createdSessionId) {
+      const key = requireOpenAI();
+      const stopped = await fetch(`https://api.openai.com/v1/live/sessions/${encodeURIComponent(createdSessionId)}/hangup`, {
+        method: "POST", headers: { Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(10_000),
+      }).catch(() => null);
+      if (stopped?.ok || stopped?.status === 404 || stopped?.status === 409) {
+        await service.from("live_ask_provider_sessions").update({ closed_at: new Date().toISOString() }).eq("id", createdSessionId);
+      }
+    }
     // Reached the provider: the money comes back, the call count stays (a
     // client stuck retrying must still run out of quota).
     await releaseAiSpend(service, reservation, "live_session_failed", !reached);

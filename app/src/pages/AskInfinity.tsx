@@ -4,6 +4,7 @@ import {LearningPanel} from "../components/hexPortal/LearningPanel";
 import {LearningCard} from "../components/hexPortal/LearningCard";
 import {LearningReviewForm} from "../components/hexPortal/LearningReviewForm";
 import {findPortalGuidance,type PortalSource,type LearningDraft} from "../lib/hexPortal";
+import { clearPortalGuidanceCache, readOfflineGuidance, rememberVerifiedGuidance } from "../lib/hexPortalCache";
 import "../components/hexPortal/hexPortal.css";
 import type { AskArtifact } from "../../../supabase/functions/_shared/askReporting.ts";
 import { ReportCard } from "../components/ask/ReportCard";
@@ -78,6 +79,7 @@ interface ChatMsg {
   learning?: LearningDraft;
   portalSources?: PortalSource[];
   portalNotice?: string;
+  cachedGuidance?: boolean;
   artifacts?: AskArtifact[];
   who: "me" | "infinity";
   text: string;
@@ -546,6 +548,9 @@ export function AskInfinity() {
 
     const history = messages
       .slice(1)
+      // Exact reviewed lessons, especially an offline saved copy, are shown
+      // verbatim and never become unstated context for a later model answer.
+      .filter((m) => !m.cachedGuidance && !m.portalSources?.some((s) => s.kind === "hex-portal"))
       .map((m) => ({
         role: m.who === "me" ? ("user" as const) : ("assistant" as const),
         content: m.text + (m.artifacts?.length ? "\nReport filters/IDs for follow-up (re-query before answering): " + JSON.stringify(m.artifacts.map(a => a.kind === "time_report" ? { scope:a.scope,people:a.people,jobs:a.jobs } : { project:a.project })) : ""),
@@ -570,9 +575,22 @@ export function AskInfinity() {
       if(learningContext&&online){
         try{
           const result=await findPortalGuidance(learningContext.projectId,q);
-          if(result.items.length){portalNotice=es?"Guía revisada de Hexcore · revisiones exactas":"Reviewed Hexcore guidance · exact revisions";return {who:"infinity",text:result.items.map(d=>`${d.title} — revision ${d.revision}\n${d.answer}\n\n${d.applicability}\nEvidence: ${d.evidence}\nReview through: ${d.reviewBy}`).join("\n\n"),portalSources:result.items.map(d=>({id:d.id,title:d.title,kind:"hex-portal",revision:d.revision}))};}
+          if(result.items.length){
+            if(profile.data?.role==="owner") await rememberVerifiedGuidance(learningContext.actorId,learningContext.projectId,q,result.items).catch(()=>undefined);
+            portalNotice=es?"Guía revisada de Hexcore · revisiones exactas":"Reviewed Hexcore guidance · exact revisions";
+            return {who:"infinity",text:result.items.map(d=>`${d.title} — revision ${d.revision}\n${d.answer}\n\n${d.applicability}\nEvidence: ${d.evidence}\nReview through: ${d.reviewBy}`).join("\n\n"),portalSources:result.items.map(d=>({id:d.id,title:d.title,kind:"hex-portal",revision:d.revision}))};
+          }
+          clearPortalGuidanceCache();
           portalNotice=result.enabled?(es?"Todavía no hay una lección revisada que coincida. Respuesta normal de Ask.":"No matching reviewed lesson yet. Normal Ask answer."):(es?"Hex-Portal no está activado para este trabajo. Respuesta normal de Ask.":"Hex-Portal is not enabled for this job. Normal Ask answer.");
-        }catch{ portalNotice=es?"No se pudo consultar Hexcore. Esta respuesta no usa lecciones revisadas.":"Could not check Hexcore. This answer does not use reviewed lessons."; }
+        }catch{ clearPortalGuidanceCache(); portalNotice=es?"No se pudo consultar Hexcore. Esta respuesta no usa lecciones revisadas.":"Could not check Hexcore. This answer does not use reviewed lessons."; }
+      }
+      if(learningContext&&!online&&profile.data?.role==="owner"){
+        const saved=await readOfflineGuidance(learningContext.actorId,learningContext.projectId,q).catch(()=>null);
+        if(saved){
+          const checked=new Date(saved.checkedAt).toLocaleString(es?"es-US":"en-US");
+          portalNotice=es?`Copia guardada de Hexcore, revisada por última vez ${checked}. Podría estar desactualizada; el acceso y los retiros no se pueden comprobar sin conexión.`:`Saved Hexcore copy, last checked ${checked}. It may be outdated; access and withdrawals cannot be checked offline.`;
+          return {who:"infinity",text:saved.items.map(d=>`${d.title} — revision ${d.revision}\n${d.answer}\n\n${d.applicability}\nEvidence: ${d.evidence}\nReview through: ${d.reviewBy}`).join("\n\n"),cachedGuidance:true};
+        }
       }
       // 1) Live job data the app already has cached — schedule, next window,
       //    my truck. No network needed and no model involved.
@@ -672,7 +690,7 @@ export function AskInfinity() {
     return run()
       .then((reply) => {
         if (!isCurrent(g)) return null;
-        setMessages((m) => [...m, {...reply,portalNotice,...learningContext&&!reply.artifacts?.length?{learning:{...learningContext,answer:reply.text,sources:reply.portalSources??(reply.sources?.length?reply.sources.map(source=>({id:source.path.slice(0,160),title:source.title.slice(0,300),kind:"reference" as const})):(reply.hits??[]).map(hit=>({id:hit.entry.id.slice(0,160),title:hit.entry.title.slice(0,300),kind:"reference" as const})))}}:{}}]);
+        setMessages((m) => [...m, {...reply,portalNotice,...learningContext&&!reply.artifacts?.length&&!reply.cachedGuidance?{learning:{...learningContext,answer:reply.text,sources:reply.portalSources??(reply.sources?.length?reply.sources.map(source=>({id:source.path.slice(0,160),title:source.title.slice(0,300),kind:"reference" as const})):(reply.hits??[]).map(hit=>({id:hit.entry.id.slice(0,160),title:hit.entry.title.slice(0,300),kind:"reference" as const})))}}:{}}]);
         return reply;
       })
       .catch(() => {

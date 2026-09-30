@@ -98,6 +98,7 @@ FEATURE_NAMES = {
     'generate-howto': 'how-to guides',
     'generate-toolbox-talk': 'toolbox talks',
     'ingest-knowledge': 'adding documents to the brain',
+    'live-ask-expiry': 'ending expired live Ask calls',
     'live-ask-session': 'live spoken Ask',
     'manage-crew-access': 'adding and removing crew logins',
     'monday-sync': 'pulling upcoming jobs from Monday.com',
@@ -398,6 +399,9 @@ def optional_union(reqs: dict) -> list[str]:
     out: set[str] = set()
     for r in reqs.values():
         out |= set(r['optional'])
+    # Live Ask passes the name through liveEnabled(env) to keep its feature
+    # gate testable. Static Deno.env.get scanning cannot see that indirect read.
+    out.add('LIVE_ASK_ENABLED')
     return sorted(out - set(required_union(reqs)))
 
 

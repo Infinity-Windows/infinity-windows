@@ -29,7 +29,7 @@ import { DICTATION_MAX_SECONDS } from "../../../supabase/functions/_shared/dicta
  */
 
 export type LiveStatus = "idle" | "starting" | "live" | "unstable" | "ended" | "failed";
-export type LiveEndReason = "user" | "cap" | "account" | "connection" | "error" | "unmount";
+export type LiveEndReason = "user" | "cap" | "account" | "background" | "connection" | "error" | "unmount";
 
 export interface LiveTurn { itemId: string; audio: Blob | null }
 
@@ -50,6 +50,8 @@ export interface LiveDeps {
   playRemote(stream: MediaStream | null): void;
   setTimer(fn: () => void, ms: number): unknown;
   clearTimer(handle: unknown): void;
+  /** A hidden/backgrounded page cannot reliably keep its timeout running. */
+  watchPageHidden(fn: () => void): () => void;
 }
 
 export interface LiveOptions {
@@ -73,6 +75,7 @@ export function startLiveSession(options: LiveOptions): LiveSession {
   let peer: LivePeer | null = null;
   let rec: SegmentRecorder | null = null;
   let closing = false;
+  const stopWatchingPage = deps.watchPageHidden(() => end("background"));
   // Ask requests run one at a time, in the order they were said.
   let queue: Promise<void> = Promise.resolve();
 
@@ -105,6 +108,7 @@ export function startLiveSession(options: LiveOptions): LiveSession {
   };
 
   const teardown = () => {
+    stopWatchingPage();
     abort.abort();
     for (const h of timers) deps.clearTimer(h);
     timers.clear();
@@ -125,7 +129,7 @@ export function startLiveSession(options: LiveOptions): LiveSession {
     if (status === "ended" || status === "failed") return;
     // The data channel must remain open long enough to receive the provider's
     // final session.closed and usage event. Stop the microphone immediately.
-    if ((reason === "user" || reason === "cap" || reason === "account" || reason === "unmount") &&
+    if ((reason === "user" || reason === "cap" || reason === "account" || reason === "background" || reason === "unmount") &&
         peer?.channel.readyState === "open") {
       closing = true;
       rec?.stop(); rec = null;
@@ -135,6 +139,7 @@ export function startLiveSession(options: LiveOptions): LiveSession {
       catch { teardown(); }
       timer(teardown, 10_000);
     } else teardown();
+    stopWatchingPage();
     // Turns already cut keep going: their audio is in hand and each one is
     // checked against the signed-in account before it is saved or sent.
     set(reason === "connection" || reason === "error" ? "failed" : "ended", reason);
@@ -221,6 +226,13 @@ function browserDeps(): LiveDeps {
     },
     setTimer: (fn, ms) => setTimeout(fn, ms),
     clearTimer: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
+    watchPageHidden: (fn) => {
+      if (typeof document === "undefined") return () => {};
+      const hidden = () => { if (document.visibilityState === "hidden") fn(); };
+      document.addEventListener("visibilitychange", hidden);
+      window.addEventListener("pagehide", fn);
+      return () => { document.removeEventListener("visibilitychange", hidden); window.removeEventListener("pagehide", fn); };
+    },
   };
 }
 
