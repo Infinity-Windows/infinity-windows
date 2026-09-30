@@ -765,9 +765,10 @@ jobs:
         shell: bash
         env:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          TEST_FOREMAN_PASSWORD: ${{ secrets.TEST_FOREMAN_PASSWORD }}
         run: |
           set +e
-          scripts/smoke-text-features.sh >/tmp/text-smoke.log 2>&1
+          python3 scripts/smoke-text-authenticated.py >/tmp/text-smoke.log 2>&1
           rc=$?
           cat /tmp/text-smoke.log
 
