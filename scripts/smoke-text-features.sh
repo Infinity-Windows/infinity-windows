@@ -108,6 +108,12 @@ BODY=""
 # POST json to a deployed function. Sets CODE and BODY.
 call() {
   local name="$1" payload="$2"
+  local bearer="$JWT"
+  # Toolbox generation is a foreman action. Keep the service-role key for the
+  # readback/cleanup below, but exercise this function as the QA foreman.
+  if [ "$name" = "generate-toolbox-talk" ] && [ -n "${TEXT_SMOKE_FOREMAN_JWT:-}" ]; then
+    bearer="$TEXT_SMOKE_FOREMAN_JWT"
+  fi
   : >"$body"
   : >"$err"
   # Assignment and exit status on separate lines: `CODE=$(curl ...)` reports the
@@ -115,7 +121,7 @@ call() {
   # all" from "answered, with an error".
   CODE="$(printf '%s' "$payload" | curl -sS -o "$body" -w '%{http_code}' \
     -X POST "$BASE/$name" \
-    -H "Authorization: Bearer $JWT" \
+    -H "Authorization: Bearer $bearer" \
     -H "apikey: $JWT" \
     -H 'Content-Type: application/json' \
     --data-binary @- --max-time "$TIMEOUT" 2>"$err")"
@@ -442,6 +448,12 @@ if [ "${#broken[@]}" -gt 0 ]; then
   # act on and one he has to forward to somebody.
   all_broken="$(printf '%s\n' "${broken[@]+"${broken[@]}"}" | tr '[:upper:]' '[:lower:]')"
   case "$all_broken" in
+  *toolbox\ talks\|http\ 401* | *toolbox\ talks\|http\ 403*)
+    cause="the toolbox caller was refused"
+    guidance="  Toolbox talks need a signed-in foreman or higher. Check the QA
+  foreman login and the deployed role policy; a service-role token is not a
+  crew login and cannot prove this feature works."
+    ;;
   *invalid\ x-api-key* | *authentication_error* | *invalid_api_key* | *permission_error* | *401* | *403*)
     cause="an API key the provider refused"
     guidance="  The AI provider rejected our key: it is the wrong one, it was revoked, or

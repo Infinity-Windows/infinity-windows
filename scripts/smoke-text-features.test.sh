@@ -46,7 +46,9 @@ out=""
 prev=""
 url=""
 method="GET"
+auth=""
 for arg in "$@"; do
+  [[ "$arg" == "Authorization: Bearer "* ]] && auth="${arg#Authorization: Bearer }"
   case "$prev" in
   -o) out="$arg" ;;
   -X) method="$arg" ;;
@@ -71,6 +73,7 @@ case "$url" in
 *install_events*) key=eventrow ;;
 esac
 [ "$method" = "DELETE" ] && key=delete
+[ "$key" = "talk" ] && printf '%s' "$auth" >"$FAKE_DIR/talk.auth"
 
 printf '%s %s\n' "$method" "$key" >>"$FAKE_DIR/calls"
 
@@ -345,6 +348,22 @@ run
 assert_rc 1
 assert_has "toolbox talks is not working: an API key the provider refused"
 assert_has "ANTHROPIC_API_KEY and re-run Deploy backend"
+
+new_case "toolbox generation uses the QA foreman token but readback retains the admin token"
+run TEXT_SMOKE_FOREMAN_JWT=foreman-jwt
+assert_rc 0
+if [ "$(cat "$root/fake/talk.auth")" = "foreman-jwt" ]; then
+  ok "toolbox bearer is the foreman"
+else
+  bad "toolbox bearer was not the foreman"
+fi
+
+new_case "a refused toolbox caller is an authorization problem, not a provider key"
+respond talk 401 '{"error":"unauthorized"}'
+run TEXT_SMOKE_FOREMAN_JWT=foreman-jwt
+assert_rc 1
+assert_has "the toolbox caller was refused"
+assert_lacks "ANTHROPIC_API_KEY and re-run Deploy backend"
 
 new_case "an unreadable answer says it is a code problem, not a key problem"
 # The failure this whole migration risks: the provider answers, and the answer
