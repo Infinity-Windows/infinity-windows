@@ -43,6 +43,8 @@ interface Note {
   title: string;
   sub: string;
   to: string;
+  /** Review-only information stays in-app without a device alert. */
+  localAlert?: boolean;
   /**
    * Content fingerprint. id+fp is the dismissal key: clearing hides THIS
    * occurrence for good, while new content (new punches, a changed badge)
@@ -357,6 +359,7 @@ export function Notifications() {
   if (reviewConflictIds.length > 0) {
     notes.push({
       id: "schedule-hours-review",
+      localAlert: false,
       dot: "info",
       title:
         reviewConflictIds.length === 1
@@ -387,9 +390,10 @@ export function Notifications() {
   // each distinct item only pings once per session. This is a real client-side
   // hook (no server events) — when web push lands it will deliver the same
   // {title, body, tag, url} shape from the server instead. See notifyLocal.ts.
-  const noteSignature = visible.map((n) => n.id).join("|");
+  const alertNotes = visible.filter(n => n.localAlert !== false);
+  const noteSignature = alertNotes.map((n) => n.id).join("|");
   useEffect(() => {
-    for (const n of visible) {
+    for (const n of alertNotes) {
       void notifyLocal({ title: n.title, body: n.sub, tag: `needs-you-${n.id}`, url: n.to });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

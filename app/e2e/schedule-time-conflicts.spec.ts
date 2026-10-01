@@ -237,3 +237,28 @@ test("Fix preserves stored seconds and rejects a zero-duration daily window", as
   expect(patches[0]).toMatchObject({ body: { start_time: "07:00:10", end_time: "12:00:30" } });
   await expect(page.locator(".sched-conflict-banner")).toContainText("Overlap each shared day: 12:00:10 PM–12:00:30 PM");
 });
+
+
+test("only a confirmed overlap produces a device alert; hours-review stays visible in-app", async ({ page }) => {
+  await page.addInitScript(() => {
+    const fixture = window as unknown as { deviceAlerts: { title: string; tag?: string }[] };
+    fixture.deviceAlerts = [];
+    class FixtureNotification {
+      static permission = "granted";
+      constructor(title: string, options?: NotificationOptions) {
+        fixture.deviceAlerts.push({ title, tag: options?.tag });
+      }
+    }
+    Object.defineProperty(window, "Notification", { configurable: true, value: FixtureNotification });
+    if (navigator.serviceWorker) {
+      Object.defineProperty(navigator.serviceWorker, "getRegistration", { value: async () => undefined });
+    }
+  });
+  await installConflictFixtures(page, "11:00:00", "17:00:00", { thirdUnknown: true });
+  await page.goto("/notifications");
+  await expect(page.getByText("Hours need review: 1 crew member", { exact: true })).toBeVisible();
+  await expect(page.getByText("1 crew double-booked", { exact: true })).toBeVisible();
+  const tags = () => page.evaluate(() => (window as unknown as { deviceAlerts: { tag?: string }[] }).deviceAlerts.map(a => a.tag));
+  await expect.poll(async () => (await tags()).filter(t => t === "needs-you-schedule-conflicts").length).toBe(1);
+  expect(await tags()).not.toContain("needs-you-schedule-hours-review");
+});
