@@ -411,7 +411,6 @@ export function Projects() {
           <div className="job-card-body">
             <div className="job-card-title">
               <span className="job-card-name">{p.name || p.job_code}</span>
-
             </div>
             <div className="muted job-card-sub">
               {p.job_code}
@@ -442,6 +441,10 @@ export function Projects() {
             {c.total > 0 && (
               <div
                 className="jobs-progress-row"
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={c.pct}
                 aria-label={t("jobs.card.progress", { installed: c.installed, total: c.total, pct: c.pct })}
               >
                 <div className="jobs-progress-bar" aria-hidden>

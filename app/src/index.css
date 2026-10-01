@@ -3554,6 +3554,69 @@ button:disabled {
   grid-column: 1 / -1;
 }
 
+/* Job text must wrap inside the phone, including long email addresses and
+   pasted references. Keep horizontal scrolling local to the section tabs. */
+.project-detail { overflow-wrap: anywhere; }
+.job-details-card, .job-testing-card { margin-bottom: 16px; }
+.job-details-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.job-details-header h2 { margin: 0; }
+.job-details-header .link { flex: none; }
+.job-details-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin: 16px 0 0;
+}
+.job-details-grid > div { min-width: 0; }
+.job-details-grid .field-label { margin: 0 0 4px; }
+.job-details-grid dd { margin: 0; line-height: 1.45; }
+.job-details-card .job-details-notes { white-space: pre-wrap; margin-top: 16px; }
+.job-details-card .job-details-hint { margin-top: 16px; line-height: 1.5; }
+.job-details-card .project-create { margin: 0; }
+.job-details-card .project-create-grid > label { min-width: 0; }
+.job-details-card input { min-width: 0; max-width: 100%; }
+
+.job-testing-toggle {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+  margin-top: 16px;
+  cursor: pointer;
+}
+/* Text-field defaults give every input width:100% and min-height:52px.
+   A checkbox must have its own size or it pushes this copy off the page. */
+.job-testing-toggle > input[type="checkbox"] {
+  width: 22px;
+  height: 22px;
+  min-height: 0;
+  padding: 0;
+  margin: 2px 0 0;
+  accent-color: var(--accent);
+}
+.job-testing-toggle > input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.job-testing-copy { min-width: 0; }
+.job-testing-copy strong { display: block; line-height: 1.4; }
+.job-testing-copy .wh-row-sub { display: block; margin-top: 4px; line-height: 1.5; }
+.job-lifecycle-heading { display: grid; gap: 12px; }
+.job-lifecycle-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.job-lifecycle-actions .button-like { min-width: 0; }
+.job-lifecycle-card > .wh-row-sub { line-height: 1.5; }
+
+@media (max-width: 420px) {
+  .job-details-grid > div { grid-column: 1 / -1; }
+  .job-details-grid > .job-details-date { grid-column: auto; }
+  .job-lifecycle-actions { display: grid; grid-template-columns: minmax(0, 1fr); }
+}
+
 @media (max-width: 640px) {
   .project-create-grid {
     grid-template-columns: 1fr;
