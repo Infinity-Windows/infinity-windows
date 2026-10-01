@@ -38,6 +38,8 @@ import { SCHEDULING_SYSTEM_PROMPT, SCHEDULING_TOOLS, schedulingRefusal } from ".
 import { REPORTING_SYSTEM_PROMPT, REPORTING_TOOLS } from "../supabase/functions/_shared/askReporting.ts";
 import { ASK_SYSTEM_PROMPT } from "../supabase/functions/_shared/knowledge.ts";
 import { OFFER_CLOCK_BUTTON_TOOL, OFFER_CLOCK_BUTTON_TOOL_NAME, clockButtonExecutor, newClockButtonState } from "../supabase/functions/_shared/clockButtons.ts";
+import { OFFER_NAVIGATION_TOOL, OFFER_NAVIGATION_TOOL_NAME } from "../supabase/functions/_shared/askNavigation.ts";
+import { navigationExecutor, newNavigationState } from "../supabase/functions/ask/navigation.ts";
 import { DAILY_LOG_SYSTEM_PROMPT, DAILY_LOG_TOOLS, DAILY_LOG_TOOL_NAMES, asksForDailyLog, dailyLogContextBlock, dailyLogExecutor, newDailyLogToolState, readDailyLogContext } from "../supabase/functions/_shared/aiDailyLog.ts";
 import { openaiAsk } from "../supabase/functions/_shared/openaiAsk.ts";
 import { isOperationalAsk } from "../app/src/lib/askRouting.ts";
@@ -91,6 +93,7 @@ function fakeClient(world, rank, calls) {
   return {
     rpc: async (name, a) => {
       calls.push({ rpc: name, args: a });
+      if (name === "can_access_project_chat") return { data: JOBS.some((j) => j.id === a.p_project_id) && a.p_uid === ID.ANA, error: null };
       if (name === "ai_field_context") {
         if (!a.p_job) {
           const q = String(a.p_search ?? "").toLowerCase();
@@ -190,6 +193,8 @@ async function runCase(c, send) {
   const dailyTool = daily ? dailyLogExecutor(daily) : null;
   const clock = newClockButtonState();
   const clockTool = clockButtonExecutor(clock);
+  const navigation = newNavigationState();
+  const navigationTool = navigationExecutor(client, ID.ANA, null, navigation);
   const artifacts = [];
   const toolErrors = [];
   let schedulingRefused = false;
@@ -213,13 +218,14 @@ async function runCase(c, send) {
     if (name === "draft_assignments") return { content: JSON.stringify({ results: (input?.entries ?? []).map((e) => ({ ...e, ok: true })), drafted: (input?.entries ?? []).length, refused: 0 }) };
     return { content: JSON.stringify({ removed: 0 }) };
   };
-  const tools = toolDefsFor(askToolNames({ field: isField, dailyLog: !!daily }), [...SCHEDULING_TOOLS, ...REPORTING_TOOLS, ...FIELD_TOOLS, ...LEARNING_TOOLS, ...DAILY_LOG_TOOLS, OFFER_CLOCK_BUTTON_TOOL]);
+  const tools = toolDefsFor(askToolNames({ field: isField, dailyLog: !!daily }), [...SCHEDULING_TOOLS, ...REPORTING_TOOLS, ...FIELD_TOOLS, ...LEARNING_TOOLS, ...DAILY_LOG_TOOLS, OFFER_CLOCK_BUTTON_TOOL, OFFER_NAVIGATION_TOOL]);
   const offered = new Set(tools.map((t) => t.name));
   const notOffered = [];
   const executeTool = async (name, input) => {
     if (!offered.has(name)) notOffered.push(name);
     const out = !offered.has(name) ? { content: `Tool ${name} is not available for this request.`, is_error: true }
       : name === OFFER_CLOCK_BUTTON_TOOL_NAME ? clockTool(name, input)
+      : name === OFFER_NAVIGATION_TOOL_NAME ? await navigationTool(name, input)
       : dailyTool && DAILY_LOG_TOOL_NAMES.has(name) ? dailyTool(name, input)
       : fieldTool && (FIELD_TOOL_NAMES.has(name) || LEARNING_TOOL_NAMES.has(name)) ? await fieldTool(name, input)
       : REPORTING_TOOLS.some((t) => t.name === name) ? await reporting(name, input) : await schedule(name, input);
