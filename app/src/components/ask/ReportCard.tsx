@@ -6,7 +6,7 @@ import { askReportCsv, askReportPdf } from '../../lib/askReportExports';
 import { supabase } from '../../lib/supabase';
 import { formatApiError } from '../../lib/errors';
 import { JOB_STAGES } from '../../lib/jobExecution';
-import { useT } from '../../lib/i18n';
+import { useT, useLanguage } from '../../lib/i18n';
 import './reports.css';
 function download(bytes: BlobPart, mime: string, name: string) {
   const url=URL.createObjectURL(new Blob([bytes],{type:mime}));
@@ -14,28 +14,31 @@ function download(bytes: BlobPart, mime: string, name: string) {
   setTimeout(()=>URL.revokeObjectURL(url),10000);
 }
 function UnitRemovalCard({review}:{review:UnitRemovalReviewArtifact}) {
+  const es = useLanguage().lang === 'es';
   const [busy,setBusy]=useState(false);
   const [done,setDone]=useState(false);
   const [error,setError]=useState('');
   async function remove() {
     const labels=review.openings.map(o=>o.code).join(', ');
-    if (!window.confirm(`Remove units ${labels} from ${review.project.job_code} · ${review.project.name}? This preserves their records and cannot remove units with work history.`)) return;
+    if (!window.confirm(es
+      ? `¿Quitar las unidades ${labels} de ${review.project.job_code} · ${review.project.name}? Se conserva su historial y no se pueden quitar unidades con trabajo registrado.`
+      : `Remove units ${labels} from ${review.project.job_code} · ${review.project.name}? This preserves their records and cannot remove units with work history.`)) return;
     setBusy(true);setError('');
     try {
       const {data,error:rpcError}=await supabase.rpc('ai_remove_openings',{p_project_id:review.project.id,p_opening_ids:review.openings.map(o=>o.id)});
       if (rpcError) throw rpcError;
       const removed=(data as {removed?:unknown[]}|null)?.removed;
-      if (!Array.isArray(removed) || removed.length!==review.openings.length) throw new Error('Forge did not confirm every unit. Refresh the job before trying again.');
+      if (!Array.isArray(removed) || removed.length!==review.openings.length) throw new Error(es ? 'Forge no confirmó todas las unidades. Actualiza la obra antes de volver a intentar.' : 'Forge did not confirm every unit. Refresh the job before trying again.');
       setDone(true);
-    } catch (cause) { setError(formatApiError(cause, 'Could not remove these units. Nothing was confirmed.')); }
+    } catch (cause) { setError(formatApiError(cause, es ? 'No se pudieron quitar estas unidades. No se confirmó ningún cambio.' : 'Could not remove these units. Nothing was confirmed.')); }
     finally {setBusy(false);}
   }
-  return <section className="ask-report" aria-label="Review unit removal">
-    <div className="ask-report-heading"><FileText size={20}/><div><span className="ask-report-kicker">Review before removing</span><h2>{review.project.job_code} · {review.project.name}</h2></div></div>
-    <p>Mapped units: {review.openings.map(o=>o.code).join(', ')}</p>
-    <p className="muted">No unit has been removed yet. Forge will refuse the whole set if any unit has install, time, QC, or warehouse history.</p>
-    {done?<p role="status">All {review.openings.length} units were removed from the job map. Their audit records remain in Forge.</p>
-      :<button className="primary" type="button" disabled={busy} onClick={()=>void remove()}>{busy?'Checking and removing…':'Remove these units'}</button>}
+  return <section className="ask-report" aria-label={es ? 'Revisar unidades antes de quitarlas' : 'Review unit removal'}>
+    <div className="ask-report-heading"><FileText size={20}/><div><span className="ask-report-kicker">{es ? 'Revisar antes de quitar' : 'Review before removing'}</span><h2>{review.project.job_code} · {review.project.name}</h2></div></div>
+    <p>{es ? 'Unidades en el plano' : 'Mapped units'}: {review.openings.map(o=>o.code).join(', ')}</p>
+    <p className="muted">{es ? 'Todavía no se ha quitado ninguna unidad. Forge rechazará el grupo completo si alguna tiene historial de instalación, tiempo, calidad o almacén.' : 'No unit has been removed yet. Forge will refuse the whole set if any unit has install, time, QC, or warehouse history.'}</p>
+    {done?<p role="status">{es ? `Se quitaron ${review.openings.length} unidades del plano. Su historial permanece en Forge.` : `All ${review.openings.length} units were removed from the job map. Their audit records remain in Forge.`}</p>
+      :<button className="primary" type="button" disabled={busy} onClick={()=>void remove()}>{busy ? (es ? 'Revisando y quitando…' : 'Checking and removing…') : (es ? 'Quitar estas unidades' : 'Remove these units')}</button>}
     {error&&<p role="alert" className="ask-report-warning">{error}</p>}
   </section>;
 }
