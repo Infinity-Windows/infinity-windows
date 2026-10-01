@@ -1,6 +1,7 @@
 @import url("https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap");
 
 :root {
+  --min-tap: 44px;
   /* Infinity Windows — Horizon sunset-coral dark theme (oklch tokens, ported
      verbatim from the Horizon design system). Always dark. */
   --background: oklch(0.965 0.01 60);
@@ -5879,8 +5880,9 @@ button.clock-out {
 }
 .ack-row {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 10px;
+  min-height: var(--min-tap);
   margin: 6px 0;
   cursor: pointer;
 }
@@ -13109,8 +13111,8 @@ button.stage-chip {
 .scan-box b { font-family: var(--font-display); font-size: 18px; }
 .scan-box span { font-size: 11px; color: var(--muted); }
 .scan-picked { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
-.scan-picked .chip { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 4px 10px; border-radius: 999px; border: 1.5px solid var(--border); background: var(--surface); font-size: 13px; }
-.scan-picked .chip button { background: transparent; border: none; color: var(--muted); font: inherit; min-width: 28px; min-height: 28px; cursor: pointer; }
+.scan-picked .chip { display: inline-flex; align-items: center; gap: 6px; min-height: var(--min-tap); padding: 4px 10px; border-radius: 999px; border: 1.5px solid var(--border); background: var(--surface); font-size: 13px; }
+.scan-picked .chip button { background: transparent; border: none; color: var(--muted); font: inherit; min-width: var(--min-tap); min-height: var(--min-tap); cursor: pointer; }
 .scan-hand { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
 .scan-hand .row { display: flex; gap: 8px; }
 .scan-hand input, .scan-hand select { min-height: 44px; flex: 1; }
@@ -13199,7 +13201,7 @@ button.stage-chip {
 .box-third-head { min-height: 40px; border: none; background: transparent; color: var(--text); font: inherit; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; cursor: pointer; border-radius: 8px 8px 0 0; }
 .box-third-head:not(:disabled):hover { background: var(--accent-soft); }
 .box-third-body { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px; }
-.box-chip { max-width: 100%; min-height: 32px; padding: 3px 8px; border-radius: 8px; border: 1.5px solid var(--border); background: var(--surface); color: var(--text); font: inherit; font-size: 11.5px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.box-chip { max-width: 100%; min-width: var(--min-tap); min-height: var(--min-tap); padding: 3px 8px; border-radius: 8px; border: 1.5px solid var(--border); background: var(--surface); color: var(--text); font: inherit; font-size: 11.5px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
 .box-chip--on { outline: 2px solid var(--accent); outline-offset: 1px; }
 .box-chip--glow { background: var(--accent-soft); }
 .box-unplaced { margin-top: 8px; }
