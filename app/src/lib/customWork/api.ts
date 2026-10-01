@@ -3,6 +3,7 @@ import { isMissingColumn } from "../schemaErrors";
 import type {
   CrewPerson,
   CrewWorkRecord,
+  StageContributorSummaryRow,
   WorkCommand,
   WorkHistory,
   WorkSession,
@@ -19,6 +20,7 @@ async function allRows<T>(
   select: string,
   projectId?: string | null,
   profileId?: string,
+  unitId?: string,
 ): Promise<T[]> {
   const result: T[] = [];
   let expected: number | null = null;
@@ -29,6 +31,7 @@ async function allRows<T>(
       .order("id")
       .range(from, from + 499);
     if (profileId) q = q.eq("profile_id", profileId);
+    if (unitId) q = q.eq("unit_id", unitId);
     if (projectId === null) q = q.is("project_id", null);
     else if (projectId) q = q.eq("project_id", projectId);
     const { data, error, count } = await q;
@@ -84,9 +87,32 @@ export const listWorkHistory = (job?: string | null) =>
     job,
   );
 export const listCrewRecordPeople = () => allRows<CrewPerson>("profiles", "id,display_name,active,role,is_partner,retired_at,access_revoked_at");
-export const listCrewWorkRecords = (job: string) =>
-  allRows<CrewWorkRecord>("crew_work_records",
-    "id,project_id,unit_id,filed_by,work_date,stage,outcome,whole_complete,description,created_at,people:crew_work_record_people(profile_id)", job);
+const CREW_RECORD_COLS = "id,project_id,unit_id,filed_by,work_date,stage,outcome,whole_complete,description,created_at,people:crew_work_record_people(profile_id,voided_at,voided_by,void_reason)";
+async function readCrewRecords(job?: string, unit?: string) {
+  try {
+    return await allRows<CrewWorkRecord>("crew_work_records", CREW_RECORD_COLS, job, undefined, unit);
+  } catch (error) {
+    // The original ledger remains readable while the additive correction
+    // columns are being deployed. Other schema drift must still surface.
+    if (!["voided_at", "voided_by", "void_reason"].some((column) => isMissingColumn(error, column))) throw error;
+    return allRows<CrewWorkRecord>("crew_work_records", CREW_RECORD_COLS.replace("profile_id,voided_at,voided_by,void_reason", "profile_id"), job, undefined, unit);
+  }
+}
+export const listCrewWorkRecords = (job: string) => readCrewRecords(job);
+export const listUnitCrewWorkRecords = (unit: string) => readCrewRecords(undefined, unit);
+/** The server-authoritative answer to "who is credited on this tuple right
+ * now", with the digest a correction must match. A missing RPC must surface
+ * as unavailable; it is not evidence that nobody worked on the unit. */
+export async function getStageContributorSummary(unitId: string): Promise<StageContributorSummaryRow[]> {
+  const { data, error } = await supabase.rpc("stage_contributor_summary", { p_unit: unitId });
+  if (error) throw error;
+  return (data ?? []) as StageContributorSummaryRow[];
+}
+const DIRECT_RPC_ACTIONS: Partial<Record<WorkCommand["action"], string>> = {
+  crew_record: "record_crew_work",
+  stage_contributors: "record_stage_contributors",
+  correct_stage_contributors: "correct_stage_contributors",
+};
 export async function sendWorkCommand(c: WorkCommand): Promise<string> {
   const { data: auth, error: authError } = await supabase.auth.getSession();
   if (authError) throw authError;
@@ -94,9 +120,10 @@ export async function sendWorkCommand(c: WorkCommand): Promise<string> {
     throw new Error(
       "Sign back into the account that recorded this work to sync it.",
     );
-  const { data, error } = await supabase.rpc(c.action === "crew_record" ? "record_crew_work" : "custom_work_command", {
+  const direct = DIRECT_RPC_ACTIONS[c.action];
+  const { data, error } = await supabase.rpc(direct ?? "custom_work_command", {
     p_id: c.id,
-    ...(c.action === "crew_record" ? {} : { p_action: c.action }),
+    ...(direct ? {} : { p_action: c.action }),
     p_data: c.data,
   });
   if (error) throw error;

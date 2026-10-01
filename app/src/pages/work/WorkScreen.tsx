@@ -26,6 +26,7 @@ import { HeadsUps } from "../../components/work/HeadsUps";
 import { LeadRow } from "../../components/work/LeadRow";
 import { QuickButtons } from "../../components/work/QuickButtons";
 import { TodayCard } from "../../components/work/TodayCard";
+import { UnitContributors } from "../../components/work/UnitContributors";
 import { YourUnit } from "../../components/work/YourUnit";
 import { LiveSummonsStrip } from "../../components/install/LiveSummonsStrip";
 import { useClock } from "../../lib/clockContext";
@@ -276,6 +277,7 @@ export function WorkScreen() {
         now={now}
       />
       {lead && <LeadRow role={effectiveRole} />}
+      <UnitContributors key={work.user ?? "signed-out"} work={work} jobId={jobId} canRecord={lead} />
     </div>
   );
 }
