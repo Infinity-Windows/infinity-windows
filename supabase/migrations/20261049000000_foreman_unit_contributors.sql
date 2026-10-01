@@ -52,14 +52,14 @@ grant execute on function public.crew_work_project_visible(uuid) to authenticate
 
 drop policy crew_records_read on public.crew_work_records;
 create policy crew_records_read on public.crew_work_records for select to authenticated using (
-  public.crew_work_project_visible(project_id)
+  not public.is_partner_user() and public.crew_work_project_visible(project_id)
 );
 -- crew_record_people_read already tests its parent through crew_work_records
 -- RLS, so standalone participant reads inherit the strengthened boundary.
 
 drop policy custom_history_read on public.custom_work_history;
 create policy custom_history_read on public.custom_work_history for select to authenticated using (
-  public.custom_work_internal() and (
+  not public.is_partner_user() and public.custom_work_internal() and (
     public.crew_work_project_visible(project_id)
     or (project_id is null
       and (actor_id=auth.uid() or public._is_lead(auth.uid()))

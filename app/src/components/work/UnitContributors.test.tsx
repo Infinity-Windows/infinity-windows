@@ -69,6 +69,7 @@ function fakeWork(command: (action: string, data: Record<string, unknown>) => Pr
     commandMany: vi.fn(),
     refresh: vi.fn(),
     sync: vi.fn(),
+    actionsLoading: false,
     loading: false,
     error: null,
     active: null,

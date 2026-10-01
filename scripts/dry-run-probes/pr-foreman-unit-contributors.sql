@@ -24,6 +24,7 @@ declare
   v_unit_from_opening uuid;
   v_saved_unit uuid := gen_random_uuid();
   v_request uuid := gen_random_uuid();
+  v_correction_request uuid := gen_random_uuid();
   v_actor_role text;
   v_count int;
   v_digest text;
@@ -167,7 +168,7 @@ begin
       jsonb_build_object('unit_id', v_saved_unit, 'stage', 'RO checked', 'work_date', (current_date - 1)::text,
         'expected_digest', 'not-the-real-digest', 'reason', 'probe', 'remove', jsonb_build_array(v_installer))),
     'changed');
-  v_result := public.correct_stage_contributors(gen_random_uuid(), jsonb_build_object(
+  v_result := public.correct_stage_contributors(v_correction_request, jsonb_build_object(
     'unit_id', v_saved_unit, 'stage', 'RO checked', 'work_date', (current_date - 1)::text,
     'expected_digest', v_digest, 'reason', 'Dry-run probe correction', 'remove', jsonb_build_array(v_installer), 'add', jsonb_build_array(v_installer), 'outcome', 'finished'));
   perform pg_temp.dry_run_as_system();
@@ -190,7 +191,7 @@ begin
         'expected_digest', v_digest, 'reason', 'stale retry', 'remove', jsonb_build_array(v_installer))),
     'changed');
   -- The correction's own replay: same id, same payload, does not re-apply.
-  v_result := public.correct_stage_contributors(v_result, jsonb_build_object(
+  v_result := public.correct_stage_contributors(v_correction_request, jsonb_build_object(
     'unit_id', v_saved_unit, 'stage', 'RO checked', 'work_date', (current_date - 1)::text,
     'expected_digest', v_digest, 'reason', 'Dry-run probe correction', 'remove', jsonb_build_array(v_installer), 'add', jsonb_build_array(v_installer), 'outcome', 'finished'));
   perform pg_temp.dry_run_check('contributors: correction replay returns the same unit', v_result = v_saved_unit, v_result::text);
