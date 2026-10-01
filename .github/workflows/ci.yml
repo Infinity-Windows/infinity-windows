@@ -6,6 +6,25 @@ on:
     branches: [master]
 
 jobs:
+  release-baseline:
+    name: Pin current production release for installed-app checks
+    runs-on: ubuntu-latest
+    outputs:
+      build_ref: ${{ steps.pin.outputs.build_ref }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Capture the served release once
+        id: pin
+        run: |
+          curl --fail --show-error --silent --connect-timeout 10 --max-time 20 --header "Cache-Control: no-cache" "https://app.forgewd.com/version.json?ci-release=$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-snapshot" -o "$RUNNER_TEMP/production-version.json"
+          python3 scripts/pwa-release-baseline.py "$RUNNER_TEMP/production-version.json" --github-output "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pinned-production-release
+          path: ${{ runner.temp }}/production-version.json
+          retention-days: 7
+
   build-lint-test:
     name: Build, lint & test
     runs-on: ubuntu-latest
@@ -98,15 +117,31 @@ jobs:
 
   trip-browser:
     name: Forge workflow on phone and desktop
+    needs: release-baseline
+    # A failed prerequisite must fail this required browser check, not skip it.
+    if: ${{ always() }}
     runs-on: ubuntu-latest
     env:
-      # Pin the deployed baseline at event creation; do not resolve moving master.
-      IW_PWA_OLD_REF: ${{ github.event.pull_request.base.sha || github.event.before || 'origin/master' }}
+      # Public production can differ from the PR event's cached base revision.
+      # Capture it once, validate it, and keep that immutable full SHA.
+      IW_PWA_OLD_REF: ${{ needs.release-baseline.outputs.build_ref }}
     defaults:
       run:
         working-directory: app
     steps:
       - uses: actions/checkout@v4
+      - name: Require a validated production baseline
+        env:
+          BASELINE_JOB_RESULT: ${{ needs.release-baseline.result }}
+        run: |
+          if [ "$BASELINE_JOB_RESULT" != success ]; then
+            echo "::error::Production baseline job did not succeed"
+            exit 1
+          fi
+          if [[ ! "$IW_PWA_OLD_REF" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Production baseline output is not a full Git SHA"
+            exit 1
+          fi
       - name: Select isolated installed-app build cache
         run: printf 'IW_PWA_CACHE=%s/pwa-current\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
       - uses: actions/setup-node@v4
@@ -167,9 +202,18 @@ jobs:
       # with no signal, and reopened after the deploy by a phone still holding
       # yesterday's worker. Every spec above runs on the dev server, which
       # has no worker at all, and none of them saw 2026-09-25 coming. Its own
-      # step, like the clock-in one. Fetch the event's exact old commit because
+      # step, like the clock-in one. Fetch the captured production commit because
       # the checkout is shallow and the harness builds it (pwaHarness.ts).
       - run: git fetch --depth=1 origin "$IW_PWA_OLD_REF"
+      - name: Verify the fetched immutable baseline
+        run: test "$(git rev-parse "$IW_PWA_OLD_REF^{commit}")" = "$IW_PWA_OLD_REF"
+      # A PR must still upgrade the currently deployed release. A master push
+      # can legitimately deploy itself while this longer browser job runs.
+      - name: Refuse a changed production release before PR upgrade checks
+        if: github.event_name == 'pull_request'
+        run: |
+          curl --fail --show-error --silent --connect-timeout 10 --max-time 20 --header "Cache-Control: no-cache" "https://app.forgewd.com/version.json?ci-release=$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-before-upgrade" -o "$RUNNER_TEMP/production-version-before-upgrade.json"
+          python3 ../scripts/pwa-release-baseline.py "$RUNNER_TEMP/production-version-before-upgrade.json" --expect "$IW_PWA_OLD_REF"
       - name: Full installed-app suite from pinned deployed build
         run: npx playwright test --config playwright.pwa.config.ts
       - name: Preserve current-baseline upgrade evidence
@@ -181,6 +225,7 @@ jobs:
             app/e2e/test-results/
             ${{ runner.temp }}/pwa-current/old-dist/
             ${{ runner.temp }}/pwa-current/new-dist/
+            ${{ runner.temp }}/production-version-before-upgrade.json
           retention-days: 7
       # The field app is iPhone-first. Keep the empty-boot recovery check on
       # WebKit too; module-script/load ordering matters to this watchdog.
@@ -254,6 +299,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Test production release baseline validation
+        run: python3 scripts/test_pwa_release_baseline.py
 
       # scripts/verify-functions.sh is what decides whether a backend deploy
       # really happened, so it gets tested like anything else. The tests stub
