@@ -1,7 +1,7 @@
 // Horizon parity, window work (owner request 2026-10-01): the vocabulary
 // for "what did the crew work on today?" and the rest of the Log Today
 // form's structured chips. Pure and framework-free — file_daily_log
-// validates the exact same lists server-side (20261060000000), so a stage
+// validates the exact same lists server-side (20261062000000), so a stage
 // this module doesn't know is refused before it reaches the database.
 //
 // Solar-to-window substitution, as the brief gave it: Horizon's stages

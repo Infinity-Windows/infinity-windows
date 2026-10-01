@@ -1156,7 +1156,7 @@ export interface UploadInput {
   /** A package this photo hangs off (pick 28) — attachments.package_id,
    * widened onto attachments_target by 20260936000000_package_photos. */
   packageId?: string | null;
-  /** Tags this photo to ONE job-day's daily log (20261060010000) — a daily
+  /** Tags this photo to ONE job-day's daily log (20261062010000) — a daily
    * log photo, not just any photo on the same job and date. NOT a target of
    * its own: projectId must still be set, and the server trigger
    * attachments_daily_log_matches_job refuses a mismatch. */

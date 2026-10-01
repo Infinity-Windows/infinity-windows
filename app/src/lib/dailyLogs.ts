@@ -51,7 +51,7 @@ export interface DailyLog extends DailyLogProgressFields {
   job_name: string | null;
 }
 
-/** The raw row shape PostgREST hands back for the new (20261060000000)
+/** The raw row shape PostgREST hands back for the new (20261062000000)
  * columns — snake_case, and every array/object column nullable on a
  * pre-migration database (isMissingColumn peels them back below). */
 interface DailyLogProgressRow {
