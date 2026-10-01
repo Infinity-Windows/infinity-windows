@@ -15,30 +15,30 @@ describe("receipt cards", () => {
   it("offers a specific clock handoff for the verified target job", () => {
     const jobId = "11111111-1111-4111-8111-111111111111";
     const receipt: FieldReceipt = { action_id: "switch-1", action: "start_unit", status: "needs_choice", reason: "wrong_job", project_id: jobId, options: [{ id: "start_now", label: "Start now" }] };
-    const out = html(<FieldReceiptCard receipt={receipt} draft={{ job: { project_id: jobId, name: "Black Desert", location: null }, unit: null }} onChange={() => undefined} timingPending={async () => false} />);
+    const out = html(<FieldReceiptCard receipt={receipt} draft={{ job: { project_id: jobId, name: "Black Desert", location: null }, unit: null }} onChange={() => undefined} actorId="u" timingState={async () => "clear"} />);
     expect(out).toContain("Switch to Black Desert");
     expect(out).toContain("Start now");
     expect(out).toContain("nothing has changed yet");
   });
   it("a waiting choice says nothing has changed and offers only its options", () => {
     const r: FieldReceipt = { action_id: "a", action: "start_unit", status: "needs_choice", reason: "on_break", preview_hash: "h", options: [{ id: "end_break_and_start", label: "x" }, { id: "cancel", label: "y" }], unit: { unit_id: "u", label: "4", type: "Bifold", facts: {} } };
-    const out = html(<FieldReceiptCard receipt={r} onChange={() => undefined} timingPending={async () => false} />);
+    const out = html(<FieldReceiptCard receipt={r} onChange={() => undefined} actorId="u" timingState={async () => "clear"} />);
     expect(out).toContain("nothing has changed yet");
     expect(out).toContain("End break and start");
     expect(out).not.toMatch(/running|started/i);
   });
   it("a stale or cancelled receipt never reads as success", () => {
     for (const status of ["stale", "cancelled"] as const) {
-      const out = html(<FieldReceiptCard receipt={{ action_id: "a", action: "start_unit", status, message: "Your job clock changed." }} onChange={() => undefined} timingPending={async () => false} />);
+      const out = html(<FieldReceiptCard receipt={{ action_id: "a", action: "start_unit", status, message: "Your job clock changed." }} onChange={() => undefined} actorId="u" timingState={async () => "clear"} />);
       expect(out).toMatch(/Nothing changed/);
       expect(out).not.toMatch(/Timer running/);
     }
   });
   it("a running timer shows its start basis and that QC is separate on stop", () => {
-    const run = html(<FieldReceiptCard receipt={{ action_id: "a", action: "start_unit", status: "running", outcome: "started", started_at: "2026-09-22T15:00:00Z", start_time_basis: "request_sent", unit: { unit_id: "u", label: "4", type: "Bifold", facts: {} } }} onChange={() => undefined} timingPending={async () => false} />);
+    const run = html(<FieldReceiptCard receipt={{ action_id: "a", action: "start_unit", status: "running", outcome: "started", started_at: "2026-09-22T15:00:00Z", start_time_basis: "request_sent", unit: { unit_id: "u", label: "4", type: "Bifold", facts: {} } }} onChange={() => undefined} actorId="u" timingState={async () => "clear"} />);
     expect(run).toContain("Timer running on 4");
     expect(run).toContain("moment you sent the request");
-    const stop = html(<FieldReceiptCard receipt={{ action_id: "b", action: "stop_work", status: "done", outcome: "stopped", stage_outcome: "partial" }} onChange={() => undefined} timingPending={async () => false} />);
+    const stop = html(<FieldReceiptCard receipt={{ action_id: "b", action: "stop_work", status: "done", outcome: "stopped", stage_outcome: "partial" }} onChange={() => undefined} actorId="u" timingState={async () => "clear"} />);
     expect(stop).toContain("QC is not approved here");
   });
   it("differences are readable: components, sizes and lists are written out", () => {
@@ -48,7 +48,7 @@ describe("receipt cards", () => {
         components: { stored: [{ label: "Door panel", quantity: 2 }], said: [{ label: "Door panel", quantity: 3 }, { label: "Frame", quantity: 1 }] },
         width_in: { stored: 72, said: 76.5 }, material: { stored: "Vinyl", said: "Aluminum" },
       } };
-    const out = html(<FieldReceiptCard receipt={r} onChange={() => undefined} timingPending={async () => false} />);
+    const out = html(<FieldReceiptCard receipt={r} onChange={() => undefined} actorId="u" timingState={async () => "clear"} />);
     expect(out).not.toContain("[object Object]");
     expect(out).toContain("2 × Door panel → 3 × Door panel, 1 × Frame");
     expect(out).toContain("72 in → 76.5 in");
@@ -56,9 +56,9 @@ describe("receipt cards", () => {
   });
   it("a plan conflict names the map unit, and a duplicate-job card shows the new job asked for", () => {
     const plan: FieldReceipt = { action_id: "a", action: "save_unit", status: "needs_choice", reason: "plan_conflict", map_code: "MAP-10", options: [], differences: { width_in: { plans: 60, said: 40 } } };
-    expect(html(<FieldReceiptCard receipt={plan} onChange={() => undefined} timingPending={async () => false} />)).toContain("60 in → 40 in");
+    expect(html(<FieldReceiptCard receipt={plan} onChange={() => undefined} actorId="u" timingState={async () => "clear"} />)).toContain("60 in → 40 in");
     const job: FieldReceipt = { action_id: "b", action: "create_job", status: "needs_choice", reason: "similar_job", proposed: { name: "Smith House", location: "12 Oak St" }, matches: [{ id: "j1", name: "Smith Residence", location: "12 Oak St" }], options: [] };
-    const out = html(<FieldReceiptCard receipt={job} onChange={() => undefined} timingPending={async () => false} />);
+    const out = html(<FieldReceiptCard receipt={job} onChange={() => undefined} actorId="u" timingState={async () => "clear"} />);
     expect(out).toContain("Smith House · 12 Oak St");
     expect(out).toContain("Smith Residence · 12 Oak St");
   });
@@ -103,7 +103,7 @@ describe("lazy field translations", () => {
 });
 
 describe("receipt status words (K2.5)", () => {
-  const card = (r: FieldReceipt) => html(<FieldReceiptCard receipt={r} onChange={() => undefined} timingPending={async () => false} />);
+  const card = (r: FieldReceipt) => html(<FieldReceiptCard receipt={r} onChange={() => undefined} actorId="u" timingState={async () => "clear"} />);
   it("every card opens with the real status: Saved in Forge, Needs your choice, or Nothing changed", () => {
     expect(card({ action_id: "a", action: "save_unit", status: "done", outcome: "created_unit", unit: { unit_id: "u", label: "4", type: "Bifold", facts: {} } })).toContain("Saved in Forge");
     expect(card({ action_id: "a", action: "start_unit", status: "running", outcome: "started", started_at: "2026-09-22T15:00:00Z", unit: { unit_id: "u", label: "4", type: "Bifold", facts: {} } })).toContain("Saved in Forge");

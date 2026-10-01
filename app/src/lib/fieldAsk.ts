@@ -265,17 +265,25 @@ export const FIELD_QUERY_ROOTS = [
  * other way. Anything that cannot be read counts as pending: the server then
  * refuses timing actions, and the manual clock still works.
  */
-export async function phoneTimingPending(
+export type PhoneTimingState = "clear" | "pending" | "unreadable";
+export async function readPhoneTimingState(
   userId: string,
   deps: { clockWrites: () => Promise<number>; workQueue: (userId: string) => { action: string }[]; shiftId: string | null | undefined },
-): Promise<boolean> {
+): Promise<PhoneTimingState> {
   try {
-    if (deps.shiftId?.startsWith("pending:")) return true;
-    if ((await deps.clockWrites()) > 0) return true;
-    return deps.workQueue(userId).some((c) => c.action === "start" || c.action === "stop" || c.action === "session");
+    if (deps.shiftId?.startsWith("pending:")) return "pending";
+    if ((await deps.clockWrites()) > 0) return "pending";
+    return deps.workQueue(userId).some((c) => c.action === "start" || c.action === "stop" || c.action === "session") ? "pending" : "clear";
   } catch {
-    return true;
+    return "unreadable";
   }
+}
+/** An unreadable phone queue is blocked by the same guard as a pending one. */
+export async function phoneTimingPending(
+  userId: string,
+  deps: Parameters<typeof readPhoneTimingState>[1],
+): Promise<boolean> {
+  return (await readPhoneTimingState(userId, deps)) !== "clear";
 }
 
 export type VoiceOutcome = { outcome: "sent" | "not_owner" | "empty" | "failed"; keptOnPhone: boolean; error?: string };

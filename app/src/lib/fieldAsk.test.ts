@@ -12,7 +12,7 @@ vi.mock("./supabase", () => {
   return { supabase: { from: () => chain, rpc: vi.fn(), storage: { from: () => ({}) } } };
 });
 
-import { guardedResolve, keepUnsent, loadConversation, phoneTimingPending, RESTORE_TURNS, runVoiceSteps, TimingPendingError, tx, type FieldReceipt } from "./fieldAsk";
+import { guardedResolve, keepUnsent, loadConversation, phoneTimingPending, readPhoneTimingState, RESTORE_TURNS, runVoiceSteps, TimingPendingError, tx, type FieldReceipt } from "./fieldAsk";
 import { fieldActorMatches } from "../../../supabase/functions/_shared/fieldTools";
 
 describe("a tap on a timing choice re-checks the phone's queues at the moment of the tap", () => {
@@ -146,17 +146,30 @@ describe("timing the phone has not sent yet", () => {
   const none = { clockWrites: async () => 0, workQueue: () => [], shiftId: "real-shift" };
   it("is clear only when nothing is queued", async () => {
     expect(await phoneTimingPending("u", none)).toBe(false);
+    expect(await readPhoneTimingState("u", none)).toBe("clear");
   });
   it("a queued break or clock-out on a REAL shift id still counts", async () => {
     expect(await phoneTimingPending("u", { ...none, clockWrites: async () => 1 })).toBe(true);
+    expect(await readPhoneTimingState("u", { ...none, clockWrites: async () => 1 })).toBe("pending");
   });
   it("queued custom unit work counts; a queued unit edit alone does not", async () => {
     expect(await phoneTimingPending("u", { ...none, workQueue: () => [{ action: "start" }] })).toBe(true);
     expect(await phoneTimingPending("u", { ...none, workQueue: () => [{ action: "unit" }] })).toBe(false);
   });
+  it("stays pending until both clock writes and unit timing writes have cleared", async () => {
+    let clockWrites = 1;
+    let work = [{ action: "stop" }];
+    const deps = { ...none, clockWrites: async () => clockWrites, workQueue: () => work };
+    expect(await readPhoneTimingState("u", deps)).toBe("pending");
+    clockWrites = 0;
+    expect(await readPhoneTimingState("u", deps)).toBe("pending");
+    work = [];
+    expect(await readPhoneTimingState("u", deps)).toBe("clear");
+  });
   it("a pending shift or an unreadable queue counts as pending", async () => {
     expect(await phoneTimingPending("u", { ...none, shiftId: "pending:abc" })).toBe(true);
     expect(await phoneTimingPending("u", { ...none, clockWrites: async () => { throw new Error("blocked"); } })).toBe(true);
+    expect(await readPhoneTimingState("u", { ...none, clockWrites: async () => { throw new Error("blocked"); } })).toBe("unreadable");
     expect(await phoneTimingPending("u", { ...none, workQueue: () => { throw new Error("locked"); } })).toBe(true);
   });
 });

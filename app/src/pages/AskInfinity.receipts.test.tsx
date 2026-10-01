@@ -46,9 +46,11 @@ vi.mock("../lib/offline/outbox", () => ({
   subscribe: () => () => {},
   subscribeSynced: () => () => {},
 }));
-vi.mock("../lib/customWork/queue", () => ({ readWorkQueue: () => [] }));
+vi.mock("../lib/customWork/queue", () => ({ readWorkQueue: () => [], WORK_QUEUE_EVENT: "forge:custom-work-queue" }));
 vi.mock("../lib/supabase", () => ({ supabaseConfigured: true, supabase: {} }));
 vi.mock("../lib/fieldAsk", () => ({
+  TIMING_CHOICES: new Set(["start_now", "join_helper", "end_break_and_start"]),
+  readPhoneTimingState: async () => "clear",
   FIELD_QUERY_ROOTS: [],
   currentConversation: () => "conversation-1",
   startNewConversation: () => "conversation-2",
