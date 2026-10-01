@@ -5,6 +5,9 @@ import { guardedResolve, TimingPendingError, type FieldReceipt } from "../../lib
 import type { ChecklistItem, SetupChecklist } from "../../../../supabase/functions/_shared/fieldTools";
 import { choiceFailureText, differenceLabel, differenceText, optionText, reasonText } from "./fieldCardText";
 import { receiptStatus } from "../../lib/askReceiptGuard";
+import { askClockHandoff, askClockLabel, askClockPick } from "../../lib/askClockHandoff";
+import { useLanguage } from "../../lib/i18n";
+import type { SetupDraft } from "../../../../supabase/functions/_shared/fieldTools";
 
 const time = (iso?: string) => (iso ? new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "");
 
@@ -70,12 +73,15 @@ function receiptText(t: ReturnType<typeof useT>, r: FieldReceipt): string {
 
 /** One database receipt. A waiting choice shows its buttons; nothing on this
  * card claims success unless the receipt's status says it happened. */
-export function FieldReceiptCard({ receipt, onChange, timingPending }: {
+export function FieldReceiptCard({ receipt, draft, onChange, timingPending }: {
   receipt: FieldReceipt; onChange: (next: FieldReceipt) => void;
+  draft?: SetupDraft | null;
   /** Re-read at the moment of a timing tap; pending or unreadable refuses it. */
   timingPending: () => Promise<boolean>;
 }) {
   const t = useT();
+  const es = useLanguage().lang === "es";
+  const clockHandoff = askClockHandoff(receipt, draft);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const waiting = receipt.status === "needs_choice";
@@ -112,8 +118,8 @@ export function FieldReceiptCard({ receipt, onChange, timingPending }: {
               ))}
             </dl>
           )}
-          {(receipt.reason === "needs_clock" || receipt.reason === "wrong_job") && (
-            <button type="button" onClick={() => openClockGlobally()}>{t("field.openClock")}</button>
+          {clockHandoff && (
+            <button type="button" onClick={() => openClockGlobally(askClockPick(clockHandoff))}>{askClockLabel(clockHandoff, es)}</button>
           )}
           <div className="field-options">
             {receipt.options?.map((o) => (

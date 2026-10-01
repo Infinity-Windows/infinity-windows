@@ -53,6 +53,7 @@ import { readClockButtons, type ClockButton } from "../../../supabase/functions/
 import { ClockButtons } from "../components/ask/ClockButtons";
 import { NavigationButton } from "../components/ask/NavigationButton";
 import { readNavigationAction, type NavigationAction } from "../../../supabase/functions/_shared/askNavigation";
+import { askClockHandoff, type AskClockHandoff } from "../lib/askClockHandoff";
 import { needsNothingSavedNotice } from "../lib/askReceiptGuard";
 import { AiDailyLogCard } from "../components/aiDailyLogs/AiDailyLogCard";
 import { useAiDailyLogDraft } from "../lib/aiDailyLogs/useAiDailyLogDraft";
@@ -67,6 +68,7 @@ export interface LiveAskShellState {
   detail?: LiveEndReason | string;
   saving: boolean;
   needsClock: boolean;
+  clockHandoff: AskClockHandoff | null;
   muted: boolean;
   expiring: boolean;
   navigation: NavigationAction | null;
@@ -290,11 +292,20 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
   const [liveNavigation, setLiveNavigation] = useState<NavigationAction | null>(null);
   /** Live turns cut from the microphone and not yet sent or kept on the phone. */
   const [liveSaving, setLiveSaving] = useState(0);
-  const needsClock = messages.some((m) => m.field?.receipts.some((r) =>
-    r.status === "needs_choice" && (r.reason === "wrong_job" || r.reason === "needs_clock")));
+  const clockHandoff = useMemo((): AskClockHandoff | null => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const field = messages[i].field;
+      for (let j = (field?.receipts.length ?? 0) - 1; j >= 0; j--) {
+        const handoff = askClockHandoff(field!.receipts[j], field!.draft);
+        if (handoff) return handoff;
+      }
+    }
+    return null;
+  }, [messages]);
+  const needsClock = !!clockHandoff;
   useEffect(() => {
-    onLiveState?.({ status: live.status, detail: live.detail, saving: liveSaving > 0, needsClock, muted: liveMuted, expiring: liveExpiring, navigation: liveNavigation });
-  }, [live.status, live.detail, liveSaving, needsClock, liveMuted, liveExpiring, liveNavigation, onLiveState]);
+    onLiveState?.({ status: live.status, detail: live.detail, saving: liveSaving > 0, needsClock, clockHandoff, muted: liveMuted, expiring: liveExpiring, navigation: liveNavigation });
+  }, [live.status, live.detail, liveSaving, needsClock, clockHandoff, liveMuted, liveExpiring, liveNavigation, onLiveState]);
   useEffect(() => {
     if (!registerLiveControls) return;
     registerLiveControls({
@@ -418,7 +429,7 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
             restored.push({ who: "infinity", text: turn.reply?.answer ?? "", toolActivity: turn.reply?.toolActivity, buttons: readClockButtons(turn.reply?.buttons), navigation: readNavigationAction(turn.reply?.navigation) ?? undefined,
               artifacts: (turn.reply?.artifacts ?? []).filter((a) => a && ["time_report", "job_summary"].includes(a.kind)).slice(0, 4),
               sources: turn.reply?.sources ?? [],
-              field: { request_id: turn.id, receipts: turn.receipts, checklist: turn.captured?.checklist ?? null, learning: turn.captured?.learning ?? null } });
+              field: { request_id: turn.id, receipts: turn.receipts, checklist: turn.captured?.checklist ?? null, draft: turn.captured?.answers ?? undefined, learning: turn.captured?.learning ?? null } });
         }
         return [m[0], ...restored, ...m.slice(1)];
       });
@@ -1041,7 +1052,7 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
               {m.who === "me" ? m.text : cleanAskText(m.text)}
             </div>
             {m.memoPath && <MemoPlayback path={m.memoPath} />}
-            {m.field?.receipts.map((r) => <FieldReceiptCard key={r.action_id} receipt={r} onChange={updateReceipt} timingPending={timingPendingNow} />)}
+            {m.field?.receipts.map((r) => <FieldReceiptCard key={r.action_id} receipt={r} draft={m.field?.draft} onChange={updateReceipt} timingPending={timingPendingNow} />)}
             {m.field?.checklist && m.field.checklist === latestChecklist && <FieldChecklist key={m.field.request_id} checklist={m.field.checklist} />}
             {m.buttons && m.buttons.length > 0 && <ClockButtons buttons={m.buttons} />}
             {m.navigation && <NavigationButton action={m.navigation} />}

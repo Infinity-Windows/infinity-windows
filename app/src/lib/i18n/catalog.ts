@@ -279,6 +279,7 @@ export const CATALOG = {
   // offline-outbox wording shown when a punch is saved to sync later.
   "clock.a11y.timeClock": { en: "Time clock", es: "Reloj de tiempo" },
   "clock.a11y.close": { en: "Close", es: "Cerrar" },
+  "clock.returnToAsk": { en: "Back to Ask", es: "Volver a Ask" },
   "clock.a11y.timeWorked": { en: "Time worked", es: "Tiempo trabajado" },
   "clock.jobLabel": { en: "Job", es: "Trabajo" },
   "clock.noJob": { en: "No job", es: "Sin trabajo" },

@@ -21,7 +21,9 @@ const state = vi.hoisted(() => ({
   asked: [] as { q: string; meta: Record<string, unknown> | undefined }[],
   live: null as null | { options: LiveOptions; end: Mock },
   nav: false,
+  clockReceipt: false,
   shellNavigation: null as null | unknown,
+  shellClockHandoff: null as null | unknown,
 }));
 
 vi.mock("./queryClient", async () => {
@@ -38,7 +40,10 @@ vi.mock("./knowledge", () => ({
   askInfinity: async (q: string, _h: unknown, meta?: Record<string, unknown>) => {
     state.log.push(`ask:${String(meta?.audio_path)}`);
     state.asked.push({ q, meta });
-    return { answer: "Your next unit is 5.", sources: [], navigation: state.nav ? { kind: "schedule" } : undefined, field: { request_id: meta?.request_id, receipts: [{ action_id: "a1", action: "start_unit", status: "needs_choice" }], checklist: null } };
+    return { answer: "Your next unit is 5.", sources: [], navigation: state.nav ? { kind: "schedule" } : undefined, field: { request_id: meta?.request_id,
+      receipts: [{ action_id: "a1", action: "start_unit", status: "needs_choice", ...(state.clockReceipt ? { reason: "wrong_job", project_id: "11111111-1111-4111-8111-111111111111" } : {}) }],
+      draft: state.clockReceipt ? { job: { project_id: "11111111-1111-4111-8111-111111111111", name: "Black Desert", location: null }, unit: null } : undefined,
+      checklist: null } };
   },
   liveAnswer: () => null,
   shouldUseLLM: () => true,
@@ -93,7 +98,7 @@ let host: HTMLDivElement | null = null;
 const settle = async () => { for (let i = 0; i < 8; i += 1) await act(async () => { await new Promise((r) => setTimeout(r, 0)); }); };
 const render = (active = true) => root!.render(
   <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-    <MemoryRouter><AskInfinity active={active} onLiveState={(next) => { state.shellNavigation = next.navigation; }} /></MemoryRouter>
+    <MemoryRouter><AskInfinity active={active} onLiveState={(next) => { state.shellNavigation = next.navigation; state.shellClockHandoff = next.clockHandoff; }} /></MemoryRouter>
   </QueryClientProvider>,
 );
 const mount = async () => {
@@ -118,7 +123,7 @@ const turn = async (t: LiveTurn) => {
 
 beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-  Object.assign(state, { user: "crew-1", role: "owner", pilot: true, log: [], asked: [], live: null, nav: false, shellNavigation: null });
+  Object.assign(state, { user: "crew-1", role: "owner", pilot: true, log: [], asked: [], live: null, nav: false, clockReceipt: false, shellNavigation: null, shellClockHandoff: null });
   vi.stubGlobal("URL", { ...URL, createObjectURL: () => "blob:held", revokeObjectURL: () => {} });
 });
 afterEach(() => {
@@ -154,6 +159,17 @@ describe("Live Ask on the Ask page", () => {
     await act(async () => render(false));
     expect(live.end).not.toHaveBeenCalled();
     expect(state.shellNavigation).toEqual({ kind: "schedule" });
+  });
+  it("keeps the pending target job in the live corner panel across screens", async () => {
+    state.clockReceipt = true;
+    await mount();
+    await startLive();
+    const live = state.live!;
+    await turn({ itemId: "switch-1", audio: new Blob(["pcm"], { type: "audio/webm" }) });
+    expect(state.shellClockHandoff).toEqual({ reason: "wrong_job", projectId: "11111111-1111-4111-8111-111111111111", jobName: "Black Desert" });
+    await act(async () => render(false));
+    expect(live.end).not.toHaveBeenCalled();
+    expect(state.shellClockHandoff).toEqual({ reason: "wrong_job", projectId: "11111111-1111-4111-8111-111111111111", jobName: "Black Desert" });
   });
   it("is not offered unless the pilot is on", async () => {
     state.pilot = false;

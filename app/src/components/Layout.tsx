@@ -49,6 +49,8 @@ import { OnboardingWizard } from "./permissions/OnboardingWizard";
 import type { LiveAskShellControls, LiveAskShellState } from "../pages/AskInfinity";
 import { canContinueLive, liveStatusLine, liveText } from "../lib/liveAskPilot";
 import { navigationHref, navigationLabel } from "../../../supabase/functions/_shared/askNavigation";
+import { askClockLabel, askClockPick } from "../lib/askClockHandoff";
+import { openClockGlobally } from "../lib/clockContext";
 import { useLanguage } from "../lib/i18n";
 import {
   closeOnboardingWizard,
@@ -69,7 +71,7 @@ const TAB_ICONS: Record<string, ReactNode> = {
   photos: <Camera size={20} />,
 };
 const PersistentAskInfinity = lazy(() => import("../pages/AskInfinity").then((m) => ({ default: m.AskInfinity })));
-const idleLiveAsk: LiveAskShellState = { status: "idle", saving: false, needsClock: false, muted: false, expiring: false, navigation: null };
+const idleLiveAsk: LiveAskShellState = { status: "idle", saving: false, needsClock: false, clockHandoff: null, muted: false, expiring: false, navigation: null };
 
 /**
  * Infinity Windows app shell — reskinned to the "Horizon Windows Hub" visual
@@ -483,8 +485,8 @@ export function Layout() {
             <Radio size={18} className={liveAsk.status === "live" || liveAsk.status === "unstable" ? "live-ask-mini-pulse" : ""} aria-hidden="true" />
             <span>{liveAsk.saving ? liveText(es, "saving") : liveAsk.expiring && (liveAsk.status === "live" || liveAsk.status === "unstable") ? liveText(es, "endingSoonShort") : liveStatusLine(es, liveAsk.status, liveAsk.detail)}</span>
           </button>
-          {liveAsk.needsClock && <button type="button" className="live-ask-mini-action" onClick={() => { setCaptureOpen(false); clock.openClock(); }}>
-            {es ? "Abrir reloj de trabajo" : "Open job clock"}
+          {liveAsk.clockHandoff && <button type="button" className="live-ask-mini-action" onClick={() => { setCaptureOpen(false); openClockGlobally(askClockPick(liveAsk.clockHandoff!)); }}>
+            {askClockLabel(liveAsk.clockHandoff, es)}
           </button>}
           {liveAsk.navigation && liveAsk.detail !== "account" && <button type="button" className="live-ask-mini-action" onClick={() => { setCaptureOpen(false); navigate(navigationHref(liveAsk.navigation!)); }}>
             {navigationLabel(liveAsk.navigation, es)}

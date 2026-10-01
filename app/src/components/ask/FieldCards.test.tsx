@@ -12,6 +12,14 @@ const html = (el: React.ReactElement) => renderToStaticMarkup(el);
 const es = ((key: TKey, vars?: Record<string, string | number>) => translate({ ...CATALOG, ...FIELD_CATALOG }, "es", key, vars)) as never;
 
 describe("receipt cards", () => {
+  it("offers a specific clock handoff for the verified target job", () => {
+    const jobId = "11111111-1111-4111-8111-111111111111";
+    const receipt: FieldReceipt = { action_id: "switch-1", action: "start_unit", status: "needs_choice", reason: "wrong_job", project_id: jobId, options: [{ id: "start_now", label: "Start now" }] };
+    const out = html(<FieldReceiptCard receipt={receipt} draft={{ job: { project_id: jobId, name: "Black Desert", location: null }, unit: null }} onChange={() => undefined} timingPending={async () => false} />);
+    expect(out).toContain("Switch to Black Desert");
+    expect(out).toContain("Start now");
+    expect(out).toContain("nothing has changed yet");
+  });
   it("a waiting choice says nothing has changed and offers only its options", () => {
     const r: FieldReceipt = { action_id: "a", action: "start_unit", status: "needs_choice", reason: "on_break", preview_hash: "h", options: [{ id: "end_break_and_start", label: "x" }, { id: "cancel", label: "y" }], unit: { unit_id: "u", label: "4", type: "Bifold", facts: {} } };
     const out = html(<FieldReceiptCard receipt={r} onChange={() => undefined} timingPending={async () => false} />);

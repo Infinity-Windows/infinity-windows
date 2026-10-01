@@ -9,7 +9,7 @@
 
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -55,7 +55,7 @@ vi.mock("../../lib/clockSkew", async (importOriginal) => {
 
 import { ClockSheet } from "./ClockSheet";
 import { localDateOf } from "../../lib/toolboxSign";
-import type { TimeShift } from "../../lib/timeclock";
+import type { ClockInPick, TimeShift } from "../../lib/timeclock";
 
 let root: Root | null = null;
 let host: HTMLDivElement | null = null;
@@ -92,12 +92,20 @@ function shift(id: string): TimeShift {
   };
 }
 
-function mount(s: TimeShift): HTMLElement {
+function RouteProbe() {
+  const location = useLocation();
+  return <span data-testid="clock-route">{location.pathname}</span>;
+}
+
+function mount(s: TimeShift, initialPick?: ClockInPick): HTMLElement {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity, refetchOnMount: false, gcTime: Infinity } },
   });
-  qc.setQueryData(["projects"], [{ id: "p1", job_code: "BLACK22", name: "Black Desert", address: null, status: "active", allowed_modes: ["data"] }]);
-  for (const scope of ["all", "p1"]) qc.setQueryData(["clockCostCodes", scope], CODES);
+  qc.setQueryData(["projects"], [
+    { id: "p1", job_code: "BLACK22", name: "Black Desert", address: null, status: "active", allowed_modes: ["data"] },
+    { id: "p2", job_code: "OAK-2", name: "Oakridge", address: null, status: "active", allowed_modes: ["data"] },
+  ]);
+  for (const scope of ["all", "p1", "p2"]) qc.setQueryData(["clockCostCodes", scope], CODES);
   qc.setQueryData(["recentJobs", "me"], []);
   qc.setQueryData(["myActivePhases", "me"], []);
   qc.setQueryData(["toolboxToday", "me"], { id: "done1" });
@@ -112,10 +120,12 @@ function mount(s: TimeShift): HTMLElement {
           <ClockSheet
             profileId="me"
             shift={s}
+            initialPick={initialPick}
             pending={{ kind: "clock_in", entryId: "entry-1", tappedAt: s.clock_in_at, sending: false }}
             onClose={() => {}}
             onChanged={() => {}}
           />
+          <RouteProbe />
         </MemoryRouter>
       </QueryClientProvider>,
     );
@@ -141,6 +151,21 @@ async function click(el: HTMLElement, selector: string) {
 }
 
 describe("a switch on a clock-in that is still on the phone", () => {
+  it("Ask preselects the requested job, queues only after confirmation, then returns to the waiting reply", async () => {
+    const pick: ClockInPick = { projectId: "p2", costCodeId: null, note: null, mode: null, returnToAsk: true };
+    const el = mount(shift("pending:entry-1"), pick);
+    await flush();
+    expect(el.querySelector(".clock-pick-summary")?.textContent).toContain("Oakridge");
+    expect(spies.enqueueClockIn).not.toHaveBeenCalled();
+    const install = [...el.querySelectorAll<HTMLButtonElement>(".clock-costcode-item")].find((b) => b.textContent?.includes("100"));
+    expect(install).toBeTruthy();
+    await act(async () => install!.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    await flush();
+    await click(el, ".clock-btn.primary.big");
+    expect(spies.clockIn).not.toHaveBeenCalled();
+    expect(spies.enqueueClockIn).toHaveBeenCalledWith(expect.objectContaining({ projectId: "p2", afterShiftRef: "pending:entry-1" }));
+    expect(el.querySelector('[data-testid="clock-route"]')?.textContent).toBe("/ask");
+  });
   it("draws the queued line under the hero", async () => {
     const el = mount(shift("pending:entry-1"));
     await flush();
