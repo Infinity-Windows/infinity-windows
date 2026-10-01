@@ -35,6 +35,7 @@ import {
   signInButton,
   updateBanner,
 } from "./support/pwa";
+import { installPwaUpgradeDiagnostics } from "./support/pwaUpgradeDiagnostics";
 
 /** Count page loads from now on, to prove a switch happened once and only once. */
 function countLoads(page: Page): { loads: () => number } {
@@ -79,162 +80,94 @@ test("a phone on the previous build opens the app after a deploy, then switches 
   context,
   request,
 }) => {
-  const bootErrors: string[] = [];
-  await page.addInitScript(() => {
-    (window as Window & { __emptyBootRecoveryAtNavigation?: string | null }).__emptyBootRecoveryAtNavigation =
-      sessionStorage.getItem("wops-empty-boot-diagnostic");
-    // Persist the first document's timing across a watchdog reload. A later
-    // screenshot alone cannot tell whether imports failed during activation
-    // or were cancelled by the recovery navigation.
-    const timelineKey = "wops-e2e-upgrade-timeline";
-    const note = (event: string, detail?: string) => {
-      const prior = JSON.parse(sessionStorage.getItem(timelineKey) || "[]") as unknown[];
-      prior.push({ at: Date.now(), event, detail });
-      sessionStorage.setItem(timelineKey, JSON.stringify(prior.slice(-80)));
-    };
-    note("document-start", document.URL);
-    window.addEventListener("load", () => {
-      note("load", JSON.stringify({
-        bootStarted: document.documentElement.dataset.forgeBootStarted ?? null,
-        controllerState: navigator.serviceWorker?.controller?.state ?? null,
+  const diagnostics = await installPwaUpgradeDiagnostics(page, context);
+  try {
+    const { builds } = await harnessState(request);
+    expect(builds.old.entry, "the two builds are different builds").not.toBe(builds.new.entry);
+
+    // Yesterday: the phone opened Forge and its worker installed the build of
+    // the day. Opened once more, so the page is a returning one (registered
+    // with a worker already in control — the shape every later open has).
+    await serveBuild(request, "old");
+    await page.goto("/");
+    await expect(signInButton(page)).toBeVisible();
+    await serviceWorkerReady(page);
+    await page.goto("/");
+    await expect(signInButton(page)).toBeVisible();
+    expect(await runningEntry(page)).toBe(builds.old.entry);
+
+    // The app is closed. A deploy lands. More than ten minutes pass, so the
+    // browser's own cache (max-age=600) is empty: whatever the old worker did
+    // not save has to come from today's server.
+    await page.goto("about:blank");
+    await serveBuild(request, "new");
+    await expireBrowserCache(page, context);
+
+    // Today: the phone opens the app. The old worker answers with the old
+    // shell, and the old shell has to be able to start.
+    const failed = failedAppFiles(page);
+    const { loads } = countLoads(page);
+    await page.goto("/");
+    const started = await signInButton(page)
+      .waitFor({ timeout: 30_000 })
+      .then(
+        () => true,
+        () => false,
+      );
+    expect(
+      failed,
+      "files the previous build's shell asked today's server for and did not get — the 2026-09-25 black screen",
+    ).toEqual([]);
+    expect(started, "the previous build's shell never drew its first screen").toBe(true);
+
+    // Then it notices the new build, downloads it, and — on the sign-in screen,
+    // where there is nothing to lose — switches over by itself.
+    const { navigations } = countNavigations(page);
+    await expect
+      .poll(() => runningEntry(page), {
+        timeout: 120_000,
+        message: "the app never switched to the new build",
+      })
+      .toBe(builds.new.entry);
+    try {
+      await expect(signInButton(page)).toBeVisible();
+    } catch (error) {
+      // A script tag only proves HTML parsed. If the new shell is blank, keep
+      // the browser evidence that distinguishes a failed import from a stalled
+      // mount or a later runtime error.
+      const state = await page.evaluate(() => ({
+        readyState: document.readyState,
+        rootText: document.getElementById("root")?.textContent?.slice(0, 500) ?? null,
+        rootChildren: document.getElementById("root")?.childElementCount ?? null,
+        entry: document.querySelector<HTMLScriptElement>('script[type="module"][src]')?.src ?? null,
+        controller: navigator.serviceWorker.controller?.scriptURL ?? null,
         resources: performance.getEntriesByType("resource")
           .filter((entry) => /\.(js|css)(\?|$)/.test(entry.name))
           .slice(-12)
-          .map((entry) => ({ path: new URL(entry.name).pathname, duration: entry.duration })),
-      }));
-    });
-    window.addEventListener("error", (event) => {
-      const target = event.target;
-      if (target instanceof HTMLScriptElement || target instanceof HTMLLinkElement) {
-        note("resource-error", target.getAttribute("src") || target.getAttribute("href") || "unknown");
-      } else if (event instanceof ErrorEvent) {
-        note("window-error", event.message);
-      }
-    }, true);
-    window.addEventListener("unhandledrejection", (event) => note("unhandled-rejection", String(event.reason)));
-    navigator.serviceWorker?.addEventListener("controllerchange", () => {
-      const controller = navigator.serviceWorker.controller;
-      note("controllerchange", controller?.state || "no-controller");
-      controller?.addEventListener("statechange", () => note("controller-state", controller.state));
-    });
-  });
-  page.on("pageerror", (error) => bootErrors.push(`pageerror: ${error.stack ?? error.message}`));
-  page.on("console", (message) => {
-    if (message.type() === "error") bootErrors.push(`console: ${message.text()}`);
-  });
-  const { builds } = await harnessState(request);
-  expect(builds.old.entry, "the two builds are different builds").not.toBe(builds.new.entry);
-
-  // Yesterday: the phone opened Forge and its worker installed the build of
-  // the day. Opened once more, so the page is a returning one (registered
-  // with a worker already in control — the shape every later open has).
-  await serveBuild(request, "old");
-  await page.goto("/");
-  await expect(signInButton(page)).toBeVisible();
-  await serviceWorkerReady(page);
-  await page.goto("/");
-  await expect(signInButton(page)).toBeVisible();
-  expect(await runningEntry(page)).toBe(builds.old.entry);
-
-  // The app is closed. A deploy lands. More than ten minutes pass, so the
-  // browser's own cache (max-age=600) is empty: whatever the old worker did
-  // not save has to come from today's server.
-  await page.goto("about:blank");
-  await serveBuild(request, "new");
-  await expireBrowserCache(page, context);
-
-  // Today: the phone opens the app. The old worker answers with the old
-  // shell, and the old shell has to be able to start.
-  const failed = failedAppFiles(page);
-  const { loads } = countLoads(page);
-  await page.goto("/");
-  const started = await signInButton(page)
-    .waitFor({ timeout: 30_000 })
-    .then(
-      () => true,
-      () => false,
-    );
-  expect(
-    failed,
-    "files the previous build's shell asked today's server for and did not get — the 2026-09-25 black screen",
-  ).toEqual([]);
-  expect(started, "the previous build's shell never drew its first screen").toBe(true);
-  bootErrors.length = 0;
-
-  // Then it notices the new build, downloads it, and — on the sign-in screen,
-  // where there is nothing to lose — switches over by itself.
-  const navigationTimes: number[] = [];
-  page.on("request", (req) => {
-    if (req.isNavigationRequest() && req.frame() === page.mainFrame()) navigationTimes.push(Date.now());
-  });
-  const failedNetwork: { at: number; url: string; error: string; canceled: boolean }[] = [];
-  const requestUrls = new Map<string, string>();
-  const cdp = await context.newCDPSession(page);
-  await cdp.send("Network.enable");
-  cdp.on("Network.requestWillBeSent", (event: { requestId: string; request: { url: string } }) => {
-    requestUrls.set(event.requestId, event.request.url);
-  });
-  cdp.on("Network.loadingFailed", (event: { requestId: string; errorText: string; canceled?: boolean }) => {
-    const url = requestUrls.get(event.requestId);
-    if (url && /\.(js|css)(\?|$)/.test(url)) {
-      failedNetwork.push({ at: Date.now(), url: new URL(url).pathname, error: event.errorText, canceled: Boolean(event.canceled) });
+          .map((entry) => ({ name: entry.name, duration: entry.duration })),
+      })).catch((readError) => ({ readError: String(readError) }));
+      await test.info().attach("new-build-boot.json", {
+        body: JSON.stringify({ state, failedAppFiles: failed }, null, 2),
+        contentType: "application/json",
+      });
+      throw error;
     }
-  });
-  const { navigations } = countNavigations(page);
-  await expect
-    .poll(() => runningEntry(page), {
-      timeout: 120_000,
-      message: "the app never switched to the new build",
-    })
-    .toBe(builds.new.entry);
-  try {
+
+    // Once: no second reload, no banner asking again.
+    await expectSettledOn(page, builds.new.entry, loads);
+    expect(navigations(), "the switch was more than one navigation: two racing reloads can leave the new build blank").toHaveLength(1);
+
+    // And the new worker is the one in charge now: the next open with no
+    // signal comes entirely from the new build's copy.
+    await cutTheNetwork(page, context);
+    const offlineFailed = failedAppFiles(page);
+    await page.reload();
     await expect(signInButton(page)).toBeVisible();
-  } catch (error) {
-    // A script tag only proves HTML parsed. If the new shell is blank, keep
-    // the browser evidence that distinguishes a failed import from a stalled
-    // mount or a later runtime error.
-    const state = await page.evaluate(() => ({
-      readyState: document.readyState,
-      rootText: document.getElementById("root")?.textContent?.slice(0, 500) ?? null,
-      rootChildren: document.getElementById("root")?.childElementCount ?? null,
-      entry: document.querySelector<HTMLScriptElement>('script[type="module"][src]')?.src ?? null,
-      controller: navigator.serviceWorker.controller?.scriptURL ?? null,
-      resources: performance.getEntriesByType("resource")
-        .filter((entry) => /\.(js|css)(\?|$)/.test(entry.name))
-        .slice(-12)
-        .map((entry) => ({ name: entry.name, duration: entry.duration })),
-    })).catch((readError) => ({ readError: String(readError) }));
-    await test.info().attach("new-build-boot.json", {
-      body: JSON.stringify({ state, bootErrors, failedAppFiles: failed }, null, 2),
-      contentType: "application/json",
-    });
-    throw error;
+    expect(offlineFailed, "files the new build needed offline that its worker did not have").toEqual([]);
+    expect(await runningEntry(page)).toBe(builds.new.entry);
+  } finally {
+    await diagnostics.attach(test.info(), "first-upgrade-diagnostics.json");
   }
-
-  // Once: no second reload, no banner asking again.
-  await expectSettledOn(page, builds.new.entry, loads);
-  if (navigations().length !== 1) {
-    const emptyBootRecovery = await page.evaluate(() =>
-      (window as Window & { __emptyBootRecoveryAtNavigation?: string | null }).__emptyBootRecoveryAtNavigation ?? null,
-    );
-    const browserTimeline = await page.evaluate(() =>
-      JSON.parse(sessionStorage.getItem("wops-e2e-upgrade-timeline") || "[]"),
-    );
-    await test.info().attach("upgrade-reload-evidence.json", {
-      body: JSON.stringify({ navigations: navigations().map((url, i) => ({ url, at: navigationTimes[i] })), emptyBootRecovery, browserTimeline, failedNetwork, bootErrors }, null, 2),
-      contentType: "application/json",
-    });
-  }
-  expect(navigations(), "the switch was more than one navigation: two racing reloads can leave the new build blank").toHaveLength(1);
-
-  // And the new worker is the one in charge now: the next open with no
-  // signal comes entirely from the new build's copy.
-  await cutTheNetwork(page, context);
-  const offlineFailed = failedAppFiles(page);
-  await page.reload();
-  await expect(signInButton(page)).toBeVisible();
-  expect(offlineFailed, "files the new build needed offline that its worker did not have").toEqual([]);
-  expect(await runningEntry(page)).toBe(builds.new.entry);
 });
 
 test("a phone whose very first session sees a deploy switches over, instead of offering Refresh for ever", async ({
@@ -346,65 +279,71 @@ test("a second tab on the same URL can reload without suppressing the asking tab
 
 test("a download that broke halfway does not leave Refresh doing nothing afterwards", async ({
   page,
+  context,
   request,
 }) => {
-  // Four deploys landed within an hour on 2026-09-25. A check that lands
-  // while a deploy is half there downloads a worker whose file list names a
-  // chunk the server does not have yet, so that install fails. The NEXT
-  // check succeeds — but workbox-window stopped watching after the first
-  // update it judged external, so vite-plugin-pwa never learns of the second
-  // worker and never attaches its reload. The app itself sees the second
-  // worker waiting, asks it to take over, it does, and the page stays on the
-  // old shell: Refresh, ten seconds, Refresh, ten seconds.
-  const { builds } = await harnessState(request);
-  await serveBuild(request, "old");
-  await page.goto("/");
-  await expect(signInButton(page)).toBeVisible();
-  await serviceWorkerReady(page);
-  await page.goto("/");
-  await expect(signInButton(page)).toBeVisible();
+  const diagnostics = await installPwaUpgradeDiagnostics(page, context);
+  try {
+    // Four deploys landed within an hour on 2026-09-25. A check that lands
+    // while a deploy is half there downloads a worker whose file list names a
+    // chunk the server does not have yet, so that install fails. The NEXT
+    // check succeeds — but workbox-window stopped watching after the first
+    // update it judged external, so vite-plugin-pwa never learns of the second
+    // worker and never attaches its reload. The app itself sees the second
+    // worker waiting, asks it to take over, it does, and the page stays on the
+    // old shell: Refresh, ten seconds, Refresh, ten seconds.
+    const { builds } = await harnessState(request);
+    await serveBuild(request, "old");
+    await page.goto("/");
+    await expect(signInButton(page)).toBeVisible();
+    await serviceWorkerReady(page);
+    await page.goto("/");
+    await expect(signInButton(page)).toBeVisible();
 
-  // Record what the registration sees, so the failed install is observed
-  // rather than assumed.
-  await page.evaluate(async () => {
-    const states: string[] = [];
-    (window as unknown as { __swStates: string[] }).__swStates = states;
-    const reg = await navigator.serviceWorker.getRegistration();
-    reg?.addEventListener("updatefound", () => {
-      const sw = reg.installing;
-      if (!sw) return;
-      states.push("found");
-      sw.addEventListener("statechange", () => states.push(sw.state));
+    // Record what the registration sees, so the failed install is observed
+    // rather than assumed.
+    await page.evaluate(async () => {
+      const states: string[] = [];
+      (window as unknown as { __swStates: string[] }).__swStates = states;
+      const reg = await navigator.serviceWorker.getRegistration();
+      reg?.addEventListener("updatefound", () => {
+        const sw = reg.installing;
+        if (!sw) return;
+        states.push("found");
+        sw.addEventListener("statechange", () => states.push(sw.state));
+      });
     });
-  });
-  const states = () => page.evaluate(() => (window as unknown as { __swStates: string[] }).__swStates);
+    const states = () => page.evaluate(() => (window as unknown as { __swStates: string[] }).__swStates);
 
-  // An update found within a minute of registering is one workbox-window
-  // treats as its own; the field's updates come long after, and are not.
-  await page.waitForTimeout(61_000);
+    // An update found within a minute of registering is one workbox-window
+    // treats as its own; the field's updates come long after, and are not.
+    await page.waitForTimeout(61_000);
 
-  // The deploy is half there: the new build, minus one chunk its worker
-  // precaches. The download fails and the worker is thrown away.
-  await serveBuild(request, "new", [builds.new.entry]);
-  await nudgeUpdateCheck(page);
-  await expect.poll(states, { timeout: 60_000, message: "the half-deployed worker never failed to install" }).toContain(
-    "redundant",
-  );
-  expect(await runningEntry(page)).toBe(builds.old.entry);
+    // The deploy is half there: the new build, minus one chunk its worker
+    // precaches. The download fails and the worker is thrown away.
+    await serveBuild(request, "new", [builds.new.entry]);
+    await nudgeUpdateCheck(page);
+    await expect.poll(states, { timeout: 60_000, message: "the half-deployed worker never failed to install" }).toContain(
+      "redundant",
+    );
+    expect(await runningEntry(page)).toBe(builds.old.entry);
 
-  // The deploy finishes. The next check downloads the whole thing, and the
-  // app switches to it — on the sign-in screen, by itself.
-  await serveBuild(request, "new");
-  const { loads } = countLoads(page);
-  const { navigations } = countNavigations(page);
-  await nudgeUpdateCheck(page);
-  await expect
-    .poll(() => runningEntry(page), {
-      timeout: 120_000,
-      message:
-        "the second worker took over but the page never reloaded onto it — from here Refresh does nothing and the banner keeps coming back",
-    })
-    .toBe(builds.new.entry);
-  await expectSettledOn(page, builds.new.entry, loads);
-  expect(navigations(), "the switch was more than one navigation: two racing reloads can leave the new build blank").toHaveLength(1);
+    // The deploy finishes. The next check downloads the whole thing, and the
+    // app switches to it — on the sign-in screen, by itself.
+    await serveBuild(request, "new");
+    const { loads } = countLoads(page);
+    const { navigations } = countNavigations(page);
+    await nudgeUpdateCheck(page);
+    await expect
+      .poll(() => runningEntry(page), {
+        timeout: 120_000,
+        message:
+          "the second worker took over but the page never reloaded onto it — from here Refresh does nothing and the banner keeps coming back",
+      })
+      .toBe(builds.new.entry);
+    await expectSettledOn(page, builds.new.entry, loads);
+    expect(navigations(), "the switch was more than one navigation: two racing reloads can leave the new build blank").toHaveLength(1);
+  } finally {
+    await diagnostics.attach(test.info(), "interrupted-download-upgrade-diagnostics.json");
+  }
 });
