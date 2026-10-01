@@ -63,13 +63,17 @@ export const SCHEDULE_CONFLICT_CATALOG = {
   "schedConflict.publishBadge.confirmed": { en: "· {n} double-booked", es: "· {n} con doble asignación" },
   "schedConflict.publishBadge.review": { en: "· {n} need hours review", es: "· {n} con horario por revisar" },
 
-  "schedConflict.publishSheet.confirmedHeading": {
-    en: "Heads-up: {n} double-booked",
-    es: "Aviso: {n} con doble asignación",
+  "schedConflict.publishSheet.confirmedHeading.one": {
+    en: "Heads-up: 1 crew member double-booked", es: "Aviso: 1 persona con doble asignación",
   },
-  "schedConflict.publishSheet.reviewHeading": {
-    en: "Hours need review: {n} crew",
-    es: "Horas por revisar: {n} personas",
+  "schedConflict.publishSheet.confirmedHeading.many": {
+    en: "Heads-up: {n} crew members double-booked", es: "Aviso: {n} personas con doble asignación",
+  },
+  "schedConflict.publishSheet.reviewHeading.one": {
+    en: "Hours need review: 1 crew member", es: "Horas por revisar: 1 persona",
+  },
+  "schedConflict.publishSheet.reviewHeading.many": {
+    en: "Hours need review: {n} crew members", es: "Horas por revisar: {n} personas",
   },
   "schedConflict.publishSheet.confirmedRow": {
     en: "{name} — {n} overlapping jobs",

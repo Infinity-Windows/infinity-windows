@@ -1395,13 +1395,17 @@ export function Scheduling() {
               <div className="sched-conflict-inline" role="alert" style={{ marginBottom: 10 }}>
                 <div>
                   <strong>
-                    {t("schedConflict.publishSheet.confirmedHeading", { n: confirmedPublishConflicts.length })}
+                    {confirmedPublishConflicts.length === 1
+                      ? t("schedConflict.publishSheet.confirmedHeading.one")
+                      : t("schedConflict.publishSheet.confirmedHeading.many", { n: confirmedPublishConflicts.length })}
                   </strong>
                   <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
-                    {confirmedBanner.map((c) => (
-                      <li key={`${c.profileId}-${c.aId}-${c.bId}`}>
-                        <strong>{nameOf(c.profileId)}</strong>
-                        <ConflictPairDetails entry={c} jobLabelOf={jobLabelOf} />
+                    {confirmedPublishConflicts.map((person) => (
+                      <li key={person.profileId}>
+                        <strong>{nameOf(person.profileId)}</strong>
+                        {confirmedBanner.filter(c => c.profileId === person.profileId).map(c => (
+                          <ConflictPairDetails key={`${c.aId}-${c.bId}`} entry={c} jobLabelOf={jobLabelOf} />
+                        ))}
                       </li>
                     ))}
                   </ul>
@@ -1415,13 +1419,17 @@ export function Scheduling() {
               <div className="sched-conflict-inline is-review" role="status" style={{ marginBottom: 10 }}>
                 <div>
                   <strong>
-                    {t("schedConflict.publishSheet.reviewHeading", { n: reviewPublishConflicts.length })}
+                    {reviewPublishConflicts.length === 1
+                      ? t("schedConflict.publishSheet.reviewHeading.one")
+                      : t("schedConflict.publishSheet.reviewHeading.many", { n: reviewPublishConflicts.length })}
                   </strong>
                   <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
-                    {reviewBanner.map((c) => (
-                      <li key={`${c.profileId}-${c.aId}-${c.bId}`}>
-                        <strong>{nameOf(c.profileId)}</strong>
-                        <ConflictPairDetails entry={c} jobLabelOf={jobLabelOf} />
+                    {reviewPublishConflicts.map((person) => (
+                      <li key={person.profileId}>
+                        <strong>{nameOf(person.profileId)}</strong>
+                        {reviewBanner.filter(c => c.profileId === person.profileId).map(c => (
+                          <ConflictPairDetails key={`${c.aId}-${c.bId}`} entry={c} jobLabelOf={jobLabelOf} />
+                        ))}
                       </li>
                     ))}
                   </ul>

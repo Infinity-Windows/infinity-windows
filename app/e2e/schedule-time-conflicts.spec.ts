@@ -9,6 +9,7 @@ interface FixtureOptions {
   language?: "en" | "es";
   canceled?: boolean;
   thirdUnknown?: boolean;
+  longNames?: boolean;
 }
 
 async function installConflictFixtures(page: Page, secondStart: string | null, secondEnd: string | null = "17:00:00", options: FixtureOptions = {}) {
@@ -20,6 +21,10 @@ async function installConflictFixtures(page: Page, secondStart: string | null, s
     { id: "fixture-job-b", job_code: "TIME-TWO", name: "Second fixture job" },
     { id: "fixture-job-c", job_code: "TIME-THREE", name: "Third fixture job" },
   ];
+  if (options.longNames) {
+    projects[0].job_code = "TIME-ONE-WITH-A-LONG-JOB-CODE-FOR-PHONE-WRAPPING";
+    projects[1].job_code = "TIME-TWO-WITH-A-LONG-JOB-CODE-FOR-PHONE-WRAPPING";
+  }
   const row = (id: string, projectIndex: number, start: string | null, end: string | null, status = "draft") => ({
     id, project_id: projects[projectIndex].id, kind: "install", status, start_date: day, end_date: day,
     start_time: start, end_time: end, created_at: "2026-09-30T12:00:00Z", updated_at: "2026-09-30T12:00:00Z",
@@ -98,11 +103,16 @@ test("overlapping shifts warn; changing the editor time to the boundary clears i
 for (const width of [375, 1280]) {
   test(`adding missing hours updates editor, board and publish review at ${width}px`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: 844 });
-    const { patches } = await installConflictFixtures(page, "13:00:00", "17:00:00", { firstStart: null, firstEnd: null });
+    const { patches } = await installConflictFixtures(page, "13:00:00", "17:00:00", { firstStart: null, firstEnd: null, longNames: true });
     await expect(page.getByText(/double-book/i)).toHaveCount(0);
     await expect(page.getByText(/hours need review/i).first()).toBeVisible();
     await screenshot(page, testInfo, "hours-review.png");
-    await page.getByRole("button", { name: "Fix", exact: true }).first().click();
+    const fix = page.getByRole("button", { name: "Fix", exact: true }).first();
+    const bounds = await fix.boundingBox();
+    expect(bounds?.height).toBeGreaterThanOrEqual(44);
+    expect(bounds?.width).toBeGreaterThanOrEqual(44);
+    await fix.focus();
+    await page.keyboard.press("Enter");
     const editor = page.getByRole("dialog");
     await expect(editor.getByText(/hours need review/i).first()).toBeVisible();
     await expect(editor.locator(".sched-chip.is-clash")).toHaveCount(0);
@@ -158,7 +168,14 @@ test("confirmed hours and a separate time review are both shown for the same per
   await expect(page.locator(".sched-conflict-banner").first()).toContainText("TIME-TWO");
   await page.getByRole("button", { name: /Review & publish/i }).click();
   const publish = page.getByRole("dialog");
-  await expect(publish.getByText(/hours need review/i).first()).toBeVisible();
+  await expect(publish.getByText("Hours need review: 1 crew member", { exact: true })).toBeVisible();
+  const needsReview = publish.locator(".sched-conflict-inline.is-review");
+  await expect(needsReview.locator("ul > li")).toHaveCount(1);
+  await expect(needsReview.locator(".sched-pair-details")).toHaveCount(2);
+  const confirmed = publish.locator(".sched-conflict-inline:not(.is-review)");
+  await expect(confirmed.getByText("Heads-up: 1 crew member double-booked", { exact: true })).toBeVisible();
+  await expect(confirmed.locator("ul > li")).toHaveCount(1);
+  await expect(confirmed.locator(".sched-pair-details")).toHaveCount(1);
   await expect(publish).toContainText("TIME-THREE");
   await expect(publish).toContainText("TIME-ONE");
   await expect(publish).toContainText("TIME-TWO");
@@ -186,4 +203,18 @@ test("saving resolved hours removes the Notifications time-review notice", async
   await loaded;
   await expect(page.getByRole("heading", { name: "What needs you", exact: true })).toBeVisible();
   await expect(page.getByText(/hours need review|double-book/i)).toHaveCount(0);
+});
+
+
+test.describe("touch correction", () => {
+  test.use({ hasTouch: true });
+  test("a phone tap on Fix opens the missing-hours assignment", async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 844 });
+    await installConflictFixtures(page, "13:00:00", null);
+    await page.getByRole("button", { name: "Fix", exact: true }).tap();
+    const editor = page.getByRole("dialog");
+    await expect(editor.getByLabel("Crew start time (optional)")).toHaveValue(/^13:00(?::00)?$/);
+    await expect(editor.getByLabel("Crew end time (optional)")).toHaveValue("");
+    await expect(editor.locator(".sched-chip.is-clash")).toHaveCount(0);
+  });
 });
