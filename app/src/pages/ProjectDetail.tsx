@@ -347,7 +347,7 @@ export function ProjectDetail() {
   }, [openings.data]);
 
   return (
-    <div className="page">
+    <div className="page project-detail">
       <header className="page-header">
         <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
           <BackChip fallback="/projects" label="Back to jobs" />
@@ -1208,8 +1208,8 @@ function JobDetailsPanel({
   if (!editing) {
     const hasAny = detailRows.length > 0 || Boolean(project.notes);
     return (
-      <section className="detail-card" style={{ marginBottom: 16 }}>
-        <div className="row-between">
+      <section className="detail-card job-details-card">
+        <div className="job-details-header">
           <h2 style={{ margin: 0 }}>Job details</h2>
           {isLead && (
             <button type="button" className="link" onClick={() => setEditing(true)}>
@@ -1219,18 +1219,11 @@ function JobDetailsPanel({
         </div>
         {hasAny ? (
           <>
-            <dl
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(min(160px, 100%), 1fr))",
-                gap: "10px 16px",
-                margin: "10px 0 0",
-              }}
-            >
+            <dl className="job-details-grid">
               {detailRows.map((r) => (
-                <div key={r.label}>
+                <div key={r.label} className={r.label.startsWith("Bid / target") ? "job-details-date" : undefined}>
                   <dt className="field-label">{r.label}</dt>
-                  <dd style={{ margin: 0 }}>{r.value}</dd>
+                  <dd>{r.value}</dd>
                   {r.label === "Site address" && (
                     <DirectionsButton address={r.value} />
                   )}
@@ -1238,12 +1231,12 @@ function JobDetailsPanel({
               ))}
             </dl>
             {project.notes && (
-              <p className="muted" style={{ whiteSpace: "pre-wrap", marginTop: 8 }}>
+              <p className="muted job-details-notes">
                 {project.notes}
               </p>
             )}
             {hasTargetDates && (
-              <p className="wh-row-sub" style={{ marginTop: 8 }}>
+              <p className="wh-row-sub job-details-hint">
                 Your bid / target window. The dates crew actually work are the
                 published crew dates on the schedule (shown above).
               </p>
@@ -1261,7 +1254,7 @@ function JobDetailsPanel({
   }
 
   return (
-    <section className="detail-card" style={{ marginBottom: 16 }}>
+    <section className="detail-card job-details-card">
       <form
         className="project-create"
         onSubmit={(e) => {
@@ -1269,7 +1262,7 @@ function JobDetailsPanel({
           save.mutate();
         }}
       >
-        <div className="row-between">
+        <div className="job-details-header">
           <h2 style={{ margin: 0 }}>Edit job details</h2>
           <button
             type="button"
@@ -1450,20 +1443,17 @@ function TestingProjectPanel({
   };
 
   return (
-    <section className="detail-card" style={{ marginBottom: 16 }}>
+    <section className="detail-card job-testing-card">
       <h2 style={{ margin: 0 }}>Testing</h2>
-      <label
-        style={{ display: "flex", alignItems: "flex-start", gap: 8, marginTop: 10 }}
-      >
+      <label className="job-testing-toggle">
         <input
           type="checkbox"
           checked={project.is_test ?? false}
           disabled={flag.isPending}
           onChange={(e) => flag.mutate(e.target.checked)}
         />
-        <span>
+        <span className="job-testing-copy">
           <strong>Testing project</strong>
-          <br />
           <span className="wh-row-sub">
             Fake data for practice. Hidden from installers and foremen; its
             material never counts as real inventory.
@@ -1702,8 +1692,8 @@ function JobLifecyclePanel({
   });
 
   return (
-    <div className="detail-card wh-card">
-      <div className="wh-row">
+    <div className="detail-card job-lifecycle-card">
+      <div className="job-lifecycle-heading">
         <strong>
           {project.status === "active"
             ? "Wrap this job up"
@@ -1711,52 +1701,54 @@ function JobLifecyclePanel({
               ? "This job is finished"
               : "This job is cancelled"}
         </strong>
-        {project.status === "active" ? (
-          <>
+        <div className="job-lifecycle-actions">
+          {project.status === "active" ? (
+            <>
+              <button
+                className="button-like"
+                disabled={lifecycle.isPending}
+                onClick={() => {
+                  const held =
+                    heldCount > 0
+                      ? ` ${heldCount} package${heldCount === 1 ? " is" : "s are"} still in the warehouse — they stay findable under Job history.`
+                      : "";
+                  if (
+                    window.confirm(
+                      `Finish ${project.job_code}? It leaves every active list and moves to Job history — nothing is deleted, and a supervisor can reopen it any time.${held}`,
+                    )
+                  ) {
+                    lifecycle.mutate("completed");
+                  }
+                }}
+              >
+                Finish this job…
+              </button>
+              <button
+                className="button-like"
+                disabled={lifecycle.isPending}
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      `Cancel ${project.job_code}? For jobs that fell through — it moves to Job history with everything it tracked. Reopen any time.`,
+                    )
+                  ) {
+                    lifecycle.mutate("cancelled");
+                  }
+                }}
+              >
+                Cancel this job…
+              </button>
+            </>
+          ) : (
             <button
               className="button-like"
               disabled={lifecycle.isPending}
-              onClick={() => {
-                const held =
-                  heldCount > 0
-                    ? ` ${heldCount} package${heldCount === 1 ? " is" : "s are"} still in the warehouse — they stay findable under Job history.`
-                    : "";
-                if (
-                  window.confirm(
-                    `Finish ${project.job_code}? It leaves every active list and moves to Job history — nothing is deleted, and a supervisor can reopen it any time.${held}`,
-                  )
-                ) {
-                  lifecycle.mutate("completed");
-                }
-              }}
+              onClick={() => lifecycle.mutate("active")}
             >
-              Finish this job…
+              Reopen this job
             </button>
-            <button
-              className="button-like"
-              disabled={lifecycle.isPending}
-              onClick={() => {
-                if (
-                  window.confirm(
-                    `Cancel ${project.job_code}? For jobs that fell through — it moves to Job history with everything it tracked. Reopen any time.`,
-                  )
-                ) {
-                  lifecycle.mutate("cancelled");
-                }
-              }}
-            >
-              Cancel this job…
-            </button>
-          </>
-        ) : (
-          <button
-            className="button-like"
-            disabled={lifecycle.isPending}
-            onClick={() => lifecycle.mutate("active")}
-          >
-            Reopen this job
-          </button>
-        )}
+          )}
+        </div>
       </div>
       <p className="wh-row-sub" style={{ margin: "4px 0 0" }}>
         Finished and cancelled jobs live in Job history — nothing about them
