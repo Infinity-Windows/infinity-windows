@@ -2590,6 +2590,7 @@ export const CATALOG = {
   "receipt.pdfTag": { en: "PDF", es: "PDF" },
   "receipt.viewImage": { en: "View receipt: {vendor}", es: "Ver recibo: {vendor}" },
   "receipt.viewerTitle": { en: "Receipt: {vendor}", es: "Recibo: {vendor}" },
+  "receipt.imageUnavailable": { en: "Receipt image unavailable. Close and try again.", es: "Imagen del recibo no disponible. Cierra e inténtalo de nuevo." },
   "receipt.zoomIn": { en: "Zoom in", es: "Ampliar" },
   "receipt.fitScreen": { en: "Fit to screen", es: "Ajustar a la pantalla" },
   "receipt.openOriginal": { en: "Open original", es: "Abrir original" },

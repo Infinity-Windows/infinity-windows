@@ -31,12 +31,13 @@ export function ReceiptViewer({ receipt, onClose }: {
           </div>
           <button type="button" className="action-btn" onClick={onClose}>{t("feed.close")}</button>
         </div>
-        <div className="receipt-viewer-image" key={zoomed ? "zoom" : "fit"}>
+        <div className="receipt-viewer-image" key={zoomed ? "zoom" : "fit"}
+          role="region" tabIndex={0} aria-label={t("receipt.viewerTitle", { vendor: title })}>
           {receipt.signedUrl && !imageFailed ? (
             <div className={zoomed ? "receipt-viewer-image-size is-zoomed" : "receipt-viewer-image-size"}>
               <img src={receipt.signedUrl} alt={title} onError={() => setImageFailed(true)} />
             </div>
-          ) : <p className="muted">{t("feed.imageOffline")}</p>}
+          ) : <p className="muted">{t("receipt.imageUnavailable")}</p>}
         </div>
         <div className="receipt-viewer-toolbar">
           <button type="button" className="button-like" disabled={!receipt.signedUrl || imageFailed}

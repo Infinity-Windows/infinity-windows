@@ -61,6 +61,10 @@ for (const office of [false, true]) {
       const scroll = await dialog.locator(".receipt-viewer-image").evaluate((e) => ({ width: e.clientWidth, scrollWidth: e.scrollWidth, height: e.clientHeight, scrollHeight: e.scrollHeight }));
       expect(scroll.scrollWidth).toBeGreaterThan(scroll.width);
       expect(scroll.scrollHeight).toBeGreaterThan(scroll.height);
+      const imageRegion = dialog.getByRole("region", { name: "Receipt: Shell" });
+      await imageRegion.focus();
+      await imageRegion.press("ArrowDown");
+      await expect.poll(() => imageRegion.evaluate((e) => e.scrollTop)).toBeGreaterThan(0);
       await dialog.getByRole("button", { name: "Fit to screen" }).click();
       await dialog.getByRole("button", { name: "Close", exact: true }).click();
       await expect(dialog).toHaveCount(0);
@@ -96,7 +100,7 @@ test("unavailable receipt can be closed and does not enable zoom", async ({ page
   await useReceiptViewerFixtures(page, false, false, true);
   await page.getByRole("button", { name: "View receipt: Shell" }).click();
   const dialog = page.getByRole("dialog", { name: "Receipt: Shell" });
-  await expect(dialog.getByText(/offline/i)).toBeVisible();
+  await expect(dialog.getByText(/Receipt image unavailable/i)).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Zoom in" })).toBeDisabled();
   await dialog.getByRole("button", { name: "Close", exact: true }).click();
   await expect(dialog).toHaveCount(0);

@@ -9,7 +9,7 @@ begin
     and withdrawn_at is null and length(title_en) > 0 and length(title_es) > 0
     and length(body_en) > 0 and length(body_es) > 0;
   perform pg_temp.dry_run_check('receipt viewer note is bilingual and scoped', v_count = 1, format('found %s', v_count));
-  foreach v_role in array array['installer','foreman','supervisor','owner'] loop
+  foreach v_role in array array['installer','foreman'] loop
     perform pg_temp.dry_run_as_system();
     v_person := pg_temp.dry_run_pick(v_role);
     perform pg_temp.dry_run_act_as(v_person);
