@@ -37,7 +37,11 @@ export function QcUnitEvidence({
   const [notesLimit, setNotesLimit] = useState(20);
   const record = useQuery({
     queryKey: ["qcUnitEvidence", viewerId, projectId, openingId],
-    queryFn: () => loadQcUnitEvidence(openingId, projectId),
+    queryFn: async () => {
+      const evidence = await loadQcUnitEvidence(openingId, projectId);
+      // A successful refresh must retry even when signing returns the same URL.
+      return { ...evidence, mediaAttempt: crypto.randomUUID() };
+    },
     enabled: Boolean(viewerId),
     staleTime: 30_000,
     refetchOnMount: "always",
@@ -52,15 +56,15 @@ export function QcUnitEvidence({
       && typeof height === "number" && Number.isFinite(height) && height > 0
       ? width + " × " + height + " in" : t("qcEvidence.notRecorded");
   const refresh = () => {
-    setFailedMedia(new Set());
     void record.refetch();
   };
   const unavailable = (id: string) => setFailedMedia(current => new Set([...current, id]));
   const mediaCard = (media: QcEvidenceMedia) => {
-    const failed = !media.signedUrl || failedMedia.has(media.id);
+    const attempt = JSON.stringify([viewerId, projectId, openingId, record.data?.mediaAttempt, media.id, media.signedUrl]);
+    const failed = !media.signedUrl || failedMedia.has(attempt);
     const install = record.data?.events.find(event => event.id === media.installEventId);
     return (
-      <figure className="qc-evidence-file" key={media.id}>
+      <figure className="qc-evidence-file" key={attempt}>
         <figcaption>
           <strong>{t(SOURCE_KEYS[media.source])}</strong>
           <div className="muted">{stamp(media.createdAt)}</div>
@@ -70,10 +74,10 @@ export function QcUnitEvidence({
         {failed ? <p role="status">{t(media.kind === "photo" ? "qcEvidence.photoUnavailable" : "qcEvidence.voiceUnavailable")}</p>
           : media.kind === "photo" ? (
             <a href={media.signedUrl!} target="_blank" rel="noreferrer noopener" aria-label={t("qcEvidence.openPhoto")}>
-              <img src={media.signedUrl!} alt={media.caption || t("qcEvidence.photo")} loading="lazy" onError={() => unavailable(media.id)} />
+              <img src={media.signedUrl!} alt={media.caption || t("qcEvidence.photo")} loading="lazy" onError={() => unavailable(attempt)} />
             </a>
           ) : (
-            <audio controls preload="metadata" src={media.signedUrl!} aria-label={media.caption || t("qcEvidence.voice")} onError={() => unavailable(media.id)} />
+            <audio controls preload="metadata" src={media.signedUrl!} aria-label={media.caption || t("qcEvidence.voice")} onError={() => unavailable(attempt)} />
           )}
         {media.signedUrl && (
           <a className="link qc-evidence-open-file" href={media.signedUrl} target="_blank" rel="noreferrer noopener">

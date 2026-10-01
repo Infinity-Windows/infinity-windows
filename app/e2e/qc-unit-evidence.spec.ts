@@ -247,6 +247,116 @@ test("a photo rejected by the browser offers the original file and a retry", asy
   await expect(card.getByRole("link", { name: "Open full-size photo", exact: true })).toHaveCount(1);
 });
 
+for (const kind of ["photo", "voice memo"] as const) {
+  for (const sameUrl of [false, true]) {
+    test(`refresh retries a failed ${kind} with ${sameUrl ? "the same" : "a new"} signed link`, async ({ page }) => {
+      await evidenceFixtures(page);
+      let signatures = 0;
+      let freshReady = false;
+      let releaseFresh!: () => void;
+      const freshGate = new Promise<void>(resolve => { releaseFresh = resolve; });
+      const filename = kind === "photo" ? "qc-after.jpg" : "current-memo.wav";
+      await page.route(`**/storage/v1/object/sign/install-media/**${filename}**`, async route => {
+        const url = new URL(route.request().url());
+        const path = url.pathname.split("/object/sign/install-media/")[1];
+        if (route.request().method() === "POST") {
+          const version = ++signatures;
+          if (version === 2) { await freshGate; freshReady = true; }
+          return json(route, { signedURL: `/object/sign/install-media/${path}?token=version-${sameUrl ? 1 : version}` });
+        }
+        return route.fulfill({ status: 200, contentType: kind === "photo" ? "image/png" : "audio/wav",
+          body: freshReady ? (kind === "photo" ? PNG : silentWav()) : Buffer.from("expired-media") });
+      });
+      await page.goto("/qc");
+      await page.getByRole("button", { name: "View unit details", exact: true }).click();
+      const card = kind === "photo" ? page.locator("figure").filter({ hasText: "Lower frame and sill" })
+        : page.locator("figure").filter({ has: page.locator(`a[href*="${filename}"]`) });
+      await card.scrollIntoViewIfNeeded();
+      const unavailable = card.getByText(kind === "photo" ? "Photo unavailable. Refresh the record to try again."
+        : "Recording unavailable. Refresh the record or open the original file.", { exact: true });
+      await expect(unavailable).toBeVisible();
+      await page.getByRole("button", { name: "Refresh record", exact: true }).click();
+      await expect.poll(() => signatures).toBe(2);
+      // Keep the failed view while the replacement link is still pending.
+      await expect(unavailable).toBeVisible();
+      releaseFresh();
+      const media = card.locator(kind === "photo" ? "img" : "audio");
+      await expect(media).toHaveAttribute("src", new RegExp(`token=version-${sameUrl ? 1 : 2}`));
+      await card.scrollIntoViewIfNeeded();
+      await expect(media).toBeVisible();
+      if (kind === "photo") await expect.poll(() => media.evaluate((node: HTMLImageElement) => node.naturalWidth)).toBeGreaterThan(0);
+      else await expect.poll(() => media.evaluate((node: HTMLAudioElement) => node.readyState)).toBeGreaterThanOrEqual(1);
+      await expect(unavailable).toHaveCount(0);
+    });
+  }
+}
+
+for (const kind of ["photo", "voice memo"] as const) {
+  test(`a delayed old ${kind} response cannot hide refreshed media`, async ({ page }) => {
+    await evidenceFixtures(page);
+    let signatures = 0;
+    let oldStarted = false;
+    let oldSettled = false;
+    let releaseOld!: () => void;
+    const oldGate = new Promise<void>(resolve => { releaseOld = resolve; });
+    const filename = kind === "photo" ? "qc-after.jpg" : "current-memo.wav";
+    await page.route(`**/storage/v1/object/sign/install-media/**${filename}**`, async route => {
+      const url = new URL(route.request().url());
+      const path = url.pathname.split("/object/sign/install-media/")[1];
+      if (route.request().method() === "POST") return json(route, { signedURL: `/object/sign/install-media/${path}?token=version-${++signatures}` });
+      if (url.searchParams.get("token") === "version-1") {
+        oldStarted = true;
+        await oldGate;
+        // Replacing the element may cancel this request before its error arrives.
+        await route.fulfill({ status: 200, contentType: "application/octet-stream", body: "expired-media" }).catch(() => {});
+        oldSettled = true;
+        return;
+      }
+      return route.fulfill({ status: 200, contentType: kind === "photo" ? "image/png" : "audio/wav", body: kind === "photo" ? PNG : silentWav() });
+    });
+    await page.goto("/qc");
+    await page.getByRole("button", { name: "View unit details", exact: true }).click();
+    const card = kind === "photo" ? page.locator("figure").filter({ hasText: "Lower frame and sill" })
+      : page.locator("figure").filter({ has: page.locator(`a[href*="${filename}"]`) });
+    await card.scrollIntoViewIfNeeded();
+    await expect.poll(() => oldStarted).toBe(true);
+    await page.getByRole("button", { name: "Refresh record", exact: true }).click();
+    const media = card.locator(kind === "photo" ? "img" : "audio");
+    await expect(media).toHaveAttribute("src", /token=version-2/);
+    await card.scrollIntoViewIfNeeded();
+    await expect.poll(() => media.evaluate((node: HTMLImageElement | HTMLAudioElement) => node instanceof HTMLImageElement ? node.naturalWidth : node.readyState)).toBeGreaterThan(0);
+    releaseOld();
+    await expect.poll(() => oldSettled).toBe(true);
+    await expect(media).toBeVisible();
+    await expect(card.getByRole("status")).toHaveCount(0);
+  });
+}
+
+test("a failed refresh preserves the unavailable photo and explains the stale record", async ({ page }) => {
+  await evidenceFixtures(page);
+  let failOpening = false;
+  await page.route("**/rest/v1/project_openings**", route => {
+    if (failOpening && new URL(route.request().url()).searchParams.get("id") === `eq.${OPENING_ID}`) {
+      return route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ message: "private opening failure" }) });
+    }
+    return route.fallback();
+  });
+  await page.route("**/storage/v1/object/sign/install-media/**qc-after.jpg?*", route => {
+    if (route.request().method() === "GET") return route.fulfill({ status: 200, contentType: "image/jpeg", body: "expired-photo" });
+    return route.fallback();
+  });
+  await page.goto("/qc");
+  await page.getByRole("button", { name: "View unit details", exact: true }).click();
+  const card = page.locator("figure").filter({ hasText: "Lower frame and sill" });
+  await expect(card.getByRole("status")).toBeVisible();
+  failOpening = true;
+  await page.getByRole("button", { name: "Refresh record", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Unit details", exact: true }).getByRole("alert")).toBeVisible();
+  await expect(card.getByText("Photo unavailable. Refresh the record to try again.", { exact: true })).toBeVisible();
+  await expect(page.getByText("private opening failure")).toHaveCount(0);
+});
+
+
 
 test("switching same-code units does not retain the previous job's media", async ({ page }) => {
   const state = await evidenceFixtures(page, { twoUnits: true });
