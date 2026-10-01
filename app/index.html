@@ -39,6 +39,20 @@
           try {
             last = Number(sessionStorage.getItem(key) || 0);
             if (now - last > 60000) {
+              // Keep the reason across this reload: the module entry never ran,
+              // so the normal in-memory diagnostics ring does not exist yet.
+              var resources = performance.getEntriesByType("resource")
+                .filter(function (item) { return /\.(js|css)(\?|$)/.test(item.name); })
+                .slice(-8)
+                .map(function (item) {
+                  try { return new URL(item.name).pathname.split("/").pop(); }
+                  catch (e) { return "unknown"; }
+                });
+              sessionStorage.setItem("wops-empty-boot-diagnostic", JSON.stringify({
+                at: now,
+                entry: entry ? entry.getAttribute("src").split("/").pop() : "unknown",
+                resources: resources
+              }));
               sessionStorage.setItem(key, String(now));
               window.location.reload();
               return;

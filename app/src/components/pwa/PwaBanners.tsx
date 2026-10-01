@@ -261,7 +261,7 @@ function PwaUpdateBanner() {
         // It did take over — the change just went unheard (a listener
         // attached late). The old shell is still on screen; finish the job.
         reloading.current = true;
-        reloadPage();
+        reloadPage("takeover-fallback");
         return;
       }
       applying.current = false;

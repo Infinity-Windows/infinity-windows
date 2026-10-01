@@ -10,12 +10,14 @@ import { installServiceWorkerGuard } from "./lib/serviceWorkerGuard";
 import { startCrashMonitoring } from "./lib/monitoring/sentry";
 import { installPushChangeListener } from "./lib/permissions/pushSubscribe";
 import { installPreloadRecovery } from "./lib/pwa/preloadRecovery";
+import { reportPreviousBootRecovery } from "./lib/pwa/bootRecoveryDiagnostics";
 import { installClockCheck } from "./lib/clockSkew";
 import { installSaveOnLeave } from "./lib/queryClient";
 
 // The inline boot guard only retries when the entry never ran at all. Once
 // imports finished and this line runs, React and its error boundary own errors.
 document.documentElement.dataset.forgeBootStarted = "1";
+reportPreviousBootRecovery();
 
 // Crash monitoring, started BEFORE anything mounts so a crash on the very first
 // paint is still caught. With VITE_SENTRY_DSN unset — the state this ships in —
