@@ -143,6 +143,9 @@ test("phone QC opens unit facts, all saved rounds, photos and playable original 
   await expect(page.getByText("Frame seated squarely", { exact: true })).toBeVisible();
   for (const name of ["qc-after.jpg", "qc-before.jpg", "unit-detail.jpg", "flashing.jpg"]) {
     const photo = page.locator(`img[src*="${name}"]`);
+    // WebKit waits until a lazy photo enters the viewport. Scroll its card,
+    // which has a visible caption even before the photo acquires dimensions.
+    await page.locator("figure").filter({ has: photo }).scrollIntoViewIfNeeded();
     await expect(photo).toBeVisible();
     await expect.poll(() => photo.evaluate((node: HTMLImageElement) => node.naturalWidth)).toBeGreaterThan(0);
   }
