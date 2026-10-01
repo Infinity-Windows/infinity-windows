@@ -285,6 +285,12 @@ test("the order a foreman puts the jobs in survives a reload", async ({ page }) 
   const fixtures = usePipelineFixtures(page);
   await page.goto("/projects");
 
+  // Reordering is behind the explicit "Office order" toggle now
+  // (jobs-search-schedule): the grip and up/down buttons used to show on
+  // every load, which is the room this page exists to give back.
+  if ((page.viewportSize()?.width ?? 1280) < 860) await page.getByRole("button", { name: /^filters/i }).click();
+  await page.getByRole("button", { name: /office order/i }).filter({ visible: true }).click();
+
   // Polled, like the two reads below: the cards draw a moment after the page
   // loads, and a single read straight after goto can find none at all ([]) —
   // the nightly run's red here since Sep 16, before any reorder was tried.
@@ -313,8 +319,13 @@ test("the order a foreman puts the jobs in survives a reload", async ({ page }) 
   ]);
 
   // THE POINT: a full reload re-reads the server, and the order is still there.
-  // An order that lived only in React state would fail here.
+  // An order that lived only in React state would fail here. Office order mode
+  // itself is local UI state and does not survive a reload (nor should it —
+  // it is a deliberate view a foreman opts back into), so it is switched on
+  // again before reading the order back.
   await page.reload();
+  if ((page.viewportSize()?.width ?? 1280) < 860) await page.getByRole("button", { name: /^filters/i }).click();
+  await page.getByRole("button", { name: /office order/i }).filter({ visible: true }).click();
   await expect
     .poll(() => cardOrder(page))
     .toEqual(["Black Desert", "Sand Hollow", "Pecan Valley"]);

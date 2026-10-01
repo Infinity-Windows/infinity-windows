@@ -241,6 +241,7 @@ export const QUERY_KEY_ROOTS: QueryKeyRootEntry[] = [
   { root: "receipts-feed", offline: false },
   { root: "receipts-office", offline: false },
   { root: "recentJobs", offline: true, why: "The clock's recent jobs (2026-09-24), which make clocking in one tap: the clock opens on yesterday's job and code. Not kept, a morning launch with no signal opened it on no job at all. Keyed by the person, so it is only ever their own." },
+  { root: "recentlyWorkedJobs", offline: false, why: "A Jobs-page grouping hint, not a gate — on a phone with no signal it simply falls back to the alphabetical 'Other jobs' group, same as any other query error on this page. Not worth the offline cache an actual work-blocking read needs." },
   { root: "recordEvents", offline: false },
   { root: "recordMedia", offline: false },
   { root: "removedOpenings", offline: false },
