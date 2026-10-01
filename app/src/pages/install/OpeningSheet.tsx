@@ -127,7 +127,6 @@ import { useRealtimeOpenings } from "../../lib/useRealtimeOpenings";
 import { createIssue, listProjectIssues, resolveIssue } from "../../lib/issues";
 import type { QrPayload } from "../../lib/qr";
 import { resolveWindowFromScan } from "../../lib/scanResolve";
-import { supabase } from "../../lib/supabase";
 import { formatApiError } from "../../lib/install/errors";
 import { pushToast } from "../../lib/toast";
 import { showUndoToast } from "../../lib/undoToast";
@@ -1071,7 +1070,7 @@ export function OpeningSheet() {
 
       // Persist the FULL install (RPC args + media + points) locally first so a
       // dead zone cannot wipe the capture. Flush then attempts the network.
-      const uid = (await supabase.auth.getUser()).data.user?.id ?? null;
+      const uid = submitter?.userId ?? null;
       const createdBy = submitter?.email ?? null;
       const stamp = Date.now();
 

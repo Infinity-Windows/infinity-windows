@@ -131,7 +131,7 @@ export function YourUnit({ nextUp, locked, jobId, shift, work, now }: YourUnitPr
       });
     });
 
-  const blocked = busy || work.loading || Boolean(work.queueError) || Boolean(work.queue[0]?.error);
+  const blocked = busy || work.actionsLoading || Boolean(work.queueError) || Boolean(work.queue[0]?.error);
   const canStartNewUnit = clockState === "ok" && !locked && !blocked;
   const clockHint =
     clockState === "off"

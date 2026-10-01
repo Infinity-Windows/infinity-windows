@@ -186,7 +186,7 @@ export function CurrentWork() {
       else setEditing(null);
     });
   const blocked =
-    busy || work.loading || !!work.queueError || !!work.queue[0]?.error;
+    busy || work.actionsLoading || !!work.queueError || !!work.queue[0]?.error;
   const unavailable =
     work.error && (isMissingTable(work.error) || isMissingFunction(work.error));
   return (
