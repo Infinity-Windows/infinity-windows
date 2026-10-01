@@ -5,7 +5,7 @@ import { Link } from "react-router-dom";
 import { getMyProfile } from "../lib/install/api";
 import { isForemanPlus } from "../lib/install/types";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
-import { listQcQueue, setQc } from "../lib/ops";
+import { listQcHistory, listQcQueue, setQc } from "../lib/ops";
 import { addPriorityTerm } from "../lib/learn";
 import { openServiceCase } from "../lib/service";
 import { CATS, TERMS } from "../lib/glossary";
@@ -50,10 +50,17 @@ export function Qc() {
   // limit grows on "load more" instead of tracking an offset — see the note
   // by QC_PAGE_SIZE above.
   const [limit, setLimit] = useState(QC_PAGE_SIZE);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyLimit, setHistoryLimit] = useState(QC_PAGE_SIZE);
   const rows = useQuery({
     queryKey: ["qcQueue", limit],
     queryFn: () => listQcQueue(limit),
     enabled: lead,
+  });
+  const history = useQuery({
+    queryKey: ["qcHistory", historyLimit],
+    queryFn: () => listQcHistory(historyLimit),
+    enabled: lead && historyOpen,
   });
 
   // Which opening is mid-callback (awaiting a root-cause term), and the picked term.
@@ -105,6 +112,7 @@ export function Qc() {
       // Prefix match: invalidates every ["qcQueue", limit] variant, not just
       // whatever limit is active right now.
       queryClient.invalidateQueries({ queryKey: ["qcQueue"] });
+      queryClient.invalidateQueries({ queryKey: ["qcHistory"] });
       queryClient.invalidateQueries({ queryKey: ["ledger"] });
       queryClient.invalidateQueries({ queryKey: ["pointsLeaderboard"] });
     },
@@ -168,6 +176,17 @@ export function Qc() {
         </div>
         <BackChip fallback="/" label="Home" />
       </header>
+
+      <div className="row-gap" role="group" aria-label="Quality views" style={{ marginBottom: 16 }}>
+        <button type="button" className={historyOpen ? "button-like" : "primary"} onClick={() => setHistoryOpen(false)}>
+          Needs review
+        </button>
+        <button type="button" className={historyOpen ? "primary" : "button-like"} onClick={() => setHistoryOpen(true)}>
+          Review history
+        </button>
+      </div>
+
+      <div hidden={historyOpen}>
 
       {caseOffer && (
         <div className="detail-card" style={{ marginBottom: 12 }}>
@@ -325,6 +344,75 @@ export function Qc() {
           Load more
         </button>
       )}
+      </div>
+      <section aria-label="QC review history" style={{ marginTop: 24 }}>
+        {historyOpen && (
+          <div style={{ marginTop: 16 }}>
+            <h2 style={{ marginBottom: 4 }}>Review history</h2>
+            <p className="muted" style={{ marginTop: 0 }}>
+              Every recorded pass and callback stays here, even after a later decision changes the unit’s status.
+            </p>
+            {history.isLoading ? <SkeletonList rows={3} /> : history.isError ? (
+              <div className="detail-card" role="alert">
+                <p>Review history could not load. {history.error instanceof Error ? history.error.message : "Please try again."}</p>
+                <button className="button-like" onClick={() => void history.refetch()}>Try again</button>
+              </div>
+            ) : (
+              <div style={{ display: "grid", gap: 10 }}>
+                {(history.data?.rows ?? []).map((decision) => (
+                  <article className="detail-card" key={decision.id} style={{ minWidth: 0 }}>
+                    <div className="row-gap" style={{ justifyContent: "space-between", flexWrap: "wrap" }}>
+                      <div>
+                        {decision.project_id ? (
+                          <Link to={`/projects/${decision.project_id}/opening/${decision.project_opening_id}`} className="link">
+                            <strong>{decision.job_code ?? "Job"} · {decision.opening_code ?? "Unit"}</strong>
+                          </Link>
+                        ) : <strong>Unit record unavailable</strong>}
+                      </div>
+                      <strong className={decision.status === "passed" ? "ok" : "error"}>
+                        {decision.status === "passed" ? "Passed" : "Callback"}
+                      </strong>
+                    </div>
+                    <div className="muted" style={{ marginTop: 6, fontSize: 13 }}>
+                      {new Date(decision.decided_at).toLocaleString()} · {decision.reviewer_name
+                        ?? (decision.source === "legacy_snapshot" && !decision.reviewer_id
+                          ? "Reviewer not recorded in older data"
+                          : decision.source === "system" && !decision.reviewer_id
+                            ? "System update"
+                            : "Reviewer unavailable")}
+                    </div>
+                    {decision.source === "legacy_snapshot" && (
+                      <div className="muted" style={{ marginTop: 4, fontSize: 12 }}>
+                        Previous status saved before review history began
+                      </div>
+                    )}
+                    {decision.source === "legacy_client" && (
+                      <div className="muted" style={{ marginTop: 4, fontSize: 12 }}>
+                        Saved from an older app version
+                      </div>
+                    )}
+                    {decision.note && (
+                      <p style={{ marginBottom: 0, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
+                        {decision.note}
+                      </p>
+                    )}
+                  </article>
+                ))}
+                {history.data?.rows.length === 0 && <p className="muted">No QC decisions recorded yet.</p>}
+                {history.data?.hasMore && (
+                  <button
+                    className="button-like"
+                    disabled={history.isFetching}
+                    onClick={() => setHistoryLimit((n) => n + QC_PAGE_SIZE)}
+                  >
+                    Load older reviews
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </section>
     </div>
   );
 }
