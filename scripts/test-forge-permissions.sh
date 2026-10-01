@@ -49,4 +49,7 @@ run_sql "$REPO/scripts/tests/forge-publication/remove-day.sql"
 run_sql "$REPO/scripts/tests/forge-publication/end-time-before.sql"
 run_sql "$REPO/supabase/migrations/20261006000000_schedule_end_time.sql"
 run_sql "$REPO/scripts/tests/forge-publication/end-time.sql"
+run_sql "$REPO/scripts/tests/forge-publication/notice-revision-before.sql"
+run_sql "$REPO/supabase/migrations/20261048000000_schedule_notice_revision.sql"
+run_sql "$REPO/scripts/tests/forge-publication/notice-revision.sql"
 printf 'Forge database permission checks passed (disposable PostgreSQL 16).\n'

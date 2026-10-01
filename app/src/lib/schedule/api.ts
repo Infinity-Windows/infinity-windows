@@ -169,6 +169,10 @@ interface RawAssignmentRow {
   published_at: string | null;
   created_at: string;
   updated_at: string;
+  /** Absent on a row read before 20261048000000 or from a stale cache — the
+   * `*` select never errors on a missing column, so this is undefined rather
+   * than a synthesized 0. */
+  notice_revision?: number | null;
   schedule_assignment_members?: RawMemberRow[] | null;
   projects?: {
     id: string;
@@ -202,6 +206,7 @@ function mapRow(row: RawAssignmentRow): ScheduleAssignment {
     note: row.note,
     created_by: row.created_by,
     created_via: row.created_via === "ai" ? "ai" : null,
+    notice_revision: typeof row.notice_revision === "number" ? row.notice_revision : undefined,
     published_at: row.published_at,
     created_at: row.created_at,
     updated_at: row.updated_at,

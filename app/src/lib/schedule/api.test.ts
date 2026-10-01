@@ -34,12 +34,15 @@ vi.mock("../supabase", () => ({
   supabase: {
     from: (table: string) => builder(table),
     auth: { getUser: async () => ({ data: { user: { id: "me" } } }) },
-    rpc: async () => ({ data: null, error: null }),
+    rpc: async (fn: string, args?: { p_ids?: string[] }) =>
+      // filterToLiveProjects' batched check: echo every id back as live so a
+      // mocked row is never silently dropped by this unrelated trash filter.
+      fn === "live_project_ids" ? { data: args?.p_ids ?? [], error: null } : { data: null, error: null },
   },
   supabaseConfigured: true,
 }));
 
-const { confirmPublished, createAssignment, dropDraftAssignment, listAiDraftReasons, publishAssignments } = await import("./api");
+const { confirmPublished, createAssignment, dropDraftAssignment, listAiDraftReasons, listAssignments, publishAssignments } = await import("./api");
 const { isUnconfirmedPublishError, outcomeFromReadback } = await import("./publishOutcome");
 
 const RAW = {
@@ -69,6 +72,19 @@ describe("createAssignment and the AI flag", () => {
     expect(insertPayload("schedule_assignments")).not.toHaveProperty("created_via");
     await createAssignment({ project_id: "p", start_date: "2026-09-28", end_date: "2026-09-28", members: [], created_via: null });
     expect(calls.filter((c) => c.table === "schedule_assignments" && c.op === "insert")[1].args[0]).not.toHaveProperty("created_via");
+  });
+});
+
+describe("notice_revision — optional read, never synthesized", () => {
+  it("passes a present revision straight through", async () => {
+    respond = () => ({ data: [{ ...RAW, notice_revision: 2 }], error: null });
+    const [row] = await listAssignments("2026-09-01", "2026-09-30");
+    expect(row.notice_revision).toBe(2);
+  });
+  it("a row from before the migration (or a stale cache) reads as undefined, never a synthesized 0", async () => {
+    respond = () => ({ data: [RAW], error: null });
+    const [row] = await listAssignments("2026-09-01", "2026-09-30");
+    expect(row.notice_revision).toBeUndefined();
   });
 });
 
