@@ -100,12 +100,13 @@ jobs:
     env:
       # Pin the deployed baseline at event creation; do not resolve moving master.
       IW_PWA_OLD_REF: ${{ github.event.pull_request.base.sha || github.event.before || 'origin/master' }}
-      IW_PWA_CACHE: ${{ runner.temp }}/pwa-current
     defaults:
       run:
         working-directory: app
     steps:
       - uses: actions/checkout@v4
+      - name: Select isolated installed-app build cache
+        run: printf 'IW_PWA_CACHE=%s/pwa-current\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
@@ -187,12 +188,13 @@ jobs:
     runs-on: ubuntu-latest
     env:
       IW_PWA_OLD_REF: fd4fd686174c5be5ec00c9301d75f415001ca416
-      IW_PWA_CACHE: ${{ runner.temp }}/pwa-older
     defaults:
       run:
         working-directory: app
     steps:
       - uses: actions/checkout@v4
+      - name: Select isolated installed-app build cache
+        run: printf 'IW_PWA_CACHE=%s/pwa-older\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
