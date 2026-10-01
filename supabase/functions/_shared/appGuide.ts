@@ -219,6 +219,13 @@ export const APP_GUIDE: AppGuideEntry[] = [
     blurb: "Past safety toolbox talks and who acknowledged them.",
   },
   {
+    path: "/daily-logs",
+    label: "Daily logs",
+    minRole: "installer",
+    blurb:
+      "Every job's daily log, across every day you reach — what the crew worked on, stage progress, photos, and how many units are done or remaining. Log today, or open a past one to review or edit.",
+  },
+  {
     path: "/stuck",
     label: "Stuck writes",
     minRole: "installer",

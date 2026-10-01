@@ -3,6 +3,7 @@
 // through file_daily_log (SECURITY DEFINER) — there is no direct-write path
 // to bypass its validation.
 
+import {signedInUserId} from "./signedIn";
 import { supabase } from "./supabase";
 import { isNetworkError } from "./offline/outbox-core";
 import { enqueueDailyLog } from "./offline/outbox";
@@ -12,6 +13,7 @@ import { listProjectRedosAll, listProjectSessions } from "./install/sessions";
 import { buildDailyLogDraft, type DailyLogDraft } from "./dailyLogDraft";
 import { jobsNeedingLog, localDateISO } from "./dailyLogDay";
 import { coverage, type CoverageSummary, type JobDay } from "./dailyLogCoverage";
+import { emptyProgressFields, type DailyLogProgressFields } from "./dailyLogStages";
 
 export interface DailyLogReflection {
   went_well?: string;
@@ -22,7 +24,7 @@ export interface DailyLogReflection {
 
 export type DayFlow = "smooth" | "fine" | "stuck";
 
-export interface DailyLog {
+export interface DailyLog extends DailyLogProgressFields {
   id: string;
   project_id: string;
   log_date: string;
@@ -41,6 +43,58 @@ export interface DailyLog {
   created_at: string;
   updated_at: string;
   filer?: { display_name: string | null } | null;
+  /** Null once a job is purged (20260959000000 detach) — job_name below is
+   * what survives that, so a log never silently disappears from "my logs". */
+  project?: { job_code: string; name: string } | null;
+  /** The job's name as it stood at detach time; set only once project_id
+   * goes null. Always prefer project?.name when project is present. */
+  job_name: string | null;
+}
+
+/** The raw row shape PostgREST hands back for the new (20261064000000)
+ * columns — snake_case, and every array/object column nullable on a
+ * pre-migration database (isMissingColumn peels them back below). */
+interface DailyLogProgressRow {
+  work_stages?: DailyLogProgressFields["workStages"] | null;
+  stage_progress?: DailyLogProgressFields["stageProgress"] | null;
+  covers?: DailyLogProgressFields["covers"];
+  delays?: DailyLogProgressFields["delays"] | null;
+  safety_status?: DailyLogProgressFields["safetyStatus"];
+  weather_impact?: DailyLogProgressFields["weatherImpact"];
+  missing_tomorrow?: DailyLogProgressFields["missingTomorrow"] | null;
+  tomorrow_stages?: DailyLogProgressFields["tomorrowStages"] | null;
+  tomorrow_crew_expected?: number | null;
+  tomorrow_plan?: string | null;
+  units_today?: number | null;
+  units_to_date?: number | null;
+  units_remaining?: number | null;
+  units_remaining_detail?: string | null;
+}
+
+/** Normalize one fetched row's progress columns, defaulting every one that a
+ * pre-migration database (or a row inserted before this wave) never set. */
+function progressFromRow(row: DailyLogProgressRow): DailyLogProgressFields {
+  const empty = emptyProgressFields();
+  return {
+    workStages: row.work_stages ?? empty.workStages,
+    stageProgress: row.stage_progress ?? empty.stageProgress,
+    covers: row.covers ?? empty.covers,
+    delays: row.delays ?? empty.delays,
+    safetyStatus: row.safety_status ?? empty.safetyStatus,
+    weatherImpact: row.weather_impact ?? empty.weatherImpact,
+    missingTomorrow: row.missing_tomorrow ?? empty.missingTomorrow,
+    tomorrowStages: row.tomorrow_stages ?? empty.tomorrowStages,
+    tomorrowCrewExpected: row.tomorrow_crew_expected ?? empty.tomorrowCrewExpected,
+    tomorrowPlan: row.tomorrow_plan ?? empty.tomorrowPlan,
+    unitsToday: row.units_today ?? empty.unitsToday,
+    unitsToDate: row.units_to_date ?? empty.unitsToDate,
+    unitsRemaining: row.units_remaining ?? empty.unitsRemaining,
+    unitsRemainingDetail: row.units_remaining_detail ?? empty.unitsRemainingDetail,
+  };
+}
+
+function toDailyLog(row: Record<string, unknown>): DailyLog {
+  return { ...(row as object), ...progressFromRow(row as DailyLogProgressRow) } as DailyLog;
 }
 
 // `profiles` named explicitly via `filed_by`: daily_logs points at profiles
@@ -48,6 +102,13 @@ export interface DailyLog {
 // `profiles(...)` is ambiguous — PostgREST answers a 300 rather than
 // guessing (same reason timeclock.ts's SHIFT_SELECT does this).
 const LOG_SELECT = "*, filer:profiles!filed_by(display_name)";
+/** Cross-job list (the Daily Logs page): the filer plus which job this row
+ * belongs to, since that page is never scoped to one project. A LEFT join
+ * (NOT !inner) on purpose — a log whose job was later purged keeps
+ * project_id null and relies on job_name (20260959000000's detach) to say
+ * what job it was; !inner would silently drop that row from "my logs". */
+const LOG_SELECT_WITH_PROJECT =
+  "*, filer:profiles!filed_by(display_name), project:projects(job_code, name)";
 
 function isMissingTableError(e: { code?: string; message?: string } | null): boolean {
   return Boolean(
@@ -65,7 +126,68 @@ export async function listDailyLogs(projectId: string): Promise<DailyLog[]> {
     .order("log_date", { ascending: false });
   if (isMissingTableError(error)) return [];
   if (error) throw error;
-  return (data ?? []) as unknown as DailyLog[];
+  return (data ?? []).map((row) => toDailyLog(row as Record<string, unknown>));
+}
+
+export const DAILY_LOGS_PAGE_SIZE = 50;
+
+export interface DailyLogsPage {
+  logs: DailyLog[];
+  /** True when there are more rows in this date range than fit on this
+   * page — PostgREST's own default row cap must never silently pass as
+   * "that's everything" (the brief's own warning). The Daily Logs page
+   * shows "Load more" rather than ever treating this list as complete. */
+  hasMore: boolean;
+  fromDate: string;
+  toDate: string;
+}
+
+/**
+ * Every job a person reaches, across every day — the Daily Logs page (owner
+ * request 2026-10-01, Horizon parity). Defaults to the last 90 days
+ * (Horizon's own default window), newest first, paginated explicitly: this
+ * fetches one row past the page size so truncation is KNOWN, never assumed
+ * from PostgREST's own default cap. Reads the SAME daily_logs_select_crew
+ * policy as every other list here: installer and up, never a partner.
+ *
+ * `pageSize` is clamped well under PostgREST's own row cap (independent
+ * review, 2026-10-01: a caller that kept widening its own pageSize instead of
+ * paging eventually hit that cap, which silently truncates the response —
+ * `rows.length > pageSize` would then read as "no more" even though the
+ * database has more). The caller accumulates PAGES instead; this function
+ * only ever asks for one bounded page at a time.
+ *
+ * `projectId`, given, filters server-side — a job filter applied only to
+ * whatever page happened to already be loaded would read as "this job has
+ * no other logs" the moment its next log falls on an unloaded page.
+ */
+export async function listMyDailyLogs(
+  opts: { fromDate?: string; toDate?: string; projectId?: string; offset?: number; pageSize?: number } = {},
+): Promise<DailyLogsPage> {
+  const toDate = opts.toDate ?? localDateISO();
+  const fromDate = opts.fromDate ?? localDateISO(new Date(Date.now() - 90 * 24 * 60 * 60 * 1000));
+  const pageSize = Math.min(opts.pageSize ?? DAILY_LOGS_PAGE_SIZE, DAILY_LOGS_PAGE_SIZE);
+  const offset = opts.offset ?? 0;
+  let query = supabase
+    .from("daily_logs")
+    .select(LOG_SELECT_WITH_PROJECT)
+    .gte("log_date", fromDate)
+    .lte("log_date", toDate);
+  if (opts.projectId) query = query.eq("project_id", opts.projectId);
+  const { data, error } = await query
+    .order("log_date", { ascending: false })
+    .order("id", { ascending: false })
+    .range(offset, offset + pageSize); // one extra row proves whether more exist
+  if (isMissingTableError(error)) return { logs: [], hasMore: false, fromDate, toDate };
+  if (error) throw error;
+  const rows = data ?? [];
+  const hasMore = rows.length > pageSize;
+  return {
+    logs: rows.slice(0, pageSize).map((row) => toDailyLog(row as Record<string, unknown>)),
+    hasMore,
+    fromDate,
+    toDate,
+  };
 }
 
 /**
@@ -85,7 +207,7 @@ export async function listDailyLogsForRange(fromDate: string, toDate: string): P
     .lte("log_date", toDate);
   if (isMissingTableError(error)) return [];
   if (error) throw error;
-  return (data ?? []) as unknown as DailyLog[];
+  return (data ?? []).map((row) => toDailyLog(row as Record<string, unknown>));
 }
 
 /** One job-day's log, or null if nobody has filed it yet. */
@@ -103,7 +225,21 @@ export async function getDailyLog(
     .maybeSingle();
   if (isMissingTableError(error)) return null;
   if (error) throw error;
-  return (data as unknown as DailyLog) ?? null;
+  return data ? toDailyLog(data as Record<string, unknown>) : null;
+}
+
+/** One log by id — the "Share link" / detail view's own lookup, for a
+ * bookmarked or copied URL that may point at a log outside the list page's
+ * current date window. LEFT join on project (see LOG_SELECT_WITH_PROJECT). */
+export async function getDailyLogById(id: string): Promise<DailyLog | null> {
+  const { data, error } = await supabase
+    .from("daily_logs")
+    .select(LOG_SELECT_WITH_PROJECT)
+    .eq("id", id)
+    .maybeSingle();
+  if (isMissingTableError(error)) return null;
+  if (error) throw error;
+  return data ? toDailyLog(data as Record<string, unknown>) : null;
 }
 
 /**
@@ -112,7 +248,7 @@ export async function getDailyLog(
  * come through here: they append through append_daily_log_contribution
  * (lib/aiDailyLogs/save.ts), which refuses a stale preview and saves once.
  */
-export interface FileDailyLogInput {
+export interface FileDailyLogInput extends DailyLogProgressFields {
   projectId: string;
   logDate: string;
   headline: string | null;
@@ -122,6 +258,8 @@ export interface FileDailyLogInput {
   weather: string | null;
   /** Revision shown when these words were written; null if offline/unknown. */
   baseRevision: number | null;
+  reviewedConflict?: string|null;
+  ownerId?: string|null;
 }
 
 export function isStaleDailyLogError(error: unknown): boolean {
@@ -152,10 +290,15 @@ export interface FiledDailyLog {
  * failure queues.
  */
 export async function fileDailyLog(input: FileDailyLogInput): Promise<FiledDailyLog> {
+  // Capture before any await. A network failure after sign-out must never
+  // queue the original author's private report under the next person's login.
+  const ownedInput={...input,ownerId:input.ownerId??signedInUserId()};
   // An unknown base cannot safely replace the shared row. Keep it on the phone
   // for the outbox to read and merge under the server revision when online.
   if (input.baseRevision == null) {
-    await enqueueDailyLog({ ...input, baseRevision: null });
+    // The manual editor always carries a full, deliberate structured answer
+    // — this is never the "legacy client never knew about these fields" case.
+    await enqueueDailyLog({ ...ownedInput, baseRevision: null, progressProvided: true });
     return { log: null, queued: true };
   }
   try {
@@ -168,13 +311,31 @@ export async function fileDailyLog(input: FileDailyLogInput): Promise<FiledDaily
       p_reflection: input.reflection,
       p_weather: input.weather,
       p_expected_revision: input.baseRevision,
+      // The manual editor always sends a full, explicit snapshot (even
+      // explicit clears) — never the "old client omitted these" case
+      // p_progress_provided=false exists for.
+      p_progress_provided: true,
+      p_work_stages: input.workStages,
+      p_stage_progress: input.stageProgress,
+      p_covers: input.covers,
+      p_delays: input.delays,
+      p_safety_status: input.safetyStatus,
+      p_weather_impact: input.weatherImpact,
+      p_missing_tomorrow: input.missingTomorrow,
+      p_tomorrow_stages: input.tomorrowStages,
+      p_tomorrow_crew_expected: input.tomorrowCrewExpected,
+      p_tomorrow_plan: input.tomorrowPlan,
+      p_units_today: input.unitsToday,
+      p_units_to_date: input.unitsToDate,
+      p_units_remaining: input.unitsRemaining,
+      p_units_remaining_detail: input.unitsRemainingDetail,
     });
     if (error) throw error;
-    return { log: data as DailyLog, queued: false };
+    return { log: toDailyLog(data as Record<string, unknown>), queued: false };
   } catch (e) {
     if (isStaleDailyLogError(e)) throw e;
     if (!isNetworkError(e)) throw e;
-    await enqueueDailyLog({ ...input });
+    await enqueueDailyLog({ ...ownedInput, progressProvided: true });
     return { log: null, queued: true };
   }
 }

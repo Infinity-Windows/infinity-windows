@@ -1,3 +1,4 @@
+import { JobSearchSelect } from "../components/JobSearchSelect";
 import { VoiceInput } from "../components/voice/VoiceInput";
 // Supplies: where it lives, how many we think we have, take what you need
 // (warehouse ticket 07 — grill Q8/Q9/Q25, owner-confirmed).
@@ -212,18 +213,8 @@ export function Supplies() {
       </ul>
 
       <h2>{t("supplies.requestForJob")}</h2>
-      <div className="job-chip-row">
-        {(projects.data ?? []).map((p) => (
-          <button
-            key={p.id}
-            type="button"
-            className={proj === p.id ? "job-chip active" : "job-chip"}
-            onClick={() => setProj(p.id)}
-          >
-            {p.job_code}
-          </button>
-        ))}
-      </div>
+      {projects.isError && <p role="alert" className="error">{formatApiError(projects.error)}</p>}
+      <JobSearchSelect jobs={projects.data ?? []} value={proj} onChange={setProj} loading={projects.isPending} />
 
       {proj && (
         <>
@@ -406,15 +397,8 @@ function TakeForm({
           onChange={(e) => setQty(e.target.value)}
           autoFocus
         />
-        <label className="field-label">{t("supplies.forWhichJob")}</label>
-        <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-          <option value="">{t("supplies.pickTheJob")}</option>
-          {(projects.data ?? []).map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.job_code} — {p.name}
-            </option>
-          ))}
-        </select>
+        <JobSearchSelect jobs={projects.data ?? []} value={projectId} onChange={setProjectId}
+          label={t("supplies.forWhichJob")} loading={projects.isPending} />
         <div className="row-gap" style={{ marginTop: 10 }}>
           <button
             className="button-like active-pill"

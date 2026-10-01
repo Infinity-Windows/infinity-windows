@@ -1,10 +1,14 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { clearManualDailyLogDraft, loadManualDailyLogDraft, saveManualDailyLogDraft, type ManualDailyLogDraft } from "./manualDailyLogDraft";
+import { emptyProgressFields } from "./dailyLogStages";
 
 const row: ManualDailyLogDraft = {
   version: 1, ownerId: "ana", projectId: "job-a", logDate: "2026-10-01", baseRevision: 2,
-  fields: { headline: "Frames", notes: "Set two frames", dayFlow: "fine", reflection: { went_well: "Delivery" }, weather: "Cool" },
+  fields: {
+    headline: "Frames", notes: "Set two frames", dayFlow: "fine", reflection: { went_well: "Delivery" }, weather: "Cool",
+    ...emptyProgressFields(),
+  },
   savedAt: "2026-10-01T12:00:00Z",
 };
 

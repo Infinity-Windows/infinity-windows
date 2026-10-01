@@ -1,3 +1,4 @@
+import { JobSearchSelect } from "../components/JobSearchSelect";
 import { VoiceInput } from "../components/voice/VoiceInput";
 import { BackChip } from "../components/BackChip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -152,18 +153,8 @@ export function Costing() {
         <button className="button-like" onClick={exportCsv}>⤓ Export CSV</button>
       </div>
 
-      <div className="job-chip-row">
-        {rows.map((r) => (
-          <button
-            key={r.projectId}
-            type="button"
-            className={sel === r.projectId ? "job-chip active" : "job-chip"}
-            onClick={() => setSel(r.projectId)}
-          >
-            {r.jobCode}
-          </button>
-        ))}
-      </div>
+      <JobSearchSelect jobs={rows.map(r => ({ id: r.projectId, job_code: r.jobCode }))}
+        value={sel} onChange={setSel} loading={jobs.isPending} />
 
       <div className="table-wrap">
         <table className="analytics-table">

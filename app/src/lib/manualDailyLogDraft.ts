@@ -1,6 +1,7 @@
 import type { DailyLogReflection, DayFlow } from "./dailyLogs";
+import type { DailyLogProgressFields } from "./dailyLogStages";
 
-export interface ManualDailyLogFields {
+export interface ManualDailyLogFields extends DailyLogProgressFields {
   headline: string;
   notes: string;
   dayFlow: DayFlow | null;

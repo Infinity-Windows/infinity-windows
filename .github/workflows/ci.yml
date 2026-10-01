@@ -84,6 +84,8 @@ jobs:
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-schedule-ai-reasons.mjs
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-timecard-workflow.mjs
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-daily-reporting.mjs
+      - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-daily-log-progress.mjs
+      - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-daily-log-photos.mjs
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-dictation.mjs
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-monthly-salary.mjs
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-new-front-door.mjs
@@ -132,6 +134,8 @@ jobs:
           npx playwright install --with-deps chromium webkit
       # Uses the existing fixture-only server, never the shared database.
       - run: npm run e2e -- qc-history.spec.ts monday-files.spec.ts schedule-time-conflicts.spec.ts usability-foundations.spec.ts display-layout.spec.ts trip-sheet.spec.ts travel-crew.spec.ts workflow-plans.spec.ts schedule-remove-day.spec.ts schedule-ai-review.spec.ts crew-start-bar.spec.ts crew-end-time.spec.ts crew-unit-records.spec.ts unit-contributors.spec.ts custom-work.spec.ts timecard-weekly.spec.ts unassigned-time.spec.ts project-hours.spec.ts time-entry-export.spec.ts daily-logs.spec.ts global-capture.spec.ts photos-upload.spec.ts honest-sync.spec.ts dictation.spec.ts monthly-salary.spec.ts servicing.spec.ts time-off.spec.ts hex-portal.spec.ts ask-reporting.spec.ts app-updates.spec.ts using-forge.spec.ts training-importer.spec.ts
+      - name: Daily-log progress reports and pre-save photo capture
+        run: npm run e2e -- daily-logs-progress.spec.ts
       - run: npm run e2e -- opening-sheet.spec.ts -g "Install memo:"
       # The clock-in specs sat outside every list here, so one went red when
       # Current Work took over the landing (#598) and nobody saw it. A step of
@@ -184,6 +188,10 @@ jobs:
       # Signing today's toolbox talk with no signal, and the clock-in behind
       # it (2026-09-25). Its own step for the same reason as the one above.
       - run: npm run e2e -- offline-toolbox-signing.spec.ts
+      - name: Searchable job dropdowns on phones
+        run: |
+          npm run e2e -- job-search-select.spec.ts supplies-rows.spec.ts
+          npm run e2e -- job-search-select.spec.ts --browser=webkit
       - uses: actions/upload-artifact@v4
         if: always()
         with:
