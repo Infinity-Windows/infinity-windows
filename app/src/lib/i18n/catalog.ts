@@ -2173,15 +2173,34 @@ export const CATALOG = {
     es: "Ya estaba en el trabajo",
   },
   "mondayFiles.result.failed": { en: "Not added", es: "No se añadió" },
+  // The whole request never reached the server — supabase-js's own fetch
+  // failure, or a dropped connection. Transport noise, not a server
+  // decision, so it gets one plain bilingual line instead of a browser's
+  // own words (2026-09-30: the raw text named "Edge Function" to an
+  // installer, which means nothing on a job site).
+  "mondayFiles.result.offline": {
+    en: "Couldn't reach the server. Check your connection and tap Retry.",
+    es: "No se pudo conectar con el servidor. Revisa tu conexión y toca Reintentar.",
+  },
+  // A pull only writes bytes onto the job — nothing has been through a PDF
+  // reader yet — so a fresh landing in Plans or Specs still needs "Read this
+  // file" before it does anything. Never shown for a document (nothing to
+  // extract) or for "already on the job" (unknown whether an earlier visit
+  // already read it).
+  "mondayFiles.result.needsRead": {
+    en: "Saved — use Read this file in Plans or Specs to extract its information.",
+    es: "Guardado — usa «Leer este archivo» en Planos o Especificaciones para extraer su información.",
+  },
 
   // The Plans page block: files Monday has that the job does not.
   "mondayFiles.new.heading": { en: "Files on Monday", es: "Archivos en Monday" },
   "mondayFiles.new.blurb": {
-    en: "On the Monday job and not yet here. Nothing comes across until you tap Get.",
-    es: "Están en el trabajo de Monday y todavía no aquí. Nada llega hasta que toques Traer.",
+    en: "Choose a file to bring onto this job. Each attempt shows its result beside the file name.",
+    es: "Elige un archivo para traer a este trabajo. Cada intento muestra el resultado junto al nombre del archivo.",
   },
   "mondayFiles.new.pull": { en: "Get", es: "Traer" },
   "mondayFiles.new.pulling": { en: "Getting…", es: "Trayendo…" },
+  "mondayFiles.new.retry": { en: "Retry", es: "Reintentar" },
   "mondayFiles.new.upToDate": {
     en: "Everything on Monday is already here.",
     es: "Todo lo de Monday ya está aquí.",

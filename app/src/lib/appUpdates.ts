@@ -33,6 +33,7 @@ export const INCLUDED_UPDATE_IDS = [
   '2026-09-28-faster-first-open',
   '2026-09-29-phone-work-unit-plan',
   '2026-09-30-monday-plan-files',
+  '2026-09-30-monday-file-status',
   '2026-09-29-install-photo-queue-visibility',
   '2026-09-30-voice-descriptions',
   '2026-09-30-qc-photo-suggestions',
