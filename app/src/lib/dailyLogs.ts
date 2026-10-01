@@ -120,6 +120,12 @@ export interface FileDailyLogInput {
   dayFlow: DayFlow | null;
   reflection: DailyLogReflection | null;
   weather: string | null;
+  /** Revision shown when these words were written; null if offline/unknown. */
+  baseRevision: number | null;
+}
+
+export function isStaleDailyLogError(error: unknown): boolean {
+  return !!error && typeof error === "object" && "code" in error && error.code === "40001";
 }
 
 /** What happened to a filing: it reached the server, or it is waiting. */
@@ -146,6 +152,12 @@ export interface FiledDailyLog {
  * failure queues.
  */
 export async function fileDailyLog(input: FileDailyLogInput): Promise<FiledDailyLog> {
+  // An unknown base cannot safely replace the shared row. Keep it on the phone
+  // for the outbox to read and merge under the server revision when online.
+  if (input.baseRevision == null) {
+    await enqueueDailyLog({ ...input, baseRevision: null });
+    return { log: null, queued: true };
+  }
   try {
     const { data, error } = await supabase.rpc("file_daily_log", {
       p_project_id: input.projectId,
@@ -155,20 +167,14 @@ export async function fileDailyLog(input: FileDailyLogInput): Promise<FiledDaily
       p_day_flow: input.dayFlow,
       p_reflection: input.reflection,
       p_weather: input.weather,
+      p_expected_revision: input.baseRevision,
     });
     if (error) throw error;
     return { log: data as DailyLog, queued: false };
   } catch (e) {
+    if (isStaleDailyLogError(e)) throw e;
     if (!isNetworkError(e)) throw e;
-    await enqueueDailyLog({
-      projectId: input.projectId,
-      logDate: input.logDate,
-      headline: input.headline,
-      notes: input.notes,
-      dayFlow: input.dayFlow,
-      reflection: input.reflection,
-      weather: input.weather,
-    });
+    await enqueueDailyLog({ ...input });
     return { log: null, queued: true };
   }
 }

@@ -1378,6 +1378,7 @@ export interface DailyLogInput {
    * which does read it, names the real type. */
   reflection: object | null;
   weather: string | null;
+  baseRevision?: number | null;
 }
 
 export function enqueueDailyLog(input: DailyLogInput): Promise<string> {
@@ -1391,6 +1392,7 @@ export function enqueueDailyLog(input: DailyLogInput): Promise<string> {
       dayFlow: input.dayFlow,
       reflection: input.reflection,
       weather: input.weather,
+      baseRevision: input.baseRevision ?? null,
     },
   });
 }

@@ -18,7 +18,7 @@
 
 import { supabase as sharedClient } from "../supabase";
 import { isMissingStagingBayError } from "../staging";
-import { getDailyLog, type DailyLog } from "../dailyLogs";
+import { getDailyLog, isStaleDailyLogError, type DailyLog } from "../dailyLogs";
 import { mergeQueuedDailyLog, type QueuedDailyLog } from "../dailyLogMerge";
 import { CATALOG } from "../i18n/catalog";
 import { translate } from "../i18n/translate";
@@ -802,20 +802,10 @@ export function createSupabaseHandlers(
    * It had no callers, so nothing ever found out. `file_daily_log` is the only
    * writer daily_logs has, and it is what this calls.
    *
-   * THE CLOBBER IT HAS TO AVOID. One job-day has ONE shared log and any
-   * foreman on the job may edit it (Q6). file_daily_log upserts on
-   * (project_id, log_date), so a blind resend of an hour-old draft would
-   * silently overwrite whatever a second foreman filed from the office in the
-   * meantime — on a shared row, with no copy of the lost text anywhere. So the
-   * handler reads the current row first and merges: unless the queued notes
-   * already contain the server's (an ordinary edit typed on the end of them),
-   * they are APPENDED under a line saying they came in late, and every other
-   * field keeps the server's answer where it has one. The rule and its reasons
-   * live in lib/dailyLogMerge.ts, where they can be tested.
-   *
-   * A read that fails is not a reason to lose the log: if the current row
-   * cannot be fetched, the queued values go as they are — the ordinary
-   * no-race outcome, which is also the overwhelmingly common one.
+   * One shared job/day row can change while a phone waits for signal. Read
+   * and merge the current row, then pass its revision to the server's atomic
+   * check. A failed read leaves the entry queued; a concurrent write retries
+   * from the latest row. See lib/dailyLogMerge.ts for the merge rule.
    */
   const dailyLog: OpHandler = async (entry, ctx) => {
     const p = entry.payload;
@@ -832,27 +822,30 @@ export function createSupabaseHandlers(
       dayFlow: (str(p.dayFlow) as QueuedDailyLog["dayFlow"]) ?? null,
       reflection: (p.reflection as QueuedDailyLog["reflection"]) ?? null,
       weather: str(p.weather),
+      baseRevision: typeof p.baseRevision === "number" && Number.isSafeInteger(p.baseRevision) && p.baseRevision >= 0
+        ? p.baseRevision : null,
     };
-
-    let server: DailyLog | null = null;
-    try {
-      server = await getDailyLog(projectId, logDate, supabase);
-    } catch {
-      /* can't tell whether anybody raced — send what was typed */
+    // A failed read cannot establish a safe expected revision. Keep the entry
+    // queued; another replay can try when the server is reachable.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const server: DailyLog | null = await getDailyLog(projectId, logDate, supabase);
+      if (server && !Number.isSafeInteger(server.revision)) throw new Error("Daily log revision unavailable; retry after refresh");
+      const merged = mergeQueuedDailyLog(queued, server);
+      stopIfAbandoned(ctx);
+      const { error } = await supabase.rpc("file_daily_log", {
+        p_project_id: projectId,
+        p_log_date: logDate,
+        p_headline: merged.headline,
+        p_notes: merged.notes,
+        p_day_flow: merged.dayFlow,
+        p_reflection: merged.reflection,
+        p_weather: merged.weather,
+        p_expected_revision: server?.revision ?? 0,
+      });
+      if (!error) return;
+      if (!isStaleDailyLogError(error)) throw missingGuard(error, "daily log");
     }
-    const merged = mergeQueuedDailyLog(queued, server);
-    stopIfAbandoned(ctx);
-
-    const { error } = await supabase.rpc("file_daily_log", {
-      p_project_id: projectId,
-      p_log_date: logDate,
-      p_headline: merged.headline,
-      p_notes: merged.notes,
-      p_day_flow: merged.dayFlow,
-      p_reflection: merged.reflection,
-      p_weather: merged.weather,
-    });
-    if (error) throw missingGuard(error, "daily log");
+    throw new Error("Daily log changed again; retrying when the queue runs next");
   };
 
   // Undoing a mark move names the exact move to walk back, so a press made in
