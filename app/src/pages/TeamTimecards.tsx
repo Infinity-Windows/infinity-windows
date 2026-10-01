@@ -44,6 +44,8 @@ import {
   shiftsToExportRows,
   summarizeTeamWeek,
   timecardRange,
+  stepTimecardAnchor,
+  timecardWeeks,
   weekRange,
 } from "../lib/timeclock";
 import { overtimeRuleFromRow, pickOvertimeRule } from "../lib/overtime";
@@ -122,7 +124,6 @@ export function TeamTimecards() {
   const [rangeMode, setRangeMode] = useState<"week" | "pay" | "all">("week");
   const [anchor, setAnchor] = useState<Date>(() => new Date());
   const week = useMemo(() => timecardRange(rangeMode === "all" ? "pay" : rangeMode, anchor), [rangeMode, anchor]);
-  const stepDays = rangeMode === "pay" ? 14 : 7;
   const rangeStart = rangeMode === "all" ? null : week.startIso;
   const rangeEnd = rangeMode === "all" ? null : week.endIso;
   const rangeLabel = rangeMode === "all" ? t("timereport.allTime") : week.label;
@@ -144,6 +145,15 @@ export function TeamTimecards() {
     enabled: isLead,
     refetchInterval: 30_000,
   });
+  const calendarWeeks = useMemo(() => timecardWeeks(week), [week]);
+  const contextStart = calendarWeeks[0].startIso;
+  const contextEnd = calendarWeeks[calendarWeeks.length - 1].endIso;
+  const payWeekShifts = useQuery({
+    queryKey: ["teamShifts", "payWeeks", contextStart, contextEnd],
+    queryFn: () => listTeamShifts(contextStart, contextEnd),
+    enabled: isLead && rangeMode === "pay",
+    refetchInterval: 30_000,
+  });
   // This backlog always spans all dates, independently of payroll review.
   const unassigned = useQuery({
     queryKey: ["unassignedTimeShifts"],
@@ -158,6 +168,8 @@ export function TeamTimecards() {
     queryFn: listOvertimeRules,
     enabled: isLead,
   });
+  const payrollReady = teamShifts.isSuccess && otRules.isSuccess &&
+    (rangeMode !== "pay" || payWeekShifts.isSuccess);
   /**
    * Deliberately not filtered to the current week. A shift punched on 18 July
    * and never closed is absent from every week after it, which is exactly how
@@ -324,11 +336,11 @@ export function TeamTimecards() {
   // see its comment for why it lives there instead of timecardExport.ts.
   //
   // K5: the overtime split is no longer empty. Per person, per CALENDAR week,
-  // so a pay period is two weekly buckets and never one 80-hour pool — the
+  // so each calendar week keeps its own threshold — the
   // same rule the per-person export has always followed.
   const overtimeLines = useMemo(() => {
     const rules = otRules.data ?? [];
-    const rows = (teamShifts.data ?? [])
+    const rows = ((rangeMode === "pay" ? payWeekShifts.data : teamShifts.data) ?? [])
       .filter((s) => s.status !== "voided")
       .map((s) => ({
         profileId: s.profile_id,
@@ -340,8 +352,8 @@ export function TeamTimecards() {
     return splitOvertimeByPerson(rows, (profileId) => {
       const row = pickOvertimeRule(rules, profileId);
       return row ? overtimeRuleFromRow(row) : null;
-    });
-  }, [teamShifts.data, otRules.data]);
+    }, rangeMode === "pay" ? { start: punchDay(week.startIso), end: punchDay(week.endIso) } : undefined);
+  }, [teamShifts.data, payWeekShifts.data, otRules.data, rangeMode, week]);
 
   const teamPayload = () => ({
     periodLabel: rangeLabel,
@@ -450,7 +462,7 @@ export function TeamTimecards() {
       {rangeMode !== "all" && <div className="row-gap" style={{ alignItems: "center" }}>
         <button
           className="button-like"
-          onClick={() => setAnchor((d) => addDays(d, -stepDays))}
+          onClick={() => setAnchor((d) => stepTimecardAnchor(rangeMode === "pay" ? "pay" : "week", d, -1))}
           aria-label={t("tcx.range.prev")}
         >
           <ChevronLeft size={18} />
@@ -465,7 +477,7 @@ export function TeamTimecards() {
         </button>
         <button
           className="button-like"
-          onClick={() => setAnchor((d) => addDays(d, stepDays))}
+          onClick={() => setAnchor((d) => stepTimecardAnchor(rangeMode === "pay" ? "pay" : "week", d, 1))}
           aria-label={t("tcx.range.next")}
         >
           <ChevronRight size={18} />
@@ -487,7 +499,7 @@ export function TeamTimecards() {
               "text/csv;charset=utf-8",
             )
           }
-          disabled={!teamShifts.isSuccess || (teamShifts.data ?? []).length === 0}
+          disabled={!payrollReady || (teamShifts.data ?? []).length === 0}
         >
           Export all (CSV)
         </button>
@@ -503,7 +515,7 @@ export function TeamTimecards() {
                 "text/csv;charset=utf-8",
               )
             }
-            disabled={!teamShifts.isSuccess || overtimeLines.length === 0}
+            disabled={!payrollReady || overtimeLines.length === 0}
           >
             {t("tcx.export.gusto")}
           </button>
@@ -517,7 +529,7 @@ export function TeamTimecards() {
           onClick={() =>
             void navigator.clipboard.writeText(buildTimecardTsv(teamPayload()))
           }
-          disabled={!teamShifts.isSuccess || (teamShifts.data ?? []).length === 0}
+          disabled={!payrollReady || (teamShifts.data ?? []).length === 0}
         >
           Copy for Sheets
         </button>
@@ -528,6 +540,8 @@ export function TeamTimecards() {
         )}
       </div>
 
+      {rangeMode === "pay" && payWeekShifts.isError && <p className="error" role="alert">{formatApiError(payWeekShifts.error)}</p>}
+      {otRules.isError && <p className="error" role="alert">{formatApiError(otRules.error)}</p>}
       {/* K2: when the evening "Still on the job?" push goes out. A foreman's
           call, not a constant — a crew that starts at 5am wants asking earlier.
           Absent entirely on a database that hasn't applied the migration. */}
@@ -847,8 +861,8 @@ export function TeamTimecards() {
               </label>}
               {row}
             </div>
-            {(rangeMode === "all" ? [] : rangeMode === "pay" ? [weekRange(week.start), weekRange(addDays(week.start, 7))] : [week]).map((range) => (
-              <WeeklyApproval key={range.startIso} personId={r.id} range={range} shifts={teamShifts.data ?? []}
+            {(rangeMode === "all" ? [] : rangeMode === "pay" ? timecardWeeks(week) : [week]).map((range) => (
+              <WeeklyApproval key={range.startIso} personId={r.id} range={range} shifts={(rangeMode === "pay" ? payWeekShifts.data : teamShifts.data) ?? []}
                 canApprove={canApproveTimecard(effectiveRole, r.role)} showRange={rangeMode === "pay"} />
             ))}
             </div>

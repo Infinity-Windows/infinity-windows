@@ -3476,6 +3476,7 @@ export const CATALOG = {
   "timeexport.selectedPeople": { en: "Employees selected: {n}", es: "Empleados seleccionados: {n}" },
   "timeexport.searchPeople": { en: "Search employees", es: "Buscar empleados" },
   "timeexport.dateHelp": { en: "Both dates are included, based on when each shift started. Time zone: {zone}.", es: "Se incluyen ambas fechas según el inicio de cada turno. Zona horaria: {zone}." },
+  "timecard.loadingPayroll": { en: "Loading payroll hours…", es: "Cargando horas de nómina…" },
   "timeexport.loading": { en: "Loading complete time records…", es: "Cargando todos los registros de tiempo…" },
   "timeexport.counts": { en: "{people} employees · {entries} finished entries", es: "{people} empleados · {entries} registros terminados" },
   "timeexport.unfinished": { en: "{n} unfinished entries are excluded. Finish those timecards before including them in payroll.", es: "Se excluyen {n} registros sin terminar. Completa esas tarjetas antes de incluirlas en la nómina." },
