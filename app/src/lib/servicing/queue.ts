@@ -2,6 +2,7 @@ import { sendServiceCommand } from "./api";
 import type { ServiceCommand } from "./model";
 import { formatApiError } from "../errors";
 import { isNetworkError } from "../offline/outbox-core";
+import { recordSyncReceipt } from "../offline/syncReceipt";
 
 const prefix = "forge-servicing-v1:";
 export const SERVICE_QUEUE_EVENT = "forge:service-queue";
@@ -54,6 +55,7 @@ export async function syncService(user: string): Promise<boolean> {
       }
       rows = rows.slice(1);
       saveQueue(user, rows);
+      recordSyncReceipt(c.userId);
     }
     return true;
   });
