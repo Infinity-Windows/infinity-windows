@@ -3,7 +3,7 @@
 // the background drainer. No context needed — the outbox is a module singleton.
 
 import { useEffect, useSyncExternalStore } from "react";
-import { getCounts, getHeldCount, getUnknownOwnerCount, initOutboxAutoFlush, subscribe } from "./outbox";
+import { getCounts, getHeldCount, getOutboxReadState, getUnknownOwnerCount, initOutboxAutoFlush, subscribe, type OutboxReadState } from "./outbox";
 import { pillSummary, type OpCounts, type PillSummary } from "./outbox-core";
 
 export interface OutboxState {
@@ -13,6 +13,7 @@ export interface OutboxState {
   held: number;
   /** Writes saved before an update that name no owner (never sent as anyone). */
   unknown: number;
+  readState: OutboxReadState;
 }
 
 /** Subscribe to live pending counts + the derived pill summary. */
@@ -20,8 +21,9 @@ export function useOutbox(): OutboxState {
   const counts = useSyncExternalStore(subscribe, getCounts, getCounts);
   const held = useSyncExternalStore(subscribe, getHeldCount, getHeldCount);
   const unknown = useSyncExternalStore(subscribe, getUnknownOwnerCount, getUnknownOwnerCount);
+  const readState = useSyncExternalStore(subscribe, getOutboxReadState, getOutboxReadState);
   useEffect(() => {
     initOutboxAutoFlush();
   }, []);
-  return { counts, pill: pillSummary(counts), held, unknown };
+  return { counts, pill: pillSummary(counts), held, unknown, readState };
 }

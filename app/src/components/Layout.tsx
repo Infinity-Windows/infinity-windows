@@ -402,7 +402,7 @@ export function Layout() {
             <span>{t("capture.tab")}</span>
           </button>
           <div className="rail-sync">
-            <SyncStatusPill />
+            <SyncStatusPill quietWhenSynced={isNewDesign} />
           </div>
           <nav className="rail-scroll" aria-label="Sections">
             <AppMenu
@@ -435,7 +435,7 @@ export function Layout() {
               Clock tab. */}
           <div className="sync-strip" data-design={isNewDesign ? "new" : undefined}>
             {isNewDesign && <ClockBadge />}
-            <SyncStatusPill />
+            <SyncStatusPill quietWhenSynced={isNewDesign} />
           </div>
           {previewingPerson ? (
             <div className="view-as-banner" role="status">
