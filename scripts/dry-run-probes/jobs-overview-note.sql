@@ -8,7 +8,9 @@ declare
 begin
   foreach v_role in array array['installer','foreman','supervisor','owner'] loop
     perform pg_temp.dry_run_as_system();
-    v_person := pg_temp.dry_run_pick(v_role);
+    v_person := pg_temp.dry_run_pick(case when v_role='supervisor' then 'foreman' else v_role end);
+    -- No Supervisor login exists. Use the QA foreman inside this discarded transaction.
+    if v_role='supervisor' then update public.profiles set role='supervisor' where id=v_person; end if;
     perform pg_temp.dry_run_act_as(v_person);
     select count(*) into v_count
       from public.app_release_notes
@@ -18,6 +20,10 @@ begin
       'Jobs overview announcement has the correct audience for ' || v_role,
       v_count = v_expected, v_count || ' readable note(s)'
     );
+    if v_role='supervisor' then
+      perform pg_temp.dry_run_as_system();
+      update public.profiles set role='foreman' where id=v_person;
+    end if;
   end loop;
   perform pg_temp.dry_run_as_system();
   perform pg_temp.dry_run_check(
@@ -39,7 +45,9 @@ begin
   v_job := pg_temp.dry_run_sandbox_job();
   foreach v_role in array array['supervisor','owner'] loop
     perform pg_temp.dry_run_as_system();
-    v_person := pg_temp.dry_run_pick(v_role);
+    v_person := pg_temp.dry_run_pick(case when v_role='supervisor' then 'foreman' else v_role end);
+    -- No Supervisor login exists. Use the QA foreman inside this discarded transaction.
+    if v_role='supervisor' then update public.profiles set role='supervisor' where id=v_person; end if;
     perform pg_temp.dry_run_act_as(v_person);
     perform project_id, openings, installed from public.project_scope_counts where project_id=v_job;
     perform id, project_id, opening_id, facts from public.custom_work_units where project_id=v_job;
@@ -55,6 +63,10 @@ begin
     perform pg_temp.dry_run_check('Overview read contracts available to '||v_role,true,'sandbox-scoped reads completed');
     select count(*) into v_n from public.green_light_items(v_job);
     perform pg_temp.dry_run_check('Readiness RPC available to '||v_role,v_n=6,v_n||' checklist items');
+    if v_role='supervisor' then
+      perform pg_temp.dry_run_as_system();
+      update public.profiles set role='foreman' where id=v_person;
+    end if;
   end loop;
   perform pg_temp.dry_run_as_system();
 end $$;

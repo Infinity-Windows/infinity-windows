@@ -557,6 +557,7 @@ async function paginateStrict<T>(
     if (expected !== null && count !== expected) return { rows: [], ok: false };
     expected = count;
     const got = data ?? [];
+    if (!Number.isSafeInteger(count) || count < 0 || got.length > PAGE_SIZE || result.length + got.length > count) return { rows: [], ok: false };
     result.push(...got);
     if (from + got.length >= count) return { rows: result, ok: true };
     if (got.length === 0) return { rows: [], ok: false };

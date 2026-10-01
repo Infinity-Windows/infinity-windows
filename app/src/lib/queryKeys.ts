@@ -319,7 +319,6 @@ export const QUERY_KEY_ROOTS: QueryKeyRootEntry[] = [
   { root: "videoQuiz", offline: false },
   { root: "videoQuizPublic", offline: false },
   { root: "voidedOpenings", offline: false },
-  { root: "weeklyLogCoverage", offline: false },
   { root: "windowTypes", offline: true },
 ];
 

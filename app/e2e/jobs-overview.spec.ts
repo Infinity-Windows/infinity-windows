@@ -35,7 +35,7 @@ async function overviewRecords(page: Page, issuesFail = false) {
         id: "attention1", project_id: JOB.projectId, opening_id: "o1", window_id: null,
         kind: "blocker", urgency: "urgent", status: "open", note: "Framing needs correction",
         assigned_to: null, created_by: null, created_at: "2026-09-30T18:00:00Z", resolved_at: null,
-      }]);
+      }], 1);
     }
     if (table === "green_light_items") return json(route, [{ item_key: "plans", label_en: "Plans", answered: true, who: "supervisor" }]);
     if (table && table in rows) return json(route, rows[table], rows[table].length);
@@ -138,4 +138,39 @@ test("a missing selected issue is unavailable rather than an all-clear message",
   await page.goto("/issues?issue=missing");
   await expect(page.getByText("This issue is not available.", { exact: false })).toBeVisible();
   await expect(page.getByText("No open issues — everything's clean.")).toHaveCount(0);
+});
+
+
+test("custom scope reads every page instead of silently dropping later units", async ({ page }) => {
+  await page.clock.install({ time: new Date("2026-10-01T16:00:00Z") });
+  await useSupabaseFixtures(page, { role: "supervisor" });
+  await hideWrongProjectBanner(page);
+  await overviewRecords(page);
+  let reads = 0;
+  const units = Array.from({ length: 501 }, (_, n) => ({ id: `unit${n}`, project_id: JOB.projectId, opening_id: null, facts: { installation_complete: n < 500 ? "Yes" : "No" } }));
+  await page.route("**/rest/v1/custom_work_units*", (route) => {
+    reads += 1;
+    const offset = Number(new URL(route.request().url()).searchParams.get("offset") ?? 0);
+    return json(route, units.slice(offset, offset + 500), units.length);
+  });
+  await page.goto("/projects");
+  await expect(page.locator(`article.jo-row[data-job-id="${JOB.projectId}"]`)).toContainText("500 of 501 units complete");
+  expect(reads).toBe(2);
+});
+
+test("one unavailable readiness read cannot turn the other jobs into an all-clear", async ({ page }) => {
+  await page.clock.install({ time: new Date("2026-10-01T16:00:00Z") });
+  await useSupabaseFixtures(page, { role: "supervisor" });
+  await hideWrongProjectBanner(page);
+  await overviewRecords(page);
+  const second = jobFixtures()[1];
+  await page.route("**/rest/v1/schedule_assignments*", (route) => json(route, [JOB, second].map((job, n) => ({ id: `a${n}`, project_id: job.projectId, kind: "install", status: "published", start_date: "2026-10-01", end_date: "2026-10-02", start_time: "07:00", published_at: "2026-09-30T18:00:00Z", updated_at: "2026-09-30T18:00:00Z", created_at: "2026-09-30T18:00:00Z", schedule_assignment_members: [] })), 2));
+  await page.route("**/rest/v1/rpc/green_light_items*", (route) => {
+    if (route.request().postDataJSON()?.p_project_id === second.projectId) return route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ message: "fixture missing readiness" }) });
+    return json(route, [{ answered: true }], 1);
+  });
+  await page.goto("/projects");
+  const secondRow = page.locator(`article.jo-row[data-job-id="${second.projectId}"]`);
+  await expect(page.locator(".jo-source-warnings")).toContainText("Readiness");
+  await expect(secondRow).not.toContainText("No reported concern");
 });
