@@ -227,7 +227,8 @@ function RouteFallback() {
 
 /**
  * Role-aware landing: installers land on My Work, foremen on the Infinity day
- * Home, and supervisors/owners on Jobs with its cross-project overview.
+ * Home, and supervisors/owners on Home for their personal morning workflow.
+ * Jobs holds the cross-project overview.
  * View-as aware via effectiveRole; the loading state renders
  * a neutral placeholder so we never flash the wrong landing before the profile
  * resolves.
@@ -254,7 +255,6 @@ function RoleLanding() {
   if (!ROLE_NAV_V2) return <Home />;
   if (isLoading) return <div className="page"><p className="muted">Loading…</p></div>;
   const rank = roleRank(role);
-  if (rank >= 2) return <Navigate replace to="/projects" />;
   if (rank >= 1) return <Home />;
   return <MyWork />;
 }

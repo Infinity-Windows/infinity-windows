@@ -1328,8 +1328,8 @@ Customer-facing completion estimates, product recommendations, and installer qua
 
 Owner decision October 1, 2026: retire the standalone Heartbeat screen and
 its navigation entry. Jobs now has a supervisor/owner Overview and the existing
-Job list tools. Classic off-clock supervisor/owner landings and old Heartbeat
-bookmarks lead to Jobs; the new design still lands on Work. Work has one Jobs
+Job list tools. Classic off-clock supervisor/owner Home retains personal clock and schedule
+controls. Old Heartbeat bookmarks lead to Jobs; the new design still lands on Work. Work has one Jobs
 door rather than a separate Overview door. Earlier Heartbeat references in this
 document describe the previous design.
 

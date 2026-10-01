@@ -36,7 +36,7 @@ describe("Work, Schedule and the clock survive a cached phone (K0.7.3)", () => {
 
   it("retired Heartbeat is a redirect to precached Jobs, not an eager page", () => {
     expect(appSrc).not.toContain('import { Heartbeat }');
-    expect(appSrc).toContain('if (rank >= 2) return <Navigate replace to="/projects" />;');
+    expect(appSrc).toContain('if (rank >= 1) return <Home />;');
     expect(appSrc).toMatch(/path="\/heartbeat"\s+element=\{<Navigate replace to="\/projects" \/>\}/);
     expect(appSrc).toContain('import { Projects } from "./pages/Projects";');
   });
