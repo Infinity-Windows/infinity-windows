@@ -64,3 +64,27 @@ test("failed Live Chat offers a manual AI report without filing automatically", 
   await expect(page.locator(".ai-issue-preview textarea")).toHaveValue(/AI issue — Live Chat/);
   expect(writes).toHaveLength(0);
 });
+
+
+test("an Ask HTTP 500 keeps an editable AI report available without automatic filing", async ({ page }) => {
+  await useSupabaseFixtures(page, { role: "owner" });
+  const writes: unknown[] = [];
+  await page.route("**/rest/v1/app_feedback**", route => {
+    if (route.request().method() === "POST") writes.push(route.request().postDataJSON());
+    return json(route, []);
+  });
+  await page.route("**/functions/v1/ask", route => route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: "AI provider unavailable" }) }));
+  await page.goto("/ask");
+  await page.locator(".ask-input input").fill("Show my hours for yesterday");
+  await page.locator(".ask-input input").press("Enter");
+  const report = page.getByRole("button", { name: "Report an AI issue" });
+  await expect(report).toBeVisible();
+  expect(writes).toHaveLength(0);
+  await report.click();
+  const preview = page.locator(".ai-issue-preview textarea");
+  await expect(preview).toHaveValue(/Show my hours for yesterday/);
+  await preview.fill("AI request failed while its provider was unavailable.");
+  await expect(preview).toHaveValue("AI request failed while its provider was unavailable.");
+  expect(writes).toHaveLength(0);
+  await expect(page.getByRole("button", { name: "Send to App Issues" })).toBeEnabled();
+});
