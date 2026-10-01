@@ -3,6 +3,10 @@ import { serveBuild, signInButton } from "./support/pwa";
 
 test("a cancelled app entry recovers the empty screen once", async ({ page, request }) => {
   await serveBuild(request, "new");
+  await page.addInitScript(() => {
+    (window as Window & { __emptyBootAtNavigation?: string | null }).__emptyBootAtNavigation =
+      sessionStorage.getItem("wops-empty-boot-diagnostic");
+  });
   let entryRequests = 0;
   await page.route(/\/assets\/index-[^/]+\.js$/, (route) => {
     entryRequests += 1;
@@ -12,6 +16,11 @@ test("a cancelled app entry recovers the empty screen once", async ({ page, requ
   await page.goto("/");
   await expect(signInButton(page)).toBeVisible({ timeout: 30_000 });
   expect(entryRequests).toBe(2);
+  const recovery = await page.evaluate(() =>
+    (window as Window & { __emptyBootAtNavigation?: string | null }).__emptyBootAtNavigation,
+  );
+  expect(JSON.parse(recovery ?? "{}")).toMatchObject({ entry: expect.stringMatching(/^index-.*\.js$/) });
+  await expect.poll(() => page.evaluate(() => sessionStorage.getItem("wops-empty-boot-diagnostic"))).toBeNull();
 });
 
 test("a repeatedly broken entry offers a retry instead of looping forever", async ({ page, request }) => {

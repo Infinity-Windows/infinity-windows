@@ -80,6 +80,10 @@ test("a phone on the previous build opens the app after a deploy, then switches 
   request,
 }) => {
   const bootErrors: string[] = [];
+  await page.addInitScript(() => {
+    (window as Window & { __emptyBootRecoveryAtNavigation?: string | null }).__emptyBootRecoveryAtNavigation =
+      sessionStorage.getItem("wops-empty-boot-diagnostic");
+  });
   page.on("pageerror", (error) => bootErrors.push(`pageerror: ${error.stack ?? error.message}`));
   page.on("console", (message) => {
     if (message.type() === "error") bootErrors.push(`console: ${message.text()}`);
@@ -125,6 +129,23 @@ test("a phone on the previous build opens the app after a deploy, then switches 
 
   // Then it notices the new build, downloads it, and — on the sign-in screen,
   // where there is nothing to lose — switches over by itself.
+  const navigationTimes: number[] = [];
+  page.on("request", (req) => {
+    if (req.isNavigationRequest() && req.frame() === page.mainFrame()) navigationTimes.push(Date.now());
+  });
+  const failedNetwork: { at: number; url: string; error: string; canceled: boolean }[] = [];
+  const requestUrls = new Map<string, string>();
+  const cdp = await context.newCDPSession(page);
+  await cdp.send("Network.enable");
+  cdp.on("Network.requestWillBeSent", (event: { requestId: string; request: { url: string } }) => {
+    requestUrls.set(event.requestId, event.request.url);
+  });
+  cdp.on("Network.loadingFailed", (event: { requestId: string; errorText: string; canceled?: boolean }) => {
+    const url = requestUrls.get(event.requestId);
+    if (url && /\.(js|css)(\?|$)/.test(url)) {
+      failedNetwork.push({ at: Date.now(), url: new URL(url).pathname, error: event.errorText, canceled: Boolean(event.canceled) });
+    }
+  });
   const { navigations } = countNavigations(page);
   await expect
     .poll(() => runningEntry(page), {
@@ -158,6 +179,15 @@ test("a phone on the previous build opens the app after a deploy, then switches 
 
   // Once: no second reload, no banner asking again.
   await expectSettledOn(page, builds.new.entry, loads);
+  if (navigations().length !== 1) {
+    const emptyBootRecovery = await page.evaluate(() =>
+      (window as Window & { __emptyBootRecoveryAtNavigation?: string | null }).__emptyBootRecoveryAtNavigation ?? null,
+    );
+    await test.info().attach("upgrade-reload-evidence.json", {
+      body: JSON.stringify({ navigations: navigations().map((url, i) => ({ url, at: navigationTimes[i] })), emptyBootRecovery, failedNetwork, bootErrors }, null, 2),
+      contentType: "application/json",
+    });
+  }
   expect(navigations(), "the switch was more than one navigation: two racing reloads can leave the new build blank").toHaveLength(1);
 
   // And the new worker is the one in charge now: the next open with no
