@@ -1,3 +1,5 @@
+import { QcUnitEvidence } from "../components/qc/QcUnitEvidence";
+import { useT } from "../lib/i18n";
 import { BackChip } from "../components/BackChip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
@@ -44,6 +46,7 @@ async function reviewQcPhoto(openingId: string): Promise<QcPhotoReview> {
 }
 
 export function Qc() {
+  const t = useT();
   const queryClient = useQueryClient();
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const { effectiveRole } = useEffectiveRole();
@@ -53,6 +56,18 @@ export function Qc() {
   const [limit, setLimit] = useState(QC_PAGE_SIZE);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyLimit, setHistoryLimit] = useState(QC_PAGE_SIZE);
+  const [evidenceFor, setEvidenceFor] = useState<{
+    id: string; projectId: string; key: string; history: boolean;
+  } | null>(null);
+  const evidenceOpener = useRef<HTMLButtonElement | null>(null);
+  const closeEvidence = () => {
+    setEvidenceFor(null);
+    if (evidenceOpener.current?.isConnected) evidenceOpener.current.focus();
+  };
+  const switchHistory = (open: boolean) => {
+    setEvidenceFor(null);
+    setHistoryOpen(open);
+  };
   const rows = useQuery({
     queryKey: ["qcQueue", limit],
     queryFn: () => listQcQueue(limit),
@@ -109,6 +124,7 @@ export function Qc() {
         decisionIds.current.delete(`${a.id}:passed`);
         decisionIds.current.delete(`${a.id}:callback`);
         setCallbackFor((current) => current?.id === a.id ? null : current);
+        setEvidenceFor(current => current?.id === a.id ? null : current);
       }
       // Prefix match: invalidates every ["qcQueue", limit] variant, not just
       // whatever limit is active right now.
@@ -179,10 +195,10 @@ export function Qc() {
       </header>
 
       <div className="row-gap" role="group" aria-label="Quality views" style={{ marginBottom: 16 }}>
-        <button type="button" className={historyOpen ? "button-like" : "primary"} onClick={() => setHistoryOpen(false)}>
+        <button type="button" className={historyOpen ? "button-like" : "primary"} onClick={() => switchHistory(false)}>
           Needs review
         </button>
-        <button type="button" className={historyOpen ? "primary" : "button-like"} onClick={() => setHistoryOpen(true)}>
+        <button type="button" className={historyOpen ? "primary" : "button-like"} onClick={() => switchHistory(true)}>
           Review history
         </button>
       </div>
@@ -248,7 +264,18 @@ export function Qc() {
                   </Link>
                 )}
               </div>
-              <div className="row-gap" style={{ marginLeft: "auto" }}>
+              <div className="row-gap" style={{ marginLeft: "auto", flexWrap: "wrap" }}>
+                {lead && me.data?.id && <button
+                  type="button" className="button-like"
+                  aria-expanded={evidenceFor?.key === "queue:" + o.id}
+                  aria-controls={"qc-evidence-queue-" + o.id}
+                  onClick={event => {
+                    evidenceOpener.current = event.currentTarget;
+                    setEvidenceFor(current => current?.key === "queue:" + o.id ? null : {
+                      id: o.id, projectId: o.project_id, key: "queue:" + o.id, history: false,
+                    });
+                  }}
+                >{t("qcEvidence.open")}</button>}
                 <button
                   className="button-like"
                   disabled={reviewPhoto.isPending}
@@ -273,6 +300,11 @@ export function Qc() {
                   Callback
                 </button>
               </div>
+              {lead && me.data?.id && evidenceFor?.key === "queue:" + o.id && (
+                <QcUnitEvidence key={evidenceFor.key} openingId={evidenceFor.id}
+                  projectId={evidenceFor.projectId} viewerId={me.data.id}
+                  panelId={"qc-evidence-queue-" + o.id} history={false} onClose={closeEvidence} />
+              )}
               {photoReviewFor === o.id && (photoReview || photoReviewError) && (
                 <div className="detail-card" style={{ marginTop: 8, width: "100%" }}>
                   <strong>Photo review suggestion</strong>
@@ -396,6 +428,24 @@ export function Qc() {
                       <p style={{ marginBottom: 0, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
                         {decision.note}
                       </p>
+                    )}
+                    {lead && me.data?.id && decision.project_id && (
+                      <button type="button" className="button-like" style={{ marginTop: 10 }}
+                        aria-expanded={evidenceFor?.key === "history:" + decision.id}
+                        aria-controls={"qc-evidence-history-" + decision.id}
+                        onClick={event => {
+                          evidenceOpener.current = event.currentTarget;
+                          setEvidenceFor(current => current?.key === "history:" + decision.id ? null : {
+                            id: decision.project_opening_id, projectId: decision.project_id!,
+                            key: "history:" + decision.id, history: true,
+                          });
+                        }}
+                      >{t("qcEvidence.open")}</button>
+                    )}
+                    {lead && me.data?.id && evidenceFor?.key === "history:" + decision.id && (
+                      <QcUnitEvidence key={evidenceFor.key} openingId={evidenceFor.id}
+                        projectId={evidenceFor.projectId} viewerId={me.data.id}
+                        panelId={"qc-evidence-history-" + decision.id} history onClose={closeEvidence} />
                     )}
                   </article>
                 ))}
