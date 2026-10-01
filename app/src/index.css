@@ -8422,15 +8422,25 @@ body {
   flex: none;
   opacity: 0.85;
 }
-/* Wave P: the receipt feed's cards are a plain <div> (no lightbox — the
-   full detail lives on the office /receipts table, P4), so the pointer
-   cursor .photo-card sets for its <button> cards would be misleading. */
-.receipt-card {
-  cursor: default;
+/* The image button and original-PDF button are siblings, never nested. */
+.receipt-card-open {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.receipt-card-open:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: -3px;
 }
 /* The office table's row thumbnail (P4) — same shape as .issue-photo-thumb,
    sized down slightly since it sits in a dense list, not a detail card. */
 .receipt-row-thumb {
+  padding: 0;
+  cursor: pointer;
   display: flex;
   flex: none;
   align-items: center;
@@ -8609,6 +8619,48 @@ body {
 }
 .photo-viewer-close {
   align-self: center;
+}
+.receipt-viewer-backdrop {
+  color: #fff;
+}
+.receipt-viewer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+.receipt-viewer-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex: none;
+}
+.receipt-viewer-toolbar > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.receipt-viewer-image {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.receipt-viewer-image-size {
+  width: 100%;
+  height: 100%;
+}
+.receipt-viewer-image-size.is-zoomed {
+  width: 200%;
+  height: 200%;
+}
+.receipt-viewer-image img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 /* ==========================================================================
