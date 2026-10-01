@@ -538,7 +538,7 @@ test("the whole thing speaks Spanish, sheet and daily log alike", async ({ page 
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByText("Cómo fue el día")).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Atorado" })).toBeVisible();
-  await expect(dialog.getByRole("button", { name: "Guardar" })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Guardar", exact: true })).toBeVisible();
   await expect(
     page.getByText("Escribe unas palabras sobre lo que se hizo antes de guardar."),
   ).toBeVisible();
@@ -613,7 +613,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1024, height: 768 
     await sheet(page).getByRole("button", { name: /BLACK22/ }).click();
     await sheet(page).getByText("Daily log", { exact: true }).click();
     await expect(page.getByRole("dialog").getByLabel("Notes", { exact: true })).toBeVisible();
-    await page.getByRole("dialog").getByRole("button", { name: "Cancel", exact: true }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Close — keep draft", exact: true }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(page).toHaveURL(/\/crew$/);
   });
