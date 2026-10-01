@@ -169,15 +169,33 @@ test("a phone on the previous build opens the app after a deploy, then switches 
   });
   const failedNetwork: { at: number; url: string; error: string; canceled: boolean }[] = [];
   const requestUrls = new Map<string, string>();
+  const networkEvents: unknown[] = [];
   const cdp = await context.newCDPSession(page);
   await cdp.send("Network.enable");
-  cdp.on("Network.requestWillBeSent", (event: { requestId: string; request: { url: string } }) => {
+  cdp.on("Network.requestWillBeSent", (event: { requestId: string; loaderId: string; timestamp: number; request: { url: string }; initiator: unknown }) => {
     requestUrls.set(event.requestId, event.request.url);
+    if (/\.(js|css)(\?|$)/.test(event.request.url)) networkEvents.push({
+      event: "request", at: Date.now(), requestId: event.requestId, loaderId: event.loaderId,
+      timestamp: event.timestamp, path: new URL(event.request.url).pathname, initiator: event.initiator,
+    });
+  });
+  cdp.on("Network.responseReceived", (event: { requestId: string; loaderId: string; timestamp: number; response: { url: string; status: number; mimeType: string; fromServiceWorker?: boolean; fromDiskCache?: boolean } }) => {
+    if (/\.(js|css)(\?|$)/.test(event.response.url)) networkEvents.push({
+      event: "response", at: Date.now(), requestId: event.requestId, loaderId: event.loaderId,
+      timestamp: event.timestamp, path: new URL(event.response.url).pathname,
+      status: event.response.status, mimeType: event.response.mimeType,
+      fromServiceWorker: event.response.fromServiceWorker, fromDiskCache: event.response.fromDiskCache,
+    });
+  });
+  cdp.on("Network.loadingFinished", (event: { requestId: string; timestamp: number; encodedDataLength: number }) => {
+    const url = requestUrls.get(event.requestId);
+    if (url && /\.(js|css)(\?|$)/.test(url)) networkEvents.push({ event: "finished", at: Date.now(), ...event });
   });
   cdp.on("Network.loadingFailed", (event: { requestId: string; errorText: string; canceled?: boolean }) => {
     const url = requestUrls.get(event.requestId);
     if (url && /\.(js|css)(\?|$)/.test(url)) {
       failedNetwork.push({ at: Date.now(), url: new URL(url).pathname, error: event.errorText, canceled: Boolean(event.canceled) });
+      networkEvents.push({ event: "failed", at: Date.now(), ...event, path: new URL(url).pathname });
     }
   });
   const { navigations } = countNavigations(page);
@@ -205,7 +223,7 @@ test("a phone on the previous build opens the app after a deploy, then switches 
         .map((entry) => ({ name: entry.name, duration: entry.duration })),
     })).catch((readError) => ({ readError: String(readError) }));
     await test.info().attach("new-build-boot.json", {
-      body: JSON.stringify({ state, bootErrors, failedAppFiles: failed }, null, 2),
+      body: JSON.stringify({ state, bootErrors, failedAppFiles: failed, networkEvents }, null, 2),
       contentType: "application/json",
     });
     throw error;
@@ -221,7 +239,7 @@ test("a phone on the previous build opens the app after a deploy, then switches 
       JSON.parse(sessionStorage.getItem("wops-e2e-upgrade-timeline") || "[]"),
     );
     await test.info().attach("upgrade-reload-evidence.json", {
-      body: JSON.stringify({ navigations: navigations().map((url, i) => ({ url, at: navigationTimes[i] })), emptyBootRecovery, browserTimeline, failedNetwork, bootErrors }, null, 2),
+      body: JSON.stringify({ navigations: navigations().map((url, i) => ({ url, at: navigationTimes[i] })), emptyBootRecovery, browserTimeline, failedNetwork, bootErrors, networkEvents }, null, 2),
       contentType: "application/json",
     });
   }

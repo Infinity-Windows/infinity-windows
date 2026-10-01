@@ -101,16 +101,18 @@ export interface LegacyUploadSource {
   dispose(): Promise<void>;
 }
 
-function openDb(): Promise<IDBDatabase> {
+// A read may race the final delete in another tab (or the sync pill on this
+// tab). Abort an upgrade rather than recreating a just-deleted database.
+function openDb(): Promise<IDBDatabase | null> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(LEGACY_UPLOAD_DB, 1);
+    let missing = false;
     req.onupgradeneeded = () => {
-      if (!req.result.objectStoreNames.contains(STORE)) {
-        req.result.createObjectStore(STORE, { keyPath: "id" });
-      }
+      missing = true;
+      req.transaction?.abort();
     };
     req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+    req.onerror = () => missing ? resolve(null) : reject(req.error);
   });
 }
 
@@ -145,6 +147,7 @@ export function indexedDbLegacySource(): LegacyUploadSource {
     async list() {
       if (!(await legacyDbExists())) return [];
       const db = await openDb();
+      if (!db) return [];
       try {
         return (await requestAsPromise(
           db.transaction(STORE).objectStore(STORE).getAll(),
@@ -155,6 +158,7 @@ export function indexedDbLegacySource(): LegacyUploadSource {
     },
     async remove(id) {
       const db = await openDb();
+      if (!db) return;
       try {
         const tx = db.transaction(STORE, "readwrite");
         tx.objectStore(STORE).delete(id);

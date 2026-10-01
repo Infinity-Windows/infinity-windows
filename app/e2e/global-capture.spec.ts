@@ -539,9 +539,11 @@ test("the whole thing speaks Spanish, sheet and daily log alike", async ({ page 
   await expect(dialog.getByText("Cómo fue el día")).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Atorado" })).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Guardar", exact: true })).toBeVisible();
-  await expect(
-    page.getByText("Escribe unas palabras sobre lo que se hizo antes de guardar."),
-  ).toBeVisible();
+  // Notes are optional in the Horizon-style form; validate the actual
+  // translated input instead of the retired required-notes warning.
+  await expect(dialog.getByLabel("Notas", { exact: true })).toHaveAttribute(
+    "placeholder", "Qué se hizo, qué no, y cualquier cosa que valga mencionar",
+  );
 });
 
 test("only a real capture becomes the 'Last time' job — not a look at the gallery", async ({
