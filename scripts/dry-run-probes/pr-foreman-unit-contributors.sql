@@ -73,7 +73,7 @@ begin
   select coalesce(jsonb_agg(to_jsonb(t) order by t.id), '[]') into v_sessions_before from public.custom_work_sessions t where t.project_id = v_job;
   select coalesce(jsonb_agg(to_jsonb(t) order by t.id), '[]') into v_unit_sessions_before from public.unit_sessions t where t.opening_id in (select id from public.project_openings where project_id = v_job);
   select coalesce(jsonb_agg(to_jsonb(t) order by t.id), '[]') into v_phases_before from public.opening_phases t where t.started_by in (v_foreman, v_installer, v_installer2);
-  select coalesce(jsonb_agg(to_jsonb(t) order by t.id), '[]') into v_assignments_before from public.schedule_assignment_members t where t.profile_id in (v_foreman, v_installer, v_installer2);
+  select coalesce(jsonb_agg(to_jsonb(t) order by to_jsonb(t)::text), '[]') into v_assignments_before from public.schedule_assignment_members t where t.profile_id in (v_foreman, v_installer, v_installer2);
   select coalesce(jsonb_agg(to_jsonb(t) order by t.id), '[]') into v_points_before from public.points_ledger t where t.profile_id in (v_foreman, v_installer, v_installer2);
   select to_jsonb(t) into v_opening_before from public.project_openings t where t.id = v_opening;
   select facts, revision into v_unit_facts_before, v_unit_revision_before from public.custom_work_units where id = v_saved_unit;
@@ -195,7 +195,7 @@ begin
   select coalesce(jsonb_agg(to_jsonb(t) order by t.id), '[]') into v_sessions_after from public.custom_work_sessions t where t.project_id = v_job;
   select coalesce(jsonb_agg(to_jsonb(t) order by t.id), '[]') into v_unit_sessions_after from public.unit_sessions t where t.opening_id in (select id from public.project_openings where project_id = v_job);
   select coalesce(jsonb_agg(to_jsonb(t) order by t.id), '[]') into v_phases_after from public.opening_phases t where t.started_by in (v_foreman, v_installer, v_installer2);
-  select coalesce(jsonb_agg(to_jsonb(t) order by t.id), '[]') into v_assignments_after from public.schedule_assignment_members t where t.profile_id in (v_foreman, v_installer, v_installer2);
+  select coalesce(jsonb_agg(to_jsonb(t) order by to_jsonb(t)::text), '[]') into v_assignments_after from public.schedule_assignment_members t where t.profile_id in (v_foreman, v_installer, v_installer2);
   select coalesce(jsonb_agg(to_jsonb(t) order by t.id), '[]') into v_points_after from public.points_ledger t where t.profile_id in (v_foreman, v_installer, v_installer2);
   perform pg_temp.dry_run_check('contributors: time_shifts snapshot unchanged', v_shifts_after = v_shifts_before, 'before ' || jsonb_array_length(v_shifts_before) || ', after ' || jsonb_array_length(v_shifts_after));
   perform pg_temp.dry_run_check('contributors: custom_work_sessions snapshot unchanged', v_sessions_after = v_sessions_before, 'before ' || jsonb_array_length(v_sessions_before) || ', after ' || jsonb_array_length(v_sessions_after));

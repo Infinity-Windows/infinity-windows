@@ -14,6 +14,8 @@ test.setTimeout(60000);
 const FOREMAN_ID = TEST_USER.id;
 const ALICE = "00000000-0000-4000-8000-00000000a11c";
 const BOB = "00000000-0000-4000-8000-00000000b0b1";
+const OPENING = "00000000-0000-4000-8000-000000000019";
+const MAPPED_UNIT = "00000000-0000-4000-8000-000000000020";
 const UNIT = "00000000-0000-4000-8000-00000000001e";
 
 interface ContribPerson {
@@ -54,7 +56,7 @@ function digestFor(records: ContribRecord[], unitId: string, stage: string, work
   return `digest:${[...new Set(evidence)].sort().join(",")}`;
 }
 
-async function setup(page: Page, opts: { role?: "foreman" | "installer"; openShift?: boolean; language?: "en" | "es" } = {}) {
+async function useContributorFixtures(page: Page, opts: { role?: "foreman" | "installer"; openShift?: boolean; language?: "en" | "es" } = {}) {
   await useSupabaseFixtures(page, { role: opts.role ?? "foreman", uiDesign: "new", language: opts.language });
   await hideWrongProjectBanner(page);
   await stubGeolocationDenied(page);
@@ -67,7 +69,7 @@ async function setup(page: Page, opts: { role?: "foreman" | "installer"; openShi
     {
       id: UNIT,
       project_id: OAKRIDGE,
-      opening_id: null,
+      opening_id: null as string | null,
       created_by: FOREMAN_ID,
       label: "Unit 16",
       type_label: "Bifold door",
@@ -96,6 +98,7 @@ async function setup(page: Page, opts: { role?: "foreman" | "installer"; openShi
       3,
     );
   });
+  await page.route("**/rest/v1/project_openings**", (r) => json(r, [{ id: OPENING, project_id: OAKRIDGE, opening_code: "Map 19", status: "planned", removed_at: null }], 1));
   await page.route("**/rest/v1/custom_work_units**", (r) => json(r, units, units.length));
   await page.route("**/rest/v1/custom_work_history**", (r) => json(r, history, history.length));
   await page.route("**/rest/v1/crew_work_records**", (r) => json(r, records, records.length));
@@ -105,7 +108,10 @@ async function setup(page: Page, opts: { role?: "foreman" | "installer"; openShi
     rpcCalls.push({ fn: "record_stage_contributors", body });
     if (offline) return r.abort("internetdisconnected");
     const data = body.p_data as Record<string, unknown>;
-    const stage = String(data.stage), workDate = String(data.work_date), unitId = String(data.unit_id);
+    const stage = String(data.stage), workDate = String(data.work_date), unitId = data.opening_id ? MAPPED_UNIT : String(data.unit_id);
+    if (data.opening_id && !units.some((u) => u.id === MAPPED_UNIT)) {
+      units.push({ ...units[0], id: MAPPED_UNIT, opening_id: String(data.opening_id), label: "Map 19" });
+    }
     const requested = data.people as string[];
     if (!records.some((x) => x.id === body.p_id)) {
       const effective = new Set(
@@ -178,7 +184,7 @@ async function openPanel(page: Page) {
 test.use({ viewport: { width: 375, height: 667 } });
 
 test("a current shift defaults the job but allows an earlier job to be chosen", async ({ page }) => {
-  await setup(page, { openShift: true });
+  await useContributorFixtures(page, { openShift: true });
   await page.goto("/");
   const panel = await openPanel(page);
   const jobs = panel.getByLabel("Job", { exact: true });
@@ -190,7 +196,7 @@ test("a current shift defaults the job but allows an earlier job to be chosen", 
 });
 
 test("an unavailable summary is explained and cannot be mistaken for empty history", async ({ page }) => {
-  const state = await setup(page);
+  const state = await useContributorFixtures(page);
   await page.route("**/rpc/stage_contributor_summary", (route) => route.fulfill({ status: 404, json: { code: "PGRST202", message: "function does not exist" } }));
   await page.goto("/");
   const panel = await openPanel(page);
@@ -202,7 +208,7 @@ test("an unavailable summary is explained and cannot be mistaken for empty histo
 });
 
 test("foreman: two installers' flashing from yesterday, off the clock, on a job picked in the panel", async ({ page }) => {
-  const state = await setup(page, { openShift: false });
+  const state = await useContributorFixtures(page, { openShift: false });
   await page.goto("/");
   const panel = await openPanel(page);
   await panel.getByLabel("Job").selectOption(OAKRIDGE);
@@ -234,8 +240,26 @@ test("foreman: two installers' flashing from yesterday, off the clock, on a job 
   await page.screenshot({ path: "e2e/test-results/unit-contributors-desktop.png", fullPage: true });
 });
 
+test("a mapped opening creates a companion and immediately shows confirmed contributors and corrections", async ({ page }) => {
+  const state = await useContributorFixtures(page);
+  await page.goto("/");
+  const panel = await openPanel(page);
+  await panel.getByLabel("Job").selectOption(OAKRIDGE);
+  await panel.getByLabel("Unit or map opening").selectOption(`map:${OPENING}`);
+  await panel.getByRole("button", { name: "Alice Installer", exact: true }).click();
+  await panel.getByRole("button", { name: "Save contributors" }).click();
+  await expect(panel.getByText("Contributors confirmed in Forge.")).toBeVisible();
+  await expect(panel.locator("ul.ws-list").getByText("Alice Installer")).toBeVisible();
+  await expect(panel.getByRole("button", { name: "Correct this" })).toBeVisible();
+  await expect(panel.getByLabel("Unit or map opening")).toHaveValue(`map:${OPENING}`);
+  expect(state.records).toHaveLength(1);
+  expect(state.records[0].unit_id).toBe(MAPPED_UNIT);
+  expect((state.rpcCalls[0].body.p_data as Record<string, unknown>).opening_id).toBe(OPENING);
+  expect(state.otherMutations).toEqual([]);
+});
+
 test("a lost server response retries the original request without duplicating the saved report", async ({ page }) => {
-  const state = await setup(page);
+  const state = await useContributorFixtures(page);
   await page.goto("/");
   const panel = await openPanel(page);
   await panel.getByLabel("Job").selectOption(OAKRIDGE);
@@ -255,7 +279,7 @@ test("a lost server response retries the original request without duplicating th
 });
 
 test("a queued record is distinct from a saved one and survives reload with the same request id", async ({ page }) => {
-  const state = await setup(page);
+  const state = await useContributorFixtures(page);
   await page.goto("/");
   const panel = await openPanel(page);
   await panel.getByLabel("Job").selectOption(OAKRIDGE);
@@ -274,7 +298,7 @@ test("a queued record is distinct from a saved one and survives reload with the 
 });
 
 test("an installer reads the summary with no write controls", async ({ page }) => {
-  const state = await setup(page, { role: "installer" });
+  const state = await useContributorFixtures(page, { role: "installer" });
   state.records.push({
     id: "seed-1", project_id: OAKRIDGE, unit_id: UNIT, filed_by: FOREMAN_ID, stage: "RO checked",
     work_date: "2026-09-29", outcome: "finished", description: "", whole_complete: false, created_at: "2026-09-29T12:00:00Z",
@@ -292,7 +316,7 @@ test("an installer reads the summary with no write controls", async ({ page }) =
 });
 
 test("a correction records a reason and shows in history; removing one of two leaves the other", async ({ page }) => {
-  const state = await setup(page);
+  const state = await useContributorFixtures(page);
   state.records.push({
     id: "seed-2", project_id: OAKRIDGE, unit_id: UNIT, filed_by: FOREMAN_ID, stage: "RO checked",
     work_date: "2026-09-29", outcome: "finished", description: "", whole_complete: false, created_at: "2026-09-29T12:00:00Z",
@@ -329,7 +353,7 @@ test("a correction records a reason and shows in history; removing one of two le
 });
 
 test("Spanish: the compact action reads in Spanish, including the stage/people form once a unit is chosen", async ({ page }) => {
-  await setup(page, { language: "es" });
+  await useContributorFixtures(page, { language: "es" });
   await page.goto("/");
   await expect(page.getByTestId("ws-contrib-open")).toContainText("Agregar colaboradores");
   await page.getByTestId("ws-contrib-open").click();

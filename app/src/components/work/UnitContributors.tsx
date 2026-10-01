@@ -114,9 +114,7 @@ export function UnitContributors({ work, jobId, canRecord }: { work: WorkStore; 
       setSaved(true);
       setPeople([]);
       setDescription("");
-      void summary.refetch();
-      void history.refetch();
-      void records.refetch();
+      await work.refresh();
     } catch (e) {
       setError(formatApiError(e));
     } finally {
@@ -149,9 +147,7 @@ export function UnitContributors({ work, jobId, canRecord }: { work: WorkStore; 
       setRemoveIds([]);
       setAddIds([]);
       setReason("");
-      void summary.refetch();
-      void history.refetch();
-      void records.refetch();
+      await work.refresh();
     } catch (e) {
       setCorrectError(formatApiError(e));
     } finally {
@@ -196,7 +192,7 @@ export function UnitContributors({ work, jobId, canRecord }: { work: WorkStore; 
           >
             <option value="">{t("work.contrib.chooseUnit")}</option>
             {units.map((u) => <option key={u.id} value={u.id}>{u.label} · {u.type_label}</option>)}
-            {openings.data?.filter((o) => !o.removed_at && !units.some((u) => u.opening_id === o.id)).map((o) => (
+            {openings.data?.filter((o) => !o.removed_at && (!units.some((u) => u.opening_id === o.id) || choice === `map:${o.id}`)).map((o) => (
               <option key={o.id} value={`map:${o.id}`}>{o.opening_code} · {t("work.contrib.mapUnit")}</option>
             ))}
           </select>

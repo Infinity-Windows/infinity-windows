@@ -82,6 +82,7 @@ await db.exec(await migration("20261049000000_foreman_unit_contributors.sql"));
 
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const FOREMAN = id(1), ALICE = id(2), BOB = id(3), SUPERVISOR = id(4);
+const TEST_FOREMAN = id(5), TEST_INSTALLER = id(6);
 let serial = 100, checks = 0;
 const fresh = () => id(serial++);
 function equal(actual, expected, why) {
@@ -102,7 +103,18 @@ await db.query(`insert into profiles(id,role,display_name) values
   [FOREMAN, ALICE, BOB, SUPERVISOR]);
 // Off today must not become an access restriction in the new helper.
 await db.query("update profiles set active=false where id=$1", [FOREMAN]);
+await db.query("insert into profiles(id,role,display_name,is_test) values($1,'foreman','QA lead',true),($2,'installer','QA worker',true)", [TEST_FOREMAN, TEST_INSTALLER]);
 const day = '2026-09-29';
+async function rawCounts(project, recordIds) {
+  // These are direct authenticated table reads, without summary RPCs or a join
+  // that could accidentally hide an unsafe participant policy. IDs were known
+  // before visibility changed, exactly as a stale client could retain them.
+  return [
+    (await db.query('select * from crew_work_records where project_id=$1', [project])).rows.length,
+    (await db.query('select * from custom_work_history where project_id=$1', [project])).rows.length,
+    (await db.query('select * from crew_work_record_people where record_id=any($1::uuid[])', [recordIds])).rows.length,
+  ];
+}
 async function record(unit, people, stage = 'Flashing', key = fresh()) {
   return db.query('select record_stage_contributors($1,$2)', [key, {
     unit_id: unit, people, stage, work_date: day, outcome: 'partial', description: 'After shift'
@@ -152,7 +164,10 @@ async function fixture(mixed) {
   await record(unit, [BOB], 'Hardware');
   const before = await summary(unit);
   equal(before.map(r => r.profile_id), mixed ? [ALICE, BOB] : [ALICE], 'visible sources remain readable after a unit move');
-  return { origin, current, unit, digest: before[0].digest };
+  const originRecordIds = (await db.query('select id from crew_work_records where project_id=$1', [origin])).rows.map(r => r.id);
+  const rawBefore = await rawCounts(origin, originRecordIds);
+  equal(rawBefore.every(n => n > 0), true, 'raw report, history and participant evidence exists before visibility changes');
+  return { origin, current, unit, digest: before[0].digest, originRecordIds, rawBefore };
 }
 
 // Both original-project visibility failures, both pure hidden and mixed source
@@ -164,6 +179,12 @@ for (const mode of ['hidden', 'deleted']) {
     await db.query(mode === 'hidden' ? 'update projects set is_test=true where id=$1' : 'update projects set deleted_at=now() where id=$1', [f.origin]);
     await actor();
     equal(await summary(f.unit), [], `${mode}/${mixed}: no contributor or digest from an unreviewable tuple`);
+    equal(await rawCounts(f.origin, f.originRecordIds), [0, 0, 0], `${mode}/${mixed}: raw foreman reads hide the original project after unit move`);
+    await actor(ALICE);
+    equal(await rawCounts(f.origin, f.originRecordIds), [0, 0, 0], `${mode}/${mixed}: raw installer reads hide the original project`);
+    await actor(TEST_FOREMAN);
+    equal(await rawCounts(f.current, f.originRecordIds), [0, 0, 0], `${mode}/${mixed}: automation cannot read real current-job history or old participants`);
+    await actor();
     equal((await summary(f.unit, 'Hardware')).map(r => r.profile_id), [BOB], `${mode}/${mixed}: unrelated accessible tuple still readable`);
     await refusedUnchanged(() => correct(f.unit, f.digest), `${mode}/${mixed}: saved digest cannot void inaccessible evidence`);
     // Even removing only a visible participant in a mixed tuple must refuse:
@@ -179,9 +200,11 @@ for (const mode of ['hidden', 'deleted']) {
     // cannot correct soft-deleted historical projects through this path.
     await actor(SUPERVISOR);
     equal((await summary(f.unit)).map(r => r.profile_id), mode === 'hidden' ? (mixed ? [ALICE, BOB] : [ALICE]) : [], `${mode}/${mixed}: actual supervisor visibility applies`);
+    equal(await rawCounts(f.origin, f.originRecordIds), mode === 'hidden' ? f.rawBefore : [0, 0, 0], `${mode}/${mixed}: raw supervisor visibility matches existing project authority`);
     await admin();
     await db.query('update projects set is_test=false,deleted_at=null where id=$1', [f.origin]);
     await actor();
+    equal(await rawCounts(f.origin, f.originRecordIds), f.rawBefore, `${mode}/${mixed}: raw evidence returns when original project access is restored`);
     equal((await summary(f.unit))[0].digest, f.digest, `${mode}/${mixed}: refused writes preserved source evidence`);
     await correct(f.unit, f.digest);
     equal((await summary(f.unit)).map(r => r.profile_id), mixed ? [BOB] : [], `${mode}/${mixed}: correction succeeds after access is restored`);
@@ -208,5 +231,46 @@ await actor(ALICE);
 equal((await summary(excluded.unit)).map(r => r.profile_id), [BOB], 'installer can read an accessible summary');
 await assert.rejects(() => record(excluded.unit, [ALICE]), e => e.code === '42501');
 checks++;
+
+// Test-logins may read their sandbox evidence, not real work or arbitrary test
+// projects. The private AI helper itself stays uncallable from authenticated.
+await admin();
+const sandbox = fresh(), sandboxUnit = fresh();
+await db.query("insert into projects(id,name,is_test) values($1,'QA sandbox',true)", [sandbox]);
+await db.query('insert into sandbox_projects(project_id) values($1)', [sandbox]);
+await db.query("insert into custom_work_units(id,project_id,created_by,label) values($1,$2,$3,'QA unit')", [sandboxUnit, sandbox, TEST_FOREMAN]);
+await actor(TEST_FOREMAN);
+await record(sandboxUnit, [TEST_INSTALLER]);
+const sandboxIds = (await db.query('select id from crew_work_records where project_id=$1', [sandbox])).rows.map(r => r.id);
+equal(await rawCounts(sandbox, sandboxIds), [1, 1, 1], 'automation reads actual sandbox report, history and participants');
+equal(await rawCounts(excluded.current, [assignment]), [0, 0, 0], 'automation cannot read real-job history or a non-sandbox test report');
+await assert.rejects(() => db.query('select _ai_job_visible($1,$2)', [sandbox, TEST_FOREMAN]), e => e.code === '42501');
+checks++;
+for (const who of [FOREMAN, ALICE]) {
+  await actor(who);
+  equal(await rawCounts(sandbox, sandboxIds), [0, 0, 0], 'real crew cannot read sandbox ledger directly');
+}
+await actor(SUPERVISOR);
+equal(await rawCounts(sandbox, sandboxIds), [1, 1, 1], 'real supervisor retains authorized test-project reads');
+
+// Projectless work keeps its author/lead rule without allowing a test foreman
+// to use that exception to enumerate real people's unassigned history.
+await admin();
+const unassignedEntity = fresh();
+await db.query(`insert into custom_work_history(actor_id,entity_id,action) values
+  ($1,$4,'unit'),($2,$4,'unit'),($3,$4,'unit')`, [FOREMAN, ALICE, TEST_FOREMAN, unassignedEntity]);
+for (const [who, expected] of [[TEST_FOREMAN, [TEST_FOREMAN]], [FOREMAN, [FOREMAN, ALICE]], [ALICE, [ALICE]]]) {
+  await actor(who);
+  equal((await db.query('select actor_id from custom_work_history where entity_id=$1 order by actor_id', [unassignedEntity])).rows.map(r => r.actor_id), expected, 'projectless raw history preserves authorship and the test partition');
+}
+// No alternate policy path restores reads for a removed login or a partner.
+await admin();
+await db.query('update profiles set access_revoked_at=now() where id=$1', [TEST_FOREMAN]);
+await actor(TEST_FOREMAN);
+equal(await rawCounts(sandbox, sandboxIds), [0, 0, 0], 'revoked automation loses raw reads');
+await admin();
+await db.query('update profiles set partner=true where id=$1', [SUPERVISOR]);
+await actor(SUPERVISOR);
+equal(await rawCounts(sandbox, sandboxIds), [0, 0, 0], 'partner with elevated role cannot read raw ledger');
 await db.close();
 console.log(`${checks} historical-source authorization assertions passed. Actual custom-work, crew, AI visibility and front-door migrations loaded; disposable single-connection PGlite with platform fixture stubs. No production writes or concurrency claim.`);

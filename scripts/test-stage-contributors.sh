@@ -16,7 +16,9 @@ for attempt in $(seq 1 60); do
 done
 [ "$ready" = true ] || { echo 'Disposable PostgreSQL did not start'; exit 1; }
 sql() { docker exec -i "$CONTAINER" psql -X -U postgres -v ON_ERROR_STOP=1 -q "$@"; }
-run() { sql < "$1"; }
+# Defer unrelated platform-helper bodies absent from this bounded fixture,
+# as in the existing AI harness. Contributor RPCs are exercised below.
+run() { sql -c 'set check_function_bodies=off' -f - < "$1"; }
 query() { docker exec "$CONTAINER" psql -X -U postgres -v ON_ERROR_STOP=1 -Atq -c "$1"; }
 run "$FIX/setup.sql"
 for migration in 20261011000000_custom_work.sql 20261023000000_foreman_crew_unit_records.sql 20261024000000_ai_field_operations.sql 20261049000000_foreman_unit_contributors.sql; do run "$REPO/supabase/migrations/$migration"; done

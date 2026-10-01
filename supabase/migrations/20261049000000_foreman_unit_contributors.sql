@@ -36,6 +36,37 @@ alter table public.crew_work_record_people
 
 create index crew_work_records_unit_stage_date on public.crew_work_records(unit_id,stage,work_date);
 
+-- The UI also reads original reports and history directly. A definer summary
+-- cannot protect those independent SELECT paths. Keep their original project
+-- boundary, including after a unit moves, and apply the same test partition.
+-- _ai_job_visible is deliberately private; this caller-bound wrapper is the
+-- only permission granted to authenticated readers for evaluating these RLS
+-- policies. It cannot inspect another person's visibility.
+create function public.crew_work_project_visible(p_project uuid) returns boolean
+language sql stable security definer set search_path=public,pg_temp as $$
+  select public.custom_work_internal()
+    and public._ai_job_visible(p_project,auth.uid())
+$$;
+revoke all on function public.crew_work_project_visible(uuid) from public,anon;
+grant execute on function public.crew_work_project_visible(uuid) to authenticated;
+
+drop policy crew_records_read on public.crew_work_records;
+create policy crew_records_read on public.crew_work_records for select to authenticated using (
+  public.crew_work_project_visible(project_id)
+);
+-- crew_record_people_read already tests its parent through crew_work_records
+-- RLS, so standalone participant reads inherit the strengthened boundary.
+
+drop policy custom_history_read on public.custom_work_history;
+create policy custom_history_read on public.custom_work_history for select to authenticated using (
+  public.custom_work_internal() and (
+    public.crew_work_project_visible(project_id)
+    or (project_id is null
+      and (actor_id=auth.uid() or public._is_lead(auth.uid()))
+      and public.is_test_profile(actor_id)=public.is_test_profile(auth.uid()))
+  )
+);
+
 -- ---------------------------------------------------------------------------
 -- 2. The effective-contributor digest: a stable fingerprint of exactly which
 --    SOURCE EVIDENCE (report id + person, not merely the distinct person) is
