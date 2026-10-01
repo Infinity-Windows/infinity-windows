@@ -3,6 +3,7 @@
 // purpose — this queue is per-job, cursor-paged, and its decision RPC carries
 // an optimistic-concurrency version the old one never had.
 import { supabase } from "./supabase";
+import { isMissingFunction } from "./schemaErrors";
 
 export interface QcReviewJobRow {
   id: string;
@@ -178,6 +179,7 @@ export function classifyQcReviewDecisionError(err: unknown, previouslyAmbiguous 
   const guardedRefusal = (code === "40001" && message === "QC changed since you opened this unit. Refresh and review the current decision.")
     || (code === "23505" && message === "This QC request ID was already used for another decision.");
   if (previouslyAmbiguous && !guardedRefusal) return "unknown";
+  if (isMissingFunction(err)) return "rejected";
   switch (code) {
     case "40001": return "stale";
     case "23505": return "conflict";
@@ -185,8 +187,7 @@ export function classifyQcReviewDecisionError(err: unknown, previouslyAmbiguous 
     case "22023": return "unavailable";
     case "22021": // Invalid text (including a NUL rejected by PostgreSQL).
     case "22P02": // Invalid typed input, before a transaction can commit.
-    case "PGRST202": // Guarded function absent from the schema cache.
-    case "42883": return "rejected";
+      return "rejected";
     default: return "unknown";
   }
 }
