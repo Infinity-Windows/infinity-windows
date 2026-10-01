@@ -411,6 +411,36 @@
 }
 .ws-check input { width: 22px; height: 22px; }
 .ws-dupes { display: flex; flex-direction: column; gap: 6px; }
+.ws-sheet {
+  /* The keyboard raises the sheet's bottom edge. Shrink its scroll box by the
+     same live inset so the header never jumps above the visible phone. */
+  max-height: max(0px, calc(var(--sheet-max-h-above-tabbar) - var(--visual-bottom-inset, 0px)));
+}
+/* A keyboard can arrive during the entrance slide. Sliding a fixed, scrollable
+   sheet while Safari is changing its visual viewport makes the form jump. */
+.ui-sheet.ws-sheet.sheet-enter { transform: none; transition: opacity 180ms var(--ease-out); }
+@starting-style { .ui-sheet.ws-sheet.sheet-enter { transform: none; } }
+.ws-sheet-header { display: flex; align-items: center; gap: 10px; }
+.ws-sheet-close { width: 48px; flex: 0 0 48px; padding: 0; }
+.ws-just-added { display: flex; flex-direction: column; gap: 6px; padding-top: 8px; border-top: 1px solid var(--border); }
+.ws-recent-units { gap: 8px; }
+.ws-saved-unit {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 56px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+.ws-saved-unit-open { color: var(--accent); font-weight: 700; }
+
+@media (min-width: 860px) {
+  .ws-sheet { max-height: min(34rem, var(--sheet-max-h-above-tabbar)); }
+}
 
 /* Foreman unit contributors (2026-09-30): the sheet reuses every other
  * .ws-* primitive above — this is only the two names it introduces. */

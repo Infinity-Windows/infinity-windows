@@ -1,5 +1,5 @@
 // Wave T8: pay-period sign-off, layered on per-punch approval (Q5). Two
-// small pieces sharing one table (timecard_periods) and one read (
+// small pieces sharing one table (semimonthly_timecard_periods) and one read (
 // getTimecardPeriod): the worker's own attestation card (My timecard) and
 // the supervisor's countersign strip (TeamTimecards' drill-down, pay mode).
 // "No lock plumbing beyond: a signed period shows 'signed'" — neither piece
@@ -32,7 +32,7 @@ export function SignMyTimecardCard({ profileId }: { profileId: string | null | u
   const qc = useQueryClient();
   const period = useMemo(() => previousPayPeriod(), []);
   const row = useQuery({
-    queryKey: ["timecardPeriod", profileId, period.startIso],
+    queryKey: ["timecardPeriod", "semimonthly", profileId, period.startIso],
     queryFn: () => getTimecardPeriod(profileId!, period.startIso),
     enabled: Boolean(profileId),
   });
@@ -99,7 +99,7 @@ export function PeriodSignOffStrip({
   const t = useT();
   const qc = useQueryClient();
   const row = useQuery({
-    queryKey: ["timecardPeriod", profileId, periodStartIso],
+    queryKey: ["timecardPeriod", "semimonthly", profileId, periodStartIso],
     queryFn: () => getTimecardPeriod(profileId, periodStartIso),
   });
   const countersign = useMutation({

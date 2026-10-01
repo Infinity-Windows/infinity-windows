@@ -13,6 +13,8 @@ import { CheckCircle2, Circle, Download, FileArchive } from "lucide-react";
 import { BackChip } from "../components/BackChip";
 import { BankImportSection } from "../components/receipts/BankImportSection";
 import { ReceiptDocumentLink } from "../components/receipts/ReceiptDocumentLink";
+import { ReceiptViewer } from "../components/receipts/ReceiptViewer";
+import { useT } from "../lib/i18n";
 import { EmptyState, QueryError, SkeletonList } from "../components/ui/States";
 import { listBankTransactions } from "../lib/bank";
 import { isOwner } from "../lib/install/types";
@@ -82,6 +84,8 @@ function zipEntryStem(r: Receipt): string {
 }
 
 export function Receipts() {
+  const t = useT();
+  const [viewer, setViewer] = useState<Receipt | null>(null);
   const qc = useQueryClient();
   const [month, setMonth] = useState("");
   const [projectId, setProjectId] = useState("");
@@ -320,13 +324,15 @@ export function Receipts() {
           {sorted.map((r) => (
             <li key={r.id} className="opening-review-row">
               <div className="wh-row">
-                <div className="receipt-row-thumb">
+                <button type="button" className="receipt-row-thumb"
+                  aria-label={t("receipt.viewImage", { vendor: r.vendor ?? t("feed.receiptAlt") })}
+                  onClick={() => setViewer(r)}>
                   {r.signedUrl ? (
                     <img src={r.signedUrl} alt={r.vendor ?? "Receipt"} />
                   ) : (
                     <span className="muted">—</span>
                   )}
-                </div>
+                </button>
                 <div className="wh-row-main">
                   <span className="wh-row-title">
                     {r.vendor ?? "Unknown vendor"} ·{" "}
@@ -403,6 +409,7 @@ export function Receipts() {
           supervisor without it would get an empty section and no explanation.
           The database is the wall; this only stops the empty room. */}
       {canSeeCosts && <BankImportSection />}
+      {viewer && <ReceiptViewer receipt={viewer} onClose={() => setViewer(null)} />}
     </div>
   );
 }

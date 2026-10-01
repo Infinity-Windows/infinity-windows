@@ -53,9 +53,13 @@ for (const [width, language] of [[375, "en"], [390, "es"], [1280, "en"]] as cons
     await expect(report).toContainText("12.0h");
     await expect(report).toContainText("4.0h");
     await page.getByRole("tab", { name: language === "es" ? "Periodo de pago" : "Pay period", exact: true }).click();
+    await expect(report).toContainText("4.0h"); // Sep 16–30: only the running Sep 16 shift.
+    await expect(report).not.toContainText("12.0h");
     await page.getByRole("button", { name: language === "es" ? "Anterior" : "Previous", exact: true }).click();
+    await expect(report).toContainText("18.0h"); // Sep 1–15 includes all three ended shifts.
+    await expect(report).toContainText("12.0h");
     await expect(report).toContainText("6.0h");
-    await expect(report).not.toContainText("JOB-A");
+    await expect(report).toContainText("JOB-A");
     await page.getByRole("tab", { name: language === "es" ? "Todo el tiempo" : "All time", exact: true }).click();
     await expect(report).toContainText("22.0h");
     await expect(report).toContainText("18.0h");
@@ -134,7 +138,7 @@ for (const [width, language] of [[375, "en"], [390, "es"], [1280, "en"]] as cons
     await toolbar.getByRole("button", { name: es ? "Todo el tiempo" : "All time", exact: true }).click();
     await expect(report).toContainText("22.0h");
     await toolbar.getByRole("button", { name: es ? "Periodo de pago" : "Pay period", exact: true }).click();
-    await expect(report).toContainText("16.0h");
+    await expect(report).toContainText("4.0h"); // Sep 16–30, independent of the saved custom dates.
     await toolbar.getByRole("button", { name: es ? "Rango personalizado" : "Custom range", exact: true }).click();
     await expect(from).toHaveValue("2026-09-15");
     await expect(through).toHaveValue("2026-09-15");

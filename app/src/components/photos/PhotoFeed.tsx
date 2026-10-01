@@ -28,6 +28,7 @@ import { EmptyState, QueryError, SkeletonCard } from "../ui/States";
 import { PhotoCaptureSheet } from "../PhotoCaptureSheet";
 import { PhotoUploadStatus } from "./PhotoUploadStatus";
 import { ReceiptDocumentLink } from "../receipts/ReceiptDocumentLink";
+import { ReceiptViewer } from "../receipts/ReceiptViewer";
 import { useT } from "../../lib/i18n";
 
 // The fallback is passed in (t("feed.someone")) rather than hard-coded so a
@@ -121,6 +122,7 @@ export function PhotoFeed({
   const canCurate = isLead && !isReceipt;
   const [capturing, setCapturing] = useState(initialCapture);
   const [viewer, setViewer] = useState<FeedPhoto | null>(null);
+  const [receiptViewer, setReceiptViewer] = useState<FeedReceipt | null>(null);
   const [showTrash, setShowTrash] = useState(false);
 
   const photos = useQuery({
@@ -366,24 +368,28 @@ export function PhotoFeed({
             <div className="photos-grid">
               {group.photos.map((r) => (
                 <div key={r.id} className="photo-card receipt-card">
-                  {r.signedUrl ? (
-                    <img src={r.signedUrl} alt={r.vendor ?? t("feed.receiptAlt")} loading="lazy" />
-                  ) : (
-                    <div className="photo-card-missing muted">
-                      <ReceiptIcon size={20} aria-hidden />
-                    </div>
-                  )}
-                  <span className="photo-card-meta">
-                    <span className="photo-card-who">{r.vendor ?? t("feed.receiptAlt")}</span>
-                    <span className="photo-card-time">
-                      {r.amountCents != null ? formatCents(r.amountCents) : "—"}
+                  <button type="button" className="receipt-card-open"
+                    aria-label={t("receipt.viewImage", { vendor: r.vendor ?? t("feed.receiptAlt") })}
+                    onClick={() => setReceiptViewer(r)}>
+                    {r.signedUrl ? (
+                      <img src={r.signedUrl} alt={r.vendor ?? t("feed.receiptAlt")} loading="lazy" />
+                    ) : (
+                      <div className="photo-card-missing muted">
+                        <ReceiptIcon size={20} aria-hidden />
+                      </div>
+                    )}
+                    <span className="photo-card-meta">
+                      <span className="photo-card-who">{r.vendor ?? t("feed.receiptAlt")}</span>
+                      <span className="photo-card-time">
+                        {r.amountCents != null ? formatCents(r.amountCents) : "—"}
+                      </span>
                     </span>
-                  </span>
-                  {r.reviewed && (
-                    <span className="photo-gps-chip">
-                      <CheckCircle2 size={11} aria-hidden /> {t("feed.reviewed")}
-                    </span>
-                  )}
+                    {r.reviewed && (
+                      <span className="photo-gps-chip">
+                        <CheckCircle2 size={11} aria-hidden /> {t("feed.reviewed")}
+                      </span>
+                    )}
+                  </button>
                   {/* A receipt that came in as a PDF says so, and the tag is
                       the way back to the original file — see the component. */}
                   {r.documentPath && (
@@ -412,6 +418,8 @@ export function PhotoFeed({
           }}
         />
       )}
+
+      {receiptViewer && <ReceiptViewer receipt={receiptViewer} onClose={() => setReceiptViewer(null)} />}
 
       {viewer && (
         <div
