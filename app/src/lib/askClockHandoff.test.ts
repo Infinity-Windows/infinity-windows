@@ -36,6 +36,7 @@ describe("Ask guided clock handoff", () => {
     const pick = askClockPick(askClockHandoff(waiting("wrong_job"), draft)!);
     expect(askClockEntryMode(shift(), pick)).toBe("switch");
     expect(askClockEntryMode(shift(JOB), pick)).toBe("main");
+    expect(askClockEntryMode(shift(JOB.toUpperCase()), pick)).toBe("main");
     expect(askClockEntryMode(shift(OTHER, new Date().toISOString()), pick)).toBe("main");
     expect(askClockEntryMode(null, pick)).toBe("pick");
     expect(askClockEntryMode(shift(), null)).toBe("main");

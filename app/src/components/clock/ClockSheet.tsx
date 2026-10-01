@@ -149,6 +149,7 @@ export function ClockSheet({
   useFocusTrap(sheetRef, true, onClose);
   const entryMode = askClockEntryMode(shift, initialPick);
   const [mode, setMode] = useState<Mode>(entryMode);
+  const appliedEntryRef = useRef<string | null>(null);
   const [pickProjectId, setPickProjectId] = useState<string>(initialPick?.projectId ?? "");
   const [pickCostCodeId, setPickCostCodeId] = useState<string>(initialPick?.costCodeId ?? "");
   /** Optional first window to start on, in the same tap as clocking in. */
@@ -231,11 +232,16 @@ export function ClockSheet({
   );
   const pickedOpening = projectOpenings.find((o) => o.id === pickOpeningId) ?? null;
 
-  // Follow the shift state. An Ask handoff opens on the preselected switch
-  // screen; a break or an overlong shift keeps its normal safeguards visible.
+  // Follow a new shift or handoff, not live timer/refetch renders. Otherwise a
+  // guard threshold can reset the screen while the worker is making a choice.
   useEffect(() => {
-    setMode(entryMode);
-  }, [shift?.id, entryMode]);
+    const key = `${shift?.id ?? "off"}:${initialPick?.returnToAsk ? "ask" : "plain"}:${initialPick?.projectId ?? ""}`;
+    if (appliedEntryRef.current === key) return;
+    appliedEntryRef.current = key;
+    setMode(askClockEntryMode(shift, initialPick));
+    setPickProjectId(initialPick?.projectId ?? "");
+    setPickCostCodeId(initialPick?.costCodeId ?? "");
+  }, [shift, initialPick]);
 
   // 1s tick drives the live timers.
   useEffect(() => {
@@ -883,7 +889,7 @@ export function ClockSheet({
               className="clock-job-chip"
               disabled={busy || onBreak || needsRealFinish}
               onClick={() => {
-                const requested = initialPick?.returnToAsk && initialPick.projectId && initialPick.projectId !== shift.project_id
+                const requested = initialPick?.returnToAsk && initialPick.projectId && initialPick.projectId.toLowerCase() !== shift.project_id?.toLowerCase()
                   ? initialPick.projectId : shift.project_id ?? "";
                 setPickProjectId(requested);
                 setPickCostCodeId(requested === shift.project_id ? shift.cost_code_id ?? "" : "");

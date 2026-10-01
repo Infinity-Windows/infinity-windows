@@ -59,12 +59,14 @@ import type { ClockInPick, TimeShift } from "../../lib/timeclock";
 
 let root: Root | null = null;
 let host: HTMLDivElement | null = null;
+let rerenderShift: ((shift: TimeShift, pick?: ClockInPick) => void) | null = null;
 
 afterEach(() => {
   act(() => root?.unmount());
   host?.remove();
   root = null;
   host = null;
+  rerenderShift = null;
 });
 beforeEach(() => {
   for (const s of Object.values(spies)) s.mockClear();
@@ -113,15 +115,15 @@ function mount(s: TimeShift, initialPick?: ClockInPick): HTMLElement {
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
-  act(() => {
+  rerenderShift = (nextShift, nextPick) => {
     root!.render(
       <QueryClientProvider client={qc}>
         <MemoryRouter>
           <ClockSheet
             profileId="me"
-            shift={s}
-            initialPick={initialPick}
-            pending={{ kind: "clock_in", entryId: "entry-1", tappedAt: s.clock_in_at, sending: false }}
+            shift={nextShift}
+            initialPick={nextPick}
+            pending={{ kind: "clock_in", entryId: "entry-1", tappedAt: nextShift.clock_in_at, sending: false }}
             onClose={() => {}}
             onChanged={() => {}}
           />
@@ -129,7 +131,8 @@ function mount(s: TimeShift, initialPick?: ClockInPick): HTMLElement {
         </MemoryRouter>
       </QueryClientProvider>,
     );
-  });
+  };
+  act(() => rerenderShift!(s, initialPick));
   return host;
 }
 
@@ -151,6 +154,16 @@ async function click(el: HTMLElement, selector: string) {
 }
 
 describe("a switch on a clock-in that is still on the phone", () => {
+  it("keeps the worker's chosen clock screen through a same-shift refresh", async () => {
+    const current = shift("pending:entry-1");
+    const el = mount(current);
+    await flush();
+    await click(el, ".clock-job-chip");
+    expect(el.querySelector(".clock-pick-summary")).toBeTruthy();
+    await act(async () => rerenderShift!({ ...current, clock_in_at: new Date(Date.now() - 60_000).toISOString() }));
+    await flush();
+    expect(el.querySelector(".clock-pick-summary")).toBeTruthy();
+  });
   it("Ask preselects the requested job, queues only after confirmation, then returns to the waiting reply", async () => {
     const pick: ClockInPick = { projectId: "p2", costCodeId: null, note: null, mode: null, returnToAsk: true };
     const el = mount(shift("pending:entry-1"), pick);
