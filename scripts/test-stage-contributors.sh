@@ -29,8 +29,15 @@ wait_for_lock() {
  done
  echo 'No overlapping transactions observed'; return 1
 }
+wait_for_first_transaction() {
+ for attempt in $(seq 1 40); do
+  if [ "$(query "select count(*) from pg_stat_activity where wait_event='PgSleep'")" -gt 0 ]; then return; fi
+  sleep 0.05
+ done
+ echo 'First transaction did not reach its held-lock barrier'; return 1
+}
 run "$FIX/concurrent-add-a.sql" >"$LOG/add-a" 2>&1 & first=$!
-sleep 0.1
+wait_for_first_transaction
 run "$FIX/concurrent-add-b.sql" >"$LOG/add-b" 2>&1 & second=$!
 wait_for_lock
 if ! wait "$first"; then cat "$LOG/add-a"; exit 1; fi
@@ -39,7 +46,7 @@ if ! wait "$second"; then cat "$LOG/add-b"; exit 1; fi
 unit=$(query "select id from custom_work_units where opening_id='00000000-0000-4000-8000-000000000020'")
 digest=$(query "select public._stage_contributor_digest('$unit','Flashing',current_date-1)")
 sql -v unit="$unit" -v digest="$digest" < "$FIX/concurrent-correct-a.sql" >"$LOG/correct-a" 2>&1 & first=$!
-sleep 0.1
+wait_for_first_transaction
 sql -v unit="$unit" -v digest="$digest" < "$FIX/concurrent-correct-b.sql" >"$LOG/correct-b" 2>&1 & second=$!
 wait_for_lock
 if ! wait "$first"; then cat "$LOG/correct-a"; exit 1; fi
