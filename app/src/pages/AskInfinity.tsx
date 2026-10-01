@@ -335,6 +335,18 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
   const pinned = voice !== "idle" || liveOn;
   const pinnedRef = useRef(pinned);
   pinnedRef.current = pinned;
+  // Reserve the dock's actual height, including live/recording status rows.
+  // The final message/action can then scroll into the reading gap above it.
+  useLayoutEffect(() => {
+    const dock = dockRef.current;
+    const page = dock?.closest<HTMLElement>(".ask-page");
+    if (!dock || !page) return;
+    const measure = () => page.style.setProperty("--ask-dock-height", `${Math.ceil(dock.getBoundingClientRect().height)}px`);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(dock);
+    return () => observer.disconnect();
+  }, []);
   // The phone composer is always visible, even between recordings. Replies
   // must land above it rather than behind it; desktop keeps the old band when
   // the composer is in normal page flow.
@@ -1241,14 +1253,9 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
           while the composer is in its place at the end of the page. */}
       {jumpButton && !pinned && <div className="ask-jump-row">{jumpButton}</div>}
 
-      {/* The composer. While the microphone is on it is the recorder, pinned
-          to the bottom of the screen over whatever is scrolled — the owner,
-          2026-09-24: "the chat bar that shows that it's recording should
-          follow me … I had to scroll to the bottom and not know that the
-          microphone was working." Only then: a sticky bar and an open iOS
-          keyboard fight (the bar stays on the layout viewport, under the
-          keyboard), and the mic is when the page is scrolled with nothing
-          to type. */}
+      {/* On phones the composer stays in a solid bottom dock above navigation;
+          the conversation scrolls with a reading gap above it. Desktop keeps
+          the in-flow composer and pins it while recording. */}
       <div ref={dockRef} className={pinned ? "ask-dock is-pinned" : "ask-dock"}>
         {pinned && jumpButton}
         {livePilot && userId && live.status !== "idle" && (
