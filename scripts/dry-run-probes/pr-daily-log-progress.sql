@@ -4,9 +4,33 @@ do $$
 declare
   v_actor uuid; v_lead uuid; v_job uuid; v_mail text; v_day date; v_rev integer;
   v_log public.daily_logs; v_client uuid := gen_random_uuid(); v_photo uuid;
-  v_object_name text; v_storage_path text; v_n integer; v_r text;
+  v_object_name text; v_storage_path text; v_n integer; v_r text; v_ok boolean; v_denied boolean;
 begin
   perform pg_temp.dry_run_as_system();
+  perform pg_temp.dry_run_check('classifier has no PUBLIC EXECUTE',not exists(
+    select 1 from pg_proc p,aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a
+    where p.oid='public._is_daily_log_photo_name(text)'::regprocedure and a.grantee=0 and a.privilege_type='EXECUTE'));
+  perform pg_temp.dry_run_check('anon classifier EXECUTE is absent',not has_function_privilege('anon','public._is_daily_log_photo_name(text)','execute'));
+  perform pg_temp.dry_run_check('required Storage backend exists and owns objects',
+    (select pg_get_userbyid(relowner)='supabase_storage_admin' from pg_class where oid='storage.objects'::regclass));
+  perform pg_temp.dry_run_check('all three necessary classifier callers retain EXECUTE',
+    has_function_privilege('authenticated','public._is_daily_log_photo_name(text)','execute') and
+    has_function_privilege('service_role','public._is_daily_log_photo_name(text)','execute') and
+    has_function_privilege('supabase_storage_admin','public._is_daily_log_photo_name(text)','execute'));
+  perform pg_temp.dry_run_check('provider generated columns observed',exists(select 1 from pg_attribute where attrelid='storage.objects'::regclass and attnum>0 and not attisdropped and attgenerated<>''), (select string_agg(attname,', ' order by attnum) from pg_attribute where attrelid='storage.objects'::regclass and attnum>0 and not attisdropped and attgenerated<>''));
+  perform pg_temp.dry_run_check('classifier remains SECURITY INVOKER',(select not prosecdef from pg_proc where oid='public._is_daily_log_photo_name(text)'::regprocedure));
+  execute 'set local role anon';
+  v_denied := false;
+  begin
+    perform public._is_daily_log_photo_name('ordinary/probe.jpg');
+  exception when insufficient_privilege then v_denied := true;
+  end;
+  execute 'reset role';
+  perform pg_temp.dry_run_check('actual anon classifier invocation is denied',v_denied);
+  execute 'set local role service_role';
+  v_ok := public._is_daily_log_photo_name('probe/daily-logs/probe.jpg') and not public._is_daily_log_photo_name('ordinary/probe.jpg');
+  execute 'reset role';
+  perform pg_temp.dry_run_check('actual service role classifier invocation succeeds',v_ok);
   v_actor := pg_temp.dry_run_pick('installer');
   v_lead := pg_temp.dry_run_pick('foreman');
   v_job := pg_temp.dry_run_sandbox_job();
@@ -49,6 +73,15 @@ begin
   v_storage_path := 'install-media/'||v_object_name;
   insert into storage.objects(bucket_id,name,owner,owner_id,metadata)
     values('install-media',v_object_name,v_actor,v_actor::text,'{"mimetype":"image/jpeg","size":5}');
+  -- Hosted Management's postgres cannot SET ROLE supabase_storage_admin.
+  -- The exact provider owner and effective EXECUTE are checked above; actual
+  -- backend-role invoker updates are exercised in the disposable SQL harness.
+  -- Do not grant membership or change function ownership to bypass this limit.
+  -- The existing management-owner replacement/lifecycle checks remain below.
+  update storage.objects set updated_at=now(),last_accessed_at=now()
+    where bucket_id='install-media' and name=v_object_name;
+  get diagnostics v_n=row_count;
+  perform pg_temp.dry_run_check('management-owner protected timestamp update succeeds',v_n=1);
   perform pg_temp.dry_run_act_as(v_actor);
   insert into public.attachments(client_id,project_id,daily_log_id,kind,storage_path,created_by)
     values(v_client,v_job,v_log.id,'photo',v_storage_path,v_mail) returning id into v_photo;
