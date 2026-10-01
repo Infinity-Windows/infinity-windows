@@ -1,4 +1,4 @@
--- Probe for 20261053000000_semimonthly_timecard_signoff.sql: the new
+-- Probe for 20261055000000_semimonthly_timecard_signoff.sql: the new
 -- sign_my_semimonthly_timecard / countersign_semimonthly_timecard RPCs,
 -- called on the real database as the QA installer and a real supervisor on
 -- the practice job, and rolled back.
@@ -21,7 +21,7 @@
 --   * the legacy timecard_periods table and sign_my_timecard are untouched
 --     by any of this.
 -- Run: gh workflow run db-dry-run.yml -f ref=codex/semimonthly-pay-periods \
---        -f migrations="supabase/migrations/20261053000000_semimonthly_timecard_signoff.sql" \
+--        -f migrations="supabase/migrations/20261055000000_semimonthly_timecard_signoff.sql" \
 --        -f probe=scripts/dry-run-probes/semimonthly-timecard-signoff.sql
 do $$
 declare
@@ -140,6 +140,22 @@ begin
     where profile_id = v_installer and period_start = v_ended_first;
   perform pg_temp.dry_run_check('supervisor (lead) can read the installer''s row',
     v_n = 1, v_n || ' row(s)');
+
+  perform pg_temp.dry_run_expect_error('direct table inserts cannot bypass self-signing',
+    format('insert into public.semimonthly_timecard_periods(profile_id, period_start, period_end, timezone) values (%L::uuid, %L::timestamptz, %L::timestamptz, %L)',
+      v_installer, v_ended_first, v_ended_second, v_tz), 'permission denied');
+
+  -- Temporarily turn the QA login into a partner inside this rollback-only
+  -- probe, to prove even a self row and the SECURITY DEFINER RPC stay fenced.
+  perform pg_temp.dry_run_as_system();
+  update public.profiles set is_partner = true where id = v_installer;
+  perform pg_temp.dry_run_act_as(v_installer);
+  select count(*) into v_n from public.semimonthly_timecard_periods where profile_id = v_installer;
+  perform pg_temp.dry_run_check('partner cannot read their own internal timecard signature', v_n = 0, v_n || ' rows');
+  perform pg_temp.dry_run_expect_error('partner cannot self-sign an internal timecard',
+    format('select public.sign_my_semimonthly_timecard(%L::timestamptz, %L)', v_ended_first, v_tz), 'active crew login');
+  perform pg_temp.dry_run_as_system();
+  update public.profiles set is_partner = false where id = v_installer;
 
   -- ---- the legacy table and its RPC are untouched ------------------------
   perform pg_temp.dry_run_as_system();

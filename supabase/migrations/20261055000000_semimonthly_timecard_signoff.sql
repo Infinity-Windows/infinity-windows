@@ -38,6 +38,9 @@ create unique index if not exists semimonthly_timecard_periods_profile_period
   on semimonthly_timecard_periods (profile_id, period_start);
 
 alter table semimonthly_timecard_periods enable row level security;
+revoke all on table semimonthly_timecard_periods from public, anon, authenticated;
+grant select on table semimonthly_timecard_periods to authenticated;
+grant all on table semimonthly_timecard_periods to service_role;
 
 do $$
 begin
@@ -49,7 +52,7 @@ begin
   ) then
     create policy "own or lead read" on semimonthly_timecard_periods
       for select to authenticated
-      using (profile_id = auth.uid() or _is_lead(auth.uid()));
+      using (not public.is_partner_user() and (profile_id = auth.uid() or _is_lead(auth.uid())));
   end if;
 end;
 $$;
@@ -74,6 +77,11 @@ declare
   v_period_end timestamptz;
   v_row semimonthly_timecard_periods;
 begin
+  if v_uid is null or public.is_partner_user() or not exists (
+    select 1 from profiles where id = v_uid and retired_at is null and access_revoked_at is null
+  ) then
+    raise exception 'an active crew login is required';
+  end if;
   if p_period_start is null then
     raise exception 'a period start is required';
   end if;
@@ -128,7 +136,9 @@ as $$
 declare
   v_row semimonthly_timecard_periods;
 begin
-  if not _is_supervisor(auth.uid()) then
+  if auth.uid() is null or public.is_partner_user() or not exists (
+    select 1 from profiles where id = auth.uid() and retired_at is null and access_revoked_at is null
+  ) or not _is_supervisor(auth.uid()) then
     raise exception 'only a supervisor or above can countersign a timecard';
   end if;
 
