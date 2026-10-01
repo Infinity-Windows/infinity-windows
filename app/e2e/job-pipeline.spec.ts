@@ -288,7 +288,8 @@ test("the order a foreman puts the jobs in survives a reload", async ({ page }) 
   // Reordering is behind the explicit "Office order" toggle now
   // (jobs-search-schedule): the grip and up/down buttons used to show on
   // every load, which is the room this page exists to give back.
-  await page.getByRole("button", { name: /office order/i }).click();
+  if ((page.viewportSize()?.width ?? 1280) < 860) await page.getByRole("button", { name: /^filters/i }).click();
+  await page.getByRole("button", { name: /office order/i }).filter({ visible: true }).click();
 
   // Polled, like the two reads below: the cards draw a moment after the page
   // loads, and a single read straight after goto can find none at all ([]) —
@@ -323,7 +324,8 @@ test("the order a foreman puts the jobs in survives a reload", async ({ page }) 
   // it is a deliberate view a foreman opts back into), so it is switched on
   // again before reading the order back.
   await page.reload();
-  await page.getByRole("button", { name: /office order/i }).click();
+  if ((page.viewportSize()?.width ?? 1280) < 860) await page.getByRole("button", { name: /^filters/i }).click();
+  await page.getByRole("button", { name: /office order/i }).filter({ visible: true }).click();
   await expect
     .poll(() => cardOrder(page))
     .toEqual(["Black Desert", "Sand Hollow", "Pecan Valley"]);

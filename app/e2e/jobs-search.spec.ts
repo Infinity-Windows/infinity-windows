@@ -181,10 +181,14 @@ test("foreman: default view hides the rail; Office order reveals it, hides searc
 
   const search = page.getByLabel(/search jobs/i);
   await search.fill("zion");
-  await expect(page.getByRole("button", { name: /office order/i })).toBeDisabled();
+  await page.getByRole("button", { name: /^filters/i }).click();
+  await expect(page.getByRole("dialog").getByRole("button", { name: /office order/i })).toBeDisabled();
+  await page.getByRole("dialog").getByRole("button", { name: /^close/i }).click();
   await search.fill("");
   await shoot(page, "foreman-phone");
-  await page.getByRole("button", { name: /office order/i }).click();
+  await page.getByRole("button", { name: /^filters/i }).click();
+  await page.getByRole("dialog").getByRole("button", { name: /office order/i }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
 
   await expect(page.locator(".job-order-rail")).toHaveCount(5);
   // Search is gone entirely while reordering — "search disables manual
@@ -321,4 +325,28 @@ test("recent-work failure and an unscheduled person keep every job searchable", 
   ]);
   await page.getByLabel(/search jobs/i).fill("acequia");
   await expect(page.locator("a.project-card")).toHaveCount(1);
+});
+
+test("phone jobs stay compact and management lives in the accessible Filters sheet", async ({ page }) => {
+  await useSupabaseFixtures(page, { role: "supervisor" });
+  await useJobsSearchFixtures(page);
+  await page.goto("/projects");
+  const normalCard = page.locator("a.project-card").filter({ hasText: "Zion Vista" });
+  await expect(normalCard).toBeVisible();
+  const box = await normalCard.boundingBox();
+  expect(box?.height).toBeLessThan(165);
+  await expect(page.locator("a.project-card button").filter({ hasText: /delete/i })).toHaveCount(0);
+  const filters = page.getByRole("button", { name: /^filters/i });
+  await filters.click();
+  const dialog = page.getByRole("dialog", { name: /^filters/i });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("link", { name: /job history/i })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: /office order/i })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(filters).toBeFocused();
+  await filters.click();
+  await dialog.getByRole("button", { name: /office order/i }).click();
+  await expect(page.locator(".job-order-rail")).toHaveCount(5);
+  await expect(page.locator("a.project-card button").filter({ hasText: /delete/i })).toHaveCount(5);
 });

@@ -13,8 +13,10 @@ import {
   LayoutGrid,
   Phone,
   Search,
+  SlidersHorizontal,
   X,
 } from "lucide-react";
+import { Sheet } from "../components/ui/Sheet";
 import {
   createProject,
   getProjectDeleteCounts,
@@ -41,7 +43,7 @@ import { isTrackingOnly } from "../lib/jobModes";
 import { PipelineLine } from "../components/projects/PipelineLine";
 import { ReadinessBadge } from "../components/projects/ReadinessBadge";
 import { gcCheckinsLatestKey, latestGcCheckins } from "../lib/gc";
-import { needsCall, sortProjectsForList, type NeedsCallResult } from "../lib/pipeline";
+import { needsCall, sortProjectsForList } from "../lib/pipeline";
 import { MessagesSquare } from "lucide-react";
 import type { Project } from "../lib/types";
 import { listMyPublished } from "../lib/schedule/api";
@@ -193,6 +195,12 @@ export function Projects() {
   // a save can never persist an order that was really just a filtered view.
   const [officeOrderMode, setOfficeOrderMode] = useState(false);
   const showOfficeOrder = officeOrderMode && canOrder;
+  // Phone-only: History and Office order live behind this sheet instead of
+  // their own always-visible toolbar row (owner ask, Horizon borrowing —
+  // less chrome on a card list read on a phone). Desktop keeps them inline
+  // (`.jobs-desktop-tools`, CSS-only at 860px) — same controls, same state,
+  // two renders so neither width hides the other's affordance.
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const saveOrder = useMutation({
     mutationFn: (ids: string[]) => setProjectsOrder(ids),
@@ -380,84 +388,74 @@ export function Projects() {
     </button>
   );
 
-  /** The shared card body — identical whether this card sits in the office-order
-   * rail list or the plain searchable list, so neither can quietly drift from
-   * the other's layout fix (job-cards.spec.ts). */
-  function renderCardHead(p: Project, scopeCount: ReturnType<typeof countFor>, chatUnread: number, call: NeedsCallResult) {
-    const pctColor =
-      scopeCount.pct >= 80 ? "var(--ok)" : scopeCount.pct >= 40 ? "var(--accent)" : "var(--warn)";
-    return (
-      <>
-        <div className="job-card-body">
-          <div className="job-card-title">
-            <span className="job-card-name">{p.name || p.job_code}</span>
-            <JobModeBadge allowed={p.allowed_modes} />
-            <ReadinessBadge readyState={p.ready_state} />
-            {call.call && (
-              <span className="job-needs-call">
-                <Phone size={11} aria-hidden /> {t("pipeline.needsCall")}
-              </span>
-            )}
-            {chatUnread > 0 && (
-              <span className="chat-badge" title={`${chatUnread} unread message${chatUnread > 1 ? "s" : ""}`}>
-                <MessagesSquare size={11} aria-hidden />
-                {chatUnread}
-              </span>
-            )}
-          </div>
-          <div className="muted job-card-sub">
-            {p.job_code}
-            {p.address ? ` · ${p.address}` : ""}
-          </div>
-          <ScopeLine
-            counts={scopeCount.row}
-            stories={p.stories}
-            trackingOnly={isTrackingOnly(p.allowed_modes)}
-            className="muted job-card-sub"
-          />
-          <PipelineLine job={p} />
-        </div>
-        <span className="job-card-pct" style={{ color: scopeCount.total > 0 ? pctColor : "var(--muted)" }}>
-          {scopeCount.total > 0 ? `${scopeCount.pct}%` : "—"}
-        </span>
-      </>
-    );
-  }
-
-  function renderCardBar(scopeCount: ReturnType<typeof countFor>) {
-    const pctColor =
-      scopeCount.pct >= 80 ? "var(--ok)" : scopeCount.pct >= 40 ? "var(--accent)" : "var(--warn)";
-    return (
-      scopeCount.total > 0 && (
-        <div className="points-tier-bar" aria-hidden>
-          <div className="points-tier-fill" style={{ width: `${scopeCount.pct}%`, background: pctColor }} />
-        </div>
-      )
-    );
-  }
-
   /** One job card. `rail` is only ever non-null in office-order mode — see the
-   * note on `showOfficeOrder` above for why the two never mix. */
+   * note on `showOfficeOrder` above for why the two never mix.
+   *
+   * Compact by default (Horizon borrowing, 2026-10-01): a body-font name, no
+   * standalone footer, a thin inline progress row instead of a loud top-right
+   * percent. Delete moves out of every card's footer — it only earns its row
+   * once a foreman has explicitly opened Office order, which is also the only
+   * state the reorder rail itself ever renders in. Keeps the exact tag and
+   * className `a.project-card`, and `.job-card-body`/`.job-card-name` for
+   * their text-alignment measurement, that other e2e specs already select
+   * (foreman-marks.spec.ts, job-cards.spec.ts). */
   function renderCard(p: Project, rail: ReactNode, dragProps: Record<string, unknown>) {
     const c = countFor(p.id);
     const chatUnread = unread.data?.[p.id] ?? 0;
     const call = needsCall(p, today, checkins.data?.byProject[p.id] ?? null, checkins.data?.known ?? false);
+    const pctColor = c.pct >= 80 ? "var(--ok)" : c.pct >= 40 ? "var(--accent)" : "var(--warn)";
     return (
-      // Keeps the exact tag and className `a.project-card` other e2e specs
-      // already select (foreman-marks.spec.ts) — the Delete button nests
-      // inside and stops its own click from bubbling up to the Link's
-      // navigation, rather than restructuring the card.
       <Link key={p.id} to={`/projects/${p.id}`} className="project-card home-project" {...dragProps}>
         <div className={`home-project-head job-card-head${rail ? " job-card-head-rail" : ""}`}>
           {rail}
-          {renderCardHead(p, c, chatUnread, call)}
+          <div className="job-card-body">
+            <div className="job-card-title">
+              <span className="job-card-name">{p.name || p.job_code}</span>
+
+            </div>
+            <div className="muted job-card-sub">
+              {p.job_code}
+              {p.address ? ` · ${p.address}` : ""}
+            </div>
+            <div className="jobs-card-status">
+              <JobModeBadge allowed={p.allowed_modes} />
+              <ReadinessBadge readyState={p.ready_state} />
+              {call.call && (
+                <span className="job-needs-call">
+                  <Phone size={11} aria-hidden /> {t("pipeline.needsCall")}
+                </span>
+              )}
+              {chatUnread > 0 && (
+                <span className="chat-badge" title={`${chatUnread} unread message${chatUnread > 1 ? "s" : ""}`}>
+                  <MessagesSquare size={11} aria-hidden />
+                  {chatUnread}
+                </span>
+              )}
+            </div>
+            <ScopeLine
+              counts={c.row}
+              stories={p.stories}
+              trackingOnly={isTrackingOnly(p.allowed_modes)}
+              className="muted job-card-sub"
+            />
+            <PipelineLine job={p} />
+            {c.total > 0 && (
+              <div
+                className="jobs-progress-row"
+                aria-label={t("jobs.card.progress", { installed: c.installed, total: c.total, pct: c.pct })}
+              >
+                <div className="jobs-progress-bar" aria-hidden>
+                  <div className="jobs-progress-fill" style={{ width: `${c.pct}%`, background: pctColor }} />
+                </div>
+                <span className="jobs-progress-label" style={{ color: pctColor }} aria-hidden>
+                  {c.installed}/{c.total} · {c.pct}%
+                </span>
+              </div>
+            )}
+          </div>
         </div>
-        {renderCardBar(c)}
-        <div className="home-project-meta job-card-meta">
-          <span>
-            <i className="dot-ok" /> {c.installed} done
-          </span>
-          {canDelete && (
+        {canDelete && showOfficeOrder && (
+          <div className="home-project-meta job-card-meta jobs-card-delete-row">
             <button
               type="button"
               className="link"
@@ -471,8 +469,8 @@ export function Projects() {
             >
               {deletingId === p.id ? t("deljob.checking") : t("deljob.delete")}
             </button>
-          )}
-        </div>
+          </div>
+        )}
       </Link>
     );
   }
@@ -523,20 +521,39 @@ export function Projects() {
 
   return (
     <div className="page jobs-page">
-      <header className="page-header">
+      <header className="page-header jobs-page-header">
         <div>
           <h1>{t("jobs.title")}</h1>
-          <p className="muted jobs-subtitle">{t("jobs.subtitle")}</p>
+          {!projects.isLoading && !projects.isError && (
+            <p className="muted jobs-subtitle">{t("jobs.count.label", { n: rows.length })}</p>
+          )}
         </div>
-        <BackChip fallback="/" label={t("jobs.home")} />
+        <div className="jobs-header-actions">
+          {canAdd && (
+            <button type="button" className="jobs-new" onClick={() => setAdding((v) => !v)}>
+              {adding ? t("jobs.cancel") : t("jobs.new")}
+            </button>
+          )}
+          <BackChip fallback="/" label={t("jobs.home")} />
+        </div>
       </header>
       <SavedCopyNotice reason={savedCopy} />
+
+      {/* Desktop only (CSS, 860px) — the phone equivalent is the Filters
+          button + sheet below, which owns the same two controls. */}
       {canAdd && (
-        <div className="jobs-toolbar">
-          <button type="button" className="jobs-new" onClick={() => setAdding((v) => !v)}>
-            {adding ? t("jobs.cancel") : t("jobs.new")}
-          </button>
+        <div className="jobs-desktop-tools">
           <Link to="/jobs/history" className="link">{t("jobs.history")} →</Link>
+          {canOrder && (
+            <button
+              type="button"
+              className="link jobs-order-toggle"
+              disabled={searching || saveOrder.isPending}
+              onClick={() => setOfficeOrderMode((v) => !v)}
+            >
+              {showOfficeOrder ? t("jobs.officeOrder.done") : t("jobs.officeOrder.toggle")}
+            </button>
+          )}
         </div>
       )}
 
@@ -546,6 +563,8 @@ export function Projects() {
           <input
             type="search"
             className="jobs-search-input"
+            autoComplete="off"
+            enterKeyHint="search"
             placeholder={t("jobs.search.placeholder")}
             aria-label={t("jobs.search.placeholder")}
             value={query}
@@ -564,11 +583,26 @@ export function Projects() {
         </div>
       )}
 
-      {!showOfficeOrder && !searching && !projects.isLoading && !projects.isError && (
-        <div className="jobs-chip-row">
-          {chip("all", t("jobs.chip.all"), rows.length)}
-          {chip("scheduled", t("jobs.chip.scheduled"), scheduledCount, scheduleLoading)}
-          {chip("recent", t("jobs.chip.recent"), recentCount, recentLoading)}
+      {!projects.isLoading && !projects.isError && (
+        <div className="jobs-filter-row">
+          {!showOfficeOrder && !searching && (
+            <div className="jobs-chip-row">
+              {chip("all", t("jobs.chip.all"), rows.length)}
+              {chip("scheduled", t("jobs.chip.scheduled"), scheduledCount, scheduleLoading)}
+              {chip("recent", t("jobs.chip.recent"), recentCount, recentLoading)}
+            </div>
+          )}
+          {canAdd && (
+            <button
+              type="button"
+              className="jobs-filters-btn"
+              aria-expanded={filtersOpen}
+              aria-haspopup="dialog"
+              onClick={() => setFiltersOpen(true)}
+            >
+              <SlidersHorizontal size={16} aria-hidden /> {t("jobs.filters.open")}
+            </button>
+          )}
         </div>
       )}
       {searching && (
@@ -581,18 +615,38 @@ export function Projects() {
         <p className="muted jobs-search-note">{t("jobs.recentError")}</p>
       )}
 
-      {canOrder && (
-        <p style={{ margin: "0 0 8px" }}>
-          <button
-            type="button"
-            className="link jobs-order-toggle"
-            disabled={searching || saveOrder.isPending}
-            onClick={() => setOfficeOrderMode((v) => !v)}
-          >
-            {showOfficeOrder ? t("jobs.officeOrder.done") : t("jobs.officeOrder.toggle")}
-          </button>
-          {showOfficeOrder && <span className="muted jobs-search-note"> {t("jobs.officeOrder.hint")}</span>}
-        </p>
+      {/* Phone only (CSS hides the trigger at 860px) — History and Office
+          order behind one accessible sheet rather than their own toolbar
+          row. Closes itself the moment Office order is tapped (owner ask),
+          and reopening it is also how a foreman gets back to "Done
+          ordering" — the trigger stays up even mid-reorder. */}
+      {canAdd && (
+        <Sheet open={filtersOpen} onClose={() => setFiltersOpen(false)} label={t("jobs.filters.open")}>
+          <div className="jobs-filters-head">
+            <h2 className="jobs-filters-title">{t("jobs.filters.open")}</h2>
+            <button type="button" className="jobs-filters-close" onClick={() => setFiltersOpen(false)}>
+              {t("jobs.filters.close")}
+            </button>
+          </div>
+          <div className="jobs-filters-list">
+            <Link to="/jobs/history" className="link" onClick={() => setFiltersOpen(false)}>
+              {t("jobs.history")} →
+            </Link>
+            {canOrder && (
+              <button
+                type="button"
+                className="link jobs-order-toggle"
+                disabled={searching || saveOrder.isPending}
+                onClick={() => {
+                  setOfficeOrderMode((v) => !v);
+                  setFiltersOpen(false);
+                }}
+              >
+                {showOfficeOrder ? t("jobs.officeOrder.done") : t("jobs.officeOrder.toggle")}
+              </button>
+            )}
+          </div>
+        </Sheet>
       )}
 
       {canAdd && adding && (
@@ -782,6 +836,7 @@ export function Projects() {
 
       {!projects.isLoading && !projects.isError && showOfficeOrder && (
         <div className="home-projects">
+          <p className="muted jobs-search-note">{t("jobs.officeOrder.hint")}</p>
           {rows.map((p, index) => renderCard(p, renderOfficeOrderRail(index), {
             draggable: true,
             onDragStart: (e: React.DragEvent) => {
@@ -861,13 +916,15 @@ export function Projects() {
             <div className="jobs-highlight">
               <p className="jobs-highlight-label">
                 <CalendarClock size={14} aria-hidden /> {t("jobs.next.heading")}
+                {highlightEntry && (
+                  <span className="jobs-highlight-time">
+                    {" "}
+                    ·{" "}
+                    {highlightEntry.day === today ? t("jobs.next.today") : new Date(`${highlightEntry.day}T12:00:00`).toLocaleDateString(lang, { weekday: "short", month: "short", day: "numeric" })}
+                    {highlightEntry.assignment.start_time ? ` · ${highlightEntry.assignment.start_time.slice(0, 5)}` : ` · ${t("jobs.timeUnknown")}`}
+                  </span>
+                )}
               </p>
-              {highlightEntry && (
-                <p className="jobs-highlight-time">
-                  {highlightEntry.day === today ? t("jobs.next.today") : new Date(`${highlightEntry.day}T12:00:00`).toLocaleDateString(lang, { weekday: "short", month: "short", day: "numeric" })}
-                  {highlightEntry.assignment.start_time ? ` · ${highlightEntry.assignment.start_time.slice(0, 5)}` : ` · ${t("jobs.timeUnknown")}`}
-                </p>
-              )}
               {renderCard(grouped.highlighted, null, {})}
             </div>
           )}

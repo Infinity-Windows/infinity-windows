@@ -55,6 +55,16 @@ export const JOBS_CATALOG = {
     es: "Arrastra un trabajo, o usa las flechas, para fijar el orden guardado de oficina.",
   },
 
+  "jobs.count.label": { en: "{n} active jobs", es: "{n} trabajos activos" },
+
+  "jobs.filters.open": { en: "Filters", es: "Filtros" },
+  "jobs.filters.close": { en: "Close", es: "Cerrar" },
+
+  "jobs.card.progress": {
+    en: "{installed} of {total} installed, {pct}% complete",
+    es: "{installed} de {total} instalados, {pct}% completo",
+  },
+
   "jobs.scheduleError": {
     en: "Couldn't check your schedule — showing jobs alphabetically instead.",
     es: "No se pudo revisar tu horario — mostrando los trabajos en orden alfabético.",
