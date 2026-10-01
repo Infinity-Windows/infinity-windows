@@ -56,9 +56,45 @@ plain sentence, and the law it comes from.
 | `definer-without-grant` | a `security definer` function nobody is told to call | `20260995000000` |
 | `migration-version-shape` | a migration filename with no 14-digit version | `20260995000000` |
 | `migration-version-taken` | a migration number master already holds, under another name | `20260995000000` |
-| `migration-version-behind` | a migration number below master's newest | `20260995000000` |
+| `migration-version-behind` | a migration number below master's newest, except the exact deployed history backfill below | `20260995000000` |
 | `migration-version-claimed` | a migration number another OPEN branch has | the 2026-09-06 collision |
 | `commit-subject-conventional` | `feat:` / `fix:` / `chore:` … | CLAUDE.md, *House style* |
+
+### The deployed contributor migration history backfill
+
+Production recorded `20261049000000` while its contributor frontend remained
+held in [PR #713](https://github.com/Infinity-Windows/infinity-windows/pull/713).
+Master later reached `20261052010000` without that file, so ordinary backend
+pushes stopped at the remote/local history mismatch. The repair restores
+`supabase/migrations/20261049000000_foreman_unit_contributors.sql` under its
+original identity. Renumbering it would cause an additional execution and
+would leave the missing historical version unresolved.
+
+The only exception to `migration-version-behind` is that exact path whose
+**committed HEAD bytes** have SHA256
+`3c990644eaa4a4a38e5faa3e567834405d4ceac4ef949faa62c2098b716d7d30`.
+The rule computes the digest itself; a one-byte change, different filename,
+replacement SQL, or failed/unavailable hash tool retains the normal failure.
+It prints a note when it recognizes the backfill. There is no environment
+switch, metadata flag, wildcard, or general allowance for older migrations.
+The SQL/security checks and master/open-branch duplicate-version checks still
+run. This is a historical identity recognition, not a deployment approval.
+
+Provenance: these bytes are from revision
+`df5de0baedaf43080320d3583250e6145de14615`, the source of successful
+[backend deployment 36884204133](https://github.com/Infinity-Windows/infinity-windows/actions/runs/36884204133).
+The same bytes survived through PR #713 revision `5be5e371`, and were copied
+into the successful Daily Log recovery branch `3d9b9dfa` for
+[deployment 36895588029](https://github.com/Infinity-Windows/infinity-windows/actions/runs/36895588029).
+The contributor acceptance evidence includes 33 actual-schema forced-rollback
+probe assertions in
+[run 36881979752](https://github.com/Infinity-Windows/infinity-windows/actions/runs/36881979752),
+native PostgreSQL concurrency checks and 211 SQL assertions.
+Those checks support the recorded revision; this offline rule does not inspect
+production or independently compare production's stored SQL with the file.
+Current-base CI, migration drift checks, real database dry-run requirements,
+and the separate held frontend release gates continue to apply. Any future
+history repair needs its own reviewed evidence and code change.
 
 Three things are worth knowing about how they read:
 
