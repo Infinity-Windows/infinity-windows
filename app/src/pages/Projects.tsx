@@ -3,9 +3,18 @@ import { BackChip } from "../components/BackChip";
 import { SavedCopyNotice } from "../components/offline/SavedCopyNotice";
 import { useSavedCopy } from "../lib/offline/useSavedCopy";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ChevronDown, ChevronUp, GripVertical, LayoutGrid, Phone } from "lucide-react";
+import {
+  CalendarClock,
+  ChevronDown,
+  ChevronUp,
+  GripVertical,
+  LayoutGrid,
+  Phone,
+  Search,
+  X,
+} from "lucide-react";
 import {
   createProject,
   getProjectDeleteCounts,
@@ -16,11 +25,12 @@ import {
 } from "../lib/api";
 import { deleteJob } from "../lib/jobDeletion";
 import { formatApiError } from "../lib/errors";
-import { useT } from "../lib/i18n";
+import { useT, useLanguage } from "../lib/i18n";
+import "../lib/i18n/jobsCatalog";
 import { JobModeBadge } from "../components/JobModeBadge";
 import type { JobMode } from "../lib/types";
 import { EmptyState, QueryError, SkeletonList } from "../components/ui/States";
-import { getMyProfile } from "../lib/install/api";
+import { getRealProfile } from "../lib/install/api";
 import { isForemanPlus, isSupervisorPlus } from "../lib/install/types";
 import { useUnreadCounts } from "../lib/chat/useUnreadCounts";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
@@ -31,24 +41,39 @@ import { isTrackingOnly } from "../lib/jobModes";
 import { PipelineLine } from "../components/projects/PipelineLine";
 import { ReadinessBadge } from "../components/projects/ReadinessBadge";
 import { gcCheckinsLatestKey, latestGcCheckins } from "../lib/gc";
-import { needsCall, sortProjectsForList } from "../lib/pipeline";
+import { needsCall, sortProjectsForList, type NeedsCallResult } from "../lib/pipeline";
 import { MessagesSquare } from "lucide-react";
 import type { Project } from "../lib/types";
+import { listMyPublished } from "../lib/schedule/api";
+import { addDaysISO } from "../lib/schedule/dates";
+import { listRecentlyWorkedProjectIds } from "../lib/jobsListApi";
+import {
+  RECOMMENDATION_HORIZON_DAYS,
+  filterJobsByView,
+  groupJobsForList,
+  matchesSearch,
+  nextScheduledJob,
+  nowClockLocal,
+  scheduledProjectIds,
+  sortJobsAlpha,
+  type JobsViewFilter,
+} from "../lib/jobsList";
 
 type ModeChoice = "data" | "tracking" | "both";
 const modesForChoice = (choice: ModeChoice): JobMode[] =>
   choice === "both" ? ["data", "tracking"] : [choice];
 
 /** Today as a YYYY-MM-DD day string in the device's own timezone — what the
- * "Needs a call" chip counts days from. */
-function todayLocal(): string {
-  const now = new Date();
+ * "Needs a call" chip counts days from, and what the schedule recommendation
+ * calls "today". */
+function todayLocal(now: Date = new Date()): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
 export function Projects() {
   const t = useT();
+  const { lang } = useLanguage();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [adding, setAdding] = useState(false);
@@ -79,9 +104,14 @@ export function Projects() {
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const savedCopy = useSavedCopy(projects, "jobs");
   const unread = useUnreadCounts();
-  const profile = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
-  const canAdd = isForemanPlus(profile.data?.role);
+  // The REAL signed-in person, not the previewed one (getMyProfile): "Next on
+  // your schedule" and "Recently worked" are about who is actually looking at
+  // the phone, and a supervisor previewing "installer" must not see a random
+  // installer's schedule stitched onto their own list. Same query key
+  // useEffectiveRole already reads internally, so this is not a second fetch.
+  const me = useQuery({ queryKey: ["myRealProfile"], queryFn: getRealProfile });
   const { effectiveRole } = useEffectiveRole();
+  const canAdd = isForemanPlus(effectiveRole);
   // Deleting a job is supervisor+ now (slice 5) — was owner-only. The server
   // enforces the same rank in trash_project; this gates the affordance.
   const canDelete = isSupervisorPlus(effectiveRole);
@@ -99,6 +129,98 @@ export function Projects() {
     queryKey: gcCheckinsLatestKey,
     queryFn: latestGcCheckins,
   });
+
+  // ---- Jobs search & schedule recommendation (less scrolling on /projects) --
+  // A page left open through the end of a slot or midnight must advance.
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const today = todayLocal(now);
+  // Six weeks, inclusive of today — the same bound nextScheduledJob enforces
+  // itself, kept here too so the query never ASKS the server for more than
+  // the recommendation is willing to claim it knows.
+  const scheduleTo = useMemo(() => addDaysISO(today, RECOMMENDATION_HORIZON_DAYS), [today]);
+  const myId = me.data?.id;
+  const schedule = useQuery({
+    queryKey: ["mySchedule", myId, today, scheduleTo],
+    queryFn: () => listMyPublished(myId!, today, scheduleTo),
+    enabled: Boolean(myId),
+    refetchInterval: 60_000,
+  });
+  const recentWork = useQuery({
+    queryKey: ["recentlyWorkedJobs", myId],
+    queryFn: () => listRecentlyWorkedProjectIds(myId!),
+    enabled: Boolean(myId),
+  });
+
+  const [query, setQuery] = useState("");
+  const [view, setView] = useState<JobsViewFilter>("all");
+  const searching = query.trim().length > 0;
+
+  // ---- J2: the order the office puts the jobs in --------------------------
+  // The list on screen is the server's order until a foreman moves something,
+  // and then it is `pending` until the save comes back. Holding an optimistic
+  // copy rather than re-fetching is what makes "move up" feel like moving one
+  // card instead of the whole list blinking; the refetch after the save is
+  // what proves the server agreed.
+  const [pending, setPending] = useState<Project[] | null>(null);
+  const serverRows = useMemo(
+    () => sortProjectsForList(projects.data ?? []),
+    [projects.data],
+  );
+  // A refetch that brings a genuinely different list (a job created, deleted or
+  // reordered elsewhere) drops the optimistic copy: what the server says is the
+  // list, and a stale local order quietly hiding a new job would be worse than
+  // a blink.
+  useEffect(() => {
+    setPending((current) => {
+      if (!current) return null;
+      const same =
+        current.length === serverRows.length &&
+        current.every((row) => serverRows.some((s) => s.id === row.id));
+      return same ? current : null;
+    });
+  }, [serverRows]);
+  const rows = pending ?? serverRows;
+  const canOrder = isForemanPlus(effectiveRole);
+  // Office order is foreman+'s explicit choice now (owner ask: the grip and
+  // the reserved rail column used to show for every foreman on every load,
+  // which is the thing this page exists to give back the room for). Search
+  // and manual reorder never mix: entering this mode always works the FULL,
+  // unsearched, unsorted-by-group `rows` array above, by its own indices, so
+  // a save can never persist an order that was really just a filtered view.
+  const [officeOrderMode, setOfficeOrderMode] = useState(false);
+  const showOfficeOrder = officeOrderMode && canOrder;
+
+  const saveOrder = useMutation({
+    mutationFn: (ids: string[]) => setProjectsOrder(ids),
+    onSuccess: async () => {
+      setMessage(t("pipeline.order.saved"));
+      await queryClient.invalidateQueries({ queryKey: ["projects"] });
+      await queryClient.invalidateQueries({ queryKey: ["projectsAll"] });
+    },
+    onError: (e) => {
+      // Put the server's order back: a list that keeps showing an order the
+      // database refused is a list that lies on the next reload.
+      setPending(null);
+      setMessage(formatApiError(e));
+    },
+  });
+
+  /** Move the job at `from` to `to`, then save the WHOLE list's new order. */
+  const moveTo = (from: number, to: number) => {
+    if (!showOfficeOrder || searching || saveOrder.isPending || from === to || to < 0 || to >= rows.length) return;
+    const next = [...rows];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    setPending(next);
+    saveOrder.mutate(next.map((p) => p.id));
+  };
+
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+
   const addProject = useMutation({
     mutationFn: async () => {
       const project = await createProject({
@@ -157,63 +279,6 @@ export function Projects() {
     return { row, total, installed, pct };
   };
 
-  // ---- J2: the order the office puts the jobs in --------------------------
-  // The list on screen is the server's order until a foreman moves something,
-  // and then it is `pending` until the save comes back. Holding an optimistic
-  // copy rather than re-fetching is what makes "move up" feel like moving one
-  // card instead of the whole list blinking; the refetch after the save is
-  // what proves the server agreed.
-  const [pending, setPending] = useState<Project[] | null>(null);
-  const serverRows = useMemo(
-    () => sortProjectsForList(projects.data ?? []),
-    [projects.data],
-  );
-  // A refetch that brings a genuinely different list (a job created, deleted or
-  // reordered elsewhere) drops the optimistic copy: what the server says is the
-  // list, and a stale local order quietly hiding a new job would be worse than
-  // a blink.
-  useEffect(() => {
-    setPending((current) => {
-      if (!current) return null;
-      const same =
-        current.length === serverRows.length &&
-        current.every((row) => serverRows.some((s) => s.id === row.id));
-      return same ? current : null;
-    });
-  }, [serverRows]);
-  const rows = pending ?? serverRows;
-  const canOrder = isForemanPlus(effectiveRole);
-
-  const saveOrder = useMutation({
-    mutationFn: (ids: string[]) => setProjectsOrder(ids),
-    onSuccess: async () => {
-      setMessage(t("pipeline.order.saved"));
-      await queryClient.invalidateQueries({ queryKey: ["projects"] });
-      await queryClient.invalidateQueries({ queryKey: ["projectsAll"] });
-    },
-    onError: (e) => {
-      // Put the server's order back: a list that keeps showing an order the
-      // database refused is a list that lies on the next reload.
-      setPending(null);
-      setMessage(formatApiError(e));
-    },
-  });
-
-  /** Move the job at `from` to `to`, then save the WHOLE list's new order. */
-  const moveTo = (from: number, to: number) => {
-    if (from === to || to < 0 || to >= rows.length) return;
-    const next = [...rows];
-    const [moved] = next.splice(from, 1);
-    next.splice(to, 0, moved);
-    setPending(next);
-    saveOrder.mutate(next.map((p) => p.id));
-  };
-
-  const [dragIndex, setDragIndex] = useState<number | null>(null);
-  // One "today" for every card in this render, so a list drawn across midnight
-  // cannot have two cards disagreeing about what day it is.
-  const today = useMemo(() => todayLocal(), []);
-
   const trash = useMutation({
     mutationFn: ({ id, reason }: { id: string; reason: string }) =>
       deleteJob(id, reason),
@@ -234,11 +299,11 @@ export function Projects() {
     setMessage(null);
     setDeletingId(p.id);
     try {
-      const counts = await getProjectDeleteCounts(p.id);
+      const deleteCounts = await getProjectDeleteCounts(p.id);
       // The confirm text is built in the crew's language: the count words and
       // sentence come from the catalog (tracking-jobs slice 7, 2026-09-03).
       const reason = window.prompt(
-        `${buildDeleteConfirmMessage(p.job_code, counts, {
+        `${buildDeleteConfirmMessage(p.job_code, deleteCounts, {
           opening: t("deljob.word.opening"),
           package: t("deljob.word.package"),
           photo: t("deljob.word.photo"),
@@ -253,36 +318,285 @@ export function Projects() {
     }
   };
 
+  // ---- Scheduled / recently-worked ids, and the one highlighted job --------
+  // Both default to an EMPTY set on error rather than throwing — a jobs list
+  // that cannot check the schedule still has to show every job, alphabetized,
+  // searchable. That is also what makes "Other jobs" the honest fallback
+  // group: everything just lands there when either source is unavailable.
+  const scheduledIds = useMemo(
+    () => (schedule.isError ? new Set<string>() : scheduledProjectIds(schedule.data ?? [])),
+    [schedule.data, schedule.isError],
+  );
+  const recentIds = useMemo(
+    () => recentWork.data ?? new Set<string>(),
+    [recentWork.data],
+  );
+
+  const accessibleIds = useMemo(() => new Set(rows.map((p) => p.id)), [rows]);
+  // Only assignments pointing at a job this person can actually see AND that
+  // is still an active job belong in the recommendation — a schedule row for
+  // a trashed or inaccessible job is not a job to send anyone to.
+  const nextJobAssignments = useMemo(
+    () => (schedule.data ?? []).filter((a) => a.project_id && accessibleIds.has(a.project_id)),
+    [schedule.data, accessibleIds],
+  );
+  const highlightEntry = useMemo(
+    () =>
+      schedule.isError
+        ? null
+        : nextScheduledJob(nextJobAssignments, today, nowClockLocal(now)),
+    [nextJobAssignments, today, now, schedule.isError],
+  );
+  const highlightedProject = highlightEntry
+    ? rows.find((p) => p.id === highlightEntry.assignment.project_id) ?? null
+    : null;
+
+  const scheduleLoading = !myId || schedule.isPending;
+  const recentLoading = !myId || recentWork.isPending;
+  const scheduledCount = schedule.isError ? null : rows.filter((p) => scheduledIds.has(p.id)).length;
+  const recentCount = recentWork.isError ? null : rows.filter((p) => recentIds.has(p.id)).length;
+
+  const searchResults = useMemo(
+    () => sortJobsAlpha(rows.filter((p) => matchesSearch(p, query))),
+    [rows, query],
+  );
+  const chipJobs = useMemo(
+    () => sortJobsAlpha(filterJobsByView(rows, view, scheduledIds, recentIds)),
+    [rows, view, scheduledIds, recentIds],
+  );
+  const grouped = useMemo(
+    () => groupJobsForList(rows, scheduledIds, recentIds, highlightedProject?.id ?? null, false),
+    [rows, scheduledIds, recentIds, highlightedProject],
+  );
+
+  const chip = (value: JobsViewFilter, label: string, count: number | null, loading = false) => (
+    <button
+      type="button"
+      className={`jobs-chip${view === value ? " active" : ""}`}
+      onClick={() => setView(value)}
+      aria-pressed={view === value}
+    >
+      {label} {loading ? "(…)" : count === null ? `(${t("jobs.chip.loadError")})` : `(${count})`}
+    </button>
+  );
+
+  /** The shared card body — identical whether this card sits in the office-order
+   * rail list or the plain searchable list, so neither can quietly drift from
+   * the other's layout fix (job-cards.spec.ts). */
+  function renderCardHead(p: Project, scopeCount: ReturnType<typeof countFor>, chatUnread: number, call: NeedsCallResult) {
+    const pctColor =
+      scopeCount.pct >= 80 ? "var(--ok)" : scopeCount.pct >= 40 ? "var(--accent)" : "var(--warn)";
+    return (
+      <>
+        <div className="job-card-body">
+          <div className="job-card-title">
+            <span className="job-card-name">{p.name || p.job_code}</span>
+            <JobModeBadge allowed={p.allowed_modes} />
+            <ReadinessBadge readyState={p.ready_state} />
+            {call.call && (
+              <span className="job-needs-call">
+                <Phone size={11} aria-hidden /> {t("pipeline.needsCall")}
+              </span>
+            )}
+            {chatUnread > 0 && (
+              <span className="chat-badge" title={`${chatUnread} unread message${chatUnread > 1 ? "s" : ""}`}>
+                <MessagesSquare size={11} aria-hidden />
+                {chatUnread}
+              </span>
+            )}
+          </div>
+          <div className="muted job-card-sub">
+            {p.job_code}
+            {p.address ? ` · ${p.address}` : ""}
+          </div>
+          <ScopeLine
+            counts={scopeCount.row}
+            stories={p.stories}
+            trackingOnly={isTrackingOnly(p.allowed_modes)}
+            className="muted job-card-sub"
+          />
+          <PipelineLine job={p} />
+        </div>
+        <span className="job-card-pct" style={{ color: scopeCount.total > 0 ? pctColor : "var(--muted)" }}>
+          {scopeCount.total > 0 ? `${scopeCount.pct}%` : "—"}
+        </span>
+      </>
+    );
+  }
+
+  function renderCardBar(scopeCount: ReturnType<typeof countFor>) {
+    const pctColor =
+      scopeCount.pct >= 80 ? "var(--ok)" : scopeCount.pct >= 40 ? "var(--accent)" : "var(--warn)";
+    return (
+      scopeCount.total > 0 && (
+        <div className="points-tier-bar" aria-hidden>
+          <div className="points-tier-fill" style={{ width: `${scopeCount.pct}%`, background: pctColor }} />
+        </div>
+      )
+    );
+  }
+
+  /** One job card. `rail` is only ever non-null in office-order mode — see the
+   * note on `showOfficeOrder` above for why the two never mix. */
+  function renderCard(p: Project, rail: ReactNode, dragProps: Record<string, unknown>) {
+    const c = countFor(p.id);
+    const chatUnread = unread.data?.[p.id] ?? 0;
+    const call = needsCall(p, today, checkins.data?.byProject[p.id] ?? null, checkins.data?.known ?? false);
+    return (
+      // Keeps the exact tag and className `a.project-card` other e2e specs
+      // already select (foreman-marks.spec.ts) — the Delete button nests
+      // inside and stops its own click from bubbling up to the Link's
+      // navigation, rather than restructuring the card.
+      <Link key={p.id} to={`/projects/${p.id}`} className="project-card home-project" {...dragProps}>
+        <div className={`home-project-head job-card-head${rail ? " job-card-head-rail" : ""}`}>
+          {rail}
+          {renderCardHead(p, c, chatUnread, call)}
+        </div>
+        {renderCardBar(c)}
+        <div className="home-project-meta job-card-meta">
+          <span>
+            <i className="dot-ok" /> {c.installed} done
+          </span>
+          {canDelete && (
+            <button
+              type="button"
+              className="link"
+              style={{ color: "var(--danger)" }}
+              disabled={deletingId === p.id}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                void handleDeleteClick(p);
+              }}
+            >
+              {deletingId === p.id ? t("deljob.checking") : t("deljob.delete")}
+            </button>
+          )}
+        </div>
+      </Link>
+    );
+  }
+
+  function renderOfficeOrderRail(index: number) {
+    return (
+      <div
+        className="job-order-rail"
+        // Inside the Link, so every control here stops its own click reaching
+        // the card's navigation — the same trick the Delete button plays.
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+        }}
+      >
+        <span className="job-order-grip" title={t("pipeline.order.drag")} aria-hidden>
+          <GripVertical size={16} />
+        </span>
+        <button
+          type="button"
+          className="job-order-btn"
+          aria-label={t("pipeline.order.up")}
+          disabled={index === 0 || saveOrder.isPending}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            moveTo(index, index - 1);
+          }}
+        >
+          <ChevronUp size={18} aria-hidden />
+        </button>
+        <button
+          type="button"
+          className="job-order-btn"
+          aria-label={t("pipeline.order.down")}
+          disabled={index === rows.length - 1 || saveOrder.isPending}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            moveTo(index, index + 1);
+          }}
+        >
+          <ChevronDown size={18} aria-hidden />
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <div className="page">
+    <div className="page jobs-page">
       <header className="page-header">
         <div>
-          <p className="home-greeting">Jobs</p>
-          <h1>Active projects</h1>
+          <h1>{t("jobs.title")}</h1>
+          <p className="muted jobs-subtitle">{t("jobs.subtitle")}</p>
         </div>
-        <BackChip fallback="/" label="Home" />
+        <BackChip fallback="/" label={t("jobs.home")} />
       </header>
       <SavedCopyNotice reason={savedCopy} />
-      {/* Supervisors wrap jobs up from the job's own page; this is where
-          they land afterwards (owner ask, 2026-08-26). */}
       {canAdd && (
-        <p style={{ margin: "0 0 4px" }}>
-          <Link to="/jobs/history" className="link">
-            Job history →
-          </Link>
+        <div className="jobs-toolbar">
+          <button type="button" className="jobs-new" onClick={() => setAdding((v) => !v)}>
+            {adding ? t("jobs.cancel") : t("jobs.new")}
+          </button>
+          <Link to="/jobs/history" className="link">{t("jobs.history")} →</Link>
+        </div>
+      )}
+
+      {!showOfficeOrder && !projects.isLoading && !projects.isError && (
+        <div className="jobs-search-bar">
+          <Search size={16} className="jobs-search-icon" aria-hidden />
+          <input
+            type="search"
+            className="jobs-search-input"
+            placeholder={t("jobs.search.placeholder")}
+            aria-label={t("jobs.search.placeholder")}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          {query && (
+            <button
+              type="button"
+              className="jobs-search-clear"
+              aria-label={t("jobs.search.clear")}
+              onClick={() => setQuery("")}
+            >
+              <X size={16} aria-hidden />
+            </button>
+          )}
+        </div>
+      )}
+
+      {!showOfficeOrder && !searching && !projects.isLoading && !projects.isError && (
+        <div className="jobs-chip-row">
+          {chip("all", t("jobs.chip.all"), rows.length)}
+          {chip("scheduled", t("jobs.chip.scheduled"), scheduledCount, scheduleLoading)}
+          {chip("recent", t("jobs.chip.recent"), recentCount, recentLoading)}
+        </div>
+      )}
+      {searching && (
+        <p className="muted jobs-search-note">{t("jobs.search.allJobsNote")}</p>
+      )}
+      {schedule.isError && (
+        <p className="muted jobs-search-note">{t("jobs.scheduleError")}</p>
+      )}
+      {recentWork.isError && (
+        <p className="muted jobs-search-note">{t("jobs.recentError")}</p>
+      )}
+
+      {canOrder && (
+        <p style={{ margin: "0 0 8px" }}>
+          <button
+            type="button"
+            className="link jobs-order-toggle"
+            disabled={searching || saveOrder.isPending}
+            onClick={() => setOfficeOrderMode((v) => !v)}
+          >
+            {showOfficeOrder ? t("jobs.officeOrder.done") : t("jobs.officeOrder.toggle")}
+          </button>
+          {showOfficeOrder && <span className="muted jobs-search-note"> {t("jobs.officeOrder.hint")}</span>}
         </p>
       )}
-      <p className="muted">
-        One hub per job — warehouse pick list, opening map, and type brain.
-      </p>
-      {canAdd && <IncomingMondayJobs />}
-      {canAdd && (
+
+      {canAdd && adding && (
         <div className="project-create">
-          {!adding ? (
-            <button type="button" className="action-btn primary" onClick={() => setAdding(true)}>
-              + New project
-            </button>
-          ) : (
             <form
               onSubmit={(e) => {
                 e.preventDefault();
@@ -444,213 +758,162 @@ export function Projects() {
                 {addProject.isPending ? "Creating…" : "Create project and add PDFs"}
               </button>
             </form>
-          )}
         </div>
       )}
       {message && <p className="scanner-hint">{message}</p>}
-      <div className="home-projects">
-        {projects.isLoading && <SkeletonList rows={4} />}
-        {projects.isError && (
-          <QueryError
-            error={projects.error}
-            onRetry={() => void projects.refetch()}
-            label="Couldn't load jobs"
-          />
-        )}
-        {/* If the counts query fails, countFor() quietly falls back to zeroes
-            and every card would look like a job nobody has touched. Say so
-            plainly instead of going silent, so a broken read is never mistaken
-            for no work done. */}
-        {!projects.isLoading && !projects.isError && counts.isError && (
-          <p className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
-            Progress unavailable — job list below is current, but "openings done" counts couldn't load.
+
+      {projects.isLoading && <SkeletonList rows={4} />}
+      {projects.isError && (
+        <QueryError
+          error={projects.error}
+          onRetry={() => void projects.refetch()}
+          label="Couldn't load jobs"
+        />
+      )}
+      {/* If the counts query fails, countFor() quietly falls back to zeroes
+          and every card would look like a job nobody has touched. Say so
+          plainly instead of going silent, so a broken read is never mistaken
+          for no work done. */}
+      {!projects.isLoading && !projects.isError && counts.isError && (
+        <p className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
+          Progress unavailable — job list below is current, but "openings done" counts couldn't load.
+        </p>
+      )}
+
+      {!projects.isLoading && !projects.isError && showOfficeOrder && (
+        <div className="home-projects">
+          {rows.map((p, index) => renderCard(p, renderOfficeOrderRail(index), {
+            draggable: true,
+            onDragStart: (e: React.DragEvent) => {
+              setDragIndex(index);
+              e.dataTransfer.effectAllowed = "move";
+            },
+            onDragOver: (e: React.DragEvent) => {
+              if (dragIndex !== null) e.preventDefault();
+            },
+            onDrop: (e: React.DragEvent) => {
+              if (dragIndex === null) return;
+              e.preventDefault();
+              moveTo(dragIndex, index);
+              setDragIndex(null);
+            },
+            onDragEnd: () => setDragIndex(null),
+          }))}
+          {rows.length === 0 && (
+            <EmptyState
+              icon={<LayoutGrid size={22} />}
+              title="No active jobs yet"
+              message="Create your first job to start tracking installs, photos, and time."
+            />
+          )}
+        </div>
+      )}
+
+      {!projects.isLoading && !projects.isError && !showOfficeOrder && searching && (
+        <div className="home-projects">
+          <p className="muted jobs-search-note">
+            {searchResults.length === 1
+              ? t("jobs.search.count.one")
+              : t("jobs.search.count.many", { n: searchResults.length })}
           </p>
-        )}
-        {!projects.isLoading &&
-          !projects.isError &&
-          rows.map((p, index) => {
-          const c = countFor(p.id);
-          const chatUnread = unread.data?.[p.id] ?? 0;
-          const pctColor =
-            c.pct >= 80 ? "var(--ok)" : c.pct >= 40 ? "var(--accent)" : "var(--warn)";
-          const call = needsCall(
-            p,
-            today,
-            checkins.data?.byProject[p.id] ?? null,
-            checkins.data?.known ?? false,
-          );
-          return (
-            // Keeps the exact tag and className `a.project-card` other e2e
-            // specs already select (foreman-marks.spec.ts) — the Delete
-            // button nests inside and stops its own click from bubbling up
-            // to the Link's navigation, rather than restructuring the card.
-            //
-            // J2: the whole card is the drag handle on desktop (the grip is the
-            // affordance, not the only target), and dropping on another card
-            // moves this one into its place. A drag needs a mouse, which is
-            // exactly why the up/down buttons below are not optional.
-            <Link
-              key={p.id}
-              to={`/projects/${p.id}`}
-              className="project-card home-project"
-              draggable={canOrder}
-              onDragStart={(e) => {
-                if (!canOrder) return;
-                setDragIndex(index);
-                e.dataTransfer.effectAllowed = "move";
-              }}
-              onDragOver={(e) => {
-                if (canOrder && dragIndex !== null) e.preventDefault();
-              }}
-              onDrop={(e) => {
-                if (!canOrder || dragIndex === null) return;
-                e.preventDefault();
-                moveTo(dragIndex, index);
-                setDragIndex(null);
-              }}
-              onDragEnd={() => setDragIndex(null)}
-            >
-              {/* A grid, not a flex row: three declared columns, so the job
-                  name starts at the same x on every card and for every role.
-                  See the note over `.job-card-head` in index.css. */}
-              <div className="home-project-head job-card-head job-card-head-rail">
-                {canOrder ? (
-                  <div
-                    className="job-order-rail"
-                    // Inside the Link, so every control here stops its own
-                    // click reaching the card's navigation — the same trick
-                    // the Delete button below already plays.
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                    }}
-                  >
-                    <span className="job-order-grip" title={t("pipeline.order.drag")} aria-hidden>
-                      <GripVertical size={16} />
-                    </span>
-                    <button
-                      type="button"
-                      className="job-order-btn"
-                      aria-label={t("pipeline.order.up")}
-                      disabled={index === 0 || saveOrder.isPending}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        moveTo(index, index - 1);
-                      }}
-                    >
-                      <ChevronUp size={18} aria-hidden />
-                    </button>
-                    <button
-                      type="button"
-                      className="job-order-btn"
-                      aria-label={t("pipeline.order.down")}
-                      disabled={index === rows.length - 1 || saveOrder.isPending}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        moveTo(index, index + 1);
-                      }}
-                    >
-                      <ChevronDown size={18} aria-hidden />
-                    </button>
-                  </div>
-                ) : (
-                  // An empty cell on purpose. Somebody who cannot reorder the
-                  // list still gets the rail's column reserved, so their job
-                  // names line up in exactly the same place a foreman's do.
-                  <div className="job-order-spacer" aria-hidden />
-                )}
-                <div className="job-card-body">
-                  <div className="job-card-title">
-                    <span className="job-card-name">
-                      {p.name || p.job_code}
-                    </span>
-                    <JobModeBadge allowed={p.allowed_modes} />
-                    {/* Beside the mode badge, never on top of it. */}
-                    <ReadinessBadge readyState={p.ready_state} />
-                    {call.call && (
-                      <span className="job-needs-call">
-                        <Phone size={11} aria-hidden /> {t("pipeline.needsCall")}
-                      </span>
-                    )}
-                    {chatUnread > 0 && (
-                      <span className="chat-badge" title={`${chatUnread} unread message${chatUnread > 1 ? "s" : ""}`}>
-                        <MessagesSquare size={11} aria-hidden />
-                        {chatUnread}
-                      </span>
-                    )}
-                  </div>
-                  <div className="muted job-card-sub">
-                    {p.job_code}
-                    {p.address ? ` · ${p.address}` : ""}
-                  </div>
-                  {/* The TYPED storey count, deliberately: the job header
-                      prefers a traced model's own count, and reading one model
-                      per listed job is the whole-table pull this wave removed.
-                      See the note at the top of ScopeLine.tsx. */}
-                  <ScopeLine
-                    counts={c.row}
-                    stories={p.stories}
-                    trackingOnly={isTrackingOnly(p.allowed_modes)}
-                    className="muted job-card-sub"
-                  />
-                  {/* "Not ready · start ~Sep 22 · windows ETA Sep 15" */}
-                  <PipelineLine job={p} />
-                </div>
-                <span
-                  className="job-card-pct"
-                  style={{ color: c.total > 0 ? pctColor : "var(--muted)" }}
-                >
-                  {c.total > 0 ? `${c.pct}%` : "—"}
-                </span>
-              </div>
-              {c.total > 0 && (
-                <div className="points-tier-bar" aria-hidden>
-                  <div
-                    className="points-tier-fill"
-                    style={{ width: `${c.pct}%`, background: pctColor }}
-                  />
-                </div>
+          {searchResults.map((p) => renderCard(p, null, {}))}
+          {searchResults.length === 0 && (
+            <EmptyState
+              icon={<Search size={22} />}
+              title={t("jobs.search.none")}
+              message={t("jobs.search.noneHint")}
+            />
+          )}
+        </div>
+      )}
+
+      {!projects.isLoading && !projects.isError && !showOfficeOrder && !searching && view === "scheduled" && (
+        <div className="home-projects">
+          {schedule.isError ? (
+            <QueryError error={schedule.error} onRetry={() => void schedule.refetch()} label={t("jobs.scheduleError")} />
+          ) : scheduleLoading ? (
+            <SkeletonList rows={2} />
+          ) : chipJobs.length === 0 ? (
+            <EmptyState icon={<CalendarClock size={22} />} title={t("jobs.noneScheduled")} message={t("jobs.scheduleHorizon")} />
+          ) : (
+            chipJobs.map((p) => renderCard(p, null, {}))
+          )}
+        </div>
+      )}
+
+      {!projects.isLoading && !projects.isError && !showOfficeOrder && !searching && view === "recent" && (
+        <div className="home-projects">
+          {recentWork.isError ? (
+            <QueryError error={recentWork.error} onRetry={() => void recentWork.refetch()} label={t("jobs.recentError")} />
+          ) : recentLoading ? (
+            <SkeletonList rows={2} />
+          ) : chipJobs.length === 0 ? (
+            <EmptyState icon={<LayoutGrid size={22} />} title={t("jobs.noneRecent")} message={t("jobs.recentWindow")} />
+          ) : (
+            chipJobs.map((p) => renderCard(p, null, {}))
+          )}
+        </div>
+      )}
+
+      {!projects.isLoading && !projects.isError && !showOfficeOrder && !searching && view === "all" && (
+        <div className="home-projects">
+          {grouped.highlighted && (
+            <div className="jobs-highlight">
+              <p className="jobs-highlight-label">
+                <CalendarClock size={14} aria-hidden /> {t("jobs.next.heading")}
+              </p>
+              {highlightEntry && (
+                <p className="jobs-highlight-time">
+                  {highlightEntry.day === today ? t("jobs.next.today") : new Date(`${highlightEntry.day}T12:00:00`).toLocaleDateString(lang, { weekday: "short", month: "short", day: "numeric" })}
+                  {highlightEntry.assignment.start_time ? ` · ${highlightEntry.assignment.start_time.slice(0, 5)}` : ` · ${t("jobs.timeUnknown")}`}
+                </p>
               )}
-              <div className="home-project-meta job-card-meta">
-                {/* The openings COUNT moved up into the scope line under the
-                    job name (wave X); what is left here is the progress fact,
-                    which the percentage and the bar above are about. */}
-                <span>
-                  <i className="dot-ok" /> {c.installed} done
-                </span>
-                {canDelete && (
-                  <button
-                    type="button"
-                    className="link"
-                    style={{ color: "var(--danger)" }}
-                    disabled={deletingId === p.id}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      void handleDeleteClick(p);
-                    }}
-                  >
-                    {deletingId === p.id ? t("deljob.checking") : t("deljob.delete")}
-                  </button>
-                )}
-              </div>
-            </Link>
-          );
-        })}
-        {!projects.isLoading && !projects.isError && projects.data?.length === 0 && (
-          <EmptyState
-            icon={<LayoutGrid size={22} />}
-            title="No active jobs yet"
-            message={
-              canAdd
-                ? "Create your first job to start tracking installs, photos, and time."
-                : "Jobs will show up here once your office adds them."
-            }
-          />
-        )}
-      </div>
+              {renderCard(grouped.highlighted, null, {})}
+            </div>
+          )}
+          {grouped.scheduled.length > 0 && (
+            <>
+              <h2 className="jobs-group-heading">{t("jobs.group.scheduled")}</h2>
+              {grouped.scheduled.map((p) => renderCard(p, null, {}))}
+            </>
+          )}
+          {grouped.recentlyWorked.length > 0 && (
+            <>
+              <h2 className="jobs-group-heading">{t("jobs.group.recent")}</h2>
+              {grouped.recentlyWorked.map((p) => renderCard(p, null, {}))}
+            </>
+          )}
+          {grouped.other.length > 0 && (
+            <>
+              {(grouped.scheduled.length > 0 || grouped.recentlyWorked.length > 0) && (
+                <h2 className="jobs-group-heading">{t("jobs.group.other")}</h2>
+              )}
+              {grouped.other.map((p) => renderCard(p, null, {}))}
+            </>
+          )}
+          {!grouped.highlighted &&
+            grouped.scheduled.length === 0 &&
+            grouped.recentlyWorked.length === 0 &&
+            grouped.other.length === 0 &&
+            projects.data?.length === 0 && (
+              <EmptyState
+                icon={<LayoutGrid size={22} />}
+                title="No active jobs yet"
+                message={
+                  canAdd
+                    ? "Create your first job to start tracking installs, photos, and time."
+                    : "Jobs will show up here once your office adds them."
+                }
+              />
+            )}
+        </div>
+      )}
+      {canAdd && (
+        <details className="jobs-office-tools">
+          <summary>{t("jobs.imports")}</summary>
+          <IncomingMondayJobs />
+        </details>
+      )}
     </div>
   );
 }

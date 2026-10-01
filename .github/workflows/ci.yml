@@ -117,6 +117,10 @@ jobs:
       # their own, so a branch appending to the long list above doesn't collide
       # with this one.
       - run: npm run e2e -- clock-in-once.spec.ts crew-clock.spec.ts
+      - name: Jobs search and recommendations on phone and desktop
+        run: |
+          npm run e2e -- jobs-search.spec.ts job-cards.spec.ts job-pipeline.spec.ts
+          npm run e2e -- jobs-search.spec.ts --browser=webkit
       # Expired sign-ins and shared-phone queues need their own browser gate:
       # they can lose a saved punch or send it as the next person even while
       # the ordinary clock screen tests remain green.

@@ -185,19 +185,19 @@ for (const width of [390, 1024] as const) {
       expect(new Set(foremanEdges).size).toBe(1);
       expect(new Set(installerEdges).size).toBe(1);
 
-      // THE OTHER POINT: the rail's column is RESERVED whether or not the rail
-      // is in it, so an installer's job names start on exactly the same pixel a
-      // foreman's do — the two roles read one list, not two.
+      // THE OTHER POINT: a foreman's job names start on exactly the same pixel
+      // an installer's do — the two roles read one list, not two.
       expect(installerEdges[0]).toBe(foremanEdges[0]);
 
-      // And the thing that reserves it is named directly, so deleting the
-      // spacer fails here rather than only in the comparison above: a foreman
-      // gets three rails and no spacers, an installer three spacers and no
-      // rails, and between them that is the ONLY difference in the head.
-      await expect(page.locator(".job-order-rail .job-order-btn")).toHaveCount(6);
+      // Reordering now hides behind an explicit "Office order" toggle
+      // (foreman+, jobs-search-schedule): by DEFAULT neither role reserves a
+      // rail column any more, so there is nothing left to tell the two roles'
+      // cards apart until a foreman asks for manual order. See
+      // e2e/jobs-search.spec.ts for the toggle revealing the rail.
+      await expect(page.locator(".job-order-rail .job-order-btn")).toHaveCount(0);
       await expect(page.locator(".job-order-spacer")).toHaveCount(0);
       await expect(installer.locator(".job-order-rail .job-order-btn")).toHaveCount(0);
-      await expect(installer.locator(".job-order-spacer")).toHaveCount(3);
+      await expect(installer.locator(".job-order-spacer")).toHaveCount(0);
 
       await installerCtx.close();
     });

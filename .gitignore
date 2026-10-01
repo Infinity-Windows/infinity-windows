@@ -11,6 +11,7 @@ supabase/.temp/
 # changed, so they are local-only. See app/e2e/__screenshots__/README.md.
 app/e2e/test-results/
 app/e2e/test-results-foreman/
+app/e2e/test-results-jobs-search/
 # Playwright also drops a run summary at the repo root when it is invoked
 # from app/ with a rootDir above it. Same throwaway output, different place.
 test-results/

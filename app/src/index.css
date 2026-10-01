@@ -13739,3 +13739,133 @@ button.crew-start-message { min-height: 44px; width: 100%; text-align: left; col
 .sched-pair-overlap { font-weight: 600; margin-top: 3px; }
 .sched-conflict-inline > div { min-width: 0; }
 .sched-conflict-banner-fix { min-height: 44px; min-width: 44px; }
+
+/* ---------------------------------------------------------------------------
+   Jobs page search, schedule highlight and view chips (jobs-search-schedule).
+   Scoped entirely under `.jobs-*` — nothing here touches `.project-card` or
+   any other page's styles. Tap targets are 44px tall throughout, the same
+   floor every other control on this page already holds to.
+   --------------------------------------------------------------------------- */
+.jobs-search-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin: 4px 0 10px;
+}
+.jobs-search-icon {
+  position: absolute;
+  left: 12px;
+  color: var(--muted);
+  pointer-events: none;
+}
+.jobs-search-input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 40px 0 38px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+  color: var(--text);
+  font-size: var(--text-md);
+  margin: 0;
+}
+.jobs-search-input::-webkit-search-cancel-button { display: none; }
+.jobs-search-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.jobs-search-clear {
+  position: absolute;
+  right: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.jobs-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: 10px;
+}
+.jobs-chip {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--text);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.jobs-chip.active {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+  color: var(--accent-hover);
+}
+
+.jobs-search-note {
+  font-size: var(--text-xs);
+  margin: 0 0 8px;
+}
+
+.jobs-group-heading {
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin: 16px 0 6px;
+}
+.jobs-group-heading:first-child { margin-top: 4px; }
+
+/* The one job pulled above everything else: a dark-orange accent card, not a
+   recolored `.project-card` — this is the one spot on the page that is
+   allowed to shout, because it is the one thing the page decided for you. */
+.jobs-highlight {
+  margin-bottom: 14px;
+  padding: 10px;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--radius-lg);
+  background: var(--accent-bg);
+}
+.jobs-highlight-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0 0 6px;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent-hover);
+}
+.jobs-highlight .project-card {
+  border-color: var(--accent-line);
+}
+
+.jobs-page .page-header { margin-bottom: 12px; }
+.jobs-subtitle { margin: 4px 0 0; font-size: var(--text-sm); line-height: 1.4; }
+.jobs-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; margin-bottom: 12px; }
+.jobs-toolbar .link, .jobs-order-toggle { display: inline-flex; align-items: center; min-height: 44px; }
+.jobs-new { min-height: 44px; padding: 10px 16px; border: 0; border-radius: var(--radius-lg); background: var(--accent); color: white; font-weight: 700; font-size: var(--text-sm); }
+.jobs-page .project-card { padding: 14px; overflow-wrap: anywhere; }
+.jobs-page .job-card-name { overflow: visible; text-overflow: clip; line-height: 1.25; }
+.jobs-page .job-card-meta { margin-top: 12px; }
+.jobs-page .job-card-meta .link { min-height: 44px; display: inline-flex; align-items: center; }
+.jobs-page .home-projects { gap: 10px; }
+.jobs-highlight { padding: 12px; margin: 0; }
+.jobs-highlight-time { margin: 0 0 8px; font-size: var(--text-sm); color: var(--muted); }
+.jobs-highlight .project-card { padding: 0; border: 0; background: transparent; box-shadow: none; }
+.jobs-group-heading { margin-top: 8px; }
+.jobs-office-tools { margin-top: 24px; border-top: 1px solid var(--border); padding-top: 8px; }
+.jobs-office-tools summary { min-height: 44px; padding: 12px 0; color: var(--muted); font-size: var(--text-sm); cursor: pointer; }
