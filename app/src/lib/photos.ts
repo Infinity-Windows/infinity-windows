@@ -110,7 +110,7 @@ export async function listPhotos(
 }
 
 /**
- * Photos tagged to THIS job-day's daily log (20261062010000) — not every
+ * Photos tagged to THIS job-day's daily log (20261064010000) — not every
  * photo on the same job and date, just the ones the log itself claims.
  * Missing-column fallback is unnecessary here: a database old enough to lack
  * daily_log_id also lacks the daily_logs row this is ever called for.

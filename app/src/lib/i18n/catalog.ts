@@ -2561,6 +2561,7 @@ export const CATALOG = {
   "dailyLog.delays.none": { en: "Nothing stopped work", es: "Nada detuvo el trabajo" },
   "dailyLog.delays.add": { en: "Add a delay", es: "Agregar una demora" },
   "dailyLog.delays.remove": { en: "Remove", es: "Quitar" },
+  // i18n-same-on-purpose: "material" has the same spelling in Spanish.
   "dailyLog.delays.cause.material": { en: "Material", es: "Material" },
   "dailyLog.delays.cause.weather": { en: "Weather", es: "Clima" },
   "dailyLog.delays.cause.equipment": { en: "Equipment", es: "Equipo" },
@@ -2572,6 +2573,7 @@ export const CATALOG = {
   "dailyLog.delays.status.happened": { en: "Happened", es: "Ocurrió" },
   "dailyLog.delays.status.stillGoing": { en: "Still going", es: "Sigue pasando" },
   "dailyLog.delays.attribution.builder": { en: "Builder", es: "Constructor" },
+  // i18n-same-on-purpose: Forge is the company name in both languages.
   "dailyLog.delays.attribution.forge": { en: "Forge", es: "Forge" },
   "dailyLog.delays.attribution.weather": { en: "Weather", es: "Clima" },
   "dailyLog.delays.attribution.other": { en: "Other", es: "Otro" },
@@ -2599,6 +2601,7 @@ export const CATALOG = {
   "dailyLog.section.missingTomorrow": { en: "Something has to be on site tomorrow that isn't", es: "Algo tiene que estar en el sitio mañana y no está" },
   "dailyLog.missingTomorrow.add": { en: "Add", es: "Agregar" },
   "dailyLog.missingTomorrow.placeholder": { en: "Material or equipment needed", es: "Material o equipo necesario" },
+  // i18n-same-on-purpose: "material" has the same spelling in Spanish.
   "dailyLog.missingTomorrow.material": { en: "Material", es: "Material" },
   "dailyLog.missingTomorrow.equipment": { en: "Equipment", es: "Equipo" },
 

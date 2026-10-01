@@ -77,8 +77,8 @@ try{
  await applyFn('20261004000000_connected_workflow_plans.sql','purge_project');
  await db.exec(`revoke all on function purge_project(uuid) from public,anon; grant execute on function purge_project(uuid) to authenticated;`);
  // Full feature SQL: any changes to its lifecycle functions/policies are applied intact.
- await apply('20261062010000_daily_log_photos.sql');
- await apply('20261062010000_daily_log_photos.sql');
+ await apply('20261064010000_daily_log_photos.sql');
+ await apply('20261064010000_daily_log_photos.sql');
  report.migrationReplay=true;
  for(const k of ['a','b','lead','partner','revoked','retired','unrelated']){
   await q("insert into profiles(id,role,display_name,is_partner,partner,retired_at,access_revoked_at) values($1,$2,$3,$4,$4,case when $5 then now() end,case when $6 then now() end)",[ids[k],k==='lead'?'supervisor':'installer',`Synthetic ${k}`,k==='partner',k==='retired',k==='revoked']);

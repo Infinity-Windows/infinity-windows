@@ -16,7 +16,7 @@ await db.exec(visible[0]);
 await db.exec('set check_function_bodies=off');
 for(const n of ['20261030000000_ai_daily_log_contributions.sql','20261052000000_daily_log_revision_guard.sql'])await db.exec(await source(`supabase/migrations/${n}`));
 await db.exec('set check_function_bodies=on');
-const migration=await source('supabase/migrations/20261062000000_daily_log_progress_fields.sql');await db.exec(migration);
+const migration=await source('supabase/migrations/20261064000000_daily_log_progress_fields.sql');await db.exec(migration);
 await db.exec('grant select on daily_logs to authenticated');
 const actor='00000000-0000-4000-8000-000000000001',job='00000000-0000-4000-8000-000000000090';
 await db.query("insert into profiles(id,role,display_name) values($1,'installer','Synthetic installer')",[actor]);await db.query("insert into projects(id,name) values($1,'Synthetic job')",[job]);await db.query("select set_config('request.jwt.claim.sub',$1,false)",[actor]);await db.exec('set role authenticated');
