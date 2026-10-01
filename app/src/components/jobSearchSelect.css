@@ -1,0 +1,12 @@
+.job-search-select { position: relative; min-width: 0; width: 100%; margin-bottom: 16px; }
+.job-search-control { display: grid; grid-template-columns: 18px minmax(0, 1fr) 44px; align-items: center; gap: 8px; padding-left: 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); color: var(--muted); }
+.job-search-control:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.job-search-control input { width: 100%; min-width: 0; border: 0; background: transparent; margin: 0; padding: 14px 0; outline: 0; font-size: 16px; }
+.job-search-control > button { display: grid; place-items: center; min-width: 44px; min-height: 52px; margin: 0; padding: 0; border: 0; background: transparent; color: var(--text); }
+.job-search-dropdown { position: absolute; top: 100%; left: 0; right: 0; z-index: 30; margin-top: 4px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); box-shadow: 0 8px 24px #0005; overflow: hidden; }
+.job-search-dropdown ul { list-style: none; padding: 4px; margin: 0; max-height: min(280px, 35dvh); overflow-y: auto; overscroll-behavior-y: contain; }
+.job-search-dropdown li { margin: 0; padding: 0; }
+.job-search-dropdown button { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; width: 100%; min-height: 48px; margin: 0; padding: 10px 12px; border: 0; border-radius: 8px; background: transparent; text-align: left; color: var(--text); white-space: normal; overflow-wrap: anywhere; }
+.job-search-dropdown button span { color: var(--muted); font-size: 13px; }
+.job-search-dropdown button:hover, .job-search-dropdown button.is-active, .job-search-dropdown button[aria-selected="true"] { background: var(--accent-soft); }
+.job-search-dropdown p { padding: 12px; margin: 0; }
