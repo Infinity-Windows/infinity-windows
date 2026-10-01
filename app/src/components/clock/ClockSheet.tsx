@@ -889,7 +889,7 @@ export function ClockSheet({
               className="clock-job-chip"
               disabled={busy || onBreak || needsRealFinish}
               onClick={() => {
-                const requested = initialPick?.returnToAsk && initialPick.projectId && initialPick.projectId.toLowerCase() !== shift.project_id?.toLowerCase()
+                const requested = (initialPick?.returnToAsk || initialPick?.switchToProject) && initialPick.projectId && initialPick.projectId.toLowerCase() !== shift.project_id?.toLowerCase()
                   ? initialPick.projectId : shift.project_id ?? "";
                 setPickProjectId(requested);
                 setPickCostCodeId(requested === shift.project_id ? shift.cost_code_id ?? "" : "");

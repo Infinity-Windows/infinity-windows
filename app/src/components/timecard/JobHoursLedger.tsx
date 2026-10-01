@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { listProjectsAnyStatus } from "../../lib/api";
-import { addDays, listTeamShifts, timecardRange } from "../../lib/timeclock";
+import { addDays, stepTimecardAnchor, listTeamShifts, timecardRange } from "../../lib/timeclock";
 import { useT } from "../../lib/i18n";
 import { customTimeRange, dateFieldValue, includesJob, type JobSelection } from "../../lib/timeReportFilters";
 import { TimeByJobReport } from "./TimeByJobReport";
@@ -33,9 +33,9 @@ export function JobHoursLedger({ selectedJobs }: { selectedJobs: JobSelection })
       <Link className="button-like" to="/jobs/history">{t("timereport.history")}</Link>
     </div>
     {mode === "pay" && <div className="row-gap" style={{ alignItems: "center" }}>
-      <button aria-label={t("tcx.range.prev")} onClick={() => setAnchor((d) => addDays(d, -14))}>‹</button>
+      <button aria-label={t("tcx.range.prev")} onClick={() => setAnchor((d) => stepTimecardAnchor("pay", d, -1))}>‹</button>
       <button style={{ flex: 1 }} onClick={() => setAnchor(new Date())}>{period.label}</button>
-      <button aria-label={t("tcx.range.next")} onClick={() => setAnchor((d) => addDays(d, 14))}>›</button>
+      <button aria-label={t("tcx.range.next")} onClick={() => setAnchor((d) => stepTimecardAnchor("pay", d, 1))}>›</button>
     </div>}
     {mode === "custom" && <div className="job-hours-custom-range">
       <div className="job-hours-dates">

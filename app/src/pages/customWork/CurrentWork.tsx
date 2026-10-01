@@ -13,6 +13,8 @@ import { listProjectsAnyStatus } from "../../lib/api";
 import { formatApiError } from "../../lib/errors";
 import { isMissingTable, isMissingFunction } from "../../lib/schemaErrors";
 import { useWork } from "../../lib/customWork/useWork";
+import { openClockGlobally } from "../../lib/clockContext";
+import { isPendingShiftId } from "../../lib/work/startDay";
 import {
   clockText,
   IDLE_REASONS,
@@ -98,6 +100,15 @@ export function CurrentWork() {
       (!u.project_id && (u.created_by === work.user || lead)),
   );
   const timed = shift?.status === "open" && !shift.break_started_at;
+  const selectedJobReady = !!selectedUnit?.project_id && timed && shift?.project_id === selectedUnit.project_id;
+  const selectedShiftReady = selectedJobReady && !!shift && !isPendingShiftId(shift.id);
+  const openSelectedJobClock = () => openClockGlobally({
+    projectId: selectedUnit?.project_id ?? null,
+    costCodeId: null,
+    note: null,
+    mode: null,
+    switchToProject: true,
+  });
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
     setError("");
@@ -113,11 +124,16 @@ export function CurrentWork() {
     }
   };
   const start = async (unit: WorkUnit | null, participation = "install") => {
-    if (!timed || !shift) {
-      work.clock.openClock();
+    if (unit?.project_id && shift?.project_id !== unit.project_id) {
+      openClockGlobally({ projectId: unit.project_id, costCodeId: null, note: null, mode: null, switchToProject: true });
       return;
     }
-    if (shift.id.startsWith("pending:"))
+    if (!timed || !shift) {
+      if (unit?.project_id) openClockGlobally({ projectId: unit.project_id, costCodeId: null, note: null, mode: null, switchToProject: true });
+      else work.clock.openClock();
+      return;
+    }
+    if (isPendingShiftId(shift.id))
       throw new Error(
         "Your job clock is waiting to sync. Unit details can be saved now; start unit timing after the job clock syncs.",
       );
@@ -361,20 +377,24 @@ export function CurrentWork() {
             <section className="cw-card">
               <h2>Selected: {selectedUnit.label}</h2>
               <p>{selectedUnit.type_label}</p>
+              {selectedUnit.project_id && <p className="muted">Job: {projects.data?.find((p) => p.id === selectedUnit.project_id)?.name ?? (projects.isPending ? "Loading job…" : "Job unavailable")}</p>}
+              {!selectedShiftReady && (
+                <p className="muted">
+                  {selectedJobReady ? "Your job clock is waiting to sync. Start this unit after it syncs." : "Clock into this unit’s job to start work."}
+                </p>
+              )}
               <div className="cw-actions">
-                <button
-                  className="primary"
-                  disabled={blocked}
-                  onClick={() => void run(() => start(selectedUnit))}
-                >
-                  Work on this unit
-                </button>
-                <button
-                  disabled={blocked}
-                  onClick={() => void run(() => start(selectedUnit, "helper"))}
-                >
-                  Join as helper
-                </button>
+                {canEditUnit(selectedUnit, work.user, lead) && (
+                  <button disabled={blocked} onClick={() => setEditing(selectedUnit)}>Edit details</button>
+                )}
+                {selectedShiftReady ? (
+                  <>
+                    <button className="primary" disabled={blocked} onClick={() => void run(() => start(selectedUnit))}>Work on this unit</button>
+                    <button disabled={blocked} onClick={() => void run(() => start(selectedUnit, "helper"))}>Join as helper</button>
+                  </>
+                ) : !selectedJobReady && selectedUnit.project_id ? (
+                  <button className="primary" onClick={openSelectedJobClock}>Open this job’s clock</button>
+                ) : null}
               </div>
             </section>
           )}

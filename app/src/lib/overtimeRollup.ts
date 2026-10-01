@@ -1,8 +1,8 @@
 // One person's regular / overtime / double split, for a whole crew at once
 // (Wave K, K5).
 //
-// The rule this exists to keep: OVERTIME IS WEEKLY, so a two-week pay period is
-// two separate weekly buckets and never one 80-hour pool. TimecardPanel has
+// The rule this exists to keep: OVERTIME IS WEEKLY, so every calendar week keeps its own
+// threshold even when a pay period ends midweek. TimecardPanel has
 // done that correctly for a single person since Wave T; the team export had no
 // overtime at all (`overtime: []`). This is that same maths, lifted out so both
 // the team CSV and the Gusto export use one implementation instead of two.
@@ -43,6 +43,7 @@ export interface OvertimeLineByPerson extends TimecardOvertimeLine {
 export function splitOvertimeByPerson(
   rows: OvertimeShiftRow[],
   ruleFor: (profileId: string) => OvertimeRule | null,
+  selectedDays?: { start: string; end: string },
 ): OvertimeLineByPerson[] {
   // person -> week -> day -> hours
   const byPerson = new Map<string, { employee: string; weeks: Map<string, Map<string, number>> }>();
@@ -64,11 +65,22 @@ export function splitOvertimeByPerson(
     let overtime = 0;
     let doubleTime = 0;
     for (const days of person.weeks.values()) {
-      const split = splitOvertime([...days.values()], rule);
-      regular += split.regular;
-      overtime += split.overtime;
-      doubleTime += split.doubleTime;
+      // Work earlier in the same week consumes the weekly threshold, even
+      // when it belongs to the previous paycheck. Export only selected days.
+      const preceding: number[] = [];
+      let before = splitOvertime(preceding, rule);
+      for (const [day, hours] of [...days].sort(([a], [b]) => a.localeCompare(b))) {
+        preceding.push(hours);
+        const after = splitOvertime(preceding, rule);
+        if (!selectedDays || (day >= selectedDays.start && day < selectedDays.end)) {
+          regular += after.regular - before.regular;
+          overtime += after.overtime - before.overtime;
+          doubleTime += after.doubleTime - before.doubleTime;
+        }
+        before = after;
+      }
     }
+    if (regular + overtime + doubleTime === 0 && selectedDays) continue;
     out.push({
       profileId,
       employee: person.employee,

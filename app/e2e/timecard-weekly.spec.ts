@@ -109,3 +109,37 @@ test('a refused weekly save shows an error without claiming approval',async({pag
   await page.goto('/timecard');await page.getByRole('button',{name:'Approve week',exact:true}).click();
   await expect(page.getByRole('alert')).toContainText('This timecard changed');await expect(page.getByText('Week approved',{exact:true})).toHaveCount(0);
 });
+
+test('monthly halves navigate correctly, include third weekly approval and export only the selected payroll dates', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-09-20T18:00:00Z') });
+  const f = await loadTimecardFixtures(page, 'supervisor');
+  const base = f.rows.find(r => r.profile_id === id(1))!;
+  f.rows.splice(0, f.rows.length, ...[14, 15, 16, 17, 18, 28].map((day, k) => ({ ...base,
+    id: id(500 + k), break_seconds: 0, clock_in_at: `2026-09-${day}T14:00:00Z`, clock_out_at: `2026-09-${day}T${day === 28 ? '16' : '23'}:00:00Z`,
+  })));
+  // Five 9-hour days in one calendar week: the second half contains 27h,
+  // including 5h overtime earned after the first half's 18h. Plus 2h Sep28.
+  await page.route('**/rest/v1/overtime_rules**', r => json(r, [{ id: id(700), scope: 'company', profile_id: null,
+    weekly_threshold_hours: 40, weekly_ot_multiplier: 1.5, daily_threshold_hours: null, daily_ot_multiplier: 1.5,
+    double_time_threshold_hours: null, double_time_multiplier: 2 }], 1));
+  await page.goto('/team-timecards');
+  await page.getByRole('tab', { name: 'Pay period', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Pay period Sep 16 – Sep 30', exact: true })).toBeVisible();
+  const card = page.locator('.tcx-person-review').filter({ has: page.locator('.tcx-row', { hasText: 'Installer Alex' }) });
+  await expect(card.getByText('Sep 28 – Oct 4', { exact: true })).toBeVisible();
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export pay period for Gusto', exact: true }).click();
+  const file = await download;
+  const stream = await file.createReadStream();
+  let csv = ''; for await (const chunk of stream!) csv += chunk.toString();
+  expect(csv).toContain('Installer,Alex,24.00,5.00,0.00');
+  await page.getByRole('button', { name: 'Previous', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Pay period Sep 1 – Sep 15', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Previous', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Pay period Aug 16 – Aug 31', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Next', exact: true }).click();
+  await page.getByRole('button', { name: 'Next', exact: true }).click();
+  await card.locator('.tcx-row').click();
+  await expect(page.getByRole('button', { name: 'Pay period Sep 16 – Sep 30', exact: true })).toBeVisible();
+  await expect(page.getByText('Sep 28 – Oct 4', { exact: true })).toBeVisible();
+});

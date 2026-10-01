@@ -2588,6 +2588,11 @@ export const CATALOG = {
   // "Open original" and not "Download": the link opens the PDF in a new tab,
   // where a phone shows it and offers to save it if that is what somebody wants.
   "receipt.pdfTag": { en: "PDF", es: "PDF" },
+  "receipt.viewImage": { en: "View receipt: {vendor}", es: "Ver recibo: {vendor}" },
+  "receipt.viewerTitle": { en: "Receipt: {vendor}", es: "Recibo: {vendor}" },
+  "receipt.imageUnavailable": { en: "Receipt image unavailable. Close and try again.", es: "Imagen del recibo no disponible. Cierra e inténtalo de nuevo." },
+  "receipt.zoomIn": { en: "Zoom in", es: "Ampliar" },
+  "receipt.fitScreen": { en: "Fit to screen", es: "Ajustar a la pantalla" },
   "receipt.openOriginal": { en: "Open original", es: "Abrir original" },
   "receipt.openOriginalFailed": {
     en: "Couldn't open that PDF just now — check your signal and try again.",
@@ -3476,6 +3481,7 @@ export const CATALOG = {
   "timeexport.selectedPeople": { en: "Employees selected: {n}", es: "Empleados seleccionados: {n}" },
   "timeexport.searchPeople": { en: "Search employees", es: "Buscar empleados" },
   "timeexport.dateHelp": { en: "Both dates are included, based on when each shift started. Time zone: {zone}.", es: "Se incluyen ambas fechas según el inicio de cada turno. Zona horaria: {zone}." },
+  "timecard.loadingPayroll": { en: "Loading payroll hours…", es: "Cargando horas de nómina…" },
   "timeexport.loading": { en: "Loading complete time records…", es: "Cargando todos los registros de tiempo…" },
   "timeexport.counts": { en: "{people} employees · {entries} finished entries", es: "{people} empleados · {entries} registros terminados" },
   "timeexport.unfinished": { en: "{n} unfinished entries are excluded. Finish those timecards before including them in payroll.", es: "Se excluyen {n} registros sin terminar. Completa esas tarjetas antes de incluirlas en la nómina." },

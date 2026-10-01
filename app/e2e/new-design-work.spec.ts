@@ -4,11 +4,24 @@
 
 import { expect, test } from "@playwright/test";
 import { TEST_USER, useSupabaseFixtures } from "./support/supabaseFixtures";
-import { hideWrongProjectBanner, stubGeolocationDenied } from "./support/specHelpers";
-import { morningFixtures } from "./support/release1Fixtures";
+import { hideWrongProjectBanner, json, stubGeolocationDenied } from "./support/specHelpers";
+import { BLACK22, OAKRIDGE, morningFixtures, type MorningWorld } from "./support/release1Fixtures";
 import { measureCrewRule } from "./support/crewRule";
 
 test.use({ viewport: { width: 375, height: 667 }, deviceScaleFactor: 2 });
+
+async function savedUnitFixture(page: import("@playwright/test").Page, world: MorningWorld) {
+  const units: Record<string, unknown>[] = [];
+  await page.route("**/rest/v1/custom_work_units**", (route) => json(route, units, units.length));
+  await page.route((url) => /\/rest\/v1\/rpc\/custom_work_command(\?|$)/.test(url.href), (route) => {
+    const body = route.request().postDataJSON() as { p_action: string; p_data: Record<string, unknown> };
+    world.workCommands.push(body);
+    if (body.p_action === "unit") units.push({ ...body.p_data,
+      created_by: TEST_USER.id, created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    });
+    return json(route, "ok", null);
+  });
+}
 
 test("items 1–3 — clock, today, your unit — are visible without scrolling, in order", async ({ page }) => {
   await useSupabaseFixtures(page, { role: "installer", uiDesign: "new" });
@@ -136,6 +149,7 @@ test("a worker can save a new unit beside Next up without changing the job clock
   await useSupabaseFixtures(page, { role: "installer", uiDesign: "new" });
   await hideWrongProjectBanner(page);
   const world = await morningFixtures(page, { signed: true, openShift: true, myOpening: true });
+  await savedUnitFixture(page, world);
   await page.goto("/");
   const add = page.getByTestId("ws-unit-new");
   await expect(add).toBeEnabled();
@@ -147,7 +161,95 @@ test("a worker can save a new unit beside Next up without changing the job clock
   await save.click();
   await expect.poll(() => world.workCommands.filter((c) => c.p_action === "unit").length).toBe(1);
   expect(world.workCommands.some((c) => c.p_action === "start")).toBe(false);
+  await expect(page.getByTestId("ws-just-added")).toContainText("E2E-UNIT-4096");
+  await expect(page.getByTestId("ws-saved-units")).toContainText("E2E-UNIT-4096");
+  await page.getByTestId("ws-just-added").getByRole("button", { name: "Start" }).click();
+  await expect.poll(() => world.workCommands.filter((c) => c.p_action === "start").length).toBe(1);
+  const startCommand = world.workCommands.find((c) => c.p_action === "start");
+  expect(startCommand).toBeDefined();
+  expect((startCommand!.p_data as { project_id: string }).project_id).toBe(OAKRIDGE);
   expect(world.clockIns).toHaveLength(0);
+});
+
+test("a new unit can be assigned to another job without starting time on the wrong clock", async ({ page }) => {
+  await useSupabaseFixtures(page, { role: "installer", uiDesign: "new" });
+  await hideWrongProjectBanner(page);
+  const world = await morningFixtures(page, { signed: true, openShift: true, myOpening: true });
+  await savedUnitFixture(page, world);
+  await page.goto("/");
+  await page.getByTestId("ws-unit-new").click();
+  const sheet = page.getByRole("dialog", { name: "New unit" });
+  await sheet.getByLabel("Job", { exact: true }).selectOption(BLACK22);
+  await sheet.getByLabel("Unit number / name").fill("E2E-BLACK22");
+  await sheet.getByLabel("Type", { exact: true }).fill("Bifold");
+  await expect(sheet.getByRole("button", { name: "Save & start" })).toHaveCount(0);
+  await sheet.getByRole("button", { name: "Save unit" }).click();
+  await expect.poll(() => world.workCommands.filter((c) => c.p_action === "unit").length).toBe(1);
+  expect((world.workCommands[0].p_data as { project_id: string }).project_id).toBe(BLACK22);
+  expect(world.workCommands.some((c) => c.p_action === "start")).toBe(false);
+  await expect(page.getByTestId("ws-just-added")).toContainText("E2E-BLACK22");
+  await expect(page.getByTestId("ws-just-added").getByRole("button", { name: "Open job clock" })).toBeVisible();
+  await expect(page.getByTestId("ws-saved-units")).toContainText("E2E-BLACK22");
+  await page.reload();
+  await expect(page.getByTestId("ws-saved-units")).toContainText("E2E-BLACK22");
+  await page.getByTestId("ws-saved-units").getByRole("link", { name: /E2E-BLACK22/ }).click();
+  await expect(page).toHaveURL(/\/current-work\?/);
+  await expect(page.getByRole("heading", { name: "Selected: E2E-BLACK22" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Work on this unit" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Edit details" }).click();
+  await expect(page.getByRole("region", { name: "Unit details" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Unit details" }).getByLabel("Unit number / name")).toHaveValue("E2E-BLACK22");
+  await page.getByRole("button", { name: "Open this job’s clock" }).click();
+  await expect(page.locator(".clock-sheet")).toContainText("Switch project");
+  await expect(page.locator(".clock-sheet")).toContainText("Black Desert");
+  expect(world.workCommands.some((c) => c.p_action === "start")).toBe(false);
+});
+
+test("off the clock, a worker can choose a job and save a unit for later", async ({ page }) => {
+  await useSupabaseFixtures(page, { role: "installer", uiDesign: "new" });
+  await hideWrongProjectBanner(page);
+  const world = await morningFixtures(page, { signed: true, openShift: false, myOpening: false });
+  await savedUnitFixture(page, world);
+  await page.goto("/");
+  await page.getByTestId("ws-unit-new").click();
+  const sheet = page.getByRole("dialog", { name: "New unit" });
+  await sheet.getByLabel("Job", { exact: true }).selectOption(BLACK22);
+  await sheet.getByLabel("Unit number / name").fill("E2E-LATER");
+  await sheet.getByLabel("Type", { exact: true }).fill("Sliding door");
+  await expect(sheet.getByRole("button", { name: "Save & start" })).toHaveCount(0);
+  await sheet.getByRole("button", { name: "Save unit" }).click();
+  await expect(page.getByTestId("ws-just-added")).toContainText("E2E-LATER");
+  expect((world.workCommands[0].p_data as { project_id: string }).project_id).toBe(BLACK22);
+  expect(world.workCommands.some((c) => c.p_action === "start")).toBe(false);
+});
+
+test("New unit stays within the phone when the keyboard opens and does not open it on entry", async ({ page }) => {
+  await useSupabaseFixtures(page, { role: "installer", uiDesign: "new" });
+  await hideWrongProjectBanner(page);
+  await morningFixtures(page, { signed: true, openShift: true, myOpening: true });
+  await page.goto("/");
+  await page.getByTestId("ws-unit-new").click();
+  const sheet = page.getByRole("dialog", { name: "New unit" });
+  await expect(sheet.getByRole("button", { name: "Close new unit" })).toBeFocused();
+  await expect(sheet.getByLabel("Unit number / name")).not.toBeFocused();
+  await sheet.getByLabel("Unit number / name").focus();
+  await page.evaluate(() => {
+    const viewport = window.visualViewport!;
+    Object.defineProperty(viewport, "height", { configurable: true, value: innerHeight - 300 });
+    Object.defineProperty(viewport, "offsetTop", { configurable: true, value: 0 });
+    Object.defineProperty(viewport, "scale", { configurable: true, value: 1 });
+    viewport.dispatchEvent(new Event("resize"));
+  });
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--visual-bottom-inset").trim())).toBe("300px");
+  const box = await sheet.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.y).toBeGreaterThanOrEqual(0);
+  expect(box!.y + box!.height).toBeLessThanOrEqual(667 - 300 - 48 + 1);
+  expect(await sheet.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+  const before = await page.evaluate(() => window.scrollY);
+  await sheet.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+  expect(await sheet.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+  expect(await page.evaluate(() => window.scrollY)).toBe(before);
 });
 
 test("Save & start keeps the new unit and its timer together on a phone without service", async ({ page, context }) => {
@@ -168,7 +270,28 @@ test("Save & start keeps the new unit and its timer together on a phone without 
     return commands.length === 2 && commands[0].action === "unit" && commands[1].action === "start"
       && commands[1].data.unit_id === commands[0].data.id;
   }, TEST_USER.id)).toBe(true);
+  await expect(page.getByTestId("ws-unit")).toContainText("OFFLINE-UNIT-4097");
+  await expect(page.getByTestId("ws-saved-units")).toContainText("OFFLINE-UNIT-4097");
   await context.setOffline(false);
+});
+
+test("a queued unit stays on Home after reload while its save cannot reach Forge", async ({ page }) => {
+  await useSupabaseFixtures(page, { role: "installer", uiDesign: "new" });
+  await hideWrongProjectBanner(page);
+  await morningFixtures(page, { signed: true, openShift: true, myOpening: true });
+  await page.route((url) => /\/rest\/v1\/rpc\/custom_work_command(\?|$)/.test(url.href), (route) => route.abort("failed"));
+  await page.goto("/");
+  await page.getByTestId("ws-unit-new").click();
+  await page.getByRole("dialog", { name: "New unit" }).getByLabel("Unit number / name").fill("QUEUED-4098");
+  await page.getByRole("dialog", { name: "New unit" }).getByLabel("Type", { exact: true }).fill("Bifold");
+  await page.getByRole("dialog", { name: "New unit" }).getByRole("button", { name: "Save unit" }).click();
+  await expect(page.getByTestId("ws-saved-units")).toContainText("QUEUED-4098");
+  await page.reload();
+  await expect(page.getByTestId("ws-saved-units")).toContainText("QUEUED-4098");
+  await expect.poll(() => page.evaluate((userId) => {
+    const saved = localStorage.getItem(`forge-custom-work-v1:${userId}`);
+    return saved ? (JSON.parse(saved) as { action: string }[]).some((entry) => entry.action === "unit") : false;
+  }, TEST_USER.id)).toBe(true);
 });
 
 test("a rejected new-unit start does not replay an unsigned timer after toolbox signing", async ({ page }) => {

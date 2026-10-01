@@ -145,6 +145,12 @@ export const WORK_HISTORY_PROBES: readonly HistoryProbe[] = [
     many: "signed timecards",
   },
   {
+    table: "semimonthly_timecard_periods",
+    column: "profile_id",
+    one: "signed timecard",
+    many: "signed timecards",
+  },
+  {
     table: "time_shift_edits",
     column: "edited_by",
     one: "timecard edit",

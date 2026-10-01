@@ -147,8 +147,8 @@ export interface WeekPoint {
 
 const WEEK_MS = 7 * 24 * 3600 * 1000;
 
-/** Monday 00:00 UTC of the week containing `t` — pay periods are Monday
- * weeks, so the trend speaks the same calendar as payroll. */
+/** Monday 00:00 UTC of the week containing `t` — weekly trend buckets
+ * stay independent of the semimonthly payroll calendar. */
 function mondayOf(t: number): number {
   const d = new Date(t);
   const dow = (d.getUTCDay() + 6) % 7; // Mon=0
