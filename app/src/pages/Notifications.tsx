@@ -33,6 +33,9 @@ import { tripPhase } from "../lib/travel/status";
 import { listMyMentions } from "../lib/chat/api";
 import { useT } from "../lib/i18n";
 import { listWaitingReviews } from "../lib/hexLearningNotices";
+// Side effect: registers this screen's bilingual strings into the live
+// catalog the moment this (lazy-loaded) chunk loads.
+import "../lib/i18n/scheduleConflictCatalog";
 
 interface Note {
   id: string;
@@ -329,15 +332,39 @@ export function Notifications() {
     });
   }
 
-  const conflictPeople = new Set((conflicts.data ?? []).map((c) => c.profileId)).size;
-  if (conflictPeople > 0) {
+  // Split by kind — an hours-need-review pair must never be counted or read
+  // as a confirmed double-booking (a person can show up in both counts).
+  const confirmedConflictIds = [
+    ...new Set((conflicts.data ?? []).filter((c) => c.kind === "confirmed").map((c) => c.profileId)),
+  ];
+  if (confirmedConflictIds.length > 0) {
     notes.push({
       id: "schedule-conflicts",
       dot: "warn",
-      title: `${conflictPeople} crew double-booked`,
-      sub: "Overlapping schedule assignments — resolve before publishing",
+      title:
+        confirmedConflictIds.length === 1
+          ? t("schedConflict.notif.confirmedTitle.one")
+          : t("schedConflict.notif.confirmedTitle.many", { n: confirmedConflictIds.length }),
+      sub: t("schedConflict.notif.confirmedSub"),
       to: "/scheduling",
-      fp: fingerprint([...new Set((conflicts.data ?? []).map((c) => c.profileId))].sort()),
+      fp: fingerprint(confirmedConflictIds.sort()),
+    });
+  }
+
+  const reviewConflictIds = [
+    ...new Set((conflicts.data ?? []).filter((c) => c.kind === "review").map((c) => c.profileId)),
+  ];
+  if (reviewConflictIds.length > 0) {
+    notes.push({
+      id: "schedule-hours-review",
+      dot: "info",
+      title:
+        reviewConflictIds.length === 1
+          ? t("schedConflict.notif.reviewTitle.one")
+          : t("schedConflict.notif.reviewTitle.many", { n: reviewConflictIds.length }),
+      sub: t("schedConflict.notif.reviewSub"),
+      to: "/scheduling",
+      fp: fingerprint(reviewConflictIds.sort()),
     });
   }
 

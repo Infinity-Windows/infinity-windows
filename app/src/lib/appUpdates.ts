@@ -30,6 +30,7 @@ export const INCLUDED_UPDATE_IDS = [
   '2026-09-27-bill-to',
   '2026-09-24-ai-schedule-review',
   '2026-09-30-schedule-time-conflicts',
+  '2026-09-30-schedule-conflict-details',
   '2026-09-28-faster-first-open',
   '2026-09-29-phone-work-unit-plan',
   '2026-09-30-monday-plan-files',

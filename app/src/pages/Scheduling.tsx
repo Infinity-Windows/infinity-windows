@@ -20,11 +20,11 @@ import { WeekView } from "../components/schedule/WeekView";
 import { CrewBoard, type ChipMove } from "../components/schedule/CrewBoard";
 import { MonthView } from "../components/schedule/MonthView";
 import { TimelineView } from "../components/schedule/TimelineView";
+import { ConflictPairDetails } from "../components/schedule/ConflictPairDetails";
 import { AssignmentEditor, type EditorResult } from "../components/schedule/AssignmentEditor";
 import { DayPanel } from "../components/schedule/DayPanel";
 import {
   addDaysISO,
-  clashRangeLabel,
   enumerateDays,
   monthGridRange,
   startOfMonthISO,
@@ -33,9 +33,13 @@ import {
 import { buildDayMemory, type DayMemory } from "../lib/schedule/dayMemory";
 import {
   conflictBannerEntries,
+  hasKnownDailyHours,
   conflictingAssignmentIds,
   detectConflicts,
 } from "../lib/schedule/conflicts";
+// Side effect: registers this screen's bilingual strings into the live
+// catalog the moment this (lazy-loaded) chunk loads.
+import "../lib/i18n/scheduleConflictCatalog";
 import { unassignedProjects } from "../lib/schedule/grouping";
 import {
   boardLanes,
@@ -506,6 +510,7 @@ export function Scheduling() {
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["scheduleAssignments"] });
     qc.invalidateQueries({ queryKey: ["scheduleDrafts"] });
+    qc.invalidateQueries({ queryKey: ["notifScheduleConflicts"] });
     qc.invalidateQueries({ queryKey: ["scheduleCoverage"] });
     qc.invalidateQueries({ queryKey: ["mySchedule"] });
     qc.invalidateQueries({ queryKey: ["myScheduleVehicles"] });
@@ -755,9 +760,21 @@ export function Scheduling() {
     [knownById],
   );
 
-  const publishConflicts = useMemo(
+  // Truthful, split by kind: a CONFIRMED pair (both sides' hours known and
+  // actually overlapping) is never counted or colored the same as a REVIEW
+  // pair (hours missing/malformed — can't be ruled out, but must never read
+  // as a confirmed double-booking). A person can appear in both.
+  const allPublishConflicts = useMemo(
     () => detectConflicts(conflictInput),
     [conflictInput],
+  );
+  const confirmedPublishConflicts = useMemo(
+    () => allPublishConflicts.filter((c) => c.kind === "confirmed"),
+    [allPublishConflicts],
+  );
+  const reviewPublishConflicts = useMemo(
+    () => allPublishConflicts.filter((c) => c.kind === "review"),
+    [allPublishConflicts],
   );
 
   const nameOf = (id: string) =>
@@ -768,19 +785,31 @@ export function Scheduling() {
     return a?.project?.job_code ?? a?.project?.name ?? "a job";
   };
 
-  const bannerConflicts = useMemo(
+  const allBannerConflicts = useMemo(
     () => conflictBannerEntries(conflictInput),
     [conflictInput],
+  );
+  const confirmedBanner = useMemo(
+    () => allBannerConflicts.filter((c) => c.kind === "confirmed"),
+    [allBannerConflicts],
+  );
+  const reviewBanner = useMemo(
+    () => allBannerConflicts.filter((c) => c.kind === "review"),
+    [allBannerConflicts],
   );
 
   function fixConflict(entry: { aId: string; bId: string; profileId: string }) {
     const a = knownById.get(entry.aId);
     const b = knownById.get(entry.bId);
-    // Prefer the later-starting (then more-recently-edited) assignment to edit.
-    const pick =
+    // Correct the incomplete side first; otherwise keep the usual ordering.
+    const incomplete = a && b && hasKnownDailyHours(a) !== hasKnownDailyHours(b)
+      ? hasKnownDailyHours(a) ? b : a
+      : null;
+    const pick = incomplete ?? (
       !a ? b : !b ? a : a.start_date !== b.start_date
           ? a.start_date > b.start_date ? a : b
-          : (a.updated_at ?? "") >= (b.updated_at ?? "") ? a : b;
+          : (a.updated_at ?? "") >= (b.updated_at ?? "") ? a : b
+    );
     if (!pick) return;
     if (linkedPlan(pick.id)) setPlanId(linkedPlan(pick.id)!);
     else setEditor({ assignment: pick, highlightMemberIds: [entry.profileId] });
@@ -848,27 +877,57 @@ export function Scheduling() {
       </header>
       <TimeOffPanel team />
 
-      {bannerConflicts.length > 0 && (
+      {confirmedBanner.length > 0 && (
         <div className="sched-conflict-banner" role="alert">
           <div className="sched-conflict-banner-head">
             <AlertTriangle size={16} aria-hidden />
             <strong>
-              {bannerConflicts.length} double-booking
-              {bannerConflicts.length === 1 ? "" : "s"} to sort out
+              {confirmedBanner.length === 1
+                ? t("schedConflict.banner.confirmedHeading.one")
+                : t("schedConflict.banner.confirmedHeading.many", { n: confirmedBanner.length })}
             </strong>
           </div>
           <ul className="sched-conflict-banner-list">
-            {bannerConflicts.map((c) => (
+            {confirmedBanner.map((c) => (
               <li key={`${c.profileId}-${c.aId}-${c.bId}`} className="sched-conflict-banner-row">
-                <span className="sched-conflict-banner-text">
-                  <strong>{nameOf(c.profileId)}</strong> — {jobLabelOf(c.aId)} &amp;{" "}
-                  {jobLabelOf(c.bId)}, {clashRangeLabel(c.overlap.start, c.overlap.end)}
-                </span>
+                <div className="sched-conflict-banner-text">
+                  <strong>{nameOf(c.profileId)}</strong>
+                  <ConflictPairDetails entry={c} jobLabelOf={jobLabelOf} />
+                </div>
                 {canEdit && <button
                   className="button-like sched-conflict-banner-fix"
                   onClick={() => fixConflict(c)}
                 >
-                  Fix
+                  {t("schedConflict.fix")}
+                </button>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {reviewBanner.length > 0 && (
+        <div className="sched-conflict-banner is-review" role="status">
+          <div className="sched-conflict-banner-head">
+            <AlertTriangle size={16} aria-hidden />
+            <strong>
+              {reviewBanner.length === 1
+                ? t("schedConflict.banner.reviewHeading.one")
+                : t("schedConflict.banner.reviewHeading.many", { n: reviewBanner.length })}
+            </strong>
+          </div>
+          <ul className="sched-conflict-banner-list">
+            {reviewBanner.map((c) => (
+              <li key={`${c.profileId}-${c.aId}-${c.bId}`} className="sched-conflict-banner-row">
+                <div className="sched-conflict-banner-text">
+                  <strong>{nameOf(c.profileId)}</strong>
+                  <ConflictPairDetails entry={c} jobLabelOf={jobLabelOf} />
+                </div>
+                {canEdit && <button
+                  className="button-like sched-conflict-banner-fix"
+                  onClick={() => fixConflict(c)}
+                >
+                  {t("schedConflict.fix")}
                 </button>}
               </li>
             ))}
@@ -1146,9 +1205,14 @@ export function Scheduling() {
             <strong>
               {draftList.length} unpublished change{draftList.length === 1 ? "" : "s"}
             </strong>
-            {publishConflicts.length > 0 && (
+            {confirmedPublishConflicts.length > 0 && (
               <span className="sched-publishbar-warn">
-                · {publishConflicts.length} double-booked
+                {t("schedConflict.publishBadge.confirmed", { n: confirmedPublishConflicts.length })}
+              </span>
+            )}
+            {reviewPublishConflicts.length > 0 && (
+              <span className="sched-publishbar-warn is-review">
+                {t("schedConflict.publishBadge.review", { n: reviewPublishConflicts.length })}
               </span>
             )}
           </div>
@@ -1282,7 +1346,7 @@ export function Scheduling() {
           defaults={editor.defaults}
           projects={projects.data ?? []}
           crew={crew.data ?? []}
-          others={loaded}
+          others={[...knownById.values()].filter(a => a.status !== "canceled")}
           highlightMemberIds={editor.highlightMemberIds}
           horizon={horizon}
           vehicles={vehicles.data ?? []}
@@ -1327,24 +1391,45 @@ export function Scheduling() {
               Publishing sends {draftList.length} assignment
               {draftList.length === 1 ? "" : "s"} to the field and notifies each crew member once.
             </p>
-            {publishConflicts.length > 0 ? (
+            {confirmedPublishConflicts.length > 0 && (
               <div className="sched-conflict-inline" role="alert" style={{ marginBottom: 10 }}>
                 <div>
-                  <strong>Heads-up: {publishConflicts.length} double-booked</strong>
+                  <strong>
+                    {t("schedConflict.publishSheet.confirmedHeading", { n: confirmedPublishConflicts.length })}
+                  </strong>
                   <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
-                    {publishConflicts.map((c) => (
-                      <li key={c.profileId}>
-                        {nameOf(c.profileId)} — {c.assignmentIds.length} overlapping jobs
+                    {confirmedBanner.map((c) => (
+                      <li key={`${c.profileId}-${c.aId}-${c.bId}`}>
+                        <strong>{nameOf(c.profileId)}</strong>
+                        <ConflictPairDetails entry={c} jobLabelOf={jobLabelOf} />
                       </li>
                     ))}
                   </ul>
                   <span className="muted" style={{ fontSize: 12 }}>
-                    You can still publish; this is just a warning.
+                    {t("schedConflict.publishSheet.note")}
                   </span>
                 </div>
               </div>
-            ) : (
-              <p className="ok" style={{ fontSize: 13 }}>No conflicts detected.</p>
+            )}
+            {reviewPublishConflicts.length > 0 && (
+              <div className="sched-conflict-inline is-review" role="status" style={{ marginBottom: 10 }}>
+                <div>
+                  <strong>
+                    {t("schedConflict.publishSheet.reviewHeading", { n: reviewPublishConflicts.length })}
+                  </strong>
+                  <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
+                    {reviewBanner.map((c) => (
+                      <li key={`${c.profileId}-${c.aId}-${c.bId}`}>
+                        <strong>{nameOf(c.profileId)}</strong>
+                        <ConflictPairDetails entry={c} jobLabelOf={jobLabelOf} />
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            )}
+            {confirmedPublishConflicts.length === 0 && reviewPublishConflicts.length === 0 && (
+              <p className="ok" style={{ fontSize: 13 }}>{t("schedConflict.publishSheet.none")}</p>
             )}
             {publishError && (
               <p className="warn-text" role="alert" style={{ margin: "0 0 10px" }}>
