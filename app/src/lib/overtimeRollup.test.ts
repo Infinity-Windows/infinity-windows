@@ -78,3 +78,22 @@ describe("splitOvertimeByPerson", () => {
     expect(splitOvertimeByPerson([], () => WEEKLY_40)).toEqual([]);
   });
 });
+
+
+describe("paychecks split across a calendar week", () => {
+  const rows = [14, 15, 16, 17, 18].map(day => row({ day: `2026-09-${day}`, week: "2026-09-14", hours: 10 }));
+  it("uses earlier-period work toward the threshold without paying it again", () => {
+    expect(splitOvertimeByPerson(rows, () => WEEKLY_40, { start: "2026-09-16", end: "2026-10-01" })[0])
+      .toMatchObject({ regular: 20, overtime: 10, doubleTime: 0 });
+  });
+  it("two halves add up to the full week's regular, OT and double time", () => {
+    const rule = { ...DAILY_8, doubleTimeThresholdHours: 9, weeklyThresholdHours: 30 };
+    const first = splitOvertimeByPerson(rows, () => rule, { start: "2026-09-01", end: "2026-09-16" })[0];
+    const second = splitOvertimeByPerson(rows, () => rule, { start: "2026-09-16", end: "2026-10-01" })[0];
+    const whole = splitOvertimeByPerson(rows, () => rule)[0];
+    for (const key of ["regular", "overtime", "doubleTime"] as const) expect(first[key] + second[key]).toBe(whole[key]);
+  });
+  it("does not export people whose only work falls outside selected dates", () => {
+    expect(splitOvertimeByPerson(rows.slice(0, 2), () => WEEKLY_40, { start: "2026-09-16", end: "2026-10-01" })).toEqual([]);
+  });
+});

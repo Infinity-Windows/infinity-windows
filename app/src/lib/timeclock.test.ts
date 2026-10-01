@@ -39,6 +39,11 @@ import {
   startOfWeekIso,
   summarizeByJobCostCode,
   timecardRange,
+  stepTimecardAnchor,
+  timecardWeeks,
+  rangeDays,
+  signMyTimecard,
+  countersignTimecard,
   type TimeShift,
 } from "./timeclock";
 
@@ -225,12 +230,14 @@ describe("summarizeByJobCostCode (slice 3: the service billing basis)", () => {
 });
 
 describe("previousPayPeriod (T8 sign-off)", () => {
-  it("returns exactly the 14 days before the current period, never the running one", () => {
-    const anchor = new Date(2026, 0, 20); // inside the pay period starting Jan 19
+  it("returns the ended calendar half, never the running one", () => {
+    const anchor = new Date(2026, 0, 20); // inside the pay period starting Jan 16
     const current = timecardRange("pay", anchor);
     const prev = previousPayPeriod(anchor);
     expect(prev.start.getTime()).toBeLessThan(current.start.getTime());
-    expect(addDays(prev.start, 14).getTime()).toBe(current.start.getTime());
+    expect(prev.endIso).toBe(current.startIso);
+    expect(prev.start.getDate()).toBe(1);
+    expect(current.start.getDate()).toBe(16);
   });
 
   it("agrees with timecardRange('pay', ...) for a date inside that prior period", () => {
@@ -608,5 +615,60 @@ describe("mintPunch", () => {
   it("mints a uuid-shaped id when given none", () => {
     expect(mintPunch().clientId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
     expect(mintPunch(null).clientId).not.toBe(mintPunch(null).clientId);
+  });
+});
+
+
+describe("semimonthly payroll calendar", () => {
+  it.each([[2026, 8, 14, 1, 15], [2026, 8, 15, 1, 15], [2026, 8, 16, 16, 30],
+    [2026, 0, 31, 16, 31], [2026, 1, 28, 16, 28], [2028, 1, 29, 16, 29]])(
+    "uses exact calendar halves for %i-%i-%i", (year, month, day, first, last) => {
+      const range = timecardRange("pay", new Date(year, month, day, 23, 59));
+      expect(range.start.getDate()).toBe(first);
+      expect(addDays(range.end, -1).getDate()).toBe(last);
+      expect(range.start.getHours()).toBe(0);
+      expect(range.end.getHours()).toBe(0);
+      expect(rangeDays(range)).toHaveLength(last - first + 1);
+    });
+  it("September screenshot dates now land on Sep 1–15", () => {
+    const range = timecardRange("pay", new Date(2026, 8, 14));
+    expect(rangeDays(range)[0]).toBe("2026-09-01");
+    expect(rangeDays(range).at(-1)).toBe("2026-09-15");
+  });
+  it("navigates all 24 halves with no gaps or repeats across short and long months", () => {
+    let anchor = new Date(2028, 0, 31);
+    for (let i = 0; i < 24; i++) {
+      const current = timecardRange("pay", anchor);
+      const next = timecardRange("pay", stepTimecardAnchor("pay", anchor, 1));
+      expect(current.endIso).toBe(next.startIso);
+      expect(timecardRange("pay", stepTimecardAnchor("pay", next.start, -1)).startIso).toBe(current.startIso);
+      expect(previousPayPeriod(next.start).endIso).toBe(next.startIso);
+      anchor = next.start;
+    }
+    expect(anchor.getFullYear()).toBe(2029);
+  });
+  it("includes all three weeks touched by a half-month", () => {
+    const period = timecardRange("pay", new Date(2026, 8, 20));
+    const weeks = timecardWeeks(period);
+    expect(weeks.map(w => punchDay(w.startIso))).toEqual(["2026-09-14", "2026-09-21", "2026-09-28"]);
+  });
+  it("keeps local midnight dates across daylight saving changes", () => {
+    for (const month of [2, 10]) {
+      const period = timecardRange("pay", new Date(2026, month, 15));
+      expect(rangeDays(period)).toHaveLength(15);
+      expect(stepTimecardAnchor("pay", period.start, 1).getHours()).toBe(0);
+    }
+  });
+  it("sends the calendar timezone to the separate signing RPC", async () => {
+    rpc.mockResolvedValueOnce({ data: { id: "new-signature" }, error: null });
+    await signMyTimecard("2026-09-16T06:00:00.000Z");
+    expect(rpc).toHaveBeenLastCalledWith("sign_my_semimonthly_timecard", {
+      p_period_start: "2026-09-16T06:00:00.000Z", p_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    });
+    rpc.mockResolvedValueOnce({ data: { id: "new-signature" }, error: null });
+    await countersignTimecard("p1", "2026-09-16T06:00:00.000Z");
+    expect(rpc).toHaveBeenLastCalledWith("countersign_semimonthly_timecard", {
+      p_profile_id: "p1", p_period_start: "2026-09-16T06:00:00.000Z",
+    });
   });
 });

@@ -25,6 +25,8 @@ import {
   shiftHours,
   shiftsToExportRows,
   timecardRange,
+  stepTimecardAnchor,
+  timecardWeeks,
   weekRange,
   type TimecardRangeMode,
   type TimeShift,
@@ -33,8 +35,8 @@ import { describeDuration, shiftGuard } from "../../lib/shiftGuard";
 import {
   overtimeRuleFromRow,
   pickOvertimeRule,
-  splitOvertime,
 } from "../../lib/overtime";
+import { splitOvertimeByPerson } from "../../lib/overtimeRollup";
 import { buildTimecardCsv, buildTimecardTsv } from "../../lib/timecardExport";
 import { PunchCard } from "./PunchCard";
 import { ShiftEditor, type CostOpt, type ProjectOpt } from "./ShiftEditor";
@@ -101,12 +103,19 @@ export function TimecardPanel({
   const [openDays, setOpenDays] = useState<Set<string>>(() => new Set([today]));
 
   const range = useMemo(() => timecardRange(mode, anchor), [mode, anchor]);
-  const stepDays = mode === "day" ? 1 : mode === "pay" ? 14 : 7;
 
   const shifts = useQuery({
     queryKey: ["timecardPanel", personId, range.startIso, range.endIso, showRemoved],
     queryFn: () =>
       listShiftsForProfile(personId, range.startIso, range.endIso, showRemoved),
+  });
+  const calendarWeeks = useMemo(() => timecardWeeks(range), [range]);
+  const contextStart = calendarWeeks[0].startIso;
+  const contextEnd = calendarWeeks[calendarWeeks.length - 1].endIso;
+  const payWeekShifts = useQuery({
+    queryKey: ["timecardPanel", personId, "payWeeks", contextStart, contextEnd, showRemoved],
+    queryFn: () => listShiftsForProfile(personId, contextStart, contextEnd, showRemoved),
+    enabled: mode === "pay",
   });
   const otRules = useQuery({
     queryKey: ["overtimeRules"],
@@ -198,31 +207,21 @@ export function TimecardPanel({
   const breakHours = paidRows.reduce((t, s) => t + (s.break_seconds ?? 0), 0) / 3600;
 
   /**
-   * Weekly OT rule applied per calendar week — a 14-day pay period is two
-   * separate weekly buckets, never one 80-hour pool.
+   * Weekly overtime follows full calendar weeks, including the period edges.
    */
   const split = useMemo(() => {
     const row = pickOvertimeRule(otRules.data ?? [], personId);
     const rule = row ? overtimeRuleFromRow(row) : null;
-    const weeks = new Map<string, Map<string, number>>();
-    for (const s of paidRows) {
-      const wk = weekRange(new Date(s.clock_in_at)).startIso;
-      const d = punchDay(s.clock_in_at);
-      const days = weeks.get(wk) ?? new Map<string, number>();
-      days.set(d, (days.get(d) ?? 0) + shiftHours(s));
-      weeks.set(wk, days);
-    }
-    let regular = 0;
-    let overtime = 0;
-    let doubleTime = 0;
-    for (const days of weeks.values()) {
-      const s = splitOvertime([...days.values()], rule);
-      regular += s.regular;
-      overtime += s.overtime;
-      doubleTime += s.doubleTime;
-    }
-    return { regular, overtime, doubleTime };
-  }, [paidRows, otRules.data, personId]);
+    const contextRows = (mode === "pay" ? payWeekShifts.data ?? [] : paidRows)
+      .filter((s) => s.status !== "voided")
+      .map((s) => ({ profileId: personId, employee: personName,
+        day: punchDay(s.clock_in_at), week: weekRange(new Date(s.clock_in_at)).startIso, hours: shiftHours(s) }));
+    const result = splitOvertimeByPerson(contextRows, () => rule,
+      mode === "pay" ? { start: punchDay(range.startIso), end: punchDay(range.endIso) } : undefined)[0]
+      ?? { regular: 0, overtime: 0, doubleTime: 0 };
+    return { regular: result.regular, overtime: result.overtime, doubleTime: result.doubleTime };
+  }, [paidRows, payWeekShifts.data, otRules.data, personId, personName, mode, range]);
+  const payrollReady = shifts.isSuccess && otRules.isSuccess && (mode !== "pay" || payWeekShifts.isSuccess);
 
   const approvedIds = useMemo(
     () => paidRows.filter((s) => s.status === "approved").map((s) => s.id),
@@ -316,7 +315,7 @@ export function TimecardPanel({
       <div className="row-gap" style={{ alignItems: "center" }}>
         <button
           className="button-like"
-          onClick={() => setAnchor((d) => addDays(d, -stepDays))}
+          onClick={() => setAnchor((d) => stepTimecardAnchor(mode, d, -1))}
           aria-label={t("timecard.previous")}
         >
           <ChevronLeft size={18} />
@@ -331,7 +330,7 @@ export function TimecardPanel({
         </button>
         <button
           className="button-like"
-          onClick={() => setAnchor((d) => addDays(d, stepDays))}
+          onClick={() => setAnchor((d) => stepTimecardAnchor(mode, d, 1))}
           aria-label={t("timecard.next")}
         >
           <ChevronRight size={18} />
@@ -344,7 +343,7 @@ export function TimecardPanel({
           <div className="tcx-label">{totalLabel}</div>
           <div className="tcx-total-num">{fmtTotal(total)}</div>
           <div className="tcx-split">
-            {t("timecard.regular", { h: fmtHours(split.regular) })}
+            {payrollReady ? t("timecard.regular", { h: fmtHours(split.regular) }) : t("timecard.loadingPayroll")}
             <span className={split.overtime > 0 ? "tcx-ot" : ""}>
               {" "}· {t("timecard.overtime", { h: fmtHours(split.overtime) })}
             </span>
@@ -357,8 +356,8 @@ export function TimecardPanel({
           )}
         </div>
         {mode !== "day" && <div className="tcx-week-reviews">
-          {(mode === "pay" ? [weekRange(range.start), weekRange(addDays(range.start, 7))] : [range]).map((week) => (
-            <WeeklyApproval key={week.startIso} personId={personId} range={week} shifts={paidRows} canApprove={canApprove} showRange={mode === "pay"} />
+          {(mode === "pay" ? timecardWeeks(range) : [range]).map((week) => (
+            <WeeklyApproval key={week.startIso} personId={personId} range={week} shifts={mode === "pay" ? payWeekShifts.data ?? [] : paidRows} canApprove={canApprove} showRange={mode === "pay"} />
           ))}
         </div>}
         {mode === "week" && weekApproved && isSup && (
@@ -403,6 +402,8 @@ export function TimecardPanel({
         <PeriodSignOffStrip periodStartIso={range.startIso} profileId={personId} isSup={isSup} />
       )}
 
+      {mode === "pay" && payWeekShifts.isError && <QueryError error={payWeekShifts.error} />}
+      {otRules.isError && <QueryError error={otRules.error} />}
       {/* Entries strip */}
       {entriesExportOpen && <TimeEntryExportDialog person={{ id: personId, display_name: personName }} fromDate={dateFieldValue(range.start)} throughDate={dateFieldValue(addDays(range.end, -1))} onClose={() => setEntriesExportOpen(false)} />}
       <div className="tcx-entries-strip">
@@ -410,7 +411,7 @@ export function TimecardPanel({
         <div className="row-gap" style={{ marginLeft: "auto", position: "relative" }}>
           <button
             className="button-like"
-            onClick={() => setExportOpen((v) => !v)}
+            disabled={!payrollReady} onClick={() => setExportOpen((v) => !v)}
           >
             <Download size={14} aria-hidden /> {t("timecard.export")} <ChevronDown size={12} aria-hidden />
           </button>
@@ -419,7 +420,7 @@ export function TimecardPanel({
               <button className="button-like" onClick={() => setEntriesExportOpen(true)}>{t("timeexport.title")}</button>
               <button
                 className="button-like"
-                disabled={paidRows.length === 0}
+                disabled={!payrollReady || paidRows.length === 0}
                 onClick={() =>
                   downloadText(
                     buildTimecardCsv(exportPayload()),
@@ -432,7 +433,7 @@ export function TimecardPanel({
               </button>
               <button
                 className="button-like"
-                disabled={paidRows.length === 0}
+                disabled={!payrollReady || paidRows.length === 0}
                 onClick={() =>
                   void navigator.clipboard.writeText(buildTimecardTsv(exportPayload()))
                 }
@@ -441,7 +442,7 @@ export function TimecardPanel({
               </button>
               <button
                 className="button-like"
-                disabled={paidRows.length === 0}
+                disabled={!payrollReady || paidRows.length === 0}
                 onClick={() =>
                   printTimesheet({
                     personName,

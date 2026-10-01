@@ -1293,13 +1293,7 @@ export function weekRange(anchor: Date = new Date()): WeekRange {
 
 export type TimecardRangeMode = "day" | "week" | "pay";
 
-/**
- * Pay periods are two Monday-start weeks on a fixed grid (epoch: Mon
- * 2026-01-05), so every phone lands on the same boundaries with nothing
- * stored. Day/week are the plain single spans.
- */
-const PAY_PERIOD_EPOCH = new Date(2026, 0, 5); // Mon Jan 5 2026, local
-
+/** Pay periods follow local calendar halves: 1–15 and 16–month end. */
 export function timecardRange(mode: TimecardRangeMode, anchor: Date): WeekRange {
   const opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
   if (mode === "day") {
@@ -1313,24 +1307,38 @@ export function timecardRange(mode: TimecardRangeMode, anchor: Date): WeekRange 
     return { start, end, startIso: start.toISOString(), endIso: end.toISOString(), label };
   }
   if (mode === "pay") {
-    const wk = weekRange(anchor);
-    const weekIndex = Math.round(
-      (wk.start.getTime() - PAY_PERIOD_EPOCH.getTime()) / (7 * 86_400_000),
-    );
-    const start = addDays(wk.start, weekIndex % 2 === 0 ? 0 : -7);
-    const end = addDays(start, 14);
-    const lastDay = addDays(start, 13);
+    const year = anchor.getFullYear();
+    const month = anchor.getMonth();
+    const firstHalf = anchor.getDate() <= 15;
+    const start = new Date(year, month, firstHalf ? 1 : 16);
+    const end = firstHalf ? new Date(year, month, 16) : new Date(year, month + 1, 1);
+    const lastDay = addDays(end, -1);
     const label = `Pay period ${start.toLocaleDateString(undefined, opts)} – ${lastDay.toLocaleDateString(undefined, opts)}`;
     return { start, end, startIso: start.toISOString(), endIso: end.toISOString(), label };
   }
   return weekRange(anchor);
 }
 
+/** Move exactly one displayed range, even when month halves differ in length. */
+export function stepTimecardAnchor(mode: TimecardRangeMode, anchor: Date, direction: -1 | 1): Date {
+  const range = timecardRange(mode, anchor);
+  return direction === 1 ? range.end : addDays(range.start, -1);
+}
+
+/** Every full calendar week touching a range, including partial edge weeks. */
+export function timecardWeeks(range: WeekRange): WeekRange[] {
+  const weeks: WeekRange[] = [];
+  for (let start = weekRange(range.start).start; start < range.end; start = addDays(start, 7)) {
+    weeks.push(weekRange(start));
+  }
+  return weeks;
+}
+
 /**
  * The most recently ENDED pay period relative to `anchor` — never the one
  * still running. This is what the worker's "Sign my timecard" card offers:
  * a period that is over has nothing left to add to it, so it is safe to
- * attest to. `sign_my_timecard` also refuses server-side if a client ever
+ * attest to. `sign_my_semimonthly_timecard` also refuses server-side if a client ever
  * sent an in-progress period anyway.
  */
 export function previousPayPeriod(anchor: Date = new Date()): WeekRange {
@@ -1356,10 +1364,10 @@ export function punchDay(iso: string): string {
 
 // ---------------------------------------------------------------------------
 // Pay-period sign-off (Wave T8) — layered on top of per-punch approval (Q5):
-// the worker signs their own two-Monday-week card once it has ended, a
+// the worker signs their own semimonthly card once it has ended, a
 // supervisor countersigns afterward. `period_start` is always whatever this
 // module's own `timecardRange("pay", anchor).startIso` produced — see the
-// migration's comment for why the server never re-derives that grid itself.
+// semimonthly RPC, which validates these local boundaries in the supplied timezone.
 
 export interface TimecardPeriod {
   id: string;
@@ -1377,7 +1385,7 @@ export async function getTimecardPeriod(
   periodStartIso: string,
 ): Promise<TimecardPeriod | null> {
   const { data, error } = await supabase
-    .from("timecard_periods")
+    .from("semimonthly_timecard_periods")
     .select(
       "id, profile_id, period_start, employee_signed_at, supervisor_signed_at, supervisor_signed_by, supervisor:profiles!supervisor_signed_by(display_name)",
     )
@@ -1385,15 +1393,16 @@ export async function getTimecardPeriod(
     .eq("period_start", periodStartIso)
     .maybeSingle();
   // Not migrated in yet — no sign-off is the honest answer, not an error.
-  if (isMissingTable(error, "timecard_periods")) return null;
+  if (isMissingTable(error, "semimonthly_timecard_periods")) return null;
   if (error) throw error;
   return data as unknown as TimecardPeriod | null;
 }
 
 /** The worker's own attestation. Self-service — no reason, no lead gate. */
 export async function signMyTimecard(periodStartIso: string): Promise<TimecardPeriod> {
-  const { data, error } = await supabase.rpc("sign_my_timecard", {
+  const { data, error } = await supabase.rpc("sign_my_semimonthly_timecard", {
     p_period_start: periodStartIso,
+    p_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
   });
   if (error) throw error;
   return data as TimecardPeriod;
@@ -1404,7 +1413,7 @@ export async function countersignTimecard(
   profileId: string,
   periodStartIso: string,
 ): Promise<TimecardPeriod> {
-  const { data, error } = await supabase.rpc("countersign_timecard", {
+  const { data, error } = await supabase.rpc("countersign_semimonthly_timecard", {
     p_profile_id: profileId,
     p_period_start: periodStartIso,
   });
