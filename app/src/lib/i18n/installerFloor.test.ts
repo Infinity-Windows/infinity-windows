@@ -99,6 +99,7 @@ const ROUTE_FILES: Partial<Record<string, string[]>> = {
   supplies: ["pages/Supplies.tsx"],
   photos: ["pages/Photos.tsx"],
   "toolbox-history": ["pages/ToolboxHistory.tsx"],
+  "daily-logs": ["pages/work/DailyLogs.tsx"],
 };
 
 /**

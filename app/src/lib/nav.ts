@@ -109,6 +109,10 @@ export type RoutePath =
   // contacts, profile, public site) rendered nothing but a "Coming soon"
   // placeholder and were cut as dead ends (ticket 24) — re-add a path here
   // if one of them ever ships for real.
+  //
+  // Daily logs shipped for real 2026-10-01 (owner request, Horizon parity):
+  // its own cross-job page, not nested in a project tab.
+  | "/daily-logs"
   | "/photos"
   | "/toolbox-history"
   | "/stuck"
@@ -296,6 +300,7 @@ export const NAV: NavDest[] = [
   // above (ticket 24).
   { id: "photos", to: "/photos", label: "Photos & receipts", icon: "▨", minRole: "installer" },
   { id: "toolbox-history", to: "/toolbox-history", label: "Toolbox talk history", icon: "⛑", minRole: "installer" },
+  { id: "daily-logs", to: "/daily-logs", label: "Daily logs", icon: "▤", minRole: "installer" },
 ];
 
 const NAV_BY_PATH = new Map(NAV.map((d) => [d.to, d]));
@@ -481,6 +486,7 @@ const MENU_DEF: MenuSection[] = [
       { to: "/studio", label: "Studio", Icon: PenTool },
       { to: "/data", label: "Data", Icon: Database },
       { to: "/photos", label: "Photos & receipts", Icon: Camera },
+      { to: "/daily-logs", label: "Daily logs", labelKey: "nav.item.dailyLogs", Icon: ClipboardList },
     ],
   },
   {
@@ -627,6 +633,7 @@ const INSTALLER_WORK_PATHS: RoutePath[] = [
   "/my-schedule",
   "/warehouse",
   "/supplies",
+  "/daily-logs",
 ];
 const INSTALLER_ME_PATHS: RoutePath[] = [
   "/timecard",

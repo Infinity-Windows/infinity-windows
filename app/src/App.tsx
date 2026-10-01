@@ -84,6 +84,9 @@ const CurrentWork = lazyRoute(() => import("./pages/customWork/CurrentWork").the
 const WorkScreen = lazyRoute(() => import("./pages/work/WorkScreen").then((m) => ({ default: m.WorkScreen })));
 // K1.6: the new design's Schedule tab, at the classic My Schedule address.
 const Schedule = lazyRoute(() => import("./pages/work/Schedule").then((m) => ({ default: m.Schedule })));
+// Daily Logs (owner request 2026-10-01, Horizon parity): a real destination
+// reviving the "daily logs" stub cut in ticket 24 — see the RoutePath comment.
+const DailyLogsPage = lazyRoute(() => import("./pages/work/DailyLogs").then((m) => ({ default: m.DailyLogs })));
 // Settings left the eager shell with Release 1 (2026-09-23): the entry chunk
 // sat a hair under its budget and Settings is the one shell screen nobody
 // needs at 6 AM with no signal — it is precached like every other route, and
@@ -975,6 +978,10 @@ export default function App() {
                 address. */}
             <Route path="/photos" element={<Photos />} />
             <Route path="/toolbox-history" element={<ToolboxHistory />} />
+            {/* Daily logs' own cross-job page — the ticket-24 stub, shipped for
+                real 2026-10-01. Unguarded like its siblings above: minRole
+                "installer" is the floor everyone already meets. */}
+            <Route path="/daily-logs" element={<DailyLogsPage />} />
 
             {/* Legacy install routes → unified hub */}
             <Route path="/install" element={<Navigate to="/projects" replace />} />
