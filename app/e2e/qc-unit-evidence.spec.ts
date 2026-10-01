@@ -147,6 +147,10 @@ test("phone QC opens unit facts, all saved rounds, photos and playable original 
     await expect.poll(() => photo.evaluate((node: HTMLImageElement) => node.naturalWidth)).toBeGreaterThan(0);
   }
   await expect(page.locator("audio")).toHaveCount(2);
+  await expect(page.locator("figure").filter({ has: page.locator('img[src*="qc-before.jpg"]') })
+    .getByText("Sent back · Replace damaged frame", { exact: true })).toBeVisible();
+  await expect(page.locator("figure").filter({ has: page.locator('audio[src*="earlier-memo.wav"]') })
+    .getByText("Sent back · Replace damaged frame", { exact: true })).toBeVisible();
   const memo = page.locator('audio[src*="current-memo.wav"]');
   await expect.poll(() => memo.evaluate((node: HTMLAudioElement) => node.readyState)).toBeGreaterThanOrEqual(2);
   await memo.evaluate(async (node: HTMLAudioElement) => { await node.play(); node.pause(); });

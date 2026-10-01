@@ -58,11 +58,13 @@ export function QcUnitEvidence({
   const unavailable = (id: string) => setFailedMedia(current => new Set([...current, id]));
   const mediaCard = (media: QcEvidenceMedia) => {
     const failed = !media.signedUrl || failedMedia.has(media.id);
+    const install = record.data?.events.find(event => event.id === media.installEventId);
     return (
       <figure className="qc-evidence-file" key={media.id}>
         <figcaption>
           <strong>{t(SOURCE_KEYS[media.source])}</strong>
           <div className="muted">{stamp(media.createdAt)}</div>
+          {install?.voided_at && <p>{t("qcEvidence.sentBack")}{install.void_reason ? " · " + install.void_reason : ""}</p>}
           {media.caption && <p>{media.caption}</p>}
         </figcaption>
         {failed ? <p role="status">{t(media.kind === "photo" ? "qcEvidence.photoUnavailable" : "qcEvidence.voiceUnavailable")}</p>
