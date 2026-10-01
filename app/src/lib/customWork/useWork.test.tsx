@@ -14,10 +14,12 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const sendWorkCommand = vi.fn(async (_c: unknown) => "ok");
+const listWorkUnits = vi.fn(async () => []);
+const listWorkTypes = vi.fn(async () => []);
 vi.mock("./api", () => ({
-  listWorkUnits: async () => [],
+  listWorkUnits: () => listWorkUnits(),
   listWorkSessions: async () => [],
-  listWorkTypes: async () => [],
+  listWorkTypes: () => listWorkTypes(),
   sendWorkCommand: (c: unknown) => sendWorkCommand(c),
 }));
 vi.mock("../clockContext", () => ({
@@ -36,11 +38,15 @@ function Probe() {
 
 let root: Root | null = null;
 let host: HTMLDivElement | null = null;
+let client: QueryClient | null = null;
 
 beforeEach(() => {
   localStorage.clear();
   sendWorkCommand.mockClear();
   sendWorkCommand.mockResolvedValue("ok");
+  listWorkUnits.mockClear();
+  listWorkTypes.mockReset();
+  listWorkTypes.mockResolvedValue([]);
   vi.stubGlobal("navigator", {
     onLine: true,
     locks: { request: async (_key: string, fn: () => Promise<unknown>) => fn() },
@@ -52,10 +58,12 @@ afterEach(() => {
   root = null;
   host = null;
   store = null;
+  client = null;
 });
 
 async function mount(): Promise<Store> {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  client = qc;
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
@@ -75,6 +83,46 @@ async function mount(): Promise<Store> {
 const start = { id: "s1", shift_id: "sh1", unit_id: null, stage: "Idle time", description: "Hauling" };
 
 describe("useWork.command", () => {
+  it("does not reload all units on a clean Work page", async () => {
+    await mount();
+    expect(listWorkUnits).toHaveBeenCalledTimes(1);
+  });
+
+  it("refreshes other crews' records on reconnect even when this phone has no queued work", async () => {
+    await mount();
+    const invalidate = vi.spyOn(client!, "invalidateQueries");
+    await act(async () => {
+      window.dispatchEvent(new Event("online"));
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(invalidate.mock.calls.some(([options]) => options?.queryKey?.[0] === "crewWorkRecords")).toBe(true);
+    expect(listWorkUnits).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not hold unit actions for optional work-type suggestions", async () => {
+    let finishTypes: ((types: never[]) => void) | undefined;
+    listWorkTypes.mockImplementationOnce(() => new Promise((resolve) => { finishTypes = resolve; }));
+    const s = await mount();
+    expect(s.actionsLoading).toBe(false);
+    expect(s.loading).toBe(true);
+    await act(async () => finishTypes?.([]));
+  });
+
+  it("finishes a unit command while secondary views refresh in the background", async () => {
+    const s = await mount();
+    let finishService: (() => void) | undefined;
+    const normalInvalidate = client!.invalidateQueries.bind(client);
+    vi.spyOn(client!, "invalidateQueries").mockImplementation((options) =>
+      options?.queryKey?.[0] === "serviceActive"
+        ? new Promise((resolve) => { finishService = resolve; })
+        : normalInvalidate(options),
+    );
+    await act(async () => s.command("start", start));
+    expect(readWorkQueue("worker-a")).toEqual([]);
+    expect(finishService).toBeDefined();
+    finishService?.();
+  });
+
   it("throws the toolbox-signature refusal to the tap and drops the request — nothing to review", async () => {
     const s = await mount();
     sendWorkCommand.mockRejectedValueOnce({ code: "P0001", message: "Sign today's toolbox talk before starting work." });

@@ -142,6 +142,7 @@ vi.mock("../../lib/customWork/useWork", () => ({
     refresh: async () => {},
     sync: async () => {},
     loading: false,
+    actionsLoading: false,
     error: null,
     active: sessions.find((s) => s.profile_id === ME && !s.ended_at) ?? null,
   }),

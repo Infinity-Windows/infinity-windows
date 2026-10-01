@@ -290,9 +290,15 @@ test("Finish: submitting a capture fires finish_unit with the grade, and no chai
     .locator('input[type="file"][accept="image/*"]')
     .setInputFiles(pngFile("after.png"));
   await page.getByRole("button", { name: "4", exact: true }).click();
+  let authUserReads = 0;
+  await page.route("**/auth/v1/user", (route) => {
+    authUserReads++;
+    return route.fulfill({ status: 503, contentType: "application/json", body: '{}' });
+  });
   await page.getByRole("button", { name: "Submit install" }).click();
 
   await expect.poll(() => finishes.length).toBe(1);
+  expect(authUserReads).toBe(0);
   expect(finishes[0]).toMatchObject({
     p_opening_id: str(o.id),
     p_next_opening_id: null,

@@ -52,12 +52,38 @@ export function useWork(projectId?: string) {
       ].map((root) => qc.invalidateQueries({ queryKey: [root] })),
     );
   }, [qc]);
+  const refreshAfterSync = useCallback(async () => {
+    // A unit tap needs fresh unit/session data before its button becomes ready
+    // again. Service and report views should refresh too, but their reads must
+    // not hold up the installer's next tap on a weak connection.
+    const essential = ["customWorkUnits", "customWorkSessions", "customWorkTypes"];
+    const secondary = [
+      "serviceActive",
+      "serviceVisit",
+      "customWorkHistory",
+      "crewWorkRecords",
+      "myOpenSession",
+      "myActivePhases",
+    ];
+    void Promise.allSettled(
+      secondary.map((root) => qc.invalidateQueries({ queryKey: [root] })),
+    );
+    await Promise.all(
+      essential.map((root) => qc.invalidateQueries({ queryKey: [root] })),
+    );
+  }, [qc]);
   const sync = useCallback(async () => {
     if (user) {
+      // Opening Work while nothing is queued must not refetch its unit lists
+      // immediately after their first load. Reconnecting is different: other
+      // crew may have changed records while this phone had no signal.
+      const before = readWorkQueue(user);
+      if (!before.length) return;
       await syncWork(user);
-      await refresh();
+      const remaining = new Set(readWorkQueue(user).map((c) => c.id));
+      if (before.some((c) => !remaining.has(c.id))) await refreshAfterSync();
     }
-  }, [user, refresh]);
+  }, [user, refreshAfterSync]);
   useEffect(() => {
     const read = () => {
       try {
@@ -68,19 +94,22 @@ export function useWork(projectId?: string) {
       }
     };
     const online = () => {
-      void sync().catch((e) => setQueueError(formatApiError(e)));
+      if (!user) return;
+      void syncWork(user)
+        .then(refresh)
+        .catch((e) => setQueueError(formatApiError(e)));
     };
     read();
     window.addEventListener(WORK_QUEUE_EVENT, read);
     window.addEventListener("storage", read);
     window.addEventListener("online", online);
-    if (navigator.onLine) online();
+    if (navigator.onLine) void sync().catch((e) => setQueueError(formatApiError(e)));
     return () => {
       window.removeEventListener(WORK_QUEUE_EVENT, read);
       window.removeEventListener("storage", read);
       window.removeEventListener("online", online);
     };
-  }, [user, sync]);
+  }, [user, sync, refresh]);
   useEffect(() => {
     void qc.invalidateQueries({ queryKey: ["customWorkSessions", user] });
   }, [
@@ -150,6 +179,10 @@ export function useWork(projectId?: string) {
     refresh,
     sync,
     loading: units.isLoading || sessions.isLoading || types.isLoading,
+    // Work types only fill the new-unit suggestions. Starting or finishing a
+    // unit can proceed while those suggestions load, but the type-management
+    // view still waits for its complete list before showing editable rows.
+    actionsLoading: units.isLoading || sessions.isLoading,
     error: units.error ?? sessions.error ?? types.error,
     active:
       preview.sessions.find((s) => s.profile_id === user && !s.ended_at) ??
