@@ -1,0 +1,84 @@
+name: Isolated PWA upgrade diagnostics
+
+on:
+  # Bootstrap only on this explicitly isolated branch: workflow_dispatch is
+  # unavailable until a new workflow exists on the default branch.
+  push:
+    branches: [diagnostic/pwa-upgrade-713]
+    paths:
+      - .github/workflows/pwa-upgrade-diagnostic.yml
+      - scripts/pwa-upgrade-diagnostic.mjs
+  workflow_dispatch:
+    inputs:
+      old_ref:
+        description: Full 40-character commit SHA for the installed old build
+        required: true
+        default: fd4fd686174c5be5ec00c9301d75f415001ca416
+      new_ref:
+        description: Full 40-character commit SHA for the failing candidate (pin the synthetic merge)
+        required: true
+        default: a73327ce35da7beddd5156914de8e0ec6fa8f2d8
+
+permissions:
+  contents: read
+
+jobs:
+  observe-first-upgrade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PINNED_OLD: ${{ inputs.old_ref || 'fd4fd686174c5be5ec00c9301d75f415001ca416' }}
+      PINNED_NEW: ${{ inputs.new_ref || 'a73327ce35da7beddd5156914de8e0ec6fa8f2d8' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: diagnostic-tools
+      - name: Validate pinned refs
+        env:
+          OLD_REF: ${{ env.PINNED_OLD }}
+          NEW_REF: ${{ env.PINNED_NEW }}
+        run: |
+          [[ "$OLD_REF" =~ ^[a-f0-9]{40}$ ]] && [[ "$NEW_REF" =~ ^[a-f0-9]{40}$ ]]
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.PINNED_NEW }}
+          path: candidate
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: candidate/.nvmrc
+          cache: npm
+          cache-dependency-path: candidate/app/package-lock.json
+      - name: Fetch pinned old build
+        working-directory: candidate
+        env:
+          OLD_REF: ${{ env.PINNED_OLD }}
+        run: git fetch --depth=1 origin "$OLD_REF"
+      - run: npm ci
+        working-directory: candidate/app
+      - name: Install Chromium and dependencies
+        working-directory: candidate/app
+        timeout-minutes: 10
+        run: |
+          for source in /etc/apt/apt-mirrors.txt /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
+            if [ -f "$source" ]; then
+              sudo sed -i -E 's|https?://azure.archive.ubuntu.com/ubuntu/?|https://archive.ubuntu.com/ubuntu/|g' "$source"
+              if sudo grep -q 'azure.archive.ubuntu.com' "$source"; then exit 1; fi
+            fi
+          done
+          printf 'Acquire::Retries "1";\nAcquire::http::Timeout "20";\nAcquire::https::Timeout "20";\n' | sudo tee /etc/apt/apt.conf.d/99forge-browser-downloads >/dev/null
+          npx playwright install --with-deps chromium
+      - name: Observe unchanged first upgrade test once
+        env:
+          PWA_DIAGNOSTIC_OLD_REF: ${{ env.PINNED_OLD }}
+          PWA_DIAGNOSTIC_NEW_REF: ${{ env.PINNED_NEW }}
+          PWA_DIAGNOSTIC_REPO: ${{ github.workspace }}/candidate
+          PWA_DIAGNOSTIC_OUT: ${{ runner.temp }}/pwa-upgrade-diagnostic
+          IW_MAP_PORT: '5298'
+        run: node diagnostic-tools/scripts/pwa-upgrade-diagnostic.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pwa-upgrade-diagnostic-${{ github.run_id }}
+          path: ${{ runner.temp }}/pwa-upgrade-diagnostic/
+          if-no-files-found: warn
+          retention-days: 7
