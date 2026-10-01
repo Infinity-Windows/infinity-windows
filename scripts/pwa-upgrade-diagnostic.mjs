@@ -3,8 +3,9 @@
 // Run with Node 22 after npm ci and Playwright Chromium installation in app/.
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { createServer } from 'node:net';
 import { join, resolve } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import assert from 'node:assert/strict';
@@ -14,11 +15,15 @@ import assert from 'node:assert/strict';
 // extends an event lifetime or changes production source.
 const responseProbe = String.raw`
 ;(() => {
-  const prefix = '[forge-pwa-response-probe] ';
+  const buffer = { version: 2, limit: 4096, dropped: 0, records: [] };
+  Object.defineProperty(self, '__forgePwaResponseProbe', { value: buffer });
   const ids = new WeakMap();
   let sequence = 0;
   const emit = (kind, detail) => {
-    try { console.debug(prefix + JSON.stringify({ kind, at: Date.now(), monotonicMs: performance.now(), ...detail })); }
+    try {
+      if (buffer.records.length < buffer.limit) buffer.records.push({ kind, at: Date.now(), monotonicMs: performance.now(), ...detail });
+      else buffer.dropped++;
+    }
     catch (_) { /* Diagnostic logging must not alter the response. */ }
   };
   const detail = event => {
@@ -83,7 +88,7 @@ const responseProbe = String.raw`
 `;
 
 if (process.argv.includes('--check-probe')) {
-  const logs = [];
+  let logs = [];
   const calls = [];
   const listeners = {};
   class ProbeResponse {
@@ -101,9 +106,11 @@ if (process.argv.includes('--check-probe')) {
     }
     waitUntil() { throw new Error('Probe must not extend lifetime'); }
   }
+  const workerSelf = { location: { origin: 'http://localhost:5298' }, addEventListener: (kind, fn) => { listeners[kind] = fn; } };
   runInNewContext(responseProbe, { FetchEvent: ProbeEvent, Response: ProbeResponse, Promise, URL,
-    self: { location: { origin: 'http://localhost:5298' }, addEventListener: (kind, fn) => { listeners[kind] = fn; } },
-    performance: { now: () => 1 }, console: { debug: text => logs.push(JSON.parse(text.slice(text.indexOf('{')))) } });
+    self: workerSelf, performance: { now: () => 1 },
+    console: { debug: () => { throw new Error('Probe must not log in the fetch path'); } } });
+  logs = workerSelf.__forgePwaResponseProbe.records;
   const event = new ProbeEvent();
   listeners.fetch(event);
   const response = new ProbeResponse();
@@ -128,7 +135,10 @@ if (process.argv.includes('--check-probe')) {
   assert.equal(assimilations, 0);
   assert.ok(logs.some(log => log.kind === 'unobserved-argument-type'));
   assert.ok(logs.every(log => !JSON.stringify(log).includes('discard=query')));
-  console.log('Response probe checks passed: original receiver/argument/result, immediate native call, fulfillment/rejection, unchanged native throw, no body/lifetime access, no extra thenable assimilation, query omission.');
+  for (let i = 0; i < 4096; i++) event.respondWith(response);
+  assert.equal(logs.length, 4096);
+  assert.ok(workerSelf.__forgePwaResponseProbe.dropped > 0);
+  console.log('Buffered response probe checks passed: original receiver/argument/result, immediate native call, fulfillment/rejection, unchanged native throw, no body/lifetime/console access, no extra thenable assimilation, query omission, bounded buffer/drop accounting.');
   process.exit(0);
 }
 
@@ -170,7 +180,7 @@ writeFileSync(join(tests, 'support/pwa.ts'), readFileSync(join(app, 'e2e/support
 // request interception, debugger pauses, cache disabling or SW stop commands.
 const observer = String.raw`
 import { test as base, expect } from '@playwright/test';
-import { createWriteStream } from 'node:fs';
+import { createWriteStream, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 export { expect };
 export type { Page, Worker } from '@playwright/test';
@@ -236,6 +246,19 @@ export const test = base.extend({
       await use(page);
     } finally {
       log('observer', 'test-finished', { status: testInfo.status, expectedStatus: testInfo.expectedStatus });
+      // Read the surviving workers ONCE after the test, even on assertion
+      // failure. No timer or console serialization runs on the fetch path.
+      const snapshots: unknown[] = [];
+      for (const worker of context.serviceWorkers()) {
+        try {
+          const buffer = await worker.evaluate(() =>
+            (self as unknown as { __forgePwaResponseProbe?: unknown }).__forgePwaResponseProbe ?? null);
+          snapshots.push({ workerUrl: worker.url(), readAt: Date.now(), buffer });
+        } catch (error) {
+          snapshots.push({ workerUrl: worker.url(), readAt: Date.now(), error: String(error) });
+        }
+      }
+      writeFileSync(join(process.env.PWA_DIAGNOSTIC_OUT!, 'worker-response-buffer.json'), JSON.stringify(snapshots));
       await browserSession.detach().catch(error => log('observer', 'detach-error', String(error)));
       await pageSession.detach().catch(error => log('observer', 'detach-error', String(error)));
       await new Promise<void>((resolve, reject) => { stream.once('error', reject); stream.end(resolve); });
@@ -245,16 +268,16 @@ export const test = base.extend({
 });
 `;
 writeFileSync(join(tests, 'observer.ts'), observer);
-const config = `import { defineConfig } from '@playwright/test';
+const configFor = caseOut => `import { defineConfig } from '@playwright/test';
 export default defineConfig({
   testDir: ${JSON.stringify(tests)}, testMatch: 'upgrade-path.pwa.ts',
   grep: /a phone on the previous build opens/, workers: 1, fullyParallel: false,
   retries: 0, repeatEach: 1, timeout: 240000, expect: { timeout: 30000 },
-  outputDir: ${JSON.stringify(join(out, 'test-results'))}, reporter: [['list']],
+  outputDir: ${JSON.stringify(join(caseOut, 'test-results'))}, reporter: [['list']],
   use: { browserName: 'chromium', baseURL: 'http://localhost:${port}',
     viewport: { width: 390, height: 844 }, deviceScaleFactor: 2,
     serviceWorkers: 'allow', trace: 'on', video: 'off',
-    launchOptions: { args: [${JSON.stringify('--log-net-log=' + join(out, 'netlog.json'))}] },
+    launchOptions: { args: [${JSON.stringify('--log-net-log=' + join(caseOut, 'netlog.json'))}] },
   },
   webServer: {
     command: ${JSON.stringify(`${JSON.stringify(process.execPath)} --experimental-strip-types ${JSON.stringify(join(app, 'e2e/support/pwaHarness.ts'))}`)},
@@ -262,19 +285,20 @@ export default defineConfig({
     reuseExistingServer: false, timeout: 30000, stdout: 'ignore', stderr: 'pipe',
   },
 });`;
-writeFileSync(join(work, 'playwright.config.ts'), config);
 writeFileSync(join(out, 'spec-observed.ts'), generated);
 writeFileSync(join(out, 'observer.ts'), observer);
-writeFileSync(join(out, 'playwright.config.ts'), config);
+const casePlan = ['control', 'probe', 'probe', 'control', 'control', 'probe'];
 const metadata = {
   oldRef, newRef, port, work, candidateRepo: repo,
   specOriginalSha256: sha256(source), specObservedSha256: sha256(generated),
   specRoundTripIdentical: true, node: process.version, platform: process.platform,
   lockSha256: sha256(readFileSync(join(app, 'package-lock.json'))),
-  responseProbe: { enabled: true, newBuiltWorkerOnly: true, promiseOutcomeIsNotBodyDelivery: true },
+  casePlan, executionsPlanned: 6, retries: 0, buildsPerSource: 1, cases: [],
+  responseProbe: { mode: 'bounded-worker-memory', limit: 4096, newBuiltWorkerOnly: true, promiseOutcomeIsNotBodyDelivery: true },
   limitations: ['CDP attachment does not pause workers; earliest worker events may precede Network.enable.',
     'Worker CDP reports outbound fetches, not every cache-served FetchEvent response. NetLog complements it.',
     'The isolated new built worker has a respondWith promise-settlement side observer; successful settlement does not prove body delivery.',
+    'Buffered observer still allocates memory and attaches promise callbacks; it is not zero overhead.',
     'Observer and NetLog overhead may change timing. A pass does not disprove earlier failures.'],
 };
 writeFileSync(join(out, 'metadata.json'), JSON.stringify(metadata, null, 2));
@@ -303,51 +327,34 @@ for (const [name, src, ref] of [['old', join(oldSource, 'app'), oldRef], ['new',
   metadata.builds[name] = { buildId, entry, htmlSha256: sha256(html),
     entrySha256: sha256(readFileSync(join(dist, entry))),
     workerSha256: sha256(readFileSync(join(dist, 'sw.js'))) };
-  if (name === 'new') {
-    const originalWorker = readFileSync(join(dist, 'sw.js'), 'utf8');
-    writeFileSync(join(out, 'new-sw-original.js'), originalWorker);
-    writeFileSync(join(out, 'response-probe.js'), responseProbe);
-    // Keep the compiled module byte-for-byte after the labelled prefix. The
-    // original hash above remains the baseline; served hash is explicit.
-    const observedWorker = responseProbe + '\n' + originalWorker;
-    writeFileSync(join(dist, 'sw.js'), observedWorker);
-    writeFileSync(join(out, 'new-sw-observed.js'), observedWorker);
-    metadata.builds[name].servedWorkerSha256 = sha256(observedWorker);
-    metadata.builds[name].responseProbeSha256 = sha256(responseProbe);
-  }
   writeFileSync(join(out, `${name}-index.html`), html);
 }
-writeFileSync(join(out, 'metadata.json'), JSON.stringify(metadata, null, 2));
-const result = spawnSync(process.execPath, [join(modules, '@playwright/test/cli.js'), 'test',
-  '--config', join(work, 'playwright.config.ts')], {
-  cwd: work, stdio: 'inherit', env: { ...process.env, IW_MAP_PORT: String(port),
-    IW_PWA_CACHE: cache, IW_PWA_REUSE: '1', PWA_DIAGNOSTIC_OUT: out },
-});
-metadata.exitCode = result.status;
-metadata.signal = result.signal;
-metadata.launchError = result.error?.message;
-// Collector failures are distinct from product-test failures. Never silently
-// call a test pass useful evidence when worker attachment or NetLog failed.
-try {
-  const events = readFileSync(join(out, 'cdp-events.ndjson'), 'utf8').trim().split('\n').map(line => JSON.parse(line));
+const originalWorker = readFileSync(join(cache, 'new-dist/sw.js'), 'utf8');
+const observedWorker = responseProbe + '\n' + originalWorker;
+writeFileSync(join(out, 'new-sw-original.js'), originalWorker);
+writeFileSync(join(out, 'new-sw-observed.js'), observedWorker);
+writeFileSync(join(out, 'response-probe.js'), responseProbe);
+metadata.builds.new.observedWorkerSha256 = sha256(observedWorker);
+metadata.builds.new.responseProbeSha256 = sha256(responseProbe);
+
+function collect(caseOut, mode) {
+  const events = readFileSync(join(caseOut, 'cdp-events.ndjson'), 'utf8').trim().split('\n').map(line => JSON.parse(line));
   const ready = events.find(event => event.event === 'ready-before-first-navigation');
   const firstDocument = events.find(event => event.event === 'Network.requestWillBeSent' && event.params.type === 'Document');
   const workerProtocols = events.filter(event => event.scope === 'worker' && event.event === 'protocol');
   const workerSessions = new Set(workerProtocols.map(event => event.params.sessionId));
   const collectorErrors = events.filter(event => event.event === 'worker-enable-error' ||
     (event.event === 'protocol' && event.params.message.error));
-  const netlog = JSON.parse(readFileSync(join(out, 'netlog.json'), 'utf8'));
-  const responseOutcomes = workerProtocols.flatMap(event => {
-    const message = event.params.message;
-    if (message.method !== 'Runtime.consoleAPICalled') return [];
-    return (message.params.args || []).flatMap(arg => {
-      if (typeof arg.value !== 'string' || !arg.value.startsWith('[forge-pwa-response-probe] ')) return [];
-      return [{ sessionId: event.params.sessionId, targetId: event.params.targetId,
-        observedAt: event.observedAt, seq: event.seq, ...JSON.parse(arg.value.slice('[forge-pwa-response-probe] '.length)) }];
-    });
-  });
-  writeFileSync(join(out, 'worker-response-outcomes.ndjson'), responseOutcomes.map(row => JSON.stringify(row)).join('\n') + '\n');
-  metadata.collector = {
+  const netlog = JSON.parse(readFileSync(join(caseOut, 'netlog.json'), 'utf8'));
+  const snapshots = JSON.parse(readFileSync(join(caseOut, 'worker-response-buffer.json'), 'utf8'));
+  const buffers = snapshots.filter(snapshot => snapshot.buffer);
+  const responseOutcomes = snapshots.flatMap((snapshot, bufferIndex) =>
+    (snapshot.buffer?.records || []).map(row => ({ bufferIndex, workerUrl: snapshot.workerUrl, readAt: snapshot.readAt, ...row })));
+  writeFileSync(join(caseOut, 'worker-response-outcomes.ndjson'), responseOutcomes.map(row => JSON.stringify(row)).join('\n') + '\n');
+  const calls = responseOutcomes.filter(row => row.kind === 'respondWith-called');
+  const settled = new Set(responseOutcomes.filter(row => ['response-fulfilled', 'response-rejected'].includes(row.kind))
+    .map(row => `${row.bufferIndex}:${row.fetchId}`));
+  const collector = {
     events: events.length, readyBeforeFirstDocument: Boolean(ready && firstDocument && ready.seq < firstDocument.seq),
     workerSessions: workerSessions.size,
     workerRequests: workerProtocols.filter(event => event.params.message.method === 'Network.requestWillBeSent').length,
@@ -356,15 +363,74 @@ try {
     responseFulfilled: responseOutcomes.filter(row => row.kind === 'response-fulfilled').length,
     responseRejected: responseOutcomes.filter(row => row.kind === 'response-rejected').length,
     responseProbeUnobserved: responseOutcomes.filter(row => ['metadata-error', 'unobserved-argument-type'].includes(row.kind)).length,
+    responseBuffers: buffers.length,
+    responseRecordsDropped: buffers.reduce((sum, snapshot) => sum + snapshot.buffer.dropped, 0),
+    responseReadErrors: snapshots.filter(snapshot => snapshot.error),
+    responseCallsUnsettled: calls.filter(row => !settled.has(`${row.bufferIndex}:${row.fetchId}`)).length,
   };
-  metadata.collectorComplete = metadata.collector.readyBeforeFirstDocument && workerSessions.size >= 2 &&
-    metadata.collector.workerRequests > 0 && collectorErrors.length === 0 && netlog.events.length > 0 &&
-    metadata.collector.responseFulfilled > 0 && metadata.collector.responseProbeUnobserved === 0;
-} catch (error) {
-  metadata.collectorComplete = false;
-  metadata.collectorError = String(error);
+  const basicComplete = collector.readyBeforeFirstDocument && workerSessions.size >= 2 &&
+    collector.workerRequests > 0 && collectorErrors.length === 0 && netlog.events.length > 0;
+  const probeComplete = mode === 'probe'
+    ? collector.responseBuffers === 1 && collector.responseFulfilled > 0 && collector.responseProbeUnobserved === 0 &&
+      collector.responseRecordsDropped === 0 && collector.responseReadErrors.length === 0 && collector.responseCallsUnsettled === 0
+    : collector.responseBuffers === 0 && collector.responseProbeEvents === 0;
+  return { collector, collectorComplete: basicComplete && probeComplete,
+    testStatusAtCollection: events.find(event => event.event === 'test-finished')?.params.status ?? null };
 }
+
+// Six fresh Playwright processes/contexts; one built bundle pair. Assertions
+// may fail without preventing subsequent predeclared cases. No retry branch.
+for (const [index, mode] of casePlan.entries()) {
+  // Never change served worker bytes while a prior/private harness is alive.
+  // A busy port is a fatal infrastructure error, not a reason to reuse it.
+  try {
+    await new Promise((resolvePort, rejectPort) => {
+      const check = createServer();
+      check.once('error', rejectPort);
+      check.listen(port, () => check.close(resolvePort));
+    });
+  } catch (error) {
+    metadata.infrastructureError = `Before case ${index + 1}: ${String(error)}`;
+    metadata.executionsCompleted = metadata.cases.length;
+    writeFileSync(join(out, 'metadata.json'), JSON.stringify(metadata, null, 2));
+    throw error;
+  }
+  const caseName = `${String(index + 1).padStart(2, '0')}-${mode}`;
+  const caseOut = join(out, caseName);
+  mkdirSync(caseOut);
+  const worker = mode === 'probe' ? observedWorker : originalWorker;
+  writeFileSync(join(cache, 'new-dist/sw.js'), worker);
+  const configPath = join(work, 'playwright.config.ts');
+  const config = configFor(caseOut);
+  writeFileSync(configPath, config);
+  writeFileSync(join(caseOut, 'playwright.config.ts'), config);
+  const entry = { caseName, mode, startedAt: new Date().toISOString(), servedWorkerSha256: sha256(worker),
+    oldRef, newRef, builds: metadata.builds, runnerExitCode: null, collectorComplete: false };
+  metadata.cases.push(entry);
+  writeFileSync(join(out, 'metadata.json'), JSON.stringify(metadata, null, 2));
+  console.log(`Diagnostic case ${index + 1}/6: ${mode}; fresh browser, same builds.`);
+  const fd = openSync(join(caseOut, 'playwright.log'), 'wx');
+  const result = spawnSync(process.execPath, [join(modules, '@playwright/test/cli.js'), 'test', '--config', configPath], {
+    cwd: work, stdio: ['ignore', fd, fd], env: { ...process.env, IW_MAP_PORT: String(port),
+      IW_PWA_CACHE: cache, IW_PWA_REUSE: '1', PWA_DIAGNOSTIC_OUT: caseOut },
+  });
+  closeSync(fd);
+  entry.runnerExitCode = result.status;
+  entry.signal = result.signal;
+  entry.launchError = result.error?.message;
+  entry.finishedAt = new Date().toISOString();
+  try { Object.assign(entry, collect(caseOut, mode)); }
+  catch (error) { entry.collectorError = String(error); }
+  writeFileSync(join(caseOut, 'metadata.json'), JSON.stringify(entry, null, 2));
+  writeFileSync(join(out, 'metadata.json'), JSON.stringify(metadata, null, 2));
+  console.log(JSON.stringify({ caseName, runnerExitCode: entry.runnerExitCode, testStatusAtCollection: entry.testStatusAtCollection,
+    collectorComplete: entry.collectorComplete, collector: entry.collector, collectorError: entry.collectorError }));
+}
+metadata.executionsCompleted = metadata.cases.length;
+metadata.allProductTestsPassed = metadata.cases.every(entry => entry.runnerExitCode === 0 && entry.testStatusAtCollection === 'passed');
+metadata.allCollectorsComplete = metadata.cases.every(entry => entry.collectorComplete);
+metadata.exitCode = metadata.allProductTestsPassed && metadata.allCollectorsComplete ? 0 : 1;
 writeFileSync(join(out, 'metadata.json'), JSON.stringify(metadata, null, 2));
-console.log('Diagnostic capture:', JSON.stringify({ testExitCode: result.status,
-  collectorComplete: metadata.collectorComplete, collector: metadata.collector, collectorError: metadata.collectorError }));
-process.exit(result.status === 0 && metadata.collectorComplete ? 0 : (result.status || 1));
+console.log('Fixed six-case diagnostic complete:', JSON.stringify({ executions: metadata.executionsCompleted,
+  allProductTestsPassed: metadata.allProductTestsPassed, allCollectorsComplete: metadata.allCollectorsComplete }));
+process.exit(metadata.exitCode);

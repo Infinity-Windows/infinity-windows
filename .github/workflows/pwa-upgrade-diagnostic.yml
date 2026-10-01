@@ -69,7 +69,7 @@ jobs:
           npx playwright install --with-deps chromium
       - name: Verify diagnostic response observer preserves native behavior
         run: node diagnostic-tools/scripts/pwa-upgrade-diagnostic.mjs --check-probe
-      - name: Observe unchanged first upgrade test once with disposable worker probe
+      - name: Run fixed six-case control and buffered-probe comparison
         env:
           PWA_DIAGNOSTIC_OLD_REF: ${{ env.PINNED_OLD }}
           PWA_DIAGNOSTIC_NEW_REF: ${{ env.PINNED_NEW }}
