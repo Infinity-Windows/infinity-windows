@@ -163,6 +163,7 @@ test("viewer assign: tap units in order, pick a person, sequenced RPCs fire in t
     c.update?.();
   });
   await page.waitForTimeout(300);
+  await page.screenshot({ path: "e2e/test-results/job-model-contrast-390.png" });
 
   await page.getByRole("button", { name: "Assign", exact: true }).click();
 
