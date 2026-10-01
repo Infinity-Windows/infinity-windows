@@ -30,6 +30,8 @@ set -uo pipefail
 
 cd "$(dirname "$0")/.." || exit 1
 SCRIPT="$PWD/scripts/advisory-rules.sh"
+BACKFILL_PATH='supabase/migrations/20261049000000_foreman_unit_contributors.sql'
+BACKFILL_SOURCE="$PWD/$BACKFILL_PATH"
 VERBOSE=0
 [ "${1:-}" = "-v" ] && VERBOSE=1
 
@@ -764,6 +766,119 @@ head_commit "Add a migration with a number from last week"
 run
 assert_rc 1
 assert_has "migration-version-behind"
+
+new_case "the exact deployed contributor history is accepted below master's newest"
+: >"$root/supabase/migrations/20261052010000_daily_log_draft_note.sql"
+base_commit
+cp "$BACKFILL_SOURCE" "$root/$BACKFILL_PATH"
+head_commit "Restore the contributor migration already recorded in production"
+# The rule must use committed bytes, even if a developer has unsaved edits.
+printf '\n' >>"$root/$BACKFILL_PATH"
+run
+assert_rc 0
+assert_has "already-deployed migration history (SHA256 verified)"
+assert_lacks "migration-version-behind"
+
+new_case "one added byte in the committed backfill fails even with clean working bytes"
+: >"$root/supabase/migrations/20261052010000_daily_log_draft_note.sql"
+base_commit
+cp "$BACKFILL_SOURCE" "$root/$BACKFILL_PATH"
+printf '\n' >>"$root/$BACKFILL_PATH"
+head_commit "Change the historical migration by one byte"
+cp "$BACKFILL_SOURCE" "$root/$BACKFILL_PATH"
+run
+assert_rc 1
+assert_has "migration-version-behind"
+assert_lacks "SHA256 verified"
+
+new_case "replacement SQL at the historical filename is an ordinary older migration"
+: >"$root/supabase/migrations/20261052010000_daily_log_draft_note.sql"
+base_commit
+good_migration "$BACKFILL_PATH" replacement_table
+head_commit "Put different SQL under the old filename"
+run
+assert_rc 1
+assert_has "migration-version-behind"
+assert_lacks "SHA256 verified"
+
+new_case "identical deployed bytes under another filename do not receive the exception"
+: >"$root/supabase/migrations/20261052010000_daily_log_draft_note.sql"
+base_commit
+cp "$BACKFILL_SOURCE" "$root/supabase/migrations/20261049000000_other.sql"
+head_commit "Copy the historical SQL under another name"
+run
+assert_rc 1
+assert_has "migration-version-behind"
+assert_lacks "SHA256 verified"
+
+new_case "another ordinary older version remains rejected alongside the exact backfill"
+: >"$root/supabase/migrations/20261052010000_daily_log_draft_note.sql"
+base_commit
+cp "$BACKFILL_SOURCE" "$root/$BACKFILL_PATH"
+: >"$root/supabase/migrations/20261048000000_ordinary.sql"
+head_commit "Restore historical SQL and add a different old migration"
+run
+assert_rc 1
+assert_has "SHA256 verified"
+assert_has "supabase/migrations/20261048000000_ordinary.sql:1  [migration-version-behind]"
+
+new_case "a failed digest command cannot authorize the history exception"
+: >"$root/supabase/migrations/20261052010000_daily_log_draft_note.sql"
+base_commit
+cp "$BACKFILL_SOURCE" "$root/$BACKFILL_PATH"
+head_commit "Restore the historical migration with no working hash tool"
+printf '#!/usr/bin/env bash\nexit 1\n' >"$root/bin/sha256sum"
+chmod +x "$root/bin/sha256sum"
+run
+assert_rc 1
+assert_has "migration-version-behind"
+assert_lacks "SHA256 verified"
+
+new_case "master's duplicate version still rejects the exact deployed bytes"
+: >"$root/supabase/migrations/20261049000000_rival.sql"
+: >"$root/supabase/migrations/20261052010000_daily_log_draft_note.sql"
+base_commit
+cp "$BACKFILL_SOURCE" "$root/$BACKFILL_PATH"
+head_commit "Restore historical SQL despite a version collision"
+run
+assert_rc 1
+assert_has "migration-version-taken"
+
+new_case "an open branch's duplicate version still rejects the exact deployed bytes"
+: >"$root/supabase/migrations/20261052010000_daily_log_draft_note.sql"
+base_commit
+git -C "$root" checkout -q -b rival
+: >"$root/supabase/migrations/20261049000000_rival.sql"
+head_commit "Claim the historical number under a different name"
+git -C "$root" update-ref refs/remotes/origin/rival "$(git -C "$root" rev-parse HEAD)"
+git -C "$root" checkout -q master
+cp "$BACKFILL_SOURCE" "$root/$BACKFILL_PATH"
+head_commit "Restore the historical contributor migration"
+stub_gh rival
+GH_BIN_OVERRIDE=gh run
+unset GH_BIN_OVERRIDE
+assert_rc 1
+assert_has "SHA256 verified"
+assert_has "migration-version-claimed"
+
+new_case "the history exception does not skip security checks on other new SQL"
+: >"$root/supabase/migrations/20261052010000_daily_log_draft_note.sql"
+base_commit
+cp "$BACKFILL_SOURCE" "$root/$BACKFILL_PATH"
+cat >"$root/supabase/migrations/20261053000000_unsafe.sql" <<'SQL'
+create table public.unsafe_history (id uuid);
+create function public.unsafe_history_read() returns int
+language sql security definer as $$ select 1 $$;
+SQL
+head_commit "Restore history alongside SQL with missing security controls"
+run
+assert_rc 1
+assert_has "SHA256 verified"
+assert_has "table-without-rls"
+assert_has "table-keeps-default-grants"
+assert_has "policy-without-partner-guard"
+assert_has "definer-without-search-path"
+assert_has "definer-without-grant"
 
 new_case "the next free number is green"
 : >"$root/supabase/migrations/20260995000000_gallery.sql"

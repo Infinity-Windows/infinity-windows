@@ -402,6 +402,24 @@ done
 # ---------------------------------------------------------------------------
 # The migration version rule — the collision that happened on 2026-09-06
 # ---------------------------------------------------------------------------
+# One deployed migration was absent from master when later versions landed.
+# Restore its recorded identity, never renumber it into a second execution.
+# This recognizes ONLY the reviewed bytes at HEAD, not a filename assertion or
+# the working tree. Missing/failed hash tools leave the ordinary rule in force.
+# Provenance and the limits of this recognition: docs/advisory-review.md.
+is_deployed_history_backfill() { # path
+  [ "$1" = 'supabase/migrations/20261049000000_foreman_unit_contributors.sql' ] || return 1
+  local digest
+  if command -v sha256sum >/dev/null 2>&1; then
+    digest="$(file_at_head "$1" | sha256sum)" || return 1
+  elif command -v shasum >/dev/null 2>&1; then
+    digest="$(file_at_head "$1" | shasum -a 256)" || return 1
+  else
+    return 1
+  fi
+  [ "${digest%% *}" = '3c990644eaa4a4a38e5faa3e567834405d4ceac4ef949faa62c2098b716d7d30' ]
+}
+
 if [ "${#new_migrations[@]}" -gt 0 ]; then
   master_paths="$(git ls-tree -r --name-only origin/master supabase/migrations 2>/dev/null)"
   master_versions="$(printf '%s\n' "$master_paths" |
@@ -452,8 +470,12 @@ if [ "${#new_migrations[@]}" -gt 0 ]; then
       report "$f:1" migration-version-taken \
         "Version $v is already on master under another filename. \`supabase db push\` would see it applied and skip this file without a word." "$LAW_VERSION"
     elif [ -n "$newest_on_master" ] && [ "$v" \< "$newest_on_master" ]; then
-      report "$f:1" migration-version-behind \
-        "Version $v sorts below master's newest ($newest_on_master), so it lands out of order or not at all." "$LAW_VERSION"
+      if is_deployed_history_backfill "$f"; then
+        note "$f restores the exact reviewed, already-deployed migration history (SHA256 verified); only the behind-version finding is waived. See docs/advisory-review.md."
+      else
+        report "$f:1" migration-version-behind \
+          "Version $v sorts below master's newest ($newest_on_master), so it lands out of order or not at all." "$LAW_VERSION"
+      fi
     fi
     for triple in $other_versions; do
       [ "${triple%%:*}" = "$v" ] || continue
