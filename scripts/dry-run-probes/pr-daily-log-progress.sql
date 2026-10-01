@@ -4,9 +4,32 @@ do $$
 declare
   v_actor uuid; v_lead uuid; v_job uuid; v_mail text; v_day date; v_rev integer;
   v_log public.daily_logs; v_client uuid := gen_random_uuid(); v_photo uuid;
-  v_object_name text; v_storage_path text; v_n integer; v_r text;
+  v_object_name text; v_storage_path text; v_n integer; v_r text; v_ok boolean; v_denied boolean; v_ordinary text;
 begin
   perform pg_temp.dry_run_as_system();
+  perform pg_temp.dry_run_check('classifier has no PUBLIC EXECUTE',not exists(
+    select 1 from pg_proc p,aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a
+    where p.oid='public._is_daily_log_photo_name(text)'::regprocedure and a.grantee=0 and a.privilege_type='EXECUTE'));
+  perform pg_temp.dry_run_check('anon classifier EXECUTE is absent',not has_function_privilege('anon','public._is_daily_log_photo_name(text)','execute'));
+  perform pg_temp.dry_run_check('required Storage backend exists and owns objects',
+    (select pg_get_userbyid(relowner)='supabase_storage_admin' from pg_class where oid='storage.objects'::regclass));
+  perform pg_temp.dry_run_check('all three necessary classifier callers retain EXECUTE',
+    has_function_privilege('authenticated','public._is_daily_log_photo_name(text)','execute') and
+    has_function_privilege('service_role','public._is_daily_log_photo_name(text)','execute') and
+    has_function_privilege('supabase_storage_admin','public._is_daily_log_photo_name(text)','execute'));
+  perform pg_temp.dry_run_check('classifier remains SECURITY INVOKER',(select not prosecdef from pg_proc where oid='public._is_daily_log_photo_name(text)'::regprocedure));
+  execute 'set local role anon';
+  v_denied := false;
+  begin
+    perform public._is_daily_log_photo_name('ordinary/probe.jpg');
+  exception when insufficient_privilege then v_denied := true;
+  end;
+  execute 'reset role';
+  perform pg_temp.dry_run_check('actual anon classifier invocation is denied',v_denied);
+  execute 'set local role service_role';
+  v_ok := public._is_daily_log_photo_name('probe/daily-logs/probe.jpg') and not public._is_daily_log_photo_name('ordinary/probe.jpg');
+  execute 'reset role';
+  perform pg_temp.dry_run_check('actual service role classifier invocation succeeds',v_ok);
   v_actor := pg_temp.dry_run_pick('installer');
   v_lead := pg_temp.dry_run_pick('foreman');
   v_job := pg_temp.dry_run_sandbox_job();
@@ -49,6 +72,30 @@ begin
   v_storage_path := 'install-media/'||v_object_name;
   insert into storage.objects(bucket_id,name,owner,owner_id,metadata)
     values('install-media',v_object_name,v_actor,v_actor::text,'{"mimetype":"image/jpeg","size":5}');
+  -- Exercise the actual backend caller, not just the management owner.
+  -- SQL metadata only; the provider upload API/bytes are outside this probe.
+  v_ordinary := v_job::text||'/acl-probe/'||gen_random_uuid()::text||'.jpg';
+  insert into storage.objects(bucket_id,name,owner,owner_id,metadata)
+    values('install-media',v_ordinary,v_actor,v_actor::text,'{"mimetype":"image/jpeg","size":5}');
+  execute 'set local role supabase_storage_admin';
+  v_ok := public._is_daily_log_photo_name(v_object_name) and not public._is_daily_log_photo_name(v_ordinary);
+  update storage.objects set updated_at=now(),last_accessed_at=now() where bucket_id='install-media' and name=v_object_name;
+  get diagnostics v_n=row_count;
+  execute 'reset role';
+  perform pg_temp.dry_run_check('actual Storage backend classifier and protected timestamp update succeed',v_ok and v_n=1);
+  execute 'set local role supabase_storage_admin';
+  update storage.objects set metadata='{"mimetype":"image/jpeg","size":6}' where bucket_id='install-media' and name=v_ordinary;
+  get diagnostics v_n=row_count;
+  execute 'reset role';
+  perform pg_temp.dry_run_check('actual Storage backend ordinary update succeeds',v_n=1);
+  execute 'set local role supabase_storage_admin';
+  v_denied := false;
+  begin
+    update storage.objects set version='replacement' where bucket_id='install-media' and name=v_object_name;
+  exception when insufficient_privilege then v_denied := true;
+  end;
+  execute 'reset role';
+  perform pg_temp.dry_run_check('actual Storage backend cannot replace protected object',v_denied);
   perform pg_temp.dry_run_act_as(v_actor);
   insert into public.attachments(client_id,project_id,daily_log_id,kind,storage_path,created_by)
     values(v_client,v_job,v_log.id,'photo',v_storage_path,v_mail) returning id into v_photo;
