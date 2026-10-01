@@ -137,10 +137,12 @@ describe("frame color (Studio 100x #47)", () => {
   };
   const hexOf = (m: THREE.Material) => (m as THREE.MeshLambertMaterial).color.getHex();
 
-  it("defaults to white, byte-for-byte the old hardcoded hex", () => {
+  it("keeps the white frame while giving default glass a neutral tint", () => {
     const { materials } = buildUnitGeometry(flat);
     expect(hexOf(materials[0])).toBe(0xf4f1ec);
-    expect(hexOf(materials[1])).toBe(0x9fc4d4);
+    expect(hexOf(materials[1])).toBe(FRAME_COLOR_HEXES.white.glass);
+    const glass = (materials[1] as THREE.MeshLambertMaterial).color;
+    expect(Math.abs(glass.r - glass.b)).toBeLessThan(0.08);
     // Explicit "white" renders identically to leaving it unset.
     const explicit = buildUnitGeometry({ ...flat, frameColor: "white" });
     expect(hexOf(explicit.materials[0])).toBe(0xf4f1ec);

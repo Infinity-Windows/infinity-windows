@@ -18,7 +18,7 @@ export const FEEDBACK_CATALOG = {
   "feedback.answer": { en: "AI response:", es: "Respuesta de IA:" },
   "feedback.category": { en: "Section", es: "Sección" },
   "feedback.all": { en: "All", es: "Todo" },
-  "feedback.app": { en: "App", es: "App" },
+  "feedback.app": { en: "App", es: "Aplicación" },
   "feedback.ai": { en: "AI", es: "IA" },
   "feedback.resolution": { en: "Fix verification", es: "Verificación de la solución" },
   "feedback.resolveHelp": { en: "Describe the verified fix before resolving this report.", es: "Describe la solución verificada antes de resolver este reporte." },

@@ -1,9 +1,10 @@
 // Fixture-backed Ask report path. This spec does not send a real report.
 import { expect, test } from "@playwright/test";
 import { useSupabaseFixtures, TEST_USER } from "./support/supabaseFixtures";
-import { json } from "./support/specHelpers";
+import { hideWrongProjectBanner, json } from "./support/specHelpers";
 
-test("Ask reply offers an editable AI report and files only after Send", async ({ page }) => {
+test("Ask reply offers an editable AI report and files only after Send", async ({ page }, testInfo) => {
+  await hideWrongProjectBanner(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ colorScheme: "dark" });
   await page.addInitScript(() => localStorage.setItem("infinity.theme", "dark"));
@@ -40,6 +41,7 @@ test("Ask reply offers an editable AI report and files only after Send", async (
   await expect(live).toHaveText("Start Live Chat");
   expect((await live.boundingBox())!.width).toBeLessThan(230);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath("ask-phone.png") });
 });
 
 

@@ -136,6 +136,14 @@ describe("receipts on the Ask page", () => {
     expect(host!.querySelector(".field-checklist")).toBeNull();
   });
 
+  it("keeps the checklist when a later save is for another unit", async () => {
+    reply.next = { answer: "Unit 4 draft.", field: { request_id: "r1", receipts: [], checklist: { job: null, unit: [{ key: "label", status: "captured", value: "4", required_before_timing: true }] } } };
+    await mount(); await ask("Set up unit 4");
+    reply.next = { answer: "Unit 5 saved.", field: { request_id: "r2", receipts: [{ action_id: "a2", action: "save_unit", status: "done", outcome: "created", unit: { ...unit, label: "5" } }], checklist: null } };
+    await ask("Save unit 5 instead");
+    expect(host!.querySelector(".field-checklist")).not.toBeNull();
+  });
+
   it("dismisses a job-only checklist after the job creation receipt", async () => {
     reply.next = { answer: "Pine Hollow is ready.", field: { request_id: "r1", receipts: [{ action_id: "a1", action: "create_job", status: "done", outcome: "created", name: "Pine Hollow" }], checklist: { job: [{ key: "job_name", status: "captured", value: "Pine Hollow", required_before_timing: true }], unit: null } } };
     await mount();

@@ -11,13 +11,14 @@
 import * as THREE from "three";
 import { outerPolygons } from "./toFitview";
 import type { LiteWall } from "./floors";
+import { MODEL_PALETTE } from "./modelPalette";
 
 const M_TO_CM = 100;
 /** 12" cap wall — enough to read as a parapet lip, not a fence. */
 const PARAPET_HEIGHT_CM = 30;
 
-const ROOF_DECK = new THREE.MeshLambertMaterial({ color: 0xc9c2b8, side: THREE.DoubleSide });
-const ROOF_PARAPET = new THREE.MeshLambertMaterial({ color: 0xb0a89b, side: THREE.DoubleSide });
+const ROOF_DECK = new THREE.MeshLambertMaterial({ color: MODEL_PALETTE.roofDeck, side: THREE.DoubleSide });
+const ROOF_PARAPET = new THREE.MeshLambertMaterial({ color: MODEL_PALETTE.roofParapet, side: THREE.DoubleSide });
 
 /**
  * A flat parapet roof capping `walls`' outer footprint, `baseY` + the

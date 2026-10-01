@@ -482,8 +482,15 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
   // A checklist is a conversation draft. Only a database receipt for the
   // current setup can retire it; zero missing answers alone cannot. A unit
   // sent for review still needs a person to finish that review.
+  const setupLabel = latestChecklist?.unit?.find((item) => item.key === "label")?.value;
+  const setupJobName = latestChecklist?.job?.find((item) => item.key === "job_name")?.value;
+  const setupProject = latestChecklistIndex >= 0 ? messages[latestChecklistIndex].field?.draft?.job?.project_id : null;
   const setupSaved = !!latestChecklist && messages.slice(latestChecklistIndex).some((m) =>
-    m.field?.receipts.some((r) => r.status === "done" && (
+    m.field?.receipts.some((r) => r.status === "done"
+      && (!setupProject || !r.project_id || r.project_id === setupProject)
+      && (latestChecklist.unit?.length
+        ? (!setupLabel || setupLabel === "saved" || r.unit?.label === setupLabel)
+        : (!setupJobName || r.name === setupJobName)) && (
       latestChecklist.unit?.length
         ? r.action === "save_unit" && ["created", "created_from_map", "details_added", "corrected", "unchanged"].includes(r.outcome ?? "")
         : r.action === "create_job" && ["created", "used_existing"].includes(r.outcome ?? "")
