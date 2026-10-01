@@ -1338,7 +1338,7 @@ export function timecardWeeks(range: WeekRange): WeekRange[] {
  * The most recently ENDED pay period relative to `anchor` — never the one
  * still running. This is what the worker's "Sign my timecard" card offers:
  * a period that is over has nothing left to add to it, so it is safe to
- * attest to. `sign_my_timecard` also refuses server-side if a client ever
+ * attest to. `sign_my_semimonthly_timecard` also refuses server-side if a client ever
  * sent an in-progress period anyway.
  */
 export function previousPayPeriod(anchor: Date = new Date()): WeekRange {
