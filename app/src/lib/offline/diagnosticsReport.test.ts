@@ -45,4 +45,20 @@ describe("buildDiagnosticsReport", () => {
     expect(text).toContain("Connection: offline; last good request never");
     expect(text).toContain("Jobs saved on this phone: 0");
   });
+
+  it("shares phone check outcomes without media or device details", () => {
+    const text = buildDiagnosticsReport({
+      buildId: "abc1234", builtAt: "", supabaseHost: "", online: true, weak: false, lastOkAt: null,
+      queues: [], savedJobs: [], events: [], now: NOW,
+      phoneChecks: {
+        microphone: { status: "pass", reason: "confirmed", at: NOW - 1_000 },
+        camera: { status: "fail", reason: "permission", at: NOW - 2_000 },
+      },
+    });
+    expect(text).toContain("microphone: pass (confirmed;");
+    expect(text).toContain("camera: fail (permission;");
+    expect(text).toContain("storage: not run");
+    expect(text).not.toContain("blob:");
+    expect(text).not.toContain("data:");
+  });
 });

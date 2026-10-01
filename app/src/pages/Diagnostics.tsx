@@ -1,6 +1,7 @@
 // /diagnostics — the screen support asks for a screenshot of.
 //
-// Read-only. Everything a "it didn't save" conversation needs, on one page:
+// Support facts plus an optional, local device check. Everything an "it didn't
+// save" conversation needs, on one page:
 // which build and which database, whether the phone is online, weak or off,
 // when it last heard from the database, what is waiting to send and what
 // gave up, which jobs are saved on this phone and how old they are, and the
@@ -14,6 +15,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Activity, Check, Copy, Wifi, WifiOff } from "lucide-react";
 import { BackChip } from "../components/BackChip";
 import { BuildIdentityCard } from "../components/BuildIdentityCard";
+import { PhoneCheck } from "../components/PhoneCheck";
 import { listProjects } from "../lib/api";
 import { useT } from "../lib/i18n";
 import { failedInstallCount, pendingInstallCount, subscribeSyncListeners } from "../lib/install/installOutbox";
@@ -26,6 +28,7 @@ import { useOutbox } from "../lib/offline/useOutbox";
 import { agoLabel } from "../lib/offline/useSaveJobsOffline";
 import { lastSuccessfulRequestAt } from "../lib/offline/weakSignal";
 import { useConnection } from "../lib/offline/useWeakSignal";
+import type { PhoneCheckKind, PhoneCheckResult } from "../lib/offline/phoneCheck";
 import { BUILD_ID, BUILT_AT } from "../lib/pwa/buildInfo";
 
 const NO_EVENTS: readonly OfflineEvent[] = [];
@@ -51,6 +54,16 @@ export function Diagnostics() {
   const [saved, setSaved] = useState<Record<string, SavedJobRecord>>(() => readSavedJobs());
   const [now, setNow] = useState(() => Date.now());
   const [copied, setCopied] = useState(false);
+  const [phoneChecks, setPhoneChecks] = useState<Partial<Record<PhoneCheckKind, PhoneCheckResult>>>({});
+
+  const updatePhoneCheck = useCallback((kind: PhoneCheckKind, result: PhoneCheckResult | null) => {
+    setPhoneChecks(current => {
+      const next = { ...current };
+      if (result) next[kind] = result;
+      else delete next[kind];
+      return next;
+    });
+  }, []);
 
   const refresh = useCallback(() => {
     setNow(Date.now());
@@ -118,6 +131,7 @@ export function Diagnostics() {
       queues,
       savedJobs,
       events,
+      phoneChecks,
       now: Date.now(),
     });
     try {
@@ -158,6 +172,8 @@ export function Diagnostics() {
           {t("diag.lastOk", { ago: lastOk ? agoLabel(t, lastOk, now) : t("diag.never") })}
         </p>
       </section>
+
+      <PhoneCheck onResult={updatePhoneCheck} />
 
       <section className="detail-card" style={{ marginBottom: 12 }} data-testid="diag-queues">
         <h2 style={{ marginTop: 0, fontSize: 18 }}>{t("diag.queues")}</h2>
