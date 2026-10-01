@@ -219,6 +219,25 @@ test("a photo left in the retired upload queue is moved on the next start and se
   await page.reload();
   await expect(pillText(page)).toHaveText("All synced");
   expect(net.rows).toHaveLength(1);
+
+  // Simulate deletion landing after the existence check but before open().
+  // A read in that window must not recreate an empty retired database.
+  const recreated = await page.evaluate(async () => {
+    const actualDatabases = indexedDB.databases.bind(indexedDB);
+    indexedDB.databases = async () => [
+      ...(await actualDatabases()),
+      { name: "wops-upload-queue", version: 1 },
+    ];
+    try {
+      const modulePath = "/src/lib/install/legacyUploadQueue.ts";
+      const { pendingLegacyUploadCount } = await import(modulePath);
+      if (await pendingLegacyUploadCount() !== 0) throw new Error("retired queue should be empty");
+    } finally {
+      indexedDB.databases = actualDatabases;
+    }
+    return (await actualDatabases()).some((db) => db.name === "wops-upload-queue");
+  });
+  expect(recreated).toBe(false);
 });
 
 test("the pill opens the same place whatever is queued, and a refused work change is listed there", async ({
