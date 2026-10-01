@@ -36,6 +36,17 @@ function cameraButton() {
 }
 
 describe("PhoneCheck camera preview", () => {
+  it("can run another check after the StrictMode mount cycle", async () => {
+    const onResult = render();
+    const button = container.querySelector('[data-testid="phone-check-storage"] button') as HTMLButtonElement;
+    await act(async () => button.click());
+    expect(button.disabled).toBe(false);
+    expect(onResult).toHaveBeenCalledWith("storage", expect.objectContaining({ status: "unsupported" }));
+    await act(async () => button.click());
+    expect(button.disabled).toBe(false);
+    expect(onResult).toHaveBeenCalledTimes(4); // clear + result for each run
+  });
+
   it("stops the camera after the user confirms a picture", async () => {
     const stop = vi.fn();
     const getUserMedia = vi.fn().mockResolvedValue({ getTracks: () => [{ stop }] });
