@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("./supabase", () => ({ supabase: {} }));
 
 import { startLiveSession, type LiveDeps, type LiveStatus } from "./liveAskSession";
-import { liveAskPilotEnabled, liveStatusLine } from "./liveAskPilot";
+import { canContinueLive, liveAskPilotEnabled, liveStatusLine } from "./liveAskPilot";
 
 /** A fake phone: microphone, peer connection, data channel, recorder, timers. */
 function rig(opts: { exchange?: LiveDeps["exchange"]; micDelay?: Promise<void> } = {}) {
@@ -196,6 +196,14 @@ describe("startLiveSession", () => {
 });
 
 describe("liveAskPilot", () => {
+  it("offers a deliberate continuation only after recoverable stops", () => {
+    expect(canContinueLive("ended", "cap")).toBe(true);
+    expect(canContinueLive("ended", "background")).toBe(true);
+    expect(canContinueLive("failed", "connection")).toBe(true);
+    expect(canContinueLive("ended", "account")).toBe(false);
+    expect(canContinueLive("ended", "user")).toBe(false);
+    expect(canContinueLive("failed", "live_limit")).toBe(false);
+  });
   it("exposes the owner pilot in production, with a build-time stop switch", () => {
     expect(liveAskPilotEnabled({})).toBe(false);
     expect(liveAskPilotEnabled({ VITE_LIVE_ASK_PILOT: "1" })).toBe(false);

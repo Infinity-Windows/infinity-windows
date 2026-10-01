@@ -47,7 +47,7 @@ import { FeatureTip } from "./assistant/FeatureTip";
 import { SyncStatusPill } from "./offline/SyncStatusPill";
 import { OnboardingWizard } from "./permissions/OnboardingWizard";
 import type { LiveAskShellControls, LiveAskShellState } from "../pages/AskInfinity";
-import { liveStatusLine } from "../lib/liveAskPilot";
+import { canContinueLive, liveStatusLine, liveText } from "../lib/liveAskPilot";
 import { useLanguage } from "../lib/i18n";
 import {
   closeOnboardingWizard,
@@ -480,10 +480,13 @@ export function Layout() {
         <div className={`live-ask-mini${captureOpen ? " capture-open" : ""}`} role="region" aria-label={es ? "Conversación en vivo" : "Live conversation"}>
           <button type="button" className="live-ask-mini-main" onClick={() => navigate("/ask")}>
             <Radio size={18} className={liveAsk.status === "live" || liveAsk.status === "unstable" ? "live-ask-mini-pulse" : ""} aria-hidden="true" />
-            <span>{liveAsk.saving ? (es ? "Guardando…" : "Saving…") : liveAsk.expiring && liveAsk.status === "live" ? (es ? "Termina pronto" : "Ending soon") : liveStatusLine(es, liveAsk.status, liveAsk.detail)}</span>
+            <span>{liveAsk.saving ? liveText(es, "saving") : liveAsk.expiring && (liveAsk.status === "live" || liveAsk.status === "unstable") ? liveText(es, "endingSoonShort") : liveStatusLine(es, liveAsk.status, liveAsk.detail)}</span>
           </button>
           {liveAsk.needsClock && <button type="button" className="live-ask-mini-action" onClick={() => { setCaptureOpen(false); clock.openClock(); }}>
             {es ? "Abrir reloj de trabajo" : "Open job clock"}
+          </button>}
+          {canContinueLive(liveAsk.status, liveAsk.detail) && <button type="button" className="live-ask-mini-action" disabled={liveAsk.saving} onClick={() => liveControls.current?.restart()}>
+            <Radio size={14} aria-hidden="true" /> {liveText(es, liveAsk.detail === "cap" ? "continue" : "tryAgain")}
           </button>}
           {(liveAsk.status === "starting" || liveAsk.status === "live" || liveAsk.status === "unstable") && <div className="live-ask-mini-controls">
             <button type="button" onClick={() => liveControls.current?.toggleMute()} aria-label={liveAsk.muted ? (es ? "Activar micrófono" : "Unmute microphone") : (es ? "Silenciar micrófono" : "Mute microphone")}>{liveAsk.muted ? <MicOff size={16} aria-hidden="true" /> : <Mic size={16} aria-hidden="true" />} {liveAsk.muted ? (es ? "Activar" : "Unmute") : (es ? "Silenciar" : "Mute")}</button>

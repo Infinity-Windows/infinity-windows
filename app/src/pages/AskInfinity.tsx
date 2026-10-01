@@ -58,7 +58,7 @@ import { applyDailyLogReply, asksForDailyLog, dailyLogContextForMessage } from "
 import { signedInEmail } from "../lib/signedIn";
 import { startLiveSession, type LiveEndReason, type LiveSession, type LiveStatus, type LiveTurn } from "../lib/liveAskSession";
 import { liveCommentary, type LiveTurnOutcome } from "../lib/liveAskCommentary";
-import { liveAskPilotEnabled, liveStatusLine, liveText } from "../lib/liveAskPilot";
+import { canContinueLive, liveAskPilotEnabled, liveStatusLine, liveText } from "../lib/liveAskPilot";
 
 export interface LiveAskShellState {
   status: LiveStatus;
@@ -68,7 +68,7 @@ export interface LiveAskShellState {
   muted: boolean;
   expiring: boolean;
 }
-export interface LiveAskShellControls { end(): void; toggleMute(): void }
+export interface LiveAskShellControls { end(): void; toggleMute(): void; restart(): void }
 
 // Every cached screen a field receipt may have changed (see FIELD_QUERY_ROOTS).
 const refreshFieldViews = () => { for (const root of FIELD_QUERY_ROOTS) void queryClient.invalidateQueries({ queryKey: [root] }); };
@@ -279,6 +279,7 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
   const livePilot = liveAskPilotEnabled() && profile.data?.role === "owner";
   const [live, setLive] = useState<{ status: LiveStatus; detail?: LiveEndReason | string }>({ status: "idle" });
   const liveRef = useRef<LiveSession | null>(null);
+  const restartLiveRef = useRef<() => void>(() => {});
   const liveOn = live.status === "starting" || live.status === "live" || live.status === "unstable";
   const [liveMuted, setLiveMuted] = useState(false);
   const [liveExpiring, setLiveExpiring] = useState(false);
@@ -293,6 +294,7 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
     if (!registerLiveControls) return;
     registerLiveControls({
       end: () => liveRef.current?.end("user"),
+      restart: () => restartLiveRef.current(),
       toggleMute: () => {
         const session = liveRef.current;
         if (!session) return;
@@ -918,7 +920,7 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
   };
   const startLive = () => {
     const uid = actor.current;
-    if (!livePilot || !uid || liveRef.current || voice !== "idle" || busyRef.current) return;
+    if (!livePilot || !uid || liveRef.current || liveSaving > 0 || voice !== "idle" || busyRef.current) return;
     const g = gen.current;
     // Like the recorder: the cards and the keyboard go away.
     setCardsHidden(true); setShowAll(false);
@@ -939,6 +941,7 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
     });
     liveRef.current = session;
   };
+  restartLiveRef.current = startLive;
   // Only a real shell unmount ends the conversation. Route changes keep this
   // component mounted so the same microphone and paid session survive.
   useEffect(() => () => liveRef.current?.end("unmount"), []);
@@ -1161,7 +1164,7 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
         {livePilot && userId && live.status !== "idle" && (
           <p className="ask-dock-status" role="status" aria-live="polite">
             {liveOn && live.status !== "starting" && <span className="ask-rec-dot" aria-hidden="true" />}
-            {liveStatusLine(es, live.status, live.detail)}
+            {liveExpiring && liveOn ? liveText(es, "endingSoon") : liveStatusLine(es, live.status, live.detail)}
             {liveSaving > 0 && ` · ${liveText(es, "saving")}`}
           </p>
         )}
@@ -1205,8 +1208,8 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
                 <Square size={14} aria-hidden="true" /> {liveText(es, "end")}
               </button>
             ) : (
-              <button type="button" className="chip" disabled={thinking || voice !== "idle"} onClick={startLive} aria-label={liveText(es, "start")}>
-                <Radio size={14} aria-hidden="true" /> {liveText(es, "start")} · <span className="muted">{liveText(es, "pilot")}</span>
+              <button type="button" className="chip" disabled={thinking || voice !== "idle" || liveSaving > 0} onClick={startLive} aria-label={liveText(es, canContinueLive(live.status, live.detail) ? "continue" : "start")}>
+                <Radio size={14} aria-hidden="true" /> {liveText(es, canContinueLive(live.status, live.detail) ? "continue" : "start")} · <span className="muted">{liveText(es, "pilot")}</span>
               </button>
             )}
           </div>
