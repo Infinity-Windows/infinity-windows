@@ -13,11 +13,11 @@ on:
       old_ref:
         description: Full 40-character commit SHA for the installed old build
         required: true
-        default: fd4fd686174c5be5ec00c9301d75f415001ca416
+        default: 83f21384aca4c74753bc96d60962f4d983a49b89
       new_ref:
         description: Full 40-character commit SHA for the failing candidate (pin the synthetic merge)
         required: true
-        default: a73327ce35da7beddd5156914de8e0ec6fa8f2d8
+        default: b98a36a1a0ba5ee7b66793fd780ee5a382833fb8
 
 permissions:
   contents: read
@@ -27,8 +27,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      PINNED_OLD: ${{ inputs.old_ref || 'fd4fd686174c5be5ec00c9301d75f415001ca416' }}
-      PINNED_NEW: ${{ inputs.new_ref || 'a73327ce35da7beddd5156914de8e0ec6fa8f2d8' }}
+      PINNED_OLD: ${{ inputs.old_ref || '83f21384aca4c74753bc96d60962f4d983a49b89' }}
+      PINNED_NEW: ${{ inputs.new_ref || 'b98a36a1a0ba5ee7b66793fd780ee5a382833fb8' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -69,14 +69,14 @@ jobs:
           npx playwright install --with-deps chromium
       - name: Verify diagnostic response observer preserves native behavior
         run: node diagnostic-tools/scripts/pwa-upgrade-diagnostic.mjs --check-probe
-      - name: Run fixed six-case control and buffered-probe comparison
+      - name: Capture one native engine trace with original workers
         env:
           PWA_DIAGNOSTIC_OLD_REF: ${{ env.PINNED_OLD }}
           PWA_DIAGNOSTIC_NEW_REF: ${{ env.PINNED_NEW }}
           PWA_DIAGNOSTIC_REPO: ${{ github.workspace }}/candidate
           PWA_DIAGNOSTIC_OUT: ${{ runner.temp }}/pwa-upgrade-diagnostic
           IW_MAP_PORT: '5298'
-        run: node diagnostic-tools/scripts/pwa-upgrade-diagnostic.mjs
+        run: node diagnostic-tools/scripts/pwa-upgrade-diagnostic.mjs --engine-trace
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -3,7 +3,7 @@
 // Run with Node 22 after npm ci and Playwright Chromium installation in app/.
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import { closeSync, cpSync, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { createServer } from 'node:net';
 import { join, resolve } from 'node:path';
@@ -142,6 +142,7 @@ if (process.argv.includes('--check-probe')) {
   process.exit(0);
 }
 
+const engineMode = process.argv.includes('--engine-trace');
 const repo = resolve(process.env.PWA_DIAGNOSTIC_REPO || '.');
 const out = resolve(process.env.PWA_DIAGNOSTIC_OUT || 'pwa-upgrade-diagnostic-output');
 const oldRef = process.env.PWA_DIAGNOSTIC_OLD_REF;
@@ -180,7 +181,7 @@ writeFileSync(join(tests, 'support/pwa.ts'), readFileSync(join(app, 'e2e/support
 // request interception, debugger pauses, cache disabling or SW stop commands.
 const observer = String.raw`
 import { test as base, expect } from '@playwright/test';
-import { createWriteStream, writeFileSync } from 'node:fs';
+import { appendFileSync, createWriteStream, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 export { expect };
 export type { Page, Worker } from '@playwright/test';
@@ -196,6 +197,13 @@ export const test = base.extend({
     const pageSession = await context.newCDPSession(page);
     const browserSession = await browser.newBrowserCDPSession();
     const workerSessions = new Set<string>();
+    const engineMode = process.env.PWA_ENGINE_TRACE === '1';
+    let engineStarted = false;
+    let engineSummary: Record<string, unknown> = { requested: engineMode };
+    // Browser tracing is independent of Playwright's snapshot trace. Read the
+    // trace stream only after the unchanged test; no worker JS instrumentation.
+    const engineDone = new Promise<any>(resolve => browserSession.once('Tracing.tracingComplete', resolve));
+    browserSession.on('Tracing.bufferUsage', params => log('engine', 'Tracing.bufferUsage', params));
     let workerCommand = 0;
     const pageEvents = [
       'Network.requestWillBeSent', 'Network.requestWillBeSentExtraInfo',
@@ -242,6 +250,22 @@ export const test = base.extend({
       await pageSession.send('Runtime.enable');
       await pageSession.send('ServiceWorker.enable');
       await browserSession.send('Target.setDiscoverTargets', { discover: true });
+      if (engineMode) {
+        const version = await browserSession.send('Browser.getVersion');
+        const available = (await browserSession.send('Tracing.getCategories')).categories;
+        const required = ['ServiceWorker', 'CacheStorage', 'loading'];
+        const wanted = [...required, 'blink.resource', 'devtools.timeline', 'disabled-by-default-loading',
+          'disabled-by-default-network', 'Blob', 'mojom.flow'];
+        const selected = wanted.filter(category => available.includes(category));
+        engineSummary = { ...engineSummary, version, available, selected,
+          missingRequired: required.filter(category => !available.includes(category)) };
+        writeFileSync(join(process.env.PWA_DIAGNOSTIC_OUT!, 'engine-summary.json'), JSON.stringify(engineSummary, null, 2));
+        if ((engineSummary.missingRequired as string[]).length) throw new Error('Required engine trace categories unavailable');
+        await browserSession.send('Tracing.start', { transferMode: 'ReturnAsStream', streamFormat: 'json',
+          traceConfig: { recordMode: 'recordUntilFull', traceBufferSizeInKb: 131072, includedCategories: selected } });
+        engineStarted = true;
+        log('engine', 'trace-started', { version, selected });
+      }
       log('observer', 'ready-before-first-navigation', { browser: browser.version(), test: testInfo.title });
       await use(page);
     } finally {
@@ -249,7 +273,7 @@ export const test = base.extend({
       // Read the surviving workers ONCE after the test, even on assertion
       // failure. No timer or console serialization runs on the fetch path.
       const snapshots: unknown[] = [];
-      for (const worker of context.serviceWorkers()) {
+      for (const worker of engineMode ? [] : context.serviceWorkers()) {
         try {
           const buffer = await worker.evaluate(() =>
             (self as unknown as { __forgePwaResponseProbe?: unknown }).__forgePwaResponseProbe ?? null);
@@ -259,6 +283,41 @@ export const test = base.extend({
         }
       }
       writeFileSync(join(process.env.PWA_DIAGNOSTIC_OUT!, 'worker-response-buffer.json'), JSON.stringify(snapshots));
+      if (engineStarted) {
+        try {
+          // Stop and collect even when the product assertion failed. A missing
+          // or overflowing trace is a collector failure, never a product pass.
+          await browserSession.send('Tracing.end');
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          const completed = await Promise.race([engineDone, new Promise<never>((_, reject) => {
+            timer = setTimeout(() => reject(new Error('Engine trace completion timed out')), 20000);
+          })]).finally(() => { if (timer) clearTimeout(timer); });
+          if (!completed.stream) throw new Error('Engine trace returned no stream');
+          const tracePath = join(process.env.PWA_DIAGNOSTIC_OUT!, 'engine-trace.json');
+          writeFileSync(tracePath, '', { flag: 'wx' });
+          let bytes = 0;
+          const readDeadline = Date.now() + 20000;
+          try {
+            for (;;) {
+              if (Date.now() > readDeadline) throw new Error('Engine trace read deadline exceeded');
+              const part = await browserSession.send('IO.read', { handle: completed.stream, size: 1048576 });
+              const data = Buffer.from(part.data, part.base64Encoded ? 'base64' : 'utf8');
+              bytes += data.length;
+              if (bytes > 268435456) throw new Error('Engine trace exceeds 256 MiB collection cap');
+              appendFileSync(tracePath, data);
+              if (part.eof) break;
+            }
+          } finally {
+            await browserSession.send('IO.close', { handle: completed.stream });
+          }
+          engineSummary = { ...engineSummary, completed: true, dataLossOccurred: completed.dataLossOccurred ?? false, bytes };
+          log('engine', 'trace-collected', engineSummary);
+        } catch (error) {
+          engineSummary = { ...engineSummary, completed: false, error: String(error) };
+          log('engine', 'trace-error', String(error));
+        }
+        writeFileSync(join(process.env.PWA_DIAGNOSTIC_OUT!, 'engine-summary.json'), JSON.stringify(engineSummary, null, 2));
+      }
       await browserSession.detach().catch(error => log('observer', 'detach-error', String(error)));
       await pageSession.detach().catch(error => log('observer', 'detach-error', String(error)));
       await new Promise<void>((resolve, reject) => { stream.once('error', reject); stream.end(resolve); });
@@ -287,18 +346,19 @@ export default defineConfig({
 });`;
 writeFileSync(join(out, 'spec-observed.ts'), generated);
 writeFileSync(join(out, 'observer.ts'), observer);
-const casePlan = ['control', 'probe', 'probe', 'control', 'control', 'probe'];
+const casePlan = engineMode ? ['engine'] : ['control', 'probe', 'probe', 'control', 'control', 'probe'];
 const metadata = {
   oldRef, newRef, port, work, candidateRepo: repo,
   specOriginalSha256: sha256(source), specObservedSha256: sha256(generated),
   specRoundTripIdentical: true, node: process.version, platform: process.platform,
   lockSha256: sha256(readFileSync(join(app, 'package-lock.json'))),
-  casePlan, executionsPlanned: 6, retries: 0, buildsPerSource: 1, cases: [],
-  responseProbe: { mode: 'bounded-worker-memory', limit: 4096, newBuiltWorkerOnly: true, promiseOutcomeIsNotBodyDelivery: true },
+  casePlan, executionsPlanned: casePlan.length, engineMode, retries: 0, buildsPerSource: 1, cases: [],
+  responseProbe: { enabled: !engineMode, mode: 'bounded-worker-memory', limit: 4096, newBuiltWorkerOnly: true, promiseOutcomeIsNotBodyDelivery: true },
   limitations: ['CDP attachment does not pause workers; earliest worker events may precede Network.enable.',
     'Worker CDP reports outbound fetches, not every cache-served FetchEvent response. NetLog complements it.',
-    'The isolated new built worker has a respondWith promise-settlement side observer; successful settlement does not prove body delivery.',
-    'Buffered observer still allocates memory and attaches promise callbacks; it is not zero overhead.',
+    ...(engineMode ? ['Original worker bytes; native engine tracing still changes scheduling and is not zero overhead.'] : [
+      'The isolated new built worker has a respondWith promise-settlement side observer; settlement does not prove body delivery.',
+      'Buffered observer allocates memory and attaches promise callbacks; it is not zero overhead.']),
     'Observer and NetLog overhead may change timing. A pass does not disprove earlier failures.'],
 };
 writeFileSync(join(out, 'metadata.json'), JSON.stringify(metadata, null, 2));
@@ -324,18 +384,52 @@ for (const [name, src, ref] of [['old', join(oldSource, 'app'), oldRef], ['new',
   const html = readFileSync(join(dist, 'index.html'), 'utf8');
   const entry = /<script type="module" crossorigin src="\/(assets\/index-[\w-]+\.js)"/.exec(html)?.[1];
   if (!entry) throw new Error(`Missing ${name} entry`);
-  metadata.builds[name] = { buildId, entry, htmlSha256: sha256(html),
+  metadata.builds[name] = { buildId, entry, sourceViteConfigSha256: sha256(readFileSync(join(src, 'vite.config.ts'))), sourceLockSha256: sha256(readFileSync(join(src, 'package-lock.json'))), version: JSON.parse(readFileSync(join(dist, 'version.json'), 'utf8')), htmlSha256: sha256(html),
     entrySha256: sha256(readFileSync(join(dist, entry))),
     workerSha256: sha256(readFileSync(join(dist, 'sw.js'))) };
   writeFileSync(join(out, `${name}-index.html`), html);
 }
 const originalWorker = readFileSync(join(cache, 'new-dist/sw.js'), 'utf8');
-const observedWorker = responseProbe + '\n' + originalWorker;
+const observedWorker = engineMode ? originalWorker : responseProbe + '\n' + originalWorker;
 writeFileSync(join(out, 'new-sw-original.js'), originalWorker);
-writeFileSync(join(out, 'new-sw-observed.js'), observedWorker);
-writeFileSync(join(out, 'response-probe.js'), responseProbe);
+if (!engineMode) {
+  writeFileSync(join(out, 'new-sw-observed.js'), observedWorker);
+  writeFileSync(join(out, 'response-probe.js'), responseProbe);
+}
 metadata.builds.new.observedWorkerSha256 = sha256(observedWorker);
-metadata.builds.new.responseProbeSha256 = sha256(responseProbe);
+metadata.builds.new.responseProbeSha256 = engineMode ? null : sha256(responseProbe);
+// Preserve the complete bytes BEFORE navigation, including both workers and
+// every lazy asset. Timestamps are compiled into entries on each normal build,
+// so source SHAs alone cannot reconstruct these exact bundles later.
+function inventory(dir, root = dir) {
+  return readdirSync(dir).sort().flatMap(name => {
+    const path = join(dir, name);
+    return statSync(path).isDirectory() ? inventory(path, root)
+      : [{ path: path.slice(root.length + 1), bytes: statSync(path).size, sha256: sha256(readFileSync(path)) }];
+  });
+}
+metadata.distArtifacts = {};
+for (const name of ['old', 'new']) {
+  const original = join(cache, `${name}-dist`);
+  const saved = join(out, `${name}-dist`);
+  cpSync(original, saved, { recursive: true, errorOnExist: true });
+  const manifest = inventory(original);
+  assert.deepEqual(inventory(saved), manifest);
+  writeFileSync(join(out, `${name}-dist-manifest.json`), JSON.stringify(manifest, null, 2));
+  metadata.distArtifacts[name] = { files: manifest.length, manifestSha256: sha256(JSON.stringify(manifest)), copiedAndVerified: true };
+}
+metadata.buildInputs = {
+  fixture: { VITE_BASE: '/', VITE_SUPABASE_URL: 'https://e2efixture.supabase.co',
+    VITE_SUPABASE_ANON_KEY: 'sb_publishable_e2e_fixture_not_a_secret' },
+  viteConfigSha256: sha256(readFileSync(join(app, 'vite.config.ts'))),
+  harnessSha256: sha256(readFileSync(join(app, 'e2e/support/pwaHarness.ts'))),
+  candidateTrackedChanges: git('diff', '--name-only', 'HEAD'),
+  normalHarnessNewBuildId: `new-${git('rev-parse', '--short=7', 'HEAD')}${git('status', '--porcelain') ? '-dirty' : ''}`,
+  inheritedViteVariableNames: Object.keys(process.env).filter(name => name.startsWith('VITE_')).sort(),
+  localEnvFiles: ['.env', '.env.local', '.env.production', '.env.production.local'].filter(name => existsSync(join(app, name))).map(name => ({ name, sha256: sha256(readFileSync(join(app, name))) })),
+  knownRebuildDifference: 'vite.config.ts embeds new Date().toISOString() as __BUILT_AT__ on every build; dist and version metadata preserve the actual timestamp.',
+};
+writeFileSync(join(out, 'metadata.json'), JSON.stringify(metadata, null, 2));
 
 function collect(caseOut, mode) {
   const events = readFileSync(join(caseOut, 'cdp-events.ndjson'), 'utf8').trim().split('\n').map(line => JSON.parse(line));
@@ -368,17 +462,35 @@ function collect(caseOut, mode) {
     responseReadErrors: snapshots.filter(snapshot => snapshot.error),
     responseCallsUnsettled: calls.filter(row => !settled.has(`${row.bufferIndex}:${row.fetchId}`)).length,
   };
+  let engineComplete = true;
+  if (mode === 'engine') {
+    const summary = JSON.parse(readFileSync(join(caseOut, 'engine-summary.json'), 'utf8'));
+    const trace = JSON.parse(readFileSync(join(caseOut, 'engine-trace.json'), 'utf8'));
+    const names = new Map();
+    for (const event of trace.traceEvents || []) names.set(event.name, (names.get(event.name) || 0) + 1);
+    const requiredEvents = ['ServiceWorkerSubresourceLoader::StartRequest',
+      'ServiceWorkerSubresourceLoader::CommitCompleted', 'ServiceWorkerSubresourceLoader::OnBodyReadingComplete'];
+    const hasResponse = names.has('ServiceWorkerSubresourceLoader::OnResponse') || names.has('ServiceWorkerSubresourceLoader::OnResponseStream');
+    const nativeOutcomes = (trace.traceEvents || []).filter(event =>
+      /ServiceWorkerSubresourceLoader|CacheStorage|ResourceFinish|ResourceSendRequest|ResourceReceiveResponse/.test(event.name || ''));
+    writeFileSync(join(caseOut, 'engine-native-outcomes.ndjson'), nativeOutcomes.map(row => JSON.stringify(row)).join('\n') + '\n');
+    collector.engine = { ...summary, events: trace.traceEvents?.length || 0,
+      namedEvents: Object.fromEntries(names), missingRequiredEvents: [...requiredEvents.filter(name => !names.has(name)),
+        ...(!hasResponse ? ['ServiceWorkerSubresourceLoader::OnResponse[Stream]'] : [])] };
+    engineComplete = summary.completed === true && summary.dataLossOccurred === false &&
+      collector.engine.events > 0 && collector.engine.missingRequiredEvents.length === 0;
+  }
   const basicComplete = collector.readyBeforeFirstDocument && workerSessions.size >= 2 &&
     collector.workerRequests > 0 && collectorErrors.length === 0 && netlog.events.length > 0;
   const probeComplete = mode === 'probe'
     ? collector.responseBuffers === 1 && collector.responseFulfilled > 0 && collector.responseProbeUnobserved === 0 &&
       collector.responseRecordsDropped === 0 && collector.responseReadErrors.length === 0 && collector.responseCallsUnsettled === 0
     : collector.responseBuffers === 0 && collector.responseProbeEvents === 0;
-  return { collector, collectorComplete: basicComplete && probeComplete,
+  return { collector, collectorComplete: basicComplete && probeComplete && engineComplete,
     testStatusAtCollection: events.find(event => event.event === 'test-finished')?.params.status ?? null };
 }
 
-// Six fresh Playwright processes/contexts; one built bundle pair. Assertions
+// Fixed case plan: one engine execution OR the previous six-case comparison. Assertions
 // may fail without preventing subsequent predeclared cases. No retry branch.
 for (const [index, mode] of casePlan.entries()) {
   // Never change served worker bytes while a prior/private harness is alive.
@@ -408,11 +520,11 @@ for (const [index, mode] of casePlan.entries()) {
     oldRef, newRef, builds: metadata.builds, runnerExitCode: null, collectorComplete: false };
   metadata.cases.push(entry);
   writeFileSync(join(out, 'metadata.json'), JSON.stringify(metadata, null, 2));
-  console.log(`Diagnostic case ${index + 1}/6: ${mode}; fresh browser, same builds.`);
+  console.log(`Diagnostic case ${index + 1}/${casePlan.length}: ${mode}; fresh browser, same builds.`);
   const fd = openSync(join(caseOut, 'playwright.log'), 'wx');
   const result = spawnSync(process.execPath, [join(modules, '@playwright/test/cli.js'), 'test', '--config', configPath], {
     cwd: work, stdio: ['ignore', fd, fd], env: { ...process.env, IW_MAP_PORT: String(port),
-      IW_PWA_CACHE: cache, IW_PWA_REUSE: '1', PWA_DIAGNOSTIC_OUT: caseOut },
+      IW_PWA_CACHE: cache, IW_PWA_REUSE: '1', PWA_DIAGNOSTIC_OUT: caseOut, PWA_ENGINE_TRACE: engineMode ? '1' : '0' },
   });
   closeSync(fd);
   entry.runnerExitCode = result.status;
@@ -421,16 +533,25 @@ for (const [index, mode] of casePlan.entries()) {
   entry.finishedAt = new Date().toISOString();
   try { Object.assign(entry, collect(caseOut, mode)); }
   catch (error) { entry.collectorError = String(error); }
+  try {
+    for (const name of ['old', 'new']) {
+      const manifest = inventory(join(cache, `${name}-dist`));
+      if (engineMode) assert.equal(sha256(JSON.stringify(manifest)), metadata.distArtifacts[name].manifestSha256);
+    }
+    entry.originalDistUnchangedAfterTest = engineMode ? true : null;
+  } catch (error) { entry.distIntegrityError = String(error); entry.collectorComplete = false; }
   writeFileSync(join(caseOut, 'metadata.json'), JSON.stringify(entry, null, 2));
   writeFileSync(join(out, 'metadata.json'), JSON.stringify(metadata, null, 2));
   console.log(JSON.stringify({ caseName, runnerExitCode: entry.runnerExitCode, testStatusAtCollection: entry.testStatusAtCollection,
-    collectorComplete: entry.collectorComplete, collector: entry.collector, collectorError: entry.collectorError }));
+    collectorComplete: entry.collectorComplete, collectorError: entry.collectorError,
+    cdpEvents: entry.collector?.events, engineEvents: entry.collector?.engine?.events,
+    engineMissingEvents: entry.collector?.engine?.missingRequiredEvents }));
 }
 metadata.executionsCompleted = metadata.cases.length;
 metadata.allProductTestsPassed = metadata.cases.every(entry => entry.runnerExitCode === 0 && entry.testStatusAtCollection === 'passed');
 metadata.allCollectorsComplete = metadata.cases.every(entry => entry.collectorComplete);
 metadata.exitCode = metadata.allProductTestsPassed && metadata.allCollectorsComplete ? 0 : 1;
 writeFileSync(join(out, 'metadata.json'), JSON.stringify(metadata, null, 2));
-console.log('Fixed six-case diagnostic complete:', JSON.stringify({ executions: metadata.executionsCompleted,
+console.log('Fixed diagnostic plan complete:', JSON.stringify({ executions: metadata.executionsCompleted,
   allProductTestsPassed: metadata.allProductTestsPassed, allCollectorsComplete: metadata.allCollectorsComplete }));
 process.exit(metadata.exitCode);
