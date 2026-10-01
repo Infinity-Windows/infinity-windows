@@ -1,11 +1,11 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { useSupabaseFixtures, jobFixtures, TEST_USER } from './support/supabaseFixtures';
 import { json, dayISO, TINY_PNG_BASE64 } from './support/specHelpers';
 const JOB=jobFixtures().find(x=>x.jobCode==='BLACK22')!;
 const PROJECT={id:JOB.projectId,job_code:'BLACK22',name:'Black Desert',address:null,status:'active'};
 const LOG='00000000-0000-4000-8000-000000000060';
 function row(date=dayISO(0)) {return {id:LOG,project_id:JOB.projectId,project:PROJECT,job_name:null,log_date:date,revision:4,headline:'West openings finished',notes:'Installed W01 through W12; W13 and W14 remain.',day_flow:'smooth',reflection:null,weather:'Clear',customer_visible:false,filed_by:TEST_USER.id,filer:{display_name:'Fixture installer'},created_at:`${date}T18:00:00Z`,updated_at:`${date}T18:00:00Z`,work_stages:['frames','glass'],stage_progress:{frames:75,glass:50},covers:'windows',delays:[],safety_status:'none_reported',weather_impact:'none',missing_tomorrow:[],tomorrow_stages:['glass'],tomorrow_crew_expected:2,tomorrow_plan:'Finish W13 and W14',units_today:3,units_to_date:12,units_remaining:2,units_remaining_detail:'W13 and W14 on the north wall'};}
-async function fixtures(page,lang='en',fresh=false) {
+async function fixtures(page: Page,lang: 'en' | 'es'='en',fresh=false) {
  // oxlint-disable-next-line react-hooks/rules-of-hooks -- Playwright fixture, not a React hook
  await useSupabaseFixtures(page,{role:'owner',language:lang});
  await page.route('**/rest/v1/projects**',r=>json(r,[PROJECT],1));
@@ -25,7 +25,7 @@ async function fixtures(page,lang='en',fresh=false) {
   return r.fulfill({status:200,contentType:'image/png',body:Buffer.from(TINY_PNG_BASE64,'base64')});
  });
 }
-for(const language of ['en','es'])for(const width of [390,1280])test(`owner can read progress and history on ${width}px ${language}`,async({page},info)=>{
+for(const language of ['en','es'] as const)for(const width of [390,1280])test(`owner can read progress and history on ${width}px ${language}`,async({page},info)=>{
  await page.setViewportSize({width,height:900});await fixtures(page,language);await page.goto('/daily-logs');
  await expect(page.getByRole('heading',{name:language==='en'?'Daily Logs':'Registros diarios',exact:true})).toBeVisible();
  // Main tab must contain unit readings and actual remaining identifiers, not just notes.
