@@ -108,7 +108,7 @@ jobs:
           cache: npm
           cache-dependency-path: app/package-lock.json
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install --with-deps chromium webkit
       # Uses the existing fixture-only server, never the shared database.
       - run: npm run e2e -- qc-history.spec.ts monday-files.spec.ts schedule-time-conflicts.spec.ts usability-foundations.spec.ts display-layout.spec.ts trip-sheet.spec.ts travel-crew.spec.ts workflow-plans.spec.ts schedule-remove-day.spec.ts schedule-ai-review.spec.ts crew-start-bar.spec.ts crew-end-time.spec.ts crew-unit-records.spec.ts custom-work.spec.ts timecard-weekly.spec.ts unassigned-time.spec.ts project-hours.spec.ts time-entry-export.spec.ts daily-logs.spec.ts global-capture.spec.ts photos-upload.spec.ts honest-sync.spec.ts dictation.spec.ts monthly-salary.spec.ts servicing.spec.ts time-off.spec.ts hex-portal.spec.ts ask-reporting.spec.ts app-updates.spec.ts using-forge.spec.ts training-importer.spec.ts
       - run: npm run e2e -- opening-sheet.spec.ts -g "Install memo:"
@@ -134,6 +134,9 @@ jobs:
       # is shallow and the harness builds it (app/e2e/support/pwaHarness.ts).
       - run: git fetch --depth=1 origin master
       - run: npx playwright test --config playwright.pwa.config.ts
+      # The field app is iPhone-first. Keep the empty-boot recovery check on
+      # WebKit too; module-script/load ordering matters to this watchdog.
+      - run: npx playwright test --config playwright.pwa.config.ts --browser webkit empty-boot.pwa.ts
       # Signing today's toolbox talk with no signal, and the clock-in behind
       # it (2026-09-25). Its own step for the same reason as the one above.
       - run: npm run e2e -- offline-toolbox-signing.spec.ts

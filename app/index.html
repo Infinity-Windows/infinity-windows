@@ -25,8 +25,10 @@
     </script>
     <script>
       // The module entry can be cancelled during a service-worker takeover,
-      // before React or its error handler can run. Recover an empty shell once
-      // after the browser finishes loading; queued work lives in IndexedDB.
+      // before React or its error handler can run. The load event means the
+      // browser has finished (or failed) the entry's static imports. If React
+      // has not started then, recover promptly rather than leave the crew on
+      // an empty screen for eight more seconds. Queued work lives in IndexedDB.
       window.addEventListener("load", function () {
         window.setTimeout(function () {
           var root = document.getElementById("root");
@@ -67,7 +69,7 @@
           retry.textContent = "Try again";
           retry.onclick = function () { window.location.reload(); };
           root.append(message, retry);
-        }, 8000);
+        }, 500);
       });
     </script>
     <meta name="apple-mobile-web-app-capable" content="yes" />
