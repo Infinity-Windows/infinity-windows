@@ -13,6 +13,7 @@ import { installPreloadRecovery } from "./lib/pwa/preloadRecovery";
 import { reportPreviousBootRecovery } from "./lib/pwa/bootRecoveryDiagnostics";
 import { installClockCheck } from "./lib/clockSkew";
 import { installSaveOnLeave } from "./lib/queryClient";
+import { installQcReviewPopGuard } from "./lib/qcReviewPopGuard";
 
 // The inline boot guard only retries when the entry never ran at all. Once
 // imports finished and this line runs, React and its error boundary own errors.
@@ -53,6 +54,9 @@ installClockCheck();
 // timer; this also writes it the moment the app is hidden or reloaded, so a
 // reopen with no signal never finds it empty. See lib/queryClient.ts.
 installSaveOnLeave();
+
+// Register before BrowserRouter: inactive except while QC protects a review.
+installQcReviewPopGuard();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

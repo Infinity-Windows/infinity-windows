@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { TEST_USER, useSupabaseFixtures as installSupabaseFixtures } from "./support/supabaseFixtures";
 import { json } from "./support/specHelpers";
+import { installQcReviewFixtures } from "./support/qcReviewFixtures";
 
 const OPENING_ID = "20000000-0000-4000-8000-000000000081";
 const PROJECT_ID = "20000000-0000-4000-8000-000000000082";
@@ -13,10 +14,12 @@ const OPENING = {
 test("QC offers a direct unit-details door before sign-off", async ({ page }) => {
   await installSupabaseFixtures(page, { role: "foreman" });
   await page.route("**/rest/v1/qc_checks**", route => json(route, []));
+  await installQcReviewFixtures(page, [OPENING]);
   await page.route("**/rest/v1/project_openings**", route => json(route, [OPENING], 1));
   await page.goto("/qc");
   await expect(page.getByText("11-1", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "View unit details", exact: true })).toHaveCount(1, { timeout: 2_000 });
+  await page.getByRole("button", { name: "View unit details", exact: true }).click();
   await expect(page.getByRole("button", { name: "Pass ✓", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Callback", exact: true })).toBeVisible();
 });
@@ -84,6 +87,7 @@ async function evidenceFixtures(page: Page, options: EvidenceOptions = {}) {
   const state = { failFiles: false, failMemoSign: false, signedPaths: [] as string[], evidenceReads: 0, decisions: 0 };
   await page.route("**/rest/v1/qc_checks**", route => json(route, []));
   await page.route("**/rest/v1/rpc/record_qc_decision", route => { state.decisions++; return json(route, null); });
+  await installQcReviewFixtures(page, options.twoUnits ? [FULL_OPENING, OTHER_OPENING] : [FULL_OPENING], () => { state.decisions++; });
   await page.route("**/rest/v1/project_openings**", route => {
     const params = new URL(route.request().url()).searchParams;
     if (params.get("id")?.startsWith("eq.")) {
@@ -361,10 +365,13 @@ test("a failed refresh preserves the unavailable photo and explains the stale re
 test("switching same-code units does not retain the previous job's media", async ({ page }) => {
   const state = await evidenceFixtures(page, { twoUnits: true });
   await page.goto("/qc");
-  await page.getByRole("button", { name: "View unit details", exact: true }).first().click();
+  await page.getByRole("button", { name: /SSSIMISTER 11/ }).click();
+  await page.getByRole("button", { name: "View unit details", exact: true }).click();
   await expect(page.locator("audio")).toHaveCount(2);
   state.signedPaths.length = 0;
-  await page.getByRole("button", { name: "View unit details", exact: true }).last().click();
+  await page.getByRole("button", { name: "Change job", exact: true }).click();
+  await page.getByRole("button", { name: /OTHER JOB/ }).click();
+  await page.getByRole("button", { name: "View unit details", exact: true }).click();
   await expect(page.locator('img[src*="second-unit.jpg"]')).toBeVisible();
   await expect(page.locator("audio")).toHaveCount(0);
   await expect(page.locator('img[src*="qc-after.jpg"]')).toHaveCount(0);
@@ -385,7 +392,12 @@ for (const variant of [
     const button = page.getByRole("button", { name: variant.button, exact: true });
     await button.focus();
     await page.keyboard.press("Enter");
-    await expect(page.locator('img[src*="unit-detail.jpg"]')).toBeVisible();
+    const photo = page.locator('img[src*="unit-detail.jpg"]');
+    // The keyboard opens the record above its photos. Scroll like a reader
+    // before asking WebKit to load this lower, lazy, dimensionless thumbnail.
+    await page.locator("figure").filter({ has: photo }).scrollIntoViewIfNeeded();
+    await expect(photo).toBeVisible();
+    await expect.poll(() => photo.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true);
     await expect(page.locator("audio")).toHaveCount(2);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({ path: testInfo.outputPath(`qc-evidence-${variant.width}-${variant.language}.png`), fullPage: true });

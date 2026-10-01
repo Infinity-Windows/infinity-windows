@@ -79,6 +79,7 @@ jobs:
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-custom-work.mjs
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-crew-unit-records.mjs
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-qc-decision-authority.mjs
+      - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-qc-review-flow.mjs
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-ai-field-operations.mjs
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-ai-daily-logs.mjs
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-schedule-ai-reasons.mjs
@@ -94,6 +95,15 @@ jobs:
       # only the signer, the sign-time rule, and the real clock_in gate.
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-offline-toolbox-signing.mjs
 
+  qc-review-concurrency:
+    name: QC review concurrent writers
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      # Disposable local Postgres, no production connection or exposed port.
+      - run: bash scripts/test-qc-review-concurrency.sh
+
   trip-browser:
     name: Forge workflow on phone and desktop
     runs-on: ubuntu-latest
@@ -108,17 +118,34 @@ jobs:
           cache: npm
           cache-dependency-path: app/package-lock.json
       - run: npm ci
-      - run: npx playwright install --with-deps chromium webkit
+      # The Azure Ubuntu mirror stalled before any test on two runners
+      # (2026-10-01). Use the signed official archive with bounded downloads.
+      # Installation still must succeed; no browser checks are skipped.
+      - name: Install browser dependencies
+        timeout-minutes: 10
+        run: |
+          for source in /etc/apt/apt-mirrors.txt /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
+            if [ -f "$source" ]; then
+              sudo sed -i -E 's|https?://azure.archive.ubuntu.com/ubuntu/?|https://archive.ubuntu.com/ubuntu/|g' "$source"
+              if sudo grep -q 'azure.archive.ubuntu.com' "$source"; then
+                echo "The failing Ubuntu mirror is still configured in $source" >&2
+                exit 1
+              fi
+            fi
+          done
+          printf 'Acquire::Retries "1";\nAcquire::http::Timeout "20";\nAcquire::https::Timeout "20";\n' | sudo tee /etc/apt/apt.conf.d/99forge-browser-downloads >/dev/null
+          npx playwright install --with-deps chromium webkit
+      # Run QC media and native Back on Safari's engine first for early
+      # failure feedback; every remaining browser command still runs below.
+      - run: npm run e2e -- --browser webkit qc-unit-evidence.spec.ts qc-review-flow.spec.ts
       # Uses the existing fixture-only server, never the shared database.
-      - run: npm run e2e -- qc-history.spec.ts qc-unit-evidence.spec.ts monday-files.spec.ts schedule-time-conflicts.spec.ts usability-foundations.spec.ts display-layout.spec.ts trip-sheet.spec.ts travel-crew.spec.ts workflow-plans.spec.ts schedule-remove-day.spec.ts schedule-ai-review.spec.ts crew-start-bar.spec.ts crew-end-time.spec.ts crew-unit-records.spec.ts custom-work.spec.ts timecard-weekly.spec.ts unassigned-time.spec.ts project-hours.spec.ts time-entry-export.spec.ts daily-logs.spec.ts global-capture.spec.ts photos-upload.spec.ts honest-sync.spec.ts dictation.spec.ts monthly-salary.spec.ts servicing.spec.ts time-off.spec.ts hex-portal.spec.ts ask-reporting.spec.ts app-updates.spec.ts using-forge.spec.ts training-importer.spec.ts
+      - run: npm run e2e -- qc-history.spec.ts qc-unit-evidence.spec.ts qc-review-flow.spec.ts monday-files.spec.ts schedule-time-conflicts.spec.ts usability-foundations.spec.ts display-layout.spec.ts trip-sheet.spec.ts travel-crew.spec.ts workflow-plans.spec.ts schedule-remove-day.spec.ts schedule-ai-review.spec.ts crew-start-bar.spec.ts crew-end-time.spec.ts crew-unit-records.spec.ts custom-work.spec.ts timecard-weekly.spec.ts unassigned-time.spec.ts project-hours.spec.ts time-entry-export.spec.ts daily-logs.spec.ts global-capture.spec.ts photos-upload.spec.ts honest-sync.spec.ts dictation.spec.ts monthly-salary.spec.ts servicing.spec.ts time-off.spec.ts hex-portal.spec.ts ask-reporting.spec.ts app-updates.spec.ts using-forge.spec.ts training-importer.spec.ts
       - run: npm run e2e -- opening-sheet.spec.ts -g "Install memo:"
       # The clock-in specs sat outside every list here, so one went red when
       # Current Work took over the landing (#598) and nobody saw it. A step of
       # their own, so a branch appending to the long list above doesn't collide
       # with this one.
       - run: npm run e2e -- clock-in-once.spec.ts crew-clock.spec.ts
-      # Original QC recordings must play on the iPhone browser engine too.
-      - run: npm run e2e -- --browser webkit qc-unit-evidence.spec.ts
       # Expired sign-ins and shared-phone queues need their own browser gate:
       # they can lose a saved punch or send it as the next person even while
       # the ordinary clock screen tests remain green.
