@@ -105,7 +105,7 @@ test("a supervisor deletes a job from Active projects, the prompt states the rea
     void d.accept("no longer needed");
   });
 
-  await page.goto("/projects");
+  await page.goto("/projects?view=list");
   await expect(page.getByText("Pecan Valley")).toBeVisible();
 
   await page.getByRole("button", { name: /Delete/ }).click();
@@ -130,7 +130,7 @@ test("a supervisor who cancels the reason prompt does not delete the job", async
 
   page.on("dialog", (d) => void d.dismiss());
 
-  await page.goto("/projects");
+  await page.goto("/projects?view=list");
   await expect(page.getByText("Pecan Valley")).toBeVisible();
   await page.getByRole("button", { name: /Delete/ }).click();
 
@@ -144,7 +144,7 @@ test("a foreman (below supervisor) sees no Delete action on Active projects", as
   await useSupabaseFixtures(page, { role: "foreman" });
   useTrashFixture(page, null);
 
-  await page.goto("/projects");
+  await page.goto("/projects?view=list");
   await expect(page.getByText("Pecan Valley")).toBeVisible();
   await expect(page.getByRole("button", { name: /Delete/ })).toHaveCount(0);
 });

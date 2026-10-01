@@ -131,7 +131,7 @@ jobs:
       - run: npx playwright test --browser webkit new-design-work.spec.ts -g "New unit stays within the phone"
       - name: Jobs overview and Heartbeat retirement in Chromium and Safari
         run: |
-          npm run e2e -- jobs-overview.spec.ts lazy-route-hang.spec.ts new-design-work.spec.ts job-pipeline.spec.ts
+          npm run e2e -- jobs-overview.spec.ts lazy-route-hang.spec.ts new-design-work.spec.ts job-pipeline.spec.ts project-delete.spec.ts
           npm run e2e -- jobs-overview.spec.ts --browser=webkit
       # Expired sign-ins and shared-phone queues need their own browser gate:
       # they can lose a saved punch or send it as the next person even while
