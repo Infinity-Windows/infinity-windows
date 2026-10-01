@@ -6,8 +6,8 @@ values
     '2026-09-30-monday-plan-files', '2026-09-30', array[1,2,3], 'fix',
     'Get plans from Monday again',
     'Vuelve a traer planos de Monday',
-    'Get on the job’s Plans page can bring Monday files onto the job again. If a file could not be brought in, open the job and try Get again.',
-    'Traer en la página de planos del trabajo vuelve a permitir importar archivos de Monday. Si un archivo no se pudo importar, abre el trabajo y vuelve a tocar Traer.',
+    'The Get button on a job’s Plans page can bring Monday files onto the job again. If a file could not be brought in, open the job and try Get again.',
+    'El botón Traer en la página de planos del trabajo vuelve a permitir importar archivos de Monday. Si un archivo no se pudo importar, abre el trabajo y vuelve a tocar Traer.',
     '/projects'
   ),
   (
