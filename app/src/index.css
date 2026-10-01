@@ -5643,6 +5643,9 @@ button.clock-out {
 .field-receipt.field-cancelled { opacity: 0.85; }
 .field-options { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .field-options button { min-height: 44px; }
+.field-timing-wait { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 8px; padding: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); }
+.field-timing-wait span { flex: 1 1 180px; }
+.field-timing-wait button { min-height: 44px; }
 .field-checklist ul { list-style: none; margin: 6px 0 0; padding: 0; }
 .field-item { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-top: 1px solid var(--border); }
 .field-item-label { color: var(--text-secondary); }

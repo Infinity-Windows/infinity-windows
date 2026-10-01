@@ -11,7 +11,7 @@ import { ReportCard } from "../components/ask/ReportCard";
 import { asksForReport, isOperationalAsk } from "../lib/askRouting";
 import { cleanAskText } from "../lib/cleanAskText";
 import { BackChip } from "../components/BackChip";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { Sparkles } from "lucide-react";
 import { supabaseConfigured } from "../lib/supabase";
@@ -33,7 +33,7 @@ import { useFieldT as useT } from "../components/ask/fieldCatalog";
 import { FieldChecklist, FieldReceiptCard } from "../components/ask/FieldCards";
 import {
   currentConversation, dropUnsent, FIELD_QUERY_ROOTS, keepUnsent, listUnsent, loadConversation, memoPlaybackUrl, phoneTimingPending,
-  readClockVersion, runVoiceSteps, sessionUserIs, startNewConversation, uploadMemo, type FieldMeta, type FieldReceipt, type FieldReply, type UnsentField,
+  readClockVersion, readPhoneTimingState, runVoiceSteps, sessionUserIs, startNewConversation, uploadMemo, type FieldMeta, type FieldReceipt, type FieldReply, type PhoneTimingState, type UnsentField,
 } from "../lib/fieldAsk";
 import { pendingClockWrites } from "../lib/offline/outbox";
 import { readWorkQueue } from "../lib/customWork/queue";
@@ -482,11 +482,11 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
     const sameSession = await sessionUserIs(uid);
     return sameSession && isCurrent(g) && actor.current === uid;
   };
-  const timingPendingNow = () => {
-    const uid = actor.current;
-    if (!uid) return Promise.resolve(true);
-    return phoneTimingPending(uid, { clockWrites: pendingClockWrites, workQueue: readWorkQueue, shiftId: queryClient.getQueryData<TimeShift | null>(["openShift", uid])?.id });
-  };
+  const timingStateNow = useCallback(async (uid: string): Promise<PhoneTimingState> => {
+    if (actor.current !== uid) return "unreadable";
+    const state = await readPhoneTimingState(uid, { clockWrites: pendingClockWrites, workQueue: readWorkQueue, shiftId: queryClient.getQueryData<TimeShift | null>(["openShift", uid])?.id });
+    return actor.current === uid ? state : "unreadable";
+  }, []);
   const pressSend = () => ({ requestId: crypto.randomUUID(), sentAt: new Date().toISOString(), clockVersion: clockSeen.current });
 
   // Wave A4: Scheduling's "Plan with AI" button seeds this page with a
@@ -1052,7 +1052,7 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
               {m.who === "me" ? m.text : cleanAskText(m.text)}
             </div>
             {m.memoPath && <MemoPlayback path={m.memoPath} />}
-            {m.field?.receipts.map((r) => <FieldReceiptCard key={r.action_id} receipt={r} draft={m.field?.draft} onChange={updateReceipt} timingPending={timingPendingNow} />)}
+            {m.field?.receipts.map((r) => <FieldReceiptCard key={`${userId}:${r.action_id}`} receipt={r} draft={m.field?.draft} actorId={userId} onChange={updateReceipt} timingState={timingStateNow} />)}
             {m.field?.checklist && m.field.checklist === latestChecklist && <FieldChecklist key={m.field.request_id} checklist={m.field.checklist} />}
             {m.buttons && m.buttons.length > 0 && <ClockButtons buttons={m.buttons} />}
             {m.navigation && <NavigationButton action={m.navigation} />}

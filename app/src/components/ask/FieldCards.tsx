@@ -1,13 +1,15 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useFieldT as useT, type TKey } from "./fieldCatalog";
 import { openClockGlobally } from "../../lib/clockContext";
-import { guardedResolve, TimingPendingError, type FieldReceipt } from "../../lib/fieldAsk";
+import { guardedResolve, TIMING_CHOICES, TimingPendingError, type FieldReceipt, type PhoneTimingState } from "../../lib/fieldAsk";
 import type { ChecklistItem, SetupChecklist } from "../../../../supabase/functions/_shared/fieldTools";
 import { choiceFailureText, differenceLabel, differenceText, optionText, reasonText } from "./fieldCardText";
 import { receiptStatus } from "../../lib/askReceiptGuard";
 import { askClockHandoff, askClockLabel, askClockPick } from "../../lib/askClockHandoff";
 import { useLanguage } from "../../lib/i18n";
 import type { SetupDraft } from "../../../../supabase/functions/_shared/fieldTools";
+import { subscribe as subscribeOutbox, subscribeSynced } from "../../lib/offline/outbox";
+import { WORK_QUEUE_EVENT } from "../../lib/customWork/queue";
 
 const time = (iso?: string) => (iso ? new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "");
 
@@ -73,11 +75,12 @@ function receiptText(t: ReturnType<typeof useT>, r: FieldReceipt): string {
 
 /** One database receipt. A waiting choice shows its buttons; nothing on this
  * card claims success unless the receipt's status says it happened. */
-export function FieldReceiptCard({ receipt, draft, onChange, timingPending }: {
+export function FieldReceiptCard({ receipt, draft, actorId, onChange, timingState }: {
   receipt: FieldReceipt; onChange: (next: FieldReceipt) => void;
   draft?: SetupDraft | null;
-  /** Re-read at the moment of a timing tap; pending or unreadable refuses it. */
-  timingPending: () => Promise<boolean>;
+  actorId: string | null;
+  /** Re-read on phone queue changes AND at the timing tap. Unreadable refuses it. */
+  timingState: (actorId: string) => Promise<PhoneTimingState>;
 }) {
   const t = useT();
   const es = useLanguage().lang === "es";
@@ -85,11 +88,52 @@ export function FieldReceiptCard({ receipt, draft, onChange, timingPending }: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const waiting = receipt.status === "needs_choice";
+  const hasTimingChoice = waiting && (receipt.options?.some((o) => TIMING_CHOICES.has(o.id)) ?? false);
+  const [observed, setObserved] = useState<{ actorId: string | null; state: PhoneTimingState | "checking" }>({ actorId: null, state: "checking" });
+  const [retry, setRetry] = useState(0);
+  const timingView = actorId && observed.actorId === actorId ? observed.state : "checking";
+  useEffect(() => {
+    if (!hasTimingChoice || !actorId) return;
+    let alive = true;
+    let version = 0;
+    const check = () => {
+      const current = ++version;
+      setObserved({ actorId, state: "checking" });
+      void timingState(actorId).then((state) => {
+        if (alive && current === version) setObserved({ actorId, state });
+      }).catch(() => {
+        if (alive && current === version) setObserved({ actorId, state: "unreadable" });
+      });
+    };
+    check();
+    const stopOutbox = subscribeOutbox(check);
+    const stopSynced = subscribeSynced(check);
+    window.addEventListener(WORK_QUEUE_EVENT, check);
+    window.addEventListener("storage", check);
+    window.addEventListener("online", check);
+    window.addEventListener("focus", check);
+    return () => {
+      alive = false;
+      version += 1;
+      stopOutbox();
+      stopSynced();
+      window.removeEventListener(WORK_QUEUE_EVENT, check);
+      window.removeEventListener("storage", check);
+      window.removeEventListener("online", check);
+      window.removeEventListener("focus", check);
+    };
+  }, [actorId, hasTimingChoice, timingState, retry]);
   const proposed = receipt.proposed as { name?: string; location?: string } | undefined;
   const choose = async (choice: string) => {
     setBusy(true); setError("");
-    try { onChange(await guardedResolve(receipt, choice, { timingPending })); }
-    catch (e) { setError(e instanceof TimingPendingError ? t("field.timingPending") : choiceFailureText(t, e)); }
+    let checkedState: PhoneTimingState | null = null;
+    try { onChange(await guardedResolve(receipt, choice, { timingPending: async () => {
+      const state = actorId ? await timingState(actorId) : "unreadable";
+      checkedState = state;
+      if (state !== "clear") setObserved({ actorId, state });
+      return state !== "clear";
+    } })); }
+    catch (e) { setError(e instanceof TimingPendingError ? t(checkedState === "unreadable" ? "field.timingUnreadable" : "field.timingPending") : choiceFailureText(t, e)); }
     finally { setBusy(false); }
   };
   return (
@@ -121,9 +165,15 @@ export function FieldReceiptCard({ receipt, draft, onChange, timingPending }: {
           {clockHandoff && (
             <button type="button" onClick={() => openClockGlobally(askClockPick(clockHandoff))}>{askClockLabel(clockHandoff, es)}</button>
           )}
+          {hasTimingChoice && timingView !== "clear" && (
+            <div className="field-timing-wait" role="status" aria-live="polite">
+              <span>{t(timingView === "pending" ? "field.timingWaiting" : timingView === "unreadable" ? "field.timingUnreadable" : "field.timingChecking")}</span>
+              {timingView !== "checking" && <button type="button" onClick={() => setRetry((n) => n + 1)}>{t("field.timingRetry")}</button>}
+            </div>
+          )}
           <div className="field-options">
             {receipt.options?.map((o) => (
-              <button key={o.id} type="button" disabled={busy} className={o.id === "cancel" ? undefined : "primary"} onClick={() => void choose(o.id)}>
+              <button key={o.id} type="button" disabled={busy || (TIMING_CHOICES.has(o.id) && timingView !== "clear")} className={o.id === "cancel" ? undefined : "primary"} onClick={() => void choose(o.id)}>
                 {optionText(t, receipt, o)}
               </button>
             ))}
