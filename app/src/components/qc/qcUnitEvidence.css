@@ -5,7 +5,7 @@
 .qc-unit-evidence .qc-evidence-open-file { display: inline-flex; align-items: center; padding: 4px 0; }
 .qc-unit-evidence .qc-evidence-facts { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); }
 .qc-unit-evidence .qc-evidence-facts > div { min-width: 0; }
-.qc-unit-evidence dt { color: var(--text-muted, #a8a29e); font-size: 13px; }
+.qc-unit-evidence dt { color: var(--muted); font-size: 13px; }
 .qc-unit-evidence dd { margin: 2px 0 0; }
 .qc-unit-evidence .qc-evidence-media { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); }
 .qc-unit-evidence .qc-evidence-file { margin: 0; min-width: 0; padding: 10px; border: 1px solid rgba(128,128,128,.3); border-radius: 8px; }
