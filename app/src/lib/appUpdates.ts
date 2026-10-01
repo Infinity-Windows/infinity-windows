@@ -47,6 +47,7 @@ export const INCLUDED_UPDATE_IDS = [
   '2026-09-30-ask-guided-clock',
   '2026-09-30-ask-timing-readiness',
   '2026-10-01-smoother-unit-work',
+  '2026-09-30-unit-contributors',
   '2026-10-01-daily-log-drafts',
   '2026-10-01-semimonthly-pay-periods',
   '2026-10-01-job-phone-layout',

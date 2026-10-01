@@ -540,8 +540,11 @@ test("the whole thing speaks Spanish, sheet and daily log alike", async ({ page 
   await expect(dialog.getByRole("button", { name: "Atorado" })).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Guardar", exact: true })).toBeVisible();
   await expect(
-    page.getByText("Escribe unas palabras sobre lo que se hizo antes de guardar."),
+    dialog.getByText("Opcional — déjalo en blanco y anotaremos lo que marcaste arriba."),
   ).toBeVisible();
+  // The owner accepted optional notes in the progress/photo log. The Spanish
+  // hint must explain that behavior, and an empty note must not block saving.
+  await expect(dialog.getByRole("button", { name: "Guardar", exact: true })).toBeEnabled();
 });
 
 test("only a real capture becomes the 'Last time' job — not a look at the gallery", async ({

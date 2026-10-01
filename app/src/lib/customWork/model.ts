@@ -114,7 +114,7 @@ export interface WorkHistory {
   created_at: string;
 }
 export type WorkAction =
-  "unit" | "link" | "start" | "stop" | "session" | "type" | "crew_record";
+  "unit" | "link" | "start" | "stop" | "session" | "type" | "crew_record" | "stage_contributors" | "correct_stage_contributors";
 export interface WorkCommand {
   id: string;
   userId: string;
@@ -325,10 +325,41 @@ export interface CrewWorkRecord {
   outcome: "assigned" | "partial" | "finished";
   description: string;
   created_at: string;
-  people: { profile_id: string }[];
+  people: { profile_id: string; voided_at?: string | null; voided_by?: string | null; void_reason?: string | null }[];
   whole_complete: boolean;
 }
 export const CREW_WORK_STAGES = ["RO checked", ...WORK_STAGES];
+
+/** One distinct, nonvoid contributor to a unit/canonical-stage/work-date
+ * tuple from a partial or finished report — an assignment is not work done.
+ * Mirrors the server's `_stage_contributor_digest` grouping so the compact
+ * Work-screen action can show the same answer it would correct against. */
+export function effectiveContributorIds(records: CrewWorkRecord[], unitId: string, stage: string, workDate: string): string[] {
+  const ids = new Set<string>();
+  for (const r of records) {
+    if (r.unit_id !== unitId || r.stage !== stage || r.work_date !== workDate) continue;
+    if (r.outcome !== "partial" && r.outcome !== "finished") continue;
+    for (const p of r.people) if (!p.voided_at) ids.add(p.profile_id);
+  }
+  return [...ids];
+}
+
+/** A tuple the compact contributor action can record for: an existing saved
+ * unit, or a mapped opening (which may still need its companion unit). */
+export type StageContributorTarget = { kind: "unit"; id: string } | { kind: "opening"; id: string };
+
+export interface StageContributorSummaryRow {
+  stage: string;
+  work_date: string;
+  profile_id: string;
+  digest: string;
+}
+
+/** `md5('')` — the server's digest for a tuple with zero effective
+ * contributors. A correction that only ADDS to an empty tuple sends this
+ * rather than skipping the digest check; the server never treats "no rows
+ * came back" as "anything goes". */
+export const EMPTY_CONTRIBUTOR_DIGEST = "d41d8cd98f00b204e9800998ecf8427e";
 
 export interface CrewPerson {
   id: string; display_name: string; active: boolean; role: string; is_partner: boolean;
