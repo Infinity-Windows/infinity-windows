@@ -47,6 +47,13 @@ export interface ScheduleAssignment {
    * AI-proposed). Optional only because rows fetched before this column
    * existed predate it in a stale cache; treat missing the same as null. */
   created_via?: "ai" | null;
+  /** Server-only counter the `schedule_assignment_notice_revision_trg`
+   * trigger bumps on a substantive date/hour change to an already-published
+   * row (20261048000000) — never written by the client. Read-only; missing
+   * on a row fetched before the migration or from the offline cache, which
+   * must read exactly like 0 (the column's own default). Drives the schedule
+   * notice's dismissal fingerprint (lib/schedule/notices.ts), not rendering. */
+  notice_revision?: number;
 }
 
 export type ScheduleEventKind =

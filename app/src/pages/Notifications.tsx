@@ -26,16 +26,18 @@ import { vehicleTitle } from "../lib/vehicles/display";
 import { listAssignments, horizonRange, listMyPublished } from "../lib/schedule/api";
 import { conflictBannerEntries } from "../lib/schedule/conflicts";
 import { addDaysISO } from "../lib/schedule/dates";
-import { buildPublishDigests, digestMessage } from "../lib/schedule/notify";
+import { buildPublishDigests } from "../lib/schedule/notify";
+import { buildNoticeRows, noticeFingerprintTokens, revisionById } from "../lib/schedule/notices";
 import { listTrips } from "../lib/travel/api";
 import { tripPublishMessage } from "../lib/travel/notify";
 import { tripPhase } from "../lib/travel/status";
 import { listMyMentions } from "../lib/chat/api";
-import { useT } from "../lib/i18n";
+import { useT, useLanguage } from "../lib/i18n";
 import { listWaitingReviews } from "../lib/hexLearningNotices";
 // Side effect: registers this screen's bilingual strings into the live
 // catalog the moment this (lazy-loaded) chunk loads.
 import "../lib/i18n/scheduleConflictCatalog";
+import "../lib/i18n/scheduleNoticeCatalog";
 
 interface Note {
   id: string;
@@ -51,6 +53,9 @@ interface Note {
    * mints a new key and the row comes back.
    */
   fp?: string;
+  /** Pre-formatted detail lines (job · date(s) · hours) shown under `sub` —
+   * currently only the schedule-published digest populates this. */
+  rows?: string[];
 }
 
 /** id + content fingerprint — the durable dismissal identity of a row. */
@@ -61,6 +66,7 @@ function noteKey(n: Note): string {
 export function Notifications() {
   const qcClient = useQueryClient();
   const t = useT();
+  const { lang } = useLanguage();
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const { effectiveRole } = useEffectiveRole();
   const lead = isForemanPlus(effectiveRole);
@@ -92,6 +98,10 @@ export function Notifications() {
     queryKey: ["mySchedule", id, todayISO, scheduleTo],
     queryFn: () => listMyPublished(id!, todayISO, scheduleTo),
     enabled: Boolean(id),
+    // A schedule change notice must reopen while this screen stays mounted,
+    // not only on the next visit — a server-side notice_revision bump
+    // (20261048000000) only reaches this feed once the query refetches.
+    refetchInterval: 60_000,
   });
   const trips = useQuery({
     queryKey: ["trips"],
@@ -217,21 +227,37 @@ export function Notifications() {
     });
   }
 
-  // One batched row for the whole published schedule (mirrors the digest push),
-  // built from the same per-person publish digest the push uses.
+  // One batched row for the whole published schedule (mirrors the digest
+  // push), built from the same per-person publish digest the push uses. The
+  // fingerprint is revision-aware (20261048000000): an assignment the
+  // trigger has bumped (a substantive date/hour change) mints an "id:revision"
+  // token that differs from its legacy bare-id token, so a cleared row
+  // reopens — while a cosmetic edit or an offline reload keeps every token
+  // (and the fingerprint) exactly as it was.
   if (id && (myPublished.data ?? []).length > 0) {
-    const digest = buildPublishDigests(myPublished.data ?? []).find(
+    const myAssignments = myPublished.data ?? [];
+    const digest = buildPublishDigests(myAssignments).find(
       (d) => d.profileId === id,
     );
     if (digest && digest.assignmentIds.length > 0) {
-      const msg = digestMessage(digest.assignmentIds.length);
+      const revisions = revisionById(myAssignments);
+      const strings = {
+        notSet: t("schedConflict.timeNotSet"),
+        checkTime: t("schedConflict.checkTime"),
+        noHoursSet: t("schedConflict.noHoursSet"),
+        job: t("schedNotice.job"),
+        delivery: t("schedNotice.delivery"),
+      };
+      const { rows, omitted } = buildNoticeRows(myAssignments, lang, strings);
+      const lines = omitted > 0 ? [...rows.map((r) => r.line), t("schedNotice.more", { n: omitted })] : rows.map((r) => r.line);
       notes.push({
         id: "schedule-published",
         dot: "info",
-        title: msg.title,
-        sub: msg.body,
+        title: t("schedNotice.title"),
+        sub: t("schedNotice.sub"),
+        rows: lines,
         to: "/my-schedule",
-        fp: fingerprint([...digest.assignmentIds].sort()),
+        fp: fingerprint(noticeFingerprintTokens(digest.assignmentIds, revisions).sort()),
       });
     }
   }
@@ -435,7 +461,20 @@ export function Notifications() {
               <i className={n.dot === "ok" ? "dot-ok" : n.dot === "warn" ? "dot-warn" : "dot-info"} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 600 }}>{n.title}</div>
-                <div className="muted" style={{ fontSize: 12.5 }}>{n.sub}</div>
+                <div className="muted" style={{ fontSize: 12.5, overflowWrap: "anywhere" }}>{n.sub}</div>
+                {n.rows && n.rows.length > 0 && (
+                  <div style={{ marginTop: 4 }}>
+                    {n.rows.map((line, i) => (
+                      <div
+                        key={i}
+                        className="muted"
+                        style={{ fontSize: 12.5, whiteSpace: "normal", wordBreak: "break-word", overflowWrap: "anywhere" }}
+                      >
+                        {line}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               <button
                 type="button"
