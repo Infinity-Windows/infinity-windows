@@ -26,6 +26,10 @@
 .daily-log-close { display: grid; place-items: center; flex: 0 0 44px; width: 44px; height: 44px; padding: 0; }
 .daily-log-editor-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: var(--space-5) var(--space-7) var(--space-6); }
 .daily-log-shared { margin: 0 0 var(--space-5); color: var(--muted); font-size: var(--text-sm); line-height: 1.5; }
+.daily-log-draft-notice, .daily-log-draft-warning { margin: 0 0 var(--space-4); padding: var(--space-4); border: 1px solid var(--border); border-radius: 12px; background: var(--card-raised); line-height: 1.5; }
+.daily-log-draft-warning { border-color: var(--accent); }
+.daily-log-draft-notice p, .daily-log-draft-warning p { margin: 0 0 var(--space-3); }
+.daily-log-draft-notice button + button { margin-left: var(--space-2); }
 .daily-log-field { display: grid; gap: var(--space-2); min-width: 0; margin: 0; }
 .daily-log-field > span, .daily-log-flow legend { font-size: var(--text-sm); font-weight: 600; color: var(--text-secondary); line-height: 1.5; }
 .daily-log-field textarea, .daily-log-field input { display: block; box-sizing: border-box; width: 100%; min-width: 0; max-width: 100%; margin: 0; padding: var(--space-3) var(--space-4); border: 1px solid var(--border); border-radius: 12px; background: var(--card-raised); color: var(--text); font-family: var(--font-body); font-size: var(--text-md); line-height: 1.6; }

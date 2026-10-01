@@ -69,6 +69,7 @@ test("a foreman files a daily log: notes gate, then Smooth clears the reflection
   await expect.poll(() => calls.length).toBe(1);
   expect(calls[0]).toMatchObject({
     p_project_id: BLACK22.projectId,
+    p_expected_revision: 0,
     p_notes: "Installed 3 units, crew of 2.",
     p_day_flow: "smooth",
     p_reflection: null,
@@ -138,6 +139,7 @@ for (const width of [390, 1280]) {
     const notes = "Everything went smoothly today. We set the frame on the second floor, installed four sliding doors, and finished both windows on the west side.\n\nAll doors and windows were checked for operation, alignment, and sealant coverage. The crew protected the finished surfaces and moved the remaining material to the staging area.\n\nTomorrow: complete the exterior trim, verify the final measurements with the foreman, and walk the finished openings with the customer. Final detail: the spare hardware is labeled and stored by the west entrance.";
     const log = {
       id: "readable-log", project_id: BLACK22.projectId, log_date: "2026-09-15",
+      revision: 1,
       headline, notes, day_flow: "smooth", reflection: null, weather: "Clear, 88°, breezy",
       customer_visible: false, filer: { display_name: "Test installer" },
     };
@@ -182,6 +184,6 @@ for (const width of [390, 1280]) {
     await assertFits();
     await dialog.getByRole("button", { name: "Save", exact: true }).click();
     await expect.poll(() => calls.length).toBe(1);
-    expect(calls[0]).toMatchObject({ p_headline: headline, p_notes: moreNotes, p_weather: log.weather });
+    expect(calls[0]).toMatchObject({ p_headline: headline, p_notes: moreNotes, p_weather: log.weather, p_expected_revision: 1 });
   });
 }

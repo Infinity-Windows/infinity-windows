@@ -23,6 +23,7 @@ await db.exec('set check_function_bodies = off');
 const contributions = await migration('20261030000000_ai_daily_log_contributions.sql');
 await db.exec(contributions);
 await db.exec(contributions); // the deploy can be retried
+await db.exec(await migration('20261052000000_daily_log_revision_guard.sql'));
 await db.exec('set check_function_bodies = on');
 await db.exec('grant select,insert,update,delete on daily_logs, daily_log_contributions, daily_log_contribution_photos to authenticated');
 
@@ -149,7 +150,7 @@ equal((await append({ cid: id(1003), expected: 2, ans: answers('Cleaned up the s
 
 // ---- The manual editor still works, and makes open previews stale ----------
 await as(SAM);
-await db.query("select file_daily_log($1, current_date - 1, p_notes => $2)", [JOB, 'Supervisor rewrote the log by hand']);
+await db.query("select file_daily_log($1, current_date - 1, p_notes => $2, p_expected_revision => $3)", [JOB, 'Supervisor rewrote the log by hand', 3]);
 const manual = await log();
 equal(Number(manual.revision), 4);
 await as(SAM);
@@ -305,6 +306,40 @@ for (const bad of [[BENS], [R1, BENS], [R1, OTHERCONV], [NOCONV], [id(7999)], [R
 equal(await count('daily_log_contributions'), beforeSources, 'foreign messages saved nothing');
 await db.exec('reset role');
 equal((await db.query('select source_request_ids from daily_log_contributions where id=$1', [id(8001)])).rows[0].source_request_ids, [R2, R1, R3]);
+
+// ---- Manual writers share the same atomic revision boundary as AI ---------
+const MANUAL_JOB = id(95), AI_RACE_JOB = id(96);
+await db.query("insert into projects(id,name) values ($1,'Manual race'),($2,'AI race')", [MANUAL_JOB, AI_RACE_JOB]);
+const manualWrite = (project, notes, expected) => db.query(
+  'select file_daily_log($1,current_date-1,null,$2,null,null,null,$3) r', [project, notes, expected]);
+await as(ANA);
+await manualWrite(MANUAL_JOB, 'First foreman', 0);
+equal(Number((await db.query('select revision from daily_logs where project_id=$1', [MANUAL_JOB])).rows[0].revision), 1);
+await as(FRANK);
+await denied(() => manualWrite(MANUAL_JOB, 'Second foreman old copy', 0), '40001');
+equal((await db.query('select notes from daily_logs where project_id=$1', [MANUAL_JOB])).rows[0].notes, 'First foreman');
+await as(FRANK);
+await manualWrite(MANUAL_JOB, 'Second foreman after review', 1);
+equal(Number((await db.query('select revision from daily_logs where project_id=$1', [MANUAL_JOB])).rows[0].revision), 2);
+await as(ANA);
+await denied(() => manualWrite(MANUAL_JOB, 'First foreman stale copy', 1), '40001');
+await as(ANA);
+await denied(() => manualWrite(MANUAL_JOB, 'Missing revision', null), '40001');
+await as(ANA);
+await denied(() => db.query("select file_daily_log($1,current_date-1,p_notes=>$2)", [MANUAL_JOB, 'Old client call']), '40001');
+
+await as(ANA);
+equal((await append({ cid: id(9001), project: AI_RACE_JOB, expected: 0, ans: answers('AI first') })).status, 'saved');
+await as(FRANK);
+await denied(() => manualWrite(AI_RACE_JOB, 'Old manual first draft', 0), '40001');
+await as(FRANK);
+const manualFirstJob = id(97);
+await db.exec('reset role');
+await db.query("insert into projects(id,name) values ($1,'Manual first')", [manualFirstJob]);
+await as(FRANK);
+await manualWrite(manualFirstJob, 'Manual first', 0);
+await as(ANA);
+equal((await append({ cid: id(9002), project: manualFirstJob, expected: 0, ans: answers('AI old preview') })).status, 'stale');
 
 await db.close();
 console.log(`${checks} AI daily log database checks passed (PGlite).`);

@@ -45,6 +45,7 @@ export const INCLUDED_UPDATE_IDS = [
   '2026-09-30-ask-guided-clock',
   '2026-09-30-ask-timing-readiness',
   '2026-10-01-smoother-unit-work',
+  '2026-10-01-daily-log-drafts',
 ] as const;
 export interface AppUpdate {
   id: string; published_on: string; audience: number[]; kind: 'fix' | 'improvement';

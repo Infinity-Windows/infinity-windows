@@ -60,17 +60,37 @@ describe("nobody raced — the ordinary case, and it stays boring", () => {
     // What an ordinary edit looks like: the dialog seeded the box from the
     // server's row, somebody added a sentence, and the whole box came back.
     const edited = "Glass showed up late, crew of three. Set four units on the south wall.";
-    expect(mergeQueuedDailyLog(queued({ notes: edited }), server()).notes).toBe(edited);
+    expect(mergeQueuedDailyLog(queued({ notes: edited, baseRevision: 1 }), server({ revision: 1 })).notes).toBe(edited);
   });
 
   it("lets an edit that DELETES a line stand", () => {
     const trimmed = "Glass showed up late.";
     const out = mergeQueuedDailyLog(
-      queued({ notes: `${trimmed} Crew of three.` }),
-      server({ notes: trimmed }),
+      queued({ notes: `${trimmed} Crew of three.`, baseRevision: 1 }),
+      server({ notes: trimmed, revision: 1 }),
     );
     expect(out.notes).toBe(`${trimmed} Crew of three.`);
   });
+});
+
+it("keeps newer weather and reflection even when queued notes contain server notes", () => {
+  const current = server({ revision: 2, notes: "Glass showed up late.", weather: "Rain", reflection: { went_well: "Crew stayed" } });
+  const out = mergeQueuedDailyLog(queued({ baseRevision: 1, notes: "Glass showed up late. Installed east window.", weather: "Sun" }), current);
+  expect(out.weather).toBe("Rain");
+  expect(out.reflection).toEqual({ went_well: "Crew stayed" });
+  expect(out.notes).toContain("Installed east window.");
+});
+
+it("replays an older queued edit once and keeps its conflicting field choices visible", () => {
+  const current = server({ revision: 2, notes: "Morning work.", weather: "Rain", day_flow: "fine" });
+  const oldQueue = queued({ notes: "Morning work. Finished the south wall.", weather: "Sun", dayFlow: "smooth" });
+  const first = mergeQueuedDailyLog(oldQueue, current);
+  expect(first.notes.match(/Morning work\./g)).toHaveLength(1);
+  expect(first.notes).toContain("Weather: Sun");
+  expect(first.notes).toContain("Day flow: smooth");
+  expect(first.weather).toBe("Rain");
+  const second = mergeQueuedDailyLog(oldQueue, server({ ...current, notes: first.notes, revision: 3 }));
+  expect(second.notes).toBe(first.notes);
 });
 
 describe("somebody else filed while this sat in a truck", () => {

@@ -25,6 +25,7 @@ vi.mock("../supabase", () => ({
 const getDailyLog = vi.fn();
 vi.mock("../dailyLogs", () => ({
   getDailyLog: (projectId: string, logDate: string) => getDailyLog(projectId, logDate),
+  isStaleDailyLogError: (e: { code?: string }) => e?.code === "40001",
 }));
 
 const { createShiftResolver, createSupabaseHandlers } = await import("./outboxHandlers");
@@ -106,6 +107,7 @@ describe("a daily log that waited for signal", () => {
       updated_by: null,
       created_at: "2026-09-05T17:00:00Z",
       updated_at: "2026-09-05T17:00:00Z",
+      revision: 1,
     });
 
     await drain();
@@ -117,14 +119,32 @@ describe("a daily log that waited for signal", () => {
     expect(String(sent.p_notes)).not.toMatch(/@/);
   });
 
-  it("sends what was typed when the current row cannot be read", async () => {
-    // Losing the log because a read failed would be a worse bug than the one
-    // the merge exists to prevent.
+  it("keeps the entry queued without writing when the current row cannot be read", async () => {
     getDailyLog.mockRejectedValue(new Error("nope"));
+    await expect(drain()).rejects.toThrow("nope");
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it("refetches and recombines after another writer wins between read and Save", async () => {
+    getDailyLog.mockResolvedValueOnce(null).mockResolvedValueOnce({
+      id: "log-1", project_id: "black22", log_date: "2026-09-05", revision: 1,
+      headline: "Office", notes: "Office work", day_flow: null, reflection: null, weather: "Rain",
+    });
+    rpc.mockResolvedValueOnce({ error: { code: "40001", message: "changed" } })
+      .mockResolvedValueOnce({ error: null });
     await drain();
-    expect((rpc.mock.calls[0][1] as Record<string, string>).p_notes).toBe(
-      "Set four units on the south wall.",
-    );
+    expect(rpc).toHaveBeenCalledTimes(2);
+    expect(rpc.mock.calls[0][1]).toMatchObject({ p_expected_revision: 0 });
+    expect(rpc.mock.calls[1][1]).toMatchObject({ p_expected_revision: 1, p_weather: "Rain" });
+    expect(rpc.mock.calls[1][1].p_notes).toContain("Office work");
+  });
+
+  it("does not overwrite newer optional fields when a legacy queued edit contains server notes", async () => {
+    getDailyLog.mockResolvedValue({ id: "log-1", project_id: "black22", log_date: "2026-09-05",
+      revision: 2, headline: "Office", notes: "Set four units on the south wall.",
+      day_flow: "stuck", reflection: { went_well: "Delivery" }, weather: "Rain" });
+    await drain({ notes: "Set four units on the south wall. Closed out.", weather: "Sun" });
+    expect(rpc.mock.calls[0][1]).toMatchObject({ p_expected_revision: 2, p_weather: "Rain", p_day_flow: "stuck" });
   });
 
   it("dead-letters a log with no job rather than retrying it eight times", async () => {
