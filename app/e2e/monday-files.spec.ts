@@ -370,7 +370,7 @@ test("a refusal from the server is read as the sentence the server wrote", async
 });
 
 
-test("failed file retries beside its name and a second failure preserves the first success", async ({ page }) => {
+test("failed file retries beside its name and a second failure preserves the first success", async ({ page }, testInfo) => {
   const job = jobFixtures()[0];
   await useSupabaseFixtures(page, { role: "foreman" });
   let imported = false;
@@ -413,7 +413,7 @@ test("failed file retries beside its name and a second failure preserves the fir
   await expect(first).toContainText("Added to Plans");
   expect(calls.filter(c => (c.files as { asset_id: string }[])[0].asset_id === FILES[2].asset_id)).toHaveLength(2);
   expect(calls[1].files).toEqual([{ asset_id: FILES[2].asset_id, kind: "building" }]);
-  await page.screenshot({ path: "../../outputs/Forge-Plans-Status-2026-09-30/PHONE-RESULTS.png", fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath("phone-results.png"), fullPage: true });
 });
 
 test("network failure gives a reconnect instruction and an already-present retry is a success", async ({ page }) => {
@@ -437,7 +437,7 @@ test("network failure gives a reconnect instruction and an already-present retry
   expect(attempts).toBe(2);
 });
 
-test("a pending file prevents duplicate clicks and Spanish results fit a narrow phone", async ({ page }) => {
+test("a pending file prevents duplicate clicks and Spanish results fit a narrow phone", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await page.emulateMedia({ colorScheme: "dark" });
   const job = jobFixtures()[0];
@@ -465,7 +465,7 @@ test("a pending file prevents duplicate clicks and Spanish results fit a narrow 
   await expect(row).toContainText("No se añadió");
   await expect(row.getByRole("button", { name: "Reintentar" })).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  await page.screenshot({ path: "../../outputs/Forge-Plans-Status-2026-09-30/SPANISH-RESULTS.png", fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath("spanish-results.png"), fullPage: true });
 });
 
 
@@ -502,6 +502,7 @@ test("a completed document import does not claim extraction and a late result ca
     window.dispatchEvent(new PopStateEvent("popstate"));
   }, `/projects/${nextJob.projectId}/upload`);
   await expect(block).not.toContainText("Added to Documents");
+  await expect(block).not.toContainText("Getting");
   finish!();
   await expect.poll(() => calls).toBe(2);
   await expect(block).not.toContainText("Added to Documents");

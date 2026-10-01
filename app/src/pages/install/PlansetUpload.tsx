@@ -920,6 +920,7 @@ export function PlansetUpload() {
               const size = fileSizeLabel(f.size);
               const busy =
                 pullFromMonday.isPending &&
+                pullFromMonday.variables?.projectId === projectId &&
                 pullFromMonday.variables?.assetId === f.asset_id;
               const status = mondayFileStatus[f.asset_id];
               const isSuccess = status?.ok === true;
