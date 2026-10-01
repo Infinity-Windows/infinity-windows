@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("./supabase", () => ({ supabase: {} }));
 
-import { startLiveSession, type LiveDeps, type LiveStatus } from "./liveAskSession";
+import { mediaSegmentRecorder, startLiveSession, type LiveDeps, type LiveStatus } from "./liveAskSession";
 import { canContinueLive, liveAskPilotEnabled, liveStatusLine } from "./liveAskPilot";
 
 /** A fake phone: microphone, peer connection, data channel, recorder, timers. */
@@ -23,7 +23,11 @@ function rig(opts: { exchange?: LiveDeps["exchange"]; micDelay?: Promise<void> }
     onconnectionstatechange: null as null | (() => void), ontrack: null as null | ((e: unknown) => void),
   };
   let segment = 0;
-  const recorder = { cut: vi.fn(async () => new Blob([`seg-${++segment}`], { type: "audio/webm" })), stop: vi.fn() };
+  const recorder = {
+    cut: vi.fn(async () => new Blob([`seg-${++segment}`], { type: "audio/webm" })),
+    finish: vi.fn(async () => new Blob([`seg-${++segment}`], { type: "audio/webm" })),
+    stop: vi.fn(),
+  };
   const timers: { fn: () => void; ms: number; live: boolean }[] = [];
   let hidden: (() => void) | null = null;
   const played: (MediaStream | null)[] = [];
@@ -40,11 +44,15 @@ function rig(opts: { exchange?: LiveDeps["exchange"]; micDelay?: Promise<void> }
   };
   const statuses: [LiveStatus, string | undefined][] = [];
   const handleTurn = vi.fn(async (turn: { itemId: string; audio: Blob | null }) => `RESULT for ${turn.itemId} (${turn.audio ? await turn.audio.text() : "no audio"})`);
+  const interrupted: Blob[] = [];
+  const interruptErrors: string[] = [];
   const emit = (event: object) => channel.onmessage?.({ data: JSON.stringify(event) });
   const connect = (state: string) => { pc.connectionState = state; pc.onconnectionstatechange?.(); };
   const flush = async () => { for (let i = 0; i < 10; i++) await Promise.resolve(); };
-  const session = startLiveSession({ deps, onStatus: (s, d) => statuses.push([s, d]), handleTurn, notHeard: () => "NOT HEARD" });
-  return { session, track, channel, pc, recorder, timers, played, exchange, sent, statuses, handleTurn, emit, connect, flush, hide: () => hidden?.() };
+  const session = startLiveSession({ deps, onStatus: (s, d) => statuses.push([s, d]), handleTurn,
+    onInterruptedAudio: (audio) => { void audio.then((blob) => { if (blob) interrupted.push(blob); }).catch((error) => interruptErrors.push(String(error))); },
+    notHeard: () => "NOT HEARD" });
+  return { session, track, channel, pc, recorder, timers, played, exchange, sent, statuses, handleTurn, interrupted, interruptErrors, emit, connect, flush, hide: () => hidden?.() };
 }
 
 const started = { type: "session.started", session: { id: "live-test" } };
@@ -117,6 +125,8 @@ describe("startLiveSession", () => {
     expect(r.played.at(-1)).toBeNull();
     expect(r.timers.every((t) => !t.live)).toBe(true);
     expect(r.statuses.at(-1)).toEqual(["ended", "user"]);
+    expect(r.recorder.finish).not.toHaveBeenCalled();
+    expect(r.interrupted).toHaveLength(0);
     // Nothing after the end reopens it.
     r.emit(started);
     r.connect("connected");
@@ -126,11 +136,16 @@ describe("startLiveSession", () => {
   it("ends at the session cap", async () => {
     const r = rig();
     await r.flush();
+    r.emit(started);
     const cap = r.timers.find((t) => t.ms === 180_000)!;
     cap.fn();
     expect(r.statuses.at(-1)).toEqual(["ended", "cap"]);
     expect(r.track.stop).toHaveBeenCalled();
     expect(JSON.parse(r.sent.at(-1)!)).toEqual({ type: "session.close" });
+    await r.flush();
+    expect(r.recorder.stop).toHaveBeenCalled();
+    expect(r.recorder.finish).not.toHaveBeenCalled();
+    expect(r.interrupted).toHaveLength(0);
   });
 
   it("mutes the same microphone without ending or reconnecting the paid session", async () => {
@@ -173,6 +188,24 @@ describe("startLiveSession", () => {
     expect(r.statuses.at(-1)).toEqual(["failed", "connection"]);
     expect(r.track.stop).toHaveBeenCalled();
     expect(r.exchange).toHaveBeenCalledTimes(1);
+    expect(r.recorder.finish).toHaveBeenCalledOnce();
+    await r.flush();
+    expect(await r.interrupted[0].text()).toBe("seg-1");
+    expect(r.handleTurn).not.toHaveBeenCalled();
+    r.connect("failed");
+    expect(r.interrupted).toHaveLength(1);
+  });
+
+  it("reports a final-recorder failure while still closing the microphone", async () => {
+    const r = rig();
+    await r.flush();
+    r.emit(started);
+    r.recorder.finish.mockImplementationOnce(() => { throw new Error("final chunk unavailable"); });
+    r.connect("failed");
+    await r.flush();
+    expect(r.track.stop).toHaveBeenCalled();
+    expect(r.statuses.at(-1)).toEqual(["failed", "connection"]);
+    expect(r.interruptErrors).toEqual(["Error: final chunk unavailable"]);
   });
 
   it("releases the microphone when the server refuses, with the server's reason", async () => {
@@ -192,6 +225,40 @@ describe("startLiveSession", () => {
     expect(r.track.stop).toHaveBeenCalled();
     expect(r.exchange).not.toHaveBeenCalled();
     expect(r.statuses).toEqual([["ended", "account"]]);
+  });
+});
+
+describe("mediaSegmentRecorder", () => {
+  it("delivers the final chunk after stopping without opening another recorder", async () => {
+    const instances: FakeRecorder[] = [];
+    class FakeRecorder {
+      static isTypeSupported() { return false; }
+      state: "inactive" | "recording" = "inactive";
+      mimeType = "audio/mp4";
+      ondataavailable: ((event: BlobEvent) => void) | null = null;
+      onstop: ((event: Event) => void) | null = null;
+      constructor() { instances.push(this); }
+      start() { this.state = "recording"; }
+      stop() {
+        this.state = "inactive";
+        queueMicrotask(() => {
+          this.ondataavailable?.({ data: new Blob([`part-${instances.indexOf(this) + 1}`], { type: this.mimeType }) } as BlobEvent);
+          this.onstop?.(new Event("stop"));
+        });
+      }
+    }
+    vi.stubGlobal("MediaRecorder", FakeRecorder);
+    try {
+      const recorder = mediaSegmentRecorder({} as MediaStream);
+      const first = await recorder.cut();
+      expect(await first?.text()).toBe("part-1");
+      const last = await recorder.finish();
+      expect(await last?.text()).toBe("part-2");
+      expect(instances).toHaveLength(2);
+      expect(await recorder.finish()).toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 

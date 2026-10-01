@@ -34,7 +34,7 @@ export type LiveEndReason = "user" | "cap" | "account" | "background" | "connect
 export interface LiveTurn { itemId: string; audio: Blob | null }
 
 /** A recorder over the live microphone that hands back one segment per cut. */
-export interface SegmentRecorder { cut(): Promise<Blob | null>; stop(): void }
+export interface SegmentRecorder { cut(): Promise<Blob | null>; finish(): Promise<Blob | null>; stop(): void }
 
 export interface LivePeer {
   pc: RTCPeerConnection;
@@ -59,6 +59,8 @@ export interface LiveOptions {
   onStatus(status: LiveStatus, detail?: LiveEndReason | string): void;
   /** Save the memo, then send through Ask. Resolves to the commentary to speak. */
   handleTurn(turn: LiveTurn): Promise<string>;
+  /** Keep an unfinished segment on the phone after an unexpected stop; do not send it to Ask. */
+  onInterruptedAudio?(audio: Promise<Blob | null>): void;
   /** Spoken when a delegation never matched a finished utterance. */
   notHeard(): string;
   /** A warning before the booked session reaches its hard expiry. */
@@ -135,6 +137,20 @@ export function startLiveSession(options: LiveOptions): LiveSession {
 
   const end = (reason: LiveEndReason = "user") => {
     if (status === "ended" || status === "failed") return;
+    // A connection loss can happen mid-sentence, before GPT-Live
+    // delegates a turn. Hand that final segment to the phone's unsent store;
+    // it is never an Ask request until the person taps Send now. The callback
+    // starts synchronously so the page can hold its unsaved-work claim while
+    // MediaRecorder delivers its final chunk asynchronously (Safari).
+    if (reason === "connection" && rec && !muted && options.onInterruptedAudio) {
+      const last = rec;
+      rec = null;
+      let audio: Promise<Blob | null>;
+      try { audio = last.finish(); }
+      catch (error) { last.stop(); audio = Promise.reject(error); }
+      try { options.onInterruptedAudio(audio); }
+      catch { void audio.catch(() => undefined); }
+    }
     // The data channel must remain open long enough to receive the provider's
     // final session.closed and usage event. Stop the microphone immediately.
     if ((reason === "user" || reason === "cap" || reason === "account" || reason === "background" || reason === "unmount") &&
@@ -305,6 +321,12 @@ export function mediaSegmentRecorder(stream: MediaStream): SegmentRecorder {
       try { current = begin(); }
       catch { current = null; const blob = await finish(old); if (!stopped) current = begin(); return blob; }
       return finish(old);
+    },
+    finish: () => {
+      stopped = true;
+      const last = current;
+      current = null;
+      return last ? finish(last) : Promise.resolve(null);
     },
     stop: () => {
       stopped = true;
