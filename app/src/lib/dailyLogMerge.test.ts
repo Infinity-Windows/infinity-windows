@@ -10,6 +10,7 @@
 import { describe, expect, it } from "vitest";
 import { mergeQueuedDailyLog, type QueuedDailyLog } from "./dailyLogMerge";
 import type { DailyLog } from "./dailyLogs";
+import { emptyProgressFields } from "./dailyLogStages";
 
 function queued(over: Partial<QueuedDailyLog> = {}): QueuedDailyLog {
   return {
@@ -20,6 +21,11 @@ function queued(over: Partial<QueuedDailyLog> = {}): QueuedDailyLog {
     dayFlow: null,
     reflection: null,
     weather: null,
+    // The ordinary case in every existing test below: a deliberate,
+    // complete answer from the current app. The legacy-omission tests
+    // explicitly override this to false.
+    progressProvided: true,
+    ...emptyProgressFields(),
     ...over,
   };
 }
@@ -28,6 +34,7 @@ function server(over: Partial<DailyLog> = {}): DailyLog {
   return {
     id: "log-1",
     project_id: "black22",
+    job_name: null,
     log_date: "2026-09-05",
     headline: null,
     notes: "Glass showed up late, crew of three.",
@@ -40,32 +47,41 @@ function server(over: Partial<DailyLog> = {}): DailyLog {
     updated_by: null,
     created_at: "2026-09-05T17:00:00Z",
     updated_at: "2026-09-05T17:00:00Z",
+    ...emptyProgressFields(),
     ...over,
   };
+}
+
+/** Most tests only care about the text fields that land in `merged`; this
+ * keeps them from naming `.merged` everywhere. */
+function mergedOf(q: QueuedDailyLog, s: DailyLog | null) {
+  return mergeQueuedDailyLog(q, s).merged;
 }
 
 describe("nobody raced — the ordinary case, and it stays boring", () => {
   it("sends exactly what was typed when no log exists yet", () => {
     const out = mergeQueuedDailyLog(queued({ headline: "South wall", weather: "Hot" }), null);
-    expect(out).toEqual({
+    expect(out.merged).toEqual({
       headline: "South wall",
       notes: "Set four units on the south wall.",
       dayFlow: null,
       reflection: null,
       weather: "Hot",
+      ...emptyProgressFields(),
     });
+    expect(out.progressConflicts).toEqual([]);
   });
 
   it("sends what was typed when it was typed on the end of the server's own text", () => {
     // What an ordinary edit looks like: the dialog seeded the box from the
     // server's row, somebody added a sentence, and the whole box came back.
     const edited = "Glass showed up late, crew of three. Set four units on the south wall.";
-    expect(mergeQueuedDailyLog(queued({ notes: edited, baseRevision: 1 }), server({ revision: 1 })).notes).toBe(edited);
+    expect(mergedOf(queued({ notes: edited, baseRevision: 1 }), server({ revision: 1 })).notes).toBe(edited);
   });
 
   it("lets an edit that DELETES a line stand", () => {
     const trimmed = "Glass showed up late.";
-    const out = mergeQueuedDailyLog(
+    const out = mergedOf(
       queued({ notes: `${trimmed} Crew of three.`, baseRevision: 1 }),
       server({ notes: trimmed, revision: 1 }),
     );
@@ -75,7 +91,7 @@ describe("nobody raced — the ordinary case, and it stays boring", () => {
 
 it("keeps newer weather and reflection even when queued notes contain server notes", () => {
   const current = server({ revision: 2, notes: "Glass showed up late.", weather: "Rain", reflection: { went_well: "Crew stayed" } });
-  const out = mergeQueuedDailyLog(queued({ baseRevision: 1, notes: "Glass showed up late. Installed east window.", weather: "Sun" }), current);
+  const out = mergedOf(queued({ baseRevision: 1, notes: "Glass showed up late. Installed east window.", weather: "Sun" }), current);
   expect(out.weather).toBe("Rain");
   expect(out.reflection).toEqual({ went_well: "Crew stayed" });
   expect(out.notes).toContain("Installed east window.");
@@ -84,18 +100,18 @@ it("keeps newer weather and reflection even when queued notes contain server not
 it("replays an older queued edit once and keeps its conflicting field choices visible", () => {
   const current = server({ revision: 2, notes: "Morning work.", weather: "Rain", day_flow: "fine" });
   const oldQueue = queued({ notes: "Morning work. Finished the south wall.", weather: "Sun", dayFlow: "smooth" });
-  const first = mergeQueuedDailyLog(oldQueue, current);
+  const first = mergedOf(oldQueue, current);
   expect(first.notes.match(/Morning work\./g)).toHaveLength(1);
   expect(first.notes).toContain("Weather: Sun");
   expect(first.notes).toContain("Day flow: smooth");
   expect(first.weather).toBe("Rain");
-  const second = mergeQueuedDailyLog(oldQueue, server({ ...current, notes: first.notes, revision: 3 }));
+  const second = mergedOf(oldQueue, server({ ...current, notes: first.notes, revision: 3 }));
   expect(second.notes).toBe(first.notes);
 });
 
 describe("somebody else filed while this sat in a truck", () => {
   it("APPENDS rather than replacing — neither account is lost", () => {
-    const out = mergeQueuedDailyLog(queued(), server());
+    const out = mergedOf(queued(), server());
     expect(out.notes).toContain("Glass showed up late, crew of three.");
     expect(out.notes).toContain("Set four units on the south wall.");
     // The server's text comes first: it is what a person reading the log
@@ -110,20 +126,20 @@ describe("somebody else filed while this sat in a truck", () => {
     // over headline/notes/day_flow and deliberately withholds filed_by. A crew
     // name spliced into the notes would walk straight through that wall; the
     // first version of this line put an email address there.
-    const out = mergeQueuedDailyLog(queued(), server());
+    const out = mergedOf(queued(), server());
     expect(out.notes).toContain("— added later from a phone that was offline");
     expect(out.notes).not.toMatch(/@/);
   });
 
   it("does not append the same words twice on a resend", () => {
     // The queue retries; the second attempt must not stack another copy.
-    const once = mergeQueuedDailyLog(queued(), server());
-    const twice = mergeQueuedDailyLog(queued(), server({ notes: once.notes }));
+    const once = mergedOf(queued(), server());
+    const twice = mergedOf(queued(), server({ notes: once.notes }));
     expect(twice.notes).toBe(once.notes);
   });
 
   it("keeps the server's headline, day flow and weather", () => {
-    const out = mergeQueuedDailyLog(
+    const out = mergedOf(
       queued({ headline: "Mine", dayFlow: "stuck", weather: "Rain" }),
       server({ headline: "Theirs", day_flow: "smooth", weather: "Clear" }),
     );
@@ -133,7 +149,7 @@ describe("somebody else filed while this sat in a truck", () => {
   });
 
   it("fills only the fields the server left blank", () => {
-    const out = mergeQueuedDailyLog(
+    const out = mergedOf(
       queued({ headline: "Mine", dayFlow: "stuck", weather: "Rain" }),
       server({ headline: null, day_flow: null, weather: "   " }),
     );
@@ -143,7 +159,7 @@ describe("somebody else filed while this sat in a truck", () => {
   });
 
   it("merges the reflection key by key — four one-liners, nothing to fight over", () => {
-    const out = mergeQueuedDailyLog(
+    const out = mergedOf(
       queued({ reflection: { went_well: "Mine", went_poorly: "Mine too" } }),
       server({ reflection: { went_poorly: "Theirs", what_worked: "Theirs too" } }),
     );
@@ -155,7 +171,7 @@ describe("somebody else filed while this sat in a truck", () => {
   });
 
   it("keeps the server's notes when the queued half is empty", () => {
-    const out = mergeQueuedDailyLog(queued({ notes: "   " }), server());
+    const out = mergedOf(queued({ notes: "   " }), server());
     expect(out.notes).toBe("Glass showed up late, crew of three.");
   });
 });
@@ -174,7 +190,7 @@ describe("no clocks are consulted, because both of these look like 'nobody raced
       created_at: "2026-09-05T13:00:00Z",
       updated_at: "2026-09-05T13:00:00Z",
     });
-    const out = mergeQueuedDailyLog(queued({ notes: "Also set four on the south wall." }), morning);
+    const out = mergedOf(queued({ notes: "Also set four on the south wall." }), morning);
     expect(out.notes).toContain("Morning: glass delivered.");
     expect(out.notes).toContain("Also set four on the south wall.");
   });
@@ -184,8 +200,137 @@ describe("no clocks are consulted, because both of these look like 'nobody raced
     // a "my time is wrong" checkbox for the same reason. A phone five minutes
     // ahead reported a queue time later than the race that actually happened.
     const raced = server({ notes: "Filed from the office.", updated_at: "2026-09-05T16:02:00Z" });
-    const out = mergeQueuedDailyLog(queued(), raced);
+    const out = mergedOf(queued(), raced);
     expect(out.notes).toContain("Filed from the office.");
     expect(out.notes).toContain("Set four units on the south wall.");
   });
+});
+
+describe("structured progress fields on a race — never silently replace, never leak into shared notes, require review", () => {
+  it("keeps the queued stage progress and unit counts when nobody else filed", () => {
+    const out = mergeQueuedDailyLog(
+      queued({ workStages: ["frames"], stageProgress: { frames: 40 }, unitsToday: 2, unitsRemaining: 5 }),
+      null,
+    );
+    expect(out.merged.stageProgress).toEqual({ frames: 40 });
+    expect(out.merged.unitsToday).toBe(2);
+    expect(out.merged.unitsRemaining).toBe(5);
+    expect(out.progressConflicts).toEqual([]);
+  });
+
+  it("keeps the queued progress on a confirmed-unchanged base (a plain edit)", () => {
+    const current = server({ revision: 1, unitsRemaining: 9 });
+    const out = mergeQueuedDailyLog(queued({ baseRevision: 1, unitsRemaining: 3 }), current);
+    expect(out.merged.unitsRemaining).toBe(3);
+    expect(out.progressConflicts).toEqual([]);
+  });
+
+  it("is a TRUE NO-OP on a conflicting count — sends back the server's own current value, not a 'choice'", () => {
+    const current = server({ revision: 2, unitsToday: 4, unitsRemaining: 6, unitsRemainingDetail: "W-9, W-10" });
+    const out = mergeQueuedDailyLog(queued({ unitsToday: 1, unitsRemaining: 11, unitsRemainingDetail: "W-1" }), current);
+    expect(out.merged.unitsToday).toBe(4);
+    expect(out.merged.unitsRemaining).toBe(6);
+    expect(out.merged.unitsRemainingDetail).toBe("W-9, W-10");
+  });
+
+  it("never writes a conflicting structured value into notes — that text reaches a builder login via stg_day", () => {
+    const current = server({ revision: 2, unitsRemaining: 6 });
+    const out = mergeQueuedDailyLog(queued({ unitsRemaining: 11 }), current);
+    expect(out.merged.notes).not.toContain("Units remaining");
+    expect(out.merged.notes).not.toContain("11");
+  });
+
+  it("reports the conflict out-of-band, with the phone's original value preserved for a human to restore", () => {
+    const current = server({ revision: 2, unitsRemaining: 6 });
+    const out = mergeQueuedDailyLog(queued({ unitsRemaining: 11 }), current);
+    expect(out.progressConflicts).toContainEqual({ field: "unitsRemaining", queuedValue: 11 });
+  });
+
+  it("NEVER puts safety status or its disagreement into notes, conflicting or not", () => {
+    const current = server({ revision: 2, safetyStatus: "reported" });
+    const out = mergeQueuedDailyLog(queued({ safetyStatus: "none_reported" }), current);
+    expect(out.merged.notes).not.toContain("Safety");
+    expect(out.merged.notes).not.toContain("safety");
+    expect(out.merged.safetyStatus).toBe("reported");
+    // The conflict is still reported, just never in notes — needs-review only.
+    expect(out.progressConflicts.some((c) => c.field === "safetyStatus")).toBe(true);
+  });
+
+  it("retains the whole server observation when stale phone counts differ", () => {
+    const current = server({ revision: 2, unitsToday: null, unitsRemaining: null });
+    const out = mergeQueuedDailyLog(queued({ unitsToday: 2, unitsRemaining: 5 }), current);
+    expect(out.merged.unitsToday).toBeNull();
+    expect(out.merged.unitsRemaining).toBeNull();
+    expect(out.progressConflicts).toContainEqual({field:"unitsToday",queuedValue:2});
+  });
+
+  it("is a no-op on conflicting stage progress and names the field in progressConflicts, not notes", () => {
+    const current = server({ revision: 2, workStages: ["frames", "glass"], stageProgress: { frames: 60, glass: 20 } });
+    const out = mergeQueuedDailyLog(
+      queued({ workStages: ["frames"], stageProgress: { frames: 35 } }),
+      current,
+    );
+    expect(out.merged.stageProgress).toEqual({ frames: 60, glass: 20 });
+    expect(out.merged.notes).not.toContain("Stage progress");
+    expect(out.progressConflicts.some((c) => c.field === "stageProgress")).toBe(true);
+  });
+
+  it("reports no conflict when both sides agree", () => {
+    const current = server({ revision: 2, unitsRemaining: 6, covers: "windows" });
+    const out = mergeQueuedDailyLog(queued({ unitsRemaining: 6, covers: "windows" }), current);
+    expect(out.progressConflicts).toEqual([]);
+  });
+
+  describe("progressProvided — the independent review's finding #1: a legacy caller's silence must never read as a deliberate clear", () => {
+    it("on a matching base, a CURRENT full-snapshot entry reports progressProvided true", () => {
+      const current = server({ revision: 1 });
+      const out = mergeQueuedDailyLog(queued({ baseRevision: 1, progressProvided: true, unitsRemaining: 5 }), current);
+      expect(out.progressProvided).toBe(true);
+      expect(out.merged.unitsRemaining).toBe(5);
+    });
+
+    it("on a matching base, a LEGACY entry (progressProvided false) reports progressProvided false — never claims its empty defaults as a confirmed clear", () => {
+      const current = server({ revision: 1, stageProgress: { frames: 50 }, unitsToDate: 10, unitsRemaining: 10, tomorrowPlan: "Finish west windows" });
+      const out = mergeQueuedDailyLog(queued({ baseRevision: 1, progressProvided: false }), current);
+      expect(out.progressProvided).toBe(false);
+      // The merged VALUES are irrelevant once provided=false (the server
+      // ignores them entirely) — what matters is the flag telling it to.
+    });
+
+    it("a stale legacy entry never supplies structured progress", () => {
+      const current = server({ revision: 2, unitsRemaining: 6 });
+      const out = mergeQueuedDailyLog(queued({ progressProvided: false, unitsRemaining: 11 }), current);
+      expect(out.progressProvided).toBe(false);
+      expect(out.progressConflicts).toEqual([]);
+      expect(out.merged.unitsRemaining).toBe(6); // server's value, since queued never actually answered
+    });
+
+    it("no existing server row: legacy presence flag remains false", () => {
+      const out = mergeQueuedDailyLog(queued({ progressProvided: false, unitsToday: 2 }), null);
+      expect(out.progressProvided).toBe(false);
+      expect(out.merged.unitsToday).toBe(2);
+    });
+  });
+
+  it("is a no-op on conflicting delay entries too, naming the field for review", () => {
+    const current = server({
+      revision: 2,
+      delays: [{ cause: "material", description: "Glass late", minutes: 90, status: "still_going", attribution: "builder" }],
+    });
+    const out = mergeQueuedDailyLog(
+      queued({ delays: [{ cause: "weather", description: "Rain", minutes: 30, status: "happened", attribution: "weather" }] }),
+      current,
+    );
+    expect(out.merged.delays).toEqual(current.delays);
+    expect(out.progressConflicts.some((c) => c.field === "delays")).toBe(true);
+  });
+  it("preserves deliberate stale clears for review without mixing observations",()=>{
+    const current=server({revision:2,unitsToDate:12,unitsRemaining:2,workStages:["frames"],stageProgress:{frames:80},delays:[{cause:"weather",description:"Rain",minutes:30,status:"happened",attribution:"weather"}]});
+    const out=mergeQueuedDailyLog(queued({baseRevision:1,progressProvided:true,unitsToDate:99,unitsRemaining:null,workStages:[],stageProgress:{},delays:[]}),current);
+    expect(out.merged.unitsToDate).toBe(12);expect(out.merged.unitsRemaining).toBe(2);
+    expect(out.merged.stageProgress).toEqual({frames:80});expect(out.merged.delays).toEqual(current.delays);
+    expect(out.progressProvided).toBe(false);
+    for(const field of ["unitsRemaining","workStages","stageProgress","delays"])expect(out.progressConflicts.some(c=>c.field===field)).toBe(true);
+  });
+
 });
