@@ -4,7 +4,7 @@ do $$
 declare
   v_actor uuid; v_lead uuid; v_job uuid; v_mail text; v_day date; v_rev integer;
   v_log public.daily_logs; v_client uuid := gen_random_uuid(); v_photo uuid;
-  v_object_name text; v_storage_path text; v_n integer; v_r text; v_ok boolean; v_denied boolean; v_ordinary text;
+  v_object_name text; v_storage_path text; v_n integer; v_r text; v_ok boolean; v_denied boolean;
 begin
   perform pg_temp.dry_run_as_system();
   perform pg_temp.dry_run_check('classifier has no PUBLIC EXECUTE',not exists(
@@ -72,30 +72,15 @@ begin
   v_storage_path := 'install-media/'||v_object_name;
   insert into storage.objects(bucket_id,name,owner,owner_id,metadata)
     values('install-media',v_object_name,v_actor,v_actor::text,'{"mimetype":"image/jpeg","size":5}');
-  -- Exercise the actual backend caller, not just the management owner.
-  -- SQL metadata only; the provider upload API/bytes are outside this probe.
-  v_ordinary := v_job::text||'/acl-probe/'||gen_random_uuid()::text||'.jpg';
-  insert into storage.objects(bucket_id,name,owner,owner_id,metadata)
-    values('install-media',v_ordinary,v_actor,v_actor::text,'{"mimetype":"image/jpeg","size":5}');
-  execute 'set local role supabase_storage_admin';
-  v_ok := public._is_daily_log_photo_name(v_object_name) and not public._is_daily_log_photo_name(v_ordinary);
-  update storage.objects set updated_at=now(),last_accessed_at=now() where bucket_id='install-media' and name=v_object_name;
+  -- Hosted Management's postgres cannot SET ROLE supabase_storage_admin.
+  -- The exact provider owner and effective EXECUTE are checked above; actual
+  -- backend-role invoker updates are exercised in the disposable SQL harness.
+  -- Do not grant membership or change function ownership to bypass this limit.
+  -- The existing management-owner replacement/lifecycle checks remain below.
+  update storage.objects set updated_at=now(),last_accessed_at=now()
+    where bucket_id='install-media' and name=v_object_name;
   get diagnostics v_n=row_count;
-  execute 'reset role';
-  perform pg_temp.dry_run_check('actual Storage backend classifier and protected timestamp update succeed',v_ok and v_n=1);
-  execute 'set local role supabase_storage_admin';
-  update storage.objects set metadata='{"mimetype":"image/jpeg","size":6}' where bucket_id='install-media' and name=v_ordinary;
-  get diagnostics v_n=row_count;
-  execute 'reset role';
-  perform pg_temp.dry_run_check('actual Storage backend ordinary update succeeds',v_n=1);
-  execute 'set local role supabase_storage_admin';
-  v_denied := false;
-  begin
-    update storage.objects set version='replacement' where bucket_id='install-media' and name=v_object_name;
-  exception when insufficient_privilege then v_denied := true;
-  end;
-  execute 'reset role';
-  perform pg_temp.dry_run_check('actual Storage backend cannot replace protected object',v_denied);
+  perform pg_temp.dry_run_check('management-owner protected timestamp update succeeds',v_n=1);
   perform pg_temp.dry_run_act_as(v_actor);
   insert into public.attachments(client_id,project_id,daily_log_id,kind,storage_path,created_by)
     values(v_client,v_job,v_log.id,'photo',v_storage_path,v_mail) returning id into v_photo;
