@@ -233,6 +233,7 @@ export const QUERY_KEY_ROOTS: QueryKeyRootEntry[] = [
   { root: "projectsAll", offline: true, why: "Every job, whatever its status. The unit sheet sits behind a guard that asks this list whether the job is tracking-only (RequireDataJob in App.tsx), and a guard that cannot answer holds a loading screen. Offline that read never resolves — with no connection react-query PAUSES the retry instead of failing it, so the query stays pending for as long as the phone has no signal — and the sheet the whole install loop runs on sat at \"Loading…\" the entire time. Found by the offline e2e spec, 2026-09-04." },
   { root: "projectsTrashed", offline: false },
   { root: "qcInstalled", offline: false },
+  { root: "qcHistory", offline: false },
   { root: "qcPassed", offline: false },
   { root: "qcQueue", offline: false },
   { root: "qcStatusForOpenings", offline: false },

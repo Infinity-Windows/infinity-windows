@@ -575,3 +575,75 @@ export async function setQc(openingId: string, status: "passed" | "callback", de
   });
   if (error) throw error;
 }
+
+export interface QcHistoryRow {
+  id: string;
+  project_opening_id: string;
+  project_id: string | null;
+  job_code: string | null;
+  opening_code: string | null;
+  status: "passed" | "callback";
+  note: string | null;
+  reviewer_id: string | null;
+  reviewer_name: string | null;
+  decided_at: string;
+  source: "review" | "legacy_snapshot" | "legacy_client" | "system";
+}
+
+export interface QcHistoryPage {
+  rows: QcHistoryRow[];
+  hasMore: boolean;
+}
+
+/** Recent QC decisions, including superseded decisions and pre-audit status. */
+export async function listQcHistory(limit = QC_PAGE_SIZE): Promise<QcHistoryPage> {
+  const { data, error } = await supabase.from("qc_decision_events")
+    .select("id, project_opening_id, status, note, reviewer_id, decided_at, source")
+    .order("decided_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(limit + 1);
+  if (error) throw error;
+
+  const events = ((data ?? []) as {
+    id: string; project_opening_id: string; status: "passed" | "callback";
+    note: string | null; reviewer_id: string | null; decided_at: string;
+    source: QcHistoryRow["source"];
+  }[]).slice(0, limit);
+  const openingIds = [...new Set(events.map((event) => event.project_opening_id))];
+  const reviewerIds = [...new Set(events.map((event) => event.reviewer_id).filter((id): id is string => !!id))];
+
+  const [openingsResult, reviewersResult] = await Promise.all([
+    openingIds.length
+      ? supabase.from("project_openings")
+        .select("id, opening_code, project_id, projects(job_code)")
+        .in("id", openingIds)
+      : Promise.resolve({ data: [], error: null }),
+    reviewerIds.length
+      ? supabase.from("profiles").select("id, display_name").in("id", reviewerIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (openingsResult.error) throw openingsResult.error;
+  if (reviewersResult.error) throw reviewersResult.error;
+
+  const openings = new Map(((openingsResult.data ?? []) as unknown as {
+    id: string; opening_code: string; project_id: string;
+    projects: { job_code: string } | null;
+  }[]).map((opening) => [opening.id, opening]));
+  const reviewers = new Map(((reviewersResult.data ?? []) as {
+    id: string; display_name: string;
+  }[]).map((reviewer) => [reviewer.id, reviewer.display_name]));
+
+  return {
+    hasMore: (data?.length ?? 0) > limit,
+    rows: events.map((event) => {
+      const opening = openings.get(event.project_opening_id);
+      return {
+        ...event,
+        project_id: opening?.project_id ?? null,
+        job_code: opening?.projects?.job_code ?? null,
+        opening_code: opening?.opening_code ?? null,
+        reviewer_name: event.reviewer_id ? reviewers.get(event.reviewer_id) ?? null : null,
+      };
+    }),
+  };
+}
