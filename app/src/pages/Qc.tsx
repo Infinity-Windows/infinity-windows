@@ -1,13 +1,12 @@
 import { BackChip } from "../components/BackChip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { getMyProfile } from "../lib/install/api";
 import { isForemanPlus } from "../lib/install/types";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { listQcQueue, setQc } from "../lib/ops";
 import { addPriorityTerm } from "../lib/learn";
-import { resolvePendingPoints } from "../lib/points";
 import { openServiceCase } from "../lib/service";
 import { CATS, TERMS } from "../lib/glossary";
 import { pushToast, toastError } from "../lib/toast";
@@ -63,6 +62,18 @@ export function Qc() {
   const [photoReviewFor, setPhotoReviewFor] = useState<string | null>(null);
   const [photoReview, setPhotoReview] = useState<QcPhotoReview | null>(null);
   const [photoReviewError, setPhotoReviewError] = useState<string | null>(null);
+  // Keep one request ID across a failed send and its retry. A fresh UUID for
+  // every call would turn a double tap or weak-signal retry into two reviews.
+  const decisionIds = useRef(new Map<string, string>());
+  const decisionIdFor = (id: string, status: "passed" | "callback") => {
+    const key = `${id}:${status}`;
+    let requestId = decisionIds.current.get(key);
+    if (!requestId) {
+      requestId = crypto.randomUUID();
+      decisionIds.current.set(key, requestId);
+    }
+    return requestId;
+  };
   const reviewPhoto = useMutation({
     mutationFn: reviewQcPhoto,
     onSuccess: (result) => { setPhotoReviewFor(result.openingId); setPhotoReview(result); setPhotoReviewError(null); },
@@ -80,12 +91,17 @@ export function Qc() {
   >(null);
 
   const decide = useMutation({
-    mutationFn: async (a: { id: string; status: "passed" | "callback" }) => {
-      await setQc(a.id, a.status);
-      // Pass confirms the installer's pending points; callback voids them.
-      await resolvePendingPoints(a.id, a.status === "passed" ? "confirmed" : "void");
+    mutationFn: async (a: { id: string; status: "passed" | "callback"; decisionId: string }) => {
+      await setQc(a.id, a.status, a.decisionId);
+      // The server records the reviewer and resolves pending points in the
+      // same transaction, so a failed request cannot leave half a decision.
     },
-    onSuccess: () => {
+    onSuccess: (_data, a) => {
+      if (a.status === "passed") {
+        decisionIds.current.delete(`${a.id}:passed`);
+        decisionIds.current.delete(`${a.id}:callback`);
+        setCallbackFor((current) => current?.id === a.id ? null : current);
+      }
       // Prefix match: invalidates every ["qcQueue", limit] variant, not just
       // whatever limit is active right now.
       queryClient.invalidateQueries({ queryKey: ["qcQueue"] });
@@ -101,10 +117,11 @@ export function Qc() {
       term: string;
       windowId: string | null;
     }) => {
-      await decide.mutateAsync({ id: a.id, status: "callback" });
+      await decide.mutateAsync({ id: a.id, status: "callback", decisionId: decisionIdFor(a.id, "callback") });
       if (a.term) await addPriorityTerm(a.term, `callback on ${a.code}`);
     },
     onSuccess: (_data, a) => {
+      decisionIds.current.delete(`${a.id}:callback`);
       pushToast("Callback logged — root cause pushed to crew decks.");
       setCallbackFor(null);
       setRootTerm("");
@@ -224,9 +241,10 @@ export function Qc() {
                 >
                   {reviewPhoto.isPending && reviewPhoto.variables === o.id ? "Reviewing photo…" : "AI photo review"}
                 </button>
-                <button className="button-like qc-pass" onClick={() => decide.mutate({ id: o.id, status: "passed" })}>Pass ✓</button>
+                <button className="button-like qc-pass" disabled={decide.isPending || logCallback.isPending} onClick={() => decide.mutate({ id: o.id, status: "passed", decisionId: decisionIdFor(o.id, "passed") })}>Pass ✓</button>
                 <button
                   className="button-like qc-callback"
+                  disabled={decide.isPending || logCallback.isPending}
                   onClick={() => {
                     setCallbackFor({ id: o.id, code: o.opening_code });
                     setRootTerm("");
@@ -276,7 +294,7 @@ export function Qc() {
                   <div className="row-gap">
                     <button
                       className="primary big"
-                      disabled={logCallback.isPending}
+                      disabled={logCallback.isPending || decide.isPending}
                       onClick={() =>
                         logCallback.mutate({
                           id: o.id,
