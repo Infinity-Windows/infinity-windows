@@ -47,7 +47,7 @@ try{
  create schema storage; grant usage on schema storage to authenticated,anon,service_role,supabase_storage_admin;
  create table storage.buckets(id text primary key,name text,public boolean default false,file_size_limit bigint,allowed_mime_types text[]);
  insert into storage.buckets(id,name) values('install-media','install-media');
- create table storage.objects(id uuid primary key default gen_random_uuid(),bucket_id text not null,name text not null,owner uuid,owner_id text,metadata jsonb,created_at timestamptz default now(),updated_at timestamptz default now(),last_accessed_at timestamptz default now(),version text,synthetic_payload bytea,unique(bucket_id,name));
+ create table storage.objects(id uuid primary key default gen_random_uuid(),bucket_id text not null,name text not null,owner uuid,owner_id text,metadata jsonb,created_at timestamptz default now(),updated_at timestamptz default now(),last_accessed_at timestamptz default now(),version text,synthetic_payload bytea,future_metadata text,path_tokens text[] generated always as (string_to_array(name,'/')) stored,derived_name text generated always as (md5(name)) stored,unique(bucket_id,name));
  create function storage.foldername(name text) returns text[] language sql immutable as $$select (string_to_array(name,'/'))[:array_length(string_to_array(name,'/'),1)-1]$$;
  alter table storage.objects enable row level security;
  grant select,insert,update,delete on storage.objects to authenticated,supabase_storage_admin;
@@ -81,8 +81,8 @@ try{
  // Full feature SQL: any changes to its lifecycle functions/policies are applied intact.
  await apply('20261064010000_daily_log_photos.sql');
  await apply('20261064010000_daily_log_photos.sql');
- await apply('20261103000000_daily_log_photo_helper_permissions.sql');
- await apply('20261103000000_daily_log_photo_helper_permissions.sql');
+ await apply('20261103000000_daily_log_photo_storage_permissions.sql');
+ await apply('20261103000000_daily_log_photo_storage_permissions.sql');
  report.migrationReplay=true;
  for(const k of ['a','b','lead','partner','revoked','retired','unrelated']){
   await q("insert into profiles(id,role,display_name,is_partner,partner,retired_at,access_revoked_at) values($1,$2,$3,$4,$4,case when $5 then now() end,case when $6 then now() end)",[ids[k],k==='lead'?'supervisor':'installer',`Synthetic ${k}`,k==='partner',k==='retired',k==='revoked']);
@@ -107,6 +107,7 @@ try{
  });
  await test('Storage backend ordinary update remains permitted',async()=>{await actor(null);await putObject('a','ordinary/backend.jpg');await db.exec('set role supabase_storage_admin');assert((await q("update storage.objects set metadata='{}' where name='ordinary/backend.jpg' returning id")).rows.length===1,'Ordinary backend update blocked');});
  await test('Storage backend protected timestamp refresh remains permitted',async()=>{await ownPhoto();await actor(null);await db.exec('set role supabase_storage_admin');assert((await q('update storage.objects set last_accessed_at=now(),updated_at=now() where name=$1 returning id',[path()])).rows.length===1,'Backend timestamp update blocked');});
+ await test('protected future writable field remains immutable despite generated exclusions',async()=>{await ownPhoto();await actor(null);await db.exec('set role supabase_storage_admin');return denied("update storage.objects set future_metadata='tampered' where name=$1 returning id",[path()]);});
  await test('Storage backend protected replacement remains refused',async()=>{await ownPhoto();await actor(null);await db.exec('set role supabase_storage_admin');return denied("update storage.objects set version='replacement' where name=$1 returning id",[path()]);});
  await test('own upload and exact association retry',async()=>{await ownPhoto(); const r=await q("insert into attachments(client_id,project_id,storage_path,created_by,kind,daily_log_id) values($1,$2,$3,$4,'photo',$5) on conflict(client_id) do update set project_id=excluded.project_id,storage_path=excluded.storage_path,created_by=excluded.created_by,kind=excluded.kind,daily_log_id=excluded.daily_log_id returning id",[ids.client,ids.job,`install-media/${path()}`,email('a'),ids.log]);assert(r.rows[0]?.id===ids.photo,'Retry did not preserve original photo');});
  for(const [field,value]of [['created_by',email('b')],['kind','document'],['storage_path',`install-media/${path('a','different')}`],['daily_log_id',null],['project_id',null],['client_id',randomUUID()],['id',randomUUID()],['package_id',ids.pkg],['window_id',ids.pkg],['install_event_id',ids.pkg],['project_opening_id',ids.pkg],['service_case_id',ids.pkg]])await test(`immutable tagged tuple: ${field}`,async()=>{await ownPhoto();return denied(`update attachments set ${field}=$1 where id=$2 returning id`,[value,ids.photo]);});

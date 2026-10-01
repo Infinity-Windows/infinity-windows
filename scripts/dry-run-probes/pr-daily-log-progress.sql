@@ -17,6 +17,7 @@ begin
     has_function_privilege('authenticated','public._is_daily_log_photo_name(text)','execute') and
     has_function_privilege('service_role','public._is_daily_log_photo_name(text)','execute') and
     has_function_privilege('supabase_storage_admin','public._is_daily_log_photo_name(text)','execute'));
+  perform pg_temp.dry_run_check('provider generated columns observed',exists(select 1 from pg_attribute where attrelid='storage.objects'::regclass and attnum>0 and not attisdropped and attgenerated<>''), (select string_agg(attname,', ' order by attnum) from pg_attribute where attrelid='storage.objects'::regclass and attnum>0 and not attisdropped and attgenerated<>''));
   perform pg_temp.dry_run_check('classifier remains SECURITY INVOKER',(select not prosecdef from pg_proc where oid='public._is_daily_log_photo_name(text)'::regprocedure));
   execute 'set local role anon';
   v_denied := false;
