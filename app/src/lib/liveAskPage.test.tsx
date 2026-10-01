@@ -118,6 +118,7 @@ const mount = async () => {
 };
 const button = (label: string) => host!.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
 const startLive = async () => {
+  expect(button("Start live conversation")?.textContent?.trim()).toBe("Start Live Chat");
   await act(async () => button("Start live conversation")!.click());
   await act(async () => state.live!.options.onStatus("live"));
   await settle();
@@ -192,6 +193,17 @@ describe("Live Ask on the Ask page", () => {
     await mount();
     expect(button("Start live conversation")).toBeNull();
     expect(button("Record a voice message")).not.toBeNull();
+  });
+
+  it("offers a manual AI issue report after a failed live session", async () => {
+    await mount();
+    await startLive();
+    await act(async () => state.live!.options.onStatus("failed", "connection"));
+    await settle();
+    expect(host!.textContent).toContain("Report an AI issue");
+    await act(async () => [...host!.querySelectorAll<HTMLButtonElement>("button")].find((item) => item.textContent?.trim() === "Report an AI issue")!.click());
+    expect(host!.querySelector<HTMLTextAreaElement>(".ai-issue-preview textarea")?.value).toContain("AI issue — Live Chat");
+    expect(host!.textContent).toContain("Only this text is sent.");
   });
 
   it("saves the original audio BEFORE asking, as a voice request bound to this account", async () => {
@@ -330,6 +342,7 @@ describe("Live Ask on the Ask page", () => {
     expect(host!.textContent).toContain("About 30 seconds left");
     await act(async () => first.options.onStatus("ended", "cap"));
     expect(button("Continue live conversation")).not.toBeNull();
+    expect(button("Continue live conversation")?.textContent?.trim()).toBe("Continue Live Chat");
     await act(async () => button("Continue live conversation")!.click());
     expect(state.live).not.toBe(first);
     expect(state.live!.end).not.toHaveBeenCalled();

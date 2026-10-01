@@ -1320,6 +1320,23 @@ export function quizQuestion(term: Term): { prompt: string; options: Term[]; ans
   return { prompt: term.desc, options, answer: term };
 }
 
+/** Draw each answer once per round, preferring questions absent last round. */
+function roundSample<T extends { id: string }>(items: T[], count: number, previousIds: string[], rnd: () => number): T[] {
+  const previous = new Set(previousIds);
+  const shuffle = (xs: T[]) => {
+    for (let i = xs.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.min(Math.max(rnd(), 0), 0.999999999) * (i + 1));
+      [xs[i], xs[j]] = [xs[j], xs[i]];
+    }
+    return xs;
+  };
+  return [...shuffle(items.filter((item) => !previous.has(item.id))), ...shuffle(items.filter((item) => previous.has(item.id)))].slice(0, count);
+}
+
+export function quizRound(previousIds: string[] = [], rnd: () => number = Math.random) {
+  return roundSample(TERMS, 5, previousIds, rnd).map(quizQuestion);
+}
+
 // --- Install-sequence "what comes next?" game ---
 
 /** The ordered step list for a window or door install (main + branch). */
@@ -1329,13 +1346,24 @@ export function procSequence(branch: "win" | "door"): ProcStep[] {
   );
 }
 
+/** Quiz numbering follows the chosen branch; source steps and IDs stay intact. */
+export function procDisplayStep(branch: "win" | "door", id: string): number {
+  return procSequence(branch).findIndex((step) => step.id === id) + 1;
+}
+
+export function sequenceRound(branch: "win" | "door", previousIds: string[] = [], rnd: () => number = Math.random) {
+  return roundSample(procSequence(branch).slice(0, -1), 5, previousIds, rnd).map((step) => nextStepQuestion(branch, rnd, step.id));
+}
+
 /** Pick a step and ask which one comes next, with plausible distractors. */
 export function nextStepQuestion(
   branch: "win" | "door",
   rnd: () => number = Math.random,
+  currentId?: string,
 ): { current: ProcStep; options: ProcStep[]; answer: ProcStep } {
   const seq = procSequence(branch);
-  const i = Math.floor(rnd() * (seq.length - 1));
+  const requested = currentId ? seq.findIndex((step) => step.id === currentId) : -1;
+  const i = requested >= 0 && requested < seq.length - 1 ? requested : Math.floor(rnd() * (seq.length - 1));
   const current = seq[i];
   const answer = seq[i + 1];
   const distractors = seq

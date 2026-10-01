@@ -3,6 +3,7 @@ import { Utils } from '../core/utils'
 import type { HalfEdge } from '../model/half_edge'
 import type { Floorplan } from '../model/floorplan'
 import type { Controls } from './controls'
+import { MODEL_PALETTE, wallTintForTexture } from '../../modelPalette'
 
 export class Edge {
   private readonly scene: THREE.Scene
@@ -15,10 +16,9 @@ export class Edge {
   private basePlanes: THREE.Mesh[] = [] // always visible
   private texture: THREE.Texture | null = null
   private currentTextureUrl: string = ''
-  // Brightened colors for Three.js r181
-  private readonly fillerColor = 0xffffff
-  private readonly sideColor = 0xeeeeee
-  private readonly baseColor = 0xffffff
+  private readonly fillerColor = MODEL_PALETTE.wall
+  private readonly sideColor = MODEL_PALETTE.wallSide
+  private readonly baseColor = MODEL_PALETTE.wall
 
   public visible = false
 
@@ -174,7 +174,8 @@ export class Edge {
   private updatePlanes(): void {
     // Switched to MeshLambertMaterial for proper lighting interaction
     const wallMaterial = new THREE.MeshLambertMaterial({
-      color: 0xffffff,
+      // Tint only the bundled default wall; a saved custom texture keeps its color.
+      color: wallTintForTexture(this.edge.getTexture().url),
       side: THREE.FrontSide,
       map: this.texture,
       emissive: 0xffffff,       // Keeps walls bright

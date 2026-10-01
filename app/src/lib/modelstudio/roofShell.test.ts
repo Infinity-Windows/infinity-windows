@@ -5,6 +5,7 @@
 import { describe, expect, it } from "vitest";
 import * as THREE from "three";
 import { buildRoof } from "./roofShell";
+import { buildFloorShell } from "./floorShell";
 import type { LiteWall } from "./floors";
 
 function rect(x0: number, y0: number, x1: number, y1: number, height = 250): LiteWall[] {
@@ -29,6 +30,10 @@ describe("buildRoof", () => {
     expect(group.children).toHaveLength(5);
     const meshes = group.children as THREE.Mesh[];
     expect(meshes.every((m) => m instanceof THREE.Mesh)).toBe(true);
+    const roof = (meshes[0].material as THREE.MeshLambertMaterial).color;
+    const wall = ((buildFloorShell(rect(0, 0, 500, 400), 0, false).children[0] as THREE.Mesh).material as THREE.MeshLambertMaterial).color;
+    // The roof is visibly darker than the wall in both light and dark themes.
+    expect(wall.r + wall.g + wall.b - (roof.r + roof.g + roof.b)).toBeGreaterThan(0.8);
   });
 
   it("sits the deck above the parapet, which sits at the walls' top", () => {

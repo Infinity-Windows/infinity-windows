@@ -6,6 +6,7 @@
 // later swaps materials, not this layout math.
 
 import * as THREE from "three";
+import { MODEL_PALETTE } from "./modelPalette";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import type { StudioItem } from "./core";
 import {
@@ -39,16 +40,15 @@ export const UNIT_GEOMETRY_DEFAULTS: Required<UnitGeometryOptions> = {
 
 /**
  * Frame + glass hex per color choice (Studio 100x #47). "white" is
- * load-bearing: it's byte-for-byte the hardcoded hex this file used before
- * frameColor existed, so an absent/undefined choice (every unit built
- * before this field, and every catalog unit that never picks a color)
- * renders pixel-identical to today.
+ * load-bearing: an absent choice and an explicit white choice render the
+ * same frame. Default glass is neutral so it remains distinct from the
+ * warm shell and slate roof in the phone viewer.
  */
 export const FRAME_COLOR_HEXES: Record<
   NonNullable<UnitConfig["frameColor"]>,
   { frame: number; glass: number }
 > = {
-  white: { frame: 0xf4f1ec, glass: 0x9fc4d4 },
+  white: { frame: 0xf4f1ec, glass: MODEL_PALETTE.defaultGlass },
   bronze: { frame: 0x5c4630, glass: 0x8a7a5c },
   black: { frame: 0x2a2a2a, glass: 0x6e7d82 },
 };

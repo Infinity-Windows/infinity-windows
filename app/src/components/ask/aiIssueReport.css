@@ -1,0 +1,7 @@
+.ai-issue-report { margin-top: 10px; font-size: 13px; overflow-wrap: anywhere; }
+.ai-issue-report > .link { min-height: 36px; }
+.ai-issue-preview { padding: 12px; margin-top: 6px; border: 1px solid var(--line); border-radius: 14px; background: var(--card-raised); }
+.ai-issue-preview p { margin: 0 0 8px; }
+.ai-issue-preview label { display: grid; gap: 6px; }
+.ai-issue-preview textarea { width: 100%; min-width: 0; box-sizing: border-box; font-size: 16px; }
+.ai-issue-preview .row-gap { margin-top: 10px; flex-wrap: wrap; }

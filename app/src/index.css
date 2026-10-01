@@ -5491,6 +5491,15 @@ button.clock-out {
   font-size: 20px;
   font-weight: 700;
 }
+.ask-input .ask-send {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+.ask-input .ask-send:disabled { box-shadow: none; }
+.ask-input .ask-send:focus-visible,
+.ask-live-button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 
 /* Forge AI field work: mic, checklist, receipt and choice cards. Thumb-sized
    targets; a waiting choice is visually distinct from a saved receipt. */
@@ -5511,6 +5520,28 @@ button.clock-out {
   color: #fff;
 }
 .ask-mic-seconds { font-size: 14px; font-variant-numeric: tabular-nums; }
+.ask-live { display: flex; justify-content: flex-start; margin-top: 8px; }
+.ask-live-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 44px;
+  max-width: 100%;
+  padding: 0 14px;
+  border: 1px solid var(--accent-line);
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.ask-live-button.recording {
+  border-color: var(--danger, #c0392b);
+  color: var(--danger, #c0392b);
+  background: var(--card-raised);
+}
 
 /* The composer, and while the microphone is on, the recorder pinned to the
    bottom of the screen (owner's note, 2026-09-24: "the chat bar that shows

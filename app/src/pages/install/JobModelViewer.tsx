@@ -427,7 +427,10 @@ export function JobModelViewer() {
 
   useEffect(() => {
     const host = hostRef.current;
-    if (!host || !savedSerialized || bpRef.current) return;
+    // The model can arrive while the cache check still shows the loading
+    // branch. Wait for the host to mount before booting; otherwise this effect
+    // sees a null ref once and never runs again for the same serialized model.
+    if (stillWorking || !host || !savedSerialized || bpRef.current) return;
     host.innerHTML = "";
     const el = document.createElement("div");
     el.id = "job-model-viewer-three";
@@ -486,7 +489,7 @@ export function JobModelViewer() {
     return () => {
       bpRef.current = null;
     };
-  }, [savedSerialized, roofStyle]);
+  }, [savedSerialized, roofStyle, stillWorking]);
 
   // Tap-to-inspect: the vendor's own hover-based item selection never fires
   // on a touchscreen (there is no hover before a tap), so a plain raycast

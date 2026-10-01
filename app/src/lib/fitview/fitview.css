@@ -1843,12 +1843,12 @@ a.tb-tag:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; 
      Walls step darker front → side → rear exactly as before so the 3D read
      (light direction) is preserved; sky fades toward the app background so
      the model sits IN the page instead of floating on a foreign color. */
-  --wall-front: oklch(0.31 0.018 35);
-  --wall-side: oklch(0.26 0.017 35);
-  --wall-rear: oklch(0.215 0.016 35);
-  --gable: oklch(0.26 0.017 35);
-  --roof-a: oklch(0.19 0.015 35);
-  --roof-b: oklch(0.16 0.014 35);
+  --wall-front: #6c5b50;
+  --wall-side: #4e423b;
+  --wall-rear: #363335;
+  --gable: #4e423b;
+  --roof-a: #242c35;
+  --roof-b: #141b24;
   --ridge: oklch(0.13 0.012 35);
   --fascia: oklch(0.38 0.02 35);
   --cill: oklch(0.4 0.022 45);
@@ -1857,8 +1857,10 @@ a.tb-tag:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; 
   --sky-c: oklch(0.12 0.02 120);
   --shadow-gnd: rgba(0, 0, 0, 0.5);
   --grass: oklch(0.3 0.06 140 / 0.4);
-  /* Glass stays cool on purpose — real glazing reads blue-green, and the
-     contrast against warm walls is what makes openings pop. */
+  /* Opaque neutral glass separates openings from walls. Blue belongs to the
+     unassigned status frame; translucent blue glass made those edges blend. */
+  --glass: #c7d0d6;
+  --glass-2: #9faeb9;
 }
 
 /* stories: with a story focused, the rest of the building drops to a dim

@@ -7,8 +7,11 @@ import {
   nextBox,
   nextStepQuestion,
   PROC,
+  procDisplayStep,
   procSequence,
   quizQuestion,
+  quizRound,
+  sequenceRound,
   TERMS,
   type CardProgress,
 } from "./glossary";
@@ -39,6 +42,20 @@ describe("install-sequence game", () => {
     const idx = seq.findIndex((s) => s.id === q.current.id);
     expect(seq[idx + 1].id).toBe(q.answer.id);
     expect(q.options).toContainEqual(q.answer);
+  });
+  it("samples five different next-step questions and avoids last round when possible", () => {
+    const first = sequenceRound("door");
+    const second = sequenceRound("door", first.map((q) => q.current.id));
+    expect(new Set(first.map((q) => q.current.id)).size).toBe(5);
+    expect(new Set(second.map((q) => q.current.id)).size).toBe(5);
+    expect(second.some((q) => first.some((previous) => previous.current.id === q.current.id))).toBe(false);
+  });
+  it("shows consecutive door numbers without changing the source procedure", () => {
+    const door = procSequence("door");
+    expect(door.map((step) => procDisplayStep("door", step.id))).toEqual(door.map((_, i) => i + 1));
+    expect(procDisplayStep("door", "d3")).toBe(8);
+    expect(procDisplayStep("door", "pr6")).toBe(9);
+    expect(PROC.find((step) => step.id === "pr6")?.step).toBe(10);
   });
 });
 
@@ -87,5 +104,12 @@ describe("quizQuestion", () => {
     const q = quizQuestion(TERMS[0]);
     expect(q.options).toHaveLength(4);
     expect(q.options.some((o) => o.id === q.answer.id)).toBe(true);
+  });
+  it("draws unique terms across a round and prefers new terms the next round", () => {
+    const first = quizRound();
+    const second = quizRound(first.map((q) => q.answer.id));
+    expect(new Set(first.map((q) => q.answer.id)).size).toBe(5);
+    expect(new Set(second.map((q) => q.answer.id)).size).toBe(5);
+    expect(second.some((q) => first.some((previous) => previous.answer.id === q.answer.id))).toBe(false);
   });
 });

@@ -6,6 +6,7 @@
 // engine, through a `window.__jobModelViewer` debug handle mirroring
 // ModelStudio's own `window.__studio`.
 import { expect, test } from "@playwright/test";
+import { hideWrongProjectBanner } from "./support/specHelpers";
 import { jobFixtures, openingsFor, useSupabaseFixtures } from "./support/supabaseFixtures";
 
 const BLACK22 = jobFixtures().find((j) => j.jobCode === "BLACK22")!;
@@ -58,7 +59,7 @@ function twoWindowRoomSerialized(): string {
   });
 }
 
-async function useModelOutline(page: import("@playwright/test").Page, projectId: string) {
+async function useModelOutline(page: import("@playwright/test").Page, projectId: string, roof: "none" | "flat" = "none") {
   await page.route("**/rest/v1/project_plan_outlines**", (route) =>
     route.fulfill({
       status: 200,
@@ -75,6 +76,7 @@ async function useModelOutline(page: import("@playwright/test").Page, projectId:
           features: {
             modelstudio: {
               serialized: twoWindowRoomSerialized(),
+              roof,
               savedAt: "2026-08-20T00:00:00Z",
             },
           },
@@ -163,6 +165,7 @@ test("viewer assign: tap units in order, pick a person, sequenced RPCs fire in t
     c.update?.();
   });
   await page.waitForTimeout(300);
+  await page.screenshot({ path: "e2e/test-results/job-model-contrast-390.png" });
 
   await page.getByRole("button", { name: "Assign", exact: true }).click();
 
@@ -192,4 +195,25 @@ test("viewer assign: tap units in order, pick a person, sequenced RPCs fire in t
   // without re-entering (unlike the map, which exits on every assign).
   await expect(page.getByText("0 picked")).toBeVisible();
   await expect(page.getByRole("button", { name: "Assign: on" })).toBeVisible();
+});
+
+
+test("model loads after its cache check with distinct roof, wall and glass surfaces", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await hideWrongProjectBanner(page);
+  await page.addInitScript(() => localStorage.setItem("infinity.theme", "dark"));
+  await useSupabaseFixtures(page, { role: "installer" });
+  await useModelOutline(page, BLACK22.projectId, "flat");
+  await page.goto(`/projects/${BLACK22.projectId}/model`);
+  await page.waitForFunction(() => (window as any).__jobModelViewer?.model?.scene?.getItems?.()?.length === 2, undefined, { timeout: 60_000 });
+  await page.evaluate(() => {
+    const bp = (window as any).__jobModelViewer;
+    const controls = bp.three.controls;
+    controls.object.position.set(1800, 1100, 2100);
+    controls.target?.set?.(500, 100, 300);
+    controls.update?.();
+  });
+  await expect(page.locator("#job-model-viewer-three canvas")).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath("model-palette-phone.png") });
 });

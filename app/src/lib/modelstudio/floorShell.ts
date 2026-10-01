@@ -7,15 +7,16 @@
 import * as THREE from "three";
 import { outerPolygons } from "./toFitview";
 import type { LiteWall } from "./floors";
+import { MODEL_PALETTE } from "./modelPalette";
 
 const M_TO_CM = 100;
 
 const SHELL_WALL = new THREE.MeshLambertMaterial({
-  color: 0xdcd7d0,
+  color: MODEL_PALETTE.wall,
   side: THREE.DoubleSide,
 });
 const SHELL_LID = new THREE.MeshLambertMaterial({
-  color: 0xcfc9c1,
+  color: MODEL_PALETTE.floorLid,
   side: THREE.DoubleSide,
 });
 
