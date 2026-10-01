@@ -13,9 +13,10 @@
 // no the same words come back here, in the phone's language.
 
 import { useMemo, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { Play, Pause, Check, Plus } from "lucide-react";
+import { Play, Pause, Check, Plus, X } from "lucide-react";
+import { listProjects } from "../../lib/api";
 import { startOpeningWork } from "../../lib/install/api";
 import { isToolboxGateError } from "../../lib/install/installTimer";
 import { areaKey } from "../../lib/install/nextOpening";
@@ -30,6 +31,7 @@ import { formatApiError } from "../../lib/errors";
 import { pushToast } from "../../lib/toast";
 import type { TimeShift } from "../../lib/timeclock";
 import { isPendingShiftId } from "../../lib/work/startDay";
+import { openClockGlobally } from "../../lib/clockContext";
 import type { NextUp } from "../../lib/work/nextUp";
 import { Sheet } from "../ui/Sheet";
 
@@ -58,6 +60,7 @@ export function YourUnit({ nextUp, locked, jobId, shift, work, now }: YourUnitPr
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [adding, setAdding] = useState(false);
+  const [justAdded, setJustAdded] = useState<WorkUnit | null>(null);
   const clockState = timed(shift);
 
   // Forge refused because today's talk is not signed. The button was live
@@ -117,6 +120,7 @@ export function YourUnit({ nextUp, locked, jobId, shift, work, now }: YourUnitPr
         description: "",
         delay_reason: "",
       });
+      setJustAdded(null);
     });
 
   const stopUnit = (outcome: "partial" | "finished") =>
@@ -209,7 +213,7 @@ export function YourUnit({ nextUp, locked, jobId, shift, work, now }: YourUnitPr
               onClick={() => startOpening.mutate(o)} data-testid="ws-unit-start">
               <Play size={20} aria-hidden /> {startOpening.isPending ? t("work.unit.starting") : t("work.unit.start")}
             </button>
-            <button type="button" className="ws-btn" disabled={!jobId || blocked} onClick={() => setAdding(true)} data-testid="ws-unit-new">
+            <button type="button" className="ws-btn" disabled={blocked} onClick={() => setAdding(true)} data-testid="ws-unit-new">
               <Plus size={18} aria-hidden /> {t("work.unit.new")}
             </button>
           </div>
@@ -234,7 +238,7 @@ export function YourUnit({ nextUp, locked, jobId, shift, work, now }: YourUnitPr
               onClick={() => void startUnit(u)} data-testid="ws-unit-start">
               <Play size={20} aria-hidden /> {t("work.unit.start")}
             </button>
-            <button type="button" className="ws-btn" disabled={!jobId || blocked} onClick={() => setAdding(true)} data-testid="ws-unit-new">
+            <button type="button" className="ws-btn" disabled={blocked} onClick={() => setAdding(true)} data-testid="ws-unit-new">
               <Plus size={18} aria-hidden /> {t("work.unit.new")}
             </button>
           </div>
@@ -251,7 +255,7 @@ export function YourUnit({ nextUp, locked, jobId, shift, work, now }: YourUnitPr
         <button
           type="button"
           className="ws-btn ws-btn--primary"
-          disabled={!jobId || blocked}
+          disabled={blocked}
           onClick={() => setAdding(true)}
           data-testid="ws-unit-new"
         >
@@ -271,30 +275,56 @@ export function YourUnit({ nextUp, locked, jobId, shift, work, now }: YourUnitPr
         </div>
       )}
       {body}
-      {nextUp.kind === "running" && jobId && (
+      {justAdded && !(nextUp.kind === "running" && nextUp.source === "unit" && nextUp.unit.id === justAdded.id) && (
+        <div className="ws-just-added" data-testid="ws-just-added">
+          <p className="ws-label">{t("work.unit.justAdded")}</p>
+          <p className="ws-unit-title">{justAdded.label} <span className="ws-unit-type">{justAdded.type_label}</span></p>
+          <div className="ws-unit-action-row">
+            {canStartNewUnit && justAdded.project_id === shift?.project_id ? (
+              <button type="button" className="ws-btn ws-btn--primary" disabled={blocked}
+                onClick={() => void startUnit(justAdded)}>
+                <Play size={18} aria-hidden /> {t("work.unit.start")}
+              </button>
+            ) : (
+              <button type="button" className="ws-btn" onClick={() => openClockGlobally({ projectId: justAdded.project_id, costCodeId: null, note: null, mode: null, switchToProject: true })}>
+                {t("work.unit.openClock")}
+              </button>
+            )}
+            <button type="button" className="ws-btn" onClick={() => navigate(`/current-work?job=${justAdded.project_id}&unit=${justAdded.id}`)}>
+              {t("work.unit.details")}
+            </button>
+          </div>
+        </div>
+      )}
+      {nextUp.kind === "running" && (
         <button type="button" className="ws-btn ws-unit-add" disabled={blocked} onClick={() => setAdding(true)} data-testid="ws-unit-new">
           <Plus size={18} aria-hidden /> {t("work.unit.new")}
         </button>
       )}
-      {adding && jobId && (
+      {adding && (
         <NewUnitSheet
           jobId={jobId}
           units={work.units}
           types={work.types}
           busy={blocked}
-          canStart={canStartNewUnit}
+          startJobId={canStartNewUnit ? shift?.project_id ?? null : null}
+          startHint={locked ? t("work.toolbox.locked")
+            : clockState === "pending" ? t("work.prep.pendingClock")
+              : clockState === "break" ? t("clock.title.endBreakToSwitch")
+                : t("work.unit.startAfterClock")}
           onClose={() => setAdding(false)}
           onUseExisting={(u) => {
             setAdding(false);
-            void startUnit(u);
+            if (canStartNewUnit && u.project_id === shift?.project_id) void startUnit(u);
+            else navigate(`/current-work?job=${u.project_id}&unit=${u.id}`);
           }}
-          onCreate={async (label, type, start) => {
+          onCreate={async (label, type, selectedJobId, start) => {
             setBusy(true);
             setError("");
             try {
               const unit: WorkUnit = {
                 id: crypto.randomUUID(),
-                project_id: jobId,
+                project_id: selectedJobId,
                 opening_id: null,
                 created_by: work.user ?? "",
                 label,
@@ -344,9 +374,13 @@ export function YourUnit({ nextUp, locked, jobId, shift, work, now }: YourUnitPr
                 if (failed.action === "start" && isToolboxGateError(failed.error) && work.user) {
                   await dropWorkCommand(work.user, failed.id);
                   setError(refusedForTalk());
+                  setJustAdded(unit);
                 } else {
                   setError(formatApiError(failed.error));
+                  if (failed.action === "start") setJustAdded(unit);
                 }
+              } else {
+                setJustAdded(unit);
               }
             } catch (e) {
               setError(isToolboxGateError(e) ? refusedForTalk() : formatApiError(e));
@@ -370,28 +404,44 @@ function NewUnitSheet({
   units,
   types,
   busy,
-  canStart,
+  startJobId,
+  startHint,
   onClose,
   onUseExisting,
   onCreate,
 }: {
-  jobId: string;
+  jobId: string | null;
   units: readonly WorkUnit[];
   types: readonly WorkType[];
   busy: boolean;
-  canStart: boolean;
+  startJobId: string | null;
+  startHint: string;
   onClose: () => void;
   onUseExisting: (u: WorkUnit) => void;
-  onCreate: (label: string, type: string, start: boolean) => Promise<void>;
+  onCreate: (label: string, type: string, jobId: string, start: boolean) => Promise<void>;
 }) {
   const t = useT();
   const [label, setLabel] = useState("");
   const [type, setType] = useState("");
-  const dupes = useMemo(() => matchingUnits(units, jobId, label), [units, jobId, label]);
+  const [selectedJobId, setSelectedJobId] = useState(jobId ?? "");
+  const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
+  const dupes = useMemo(() => matchingUnits(units, selectedJobId || null, label), [units, selectedJobId, label]);
   const exact = dupes.some((u) => u.label.trim().toLowerCase() === label.trim().toLowerCase());
+  const canStart = !!startJobId && selectedJobId === startJobId;
   return (
     <Sheet open onClose={onClose} label={t("work.unit.new")} className="ws-sheet">
-      <h2 className="ws-sheet-title">{t("work.unit.new")}</h2>
+      <div className="ws-sheet-header">
+        <button type="button" className="ws-btn ws-sheet-close" onClick={onClose} aria-label={t("work.unit.close")}>
+          <X size={20} aria-hidden />
+        </button>
+        <h2 className="ws-sheet-title">{t("work.unit.new")}</h2>
+      </div>
+      <label className="ws-label" htmlFor="ws-new-unit-job">{t("work.unit.job")}</label>
+      <select id="ws-new-unit-job" className="ws-input" value={selectedJobId} onChange={(e) => setSelectedJobId(e.target.value)}>
+        <option value="">{t("work.unit.chooseJob")}</option>
+        {jobId && !projects.data?.some((p) => p.id === jobId) && <option value={jobId}>{t("work.unit.currentJob")}</option>}
+        {projects.data?.map((p) => <option key={p.id} value={p.id}>{p.job_code} · {p.name}</option>)}
+      </select>
       <label className="ws-label" htmlFor="ws-new-unit-label">{t("work.unit.label")}</label>
       <input
         id="ws-new-unit-label"
@@ -400,14 +450,13 @@ function NewUnitSheet({
         onChange={(e) => setLabel(e.target.value)}
         placeholder="16"
         maxLength={120}
-        autoFocus
       />
       {dupes.length > 0 && (
         <div className="ws-dupes" data-testid="ws-dupes">
           <p className="ws-meta">{t("work.unit.duplicate")}</p>
           <div className="ws-chip-row ws-chip-row--wrap">
             {dupes.slice(0, 6).map((u) => (
-              <button key={u.id} type="button" className="ws-chip ws-chip--on" disabled={!canStart} onClick={() => onUseExisting(u)}>
+              <button key={u.id} type="button" className="ws-chip ws-chip--on" disabled={busy} onClick={() => onUseExisting(u)}>
                 {t("work.unit.useExisting", { label: `${u.label} · ${u.type_label}` })}
               </button>
             ))}
@@ -429,17 +478,18 @@ function NewUnitSheet({
       <button
         type="button"
         className="ws-btn ws-btn--primary"
-        disabled={busy || !label.trim() || !type.trim() || exact}
-        onClick={() => void onCreate(label.trim(), type.trim(), false)}
+        disabled={busy || !selectedJobId || !label.trim() || !type.trim() || exact}
+        onClick={() => void onCreate(label.trim(), type.trim(), selectedJobId, false)}
       >
         <Plus size={20} aria-hidden /> {t("work.unit.save")}
       </button>
       {canStart && (
-        <button type="button" className="ws-btn" disabled={busy || !label.trim() || !type.trim() || exact}
-          onClick={() => void onCreate(label.trim(), type.trim(), true)}>
+        <button type="button" className="ws-btn" disabled={busy || !selectedJobId || !label.trim() || !type.trim() || exact}
+          onClick={() => void onCreate(label.trim(), type.trim(), selectedJobId, true)}>
           <Play size={20} aria-hidden /> {t("work.unit.saveStart")}
         </button>
       )}
+      {!canStart && selectedJobId && <p className="ws-meta">{startHint}</p>}
       <button type="button" className="ws-btn ws-btn--ghost" onClick={onClose}>
         {t("work.prep.cancel")}
       </button>

@@ -20,6 +20,7 @@
 // own chunk (lib/i18n/workCatalog.ts).
 
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { useIsRestoring, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ClockStrip } from "../../components/work/ClockStrip";
 import { HeadsUps } from "../../components/work/HeadsUps";
@@ -30,6 +31,7 @@ import { YourUnit } from "../../components/work/YourUnit";
 import { LiveSummonsStrip } from "../../components/install/LiveSummonsStrip";
 import { useClock } from "../../lib/clockContext";
 import { getCompanySettings } from "../../lib/companySettings";
+import { listProjectsAnyStatus } from "../../lib/api";
 import { useWork } from "../../lib/customWork/useWork";
 import { useT } from "../../lib/i18n";
 import "../../lib/i18n/workCatalog";
@@ -129,6 +131,15 @@ export function WorkScreen() {
   // Units: my plan openings everywhere, the job's openings for "available",
   // session blocks so a blocked unit is never recommended, and custom work.
   const work = useWork();
+  const recentUnits = useMemo(() => work.units
+    .filter((unit) => unit.created_by === profileId)
+    .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
+    .slice(0, 4), [work.units, profileId]);
+  const unitJobs = useQuery({
+    queryKey: ["projectsAll"],
+    queryFn: listProjectsAnyStatus,
+    enabled: recentUnits.length > 0,
+  });
   const myOpenings = useQuery({
     queryKey: ["myOpenings", profileId],
     queryFn: () => listMyOpeningsAllJobs(profileId!),
@@ -275,6 +286,24 @@ export function WorkScreen() {
         locked={locked}
         now={now}
       />
+      {recentUnits.length > 0 && (
+        <section className="ws-card ws-recent-units" aria-label={t("work.unit.savedUnits")} data-testid="ws-saved-units">
+          <h2 className="ws-h2">{t("work.unit.savedUnits")}</h2>
+          <p className="ws-meta">{t("work.unit.savedUnitsHelp")}</p>
+          {recentUnits.map((unit) => {
+            const job = unitJobs.data?.find((row) => row.id === unit.project_id);
+            return (
+              <Link className="ws-saved-unit" key={unit.id}
+                to={`/current-work?job=${unit.project_id ?? ""}&unit=${unit.id}`}>
+                <span><strong>{unit.label}</strong> · {unit.type_label}</span>
+                <span className="ws-meta">{job ? `${job.job_code} · ${job.name}` : t("work.unit.assignedJob")}</span>
+                <span className="ws-saved-unit-open">{t("work.unit.details")} ›</span>
+              </Link>
+            );
+          })}
+          <Link className="ws-btn" to="/current-work">{t("work.unit.allUnits")}</Link>
+        </section>
+      )}
       {lead && <LeadRow role={effectiveRole} />}
     </div>
   );

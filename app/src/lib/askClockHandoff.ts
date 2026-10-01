@@ -25,11 +25,11 @@ export function askClockPick(handoff: AskClockHandoff): ClockInPick {
   return { projectId: handoff.projectId, costCodeId: null, note: null, mode: null, returnToAsk: true };
 }
 
-/** Open directly on the switch confirmation when the requested job differs.
+/** Open directly on the switch confirmation when a handoff's requested job differs.
  * A break or an overlong shift still gets the normal clock safeguards first. */
 export function askClockEntryMode(shift: TimeShift | null, pick?: ClockInPick | null): "pick" | "main" | "switch" {
   if (!shift) return "pick";
-  if (!pick?.returnToAsk || !pick.projectId || pick.projectId.toLowerCase() === shift.project_id?.toLowerCase() || shift.break_started_at) return "main";
+  if (!(pick?.returnToAsk || pick?.switchToProject) || !pick.projectId || pick.projectId.toLowerCase() === shift.project_id?.toLowerCase() || shift.break_started_at) return "main";
   const guard = shiftGuard(shift, Date.now());
   return guard.state === "over-cap" || guard.state === "needs-finish" ? "main" : "switch";
 }

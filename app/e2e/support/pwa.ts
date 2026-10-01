@@ -78,6 +78,10 @@ export async function cutTheNetwork(page: Page, context: BrowserContext): Promis
 export function failedAppFiles(page: Page): string[] {
   const failed: string[] = [];
   page.on("requestfailed", (req) => {
+    // Chromium cancels still-pending modulepreload requests on navigation.
+    // The trace can show the same chunk served with HTTP 200 before and
+    // after this cancellation; an aborted preload is not a missing app file.
+    if (req.failure()?.errorText === "net::ERR_ABORTED") return;
     const url = new URL(req.url());
     if (url.host.startsWith("localhost") && /\.(js|css)$/.test(url.pathname)) failed.push(url.pathname);
   });

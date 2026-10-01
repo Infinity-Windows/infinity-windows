@@ -35,6 +35,8 @@ describe("Ask guided clock handoff", () => {
   it("opens on the switch confirmation only for a safe different-job handoff", () => {
     const pick = askClockPick(askClockHandoff(waiting("wrong_job"), draft)!);
     expect(askClockEntryMode(shift(), pick)).toBe("switch");
+    expect(askClockEntryMode(shift(), { ...pick, returnToAsk: false, switchToProject: true })).toBe("switch");
+    expect(askClockEntryMode(shift(), { ...pick, returnToAsk: false })).toBe("main");
     expect(askClockEntryMode(shift(JOB), pick)).toBe("main");
     expect(askClockEntryMode(shift(JOB.toUpperCase()), pick)).toBe("main");
     expect(askClockEntryMode(shift(OTHER, new Date().toISOString()), pick)).toBe("main");

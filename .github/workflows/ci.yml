@@ -121,6 +121,10 @@ jobs:
         run: |
           npm run e2e -- job-phone-layout.spec.ts
           npm run e2e -- job-phone-layout.spec.ts --browser=webkit
+      # Home unit creation, job handoff, and the phone keyboard viewport are
+      # release paths for the crew; keep them in the PR browser gate.
+      - run: npm run e2e -- new-design-work.spec.ts
+      - run: npx playwright test --browser webkit new-design-work.spec.ts -g "New unit stays within the phone"
       # Expired sign-ins and shared-phone queues need their own browser gate:
       # they can lose a saved punch or send it as the next person even while
       # the ordinary clock screen tests remain green.
