@@ -46,6 +46,12 @@ for (const office of [false, true]) {
       const dialog = page.getByRole("dialog", { name: "Receipt: Shell" });
       await expect(dialog).toBeVisible();
       await expect(dialog.getByRole("img", { name: "Shell" })).toBeVisible();
+      await expect.poll(() => dialog.getByRole("img", { name: "Shell" }).evaluate((img) => (img as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+      if (!office && width === 390 && process.env.RECEIPT_SCREENSHOT_PATH) {
+        await page.locator(".receipt-viewer-backdrop").evaluate((e) => Promise.all(e.getAnimations().map((a) => a.finished)));
+        await page.locator(".receipt-viewer-backdrop").evaluate((e) => Promise.all(e.getAnimations().map((a) => a.finished)));
+  await page.screenshot({ path: process.env.RECEIPT_SCREENSHOT_PATH.replace("VIEWER-SPANISH", "VIEWER-PHONE") });
+      }
       await expect(dialog).toContainText("$42.10");
       await expect(dialog.getByRole("button", { name: /Remove/ })).toHaveCount(0);
       const bounds = await dialog.boundingBox();
@@ -104,6 +110,7 @@ test("Spanish receipt viewer fits a short landscape phone", async ({ page }) => 
   await expect(dialog.getByRole("button", { name: "Ampliar" })).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Abrir original" })).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Cerrar", exact: true })).toBeInViewport();
+  await page.locator(".receipt-viewer-backdrop").evaluate((e) => Promise.all(e.getAnimations().map((a) => a.finished)));
   await page.screenshot({ path: process.env.RECEIPT_SCREENSHOT_PATH ?? "e2e/test-results/receipt-viewer-spanish.png" });
   await page.locator(".receipt-viewer-backdrop").click({ position: { x: 1, y: 1 } });
   await expect(dialog).toHaveCount(0);
