@@ -1,6 +1,7 @@
 import { transcribeDescription } from "../dictation";
 import type { Lang } from "../i18n";
 import { supabase } from "../supabase";
+import { recordSyncReceipt } from "../offline/syncReceipt";
 import { sendServiceCommand } from "./api";
 import type { ServiceMedia } from "./model";
 export interface PendingServiceMedia {
@@ -163,7 +164,11 @@ export async function flushServiceMedia(user: string): Promise<void> {
         if (readError) throw readError;
         // A supervisor or a previous successful retry may already have saved
         // words. Do not replace them with another automatic pass.
-        if (saved.transcript?.trim()) { await transaction("readwrite", s => s.delete(item.id)); continue; }
+        if (saved.transcript?.trim()) {
+          await transaction("readwrite", s => s.delete(item.id));
+          recordSyncReceipt(user);
+          continue;
+        }
         if (!item.transcript) {
           try {
             item.transcript = await transcribeDescription(item.blob, item.language, new AbortController().signal);
@@ -185,6 +190,7 @@ export async function flushServiceMedia(user: string): Promise<void> {
         });
       }
       await transaction("readwrite", (s) => s.delete(item.id));
+      recordSyncReceipt(user);
     }
   });
 }

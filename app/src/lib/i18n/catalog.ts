@@ -2747,6 +2747,16 @@ export const CATALOG = {
   // no language); combineQueues swaps these in, so Spanish readers stopped
   // seeing "All synced" in English (2026-09-25 Spanish review).
   "pill.allSynced": { en: "All synced", es: "Todo sincronizado" },
+  "pill.checking": { en: "Checking saved work…", es: "Revisando el trabajo guardado…" },
+  "pill.checkingDetail": {
+    en: "Checking what this phone still needs to send.",
+    es: "Revisando lo que este teléfono todavía necesita enviar.",
+  },
+  "pill.cannotCheck": { en: "Check saved work", es: "Revisar el trabajo guardado" },
+  "pill.cannotCheckDetail": {
+    en: "Forge could not read all saved work on this phone. Open the list to review it; do not clear this app's storage.",
+    es: "Forge no pudo leer todo el trabajo guardado en este teléfono. Abre la lista para revisarlo; no borres los datos de esta app.",
+  },
   "pill.allSyncedDetail": {
     en: "All changes are saved and synced.",
     es: "Todos los cambios están guardados y sincronizados.",

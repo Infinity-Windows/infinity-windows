@@ -125,6 +125,28 @@ test("a photo taken with no signal is counted everywhere, and sends exactly once
   expect(net.rows[0].client_id).toBe(clientId);
 });
 
+test("new phone design keeps queued work visible, confirms a server save, then clears the status", async ({ page }) => {
+  await useSupabaseFixtures(page, { role: "installer", uiDesign: "new" });
+  await stubGeolocationDenied(page);
+  await hideWrongProjectBanner(page);
+  const net = signal(page);
+  await net.install();
+
+  await openTheSheet(page);
+  await expect(pill(page)).toHaveCount(0);
+
+  net.state.down = true;
+  await page.locator('.jobphoto-actions input[type="file"]:not([capture])').setInputFiles(pngFile("status-receipt.png"));
+  await expect(pillText(page)).toContainText("Saved on this phone");
+  await expect(pillText(page)).toContainText("Photos 1");
+
+  net.state.down = false;
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await expect.poll(() => net.rows.length, { timeout: 60_000 }).toBe(1);
+  await expect(pillText(page)).toHaveText("Saved in Forge");
+  await expect(pill(page)).toHaveCount(0, { timeout: 10_000 });
+});
+
 test("a photo left in the retired upload queue is moved on the next start and sent exactly once", async ({
   page,
 }) => {

@@ -4,6 +4,7 @@ import { markCompleteUnit } from "./complete";
 import { formatApiError } from "../errors";
 import { isNetworkError } from "../offline/outbox-core";
 import { isToolboxGateError } from "../install/installTimer";
+import { recordSyncReceipt } from "../offline/syncReceipt";
 
 const prefix = "forge-custom-work-v1:";
 export const WORK_QUEUE_EVENT = "forge:custom-work-queue";
@@ -75,6 +76,7 @@ export async function syncWork(user: string): Promise<boolean> {
       if (c.error) return false;
       try {
         await sendWorkCommand(c);
+        recordSyncReceipt(c.userId);
       } catch (e) {
         const message = formatApiError(e);
         // Network errors remain retryable. A refused command stays intact for review.

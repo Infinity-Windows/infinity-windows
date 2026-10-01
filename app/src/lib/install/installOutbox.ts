@@ -19,6 +19,7 @@ import {
 import { drain, enqueueUpload, listAll } from "../offline/outbox";
 import { stableId } from "../offline/stableId";
 import { signedInEmail, signedInUserId, stillSignedInAs, subscribeSignedIn, type SignInMark } from "../signedIn";
+import { recordSyncReceipt } from "../offline/syncReceipt";
 import type { Ownership, Signer } from "../offline/entryOwner";
 import { submitInstallEvent, type InstallSendAs, type SubmitInstallParams } from "./api";
 import { clientWithToken, supabase } from "../supabase";
@@ -795,6 +796,7 @@ async function runFlushPass(): Promise<InstallFlushResult> {
             sentAt: Date.now(),
           });
           if (recentlySent.length > RECENTLY_SENT_MAX) recentlySent.length = RECENTLY_SENT_MAX;
+          recordSyncReceipt(current.payload.ownerId ?? sender.installer.id);
           synced++;
         }
       } catch (err) {

@@ -34,6 +34,7 @@ import { authorEvidence, belongsTo, ownershipOf, type Signer } from "./entryOwne
 import type { JobMode } from "../types";
 import { recoverPhotoUpload, recoverTransportFailedPhoto } from "./recoverPhotoUploads";
 import { PhotoUploadReceipts } from "./photoUploadProgress";
+import { recordSyncReceipt } from "./syncReceipt";
 import { migrateLegacyUploads } from "../install/legacyUploadQueue";
 import {
   createShiftResolver,
@@ -165,6 +166,10 @@ export async function getPhotoUploadProgress(ids: readonly string[]) {
 const listeners = new Set<() => void>();
 const syncedListeners = new Set<() => void>();
 let cachedCounts: OpCounts = countsByOp([]);
+/** A zero count is not proof of an empty phone before its durable store has
+ * answered. An unreadable store must never be displayed as "All synced". */
+export type OutboxReadState = "checking" | "ready" | "error";
+let cachedReadState: OutboxReadState = "checking";
 /** Entries on this phone that belong to someone other than whoever is signed in. */
 let cachedHeld = 0;
 /** Entries that name no owner at all (queued before owners were recorded). */
@@ -419,8 +424,10 @@ async function refresh(): Promise<void> {
     cachedHeld = all.length - mine.length - cachedUnknown;
     clockSnapshot = { entries: mine.filter((e) => isClockOp(e.op)), ready: true };
     toolboxSnapshot = { entries: mine.filter((e) => e.op === "toolbox_sign"), ready: true };
+    cachedReadState = "ready";
   } catch {
     /* keep last known counts */
+    cachedReadState = "error";
     if (!clockSnapshot.ready) clockSnapshot = { entries: clockSnapshot.entries, ready: true };
     if (!toolboxSnapshot.ready) toolboxSnapshot = { entries: toolboxSnapshot.entries, ready: true };
   }
@@ -450,6 +457,10 @@ export function subscribeSynced(cb: () => void): () => void {
 
 export function getCounts(): OpCounts {
   return cachedCounts;
+}
+
+export function getOutboxReadState(): OutboxReadState {
+  return cachedReadState;
 }
 
 /**
@@ -757,6 +768,7 @@ async function runDrain(forceDue: boolean): Promise<void> {
         onSent: (entry, result) => {
           photoReceipts.record(entry);
           recordSent(entry, Date.now());
+          recordSyncReceipt(entry.ownerId);
           if (entry.op === "toolbox_sign") {
             recordConfirmedSignature(result);
             for (const cb of toolboxSentListeners) {
@@ -913,6 +925,10 @@ export function initOutboxAutoFlush(): void {
   // A different person signing in changes whose writes are theirs to send —
   // recount at once, and send the ones that just became theirs.
   subscribeSignedIn(() => {
+    cachedReadState = "checking";
+    for (const cb of listeners) {
+      try { cb(); } catch { /* a listener must never break sign-in */ }
+    }
     void (async () => {
       await recoverFailedTransportPhotos();
       await refresh();

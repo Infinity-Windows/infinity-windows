@@ -7538,10 +7538,19 @@ body {
   text-overflow: ellipsis;
 }
 
+.sync-pill-state {
+  font-weight: 700;
+}
+
 .sync-pill-synced {
   color: var(--muted);
   background: transparent;
   border-color: transparent;
+}
+.sync-pill-receipt {
+  color: var(--ok);
+  border-color: color-mix(in oklch, var(--ok) 55%, transparent);
+  background: var(--card-raised);
 }
 
 .sync-pill-syncing {
@@ -7603,6 +7612,7 @@ body {
 .rail-sync {
   padding: 10px 16px 4px;
 }
+.rail-sync:empty { padding: 0; }
 
 /* "All synced" is the shortest thing this pill ever says. The message that has
    to survive is the long one — "Clock 2 · Photos 3 · Receipts 4 · 5 logs queued

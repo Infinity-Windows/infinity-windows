@@ -18,13 +18,14 @@
 // while that one sheet was open.
 
 import { useClock } from "../../lib/clockContext";
+import { signInMark, signedInUserId, stillSignedInAs, subscribeSignedIn } from "../../lib/signedIn";
 import {
   readWorkQueue,
   syncWork,
   WORK_QUEUE_EVENT,
 } from "../../lib/customWork/queue";
 import { Link } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import {
   CheckCircle2,
   CloudOff,
@@ -37,6 +38,8 @@ import { useT } from "../../lib/i18n";
 import { useOutbox } from "../../lib/offline/useOutbox";
 import { totalPending } from "../../lib/offline/outbox-core";
 import { subscribe as subscribeOutbox } from "../../lib/offline/outbox";
+import { subscribeSyncReceipt, type SyncReceipt } from "../../lib/offline/syncReceipt";
+import { CONFIRM_MS, statusPresentation } from "../../lib/offline/statusPresentation";
 import { withConnection } from "../../lib/offline/pillConnection";
 import { combineQueues, PILL_DESTINATION } from "../../lib/offline/pillQueues";
 import { withHeld } from "../../lib/offline/pillHeld";
@@ -51,38 +54,51 @@ import { pendingLegacyUploadCount } from "../../lib/install/legacyUploadQueue";
 /** Live count of installs waiting in the install outbox — this person's, and
  * apart from them anyone else's — and the drain that empties it, started here
  * so it runs from every screen. */
-function useInstallOutboxCount(): { pending: number; failed: number; theirs: number; unknown: number } {
-  const [count, setCount] = useState({ pending: 0, failed: 0, theirs: 0, unknown: 0 });
+function useInstallOutboxCount(profileId: string | null) {
+  const empty = useMemo(() => ({ profileId, pending: 0, failed: 0, theirs: 0, unknown: 0, ready: false, readError: false }), [profileId]);
+  const [count, setCount] = useState(empty);
   useEffect(() => {
     initInstallOutboxAutoFlush();
     let cancelled = false;
+    setCount(empty);
     const refresh = () => {
+      if (!profileId) return;
+      const mark = signInMark();
       void installCounts().then((next) => {
-        if (!cancelled) setCount(next);
+        if (!cancelled && stillSignedInAs(mark, profileId)) setCount({ ...next, profileId, ready: true, readError: false });
+      }).catch(() => {
+        if (!cancelled && stillSignedInAs(mark, profileId)) setCount((old) => ({ ...old, ready: true, readError: true }));
       });
     };
     refresh();
     const unsubscribe = subscribeSyncListeners(refresh);
+    const offSignedIn = subscribeSignedIn(refresh);
     return () => {
       cancelled = true;
       unsubscribe();
+      offSignedIn();
     };
-  }, []);
-  return count;
+  }, [profileId, empty]);
+  return count.profileId === profileId ? count : empty;
 }
 
 function useCustomWorkCount(profileId: string | null) {
-  const [state, setState] = useState({ pending: 0, failed: 0 });
+  const empty = useMemo(() => ({ profileId, pending: 0, failed: 0, ready: false, readError: false }), [profileId]);
+  const [state, setState] = useState(empty);
   useEffect(() => {
+    setState(empty);
     const read = () => {
       try {
         const rows = profileId ? readWorkQueue(profileId) : [];
         setState({
           pending: rows.length,
           failed: rows.filter((r) => r.error).length,
+          profileId,
+          ready: Boolean(profileId),
+          readError: false,
         });
       } catch {
-        setState({ pending: 1, failed: 1 });
+        setState((old) => ({ ...old, ready: true, readError: true }));
       }
     };
     const sync = () => {
@@ -90,11 +106,9 @@ function useCustomWorkCount(profileId: string | null) {
       if (profileId && navigator.onLine) {
         try {
           if (readWorkQueue(profileId).length)
-            void syncWork(profileId).catch(() =>
-              setState({ pending: 1, failed: 1 }),
-            );
+            void syncWork(profileId).catch(read);
         } catch {
-          setState({ pending: 1, failed: 1 });
+          read();
         }
       }
     };
@@ -111,8 +125,8 @@ function useCustomWorkCount(profileId: string | null) {
       window.removeEventListener("focus", sync);
       clearInterval(retry);
     };
-  }, [profileId]);
-  return state;
+  }, [profileId, empty]);
+  return state.profileId === profileId ? state : empty;
 }
 
 /**
@@ -147,17 +161,18 @@ async function servicingMayHoldWork(profileId: string): Promise<boolean> {
  * the screen does, so the two never send the same command twice.
  */
 function useServicingCount(profileId: string | null) {
-  const [state, setState] = useState({ pending: 0, failed: 0 });
+  const empty = useMemo(() => ({ profileId, pending: 0, failed: 0, ready: false, readError: false }), [profileId]);
+  const [state, setState] = useState(empty);
   useEffect(() => {
+    setState(empty);
     if (!profileId) {
-      setState({ pending: 0, failed: 0 });
       return;
     }
     let cancelled = false;
     const read = async (send: boolean) => {
       try {
         if (!(await servicingMayHoldWork(profileId))) {
-          if (!cancelled) setState({ pending: 0, failed: 0 });
+          if (!cancelled) setState({ profileId, pending: 0, failed: 0, ready: true, readError: false });
           return;
         }
         const [{ readServiceQueue, syncService }, { flushServiceMedia, pendingServiceMedia }] =
@@ -176,11 +191,14 @@ function useServicingCount(profileId: string | null) {
         setState({
           pending: commands.length + media.length,
           failed: commands.filter((c) => c.error).length + media.filter((m) => m.error).length,
+          profileId,
+          ready: true,
+          readError: false,
         });
       } catch {
         // A store this session cannot read is a store it cannot be sending
         // from; but something is there, and "synced" would be a lie.
-        if (!cancelled) setState({ pending: 1, failed: 1 });
+        if (!cancelled) setState((old) => ({ ...old, ready: true, readError: true }));
       }
     };
     const onChange = () => void read(false);
@@ -208,8 +226,8 @@ function useServicingCount(profileId: string | null) {
       window.removeEventListener("focus", onSync);
       clearInterval(tick);
     };
-  }, [profileId]);
-  return state;
+  }, [profileId, empty]);
+  return state.profileId === profileId ? state : empty;
 }
 
 /**
@@ -218,17 +236,18 @@ function useServicingCount(profileId: string | null) {
  * then announces itself, which is the re-read below); until then, a photo in
  * it is a photo that has not been sent, and the pill says so.
  */
-function useLegacyUploadCount(): number {
-  const [count, setCount] = useState(0);
+function useLegacyUploadCount() {
+  const [state, setState] = useState({ count: 0, ready: false, readError: false });
   useEffect(() => {
     let cancelled = false;
     const read = () => {
       void pendingLegacyUploadCount()
         .then((n) => {
-          if (!cancelled) setCount(n);
+          if (!cancelled) setState({ count: n, ready: true, readError: false });
         })
         .catch(() => {
-          // Cannot be opened → cannot be drained from either; leave it.
+          // Cannot be opened → never call the phone fully synced.
+          if (!cancelled) setState((old) => ({ ...old, ready: true, readError: true }));
         });
     };
     read();
@@ -238,14 +257,17 @@ function useLegacyUploadCount(): number {
       unsubscribe();
     };
   }, []);
-  return count;
+  return state;
 }
 
-export function SyncStatusPill() {
+export function SyncStatusPill({ quietWhenSynced = false }: { quietWhenSynced?: boolean }) {
   const t = useT();
-  const { counts, pill: outboxPill, held, unknown } = useOutbox();
-  const { profileId } = useClock();
-  const installs = useInstallOutboxCount();
+  const { counts, pill: outboxPill, held, unknown, readState } = useOutbox();
+  const { loading: clockLoading } = useClock();
+  // The clock profile query can still describe the previous person during an
+  // account switch. Queue ownership follows the actual auth session instead.
+  const profileId = useSyncExternalStore(subscribeSignedIn, signedInUserId, signedInUserId);
+  const installs = useInstallOutboxCount(profileId);
   const custom = useCustomWorkCount(profileId);
   const service = useServicingCount(profileId);
   const legacy = useLegacyUploadCount();
@@ -262,21 +284,58 @@ export function SyncStatusPill() {
       workFailed: custom.failed,
       servicePending: service.pending,
       serviceFailed: service.failed,
-      legacyPending: legacy,
+      legacyPending: legacy.count,
     },
     t,
   );
   const { online, weak } = useConnection();
   const pill = withConnection(combined, online, weak, t);
+  const [checkTimedOut, setCheckTimedOut] = useState(false);
+  const [receipt, setReceipt] = useState<SyncReceipt | null>(null);
+  useEffect(() => {
+    setReceipt(null);
+    if (!profileId) return;
+    return subscribeSyncReceipt((next) => {
+      // A receipt for the previous sign-in must never congratulate the next
+      // person on this shared phone. Queue ownership is checked at send time.
+      if (next.ownerId === profileId) setReceipt(next);
+    });
+  }, [profileId]);
+  useEffect(() => {
+    if (!receipt) return;
+    const remaining = Math.max(0, CONFIRM_MS - (Date.now() - receipt.savedAt));
+    const timer = setTimeout(() => setReceipt((current) => current?.sequence === receipt.sequence ? null : current), remaining);
+    return () => clearTimeout(timer);
+  }, [receipt]);
+
+  const allReady = Boolean(profileId) && !clockLoading && readState === "ready" && installs.ready && custom.ready && service.ready && legacy.ready;
+  const readError = readState === "error" || installs.readError || custom.readError || service.readError || legacy.readError || checkTimedOut;
+  useEffect(() => {
+    setCheckTimedOut(false);
+    if (allReady || readState === "error") return;
+    // An IndexedDB read can stall on an older iPhone. A permanent spinner
+    // would be another false reassurance; give the person a review door.
+    const timer = setTimeout(() => setCheckTimedOut(true), 15_000);
+    return () => clearTimeout(timer);
+  }, [profileId, allReady, readState]);
+  const presentation = statusPresentation({
+    pill, outboxReadState: readState, allReady, readError, receipt: quietWhenSynced ? receipt : null,
+    profileId, quietWhenSynced, now: Date.now(), t,
+  });
+  const { display, receipt: isReceipt } = presentation;
+
+  // The modern crew layout has no permanent "All synced" decoration. A
+  // confirmed write gets four seconds; a wait, weak signal, or refusal stays.
+  if (!presentation.visible) return null;
 
   const Icon =
-    pill.tone === "attention"
+    display.tone === "attention"
       ? TriangleAlert
-      : pill.tone === "offline"
+      : display.tone === "offline"
         ? WifiOff
-        : pill.tone === "weak"
+        : display.tone === "weak"
           ? Wifi
-          : pill.tone === "syncing"
+          : display.tone === "syncing"
             ? CloudOff
             : CheckCircle2;
 
@@ -288,21 +347,25 @@ export function SyncStatusPill() {
   return (
     <Link
       to={PILL_DESTINATION}
-      className={`sync-pill sync-pill-${pill.tone}`}
-      data-tone={pill.tone}
+      className={`sync-pill sync-pill-${display.tone}${isReceipt ? " sync-pill-receipt" : ""}`}
+      data-tone={display.tone}
       role="status"
       aria-live="polite"
-      aria-label={`${pill.detail} — ${t("pill.openStatus")}`}
-      title={pill.detail}
+      aria-label={`${display.detail} — ${t("pill.openStatus")}`}
+      title={display.detail}
     >
       <span className="sync-pill-icon" aria-hidden>
-        {pill.tone === "syncing" ? (
+        {display.tone === "syncing" ? (
           <RefreshCw size={14} className="sync-pill-spin" />
         ) : (
           <Icon size={14} />
         )}
       </span>
-      <span className="sync-pill-text">{pill.label}</span>
+      <span className="sync-pill-text">
+        {display === pill && combined.tone === "syncing" &&
+          <span className="sync-pill-state">{t("stuck.state.waiting")} · </span>}
+        {display.label}
+      </span>
     </Link>
   );
 }
