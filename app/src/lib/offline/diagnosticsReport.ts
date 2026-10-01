@@ -3,6 +3,7 @@
 
 import type { SavedJobRecord } from "./jobPack";
 import { summarizeOfflineEvents, type OfflineEvent } from "./telemetry";
+import type { PhoneCheckKind, PhoneCheckResult } from "./phoneCheck";
 
 export interface DiagnosticsFacts {
   buildId: string;
@@ -14,6 +15,7 @@ export interface DiagnosticsFacts {
   queues: { label: string; pending: number; failed: number }[];
   savedJobs: { name: string; record: SavedJobRecord }[];
   events: readonly OfflineEvent[];
+  phoneChecks?: Partial<Record<PhoneCheckKind, PhoneCheckResult>>;
   now: number;
 }
 
@@ -39,6 +41,12 @@ export function buildDiagnosticsReport(f: DiagnosticsFacts): string {
     `Build ${f.buildId || "unknown"}${f.builtAt ? ` built ${f.builtAt}` : ""}`,
     `Database ${f.supabaseHost || "unknown"}`,
     `Connection: ${f.online ? (f.weak ? "weak signal" : "online") : "offline"}; last good request ${ago(f.lastOkAt, f.now)}`,
+    "",
+    "Phone check (no audio, photo, or device identifiers):",
+    ...(["storage", "connection", "microphone", "camera"] as const).map(kind => {
+      const result = f.phoneChecks?.[kind];
+      return `  ${kind}: ${result ? `${result.status} (${result.reason}; ${stamp(result.at)}${result.durationMs != null ? `; ${result.durationMs} ms` : ""})` : "not run"}`;
+    }),
     "",
     "Waiting to send:",
     ...f.queues.map((q) => `  ${q.label}: ${q.pending} pending${q.failed ? `, ${q.failed} need attention` : ""}`),
