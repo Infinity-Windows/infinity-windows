@@ -218,3 +218,22 @@ test.describe("touch correction", () => {
     await expect(editor.locator(".sched-chip.is-clash")).toHaveCount(0);
   });
 });
+
+
+test("Fix preserves stored seconds and rejects a zero-duration daily window", async ({ page }) => {
+  const { patches } = await installConflictFixtures(page, "12:00:10", "17:00:00", { firstStart: "07:00:10", firstEnd: "12:00:30" });
+  await expect(page.locator(".sched-conflict-banner")).toContainText("Overlap each shared day: 12:00:10 PM–12:00:30 PM");
+  await page.getByRole("button", { name: "Fix", exact: true }).click();
+  const editor = page.getByRole("dialog");
+  await expect(editor.getByLabel("Crew start time (optional)")).toHaveValue("07:00:10");
+  const end = editor.getByLabel("Crew end time (optional)");
+  await expect(end).toHaveValue("12:00:30");
+  await end.fill("07:00:10");
+  await expect(editor.getByRole("button", { name: "Save changes", exact: true })).toBeDisabled();
+  await end.fill("12:00:30");
+  await editor.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(editor).toHaveCount(0);
+  expect(patches).toHaveLength(1);
+  expect(patches[0]).toMatchObject({ body: { start_time: "07:00:10", end_time: "12:00:30" } });
+  await expect(page.locator(".sched-conflict-banner")).toContainText("Overlap each shared day: 12:00:10 PM–12:00:30 PM");
+});

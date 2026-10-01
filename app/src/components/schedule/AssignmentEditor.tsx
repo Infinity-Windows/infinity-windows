@@ -7,7 +7,7 @@ import type { Project } from "../../lib/types";
 import { INSTALLER_PALETTE } from "../../lib/install/mapDispatch";
 import { addDaysISO, daysBetween } from "../../lib/schedule/dates";
 import { ConflictPairDetails } from "./ConflictPairDetails";
-import { conflictBannerEntries, conflictingMembersFor } from "../../lib/schedule/conflicts";
+import { conflictBannerEntries, conflictingMembersFor, parseClockSeconds } from "../../lib/schedule/conflicts";
 import { removeWarning } from "../../lib/schedule/removeWarning";
 import { useT } from "../../lib/i18n";
 // Side effect: registers this screen's bilingual strings into the live
@@ -107,8 +107,11 @@ export function AssignmentEditor({
   const [startTime, setStartTime] = useState(
     assignment ? (assignment.start_time ?? "") : "06:30",
   );
-  const [endTime, setEndTime] = useState(assignment?.end_time?.slice(0, 5) ?? "");
-  const validTimes = !endTime || (!!startTime && endTime > startTime.slice(0, 5));
+  const [endTime, setEndTime] = useState(assignment?.end_time ?? "");
+  const startSeconds = parseClockSeconds(startTime);
+  const endSeconds = parseClockSeconds(endTime);
+  const validTimes = (!startTime || startSeconds !== null)
+    && (!endTime || (startSeconds !== null && endSeconds !== null && endSeconds > startSeconds));
   const [color, setColor] = useState(assignment?.color ?? "");
   const [note, setNote] = useState(assignment?.note ?? "");
   const [vehicleId, setVehicleId] = useState(currentVehicleId ?? "");
@@ -298,6 +301,7 @@ export function AssignmentEditor({
               id="assignment-start-time"
               aria-describedby="assignment-start-help"
               type="time"
+              step="1"
               value={startTime}
               onChange={(e) => setStartTime(e.target.value)}
             />
@@ -305,7 +309,7 @@ export function AssignmentEditor({
           </div>
           <div>
             <label className="field-label" htmlFor="assignment-end-time">Crew end time (optional)</label>
-            <input id="assignment-end-time" type="time" value={endTime} onChange={e => setEndTime(e.target.value)} aria-describedby="assignment-time-range-help" />
+            <input id="assignment-end-time" type="time" step="1" value={endTime} onChange={e => setEndTime(e.target.value)} aria-describedby="assignment-time-range-help" />
           </div>
         </div>
         <p id="assignment-time-range-help" className="muted" style={{ fontSize: 12, margin: "6px 0 12px" }}>
