@@ -442,6 +442,11 @@
   .ws-sheet { max-height: min(34rem, var(--sheet-max-h-above-tabbar)); }
 }
 
+/* Foreman unit contributors (2026-09-30): the sheet reuses every other
+ * .ws-* primitive above — this is only the two names it introduces. */
+.ws-contrib { display: flex; flex-direction: column; gap: 8px; }
+.ws-contrib-people { display: flex; flex-direction: column; gap: 6px; border: 0; padding: 0; margin: 0; }
+
 @media (min-width: 860px) {
   .work-screen { max-width: 720px; }
 }

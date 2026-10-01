@@ -49,4 +49,5 @@ run_sql "$REPO/scripts/tests/forge-publication/remove-day.sql"
 run_sql "$REPO/scripts/tests/forge-publication/end-time-before.sql"
 run_sql "$REPO/supabase/migrations/20261006000000_schedule_end_time.sql"
 run_sql "$REPO/scripts/tests/forge-publication/end-time.sql"
+"$REPO/scripts/test-stage-contributors.sh"
 printf 'Forge database permission checks passed (disposable PostgreSQL 16).\n'

@@ -48,6 +48,7 @@ export const QUERY_KEY_ROOTS: QueryKeyRootEntry[] = [
   { root: "customWorkCrewPeople", offline: false },
   { root: "customWorkCrewOpenings", offline: false },
   { root: "crewWorkRecords", offline: false },
+  { root: "stageContributorSummary", offline: false, why: "A correction must match the server's current digest; a cached answer could refuse or succeed against a tuple that already moved." },
   { root: "customWorkHistory", offline: false },
   { root: "customWorkOpening", offline: true, why: "Keep field work available during a signal loss." },
   { root: "customWorkRoster", offline: true, why: "Keep field work available during a signal loss." },
