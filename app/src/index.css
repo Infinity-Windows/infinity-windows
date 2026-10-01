@@ -6927,6 +6927,8 @@ body {
   font-size: 12px;
 }
 .live-ask-mini-action { justify-content: center; font-weight: 700; }
+.ask-navigation-action { margin-top: 8px; }
+.ask-navigation-link { display: inline-flex; align-items: center; min-height: 44px; }
 @keyframes live-ask-pulse { 50% { opacity: .35; transform: scale(1.12); } }
 @media (prefers-reduced-motion: reduce) { .live-ask-mini-pulse { animation: none; } }
 

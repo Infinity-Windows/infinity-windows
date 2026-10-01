@@ -15,8 +15,9 @@ import { SCHEDULING_TOOLS } from "../../../supabase/functions/_shared/scheduling
 import { REPORTING_TOOLS } from "../../../supabase/functions/_shared/askReporting";
 import { DAILY_LOG_TOOLS } from "../../../supabase/functions/_shared/aiDailyLog";
 import { OFFER_CLOCK_BUTTON_TOOL } from "../../../supabase/functions/_shared/clockButtons";
+import { OFFER_NAVIGATION_TOOL } from "../../../supabase/functions/_shared/askNavigation";
 
-const ALL_DEFS = [...SCHEDULING_TOOLS, ...REPORTING_TOOLS, ...FIELD_TOOLS, ...LEARNING_TOOLS, ...DAILY_LOG_TOOLS, OFFER_CLOCK_BUTTON_TOOL];
+const ALL_DEFS = [...SCHEDULING_TOOLS, ...REPORTING_TOOLS, ...FIELD_TOOLS, ...LEARNING_TOOLS, ...DAILY_LOG_TOOLS, OFFER_CLOCK_BUTTON_TOOL, OFFER_NAVIGATION_TOOL];
 const ids = (rows: { id: string }[]) => rows.map((r) => r.id);
 
 describe("the capability registry is the one list", () => {

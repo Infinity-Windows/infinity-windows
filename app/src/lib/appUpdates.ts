@@ -40,6 +40,7 @@ export const INCLUDED_UPDATE_IDS = [
   '2026-09-30-safety-picture-review',
   '2026-09-30-qc-review-record',
   '2026-09-30-qc-review-history',
+  '2026-09-30-ask-take-me-there',
 ] as const;
 export interface AppUpdate {
   id: string; published_on: string; audience: number[]; kind: 'fix' | 'improvement';

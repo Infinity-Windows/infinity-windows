@@ -48,6 +48,7 @@ import { SyncStatusPill } from "./offline/SyncStatusPill";
 import { OnboardingWizard } from "./permissions/OnboardingWizard";
 import type { LiveAskShellControls, LiveAskShellState } from "../pages/AskInfinity";
 import { canContinueLive, liveStatusLine, liveText } from "../lib/liveAskPilot";
+import { navigationHref, navigationLabel } from "../../../supabase/functions/_shared/askNavigation";
 import { useLanguage } from "../lib/i18n";
 import {
   closeOnboardingWizard,
@@ -68,7 +69,7 @@ const TAB_ICONS: Record<string, ReactNode> = {
   photos: <Camera size={20} />,
 };
 const PersistentAskInfinity = lazy(() => import("../pages/AskInfinity").then((m) => ({ default: m.AskInfinity })));
-const idleLiveAsk: LiveAskShellState = { status: "idle", saving: false, needsClock: false, muted: false, expiring: false };
+const idleLiveAsk: LiveAskShellState = { status: "idle", saving: false, needsClock: false, muted: false, expiring: false, navigation: null };
 
 /**
  * Infinity Windows app shell — reskinned to the "Horizon Windows Hub" visual
@@ -484,6 +485,9 @@ export function Layout() {
           </button>
           {liveAsk.needsClock && <button type="button" className="live-ask-mini-action" onClick={() => { setCaptureOpen(false); clock.openClock(); }}>
             {es ? "Abrir reloj de trabajo" : "Open job clock"}
+          </button>}
+          {liveAsk.navigation && liveAsk.detail !== "account" && <button type="button" className="live-ask-mini-action" onClick={() => { setCaptureOpen(false); navigate(navigationHref(liveAsk.navigation!)); }}>
+            {navigationLabel(liveAsk.navigation, es)}
           </button>}
           {canContinueLive(liveAsk.status, liveAsk.detail) && <button type="button" className="live-ask-mini-action" disabled={liveAsk.saving} onClick={() => liveControls.current?.restart()}>
             <Radio size={14} aria-hidden="true" /> {liveText(es, liveAsk.detail === "cap" ? "continue" : "tryAgain")}

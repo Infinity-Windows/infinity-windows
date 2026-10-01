@@ -20,6 +20,8 @@ const state = vi.hoisted(() => ({
   log: [] as string[],
   asked: [] as { q: string; meta: Record<string, unknown> | undefined }[],
   live: null as null | { options: LiveOptions; end: Mock },
+  nav: false,
+  shellNavigation: null as null | unknown,
 }));
 
 vi.mock("./queryClient", async () => {
@@ -36,7 +38,7 @@ vi.mock("./knowledge", () => ({
   askInfinity: async (q: string, _h: unknown, meta?: Record<string, unknown>) => {
     state.log.push(`ask:${String(meta?.audio_path)}`);
     state.asked.push({ q, meta });
-    return { answer: "Your next unit is 5.", sources: [], field: { request_id: meta?.request_id, receipts: [{ action_id: "a1", action: "start_unit", status: "needs_choice" }], checklist: null } };
+    return { answer: "Your next unit is 5.", sources: [], navigation: state.nav ? { kind: "schedule" } : undefined, field: { request_id: meta?.request_id, receipts: [{ action_id: "a1", action: "start_unit", status: "needs_choice" }], checklist: null } };
   },
   liveAnswer: () => null,
   shouldUseLLM: () => true,
@@ -91,7 +93,7 @@ let host: HTMLDivElement | null = null;
 const settle = async () => { for (let i = 0; i < 8; i += 1) await act(async () => { await new Promise((r) => setTimeout(r, 0)); }); };
 const render = (active = true) => root!.render(
   <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-    <MemoryRouter><AskInfinity active={active} /></MemoryRouter>
+    <MemoryRouter><AskInfinity active={active} onLiveState={(next) => { state.shellNavigation = next.navigation; }} /></MemoryRouter>
   </QueryClientProvider>,
 );
 const mount = async () => {
@@ -116,7 +118,7 @@ const turn = async (t: LiveTurn) => {
 
 beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-  Object.assign(state, { user: "crew-1", role: "owner", pilot: true, log: [], asked: [], live: null });
+  Object.assign(state, { user: "crew-1", role: "owner", pilot: true, log: [], asked: [], live: null, nav: false, shellNavigation: null });
   vi.stubGlobal("URL", { ...URL, createObjectURL: () => "blob:held", revokeObjectURL: () => {} });
 });
 afterEach(() => {
@@ -139,6 +141,19 @@ describe("Live Ask on the Ask page", () => {
     await settle();
     expect(state.live).toBe(live);
     expect(live.end).not.toHaveBeenCalled();
+  });
+  it("shows a verified route button and keeps it available to the live corner panel across screens", async () => {
+    state.nav = true;
+    await mount();
+    await startLive();
+    const live = state.live!;
+    const said = await turn({ itemId: "n1", audio: new Blob(["pcm"], { type: "audio/webm" }) });
+    expect(host!.querySelector('a[href="/my-schedule"]')?.textContent).toBe("Open my schedule");
+    expect(state.shellNavigation).toEqual({ kind: "schedule" });
+    expect(said).toContain("Take me there button");
+    await act(async () => render(false));
+    expect(live.end).not.toHaveBeenCalled();
+    expect(state.shellNavigation).toEqual({ kind: "schedule" });
   });
   it("is not offered unless the pilot is on", async () => {
     state.pilot = false;
@@ -211,16 +226,21 @@ describe("Live Ask on the Ask page", () => {
   });
 
   it("ends when the signed-in account changes, and a late turn is not sent as the new person", async () => {
+    state.nav = true;
     await mount();
     await startLive();
     const first = state.live!;
+    await turn({ itemId: "n1", audio: new Blob(["pcm"], { type: "audio/webm" }) });
+    expect(state.shellNavigation).toEqual({ kind: "schedule" });
     state.user = "crew-2";
     await act(async () => render());
     await settle();
     expect(first.end).toHaveBeenCalledWith("account");
+    expect(state.shellNavigation).toBeNull();
+    const askedBefore = state.asked.length;
     const said = await act(async () => first.options.handleTurn({ itemId: "i9", audio: new Blob(["pcm"]) }));
     await settle();
-    expect(state.asked).toHaveLength(0);
+    expect(state.asked).toHaveLength(askedBefore);
     expect(said).toMatch(/different person|Not sent/);
   });
 

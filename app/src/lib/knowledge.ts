@@ -2,6 +2,7 @@ import type { AskArtifact } from "../../../supabase/functions/_shared/askReporti
 import type { FieldMeta, FieldReply } from "./fieldAsk";
 import type { AskContextTag } from "../../../supabase/functions/_shared/fieldTools";
 import { readClockButtons, type ClockButton } from "../../../supabase/functions/_shared/clockButtons";
+import { readNavigationAction, type NavigationAction } from "../../../supabase/functions/_shared/askNavigation";
 import type { DailyLogAskContext } from "../../../supabase/functions/_shared/aiDailyLog";
 // Client seam for the Infinity AI knowledge base (vault RAG). The pure logic
 // (chunking, hashing, retrieval shaping, prompt assembly, the fallback
@@ -92,6 +93,8 @@ export interface AskResult {
   field?: FieldReply;
   /** One-tap job-clock buttons the model offered (K2.4); the tap does the work. */
   buttons?: ClockButton[];
+  /** Verified in-app destination offered by Ask; no model-supplied URL. */
+  navigation?: NavigationAction;
   /** The daily-log draft's answers from this reply (K2.7), raw: the phone
    * checks it belongs to its draft, account and conversation before use. */
   dailyLog?: unknown;
@@ -123,6 +126,7 @@ export async function askInfinity(
   const toolActivity = Array.isArray(data?.toolActivity)
     ? (data.toolActivity as unknown[]).filter((l): l is string => typeof l === "string")
     : [];
+  const navigation = readNavigationAction(data?.navigation);
   return {
     answer: String(data?.answer ?? "").trim(),
     artifacts: Array.isArray(data?.artifacts) ? data.artifacts.filter((a: AskArtifact) => a && ["time_report", "job_summary"].includes(a.kind)).slice(0, 4) : [],
@@ -131,6 +135,7 @@ export async function askInfinity(
     ...(typeof data?.note === "string" && data.note ? { note: data.note } : {}),
     ...(toolActivity.length > 0 ? { toolActivity } : {}),
     ...(readClockButtons(data?.buttons).length > 0 ? { buttons: readClockButtons(data?.buttons) } : {}),
+    ...(navigation ? { navigation } : {}),
     ...(data?.daily_log && typeof data.daily_log === "object" ? { dailyLog: data.daily_log } : {}),
     ...(data?.field && typeof data.field === "object" && typeof data.field.request_id === "string"
       ? { field: { request_id: data.field.request_id, receipts: Array.isArray(data.field.receipts) ? data.field.receipts : [], checklist: data.field.checklist ?? null, draft: data.field.draft, learning: data.field.learning ?? null, replayed: data.field.replayed === true } }
