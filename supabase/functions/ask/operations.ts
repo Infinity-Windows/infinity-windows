@@ -59,7 +59,7 @@ export function reportingExecutor(client: SupabaseClient, userId: string, rank: 
       }
       if (name === 'get_hours_report') {
         const scope = parseReportScope(input,timeZone,userId,rank);
-        const permitted = rank < 2 ? (await visiblePeople()).map(p=>p.id) : null;
+        const permitted = rank === 0 ? [userId] : rank === 1 ? (await visiblePeople()).map(p=>p.id) : null;
         if (rank === 1 && scope.profileIds?.some(id=>!permitted?.includes(id))) throw new Error('The report includes people above your role. Choose installer or foreman records.');
         if (rank === 1 && scope.excludeProfileIds?.some(id=>!permitted?.includes(id))) throw new Error('An excluded person is outside your report access. Choose installer or foreman records.');
         let excludedPeople: Array<{id:string;display_name:string}> = [];
@@ -97,7 +97,7 @@ export function reportingExecutor(client: SupabaseClient, userId: string, rank: 
         let candidates = logs.sort((a,b)=>b.updated_at.localeCompare(a.updated_at));
         if (!projectId) {
           const scope: ReportScope = {from:day,through:day,timeZone,profileIds:null,projectIds:null,groupBy:'job',includeProjects:true};
-          const permitted = rank < 2 ? (await visiblePeople()).map(p=>p.id) : null;
+          const permitted = rank === 0 ? [userId] : rank === 1 ? (await visiblePeople()).map(p=>p.id) : null;
           const shifts = await readReportShifts(client,scope,permitted);
           const worked = new Set(shifts.map(s=>s.project_id).filter(Boolean));
           candidates = logs.filter(l=>worked.has(l.project_id));
