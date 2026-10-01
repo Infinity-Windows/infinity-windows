@@ -106,6 +106,7 @@ vi.mock("../../lib/companySettings", () => ({
 vi.mock("../../lib/schedule/api", () => ({ listMyPublished: async () => schedule }));
 vi.mock("../../lib/api", () => ({
   listProjects: async () => [{ id: JOB, job_code: "OAKRIDGE", name: "Oakridge Apartments", address: "1 Main St", status: "active", allowed_modes: ["data"] }],
+  listProjectsAnyStatus: async () => [{ id: JOB, job_code: "OAKRIDGE", name: "Oakridge Apartments", address: "1 Main St", status: "active", allowed_modes: ["data"] }],
 }));
 vi.mock("../../lib/costCodes", () => ({
   getClockCostCodesForProject: async () => [{ id: "cc-gen", code: "000", label: "General", active: true, is_general: true }],

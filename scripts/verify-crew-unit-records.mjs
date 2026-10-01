@@ -91,4 +91,8 @@ await db.query('update projects set deleted_at=now() where id=$1',[id(10)]);
 await asUser(1);assert.equal((await db.query('select * from crew_work_records')).rows.length,0);checks++;
 await denied(()=>record({...payload,unit:{...unit,id:id(99),label:'deleted job'}}));
 await db.close();
+// The existing CI SQL job invokes this entry point. Keep the original ledger
+// checks and run the narrow attribution and historical-access regressions too.
+await import('./verify-foreman-unit-contributors.mjs');
+await import('./tests/verify-contributor-historical-source-access.mjs');
 console.log(`${checks} crew-record SQL assertions passed against both actual custom-work migrations. Existing auth and sandbox helper fixtures remain stubs; no production writes.`);

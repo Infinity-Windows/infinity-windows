@@ -108,9 +108,25 @@ jobs:
           cache: npm
           cache-dependency-path: app/package-lock.json
       - run: npm ci
-      - run: npx playwright install --with-deps chromium webkit
+      # The Azure Ubuntu mirror stalled before any test on two runners
+      # (2026-10-01). Use the signed official archive with bounded downloads.
+      # Installation still must succeed; no browser checks are skipped.
+      - name: Install browser dependencies
+        timeout-minutes: 10
+        run: |
+          for source in /etc/apt/apt-mirrors.txt /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
+            if [ -f "$source" ]; then
+              sudo sed -i -E 's|https?://azure.archive.ubuntu.com/ubuntu/?|https://archive.ubuntu.com/ubuntu/|g' "$source"
+              if sudo grep -q 'azure.archive.ubuntu.com' "$source"; then
+                echo "The failing Ubuntu mirror is still configured in $source" >&2
+                exit 1
+              fi
+            fi
+          done
+          printf 'Acquire::Retries "1";\nAcquire::http::Timeout "20";\nAcquire::https::Timeout "20";\n' | sudo tee /etc/apt/apt.conf.d/99forge-browser-downloads >/dev/null
+          npx playwright install --with-deps chromium webkit
       # Uses the existing fixture-only server, never the shared database.
-      - run: npm run e2e -- qc-history.spec.ts monday-files.spec.ts schedule-time-conflicts.spec.ts usability-foundations.spec.ts display-layout.spec.ts trip-sheet.spec.ts travel-crew.spec.ts workflow-plans.spec.ts schedule-remove-day.spec.ts schedule-ai-review.spec.ts crew-start-bar.spec.ts crew-end-time.spec.ts crew-unit-records.spec.ts custom-work.spec.ts timecard-weekly.spec.ts unassigned-time.spec.ts project-hours.spec.ts time-entry-export.spec.ts daily-logs.spec.ts global-capture.spec.ts photos-upload.spec.ts honest-sync.spec.ts dictation.spec.ts monthly-salary.spec.ts servicing.spec.ts time-off.spec.ts hex-portal.spec.ts ask-reporting.spec.ts app-updates.spec.ts using-forge.spec.ts training-importer.spec.ts
+      - run: npm run e2e -- qc-history.spec.ts monday-files.spec.ts schedule-time-conflicts.spec.ts usability-foundations.spec.ts display-layout.spec.ts trip-sheet.spec.ts travel-crew.spec.ts workflow-plans.spec.ts schedule-remove-day.spec.ts schedule-ai-review.spec.ts crew-start-bar.spec.ts crew-end-time.spec.ts crew-unit-records.spec.ts unit-contributors.spec.ts custom-work.spec.ts timecard-weekly.spec.ts unassigned-time.spec.ts project-hours.spec.ts time-entry-export.spec.ts daily-logs.spec.ts global-capture.spec.ts photos-upload.spec.ts honest-sync.spec.ts dictation.spec.ts monthly-salary.spec.ts servicing.spec.ts time-off.spec.ts hex-portal.spec.ts ask-reporting.spec.ts app-updates.spec.ts using-forge.spec.ts training-importer.spec.ts
       - run: npm run e2e -- opening-sheet.spec.ts -g "Install memo:"
       # The clock-in specs sat outside every list here, so one went red when
       # Current Work took over the landing (#598) and nobody saw it. A step of
