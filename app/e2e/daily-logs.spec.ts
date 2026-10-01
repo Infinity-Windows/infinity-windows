@@ -25,7 +25,7 @@ async function useProjectFixture(page: Page) {
   await page.route("**/rest/v1/projects**", (r) => json(r, [PROJECT], 1));
 }
 
-test("a foreman files a daily log: notes gate, then Smooth clears the reflection", async ({
+test("a foreman files a daily log: notes are optional, and Smooth clears the reflection", async ({
   page,
 }) => {
   await useSupabaseFixtures(page, { role: "foreman" });
@@ -48,10 +48,11 @@ test("a foreman files a daily log: notes gate, then Smooth clears the reflection
   await page.getByRole("button", { name: "+ Log today" }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
 
-  // Notes is the one hard gate — Save starts disabled with a plain hint.
+  // Notes are optional (owner acceptance review, 2026-10-01) — a hint, never
+  // a block on Save; left blank, Save still goes through.
   const save = page.getByRole("dialog").getByRole("button", { name: "Save" });
-  await expect(save).toBeDisabled();
-  await expect(page.getByText("Add a few words about what got done before saving.")).toBeVisible();
+  await expect(save).toBeEnabled();
+  await expect(page.getByText("Optional — leave blank and we'll note what you picked above.")).toBeVisible();
 
   await page.getByLabel("Notes").fill("Installed 3 units, crew of 2.");
   await expect(save).toBeEnabled();
@@ -100,6 +101,56 @@ test("day-flow Stuck sends its reflection through — only Smooth clears it", as
     p_day_flow: "stuck",
     p_reflection: { went_poorly: "Two panes cracked in transit." },
   });
+});
+
+// Owner acceptance review, 2026-10-01: blank notes must never save a
+// fabricated "0 units installed" default — the honest fallback is a summary
+// of whatever stage chips were actually picked, or a plain "none recorded"
+// when nothing was picked either.
+test("blank notes save an honest summary of the stages picked, never a fabricated default", async ({ page }) => {
+  await useSupabaseFixtures(page, { role: "foreman" });
+  await useProjectFixture(page);
+  const calls: Record<string, unknown>[] = [];
+  await page.route("**/rest/v1/rpc/file_daily_log", async (route) => {
+    calls.push(route.request().postDataJSON() as Record<string, unknown>);
+    await route.fulfill({ status: 200, contentType: "application/json", body: "null" });
+  });
+  await page.goto(`/projects/${BLACK22.projectId}?tab=logs`);
+  await page.getByRole("button", { name: "+ Log today" }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: "Frames", exact: true }).first().click();
+  await dialog.getByRole("button", { name: "Glass", exact: true }).first().click();
+  await expect(dialog.getByLabel("Notes", { exact: true })).toHaveValue("");
+  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await expect.poll(() => calls.length).toBe(1);
+  expect(calls[0]).toMatchObject({ p_notes: "Worked on: Frames, Glass." });
+});
+
+// Horizon's own delay shape (owner acceptance review, 2026-10-01): a cause
+// chip opens its own card — never a free-floating "Add a delay" list.
+test("picking a delay cause opens one card for that cause; Nothing clears it", async ({ page }) => {
+  await useSupabaseFixtures(page, { role: "foreman" });
+  await useProjectFixture(page);
+  const calls: Record<string, unknown>[] = [];
+  await page.route("**/rest/v1/rpc/file_daily_log", async (route) => {
+    calls.push(route.request().postDataJSON() as Record<string, unknown>);
+    await route.fulfill({ status: 200, contentType: "application/json", body: "null" });
+  });
+  await page.goto(`/projects/${BLACK22.projectId}?tab=logs`);
+  await page.getByRole("button", { name: "+ Log today" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByText("Nothing stopped work")).toBeVisible();
+  await dialog.getByRole("button", { name: "Weather", exact: true }).click();
+  await expect(dialog.getByText("Nothing stopped work")).toHaveCount(0);
+  await dialog.getByLabel("What happened").fill("Rain delayed the crew.");
+  await dialog.getByLabel("How long (minutes)").fill("45");
+  await dialog.getByRole("button", { name: "Nothing", exact: true }).click();
+  await expect(dialog.getByText("Nothing stopped work")).toBeVisible();
+  await expect(dialog.getByLabel("What happened")).toHaveCount(0);
+  await dialog.getByLabel("Notes", { exact: true }).fill("Quiet day.");
+  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await expect.poll(() => calls.length).toBe(1);
+  expect(calls[0]).toMatchObject({ p_delays: [] });
 });
 
 for (const width of [390, 1280]) {

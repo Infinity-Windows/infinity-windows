@@ -17,14 +17,33 @@
 .daily-log-edit { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); min-height: 44px; }
 
 .daily-log-backdrop { padding: calc(var(--safe-top) + var(--overlay-gap)) calc(var(--safe-right) + var(--overlay-gap)) calc(var(--safe-bottom) + var(--overlay-gap)) calc(var(--safe-left) + var(--overlay-gap)); }
-.modal-card.daily-log-editor { display: flex; flex-direction: column; width: 100%; max-width: 960px; max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 2 * var(--overlay-gap)); overflow: hidden; padding: 0; border-color: var(--border); border-radius: 20px; }
-.daily-log-editor-header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); padding: var(--space-6) var(--space-7) var(--space-5); border-bottom: 1px solid var(--border); flex: 0 0 auto; }
+/* Horizon's own form shape (HORIZON-REFERENCE.md): 448px max, ~94vh, 8px radius. */
+.modal-card.daily-log-editor { display: flex; flex-direction: column; width: 100%; max-width: 448px; max-height: min(94dvh, calc(100dvh - var(--safe-top) - var(--safe-bottom) - 2 * var(--overlay-gap))); overflow: hidden; padding: 0; border-color: var(--border); border-radius: 8px; }
+.daily-log-editor-header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); padding: var(--space-4); border-bottom: 1px solid var(--border); flex: 0 0 auto; }
 .daily-log-editor-header > div { min-width: 0; }
 .daily-log-editor-header h2 { margin: 0 0 var(--space-2); color: var(--text); font-size: var(--text-xl); letter-spacing: 0.02em; }
 .daily-log-job { margin: 0 0 var(--space-1); font-size: var(--text-md); font-weight: 600; overflow-wrap: anywhere; }
 .daily-log-date { margin: 0; color: var(--muted); font-size: var(--text-sm); }
 .daily-log-close { display: grid; place-items: center; flex: 0 0 44px; width: 44px; height: 44px; padding: 0; }
-.daily-log-editor-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: var(--space-5) var(--space-7) var(--space-6); }
+.daily-log-editor-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: var(--space-4); display: grid; gap: var(--space-6); }
+.daily-log-fieldset { min-width: 0; margin: 0; padding: 0; border: 0; display: grid; gap: var(--space-3); }
+.daily-log-fieldset legend { padding: 0; font-size: var(--text-sm); font-weight: 600; color: var(--text-secondary); line-height: 1.5; }
+.daily-log-chip-row { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.daily-log-chip { min-height: 48px; padding: 0 var(--space-4); border: 1px solid var(--border); border-radius: 999px; background: var(--card-raised); color: var(--text); font-size: var(--text-sm); font-weight: 600; }
+.daily-log-chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent, #fff); }
+.daily-log-stage-slider { display: grid; gap: var(--space-1); padding: var(--space-3) 0 0; }
+.daily-log-stage-slider label { font-size: var(--text-sm); font-weight: 600; }
+.daily-log-stage-slider input[type="range"] { width: 100%; }
+.daily-log-stage-caption { font-size: var(--text-sm); color: var(--muted); }
+.daily-log-delay-card { display: grid; gap: var(--space-3); padding: var(--space-4); border: 1px solid var(--accent); border-radius: 12px; background: var(--card-raised); }
+.daily-log-crew-expected { display: flex; align-items: center; gap: var(--space-3); }
+.daily-log-crew-expected-value { min-width: 2ch; text-align: center; font-weight: 600; }
+.daily-log-photos { display: grid; gap: var(--space-3); }
+.daily-log-photo-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
+.daily-log-photo-buttons button { min-height: 48px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); }
+.daily-log-photos-caption { margin: 0; }
+.daily-log-photo-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(56px, 1fr)); gap: var(--space-2); }
+.daily-log-photo-grid img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; }
 .daily-log-shared { margin: 0 0 var(--space-5); color: var(--muted); font-size: var(--text-sm); line-height: 1.5; }
 .daily-log-draft-notice, .daily-log-draft-warning { margin: 0 0 var(--space-4); padding: var(--space-4); border: 1px solid var(--border); border-radius: 12px; background: var(--card-raised); line-height: 1.5; }
 .daily-log-draft-warning { border-color: var(--accent); }
@@ -49,14 +68,164 @@
 .daily-log-editor-actions { display: flex; gap: var(--space-3); }
 .daily-log-editor-actions button { min-height: 48px; min-width: 120px; }
 
+/* ---- The cross-job Daily Logs page (Horizon parity, 2026-10-01) -------- */
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+/* Horizon's own 44px field (independent review, 2026-10-01): the container
+   used to pad AND let the input keep its own inherited global input padding,
+   stacking into an 88px-tall box in the actual screenshot. Both are reset to
+   an explicit box here rather than relying on inheritance from either side. */
+.daily-log-search {
+  display: flex; align-items: center; gap: var(--space-2); box-sizing: border-box;
+  height: 44px; padding: 0 var(--space-4); border: 1px solid var(--border); border-radius: 8px;
+  background: var(--card-raised); margin: var(--space-3) 0;
+}
+.daily-log-search input {
+  flex: 1; height: 100%; min-height: 0; padding: 0; margin: 0; border: 0;
+  background: transparent; color: var(--text); font-size: var(--text-md); box-sizing: border-box;
+}
+.daily-log-search input:focus-visible { outline: none; }
+.daily-log-date-filters { display: flex; gap: var(--space-4); flex-wrap: wrap; margin: var(--space-3) 0; }
+.daily-log-date-filters label { display: grid; gap: var(--space-1); font-size: var(--text-sm); }
+.daily-log-range-note { margin: 0 0 var(--space-4); }
+.daily-log-day-group { margin-top: var(--space-6); }
+.daily-log-day-group h3 { font-size: var(--text-sm); color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin: 0 0 var(--space-3); }
+.daily-log-card-open { all: unset; display: block; width: 100%; cursor: pointer; }
+.daily-log-card-notes { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.daily-logs-page { max-width: 980px; margin: 0 auto; padding: var(--space-4); }
+
+.daily-log-job-picker { max-width: 480px; }
+.daily-log-job-list { list-style: none; margin: var(--space-3) 0 0; padding: 0; display: grid; gap: var(--space-2); max-height: 50vh; overflow-y: auto; }
+.daily-log-job-list-item { all: unset; display: flex; gap: var(--space-2); align-items: center; padding: var(--space-3) var(--space-4); border: 1px solid var(--border); border-radius: 10px; cursor: pointer; }
+.daily-log-job-code { font-weight: 700; }
+
+/* 670px / 8px radius, matching the actual observed Horizon ticket — this was
+   600/12 (independent review, 2026-10-01). */
+.daily-log-detail { max-width: 670px; margin: 0 auto; }
+.daily-log-detail-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-4); }
+.daily-log-detail-actions button { min-height: 44px; display: inline-flex; align-items: center; gap: var(--space-2); }
+.daily-log-receipt { padding: var(--space-6); border: 1px solid var(--border); border-radius: 8px; background: var(--card-raised); display: grid; gap: var(--space-5); }
+.daily-log-receipt-kicker { margin: 0; font-size: var(--text-sm); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.daily-log-receipt-code { margin: 0; font-weight: 700; }
+.daily-log-receipt section h3 { font-size: var(--text-sm); color: var(--text-secondary); margin: 0 0 var(--space-2); }
+.daily-log-receipt-footer { text-align: right; }
+.daily-log-progress-bar { height: 8px; border-radius: 4px; background: var(--border); overflow: hidden; }
+.daily-log-progress-bar div { height: 100%; background: var(--accent); }
+
+@media print {
+  .daily-log-detail-actions { display: none; }
+}
+
 @media (max-width: 600px) {
   .daily-log-report { padding: var(--space-4); border-radius: 14px; }
   .daily-log-details, .daily-log-conditions, .daily-log-reflections { grid-template-columns: minmax(0, 1fr); }
   .daily-log-headline { font-size: 18px; }
-  .modal-card.daily-log-editor { border-radius: 16px; }
+  /* Horizon's own form shape is 8px on BOTH phone and desktop (owner
+     acceptance review, 2026-10-01) — this used to widen to 16px here. */
   .daily-log-editor-header { padding: var(--space-4); }
   .daily-log-editor-header h2 { font-size: 23px; }
   .daily-log-editor-body { padding: var(--space-4); }
   .daily-log-editor-footer { padding: var(--space-3) var(--space-4); }
-  .daily-log-editor-actions button { min-width: 0; flex: 1; }
+}
+
+/* ---- Horizon-identical compact cards (owner acceptance review, 2026-10-01)
+   Scoped to THIS page's card shape/density/font only — the old per-job Logs
+   tab's own report cards (.daily-log-report, read through DailyLogsTab, K-X2
+   frozen) are untouched. */
+@font-face {
+  font-family: "Titillium Web Horizon";
+  src: url("../../assets/fonts/titillium-web-latin-400.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Titillium Web Horizon";
+  src: url("../../assets/fonts/titillium-web-latin-600.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Titillium Web Horizon";
+  src: url("../../assets/fonts/titillium-web-latin-700.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+/* Form controls (input/textarea/button/select) do not inherit font-family
+   from an ancestor by default — the browser UA stylesheet gives them their
+   own — so scoping the font on the container alone left every field and
+   button inside the editor in the app's ordinary font (independent review,
+   2026-10-01: "form font not Titillium"). Named explicitly rather than with
+   a blanket `*` selector, so this never reaches an unrelated nested widget. */
+.daily-logs-page, .modal-card.daily-log-editor, .daily-log-detail,
+.daily-logs-page input, .daily-logs-page textarea, .daily-logs-page button, .daily-logs-page select,
+.modal-card.daily-log-editor input, .modal-card.daily-log-editor textarea,
+.modal-card.daily-log-editor button, .modal-card.daily-log-editor select,
+.daily-log-detail input, .daily-log-detail textarea, .daily-log-detail button, .daily-log-detail select {
+  font-family: "Titillium Web Horizon", var(--font-body);
+}
+
+.daily-log-overview { margin: var(--space-4) 0; padding: var(--space-4); border: 1px solid var(--accent); border-radius: 8px; }
+.daily-log-overview h3 { margin: 0 0 var(--space-3); font-size: var(--text-sm); text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-secondary); }
+.daily-log-card-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; max-width: 980px; }
+.daily-log-card {
+  min-width: 0; padding: 12px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--card-raised); box-shadow: none; display: grid; gap: 8px;
+}
+.daily-log-card-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.daily-log-card-header-right { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+.daily-log-card-job { all: unset; cursor: pointer; font-weight: 700; font-size: 14px; min-width: 0; overflow-wrap: anywhere; }
+.daily-log-card-edit { display: grid; place-items: center; width: 32px; height: 32px; min-height: 0; padding: 0; border-radius: 8px; }
+.daily-log-card-meta { margin: 0; font-size: 12px; }
+.daily-log-card-body { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
+.daily-log-card-main { flex: 1 1 220px; min-width: 0; display: grid; gap: 8px; }
+.daily-log-card-notes { font-size: 14px; -webkit-line-clamp: 2; }
+.daily-log-card-thumbs { list-style: none; margin: 0; padding: 0; display: flex; gap: 8px; }
+.daily-log-card-thumbs li { width: 56px; height: 56px; flex: 0 0 auto; }
+.daily-log-card-thumbs img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; }
+.daily-log-card-badges { display: flex; flex-wrap: wrap; gap: 6px; }
+.daily-log-badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+.daily-log-badge-stopped { background: color-mix(in srgb, var(--danger, #d14343) 16%, transparent); color: var(--danger, #d14343); }
+.daily-log-badge-needed { background: color-mix(in srgb, var(--warn, #c98a1b) 16%, transparent); color: var(--warn, #c98a1b); }
+.daily-log-badge-nophotos { background: var(--border); color: var(--muted); }
+.daily-log-card-stages { flex: 0 0 180px; min-width: 150px; display: grid; gap: 6px; align-content: start; }
+.daily-log-card-mini-bar { display: grid; grid-template-columns: 1fr; gap: 2px; }
+.daily-log-card-mini-bar-label { font-size: 11px; color: var(--muted); }
+.daily-log-progress-bar-mini { height: 4px; width: 100%; }
+.daily-log-card-mini-bar-caption { font-size: 11px; color: var(--muted); }
+.daily-log-card-weather { display: flex; justify-content: flex-end; color: var(--muted); }
+.daily-log-card-units { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0; padding-top: 8px; border-top: 1px dashed var(--border); }
+.daily-log-card-units dt { font-size: 11px; color: var(--muted); margin: 0; }
+.daily-log-card-units dd { font-size: 14px; font-weight: 600; margin: 0; }
+.daily-log-card-units-detail { margin: 0; font-size: 13px; color: var(--text); overflow-wrap: anywhere; }
+.daily-log-card-asof { margin: 0; font-size: 11px; }
+.daily-log-date-filters input, .daily-log-date-filters select {
+  box-sizing: border-box; height: 44px; padding: 0 var(--space-3); border: 1px solid var(--border);
+  border-radius: 8px; background: var(--card-raised); color: var(--text);
+}
+
+.daily-log-delay-cause { margin: 0; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--accent); }
+.daily-log-photo-grid-pending img { opacity: 0.7; }
+
+/* Pinned, full-width 48px Submit (owner acceptance review, 2026-10-01). */
+.daily-log-editor-actions { flex-direction: column-reverse; }
+.daily-log-editor-actions .daily-log-submit { width: 100%; min-width: 0; height: 48px; min-height: 48px; }
+.daily-log-editor-actions button:not(.daily-log-submit) { width: 100%; min-width: 0; background: transparent; border-color: transparent; }
+
+.daily-log-photo-first img { width: 100%; aspect-ratio: 16 / 10; object-fit: cover; }
+.daily-log-photo-grid-receipt { grid-template-columns: repeat(auto-fill, minmax(56px, 1fr)); }
+.daily-log-photo-grid-receipt .daily-log-photo-first { grid-column: 1 / -1; }
+
+@media print {
+  /* Chrome-free print (owner acceptance review, 2026-10-01): the saved
+     ticket itself, not the app around it. :has() is print-only here, so a
+     browser without it just keeps today's behaviour (actions hidden, chrome
+     shown) rather than breaking anything on screen. */
+  body:has(.daily-log-detail) .app-rail,
+  body:has(.daily-log-detail) .tabbar,
+  body:has(.daily-log-detail) .daily-log-detail-actions {
+    display: none !important;
+  }
+  body:has(.daily-log-detail) .app-main { padding: 0; }
 }

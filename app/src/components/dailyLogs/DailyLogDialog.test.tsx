@@ -7,6 +7,7 @@ import { LanguageContext, type LanguageContextValue } from "../../lib/i18n/conte
 import { CATALOG, translate } from "../../lib/i18n";
 import { rememberSignedIn } from "../../lib/signedIn";
 import { loadManualDailyLogDraft } from "../../lib/manualDailyLogDraft";
+import { emptyProgressFields } from "../../lib/dailyLogStages";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -25,7 +26,8 @@ let root: Root;
 let client: QueryClient;
 const lang: LanguageContextValue = { lang: "en", t: ((k: string) => translate(CATALOG, "en", k as keyof typeof CATALOG)) as LanguageContextValue["t"], setLang: () => {}, needsChoice: false };
 const log = (revision: number) => ({ id: "log", project_id: "job", log_date: "2026-10-01", revision,
-  headline: "Morning", notes: "Installed frame", day_flow: "fine", reflection: null, weather: "Clear" });
+  headline: "Morning", notes: "Installed frame", day_flow: "fine", reflection: null, weather: "Clear",
+  ...emptyProgressFields() });
 const dialog = () => <LanguageContext.Provider value={lang}><QueryClientProvider client={client}>
   <DailyLogDialog projectId="job" logDate="2026-10-01" jobLabel="Test job" onClose={m.close} />
 </QueryClientProvider></LanguageContext.Provider>;

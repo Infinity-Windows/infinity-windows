@@ -32,6 +32,7 @@ import { signedInEmail, signedInUserId, subscribeSignedIn } from "../signedIn";
 import { clientWithToken, supabase } from "../supabase";
 import { authorEvidence, belongsTo, ownershipOf, type Signer } from "./entryOwner";
 import type { JobMode } from "../types";
+import type { DailyLogProgressFields } from "../dailyLogStages";
 import { recoverPhotoUpload, recoverTransportFailedPhoto } from "./recoverPhotoUploads";
 import { PhotoUploadReceipts } from "./photoUploadProgress";
 import { migrateLegacyUploads } from "../install/legacyUploadQueue";
@@ -1155,6 +1156,11 @@ export interface UploadInput {
   /** A package this photo hangs off (pick 28) — attachments.package_id,
    * widened onto attachments_target by 20260936000000_package_photos. */
   packageId?: string | null;
+  /** Tags this photo to ONE job-day's daily log (20261064010000) — a daily
+   * log photo, not just any photo on the same job and date. NOT a target of
+   * its own: projectId must still be set, and the server trigger
+   * attachments_daily_log_matches_job refuses a mismatch. */
+  dailyLogId?: string | null;
   lat?: number | null;
   lng?: number | null;
   accuracyM?: number | null;
@@ -1209,6 +1215,7 @@ export function enqueueUpload(input: UploadInput): Promise<string> {
         createdBy: input.createdBy ?? null,
         projectId: input.projectId ?? null,
         packageId: input.packageId ?? null,
+        dailyLogId: input.dailyLogId ?? null,
         lat: input.lat ?? null,
         lng: input.lng ?? null,
         accuracyM: input.accuracyM ?? null,
@@ -1365,7 +1372,7 @@ export function enqueueVideoQuizSubmit(input: {
  * the only writer there is). It also had zero callers, so nothing ever proved
  * it. Now it carries every field the RPC takes, and the handler calls the RPC.
  */
-export interface DailyLogInput {
+export interface DailyLogInput extends DailyLogProgressFields {
   projectId: string;
   logDate: string;
   headline: string | null;
@@ -1375,15 +1382,28 @@ export interface DailyLogInput {
    * Deliberately not that exact type: outbox.ts is the queue and never reads
    * this, and importing it back from lib/dailyLogs.ts — which imports
    * enqueueDailyLog from here — would draw a circle for no gain. The handler,
-   * which does read it, names the real type. */
+   * which does read it, names the real type. (dailyLogStages.ts carries no
+   * such cycle — it imports nothing from dailyLogs.ts — so the structured
+   * progress fields below are typed directly rather than opaquely.) */
   reflection: object | null;
   weather: string | null;
   baseRevision?: number | null;
+  /** Did the CALLER actually answer for the fourteen structured fields
+   * above, or are they just emptyProgressFields() defaults because the
+   * caller doesn't carry them at all? Required — see QueuedDailyLog.
+   * progressProvided in dailyLogMerge.ts for why this can't be inferred
+   * from emptiness. Every current caller (dailyLogs.ts's fileDailyLog) sets
+   * this true; a future caller that genuinely doesn't know about these
+   * fields must set it false rather than omit it. */
+  progressProvided: boolean;
+  reviewedConflict?: string|null;
+  ownerId?: string|null;
 }
 
 export function enqueueDailyLog(input: DailyLogInput): Promise<string> {
   return enqueue({
     op: "daily_log",
+    ownerId:input.ownerId,
     payload: {
       projectId: input.projectId,
       logDate: input.logDate,
@@ -1393,6 +1413,22 @@ export function enqueueDailyLog(input: DailyLogInput): Promise<string> {
       reflection: input.reflection,
       weather: input.weather,
       baseRevision: input.baseRevision ?? null,
+      progressProvided: input.progressProvided,
+      reviewedConflict: input.reviewedConflict??null,
+      workStages: input.workStages,
+      stageProgress: input.stageProgress,
+      covers: input.covers,
+      delays: input.delays,
+      safetyStatus: input.safetyStatus,
+      weatherImpact: input.weatherImpact,
+      missingTomorrow: input.missingTomorrow,
+      tomorrowStages: input.tomorrowStages,
+      tomorrowCrewExpected: input.tomorrowCrewExpected,
+      tomorrowPlan: input.tomorrowPlan,
+      unitsToday: input.unitsToday,
+      unitsToDate: input.unitsToDate,
+      unitsRemaining: input.unitsRemaining,
+      unitsRemainingDetail: input.unitsRemainingDetail,
     },
   });
 }

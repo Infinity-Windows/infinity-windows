@@ -29,6 +29,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - My Schedule (`/my-schedule`)
 - Warehouse (`/warehouse`)
 - Supplies (`/supplies`)
+- Daily logs (`/daily-logs`)
 - My timecard (`/timecard`)
 - Points (`/points`)
 - Learn (`/learn`)
@@ -42,7 +43,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Settings (`/settings`)
 - Notifications (`/notifications`)
 
-**Can reach (all 33 allowed destinations):**
+**Can reach (all 34 allowed destinations):**
 
 - Home (`/`)
 - Current Work (`/current-work`)
@@ -77,6 +78,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Supplies (`/supplies`)
 - Photos & receipts (`/photos`)
 - Toolbox talk history (`/toolbox-history`)
+- Daily logs (`/daily-logs`)
 
 **Blocked:**
 
@@ -129,6 +131,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - My Work (`/my-work`)
 - Jobs (`/projects`)
 - Photos & receipts (`/photos`)
+- Daily logs (`/daily-logs`)
 - Clock in / out (action)
 - My timecard (`/timecard`)
 - Team timecards (`/team-timecards`)
@@ -152,7 +155,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Settings (`/settings`)
 - Catalog (`/catalog`)
 
-**Can reach (all 40 allowed destinations):**
+**Can reach (all 41 allowed destinations):**
 
 - Home (`/`)
 - Current Work (`/current-work`)
@@ -194,6 +197,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Scheduling (`/scheduling`)
 - Photos & receipts (`/photos`)
 - Toolbox talk history (`/toolbox-history`)
+- Daily logs (`/daily-logs`)
 
 **Blocked:**
 
@@ -242,6 +246,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Studio (`/studio`)
 - Data (`/data`)
 - Photos & receipts (`/photos`)
+- Daily logs (`/daily-logs`)
 - Clock in / out (action)
 - My timecard (`/timecard`)
 - Team timecards (`/team-timecards`)
@@ -274,7 +279,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Catalog (`/catalog`)
 - Admin (`/admin`)
 
-**Can reach (all 52 allowed destinations):**
+**Can reach (all 53 allowed destinations):**
 
 - Home (`/`)
 - Current Work (`/current-work`)
@@ -328,6 +333,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Receipts (`/receipts`)
 - Photos & receipts (`/photos`)
 - Toolbox talk history (`/toolbox-history`)
+- Daily logs (`/daily-logs`)
 
 **Blocked:**
 
@@ -364,6 +370,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Studio (`/studio`)
 - Data (`/data`)
 - Photos & receipts (`/photos`)
+- Daily logs (`/daily-logs`)
 - Clock in / out (action)
 - My timecard (`/timecard`)
 - Team timecards (`/team-timecards`)
@@ -399,7 +406,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Admin (`/admin`)
 - Builder logins (`/account/builders`)
 
-**Can reach (all 55 allowed destinations):**
+**Can reach (all 56 allowed destinations):**
 
 - Home (`/`)
 - Current Work (`/current-work`)
@@ -456,6 +463,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Builder logins (`/account/builders`)
 - Photos & receipts (`/photos`)
 - Toolbox talk history (`/toolbox-history`)
+- Daily logs (`/daily-logs`)
 
 **Blocked:**
 

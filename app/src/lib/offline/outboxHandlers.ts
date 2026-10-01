@@ -20,6 +20,8 @@ import { supabase as sharedClient } from "../supabase";
 import { isMissingStagingBayError } from "../staging";
 import { getDailyLog, isStaleDailyLogError, type DailyLog } from "../dailyLogs";
 import { mergeQueuedDailyLog, type QueuedDailyLog } from "../dailyLogMerge";
+import { emptyProgressFields, type DailyLogProgressFields } from "../dailyLogStages";
+import { clearProgressConflicts,loadProgressConflicts,saveProgressConflicts } from "../dailyLogProgressConflicts";
 import { CATALOG } from "../i18n/catalog";
 import { translate } from "../i18n/translate";
 import { signaturePngBytes } from "../toolboxSign";
@@ -32,6 +34,9 @@ import {
   type OutboxEntry,
 } from "./outbox-core";
 import { readPhotoBytes } from "./readPhotoBytes";
+import {sendDailyLogPhoto} from "./dailyLogPhotoUpload";
+import {listDailyLogPendingPhotos,reconcileDailyLogPendingPhotos} from "./dailyLogPendingPhotos";
+import {dailyLogPhotoUploader} from "./dailyLogPhotoUploader";
 
 /**
  * The client a set of handlers sends through. The runtime hands in one bound
@@ -501,6 +506,7 @@ export function createSupabaseHandlers(
 
   const upload: OpHandler = async (entry, ctx) => {
     const p = entry.payload;
+    if (p.dailyLogId) return sendDailyLogPhoto(supabase,entry,ctx);
     const bucket = str(p.bucket) ?? "install-media";
     const path = str(p.path);
     const contentType = str(p.contentType) ?? "application/octet-stream";
@@ -571,6 +577,7 @@ export function createSupabaseHandlers(
       ...row,
       project_id: str(p.projectId),
       package_id: str(p.packageId),
+      daily_log_id: str(p.dailyLogId),
       lat: num(p.lat),
       lng: num(p.lng),
       accuracy_m: num(p.accuracyM),
@@ -580,10 +587,19 @@ export function createSupabaseHandlers(
     // Keep the same client_id through each schema fallback. A reply can be
     // lost after the server committed the row, so a replay must never become
     // a second plain INSERT merely because an optional column is missing.
+    //
+    // daily_log_id rides ONLY the first (full geoRow) tier. A caller that
+    // asked for a daily-log-tagged photo must never silently succeed as an
+    // ordinary untagged job photo — the independent review's finding: a
+    // reader checking "did this log get its photo" would see nothing, with
+    // no error anywhere. usedTaggedTier tracks whether the row that actually
+    // landed still carries the tag; checked once, after the whole chain.
+    let usedTaggedTier = true;
     let res = await supabase
       .from("attachments")
       .upsert({ ...geoRow, client_id: entry.id }, { onConflict: "client_id" });
     if (res.error && isMissingColumn(res.error)) {
+      usedTaggedTier = false;
       res = await supabase.from("attachments")
         .upsert({ ...row, project_id: str(p.projectId), client_id: entry.id }, { onConflict: "client_id" });
     }
@@ -598,10 +614,23 @@ export function createSupabaseHandlers(
       if (entry.attemptCount > 0) {
         throw tagPermanent(new Error("Photo retry needs the server's client_id column; the saved photo remains on this phone"));
       }
+      usedTaggedTier = true;
       res = await supabase.from("attachments").insert(geoRow);
+      if (res.error && isMissingColumn(res.error)) usedTaggedTier = false;
     }
     if (res.error && isMissingColumn(res.error)) {
       res = await supabase.from("attachments").insert(row);
+    }
+    if (!res.error && p.dailyLogId && !usedTaggedTier) {
+      // The bytes are safely uploaded and SOME attachments row exists, but
+      // not tagged to the log that was asked for — never report that as a
+      // quiet success. Same shape as the schema-repair case just above:
+      // permanent (retrying won't add a column), surfaced on Stuck writes,
+      // bytes and row both already safe.
+      throw tagPermanent(new Error(
+        "This photo saved to the job, but this database isn't set up yet to tag it to the daily log. " +
+        "The picture is still safe on this phone and on the job's photo feed. Tell whoever manages the app.",
+      ));
     }
     // There is no tier for this one, deliberately. A check violation means the
     // row does not fit the database's own rules — peeling columns off would
@@ -814,6 +843,7 @@ export function createSupabaseHandlers(
     if (!projectId || !logDate) {
       throw tagPermanent(new Error("This daily log is missing its job or its day"));
     }
+    const empty = emptyProgressFields();
     const queued: QueuedDailyLog = {
       projectId,
       logDate,
@@ -824,15 +854,66 @@ export function createSupabaseHandlers(
       weather: str(p.weather),
       baseRevision: typeof p.baseRevision === "number" && Number.isSafeInteger(p.baseRevision) && p.baseRevision >= 0
         ? p.baseRevision : null,
+      // Strict === true: anything else (missing, malformed, an entry queued
+      // by a build older than this marker) is treated as "never answered
+      // for these fields", the safe default — see DailyLogInput.progressProvided.
+      progressProvided: p.progressProvided === true,
+      workStages: (p.workStages as DailyLogProgressFields["workStages"]) ?? empty.workStages,
+      stageProgress: (p.stageProgress as DailyLogProgressFields["stageProgress"]) ?? empty.stageProgress,
+      covers: (p.covers as DailyLogProgressFields["covers"]) ?? empty.covers,
+      delays: (p.delays as DailyLogProgressFields["delays"]) ?? empty.delays,
+      safetyStatus: (p.safetyStatus as DailyLogProgressFields["safetyStatus"]) ?? empty.safetyStatus,
+      weatherImpact: (p.weatherImpact as DailyLogProgressFields["weatherImpact"]) ?? empty.weatherImpact,
+      missingTomorrow: (p.missingTomorrow as DailyLogProgressFields["missingTomorrow"]) ?? empty.missingTomorrow,
+      tomorrowStages: (p.tomorrowStages as DailyLogProgressFields["tomorrowStages"]) ?? empty.tomorrowStages,
+      tomorrowCrewExpected: (p.tomorrowCrewExpected as number | null | undefined) ?? empty.tomorrowCrewExpected,
+      tomorrowPlan: (p.tomorrowPlan as string | null | undefined) ?? empty.tomorrowPlan,
+      unitsToday: (p.unitsToday as number | null | undefined) ?? empty.unitsToday,
+      unitsToDate: (p.unitsToDate as number | null | undefined) ?? empty.unitsToDate,
+      unitsRemaining: (p.unitsRemaining as number | null | undefined) ?? empty.unitsRemaining,
+      unitsRemainingDetail: (p.unitsRemainingDetail as string | null | undefined) ?? empty.unitsRemainingDetail,
     };
     // A failed read cannot establish a safe expected revision. Keep the entry
     // queued; another replay can try when the server is reachable.
     for (let attempt = 0; attempt < 3; attempt++) {
       const server: DailyLog | null = await getDailyLog(projectId, logDate, supabase);
       if (server && !Number.isSafeInteger(server.revision)) throw new Error("Daily log revision unavailable; retry after refresh");
-      const merged = mergeQueuedDailyLog(queued, server);
+      const { merged, progressConflicts, progressProvided } = mergeQueuedDailyLog(queued, server);
       stopIfAbandoned(ctx);
-      const { error } = await supabase.rpc("file_daily_log", {
+      const expectedRevision = server?.revision ?? 0;
+      // Persisted BEFORE the write, not after: a crash, a lost reply or an
+      // account switch between the write and a later bookkeeping step must
+      // not lose the fact that this phone's structured answers disagreed
+      // with what's about to be saved. Only ever written when there is
+      // something to review — never used to CLEAR an earlier, still-
+      // unresolved conflict from a different queued entry; the only
+      // intended clear path is the editor's explicit dismiss/restore.
+      if (entry.ownerId && progressConflicts.length > 0) {
+        const waiting=loadProgressConflicts(entry.ownerId,projectId,logDate);
+        if(waiting && (waiting.sourceEntryId!==entry.id || p.reviewedConflict===JSON.stringify(waiting)))throw new Error("Review the earlier daily log progress conflict first; this entry remains queued");
+        saveProgressConflicts({
+          sourceEntryId:entry.id,
+          version: 1,
+          ownerId: entry.ownerId,
+          projectId,
+          logDate,
+          serverRevision: expectedRevision,
+          conflicts: progressConflicts,
+          // The COMPLETE local answer, not just the conflicting fields —
+          // restoring a partial per-field patchwork over a newer server
+          // snapshot can assemble a combination nobody actually reported.
+          queuedSnapshot: {
+            workStages: queued.workStages, stageProgress: queued.stageProgress, covers: queued.covers,
+            delays: queued.delays, safetyStatus: queued.safetyStatus, weatherImpact: queued.weatherImpact,
+            missingTomorrow: queued.missingTomorrow, tomorrowStages: queued.tomorrowStages,
+            tomorrowCrewExpected: queued.tomorrowCrewExpected, tomorrowPlan: queued.tomorrowPlan,
+            unitsToday: queued.unitsToday, unitsToDate: queued.unitsToDate, unitsRemaining: queued.unitsRemaining,
+            unitsRemainingDetail: queued.unitsRemainingDetail,
+          },
+          detectedAt: new Date().toISOString(),
+        });
+      }
+      const { data: savedLog, error } = await supabase.rpc("file_daily_log", {
         p_project_id: projectId,
         p_log_date: logDate,
         p_headline: merged.headline,
@@ -840,9 +921,45 @@ export function createSupabaseHandlers(
         p_day_flow: merged.dayFlow,
         p_reflection: merged.reflection,
         p_weather: merged.weather,
-        p_expected_revision: server?.revision ?? 0,
+        p_expected_revision: expectedRevision,
+        p_progress_provided: progressProvided,
+        p_work_stages: merged.workStages,
+        p_stage_progress: merged.stageProgress,
+        p_covers: merged.covers,
+        p_delays: merged.delays,
+        p_safety_status: merged.safetyStatus,
+        p_weather_impact: merged.weatherImpact,
+        p_missing_tomorrow: merged.missingTomorrow,
+        p_tomorrow_stages: merged.tomorrowStages,
+        p_tomorrow_crew_expected: merged.tomorrowCrewExpected,
+        p_tomorrow_plan: merged.tomorrowPlan,
+        p_units_today: merged.unitsToday,
+        p_units_to_date: merged.unitsToDate,
+        p_units_remaining: merged.unitsRemaining,
+        p_units_remaining_detail: merged.unitsRemainingDetail,
       });
-      if (!error) return;
+      if (!error) {
+        stopIfAbandoned(ctx);
+        if(entry.ownerId && typeof p.reviewedConflict==='string' && progressConflicts.length===0 && progressProvided){
+          const waiting=loadProgressConflicts(entry.ownerId,projectId,logDate);
+          if(JSON.stringify(waiting)===p.reviewedConflict){
+            const confirmed=await getDailyLog(projectId,logDate,supabase);
+            const fields=Object.keys(empty) as (keyof DailyLogProgressFields)[];
+            stopIfAbandoned(ctx);
+            if(confirmed && fields.every(field=>JSON.stringify(confirmed[field])===JSON.stringify(queued[field])) && JSON.stringify(loadProgressConflicts(entry.ownerId,projectId,logDate))===p.reviewedConflict)clearProgressConflicts(entry.ownerId,projectId,logDate);
+          }
+        }
+        const pendingPhotos=entry.ownerId ? await listDailyLogPendingPhotos(entry.ownerId,projectId,logDate) : [];
+        if(!pendingPhotos.length)return;
+        const saved = Array.isArray(savedLog) ? savedLog[0] : savedLog;
+        const logId = saved?.id ?? (await getDailyLog(projectId,logDate,supabase))?.id;
+        if(!logId)throw new Error("Saved daily log identity could not be confirmed");
+        if(entry.ownerId){
+          const photos=await reconcileDailyLogPendingPhotos({ownerId:entry.ownerId,projectId,logDate,dailyLogId:logId,uploaderUid:entry.ownerId},dailyLogPhotoUploader);
+          if(photos.failed)throw new Error("Daily log saved; pending photos remain on this phone for retry");
+        }
+        return;
+      }
       if (!isStaleDailyLogError(error)) throw missingGuard(error, "daily log");
     }
     throw new Error("Daily log changed again; retrying when the queue runs next");

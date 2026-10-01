@@ -109,6 +109,40 @@ export async function listPhotos(
   );
 }
 
+/**
+ * Photos tagged to THIS job-day's daily log (20261064010000) — not every
+ * photo on the same job and date, just the ones the log itself claims.
+ * Missing-column fallback is unnecessary here: a database old enough to lack
+ * daily_log_id also lacks the daily_logs row this is ever called for.
+ */
+export async function listDailyLogPhotos(dailyLogId: string): Promise<FeedPhoto[]> {
+  const { data, error } = await supabase
+    .from("attachments")
+    .select(GEO_SELECT)
+    .eq("kind", "photo")
+    .eq("daily_log_id", dailyLogId)
+    .is("deleted_at", null)
+    .order("created_at", { ascending: false });
+  if (isMissingColumn(error)) return [];
+  if (error) throw error;
+  const rows = (data ?? []) as AttachmentRow[];
+  return Promise.all(
+    rows.map(async (r) => ({
+      id: r.id,
+      storagePath: r.storage_path,
+      signedUrl: await signedMedia(r.storage_path),
+      createdBy: r.created_by ?? null,
+      createdAt: r.created_at,
+      takenAt: r.taken_at ?? null,
+      lat: typeof r.lat === "number" ? r.lat : null,
+      lng: typeof r.lng === "number" ? r.lng : null,
+      accuracyM: typeof r.accuracy_m === "number" ? r.accuracy_m : null,
+      caption: r.caption ?? null,
+      projectId: r.project_id ?? null,
+    })),
+  );
+}
+
 // ---------------------------------------------------------------------------
 // The jobs a person has worked (20260995000000).
 // ---------------------------------------------------------------------------

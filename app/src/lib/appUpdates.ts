@@ -6,6 +6,7 @@ import { BUILD_ID } from './pwa/buildInfo';
 export const INCLUDED_UPDATE_IDS = [
   '2026-10-01-ask-ai-issues', '2026-10-01-learning-rounds', '2026-10-01-model-contrast', '2026-10-01-schedule-date-inputs',
   '2026-10-01-searchable-supply-jobs', '2026-10-01-searchable-costing-jobs',
+  '2026-10-01-daily-logs-page',
   // Release 1, the new front door (20261031000000).
   '2026-09-23-new-design-choice', '2026-09-23-prep-time', '2026-09-23-new-design-owner-switches',
   '2026-09-22-ai-field-work', '2026-09-22-ai-crew-records', '2026-09-22-field-job-notices',
