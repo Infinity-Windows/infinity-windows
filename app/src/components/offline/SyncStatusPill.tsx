@@ -18,14 +18,14 @@
 // while that one sheet was open.
 
 import { useClock } from "../../lib/clockContext";
-import { signInMark, stillSignedInAs, subscribeSignedIn } from "../../lib/signedIn";
+import { signInMark, signedInUserId, stillSignedInAs, subscribeSignedIn } from "../../lib/signedIn";
 import {
   readWorkQueue,
   syncWork,
   WORK_QUEUE_EVENT,
 } from "../../lib/customWork/queue";
 import { Link } from "react-router-dom";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import {
   CheckCircle2,
   CloudOff,
@@ -263,7 +263,10 @@ function useLegacyUploadCount() {
 export function SyncStatusPill({ quietWhenSynced = false }: { quietWhenSynced?: boolean }) {
   const t = useT();
   const { counts, pill: outboxPill, held, unknown, readState } = useOutbox();
-  const { profileId, loading: clockLoading } = useClock();
+  const { loading: clockLoading } = useClock();
+  // The clock profile query can still describe the previous person during an
+  // account switch. Queue ownership follows the actual auth session instead.
+  const profileId = useSyncExternalStore(subscribeSignedIn, signedInUserId, signedInUserId);
   const installs = useInstallOutboxCount(profileId);
   const custom = useCustomWorkCount(profileId);
   const service = useServicingCount(profileId);
