@@ -154,7 +154,7 @@ export const APP_GUIDE: AppGuideEntry[] = [
     label: "Jobs",
     minRole: "installer",
     blurb:
-      "The job list. Open a job to see its plan and map; tap a unit dot (blue = window, green = door) to open its sheet, then assign it to yourself and start.",
+      "Jobs opens Overview for supervisors and owners: concerns, published crews, recorded progress and recent changes. Job list retains the job cards and ordering tools; installers and foremen open that list directly. Open a job to see its plan and map; tap a unit dot (blue = window, green = door) to open its sheet, then assign it to yourself and start.",
   },
   {
     path: "/jobs/history",
@@ -407,13 +407,6 @@ export const APP_GUIDE: AppGuideEntry[] = [
     minRole: "supervisor",
     blurb:
       "The fleet — trucks and machinery, service due dates, and which vehicle is tied to which schedule. Use it to keep the fleet serviced and assigned.",
-  },
-  {
-    path: "/heartbeat",
-    label: "Heartbeat",
-    minRole: "supervisor",
-    blurb:
-      "A company-wide health/status overview. Use it for a quick read on how the whole operation is running.",
   },
   {
     path: "/admin",
