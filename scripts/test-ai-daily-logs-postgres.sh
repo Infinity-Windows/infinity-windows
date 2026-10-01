@@ -33,6 +33,7 @@ awk '/^create function public._ai_job_visible/{on=1} on{print} on&&/^\$\$;/{exit
 run_sql "$WORK/visible.sql"
 run_sql "$REPO/supabase/migrations/20261030000000_ai_daily_log_contributions.sql"
 run_sql "$REPO/supabase/migrations/20261030000000_ai_daily_log_contributions.sql"
+run_sql "$REPO/supabase/migrations/20261052000000_daily_log_revision_guard.sql"
 run_sql "$FIXTURES/seed.sql"
 
 JOB_A=00000000-0000-4000-8000-000000000090
