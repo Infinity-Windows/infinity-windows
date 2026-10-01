@@ -65,7 +65,7 @@ describe("the capability registry is the one list", () => {
 
   it("no tool can change a clock, a break, a toolbox talk, an approval or a publish", () => {
     for (const name of registeredToolNames()) {
-      if (name === "offer_clock_button") continue;
+      if (name === "offer_clock_button" || name === "get_crew_clock_status") continue;
       // Whole words between underscores: "draft_assignments" is not "sign".
       expect(name).not.toMatch(/(^|_)(clock|break|toolbox|approve|publish|sign|lunch)(_|$)/);
     }
@@ -79,13 +79,13 @@ describe("action cards per role (K2.2)", () => {
     expect(ROLE_CARDS[0]).toEqual(["build_unit", "daily_log", "take_supplies", "my_hours"]);
     expect(ids(cardsForRank(0))).toEqual(["build_unit", "daily_log", "my_hours"]);
   });
-  it("foreman: Build a unit · Daily log — Crew status and Units completed are absent until Release 3", () => {
+  it("foreman: Crew status · Build a unit · Daily log — Units completed is absent until Release 3", () => {
     expect(ROLE_CARDS[1]).toEqual(["crew_status", "build_unit", "daily_log", "units_completed"]);
-    expect(ids(cardsForRank(1))).toEqual(["build_unit", "daily_log"]);
+    expect(ids(cardsForRank(1))).toEqual(["crew_status", "build_unit", "daily_log"]);
   });
-  it("supervisor and owner: Plan the schedule · Job summary · Hours report — Crew status absent until Release 3", () => {
-    expect(ids(cardsForRank(2))).toEqual(["plan_schedule", "job_summary", "hours_report"]);
-    expect(ids(cardsForRank(3))).toEqual(["plan_schedule", "job_summary", "hours_report"]);
+  it("supervisor and owner: Crew status · Plan the schedule · Job summary · Hours report", () => {
+    expect(ids(cardsForRank(2))).toEqual(["crew_status", "plan_schedule", "job_summary", "hours_report"]);
+    expect(ids(cardsForRank(3))).toEqual(["crew_status", "plan_schedule", "job_summary", "hours_report"]);
     expect(ids(cardsForRank(9))).toEqual(ids(cardsForRank(3)));
   });
   it("a running unit puts Finish unit N first, for every role", () => {
@@ -154,7 +154,7 @@ describe("the model's tool list derives from the registry", () => {
     expect(installer).toContain("Answer in the language of THIS message");
     const owner = capabilityPromptBlock(3);
     expect(owner).not.toContain("NOT FOR THIS ROLE");
-    expect(owner).toContain("Crew status → the Team timecards screen");
+    expect(owner).toContain("- Crew status: Changes nothing.");
     // Screen-only (K2.8): named under its own heading, with no release promised.
     expect(owner).toContain("ON A SCREEN, NEVER IN ASK");
     expect(owner).toContain("- Review AI drafts → the Scheduling screen\n");

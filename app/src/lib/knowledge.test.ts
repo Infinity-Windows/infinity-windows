@@ -12,7 +12,19 @@ import {
   shapeMatches,
   shouldUseLLM,
 } from "../../../supabase/functions/_shared/knowledge";
-import { liveAnswer, pageNotes, type AskLiveData, type VaultNote } from "./knowledge";
+import { liveAnswer, pageNotes, readAskArtifacts, type AskLiveData, type VaultNote } from "./knowledge";
+
+describe("reviewed Ask action artifacts", () => {
+  const id = "11111111-1111-4111-8111-111111111111";
+  const projectId = "22222222-2222-4222-8222-222222222222";
+  const openingId = "33333333-3333-4333-8333-333333333333";
+  const review = { kind: "unit_removal_review", id, project: { id: projectId, job_code: "QA", name: "Sandbox" }, openings: [{ id: openingId, code: "42", status: "planned" }] };
+  it("accepts an exact review card and refuses malformed or duplicate targets", () => {
+    expect(readAskArtifacts([review])).toHaveLength(1);
+    expect(readAskArtifacts([{ ...review, project: { ...review.project, id: "not-an-id" } }])).toEqual([]);
+    expect(readAskArtifacts([{ ...review, openings: [...review.openings, ...review.openings] }])).toEqual([]);
+  });
+});
 import { addDaysISO } from "./schedule/dates";
 
 describe("chunkMarkdown", () => {

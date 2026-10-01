@@ -136,10 +136,10 @@ describe("action cards", () => {
     expect(host!.textContent).not.toContain("Take supplies");
   });
 
-  it("a supervisor sees Plan the schedule · Job summary · Hours report, and no Crew status", async () => {
+  it("a supervisor sees live Crew status before schedule and reports", async () => {
     who.role = "supervisor";
     await mount();
-    expect(cardNames()).toEqual(["Plan the schedule", "Job summary", "Hours report", "All actions"]);
+    expect(cardNames()).toEqual(["Crew status", "Plan the schedule", "Job summary", "Hours report", "All actions"]);
   });
 
   it("a running unit puts Finish unit N first", async () => {

@@ -3,6 +3,8 @@
  * report or field-setup conversation rather than sending it to the offline brain. */
 export function isOperationalAsk(question: string, hasContext = false): boolean {
   return hasContext
+    || /\b(clocked\s+in|on\s+the\s+clock|working\s+right\s+now|daily\s+logs?|remove\s+units?|delete\s+units?)\b/i.test(question)
+    || /(?:d[oó]nde\s+est[aá]\s+cada\s+quien|qui[eé]n(?:es)?\s+(?:est[aá]n?|siguen)\s+(?:trabajando|en\s+turno)|quitar\s+unidades|eliminar\s+unidades)/i.test(question)
     || /\b(hours?|timecards?|payroll|export\w*|report\w*|schedule\w*|assign\w*|crew|job\w*|project\w*|progress|summary|summari[sz]\w*|horas?|n[oó]mina|informe\w*|export\w*|horario\w*|asign\w*|cuadrilla|obra\w*|proyecto\w*|resumen|avance)\b/i.test(question)
     || isFieldAsk(question);
 }

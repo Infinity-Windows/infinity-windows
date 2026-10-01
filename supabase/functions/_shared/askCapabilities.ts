@@ -36,7 +36,7 @@ export type ReceiptKind = "saved_in_forge" | "saved_on_phone" | "needs_choice" |
 export type CapabilityId =
   | "build_unit" | "finish_unit" | "new_job" | "idle_time" | "release_unit" | "record_crew_work" | "write_lesson"
   | "daily_log" | "take_supplies" | "my_hours" | "crew_status" | "units_completed"
-  | "plan_schedule" | "review_schedule_drafts" | "job_summary" | "hours_report" | "clock_buttons" | "take_me_there";
+  | "plan_schedule" | "review_schedule_drafts" | "job_summary" | "hours_report" | "daily_report" | "remove_units" | "clock_buttons" | "take_me_there";
 
 export interface AskCapability {
   id: CapabilityId;
@@ -229,11 +229,39 @@ export const ASK_CAPABILITIES: readonly AskCapability[] = [
     questions: { required: [], optional: [q("Which job", "Qué obra")] },
     changes: q("Changes nothing. Shows who is working, on break or clocked out, and on what.", "No cambia nada. Muestra quién está trabajando, en descanso o fuera, y en qué."),
     receipt: "read_only",
-    live: false,
-    release: 3,
-    tools: [],
+    live: true,
+    release: null,
+    tools: ["get_crew_clock_status"],
     requires: null,
     screen: { path: "/team-timecards", label: q("Team timecards", "Tarjetas del equipo") },
+  },
+  {
+    id: "daily_report",
+    label: q("Read a daily report", "Leer un informe diario"),
+    prompt: q("Show me yesterday's daily report", "Muéstrame el informe diario de ayer"),
+    minRank: 0,
+    questions: { required: [q("Which day", "Qué día")], optional: [q("Which job", "Qué obra")] },
+    changes: q("Changes nothing. Reads a filed daily log for a job worked that day.", "No cambia nada. Lee un informe diario registrado de una obra trabajada ese día."),
+    receipt: "read_only",
+    live: true,
+    release: null,
+    tools: ["get_daily_report"],
+    requires: null,
+    screen: { path: "/jobs", label: q("Jobs", "Obras") },
+  },
+  {
+    id: "remove_units",
+    label: q("Remove units", "Quitar unidades"),
+    prompt: q("Help me remove units from a job", "Ayúdame a quitar unidades de una obra"),
+    minRank: 1,
+    questions: { required: [q("Exact job and unit numbers", "Obra y números de unidad exactos")], optional: [] },
+    changes: q("Shows an exact-unit review. Your tap asks Forge to remove eligible records together; units with work history are protected.", "Muestra una revisión de unidades exactas. Tu toque pide a Forge quitar juntas las aptas; las unidades con historial de trabajo están protegidas."),
+    receipt: "one_tap_button",
+    live: true,
+    release: null,
+    tools: ["find_report_records", "prepare_unit_removal"],
+    requires: null,
+    screen: { path: "/jobs", label: q("Jobs", "Obras") },
   },
   {
     id: "units_completed",

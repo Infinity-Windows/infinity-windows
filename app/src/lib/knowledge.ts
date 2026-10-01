@@ -1,4 +1,5 @@
 import type { AskArtifact } from "../../../supabase/functions/_shared/askReporting.ts";
+import { validId } from "../../../supabase/functions/_shared/askReporting.ts";
 import type { FieldMeta, FieldReply } from "./fieldAsk";
 import type { AskContextTag } from "../../../supabase/functions/_shared/fieldTools";
 import { readClockButtons, type ClockButton } from "../../../supabase/functions/_shared/clockButtons";
@@ -102,6 +103,21 @@ export interface AskResult {
 
 /** Ask the cloud `ask` function for a real, grounded answer. Throws on any
  * failure so the caller can fall back to the bundled offline brain. */
+/** Removal cards can trigger a write, so validate every identifier before rendering one. */
+export function readAskArtifacts(value: unknown): AskArtifact[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is AskArtifact => {
+    if (!item || typeof item !== 'object') return false;
+    if (item.kind === 'time_report' || item.kind === 'job_summary') return true;
+    if (item.kind !== 'unit_removal_review' || !validId(item.id) || !validId(item.project?.id)
+      || typeof item.project?.job_code !== 'string' || typeof item.project?.name !== 'string'
+      || !Array.isArray(item.openings) || item.openings.length < 1 || item.openings.length > 20) return false;
+    const ids = item.openings.map((opening: {id?:unknown;code?:unknown})=>opening?.id);
+    return ids.every(validId) && new Set(ids).size === ids.length
+      && item.openings.every((opening: {code?:unknown})=>typeof opening.code === 'string' && opening.code.trim().length > 0);
+  }).slice(0,4);
+}
+
 export async function askInfinity(
   question: string,
   history: Array<{ role: "user" | "assistant"; content: string }> = [],
@@ -129,7 +145,7 @@ export async function askInfinity(
   const navigation = readNavigationAction(data?.navigation);
   return {
     answer: String(data?.answer ?? "").trim(),
-    artifacts: Array.isArray(data?.artifacts) ? data.artifacts.filter((a: AskArtifact) => a && ["time_report", "job_summary"].includes(a.kind)).slice(0, 4) : [],
+    artifacts: readAskArtifacts(data?.artifacts),
     sources: Array.isArray(data?.sources) ? (data.sources as KnowledgeSource[]) : [],
     ...(data?.limited ? { limited: true } : {}),
     ...(typeof data?.note === "string" && data.note ? { note: data.note } : {}),
