@@ -236,6 +236,8 @@ export const QUERY_KEY_ROOTS: QueryKeyRootEntry[] = [
   { root: "qcHistory", offline: false },
   { root: "qcPassed", offline: false },
   { root: "qcQueue", offline: false },
+  { root: "qcReviewJobs", offline: false, why: "Job search/paging for the review queue picker — volatile, cheap to re-ask, scoped to the real viewer." },
+  { root: "qcReviewPage", offline: false, why: "The per-job review queue page; keyed by the real viewer plus job/filter/search/cursor, never kept where a different account on the same phone could read a restored scope." },
   { root: "qcUnitEvidence", offline: false, why: "Read-only QC files use temporary signed URLs and are scoped to the real viewer and unit." },
   { root: "qcStatusForOpenings", offline: false },
   { root: "receiptJobSuggestions", offline: false },

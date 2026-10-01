@@ -124,9 +124,13 @@ jobs:
       - name: Install browser dependencies
         timeout-minutes: 10
         run: |
-          for source in /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
+          for source in /etc/apt/apt-mirrors.txt /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
             if [ -f "$source" ]; then
               sudo sed -i -E 's|https?://azure.archive.ubuntu.com/ubuntu/?|https://archive.ubuntu.com/ubuntu/|g' "$source"
+              if sudo grep -q 'azure.archive.ubuntu.com' "$source"; then
+                echo "The failing Ubuntu mirror is still configured in $source" >&2
+                exit 1
+              fi
             fi
           done
           printf 'Acquire::Retries "1";\nAcquire::http::Timeout "20";\nAcquire::https::Timeout "20";\n' | sudo tee /etc/apt/apt.conf.d/99forge-browser-downloads >/dev/null

@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { TEST_USER, useSupabaseFixtures } from "./support/supabaseFixtures";
 import { json } from "./support/specHelpers";
+import { installQcReviewFixtures } from "./support/qcReviewFixtures";
 
 test("foreman can open past QC decisions, including an older record with no reviewer", async ({ page }) => {
   await useSupabaseFixtures(page, { role: "foreman" });
@@ -11,6 +12,7 @@ test("foreman can open past QC decisions, including an older record with no revi
     assigned_window_id: null, window_types: { type_code: "W-1" },
     qc: null, projects: { job_code: "DEMO-01" },
   };
+  await installQcReviewFixtures(page, [opening]);
   await page.route("**/rest/v1/qc_checks**", (route) => json(route, []));
   await page.route("**/rest/v1/project_openings**", (route) => json(route, [opening], 1));
   await page.route("**/rest/v1/profiles**", (route) => {
@@ -61,6 +63,7 @@ test("foreman can open past QC decisions, including an older record with no revi
 
 test("a failed history query shows a safe message, not database details", async ({ page }) => {
   await useSupabaseFixtures(page, { role: "foreman" });
+  await installQcReviewFixtures(page, []);
   await page.route("**/rest/v1/qc_checks**", (route) => json(route, []));
   await page.route("**/rest/v1/project_openings**", (route) => json(route, []));
   await page.route("**/rest/v1/qc_decision_events**", (route) => route.fulfill({
