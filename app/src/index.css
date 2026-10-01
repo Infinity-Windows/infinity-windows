@@ -5926,6 +5926,14 @@ button.clock-out {
   font-weight: 700;
 }
 
+.clock-return-ask {
+  display: inline-block;
+  margin-bottom: 12px;
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .clock-sheet-x {
   background: transparent;
   border: none;

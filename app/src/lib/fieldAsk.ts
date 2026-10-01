@@ -164,7 +164,7 @@ export interface SavedTurn {
   /** The whole saved reply: report/job-summary cards, sources and any one-tap
    * clock buttons come back too. */
   reply: { answer?: string; toolActivity?: string[]; artifacts?: AskArtifact[]; sources?: KnowledgeSource[]; buttons?: unknown; navigation?: unknown } | null;
-  captured: { checklist?: SetupChecklist | null; learning?: LearningPrep | null } | null; finished_at: string | null;
+  captured: { checklist?: SetupChecklist | null; answers?: SetupDraft | null; learning?: LearningPrep | null } | null; finished_at: string | null;
   receipts: FieldReceipt[];
 }
 /** How many recent messages a reload shows. The newest are always included;

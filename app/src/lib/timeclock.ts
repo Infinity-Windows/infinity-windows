@@ -750,6 +750,8 @@ export interface ClockInPick {
   costCodeId: string | null;
   note: string | null;
   mode: JobMode | null;
+  /** Ask handoffs return to the waiting receipt after a successful clock action. */
+  returnToAsk?: boolean;
   /**
    * The tap being handed over, WHOLE: its one-time id, its tap time and the
    * clock check it was stamped with (K0.2/K0.5). The sheet sends this same

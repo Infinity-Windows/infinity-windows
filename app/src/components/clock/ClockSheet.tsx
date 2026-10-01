@@ -78,6 +78,7 @@ import {
 import { useT } from "../../lib/i18n";
 import { useFocusTrap } from "../../lib/useFocusTrap";
 import { effectiveClockInMode } from "../../lib/jobModes";
+import { askClockEntryMode } from "../../lib/askClockHandoff";
 
 const BREAK_ICONS: Record<BreakType, LucideIcon> = {
   lunch: UtensilsCrossed,
@@ -146,7 +147,9 @@ export function ClockSheet({
   // fine.
   const sheetRef = useRef<HTMLDivElement>(null);
   useFocusTrap(sheetRef, true, onClose);
-  const [mode, setMode] = useState<Mode>(shift ? "main" : "pick");
+  const entryMode = askClockEntryMode(shift, initialPick);
+  const [mode, setMode] = useState<Mode>(entryMode);
+  const appliedEntryRef = useRef<string | null>(null);
   const [pickProjectId, setPickProjectId] = useState<string>(initialPick?.projectId ?? "");
   const [pickCostCodeId, setPickCostCodeId] = useState<string>(initialPick?.costCodeId ?? "");
   /** Optional first window to start on, in the same tap as clocking in. */
@@ -229,10 +232,16 @@ export function ClockSheet({
   );
   const pickedOpening = projectOpenings.find((o) => o.id === pickOpeningId) ?? null;
 
-  // Follow the shift state: entering a shift -> main; leaving -> pick.
+  // Follow a new shift or handoff, not live timer/refetch renders. Otherwise a
+  // guard threshold can reset the screen while the worker is making a choice.
   useEffect(() => {
-    setMode(shift ? "main" : "pick");
-  }, [shift?.id]);
+    const key = `${shift?.id ?? "off"}:${initialPick?.returnToAsk ? "ask" : "plain"}:${initialPick?.projectId ?? ""}`;
+    if (appliedEntryRef.current === key) return;
+    appliedEntryRef.current = key;
+    setMode(askClockEntryMode(shift, initialPick));
+    setPickProjectId(initialPick?.projectId ?? "");
+    setPickCostCodeId(initialPick?.costCodeId ?? "");
+  }, [shift, initialPick]);
 
   // 1s tick drives the live timers.
   useEffect(() => {
@@ -473,10 +482,11 @@ export function ClockSheet({
         );
       }
       if (!r.queued) refresh();
-      if (r.startedOpening && pickedOpening) {
+      if (initialPick?.returnToAsk) {
+        navigate("/ask");
+      } else if (r.startedOpening && pickedOpening) {
         navigate(`/current-work?job=${pickedOpening.project_id}&opening=${r.startedOpening}`);
-      }
-      if (!r.startedOpening) navigate("/current-work");
+      } else if (!r.startedOpening) navigate("/current-work");
       onClose();
     },
     onError: (e) => toastPunchError(e),
@@ -519,7 +529,7 @@ export function ClockSheet({
     },
     onSuccess: (r) => {
       toastSuccess(r.queued ? t("clock.toast.switchedQueued") : t("clock.toast.switched"));
-      navigate("/current-work");
+      navigate(initialPick?.returnToAsk ? "/ask" : "/current-work");
       if (!r.queued) refresh();
       onClose();
     },
@@ -814,6 +824,7 @@ export function ClockSheet({
             <X size={18} />
           </button>
         </div>
+        {initialPick?.returnToAsk && <Link className="clock-return-ask" to="/ask" onClick={onClose}>{t("clock.returnToAsk")}</Link>}
 
         {/* ---- ON THE CLOCK ---- */}
         {mode === "main" && shift && (
@@ -878,8 +889,10 @@ export function ClockSheet({
               className="clock-job-chip"
               disabled={busy || onBreak || needsRealFinish}
               onClick={() => {
-                setPickProjectId(shift.project_id ?? "");
-                setPickCostCodeId(shift.cost_code_id ?? "");
+                const requested = initialPick?.returnToAsk && initialPick.projectId && initialPick.projectId.toLowerCase() !== shift.project_id?.toLowerCase()
+                  ? initialPick.projectId : shift.project_id ?? "";
+                setPickProjectId(requested);
+                setPickCostCodeId(requested === shift.project_id ? shift.cost_code_id ?? "" : "");
                 setMode("switch");
               }}
               title={onBreak ? t("clock.title.endBreakToSwitch") : t("clock.title.tapToSwitch")}
