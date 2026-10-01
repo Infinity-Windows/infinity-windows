@@ -8,7 +8,9 @@ import {
   endOfMonthISO,
   formatStartTime,
   groupDaysByMonth,
+  isCalendarDate,
   isISODate,
+  isoToUtc,
   mapItemsToDays,
   monthGridRange,
   monthLabel,
@@ -20,6 +22,16 @@ import {
 } from "./dates";
 
 describe("date primitives", () => {
+  it("checks editable calendar dates without weakening strict arithmetic", () => {
+    for (const value of ["", undefined, null, "bad", "2026-2-01", "2026-02-29", "2026-02-30", "2026-13-01", "2026-01-00"]) {
+      expect(isCalendarDate(value)).toBe(false);
+    }
+    expect(isCalendarDate("2028-02-29")).toBe(true);
+    expect(isCalendarDate("2026-10-01")).toBe(true);
+    expect(() => isoToUtc("")).toThrow("Invalid ISO date:");
+    expect(() => daysBetween("2026-10-01", "")).toThrow("Invalid ISO date:");
+  });
+
   it("validates ISO date strings", () => {
     expect(isISODate("2026-07-21")).toBe(true);
     expect(isISODate("2026-7-1")).toBe(false);

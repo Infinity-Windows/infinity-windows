@@ -12,12 +12,13 @@ import {
   listAppFeedback,
   resolveAppFeedback,
   submitAppFeedback,
+  type AppFeedbackCategory,
 } from "../lib/appFeedback";
 import { isAutoFiledCrashReport } from "../lib/crashReport";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { isOwner } from "../lib/install/types";
 import { listProfiles } from "../lib/install/api";
-import { useT } from "../lib/i18n";
+import { useFeedbackT as useT } from "../lib/i18n/feedbackCatalog";
 
 export function Suggestions() {
   const t = useT();
@@ -28,13 +29,17 @@ export function Suggestions() {
   const [body, setBody] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [showResolved, setShowResolved] = useState(false);
+  const [category, setCategory] = useState<AppFeedbackCategory>("app");
+  const [section, setSection] = useState<AppFeedbackCategory | "all">("all");
+  const [resolving, setResolving] = useState<string | null>(null);
+  const [resolutionNote, setResolutionNote] = useState("");
 
   const feedback = useQuery({ queryKey: ["appFeedback"], queryFn: listAppFeedback });
   const profiles = useQuery({ queryKey: ["profiles"], queryFn: listProfiles });
   const nameOf = new Map((profiles.data ?? []).map((p) => [p.id, p.display_name]));
 
   const submit = useMutation({
-    mutationFn: () => submitAppFeedback(kind, body.trim()),
+    mutationFn: () => submitAppFeedback(kind, body.trim(), { category }),
     onSuccess: () => {
       setBody("");
       setMessage(t("suggestions.sent"));
@@ -44,8 +49,11 @@ export function Suggestions() {
   });
 
   const resolve = useMutation({
-    mutationFn: (id: string) => resolveAppFeedback(id),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["appFeedback"] }),
+    mutationFn: (id: string) => resolveAppFeedback(id, resolutionNote),
+    onSuccess: () => {
+      setResolving(null); setResolutionNote("");
+      void qc.invalidateQueries({ queryKey: ["appFeedback"] });
+    },
     onError: (e) => setMessage(formatApiError(e)),
   });
 
@@ -57,6 +65,7 @@ export function Suggestions() {
   const rows = (feedback.data ?? []).filter(
     (f) =>
       (showResolved || f.status === "open") &&
+      (section === "all" || (f.category ?? "app") === section) &&
       (owner || !isAutoFiledCrashReport(f.body)),
   );
 
@@ -71,6 +80,11 @@ export function Suggestions() {
       </header>
 
       <p className="muted">{t("suggestions.explain")}</p>
+      <label style={{ display: "inline-grid", gap: 4, marginBottom: 10 }}>{t("feedback.category")}
+        <select value={category} onChange={(e) => setCategory(e.target.value as AppFeedbackCategory)}>
+          <option value="app">{t("feedback.app")}</option><option value="ai">{t("feedback.ai")}</option>
+        </select>
+      </label>
 
       <div className="row-gap" style={{ marginBottom: 6 }}>
         <button
@@ -109,6 +123,7 @@ export function Suggestions() {
         </button>
       </div>
       {message && <p className="scanner-hint">{message}</p>}
+      {feedback.isError && <p role="alert" className="error">{formatApiError(feedback.error)}</p>}
 
       <div className="row-between" style={{ alignItems: "center", marginTop: 16 }}>
         <h2 style={{ margin: 0 }}>
@@ -118,10 +133,16 @@ export function Suggestions() {
           {showResolved ? t("suggestions.hideResolved") : t("suggestions.showResolved")}
         </button>
       </div>
+      <div className="row-gap" style={{ marginTop: 10, flexWrap: "wrap" }} aria-label={t("feedback.category")}>
+        {(["all", "app", "ai"] as const).map((value) => <button key={value} type="button"
+          className={section === value ? "button-like active-pill" : "button-like"}
+          aria-pressed={section === value} onClick={() => setSection(value)}>{t(`feedback.${value}`)}</button>)}
+      </div>
       <ul className="unit-list">
         {rows.map((f) => (
           <li key={f.id} className="opening-review-row">
             <div className="row-gap" style={{ alignItems: "center", flexWrap: "wrap" }}>
+              {f.category === "ai" && <span className="chip">{t("feedback.ai")}</span>}
               <span className={f.kind === "bug" ? "warn-text" : "ok"}>
                 {f.kind === "bug" ? t("suggestions.broken") : t("suggestions.idea")}
               </span>
@@ -141,13 +162,24 @@ export function Suggestions() {
                 <button
                   className="link"
                   disabled={resolve.isPending}
-                  onClick={() => resolve.mutate(f.id)}
+                  onClick={() => { setResolving(f.id); setResolutionNote(""); }}
                 >
                   {t("suggestions.resolve")}
                 </button>
               )}
             </div>
             <p style={{ margin: "4px 0 0", whiteSpace: "pre-wrap" }}>{f.body}</p>
+            {f.resolution_note && <p style={{ whiteSpace: "pre-wrap" }}>{t("feedback.resolution")}: {f.resolution_note}</p>}
+            {owner && resolving === f.id && <div style={{ marginTop: 10 }}>
+              <label>{t("feedback.resolveHelp")}<textarea value={resolutionNote} maxLength={2000} rows={3}
+                style={{ width: "100%", boxSizing: "border-box" }} disabled={resolve.isPending}
+                onChange={(e) => setResolutionNote(e.target.value)} /></label>
+              <div className="row-gap" style={{ marginTop: 6 }}>
+                <button type="button" className="button-like" disabled={resolve.isPending || !resolutionNote.trim()}
+                  onClick={() => resolve.mutate(f.id)}>{t("suggestions.resolve")}</button>
+                <button type="button" className="link" disabled={resolve.isPending} onClick={() => setResolving(null)}>{t("feedback.cancel")}</button>
+              </div>
+            </div>}
           </li>
         ))}
       </ul>

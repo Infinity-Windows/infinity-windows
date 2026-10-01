@@ -8,6 +8,7 @@ import { clearPortalGuidanceCache, forgetVerifiedGuidance, readOfflineGuidance, 
 import "../components/hexPortal/hexPortal.css";
 import type { AskArtifact } from "../../../supabase/functions/_shared/askReporting.ts";
 import { ReportCard } from "../components/ask/ReportCard";
+import { AiIssueReport } from "../components/ask/AiIssueReport";
 import { asksForReport, isOperationalAsk } from "../lib/askRouting";
 import { cleanAskText } from "../lib/cleanAskText";
 import { BackChip } from "../components/BackChip";
@@ -79,6 +80,7 @@ export interface LiveAskShellControls { end(): void; toggleMute(): void; restart
 const refreshFieldViews = () => { for (const root of FIELD_QUERY_ROOTS) void queryClient.invalidateQueries({ queryKey: [root] }); };
 
 interface ChatMsg {
+  reportChannel?: "text" | "live";
   /** Field work: database receipts and the checklist, never model claims. */
   field?: FieldReply;
   /** One-tap job-clock buttons the reply offered (K2.4): the tap is the change. */
@@ -296,6 +298,8 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
   const liveRef = useRef<LiveSession | null>(null);
   const restartLiveRef = useRef<() => void>(() => {});
   const liveOn = live.status === "starting" || live.status === "live" || live.status === "unstable";
+  const [liveIssue, setLiveIssue] = useState<{ question: string; answer: string } | null>(null);
+  useEffect(() => { setLiveIssue(null); }, [userId]);
   const [liveMuted, setLiveMuted] = useState(false);
   const [liveExpiring, setLiveExpiring] = useState(false);
   const [liveNavigation, setLiveNavigation] = useState<NavigationAction | null>(null);
@@ -473,7 +477,18 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
   }, [mySessions.data, myUnits.data, userId]);
 
   const fieldActive = messages.some((m) => !!m.field);
-  const latestChecklist = [...messages].reverse().find((m) => m.field?.checklist)?.field?.checklist ?? null;
+  const latestChecklistIndex = messages.reduce((index, m, i) => m.field?.checklist ? i : index, -1);
+  const latestChecklist = latestChecklistIndex >= 0 ? messages[latestChecklistIndex].field!.checklist : null;
+  // A checklist is a conversation draft. Only a database receipt for the
+  // current setup can retire it; zero missing answers alone cannot. A unit
+  // sent for review still needs a person to finish that review.
+  const setupSaved = !!latestChecklist && messages.slice(latestChecklistIndex).some((m) =>
+    m.field?.receipts.some((r) => r.status === "done" && (
+      latestChecklist.unit?.length
+        ? r.action === "save_unit" && ["created", "created_from_map", "details_added", "corrected", "unchanged"].includes(r.outcome ?? "")
+        : r.action === "create_job" && ["created", "used_existing"].includes(r.outcome ?? "")
+    )),
+  );
   // A lesson write-up Ask prepared: one card for the latest version, filed as a
   // Hex-Portal case (the person's words and the reply) only when they tap Save.
   const learningReply = [...messages].reverse().find((m) => m.field?.learning);
@@ -629,7 +644,7 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
    * person typed in the box (K2.2). `operational`: an action card is always a
    * saved field request, whatever its words look like to the router.
    * Resolves to the reply shown, or null when nothing was sent or shown. */
-  const send = (text: string, voiceMeta?: FieldMeta, sentFrom = gen.current, opts: { keepInput?: boolean; operational?: boolean } = {}): Promise<ChatMsg | null> => {
+  const send = (text: string, voiceMeta?: FieldMeta, sentFrom = gen.current, opts: { keepInput?: boolean; operational?: boolean; reportChannel?: "text" | "live" } = {}): Promise<ChatMsg | null> => {
     const q = text.trim();
     if (!q || busyRef.current || !isCurrent(sentFrom)) return Promise.resolve(null);
     busyRef.current = true;
@@ -788,11 +803,11 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
     return run()
       .then((reply) => {
         if (!isCurrent(g)) return null;
-        setMessages((m) => [...m, {...reply,portalNotice,...learningContext&&!reply.artifacts?.length&&!reply.cachedGuidance?{learning:{...learningContext,answer:reply.text,sources:reply.portalSources??(reply.sources?.length?reply.sources.map(source=>({id:source.path.slice(0,160),title:source.title.slice(0,300),kind:"reference" as const})):(reply.hits??[]).map(hit=>({id:hit.entry.id.slice(0,160),title:hit.entry.title.slice(0,300),kind:"reference" as const})))}}:{}}]);
+        setMessages((m) => [...m, {...reply,reportChannel:opts.reportChannel,portalNotice,...learningContext&&!reply.artifacts?.length&&!reply.cachedGuidance?{learning:{...learningContext,answer:reply.text,sources:reply.portalSources??(reply.sources?.length?reply.sources.map(source=>({id:source.path.slice(0,160),title:source.title.slice(0,300),kind:"reference" as const})):(reply.hits??[]).map(hit=>({id:hit.entry.id.slice(0,160),title:hit.entry.title.slice(0,300),kind:"reference" as const})))}}:{}}]);
         return reply;
       })
       .catch(() => {
-        if (isCurrent(g)) setMessages((m) => [...m, { who: "infinity", text: t("ask.somethingWentWrong") }]);
+        if (isCurrent(g)) setMessages((m) => [...m, { who: "infinity", text: t("ask.somethingWentWrong"), reportChannel: opts.reportChannel }]);
         return null;
       })
       // A reply from before an account change or new setup must not end the
@@ -938,7 +953,11 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
    */
   const liveTurn = async (turn: LiveTurn, g: number, uid: string): Promise<string> => {
     let spokenText = "";
-    const say = (outcome: LiveTurnOutcome) => liveCommentary(spokenText, outcome);
+    const say = (outcome: LiveTurnOutcome) => {
+      const answer = liveCommentary(spokenText, outcome);
+      if (outcome.kind === "kept" && isCurrent(g)) setLiveIssue({ question: spokenText, answer });
+      return answer;
+    };
     // No recording, no request: the words alone are not evidence.
     if (!turn.audio) return say({ kind: "kept", keptOnPhone: false });
     const audio = turn.audio;
@@ -966,7 +985,7 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
         },
         upload: () => uploadMemo(uid, meta.request_id, audio),
         transcribe: async () => { spokenText = await transcribeDescription(audio, "auto", new AbortController().signal); return spokenText; },
-        send: (words, path) => { reply = sendRef.current(words, { ...meta, audio_path: path }, g); },
+        send: (words, path) => { reply = sendRef.current(words, { ...meta, audio_path: path }, g, { reportChannel: "live" }); },
       });
       if (result.outcome === "not_owner") return say({ kind: "other_account" });
       if (result.outcome !== "sent") return say({ kind: "kept", keptOnPhone: result.keptOnPhone });
@@ -1130,7 +1149,7 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
             </div>
             {m.memoPath && <MemoPlayback path={m.memoPath} />}
             {m.field?.receipts.map((r) => <FieldReceiptCard key={`${userId}:${r.action_id}`} receipt={r} draft={m.field?.draft} actorId={userId} onChange={updateReceipt} timingState={timingStateNow} />)}
-            {m.field?.checklist && m.field.checklist === latestChecklist && <FieldChecklist key={m.field.request_id} checklist={m.field.checklist} />}
+            {m.field?.checklist && m.field.checklist === latestChecklist && !setupSaved && <FieldChecklist key={m.field.request_id} checklist={m.field.checklist} />}
             {m.buttons && m.buttons.length > 0 && <ClockButtons buttons={m.buttons} />}
             {m.navigation && <NavigationButton action={m.navigation} />}
             {m.dailyNotRecorded && <p role="alert" className="cw-error">{t("field.dailyNotRecorded")}</p>}
@@ -1166,6 +1185,9 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
                 {t("ask.sources", { list: m.sources.map((s) => s.title).join(", ") })}
               </p>
             )}
+            {userId && m.who === "infinity" && messages.slice(0, i).some((before) => before.who === "me") &&
+              <AiIssueReport key={`${userId}:${i}`} actorId={userId} channel={m.reportChannel ?? "text"}
+                question={messages.slice(0, i).reverse().find((before) => before.who === "me")?.text ?? ""} answer={m.text} />}
           </div>
         ))}
         {learningPrep && userId && (
@@ -1197,6 +1219,10 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
         </section>
       )}
       {voiceError && <p role="alert" className="cw-error">{voiceError}</p>}
+      {userId && (voiceError || liveIssue || live.status === "failed") && <AiIssueReport
+        key={`${userId}:${liveIssue?.answer ?? voiceError ?? live.detail}`} actorId={userId}
+        channel={liveIssue || live.status === "failed" ? "live" : "text"}
+        question={liveIssue?.question ?? ""} answer={liveIssue?.answer ?? voiceError ?? liveStatusLine(es, live.status, live.detail)} />}
       {held.length > 0 && userId && (
         <section className="field-card field-unsent" role="alert">
           <p>{t("field.recordingNotKept")}</p>
@@ -1294,19 +1320,19 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
             </button>
           ))}
           <button type="button" className="ask-send" disabled={thinking || !input.trim() || liveOn} onClick={() => void send(input)} aria-label={t("ask.send")}>
-            ↑
+              <ArrowUp size={21} strokeWidth={2.7} aria-hidden="true" />
           </button>
         </div>
         {/* Live Ask (pilot): an explicit Start and End, never always-on. */}
         {livePilot && userId && (
           <div className="ask-live">
             {liveOn ? (
-              <button type="button" className="chip recording" onClick={() => liveRef.current?.end("user")} aria-label={liveText(es, "end")}>
+              <button type="button" className="ask-live-button recording" onClick={() => liveRef.current?.end("user")} aria-label={liveText(es, "end")}>
                 <Square size={14} aria-hidden="true" /> {liveText(es, "end")}
               </button>
             ) : (
-              <button type="button" className="chip" disabled={thinking || voice !== "idle" || liveSaving > 0} onClick={startLive} aria-label={liveText(es, canContinueLive(live.status, live.detail) ? "continue" : "start")}>
-                <Radio size={14} aria-hidden="true" /> {liveText(es, canContinueLive(live.status, live.detail) ? "continue" : "start")} · <span className="muted">{liveText(es, "pilot")}</span>
+              <button type="button" className="ask-live-button" disabled={thinking || voice !== "idle" || liveSaving > 0} onClick={startLive} aria-label={liveText(es, canContinueLive(live.status, live.detail) ? "continue" : "start")}>
+                <Radio size={15} aria-hidden="true" /> {liveText(es, canContinueLive(live.status, live.detail) ? "continueButton" : "startButton")}
               </button>
             )}
           </div>

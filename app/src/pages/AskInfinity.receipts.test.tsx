@@ -128,6 +128,44 @@ describe("receipts on the Ask page", () => {
     expect(host!.textContent).toContain("Nothing was saved yet");
   });
 
+  it("dismisses the latest setup checklist after a confirmed unit save", async () => {
+    reply.next = { answer: "Unit 4 saved.", field: { request_id: "r1", receipts: [{ action_id: "a1", action: "save_unit", status: "done", outcome: "created", unit }], checklist: { job: null, unit: [{ key: "label", status: "captured", value: "4", required_before_timing: true }] } } };
+    await mount();
+    await ask("Save unit 4");
+    expect(host!.textContent).toContain("Saved in Forge");
+    expect(host!.querySelector(".field-checklist")).toBeNull();
+  });
+
+  it("dismisses a job-only checklist after the job creation receipt", async () => {
+    reply.next = { answer: "Pine Hollow is ready.", field: { request_id: "r1", receipts: [{ action_id: "a1", action: "create_job", status: "done", outcome: "created", name: "Pine Hollow" }], checklist: { job: [{ key: "job_name", status: "captured", value: "Pine Hollow", required_before_timing: true }], unit: null } } };
+    await mount();
+    await ask("Create Pine Hollow");
+    expect(host!.textContent).toContain("Saved in Forge");
+    expect(host!.querySelector(".field-checklist")).toBeNull();
+  });
+
+  it("dismisses an earlier checklist when a later reply confirms the save", async () => {
+    reply.next = { answer: "Unit 4 is ready to review.", field: { request_id: "r1", receipts: [], checklist: { job: null, unit: [{ key: "label", status: "captured", value: "4", required_before_timing: true }] } } };
+    await mount();
+    await ask("Unit 4");
+    expect(host!.querySelector(".field-checklist")).not.toBeNull();
+    reply.next = { answer: "Unit 4 saved.", field: { request_id: "r2", receipts: [{ action_id: "a2", action: "save_unit", status: "done", outcome: "created", unit }], checklist: null } };
+    await ask("Save it");
+    expect(host!.querySelector(".field-checklist")).toBeNull();
+  });
+
+  it("keeps a complete draft visible while a save still needs a person's choice or review", async () => {
+    const checklist = { job: null, unit: [{ key: "label", status: "captured", value: "4", required_before_timing: true }] };
+    reply.next = { answer: "Choose which details to keep.", field: { request_id: "r1", receipts: [{ action_id: "a1", action: "save_unit", status: "needs_choice", reason: "fact_conflict", options: [{ id: "keep_original", label: "Keep" }], unit }], checklist } };
+    await mount();
+    await ask("Save unit 4");
+    expect(host!.querySelector(".field-checklist")).not.toBeNull();
+    expect(host!.textContent).toContain("Needs your choice");
+    reply.next = { answer: "Sent for review.", field: { request_id: "r2", receipts: [{ action_id: "a2", action: "save_unit", status: "done", outcome: "sent_for_review", unit }], checklist: null } };
+    await ask("Send for review");
+    expect(host!.querySelector(".field-checklist")).not.toBeNull();
+  });
+
   it("an honest question needs no contradiction", async () => {
     reply.next = { answer: "Which unit are you on?" };
     await mount();

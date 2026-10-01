@@ -24,6 +24,13 @@ export function utcToISO(ms: number): string {
   return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
 }
 
+/** Validate an editable date before passing it to the strict date arithmetic. */
+export function isCalendarDate(value: unknown): value is string {
+  // Date.UTC normalizes impossible dates (February 30, month 13), which an
+  // editor must not silently save as a different day.
+  return isISODate(value) && utcToISO(isoToUtc(value)) === value;
+}
+
 /** Add (or subtract) whole days to a date string. */
 export function addDaysISO(iso: string, days: number): string {
   return utcToISO(isoToUtc(iso) + days * DAY_MS);

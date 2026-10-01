@@ -156,6 +156,13 @@ jobs:
         run: |
           npm run e2e -- job-search-select.spec.ts supplies-rows.spec.ts
           npm run e2e -- job-search-select.spec.ts --browser=webkit
+      - name: Ask issue reporting and model contrast
+        env:
+          VITE_LIVE_ASK_PILOT: "true"
+          IW_MAP_PORT: "5199"
+        run: |
+          npm run e2e -- ask-ai-issues.spec.ts maps-pane-grid.spec.ts supplies-rows.spec.ts
+          npm run e2e -- ask-ai-issues.spec.ts --browser=webkit
       - uses: actions/upload-artifact@v4
         if: always()
         with:

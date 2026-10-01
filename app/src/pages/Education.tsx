@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { lazyOptional } from "../lib/pwa/lazyOptional";
 import { PartDidNotLoad } from "../lib/pwa/lazyOptionalFallback";
@@ -9,8 +9,9 @@ import {
   buildDeck,
   CATS,
   knowledgeScore,
-  nextStepQuestion,
-  quizQuestion,
+  procDisplayStep,
+  quizRound,
+  sequenceRound,
   TERMS,
   type ProcStep,
   type Term,
@@ -277,8 +278,9 @@ function EarnedLine({ progress }: { progress?: EducationProgress }) {
 function Quiz() {
   const t = useT();
   const queryClient = useQueryClient();
-  const [q, setQ] = useState(() => quizQuestion(TERMS[Math.floor(Math.random() * TERMS.length)]));
+  const [questions, setQuestions] = useState(() => quizRound());
   const [n, setN] = useState(0);
+  const q = questions[n];
   const [score, setScore] = useState(0);
   const [picked, setPicked] = useState<string | null>(null);
   /** The round, as asked. This is the payload; the total is the server's. */
@@ -296,7 +298,6 @@ function Quiz() {
   const next = () => {
     setPicked(null);
     setN((x) => x + 1);
-    setQ(quizQuestion(TERMS[Math.floor(Math.random() * TERMS.length)]));
   };
   // Question 1, not question 2. The old "Another round" reset n to 0 and then
   // called next(), which added one back — every round after the first was four
@@ -309,7 +310,7 @@ function Quiz() {
     setFiled(false);
     setResult(null);
     setFailed(null);
-    setQ(quizQuestion(TERMS[Math.floor(Math.random() * TERMS.length)]));
+    setQuestions(quizRound(questions.map((item) => item.answer.id)));
   };
 
   // Filed once, after the fifth answer, from an effect rather than mid-render —
@@ -406,51 +407,46 @@ function RoundOutcome({
  * procedure, and knowing it is a single thing to know. The bar is 4 of 5, the
  * same bar a video quiz passes at (20260962000000), and it pays once.
  */
-function Sequence() {
+export function Sequence() {
   const t = useT();
   const queryClient = useQueryClient();
-  const [branch, setBranch] = useState<"win" | "door">("win");
-  const [q, setQ] = useState(() => nextStepQuestion(branch));
-  const [n, setN] = useState(0);
-  const [score, setScore] = useState(0);
-  const [picked, setPicked] = useState<string | null>(null);
+  const [round, setRound] = useState(() => ({ branch: "win" as "win" | "door", questions: sequenceRound("win"), n: 0, score: 0, picked: null as string | null, id: 0 }));
+  const { branch, questions, n, score, picked } = round;
+  const q = questions[n];
+  const currentRound = useRef(0);
   const [filed, setFiled] = useState(false);
   const [result, setResult] = useState<EducationQuizResult | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
 
   const restart = (b: "win" | "door") => {
-    setBranch(b);
-    setPicked(null);
-    setN(0);
-    setScore(0);
+    currentRound.current += 1;
+    setRound((old) => ({ branch: b, questions: sequenceRound(b, old.branch === b ? old.questions.map((item) => item.current.id) : []), n: 0, score: 0, picked: null, id: currentRound.current }));
     setFiled(false);
     setResult(null);
     setFailed(null);
-    setQ(nextStepQuestion(b));
   };
   const answer = (id: string) => {
-    setPicked(id);
-    if (id === q.answer.id) setScore((s) => s + 1);
+    setRound((old) => old.picked !== null || old.n >= 5 ? old : { ...old, picked: id, score: old.score + Number(id === old.questions[old.n].answer.id) });
   };
   const next = () => {
-    setPicked(null);
-    setN((x) => x + 1);
-    setQ(nextStepQuestion(branch));
+    setRound((old) => old.picked === null ? old : { ...old, picked: null, n: old.n + 1 });
   };
 
   const passed = score >= 4;
   useEffect(() => {
     if (n < 5 || filed) return;
     setFiled(true);
+    const id = round.id;
     void awardEducationQuiz([{ key: EDUCATION_SEQUENCE_KEY, correct: passed }])
       .then((r) => {
+        if (id !== currentRound.current) return;
         setResult(r);
         queryClient.invalidateQueries({ queryKey: ["educationProgress"] });
         queryClient.invalidateQueries({ queryKey: ["ledger"] });
         queryClient.invalidateQueries({ queryKey: ["pointsLeaderboard"] });
       })
-      .catch((err) => setFailed(quizFailure(err, t)));
-  }, [n, filed, passed, queryClient, t]);
+      .catch((err) => { if (id === currentRound.current) setFailed(quizFailure(err, t)); });
+  }, [n, filed, passed, queryClient, round.id, t]);
 
   return (
     <div>
@@ -470,7 +466,7 @@ function Sequence() {
         <div>
           <p className="muted">Step {n + 1} of 5 · what comes right after this?</p>
           <div className="detail-card">
-            <p className="next-label">STEP {q.current.step}</p>
+            <p className="next-label">STEP {procDisplayStep(branch, q.current.id)}</p>
             <strong>{q.current.label}</strong>
             <p className="muted" style={{ margin: "4px 0 0" }}>{q.current.desc}</p>
           </div>

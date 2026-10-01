@@ -18,6 +18,7 @@ export function liveAskPilotEnabled(env: Record<string, unknown> = import.meta.e
 // this is a pilot; they move into fieldCatalog when it ships to the crew.
 const EN = {
   start: "Start live conversation",
+  startButton: "Start Live Chat",
   end: "End live conversation",
   pilot: "Live (pilot)",
   starting: "Connecting… allow the microphone if asked.",
@@ -39,11 +40,13 @@ const EN = {
   endingSoon: "About 30 seconds left. Finish your thought, then tap Continue to keep talking.",
   endingSoonShort: "About 30 seconds left",
   continue: "Continue live conversation",
+  continueButton: "Continue Live Chat",
   tryAgain: "Try live conversation again",
 };
 type Key = keyof typeof EN;
 const ES: Record<Key, string> = {
   start: "Iniciar conversación en vivo",
+  startButton: "Iniciar chat en vivo",
   end: "Terminar conversación en vivo",
   pilot: "En vivo (prueba)",
   starting: "Conectando… permite el micrófono si lo pide.",
@@ -65,6 +68,7 @@ const ES: Record<Key, string> = {
   endingSoon: "Quedan unos 30 segundos. Termina tu idea y toca Continuar para seguir hablando.",
   endingSoonShort: "Quedan unos 30 segundos",
   continue: "Continuar conversación en vivo",
+  continueButton: "Continuar chat en vivo",
   tryAgain: "Intentar conversación en vivo otra vez",
 };
 

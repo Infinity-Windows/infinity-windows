@@ -113,3 +113,20 @@ test("fallback law: the same mark with no pane_grid draws the old flat layout", 
   // fallback draws a single light, so there is no interior mullion either.
   await expect(win.locator(".mull")).toHaveCount(0);
 });
+
+test("model surfaces separate glass from walls without changing status frames", async ({ page }, testInfo) => {
+  await useSupabaseFixtures(page, { role: "supervisor" });
+  await stageOutline(page);
+  await page.goto(`/projects/${BLACK22.projectId}?tab=maps-interactive`);
+  const win = page.locator('.win[data-id="7"]');
+  await expect(win).toBeVisible({ timeout: 60_000 });
+  const palette = await page.locator('.fitview-app').evaluate(el => {
+    const s = getComputedStyle(el);
+    return Object.fromEntries(['--glass','--glass-2','--wall-front','--wall-side','--wall-rear','--roof-a','--roof-b','--st-tofit','--info'].map(k => [k,s.getPropertyValue(k).trim()]));
+  });
+  expect(palette['--glass']).toBe('#c7d0d6');
+  expect(palette['--glass-2']).toBe('#9faeb9');
+  expect(new Set([palette['--wall-front'],palette['--wall-side'],palette['--wall-rear'],palette['--roof-a'],palette['--roof-b']]).size).toBe(5);
+  expect(palette['--st-tofit']).toBe(palette['--info']);
+  await page.screenshot({ path: testInfo.outputPath('model-contrast.png') });
+});

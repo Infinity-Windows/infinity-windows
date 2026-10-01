@@ -5,7 +5,7 @@ import { AlertTriangle, Plane, Trash2, Truck, X } from "lucide-react";
 import type { Profile } from "../../lib/install/types";
 import type { Project } from "../../lib/types";
 import { INSTALLER_PALETTE } from "../../lib/install/mapDispatch";
-import { addDaysISO, daysBetween } from "../../lib/schedule/dates";
+import { addDaysISO, daysBetween, isCalendarDate } from "../../lib/schedule/dates";
 import { ConflictPairDetails } from "./ConflictPairDetails";
 import { conflictBannerEntries, conflictingMembersFor, parseClockSeconds } from "../../lib/schedule/conflicts";
 import { removeWarning } from "../../lib/schedule/removeWarning";
@@ -180,9 +180,15 @@ export function AssignmentEditor({
     });
   }
 
-  const normalizedEnd = daysBetween(startDate, endDate) < 0 ? startDate : endDate;
+  const validStartDate = isCalendarDate(startDate);
+  const validEndDate = isCalendarDate(endDate);
+  const validDates = validStartDate && validEndDate;
+  // Date inputs are empty while cleared/partially edited. Keep that draft
+  // value editable, but do not send it into strict date math or a save.
+  const normalizedEnd = validDates && daysBetween(startDate, endDate) < 0 ? startDate : endDate;
 
   const inlineConflicts = useMemo(() => {
+    if (!validDates) return { confirmed: [], review: [], entries: [] };
     const target = {
       id: assignment?.id ?? "__new__",
       start_date: startDate,
@@ -196,7 +202,7 @@ export function AssignmentEditor({
       ...conflictingMembersFor(target, activeOthers),
       entries: activeOthers.flatMap(other => conflictBannerEntries([target, other])),
     };
-  }, [assignment?.id, startDate, normalizedEnd, startTime, endTime, members, others]);
+  }, [assignment?.id, startDate, normalizedEnd, validDates, startTime, endTime, members, others]);
 
   const conflictJobLabel = (id: string) => {
     if (id === (assignment?.id ?? "__new__")) {
@@ -209,10 +215,10 @@ export function AssignmentEditor({
     return other?.project?.job_code ?? other?.project?.name ?? t("schedConflict.aJob");
   };
 
-  const canSave = projectId !== "" && members.length > 0 && Boolean(startDate) && validTimes;
+  const canSave = projectId !== "" && members.length > 0 && validDates && validTimes;
 
   const vehicleClash = useMemo(() => {
-    if (!vehicleId) return false;
+    if (!vehicleId || !validDates) return false;
     return isVehicleDoubleBooked(
       {
         vehicle_id: vehicleId,
@@ -222,7 +228,7 @@ export function AssignmentEditor({
       },
       vehicleBookings ?? [],
     );
-  }, [vehicleId, assignment?.id, startDate, normalizedEnd, vehicleBookings]);
+  }, [vehicleId, assignment?.id, startDate, normalizedEnd, validDates, vehicleBookings]);
 
   const sortedVehicles = useMemo(
     () =>
@@ -274,11 +280,14 @@ export function AssignmentEditor({
             <input
               type="date"
               value={startDate}
+              aria-invalid={!validStartDate}
               min={horizon.from}
               max={horizon.to}
               onChange={(e) => {
                 setStartDate(e.target.value);
-                if (daysBetween(e.target.value, endDate) < 0) setEndDate(e.target.value);
+                if (isCalendarDate(e.target.value) && validEndDate && daysBetween(e.target.value, endDate) < 0) {
+                  setEndDate(e.target.value);
+                }
               }}
             />
           </div>
@@ -287,6 +296,7 @@ export function AssignmentEditor({
             <input
               type="date"
               value={normalizedEnd}
+              aria-invalid={!validEndDate}
               min={startDate}
               max={horizon.to}
               onChange={(e) => setEndDate(e.target.value)}
@@ -324,6 +334,7 @@ export function AssignmentEditor({
                   type="button"
                   className="button-like"
                   onClick={() => setEndDate(addDaysISO(startDate, d - 1))}
+                  disabled={!validStartDate}
                 >
                   {d}d
                 </button>
