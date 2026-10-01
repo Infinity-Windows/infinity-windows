@@ -61,9 +61,9 @@ it("shows completed today, to date, and remaining together", async () => {
 
 it("labels the latest card Latest, and any other card just Reported as of", async () => {
   await mount({ log: log({ log_date: "2026-10-01" }), isLatest: true });
-  expect(host.textContent).toContain("Latest, as of");
+  expect(host.textContent).toContain("Latest in this range, as of");
   await mount({ log: log({ log_date: "2026-09-28" }), isLatest: false });
-  expect(host.textContent).not.toContain("Latest, as of");
+  expect(host.textContent).not.toContain("Latest in this range, as of");
   expect(host.textContent).toContain("Reported as of");
 });
 

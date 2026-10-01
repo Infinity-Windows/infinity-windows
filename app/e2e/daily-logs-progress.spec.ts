@@ -6,6 +6,7 @@ const PROJECT={id:JOB.projectId,job_code:'BLACK22',name:'Black Desert',address:n
 const LOG='00000000-0000-4000-8000-000000000060';
 function row(date=dayISO(0)) {return {id:LOG,project_id:JOB.projectId,project:PROJECT,job_name:null,log_date:date,revision:4,headline:'West openings finished',notes:'Installed W01 through W12; W13 and W14 remain.',day_flow:'smooth',reflection:null,weather:'Clear',customer_visible:false,filed_by:TEST_USER.id,filer:{display_name:'Fixture installer'},created_at:`${date}T18:00:00Z`,updated_at:`${date}T18:00:00Z`,work_stages:['frames','glass'],stage_progress:{frames:75,glass:50},covers:'windows',delays:[],safety_status:'none_reported',weather_impact:'none',missing_tomorrow:[],tomorrow_stages:['glass'],tomorrow_crew_expected:2,tomorrow_plan:'Finish W13 and W14',units_today:3,units_to_date:12,units_remaining:2,units_remaining_detail:'W13 and W14 on the north wall'};}
 async function fixtures(page,lang='en',fresh=false) {
+ // oxlint-disable-next-line react-hooks/rules-of-hooks -- Playwright fixture, not a React hook
  await useSupabaseFixtures(page,{role:'owner',language:lang});
  await page.route('**/rest/v1/projects**',r=>json(r,[PROJECT],1));
  await page.route('**/rest/v1/daily_logs**',r=>{
