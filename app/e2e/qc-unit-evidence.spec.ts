@@ -392,7 +392,12 @@ for (const variant of [
     const button = page.getByRole("button", { name: variant.button, exact: true });
     await button.focus();
     await page.keyboard.press("Enter");
-    await expect(page.locator('img[src*="unit-detail.jpg"]')).toBeVisible();
+    const photo = page.locator('img[src*="unit-detail.jpg"]');
+    // The keyboard opens the record above its photos. Scroll like a reader
+    // before asking WebKit to load this lower, lazy, dimensionless thumbnail.
+    await page.locator("figure").filter({ has: photo }).scrollIntoViewIfNeeded();
+    await expect(photo).toBeVisible();
+    await expect.poll(() => photo.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true);
     await expect(page.locator("audio")).toHaveCount(2);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({ path: testInfo.outputPath(`qc-evidence-${variant.width}-${variant.language}.png`), fullPage: true });

@@ -423,7 +423,8 @@ test("a callback draft survives blocked global navigation and browser Back until
   const state = await fixtures(page, [opening(1)]);
   await page.addInitScript(() => {
     (window as unknown as { qcPopSeen: number }).qcPopSeen = 0;
-    window.addEventListener("popstate", () => { (window as unknown as { qcPopSeen: number }).qcPopSeen += 1; });
+    // Observe before the app's capture guard can stop propagation in WebKit.
+    window.addEventListener("popstate", () => { (window as unknown as { qcPopSeen: number }).qcPopSeen += 1; }, true);
   });
   await page.goto("/team");
   await page.getByRole("link", { name: /installs to QC/ }).click();
@@ -470,7 +471,7 @@ test("an uncertain saved command survives browser Back and retries its original 
   state.loseNextReceipt = true;
   await page.addInitScript(() => {
     (window as unknown as { qcPopSeen: number }).qcPopSeen = 0;
-    window.addEventListener("popstate", () => { (window as unknown as { qcPopSeen: number }).qcPopSeen += 1; });
+    window.addEventListener("popstate", () => { (window as unknown as { qcPopSeen: number }).qcPopSeen += 1; }, true);
   });
   await page.goto("/team");
   await page.getByRole("link", { name: /installs to QC/ }).click();
@@ -496,7 +497,7 @@ test("Back during the selected-unit history write keeps the complete entry and o
   await page.addInitScript(() => {
     const probe = { triggered: false, selectedUrl: "", pops: 0 };
     (window as unknown as { qcEagerBack: typeof probe }).qcEagerBack = probe;
-    window.addEventListener("popstate", () => { probe.pops += 1; });
+    window.addEventListener("popstate", () => { probe.pops += 1; }, true);
     const replace = History.prototype.replaceState;
     History.prototype.replaceState = function (data, unused, url) {
       replace.call(this, data, unused, url);

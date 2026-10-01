@@ -38,7 +38,7 @@ run "$WORK/points.sql"
 run "$WORK/visible.sql"
 query 'revoke all on function public._ai_job_visible(uuid,uuid) from public,anon,authenticated' >/dev/null
 run "$REPO/supabase/migrations/20261041000000_qc_decision_authority.sql"
-run "$REPO/supabase/migrations/20261053000000_qc_review_flow.sql"
+run "$REPO/supabase/migrations/20261056000000_qc_review_flow.sql"
 run "$FIX/race-setup.sql"
 
 wait_ready() {

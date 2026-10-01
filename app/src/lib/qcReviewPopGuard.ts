@@ -1,9 +1,9 @@
 import { withBase } from "./pwa/basePaths";
 
 /**
- * Install before BrowserRouter mounts. Native popstate targets window, where
- * listeners run in registration order, irrespective of capture. A listener
- * added by the lazy QC route can run after the router has unmounted it.
+ * Install this capture listener before BrowserRouter mounts. Native window
+ * POP listener ordering differs across engines: requesting capture on a late
+ * lazy-route listener does not reliably precede the router's unmount.
  *
  * This dispatcher is inert unless a mounted QC flow registers its guard. It
  * owns no draft/auth state and does not patch the router or history methods.

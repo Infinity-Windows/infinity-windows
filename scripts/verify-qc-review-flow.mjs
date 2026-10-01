@@ -31,7 +31,7 @@ await db.exec(extract(await migration('20261024000000_ai_field_operations.sql'),
 await db.exec('revoke all on function _ai_job_visible(uuid,uuid) from public,anon,authenticated');
 await db.exec(await migration('20261041000000_qc_decision_authority.sql'));
 const baselineEvents = (await db.query('select count(*)::int as n from qc_decision_events')).rows[0].n;
-await db.exec(await migration('20261053000000_qc_review_flow.sql'));
+await db.exec(await migration('20261056000000_qc_review_flow.sql'));
 
 async function admin() { await db.exec("reset role; select set_config('request.jwt.claim.sub','',false)"); }
 async function as(who) { await admin(); await db.query("select set_config('request.jwt.claim.sub',$1,false)",[actor[who] ?? '']); await db.exec('set role authenticated'); }

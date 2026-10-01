@@ -302,7 +302,7 @@ export function QcReviewFlow({
       if (!blockedRef.current && !reversing) return;
       const kept = protectedLocationRef.current;
       // The bootstrap dispatcher invokes this before BrowserRouter's POP
-      // listener. Window-target capture alone does not change listener order.
+      // listener. Late capture alone cannot guarantee that across engines.
       event.stopImmediatePropagation();
       const oldIndex = kept.history?.idx;
       const targetIndex = event.state?.idx;
