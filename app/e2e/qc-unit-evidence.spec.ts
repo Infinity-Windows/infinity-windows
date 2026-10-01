@@ -70,7 +70,7 @@ function silentWav() {
   b.write("data", 36); b.writeUInt32LE(dataBytes, 40);
   return b;
 }
-const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jrH0AAAAASUVORK5CYII=", "base64");
+const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=", "base64");
 interface EvidenceOptions {
   language?: "en" | "es";
   role?: "installer" | "foreman";
