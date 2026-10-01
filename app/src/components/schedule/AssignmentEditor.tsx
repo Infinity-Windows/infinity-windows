@@ -6,8 +6,13 @@ import type { Profile } from "../../lib/install/types";
 import type { Project } from "../../lib/types";
 import { INSTALLER_PALETTE } from "../../lib/install/mapDispatch";
 import { addDaysISO, daysBetween } from "../../lib/schedule/dates";
-import { conflictingMembersFor } from "../../lib/schedule/conflicts";
+import { ConflictPairDetails } from "./ConflictPairDetails";
+import { conflictBannerEntries, conflictingMembersFor, parseClockSeconds } from "../../lib/schedule/conflicts";
 import { removeWarning } from "../../lib/schedule/removeWarning";
+import { useT } from "../../lib/i18n";
+// Side effect: registers this screen's bilingual strings into the live
+// catalog the moment this (lazy-loaded) chunk loads.
+import "../../lib/i18n/scheduleConflictCatalog";
 import { useFocusTrap } from "../../lib/useFocusTrap";
 import type { VehicleWithMeta } from "../../lib/vehicles/types";
 import { vehicleSubtitle, vehicleTitle } from "../../lib/vehicles/display";
@@ -85,6 +90,7 @@ export function AssignmentEditor({
   error,
   onClose,
 }: Props) {
+  const t = useT();
   const highlightSet = useMemo(
     () => new Set(highlightMemberIds ?? []),
     [highlightMemberIds],
@@ -101,8 +107,11 @@ export function AssignmentEditor({
   const [startTime, setStartTime] = useState(
     assignment ? (assignment.start_time ?? "") : "06:30",
   );
-  const [endTime, setEndTime] = useState(assignment?.end_time?.slice(0, 5) ?? "");
-  const validTimes = !endTime || (!!startTime && endTime > startTime.slice(0, 5));
+  const [endTime, setEndTime] = useState(assignment?.end_time ?? "");
+  const startSeconds = parseClockSeconds(startTime);
+  const endSeconds = parseClockSeconds(endTime);
+  const validTimes = (!startTime || startSeconds !== null)
+    && (!endTime || (startSeconds !== null && endSeconds !== null && endSeconds > startSeconds));
   const [color, setColor] = useState(assignment?.color ?? "");
   const [note, setNote] = useState(assignment?.note ?? "");
   const [vehicleId, setVehicleId] = useState(currentVehicleId ?? "");
@@ -182,8 +191,23 @@ export function AssignmentEditor({
       end_time: endTime || null,
       members: members.map((m) => ({ profile_id: m.profile_id })),
     };
-    return conflictingMembersFor(target, others);
+    const activeOthers = others.filter(a => a.status !== "canceled" && a.id !== target.id);
+    return {
+      ...conflictingMembersFor(target, activeOthers),
+      entries: activeOthers.flatMap(other => conflictBannerEntries([target, other])),
+    };
   }, [assignment?.id, startDate, normalizedEnd, startTime, endTime, members, others]);
+
+  const conflictJobLabel = (id: string) => {
+    if (id === (assignment?.id ?? "__new__")) {
+      const chosen = projects.find(p => p.id === projectId);
+      return chosen?.job_code ?? chosen?.name
+        ?? (assignment?.project_id === projectId ? assignment.project?.job_code : null)
+        ?? t("schedConflict.aJob");
+    }
+    const other = others.find(a => a.id === id);
+    return other?.project?.job_code ?? other?.project?.name ?? t("schedConflict.aJob");
+  };
 
   const canSave = projectId !== "" && members.length > 0 && Boolean(startDate) && validTimes;
 
@@ -277,6 +301,7 @@ export function AssignmentEditor({
               id="assignment-start-time"
               aria-describedby="assignment-start-help"
               type="time"
+              step="1"
               value={startTime}
               onChange={(e) => setStartTime(e.target.value)}
             />
@@ -284,7 +309,7 @@ export function AssignmentEditor({
           </div>
           <div>
             <label className="field-label" htmlFor="assignment-end-time">Crew end time (optional)</label>
-            <input id="assignment-end-time" type="time" value={endTime} onChange={e => setEndTime(e.target.value)} aria-describedby="assignment-time-range-help" />
+            <input id="assignment-end-time" type="time" step="1" value={endTime} onChange={e => setEndTime(e.target.value)} aria-describedby="assignment-time-range-help" />
           </div>
         </div>
         <p id="assignment-time-range-help" className="muted" style={{ fontSize: 12, margin: "6px 0 12px" }}>
@@ -310,7 +335,7 @@ export function AssignmentEditor({
         <div className="sched-chips">
           {foremen.map((p) => {
             const picked = members.find((m) => m.profile_id === p.id)?.role === "foreman";
-            const clash = highlightSet.has(p.id) && memberIds.has(p.id);
+            const clash = highlightSet.has(p.id) && memberIds.has(p.id) && inlineConflicts.confirmed.includes(p.id);
             return (
               <button
                 key={p.id}
@@ -329,7 +354,7 @@ export function AssignmentEditor({
         <div className="sched-chips">
           {installers.map((p) => {
             const picked = members.find((m) => m.profile_id === p.id)?.role === "installer";
-            const clash = highlightSet.has(p.id) && memberIds.has(p.id);
+            const clash = highlightSet.has(p.id) && memberIds.has(p.id) && inlineConflicts.confirmed.includes(p.id);
             return (
               <button
                 key={p.id}
@@ -349,16 +374,40 @@ export function AssignmentEditor({
           </p>
         )}
 
-        {inlineConflicts.length > 0 && (
+        {inlineConflicts.confirmed.length > 0 && (
           <div
             className={`sched-conflict-inline${highlightSet.size > 0 ? " is-emphasized" : ""}`}
             role="alert"
           >
             <AlertTriangle size={15} aria-hidden />
-            <span>
-              Double-booked: {inlineConflicts.map((id) => nameOf(crew, id)).join(", ")} already
-              on another job in these dates. You can still schedule — just a heads-up.
-            </span>
+            <div>
+              {t("schedConflict.editor.confirmed", {
+                names: inlineConflicts.confirmed.map((id) => nameOf(crew, id)).join(", "),
+              })}
+              {inlineConflicts.entries.filter(c => c.kind === "confirmed").map(c => (
+                <div key={`${c.profileId}-${c.aId}-${c.bId}`}>
+                  <strong>{nameOf(crew, c.profileId)}</strong>
+                  <ConflictPairDetails entry={c} jobLabelOf={conflictJobLabel} />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {inlineConflicts.review.length > 0 && (
+          <div className="sched-conflict-inline is-review" role="status">
+            <AlertTriangle size={15} aria-hidden />
+            <div>
+              {t("schedConflict.editor.review", {
+                names: inlineConflicts.review.map((id) => nameOf(crew, id)).join(", "),
+              })}
+              {inlineConflicts.entries.filter(c => c.kind === "review").map(c => (
+                <div key={`${c.profileId}-${c.aId}-${c.bId}`}>
+                  <strong>{nameOf(crew, c.profileId)}</strong>
+                  <ConflictPairDetails entry={c} jobLabelOf={conflictJobLabel} />
+                </div>
+              ))}
+            </div>
           </div>
         )}
 

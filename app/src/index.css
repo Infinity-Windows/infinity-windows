@@ -8970,17 +8970,33 @@ body {
 }
 .sched-conflict-banner-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   justify-content: space-between;
 }
+.sched-conflict-banner-row .sched-conflict-banner-text { flex: 1 1 220px; min-width: 0; }
 .sched-conflict-banner-text { font-size: 12.5px; color: var(--text); }
+.sched-conflict-banner-detail { font-size: 11px; color: var(--text-secondary); }
 .sched-conflict-banner-fix {
   flex-shrink: 0;
   border-color: var(--danger);
   color: var(--danger);
   font-weight: 600;
   padding: 4px 12px;
+}
+
+/* Hours-need-review banner: same shape as the confirmed double-booking
+   banner above, but neutral — the hours genuinely aren't known yet, so this
+   must never read as a confirmed problem. */
+.sched-conflict-banner.is-review {
+  background: color-mix(in oklab, var(--warn) 12%, var(--card));
+  border-color: var(--warn);
+}
+.sched-conflict-banner.is-review .sched-conflict-banner-head { color: var(--warn); }
+.sched-conflict-banner.is-review .sched-conflict-banner-fix {
+  border-color: var(--warn);
+  color: var(--warn);
 }
 
 .sched-conflict-inline.is-emphasized {
@@ -9008,6 +9024,7 @@ body {
   z-index: 5;
 }
 .sched-publishbar-warn { color: var(--warn); font-weight: 600; margin-left: 4px; }
+.sched-publishbar-warn.is-review { color: var(--text-secondary); }
 
 /* ---- Review AI drafts (K2.8): the supervisor's read of what the AI drafted ---- */
 .sched-ai-review { margin: 8px 0; border-color: var(--accent-line); }
@@ -9127,6 +9144,12 @@ body {
   padding: 8px 10px;
   font-size: 12.5px;
   margin: 8px 0;
+}
+/* Hours-need-review is advisory, never a confirmed double-booking — it never
+   reads as the same red "this is a problem" as a confirmed clash. */
+.sched-conflict-inline.is-review {
+  background: color-mix(in oklab, var(--warn) 16%, transparent);
+  border-color: var(--warn);
 }
 
 /* ---- My Schedule agenda ---- */
@@ -13697,3 +13720,10 @@ button.crew-start-message { min-height: 44px; width: 100%; text-align: left; col
 .clock-badge--finish { border-color: var(--danger); }
 .clock-badge--finish .clock-badge-icon { color: var(--danger); }
 .clock-badge-text { overflow: hidden; text-overflow: ellipsis; }
+
+/* Conflict details must wrap even a long job code on a narrow phone. */
+.sched-conflict-banner-text { min-width: 0; overflow-wrap: anywhere; }
+.sched-pair-details { font-size: 12.5px; margin: 4px 0 8px; overflow-wrap: anywhere; }
+.sched-pair-overlap { font-weight: 600; margin-top: 3px; }
+.sched-conflict-inline > div { min-width: 0; }
+.sched-conflict-banner-fix { min-height: 44px; min-width: 44px; }
