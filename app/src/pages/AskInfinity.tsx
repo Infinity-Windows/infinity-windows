@@ -481,20 +481,39 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
   const latestChecklist = latestChecklistIndex >= 0 ? messages[latestChecklistIndex].field!.checklist : null;
   // A checklist is a conversation draft. Only a database receipt for the
   // current setup can retire it; zero missing answers alone cannot. A unit
-  // sent for review still needs a person to finish that review.
+  // sent for review still needs a person to finish that review. Read-only
+  // replies can carry the same captured snapshot after a save, so include
+  // receipts from the start of that unchanged snapshot run.
   const setupLabel = latestChecklist?.unit?.find((item) => item.key === "label")?.value;
   const setupJobName = latestChecklist?.job?.find((item) => item.key === "job_name")?.value;
   const setupProject = latestChecklistIndex >= 0 ? messages[latestChecklistIndex].field?.draft?.job?.project_id : null;
-  const setupSaved = !!latestChecklist && messages.slice(latestChecklistIndex).some((m) =>
-    m.field?.receipts.some((r) => r.status === "done"
-      && (!setupProject || !r.project_id || r.project_id === setupProject)
+  const checklistSnapshot = (checklist: NonNullable<FieldReply["checklist"]>) => JSON.stringify({
+    job: checklist.job?.map(({ key, status, value, required_before_timing, from_plans }) => ({ key, status, value, required_before_timing, from_plans })) ?? null,
+    unit: checklist.unit?.map(({ key, status, value, required_before_timing, from_plans }) => ({ key, status, value, required_before_timing, from_plans })) ?? null,
+  });
+  let checklistRunStart = latestChecklistIndex;
+  if (latestChecklist) {
+    const latestSnapshot = checklistSnapshot(latestChecklist);
+    for (let i = latestChecklistIndex - 1; i >= 0; i -= 1) {
+      const earlierField = messages[i].field;
+      if (!earlierField?.checklist) continue;
+      const earlierProject = earlierField.draft?.job?.project_id;
+      if (checklistSnapshot(earlierField.checklist) !== latestSnapshot
+        || (setupProject && earlierProject && earlierProject !== setupProject)) break;
+      checklistRunStart = i;
+    }
+  }
+  const setupReceipts = latestChecklist ? messages.slice(checklistRunStart).flatMap((m) => m.field?.receipts ?? []).filter((r) =>
+    (!setupProject || !r.project_id || r.project_id === setupProject)
       && (latestChecklist.unit?.length
-        ? (!setupLabel || setupLabel === "saved" || r.unit?.label === setupLabel)
-        : (!setupJobName || r.name === setupJobName)) && (
-      latestChecklist.unit?.length
-        ? r.action === "save_unit" && ["created", "created_from_map", "details_added", "corrected", "unchanged"].includes(r.outcome ?? "")
-        : r.action === "create_job" && ["created", "used_existing"].includes(r.outcome ?? "")
-    )),
+        ? r.action === "save_unit" && (!setupLabel || setupLabel === "saved" || r.unit?.label === setupLabel)
+        : r.action === "create_job" && (!setupJobName || r.name === setupJobName))
+  ) : [];
+  const latestSetupReceipt = setupReceipts.at(-1);
+  const setupSaved = !!latestSetupReceipt && latestSetupReceipt.status === "done" && (
+    latestChecklist?.unit?.length
+      ? ["created", "created_from_map", "details_added", "corrected", "unchanged"].includes(latestSetupReceipt.outcome ?? "")
+      : ["created", "used_existing"].includes(latestSetupReceipt.outcome ?? "")
   );
   // A lesson write-up Ask prepared: one card for the latest version, filed as a
   // Hex-Portal case (the person's words and the reply) only when they tap Save.

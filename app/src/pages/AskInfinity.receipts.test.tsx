@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetUnsavedWork } from "../lib/pwa/unsavedWork";
 
 const USER = "crew-1";
-const reply = vi.hoisted(() => ({ next: {} as Record<string, unknown> }));
+const reply = vi.hoisted(() => ({ next: {} as Record<string, unknown>, history: [] as Record<string, unknown>[] }));
 
 vi.mock("../lib/queryClient", async () => {
   const { QueryClient } = await import("@tanstack/react-query");
@@ -57,7 +57,7 @@ vi.mock("../lib/fieldAsk", () => ({
   dropUnsent: async () => {},
   keepUnsent: async () => {},
   listUnsent: async () => [],
-  loadConversation: async () => [],
+  loadConversation: async () => reply.history,
   memoPlaybackUrl: async () => null,
   phoneTimingPending: async () => false,
   readClockVersion: async () => 1,
@@ -90,7 +90,7 @@ const ask = async (text: string) => {
 };
 const unit = { unit_id: "u4", label: "4", type: "Bifold door", facts: {} };
 
-beforeEach(() => { (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true; reply.next = {}; });
+beforeEach(() => { (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true; reply.next = {}; reply.history = []; });
 afterEach(() => { act(() => root?.unmount()); host?.remove(); root = null; host = null; resetUnsavedWork(); });
 
 describe("receipts on the Ask page", () => {
@@ -159,6 +159,64 @@ describe("receipts on the Ask page", () => {
     expect(host!.querySelector(".field-checklist")).not.toBeNull();
     reply.next = { answer: "Unit 4 saved.", field: { request_id: "r2", receipts: [{ action_id: "a2", action: "save_unit", status: "done", outcome: "created", unit }], checklist: null } };
     await ask("Save it");
+    expect(host!.querySelector(".field-checklist")).toBeNull();
+  });
+
+  it("keeps an unchanged captured checklist dismissed through later read-only replies", async () => {
+    const checklist = { job: null, unit: [{ key: "label", status: "captured", value: "4", required_before_timing: true }] };
+    await mount();
+    reply.next = { answer: "Unit 4 saved.", field: { request_id: "r1", receipts: [{ action_id: "a1", action: "save_unit", status: "done", outcome: "created", unit }], checklist } };
+    await ask("Save unit 4");
+    reply.next = { answer: "Here is the installation sequence.", field: { request_id: "r2", receipts: [], checklist: { job: null, unit: checklist.unit.map((item) => ({ ...item })) } } };
+    await ask("What comes next?");
+    reply.next = { answer: "That is the next step.", field: { request_id: "r3", receipts: [], checklist: { job: null, unit: checklist.unit.map((item) => ({ ...item })) } } };
+    await ask("And then?");
+    expect(host!.querySelector(".field-checklist")).toBeNull();
+  });
+
+  it("shows a changed draft for the same unit after an earlier save", async () => {
+    const label = { key: "label", status: "captured", value: "4", required_before_timing: true };
+    await mount();
+    reply.next = { answer: "Unit 4 saved.", field: { request_id: "r1", receipts: [{ action_id: "a1", action: "save_unit", status: "done", outcome: "created", unit }], checklist: { job: null, unit: [label] } } };
+    await ask("Save unit 4");
+    reply.next = { answer: "The new width still needs saving.", field: { request_id: "r2", receipts: [], checklist: { job: null, unit: [label, { key: "width", status: "captured", value: "48 inches", required_before_timing: true }] } } };
+    await ask("Width is 48 inches");
+    expect(host!.querySelector(".field-checklist")).not.toBeNull();
+  });
+
+  it("keeps the checklist for the same unit label in a different project", async () => {
+    const checklist = { job: null, unit: [{ key: "label", status: "captured", value: "4", required_before_timing: true }] };
+    await mount();
+    reply.next = { answer: "Unit 4 saved.", field: { request_id: "r1", receipts: [{ action_id: "a1", action: "save_unit", status: "done", outcome: "created", project_id: "project-a", unit }], checklist, draft: { job: { project_id: "project-a" } } } };
+    await ask("Save unit 4 in project A");
+    reply.next = { answer: "Unit 4 in project B is still a draft.", field: { request_id: "r2", receipts: [], checklist: { job: null, unit: checklist.unit.map((item) => ({ ...item })) }, draft: { job: { project_id: "project-b" } } } };
+    await ask("Set up unit 4 in project B");
+    expect(host!.querySelector(".field-checklist")).not.toBeNull();
+  });
+
+  it("keeps a copied checklist visible when a newer save needs confirmation", async () => {
+    const checklist = { job: null, unit: [{ key: "label", status: "captured", value: "4", required_before_timing: true }] };
+    await mount();
+    reply.next = { answer: "Unit 4 saved.", field: { request_id: "r1", receipts: [{ action_id: "a1", action: "save_unit", status: "done", outcome: "created", unit }], checklist } };
+    await ask("Save unit 4");
+    reply.next = { answer: "Choose which details to keep.", field: { request_id: "r2", receipts: [{ action_id: "a2", action: "save_unit", status: "needs_choice", reason: "fact_conflict", options: [{ id: "keep_original", label: "Keep" }], unit }], checklist: { job: null, unit: checklist.unit.map((item) => ({ ...item })) } } };
+    await ask("Save the next change");
+    expect(host!.querySelector(".field-checklist")).not.toBeNull();
+  });
+
+  it("dismisses copied checklists after restoring a confirmed save from history", async () => {
+    const checklist = { job: null, unit: [{ key: "label", status: "captured", value: "4", required_before_timing: true }] };
+    const turn = (id: string, answer: string, receipts: Record<string, unknown>[]) => ({
+      id, transcript: id === "r1" ? "Save unit 4" : "What comes next?", input_kind: "text", sent_at: "2026-10-01T12:00:00Z", audio_path: null,
+      reply: { answer }, captured: { checklist: { job: null, unit: checklist.unit.map((item) => ({ ...item })) } }, finished_at: "2026-10-01T12:00:01Z", receipts,
+    });
+    reply.history = [
+      turn("r1", "Unit 4 saved.", [{ action_id: "a1", action: "save_unit", status: "done", outcome: "created", unit }]),
+      turn("r2", "Here is the installation sequence.", []),
+      turn("r3", "That is the next step.", []),
+    ];
+    await mount();
+    expect(host!.textContent).toContain("Saved in Forge");
     expect(host!.querySelector(".field-checklist")).toBeNull();
   });
 
