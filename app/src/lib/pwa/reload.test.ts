@@ -12,6 +12,8 @@ describe("update reload diagnostics", () => {
     reloadPage("takeover-fallback");
     expect(setItem).toHaveBeenCalledWith("wops-update-reload-diagnostic", expect.stringContaining('"reason":"takeover-fallback"'));
     expect(reload).toHaveBeenCalledOnce();
+    reloadPage();
+    expect(setItem).toHaveBeenLastCalledWith("wops-update-reload-diagnostic", expect.stringContaining('"reason":"controllerchange"'));
   });
 
   it("still reloads when private browsing denies storage", () => {
