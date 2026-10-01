@@ -103,6 +103,23 @@ begin
     format('select public.countersign_semimonthly_timecard(%L::uuid, %L::timestamptz)', v_installer, v_ended_second),
     'has not signed');
 
+  -- Every month-length branch, including leap February and DST, derives
+  -- the next month's boundary instead of adding a fixed number of days.
+  perform pg_temp.dry_run_act_as(v_installer);
+  v_row := public.sign_my_semimonthly_timecard(v_ended_second, v_tz);
+  perform pg_temp.dry_run_check('ended long second half derives September 1',
+    v_row.period_end = ('2026-09-01 00:00:00'::timestamp at time zone v_tz), v_row.period_end::text);
+  v_row := public.sign_my_semimonthly_timecard('2024-02-16 00:00:00'::timestamp at time zone v_tz, v_tz);
+  perform pg_temp.dry_run_check('leap February second half ends March 1',
+    v_row.period_end = ('2024-03-01 00:00:00'::timestamp at time zone v_tz), v_row.period_end::text);
+  v_row := public.sign_my_semimonthly_timecard('2026-02-16 00:00:00'::timestamp at time zone v_tz, v_tz);
+  perform pg_temp.dry_run_check('ordinary February second half ends March 1',
+    v_row.period_end = ('2026-03-01 00:00:00'::timestamp at time zone v_tz), v_row.period_end::text);
+  v_row := public.sign_my_semimonthly_timecard('2026-03-01 00:00:00'::timestamp at time zone v_tz, v_tz);
+  perform pg_temp.dry_run_check('DST first half still ends at local midnight March 16',
+    v_row.period_end = ('2026-03-16 00:00:00'::timestamp at time zone v_tz), v_row.period_end::text);
+  perform pg_temp.dry_run_act_as(v_supervisor);
+
   -- ---- countersign: the real one succeeds --------------------------------
   v_row := public.countersign_semimonthly_timecard(v_installer, v_ended_first);
   perform pg_temp.dry_run_check('supervisor countersigns the signed period',
