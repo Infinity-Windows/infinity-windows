@@ -115,7 +115,7 @@ test('monthly halves navigate correctly, include third weekly approval and expor
   const f = await loadTimecardFixtures(page, 'supervisor');
   const base = f.rows.find(r => r.profile_id === id(1))!;
   f.rows.splice(0, f.rows.length, ...[14, 15, 16, 17, 18, 28].map((day, k) => ({ ...base,
-    id: id(500 + k), clock_in_at: `2026-09-${day}T14:00:00Z`, clock_out_at: `2026-09-${day}T${day === 28 ? '16' : '23'}:00:00Z`,
+    id: id(500 + k), break_seconds: 0, clock_in_at: `2026-09-${day}T14:00:00Z`, clock_out_at: `2026-09-${day}T${day === 28 ? '16' : '23'}:00:00Z`,
   })));
   // Five 9-hour days in one calendar week: the second half contains 27h,
   // including 5h overtime earned after the first half's 18h. Plus 2h Sep28.

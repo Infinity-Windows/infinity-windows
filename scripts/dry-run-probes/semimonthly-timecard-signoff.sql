@@ -43,7 +43,9 @@ begin
   -- ---- setup, as the system -------------------------------------------------
   perform pg_temp.dry_run_as_system();
   v_installer := pg_temp.dry_run_pick('installer');
-  v_supervisor := pg_temp.dry_run_pick('supervisor');
+  -- Production has an owner and no supervisor-role profile. The owner
+  -- exercises the same supervisor-plus permission tier, inside rollback.
+  v_supervisor := pg_temp.dry_run_pick('owner');
 
   v_ended_first          := '2026-08-01 00:00:00'::timestamp at time zone v_tz;
   v_ended_second         := '2026-08-16 00:00:00'::timestamp at time zone v_tz;

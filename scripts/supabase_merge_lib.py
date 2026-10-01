@@ -699,6 +699,7 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     # One sign-off row per person per pay period — the UNIQUE index IS the
     # natural key (Wave T8, 20260947000000).
     "timecard_periods": ("profile_id", "period_start"),
+    "semimonthly_timecard_periods": ("profile_id", "period_start"),
     # One shared log per job per day (Q6) — the UNIQUE constraint IS the
     # natural key (Wave L, L1, 20260949000000).
     "daily_logs": ("project_id", "log_date"),
