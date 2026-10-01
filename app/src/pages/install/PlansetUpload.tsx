@@ -61,6 +61,10 @@ import {
   pullMondayFiles,
   type MondayFileKind,
 } from "../../lib/mondaySync";
+import {
+  mondayFileStatusText,
+  type MondayFileStatusText,
+} from "../../lib/install/mondayImportStatus";
 import { PlansetViewer } from "./PlansetViewer";
 
 function fileName(ps: Planset): string {
@@ -98,7 +102,28 @@ export function PlansetUpload() {
   // Which Monday file the office is pointing at each slot, and which pull is
   // running. Keyed by asset id; seeded from the guesser as the list renders.
   const [mondayKinds, setMondayKinds] = useState<Record<string, MondayFileKind>>({});
-  const [mondayNote, setMondayNote] = useState<string | null>(null);
+  // How each file's pull went this session, keyed by asset id. Kept even
+  // after a refetch drops the file out of "new on Monday" — a success has to
+  // stay visible, and a failure sits right there with Retry, rather than the
+  // whole block collapsing to one shared line nobody could tell which file it
+  // was about.
+  const [mondayFileStatus, setMondayFileStatus] = useState<
+    Record<string, MondayFileStatusText>
+  >({});
+  // The project this tab is actually looking at, read inside a pull's
+  // onSuccess/onError — never the value closed over when the pull started.
+  // Without this, a pull kicked off on one job and answered after the person
+  // has already moved to another job's Plans page would paint its result onto
+  // the new job's list.
+  // Mutation pending reaches React after the tap; a synchronous latch also
+  // closes the gap between two clicks in the same browser event burst.
+  const mondayPullInFlight = useRef(false);
+  const mondayProjectIdRef = useRef(projectId);
+  useEffect(() => {
+    mondayProjectIdRef.current = projectId;
+    setMondayFileStatus({});
+    setMondayKinds({});
+  }, [projectId]);
 
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const project = projects.data?.find((p) => p.id === projectId);
@@ -539,34 +564,53 @@ export function PlansetUpload() {
 
   /** Bring one file across from the job's Monday item. Never automatic. */
   const pullFromMonday = useMutation({
-    mutationFn: async (args: { assetId: string; kind: MondayFileKind }) => {
+    onSettled: () => { mondayPullInFlight.current = false; },
+    mutationFn: async (args: { assetId: string; kind: MondayFileKind; projectId: string }) => {
       const job = mondayJob.data;
       if (!job) throw new Error("This job is not linked to a Monday job.");
-      setMondayNote(null);
       return pullMondayFiles({
         mondayJobId: job.id,
-        projectId,
+        projectId: args.projectId,
         files: [{ asset_id: args.assetId, kind: args.kind }],
       });
     },
-    onSuccess: (r) => {
-      const one = r.results[0];
-      setMondayNote(
-        one?.ok
-          ? one.already
-            ? t("mondayFiles.result.already")
-            : one.where === "plans"
-              ? t("mondayFiles.result.toPlans")
-              : one.where === "specs"
-                ? t("mondayFiles.result.toSpecs")
-                : t("mondayFiles.result.toDocuments")
-          : one?.error?.trim() || r.error?.trim() || t("mondayFiles.result.failed"),
+    onSuccess: (r, args) => {
+      // Mark the originating job stale even if the person has moved away;
+      // only its cache changes, never the next job's visible result.
+      queryClient.invalidateQueries({ queryKey: ["plansets", args.projectId] });
+      queryClient.invalidateQueries({ queryKey: ["jobDocuments", args.projectId] });
+      queryClient.invalidateQueries({ queryKey: ["jobDocumentAssetIds", args.projectId] });
+      if (args.projectId !== mondayProjectIdRef.current) return;
+      const status = mondayFileStatusText(
+        { result: r.results[0], topError: r.error },
+        {
+          toPlans: t("mondayFiles.result.toPlans"),
+          toSpecs: t("mondayFiles.result.toSpecs"),
+          toDocuments: t("mondayFiles.result.toDocuments"),
+          already: t("mondayFiles.result.already"),
+          failed: t("mondayFiles.result.failed"),
+          offline: t("mondayFiles.result.offline"),
+          needsRead: t("mondayFiles.result.needsRead"),
+        },
       );
-      queryClient.invalidateQueries({ queryKey: ["plansets", projectId] });
-      queryClient.invalidateQueries({ queryKey: ["jobDocuments", projectId] });
-      queryClient.invalidateQueries({ queryKey: ["jobDocumentAssetIds", projectId] });
+      setMondayFileStatus((prev) => ({ ...prev, [args.assetId]: status }));
     },
-    onError: (e) => setMondayNote(formatApiError(e)),
+    onError: (e, args) => {
+      if (args.projectId !== mondayProjectIdRef.current) return;
+      const status = mondayFileStatusText(
+        { topError: formatApiError(e) },
+        {
+          toPlans: t("mondayFiles.result.toPlans"),
+          toSpecs: t("mondayFiles.result.toSpecs"),
+          toDocuments: t("mondayFiles.result.toDocuments"),
+          already: t("mondayFiles.result.already"),
+          failed: t("mondayFiles.result.failed"),
+          offline: t("mondayFiles.result.offline"),
+          needsRead: t("mondayFiles.result.needsRead"),
+        },
+      );
+      setMondayFileStatus((prev) => ({ ...prev, [args.assetId]: status }));
+    },
   });
 
   // Re-read only the pages that failed (or the whole sheet when the vision call
@@ -712,12 +756,19 @@ export function PlansetUpload() {
    * appearing on Monday is a thing to be TOLD about, never a thing that quietly
    * lands on a job.
    */
-  const newOnMonday = isLead
-    ? filesNewOnMonday(filesOnMonday(mondayJob.data ?? { files: null }), [
-        ...(plansets.data ?? []).map((ps) => ps.source_asset_id),
-        ...(documentAssetIds.data ?? []),
-      ])
-    : [];
+  const allMondayFiles = isLead ? filesOnMonday(mondayJob.data ?? { files: null }) : [];
+  const newMondayAssetIds = new Set(
+    filesNewOnMonday(allMondayFiles, [
+      ...(plansets.data ?? []).map((ps) => ps.source_asset_id),
+      ...(documentAssetIds.data ?? []),
+    ]).map((f) => f.asset_id),
+  );
+  // A file that pulled this session stays on screen even once a refetch
+  // removes it from "new" — the whole point of a status next to its name is
+  // that a success does not quietly vanish, and a failure keeps its Retry.
+  const visibleMondayFiles = allMondayFiles.filter(
+    (f) => newMondayAssetIds.has(f.asset_id) || f.asset_id in mondayFileStatus,
+  );
 
   const openPlanset = async (ps: Planset) => {
     setViewError(null);
@@ -856,12 +907,12 @@ export function PlansetUpload() {
         specs,
       )}
 
-      {newOnMonday.length > 0 && (
+      {visibleMondayFiles.length > 0 && (
         <section className="planset-slot" data-testid="files-on-monday">
           <h2>{t("mondayFiles.new.heading")}</h2>
           <p className="muted">{t("mondayFiles.new.blurb")}</p>
           <ul className="unit-list">
-            {newOnMonday.map((f) => {
+            {visibleMondayFiles.map((f) => {
               const locked = !isExtractableFile(f.name, f.ext);
               const kind = locked
                 ? "document"
@@ -870,48 +921,83 @@ export function PlansetUpload() {
               const busy =
                 pullFromMonday.isPending &&
                 pullFromMonday.variables?.assetId === f.asset_id;
+              const status = mondayFileStatus[f.asset_id];
+              const isSuccess = status?.ok === true;
+              const isFailure = status?.ok === false;
               return (
-                <li key={f.asset_id} className="find-row" style={{ flexWrap: "wrap", gap: 6 }}>
+                <li
+                  key={f.asset_id}
+                  className="find-row"
+                  data-asset-id={f.asset_id}
+                  style={{ flexWrap: "wrap", gap: 6 }}
+                >
                   <span style={{ minWidth: 0, flex: 1 }}>
                     {f.name}
                     {size && <span className="muted" style={{ fontSize: 11.5 }}> · {size}</span>}
+                    {busy && (
+                      <span role="status" className="muted" style={{ display: "block", fontSize: 11.5 }}>
+                        {t("mondayFiles.new.pulling")}
+                      </span>
+                    )}
+                    {status && !busy && (
+                      <span
+                        data-testid="monday-file-status"
+                        role={isFailure ? "alert" : "status"}
+                        className={isFailure ? "error" : "ok"}
+                        style={{ display: "block", fontSize: 11.5 }}
+                      >
+                        {status.label}
+                        {status.detail ? ` — ${status.detail}` : ""}
+                      </span>
+                    )}
+                    {status?.note && !busy &&
+                      !plansets.data?.some((ps) => ps.source_asset_id === f.asset_id && ps.status !== "uploaded") && (
+                      <span className="muted" style={{ display: "block", fontSize: 11.5 }}>
+                        {status.note}
+                      </span>
+                    )}
                   </span>
-                  <select
-                    value={kind}
-                    disabled={locked || pullFromMonday.isPending}
-                    aria-label={`${f.name} — ${t("mondayFiles.new.heading")}`}
-                    onChange={(e) =>
-                      setMondayKinds((prev) => ({
-                        ...prev,
-                        [f.asset_id]: e.target.value as MondayFileKind,
-                      }))
-                    }
-                  >
-                    <option value="building">{t("mondayFiles.kind.building")}</option>
-                    <option value="specs">{t("mondayFiles.kind.specs")}</option>
-                    <option value="document">{t("mondayFiles.kind.document")}</option>
-                  </select>
-                  <button
-                    type="button"
-                    className="button-like active-pill"
-                    data-testid="pull-from-monday"
-                    disabled={pullFromMonday.isPending}
-                    onClick={() =>
-                      pullFromMonday.mutate({ assetId: f.asset_id, kind })
-                    }
-                  >
-                    {busy ? t("mondayFiles.new.pulling") : t("mondayFiles.new.pull")}
-                  </button>
+                  {!isSuccess && (
+                    <>
+                      <select
+                        value={kind}
+                        disabled={locked || pullFromMonday.isPending}
+                        aria-label={`${f.name} — ${t("mondayFiles.new.heading")}`}
+                        onChange={(e) =>
+                          setMondayKinds((prev) => ({
+                            ...prev,
+                            [f.asset_id]: e.target.value as MondayFileKind,
+                          }))
+                        }
+                      >
+                        <option value="building">{t("mondayFiles.kind.building")}</option>
+                        <option value="specs">{t("mondayFiles.kind.specs")}</option>
+                        <option value="document">{t("mondayFiles.kind.document")}</option>
+                      </select>
+                      <button
+                        type="button"
+                        className="button-like active-pill"
+                        data-testid={isFailure ? "retry-monday-pull" : "pull-from-monday"}
+                        disabled={pullFromMonday.isPending}
+                        onClick={() => {
+                          if (mondayPullInFlight.current) return;
+                          mondayPullInFlight.current = true;
+                          pullFromMonday.mutate({ assetId: f.asset_id, kind, projectId });
+                        }}
+                      >
+                        {busy
+                          ? t("mondayFiles.new.pulling")
+                          : isFailure
+                            ? t("mondayFiles.new.retry")
+                            : t("mondayFiles.new.pull")}
+                      </button>
+                    </>
+                  )}
                 </li>
               );
             })}
           </ul>
         </section>
-      )}
-      {mondayNote && (
-        <p className="ok" data-testid="monday-pull-note">
-          {mondayNote}
-        </p>
       )}
 
       {progress && <p className="scanner-hint">{progress}</p>}

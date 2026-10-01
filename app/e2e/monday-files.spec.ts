@@ -21,7 +21,7 @@
 
 import { expect, test, type Page } from "@playwright/test";
 import { jobFixtures, useSupabaseFixtures } from "./support/supabaseFixtures";
-import { json } from "./support/specHelpers";
+import { hideWrongProjectBanner, json } from "./support/specHelpers";
 
 const MONDAY_ROW_ID = "dddddddd-1111-4111-8111-dddddddddddd";
 const NEW_PROJECT_ID = "eeeeeeee-2222-4222-8222-eeeeeeeeeeee";
@@ -102,6 +102,7 @@ function routeMondaySync(
 }
 
 test.use({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
+test.beforeEach(async ({ page }) => { await hideWrongProjectBanner(page); });
 
 /** The staged row, the empty jobs list, and the row's link-up PATCH. */
 function routeIncoming(page: Page): { patched: Record<string, unknown>[] } {
@@ -323,7 +324,7 @@ test("the Plans page offers only what Monday has and the job does not", async ({
   await expect(page.getByTestId("from-monday").first()).toBeVisible();
 
   await block.getByTestId("pull-from-monday").click();
-  await expect(page.getByTestId("monday-pull-note")).toBeVisible();
+  await expect(page.getByTestId("monday-file-status")).toBeVisible();
 
   const pull = calls.find((c) => c.action === "pull_files");
   expect(pull?.project_id).toBe(job.projectId);
@@ -363,7 +364,146 @@ test("a refusal from the server is read as the sentence the server wrote", async
   await page.goto(`/projects/${job.projectId}/upload`);
   await page.getByTestId("files-on-monday").getByTestId("pull-from-monday").first().click();
 
-  const note = page.getByTestId("monday-pull-note");
+  const note = page.getByTestId("monday-file-status");
   await expect(note).toContainText("needs the next database update");
   await expect(note).not.toContainText("non-2xx");
+});
+
+
+test("failed file retries beside its name and a second failure preserves the first success", async ({ page }) => {
+  const job = jobFixtures()[0];
+  await useSupabaseFixtures(page, { role: "foreman" });
+  let imported = false;
+  let attempts = 0;
+  const calls: Record<string, unknown>[] = [];
+  void page.route("**/rest/v1/project_plansets**", (r) => json(r, imported ? [{
+    id: "ps-retried", project_id: job.projectId, source_asset_id: FILES[2].asset_id,
+    storage_path: `${job.projectId}/HC24-LP.pdf`, source_format: "pdf",
+    converted_pdf_path: null, kind: "building", status: "uploaded", page_count: 0,
+    created_at: "2026-09-30T19:00:00Z",
+  }] : [], imported ? 1 : 0));
+  void page.route("**/rest/v1/project_documents**", (r) => json(r, [], 0));
+  void page.route("**/rest/v1/monday_jobs**", (r) => json(r, { ...STAGED_ROW, project_id: job.projectId }, 1));
+  void page.route("**/functions/v1/monday-sync", (r) => {
+    const body = r.request().postDataJSON() as Record<string, unknown>;
+    calls.push(body);
+    const files = body.files as { asset_id: string; kind: string }[];
+    if (files[0].asset_id === FILES[2].asset_id && ++attempts > 1) {
+      imported = true;
+      return json(r, { ok: true, results: [{ asset_id: FILES[2].asset_id, ok: true, where: "plans" }] });
+    }
+    return r.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({
+      ok: false, error: "Monday is unavailable. Try again shortly.",
+    }) });
+  });
+  await page.goto(`/projects/${job.projectId}/upload`);
+  const first = page.getByTestId("files-on-monday").locator("li", { hasText: FILES[2].name });
+  await first.getByTestId("pull-from-monday").click();
+  await expect(first).toContainText("Not added");
+  await expect(first.locator(".error")).toContainText("Monday is unavailable");
+  await first.getByRole("button", { name: /Retry/i }).click();
+  await expect(first).toContainText("Added to Plans");
+  await expect(first.getByTestId("pull-from-monday")).toHaveCount(0);
+  await expect(first.getByRole("button", { name: /Retry/i })).toHaveCount(0);
+  await expect(first).toContainText("Read this file");
+  await expect(page.getByTestId("read-planset")).toBeVisible();
+  const second = page.getByTestId("files-on-monday").locator("li", { hasText: FILES[0].name });
+  await second.getByTestId("pull-from-monday").click();
+  await expect(second).toContainText("Not added");
+  await expect(first).toContainText("Added to Plans");
+  expect(calls.filter(c => (c.files as { asset_id: string }[])[0].asset_id === FILES[2].asset_id)).toHaveLength(2);
+  expect(calls[1].files).toEqual([{ asset_id: FILES[2].asset_id, kind: "building" }]);
+  await page.screenshot({ path: "../../outputs/Forge-Plans-Status-2026-09-30/PHONE-RESULTS.png", fullPage: true });
+});
+
+test("network failure gives a reconnect instruction and an already-present retry is a success", async ({ page }) => {
+  const job = jobFixtures()[0];
+  await useSupabaseFixtures(page, { role: "foreman" });
+  void page.route("**/rest/v1/project_plansets**", (r) => json(r, [], 0));
+  void page.route("**/rest/v1/project_documents**", (r) => json(r, [], 0));
+  void page.route("**/rest/v1/monday_jobs**", (r) => json(r, { ...STAGED_ROW, project_id: job.projectId }, 1));
+  let attempts = 0;
+  void page.route("**/functions/v1/monday-sync", (r) => ++attempts === 1 ? r.abort("failed") :
+    json(r, { ok: true, results: [{ asset_id: FILES[0].asset_id, ok: true, already: true, where: "documents" }] }));
+  await page.goto(`/projects/${job.projectId}/upload`);
+  const row = page.getByTestId("files-on-monday").locator("li", { hasText: FILES[0].name });
+  await row.getByTestId("pull-from-monday").click();
+  await expect(row).toContainText(/connect/i);
+  await expect(row).not.toContainText("Edge Function");
+  await row.getByRole("button", { name: /Retry/i }).click();
+  await expect(row).toContainText(/already/i);
+  await expect(row.locator(".error")).toHaveCount(0);
+  await expect(row.getByRole("button", { name: /Retry|Get/ })).toHaveCount(0);
+  expect(attempts).toBe(2);
+});
+
+test("a pending file prevents duplicate clicks and Spanish results fit a narrow phone", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.emulateMedia({ colorScheme: "dark" });
+  const job = jobFixtures()[0];
+  await useSupabaseFixtures(page, { role: "foreman", language: "es" });
+  void page.route("**/rest/v1/project_plansets**", (r) => json(r, [], 0));
+  void page.route("**/rest/v1/project_documents**", (r) => json(r, [], 0));
+  void page.route("**/rest/v1/monday_jobs**", (r) => json(r, { ...STAGED_ROW, project_id: job.projectId }, 1));
+  let finish: (() => void) | undefined;
+  let calls = 0;
+  void page.route("**/functions/v1/monday-sync", async r => {
+    calls++;
+    await new Promise<void>(resolve => { finish = resolve; });
+    await json(r, { ok: true, results: [{ asset_id: FILES[0].asset_id, ok: false, error: "Archivo no disponible." }] });
+  });
+  await page.goto(`/projects/${job.projectId}/upload`);
+  const row = page.getByTestId("files-on-monday").locator("li", { hasText: FILES[0].name });
+  const button = row.getByTestId("pull-from-monday");
+  await button.scrollIntoViewIfNeeded();
+  const bounds = await button.boundingBox();
+  await page.mouse.dblclick(bounds!.x + bounds!.width / 2, bounds!.y + bounds!.height / 2);
+  await expect(button).toBeDisabled();
+  await expect(row).toContainText("Trayendo");
+  expect(calls).toBe(1);
+  finish!();
+  await expect(row).toContainText("No se añadió");
+  await expect(row.getByRole("button", { name: "Reintentar" })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: "../../outputs/Forge-Plans-Status-2026-09-30/SPANISH-RESULTS.png", fullPage: true });
+});
+
+
+test("a completed document import does not claim extraction and a late result cannot follow another job", async ({ page }) => {
+  const [firstJob, nextJob] = jobFixtures();
+  await useSupabaseFixtures(page, { role: "foreman" });
+  void page.route("**/rest/v1/project_plansets**", (r) => json(r, [], 0));
+  void page.route("**/rest/v1/project_documents**", (r) => json(r, [], 0));
+  void page.route("**/rest/v1/monday_jobs**", (r) => {
+    const projectId = new URL(r.request().url()).searchParams.get("project_id")?.replace("eq.", "");
+    return json(r, { ...STAGED_ROW, project_id: projectId }, 1);
+  });
+  let finish: (() => void) | undefined;
+  let calls = 0;
+  void page.route("**/functions/v1/monday-sync", async r => {
+    calls++;
+    const assetId = (r.request().postDataJSON().files as {asset_id:string}[])[0].asset_id;
+    if (calls === 2) await new Promise<void>(resolve => { finish = resolve; });
+    await json(r, { ok: true, results: [{asset_id:assetId,ok:true,where:"documents"}] });
+  });
+  await page.goto(`/projects/${firstJob.projectId}/upload`);
+  const block = page.getByTestId("files-on-monday");
+  const first = block.locator("li", { hasText: FILES[0].name });
+  await first.locator("select").selectOption("document");
+  await first.getByTestId("pull-from-monday").click();
+  await expect(first).toContainText("Added to Documents");
+  await expect(first).not.toContainText("Read this file");
+  await expect(first).not.toContainText(/extraction complete/i);
+  const second = block.locator("li", { hasText: FILES[1].name });
+  await second.getByTestId("pull-from-monday").click();
+  await expect(second.getByTestId("pull-from-monday")).toBeDisabled();
+  await page.evaluate(path => {
+    window.history.pushState(null, "", path);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }, `/projects/${nextJob.projectId}/upload`);
+  await expect(block).not.toContainText("Added to Documents");
+  finish!();
+  await expect.poll(() => calls).toBe(2);
+  await expect(block).not.toContainText("Added to Documents");
+  await expect(block.getByTestId("pull-from-monday")).toHaveCount(3);
 });
