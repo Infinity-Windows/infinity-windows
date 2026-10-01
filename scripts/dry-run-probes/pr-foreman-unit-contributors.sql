@@ -143,6 +143,22 @@ begin
   select count(*) into v_count from public.stage_contributor_summary(v_saved_unit) where stage = 'RO checked' and work_date = current_date - 1;
   perform pg_temp.dry_run_check('contributors: a real, non-supervisor reader does not see the test job''s summary', v_count = 0, v_count || ' row(s)');
 
+  -- Exercise direct authenticated SELECTs too: the screen's raw report,
+  -- participant and history queries must obey the same original-job boundary.
+  select count(*) into v_count from public.crew_work_records where unit_id = v_saved_unit;
+  perform pg_temp.dry_run_check('raw reports: real reader cannot see sandbox reports', v_count = 0, v_count || ' row(s)');
+  select count(*) into v_count from public.crew_work_record_people where record_id = v_request;
+  perform pg_temp.dry_run_check('raw people: real reader cannot see sandbox participant IDs', v_count = 0, v_count || ' row(s)');
+  select count(*) into v_count from public.custom_work_history where entity_id = v_saved_unit;
+  perform pg_temp.dry_run_check('raw history: real reader cannot see sandbox history', v_count = 0, v_count || ' row(s)');
+  perform pg_temp.dry_run_act_as(v_foreman);
+  select count(*) into v_count from public.crew_work_records where unit_id = v_saved_unit;
+  perform pg_temp.dry_run_check('raw reports: QA foreman can read own partition', v_count > 0, v_count || ' row(s)');
+  select count(*) into v_count from public.crew_work_record_people where record_id = v_request;
+  perform pg_temp.dry_run_check('raw people: QA foreman can read source participant IDs', v_count > 0, v_count || ' row(s)');
+  select count(*) into v_count from public.custom_work_history where entity_id = v_saved_unit;
+  perform pg_temp.dry_run_check('raw history: QA foreman can read own partition', v_count > 0, v_count || ' row(s)');
+
   -- Correction: a stale digest is refused; the live one voids and replaces.
   perform pg_temp.dry_run_act_as(v_foreman);
   select digest into v_digest from public.stage_contributor_summary(v_saved_unit) where stage = 'RO checked' and work_date = current_date - 1 and profile_id = v_installer limit 1;

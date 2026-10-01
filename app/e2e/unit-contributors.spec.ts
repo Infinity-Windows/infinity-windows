@@ -5,7 +5,7 @@
 
 import { expect, test, type Page } from "@playwright/test";
 import { BLACK22, OAKRIDGE } from "./support/release1Fixtures";
-import { TEST_USER, useSupabaseFixtures } from "./support/supabaseFixtures";
+import { TEST_USER, useSupabaseFixtures as installFixtures } from "./support/supabaseFixtures";
 import { hideWrongProjectBanner, json, stubGeolocationDenied } from "./support/specHelpers";
 import { morningFixtures } from "./support/release1Fixtures";
 
@@ -56,8 +56,8 @@ function digestFor(records: ContribRecord[], unitId: string, stage: string, work
   return `digest:${[...new Set(evidence)].sort().join(",")}`;
 }
 
-async function useContributorFixtures(page: Page, opts: { role?: "foreman" | "installer"; openShift?: boolean; language?: "en" | "es" } = {}) {
-  await useSupabaseFixtures(page, { role: opts.role ?? "foreman", uiDesign: "new", language: opts.language });
+async function setup(page: Page, opts: { role?: "foreman" | "installer"; openShift?: boolean; language?: "en" | "es" } = {}) {
+  await installFixtures(page, { role: opts.role ?? "foreman", uiDesign: "new", language: opts.language });
   await hideWrongProjectBanner(page);
   await stubGeolocationDenied(page);
   await morningFixtures(page, { signed: true, openShift: opts.openShift ?? false, scheduleRows: [] });
@@ -184,7 +184,7 @@ async function openPanel(page: Page) {
 test.use({ viewport: { width: 375, height: 667 } });
 
 test("a current shift defaults the job but allows an earlier job to be chosen", async ({ page }) => {
-  await useContributorFixtures(page, { openShift: true });
+  await setup(page, { openShift: true });
   await page.goto("/");
   const panel = await openPanel(page);
   const jobs = panel.getByLabel("Job", { exact: true });
@@ -196,7 +196,7 @@ test("a current shift defaults the job but allows an earlier job to be chosen", 
 });
 
 test("an unavailable summary is explained and cannot be mistaken for empty history", async ({ page }) => {
-  const state = await useContributorFixtures(page);
+  const state = await setup(page);
   await page.route("**/rpc/stage_contributor_summary", (route) => route.fulfill({ status: 404, json: { code: "PGRST202", message: "function does not exist" } }));
   await page.goto("/");
   const panel = await openPanel(page);
@@ -208,7 +208,7 @@ test("an unavailable summary is explained and cannot be mistaken for empty histo
 });
 
 test("foreman: two installers' flashing from yesterday, off the clock, on a job picked in the panel", async ({ page }) => {
-  const state = await useContributorFixtures(page, { openShift: false });
+  const state = await setup(page, { openShift: false });
   await page.goto("/");
   const panel = await openPanel(page);
   await panel.getByLabel("Job").selectOption(OAKRIDGE);
@@ -241,7 +241,7 @@ test("foreman: two installers' flashing from yesterday, off the clock, on a job 
 });
 
 test("a mapped opening creates a companion and immediately shows confirmed contributors and corrections", async ({ page }) => {
-  const state = await useContributorFixtures(page);
+  const state = await setup(page);
   await page.goto("/");
   const panel = await openPanel(page);
   await panel.getByLabel("Job").selectOption(OAKRIDGE);
@@ -259,7 +259,7 @@ test("a mapped opening creates a companion and immediately shows confirmed contr
 });
 
 test("a lost server response retries the original request without duplicating the saved report", async ({ page }) => {
-  const state = await useContributorFixtures(page);
+  const state = await setup(page);
   await page.goto("/");
   const panel = await openPanel(page);
   await panel.getByLabel("Job").selectOption(OAKRIDGE);
@@ -279,7 +279,7 @@ test("a lost server response retries the original request without duplicating th
 });
 
 test("a queued record is distinct from a saved one and survives reload with the same request id", async ({ page }) => {
-  const state = await useContributorFixtures(page);
+  const state = await setup(page);
   await page.goto("/");
   const panel = await openPanel(page);
   await panel.getByLabel("Job").selectOption(OAKRIDGE);
@@ -298,7 +298,7 @@ test("a queued record is distinct from a saved one and survives reload with the 
 });
 
 test("an installer reads the summary with no write controls", async ({ page }) => {
-  const state = await useContributorFixtures(page, { role: "installer" });
+  const state = await setup(page, { role: "installer" });
   state.records.push({
     id: "seed-1", project_id: OAKRIDGE, unit_id: UNIT, filed_by: FOREMAN_ID, stage: "RO checked",
     work_date: "2026-09-29", outcome: "finished", description: "", whole_complete: false, created_at: "2026-09-29T12:00:00Z",
@@ -316,7 +316,7 @@ test("an installer reads the summary with no write controls", async ({ page }) =
 });
 
 test("a correction records a reason and shows in history; removing one of two leaves the other", async ({ page }) => {
-  const state = await useContributorFixtures(page);
+  const state = await setup(page);
   state.records.push({
     id: "seed-2", project_id: OAKRIDGE, unit_id: UNIT, filed_by: FOREMAN_ID, stage: "RO checked",
     work_date: "2026-09-29", outcome: "finished", description: "", whole_complete: false, created_at: "2026-09-29T12:00:00Z",
@@ -353,7 +353,7 @@ test("a correction records a reason and shows in history; removing one of two le
 });
 
 test("Spanish: the compact action reads in Spanish, including the stage/people form once a unit is chosen", async ({ page }) => {
-  await useContributorFixtures(page, { language: "es" });
+  await setup(page, { language: "es" });
   await page.goto("/");
   await expect(page.getByTestId("ws-contrib-open")).toContainText("Agregar colaboradores");
   await page.getByTestId("ws-contrib-open").click();
