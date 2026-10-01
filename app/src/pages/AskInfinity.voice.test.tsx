@@ -222,6 +222,19 @@ describe("Ask's voice message and unsaved work", () => {
     expect(unsavedWorkClaims()).toBe(1);
   });
 
+  it("keeps two unsaved recordings separately when phone storage is unavailable", async () => {
+    await mount();
+    for (const content of ["first", "second"]) {
+      await act(async () => micButton()!.click());
+      await act(async () => mic.resolveStart?.());
+      await settle();
+      await act(async () => mic.onComplete?.(new Blob([content], { type: "audio/webm" })));
+      await settle();
+    }
+    expect(host!.querySelectorAll('a[download^="forge-recording-"]')).toHaveLength(2);
+    expect(unsavedWorkClaims()).toBe(1);
+  });
+
   it("releases once the recording is kept on the phone, even though it was not sent", async () => {
     phone.canKeep = true;
     await mount();

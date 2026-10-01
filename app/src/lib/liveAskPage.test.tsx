@@ -12,6 +12,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import type { LiveOptions, LiveTurn } from "./liveAskSession";
+import { hasUnsavedWork, resetUnsavedWork } from "./pwa/unsavedWork";
 
 const state = vi.hoisted(() => ({
   user: "crew-1",
@@ -24,6 +25,9 @@ const state = vi.hoisted(() => ({
   clockReceipt: false,
   shellNavigation: null as null | unknown,
   shellClockHandoff: null as null | unknown,
+  canKeep: true,
+  unsent: [] as Array<{ userId: string; meta: { request_id: string }; text: string; audio?: Blob; error: string }>,
+  clockGate: null as Promise<number> | null,
 }));
 
 vi.mock("./queryClient", async () => {
@@ -68,13 +72,17 @@ vi.mock("./fieldAsk", async (importOriginal) => {
     FIELD_QUERY_ROOTS: [],
     currentConversation: () => "conversation-1",
     startNewConversation: () => "conversation-2",
-    dropUnsent: async () => {},
-    keepUnsent: async (item: { text: string }) => { state.log.push(`keep:${item.text}`); },
-    listUnsent: async () => [],
+    dropUnsent: async (requestId: string) => { state.unsent = state.unsent.filter((u) => u.meta.request_id !== requestId); },
+    keepUnsent: async (item: { userId: string; meta: { request_id: string }; text: string; audio?: Blob; error: string }) => {
+      state.log.push(`keep:${item.text}`);
+      if (!state.canKeep) throw new Error("storage_unavailable");
+      state.unsent = [...state.unsent.filter((u) => u.meta.request_id !== item.meta.request_id), item];
+    },
+    listUnsent: async (userId: string) => state.unsent.filter((u) => u.userId === userId),
     loadConversation: async () => [],
     memoPlaybackUrl: async () => null,
     phoneTimingPending: async () => false,
-    readClockVersion: async () => 7,
+    readClockVersion: async () => state.clockGate ?? 7,
     sessionUserIs: async (id: string) => id === state.user,
     uploadMemo: async (uid: string, requestId: string) => { state.log.push("upload"); return `${uid}/${requestId}/memo.webm`; },
   };
@@ -123,13 +131,14 @@ const turn = async (t: LiveTurn) => {
 
 beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-  Object.assign(state, { user: "crew-1", role: "owner", pilot: true, log: [], asked: [], live: null, nav: false, clockReceipt: false, shellNavigation: null, shellClockHandoff: null });
+  Object.assign(state, { user: "crew-1", role: "owner", pilot: true, log: [], asked: [], live: null, nav: false, clockReceipt: false, shellNavigation: null, shellClockHandoff: null, canKeep: true, unsent: [], clockGate: null });
   vi.stubGlobal("URL", { ...URL, createObjectURL: () => "blob:held", revokeObjectURL: () => {} });
 });
 afterEach(() => {
   act(() => root?.unmount());
   host?.remove();
   root = null; host = null;
+  resetUnsavedWork();
   vi.unstubAllGlobals();
 });
 
@@ -213,6 +222,92 @@ describe("Live Ask on the Ask page", () => {
     expect(state.asked).toHaveLength(0);
     expect(state.log).not.toContain("upload");
     expect(said).toMatch(/Not sent/);
+  });
+
+  it("keeps a connection-lost segment as an unsent recording for a deliberate retry", async () => {
+    await mount();
+    await startLive();
+    await act(async () => {
+      state.live!.options.onInterruptedAudio?.(Promise.resolve(new Blob(["unfinished"], { type: "audio/webm" })));
+      state.live!.options.onStatus("failed", "connection");
+    });
+    await settle();
+    expect(state.asked).toHaveLength(0);
+    expect(state.unsent).toHaveLength(1);
+    expect(state.unsent[0]).toMatchObject({ userId: "crew-1", text: "", error: "live_interrupted" });
+    expect(state.unsent[0].meta).toMatchObject({ actor_id: "crew-1", conversation_id: "conversation-1", clock_version: null, clock_pending_sync: true });
+    expect(host!.textContent).toContain("Unfinished live recording — review before sending");
+    expect(host!.textContent).toContain("Send now");
+    expect(host!.querySelector('audio[aria-label="Listen to recording"]')).not.toBeNull();
+    await act(async () => host!.querySelector<HTMLButtonElement>(".field-unsent-row button")!.click());
+    await settle();
+    expect(state.asked).toHaveLength(1);
+    expect(state.asked[0].meta).toMatchObject({ actor_id: "crew-1", clock_version: 7, clock_pending_sync: false });
+  });
+
+  it("keeps interrupted audio in memory with download when the phone cannot save it", async () => {
+    state.canKeep = false;
+    await mount();
+    await startLive();
+    await act(async () => {
+      state.live!.options.onInterruptedAudio?.(Promise.resolve(new Blob(["unfinished"], { type: "audio/webm" })));
+      state.live!.options.onStatus("failed", "connection");
+    });
+    await settle();
+    expect(state.asked).toHaveLength(0);
+    expect(host!.textContent).toContain("NOT saved yet");
+    expect(host!.textContent).toContain("Download recording");
+    expect(hasUnsavedWork()).toBe(true);
+  });
+
+  it("tells the person when no final recording bytes could be recovered", async () => {
+    await mount();
+    await startLive();
+    await act(async () => {
+      state.live!.options.onInterruptedAudio?.(Promise.reject(new Error("final chunk unavailable")));
+      state.live!.options.onStatus("failed", "connection");
+    });
+    await settle();
+    expect(state.unsent).toHaveLength(0);
+    expect(host!.textContent).toContain("NOT saved yet");
+  });
+
+  it("ignores a double tap while checking the clock for one interrupted clip", async () => {
+    await mount();
+    await startLive();
+    await act(async () => {
+      state.live!.options.onInterruptedAudio?.(Promise.resolve(new Blob(["unfinished"], { type: "audio/webm" })));
+      state.live!.options.onStatus("failed", "connection");
+    });
+    await settle();
+    let release!: (version: number) => void;
+    state.clockGate = new Promise<number>((resolve) => { release = resolve; });
+    const send = host!.querySelector<HTMLButtonElement>(".field-unsent-row button")!;
+    await act(async () => { send.click(); send.click(); });
+    expect(state.asked).toHaveLength(0);
+    await act(async () => release(9));
+    await settle();
+    expect(state.asked).toHaveLength(1);
+    expect(state.asked[0].meta).toMatchObject({ clock_version: 9 });
+  });
+
+  it("does not show the prior account's late interrupted clip to the new account", async () => {
+    await mount();
+    await startLive();
+    const old = state.live!;
+    let deliver!: (audio: Blob) => void;
+    const pending = new Promise<Blob>((resolve) => { deliver = resolve; });
+    await act(async () => {
+      old.options.onInterruptedAudio?.(pending);
+      old.options.onStatus("failed", "connection");
+    });
+    state.user = "crew-2";
+    await act(async () => render());
+    await act(async () => deliver(new Blob(["old speaker"], { type: "audio/webm" })));
+    await settle();
+    expect(state.unsent).toHaveLength(1);
+    expect(state.unsent[0].userId).toBe("crew-1");
+    expect(host!.textContent).not.toContain("Unfinished live recording");
   });
 
   it("keeps push-to-talk and typing out of the way while live, and back after End", async () => {

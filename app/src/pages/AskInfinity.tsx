@@ -220,6 +220,13 @@ function MemoPlayback({ path }: { path: string }) {
   );
 }
 
+/** A local draft can be heard before its Send now tap; no network request. */
+function LocalMemoPlayback({ audio, label }: { audio: Blob; label: string }) {
+  const url = useMemo(() => URL.createObjectURL(audio), [audio]);
+  useEffect(() => () => URL.revokeObjectURL(url), [url]);
+  return <audio className="field-memo" controls preload="none" src={url} aria-label={label} />;
+}
+
 export function AskInfinity({ active = true, onLiveState, registerLiveControls }: {
   active?: boolean;
   onLiveState?: (state: LiveAskShellState) => void;
@@ -277,6 +284,8 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
   const [logOpen, setLogOpen] = useState(false);
   const logOpenRef = useRef(false);
   const [unsent, setUnsent] = useState<UnsentField[]>([]);
+  const retryingUnsent = useRef(new Set<string>());
+  const [retryingIds, setRetryingIds] = useState<Set<string>>(new Set());
   const [voice, setVoice] = useState<"idle" | "starting" | "recording" | "saving" | "transcribing">("idle");
   // Live Ask (pilot, lib/liveAskSession.ts): a spoken conversation whose every
   // finished utterance is saved as a memo and then sent through send() below.
@@ -349,14 +358,14 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
   }, [active, voice]);
   /** A recording the phone could not keep yet: held in memory until it is
    * saved on the phone or on the server, never silently dropped. */
-  const [held, setHeld] = useState<{ blob: Blob; meta: FieldMeta } | null>(null);
+  const [held, setHeld] = useState<{ blob: Blob; meta: FieldMeta; interrupted?: boolean }[]>([]);
   // From asking for the microphone until the recording is kept on the phone
   // or held by a sent request, the only copy is in this component's memory —
   // and a held recording is, by definition, one the phone could NOT keep. An
   // automatic app update must not reload over any of it (independent review,
   // 2026-09-23). Released by durability or by the person, never by the mic
   // merely stopping.
-  useUnsavedWorkWhile(voice !== "idle" || held !== null || liveOn || liveSaving > 0);
+  useUnsavedWorkWhile(voice !== "idle" || held.length > 0 || liveOn || liveSaving > 0);
   /** The clock version read when this message was started (typing or recording). */
   const clockSeen = useRef<number | null>(null);
   // Every async completion checks it still belongs to the account and setup it
@@ -383,7 +392,7 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
     recording.current = null;
     clockSeen.current = null;
     if (!keepInput) setInput("");
-    setVoice("idle"); setThinking(false); setVoiceError(""); setRestoreError(false); setHeld(null);
+    setVoice("idle"); setThinking(false); setVoiceError(""); setRestoreError(false); setHeld([]);
     setLogOpen(false); logOpenRef.current = false;
     // Words kept in the box count as typed ones (K2.2): Plan with AI's prompt
     // stays with the cards put away, instead of the cards coming back over it
@@ -404,6 +413,8 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
     const g = resetFieldUi(userId, { keepInput: !lastActor.current });
     actor.current = userId;
     setUnsent([]);
+    retryingUnsent.current.clear();
+    setRetryingIds(new Set());
     setConversation(null);
     // The tag belongs to the person who opened Ask with it (K2.3): a
     // different account signing in on this phone starts without it. The first
@@ -742,7 +753,7 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
             void dropUnsent(meta.request_id).then(async () => { if (isCurrent(g) && uid) setUnsent(await listUnsent(uid)); }).catch(() => undefined);
             if (isCurrent(g)) { clockSeen.current = null; readClockNow(g); }
             // The request now holds the recording: the in-memory copy can go.
-            if (isCurrent(g) && field) setHeld((h) => (h?.meta.request_id === meta.request_id ? null : h));
+            if (isCurrent(g) && field) setHeld((all) => all.filter((h) => h.meta.request_id !== meta.request_id));
             if (field?.receipts.length) refreshFieldViews();
           }
           if (answer || artifacts?.length || field?.receipts.length || field?.checklist || buttons?.length || navigation || dailyLog) return { who: "infinity", text: answer || note || "", sources, toolActivity, artifacts, field, buttons, navigation, draftApplied, dailyNotRecorded };
@@ -794,13 +805,13 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
     setVoice("saving"); setVoiceError("");
     // Held in memory (download/retry card) until the phone keeps it or a sent
     // request holds it; uploaded bytes alone are not a recoverable record.
-    setHeld({ blob, meta });
+    setHeld((all) => [...all.filter((h) => h.meta.request_id !== meta.request_id), { blob, meta }]);
     const result = await runVoiceSteps({
       stillOwner: () => stillOwner(g, uid),
       keep: async (text, error) => {
         try {
           await keepUnsent({ userId: uid, meta, text, audio: blob, error });
-          if (isCurrent(g)) { setHeld(null); setUnsent(await listUnsent(uid).catch(() => [])); }
+          if (isCurrent(g)) { setHeld((all) => all.filter((h) => h.meta.request_id !== meta.request_id)); setUnsent(await listUnsent(uid).catch(() => [])); }
           return true;
         } catch {
           return false;
@@ -864,16 +875,37 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
   const retryUnsent = async (item: UnsentField) => {
     const uid = actor.current;
     if (thinking || voice !== "idle" || liveRef.current || !uid || item.userId !== uid) return;
+    const id = item.meta.request_id;
+    if (retryingUnsent.current.has(id)) return;
+    retryingUnsent.current.add(id);
+    setRetryingIds(new Set(retryingUnsent.current));
     const g = gen.current;
-    // Kept messages always belong to the account that recorded them.
-    let meta: FieldMeta = { ...item.meta, actor_id: item.userId };
-    if (meta.input_kind === "voice" && item.audio && !item.text) { await voiceStep(item.audio, meta, g, uid); return; }
-    if (!(await stillOwner(g, uid))) return;
-    if (meta.input_kind === "voice" && item.audio) {
-      try { meta = { ...meta, audio_path: await uploadMemo(uid, meta.request_id, item.audio) }; }
-      catch { if (isCurrent(g)) setVoiceError(t("field.needsConnection")); return; }
+    try {
+      // Kept messages always belong to the account that recorded them.
+      let meta: FieldMeta = { ...item.meta, actor_id: item.userId };
+      if (item.error === "live_interrupted") {
+        // The disconnected clip was only a draft. Its first Send now tap is
+        // the request time, so use the clock and queue state from this moment.
+        const clockVersion = await readClockVersion();
+        const pending = await phoneTimingPending(uid, {
+          clockWrites: pendingClockWrites,
+          workQueue: readWorkQueue,
+          shiftId: queryClient.getQueryData<TimeShift | null>(["openShift", uid])?.id,
+        });
+        if (!(await stillOwner(g, uid))) return;
+        meta = { ...meta, sent_at: new Date().toISOString(), clock_version: clockVersion, clock_pending_sync: pending };
+      }
+      if (meta.input_kind === "voice" && item.audio && !item.text) { await voiceStep(item.audio, meta, g, uid); return; }
+      if (!(await stillOwner(g, uid))) return;
+      if (meta.input_kind === "voice" && item.audio) {
+        try { meta = { ...meta, audio_path: await uploadMemo(uid, meta.request_id, item.audio) }; }
+        catch { if (isCurrent(g)) setVoiceError(t("field.needsConnection")); return; }
+      }
+      if (await stillOwner(g, uid)) void send(item.text, meta, g);
+    } finally {
+      retryingUnsent.current.delete(id);
+      if (isCurrent(g)) setRetryingIds(new Set(retryingUnsent.current));
     }
-    if (await stillOwner(g, uid)) void send(item.text, meta, g);
   };
   const discardUnsent = async (item: UnsentField) => {
     const g = gen.current, uid = actor.current;
@@ -916,7 +948,7 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
           } catch {
             // The phone cannot keep it: held in memory with the download card,
             // exactly like a recorder message the phone could not keep.
-            if (isCurrent(g)) setHeld({ blob: audio, meta });
+            if (isCurrent(g)) setHeld((all) => [...all.filter((h) => h.meta.request_id !== meta.request_id), { blob: audio, meta }]);
             return false;
           }
         },
@@ -929,16 +961,48 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
       const shown = await reply;
       // Not sent (another message was still going): it stays kept to send.
       if (!shown) return say({ kind: "kept", keptOnPhone: result.keptOnPhone });
-      if (isCurrent(g) && shown.field) setHeld((h) => (h?.meta.request_id === meta.request_id ? null : h));
+      if (isCurrent(g) && shown.field) setHeld((all) => all.filter((h) => h.meta.request_id !== meta.request_id));
       if (isCurrent(g)) setLiveNavigation(shown.navigation ?? null);
       return say({ kind: "answered", reply: { text: shown.text, receipts: shown.field?.receipts, buttons: shown.buttons?.length, navigation: !!shown.navigation, artifacts: shown.artifacts?.length } });
     } finally {
       setLiveSaving((n) => Math.max(0, n - 1));
     }
   };
+  const keepInterruptedAudio = (audioPromise: Promise<Blob | null>, g: number, uid: string, conversationId: string) => {
+    // Keep the unsaved-work claim from the moment the recorder is stopped,
+    // before Safari asynchronously delivers its final MP4 chunk.
+    setLiveSaving((n) => n + 1);
+    void (async () => {
+      try {
+        const audio = await audioPromise;
+        if (!audio?.size) return;
+        // This is an unfinished draft, never an automatic Ask request. The
+        // conservative clock values are refreshed on its first Send now tap.
+        const meta: FieldMeta = {
+          actor_id: uid, request_id: crypto.randomUUID(), conversation_id: conversationId,
+          input_kind: "voice", sent_at: new Date().toISOString(), clock_version: null,
+          clock_pending_sync: true, audio_path: null, context: null,
+        };
+        try {
+          await keepUnsent({ userId: uid, meta, text: "", audio, error: "live_interrupted" });
+          if (isCurrent(g)) setUnsent(await listUnsent(uid).catch(() => []));
+        } catch {
+          // IndexedDB can fail on a full/private phone. Keep the audio in
+          // memory with download controls rather than claiming it was saved.
+          if (isCurrent(g)) setHeld((all) => [...all, { blob: audio, meta, interrupted: true }]);
+        }
+      } catch {
+        // No final bytes arrived. Tell the person rather than claiming a memo
+        // exists; the microphone has already closed.
+        if (isCurrent(g)) setVoiceError(t("field.recordingNotKept"));
+      } finally {
+        setLiveSaving((n) => Math.max(0, n - 1));
+      }
+    })();
+  };
   const startLive = () => {
     const uid = actor.current;
-    if (!livePilot || !uid || liveRef.current || liveSaving > 0 || voice !== "idle" || busyRef.current) return;
+    if (!livePilot || !uid || !conversation || liveRef.current || liveSaving > 0 || voice !== "idle" || busyRef.current) return;
     const g = gen.current;
     // Like the recorder: the cards and the keyboard go away.
     setCardsHidden(true); setShowAll(false);
@@ -954,6 +1018,7 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
         setLive({ status, detail });
       },
       handleTurn: (turn) => liveTurn(turn, g, uid),
+      onInterruptedAudio: (audio) => keepInterruptedAudio(audio, g, uid, conversation),
       notHeard: () => liveCommentary("", { kind: "not_heard" }),
       onTimeLimitSoon: () => setLiveExpiring(true),
     });
@@ -963,8 +1028,8 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
   // Only a real shell unmount ends the conversation. Route changes keep this
   // component mounted so the same microphone and paid session survive.
   useEffect(() => () => liveRef.current?.end("unmount"), []);
-  const heldUrl = useMemo(() => (held ? URL.createObjectURL(held.blob) : null), [held]);
-  useEffect(() => () => { if (heldUrl) URL.revokeObjectURL(heldUrl); }, [heldUrl]);
+  const heldUrls = useMemo(() => held.map((h) => URL.createObjectURL(h.blob)), [held]);
+  useEffect(() => () => { heldUrls.forEach((url) => URL.revokeObjectURL(url)); }, [heldUrls]);
   const startNewSetup = () => {
     const uid = actor.current;
     if (!uid || thinking || voice !== "idle" || liveRef.current) return;
@@ -1111,21 +1176,27 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
           <p className="muted">{t("field.unsentHelp")}</p>
           {unsent.map((u) => (
             <div key={u.meta.request_id} className="field-unsent-row">
-              <span>{u.text || t("field.memo")} · {new Date(u.meta.sent_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span>
-              <button type="button" disabled={thinking || voice !== "idle" || liveOn} onClick={() => void retryUnsent(u)}>{t("field.sendNow")}</button>
-              <button type="button" onClick={() => void discardUnsent(u)}>{t("field.discard")}</button>
+              <span>{u.text || (u.error === "live_interrupted" ? liveText(es, "interruptedMemo") : t("field.memo"))} · {new Date(u.meta.sent_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span>
+              {u.error === "live_interrupted" && u.audio && <LocalMemoPlayback audio={u.audio} label={liveText(es, "listenMemo")} />}
+              <button type="button" disabled={thinking || voice !== "idle" || liveOn || retryingIds.has(u.meta.request_id)} onClick={() => void retryUnsent(u)}>{t("field.sendNow")}</button>
+              <button type="button" disabled={retryingIds.has(u.meta.request_id)} onClick={() => void discardUnsent(u)}>{t("field.discard")}</button>
             </div>
           ))}
         </section>
       )}
       {voiceError && <p role="alert" className="cw-error">{voiceError}</p>}
-      {held && userId && (
+      {held.length > 0 && userId && (
         <section className="field-card field-unsent" role="alert">
           <p>{t("field.recordingNotKept")}</p>
-          <div className="field-unsent-row">
-            <button type="button" disabled={voice !== "idle"} onClick={() => void voiceStep(held.blob, held.meta, gen.current, userId)}>{t("field.sendNow")}</button>
-            <a className="chip" href={heldUrl ?? undefined} download={`forge-recording-${held.meta.sent_at.slice(0, 19).replace(/[:T]/g, "-")}.${held.blob.type.includes("mp4") ? "m4a" : "webm"}`}>{t("field.downloadRecording")}</a>
-          </div>
+          {held.map((h, index) => (
+            <div key={h.meta.request_id} className="field-unsent-row">
+              <LocalMemoPlayback audio={h.blob} label={liveText(es, "listenMemo")} />
+              <button type="button" disabled={voice !== "idle" || liveOn || retryingIds.has(h.meta.request_id)} onClick={() => void (h.interrupted
+                ? retryUnsent({ userId, meta: h.meta, text: "", audio: h.blob, error: "live_interrupted" })
+                : voiceStep(h.blob, h.meta, gen.current, userId))}>{t("field.sendNow")}</button>
+              <a className="chip" href={heldUrls[index]} download={`forge-recording-${h.meta.sent_at.slice(0, 19).replace(/[:T]/g, "-")}.${h.blob.type.includes("mp4") ? "m4a" : "webm"}`}>{t("field.downloadRecording")}</a>
+            </div>
+          ))}
         </section>
       )}
       {logOpen && userId && (
