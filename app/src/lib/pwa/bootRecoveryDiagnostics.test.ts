@@ -33,4 +33,10 @@ describe("boot recovery diagnostics", () => {
     const broken = { getItem: vi.fn(() => { throw Error("denied"); }), removeItem: vi.fn() };
     expect(() => reportPreviousBootRecovery(broken)).not.toThrow();
   });
+
+  it("handles an empty-shell marker with missing optional details", () => {
+    const values = new Map([["wops-empty-boot-diagnostic", JSON.stringify({ at: Date.now(), resources: "not an array" })]]);
+    reportPreviousBootRecovery({ getItem: (k) => values.get(k) ?? null, removeItem: (k) => { values.delete(k); } });
+    expect(getOfflineEvents()[0].message).toBe("Recovered empty app shell; entry unknown; recent assets unknown");
+  });
 });
