@@ -6,6 +6,8 @@ import { fieldErrorMessage, fieldExecutor, newFieldState, seedContextTag, type F
 import { LEARNING_SYSTEM_PROMPT, LEARNING_TOOLS, LEARNING_TOOL_NAMES } from "../_shared/learningTools.ts";
 import { askToolNames, capabilityPromptBlock, toolDefsFor } from "../_shared/askCapabilities.ts";
 import { clockButtonActivityLine, clockButtonExecutor, newClockButtonState, OFFER_CLOCK_BUTTON_TOOL, OFFER_CLOCK_BUTTON_TOOL_NAME } from "../_shared/clockButtons.ts";
+import { navigationActivityLine, OFFER_NAVIGATION_TOOL, OFFER_NAVIGATION_TOOL_NAME } from "../_shared/askNavigation.ts";
+import { navigationExecutor, newNavigationState } from "./navigation.ts";
 import {
   DAILY_LOG_SYSTEM_PROMPT, DAILY_LOG_TOOL_NAMES, DAILY_LOG_TOOLS, dailyLogActivityLine, dailyLogContextBlock, dailyLogExecutor,
   dailyLogReplyPayload, newDailyLogToolState, readDailyLogContext,
@@ -69,12 +71,12 @@ const SYSTEM_PROMPT = ASK_SYSTEM_PROMPT + SCHEDULING_SYSTEM_PROMPT + REPORTING_S
 // action, and askToolNames() picks from this list by name — a definition no
 // capability claims never reaches the model (askCapabilities.test.ts pins
 // both directions).
-const ALL_TOOL_DEFS = [...SCHEDULING_TOOLS, ...REPORTING_TOOLS, ...FIELD_TOOLS, ...LEARNING_TOOLS, ...DAILY_LOG_TOOLS, OFFER_CLOCK_BUTTON_TOOL];
+const ALL_TOOL_DEFS = [...SCHEDULING_TOOLS, ...REPORTING_TOOLS, ...FIELD_TOOLS, ...LEARNING_TOOLS, ...DAILY_LOG_TOOLS, OFFER_CLOCK_BUTTON_TOOL, OFFER_NAVIGATION_TOOL];
 
 /** Plain progress lines for the doors (A4): what the Ask page shows while the
  * model works, built from the tool calls it actually made. */
 function toolActivityLine(name: string, input: unknown): string {
-  const field = fieldActivityLine(name) ?? clockButtonActivityLine(name) ?? dailyLogActivityLine(name);
+  const field = fieldActivityLine(name) ?? clockButtonActivityLine(name) ?? navigationActivityLine(name) ?? dailyLogActivityLine(name);
   if (field) return field;
   if (name === "prepare_learning_draft") return "Prepared your lesson write-up (not saved or sent)";
   switch (name) {
@@ -1412,6 +1414,7 @@ Deno.serve(withSentry("ask", async (req) => {
     let answer: string;
     let toolActivity: string[] = [];
     const clockButtons = newClockButtonState();
+    const navigation = newNavigationState();
     try {
       const schedule = buildSchedulingExecutor(scopedClient, userId, rank);
       const reporting = reportingExecutor(scopedClient, userId, rank, timeZone, artifacts);
@@ -1421,9 +1424,12 @@ Deno.serve(withSentry("ask", async (req) => {
       // K2.4: the AI never changes a clock or a break. "Going to lunch" gets a
       // button under the reply; the executor records the offer and nothing else.
       const clockTool = clockButtonExecutor(clockButtons);
+      const navigationTool = navigationExecutor(scopedClient, userId, contextTag, navigation);
       const tools = toolDefsFor(askToolNames({ field: !!field, dailyLog: !!daily }), ALL_TOOL_DEFS);
       const executeTool = (name: string, input: unknown) => name === OFFER_CLOCK_BUTTON_TOOL_NAME
         ? Promise.resolve(clockTool(name, input))
+        : name === OFFER_NAVIGATION_TOOL_NAME
+        ? navigationTool(name, input)
         : dailyTool && DAILY_LOG_TOOL_NAMES.has(name)
         ? Promise.resolve(dailyTool(name, input))
         : fieldTool && (FIELD_TOOL_NAMES.has(name) || LEARNING_TOOL_NAMES.has(name))
@@ -1468,6 +1474,7 @@ Deno.serve(withSentry("ask", async (req) => {
       // each only when it fits the person's real clock state, and the tap is
       // the only thing that changes anything.
       ...(clockButtons.buttons.length > 0 ? { buttons: clockButtons.buttons } : {}),
+      ...(navigation.action ? { navigation: navigation.action } : {}),
       // K2.7: what the daily-log tool heard, with the saved message it came
       // from. Inside `reply` so a replayed (already answered) message returns
       // it too, and the phone applies it only to this draft and conversation.

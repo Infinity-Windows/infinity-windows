@@ -36,7 +36,7 @@ export type ReceiptKind = "saved_in_forge" | "saved_on_phone" | "needs_choice" |
 export type CapabilityId =
   | "build_unit" | "finish_unit" | "new_job" | "idle_time" | "release_unit" | "record_crew_work" | "write_lesson"
   | "daily_log" | "take_supplies" | "my_hours" | "crew_status" | "units_completed"
-  | "plan_schedule" | "review_schedule_drafts" | "job_summary" | "hours_report" | "clock_buttons";
+  | "plan_schedule" | "review_schedule_drafts" | "job_summary" | "hours_report" | "clock_buttons" | "take_me_there";
 
 export interface AskCapability {
   id: CapabilityId;
@@ -324,6 +324,20 @@ export const ASK_CAPABILITIES: readonly AskCapability[] = [
     tools: ["offer_clock_button"],
     requires: null,
     screen: { path: "/clock", label: q("Job clock", "Reloj de trabajo") },
+  },
+  {
+    id: "take_me_there",
+    label: q("Take me there", "Llévame allí"),
+    prompt: q("Open my schedule or the unit I asked about", "Abre mi horario o la unidad sobre la que pregunté"),
+    minRank: 0,
+    questions: { required: [], optional: [q("Which job and unit", "Qué obra y unidad")] },
+    changes: q("Shows a button to open your schedule or one verified unit. Nothing changes until you tap, and opening a screen never changes a job record.", "Muestra un botón para abrir tu horario o una unidad verificada. No cambia nada hasta que toques el botón, y abrir una pantalla nunca cambia el registro de la obra."),
+    receipt: "read_only",
+    live: true,
+    release: null,
+    tools: ["offer_navigation"],
+    requires: null,
+    screen: { path: "/ask", label: q("Ask", "Preguntar") },
   },
 ];
 

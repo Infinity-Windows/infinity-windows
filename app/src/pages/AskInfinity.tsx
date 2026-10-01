@@ -51,6 +51,8 @@ import { ActionCards, AllActions, type CardPick, type RunningUnit } from "../com
 import { contextTagFromInput, type AskContextTag } from "../../../supabase/functions/_shared/fieldTools";
 import { readClockButtons, type ClockButton } from "../../../supabase/functions/_shared/clockButtons";
 import { ClockButtons } from "../components/ask/ClockButtons";
+import { NavigationButton } from "../components/ask/NavigationButton";
+import { readNavigationAction, type NavigationAction } from "../../../supabase/functions/_shared/askNavigation";
 import { needsNothingSavedNotice } from "../lib/askReceiptGuard";
 import { AiDailyLogCard } from "../components/aiDailyLogs/AiDailyLogCard";
 import { useAiDailyLogDraft } from "../lib/aiDailyLogs/useAiDailyLogDraft";
@@ -67,6 +69,7 @@ export interface LiveAskShellState {
   needsClock: boolean;
   muted: boolean;
   expiring: boolean;
+  navigation: NavigationAction | null;
 }
 export interface LiveAskShellControls { end(): void; toggleMute(): void; restart(): void }
 
@@ -78,6 +81,7 @@ interface ChatMsg {
   field?: FieldReply;
   /** One-tap job-clock buttons the reply offered (K2.4): the tap is the change. */
   buttons?: ClockButton[];
+  navigation?: NavigationAction;
   /** The reply filled a draft on this phone (a lesson write-up, a daily log). */
   draftApplied?: boolean;
   /** The reply's daily-log answers had no saved message behind them: NOT recorded. */
@@ -283,13 +287,14 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
   const liveOn = live.status === "starting" || live.status === "live" || live.status === "unstable";
   const [liveMuted, setLiveMuted] = useState(false);
   const [liveExpiring, setLiveExpiring] = useState(false);
+  const [liveNavigation, setLiveNavigation] = useState<NavigationAction | null>(null);
   /** Live turns cut from the microphone and not yet sent or kept on the phone. */
   const [liveSaving, setLiveSaving] = useState(0);
   const needsClock = messages.some((m) => m.field?.receipts.some((r) =>
     r.status === "needs_choice" && (r.reason === "wrong_job" || r.reason === "needs_clock")));
   useEffect(() => {
-    onLiveState?.({ status: live.status, detail: live.detail, saving: liveSaving > 0, needsClock, muted: liveMuted, expiring: liveExpiring });
-  }, [live.status, live.detail, liveSaving, needsClock, liveMuted, liveExpiring, onLiveState]);
+    onLiveState?.({ status: live.status, detail: live.detail, saving: liveSaving > 0, needsClock, muted: liveMuted, expiring: liveExpiring, navigation: liveNavigation });
+  }, [live.status, live.detail, liveSaving, needsClock, liveMuted, liveExpiring, liveNavigation, onLiveState]);
   useEffect(() => {
     if (!registerLiveControls) return;
     registerLiveControls({
@@ -361,6 +366,7 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
     busyRef.current = false;
     // The microphone and speaker close with the screen they were opened on.
     liveRef.current?.end("account");
+    setLiveNavigation(null);
     recordAbort.current?.abort();
     recording.current?.cancel();
     recording.current = null;
@@ -409,7 +415,7 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
         for (const turn of turns.filter((x) => !shown.has(x.id))) {
           restored.push({ who: "me", text: turn.transcript, memoPath: turn.audio_path, requestId: turn.id });
           if (turn.reply || turn.receipts.length)
-            restored.push({ who: "infinity", text: turn.reply?.answer ?? "", toolActivity: turn.reply?.toolActivity, buttons: readClockButtons(turn.reply?.buttons),
+            restored.push({ who: "infinity", text: turn.reply?.answer ?? "", toolActivity: turn.reply?.toolActivity, buttons: readClockButtons(turn.reply?.buttons), navigation: readNavigationAction(turn.reply?.navigation) ?? undefined,
               artifacts: (turn.reply?.artifacts ?? []).filter((a) => a && ["time_report", "job_summary"].includes(a.kind)).slice(0, 4),
               sources: turn.reply?.sources ?? [],
               field: { request_id: turn.id, receipts: turn.receipts, checklist: turn.captured?.checklist ?? null, learning: turn.captured?.learning ?? null } });
@@ -710,7 +716,7 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
           return { who: "infinity", text: t("field.otherAccount") };
         }
         try {
-          const { answer, sources, note, toolActivity, artifacts, field, buttons, dailyLog } = await askInfinity(q, history, meta ?? undefined, { contextTag: tagRef.current, dailyLog: daily.context });
+          const { answer, sources, note, toolActivity, artifacts, field, buttons, navigation, dailyLog } = await askInfinity(q, history, meta ?? undefined, { contextTag: tagRef.current, dailyLog: daily.context });
           // The daily-log answers go into the draft only for this draft,
           // account and conversation, and only with the saved message behind
           // them; "missing_evidence" means the words were NOT recorded, and
@@ -728,7 +734,7 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
             if (isCurrent(g) && field) setHeld((h) => (h?.meta.request_id === meta.request_id ? null : h));
             if (field?.receipts.length) refreshFieldViews();
           }
-          if (answer || artifacts?.length || field?.receipts.length || field?.checklist || buttons?.length || dailyLog) return { who: "infinity", text: answer || note || "", sources, toolActivity, artifacts, field, buttons, draftApplied, dailyNotRecorded };
+          if (answer || artifacts?.length || field?.receipts.length || field?.checklist || buttons?.length || navigation || dailyLog) return { who: "infinity", text: answer || note || "", sources, toolActivity, artifacts, field, buttons, navigation, draftApplied, dailyNotRecorded };
           limitNote = note;
         } catch {
           if (meta) {
@@ -913,7 +919,8 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
       // Not sent (another message was still going): it stays kept to send.
       if (!shown) return say({ kind: "kept", keptOnPhone: result.keptOnPhone });
       if (isCurrent(g) && shown.field) setHeld((h) => (h?.meta.request_id === meta.request_id ? null : h));
-      return say({ kind: "answered", reply: { text: shown.text, receipts: shown.field?.receipts, buttons: shown.buttons?.length, artifacts: shown.artifacts?.length } });
+      if (isCurrent(g)) setLiveNavigation(shown.navigation ?? null);
+      return say({ kind: "answered", reply: { text: shown.text, receipts: shown.field?.receipts, buttons: shown.buttons?.length, navigation: !!shown.navigation, artifacts: shown.artifacts?.length } });
     } finally {
       setLiveSaving((n) => Math.max(0, n - 1));
     }
@@ -927,7 +934,7 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
     const typing = document.activeElement;
     if (isTextEntry(typing)) typing.blur();
     readClockNow(g);
-    setLiveMuted(false); setLiveExpiring(false);
+    setLiveMuted(false); setLiveExpiring(false); setLiveNavigation(null);
     setLive({ status: "starting" });
     const session: LiveSession = startLiveSession({
       onStatus: (status, detail) => {
@@ -1037,6 +1044,7 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
             {m.field?.receipts.map((r) => <FieldReceiptCard key={r.action_id} receipt={r} onChange={updateReceipt} timingPending={timingPendingNow} />)}
             {m.field?.checklist && m.field.checklist === latestChecklist && <FieldChecklist key={m.field.request_id} checklist={m.field.checklist} />}
             {m.buttons && m.buttons.length > 0 && <ClockButtons buttons={m.buttons} />}
+            {m.navigation && <NavigationButton action={m.navigation} />}
             {m.dailyNotRecorded && <p role="alert" className="cw-error">{t("field.dailyNotRecorded")}</p>}
             {/* K2.5: words that read as done with nothing behind them are
                 contradicted here, automatically. */}

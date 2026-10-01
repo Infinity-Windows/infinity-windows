@@ -13,6 +13,7 @@ export interface LiveResult {
   text: string;
   receipts?: Pick<FieldReceipt, "status" | "action">[];
   buttons?: number;
+  navigation?: boolean;
   artifacts?: number;
 }
 
@@ -49,6 +50,7 @@ export function liveCommentary(heard: string, outcome: LiveTurnOutcome): string 
       if (choices) parts.push(`${choices} step${choices === 1 ? " needs" : "s need"} the person to tap a choice on the screen. It is NOT done until they tap it.`);
       if (unchanged) parts.push(`${unchanged} step${unchanged === 1 ? "" : "s"} changed nothing.`);
       if (r.buttons) parts.push("There are clock buttons on the screen. Nothing on the clock changes unless the person taps one.");
+      if (r.navigation) parts.push("A Take me there button is on the screen. Tell the person to tap it to open that screen; no job record has changed.");
       if (r.artifacts) parts.push("A report is on the screen.");
       if (!receipts.length && !r.buttons) parts.push("Nothing was saved or changed by this request.");
       parts.push(r.text.trim() ? `Answer: ${r.text.trim()}` : "There was no written answer.");
