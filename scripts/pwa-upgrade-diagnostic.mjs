@@ -6,6 +6,131 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { runInNewContext } from 'node:vm';
+import assert from 'node:assert/strict';
+
+// This prefix is prepended ONLY to the disposable NEW built worker. It observes
+// the original promise; it never substitutes a promise/Response, reads a body,
+// extends an event lifetime or changes production source.
+const responseProbe = String.raw`
+;(() => {
+  const prefix = '[forge-pwa-response-probe] ';
+  const ids = new WeakMap();
+  let sequence = 0;
+  const emit = (kind, detail) => {
+    try { console.debug(prefix + JSON.stringify({ kind, at: Date.now(), monotonicMs: performance.now(), ...detail })); }
+    catch (_) { /* Diagnostic logging must not alter the response. */ }
+  };
+  const detail = event => {
+    try {
+      const url = new URL(event.request.url);
+      if (url.origin !== self.location.origin || !/\.js$/.test(url.pathname)) return null;
+      if (!ids.has(event)) ids.set(event, ++sequence);
+      return { fetchId: ids.get(event), path: url.pathname, clientId: event.clientId,
+        resultingClientId: event.resultingClientId, destination: event.request.destination,
+        mode: event.request.mode };
+    } catch (_) { return null; }
+  };
+  const errorDetail = error => {
+    try { return { name: String(error?.name || typeof error), message: String(error?.message || error).slice(0, 500) }; }
+    catch (_) { return { name: 'unreadable-error' }; }
+  };
+  self.addEventListener('fetch', event => {
+    const info = detail(event);
+    if (info) emit('fetch-enter', info);
+  });
+  const descriptor = Object.getOwnPropertyDescriptor(FetchEvent.prototype, 'respondWith');
+  const native = descriptor.value;
+  Object.defineProperty(FetchEvent.prototype, 'respondWith', {
+    ...descriptor,
+    value: function (...args) {
+      let returned;
+      // The first operation forwards the ORIGINAL argument list immediately.
+      // A native synchronous exception is rethrown unchanged.
+      try { returned = Reflect.apply(native, this, args); }
+      catch (error) {
+        const info = detail(this);
+        if (info) emit('native-respondWith-throw', { ...info, error: errorDetail(error) });
+        throw error;
+      }
+      try {
+        const info = detail(this);
+        if (info) {
+          emit('respondWith-called', info);
+          const fulfilled = response => {
+            try { emit('response-fulfilled', { ...info, status: response.status, type: response.type,
+              responsePath: response.url ? new URL(response.url).pathname : '', bodyUsed: response.bodyUsed }); }
+            catch (error) { emit('metadata-error', { ...info, error: errorDetail(error) }); }
+          };
+          const rejected = error => emit('response-rejected', { ...info, error: errorDetail(error) });
+          const value = args[0];
+          if (value instanceof Promise) {
+            // Attach a side observer to the already-passed native Promise.
+            // Do not assimilate arbitrary thenables a second time.
+            Reflect.apply(Promise.prototype.then, value, [fulfilled, rejected]);
+          } else if (value instanceof Response) {
+            fulfilled(value);
+          } else {
+            emit('unobserved-argument-type', { ...info, valueType: typeof value });
+          }
+        }
+      } catch (_) { /* Never replace a successful native result with a probe failure. */ }
+      return returned;
+    },
+  });
+  emit('probe-ready', { scope: self.location.origin, observation: 'promise-settlement-only-not-body-delivery' });
+})();
+`;
+
+if (process.argv.includes('--check-probe')) {
+  const logs = [];
+  const calls = [];
+  const listeners = {};
+  class ProbeResponse {
+    status = 200; type = 'basic'; url = 'http://localhost:5298/assets/a.js?discard=query'; bodyUsed = false;
+    get body() { throw new Error('Probe must never access body'); }
+    clone() { throw new Error('Probe must never clone response'); }
+  }
+  class ProbeEvent {
+    request = { url: 'http://localhost:5298/assets/a.js?discard=query', destination: 'script', mode: 'cors' };
+    clientId = 'client'; resultingClientId = '';
+    respondWith(...args) {
+      calls.push({ receiver: this, args, logsBeforeNative: logs.length });
+      if (this.nativeError) throw this.nativeError;
+      return 'native-result';
+    }
+    waitUntil() { throw new Error('Probe must not extend lifetime'); }
+  }
+  runInNewContext(responseProbe, { FetchEvent: ProbeEvent, Response: ProbeResponse, Promise, URL,
+    self: { location: { origin: 'http://localhost:5298' }, addEventListener: (kind, fn) => { listeners[kind] = fn; } },
+    performance: { now: () => 1 }, console: { debug: text => logs.push(JSON.parse(text.slice(text.indexOf('{')))) } });
+  const event = new ProbeEvent();
+  listeners.fetch(event);
+  const response = new ProbeResponse();
+  const value = Promise.resolve(response);
+  const before = logs.length;
+  assert.equal(event.respondWith(value), 'native-result');
+  assert.equal(calls[0].receiver, event);
+  assert.equal(calls[0].args[0], value);
+  assert.equal(calls[0].logsBeforeNative, before);
+  await Promise.resolve();
+  assert.equal(logs.find(log => log.kind === 'response-fulfilled').responsePath, '/assets/a.js');
+  assert.equal(response.bodyUsed, false);
+  const rejection = new Error('fixture rejection');
+  event.respondWith(Promise.reject(rejection));
+  await Promise.resolve();
+  assert.equal(logs.find(log => log.kind === 'response-rejected').error.message, rejection.message);
+  const nativeError = new Error('native failure');
+  const throwing = new ProbeEvent(); throwing.nativeError = nativeError;
+  assert.throws(() => throwing.respondWith(value), error => error === nativeError);
+  let assimilations = 0;
+  event.respondWith({ then() { assimilations++; } });
+  assert.equal(assimilations, 0);
+  assert.ok(logs.some(log => log.kind === 'unobserved-argument-type'));
+  assert.ok(logs.every(log => !JSON.stringify(log).includes('discard=query')));
+  console.log('Response probe checks passed: original receiver/argument/result, immediate native call, fulfillment/rejection, unchanged native throw, no body/lifetime access, no extra thenable assimilation, query omission.');
+  process.exit(0);
+}
 
 const repo = resolve(process.env.PWA_DIAGNOSTIC_REPO || '.');
 const out = resolve(process.env.PWA_DIAGNOSTIC_OUT || 'pwa-upgrade-diagnostic-output');
@@ -146,8 +271,10 @@ const metadata = {
   specOriginalSha256: sha256(source), specObservedSha256: sha256(generated),
   specRoundTripIdentical: true, node: process.version, platform: process.platform,
   lockSha256: sha256(readFileSync(join(app, 'package-lock.json'))),
+  responseProbe: { enabled: true, newBuiltWorkerOnly: true, promiseOutcomeIsNotBodyDelivery: true },
   limitations: ['CDP attachment does not pause workers; earliest worker events may precede Network.enable.',
     'Worker CDP reports outbound fetches, not every cache-served FetchEvent response. NetLog complements it.',
+    'The isolated new built worker has a respondWith promise-settlement side observer; successful settlement does not prove body delivery.',
     'Observer and NetLog overhead may change timing. A pass does not disprove earlier failures.'],
 };
 writeFileSync(join(out, 'metadata.json'), JSON.stringify(metadata, null, 2));
@@ -176,6 +303,18 @@ for (const [name, src, ref] of [['old', join(oldSource, 'app'), oldRef], ['new',
   metadata.builds[name] = { buildId, entry, htmlSha256: sha256(html),
     entrySha256: sha256(readFileSync(join(dist, entry))),
     workerSha256: sha256(readFileSync(join(dist, 'sw.js'))) };
+  if (name === 'new') {
+    const originalWorker = readFileSync(join(dist, 'sw.js'), 'utf8');
+    writeFileSync(join(out, 'new-sw-original.js'), originalWorker);
+    writeFileSync(join(out, 'response-probe.js'), responseProbe);
+    // Keep the compiled module byte-for-byte after the labelled prefix. The
+    // original hash above remains the baseline; served hash is explicit.
+    const observedWorker = responseProbe + '\n' + originalWorker;
+    writeFileSync(join(dist, 'sw.js'), observedWorker);
+    writeFileSync(join(out, 'new-sw-observed.js'), observedWorker);
+    metadata.builds[name].servedWorkerSha256 = sha256(observedWorker);
+    metadata.builds[name].responseProbeSha256 = sha256(responseProbe);
+  }
   writeFileSync(join(out, `${name}-index.html`), html);
 }
 writeFileSync(join(out, 'metadata.json'), JSON.stringify(metadata, null, 2));
@@ -198,14 +337,29 @@ try {
   const collectorErrors = events.filter(event => event.event === 'worker-enable-error' ||
     (event.event === 'protocol' && event.params.message.error));
   const netlog = JSON.parse(readFileSync(join(out, 'netlog.json'), 'utf8'));
+  const responseOutcomes = workerProtocols.flatMap(event => {
+    const message = event.params.message;
+    if (message.method !== 'Runtime.consoleAPICalled') return [];
+    return (message.params.args || []).flatMap(arg => {
+      if (typeof arg.value !== 'string' || !arg.value.startsWith('[forge-pwa-response-probe] ')) return [];
+      return [{ sessionId: event.params.sessionId, targetId: event.params.targetId,
+        observedAt: event.observedAt, seq: event.seq, ...JSON.parse(arg.value.slice('[forge-pwa-response-probe] '.length)) }];
+    });
+  });
+  writeFileSync(join(out, 'worker-response-outcomes.ndjson'), responseOutcomes.map(row => JSON.stringify(row)).join('\n') + '\n');
   metadata.collector = {
     events: events.length, readyBeforeFirstDocument: Boolean(ready && firstDocument && ready.seq < firstDocument.seq),
     workerSessions: workerSessions.size,
     workerRequests: workerProtocols.filter(event => event.params.message.method === 'Network.requestWillBeSent').length,
     collectorErrors, netlogEvents: netlog.events.length,
+    responseProbeEvents: responseOutcomes.length,
+    responseFulfilled: responseOutcomes.filter(row => row.kind === 'response-fulfilled').length,
+    responseRejected: responseOutcomes.filter(row => row.kind === 'response-rejected').length,
+    responseProbeUnobserved: responseOutcomes.filter(row => ['metadata-error', 'unobserved-argument-type'].includes(row.kind)).length,
   };
   metadata.collectorComplete = metadata.collector.readyBeforeFirstDocument && workerSessions.size >= 2 &&
-    metadata.collector.workerRequests > 0 && collectorErrors.length === 0 && netlog.events.length > 0;
+    metadata.collector.workerRequests > 0 && collectorErrors.length === 0 && netlog.events.length > 0 &&
+    metadata.collector.responseFulfilled > 0 && metadata.collector.responseProbeUnobserved === 0;
 } catch (error) {
   metadata.collectorComplete = false;
   metadata.collectorError = String(error);

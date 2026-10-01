@@ -67,7 +67,9 @@ jobs:
           done
           printf 'Acquire::Retries "1";\nAcquire::http::Timeout "20";\nAcquire::https::Timeout "20";\n' | sudo tee /etc/apt/apt.conf.d/99forge-browser-downloads >/dev/null
           npx playwright install --with-deps chromium
-      - name: Observe unchanged first upgrade test once
+      - name: Verify diagnostic response observer preserves native behavior
+        run: node diagnostic-tools/scripts/pwa-upgrade-diagnostic.mjs --check-probe
+      - name: Observe unchanged first upgrade test once with disposable worker probe
         env:
           PWA_DIAGNOSTIC_OLD_REF: ${{ env.PINNED_OLD }}
           PWA_DIAGNOSTIC_NEW_REF: ${{ env.PINNED_NEW }}
