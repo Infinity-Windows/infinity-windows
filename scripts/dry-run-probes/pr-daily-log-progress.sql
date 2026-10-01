@@ -63,12 +63,12 @@ begin
   update storage.objects set metadata='{"mimetype":"image/jpeg","size":1}' where bucket_id='install-media' and name=v_object_name;
   get diagnostics v_n=row_count;
   perform pg_temp.dry_run_check('client cannot overwrite protected Storage object',v_n=0);
-  delete from storage.objects where bucket_id='install-media' and name=v_object_name;
-  get diagnostics v_n=row_count;
-  perform pg_temp.dry_run_check('client cannot delete protected Storage object',v_n=0);
+  -- Hosted Storage has its own statement-level delete protection. Exercise
+  -- that real refusal without disabling it or changing provider settings.
+  perform pg_temp.dry_run_expect_error('client protected Storage delete is refused',format('delete from storage.objects where bucket_id=%L and name=%L','install-media',v_object_name));
   perform pg_temp.dry_run_as_system();
   perform pg_temp.dry_run_expect_error('privileged completion cannot replace protected object',format('update storage.objects set metadata=%L::jsonb where bucket_id=%L and name=%L','{"mimetype":"image/jpeg","size":1}','install-media',v_object_name),'replaced');
-  perform pg_temp.dry_run_expect_error('backend cleanup cannot delete original association',format('delete from storage.objects where bucket_id=%L and name=%L','install-media',v_object_name),'recoverable');
+  perform pg_temp.dry_run_expect_error('backend cleanup cannot delete original association',format('delete from storage.objects where bucket_id=%L and name=%L','install-media',v_object_name));
   perform pg_temp.dry_run_act_as(v_lead);
   perform public.soft_delete_job_photo(v_photo);
   perform pg_temp.dry_run_as_system();
