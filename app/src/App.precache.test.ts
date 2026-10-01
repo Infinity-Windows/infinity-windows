@@ -7,7 +7,7 @@
 // App.tsx uses (eager vs. lazyRoute), not about runtime behavior a render
 // could observe — the whole point of route-level code splitting is that an
 // eagerly-imported and a lazily-imported component render identically. A
-// structural regression here (someone "cleaning up" MyWork/Home/Heartbeat or
+// structural regression here (someone "cleaning up" MyWork/Home or
 // the clock sheet into a lazyRoute() to shave a few kB off the entry budget)
 // would silently break the offline promise without any test that renders
 // something ever noticing, since the fixture harness always has the chunk
@@ -23,16 +23,22 @@ const clockCtxSrc = readFileSync(new URL("./lib/clockContext.tsx", import.meta.u
 const viteConfigSrc = readFileSync(new URL("../vite.config.ts", import.meta.url), "utf8");
 
 describe("Work, Schedule and the clock survive a cached phone (K0.7.3)", () => {
-  it("My Work, Home and Heartbeat — the three landings '/' can resolve to — ship in the entry chunk", () => {
+  it("My Work and Home keep their classic landing code in the entry chunk", () => {
     for (const [name, file] of [
       ["MyWork", "./pages/MyWork"],
       ["Home", "./pages/Home"],
-      ["Heartbeat", "./pages/Heartbeat"],
     ] as const) {
       expect(appSrc).toContain(`import { ${name} } from "${file}";`);
       // Not the lazyRoute() route-splitting path used for everything else.
       expect(appSrc).not.toContain(`lazyRoute(() => import("${file}")`);
     }
+  });
+
+  it("retired Heartbeat is a redirect to precached Jobs, not an eager page", () => {
+    expect(appSrc).not.toContain('import { Heartbeat }');
+    expect(appSrc).toContain('if (rank >= 2) return <Navigate replace to="/projects" />;');
+    expect(appSrc).toMatch(/path="\/heartbeat"\s+element=\{<Navigate replace to="\/projects" \/>\}/);
+    expect(appSrc).toContain('import { Projects } from "./pages/Projects";');
   });
 
   it("the clock sheet ships in the entry chunk, not behind lazyRoute()", () => {

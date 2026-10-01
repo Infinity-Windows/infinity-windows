@@ -14,7 +14,7 @@ import { RoleMap } from "./RoleMap";
  * test-proven openable by that role (roleFlow.test.ts).
  *
  * Lives on whichever page a role lands on at "/" — My Work for installers,
- * Home for foremen, Heartbeat for supervisors and owners (see RoleLanding in
+ * Home for foremen, Jobs for supervisors and owners (see RoleLanding in
  * App.tsx). All three, or somebody's role never sees its map.
  */
 export function RoleMaps() {

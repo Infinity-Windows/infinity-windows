@@ -73,10 +73,10 @@ test("a chunk that never answers still leaves a way out: Go to Work", async ({ p
   // Try again cannot make this one succeed — the browser's own module map
   // dedupes a second import() against the still-pending first (see
   // lazyRoute.ts's header) — so the honest escape hatch is Go to Work, which
-  // needs no chunk at all: My Work / Home / Heartbeat ship in the entry.
+  // can use its own precached chunk: classic supervisors now land on Jobs.
   await page.getByRole("link", { name: "Go to Work" }).click();
-  await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole("heading", { name: "Heartbeat" })).toBeVisible();
+  await expect(page).toHaveURL(/\/projects$/);
+  await expect(page.getByRole("heading", { name: "Jobs", exact: true })).toBeVisible();
   await expect(hung).not.toBeVisible();
 });
 

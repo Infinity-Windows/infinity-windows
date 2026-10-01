@@ -16,6 +16,8 @@
 
 import type { CatalogEntry } from "./translate";
 import type { WorkKey } from "./workCatalog";
+import type { JobsViewKey } from "./jobsViewCatalog";
+import type { JobsOverviewKey } from "./jobsOverviewCatalog";
 import type { DesignKey } from "./designCatalog";
 import type { ScheduleConflictKey } from "./scheduleConflictCatalog";
 
@@ -5492,7 +5494,7 @@ export const CATALOG = {
  * keys are part of this type through a type-only import, which costs the
  * entry chunk nothing, while its strings ride in the route's own chunk.
  */
-export type TKey = keyof typeof CATALOG | WorkKey | DesignKey | ScheduleConflictKey;
+export type TKey = keyof typeof CATALOG | WorkKey | DesignKey | ScheduleConflictKey | JobsViewKey | JobsOverviewKey;
 
 /**
  * Add a lazily loaded phrasebook to the live catalog. Called at module load

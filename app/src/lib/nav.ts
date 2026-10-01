@@ -87,7 +87,6 @@ export type RoutePath =
   | "/travel"
   | "/issues"
   | "/service"
-  | "/heartbeat"
   | "/qc"
   | "/analytics"
   | "/crew"
@@ -265,7 +264,6 @@ export const NAV: NavDest[] = [
   // still a supervisor+ action, enforced inside the page (owner, 2026-08-11).
   { id: "scheduling", to: "/scheduling", label: "Scheduling", icon: "🗓", minRole: "foreman" },
   { id: "vehicles", to: "/vehicles", label: "Vehicles", icon: "🚚", minRole: "supervisor" },
-  { id: "heartbeat", to: "/heartbeat", label: "Heartbeat", icon: "❤", minRole: "supervisor" },
   { id: "admin", to: "/admin", label: "Admin", icon: "◈", minRole: "supervisor" },
   // Handing out and taking away logins. Supervisor+, deliberately the same floor
   // as set_profile_role() — inviting someone as a foreman and promoting someone
@@ -503,7 +501,6 @@ const MENU_DEF: MenuSection[] = [
     items: [
       { to: "/costing", label: "Cost", Icon: DollarSign },
       { to: "/analytics", label: "Analytics", Icon: BarChart3 },
-      { to: "/heartbeat", label: "Heartbeat", Icon: Activity },
       // Wave P: receipts that read themselves — Business reads best here,
       // alongside Cost and Analytics, not buried in Account.
       { to: "/receipts", label: "Receipts", Icon: ReceiptIcon },

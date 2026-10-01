@@ -4,7 +4,7 @@ import { SavedCopyNotice } from "../components/offline/SavedCopyNotice";
 import { useSavedCopy } from "../lib/offline/useSavedCopy";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ChevronDown, ChevronUp, GripVertical, LayoutGrid, Phone } from "lucide-react";
 import {
   createProject,
@@ -34,6 +34,10 @@ import { gcCheckinsLatestKey, latestGcCheckins } from "../lib/gc";
 import { needsCall, sortProjectsForList } from "../lib/pipeline";
 import { MessagesSquare } from "lucide-react";
 import type { Project } from "../lib/types";
+import "../lib/i18n/jobsViewCatalog";
+import { lazyRoute } from "../lib/pwa/lazyRoute";
+
+const JobOverview = lazyRoute(() => import("../components/projects/JobOverview").then((module) => ({ default: module.JobOverview })));
 
 type ModeChoice = "data" | "tracking" | "both";
 const modesForChoice = (choice: ModeChoice): JobMode[] =>
@@ -50,6 +54,7 @@ function todayLocal(): string {
 export function Projects() {
   const t = useT();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const [adding, setAdding] = useState(false);
   const [jobCode, setJobCode] = useState("");
@@ -82,6 +87,14 @@ export function Projects() {
   const profile = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const canAdd = isForemanPlus(profile.data?.role);
   const { effectiveRole } = useEffectiveRole();
+  const canOverview = isSupervisorPlus(effectiveRole);
+  const showOverview = canOverview && searchParams.get("view") !== "list";
+  const chooseView = (view: "overview" | "list") => {
+    const next = new URLSearchParams(searchParams);
+    if (view === "list") next.set("view", "list");
+    else next.delete("view");
+    setSearchParams(next, { replace: true });
+  };
   // Deleting a job is supervisor+ now (slice 5) — was owner-only. The server
   // enforces the same rank in trash_project; this gates the affordance.
   const canDelete = isSupervisorPlus(effectiveRole);
@@ -89,7 +102,7 @@ export function Projects() {
   // (project_scope_counts). This used to pull EVERY opening row for every job
   // with no limit and count them here — the "deferred on purpose" note that sat
   // on it for a year said the real fix was a server-side aggregate. This is it.
-  const counts = useQuery({ queryKey: ["scopeCounts"], queryFn: listScopeCounts });
+  const counts = useQuery({ queryKey: ["scopeCounts"], queryFn: listScopeCounts, enabled: !showOverview });
   // Wave H (H1): the fourth reason a job needs a call — nobody has talked to
   // its builder in a fortnight. ONE query for the whole page rather than one
   // per card, for the same reason wave X stopped counting openings here: this
@@ -98,6 +111,7 @@ export function Projects() {
   const checkins = useQuery({
     queryKey: gcCheckinsLatestKey,
     queryFn: latestGcCheckins,
+    enabled: !showOverview,
   });
   const addProject = useMutation({
     mutationFn: async () => {
@@ -257,15 +271,14 @@ export function Projects() {
     <div className="page">
       <header className="page-header">
         <div>
-          <p className="home-greeting">Jobs</p>
-          <h1>Active projects</h1>
+          <h1>{t("jobsView.heading")}</h1>
         </div>
-        <BackChip fallback="/" label="Home" />
+        {!showOverview && <BackChip fallback="/" label="Home" />}
       </header>
       <SavedCopyNotice reason={savedCopy} />
       {/* Supervisors wrap jobs up from the job's own page; this is where
           they land afterwards (owner ask, 2026-08-26). */}
-      {canAdd && (
+      {canAdd && !showOverview && (
         <p style={{ margin: "0 0 4px" }}>
           <Link to="/jobs/history" className="link">
             Job history →
@@ -273,10 +286,25 @@ export function Projects() {
         </p>
       )}
       <p className="muted">
-        One hub per job — warehouse pick list, opening map, and type brain.
+        {showOverview ? t("jobsView.help") : "One hub per job — warehouse pick list, opening map, and type brain."}
       </p>
-      {canAdd && <IncomingMondayJobs />}
-      {canAdd && (
+      {canOverview && (
+        <div className="row-between" role="group" aria-label={t("jobsView.choose")} style={{ justifyContent: "flex-start", gap: 8, marginBottom: 12 }}>
+          <button type="button" className={`action-btn${showOverview ? " primary" : ""}`} aria-pressed={showOverview} onClick={() => chooseView("overview")}>
+            {t("jobsView.overview")}
+          </button>
+          <button type="button" className={`action-btn${!showOverview ? " primary" : ""}`} aria-pressed={!showOverview} onClick={() => chooseView("list")}>
+            {t("jobsView.list")}
+          </button>
+        </div>
+      )}
+      {showOverview && projects.isLoading && <SkeletonList rows={4} />}
+      {showOverview && projects.isError && (
+        <QueryError error={projects.error} onRetry={() => void projects.refetch()} label="Couldn't load jobs" />
+      )}
+      {showOverview && !projects.isLoading && !projects.isError && <JobOverview projects={projects.data ?? []} />}
+      {canAdd && !showOverview && <IncomingMondayJobs />}
+      {canAdd && !showOverview && (
         <div className="project-create">
           {!adding ? (
             <button type="button" className="action-btn primary" onClick={() => setAdding(true)}>
@@ -448,7 +476,7 @@ export function Projects() {
         </div>
       )}
       {message && <p className="scanner-hint">{message}</p>}
-      <div className="home-projects">
+      {!showOverview && <div className="home-projects">
         {projects.isLoading && <SkeletonList rows={4} />}
         {projects.isError && (
           <QueryError
@@ -650,7 +678,7 @@ export function Projects() {
             }
           />
         )}
-      </div>
+      </div>}
     </div>
   );
 }
