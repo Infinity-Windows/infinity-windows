@@ -361,7 +361,7 @@ test("Spanish: the whole Work screen reads in Spanish, no English fallback", asy
   await expect(bar).toContainText("Más");
 });
 
-test("foreman: Jobs, Team timecards on Work; supervisor adds Overview", async ({ page }) => {
+test("supervisor: Jobs includes overview; no duplicate Heartbeat door on Work", async ({ page }) => {
   await useSupabaseFixtures(page, { role: "supervisor", uiDesign: "new" });
   await hideWrongProjectBanner(page);
   await stubGeolocationDenied(page);
@@ -370,7 +370,8 @@ test("foreman: Jobs, Team timecards on Work; supervisor adds Overview", async ({
   const lead = page.getByTestId("ws-lead");
   await expect(lead.getByRole("link", { name: "Jobs" })).toBeVisible();
   await expect(lead.getByRole("link", { name: "Team timecards" })).toBeVisible();
-  await expect(lead.getByRole("link", { name: "Overview" })).toBeVisible();
+  await expect(lead.getByRole("link", { name: "Overview" })).toHaveCount(0);
+  await expect(lead.getByRole("link", { name: "Jobs" })).toHaveAttribute("href", "/projects");
 });
 
 test("K1.3: a start Forge refuses for the signature is said in plain words on Work, and the sheet does not open", async ({ page }) => {

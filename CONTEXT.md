@@ -1323,3 +1323,18 @@ None right now — the next ones come from building.
 ## Out of scope for the current effort
 
 Customer-facing completion estimates, product recommendations, and installer quality scoring. All real, none of them this map. They depend on clean data that doesn't exist yet.
+
+## Job overview inside Jobs
+
+Owner decision October 1, 2026: retire the standalone Heartbeat screen and
+its navigation entry. Jobs now has a supervisor/owner Overview and the existing
+Job list tools. Classic off-clock supervisor/owner Home retains personal clock and schedule
+controls. Old Heartbeat bookmarks lead to Jobs; the new design still lands on Work. Work has one Jobs
+door rather than a separate Overview door. Earlier Heartbeat references in this
+document describe the previous design.
+
+The overview separates published crew plans, recorded work and explicitly named
+progress. Installed openings do not mean an entire job is complete. Custom and
+mapped units must be accounted for without counting the same physical unit twice.
+Unavailable sources are unknown, never clean or idle jobs. Needs attention links
+to recorded issues/readiness, with ownership only where recorded.

@@ -1,0 +1,27 @@
+.jobs-overview { display: flex; flex-direction: column; gap: 20px; }
+.jo-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.jo-refresh { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.jo-source-warnings { padding: 8px 12px; border-left: 3px solid var(--warn); }
+.jo-section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.jo-section-head { margin: 0; font-size: 16px; }
+.jo-row-list { display: grid; gap: 8px; }
+.jo-row { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; min-width: 0; }
+.jo-row-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.jo-row-name, .jo-attention-job { font-weight: 650; color: inherit; text-decoration: none; }
+.jo-row-code { font-size: 12px; flex: none; }
+.jo-line { margin: 2px 0 0; font-size: 13px; overflow-wrap: anywhere; }
+.jo-scope-note { margin: 0; font-size: 12px; }
+.jo-concern { font-size: 13px; overflow-wrap: anywhere; }
+.jo-concern-link { color: inherit; font-weight: 600; }
+.jo-severity-urgent > .jo-concern-link, .jo-severity-emergency > .jo-concern-link { color: var(--warn); }
+.jo-detail-meta { margin: 2px 0 0; font-size: 12px; }
+.jo-details { margin-top: 5px; font-size: 12px; }
+.jo-details summary { cursor: pointer; color: var(--muted); padding: 4px 0; }
+.jo-details[open] .jo-concern { margin-top: 8px; }
+.jo-attention, .jo-changes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.jo-attention li { padding: 8px 12px; border-left: 3px solid var(--warn); background: var(--surface); }
+.jo-changes li { font-size: 13px; overflow-wrap: anywhere; }
+.jo-change-link { text-decoration: none; color: inherit; }
+.jo-change-time { font-size: 12px; }
+@media (min-width: 900px) { .jo-row-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 480px) { .jo-header { flex-wrap: wrap; } }

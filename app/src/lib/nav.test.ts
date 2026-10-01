@@ -211,7 +211,7 @@ describe("canAccess", () => {
     });
 
     it("opens nothing else", () => {
-      for (const p of ["/admin", "/heartbeat", "/knowledge", "/account/builders"] as const) {
+      for (const p of ["/admin", "/knowledge", "/account/builders"] as const) {
         expect(canAccess("foreman", p, { costs: true })).toBe(false);
       }
     });
@@ -262,11 +262,14 @@ describe("canAccess", () => {
     expect(installerPaths).not.toContain("/learning/time");
   });
 
-  it("keeps heartbeat supervisor+ (blocked for installers and foremen)", () => {
-    expect(canAccess("installer", "/heartbeat")).toBe(false);
-    expect(canAccess("foreman", "/heartbeat")).toBe(false);
-    expect(canAccess("supervisor", "/heartbeat")).toBe(true);
-    expect(canAccess("owner", "/heartbeat")).toBe(true);
+  it("removes Heartbeat from every navigation surface and keeps Jobs", () => {
+    expect(NAV.some((dest) => dest.to as string === "/heartbeat")).toBe(false);
+    for (const role of ["installer", "foreman", "supervisor", "owner"] as const) {
+      for (const design of ["classic", "new"] as const) {
+        expect(menuForRole(role, undefined, design).flatMap((section) => section.items).some((item) => item.to as string === "/heartbeat")).toBe(false);
+      }
+      expect(canAccess(role, "/projects")).toBe(true);
+    }
   });
 
   it("leaves open + detail/legacy routes reachable for everyone", () => {

@@ -106,10 +106,10 @@ describe("minRoleForPath matches page-level gating", () => {
     expect(minRoleForPath("/supplies")).toBe("installer");
   });
 
-  it("keeps admin + heartbeat supervisor+ and costing owner-only", () => {
+  it("keeps admin supervisor+ and costing owner-only; retired Heartbeat is a redirect", () => {
     expect(minRoleForPath("/crew")).toBe("supervisor");
     expect(minRoleForPath("/admin")).toBe("supervisor");
-    expect(minRoleForPath("/heartbeat")).toBe("supervisor");
+    expect(minRoleForPath("/heartbeat")).toBeNull();
     expect(minRoleForPath("/costing")).toBe("owner");
   });
 });

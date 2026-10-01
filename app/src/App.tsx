@@ -47,7 +47,6 @@ import { OpeningSheetRoute } from "./pages/install/OpeningSheet";
 import { JoinCrew } from "./pages/JoinCrew";
 import { readCodeFromUrl } from "../../supabase/functions/_shared/crewInvites";
 import { MyWork } from "./pages/MyWork";
-import { Heartbeat } from "./pages/Heartbeat";
 import { PinGate } from "./components/PinGate";
 import { LanguageProvider } from "./lib/i18n";
 import { DesignProvider } from "./lib/design/DesignProvider";
@@ -228,8 +227,9 @@ function RouteFallback() {
 
 /**
  * Role-aware landing: installers land on My Work, foremen on the Infinity day
- * Home, and supervisors/owners on the cross-project Heartbeat (their pulse of
- * every active job). View-as aware via effectiveRole; the loading state renders
+ * Home, and supervisors/owners on Home for their personal morning workflow.
+ * Jobs holds the cross-project overview.
+ * View-as aware via effectiveRole; the loading state renders
  * a neutral placeholder so we never flash the wrong landing before the profile
  * resolves.
  */
@@ -255,7 +255,6 @@ function RoleLanding() {
   if (!ROLE_NAV_V2) return <Home />;
   if (isLoading) return <div className="page"><p className="muted">Loading…</p></div>;
   const rank = roleRank(role);
-  if (rank >= 2) return <Heartbeat />;
   if (rank >= 1) return <Home />;
   return <MyWork />;
 }
@@ -715,7 +714,7 @@ export default function App() {
             />
             <Route
               path="/heartbeat"
-              element={<RequireRole path="/heartbeat"><Heartbeat /></RequireRole>}
+              element={<Navigate replace to="/projects" />}
             />
             <Route path="/scan" element={<Scan />} />
             {/* The Storage hub merged into /warehouse (ticket 18) — its

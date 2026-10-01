@@ -93,7 +93,6 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - AI Knowledge (`/knowledge`)
 - Scheduling (`/scheduling`)
 - Vehicles (`/vehicles`)
-- Heartbeat (`/heartbeat`)
 - Admin (`/admin`)
 - Crew access (`/access`)
 - Cost codes (`/cost-codes`)
@@ -203,7 +202,6 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Roster (`/crew`)
 - AI Knowledge (`/knowledge`)
 - Vehicles (`/vehicles`)
-- Heartbeat (`/heartbeat`)
 - Admin (`/admin`)
 - Crew access (`/access`)
 - Cost codes (`/cost-codes`)
@@ -247,7 +245,6 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Team timecards (`/team-timecards`)
 - Cost codes (`/cost-codes`)
 - Analytics (`/analytics`)
-- Heartbeat (`/heartbeat`)
 - Receipts (`/receipts`)
 - Warehouse (`/warehouse`)
 - Issues (`/issues`)
@@ -274,7 +271,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Catalog (`/catalog`)
 - Admin (`/admin`)
 
-**Can reach (all 52 allowed destinations):**
+**Can reach (all 51 allowed destinations):**
 
 - Home (`/`)
 - Current Work (`/current-work`)
@@ -320,7 +317,6 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - AI Knowledge (`/knowledge`)
 - Scheduling (`/scheduling`)
 - Vehicles (`/vehicles`)
-- Heartbeat (`/heartbeat`)
 - Admin (`/admin`)
 - Crew access (`/access`)
 - Cost codes (`/cost-codes`)
@@ -370,7 +366,6 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Cost codes (`/cost-codes`)
 - Cost (`/costing`)
 - Analytics (`/analytics`)
-- Heartbeat (`/heartbeat`)
 - Receipts (`/receipts`)
 - Warehouse (`/warehouse`)
 - Issues (`/issues`)
@@ -399,7 +394,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Admin (`/admin`)
 - Builder logins (`/account/builders`)
 
-**Can reach (all 55 allowed destinations):**
+**Can reach (all 54 allowed destinations):**
 
 - Home (`/`)
 - Current Work (`/current-work`)
@@ -445,7 +440,6 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - AI Knowledge (`/knowledge`)
 - Scheduling (`/scheduling`)
 - Vehicles (`/vehicles`)
-- Heartbeat (`/heartbeat`)
 - Admin (`/admin`)
 - Crew access (`/access`)
 - Cost codes (`/cost-codes`)

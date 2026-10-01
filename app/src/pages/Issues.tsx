@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import {
   assignIssue,
@@ -21,6 +21,7 @@ import { listQcStatusForOpenings } from "../lib/ops";
 import { formatApiError } from "../lib/errors";
 import { isMissingColumn } from "../lib/schemaErrors";
 import { useT } from "../lib/i18n";
+import "../lib/i18n/jobsViewCatalog";
 import { dataOffReasonKey } from "../lib/install/dataOff";
 import {
   openingUnitKind,
@@ -109,13 +110,24 @@ function fmtWhen(iso: string | null): string {
 export function Issues() {
   const t = useT();
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const focusedIssueId = searchParams.get("issue");
   const [projectFilter, setProjectFilter] = useState<string>("all");
   const [kindFilter, setKindFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<IssueStatus>("open");
   // Which issue's damage photo is open full-screen (ticket 11), or none.
   const [viewerIssue, setViewerIssue] = useState<Issue | null>(null);
 
-  const issuesQ = useQuery({ queryKey: ["issues"], queryFn: listIssues });
+  const issuesQ = useQuery({
+    queryKey: focusedIssueId ? ["issues", "selected", focusedIssueId] : ["issues"],
+    queryFn: async () => {
+      if (!focusedIssueId) return listIssues();
+      // Filter at the server: an older issue may be outside the feed's row cap.
+      const { data, error } = await supabase.rpc("list_issues").eq("id", focusedIssueId);
+      if (error) throw error;
+      return (data ?? []) as Issue[];
+    },
+  });
   const refsQ = useQuery({ queryKey: ["issueRefs"], queryFn: fetchIssueRefs });
   // Cross-links into the quality surfaces: an open warranty case on the same
   // unit, or the QC result on the same opening.
@@ -224,12 +236,13 @@ export function Issues() {
   }, [refsQ.data, all, projectById]);
 
   const visible = useMemo(() => {
+    if (focusedIssueId) return all.filter((issue) => issue.id === focusedIssueId);
     return all
       .filter((i) => i.status === statusFilter)
       .filter((i) => projectFilter === "all" || i.project_id === projectFilter)
       .filter((i) => kindFilter === "all" || i.kind === kindFilter)
       .sort(compareIssues);
-  }, [all, statusFilter, projectFilter, kindFilter]);
+  }, [all, statusFilter, projectFilter, kindFilter, focusedIssueId]);
 
   const openCount = all.filter((i) => i.status === "open").length;
 
@@ -472,7 +485,18 @@ export function Issues() {
         </p>
       )}
 
-      <div className="filter-row" style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "8px 0 16px" }}>
+      {focusedIssueId && (
+        <p className="muted">
+          {t("jobsView.selectedIssue")} {" "}
+          <button type="button" className="link" onClick={() => {
+            const next = new URLSearchParams(searchParams);
+            next.delete("issue");
+            setSearchParams(next, { replace: true });
+            setProjectFilter("all"); setKindFilter("all"); setStatusFilter("open");
+          }}>{t("jobsView.allIssues")}</button>
+        </p>
+      )}
+      {!focusedIssueId && <div className="filter-row" style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "8px 0 16px" }}>
         <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as IssueStatus)}>
           <option value="open">Open</option>
           <option value="resolved">Resolved</option>
@@ -493,7 +517,7 @@ export function Issues() {
             </option>
           ))}
         </select>
-      </div>
+      </div>}
 
       {issuesQ.isLoading && <p className="muted">Loading issues…</p>}
       {issuesQ.isError && <p className="error">{formatApiError(issuesQ.error)}</p>}
@@ -503,7 +527,7 @@ export function Issues() {
           {visible.map(row)}
           {visible.length === 0 && (
             <p className="muted">
-              {statusFilter === "open"
+              {focusedIssueId ? t("jobsView.issueUnavailable") : statusFilter === "open"
                 ? "No open issues — everything's clean."
                 : "No resolved issues match these filters."}
             </p>

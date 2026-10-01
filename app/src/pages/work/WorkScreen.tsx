@@ -11,9 +11,9 @@
 // spec measures it.
 //
 // Every role lands here in the new design — installers, foremen, and the
-// supervisors and owners who used to land on Heartbeat, which is one tap
-// away as Overview and still in More (K1.1: "nothing is removed, only
-// moved"). Every write goes through the same paths the classic screens use.
+// supervisors and owners. Their cross-job overview now lives inside Jobs
+// (owner decision October 1, 2026). Every write goes through the same paths
+// the classic screens use.
 //
 // Lazy, like every other screen that is not the classic shell: the entry
 // chunk has a budget and this file's strings register themselves from its
@@ -304,7 +304,7 @@ export function WorkScreen() {
           <Link className="ws-btn" to="/current-work">{t("work.unit.allUnits")}</Link>
         </section>
       )}
-      {lead && <LeadRow role={effectiveRole} />}
+      {lead && <LeadRow />}
     </div>
   );
 }

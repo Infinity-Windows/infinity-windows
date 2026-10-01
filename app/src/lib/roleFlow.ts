@@ -335,9 +335,9 @@ const SUPERVISOR: RoleFlow = {
       {
         id: "pulse",
         label: "The pulse",
-        lines: ["Heartbeat and", "cost codes."],
-        asks: "The one screen that says whether the company's day is moving, and the codes the money hangs on.",
-        doors: ["/heartbeat", "/cost-codes"],
+        lines: ["Job overview and", "cost codes."],
+        asks: "Jobs shows reported progress, planned crews and concerns needing attention; cost codes describe where the money belongs.",
+        doors: ["/projects", "/cost-codes"],
       },
     ],
   ],

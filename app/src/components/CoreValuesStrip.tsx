@@ -26,7 +26,7 @@ const ROTATE_MS = 8000;
  * 390px job map enough that the pin-precision suite failed a tap, which is
  * exactly the layout-shift class those tests guard. Values live where the
  * day starts, not on top of a tape measure. */
-const LANDING_PATHS = new Set(["/", "/my-work", "/heartbeat"]);
+const LANDING_PATHS = new Set(["/", "/my-work"]);
 
 export function CoreValuesStrip({
   pathname,

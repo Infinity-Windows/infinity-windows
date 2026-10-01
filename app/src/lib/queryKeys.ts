@@ -132,7 +132,7 @@ export const QUERY_KEY_ROOTS: QueryKeyRootEntry[] = [
   { root: "grantableJobs", offline: false },
   { root: "greenLightItems", offline: false },
   { root: "heartbeat", offline: false },
-  { root: "heartbeatGreenLightOpen", offline: false },
+  { root: "jobsOverview", offline: false },
   { root: "homeGreenLightOpen", offline: false },
   { root: "homeTodayCrews", offline: false },
   { root: "incidents", offline: false },
@@ -319,7 +319,6 @@ export const QUERY_KEY_ROOTS: QueryKeyRootEntry[] = [
   { root: "videoQuiz", offline: false },
   { root: "videoQuizPublic", offline: false },
   { root: "voidedOpenings", offline: false },
-  { root: "weeklyLogCoverage", offline: false },
   { root: "windowTypes", offline: true },
 ];
 
