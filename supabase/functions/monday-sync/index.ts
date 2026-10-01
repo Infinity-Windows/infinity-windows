@@ -656,8 +656,8 @@ async function handlePullFiles(
   return jsonResponse({ ok: true, results });
 }
 
-Deno.serve(withSentry("monday-sync", async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+async function handleMondaySync(req: Request): Promise<Response> {
+  if (req.method === "OPTIONS") return new Response("ok");
 
   // Feature-detect the token (the guard form scripts/function_secrets.py
   // reads as OPTIONAL): until the owner sets MONDAY_API_TOKEN this function
@@ -852,5 +852,19 @@ Deno.serve(withSentry("monday-sync", async (req) => {
     leftGroups: gone.length,
     updatedProjects,
     refreshedFiles,
+  });
+}
+
+// Apply CORS to every normal response, including the preflight and all file
+// pull refusals. Passing the header factory itself as HeadersInit produces no
+// headers, so the browser blocks Get before the file handler can run.
+Deno.serve(withSentry("monday-sync", async (req) => {
+  const response = await handleMondaySync(req);
+  const headers = new Headers(response.headers);
+  new Headers(corsHeaders(req)).forEach((value, name) => headers.set(name, value));
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
   });
 }));
