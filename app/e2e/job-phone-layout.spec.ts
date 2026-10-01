@@ -7,7 +7,9 @@ const job = jobFixtures().find((row) => row.jobCode === "BLACK22")!;
 for (const width of [320, 375, 390, 430, 1280]) {
   test(`job overview stays centered and readable at ${width}px`, async ({ page, browserName }) => {
     await page.setViewportSize({ width, height: 844 });
-    await useSupabaseFixtures(page, { role: "owner" });
+    const newDesign = width === 375 || width === 390;
+    await useSupabaseFixtures(page, { role: "owner", uiDesign: newDesign ? "new" : "classic" });
+    await page.route("**/rest/v1/company_settings**", (route) => json(route, { id: 1, new_design_r1_enabled: true }, 1));
     await hideWrongProjectBanner(page);
     await page.addInitScript(() => localStorage.setItem("infinity.theme", "dark"));
     const project = {
@@ -15,7 +17,7 @@ for (const width of [320, 375, 390, 430, 1280]) {
       job_code: "BLACK22",
       name: "Black Desert",
       status: "active",
-      allowed_modes: ["tracking"],
+      allowed_modes: [width >= 430 ? "data" : "tracking"],
       is_test: false,
       start_date: "2026-08-05",
       end_date: "2026-08-26",
@@ -25,6 +27,7 @@ for (const width of [320, 375, 390, 430, 1280]) {
     };
     await page.route("**/rest/v1/projects**", (route) => json(route, [project], 1));
     await page.goto(`/projects/${job.projectId}`);
+    if (newDesign) await expect(page.getByRole("navigation", { name: "Main" }).getByText("Work", { exact: true })).toBeVisible();
 
     const testing = page.locator("section", { has: page.getByRole("heading", { name: "Testing", exact: true }) });
     const details = page.locator("section", { has: page.getByRole("heading", { name: /^(Edit )?job details$/i }) });
