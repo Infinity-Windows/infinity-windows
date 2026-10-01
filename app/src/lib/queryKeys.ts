@@ -236,6 +236,7 @@ export const QUERY_KEY_ROOTS: QueryKeyRootEntry[] = [
   { root: "qcHistory", offline: false },
   { root: "qcPassed", offline: false },
   { root: "qcQueue", offline: false },
+  { root: "qcUnitEvidence", offline: false, why: "Read-only QC files use temporary signed URLs and are scoped to the real viewer and unit." },
   { root: "qcStatusForOpenings", offline: false },
   { root: "receiptJobSuggestions", offline: false },
   { root: "receipts-feed", offline: false },

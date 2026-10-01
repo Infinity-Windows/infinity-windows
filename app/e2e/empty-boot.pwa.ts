@@ -21,8 +21,11 @@ test("a cancelled app entry recovers the empty screen once", async ({ page, requ
 
   await page.goto("/");
   await expect(signInButton(page)).toBeVisible({ timeout: 30_000 });
+  // React may render sign-in before the recovered document fires its load event.
+  await expect.poll(() => loadTimes.length, {
+    timeout: 30_000, message: "the recovered document did not finish loading",
+  }).toBe(2);
   expect(entryRequests).toBe(2);
-  expect(loadTimes).toHaveLength(2);
   expect(navigationTimes).toHaveLength(2);
   // Measure the watchdog's decision, not the variable cost of fetching and
   // rendering the second page on a busy CI runner. The former 8s delay must
