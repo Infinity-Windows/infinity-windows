@@ -83,6 +83,40 @@ test("a phone on the previous build opens the app after a deploy, then switches 
   await page.addInitScript(() => {
     (window as Window & { __emptyBootRecoveryAtNavigation?: string | null }).__emptyBootRecoveryAtNavigation =
       sessionStorage.getItem("wops-empty-boot-diagnostic");
+    // Persist the first document's timing across a watchdog reload. A later
+    // screenshot alone cannot tell whether imports failed during activation
+    // or were cancelled by the recovery navigation.
+    const timelineKey = "wops-e2e-upgrade-timeline";
+    const note = (event: string, detail?: string) => {
+      const prior = JSON.parse(sessionStorage.getItem(timelineKey) || "[]") as unknown[];
+      prior.push({ at: Date.now(), event, detail });
+      sessionStorage.setItem(timelineKey, JSON.stringify(prior.slice(-80)));
+    };
+    note("document-start", document.URL);
+    window.addEventListener("load", () => {
+      note("load", JSON.stringify({
+        bootStarted: document.documentElement.dataset.forgeBootStarted ?? null,
+        controllerState: navigator.serviceWorker?.controller?.state ?? null,
+        resources: performance.getEntriesByType("resource")
+          .filter((entry) => /\.(js|css)(\?|$)/.test(entry.name))
+          .slice(-12)
+          .map((entry) => ({ path: new URL(entry.name).pathname, duration: entry.duration })),
+      }));
+    });
+    window.addEventListener("error", (event) => {
+      const target = event.target;
+      if (target instanceof HTMLScriptElement || target instanceof HTMLLinkElement) {
+        note("resource-error", target.getAttribute("src") || target.getAttribute("href") || "unknown");
+      } else if (event instanceof ErrorEvent) {
+        note("window-error", event.message);
+      }
+    }, true);
+    window.addEventListener("unhandledrejection", (event) => note("unhandled-rejection", String(event.reason)));
+    navigator.serviceWorker?.addEventListener("controllerchange", () => {
+      const controller = navigator.serviceWorker.controller;
+      note("controllerchange", controller?.state || "no-controller");
+      controller?.addEventListener("statechange", () => note("controller-state", controller.state));
+    });
   });
   page.on("pageerror", (error) => bootErrors.push(`pageerror: ${error.stack ?? error.message}`));
   page.on("console", (message) => {
@@ -183,8 +217,11 @@ test("a phone on the previous build opens the app after a deploy, then switches 
     const emptyBootRecovery = await page.evaluate(() =>
       (window as Window & { __emptyBootRecoveryAtNavigation?: string | null }).__emptyBootRecoveryAtNavigation ?? null,
     );
+    const browserTimeline = await page.evaluate(() =>
+      JSON.parse(sessionStorage.getItem("wops-e2e-upgrade-timeline") || "[]"),
+    );
     await test.info().attach("upgrade-reload-evidence.json", {
-      body: JSON.stringify({ navigations: navigations().map((url, i) => ({ url, at: navigationTimes[i] })), emptyBootRecovery, failedNetwork, bootErrors }, null, 2),
+      body: JSON.stringify({ navigations: navigations().map((url, i) => ({ url, at: navigationTimes[i] })), emptyBootRecovery, browserTimeline, failedNetwork, bootErrors }, null, 2),
       contentType: "application/json",
     });
   }
