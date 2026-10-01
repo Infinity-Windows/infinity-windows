@@ -1,3 +1,5 @@
+import { withBase } from "./pwa/basePaths";
+
 /**
  * Install before BrowserRouter mounts. Native popstate targets window, where
  * listeners run in registration order, irrespective of capture. A listener
@@ -18,4 +20,26 @@ export function installQcReviewPopGuard(target: EventTarget = window): void {
 export function registerQcReviewPopGuard(guard: (event: PopStateEvent) => void): () => void {
   activeGuard = guard;
   return () => { if (activeGuard === guard) activeGuard = null; };
+}
+
+export interface QcReviewHistoryEntry {
+  url: string;
+  history: Record<string, unknown> | null;
+}
+export function qcReviewHistoryEntry(url: string, history: unknown): QcReviewHistoryEntry {
+  return { url, history: history && typeof history === "object" ? { ...history } : null };
+}
+
+/** Accept a React location only if it still describes the native entry.
+ * A passive effect can lag our synchronous replaceState, or run while a
+ * blocked POP temporarily points the browser at another route. Neither may
+ * overwrite the entry we must restore. React's pathname omits the basename. */
+export function qcReviewEntryForLocation(entry: QcReviewHistoryEntry,
+  location: { key: string; pathname: string; search: string; hash: string },
+  base: string,
+): QcReviewHistoryEntry | null {
+  const url = new URL(entry.url);
+  return entry.history?.key === location.key
+    && url.pathname === withBase(base, location.pathname)
+    && url.search === location.search && url.hash === location.hash ? entry : null;
 }

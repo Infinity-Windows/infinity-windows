@@ -490,6 +490,42 @@ test("an uncertain saved command survives browser Back and retries its original 
   await expect(page).toHaveURL(/\/team$/);
 });
 
+test("Back during the selected-unit history write keeps the complete entry and original save", async ({ page }) => {
+  const state = await fixtures(page, [opening(1)]);
+  state.loseNextReceipt = true;
+  await page.addInitScript(() => {
+    const probe = { triggered: false, selectedUrl: "", pops: 0 };
+    (window as unknown as { qcEagerBack: typeof probe }).qcEagerBack = probe;
+    window.addEventListener("popstate", () => { probe.pops += 1; });
+    const replace = History.prototype.replaceState;
+    History.prototype.replaceState = function (data, unused, url) {
+      replace.call(this, data, unused, url);
+      if (!probe.triggered && new URL(window.location.href).searchParams.has("sel")) {
+        probe.triggered = true;
+        probe.selectedUrl = window.location.href;
+        // Real native navigation before React's delayed location effect settles.
+        queueMicrotask(() => window.history.back());
+      }
+    };
+  });
+  await page.goto("/team");
+  await page.getByRole("link", { name: /installs to QC/ }).click();
+  await pass(page).click();
+  await expect(page.getByRole("button", { name: "Retry save", exact: true })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => (window as unknown as { qcEagerBack: { pops: number } }).qcEagerBack.pops)).toBeGreaterThanOrEqual(2);
+  const selectedUrl = await page.evaluate(() => (window as unknown as { qcEagerBack: { selectedUrl: string } }).qcEagerBack.selectedUrl);
+  expect(new URL(selectedUrl).searchParams.get("sel")).toBe(id(1));
+  await expect(page).toHaveURL(selectedUrl);
+  const original = { ...state.writes[0] };
+  await page.getByRole("button", { name: "Retry save", exact: true }).click();
+  await expect.poll(() => state.writes.length).toBe(2);
+  expect(state.writes[1]).toEqual(original);
+  expect(state.commits).toBe(1);
+  await expect(page.getByText("You passed this unit.", { exact: true })).toBeVisible();
+  await page.goBack();
+  await expect(page).toHaveURL(/\/team$/);
+});
+
 
 test.describe("new phone design QC review", () => {
   test.use({ hasTouch: true });

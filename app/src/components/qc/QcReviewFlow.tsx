@@ -21,7 +21,7 @@ import { signInMark, stillSignedInAs, type SignInMark } from "../../lib/signedIn
 import { addQcPriorityTerm, openQcServiceCase, runQcOwnedRequest } from "../../lib/qcReviewRequests";
 import { clearQcSubmittedCommand, persistQcSubmittedCommand, readQcSubmittedCommand, type QcSubmittedCommand } from "../../lib/qcReviewRecovery";
 import { QcUnitEvidence } from "./QcUnitEvidence";
-import { registerQcReviewPopGuard } from "../../lib/qcReviewPopGuard";
+import { qcReviewEntryForLocation, qcReviewHistoryEntry, registerQcReviewPopGuard } from "../../lib/qcReviewPopGuard";
 
 interface QcPhotoReview {
   review: { summary: string; visible_checks: string[]; questions_for_foreman: string[]; limitation: string };
@@ -108,6 +108,7 @@ export function QcReviewFlow({
   const mountedRef = useRef(true);
   const lifetimeRef = useRef(new AbortController());
   const writtenSearchRef = useRef<string | null>(null);
+  const protectedLocationRef = useRef(qcReviewHistoryEntry(window.location.href, window.history.state));
   const visitRef = useRef(crypto.randomUUID());
   const readSequenceRef = useRef(0);
   const [refreshRequired, setRefreshRequired] = useState<Record<string, number>>({});
@@ -179,6 +180,13 @@ export function QcReviewFlow({
     writtenSearchRef.current = search;
     if (search !== location.search || location.state?.qcReviewViewer !== viewerId) {
       setSearchParams(params, { replace: true, state: { ...location.state, qcReviewViewer: viewerId } });
+      // BrowserRouter writes native history synchronously but commits its
+      // React location in a transition. Protect this selection now, before
+      // either a fast Back gesture or a delayed location effect can run.
+      const written = qcReviewHistoryEntry(window.location.href, window.history.state);
+      const captured = qcReviewEntryForLocation(written,
+        { ...location, key: String(written.history?.key), search, hash: "" }, import.meta.env.BASE_URL);
+      if (captured) protectedLocationRef.current = captured;
     }
   }
   function updateState(patch: Partial<QcReviewViewState>) {
@@ -272,10 +280,11 @@ export function QcReviewFlow({
   const blocked = Boolean(callbackDraft) || Boolean(pendingDecision) || Boolean(caseOffer) || Boolean(learningRetry) || learningPending || navPending;
   blockedRef.current = blocked;
   useEffect(() => { onBlockedChange?.(blocked); }, [blocked, onBlockedChange]);
-  const protectedLocationRef = useRef({ url: window.location.href, history: window.history.state });
   useEffect(() => {
-    protectedLocationRef.current = { url: window.location.href, history: window.history.state };
-  }, [location.key, location.search]);
+    const native = qcReviewHistoryEntry(window.location.href, window.history.state);
+    const captured = qcReviewEntryForLocation(native, location, import.meta.env.BASE_URL);
+    if (captured) protectedLocationRef.current = captured;
+  }, [location]);
   useEffect(() => {
     let reversing = false;
     const unload = (event: BeforeUnloadEvent) => {
@@ -297,7 +306,7 @@ export function QcReviewFlow({
       event.stopImmediatePropagation();
       const oldIndex = kept.history?.idx;
       const targetIndex = event.state?.idx;
-      if (reversing && oldIndex === targetIndex && window.location.href === kept.url) {
+      if (reversing && oldIndex === targetIndex && event.state?.key === kept.history?.key && window.location.href === kept.url) {
         reversing = false; return;
       }
       setNavError(t("qcReview.finishBeforeLeaving"));
