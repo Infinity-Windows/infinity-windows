@@ -24,7 +24,7 @@ const EN = {
   live: "Live — speak any time, even while Forge is talking.",
   unstable: "Connection unstable — trying to recover. What you already said is being saved.",
   ended: "Live conversation ended.",
-  endedCap: "Live conversation ended at the time limit. Tap Start to talk again.",
+  endedCap: "Live conversation reached the time limit. Tap Continue to keep talking.",
   endedAccount: "Live conversation ended because the signed-in account changed.",
   endedBackground: "Live conversation ended when this phone went to the background. Tap Start to talk again.",
   failed: "Live conversation stopped. Anything already said is saved or kept on this phone. Tap Start to try again.",
@@ -34,6 +34,10 @@ const EN = {
   permission: "Forge needs the microphone for a live conversation.",
   unsupported: "This phone's browser can't hold a live conversation. Use the microphone button instead.",
   saving: "Saving what you said…",
+  endingSoon: "About 30 seconds left. Finish your thought, then tap Continue to keep talking.",
+  endingSoonShort: "About 30 seconds left",
+  continue: "Continue live conversation",
+  tryAgain: "Try live conversation again",
 };
 type Key = keyof typeof EN;
 const ES: Record<Key, string> = {
@@ -44,7 +48,7 @@ const ES: Record<Key, string> = {
   live: "En vivo — habla cuando quieras, incluso mientras Forge habla.",
   unstable: "Conexión inestable — intentando recuperarla. Lo que ya dijiste se está guardando.",
   ended: "Conversación en vivo terminada.",
-  endedCap: "La conversación en vivo llegó al límite de tiempo. Toca Iniciar para hablar otra vez.",
+  endedCap: "La conversación en vivo llegó al límite de tiempo. Toca Continuar para seguir hablando.",
   endedAccount: "La conversación en vivo terminó porque cambió la cuenta.",
   endedBackground: "La conversación en vivo terminó al salir de esta pantalla. Toca Iniciar para hablar otra vez.",
   failed: "La conversación en vivo se detuvo. Lo ya dicho está guardado o en este teléfono. Toca Iniciar para intentarlo otra vez.",
@@ -54,10 +58,20 @@ const ES: Record<Key, string> = {
   permission: "Forge necesita el micrófono para la conversación en vivo.",
   unsupported: "El navegador de este teléfono no puede mantener una conversación en vivo. Usa el botón del micrófono.",
   saving: "Guardando lo que dijiste…",
+  endingSoon: "Quedan unos 30 segundos. Termina tu idea y toca Continuar para seguir hablando.",
+  endingSoonShort: "Quedan unos 30 segundos",
+  continue: "Continuar conversación en vivo",
+  tryAgain: "Intentar conversación en vivo otra vez",
 };
 
 export function liveText(es: boolean, key: Key): string {
   return (es ? ES : EN)[key];
+}
+
+/** A new paid session is always a deliberate tap, and never follows a sign-out. */
+export function canContinueLive(status: LiveStatus, detail?: LiveEndReason | string): boolean {
+  return (status === "ended" && (detail === "cap" || detail === "background")) ||
+    (status === "failed" && detail === "connection");
 }
 
 /** The one status line the person reads, from the session's status and why it ended. */

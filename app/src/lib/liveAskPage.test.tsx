@@ -196,6 +196,20 @@ describe("Live Ask on the Ask page", () => {
     expect(host!.textContent).toContain("Live conversation ended.");
   });
 
+  it("warns before the cap and continues the same Ask conversation on an explicit tap", async () => {
+    await mount();
+    await startLive();
+    const first = state.live!;
+    await act(async () => first.options.onTimeLimitSoon?.());
+    expect(host!.textContent).toContain("About 30 seconds left");
+    await act(async () => first.options.onStatus("ended", "cap"));
+    expect(button("Continue live conversation")).not.toBeNull();
+    await act(async () => button("Continue live conversation")!.click());
+    expect(state.live).not.toBe(first);
+    expect(state.live!.end).not.toHaveBeenCalled();
+    expect(host!.textContent).not.toContain("About 30 seconds left");
+  });
+
   it("ends when the signed-in account changes, and a late turn is not sent as the new person", async () => {
     await mount();
     await startLive();
