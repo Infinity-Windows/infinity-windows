@@ -58,3 +58,19 @@ test("foreman can open past QC decisions, including an older record with no revi
   await page.getByRole("button", { name: "Needs review" }).click();
   await expect(page.getByText("B14", { exact: true })).toBeVisible();
 });
+
+test("a failed history query shows a safe message, not database details", async ({ page }) => {
+  await useSupabaseFixtures(page, { role: "foreman" });
+  await page.route("**/rest/v1/qc_checks**", (route) => json(route, []));
+  await page.route("**/rest/v1/project_openings**", (route) => json(route, []));
+  await page.route("**/rest/v1/qc_decision_events**", (route) => route.fulfill({
+    status: 400,
+    contentType: "application/json",
+    body: JSON.stringify({ code: "PGRST200", message: "could not find a relationship in schema cache: secret_table" }),
+  }));
+
+  await page.goto("/qc");
+  await page.getByRole("button", { name: "Review history" }).click();
+  await expect(page.getByRole("region", { name: "QC review history" }).getByRole("alert")).toContainText("fault on our side");
+  await expect(page.getByText("secret_table")).toHaveCount(0);
+});

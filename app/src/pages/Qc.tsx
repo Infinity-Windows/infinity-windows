@@ -12,6 +12,7 @@ import { CATS, TERMS } from "../lib/glossary";
 import { pushToast, toastError } from "../lib/toast";
 import { SkeletonList } from "../components/ui/States";
 import { supabase } from "../lib/supabase";
+import { formatApiError } from "../lib/errors";
 
 // listQcQueue's range is (0, limit-1) from the start, not an offset cursor —
 // so "load more" here just re-asks for a bigger limit rather than tracking a
@@ -354,7 +355,7 @@ export function Qc() {
             </p>
             {history.isLoading ? <SkeletonList rows={3} /> : history.isError ? (
               <div className="detail-card" role="alert">
-                <p>Review history could not load. {history.error instanceof Error ? history.error.message : "Please try again."}</p>
+                <p>Review history could not load. {formatApiError(history.error)}</p>
                 <button className="button-like" onClick={() => void history.refetch()}>Try again</button>
               </div>
             ) : (
