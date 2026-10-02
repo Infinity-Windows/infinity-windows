@@ -379,8 +379,37 @@ jobs:
           } finally { await browser.close(); }
           JS
           cat /etc/os-release
-      - name: Capture the original two upgrade cases with their unchanged assertions
-        run: npx playwright test --config playwright.pwa.config.ts upgrade-path.pwa.ts -g 'a download that broke halfway|a phone on the previous build opens' --output "$RUNNER_TEMP/original-pwa-results"
+      # The failure was case14. The exact two-case non-reproduction omitted
+      # the preceding sequence and shared browser-process lifetime.
+      - name: Capture the original full sequence once with unchanged assertions
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: ${{ runner.temp }}/original-pwa-results/sequence-results.json
+        run: npx playwright test --config playwright.pwa.config.ts --workers=1 --retries=0 --reporter=list,json --output "$RUNNER_TEMP/original-pwa-results"
+      - name: Require the original sequence before interpreting the diagnostic
+        if: always()
+        run: |
+          python3 - <<'PYTHON'
+          import json, os, pathlib
+          root = pathlib.Path(os.environ['RUNNER_TEMP']) / 'original-pwa-results'
+          report = json.loads((root / 'sequence-results.json').read_text())
+          cases = []
+          def visit(suite):
+              for spec in suite.get('specs', []):
+                  for test in spec['tests']:
+                      cases.append((spec['title'], test))
+              for child in suite.get('suites', []): visit(child)
+          for suite in report['suites']: visit(suite)
+          assert len(cases) == 14, 'not the original14-case sequence'
+          for title, test in cases[:13]:
+              assert len(test['results']) == 1 and test['results'][0]['status'] == 'passed', f'preceding case did not pass once: {title}'
+              assert test['results'][0]['workerIndex'] == 0, f'worker restarted: {title}'
+          title, test = cases[13]
+          assert title == 'a download that broke halfway does not leave Refresh doing nothing afterwards'
+          assert len(test['results']) == 1 and test['results'][0]['workerIndex'] == 0, 'last case retried or worker restarted'
+          streams = [json.loads(p.read_text()) for p in root.glob('*/*-upgrade-diagnostics.json')]
+          assert len(streams) == 2 and len({s['workerPid'] for s in streams}) == 1, 'diagnostic pair did not share the original worker'
+          (root / 'sequence-integrity.json').write_text(json.dumps({'cases': 14, 'precedingPassedOnce': 13, 'workerIndex': 0, 'workerPid': streams[0]['workerPid'], 'lastStatus': test['results'][0]['status'], 'originalFailureStillUnresolved': True}, indent=2))
+          PYTHON
       - uses: actions/upload-artifact@v4
         if: always()
         with:
