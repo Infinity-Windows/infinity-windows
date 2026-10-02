@@ -423,3 +423,57 @@ test("disconnected work survives reload and a refused retry remains recoverable"
   expect(data.units).toHaveLength(1);
   expect(data.sessions).toHaveLength(1);
 });
+
+
+test("Start unit brings its form into view on a phone without starting time", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 667 });
+  const { projectId, data } = await setupWork(page, "foreman");
+  await page.goto(`/current-work?job=${projectId}`);
+  const button = page.getByRole("button", { name: "+ Start unit", exact: true });
+  await expect(button).toBeEnabled();
+  await button.click();
+  const editor = page.getByRole("region", { name: "Unit details" });
+  await expect(editor).toBeVisible();
+  await expect.poll(async () => (await editor.boundingBox())!.y).toBeLessThan(250);
+  await expect(editor.getByLabel("Unit number / name")).not.toBeFocused();
+  expect(data.sessions).toHaveLength(0);
+  await editor.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(editor).toHaveCount(0);
+  await button.click();
+  await expect(editor).toBeVisible();
+  await expect.poll(async () => (await editor.boundingBox())!.y).toBeLessThan(250);
+});
+
+for (const role of ["installer", "foreman"] as const) {
+  test(`direct unit details waits for the unit and respects ${role} editing rights`, async ({ page }) => {
+    const { projectId, data } = await setupWork(page, role);
+    const unit: WorkUnit = {
+      id: "77777777-7777-4777-8777-777777777777", revision: 1,
+      project_id: projectId, opening_id: null, label: "17", type_label: "Storefront window",
+      facts: {}, created_by: "88888888-8888-4888-8888-888888888888",
+      created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    };
+    data.units.push(unit);
+    let release!: () => void;
+    const responseReady = new Promise<void>((resolve) => { release = resolve; });
+    await page.route("**/rest/v1/custom_work_units**", async (route) => {
+      await responseReady;
+      return json(route, data.units, data.units.length);
+    });
+    await page.goto(`/current-work?job=${projectId}&unit=${unit.id}&details=1`);
+    const editor = page.getByRole("region", { name: "Unit details", exact: true });
+    await expect(editor).toHaveCount(0);
+    release();
+    await expect(page.getByRole("heading", { name: "Selected: 17" })).toBeVisible();
+    if (role === "foreman") {
+      await expect(editor.getByLabel("Unit number / name")).toHaveValue("17");
+      await editor.getByRole("button", { name: "Cancel", exact: true }).click();
+      await expect(editor).toHaveCount(0);
+    } else {
+      await expect(editor).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Edit details", exact: true })).toHaveCount(0);
+    }
+    await expect(page).not.toHaveURL(/details=1/);
+    expect(data.sessions).toHaveLength(0);
+  });
+}
