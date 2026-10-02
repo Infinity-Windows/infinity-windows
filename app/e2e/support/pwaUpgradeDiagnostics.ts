@@ -77,6 +77,7 @@ export async function installPwaUpgradeDiagnostics(page: Page, context: BrowserC
   });
 
   const cdp = await context.newCDPSession(page);
+  const browserVersion = await cdp.send("Browser.getVersion");
   await cdp.send("Network.enable");
   await cdp.send("Page.enable");
   await cdp.send("ServiceWorker.enable");
@@ -123,7 +124,7 @@ export async function installPwaUpgradeDiagnostics(page: Page, context: BrowserC
       // their evidence too; they never clear the original release failure.
       const artifact = testInfo.outputPath(name);
       await mkdir(dirname(artifact), { recursive: true });
-      await writeFile(artifact, JSON.stringify({ events, browserTimeline }, null, 2));
+      await writeFile(artifact, JSON.stringify({ browserVersion, platform: process.platform, node: process.version, events, browserTimeline }, null, 2));
       await testInfo.attach(name, { path: artifact, contentType: "application/json" });
       await cdp.detach().catch(() => undefined);
     },
