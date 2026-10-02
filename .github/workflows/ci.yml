@@ -408,6 +408,14 @@ jobs:
           assert len(test['results']) == 1 and test['results'][0]['workerIndex'] == 0, 'last case retried or worker restarted'
           streams = [json.loads(p.read_text()) for p in root.glob('*/*-upgrade-diagnostics.json')]
           assert len(streams) == 2 and len({s['workerPid'] for s in streams}) == 1, 'diagnostic pair did not share the original worker'
+          receipt_path = next(root.glob('*/interrupted-download-chromium-trace-receipt.json'))
+          receipt = json.loads(receipt_path.read_text())
+          assert not receipt.get('error') and receipt['bytes'] > 0 and 'ServiceWorker' in receipt['categories'], 'Chromium trace capture failed'
+          chrome_trace = json.loads(next(root.glob('*/interrupted-download-chromium-trace.json')).read_text())
+          trace_events = chrome_trace['traceEvents']
+          assert any('ServiceWorker' in event.get('cat', '') for event in trace_events), 'no worker trace positive control'
+          counts = {name: sum(name in event.get('name', '') for event in trace_events) for name in ['StartRequest', 'DispatchFetchEvent', 'CommitCompleted', 'Cancel']}
+          (root / 'chromium-trace-integrity.json').write_text(json.dumps({'events': len(trace_events), 'categories': receipt['categories'], 'sourceEventCounts': counts}, indent=2))
           (root / 'sequence-integrity.json').write_text(json.dumps({'cases': 14, 'precedingPassedOnce': 13, 'workerIndex': 0, 'workerPid': streams[0]['workerPid'], 'lastStatus': test['results'][0]['status'], 'originalFailureStillUnresolved': True}, indent=2))
           PYTHON
       - uses: actions/upload-artifact@v4

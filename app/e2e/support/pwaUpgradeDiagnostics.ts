@@ -1,12 +1,12 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, open, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { type BrowserContext, type Page, type TestInfo } from "@playwright/test";
+import { type Browser, type BrowserContext, type Page, type TestInfo } from "@playwright/test";
 
 interface DiagnosticEvent { at: number; source: string; event: string; detail: unknown }
 const MAX_EVENTS = 12_000;
 
 /** Read-only evidence for the old-worker to new-worker upgrade boundary. */
-export async function installPwaUpgradeDiagnostics(page: Page, context: BrowserContext) {
+export async function installPwaUpgradeDiagnostics(page: Page, context: BrowserContext, options?: { traceBrowser?: Browser }) {
   const events: DiagnosticEvent[] = [];
   const note = (source: string, event: string, detail: unknown) => {
     events.push({ at: Date.now(), source, event, detail });
@@ -112,8 +112,86 @@ export async function installPwaUpgradeDiagnostics(page: Page, context: BrowserC
     url: event.frame.url, unreachableUrl: event.frame.unreachableUrl,
   }));
 
+  // Browser-target tracing observes worker and resource-loader events without
+  // registering a fetch listener or changing requests. The final upgrade test
+  // enables it before its first old-build navigation.
+  const traceBrowser = options?.traceBrowser;
+  const trace = traceBrowser ? await (async () => {
+    const session = await traceBrowser.newBrowserCDPSession();
+    try {
+      const available = (await session.send("Tracing.getCategories")).categories;
+      if (!available.includes("ServiceWorker")) throw new Error("Chromium tracing lacks mandatory ServiceWorker category");
+      const wanted = ["ServiceWorker", "blink.resource", "disabled-by-default-network"];
+      const categories = wanted.filter((category) => available.includes(category));
+      await session.send("Tracing.start", { categories: categories.join(","), transferMode: "ReturnAsStream" });
+      return { session, categories, unavailable: wanted.filter((category) => !available.includes(category)) };
+    } catch (error) {
+      await session.detach().catch(() => undefined);
+      throw error;
+    }
+  })() : null;
+
+  const finishTrace = async (testInfo: TestInfo) => {
+    if (!trace) return;
+    const artifact = testInfo.outputPath("interrupted-download-chromium-trace.json");
+    const receipt = testInfo.outputPath("interrupted-download-chromium-trace-receipt.json");
+    const result: Record<string, unknown> = {
+      categories: trace.categories, unavailable: trace.unavailable, artifact, bytes: 0,
+      sourceEvents: ["StartRequest", "DispatchFetchEvent", "CommitCompleted", "ResourceLoaderCancel"],
+    };
+    try {
+      // Register before ending: Chrome may emit tracingComplete immediately.
+      let completionTimer: ReturnType<typeof setTimeout> | undefined;
+      const streamReady = new Promise<string>((resolve, reject) => {
+        completionTimer = setTimeout(() => reject(new Error("Tracing.tracingComplete timed out")), 30_000);
+        trace.session.once("Tracing.tracingComplete", (event) => {
+          clearTimeout(completionTimer);
+          event.stream ? resolve(event.stream) : reject(new Error("Tracing.tracingComplete returned no stream"));
+        });
+      });
+      let handle: string;
+      try {
+        // Observe both promises together so an end-command failure cannot leave
+        // a later timeout rejection unhandled or mask the original assertion.
+        [, handle] = await Promise.all([trace.session.send("Tracing.end"), streamReady]);
+      } finally {
+        clearTimeout(completionTimer);
+      }
+      await mkdir(dirname(artifact), { recursive: true });
+      const file = await open(artifact, "w");
+      try {
+        let eof = false;
+        while (!eof) {
+          const chunk = await trace.session.send("IO.read", { handle, size: 1024 * 1024 });
+          const bytes = chunk.base64Encoded ? Buffer.from(chunk.data, "base64") : Buffer.from(chunk.data);
+          if (!bytes.length && !chunk.eof) throw new Error("Tracing IO.read returned an empty nonterminal chunk");
+          let offset = 0;
+          while (offset < bytes.length) {
+            const written = (await file.write(bytes, offset, bytes.length - offset)).bytesWritten;
+            if (!written) throw new Error("Trace artifact write made no progress");
+            offset += written;
+          }
+          result.bytes = (result.bytes as number) + bytes.length;
+          eof = chunk.eof;
+        }
+      } finally {
+        await file.close();
+        await trace.session.send("IO.close", { handle }).catch(() => undefined);
+      }
+      await testInfo.attach("interrupted-download-chromium-trace.json", { path: artifact, contentType: "application/json" });
+    } catch (error) {
+      result.error = String(error);
+    } finally {
+      await trace.session.detach().catch(() => undefined);
+      await mkdir(dirname(receipt), { recursive: true });
+      await writeFile(receipt, JSON.stringify(result, null, 2)).catch(() => undefined);
+      await testInfo.attach("interrupted-download-chromium-trace-receipt.json", { path: receipt, contentType: "application/json" }).catch(() => undefined);
+    }
+  };
+
   return {
     async attach(testInfo: TestInfo, name: string) {
+      await finishTrace(testInfo);
       const browserTimeline = await page.evaluate(() => ({
         timeline: JSON.parse(sessionStorage.getItem("wops-e2e-upgrade-timeline") || "[]"),
         watchdog: sessionStorage.getItem("wops-empty-boot-diagnostic"),

@@ -280,9 +280,10 @@ test("a second tab on the same URL can reload without suppressing the asking tab
 test("a download that broke halfway does not leave Refresh doing nothing afterwards", async ({
   page,
   context,
+  browser,
   request,
 }) => {
-  const diagnostics = await installPwaUpgradeDiagnostics(page, context);
+  const diagnostics = await installPwaUpgradeDiagnostics(page, context, { traceBrowser: browser });
   try {
     // Four deploys landed within an hour on 2026-09-25. A check that lands
     // while a deploy is half there downloads a worker whose file list names a
