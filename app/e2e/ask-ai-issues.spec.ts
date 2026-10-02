@@ -3,6 +3,33 @@ import { expect, test } from "@playwright/test";
 import { useSupabaseFixtures, TEST_USER } from "./support/supabaseFixtures";
 import { hideWrongProjectBanner, json } from "./support/specHelpers";
 
+test("saved setup stays closed after restored replies copy its checklist", async ({ page }) => {
+  await hideWrongProjectBanner(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await useSupabaseFixtures(page, { role: "owner" });
+  const checklist = { job: null, unit: [
+    { key: "label", status: "captured", value: "42", required_before_timing: true },
+    { key: "width", status: "captured", value: "72 in", required_before_timing: true },
+  ] };
+  const captured = { checklist, answers: { job: null, unit: { label: "42", width: 72 } } };
+  // The REST history endpoint returns newest first. Later read-only replies
+  // retain the saved answers, even though they have no new write receipt.
+  await page.route("**/rest/v1/ai_field_requests**", (route) => json(route, [
+    { id: "history-followup", transcript: "What next?", input_kind: "text", sent_at: "2026-10-01T12:01:00Z", reply: { answer: "Open My Work for your next unit." }, captured, finished_at: "2026-10-01T12:01:01Z" },
+    { id: "history-save", transcript: "Save unit42", input_kind: "text", sent_at: "2026-10-01T12:00:00Z", reply: { answer: "Unit42 saved." }, captured, finished_at: "2026-10-01T12:00:01Z" },
+  ]));
+  await page.route("**/rest/v1/ai_field_actions**", (route) => json(route, [
+    { id: "history-save-action", request_id: "history-save", action: "save_unit", status: "done", result: { status: "done", outcome: "created", unit: { unit_id: "fixture-unit42", label: "42", type: "Bifold", facts: {} } } },
+  ]));
+  await page.goto("/ask");
+  await expect(page.getByText("Unit 42 saved.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Open My Work for your next unit.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("group", { name: "Setup checklist", exact: true })).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByText("Unit 42 saved.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("group", { name: "Setup checklist", exact: true })).toHaveCount(0);
+});
+
 test("Ask reply offers an editable AI report and files only after Send", async ({ page }, testInfo) => {
   await hideWrongProjectBanner(page);
   await page.setViewportSize({ width: 390, height: 844 });
