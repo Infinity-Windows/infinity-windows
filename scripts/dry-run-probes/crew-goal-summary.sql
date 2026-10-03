@@ -3,6 +3,7 @@ do $$
 declare
   v_job uuid; v_person uuid; v_partner uuid; v_role text; v_result jsonb;
   v_expected numeric; v_before bigint; v_after bigint; v_goal numeric;
+  v_unresolved_before bigint; v_flagged_id uuid := gen_random_uuid();
 begin
   perform pg_temp.dry_run_as_system();
   v_job := pg_temp.dry_run_sandbox_job();
@@ -11,6 +12,22 @@ begin
     values (v_job, 120, 1)
     on conflict (project_id) do update set goal_hours = 120, revision = public.project_labor_targets.revision + 1;
   select goal_hours into v_goal from public.project_labor_targets where project_id = v_job;
+  select count(*) into v_unresolved_before from public.time_shifts
+    where project_id = v_job and status <> 'voided' and (
+      status in ('needs_finish','rejected')
+      or (status not in ('voided','open') and clock_out_at is null)
+      or (status = 'open' and clock_out_at is not null)
+      or (status in ('submitted','approved') and clock_out_at is not null and (
+        review_reason is not null or time_confirmed is false
+        or clock_out_at < clock_in_at or break_seconds < 0
+        or break_seconds > extract(epoch from (clock_out_at-clock_in_at)))));
+  -- A valid 90-minute submitted shift with TWO uncertainty flags must add
+  -- one review count and still contribute its payable-shaped duration.
+  v_person := pg_temp.dry_run_pick('installer');
+  insert into public.time_shifts(id, profile_id, project_id, clock_in_at, clock_out_at,
+    break_seconds, status, review_reason, time_confirmed)
+  values (v_flagged_id, v_person, v_job, now() - interval '2 hours', now() - interval '30 minutes',
+    0, 'submitted', 'clock_unchecked', false);
   select count(*) into v_before from public.time_shifts where project_id = v_job;
   select coalesce(sum(greatest(0, extract(epoch from (clock_out_at-clock_in_at)) - break_seconds)/3600),0)
     into v_expected from public.time_shifts
@@ -25,6 +42,9 @@ begin
       (v_result->>'goal_hours')::numeric = v_goal and (v_result->>'recorded_hours')::numeric = v_expected
       and (v_result->>'as_of') is not null and (v_result->>'goal_revision') is not null,
       'aggregate and revision checked');
+    perform pg_temp.dry_run_check('crew goal ' || v_role || ' counts flagged submitted time once',
+      (v_result->>'unresolved_shifts')::bigint = v_unresolved_before + 1,
+      'two flags on one closed row count once');
     perform pg_temp.dry_run_check('crew goal ' || v_role || ' exposes only safe aggregate fields',
       (select count(*) = 9 from jsonb_object_keys(v_result))
       and not (v_result ?| array['profile_id','display_name','rate','cost','time_shifts','updated_by']),

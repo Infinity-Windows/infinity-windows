@@ -29,9 +29,15 @@ begin
         - case when break_started_at is not null then greatest(0, floor(extract(epoch from (v_at - break_started_at)))) else 0 end) / 3600
       else 0 end), 0),
     count(*) filter (where status = 'open' and clock_out_at is null),
+    -- A reviewed-looking status can still carry clock uncertainty. Keep its
+    -- payable-shaped hours in recorded total, but count the row once here.
     count(*) filter (where status in ('needs_finish','rejected')
       or (status not in ('voided','open') and clock_out_at is null)
-      or (status = 'open' and clock_out_at is not null))
+      or (status = 'open' and clock_out_at is not null)
+      or (status in ('submitted','approved') and clock_out_at is not null and (
+        review_reason is not null or time_confirmed is false
+        or clock_out_at < clock_in_at or break_seconds < 0
+        or break_seconds > extract(epoch from (clock_out_at - clock_in_at)))))
   into v_recorded, v_running, v_open, v_unresolved
   from public.time_shifts where project_id = p_project_id and status <> 'voided';
 

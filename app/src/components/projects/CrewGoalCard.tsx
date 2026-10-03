@@ -23,12 +23,18 @@ export function CrewGoalCard({ projectId }: { projectId: string }) {
   const saved = goal.isError || goal.fetchStatus === "paused" || !navigator.onLine;
   return <section className="detail-card" aria-label={t("work.goal.title")}>
     <h2>{t("work.goal.title")}</h2>
-    <p>{t("work.goal.goal")}: {g.goal_hours == null ? t("work.goal.unset") : number(g.goal_hours)}{g.goal_revision != null ? ` · ${t("work.goal.revision")} ${g.goal_revision}` : ""}</p>
+    <p>{t("work.goal.goal")}: {g.goal_hours == null ? t("work.goal.unset") : number(g.goal_hours)}</p>
     <p>{t("work.goal.recorded")}: {number(g.recorded_hours)}</p>
-    <p>{t("work.goal.running")}: {number(g.running_provisional_hours)}</p>
+    {g.running_provisional_hours > 0 && <p>{t("work.goal.running")}: {number(g.running_provisional_hours)}</p>}
     <p>{t("work.goal.allowance")}: {g.allowance_hours == null ? t("work.goal.unset") : number(g.allowance_hours)}</p>
-    <p className="muted">{t("work.goal.counts").replace("{open}", String(g.open_shifts)).replace("{unresolved}", String(g.unresolved_shifts))}</p>
+    <p className="muted">{t("work.goal.notForecast")}</p>
+    {g.unresolved_shifts > 0 && <p className="muted">{t("work.goal.needsReview").replace("{count}", String(g.unresolved_shifts))}</p>}
     <p className="muted">{saved ? t("work.goal.saved") : t("work.goal.asOf")} {new Date(g.as_of).toLocaleString()}</p>
-    <p className="muted">{t("work.goal.caveat")}</p>
+    <details><summary>{t("work.goal.details")}</summary>
+      {g.running_provisional_hours <= 0 && <p>{t("work.goal.running")}: {number(g.running_provisional_hours)}</p>}
+      <p>{t("work.goal.counts").replace("{open}", String(g.open_shifts)).replace("{unresolved}", String(g.unresolved_shifts))}</p>
+      <p>{t("work.goal.revision")}: {g.goal_revision ?? t("work.goal.unset")}</p>
+      <p>{t("work.goal.caveat")}</p>
+    </details>
   </section>;
 }
