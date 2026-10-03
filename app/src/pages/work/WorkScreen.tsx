@@ -30,6 +30,7 @@ import { TodayCard } from "../../components/work/TodayCard";
 import { UnitContributors } from "../../components/work/UnitContributors";
 import { YourUnit } from "../../components/work/YourUnit";
 import { LiveSummonsStrip } from "../../components/install/LiveSummonsStrip";
+import { CrewGoalCard } from "../../components/projects/CrewGoalCard";
 import { useClock } from "../../lib/clockContext";
 import { getCompanySettings } from "../../lib/companySettings";
 import { listProjectsAnyStatus } from "../../lib/api";
@@ -272,6 +273,7 @@ export function WorkScreen() {
         now={now}
       />
       <YourUnit nextUp={nextUp} locked={locked} jobId={jobId} shift={shift} work={work} now={now} />
+      {jobId && <CrewGoalCard projectId={jobId} />}
       {/* Heads-ups sit under the three things the screen exists for, not
           between them: a notice above Today pushed your unit under the bar
           on a 667px phone. The one that matters most — the talk not signed —

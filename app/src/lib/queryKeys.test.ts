@@ -93,6 +93,8 @@ const EXPECTED_OFFLINE_ROOTS = [
   "serviceVisit", "serviceVisits",
   "customWorkUnits", "customWorkSessions", "customWorkTypes", "customWorkOpening", "customWorkRoster",
   "buildFacts",
+  // Crew goal keeps a timestamped server aggregate for weak-signal reads.
+  "crewGoal",
   "myScheduleTomorrow",
   "myPinStatus",
   // Release 1 (K1.6): the Work screen's and the Schedule tab's shared window.
