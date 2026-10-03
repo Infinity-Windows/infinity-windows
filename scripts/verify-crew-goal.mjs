@@ -6,6 +6,7 @@ const { PGlite } = await import(process.env.PGLITE_MODULE ?? "@electric-sql/pgli
 const db = new PGlite();
 const job = "11111111-1111-4111-8111-111111111111";
 const hidden = "22222222-2222-4222-8222-222222222222";
+const deleted = "33333333-3333-4333-8333-333333333333";
 const people = [1, 2, 3, 4, 5].map((n) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`);
 await db.exec(`
   create role authenticated; create role anon; create schema auth;
@@ -23,7 +24,7 @@ await db.exec(`
 `);
 await db.query("insert into public.profiles(id,role,is_partner) values ($1,'installer',false),($2,'foreman',false),($3,'owner',false),($4,'installer',true),($5,'installer',false)", people);
 await db.query("update public.profiles set access_revoked_at=now() where id=$1", [people[4]]);
-await db.query("insert into public.projects(id,is_test) values ($1,false),($2,true)", [job, hidden]);
+await db.query("insert into public.projects(id,is_test,deleted_at) values ($1,false,null),($2,true,null),($3,false,now())", [job, hidden, deleted]);
 await db.query("insert into public.project_labor_targets values ($1,120,3,now())", [job]);
 await db.query(`insert into public.time_shifts(id,profile_id,project_id,status,clock_in_at,clock_out_at,break_seconds,review_reason,time_confirmed)
   values
@@ -66,6 +67,8 @@ for (const id of people.slice(0, 3)) {
   assert.ok(Math.abs(Number(result.allowance_hours) - (105 - expectedRunningSeconds / 3600)) < 1e-9);
   assert.deepEqual(Object.keys(result).sort(), ["allowance_hours","as_of","goal_hours","goal_revision","goal_updated_at","open_shifts","recorded_hours","running_provisional_hours","unresolved_shifts"].sort());
   if (id !== people[2]) await assert.rejects(db.query("select public.crew_goal_summary($1)", [hidden]));
+  await assert.rejects(db.query("select public.crew_goal_summary($1)", [deleted]), undefined,
+    "the card excludes soft-deleted jobs even for an owner");
 }
 for (const id of people.slice(3)) {
   await asUser(id);
