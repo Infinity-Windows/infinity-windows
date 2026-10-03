@@ -110,7 +110,12 @@ export type OutboxOp =
   // tapped after it `dependsOn` it. Keyed by the phone's client id in the
   // payload; the signature image and the PDF go to paths made from that id,
   // with upsert, so a resend lands on the same files and the same row.
-  | "toolbox_sign";
+  | "toolbox_sign"
+  // A monthly core-value review (20261106000000). Carries the assignment id,
+  // a stable request id and all eight scores; values_submit() is the single
+  // atomic, idempotent write — a resend with the same request id answers with
+  // the original receipt, never a second submission.
+  | "values_submit";
 
 /**
  * queued   — waiting to be sent (respecting nextAttemptAt backoff)

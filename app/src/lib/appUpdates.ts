@@ -5,6 +5,11 @@ import { BUILD_ID } from './pwa/buildInfo';
 // rollout must not advertise a feature the phone has not downloaded yet.
 export const INCLUDED_UPDATE_IDS = [
   '2026-10-03-crew-goal',
+  // Monthly core-value reviews (20261106000000/20261106010000). The feature
+  // itself stays behind company_settings.values_scheduler_enabled (off by
+  // default) — this id only controls whether the ANNOUNCEMENT may show once
+  // this client build is live; it does not turn on assignment dealing.
+  '2026-10-03-monthly-values-review',
   '2026-10-01-ask-ai-issues', '2026-10-01-learning-rounds', '2026-10-01-model-contrast', '2026-10-01-schedule-date-inputs',
   '2026-10-01-searchable-supply-jobs', '2026-10-01-searchable-costing-jobs',
   '2026-10-01-daily-logs-page',

@@ -15,6 +15,13 @@ import { SkeletonCard } from "../components/ui/States";
 const DesignSettings = lazy(() =>
   import("../components/design/DesignSettings").then((m) => ({ default: m.DesignSettings })),
 );
+// Monthly core-value reviews (20261106000000) — same lazy-chunk reasoning as
+// DesignSettings: most mornings nobody opens this card, so it should not cost
+// the Settings chunk anything until it renders. Importing it registers
+// lib/i18n/valuesCatalog.ts's strings into the live catalog as a side effect.
+const MyValuesSettingsCard = lazy(() =>
+  import("../components/values/MyValuesSettingsCard").then((m) => ({ default: m.MyValuesSettingsCard })),
+);
 import { playSuccessTone, setSoundsEnabled, soundsEnabled } from "../lib/sound";
 import { useLanguage, useT } from "../lib/i18n";
 import type { Lang } from "../lib/i18n";
@@ -158,6 +165,10 @@ export function Settings() {
           {sounds ? t("settings.sounds.on") : t("settings.sounds.off")}
         </button>
       </section>
+
+      <Suspense fallback={<SkeletonCard height={100} />}>
+        <MyValuesSettingsCard />
+      </Suspense>
 
       <PermissionsSettings />
       <section className="detail-card" style={{ marginBottom: 12 }}>

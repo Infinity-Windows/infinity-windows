@@ -291,6 +291,15 @@ export const WORK_HISTORY_PROBES: readonly HistoryProbe[] = [
     one: "question asked",
     many: "questions asked",
   },
+  // Monthly core-value reviews (20261106000000). All six are CASCADE columns
+  // on profiles(id) — losing them with the account would lose a record of
+  // review work given or received, and a subject's frozen quarterly rating.
+  { table: "values_assignments", column: "rater_id", one: "values review assigned to them", many: "values reviews assigned to them" },
+  { table: "values_assignments", column: "subject_id", one: "values review assignment about them", many: "values review assignments about them" },
+  { table: "values_submissions", column: "rater_id", one: "values review they submitted", many: "values reviews they submitted" },
+  { table: "values_submissions", column: "subject_id", one: "values review they received", many: "values reviews they received" },
+  { table: "values_quarterly_ratings", column: "subject_id", one: "frozen quarterly values rating", many: "frozen quarterly values ratings" },
+  { table: "values_reminder_claims", column: "profile_id", one: "values review reminder", many: "values review reminders" },
 ] as const;
 
 /** The key a probe's count is filed under. */

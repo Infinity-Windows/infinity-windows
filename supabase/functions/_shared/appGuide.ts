@@ -226,6 +226,20 @@ export const APP_GUIDE: AppGuideEntry[] = [
       "Every job's daily log, across every day you reach — what the crew worked on, stage progress, photos, and how many units are done or remaining. Log today, or open a past one to review or edit.",
   },
   {
+    path: "/values",
+    label: "My values",
+    minRole: "installer",
+    blurb:
+      "The monthly core-value review (20261106000000): score a few people you worked beside, 1-10 on each of the eight values, plus an optional comment. Confidential — the owner can see your name on it, the person you score never does. Also shows your own rolling and all-time numbers and any frozen quarterly rating.",
+  },
+  {
+    path: "/values/owner",
+    label: "Values review matrix",
+    minRole: "owner",
+    blurb:
+      "Owner-only: named, raw monthly core-value review data for everyone — who scored whom, their comments, and the monthly scheduler on/off switch.",
+  },
+  {
     path: "/stuck",
     label: "Stuck writes",
     minRole: "installer",

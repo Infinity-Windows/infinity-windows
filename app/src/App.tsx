@@ -96,6 +96,13 @@ const AskMisses = lazyRoute(() => import("./pages/AskMisses").then((m) => ({ def
 const Knowledge = lazyRoute(() => import("./pages/Knowledge").then((m) => ({ default: m.Knowledge })));
 const AiSpend = lazyRoute(() => import("./pages/AiSpend").then((m) => ({ default: m.AiSpend })));
 const Notifications = lazyRoute(() => import("./pages/Notifications").then((m) => ({ default: m.Notifications })));
+// Monthly core-value reviews (20261106000000). Lazy: every crew member's
+// page, reached only from the Settings "My values" card, never a bottom-bar
+// or shell-chunk destination.
+const ValuesPage = lazyRoute(() => import("./pages/values/ValuesPage").then((m) => ({ default: m.ValuesPage })));
+const ValuesOwnerPage = lazyRoute(() =>
+  import("./pages/values/ValuesOwnerPage").then((m) => ({ default: m.ValuesOwnerPage })),
+);
 const Team = lazyRoute(() => import("./pages/Team").then((m) => ({ default: m.Team })));
 const ContainerViewer = lazyRoute(() =>
   import("./pages/storage/ContainerViewer").then((m) => ({ default: m.ContainerViewer })),
@@ -301,6 +308,34 @@ function RequireRole({
         This area is for a different role. If you think you need access, ask your
         supervisor.
       </p>
+      <Link to="/" className="button-like">Back to home</Link>
+    </div>
+  );
+}
+
+/**
+ * Gates on the REAL role, never a previewed one (20261106000000). Unlike
+ * `RequireRole`, which deliberately uses `effectiveRole` so "view as role"
+ * previews faithfully, a page carrying raw, named, owner-only review data
+ * (the values review matrix) must not mount — and must not fire its query —
+ * while an owner is simply previewing a lower role, nor (even though the
+ * preview system cannot raise rank) read like it would open for one. The
+ * server re-checks real owner authority on every call regardless; this is
+ * the client-side half of the same rule.
+ */
+function RequireRealOwner({ children }: { children: ReactNode }) {
+  const { realRole, isLoading } = useEffectiveRole();
+  if (isLoading) return <div className="page"><p className="muted">Loading…</p></div>;
+  if (realRole === "owner") return <>{children}</>;
+  return (
+    <div className="page">
+      <header className="page-header">
+        <div>
+          <p className="home-greeting">Restricted</p>
+          <h1>Not available for your role</h1>
+        </div>
+      </header>
+      <p className="muted">This area is for the owner only.</p>
       <Link to="/" className="button-like">Back to home</Link>
     </div>
   );
@@ -700,6 +735,22 @@ export default function App() {
               element={<RequireRole path="/account/builders"><AccountBuilders /></RequireRole>}
             />
             <Route path="/notifications" element={<Notifications />} />
+            {/* Monthly core-value reviews (20261106000000). /values is open
+                to every crew role (installer floor); /values/owner is gated
+                on the REAL role, never a previewed one (RequireRealOwner,
+                not RequireRole) — the brief's "avoid mounting owner queries
+                in crew previews". The server re-checks owner rank on every
+                call regardless; this is the client-side half of the same
+                rule. */}
+            <Route path="/values" element={<ValuesPage />} />
+            <Route
+              path="/values/owner"
+              element={
+                <RequireRealOwner>
+                  <ValuesOwnerPage />
+                </RequireRealOwner>
+              }
+            />
             <Route path="/stuck" element={<StuckWrites />} />
             <Route path="/diagnostics" element={<Diagnostics />} />
             <Route path="/suggestions" element={<Suggestions />} />

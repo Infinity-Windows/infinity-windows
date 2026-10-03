@@ -1133,6 +1133,49 @@ export function enqueueToolboxSign(input: ToolboxSignPayload, pdf: Blob | null):
   );
 }
 
+/**
+ * A monthly values review (20261106000000). `requestId` is both the outbox
+ * entry's own stable id AND the value values_submit() dedupes on — a dropped
+ * reply and the ordinary retry send the SAME request, and the server answers
+ * with the original receipt rather than a second submission. `ownerId` is the
+ * rater, exactly like a clock punch, so a device that changes hands never
+ * sends someone else's half-finished review under the new signed-in person.
+ */
+export interface ValuesSubmitInput {
+  requestId: string;
+  assignmentId: string;
+  raterId: string;
+  rubricVersion: number;
+  /** An ARRAY of {slug, score} — never an object keyed by slug. See
+   *  values_submit's own comment: a plain object silently collapses a
+   *  duplicate key before the server ever sees it. */
+  scores: { slug: string; score: number }[];
+  comment: string | null;
+}
+
+export function enqueueValuesSubmit(input: ValuesSubmitInput): Promise<string> {
+  const currentUserId = signerNow().userId;
+  if (currentUserId && currentUserId !== input.raterId) {
+    return Promise.reject(new Error("This review belongs to another account on this phone. Sign in again before submitting it."));
+  }
+  return enqueue(
+    {
+      op: "values_submit",
+      ownerId: input.raterId,
+      payload: {
+        requestId: input.requestId,
+        assignmentId: input.assignmentId,
+        raterId: input.raterId,
+        rubricVersion: input.rubricVersion,
+        scores: input.scores,
+        comment: input.comment,
+      },
+    },
+    null,
+    { id: input.requestId },
+  );
+}
+
 export interface UploadInput {
   /**
    * A receipt files as an attachment of kind `document`. A voice memo and a
