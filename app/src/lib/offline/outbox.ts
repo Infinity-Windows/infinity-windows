@@ -28,7 +28,7 @@ import {
 import { createDefaultStore, UnreadableOutboxEntryError } from "./outboxStore";
 import { logOfflineEvent } from "./telemetry";
 import { REQUEST_TIMEOUT_MS, uploadTimeoutMs } from "./weakSignal";
-import { signedInEmail, signedInUserId, subscribeSignedIn } from "../signedIn";
+import { signedInEmail, signedInUserId, subscribeSignedIn, signInMark, stillSignedInAs } from "../signedIn";
 import { clientWithToken, supabase } from "../supabase";
 import { authorEvidence, belongsTo, ownershipOf, type Signer } from "./entryOwner";
 import type { JobMode } from "../types";
@@ -591,6 +591,10 @@ function withOwner(input: OutboxInput): OutboxInput {
 const IDENTITY_KEYS = ["createdBy", "projectId", "packageId", "windowId", "installEventId", "bucket", "path"] as const;
 function sameIdentity(a: OutboxEntry, b: OutboxEntry): boolean {
   if (a.op !== b.op) return false;
+  if (a.op === "values_submit") {
+    return a.ownerId === b.ownerId && a.payload.assignmentId === b.payload.assignmentId
+      && a.payload.digest === b.payload.digest && a.payload.requestId === b.payload.requestId;
+  }
   // Two different people handing over the same id is not the same photo.
   if (a.ownerId && b.ownerId && a.ownerId !== b.ownerId) return false;
   return IDENTITY_KEYS.every((k) => {
@@ -746,6 +750,10 @@ async function runDrain(forceDue: boolean): Promise<void> {
       const res = await drainUntilSettled(store, handlers, {
         forceDue: forceThisPass,
         sendDeadlineMs,
+        beginValuesAttempt: (entry) => {
+          const mark = signInMark();
+          return () => Boolean(entry.ownerId && stillSignedInAs(mark, entry.ownerId));
+        },
         onAttempt: (entry) => {
           if (forceThisPass || entry.op === "photo_upload") {
             logOfflineEvent({ type: "queue", scope: "outbox", message: `Started ${entry.op}` });
@@ -757,7 +765,7 @@ async function runDrain(forceDue: boolean): Promise<void> {
         onChange: () => void refresh(),
         onSent: (entry, result) => {
           photoReceipts.record(entry);
-          recordSent(entry, Date.now());
+          recordSent(entry.op === "values_submit" ? { ...entry, payload: { assignmentId: entry.payload.assignmentId } } : entry, Date.now());
           if (entry.op === "toolbox_sign") {
             recordConfirmedSignature(result);
             for (const cb of toolboxSentListeners) {
@@ -1130,6 +1138,52 @@ export function enqueueToolboxSign(input: ToolboxSignPayload, pdf: Blob | null):
     },
     pdf,
     { id: input.clientId },
+  );
+}
+
+/**
+ * A monthly values review (20261106000000). `requestId` is both the outbox
+ * entry's own stable id AND the value values_submit() dedupes on — a dropped
+ * reply and the ordinary retry send the SAME request, and the server answers
+ * with the original receipt rather than a second submission. `ownerId` is the
+ * rater, exactly like a clock punch, so a device that changes hands never
+ * sends someone else's half-finished review under the new signed-in person.
+ */
+export interface ValuesSubmitInput {
+  requestId: string;
+  assignmentId: string;
+  raterId: string;
+  rubricVersion: number;
+  /** An ARRAY of {slug, score} — never an object keyed by slug. See
+   *  values_submit's own comment: a plain object silently collapses a
+   *  duplicate key before the server ever sees it. */
+  scores: readonly { slug: string; score: number }[];
+  comment: string | null;
+  digest: string;
+}
+
+export function enqueueValuesSubmit(input: ValuesSubmitInput): Promise<string> {
+  const currentUserId = signerNow().userId;
+  if (currentUserId && currentUserId !== input.raterId) {
+    return Promise.reject(new Error("This review belongs to another account on this phone. Sign in again before submitting it."));
+  }
+  return enqueue(
+    {
+      op: "values_submit",
+      ownerId: input.raterId,
+      payload: {
+        requestId: input.requestId,
+        assignmentId: input.assignmentId,
+        raterId: input.raterId,
+        rubricVersion: input.rubricVersion,
+        scores: input.scores,
+        comment: input.comment,
+        digest: input.digest,
+        encodingVersion: "forge-values-submit/v1",
+      },
+    },
+    null,
+    { id: input.requestId },
   );
 }
 

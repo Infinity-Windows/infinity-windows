@@ -315,6 +315,13 @@ export const QUERY_KEY_ROOTS: QueryKeyRootEntry[] = [
   { root: "unitSearch", offline: false },
   { root: "unitSessions", offline: false },
   { root: "vaultPinStatus", offline: false },
+  // Monthly core-value reviews (20261106000000). Privacy-sensitive, per-user
+  // review data: never kept in the phone's persisted cache, where another
+  // account signing in on the same device could read a stale copy of who
+  // reviewed whom, or an owner's raw report.
+  { root: "valuesMyTasks", offline: false },
+  { root: "valuesMySummary", offline: false },
+  { root: "valuesOwnerReport", offline: false },
   { root: "vehicle", offline: false },
   { root: "vehicleDriveSessions", offline: false },
   { root: "vehicleFinancials", offline: false },

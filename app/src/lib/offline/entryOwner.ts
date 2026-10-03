@@ -57,6 +57,11 @@ const AUTHOR_ID_FIELD: ReadonlyMap<OutboxOp, string> = new Map([
   ["hex_portal_outcome", "actorId"],
   ["hex_learning_draft", "actorId"],
   ["toolbox_sign", "profileId"],
+  // A values review names its own rater (20261106000000) — the server
+  // derives rater identity from auth.uid() regardless, so this is belt and
+  // braces for the SAME-PHONE ownership question this file answers, not a
+  // trust boundary the server relies on.
+  ["values_submit", "raterId"],
 ]);
 
 function text(v: unknown): string | null {

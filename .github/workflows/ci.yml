@@ -115,6 +115,38 @@ jobs:
       # only the signer, the sign-time rule, and the real clock_in gate.
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-offline-toolbox-signing.mjs
 
+  values-sql-concurrency:
+    name: Monthly reviews database and concurrent acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: forge_values_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: npm install --prefix "$RUNNER_TEMP/values-db" --no-save @electric-sql/pglite@0.5.8
+      - name: Exercise actual migrated functions and role denials
+        run: PGLITE_MODULE="$RUNNER_TEMP/values-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-values-reviews.mjs
+      - name: Verify actual crew dealing, weighting and missed-month catch-up
+        run: PGLITE_MODULE="$RUNNER_TEMP/values-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-values-dealing.mjs
+      - name: Verify real two-session submission and freeze races
+        env:
+          VALUES_TEST_DB_URL: postgresql://postgres:fixture-only@localhost:5432/forge_values_test
+        run: python3 scripts/verify-values-concurrency.py
+
   trip-browser:
     name: Forge workflow on phone and desktop
     needs: release-baseline
@@ -168,6 +200,11 @@ jobs:
           printf 'Acquire::Retries "1";\nAcquire::http::Timeout "20";\nAcquire::https::Timeout "20";\n' | sudo tee /etc/apt/apt.conf.d/99forge-browser-downloads >/dev/null
           npx playwright install --with-deps chromium webkit
       # Uses the existing fixture-only server, never the shared database.
+      - name: Verify saved reviews preserve DB2 clock and photo access
+        working-directory: .
+        run: |
+          node scripts/verify-values-idb.mjs
+          node scripts/verify-values-idb.mjs --webkit
       - run: npm run e2e -- qc-history.spec.ts monday-files.spec.ts schedule-time-conflicts.spec.ts usability-foundations.spec.ts display-layout.spec.ts trip-sheet.spec.ts travel-crew.spec.ts workflow-plans.spec.ts schedule-remove-day.spec.ts schedule-ai-review.spec.ts crew-start-bar.spec.ts crew-end-time.spec.ts crew-unit-records.spec.ts unit-contributors.spec.ts custom-work.spec.ts timecard-weekly.spec.ts unassigned-time.spec.ts project-hours.spec.ts time-entry-export.spec.ts daily-logs.spec.ts global-capture.spec.ts photos-upload.spec.ts honest-sync.spec.ts dictation.spec.ts monthly-salary.spec.ts servicing.spec.ts time-off.spec.ts hex-portal.spec.ts ask-reporting.spec.ts app-updates.spec.ts using-forge.spec.ts training-importer.spec.ts
       - name: Daily-log progress reports and pre-save photo capture
         run: npm run e2e -- daily-logs-progress.spec.ts
@@ -193,6 +230,10 @@ jobs:
       # they can lose a saved punch or send it as the next person even while
       # the ordinary clock screen tests remain green.
       - run: npm run e2e -- offline-session.spec.ts outbox-owner.spec.ts
+      - name: Monthly values worker and owner flows on phone browsers
+        run: |
+          npm run e2e -- monthly-values-reviews.spec.ts
+          npm run e2e -- monthly-values-reviews.spec.ts --browser=webkit
       # Who a job bills to: the job page field and the two Job timecards
       # columns the Friday invoice script reads (20261034000000). Its own step
       # for the reason given above.

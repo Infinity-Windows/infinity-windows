@@ -1698,8 +1698,61 @@ export function createSupabaseHandlers(
     );
   };
 
+  /**
+   * A monthly values review, saved with no signal (20261106000000). The
+   * request id IS the outbox entry's stable id (see enqueueValuesSubmit),
+   * so a resend after a dropped reply is the exact same request —
+   * values_submit() answers with the original receipt rather than a second
+   * submission. A changed payload under an already-accepted request, or a
+   * second assignment slot already completed by someone else's request, is a
+   * real conflict (23505) and must NOT retry — the person reopens the review
+   * to see the current state.
+   */
+  const valuesSubmit: OpHandler = async (entry) => {
+    const { normalizeValuesSubmission, hashValuesSubmission, validateValuesResponse } = await import("../values/receiptContract");
+    const p = entry.payload;
+    const assignmentId = str(p.assignmentId);
+    const requestId = str(p.requestId);
+    const rubricVersion = num(p.rubricVersion);
+    // An ARRAY of {slug,score} — see values_submit's own comment on why an
+    // object keyed by slug is refused (it cannot carry a real duplicate).
+    const scores = Array.isArray(p.scores) ? p.scores : null;
+    const digest = str(p.digest);
+    if (!assignmentId || !requestId || rubricVersion == null || !scores || !digest
+      || requestId !== entry.id || entry.ownerId !== str(p.raterId)
+      || p.encodingVersion !== "forge-values-submit/v1"
+      || !(p.comment === null || typeof p.comment === "string")) {
+      throw tagPermanent(new Error("This review was saved on the phone without everything it needs. Open it again."));
+    }
+    const submission = normalizeValuesSubmission({
+      assignmentId, requestId, rubricVersion,
+      scores: scores as { slug: string; score: number }[], comment: p.comment as string | null,
+    });
+    if (await hashValuesSubmission(submission) !== digest) {
+      throw tagPermanent(new Error("Saved review contents no longer match its request."));
+    }
+    const { data, error } = await supabase.rpc("values_submit", {
+      p_assignment_id: assignmentId,
+      p_request_id: requestId,
+      p_rubric_version: rubricVersion,
+      p_scores: submission.scores,
+      p_comment: submission.comment,
+    });
+    if (error) {
+      const code = (error as { code?: string }).code;
+      if (code === "23505" || code === "42501") {
+        // A real conflict or a review that is not (or no longer) this
+        // account's to submit — never retried into a different outcome.
+        throw tagPermanent(error as Error);
+      }
+      throw missingGuard(error, "values review");
+    }
+    return await validateValuesResponse(data, { submission, expectedDigest: digest });
+  };
+
   return {
     toolbox_sign: toolboxSign,
+    values_submit: valuesSubmit,
     clock_in: clockIn,
     clock_out: clockOut,
     break_start: breakStart,

@@ -1,7 +1,7 @@
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { useQuery } from "@tanstack/react-query";
 import type { Session } from "@supabase/supabase-js";
-import { Suspense, useEffect, useState, type ReactNode } from "react";
+import { Suspense, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { listProjectsAnyStatus } from "./lib/api";
 import { lazyRoute } from "./lib/pwa/lazyRoute";
 import { isTrackingOnly } from "./lib/jobModes";
@@ -33,7 +33,8 @@ import { ViewAsRoleProvider } from "./lib/viewAsRole";
 import { useEffectiveRole } from "./lib/useEffectiveRole";
 import { useDesign } from "./lib/design/context";
 import { supabase } from "./lib/supabase";
-import { rememberSignedIn } from "./lib/signedIn";
+import { rememberSignedIn, signedInUserId, subscribeSignedIn } from "./lib/signedIn";
+import { clearPrivateValuesQueries } from "./lib/values/privateQueries";
 import { syncPinLockWithAuth } from "./lib/pinGate";
 import { Home } from "./pages/Home";
 import { Landing } from "./pages/Landing";
@@ -96,6 +97,13 @@ const AskMisses = lazyRoute(() => import("./pages/AskMisses").then((m) => ({ def
 const Knowledge = lazyRoute(() => import("./pages/Knowledge").then((m) => ({ default: m.Knowledge })));
 const AiSpend = lazyRoute(() => import("./pages/AiSpend").then((m) => ({ default: m.AiSpend })));
 const Notifications = lazyRoute(() => import("./pages/Notifications").then((m) => ({ default: m.Notifications })));
+// Monthly core-value reviews (20261106000000). Lazy: every crew member's
+// page, reached only from the Settings "My values" card, never a bottom-bar
+// or shell-chunk destination.
+const ValuesPage = lazyRoute(() => import("./pages/values/ValuesPage").then((m) => ({ default: m.ValuesPage })));
+const ValuesOwnerPage = lazyRoute(() =>
+  import("./pages/values/ValuesOwnerPage").then((m) => ({ default: m.ValuesOwnerPage })),
+);
 const Team = lazyRoute(() => import("./pages/Team").then((m) => ({ default: m.Team })));
 const ContainerViewer = lazyRoute(() =>
   import("./pages/storage/ContainerViewer").then((m) => ({ default: m.ContainerViewer })),
@@ -304,6 +312,51 @@ function RequireRole({
       <Link to="/" className="button-like">Back to home</Link>
     </div>
   );
+}
+
+/**
+ * Gates on the REAL role, never a previewed one (20261106000000). Unlike
+ * `RequireRole`, which deliberately uses `effectiveRole` so "view as role"
+ * previews faithfully, a page carrying raw, named, owner-only review data
+ * (the values review matrix) must not mount — and must not fire its query —
+ * while an owner is simply previewing a lower role, nor (even though the
+ * preview system cannot raise rank) read like it would open for one. The
+ * server re-checks real owner authority on every call regardless; this is
+ * the client-side half of the same rule.
+ */
+function RequireRealOwner({ children }: { children: ReactNode }) {
+  const { realRole, isPreviewing, isLoading } = useEffectiveRole();
+  if (isLoading) return <div className="page"><p className="muted">Loading…</p></div>;
+  if (realRole === "owner" && !isPreviewing) return <>{children}</>;
+  return (
+    <div className="page">
+      <header className="page-header">
+        <div>
+          <p className="home-greeting">Restricted</p>
+          <h1>Not available for your role</h1>
+        </div>
+      </header>
+      <p className="muted">This area is for the owner only.</p>
+      <Link to="/" className="button-like">Back to home</Link>
+    </div>
+  );
+}
+
+/** Values query data is private in memory as well as on disk. A sign-in or
+ * role/preview boundary drops every values query, including a late response
+ * from the previous viewer. Durable drafts remain separately owner-keyed. */
+function ValuesCacheBoundary() {
+  const userId = useSyncExternalStore(subscribeSignedIn, signedInUserId, signedInUserId);
+  const { realRole, isPreviewing } = useEffectiveRole();
+  const boundary = `${userId ?? "signed-out"}:${realRole ?? "unknown"}:${isPreviewing}`;
+  const previous = useRef<string | null>(null);
+  useEffect(() => {
+    if (previous.current !== null && previous.current !== boundary) {
+      clearPrivateValuesQueries(queryClient);
+    }
+    previous.current = boundary;
+  }, [boundary]);
+  return null;
 }
 
 /**
@@ -659,6 +712,7 @@ export default function App() {
       <FirstRunLanguagePicker />
       <PinGate userId={session.user.id}>
       <ViewAsRoleProvider>
+      <ValuesCacheBoundary />
       <BrowserRouter basename={routerBasename(import.meta.env.BASE_URL)}>
         <ClockProvider>
         {/* Renders nothing; puts the viewer's role on any crash report. */}
@@ -700,6 +754,22 @@ export default function App() {
               element={<RequireRole path="/account/builders"><AccountBuilders /></RequireRole>}
             />
             <Route path="/notifications" element={<Notifications />} />
+            {/* Monthly core-value reviews (20261106000000). /values is open
+                to every crew role (installer floor); /values/owner is gated
+                on the REAL role, never a previewed one (RequireRealOwner,
+                not RequireRole) — the brief's "avoid mounting owner queries
+                in crew previews". The server re-checks owner rank on every
+                call regardless; this is the client-side half of the same
+                rule. */}
+            <Route path="/values" element={<ValuesPage />} />
+            <Route
+              path="/values/owner"
+              element={
+                <RequireRealOwner>
+                  <ValuesOwnerPage />
+                </RequireRealOwner>
+              }
+            />
             <Route path="/stuck" element={<StuckWrites />} />
             <Route path="/diagnostics" element={<Diagnostics />} />
             <Route path="/suggestions" element={<Suggestions />} />

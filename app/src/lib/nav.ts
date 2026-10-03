@@ -121,7 +121,13 @@ export type RoutePath =
   | "/suggestions"
   | "/settings"
   // Wave S: owner-only builder-login management (invite, grant/revoke jobs).
-  | "/account/builders";
+  | "/account/builders"
+  // Monthly core-value reviews (20261106000000). Hidden detail routes —
+  // reached from the Settings "My values" card, never a bottom-bar or menu
+  // destination of their own (owner instruction, 2026-10-03: no generic
+  // review wall, no new navigation surface).
+  | "/values"
+  | "/values/owner";
 
 /**
  * Rollout flag. Flip to `false` to instantly revert to the previous flat nav
@@ -301,6 +307,12 @@ export const NAV: NavDest[] = [
   { id: "photos", to: "/photos", label: "Photos & receipts", icon: "▨", minRole: "installer" },
   { id: "toolbox-history", to: "/toolbox-history", label: "Toolbox talk history", icon: "⛑", minRole: "installer" },
   { id: "daily-logs", to: "/daily-logs", label: "Daily logs", icon: "▤", minRole: "installer" },
+
+  // Monthly core-value reviews (20261106000000). Every active crew member
+  // gets the personal review task; reached only from the Settings "My
+  // values" card, so these carry no menu row of their own.
+  { id: "values", to: "/values", label: "My values", icon: "◆", minRole: "installer" },
+  { id: "values-owner", to: "/values/owner", label: "Values review matrix", icon: "◆", minRole: "owner" },
 ];
 
 const NAV_BY_PATH = new Map(NAV.map((d) => [d.to, d]));

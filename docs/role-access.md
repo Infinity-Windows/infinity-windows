@@ -43,7 +43,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Settings (`/settings`)
 - Notifications (`/notifications`)
 
-**Can reach (all 34 allowed destinations):**
+**Can reach (all 35 allowed destinations):**
 
 - Home (`/`)
 - Current Work (`/current-work`)
@@ -79,6 +79,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Photos & receipts (`/photos`)
 - Toolbox talk history (`/toolbox-history`)
 - Daily logs (`/daily-logs`)
+- My values (`/values`)
 
 **Blocked:**
 
@@ -104,6 +105,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Cost (`/costing`)
 - AI spend (`/ai-spend`)
 - Builder logins (`/account/builders`)
+- Values review matrix (`/values/owner`)
 
 ## Foreman
 
@@ -155,7 +157,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Settings (`/settings`)
 - Catalog (`/catalog`)
 
-**Can reach (all 41 allowed destinations):**
+**Can reach (all 42 allowed destinations):**
 
 - Home (`/`)
 - Current Work (`/current-work`)
@@ -198,6 +200,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Photos & receipts (`/photos`)
 - Toolbox talk history (`/toolbox-history`)
 - Daily logs (`/daily-logs`)
+- My values (`/values`)
 
 **Blocked:**
 
@@ -216,6 +219,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Cost (`/costing`)
 - AI spend (`/ai-spend`)
 - Builder logins (`/account/builders`)
+- Values review matrix (`/values/owner`)
 
 ## Supervisor
 
@@ -279,7 +283,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Catalog (`/catalog`)
 - Admin (`/admin`)
 
-**Can reach (all 53 allowed destinations):**
+**Can reach (all 54 allowed destinations):**
 
 - Home (`/`)
 - Current Work (`/current-work`)
@@ -334,12 +338,14 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Photos & receipts (`/photos`)
 - Toolbox talk history (`/toolbox-history`)
 - Daily logs (`/daily-logs`)
+- My values (`/values`)
 
 **Blocked:**
 
 - Cost (`/costing`)
 - AI spend (`/ai-spend`)
 - Builder logins (`/account/builders`)
+- Values review matrix (`/values/owner`)
 
 ## Owner
 
@@ -406,7 +412,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Admin (`/admin`)
 - Builder logins (`/account/builders`)
 
-**Can reach (all 56 allowed destinations):**
+**Can reach (all 58 allowed destinations):**
 
 - Home (`/`)
 - Current Work (`/current-work`)
@@ -464,6 +470,8 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Photos & receipts (`/photos`)
 - Toolbox talk history (`/toolbox-history`)
 - Daily logs (`/daily-logs`)
+- My values (`/values`)
+- Values review matrix (`/values/owner`)
 
 **Blocked:**
 

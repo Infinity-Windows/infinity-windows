@@ -489,6 +489,10 @@ describe("every NAV destination has a door", () => {
     // the same shape as the warehouse paths above, which lost their menu rows
     // and not their doors. One tap deeper than it was, on purpose.
     "/scan",
+    // Both are linked from the Settings "My values" card. They deliberately
+    // do not take a bottom-bar slot or another menu row.
+    "/values",
+    "/values/owner",
   ];
 
   it("every other NAV path appears in some role's menu or bottom bar", () => {

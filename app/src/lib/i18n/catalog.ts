@@ -18,6 +18,7 @@ import type { CatalogEntry } from "./translate";
 import type { WorkKey } from "./workCatalog";
 import type { DesignKey } from "./designCatalog";
 import type { ScheduleConflictKey } from "./scheduleConflictCatalog";
+import type { ValuesKey } from "./valuesCatalog";
 
 /**
  * Keys whose Spanish still needs a bilingual crew member to verify it — the
@@ -4145,6 +4146,8 @@ export const CATALOG = {
   "notif.learningReview.sub": {en:"{job} · from {name}",es:"{job} · de {name}"},
   "stuck.op.saveBuildFacts": { en: "Job fact", es: "Dato del trabajo" },
   "stuck.op.toolboxSign": { en: "Toolbox talk signature", es: "Firma de la charla de seguridad" },
+  "stuck.op.valuesSubmit": { en: "Values review", es: "Revisión de valores" },
+  "stuck.valuesReviewIssue": { en: "Review needs attention. Open My values to check it.", es: "La revisión necesita atención. Abre Mis valores para revisarla." },
   // A clock-in held behind a toolbox talk signature Forge refused: it was
   // never sent, so it never failed on its own — it waits for the signature.
   "stuck.heldForSignature": {
@@ -5600,7 +5603,7 @@ export const CATALOG = {
  * keys are part of this type through a type-only import, which costs the
  * entry chunk nothing, while its strings ride in the route's own chunk.
  */
-export type TKey = keyof typeof CATALOG | WorkKey | DesignKey | ScheduleConflictKey;
+export type TKey = keyof typeof CATALOG | WorkKey | DesignKey | ScheduleConflictKey | ValuesKey;
 
 /**
  * Add a lazily loaded phrasebook to the live catalog. Called at module load

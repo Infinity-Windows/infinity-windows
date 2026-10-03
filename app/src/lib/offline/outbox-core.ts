@@ -110,7 +110,12 @@ export type OutboxOp =
   // tapped after it `dependsOn` it. Keyed by the phone's client id in the
   // payload; the signature image and the PDF go to paths made from that id,
   // with upsert, so a resend lands on the same files and the same row.
-  | "toolbox_sign";
+  | "toolbox_sign"
+  // A monthly core-value review (20261106000000). Carries the assignment id,
+  // a stable request id and all eight scores; values_submit() is the single
+  // atomic, idempotent write — a resend with the same request id answers with
+  // the original receipt, never a second submission.
+  | "values_submit";
 
 /**
  * queued   — waiting to be sent (respecting nextAttemptAt backoff)
@@ -392,7 +397,11 @@ export function applyFailure(
   return {
     ...entry,
     attemptCount,
-    lastError: errorMessage(err) || "Send failed",
+    lastError: entry.op === "values_submit"
+      ? errorCode(err) === "23505" ? "Values review conflict"
+        : errorCode(err) === "42501" ? "Values review access denied"
+          : "Values review needs attention"
+      : errorMessage(err) || "Send failed",
     status: dead ? "failed" : "queued",
     nextAttemptAt: dead ? entry.nextAttemptAt : now + computeBackoffMs(attemptCount),
   };
@@ -773,6 +782,7 @@ const OP_REGISTRY = {
   hex_portal_outcome: true,
   hex_learning_draft: true,
   toolbox_sign: true,
+  values_submit: true,
 } as const satisfies Record<OutboxOp, true>;
 
 /** Every op the queue can carry — the single list tests enumerate. */
@@ -855,6 +865,8 @@ export interface OutboxStore {
    * for an entry that has since been sent or thrown away — changes nothing.
    */
   swap(id: string, expected: OutboxEntry | null, next: OutboxEntry | null): Promise<boolean>;
+  /** Values only: save a verified receipt and remove this exact write in one transaction. */
+  acknowledgeValues?(entry: OutboxEntry, receipt: unknown, context?: { signal?: AbortSignal; canCommit?: () => boolean }): Promise<boolean>;
 }
 
 /**
@@ -899,6 +911,8 @@ export interface DrainOpts {
   /** A person's explicit Send now bypasses backoff for one pass without
    * rewriting large photo blobs in IndexedDB first. */
   forceDue?: boolean;
+  /** Capture the sign-in generation at the start of one values attempt. */
+  beginValuesAttempt?: (entry: OutboxEntry) => () => boolean;
   /** A send began; useful for showing progress before a slow upload ends. */
   onAttempt?: (entry: OutboxEntry) => void;
   onHeld?: (entry: OutboxEntry) => void;
@@ -1031,6 +1045,7 @@ export async function drainStore(
     let onBlob: ((blob: Blob | null) => void) | null = null;
 
     const send = async (): Promise<SendOutcome> => {
+      const valuesStillCurrent = entry.op === "values_submit" ? opts.beginValuesAttempt?.(entry) : undefined;
       // Marked only if the entry is still what this pass read. A mark the
       // phone's database answers after the watchdog has recorded the attempt
       // finds that newer record and writes nothing — it used to put back the
@@ -1051,6 +1066,21 @@ export async function drainStore(
           },
           signal,
         });
+        if (entry.op === "values_submit") {
+          if (signal.aborted) throw new SendTookTooLongError();
+          if (valuesStillCurrent && !valuesStillCurrent()) throw new HeldForOwnerError();
+          // Keep the local receipt commit inside this send's watchdog. A
+          // stalled IndexedDB acknowledgment must not hold every later clock
+          // and photo behind it after the network has already answered.
+          const acknowledged = await store.acknowledgeValues?.(entry, result, { signal, canCommit: valuesStillCurrent }) ?? false;
+          if (!acknowledged) {
+            if (signal.aborted) throw new SendTookTooLongError();
+            if (valuesStillCurrent && !valuesStillCurrent()) throw new HeldForOwnerError();
+            throw new Error("Review receipt could not be saved on this phone.");
+          }
+          if (signal.aborted) throw new SendTookTooLongError();
+          if (valuesStillCurrent && !valuesStillCurrent()) throw new HeldForOwnerError();
+        }
         return { kind: "sent", result };
       } catch (error) {
         if (error instanceof HeldForOwnerError) return { kind: "held" };
@@ -1124,7 +1154,9 @@ export async function drainStore(
     } else if (outcome.kind === "sent") {
       // The server has it. Delete the entry this attempt marked — not one
       // that has changed since.
-      await store.swap(entry.id, entry, null);
+      if (entry.op !== "values_submit") {
+        await store.swap(entry.id, entry, null);
+      }
       sent += 1;
       // Confirmation is different from an absent entry (which may have been
       // discarded). A UI observer must never turn a successful write into a retry.

@@ -74,6 +74,12 @@ describe("whose queued write is it", () => {
     expect(ownershipOf(entry("photo_upload", { createdBy: null }), A)).toBe("unknown");
   });
 
+  it("a values review belongs to the rater its payload names, same shape as toolbox_sign", () => {
+    const e = entry("values_submit", { raterId: A.userId });
+    expect(ownershipOf(e, A)).toBe("mine");
+    expect(ownershipOf(e, B)).toBe("theirs");
+  });
+
   it("an owner the entry carries outranks any evidence in its payload", () => {
     const e = entry("photo_upload", { createdBy: B.email }, A.userId);
     expect(ownershipOf(e, A)).toBe("mine");

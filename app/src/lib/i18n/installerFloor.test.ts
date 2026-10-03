@@ -100,6 +100,8 @@ const ROUTE_FILES: Partial<Record<string, string[]>> = {
   photos: ["pages/Photos.tsx"],
   "toolbox-history": ["pages/ToolboxHistory.tsx"],
   "daily-logs": ["pages/work/DailyLogs.tsx"],
+  // Monthly core-value reviews (20261106000000).
+  values: ["pages/values/ValuesPage.tsx"],
 };
 
 /**

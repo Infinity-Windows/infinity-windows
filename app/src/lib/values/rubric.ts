@@ -1,0 +1,221 @@
+/**
+ * The eight core-value rubrics — English canonical text, with provenance.
+ *
+ * SOURCE AND PROVENANCE (owner-approved, 2026-10-03). This is a verbatim copy
+ * of the pinned Horizon snapshot's rubric copy
+ * (`taylorhorizon/horizon-hub-44@94b0d20cd0882ee1173092d2892b97a4a198d946`,
+ * `src/lib/coreValues.ts` + `src/lib/valueRundowns.ts`), reproduced exactly as
+ * recorded in `../outputs/Horizon-Crew-Goals-Reviews-2026-10-03/HORIZON-CORE-VALUE-REVIEWS.md`.
+ * That source's own file header says the DEFINITIONS are the verbatim
+ * official VTO text, while the briefing/criteria/anchors are reworded from a
+ * paper "Employee Evaluation Survey" and marked DRAFTS for Taylor's red pen —
+ * not yet a confirmed final wording even on Horizon's own side.
+ *
+ * This build keeps that distinction rather than hiding it: Forge's owner has
+ * approved building this exact text as the review the crew sees, but has not
+ * separately re-authored or re-approved the wording itself. Treat the
+ * briefing/criteria/anchors as literal, company-specific copy carried over
+ * as-is — company-specific wording is deliberately left literal per the
+ * current build instruction, not polished or Forge-ized.
+ *
+ * OPEN ITEM, FLAGGED RATHER THAN SILENTLY FIXED: the Ownership briefing's
+ * source text names "Horizon" by name ("you carry personal responsibility for
+ * Horizon's vision, image, and effort"). That is Horizon's literal copy, kept
+ * exactly as pinned rather than quietly substituted — swapping in "the
+ * company" or "Forge" would be exactly the kind of unapproved rewrite this
+ * file exists to avoid. Whether to rename it before real release is an open
+ * owner decision (docs/monthly-values-reviews.md), not a decision made here.
+ *
+ * `rubric.fixture.json` is a byte-for-byte copy of this same English text,
+ * captured independently so `rubric.test.ts` can fail if the two ever drift —
+ * the thing a hand-edit of either file would otherwise do silently.
+ */
+
+export type CoreValueSlug =
+  | "fullsend"
+  | "ownership"
+  | "integrity"
+  | "sincerity"
+  | "tribe"
+  | "growth"
+  | "strategic"
+  | "safety";
+
+/** Order matters: this is the fixed display and database CHECK order. */
+export const VALUE_SLUGS: readonly CoreValueSlug[] = [
+  "fullsend",
+  "ownership",
+  "integrity",
+  "sincerity",
+  "tribe",
+  "growth",
+  "strategic",
+  "safety",
+] as const;
+
+export type ValueRubric = {
+  slug: CoreValueSlug;
+  title: string;
+  /** The official VTO definition, verbatim. */
+  definition: string;
+  briefing: string;
+  criteria: readonly [string, string, string];
+  anchors: { low: string; mid: string; high: string };
+};
+
+/**
+ * The rubric version this build ships. Bumped only when the text below
+ * changes; stored per-period in `values_periods.rubric_version` so a change
+ * never silently recomputes an already-accepted submission (brief, §5).
+ */
+export const RUBRIC_VERSION_LABEL = "horizon-parity-draft-2026-08-27";
+
+export const VALUE_RUBRICS: Record<CoreValueSlug, ValueRubric> = {
+  fullsend: {
+    slug: "fullsend",
+    title: "Full Send",
+    definition: "We are all in — no reservations.",
+    briefing:
+      "Full send is all in, no reservations. Nobody coaxes you into the work — you come at the project with enthusiasm, grit, and grind, and you stay committed to what you signed up for instead of quietly backing out when it gets hard. Adverse conditions are where full send shows: you push through and perform anyway.",
+    criteria: [
+      "Do they have to be coaxed into participating, or do they attack the project with enthusiasm, grit, and grind?",
+      "Are they fully committed — looking forward, not retracting past commitments?",
+      "Do they push through and perform even in adverse situations or conditions?",
+    ],
+    anchors: {
+      low: "Needs frequent coaxing, avoids challenges, backs out of commitments when it gets hard.",
+      mid: "Steps up with effort but may hesitate or pull back against real challenges.",
+      high: "Proactively engages with energy and persistence; drives the work forward through tough conditions without hesitation.",
+    },
+  },
+  ownership: {
+    slug: "ownership",
+    title: "Ownership",
+    definition: "We hold ourselves and each other accountable.",
+    briefing:
+      "Ownership is holding yourself — and each other — accountable. When something with your name on it goes sideways, you take it, learn from it, and fix it instead of blaming or passing it off. You take real pride in the work. And it's bigger than your task list: you carry personal responsibility for Horizon's vision, image, and effort, because this company looks like whoever showed up today.",
+    criteria: [
+      "Do they take responsibility for their actions — mistakes and setbacks included — and learn instead of blaming?",
+      "Do they take pride in their work?",
+      "Do they take personal responsibility for the vision, image, and efforts of the company?",
+    ],
+    anchors: {
+      low: "Avoids responsibility, often blames others; little pride in the work; no ownership of the company's image.",
+      mid: "Acknowledges mistakes but sometimes deflects; takes pride in the work but doesn't always carry the bigger picture.",
+      high: "Fully owns actions and learns from mistakes; great pride in the work; consistently carries the company's vision and image like it's theirs.",
+    },
+  },
+  integrity: {
+    slug: "integrity",
+    title: "Integrity",
+    definition: "We do the right thing — every time.",
+    briefing:
+      "Integrity is doing the right thing every time — under pressure, in a bind, with nobody watching. It's being the person the crew can trust without hesitation: the torque mark that means torque, the answer that matches what actually happened. And it compounds: strong character makes the people around you better, because they see what right looks like and match it.",
+    criteria: [
+      "Do they do what's right even under pressure or in difficult circumstances?",
+      "Can they always be trusted, even when no one is looking?",
+      "Does their character inspire others to improve themselves?",
+    ],
+    anchors: {
+      low: "Compromises values under pressure; can't always be trusted; doesn't lift anyone around them.",
+      mid: "Tries to do right but falters in difficult spots; generally trustworthy with occasional lapses.",
+      high: "Always does what's right, trusted without hesitation, and their example visibly raises the people around them.",
+    },
+  },
+  sincerity: {
+    slug: "sincerity",
+    title: "Sincerity",
+    definition: "We have genuine and honest communication.",
+    briefing:
+      "Sincerity is genuine, honest communication — no pretense, no acting above anybody, no saying one thing and doing another. You mean what you say and you follow through on it. And when the hard, confrontational, necessary conversation needs to happen, you have it — straight, to the person, in a way you'd take yourself.",
+    criteria: [
+      "Are they genuine — or pretentious, snobbish, hypocritical, or superficial?",
+      "Do they mean what they say and fulfill the commitments they make?",
+      "Are they willing to have the difficult, confrontational, necessary conversations?",
+    ],
+    anchors: {
+      low: "Pretentious or hypocritical; says one thing, does another; ducks hard conversations and drops commitments.",
+      mid: "Occasionally inconsistent between words and actions; may avoid confrontation but generally follows through.",
+      high: "Genuine in word and action; always follows through; steps into the necessary hard conversation when it's needed.",
+    },
+  },
+  tribe: {
+    slug: "tribe",
+    title: "Tribe",
+    definition: "We foster safety and a sense of belonging.",
+    briefing:
+      "Tribe is belonging — working hard and celebrating hard with the crew, with no class lines between anybody. The newest guy and the longest-tenured lead stand on the same ground. You're welcoming enough that people actually feel it, and when it counts, you have everyone's back. We ride together, we finish together.",
+    criteria: [
+      "Do they work hard AND celebrate hard with the crew?",
+      "Are they welcoming and open enough that there are no class distinctions between them and anyone else?",
+      "Do they have everyone's back?",
+    ],
+    anchors: {
+      low: "Rarely in it with the team; creates distance; doesn't have the crew's back when it's hard.",
+      mid: "Works hard and joins the wins, but occasionally keeps distance; generally has the team's back.",
+      high: "Works hard, celebrates the crew's wins, approachable with zero hierarchy, always has everyone's back.",
+    },
+  },
+  growth: {
+    slug: "growth",
+    title: "Growth",
+    definition: "We expand capacity and develop talent.",
+    briefing:
+      "Growth is expanding what you're capable of and developing the people around you. You go after development — training, mentorship, the harder task — and you honestly work at getting better instead of coasting. The two-way test: can you teach, and are you teachable? Good questions asked, good questions answered.",
+    criteria: [
+      "Do they seek out development — education, training, mentorship?",
+      "Do they honestly strive to get better, and support others in improving?",
+      "Can they teach, and are they teachable? Do they ask and answer quality questions?",
+    ],
+    anchors: {
+      low: "Avoids development, little effort to improve, doesn't support others' growth, struggles to teach or be taught.",
+      mid: "Seeks development sometimes and strives to improve, but support for others is inconsistent.",
+      high: "Actively pursues growth for themselves and the team; excels at teaching; asks and answers insightful questions.",
+    },
+  },
+  strategic: {
+    slug: "strategic",
+    title: "Strategic",
+    definition: "We implement continuous improvement.",
+    briefing:
+      "Strategic is continuous improvement, done deliberately. You run the plays we've already built — correctly, consistently — instead of freelancing. You track your numbers and actually think about them. And you think ahead of the work: spotting the flawed process before it costs the crew a day, and pushing the better way instead of living with the broken one.",
+    criteria: [
+      "Do they follow the strategies we've implemented — correctly and consistently?",
+      "Do they accurately and consistently track their data, and think about it?",
+      "Do they think critically and ahead of time — always hunting for the flawed process and the better way?",
+    ],
+    anchors: {
+      low: "Struggles to follow the playbook; tracking is inconsistent; rarely thinks ahead or questions a broken process.",
+      mid: "Generally follows the strategy and tracks the data, but misses details and improves reactively, not ahead of time.",
+      high: "Runs the playbook consistently, tracks accurately, and proactively finds and fixes flawed processes before they cost us.",
+    },
+  },
+  safety: {
+    slug: "safety",
+    title: "Safety",
+    definition: "We intentionally ensure the wellbeing of ourselves and others.",
+    briefing:
+      "Safety is intentional — the wellbeing of yourself and everyone around you, on purpose, every day. Protocols followed seriously, risks spotted and handled before they become incidents. And it's wider than harnesses: never putting yourself or anyone else in a questionable situation, through what you do or what you say. Every person home safe, every day.",
+    criteria: [
+      "Are they serious about following safety protocols and guidelines, consistently?",
+      "How aware are they of potential risks — and do they act to mitigate them?",
+      "Do they ever put themselves or others in questionable situations — through actions or language?",
+    ],
+    anchors: {
+      low: "Rarely follows protocols, overlooks risks, puts people in danger through actions or language.",
+      mid: "Generally follows protocols and knows the risks, but doesn't always act to head them off.",
+      high: "Consistently follows protocols, proactively finds and mitigates risks, never endangers anyone — in action or in language.",
+    },
+  },
+};
+
+export function rubricBySlug(slug: string): ValueRubric | undefined {
+  return VALUE_RUBRICS[slug as CoreValueSlug];
+}
+
+/** 1–3 low, 4–6 mid, 7–10 high — the band a tapped score reveals. */
+export function anchorBandFor(score: number): "low" | "mid" | "high" {
+  if (score <= 3) return "low";
+  if (score <= 6) return "mid";
+  return "high";
+}
