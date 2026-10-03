@@ -133,7 +133,14 @@ export const APP_GUIDE: AppGuideEntry[] = [
     label: "Data",
     minRole: "supervisor",
     blurb:
-      "The company's ledger of where time goes: hours lost to blocks by reason, rework and redos, true labor cost per job, estimating coverage and evidence health, crew on-tool time, and each job's data quality. Every number derives from stored sessions and keeps its provenance.",
+      "In the new design, follow a job's recorded payroll back to original activity evidence, see classified/unknown/conflicted coverage and unit-area exclusions. General overhead stays separate. Classic keeps the existing reports here; the new design keeps those reports under Summary. Historical breaks, unverified dimensions and unaccepted final QC are disclosed rather than guessed.",
+  },
+  {
+    path: "/summary",
+    label: "Summary",
+    minRole: "supervisor",
+    blurb:
+      "The preserved company reports: blocks by reason, rework, job labor, estimating coverage and evidence health, crew on-tool time, and data quality, with all existing filters and source ledgers. Available through the new design's More menu and Data page.",
   },
   {
     path: "/storage",

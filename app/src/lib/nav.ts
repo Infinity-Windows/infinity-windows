@@ -66,6 +66,7 @@ export type RoutePath =
   | "/scan"
   | "/studio"
   | "/data"
+  | "/summary"
   | "/storage"
   | "/storage/tag"
   | "/storage/out"
@@ -213,6 +214,7 @@ export const NAV: NavDest[] = [
   // The company's ledger of where time goes (grilled 2026-08-17):
   // supervisor+ ONLY — on-tool and per-person time live here.
   { id: "data", to: "/data", label: "Data", icon: "▤", minRole: "supervisor" },
+  { id: "summary", to: "/summary", label: "Summary", icon: "▤", minRole: "supervisor" },
   { id: "ask", to: "/ask", label: "Ask", icon: "?", minRole: "installer" },
   { id: "notifications", to: "/notifications", label: "Notifications", icon: "◔", minRole: "installer" },
   // Installer floor, deliberately — NOT foreman as first recommended. The
@@ -496,7 +498,8 @@ const MENU_DEF: MenuSection[] = [
       // canAccess gates this to supervisor+ (owner ask, 2026-08-26).
       { to: "/jobs/history", label: "Job history", Icon: LayoutGrid },
       { to: "/studio", label: "Studio", Icon: PenTool },
-      { to: "/data", label: "Data", Icon: Database },
+      { to: "/data", label: "Data", labelKey: "nav.item.data", Icon: Database },
+      { to: "/summary", label: "Summary", labelKey: "nav.item.summary", Icon: Database },
       { to: "/photos", label: "Photos & receipts", Icon: Camera },
       { to: "/daily-logs", label: "Daily logs", labelKey: "nav.item.dailyLogs", Icon: ClipboardList },
     ],
@@ -721,6 +724,7 @@ export function menuForRole(
   const out: MenuSection[] = [];
   for (const section of MENU_DEF) {
     const items = section.items
+      .filter((it) => design === "new" || it.to !== "/summary")
       .filter((it) => !it.to || canAccess(role, it.to, grants))
       // K1.1: "Work" everywhere in the new design (see installerMenu).
       .map((it) => (design === "new" && it.to === "/" ? { ...it, label: "Work" } : it));

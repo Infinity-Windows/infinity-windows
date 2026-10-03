@@ -94,7 +94,7 @@ const RUNG_LABELS: Record<LadderRung, string> = {
   manual: "manual estimate",
 };
 
-export function DataHub() {
+export function DataHub({ summary = false }: { summary?: boolean }) {
   const t = useT();
   const projects = useQuery({ queryKey: ["projectsAll"], queryFn: listProjectsAnyStatus });
   const profiles = useQuery({
@@ -305,7 +305,7 @@ export function DataHub() {
   return (
     <div className="page">
       <header className="page-header">
-        <h1>Data</h1>
+        <h1>{summary ? t("nav.item.summary") : "Data"}</h1>
         <JobMultiSelect projects={projects.data ?? []} selection={jobFilter} onChange={setJobFilter} loading={projects.isPending} />
       </header>
 

@@ -219,6 +219,7 @@ const ToolboxHistory = lazyRoute(() =>
 const Supplies = lazyRoute(() => import("./pages/Supplies").then((m) => ({ default: m.Supplies })));
 const Qc = lazyRoute(() => import("./pages/Qc").then((m) => ({ default: m.Qc })));
 const DataHub = lazyRoute(() => import("./pages/DataHub").then((m) => ({ default: m.DataHub })));
+const WorkData = lazyRoute(() => import("./pages/WorkData").then((m) => ({ default: m.WorkData })));
 const StgApp = lazyRoute(() => import("./pages/stg/StgApp").then((m) => ({ default: m.StgApp })));
 const AccountBuilders = lazyRoute(() =>
   import("./pages/AccountBuilders").then((m) => ({ default: m.AccountBuilders })),
@@ -277,6 +278,11 @@ function RoleLanding() {
  * effective (possibly previewed) role for presentation; server mutations still
  * run as the real user.
  */
+function DataRoute() {
+  const { design } = useDesign();
+  return design === "new" ? <WorkData /> : <DataHub />;
+}
+
 function RequireRole({
   path,
   minRole,
@@ -873,10 +879,11 @@ export default function App() {
               path="/data"
               element={
                 <RequireRole path="/data">
-                  <DataHub />
+                  <DataRoute />
                 </RequireRole>
               }
             />
+            <Route path="/summary" element={<RequireRole path="/summary"><DataHub summary /></RequireRole>} />
             {/* Studio's "Loading the Studio…" wording now lives in the
                 lazyRoute() call above, alongside the 20-second limit every
                 other lazy screen gets (K0.7) — no Suspense needed here. */}
