@@ -31,6 +31,15 @@ await db.query(`insert into public.time_shifts(id,profile_id,project_id,status,c
   ('10000000-0000-4000-8000-000000000002',$2,$3,'approved','2026-10-01T08:00:00Z','2026-10-01T16:00:00Z',1800,null,true),
   ('10000000-0000-4000-8000-000000000003',$2,$3,'rejected','2026-10-01T08:00:00Z','2026-10-01T10:00:00Z',0,null,false),
   ('10000000-0000-4000-8000-000000000004',$2,$3,'submitted','2026-10-01T16:00:00Z','2026-10-01T15:00:00Z',0,null,true)`, [people[0], people[1], job]);
+// Three hours since clock-in with 15 minutes of earlier break and a break
+// running for 30 minutes: 2h15m provisional. A resumed second worker has
+// two hours since clock-in and 10 minutes of earlier break: 1h50m. Together
+// these are 4h05m, with second-level drift handled from RPC's own as_of.
+await db.query(`insert into public.time_shifts(id,profile_id,project_id,status,clock_in_at,clock_out_at,break_seconds,break_started_at)
+  values
+  ('10000000-0000-4000-8000-000000000005',$1,$3,'open',date_trunc('second',statement_timestamp()) - interval '3 hours',null,900,date_trunc('second',statement_timestamp()) - interval '30 minutes'),
+  ('10000000-0000-4000-8000-000000000006',$2,$3,'open',date_trunc('second',statement_timestamp()) - interval '2 hours',null,600,null)`, [people[0], people[1], job]);
+const openRows = (await db.query("select clock_in_at,break_seconds,break_started_at from public.time_shifts where status='open' order by id")).rows;
 await db.exec(await readFile(new URL("../supabase/migrations/20261105000000_crew_goal_summary.sql", import.meta.url), "utf8"));
 async function asUser(id) {
   await db.exec("reset role");
@@ -42,8 +51,19 @@ for (const id of people.slice(0, 3)) {
   const result = (await db.query("select public.crew_goal_summary($1) as goal", [job])).rows[0].goal;
   assert.equal(Number(result.recorded_hours), 15, "two workers' paid time is additive; suspect valid shift remains recorded");
   assert.equal(result.unresolved_shifts, 3, "two flags on one valid shift count once, plus rejected and invalid duration");
+  assert.equal(result.open_shifts, 2, "both workers' open shifts count");
+  const asOf = new Date(result.as_of).getTime();
+  const expectedRunningSeconds = openRows.reduce((total, row) => {
+    const elapsed = Math.floor((asOf - new Date(row.clock_in_at).getTime()) / 1000);
+    const activeBreak = row.break_started_at
+      ? Math.floor((asOf - new Date(row.break_started_at).getTime()) / 1000) : 0;
+    return total + Math.max(0, elapsed - row.break_seconds - activeBreak);
+  }, 0);
+  assert.ok(Math.abs(expectedRunningSeconds - 14_700) <= 2, "hand total is 2h15m plus 1h50m");
+  assert.ok(Math.abs(Number(result.running_provisional_hours) * 3600 - expectedRunningSeconds) < 0.001,
+    "running time subtracts stored and current breaks without losing the resumed worker");
   assert.equal(result.goal_revision, 3);
-  assert.equal(Number(result.allowance_hours), 105);
+  assert.ok(Math.abs(Number(result.allowance_hours) - (105 - expectedRunningSeconds / 3600)) < 1e-9);
   assert.deepEqual(Object.keys(result).sort(), ["allowance_hours","as_of","goal_hours","goal_revision","goal_updated_at","open_shifts","recorded_hours","running_provisional_hours","unresolved_shifts"].sort());
   if (id !== people[2]) await assert.rejects(db.query("select public.crew_goal_summary($1)", [hidden]));
 }
