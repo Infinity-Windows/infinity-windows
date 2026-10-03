@@ -4,6 +4,8 @@
 // origin, blob: module loader, production service or review content in logs.
 import fs from 'node:fs';
 import http from 'node:http';
+import os from 'node:os';
+import path from 'node:path';
 import { createRequire } from 'node:module';
 const req = createRequire(process.cwd() + '/app/package.json');
 const ts = req('typescript');
@@ -28,11 +30,17 @@ const server = http.createServer((request, response) => {
   response.end(route[1]);
 });
 await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
-let browser;
+let context;
+let userDataDir;
 let page;
 try {
-  browser = await (engine === 'webkit' ? webkit : chromium).launch({ headless: true });
-  page = await browser.newPage();
+  // A fresh disk-backed profile models Safari/PWA durable storage. Ephemeral
+  // Linux WebKit passed string writes but rejected even the bare native Blob
+  // control with UnknownError. Keep both controls and all application checks.
+  userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'values-idb-profile-'));
+  context = await (engine === 'webkit' ? webkit : chromium).launchPersistentContext(userDataDir, { headless: true });
+  page = context.pages()[0] ?? await context.newPage();
+  console.log(JSON.stringify({ engine, context: 'persistent', isolatedProfile: true }));
   page.on('console', message => {
     if (message.text().startsWith('[values-idb-stage]')) console.log(message.text());
   });
@@ -170,6 +178,14 @@ try {
   console.error(JSON.stringify({ engine, diagnostics }, null, 2));
   throw error;
 } finally {
-  await browser?.close();
-  await new Promise(resolve => server.close(resolve));
+  // Cleanup also runs after launch/assertion failures or a failed context close.
+  try {
+    await context?.close();
+  } finally {
+    try {
+      await new Promise(resolve => server.close(resolve));
+    } finally {
+      if (userDataDir) fs.rmSync(userDataDir, { recursive: true, force: true });
+    }
+  }
 }
