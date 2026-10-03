@@ -5,7 +5,7 @@ import fs from 'node:fs'; import {createRequire} from 'node:module';
 const req=createRequire(process.cwd()+'/app/package.json'); const ts=req('typescript'); const {chromium,webkit}=req('playwright');
 const transpile=p=>ts.transpileModule(fs.readFileSync(p,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;
 const code={core:transpile('app/src/lib/offline/outbox-core.ts'),store:transpile('app/src/lib/offline/outboxStore.ts'),auth:transpile('app/src/lib/signedIn.ts'),legacy:transpile('scripts/fixtures/outbox-store-v2-baseline.ts')};
-const browser=await (process.argv.includes('--webkit')?webkit:chromium).launch({headless:true}); const page=await browser.newPage(); await page.route('**/*',r=>r.fulfill({contentType:'text/html',body:'fixture'})); await page.goto('http://localhost:44448');
+const browser=await (process.argv.includes('--webkit')?webkit:chromium).launch({headless:true}); const page=await browser.newPage(); await page.route('http://localhost:44448/',r=>r.fulfill({contentType:'text/html',body:'fixture'})); await page.goto('http://localhost:44448');
 try { console.log(JSON.stringify(await page.evaluate(async code=>{
  const url=s=>URL.createObjectURL(new Blob([s],{type:'text/javascript'})); const coreUrl=url(code.core),authUrl=url(code.auth);
  const core=await import(coreUrl),auth=await import(authUrl),storage=await import(url(code.store.replace('"./outbox-core"',JSON.stringify(coreUrl)).replace('"../signedIn"',JSON.stringify(authUrl))));

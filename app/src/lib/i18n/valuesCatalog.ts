@@ -46,8 +46,11 @@ export const VALUES_CATALOG = {
   "values.form.period": { en: "For {month}", es: "Para {month}" },
   "values.form.scoreLabel": { en: "Score 1–10", es: "Puntuación 1–10" },
   "values.form.unscored": { en: "Not yet scored", es: "Aún sin calificar" },
+  // i18n-same-on-purpose: numeric score ranges are identical in both languages.
   "values.form.anchor.low": { en: "1–3", es: "1–3" },
+  // i18n-same-on-purpose: numeric score ranges are identical in both languages.
   "values.form.anchor.mid": { en: "4–6", es: "4–6" },
+  // i18n-same-on-purpose: numeric score ranges are identical in both languages.
   "values.form.anchor.high": { en: "7–10", es: "7–10" },
   "values.form.comment.label": { en: "Overall comment (optional)", es: "Comentario general (opcional)" },
   "values.form.comment.help": {

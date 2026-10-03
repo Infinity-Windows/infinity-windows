@@ -16,7 +16,9 @@ databases holding the same real-world things under different ids.
 from __future__ import annotations
 
 import copy
+import contextlib
 import importlib.util
+import io
 import json
 import random
 import sys
@@ -36,6 +38,7 @@ from supabase_merge_lib import (
     MISSING,
     POPULATED,
     SURROGATE_ONLY,
+    VALUES_MANUAL_RECONCILIATION_TABLES,
     IdRemapper,
     compare_inventories,
     dedup_key_enforcement,
@@ -48,7 +51,7 @@ from supabase_merge_lib import (
     parse_migrations,
     total_rows,
 )
-from supabase_merge_plan import Plan, insert_statement, sql_literal
+from supabase_merge_plan import Plan, insert_statement, main as merge_plan_main, render, sql_literal
 
 # supabase-compare.py is not an importable module name, so load it by path.
 _compare_spec = importlib.util.spec_from_file_location(
@@ -204,7 +207,9 @@ class TestSchemaParsing(unittest.TestCase):
         # +1: schedule_ai_reasons — why Forge AI drafted each schedule row,
         # readable by supervisors and owners only (K2.8, renumbered to
         # 20261035000000 to land after the bill-to migrations).
-        self.assertEqual(len(SCHEMA.tables), 187)  # includes semimonthly timecard signatures
+        # +10 monthly-values tables: private policy, immutable reviews and
+        # frozen accounting/provenance, plus reserved reminder claims.
+        self.assertEqual(len(SCHEMA.tables), 197)  # includes semimonthly timecard signatures
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 
@@ -314,6 +319,31 @@ class TestMigrationVersions(unittest.TestCase):
 
 
 class TestDedupKeys(unittest.TestCase):
+    def test_values_review_identity_never_dedups_distinct_accepted_history(self):
+        expected = {
+            "values_rubric_versions": ("version_label",),
+            "values_periods": ("period_start",),
+            "values_assignments": ("period_start", "rater_id", "subject_id"),
+            "values_submissions": ("rater_id", "request_id"),
+            "values_scores": ("id",),
+            "values_quarterly_ratings": ("id",),
+            "values_quarterly_values": ("id",),
+            "values_quarterly_accounting": ("rating_id",),
+            "values_quarterly_manifest": ("id",),
+            "values_reminder_claims": ("dedupe_key",),
+        }
+        for table, key in expected.items():
+            self.assertEqual(DEDUP_KEYS[table], key)
+            self.assertEqual(dedup_key_enforcement(SCHEMA, table), ENFORCED)
+        self.assertNotEqual(
+            natural_key_of("values_submissions", {"rater_id": "r", "request_id": "one"}),
+            natural_key_of("values_submissions", {"rater_id": "r", "request_id": "two"}),
+        )
+        self.assertNotEqual(
+            natural_key_of("values_scores", {"id": "first", "submission_id": "s", "value_slug": "safety"}),
+            natural_key_of("values_scores", {"id": "second", "submission_id": "s", "value_slug": "safety"}),
+        )
+
     def test_every_table_has_a_decision(self):
         undecided = sorted(set(SCHEMA.tables) - set(DEDUP_KEYS))
         self.assertEqual(undecided, [], f"no dedup decision for: {undecided}")
@@ -641,6 +671,58 @@ class TestSqlRendering(unittest.TestCase):
 
 
 class TestPlan(unittest.TestCase):
+    def test_monthly_values_full_rows_are_blocked_without_private_insert_sql(self):
+        tables = sorted(VALUES_MANUAL_RECONCILIATION_TABLES)
+        source = {"project_ref": "source", "tables": {name: {"rows": 1} for name in tables}}
+        source["tables"]["window_types"] = {"rows": 1}
+        target = {"project_ref": "target", "tables": {name: {"rows": 0} for name in tables}}
+        target["tables"]["window_types"] = {"rows": 0}
+        private = "private review comment and score"
+        rows = {name: [{"id": name, "comment": private, "score": 9}] for name in tables}
+        rows["window_types"] = [{"id": "ordinary", "type_code": "TEST"}]
+        plan = Plan(SCHEMA, source, target, rows, {}, 0)
+        statements = dict(plan.statements())
+        self.assertEqual(plan.manual_values_tables, tables)
+        self.assertTrue(all(any(b.startswith(name + ":") for b in plan.blockers) for name in tables))
+        self.assertFalse(set(statements) & set(tables))
+        self.assertIn("insert into public.window_types", "\n".join(statements["window_types"]))
+        text = render(plan, "source", "target")
+        self.assertNotIn(private, text)
+        for name in tables:
+            self.assertIn(name + ": monthly-values review data exists", text)
+
+    def test_count_only_and_target_only_monthly_values_are_also_blocked(self):
+        source = {"tables": {"values_submissions": {"rows": 2}}}
+        target = {"tables": {"values_submissions": {"rows": 0}, "values_periods": {"rows": 1}}}
+        plan = Plan(SCHEMA, source, target, {}, {}, 0)
+        self.assertEqual(plan.manual_values_tables, ["values_periods", "values_submissions"])
+        self.assertEqual(plan.statements(), [])
+        self.assertEqual(len(plan.blockers), 2)
+
+    def test_empty_monthly_values_do_not_block_ordinary_planning(self):
+        source = {"tables": {"values_scores": {"rows": 0}, "window_types": {"rows": 1}}}
+        target = {"tables": {"values_scores": {"rows": 0}, "window_types": {"rows": 0}}}
+        plan = Plan(SCHEMA, source, target, {"window_types": [{"id": "ordinary", "type_code": "TEST"}]}, {}, 0)
+        self.assertEqual(plan.manual_values_tables, [])
+        self.assertEqual(plan.blockers, [])
+        self.assertIn("window_types", dict(plan.statements()))
+
+    def test_cli_exits_nonzero_for_count_only_values_data(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "source.json"
+            target = Path(directory) / "target.json"
+            source.write_text(json.dumps({"project_ref": "source", "tables": {"values_periods": {"rows": 1}}}))
+            target.write_text(json.dumps({"project_ref": "target", "tables": {"values_periods": {"rows": 0}}}))
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                code = merge_plan_main(["--source", str(source), "--target", str(target)])
+        self.assertEqual(code, 2)
+        self.assertIn("BLOCKERS", output.getvalue())
+        self.assertIn("values_periods: monthly-values review data exists", output.getvalue())
+        self.assertNotIn("insert into public.values_periods", output.getvalue())
+
     def _plan(self, source_raw, target_raw, limit=0):
         import tempfile
 

@@ -182,6 +182,12 @@ assert.ok(!withoutCron.includes("cron.schedule"), "the cron.schedule block was s
 assert.ok(!withoutCron.includes("extensions.digest") && !withoutCron.includes(" digest("), "no pgcrypto digest() dependency remains — built-in sha256 only");
 await db.exec(withoutCron);
 await db.exec("set check_function_bodies = on");
+// Exercise the announcement against the actual curated-note schema, including
+// its kind CHECK. The earlier fixture did not load this note/schema pair.
+await db.exec(await migration("20261021000000_role_scoped_app_updates.sql"));
+await db.exec(await migration("20261106010000_monthly_values_reviews_note.sql"));
+const valuesAnnouncement = (await db.query("select kind from public.app_release_notes where id='2026-10-03-monthly-values-review'")).rows;
+assert.deepEqual(valuesAnnouncement, [{ kind: "improvement" }]);
 
 const uid = (n) => `00000000-0000-4000-8000-00000000000${n}`;
 // A valid-hex project id — "p" (for "project") is not a hex digit, so it

@@ -121,7 +121,7 @@ def submission(aid, request, with_start=False):
 def cutoff(seconds):
     run('create table if not exists fixture_cutoff(at timestamptz); truncate fixture_cutoff; '
         f"insert into fixture_cutoff values(clock_timestamp()+interval '{seconds} seconds'); "
-        'create or replace function _values_quarter_cutoff_at(date) returns timestamptz '
+        'create or replace function _values_quarter_cutoff_at(p_quarter date) returns timestamptz '
         'language sql stable as $$ select at from fixture_cutoff $$;')
 
 def reset():

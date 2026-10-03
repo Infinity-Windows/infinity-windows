@@ -840,7 +840,56 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     # -- them, and a union that kept both would let the merged database warn
     # -- twice about a card it has already warned about.
     "credential_nudges": ("certification_id", "kind", "on_date"),
+    # Monthly values: a period is one private, immutable policy snapshot. A
+    # same-month collision MUST be compared by a human before running a merge:
+    # the planner's ON CONFLICT DO NOTHING would otherwise pick one weight
+    # ladder silently. This registry describes identity, not merge approval.
+    "values_rubric_versions": ("version_label",),
+    "values_periods": ("period_start",),
+    # One assignment per period/rater/subject; parent ID remapping must carry
+    # its children with it. Reason/solo differences still require review.
+    "values_assignments": ("period_start", "rater_id", "subject_id"),
+    # A phone-minted request ID is the identity of an accepted immutable
+    # submission. Do NOT match only the unique period/rater/subject triple:
+    # two distinct accepted reviews with different requests must conflict,
+    # not silently discard one review and its private scores/comment.
+    "values_submissions": ("rater_id", "request_id"),
+    # Scores and frozen results keep their original row identities. Choosing
+    # their parent/slug natural UNIQUE pairs would skip a different score or
+    # freeze after a parent remap; a uniqueness failure is the safe signal to
+    # stop and reconcile that immutable history before any operational merge.
+    "values_scores": ("id",),
+    "values_quarterly_ratings": ("id",),
+    "values_quarterly_values": ("id",),
+    # Accounting has no separate id: one private immutable math record per
+    # frozen rating. Equal rating IDs must be compared, never assumed equal.
+    "values_quarterly_accounting": ("rating_id",),
+    # Manifest rows are separate provenance events, and deleting one during
+    # source purge is intentional. Never dedup by (rating, submission) here.
+    "values_quarterly_manifest": ("id",),
+    # Reserved push ledger: the unique dedupe key identifies one claim, not
+    # just two notifications that happen to have the same wording.
+    "values_reminder_claims": ("dedupe_key",),
 }
+
+#: The monthly-values graph contains private policy snapshots, immutable
+#: reviews/scores, frozen accounting, and provenance. A dedup key describes
+#: identity for inventory and comparison, but the generic merge planner's
+#: ON CONFLICT DO NOTHING cannot compare the contents or reconcile children.
+#: Any nonempty table here requires a separate, reviewed, content-aware graph
+#: reconciliation. Do not emit runnable inserts for these tables.
+VALUES_MANUAL_RECONCILIATION_TABLES = frozenset({
+    "values_rubric_versions",
+    "values_periods",
+    "values_assignments",
+    "values_submissions",
+    "values_scores",
+    "values_quarterly_ratings",
+    "values_quarterly_values",
+    "values_quarterly_accounting",
+    "values_quarterly_manifest",
+    "values_reminder_claims",
+})
 
 #: Tables where combining two projects' rows is meaningless or actively wrong.
 #: The merge must choose one project's rows wholesale, or recompute from the

@@ -180,7 +180,7 @@ grant select on public.values_assignments to authenticated;
 -- CALLER: a revoked/retired account's lingering JWT reads nothing here.
 create policy "rater reads own assignments" on public.values_assignments
   for select to authenticated
-  using (rater_id = auth.uid() and public._values_caller_eligible()
+  using (not public.is_partner_user() and rater_id = auth.uid() and public._values_caller_eligible()
     and public.is_test_profile(subject_id) = public.is_test_profile(auth.uid()));
 
 -- Owner access is additionally PARTITIONED (independent review: test/live
@@ -193,7 +193,7 @@ create policy "rater reads own assignments" on public.values_assignments
 -- rule that should ever actually exclude a row the deal engine produced.
 create policy "owner reads all assignments" on public.values_assignments
   for select to authenticated
-  using (
+  using (not public.is_partner_user() and
     public._values_caller_is_owner()
     and public.is_test_profile(subject_id) = public.is_test_profile(auth.uid())
     and public.is_test_profile(rater_id) = public.is_test_profile(auth.uid())
@@ -243,7 +243,7 @@ grant select on public.values_submissions to authenticated;
 -- Same caller-partition rule as "owner reads all assignments" above.
 create policy "owner reads all submissions" on public.values_submissions
   for select to authenticated
-  using (
+  using (not public.is_partner_user() and
     public._values_caller_is_owner()
     and public.is_test_profile(subject_id) = public.is_test_profile(auth.uid())
     and public.is_test_profile(rater_id) = public.is_test_profile(auth.uid())
@@ -275,7 +275,7 @@ grant select on public.values_scores to authenticated;
 -- whose rater AND subject are both in the caller's own test/live partition.
 create policy "owner reads all scores" on public.values_scores
   for select to authenticated
-  using (
+  using (not public.is_partner_user() and
     public._values_caller_is_owner()
     and exists (
       select 1 from public.values_submissions s
@@ -310,13 +310,13 @@ grant select on public.values_quarterly_ratings to authenticated;
 
 create policy "subject reads own frozen quarters" on public.values_quarterly_ratings
   for select to authenticated
-  using (subject_id = auth.uid() and public._values_caller_eligible());
+  using (not public.is_partner_user() and subject_id = auth.uid() and public._values_caller_eligible());
 
 -- Same caller-partition rule: a frozen quarter is also test-or-live by its
 -- subject, and an owner only reads their own partition's frozen rows.
 create policy "owner reads all frozen quarters" on public.values_quarterly_ratings
   for select to authenticated
-  using (
+  using (not public.is_partner_user() and
     public._values_caller_is_owner()
     and public.is_test_profile(subject_id) = public.is_test_profile(auth.uid())
   );
@@ -338,7 +338,7 @@ grant select on public.values_quarterly_values to authenticated;
 
 create policy "read via owning rating" on public.values_quarterly_values
   for select to authenticated
-  using (
+  using (not public.is_partner_user() and
     exists (
       select 1 from public.values_quarterly_ratings r
       where r.id = values_quarterly_values.rating_id
@@ -1584,7 +1584,7 @@ alter table public.values_quarterly_accounting enable row level security;
 revoke all on public.values_quarterly_accounting from public, anon, authenticated;
 grant select on public.values_quarterly_accounting to authenticated;
 create policy "owner reads frozen accounting" on public.values_quarterly_accounting
-  for select to authenticated using (
+  for select to authenticated using (not public.is_partner_user() and
     public._values_caller_is_owner() and exists (
       select 1 from public.values_quarterly_ratings r
       where r.id = values_quarterly_accounting.rating_id
@@ -1609,7 +1609,7 @@ alter table public.values_quarterly_manifest enable row level security;
 revoke all on public.values_quarterly_manifest from public, anon, authenticated;
 grant select on public.values_quarterly_manifest to authenticated;
 create policy "owner reads manifest" on public.values_quarterly_manifest
-  for select to authenticated using (
+  for select to authenticated using (not public.is_partner_user() and
     public._values_caller_is_owner()
     and public.is_test_profile(rater_id) = public.is_test_profile(auth.uid())
     and exists (
