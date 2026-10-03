@@ -1709,6 +1709,7 @@ export function createSupabaseHandlers(
    * to see the current state.
    */
   const valuesSubmit: OpHandler = async (entry) => {
+    const { normalizeValuesSubmission, hashValuesSubmission, validateValuesResponse } = await import("../values/receiptContract");
     const p = entry.payload;
     const assignmentId = str(p.assignmentId);
     const requestId = str(p.requestId);
@@ -1716,15 +1717,26 @@ export function createSupabaseHandlers(
     // An ARRAY of {slug,score} — see values_submit's own comment on why an
     // object keyed by slug is refused (it cannot carry a real duplicate).
     const scores = Array.isArray(p.scores) ? p.scores : null;
-    if (!assignmentId || !requestId || rubricVersion == null || !scores) {
+    const digest = str(p.digest);
+    if (!assignmentId || !requestId || rubricVersion == null || !scores || !digest
+      || requestId !== entry.id || entry.ownerId !== str(p.raterId)
+      || p.encodingVersion !== "forge-values-submit/v1"
+      || !(p.comment === null || typeof p.comment === "string")) {
       throw tagPermanent(new Error("This review was saved on the phone without everything it needs. Open it again."));
+    }
+    const submission = normalizeValuesSubmission({
+      assignmentId, requestId, rubricVersion,
+      scores: scores as { slug: string; score: number }[], comment: p.comment as string | null,
+    });
+    if (await hashValuesSubmission(submission) !== digest) {
+      throw tagPermanent(new Error("Saved review contents no longer match its request."));
     }
     const { data, error } = await supabase.rpc("values_submit", {
       p_assignment_id: assignmentId,
       p_request_id: requestId,
       p_rubric_version: rubricVersion,
-      p_scores: scores,
-      p_comment: str(p.comment) ?? null,
+      p_scores: submission.scores,
+      p_comment: submission.comment,
     });
     if (error) {
       const code = (error as { code?: string }).code;
@@ -1735,7 +1747,7 @@ export function createSupabaseHandlers(
       }
       throw missingGuard(error, "values review");
     }
-    return data;
+    return await validateValuesResponse(data, { submission, expectedDigest: digest });
   };
 
   return {

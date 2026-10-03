@@ -28,7 +28,7 @@ import {
 import { createDefaultStore, UnreadableOutboxEntryError } from "./outboxStore";
 import { logOfflineEvent } from "./telemetry";
 import { REQUEST_TIMEOUT_MS, uploadTimeoutMs } from "./weakSignal";
-import { signedInEmail, signedInUserId, subscribeSignedIn } from "../signedIn";
+import { signedInEmail, signedInUserId, subscribeSignedIn, signInMark, stillSignedInAs } from "../signedIn";
 import { clientWithToken, supabase } from "../supabase";
 import { authorEvidence, belongsTo, ownershipOf, type Signer } from "./entryOwner";
 import type { JobMode } from "../types";
@@ -591,6 +591,10 @@ function withOwner(input: OutboxInput): OutboxInput {
 const IDENTITY_KEYS = ["createdBy", "projectId", "packageId", "windowId", "installEventId", "bucket", "path"] as const;
 function sameIdentity(a: OutboxEntry, b: OutboxEntry): boolean {
   if (a.op !== b.op) return false;
+  if (a.op === "values_submit") {
+    return a.ownerId === b.ownerId && a.payload.assignmentId === b.payload.assignmentId
+      && a.payload.digest === b.payload.digest && a.payload.requestId === b.payload.requestId;
+  }
   // Two different people handing over the same id is not the same photo.
   if (a.ownerId && b.ownerId && a.ownerId !== b.ownerId) return false;
   return IDENTITY_KEYS.every((k) => {
@@ -746,6 +750,10 @@ async function runDrain(forceDue: boolean): Promise<void> {
       const res = await drainUntilSettled(store, handlers, {
         forceDue: forceThisPass,
         sendDeadlineMs,
+        beginValuesAttempt: (entry) => {
+          const mark = signInMark();
+          return () => Boolean(entry.ownerId && stillSignedInAs(mark, entry.ownerId));
+        },
         onAttempt: (entry) => {
           if (forceThisPass || entry.op === "photo_upload") {
             logOfflineEvent({ type: "queue", scope: "outbox", message: `Started ${entry.op}` });
@@ -757,7 +765,7 @@ async function runDrain(forceDue: boolean): Promise<void> {
         onChange: () => void refresh(),
         onSent: (entry, result) => {
           photoReceipts.record(entry);
-          recordSent(entry, Date.now());
+          recordSent(entry.op === "values_submit" ? { ...entry, payload: { assignmentId: entry.payload.assignmentId } } : entry, Date.now());
           if (entry.op === "toolbox_sign") {
             recordConfirmedSignature(result);
             for (const cb of toolboxSentListeners) {
@@ -1149,8 +1157,9 @@ export interface ValuesSubmitInput {
   /** An ARRAY of {slug, score} — never an object keyed by slug. See
    *  values_submit's own comment: a plain object silently collapses a
    *  duplicate key before the server ever sees it. */
-  scores: { slug: string; score: number }[];
+  scores: readonly { slug: string; score: number }[];
   comment: string | null;
+  digest: string;
 }
 
 export function enqueueValuesSubmit(input: ValuesSubmitInput): Promise<string> {
@@ -1169,6 +1178,8 @@ export function enqueueValuesSubmit(input: ValuesSubmitInput): Promise<string> {
         rubricVersion: input.rubricVersion,
         scores: input.scores,
         comment: input.comment,
+        digest: input.digest,
+        encodingVersion: "forge-values-submit/v1",
       },
     },
     null,

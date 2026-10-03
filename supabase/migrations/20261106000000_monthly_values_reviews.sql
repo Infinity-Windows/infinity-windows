@@ -78,6 +78,30 @@ as $$
 $$;
 revoke all on function public._values_is_owner(uuid) from public, anon, authenticated;
 
+-- RLS `USING` clauses run as the QUERYING role, not as this function's
+-- owner — even though both helpers above are SECURITY DEFINER, Postgres
+-- still checks the caller's own EXECUTE privilege before it will let the
+-- caller invoke them at all, and both are deliberately revoked from
+-- `authenticated` because they accept AN ARBITRARY profile id (granting
+-- EXECUTE on them directly would let any signed-in account probe any other
+-- profile's retired/revoked/partner status by calling them outright, e.g.
+-- via PostgREST RPC — exactly the broad exposure the brief forbids). Every
+-- policy below only ever needs the CALLER's own eligibility, so these two
+-- zero-argument wrappers close over auth.uid() internally and are the only
+-- thing granted to `authenticated` — they reveal nothing about any uid an
+-- argument could otherwise name.
+create or replace function public._values_caller_eligible() returns boolean
+language sql stable security definer set search_path = public, pg_temp
+as $$ select public._values_eligible(auth.uid()) $$;
+revoke all on function public._values_caller_eligible() from public, anon;
+grant execute on function public._values_caller_eligible() to authenticated;
+
+create or replace function public._values_caller_is_owner() returns boolean
+language sql stable security definer set search_path = public, pg_temp
+as $$ select public._values_is_owner(auth.uid()) $$;
+revoke all on function public._values_caller_is_owner() from public, anon;
+grant execute on function public._values_caller_is_owner() to authenticated;
+
 create table if not exists public.values_rubric_versions (
   id int generated always as identity primary key,
   version_label text not null unique,
@@ -109,6 +133,7 @@ create table if not exists public.values_periods (
   timezone text not null default 'America/Denver',
   rubric_version int not null references public.values_rubric_versions(id),
   algorithm_version int not null default 1,
+  weight_version int not null default 1,
   weight_owner numeric not null,
   weight_lead numeric not null,
   weight_worker numeric not null,
@@ -155,11 +180,24 @@ grant select on public.values_assignments to authenticated;
 -- CALLER: a revoked/retired account's lingering JWT reads nothing here.
 create policy "rater reads own assignments" on public.values_assignments
   for select to authenticated
-  using (rater_id = auth.uid() and public._values_eligible(auth.uid()));
+  using (rater_id = auth.uid() and public._values_caller_eligible()
+    and public.is_test_profile(subject_id) = public.is_test_profile(auth.uid()));
 
+-- Owner access is additionally PARTITIONED (independent review: test/live
+-- separation is a caller-partition rule, not just an attendance exclusion).
+-- A test-flagged owner reads only rows where BOTH participants are also
+-- test-flagged; a real owner reads only rows where BOTH are real. The deal
+-- engine already never mixes partitions on either side when it writes a row
+-- (tmp_values_days is two-sided-filtered), so this is defense in depth
+-- against a hand-written/legacy/imported row ever crossing the wall, not a
+-- rule that should ever actually exclude a row the deal engine produced.
 create policy "owner reads all assignments" on public.values_assignments
   for select to authenticated
-  using (public._values_is_owner(auth.uid()));
+  using (
+    public._values_caller_is_owner()
+    and public.is_test_profile(subject_id) = public.is_test_profile(auth.uid())
+    and public.is_test_profile(rater_id) = public.is_test_profile(auth.uid())
+  );
 
 create table if not exists public.values_submissions (
   id uuid primary key default gen_random_uuid(),
@@ -175,6 +213,12 @@ create table if not exists public.values_submissions (
   rubric_version int not null references public.values_rubric_versions(id),
   algorithm_version int not null,
   submitted_at timestamptz not null default now(),
+  -- The exact, immutable receipt object values_submit() returned at
+  -- acceptance (VALUES-RECEIPT-CONTRACT.md §5) — stored literally, not
+  -- recomputed, so an exact replay after a later freeze returns the
+  -- byte-identical object rather than one re-derived from (by then
+  -- possibly differently-interpreted) current state.
+  receipt jsonb not null,
   unique (period_start, rater_id, subject_id),
   unique (rater_id, request_id)
 );
@@ -196,9 +240,14 @@ grant select on public.values_submissions to authenticated;
 -- the status values_my_tasks() reports — never a raw table read. Only the
 -- owner reads this table, and only while currently eligible and currently
 -- role='owner' (re-checked on every query via the function, not cached).
+-- Same caller-partition rule as "owner reads all assignments" above.
 create policy "owner reads all submissions" on public.values_submissions
   for select to authenticated
-  using (public._values_is_owner(auth.uid()));
+  using (
+    public._values_caller_is_owner()
+    and public.is_test_profile(subject_id) = public.is_test_profile(auth.uid())
+    and public.is_test_profile(rater_id) = public.is_test_profile(auth.uid())
+  );
 
 -- Deliberately NO policy lets subject_id = auth.uid() read this table either:
 -- a scored person sees only the thresholded, server-computed mirror
@@ -221,10 +270,20 @@ revoke all on public.values_scores from public, anon, authenticated;
 grant select on public.values_scores to authenticated;
 
 -- Same narrowing as values_submissions above: no rater raw-read policy. Only
--- the owner, currently eligible and currently role='owner'.
+-- the owner, currently eligible and currently role='owner' — and, same
+-- caller-partition rule as the two policies above, only for a submission
+-- whose rater AND subject are both in the caller's own test/live partition.
 create policy "owner reads all scores" on public.values_scores
   for select to authenticated
-  using (public._values_is_owner(auth.uid()));
+  using (
+    public._values_caller_is_owner()
+    and exists (
+      select 1 from public.values_submissions s
+      where s.id = values_scores.submission_id
+        and public.is_test_profile(s.subject_id) = public.is_test_profile(auth.uid())
+        and public.is_test_profile(s.rater_id) = public.is_test_profile(auth.uid())
+    )
+  );
 
 -- ============================================================================
 -- 2. Frozen quarterly ratings
@@ -251,11 +310,16 @@ grant select on public.values_quarterly_ratings to authenticated;
 
 create policy "subject reads own frozen quarters" on public.values_quarterly_ratings
   for select to authenticated
-  using (subject_id = auth.uid() and public._values_eligible(auth.uid()));
+  using (subject_id = auth.uid() and public._values_caller_eligible());
 
+-- Same caller-partition rule: a frozen quarter is also test-or-live by its
+-- subject, and an owner only reads their own partition's frozen rows.
 create policy "owner reads all frozen quarters" on public.values_quarterly_ratings
   for select to authenticated
-  using (public._values_is_owner(auth.uid()));
+  using (
+    public._values_caller_is_owner()
+    and public.is_test_profile(subject_id) = public.is_test_profile(auth.uid())
+  );
 
 create table if not exists public.values_quarterly_values (
   id uuid primary key default gen_random_uuid(),
@@ -279,8 +343,11 @@ create policy "read via owning rating" on public.values_quarterly_values
       select 1 from public.values_quarterly_ratings r
       where r.id = values_quarterly_values.rating_id
         and (
-          (r.subject_id = auth.uid() and public._values_eligible(auth.uid()))
-          or public._values_is_owner(auth.uid())
+          (r.subject_id = auth.uid() and public._values_caller_eligible())
+          or (
+            public._values_caller_is_owner()
+            and public.is_test_profile(r.subject_id) = public.is_test_profile(auth.uid())
+          )
         )
     )
   );
@@ -519,6 +586,14 @@ as $$
       and (p_until is null or s.period_start < p_until)
       and (p_cutoff is null or s.submitted_at < p_cutoff)
       and (select count(*) from public.values_scores sc2 where sc2.submission_id = s.id) = 8
+      -- CALLER/TEST PARTITION (independent review: test/live separation is a
+      -- partition rule, not only an attendance-time exclusion). The deal
+      -- engine already never pairs a test rater with a real subject or vice
+      -- versa, but this aggregate must not trust that invariant blindly any
+      -- more than it trusts the eight-scores one above it — a hand-written
+      -- or legacy row that somehow crossed the wall must still never feed a
+      -- subject's combined number.
+      and public.is_test_profile(s.rater_id) = public.is_test_profile(p_subject)
   ),
   rows as (
     select
@@ -592,11 +667,21 @@ returns table (
   -- wording (independent review finding #5).
   rubric_version int
 )
-language sql
+language plpgsql
 stable
 security definer
 set search_path = public, pg_temp
 as $$
+begin
+  -- Explicit, recognizable denial for an ineligible caller (consistent with
+  -- values_my_summary/values_submit), not a silently empty result set that
+  -- an offline/degrading client could mistake for "nothing owed" when the
+  -- real reason is a revoked/retired account.
+  if not public._values_eligible(auth.uid()) then
+    raise exception 'Sign in to see your values reviews.' using errcode = '42501';
+  end if;
+
+  return query
   select
     a.id,
     a.period_start,
@@ -610,17 +695,23 @@ as $$
   from public.values_assignments a
   join public.profiles p on p.id = a.subject_id
   left join public.values_submissions s on s.assignment_id = a.id
+    and (select count(*) from public.values_scores sc where sc.submission_id = s.id) = 8
   left join public.values_periods vp on vp.period_start = a.period_start
   where a.rater_id = auth.uid()
-    and public._values_eligible(auth.uid())
-    -- A subject who has since been retired/revoked effectively cancels the
-    -- outstanding task: a still-eligible rater is never asked to complete a
+    -- A subject who has since been retired/revoked withholds the
+    -- outstanding task (retirement cancels; revocation suspends): a still-eligible rater is never asked to complete a
     -- review of someone no longer with the company (independent review
     -- finding #7). The assignment ROW is preserved (nothing is deleted); it
-    -- simply never again shows as owed. A SUBMITTED one still shows, since
+    -- does not show as owed while the subject is ineligible. A SUBMITTED one still shows, since
     -- that history must be preserved regardless of the subject's status.
     and (s.id is not null or public._values_eligible(a.subject_id))
+    -- CALLER/TEST PARTITION: a row that somehow crossed the test/live wall
+    -- (never written by the deal engine itself, which is two-sided-filtered)
+    -- is always withheld, including submitted history. Retention does not
+    -- override the caller partition boundary.
+    and public.is_test_profile(a.subject_id) = public.is_test_profile(auth.uid())
   order by (s.id is not null), a.period_start desc, p.display_name;
+end;
 $$;
 
 comment on function public.values_my_tasks() is
@@ -641,7 +732,9 @@ as $$
   where a.rater_id = auth.uid()
     and public._values_eligible(auth.uid())
     and public._values_eligible(a.subject_id)
-    and not exists (select 1 from public.values_submissions s where s.assignment_id = a.id);
+    and public.is_test_profile(a.subject_id) = public.is_test_profile(auth.uid())
+    and not exists (select 1 from public.values_submissions s where s.assignment_id = a.id
+      and (select count(*) from public.values_scores sc where sc.submission_id = s.id) = 8);
 $$;
 
 comment on function public.values_my_owed_count() is
@@ -724,9 +817,18 @@ declare
   v_period public.values_periods;
   v_existing_by_request public.values_submissions;
   v_existing_by_slot public.values_submissions;
-  v_comment text := nullif(btrim(coalesce(p_comment, '')), '');
+  -- ASCII-space-only trim (VALUES-RECEIPT-CONTRACT.md §1) — btrim's second
+  -- argument pins the trim character set explicitly rather than relying on
+  -- its space-only default; null propagates through btrim/nullif untouched,
+  -- so a null p_comment needs no separate coalesce.
+  v_comment text := nullif(btrim(p_comment, ' '), '');
   v_digest text;
   v_canonical text;
+  v_score_lines text;
+  -- Accumulates the eight validated {slug: score} pairs for the canonical
+  -- digest, built only from entries already proven unique/known/in-range —
+  -- never from raw client JSON.
+  v_validated jsonb := '{}'::jsonb;
   v_rater_class text;
   v_submission_id uuid;
   v_slugs text[] := public._values_slugs();
@@ -735,11 +837,11 @@ declare
   v_raw text;
   v_score int;
   v_seen_slugs text[] := '{}';
-  v_pairs text[] := '{}';
   v_quarter date;
   v_cutoff timestamptz;
   v_accepted_at timestamptz;
   v_eligibility text;
+  v_receipt jsonb;
 begin
   if v_uid is null then
     raise exception 'Sign in before submitting a values review.' using errcode = '42501';
@@ -769,7 +871,12 @@ begin
   -- genuine JSON string, each slug known and seen at most once. Build the
   -- canonical "slug:score" pairs as we go for a deterministic digest input.
   for v_elem in select * from jsonb_array_elements(p_scores) loop
-    if jsonb_typeof(v_elem) <> 'object' or jsonb_typeof(v_elem->'slug') <> 'string' or jsonb_typeof(v_elem->'score') <> 'number' then
+    if jsonb_typeof(v_elem) is distinct from 'object' then
+      raise exception 'Each value needs exactly slug and score.' using errcode = '22023';
+    end if;
+    if (select count(*) from jsonb_object_keys(v_elem)) <> 2
+       or jsonb_typeof(v_elem->'slug') is distinct from 'string'
+       or jsonb_typeof(v_elem->'score') is distinct from 'number' then
       raise exception 'Each value needs a slug and a whole-number score.' using errcode = '22023';
     end if;
     v_slug := v_elem->>'slug';
@@ -791,55 +898,63 @@ begin
     if v_score < 1 or v_score > 10 then
       raise exception 'Every value needs a whole-number score from 1 to 10.' using errcode = '22023';
     end if;
-    v_pairs := array_append(v_pairs, v_slug || ':' || v_score::text);
+    v_validated := v_validated || jsonb_build_object(v_slug, v_score);
   end loop;
   if array_length(v_seen_slugs, 1) is distinct from 8 then
     raise exception 'All eight values need a score before you can submit.' using errcode = '22023';
   end if;
 
-  -- Canonical digest input: sorted pairs (order-independent), the assignment
-  -- and the rubric version the client says it displayed — so two payloads
-  -- that differ only in field order replay as the same request, and a
-  -- resend against a DIFFERENT rubric version is its own distinct request
-  -- rather than colliding with an earlier one (independent review finding
-  -- #5). Postgres's BUILT-IN sha256 (pg_catalog, no extension dependency —
-  -- independent review finding #10) over the UTF-8 bytes of that string.
-  select string_agg(x, ',' order by x) into v_canonical from unnest(v_pairs) as x;
-  v_digest := encode(
-    sha256(convert_to(
-      p_assignment_id::text || '|' || p_rubric_version::text || '|' || v_canonical || '|' || coalesce(v_comment, ''),
-      'UTF8'
-    )),
-    'hex'
-  );
+  -- CANONICAL DIGEST — exactly VALUES-RECEIPT-CONTRACT.md §2/§3, not an ad
+  -- hoc delimiter format: encoding version tag, assignment, REQUEST id and
+  -- rubric version (all three belong to the digest — independent review
+  -- finding #5 named the request id specifically), then the eight value
+  -- lines sorted by ASCII slug (COLLATE "C", never locale-sensitive default
+  -- ordering), then the comment as `null` or `hex:<utf8 hex>` so no
+  -- delimiter in a comment can ever be mistaken for a field boundary. Every
+  -- line, including the last, ends in a single LF. Postgres's BUILT-IN
+  -- pg_catalog.sha256 (no pgcrypto/extension-schema dependency — independent
+  -- review finding #10) over the UTF-8 bytes of that exact text.
+  select string_agg(key || '=' || value || chr(10), '' order by key collate "C")
+    into v_score_lines
+    from jsonb_each_text(v_validated);
 
-  -- IDEMPOTENT REPLAY: the same rater, the same assignment, the same request
-  -- id, ever again — answer with the ORIGINAL, immutable receipt (same
-  -- payload) or a conflict (changed payload), before touching the
-  -- assignment row at all. quarterEligibility is recomputed from the
-  -- immutable submitted_at and never changes after a later freeze runs
-  -- (independent review finding #5) — it describes eligibility AT
-  -- ACCEPTANCE, not whether a freeze has happened since.
+  v_canonical :=
+    'forge-values-submit/v1' || chr(10) ||
+    'assignment=' || p_assignment_id::text || chr(10) ||
+    'request=' || p_request_id::text || chr(10) ||
+    'rubric=' || p_rubric_version::text || chr(10) ||
+    v_score_lines ||
+    'comment=' || case when v_comment is null then 'null'
+      else 'hex:' || encode(convert_to(v_comment, 'UTF8'), 'hex') end || chr(10);
+
+  v_digest := encode(pg_catalog.sha256(convert_to(v_canonical, 'UTF8')), 'hex');
+
+  -- IDEMPOTENT REPLAY: the same rater, the same request id, ever again —
+  -- looked up by (rater_id, request_id) ALONE first (that pair is what the
+  -- table's own unique constraint protects), not also filtered by
+  -- assignment id, so a request id reused against a DIFFERENT assignment is
+  -- caught here as an explicit, friendly conflict rather than falling
+  -- through to the insert and raising a raw, unhandled constraint violation
+  -- (VALUES-RECEIPT-CONTRACT.md §5: "reuse against a different assignment is
+  -- conflict, never a new answer"). The SAME assignment + SAME digest is the
+  -- only path that returns the ORIGINAL, immutable, PERSISTED receipt
+  -- object — stored verbatim, never recomputed, so it is byte-identical
+  -- before and after a later freeze.
   select * into v_existing_by_request
     from public.values_submissions
-   where rater_id = v_uid and request_id = p_request_id and assignment_id = p_assignment_id;
+   where rater_id = v_uid and request_id = p_request_id;
   if v_existing_by_request.id is not null then
+    -- A stored receipt is still a read: a partition change cannot grant
+    -- access to historical opposite-partition identity on replay.
+    if public.is_test_profile(v_uid) <> public.is_test_profile(v_existing_by_request.subject_id) then
+      raise exception 'This review crosses the test/live account boundary and cannot be submitted.' using errcode = '42501';
+    end if;
+    if v_existing_by_request.assignment_id <> p_assignment_id then
+      raise exception 'This request id was already used for a different review. Reopen the review to get a new one.'
+        using errcode = '23505';
+    end if;
     if v_existing_by_request.payload_digest = v_digest then
-      return jsonb_build_object(
-        'submissionId', v_existing_by_request.id,
-        'assignmentId', v_existing_by_request.assignment_id,
-        'requestId', v_existing_by_request.request_id,
-        'digest', v_existing_by_request.payload_digest,
-        'rubricVersion', v_existing_by_request.rubric_version,
-        'acceptedAt', v_existing_by_request.submitted_at,
-        'periodStart', v_existing_by_request.period_start,
-        'quarterStart', public._values_quarter_of(v_existing_by_request.period_start),
-        'cutoff', public._values_quarter_cutoff_at(public._values_quarter_of(v_existing_by_request.period_start)),
-        'quarterEligibility',
-          case when v_existing_by_request.submitted_at < public._values_quarter_cutoff_at(public._values_quarter_of(v_existing_by_request.period_start))
-            then 'eligible_before_cutoff' else 'late_after_cutoff' end,
-        'replay', true
-      );
+      return jsonb_build_object('receipt', v_existing_by_request.receipt, 'replay', true);
     end if;
     raise exception 'This request was already submitted with different answers. Reopen the review to try again.'
       using errcode = '23505';
@@ -850,12 +965,21 @@ begin
     raise exception 'This review is not assigned to your account.' using errcode = '42501';
   end if;
   -- The subject must still be a current, eligible account — lifecycle
-  -- cancellation (independent review finding #7): a retired/revoked subject
+  -- denial while inaccessible (independent review finding #7): a retired/revoked subject
   -- can no longer be newly reviewed, even by a still-eligible rater holding
   -- an old assignment row (values_my_tasks already withholds it as "owed",
   -- this is the server-side enforcement of the same rule).
   if not public._values_eligible(v_assignment.subject_id) then
-    raise exception 'This person is no longer with the company. This review can no longer be submitted.'
+    raise exception 'This review is currently unavailable because the person does not have review access.'
+      using errcode = '42501';
+  end if;
+  -- CALLER/TEST PARTITION: a test (QA/sandbox) rater and a real subject, or
+  -- vice versa, never submit against each other — even against a row that
+  -- somehow crossed the wall (the deal engine itself never writes one). A
+  -- test rater reviewing a test subject, or a real rater reviewing a real
+  -- subject, is unaffected (same-partition QA self-probes remain possible).
+  if public.is_test_profile(v_uid) <> public.is_test_profile(v_assignment.subject_id) then
+    raise exception 'This review crosses the test/live account boundary and cannot be submitted.'
       using errcode = '42501';
   end if;
 
@@ -865,6 +989,11 @@ begin
   -- reads anything — a freeze in flight for this period's quarter and a
   -- submit for this period can never interleave.
   perform pg_advisory_xact_lock(hashtextextended('values_period:' || v_assignment.period_start::text, 0));
+
+  if not public._values_eligible(v_uid) or not public._values_eligible(v_assignment.subject_id)
+     or public.is_test_profile(v_uid) <> public.is_test_profile(v_assignment.subject_id) then
+    raise exception 'Review access changed while waiting. Reopen this review.' using errcode = '42501';
+  end if;
 
   -- COMPETING REQUEST FOR A COMPLETED ASSIGNMENT: a different request id
   -- arriving for an assignment that already has ANY accepted submission —
@@ -893,43 +1022,53 @@ begin
 
   -- Captured AFTER the governing lock, so a transaction that waited for the
   -- lock across the cutoff instant is judged by when it actually runs, not a
-  -- stale transaction-start time (independent review finding #5).
-  v_accepted_at := now();
+  -- stale transaction-start time (independent review finding #5). `now()`
+  -- is transaction-start time for the whole transaction in PostgreSQL — it
+  -- would still read as of before the lock wait even placed AFTER it.
+  -- `clock_timestamp()` is the one function that advances during a
+  -- transaction and actually reflects wall time once the lock is held.
+  v_accepted_at := clock_timestamp();
   v_quarter := public._values_quarter_of(v_assignment.period_start);
   v_cutoff := public._values_quarter_cutoff_at(v_quarter);
   v_eligibility := case when v_accepted_at < v_cutoff then 'eligible_before_cutoff' else 'late_after_cutoff' end;
-
-  insert into public.values_submissions (
-    period_start, assignment_id, rater_id, subject_id, rater_class, solo,
-    comment, request_id, payload_digest, rubric_version, algorithm_version, submitted_at
-  ) values (
-    v_assignment.period_start, v_assignment.id, v_assignment.rater_id, v_assignment.subject_id,
-    v_rater_class, v_assignment.solo, v_comment, p_request_id, v_digest,
-    v_period.rubric_version, v_period.algorithm_version, v_accepted_at
-  )
-  returning id into v_submission_id;
-
-  insert into public.values_scores (submission_id, value_slug, score)
-  select v_elem->>'slug', (v_elem->>'score')::int from jsonb_array_elements(p_scores) as v_elem;
-
-  return jsonb_build_object(
+  -- The id is generated here, not left to the column default, so it can be
+  -- embedded in the receipt object stored in THIS SAME row (VALUES-RECEIPT-
+  -- CONTRACT.md §5's immutable nested receipt, not a flat ad hoc shape).
+  v_submission_id := gen_random_uuid();
+  v_receipt := jsonb_build_object(
+    'encodingVersion', 'forge-values-submit/v1',
     'submissionId', v_submission_id,
     'assignmentId', v_assignment.id,
     'requestId', p_request_id,
-    'digest', v_digest,
     'rubricVersion', v_period.rubric_version,
+    'digest', v_digest,
     'acceptedAt', v_accepted_at,
-    'periodStart', v_assignment.period_start,
     'quarterStart', v_quarter,
-    'cutoff', v_cutoff,
-    'quarterEligibility', v_eligibility,
-    'replay', false
+    'cutoffAt', v_cutoff,
+    'quarterEligibility', v_eligibility
   );
+
+  insert into public.values_submissions (
+    id, period_start, assignment_id, rater_id, subject_id, rater_class, solo,
+    comment, request_id, payload_digest, rubric_version, algorithm_version, submitted_at, receipt
+  ) values (
+    v_submission_id, v_assignment.period_start, v_assignment.id, v_assignment.rater_id, v_assignment.subject_id,
+    v_rater_class, v_assignment.solo, v_comment, p_request_id, v_digest,
+    v_period.rubric_version, v_period.algorithm_version, v_accepted_at, v_receipt
+  );
+
+  -- Aliased `elem` here, not `v_elem` — `v_elem` is already a declared
+  -- plpgsql variable from the validation loop above, and reusing it as a
+  -- FROM-clause alias makes every reference to it ambiguous (42702).
+  insert into public.values_scores (submission_id, value_slug, score)
+  select v_submission_id, elem->>'slug', (elem->>'score')::int from jsonb_array_elements(p_scores) as elem;
+
+  return jsonb_build_object('receipt', v_receipt, 'replay', false);
 end;
 $$;
 
 comment on function public.values_submit(uuid, uuid, int, jsonb, text) is
-  'The one way to file a monthly values review (20261106000000). Commits the header and all eight scores in one transaction; validates exactly eight known slugs (each a genuine JSON number/string, duplicates included, via a JSON ARRAY payload — not an object, which silently collapses duplicate keys), integer 1-10 each, and a <=2000-char optional comment. p_rubric_version must match the assignment''s period or the submission is refused (the client must be looking at the rubric it is answering about). Rater class/solo are SERVER-derived; never trusted from the client. Acquires the per-rater lock, then the assignment row, then the PERIOD lock shared with _values_freeze_quarter, before accepting a wall-clock acceptedAt and computing an IMMUTABLE quarterEligibility (eligible_before_cutoff | late_after_cutoff) that never changes after a later freeze. Same request id + same payload replays the original receipt unchanged; a changed payload under the same request id, or a different request id for an already-completed assignment, raises 23505.';
+  'The one way to file a monthly values review (20261106000000). Commits the header and all eight scores in one transaction; validates exactly eight known slugs (each exactly {slug,score} with a genuine string slug and numeric integer score, via a JSON ARRAY payload — not an object, which silently collapses duplicate keys), integer 1-10 each, and a <=2000-char optional comment. p_rubric_version must match the assignment''s period or the submission is refused (the client must be looking at the rubric it is answering about). Rater class/solo are SERVER-derived; never trusted from the client. Acquires the per-rater lock, then the assignment row, then the PERIOD lock shared with _values_freeze_quarter, before accepting a wall-clock acceptedAt and computing an IMMUTABLE quarterEligibility (eligible_before_cutoff | late_after_cutoff) that never changes after a later freeze. Returns {receipt, replay} per VALUES-RECEIPT-CONTRACT.md: the digest is the exact canonical forge-values-submit/v1 encoding (assignment/request/rubric/eight ASCII-sorted score lines/hex-or-null comment, pg_catalog.sha256), and the receipt object is persisted verbatim in the row and returned unchanged — never recomputed — on exact replay. Same request id + same payload replays that stored receipt; a changed payload under the same request id, or a different request id for an already-completed assignment, raises 23505.';
 
 revoke all on function public.values_submit(uuid, uuid, int, jsonb, text) from public, anon;
 grant execute on function public.values_submit(uuid, uuid, int, jsonb, text) to authenticated;
@@ -948,6 +1087,7 @@ as $$
 declare
   v_uid uuid := auth.uid();
   v_period date;
+  v_cutoff_now timestamptz;
 begin
   -- Checked on EVERY call, not cached — a revoked owner loses this instantly.
   -- Exact role='owner' + currently eligible, not a generic rank floor
@@ -955,7 +1095,8 @@ begin
   if not public._values_is_owner(v_uid) then
     raise exception 'Owner access only.' using errcode = '42501';
   end if;
-  v_period := public._values_active_period(now());
+  v_period := greatest(public._values_active_period(now()), public._values_launch());
+  v_cutoff_now := public._values_quarter_cutoff_at(public._values_quarter_of(v_period));
 
   return jsonb_build_object(
     'periodStart', v_period,
@@ -968,7 +1109,91 @@ begin
         'owedCount', (
           select count(*) from public.values_assignments a
           where a.subject_id = pr.id and a.period_start = v_period
-            and not exists (select 1 from public.values_submissions s where s.assignment_id = a.id)
+            and public.is_test_profile(a.rater_id) = public.is_test_profile(pr.id)
+            and not exists (select 1 from public.values_submissions s where s.assignment_id = a.id
+              and (select count(*) from public.values_scores sc where sc.submission_id = s.id) = 8)
+        ),
+        -- ADDITIVE lifecycle coverage (VALUES-OWNER-CONTRACT.md) — every
+        -- field below is new; nothing above is renamed or removed.
+        -- `asRater.*` describes this person's OWN workload as a rater this
+        -- period; `suspended`/`retired` describe this person's OWN account
+        -- state right now; `coverage.*` describes them as a SUBJECT this
+        -- period, against the brief's two-received-reviews floor.
+        'asRater', jsonb_build_object(
+          -- Every a2/a3/s2/s4 join below additionally requires the OTHER
+          -- side of the pair to share pr's (and therefore the caller's,
+          -- since the outer FROM below is already partitioned) test/live
+          -- partition — defense in depth against a hand-written/legacy row
+          -- that crossed the wall, same rule as the RLS policies and
+          -- _values_mirror above.
+          'assigned', (
+            select count(*) from public.values_assignments a2
+            where a2.rater_id = pr.id and a2.period_start = v_period
+              and public.is_test_profile(a2.subject_id) = public.is_test_profile(pr.id)
+          ),
+          'accepted', (
+            select count(*) from public.values_assignments a2
+            join public.values_submissions s2 on s2.assignment_id = a2.id
+              and (select count(*) from public.values_scores sc where sc.submission_id = s2.id) = 8
+            where a2.rater_id = pr.id and a2.period_start = v_period
+              and public.is_test_profile(a2.subject_id) = public.is_test_profile(pr.id)
+          ),
+          'late', (
+            select count(*) from public.values_assignments a2
+            join public.values_submissions s2 on s2.assignment_id = a2.id
+              and (select count(*) from public.values_scores sc where sc.submission_id = s2.id) = 8
+            where a2.rater_id = pr.id and a2.period_start = v_period and s2.submitted_at >= v_cutoff_now
+              and public.is_test_profile(a2.subject_id) = public.is_test_profile(pr.id)
+          ),
+          -- Retirement cancels unanswered work; temporary lost access
+          -- suspends it. Accepted history is independent of either flag.
+          -- All three unanswered buckets are disjoint and partitioned.
+          'pending', (
+            select count(*) from public.values_assignments a2
+            where a2.rater_id = pr.id and a2.period_start = v_period
+              and public.is_test_profile(a2.subject_id) = public.is_test_profile(pr.id)
+              and not exists (select 1 from public.values_submissions s3 where s3.assignment_id = a2.id
+                and (select count(*) from public.values_scores sc where sc.submission_id = s3.id) = 8)
+              and public._values_eligible(pr.id) and public._values_eligible(a2.subject_id)
+          ),
+          'canceled', (
+            select count(*) from public.values_assignments a2
+            join public.profiles subject on subject.id = a2.subject_id
+            where a2.rater_id = pr.id and a2.period_start = v_period
+              and public.is_test_profile(a2.subject_id) = public.is_test_profile(pr.id)
+              and not exists (select 1 from public.values_submissions s3 where s3.assignment_id = a2.id
+                and (select count(*) from public.values_scores sc where sc.submission_id = s3.id) = 8)
+              and (pr.retired_at is not null or subject.retired_at is not null)
+          ),
+          'suspended', (
+            select count(*) from public.values_assignments a2
+            join public.profiles subject on subject.id = a2.subject_id
+            where a2.rater_id = pr.id and a2.period_start = v_period
+              and public.is_test_profile(a2.subject_id) = public.is_test_profile(pr.id)
+              and not exists (select 1 from public.values_submissions s3 where s3.assignment_id = a2.id
+                and (select count(*) from public.values_scores sc where sc.submission_id = s3.id) = 8)
+              and pr.retired_at is null and subject.retired_at is null
+              and not (public._values_eligible(pr.id) and public._values_eligible(a2.subject_id))
+          )
+        ),
+        'suspended', (pr.access_revoked_at is not null),
+        'retired', (pr.retired_at is not null),
+        'coverage', jsonb_build_object(
+          'expectedReceived', 2,
+          'actualReceived', (
+            select count(*) from public.values_assignments a3
+            join public.values_submissions s4 on s4.assignment_id = a3.id
+              and (select count(*) from public.values_scores sc where sc.submission_id = s4.id) = 8
+            where a3.subject_id = pr.id and a3.period_start = v_period and s4.rater_class <> 'self'
+              and public.is_test_profile(s4.rater_id) = public.is_test_profile(pr.id)
+          ),
+          'missingCoverage', (
+            (select count(*) from public.values_assignments a3
+             join public.values_submissions s4 on s4.assignment_id = a3.id
+              and (select count(*) from public.values_scores sc where sc.submission_id = s4.id) = 8
+             where a3.subject_id = pr.id and a3.period_start = v_period and s4.rater_class <> 'self'
+               and public.is_test_profile(s4.rater_id) = public.is_test_profile(pr.id)) < 2
+          )
         ),
         'received', (
           select coalesce(jsonb_agg(jsonb_build_object(
@@ -983,11 +1208,22 @@ begin
           from public.values_submissions s
           join public.profiles rp on rp.id = s.rater_id
           where s.subject_id = pr.id and s.rater_class <> 'self'
+            and public.is_test_profile(rp.id) = public.is_test_profile(pr.id)
         )
       ) order by pr.display_name), '[]'::jsonb)
       from public.profiles pr
-      where exists (select 1 from public.values_assignments a where a.subject_id = pr.id)
-         or exists (select 1 from public.values_submissions s2 where s2.subject_id = pr.id)
+      where (
+        exists (select 1 from public.values_assignments a where a.subject_id = pr.id
+          and public.is_test_profile(a.rater_id) = public.is_test_profile(pr.id))
+           or exists (select 1 from public.values_submissions s2 where s2.subject_id = pr.id
+             and public.is_test_profile(s2.rater_id) = public.is_test_profile(pr.id))
+      )
+      -- CALLER/TEST PARTITION: a test-flagged owner's report lists only
+      -- test-flagged people; a real owner's lists only real people. This is
+      -- the report's own "raw owner RLS" boundary, not just a filter on
+      -- display — a test owner never learns a real subject even exists
+      -- here, and vice versa.
+      and public.is_test_profile(pr.id) = public.is_test_profile(v_uid)
     )
   );
 end;
@@ -1310,37 +1546,78 @@ revoke all on function public._values_recent_coworkers(uuid, date) from public, 
 -- to reproduce or audit the number later.
 alter table public.values_quarterly_ratings add column if not exists cutoff timestamptz;
 alter table public.values_quarterly_ratings add column if not exists rubric_version int references public.values_rubric_versions(id);
+-- A single scalar algorithm_version was always a potential lie for a
+-- mixed-version quarter (a rubric/algorithm retune mid-quarter leaves
+-- different values_periods rows disagreeing) — nullable so "uniform across
+-- every period this quarter actually used" is the only thing it ever
+-- silently implies; see policy_versions below for the always-accurate form.
+alter table public.values_quarterly_ratings alter column algorithm_version drop not null;
+-- SAFE per-period policy provenance (independent review: "safe" meaning no
+-- private weight ladder here — see values_periods' own comment; the weight
+-- numbers live only in values_quarterly_accounting below, which is
+-- owner-only). One array entry per DISTINCT period this quarter's
+-- assignments actually touched, so a rubric/algorithm change mid-quarter is
+-- represented as an array of differing entries rather than forced into one
+-- possibly-wrong scalar. rubric_version/algorithm_version above remain the
+-- single value ONLY when every period in the quarter agreed; a genuinely
+-- mixed quarter leaves them null and this array is the only truthful source.
+alter table public.values_quarterly_ratings add column if not exists policy_versions jsonb not null default '[]'::jsonb;
 
 comment on column public.values_quarterly_ratings.cutoff is
   'The exact Denver collection-cutoff instant this freeze used (20261106000000) — a submission accepted at or after this moment was excluded, whatever period it named.';
 comment on column public.values_quarterly_ratings.rubric_version is
-  'Which rubric version''s weights/slugs this freeze used (20261106000000) — provenance, not a copy of the rubric text.';
+  'Which rubric version''s weights/slugs this freeze used (20261106000000) — provenance, not a copy of the rubric text. NULL when the quarter''s periods did not all agree — see policy_versions.';
+comment on column public.values_quarterly_ratings.policy_versions is
+  'One entry per distinct period this quarter touched: {periodStart, timezone, rubricVersion, algorithmVersion, weightVersion, minRaters} (20261106000000) — SAFE fields only, never the private weight ladder (values_periods'' own comment). The always-accurate record of which policy/version produced this freeze, even across a mid-quarter rubric change; rubric_version/algorithm_version above are a convenience scalar, valid only when every entry here agrees.';
 
--- A purge-aware record of which submissions fed a frozen number (independent
--- review finding #4): contributor identity (rater_id) and the source row
--- (submission_id) are ON DELETE SET NULL, never CASCADE — an authorized
--- profile purge removes WHO contributed without deleting the manifest row
--- itself or recomputing the (already-immutable) frozen numbers above it.
+-- Private arithmetic must not live on subject-readable quarterly_ratings:
+-- unsuppressed numerator/denominator would bypass the three-rater floor.
+create table if not exists public.values_quarterly_accounting (
+  rating_id uuid primary key references public.values_quarterly_ratings(id) on delete cascade,
+  cutoff timestamptz not null,
+  policy_snapshots jsonb not null,
+  value_totals jsonb not null
+);
+comment on table public.values_quarterly_accounting is
+  'Immutable owner-only aggregate math and complete period policies. Eight per-value weighted numerators/denominators, historical nonself counts, submission counts and self totals; never an individual contribution vector. Contributor purge does not recompute these totals; subject purge cascades the entire rating.';
+alter table public.values_quarterly_accounting enable row level security;
+revoke all on public.values_quarterly_accounting from public, anon, authenticated;
+grant select on public.values_quarterly_accounting to authenticated;
+create policy "owner reads frozen accounting" on public.values_quarterly_accounting
+  for select to authenticated using (
+    public._values_caller_is_owner() and exists (
+      select 1 from public.values_quarterly_ratings r
+      where r.id = values_quarterly_accounting.rating_id
+        and public.is_test_profile(r.subject_id) = public.is_test_profile(auth.uid())
+    )
+  );
+
+-- Identifying source provenance expires with the raw review. This explicit
+-- purge exception removes the manifest row, not another subject's frozen math.
 create table if not exists public.values_quarterly_manifest (
   id uuid primary key default gen_random_uuid(),
   rating_id uuid not null references public.values_quarterly_ratings(id) on delete cascade,
-  submission_id uuid references public.values_submissions(id) on delete set null,
-  rater_id uuid references public.profiles(id) on delete set null,
-  included boolean not null default true
+  submission_id uuid not null references public.values_submissions(id) on delete cascade,
+  rater_id uuid not null references public.profiles(id) on delete cascade,
+  included boolean not null default true,
+  exclusion_reason text check (exclusion_reason in ('late', 'incomplete'))
 );
-
 comment on table public.values_quarterly_manifest is
-  'Which submissions were (or were not) counted into one frozen quarterly rating (20261106000000). submission_id/rater_id are SET NULL on purge, by design — see the column comments on values_quarterly_ratings and docs/monthly-values-reviews.md.';
-
+  'Same-partition source references and inclusion reasons only. Authorized source/rater purge deletes the row; no copied raw scores/weight/class/comment/receipt survive. Frozen aggregate accounting is retained separately. A missing manifest after purge means provenance erased, not a changed historical denominator.';
 create index if not exists values_quarterly_manifest_rating_idx on public.values_quarterly_manifest (rating_id);
-
 alter table public.values_quarterly_manifest enable row level security;
 revoke all on public.values_quarterly_manifest from public, anon, authenticated;
 grant select on public.values_quarterly_manifest to authenticated;
-
 create policy "owner reads manifest" on public.values_quarterly_manifest
-  for select to authenticated
-  using (public._values_is_owner(auth.uid()));
+  for select to authenticated using (
+    public._values_caller_is_owner()
+    and public.is_test_profile(rater_id) = public.is_test_profile(auth.uid())
+    and exists (
+      select 1 from public.values_quarterly_ratings r
+      where r.id = values_quarterly_manifest.rating_id
+        and public.is_test_profile(r.subject_id) = public.is_test_profile(auth.uid())
+    )
+  );
 
 create or replace function public._values_freeze_quarter(p_quarter date)
 returns jsonb
@@ -1360,6 +1637,11 @@ declare
   v_quarter_end date := public._values_quarter_end_exclusive(p_quarter);
   v_cutoff timestamptz := public._values_quarter_cutoff_at(p_quarter);
   v_rubric int;
+  v_algorithm int;
+  v_policy_versions jsonb;
+  v_policy_snapshots jsonb;
+  v_distinct_rubrics int;
+  v_distinct_algorithms int;
 begin
   -- GOVERNING LOCK (independent review finding #3): the SAME per-period lock
   -- values_submit() takes, acquired here for EVERY period in the quarter, in
@@ -1374,7 +1656,48 @@ begin
   end loop;
   perform pg_advisory_xact_lock(hashtextextended('values_freeze:' || p_quarter::text, 0));
 
-  select id into v_rubric from public.values_rubric_versions order by id desc limit 1;
+  -- QUARTER-WIDE POLICY PROVENANCE (independent review: a single "latest
+  -- rubric ever inserted" scalar is a fake answer for a mixed-version
+  -- quarter — it can disagree with what any period in THIS quarter actually
+  -- snapshotted at deal/submit time). Built once from every values_periods
+  -- row this quarter's own assignments touched, SAFE fields only (no weight
+  -- ladder — that stays owner-only, in private accounting below). The convenience
+  -- scalars are set ONLY when every period agreed; a genuinely mixed
+  -- quarter leaves them null rather than picking one arbitrarily.
+  select
+    coalesce(jsonb_agg(jsonb_build_object(
+      'periodStart', vp.period_start,
+      'timezone', vp.timezone,
+      'rubricVersion', vp.rubric_version,
+      'algorithmVersion', vp.algorithm_version,
+      'weightVersion', vp.weight_version,
+      'minRaters', vp.min_raters
+    ) order by vp.period_start), '[]'::jsonb),
+    count(distinct vp.rubric_version),
+    count(distinct vp.algorithm_version)
+    into v_policy_versions, v_distinct_rubrics, v_distinct_algorithms
+  from public.values_periods vp
+  where vp.period_start >= p_quarter and vp.period_start < v_quarter_end;
+
+  select coalesce(jsonb_agg(jsonb_build_object(
+    'periodStart', vp.period_start, 'timezone', vp.timezone,
+    'rubricVersion', vp.rubric_version, 'algorithmVersion', vp.algorithm_version,
+    'weightVersion', vp.weight_version, 'minRaters', vp.min_raters,
+    'weightOwner', vp.weight_owner, 'weightLead', vp.weight_lead,
+    'weightWorker', vp.weight_worker, 'weightSelf', vp.weight_self,
+    'soloFactor', vp.solo_factor, 'cutoff', v_cutoff
+  ) order by vp.period_start), '[]'::jsonb) into v_policy_snapshots
+  from public.values_periods vp
+  where vp.period_start >= p_quarter and vp.period_start < v_quarter_end;
+
+  v_rubric := case when v_distinct_rubrics = 1
+    then (select vp.rubric_version from public.values_periods vp
+          where vp.period_start >= p_quarter and vp.period_start < v_quarter_end limit 1)
+    else null end;
+  v_algorithm := case when v_distinct_algorithms = 1
+    then (select vp.algorithm_version from public.values_periods vp
+          where vp.period_start >= p_quarter and vp.period_start < v_quarter_end limit 1)
+    else null end;
 
   -- ENUMERATE FROM ASSIGNMENTS, not submissions (independent review finding
   -- #4): someone assigned reviews who received zero still gets a frozen
@@ -1393,27 +1716,32 @@ begin
       continue;
     end if;
 
-    -- COMPLETE submissions, accepted BEFORE the exact cutoff instant only
-    -- (independent review finding #3) — _values_mirror's own complete-
-    -- submission filter (finding #9) applies here too, for free.
+    -- COMPLETE submissions, accepted BEFORE the exact cutoff instant, in the
+    -- subject's own test/live partition only (independent review finding
+    -- #3, and the caller-partition rule above) — _values_mirror's own
+    -- complete-submission and partition filters apply here too, for free.
     v_rating := public._values_mirror(v_subject, p_quarter, v_quarter_end, 3, v_cutoff);
     select count(*) into v_sub_count from public.values_submissions s
       where s.subject_id = v_subject and s.period_start >= p_quarter and s.period_start < v_quarter_end
         and s.submitted_at < v_cutoff
+        and public.is_test_profile(s.rater_id) = public.is_test_profile(v_subject)
         and (select count(*) from public.values_scores sc where sc.submission_id = s.id) = 8;
     select count(distinct s.rater_id) into v_rater_count from public.values_submissions s
       where s.subject_id = v_subject and s.period_start >= p_quarter and s.period_start < v_quarter_end
         and s.submitted_at < v_cutoff
         and s.rater_class <> 'self'
+        and public.is_test_profile(s.rater_id) = public.is_test_profile(v_subject)
         and (select count(*) from public.values_scores sc where sc.submission_id = s.id) = 8;
 
     insert into public.values_quarterly_ratings (
-      quarter_start, subject_id, overall, rater_count, submission_count, algorithm_version, cutoff, rubric_version
+      quarter_start, subject_id, overall, rater_count, submission_count, algorithm_version, cutoff, rubric_version,
+      policy_versions
     )
     values (
       p_quarter, v_subject,
       (select avg((val->>'average')::numeric) from jsonb_each(v_rating) as t(slug, val) where val->>'average' is not null),
-      v_rater_count, v_sub_count, 1, v_cutoff, v_rubric
+      v_rater_count, v_sub_count, v_algorithm, v_cutoff, v_rubric,
+      v_policy_versions
     )
     on conflict (quarter_start, subject_id) do nothing
     returning id into v_rating_id;
@@ -1428,14 +1756,55 @@ begin
     from jsonb_each(v_rating) as t(slug, val)
     where val->>'average' is not null;
 
-    -- The included/excluded manifest: every submission this subject
-    -- received in the quarter, whether or not it cleared the cutoff —
-    -- excluded (late) evidence is recorded too, not silently dropped, so an
-    -- owner can see exactly what a frozen number does and does not contain.
-    insert into public.values_quarterly_manifest (rating_id, submission_id, rater_id, included)
-    select v_rating_id, s.id, s.rater_id, (s.submitted_at < v_cutoff)
+    -- Aggregate-only explanatory math, including zero and suppressed values.
+    -- Exactly the same complete/cutoff/partition inputs as the visible mirror.
+    insert into public.values_quarterly_accounting (rating_id, cutoff, policy_snapshots, value_totals)
+    with contribution_rows as (
+      select sc.value_slug, sc.score, s.rater_id, s.rater_class,
+        (case s.rater_class when 'owner' then vp.weight_owner
+          when 'crew_leader' then vp.weight_lead when 'worker' then vp.weight_worker
+          when 'self' then vp.weight_self else 0 end)
+          * (case when s.solo then vp.solo_factor else 1 end) as w
+      from public.values_submissions s
+      join public.values_scores sc on sc.submission_id = s.id
+      join public.values_periods vp on vp.period_start = s.period_start
+      where s.subject_id = v_subject and s.period_start >= p_quarter and s.period_start < v_quarter_end
+        and s.submitted_at < v_cutoff
+        and public.is_test_profile(s.rater_id) = public.is_test_profile(v_subject)
+        and (select count(*) from public.values_scores c where c.submission_id = s.id) = 8
+    ), totals as (
+      select sl.slug,
+        coalesce(sum(c.w * c.score), 0) as numerator, coalesce(sum(c.w), 0) as denominator,
+        count(distinct c.rater_id) filter (where c.rater_class <> 'self') as raters,
+        count(c.score) as submissions,
+        coalesce(sum(c.score) filter (where c.rater_class = 'self'), 0) as self_sum,
+        count(c.score) filter (where c.rater_class = 'self') as self_count
+      from unnest(public._values_slugs()) sl(slug)
+      left join contribution_rows c on c.value_slug = sl.slug
+      group by sl.slug
+    )
+    select v_rating_id, v_cutoff, v_policy_snapshots,
+      jsonb_object_agg(slug, jsonb_build_object(
+        'weightedNumerator', numerator, 'weightedDenominator', denominator,
+        'nonSelfRaters', raters, 'submissions', submissions,
+        'selfSum', self_sum, 'selfCount', self_count
+      )) from totals;
+
+    -- Cross-partition source identities are omitted altogether. Same-
+    -- partition late/incomplete evidence remains owner-only until its purge.
+    insert into public.values_quarterly_manifest (
+      rating_id, submission_id, rater_id, included, exclusion_reason
+    )
+    select v_rating_id, s.id, s.rater_id,
+      calc.is_complete and s.submitted_at < v_cutoff,
+      case when not calc.is_complete then 'incomplete'
+           when s.submitted_at >= v_cutoff then 'late' else null end
     from public.values_submissions s
-    where s.subject_id = v_subject and s.period_start >= p_quarter and s.period_start < v_quarter_end;
+    cross join lateral (
+      select (select count(*) from public.values_scores sc where sc.submission_id = s.id) = 8 as is_complete
+    ) calc
+    where s.subject_id = v_subject and s.period_start >= p_quarter and s.period_start < v_quarter_end
+      and public.is_test_profile(s.rater_id) = public.is_test_profile(v_subject);
 
     v_frozen := v_frozen + 1;
   end loop;
@@ -1445,7 +1814,7 @@ end;
 $$;
 
 comment on function public._values_freeze_quarter(date) is
-  'Freeze one quarter''s ratings (20261106000000) — idempotent by SKIPPING an already-frozen subject, never by overwriting. Service-only. Enumerates every ASSIGNED subject (not just those with submissions), so a zero-submission subject still freezes atomically with everyone else. Only submissions accepted before the exact Denver cutoff instant, with all eight scores, are counted; a later submission for a period already inside a frozen quarter remains identifiable late evidence (visible, excluded, in the manifest) but never reopens or edits the freeze. Takes the same per-period advisory lock values_submit() does, for every period in the quarter, before reading anything.';
+  'Freeze one quarter''s ratings (20261106000000) — idempotent by SKIPPING an already-frozen subject, never by overwriting. Service-only. Enumerates every ASSIGNED subject (not just those with submissions), so a zero-submission subject still freezes atomically with everyone else. Only submissions accepted before the exact Denver cutoff instant, with all eight scores, in the subject''s own test/live partition, are counted; same-partition late/incomplete evidence lands in a purgeable manifest, while cross-partition identities are omitted. Owner-only accounting freezes aggregate math and full period policies without raw contribution copies. policy_versions records every distinct period''s SAFE policy (never the weight ladder); the rubric_version/algorithm_version scalars are null when the quarter''s periods disagreed. Takes the same per-period advisory lock values_submit() does, for every period in the quarter, before reading anything.';
 
 revoke all on function public._values_freeze_quarter(date) from public, anon, authenticated;
 
@@ -1537,7 +1906,7 @@ end $$;
 -- (purgeWords.test.ts, "the SQL and the probe list agree") can read the
 -- complete current set from the LAST migration that defines this function —
 -- exactly the pattern 20261055000000 itself used. Every key below this
--- migration's own six is copied verbatim from 20261055000000.
+-- migration's own seven is copied verbatim from 20261055000000.
 create or replace function public.person_record_counts(p_id uuid)
 returns jsonb
 language sql
@@ -1644,7 +2013,7 @@ as $$
     'ask_question_log.asker_id',
       (select count(*) from ask_question_log where asker_id = p_id)
   ) || jsonb_build_object(
-    -- Monthly core-value reviews (20261106000000). All six CASCADE columns
+    -- Monthly core-value reviews (20261106000000). All seven profile-reference CASCADE columns
     -- (see the table definitions above) — losing them with the account would
     -- lose a record of review work given or received.
     'values_assignments.rater_id', (select count(*) from values_assignments where rater_id = p_id),
@@ -1652,6 +2021,7 @@ as $$
     'values_submissions.rater_id', (select count(*) from values_submissions where rater_id = p_id),
     'values_submissions.subject_id', (select count(*) from values_submissions where subject_id = p_id),
     'values_quarterly_ratings.subject_id', (select count(*) from values_quarterly_ratings where subject_id = p_id),
+    'values_quarterly_manifest.rater_id', (select count(*) from values_quarterly_manifest where rater_id = p_id),
     'values_reminder_claims.profile_id', (select count(*) from values_reminder_claims where profile_id = p_id)
   );
 $$;

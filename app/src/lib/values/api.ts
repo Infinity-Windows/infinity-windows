@@ -10,6 +10,57 @@
 import { supabase } from "../supabase";
 import { isMissingFunction } from "../schemaErrors";
 import type { CoreValueSlug } from "./rubric";
+import {
+  hashValuesSubmission,
+  normalizeValuesSubmission,
+  validateValuesResponse,
+  VALUE_SLUGS_ASCII_SORTED,
+  type ScoreEntry,
+  type ValuesSubmissionResponse,
+} from "./receiptContract";
+export type { ScoreEntry, ValuesReceipt, ValuesSubmissionResponse } from "./receiptContract";
+
+/**
+ * Thrown by every read below when the migration hasn't shipped yet (the RPC
+ * doesn't exist). Deliberately NOT a silent `[]`/`0`/`null` fallback: a
+ * caller that caught that up as "truly zero" would show a crew member
+ * "nothing owed" or an owner "no reviews at all" when the real answer is
+ * "this build isn't live here yet" — the two are never allowed to look the
+ * same. Callers that want a degrade-to-empty UI must catch this error
+ * explicitly and decide that for themselves; they must never get it for free
+ * from this module.
+ */
+export class ValuesFeatureUnavailableError extends Error {
+  constructor(cause: unknown) {
+    super("The monthly values review feature is not available yet.");
+    this.name = "ValuesFeatureUnavailableError";
+    this.cause = cause;
+  }
+}
+
+/** A successful RPC reply with an unreadable shape is not an empty result. */
+export class ValuesReadMalformedError extends Error {
+  readonly code = "malformed_values_read";
+  constructor() {
+    super("Values review information is unavailable right now.");
+    this.name = "ValuesReadMalformedError";
+  }
+}
+
+function readObject(value: unknown): Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) throw new ValuesReadMalformedError();
+  return value as Record<string, unknown>;
+}
+
+function readText(value: unknown): string {
+  if (typeof value !== "string" || value.trim().length === 0) throw new ValuesReadMalformedError();
+  return value;
+}
+
+function readCount(value: unknown): number {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) throw new ValuesReadMalformedError();
+  return value;
+}
 
 export type ValuesTaskStatus = "pending" | "submitted";
 
@@ -27,33 +78,45 @@ export interface ValuesTask {
   rubricVersion: number;
 }
 
-/** Degrades to an empty list before the migration ships — never crashes. */
+/** Throws `ValuesFeatureUnavailableError` before the migration ships — never
+ *  a silent empty list a caller could mistake for "nothing owed". */
 export async function fetchMyValuesTasks(): Promise<ValuesTask[]> {
   const { data, error } = await supabase.rpc("values_my_tasks");
   if (error) {
-    if (isMissingFunction(error)) return [];
+    if (isMissingFunction(error)) throw new ValuesFeatureUnavailableError(error);
     throw error;
   }
-  return (data ?? []).map((row: Record<string, unknown>) => ({
-    assignmentId: row.assignment_id as string,
-    periodStart: row.period_start as string,
-    subjectId: row.subject_id as string,
-    subjectName: (row.subject_name as string) ?? "?",
-    reason: row.reason as ValuesTask["reason"],
-    solo: Boolean(row.solo),
-    status: row.status as ValuesTaskStatus,
-    submittedAt: (row.submitted_at as string) ?? null,
-    rubricVersion: Number(row.rubric_version),
-  }));
+  if (!Array.isArray(data)) throw new ValuesReadMalformedError();
+  return data.map((item: unknown) => {
+    const row = readObject(item);
+    if (typeof row.reason !== "string" || !["dealt", "crew", "owner_lead", "self", "solo"].includes(row.reason)
+      || (row.status !== "pending" && row.status !== "submitted")
+      || typeof row.solo !== "boolean"
+      || (row.submitted_at !== null && typeof row.submitted_at !== "string")
+      || !Number.isSafeInteger(row.rubric_version) || (row.rubric_version as number) < 1) {
+      throw new ValuesReadMalformedError();
+    }
+    return {
+      assignmentId: readText(row.assignment_id),
+      periodStart: readText(row.period_start),
+      subjectId: readText(row.subject_id),
+      subjectName: readText(row.subject_name),
+      reason: row.reason as ValuesTask["reason"],
+      solo: row.solo,
+      status: row.status,
+      submittedAt: row.submitted_at,
+      rubricVersion: row.rubric_version as number,
+    };
+  });
 }
 
 export async function fetchMyValuesOwedCount(): Promise<number> {
   const { data, error } = await supabase.rpc("values_my_owed_count");
   if (error) {
-    if (isMissingFunction(error)) return 0;
+    if (isMissingFunction(error)) throw new ValuesFeatureUnavailableError(error);
     throw error;
   }
-  return Number(data ?? 0);
+  return readCount(data);
 }
 
 export interface PerValueMirror {
@@ -83,30 +146,32 @@ export interface MyValuesSummary {
 }
 
 function toMirror(raw: unknown): ValuesMirror {
-  return { byValue: (raw ?? {}) as ValuesMirror["byValue"] };
+  return { byValue: readObject(raw) as ValuesMirror["byValue"] };
 }
 
 export async function fetchMyValuesSummary(): Promise<MyValuesSummary | null> {
   const { data, error } = await supabase.rpc("values_my_summary");
   if (error) {
-    if (isMissingFunction(error)) return null;
+    if (isMissingFunction(error)) throw new ValuesFeatureUnavailableError(error);
     throw error;
   }
-  if (!data) return null;
-  const d = data as Record<string, unknown>;
+  if (data === null) return null;
+  const d = readObject(data);
+  if (!Array.isArray(d.quarters)) throw new ValuesReadMalformedError();
   return {
-    subjectId: d.subjectId as string,
-    windowStart: d.windowStart as string,
-    windowEnd: d.windowEnd as string,
+    subjectId: readText(d.subjectId),
+    windowStart: readText(d.windowStart),
+    windowEnd: readText(d.windowEnd),
     mirror: toMirror(d.mirror),
     allTime: toMirror(d.allTime),
-    quarters: ((d.quarters as unknown[]) ?? []).map((q) => {
-      const row = q as Record<string, unknown>;
+    quarters: d.quarters.map((q: unknown) => {
+      const row = readObject(q);
+      if (row.overall !== null && (typeof row.overall !== "number" || !Number.isFinite(row.overall))) throw new ValuesReadMalformedError();
       return {
-        quarterStart: row.quarterStart as string,
-        overall: row.overall == null ? null : Number(row.overall),
-        raterCount: Number(row.raterCount ?? 0),
-        values: (row.values ?? {}) as FrozenQuarter["values"],
+        quarterStart: readText(row.quarterStart),
+        overall: row.overall,
+        raterCount: readCount(row.raterCount),
+        values: readObject(row.values) as FrozenQuarter["values"],
       };
     }),
   };
@@ -121,11 +186,38 @@ export interface OwnerReceivedReview {
   scores: Partial<Record<CoreValueSlug, number>>;
 }
 
+/** This person's own workload as a RATER this period (ADDITIVE —
+ *  VALUES-OWNER-CONTRACT.md). `pending`/`canceled` mirror values_my_tasks'
+ *  own lifecycle-cancellation rule: an unanswered task whose SUBJECT has
+ *  since been retired/revoked is `canceled`, not `pending`. */
+export interface OwnerLifecycleAsRater {
+  assigned: number;
+  accepted: number;
+  late: number;
+  pending: number;
+  canceled: number;
+  suspended: number;
+}
+
+/** This person's coverage as a SUBJECT this period, against the brief's
+ *  two-received-reviews floor (ADDITIVE). */
+export interface OwnerLifecycleCoverage {
+  expectedReceived: number;
+  actualReceived: number;
+  missingCoverage: boolean;
+}
+
 export interface OwnerReportPerson {
   userId: string;
   name: string;
   mirror: ValuesMirror;
   owedCount: number;
+  /** ADDITIVE — this person's own account state right now, re-checked on
+   *  every report call, never cached. */
+  suspended: boolean;
+  retired: boolean;
+  asRater: OwnerLifecycleAsRater;
+  coverage: OwnerLifecycleCoverage;
   received: OwnerReceivedReview[];
 }
 
@@ -135,35 +227,97 @@ export interface OwnerReport {
   people: OwnerReportPerson[];
 }
 
+/** A missing or malformed owner lifecycle is unavailable, never a zero. */
+export class ValuesOwnerReportMalformedError extends Error {
+  readonly code = "malformed_owner_lifecycle";
+  constructor() {
+    super("Owner review lifecycle is unavailable right now.");
+    this.name = "ValuesOwnerReportMalformedError";
+  }
+}
+
+function ownerObject(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new ValuesOwnerReportMalformedError();
+  return value as Record<string, unknown>;
+}
+
+function ownerCount(value: unknown): number {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) throw new ValuesOwnerReportMalformedError();
+  return value;
+}
+
+function ownerBoolean(value: unknown): boolean {
+  if (typeof value !== "boolean") throw new ValuesOwnerReportMalformedError();
+  return value;
+}
+
+function ownerLifecycle(row: Record<string, unknown>): Pick<OwnerReportPerson, "suspended" | "retired" | "asRater" | "coverage"> {
+  const rater = ownerObject(row.asRater);
+  const coverage = ownerObject(row.coverage);
+  const asRater: OwnerLifecycleAsRater = {
+    assigned: ownerCount(rater.assigned), accepted: ownerCount(rater.accepted),
+    late: ownerCount(rater.late), pending: ownerCount(rater.pending), canceled: ownerCount(rater.canceled),
+    suspended: ownerCount(rater.suspended),
+  };
+  const parsedCoverage: OwnerLifecycleCoverage = {
+    expectedReceived: ownerCount(coverage.expectedReceived),
+    actualReceived: ownerCount(coverage.actualReceived),
+    missingCoverage: ownerBoolean(coverage.missingCoverage),
+  };
+  if (asRater.assigned !== asRater.accepted + asRater.pending + asRater.canceled + asRater.suspended
+    || asRater.late > asRater.accepted
+    || parsedCoverage.missingCoverage !== (parsedCoverage.actualReceived < parsedCoverage.expectedReceived)) {
+    throw new ValuesOwnerReportMalformedError();
+  }
+  return { suspended: ownerBoolean(row.suspended), retired: ownerBoolean(row.retired), asRater, coverage: parsedCoverage };
+}
+
+function ownerReceived(value: unknown): OwnerReceivedReview[] {
+  if (!Array.isArray(value)) throw new ValuesReadMalformedError();
+  return value.map((item: unknown) => {
+    const row = readObject(item);
+    if (!["owner", "crew_leader", "worker", "self"].includes(row.raterClass as string)
+      || typeof row.solo !== "boolean"
+      || (row.comment !== null && typeof row.comment !== "string")) throw new ValuesReadMalformedError();
+    const scores = readObject(row.scores);
+    for (const [slug, score] of Object.entries(scores)) {
+      if (!VALUE_SLUGS_ASCII_SORTED.includes(slug as CoreValueSlug)
+        || typeof score !== "number" || !Number.isInteger(score) || score < 1 || score > 10) {
+        throw new ValuesReadMalformedError();
+      }
+    }
+    return {
+      raterName: readText(row.raterName),
+      raterClass: row.raterClass as OwnerReceivedReview["raterClass"],
+      solo: row.solo,
+      periodStart: readText(row.periodStart),
+      comment: row.comment,
+      scores: scores as OwnerReceivedReview["scores"],
+    };
+  });
+}
+
 export async function fetchValuesOwnerReport(): Promise<OwnerReport | null> {
   const { data, error } = await supabase.rpc("values_owner_report");
   if (error) {
-    if (isMissingFunction(error)) return null;
+    if (isMissingFunction(error)) throw new ValuesFeatureUnavailableError(error);
     throw error;
   }
-  if (!data) return null;
-  const d = data as Record<string, unknown>;
+  if (data === null) throw new ValuesReadMalformedError();
+  const d = readObject(data);
+  if (typeof d.schedulerEnabled !== "boolean" || !Array.isArray(d.people)) throw new ValuesReadMalformedError();
   return {
-    periodStart: d.periodStart as string,
-    schedulerEnabled: Boolean(d.schedulerEnabled),
-    people: ((d.people as unknown[]) ?? []).map((p) => {
-      const row = p as Record<string, unknown>;
+    periodStart: readText(d.periodStart),
+    schedulerEnabled: d.schedulerEnabled,
+    people: d.people.map((p: unknown) => {
+      const row = readObject(p);
       return {
-        userId: row.userId as string,
-        name: (row.name as string) ?? "?",
+        userId: readText(row.userId),
+        name: readText(row.name),
         mirror: toMirror(row.mirror),
-        owedCount: Number(row.owedCount ?? 0),
-        received: ((row.received as unknown[]) ?? []).map((r) => {
-          const rr = r as Record<string, unknown>;
-          return {
-            raterName: (rr.raterName as string) ?? "?",
-            raterClass: rr.raterClass as OwnerReceivedReview["raterClass"],
-            solo: Boolean(rr.solo),
-            periodStart: rr.periodStart as string,
-            comment: (rr.comment as string | null) ?? null,
-            scores: (rr.scores ?? {}) as OwnerReceivedReview["scores"],
-          };
-        }),
+        owedCount: ownerCount(row.owedCount),
+        ...ownerLifecycle(row),
+        received: ownerReceived(row.received),
       };
     }),
   };
@@ -177,34 +331,23 @@ export async function setValuesSchedulerEnabled(enabled: boolean): Promise<void>
 /** One value's score, the wire shape values_submit expects (an ARRAY of
  *  these, not an object keyed by slug — see the migration's own comment on
  *  why: a plain object silently collapses a duplicate key before the server
- *  ever sees it). */
-export type ScoreEntry = { slug: CoreValueSlug; score: number };
-
+ *  ever sees it). Re-exported from receiptContract — see the type-only
+ *  re-export above; this helper just adapts the app's `Partial<Record<...>>`
+ *  score-map shape some screens use into that array. */
 export function scoresToArray(scores: Partial<Record<CoreValueSlug, number>>): ScoreEntry[] {
   return (Object.entries(scores) as [CoreValueSlug, number][]).map(([slug, score]) => ({ slug, score }));
 }
 
-/** Immutable once accepted — never changes even after a later freeze. */
-export interface ValuesReceipt {
-  submissionId: string;
-  assignmentId: string;
-  requestId: string;
-  digest: string;
-  rubricVersion: number;
-  acceptedAt: string;
-  periodStart: string;
-  quarterStart: string;
-  cutoff: string;
-  quarterEligibility: "eligible_before_cutoff" | "late_after_cutoff";
-  /** Transient — true only when this call answered an exact replay. */
-  replay: boolean;
-}
-
 /**
  * Submit a completed review directly (used when there is signal and the
- * caller wants the accepted receipt immediately). The offline path
- * (lib/offline/outbox.ts's enqueueValuesSubmit) calls the same RPC from its
- * handler with the same arguments, so both paths share one contract.
+ * caller wants the accepted response immediately, rather than through the
+ * offline outbox). Shares the EXACT same encoding/validation as the offline
+ * path (lib/offline/outboxHandlers.ts's values_submit op) by calling the
+ * same receiptContract functions: normalize → hash → call the RPC with the
+ * normalized payload → validate the response against that same expected
+ * digest before trusting it (VALUES-RECEIPT-CONTRACT.md §6) — never a bare
+ * `if (error) throw error; return data` that would accept a malformed or
+ * mismatched reply as success.
  */
 export async function submitValuesReviewDirect(input: {
   assignmentId: string;
@@ -212,27 +355,16 @@ export async function submitValuesReviewDirect(input: {
   rubricVersion: number;
   scores: ScoreEntry[];
   comment: string | null;
-}): Promise<ValuesReceipt> {
+}): Promise<ValuesSubmissionResponse> {
+  const submission = normalizeValuesSubmission(input);
+  const expectedDigest = await hashValuesSubmission(submission);
   const { data, error } = await supabase.rpc("values_submit", {
-    p_assignment_id: input.assignmentId,
-    p_request_id: input.requestId,
-    p_rubric_version: input.rubricVersion,
-    p_scores: input.scores,
-    p_comment: input.comment,
+    p_assignment_id: submission.assignmentId,
+    p_request_id: submission.requestId,
+    p_rubric_version: submission.rubricVersion,
+    p_scores: submission.scores,
+    p_comment: submission.comment,
   });
   if (error) throw error;
-  const d = data as Record<string, unknown>;
-  return {
-    submissionId: d.submissionId as string,
-    assignmentId: d.assignmentId as string,
-    requestId: d.requestId as string,
-    digest: d.digest as string,
-    rubricVersion: Number(d.rubricVersion),
-    acceptedAt: d.acceptedAt as string,
-    periodStart: d.periodStart as string,
-    quarterStart: d.quarterStart as string,
-    cutoff: d.cutoff as string,
-    quarterEligibility: d.quarterEligibility as ValuesReceipt["quarterEligibility"],
-    replay: Boolean(d.replay),
-  };
+  return await validateValuesResponse(data, { submission, expectedDigest });
 }

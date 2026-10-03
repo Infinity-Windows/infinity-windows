@@ -319,7 +319,7 @@ describe("buildQuarterlyRating", () => {
       { raterId: "r1", raterClass: "worker", solo: false, slug: "safety", score: 1 },
     ];
     const rating = buildQuarterlyRating(rows, weights);
-    expect(rating.overall).toBe(10);
+    expect(rating.overall).toBeCloseTo(10, 10);
     expect(rating.byValue.safety.average).toBeNull();
   });
 

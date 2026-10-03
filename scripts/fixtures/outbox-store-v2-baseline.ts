@@ -1,3 +1,4 @@
+// Pinned production DB2 implementation at fee493fb; regression fixture only.
 // Storage backends for the offline outbox. The IndexedDB store is used at
 // runtime and survives refreshes/reboots; the in-memory store is a fast fake
 // for unit tests. Both implement the same OutboxStore interface from the pure
@@ -10,7 +11,6 @@ import {
   type OutboxEntry,
   type OutboxStore,
 } from "./outbox-core";
-import { subscribeSignedIn } from "../signedIn";
 
 /**
  * insertIfAbsent found a row under the id that cannot be read back. Not an
@@ -29,51 +29,10 @@ function readExisting(id: string, meta: string): OutboxEntry {
   return entry;
 }
 
-function matchingValuesReceipt(entry: OutboxEntry, response: unknown): boolean {
-  if (!response || typeof response !== "object") return false;
-  const receipt = (response as { receipt?: unknown }).receipt;
-  if (!receipt || typeof receipt !== "object") return false;
-  const r = receipt as Record<string, unknown>;
-  return r.encodingVersion === "forge-values-submit/v1"
-    && r.assignmentId === entry.payload.assignmentId
-    && r.requestId === entry.payload.requestId
-    && r.rubricVersion === entry.payload.rubricVersion
-    && r.digest === entry.payload.digest;
-}
-
 /** In-memory store — deterministic, for tests and SSR/no-IndexedDB fallback. */
 export class MemoryOutboxStore implements OutboxStore {
   private entries = new Map<string, string>(); // id -> serialized
   private blobs = new Map<string, Blob>();
-  private valuesDrafts = new Map<string, ValuesDraftRow>();
-
-  async getValuesDraft(ownerId: string, assignmentId: string): Promise<ValuesDraftRow | null> {
-    return this.valuesDrafts.get(valuesDraftKey(ownerId, assignmentId)) ?? null;
-  }
-
-  async putValuesDraft(draft: ValuesDraftRow): Promise<void> {
-    const prior = this.valuesDrafts.get(draft.id);
-    if (prior && prior.requestId !== draft.requestId) throw new Error("Review draft changed on this phone");
-    if (prior?.status === "queued" && (draft.status !== "queued" || draft.digest !== prior.digest || draft.comment !== prior.comment || JSON.stringify(draft.scores) !== JSON.stringify(prior.scores))) throw new Error("Review draft is locked");
-    if (prior?.status === "accepted" || prior?.status === "conflict") throw new Error("Review draft is locked");
-    this.valuesDrafts.set(draft.id, structuredClone(draft));
-  }
-
-  async acknowledgeValues(entry: OutboxEntry, receipt: unknown, context?: { signal?: AbortSignal; canCommit?: () => boolean }): Promise<boolean> {
-    if (context?.signal?.aborted || (context?.canCommit && !context.canCommit())) return false;
-    const ownerId = entry.ownerId;
-    const assignmentId = entry.payload.assignmentId;
-    if (!ownerId || typeof assignmentId !== "string") return false;
-    const key = valuesDraftKey(ownerId, assignmentId);
-    const draft = this.valuesDrafts.get(key);
-    const current = this.entries.get(entry.id);
-    if (!draft || draft.status !== "queued" || draft.requestId !== entry.id || draft.digest !== entry.payload.digest || !matchingValuesReceipt(entry, receipt) || !current || !sameState(deserializeEntry(current), entry)) return false;
-    if (context?.signal?.aborted || (context?.canCommit && !context.canCommit())) return false;
-    this.valuesDrafts.set(key, { ...draft, status: "accepted", receipt });
-    this.entries.delete(entry.id);
-    this.blobs.delete(entry.id);
-    return true;
-  }
 
   async getAll(): Promise<OutboxEntry[]> {
     const out: OutboxEntry[] = [];
@@ -131,46 +90,7 @@ export class MemoryOutboxStore implements OutboxStore {
 const DB_NAME = "wops-write-outbox";
 const STORE = "entries";
 const META_STORE = "metadata";
-// Keep the production v2 schema: retained older tabs still open it at v2.
-// Review rows use a reserved metadata namespace, never a photo overlay id.
-const LEGACY_VALUES_STORE = "values_drafts"; // unreleased local v3 fixtures only
-const VALUES_META_PREFIX = "values-draft/v1/";
 const DB_VERSION = 2;
-
-export interface ValuesDraftRow {
-  id: string;
-  ownerId: string;
-  assignmentId: string;
-  requestId: string;
-  rubricVersion: number;
-  scores: Record<string, number>;
-  comment: string;
-  status: "editing" | "queued" | "accepted" | "conflict" | "denied" | "blocked";
-  receipt?: unknown;
-  digest?: string;
-  updatedAt: number;
-}
-
-export function valuesDraftKey(ownerId: string, assignmentId: string): string {
-  return `${ownerId}:${assignmentId}`;
-}
-
-function valuesMetaKey(ownerId: string, assignmentId: string): string {
-  return `${VALUES_META_PREFIX}${encodeURIComponent(ownerId)}/${encodeURIComponent(assignmentId)}`;
-}
-function draftMeta(draft: ValuesDraftRow): MetaRow {
-  if (draft.id !== valuesDraftKey(draft.ownerId, draft.assignmentId)) throw new Error("Review draft identity does not match");
-  return { id: valuesMetaKey(draft.ownerId, draft.assignmentId), meta: JSON.stringify(draft) };
-}
-function readDraftMeta(row: MetaRow | undefined, ownerId: string, assignmentId: string): ValuesDraftRow | null {
-  if (!row) return null;
-  const draft = JSON.parse(row.meta) as ValuesDraftRow;
-  if (row.id !== valuesMetaKey(ownerId, assignmentId) || !draft || draft.ownerId !== ownerId
-    || draft.assignmentId !== assignmentId || draft.id !== valuesDraftKey(ownerId, assignmentId)) {
-    throw new Error("Review draft identity does not match");
-  }
-  return draft;
-}
 
 interface Row {
   id: string;
@@ -196,9 +116,9 @@ function effectiveMeta(row: Row, overlay: MetaRow | undefined): string {
   return overlay ? overlay.meta : row.meta;
 }
 
-function connectDb(version?: number): Promise<IDBDatabase> {
+function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const req = version === undefined ? indexedDB.open(DB_NAME) : indexedDB.open(DB_NAME, version);
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = () => {
       if (!req.result.objectStoreNames.contains(STORE)) {
         req.result.createObjectStore(STORE, { keyPath: "id" });
@@ -221,15 +141,6 @@ function connectDb(version?: number): Promise<IDBDatabase> {
       blocked = true;
       reject(new Error("Photo queue upgrade is blocked by another open Forge tab."));
     };
-  });
-}
-
-function openDb(): Promise<IDBDatabase> {
-  return connectDb(DB_VERSION).catch((error: unknown) => {
-    // v3 was never deployed. Keep any developer fixture/draft; never delete
-    // or downgrade its database to hide a version error.
-    if (error instanceof Error && error.name === "VersionError") return connectDb();
-    throw error;
   });
 }
 
@@ -276,118 +187,6 @@ function writeTransaction<T>(
 
 /** IndexedDB-backed store. Durable across refreshes and reboots. */
 export class IndexedDbOutboxStore implements OutboxStore {
-  async getValuesDraft(ownerId: string, assignmentId: string): Promise<ValuesDraftRow | null> {
-    const db = await openDb();
-    try {
-      const hasLegacy = db.objectStoreNames.contains(LEGACY_VALUES_STORE);
-      return await new Promise<ValuesDraftRow | null>((resolve, reject) => {
-        const tx = db.transaction(hasLegacy ? [META_STORE, LEGACY_VALUES_STORE] : [META_STORE], hasLegacy ? "readwrite" : "readonly");
-        const metadata = tx.objectStore(META_STORE);
-        let found: ValuesDraftRow | null = null;
-        const fail = (error: unknown) => { reject(storageError("review draft", error)); try { tx.abort(); } catch { /* ended */ } };
-        const read = metadata.get(valuesMetaKey(ownerId, assignmentId));
-        read.onsuccess = () => {
-          try {
-            found = readDraftMeta(read.result as MetaRow | undefined, ownerId, assignmentId);
-            if (found || !hasLegacy) return;
-            const legacy = tx.objectStore(LEGACY_VALUES_STORE).get(valuesDraftKey(ownerId, assignmentId));
-            legacy.onsuccess = () => {
-              try {
-                const draft = legacy.result as ValuesDraftRow | undefined;
-                if (!draft) return;
-                found = readDraftMeta(draftMeta(draft), ownerId, assignmentId);
-                metadata.put(draftMeta(draft));
-                tx.objectStore(LEGACY_VALUES_STORE).delete(draft.id);
-              } catch (error) { fail(error); }
-            };
-          } catch (error) { fail(error); }
-        };
-        tx.oncomplete = () => resolve(found);
-        tx.onerror = () => reject(storageError("review draft", tx.error));
-        tx.onabort = () => reject(storageError("review draft aborted", tx.error));
-      });
-    } finally { db.close(); }
-  }
-
-  async putValuesDraft(draft: ValuesDraftRow): Promise<void> {
-    const db = await openDb();
-    try {
-      const tx = db.transaction(META_STORE, "readwrite");
-      const drafts = tx.objectStore(META_STORE);
-      const encoded = draftMeta(draft);
-      const read = drafts.get(encoded.id);
-      read.onsuccess = () => {
-        let prior: ValuesDraftRow | null;
-        try { prior = readDraftMeta(read.result as MetaRow | undefined, draft.ownerId, draft.assignmentId); }
-        catch { tx.abort(); return; }
-        if (prior && (prior.requestId !== draft.requestId || prior.status === "accepted" || prior.status === "conflict" || (prior.status === "queued" && (draft.status !== "queued" || draft.digest !== prior.digest || draft.comment !== prior.comment || JSON.stringify(draft.scores) !== JSON.stringify(prior.scores))))) {
-          tx.abort();
-          return;
-        }
-        drafts.put(encoded);
-      };
-      await txDone(tx);
-    } finally { db.close(); }
-  }
-
-  async acknowledgeValues(entry: OutboxEntry, receipt: unknown, context?: { signal?: AbortSignal; canCommit?: () => boolean }): Promise<boolean> {
-    const canCommit = () => !context?.signal?.aborted && (!context?.canCommit || context.canCommit());
-    if (!canCommit()) return false;
-    const ownerId = entry.ownerId;
-    const assignmentId = entry.payload.assignmentId;
-    if (!ownerId || typeof assignmentId !== "string" || !matchingValuesReceipt(entry, receipt)) return false;
-    const db = await openDb();
-    try {
-      if (!canCommit()) return false;
-      return await new Promise<boolean>((resolve, reject) => {
-        const hasLegacy = db.objectStoreNames.contains(LEGACY_VALUES_STORE);
-        const tx = db.transaction(hasLegacy ? [STORE, META_STORE, LEGACY_VALUES_STORE] : [STORE, META_STORE], "readwrite");
-        const abort = () => { try { tx.abort(); } catch { /* transaction already settled */ } };
-        context?.signal?.addEventListener("abort", abort, { once: true });
-        const unsubscribe = context?.canCommit ? subscribeSignedIn(() => { if (!canCommit()) abort(); }) : () => undefined;
-        const cleanup = () => { context?.signal?.removeEventListener("abort", abort); unsubscribe(); };
-        const rows = tx.objectStore(STORE);
-        const metadata = tx.objectStore(META_STORE);
-        const drafts = metadata;
-        const rowRead = rows.get(entry.id);
-        const metaRead = metadata.get(entry.id);
-        const draftRead = drafts.get(valuesMetaKey(ownerId, assignmentId));
-        let draft: ValuesDraftRow | null = null;
-        let ready = 0;
-        let matched = false;
-        const finish = () => {
-          if (++ready !== 3) return;
-          if (!canCommit()) { abort(); return; }
-          const row = rowRead.result as Row | undefined;
-          const overlay = metaRead.result as MetaRow | undefined;
-          matched = Boolean(row && draft && draft.status === "queued" && draft.requestId === entry.id && draft.digest === entry.payload.digest && sameState(deserializeEntry(effectiveMeta(row, overlay)), entry));
-          if (!matched || !draft) return;
-          if (!canCommit()) { abort(); return; }
-          drafts.put(draftMeta({ ...draft, status: "accepted", receipt, updatedAt: Date.now() } satisfies ValuesDraftRow));
-          if (hasLegacy) tx.objectStore(LEGACY_VALUES_STORE).delete(valuesDraftKey(ownerId, assignmentId));
-          rows.delete(entry.id);
-          metadata.delete(entry.id);
-        };
-        rowRead.onsuccess = finish;
-        metaRead.onsuccess = finish;
-        draftRead.onsuccess = () => {
-          try {
-            draft = readDraftMeta(draftRead.result as MetaRow | undefined, ownerId, assignmentId);
-            if (!draft && hasLegacy) {
-              const legacy = tx.objectStore(LEGACY_VALUES_STORE).get(valuesDraftKey(ownerId, assignmentId));
-              legacy.onsuccess = () => {
-                try { draft = legacy.result ? readDraftMeta(draftMeta(legacy.result as ValuesDraftRow), ownerId, assignmentId) : null; finish(); }
-                catch { abort(); }
-              };
-            } else finish();
-          } catch { abort(); }
-        };
-        tx.oncomplete = () => { cleanup(); resolve(matched); };
-        tx.onerror = () => { cleanup(); reject(storageError("values receipt", tx.error)); };
-        tx.onabort = () => { cleanup(); resolve(false); };
-      });
-    } finally { db.close(); }
-  }
   async getAll(): Promise<OutboxEntry[]> {
     const db = await openDb();
     try {

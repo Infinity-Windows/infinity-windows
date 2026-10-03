@@ -69,6 +69,7 @@ export const OP_LABEL_KEY: Record<OutboxOp, TKey> = {
   hex_portal_outcome: "stuck.op.hexPortalOutcome",
   hex_learning_draft: "stuck.op.hexLearningDraft",
   toolbox_sign: "stuck.op.toolboxSign",
+  values_submit: "stuck.op.valuesSubmit",
 };
 
 /** The words for one outbox entry: its op, or for media its kind. */
@@ -162,7 +163,7 @@ export function buildStuckRows(inputs: StuckInputs, t: TFn): StuckSections {
       id: e.id,
       label: writeLabel(e, t),
       when: e.createdAt,
-      detail: failed
+      detail: e.op === "values_submit" ? (e.lastError ? t("stuck.valuesReviewIssue") : null) : failed
         ? isPhotoConflictIndexError(e.lastError)
           ? t("photo.databaseRetry")
           : e.lastError

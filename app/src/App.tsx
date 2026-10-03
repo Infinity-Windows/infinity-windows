@@ -1,7 +1,7 @@
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { useQuery } from "@tanstack/react-query";
 import type { Session } from "@supabase/supabase-js";
-import { Suspense, useEffect, useState, type ReactNode } from "react";
+import { Suspense, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { listProjectsAnyStatus } from "./lib/api";
 import { lazyRoute } from "./lib/pwa/lazyRoute";
 import { isTrackingOnly } from "./lib/jobModes";
@@ -33,7 +33,8 @@ import { ViewAsRoleProvider } from "./lib/viewAsRole";
 import { useEffectiveRole } from "./lib/useEffectiveRole";
 import { useDesign } from "./lib/design/context";
 import { supabase } from "./lib/supabase";
-import { rememberSignedIn } from "./lib/signedIn";
+import { rememberSignedIn, signedInUserId, subscribeSignedIn } from "./lib/signedIn";
+import { clearPrivateValuesQueries } from "./lib/values/privateQueries";
 import { syncPinLockWithAuth } from "./lib/pinGate";
 import { Home } from "./pages/Home";
 import { Landing } from "./pages/Landing";
@@ -324,9 +325,9 @@ function RequireRole({
  * the client-side half of the same rule.
  */
 function RequireRealOwner({ children }: { children: ReactNode }) {
-  const { realRole, isLoading } = useEffectiveRole();
+  const { realRole, isPreviewing, isLoading } = useEffectiveRole();
   if (isLoading) return <div className="page"><p className="muted">Loading…</p></div>;
-  if (realRole === "owner") return <>{children}</>;
+  if (realRole === "owner" && !isPreviewing) return <>{children}</>;
   return (
     <div className="page">
       <header className="page-header">
@@ -339,6 +340,23 @@ function RequireRealOwner({ children }: { children: ReactNode }) {
       <Link to="/" className="button-like">Back to home</Link>
     </div>
   );
+}
+
+/** Values query data is private in memory as well as on disk. A sign-in or
+ * role/preview boundary drops every values query, including a late response
+ * from the previous viewer. Durable drafts remain separately owner-keyed. */
+function ValuesCacheBoundary() {
+  const userId = useSyncExternalStore(subscribeSignedIn, signedInUserId, signedInUserId);
+  const { realRole, isPreviewing } = useEffectiveRole();
+  const boundary = `${userId ?? "signed-out"}:${realRole ?? "unknown"}:${isPreviewing}`;
+  const previous = useRef<string | null>(null);
+  useEffect(() => {
+    if (previous.current !== null && previous.current !== boundary) {
+      clearPrivateValuesQueries(queryClient);
+    }
+    previous.current = boundary;
+  }, [boundary]);
+  return null;
 }
 
 /**
@@ -694,6 +712,7 @@ export default function App() {
       <FirstRunLanguagePicker />
       <PinGate userId={session.user.id}>
       <ViewAsRoleProvider>
+      <ValuesCacheBoundary />
       <BrowserRouter basename={routerBasename(import.meta.env.BASE_URL)}>
         <ClockProvider>
         {/* Renders nothing; puts the viewer's role on any crash report. */}

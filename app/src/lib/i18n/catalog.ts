@@ -4146,6 +4146,8 @@ export const CATALOG = {
   "notif.learningReview.sub": {en:"{job} · from {name}",es:"{job} · de {name}"},
   "stuck.op.saveBuildFacts": { en: "Job fact", es: "Dato del trabajo" },
   "stuck.op.toolboxSign": { en: "Toolbox talk signature", es: "Firma de la charla de seguridad" },
+  "stuck.op.valuesSubmit": { en: "Values review", es: "Revisión de valores" },
+  "stuck.valuesReviewIssue": { en: "Review needs attention. Open My values to check it.", es: "La revisión necesita atención. Abre Mis valores para revisarla." },
   // A clock-in held behind a toolbox talk signature Forge refused: it was
   // never sent, so it never failed on its own — it waits for the signature.
   "stuck.heldForSignature": {

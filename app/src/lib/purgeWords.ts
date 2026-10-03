@@ -299,6 +299,7 @@ export const WORK_HISTORY_PROBES: readonly HistoryProbe[] = [
   { table: "values_submissions", column: "rater_id", one: "values review they submitted", many: "values reviews they submitted" },
   { table: "values_submissions", column: "subject_id", one: "values review they received", many: "values reviews they received" },
   { table: "values_quarterly_ratings", column: "subject_id", one: "frozen quarterly values rating", many: "frozen quarterly values ratings" },
+  { table: "values_quarterly_manifest", column: "rater_id", one: "quarterly values contribution record", many: "quarterly values contribution records" },
   { table: "values_reminder_claims", column: "profile_id", one: "values review reminder", many: "values review reminders" },
 ] as const;
 

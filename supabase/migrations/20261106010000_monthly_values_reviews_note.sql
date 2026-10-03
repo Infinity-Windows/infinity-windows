@@ -6,7 +6,7 @@ insert into public.app_release_notes
 values
   ('2026-10-03-monthly-values-review', '2026-10-03', array[0,1,2,3], 'feature',
    'A monthly values review', 'Una revisión mensual de valores',
-   'Once a month you score a few people you worked beside on the eight Horizon values — one score each, 1 to 10, plus an optional comment. It takes about a minute per person. Your own name is visible to the owner on your review; the person you score never sees who scored them or what you wrote. Find it under Settings → My values.',
-   'Una vez al mes calificas a algunas personas con las que trabajaste en los ocho valores de Horizon: una puntuación cada uno, de 1 a 10, más un comentario opcional. Toma alrededor de un minuto por persona. Tu nombre es visible para el dueño en tu revisión; la persona que calificas nunca ve quién la calificó ni lo que escribiste. Encuéntralo en Configuración → Mis valores.',
+   'When monthly reviews are enabled, your assigned reviews appear under Settings → My values. Score all eight core values from 1 to 10, with an optional comment. Your name and answers are visible to the owner; the person you score sees only qualifying combined scores, without reviewer names or comments. Scheduling starts off until the owner enables it.',
+   'Cuando se habilitan las revisiones mensuales, tus revisiones asignadas aparecen en Configuración → Mis valores. Califica los ocho valores del 1 al 10, con un comentario opcional. El dueño puede ver tu nombre y respuestas; la persona que calificas solo ve puntuaciones combinadas que cumplen los requisitos, sin nombres de evaluadores ni comentarios. La programación comienza desactivada hasta que el dueño la active.',
    '/values')
 on conflict (id) do nothing;
