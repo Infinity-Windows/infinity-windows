@@ -20,6 +20,20 @@ import type { CatalogEntry } from "./translate";
 import { registerCatalog } from "./catalog";
 
 export const WORK_CATALOG = {
+  "work.goal.title": { en: "Crew goal", es: "Meta del equipo" },
+  "work.goal.loading": { en: "Loading crew hours…", es: "Cargando horas del equipo…" },
+  "work.goal.unavailable": { en: "Crew hours are unavailable right now.", es: "Las horas del equipo no están disponibles ahora." },
+  "work.goal.retry": { en: "Retry", es: "Reintentar" },
+  "work.goal.goal": { en: "Approved goal · crew labor hours", es: "Meta aprobada · horas de trabajo del equipo" },
+  "work.goal.unset": { en: "Not set", es: "Sin definir" },
+  "work.goal.revision": { en: "revision", es: "revisión" },
+  "work.goal.recorded": { en: "Recorded hours", es: "Horas registradas" },
+  "work.goal.running": { en: "Running time · provisional", es: "Tiempo en curso · provisional" },
+  "work.goal.allowance": { en: "Available within goal", es: "Disponible dentro de la meta" },
+  "work.goal.counts": { en: "{open} open shifts · {unresolved} need review", es: "{open} turnos abiertos · {unresolved} necesitan revisión" },
+  "work.goal.saved": { en: "Saved snapshot from", es: "Copia guardada del" },
+  "work.goal.asOf": { en: "As of", es: "Actualizado al" },
+  "work.goal.caveat": { en: "Available hours are not a forecast of work left. Open and unresolved time can change this total; finishing and QC must be checked separately.", es: "Las horas disponibles no predicen el trabajo pendiente. El tiempo abierto y sin resolver puede cambiar este total; la terminación y el control de calidad se revisan por separado." },
   "work.title": { en: "Work", es: "Trabajo" },
   "work.clock.job": { en: "Job", es: "Trabajo" },
   "work.clock.costCode": { en: "Cost code", es: "Código de costo" },

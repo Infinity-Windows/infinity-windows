@@ -4,7 +4,7 @@ import { JobExecutionPanel } from "../components/projects/JobExecutionPanel";
 import { JobTimecardExport } from "../components/timecard/JobTimecardExport";
 import { JobPackagesPanel } from "../components/warehouse/JobPackagesPanel";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { lazyOptional } from "../lib/pwa/lazyOptional";
 import { PartDidNotLoad } from "../lib/pwa/lazyOptionalFallback";
@@ -136,6 +136,7 @@ const CustomData = lazyOptional(
   () => import("./customWork/CustomData").then((m) => ({ default: m.CustomData })),
   <PartDidNotLoad />,
 );
+const CrewGoalCard = lazy(() => import("../components/projects/CrewGoalCard").then((m) => ({ default: m.CrewGoalCard })));
 
 export function ProjectDetail() {
   const { projectId = "" } = useParams();
@@ -671,6 +672,7 @@ function OverviewTab({
           question "is this job going to happen on time" is the one somebody
           opens a job to answer, and the customer's phone number is not. */}
       {project && isLead && <JobExecutionPanel key={projectId} projectId={projectId} completed={project.status === "completed"} />}
+      {project && <Suspense fallback={null}><CrewGoalCard projectId={projectId} /></Suspense>}
       {project && <PipelinePanel project={project} isLead={isLead} />}
 
       {/* Wave H (H1/H2): the GC card, directly under Pipeline. The two answer
