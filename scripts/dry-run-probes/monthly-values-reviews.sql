@@ -137,6 +137,16 @@ begin
     'select public.values_run_due()', 'permission denied'
   );
 
+  -- Test the pending assignment before acceptance: a completed assignment
+  -- correctly conflicts before rubric checks on a new request.
+  perform pg_temp.dry_run_expect_error(
+    'values_submit: a mismatched rubric version is refused',
+    format('select public.values_submit(%L::uuid, %L::uuid, %s, %L::jsonb, null)',
+      v_assignment, gen_random_uuid(), v_rubric + 999,
+      '[{"slug":"fullsend","score":7},{"slug":"ownership","score":8},{"slug":"integrity","score":9},{"slug":"sincerity","score":6},{"slug":"tribe","score":7},{"slug":"growth","score":5},{"slug":"strategic","score":8},{"slug":"safety","score":9}]'::jsonb),
+    'questions were updated'
+  );
+
   v_receipt := public.values_submit(
     v_assignment,
     v_request,
@@ -215,14 +225,6 @@ begin
       v_assignment, gen_random_uuid(), v_rubric,
       '[{"slug":"fullsend","score":7},{"slug":"ownership","score":8},{"slug":"integrity","score":9},{"slug":"sincerity","score":6},{"slug":"tribe","score":7},{"slug":"growth","score":5},{"slug":"strategic","score":8}]'::jsonb),
     'All eight values'
-  );
-
-  perform pg_temp.dry_run_expect_error(
-    'values_submit: a mismatched rubric version is refused',
-    format('select public.values_submit(%L::uuid, %L::uuid, %s, %L::jsonb, null)',
-      v_assignment, gen_random_uuid(), v_rubric + 999,
-      '[{"slug":"fullsend","score":7},{"slug":"ownership","score":8},{"slug":"integrity","score":9},{"slug":"sincerity","score":6},{"slug":"tribe","score":7},{"slug":"growth","score":5},{"slug":"strategic","score":8},{"slug":"safety","score":9}]'::jsonb),
-    'questions were updated'
   );
 
   perform pg_temp.dry_run_expect_error(
