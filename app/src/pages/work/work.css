@@ -462,3 +462,11 @@
 .sjwr .pav-project { padding-right: 0; }
 .sjwr .pav-clock, .sjwr .pav-actions button, .sjwr .pav-tile, .sjwr .pav-tabs button, .sjwr .pav-unit-picker button, .sjwr .pav-unit-picker select, .sjwr .pav-unit { color: var(--text); background-color: var(--card-raised); border-color: var(--border); }
 .sjwr .pav-tabs button[aria-selected="true"], .sjwr .pav-tile-running { border-color: var(--accent); background: var(--accent-bg); color: var(--text); }
+
+/* The shell already pins a clock door beside photo sync. A second fixed
+   timer at the same corner covered the upload status on narrow phones. */
+@media (max-width: 859px) {
+  .sjwr .pav-clock { position: static; max-width: 46%; }
+  .app-main:has(.sjwr) .sync-strip .sync-pill { flex-shrink: 0; min-width: 104px; max-width: 45%; }
+  .app-main:has(.sjwr) .clock-badge-text { white-space: normal; line-height: 1.2; }
+}
