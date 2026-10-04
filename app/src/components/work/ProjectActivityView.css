@@ -17,7 +17,7 @@
 .pav button:disabled { cursor: not-allowed; opacity: .55; }
 .pav-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; min-width: 0; }
 .pav-project { min-width: 0; padding-right: min(44vw, 150px); overflow-wrap: anywhere; }
-.pav-project h1 { margin: 2px 0 5px; font-size: clamp(1.3rem, 5vw, 1.8rem); line-height: 1.16; }
+.pav-project h1 { margin: 2px 0 5px; font-size: clamp(1.3rem, 5vw, 1.8rem); line-height: 1.16; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .pav-project p { margin: 0; color: var(--pav-muted); font-size: .84rem; }
 .pav-eyebrow { display: block; color: var(--pav-muted); font-size: .72rem; font-weight: 750; letter-spacing: .07em; text-transform: uppercase; }
 .pav-clock {

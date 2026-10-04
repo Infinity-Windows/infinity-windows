@@ -215,7 +215,7 @@ export function ProjectActivityView(props: ProjectActivityViewProps) {
       <header className="pav-header">
         <div className="pav-project">
           <span className="pav-eyebrow">{t.work}</span>
-          <h1>{project.code ? `${project.code} · ${project.name}` : project.name}</h1>
+          <h1 title={project.code ? `${project.code} · ${project.name}` : project.name}>{project.code ? `${project.code} · ${project.name}` : project.name}</h1>
           <p>{t.paid}: <strong>{duration(props.paidSeconds, t.unavailable)}</strong></p>
         </div>
         <button type="button" className="pav-clock" onClick={props.onOpenClock} aria-label={t.yourClock}>

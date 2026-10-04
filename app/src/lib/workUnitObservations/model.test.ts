@@ -20,6 +20,11 @@ describe("unit dimension evidence",()=>{
     const parsed=parseUnitFactSnapshot({...current,observation:{...observation,source:"estimated",estimated:true}},UNIT);
     expect(parsed.observation?.estimated).toBe(true); expect(parsed).not.toHaveProperty("verified"); expect(parsed).not.toHaveProperty("qcAccepted");
   });
+  it("keeps a relinked observation's original actor and measurement tuple",()=>{
+    const parsed=parseUnitFactSnapshot({...current,revision:2,eventKind:"relink"},UNIT);
+    expect(parsed).toMatchObject({revision:2,eventKind:"relink",observation,observationActorId:ACTOR,widthIn:12,heightIn:24});
+    expect(()=>parseUnitFactSnapshot({...current,eventKind:"relink",widthIn:13},UNIT)).toThrow();
+  });
   it("binds exact unit, protocol, complete fields and safe revisions",()=>{
     for(const value of [null,{...current,unitId:ACTOR},{...current,protocolVersion:2},{...current,revision:Number.MAX_SAFE_INTEGER+1},{...current,revision:"1"},{...current,eventKind:"verified"},{...current,recordedAt:undefined},{...current,extra:true}])
       expect(()=>parseUnitFactSnapshot(value,UNIT)).toThrow(UnitObservationUnavailableError);
