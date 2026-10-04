@@ -470,3 +470,7 @@
   .app-main:has(.sjwr) .sync-strip .sync-pill { flex-shrink: 0; min-width: 104px; max-width: 45%; }
   .app-main:has(.sjwr) .clock-badge-text { white-space: normal; line-height: 1.2; }
 }
+/* Settings can force the phone shell even on a wide display. */
+:root[data-display-layout="phone"] .sjwr .pav-clock { position: static; max-width: 46%; }
+:root[data-display-layout="phone"] .app-main:has(.sjwr) .sync-strip .sync-pill { flex-shrink: 0; min-width: 104px; max-width: 45%; }
+:root[data-display-layout="phone"] .app-main:has(.sjwr) .clock-badge-text { white-space: normal; line-height: 1.2; }

@@ -71,3 +71,10 @@ test('320px stale clock is labelled and reachable with no fabricated live counte
  }
  expect(unexpected).toEqual([]);
 });
+
+test('forced phone display at desktop width preserves clock/photo separation',async({page})=>{
+ await page.setViewportSize({width:1440,height:900});const unexpected=await setupRoute(page,true);
+ await page.evaluate(()=>{document.documentElement.dataset.displayLayout='phone';});await chooseJob(page);
+ const geometry=await layoutEvidence(page);expect(geometry.overlapping).toBe(false);expect(geometry.dockPosition).toBe('fixed');expect(geometry.dock.bottom).toBeCloseTo(geometry.height,0);
+ expect(unexpected).toEqual([]);
+});
