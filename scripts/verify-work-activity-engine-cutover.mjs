@@ -152,8 +152,16 @@ await db.exec(`alter table time_shifts enable row level security;alter table tas
  create policy "cutover fixture installed timing access" on time_shifts for all to authenticated using ((not is_partner_user()) and true) with check ((not is_partner_user()) and true);
  create policy "cutover fixture installed task access" on task_sessions for all to authenticated using ((not is_partner_user()) and true) with check ((not is_partner_user()) and true);`);
 if(process.env.WORK_ACTIVITY_CUTOVER_SCHEMA_OUT){
- writeFileSync(process.env.WORK_ACTIVITY_CUTOVER_SCHEMA_OUT,executedSchema.join('\n')+'\n');
- await db.close();console.log('Exported disposable development cutover fixture schema before any synthetic profiles or source rows. This is not the complete installed schema.');process.exit(0);
+ const serialized=executedSchema.join('\n;\n')+'\n;\n';
+ await db.close();
+ // db.exec accepts a complete final statement without a semicolon, including
+ // pg_get_functiondef output. Separately executed chunks need real separators
+ // when exported as one psql/import script. Round-trip the exact artifact in a
+ // second fresh database before handing it to the real-backend harness.
+ const roundTrip=new PGlite();
+ try {await roundTrip.exec(serialized);} finally {await roundTrip.close();}
+ writeFileSync(process.env.WORK_ACTIVITY_CUTOVER_SCHEMA_OUT,serialized);
+ console.log('Exported and round-trip imported disposable development cutover fixture before synthetic profiles or source rows. This is not the complete installed schema.');process.exit(0);
 }
 const privateAuthorityGuard=source.match(/do \$activity_private_authority\$[\s\S]*?\$activity_private_authority\$;/)?.[0];assert.ok(privateAuthorityGuard);
 await db.exec('grant select(profile_id) on personal_activity_state to authenticated');
