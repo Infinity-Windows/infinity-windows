@@ -18,7 +18,6 @@
     "moduleDetection": "force",
     "noEmit": true,
     /* The isolated component fixture renders real React controls in Vite. */
-    "jsx": "react-jsx",
 
     /* Linting */
     "noUnusedLocals": true,
