@@ -13,10 +13,10 @@ target=ROOT/'scripts/dry-run-probes/work-activity-totals-current-rehearsal.sql'
 # Pins are populated only after the bounded implementation and source closure.
 PINS={
  base: 'c32342321e4d224d4f3196ba50039c52e1bee43607c62af0cb2acb33ed3fc280',
- source_path: '1545a569be66e374c0c01abccf1920a649704d4ce784d8ba1753fa0ebe8189f8',
+ source_path: '5fe1c0952fcde7a891a0d9092f35fd6101aa1210c7979bd6caaf7be9481365ed',
  metadata: '215399700dfaf630313f00348e190a9aaabf3eef2a926a105ec467c4ef03c077',
  calls: '4f93fdfd6e61abe9e57623da6ad06aaa600bd025b09f7a8fb798e68eb7ea81dc',
- diagnostic: 'c5543e9bf502c4272b90380efe5b72da8552a644ed1c3abc35b41cb850636e11',
+ diagnostic: '7d3b679cfc8851d594dac0fe36b2b14851ccc4e01d8d93f40e8e82172024e33b',
 }
 assert len(PINS)==5, 'Totals provider pins pending source freeze; nothing sent'
 for path,sha in PINS.items():

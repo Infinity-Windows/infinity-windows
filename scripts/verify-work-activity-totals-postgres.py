@@ -40,12 +40,26 @@ check(run("select session_user='authenticator' and not (select rolsuper or rolin
 check(run("select current_setting('server_version_num')::int/10000")=='17','Actual PostgreSQL17')
 check(run('select _work_unit_review_coverage()')=='t','Frozen review dependency coverage')
 check(run("select to_regprocedure('public.work_activity_totals_read(uuid,uuid)') is null")=='t','Clean totals installation seam')
+# Mirror the observed provider ACL in this disposable database before installation.
+safety_privileges="array['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER']"
+run('grant all on table public.work_activity_safety_events to service_role;')
+check(run("select bool_and(has_table_privilege('service_role','public.work_activity_safety_events',p)) from unnest("+safety_privileges+") p")=='t','All seven observed raw safety privileges reproduced before totals installation')
 run(re.sub(r'rollback;\s*$','commit;',source))
+check(run("select bool_and(not has_table_privilege('service_role','public.work_activity_safety_events',p)) from unnest("+safety_privileges+") p")=='t','All seven raw safety privileges denied after installation')
+check(run("select bool_and(has_table_privilege('postgres','public.work_activity_safety_events',p)) from unnest("+safety_privileges+") p")=='t','Actual owner keeps safety writer access')
 coverage=run('select _work_totals_coverage()')
 if coverage!='t':
  diagnostic=(ROOT/'scripts/dry-run-probes/work-activity-totals-coverage-diagnostic.fragment.sql').read_text().strip().removesuffix(';')
  print('TOTALS_COVERAGE_DIAGNOSTIC',json.dumps(obj('select coalesce(jsonb_agg(to_jsonb(d)),\'[]\'::jsonb) from ('+diagnostic+') d')),flush=True)
 check(coverage=='t','Exact totals installed source guard')
+for label,ddl in [
+ ('Required column','alter table work_job_menu_selections alter column revision drop not null'),
+ ('CHECK constraint','alter table work_job_menu_selections drop constraint work_job_menu_selections_revision_check'),
+ ('Foreign key','alter table work_job_menu_selections drop constraint work_job_menu_selections_menu_version_id_fkey'),
+ ('Raw service safety ACL','grant all on table work_activity_safety_events to service_role')
+]:
+ check(run('begin;'+ddl+';select not _work_totals_coverage();rollback;')=='t',label+' drift refuses on genuine PostgreSQL17')
+check(run('select _work_totals_coverage()')=='t','Rolled-back metadata mutations restore exact coverage')
 run('insert into auth.users(id) values('+lit(worker)+'),('+lit(reviewer)+');insert into profiles(id,display_name,role,is_test) values('+lit(worker)+",'Totals PG worker','owner',false),("+lit(reviewer)+",'Totals PG reviewer','owner',false);insert into projects(id,job_code,name) values("+lit(job)+",'TOTALS-PG','Synthetic'),("+lit(other)+",'TOTALS-PG-OTHER','Synthetic');insert into project_openings(id,project_id,opening_code) values("+lit(opening)+','+lit(job)+",'TOTALS-PG-UNIT'),("+lit(ident(21))+','+lit(other)+",'TOTALS-PG-UNRELATED');")
 unit_payload={'id':unit,'revision':0,'project_id':job,'opening_id':opening,'label':'Synthetic PG totals','type_label':'Window','facts':{},'dimension_observation':{'width':36,'height':48,'unit':'in','source':'estimated'},'expected_fact_revision':0}
 rpc('select custom_work_command('+lit(ident(100))+",'unit',"+lit(json.dumps(unit_payload))+'::jsonb);')
