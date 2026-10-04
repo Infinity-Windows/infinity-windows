@@ -344,8 +344,37 @@ run(auth(actor)+f"set role authenticated;select _work_activity_observe('{device}
 run(auth(actor)+"begin isolation level repeatable read;select _work_activity_gate();",expect_error='25000')
 assert retained_counts(actor)==before
 cases+=1
+
+# Real PostgreSQL caller-role controls. These are explicitly synthetic test
+# routines, not claims about an installed application route. PostgREST's login
+# may be a member of both roles: SET ROLE outside a definer uses session-user
+# membership, so the invoker control must demonstrate why route closure matters.
+run("""
+create role work_activity_fixture_authenticator nologin noinherit;
+grant authenticated,service_role to work_activity_fixture_authenticator;
+create function public.zztest_activity_role_observer() returns jsonb
+language sql security definer set search_path=pg_catalog as $$
+ select jsonb_build_object('session',session_user,'current',current_user,'role',current_setting('role'))
+$$;
+create function public.zztest_activity_definer_role_change() returns text
+language plpgsql security definer set search_path=pg_catalog as $$
+begin return set_config('role','service_role',false);end $$;
+create function public.zztest_activity_invoker_role_change() returns text
+language plpgsql security invoker set search_path=pg_catalog as $$
+begin return set_config('role','service_role',false);end $$;
+revoke all on function public.zztest_activity_role_observer(),public.zztest_activity_definer_role_change(),public.zztest_activity_invoker_role_change() from public;
+grant execute on function public.zztest_activity_role_observer(),public.zztest_activity_definer_role_change(),public.zztest_activity_invoker_role_change() to authenticated;
+""")
+fixture_role="set session authorization work_activity_fixture_authenticator;set role authenticated;"
+owner=run('select current_user')
+observer=one(fixture_role+'select zztest_activity_role_observer();')
+assert observer==dict(session='work_activity_fixture_authenticator',current=owner,role='authenticated'),observer
+run(fixture_role+'select zztest_activity_definer_role_change();',expect_error='42501')
+assert run(fixture_role+'select zztest_activity_invoker_role_change();select current_user;').splitlines()==['service_role','service_role']
+assert retained_counts(actor)==before
+print('Caller-role controls: definer preserves built-in caller role, definer role change denied, invoker session-membership escalation demonstrated. Application invoker closure remains required.')
+cases+=1
 assert run('select count(*) from work_activity_transaction_context')=='0'
 assert run('select count(*) from work_activity_expected_mutations')=='0'
 assert run(f"select jsonb_build_object('shift',(select to_jsonb(s) from time_shifts s where id='{baseline_shift}'),'session',(select to_jsonb(s) from custom_work_sessions s where id='{baseline_session}'))")==baseline
 print(f'Activity inactive substrate: {cases} independent-backend/transaction scenarios passed; actual blocking PIDs observed. No public capture, legacy cutover or load-latency claim.')
-
