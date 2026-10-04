@@ -31,7 +31,11 @@ def stats(xs):
 assert run("select current_database()='forge_work_activity_role_test' and current_setting('server_version_num')::int/10000=17 and session_user='postgres' and not (select rolsuper from pg_roles where rolname=session_user)")=='t'
 assert run("select session_user='authenticator' and not (select rolsuper or rolinherit from pg_roles where rolname=session_user)",'authenticator')=='t'
 for name in ['_work_activity_retain_source','_work_unit_review_scope','_work_unit_review_coverage']:
- body=re.search(r'create(?: or replace)? function public\.'+name+r'\([^;]+?as (\$[a-z_]*\$)(.*?)\1;',source,re.S).group(2)
+ definitions=list(re.finditer(r'create(?: or replace)? function public\.'+name+r'\([^;]+?as (\$[a-z_]*\$)(.*?)\1;',source,re.S))
+ # SQL executes definitions in order. Coverage has a fail-closed placeholder
+ # followed by its generated final body; attest the body actually installed.
+ assert len(definitions)==(2 if name=='_work_unit_review_coverage' else 1),name+' definition count'
+ body=definitions[-1].group(2)
  assert run("select encode(sha256(convert_to(prosrc,'UTF8')),'hex') from pg_proc where pronamespace='public'::regnamespace and proname="+ql(name))==hashlib.sha256(body.encode()).hexdigest(),name+' exact installed body'
 assert run('select _work_unit_review_coverage()')=='t'
 owner,reviewer,worker=ident(1),ident(2),ident(3);job,former=ident(10),ident(11);opening,other_opening,former_opening,unrelated_opening=[ident(n) for n in (20,21,22,23)];unit,other_unit,phase=ident(30),ident(31),ident(40)
