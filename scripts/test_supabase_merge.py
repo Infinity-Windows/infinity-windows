@@ -39,6 +39,7 @@ from supabase_merge_lib import (
     POPULATED,
     SURROGATE_ONLY,
     VALUES_MANUAL_RECONCILIATION_TABLES,
+    WORK_CAPTURE_MANUAL_RECONCILIATION_TABLES,
     IdRemapper,
     compare_inventories,
     dedup_key_enforcement,
@@ -209,7 +210,7 @@ class TestSchemaParsing(unittest.TestCase):
         # 20261035000000 to land after the bill-to migrations).
         # +10 monthly-values tables: private policy, immutable reviews and
         # frozen accounting/provenance, plus reserved reminder claims.
-        self.assertEqual(len(SCHEMA.tables), 197)  # includes semimonthly timecard signatures
+        self.assertEqual(len(SCHEMA.tables), 207)  # includes ten private capture foundation tables
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 
@@ -722,6 +723,49 @@ class TestPlan(unittest.TestCase):
         self.assertIn("BLOCKERS", output.getvalue())
         self.assertIn("values_periods: monthly-values review data exists", output.getvalue())
         self.assertNotIn("insert into public.values_periods", output.getvalue())
+
+    def test_capture_graph_never_generates_private_insert_sql(self):
+        tables = sorted(WORK_CAPTURE_MANUAL_RECONCILIATION_TABLES)
+        private = "sentinel-private-capture-payload"
+        source = {"project_ref": "source", "tables": {name: {"rows": 1} for name in tables}}
+        target = {"project_ref": "target", "tables": {name: {"rows": 0} for name in tables}}
+        rows = {name: [{"id": name, "normalized_payload": private}] for name in tables}
+        plan = Plan(SCHEMA, source, target, rows, {}, 0)
+        self.assertEqual(plan.manual_capture_tables, tables)
+        self.assertEqual(plan.statements(), [])
+        self.assertEqual(len(plan.blockers), len(tables))
+        self.assertNotIn(private, render(plan, "source", "target"))
+        for name in tables:
+            self.assertTrue(any(b.startswith(name + ":") for b in plan.blockers))
+
+    def test_capture_count_target_and_empty_inventory(self):
+        for source, target, source_rows, target_rows in [
+            ({"tables": {"personal_activity_commands": {"rows": 1}}}, {}, {}, {}),
+            ({}, {"tables": {"personal_activity_state": {"rows": 1}}}, {}, {}),
+            ({}, {}, {"work_capture_menus": [{"id": "private"}]}, {}),
+            ({}, {}, {}, {"work_capture_menus": [{"id": "private"}]}),
+        ]:
+            plan = Plan(SCHEMA, source, target, source_rows, target_rows, 0)
+            self.assertEqual(len(plan.manual_capture_tables), 1)
+            self.assertEqual(plan.statements(), [])
+            self.assertEqual(len(plan.blockers), 1)
+        plan = Plan(SCHEMA, {"tables": {"personal_activity_commands": {"rows": 0}}}, {}, {}, {}, 0)
+        self.assertEqual(plan.manual_capture_tables, [])
+        self.assertEqual(plan.blockers, [])
+
+    def test_cli_exits_nonzero_for_count_only_capture_evidence(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "source.json"
+            target = Path(directory) / "target.json"
+            source.write_text(json.dumps({"project_ref": "source", "tables": {"personal_activity_commands": {"rows": 1}}}))
+            target.write_text(json.dumps({"project_ref": "target", "tables": {"personal_activity_commands": {"rows": 0}}}))
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                code = merge_plan_main(["--source", str(source), "--target", str(target)])
+        self.assertEqual(code, 2)
+        self.assertIn("personal_activity_commands: private work-capture evidence exists", output.getvalue())
+        self.assertNotIn("insert into public.personal_activity_commands", output.getvalue())
 
     def _plan(self, source_raw, target_raw, limit=0):
         import tempfile

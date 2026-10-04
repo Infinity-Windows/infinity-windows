@@ -28,6 +28,7 @@ from supabase_merge_lib import (  # noqa: E402
     PICK_ONE_WINNER,
     SURROGATE_ONLY,
     VALUES_MANUAL_RECONCILIATION_TABLES,
+    WORK_CAPTURE_MANUAL_RECONCILIATION_TABLES,
     IdRemapper,
     Schema,
     dedup_key,
@@ -127,6 +128,21 @@ class Plan:
                 "content-aware graph reconciliation."
             )
 
+        self.manual_capture_tables = sorted(
+            table for table in WORK_CAPTURE_MANUAL_RECONCILIATION_TABLES
+            if (self.source_count(table) or 0) > 0
+            or (self.target_count(table) or 0) > 0
+            or bool(self.source_rows.get(table))
+            or bool(self.target_rows.get(table))
+        )
+        for table in self.manual_capture_tables:
+            self.blockers.append(
+                f"{table}: private work-capture evidence exists (source={self.source_count(table)}, "
+                f"target={self.target_count(table)}). No insert SQL generated: stable versions, "
+                "original source identities, command receipts and personal revisions require "
+                "explicit reviewed content-aware graph reconciliation."
+            )
+
     # -- helpers ---------------------------------------------------------
 
     def source_count(self, table: str) -> int | None:
@@ -145,6 +161,7 @@ class Plan:
             if (self.source_count(t) or 0) > 0
             and t not in PICK_ONE_WINNER
             and t not in VALUES_MANUAL_RECONCILIATION_TABLES
+            and t not in WORK_CAPTURE_MANUAL_RECONCILIATION_TABLES
         ]
         return dependency_order(self.schema, candidates)
 
@@ -497,7 +514,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         Path(args.out).parent.mkdir(parents=True, exist_ok=True)
         Path(args.out).write_text(text + "\n")
         print(f"\n-> {args.out}")
-    return 2 if plan.manual_values_tables else 0
+    return 2 if plan.manual_values_tables or plan.manual_capture_tables else 0
 
 
 if __name__ == "__main__":

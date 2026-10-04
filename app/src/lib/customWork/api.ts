@@ -1,4 +1,5 @@
-import { supabase } from "../supabase";
+import { clientWithToken, supabase } from "../supabase";
+import { signInMark, stillSignedInAs } from "../signedIn";
 import { isMissingColumn } from "../schemaErrors";
 import type {
   CrewPerson,
@@ -114,18 +115,26 @@ const DIRECT_RPC_ACTIONS: Partial<Record<WorkCommand["action"], string>> = {
   correct_stage_contributors: "correct_stage_contributors",
 };
 export async function sendWorkCommand(c: WorkCommand): Promise<string> {
+  const mark = signInMark();
+  const wrongAccount = () => new Error(
+    "Sign back into the account that recorded this work to sync it.",
+  );
+  if (!stillSignedInAs(mark, c.userId)) throw wrongAccount();
   const { data: auth, error: authError } = await supabase.auth.getSession();
   if (authError) throw authError;
-  if (auth.session?.user.id !== c.userId)
-    throw new Error(
-      "Sign back into the account that recorded this work to sync it.",
-    );
+  if (auth.session?.user.id !== c.userId || !stillSignedInAs(mark, c.userId))
+    throw wrongAccount();
   const direct = DIRECT_RPC_ACTIONS[c.action];
-  const { data, error } = await supabase.rpc(direct ?? "custom_work_command", {
+  // A mutable shared client could switch accounts between getSession and send.
+  // Bind this request to the verified account's token for its entire lifetime.
+  const { data, error } = await clientWithToken(auth.session.access_token).rpc(direct ?? "custom_work_command", {
     p_id: c.id,
     ...(direct ? {} : { p_action: c.action }),
     p_data: c.data,
   });
+  // A committed request whose reply arrives after sign-out stays queued under
+  // its original id. That owner can retry it against the server's receipt.
+  if (!stillSignedInAs(mark, c.userId)) throw wrongAccount();
   if (error) throw error;
   return data as string;
 }

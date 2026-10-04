@@ -1,8 +1,9 @@
 import { beforeEach, expect, it, vi } from "vitest";
-const mocks = vi.hoisted(() => ({ rpc: vi.fn(), session: vi.fn() }));
-vi.mock("../supabase", () => ({supabase:{rpc:mocks.rpc,auth:{getSession:mocks.session}}}));
+const mocks = vi.hoisted(() => ({ rpc: vi.fn(), session: vi.fn(), boundClient: vi.fn() }));
+vi.mock("../supabase", () => ({supabase:{rpc:mocks.rpc,auth:{getSession:mocks.session}}, clientWithToken:mocks.boundClient}));
+import { rememberSignedIn } from "../signedIn";
 import { getStageContributorSummary, sendWorkCommand } from "./api";
-beforeEach(() => {vi.clearAllMocks();mocks.session.mockResolvedValue({data:{session:{user:{id:"foreman"}}},error:null});mocks.rpc.mockResolvedValue({data:"unit",error:null});});
+beforeEach(() => {vi.clearAllMocks();rememberSignedIn({user:{id:"foreman"}});mocks.boundClient.mockReturnValue({rpc:mocks.rpc});mocks.session.mockResolvedValue({data:{session:{access_token:"foreman-token",user:{id:"foreman"}}},error:null});mocks.rpc.mockResolvedValue({data:"unit",error:null});});
 it("routes crew attribution to the atomic RPC without start/finish payroll calls", async () => {
   const data={unit:{id:"unit"},people:["installer"]};
   expect(await sendWorkCommand({id:"retry-id",userId:"foreman",action:"crew_record",data})).toBe("unit");

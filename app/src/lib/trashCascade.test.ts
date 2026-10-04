@@ -171,6 +171,24 @@ const CASCADE_COVERED: Record<string, string> = {
   project_build_facts: "ON DELETE CASCADE from projects (the pk is the FK)",
 };
 
+/** Original identity evidence intentionally survives job purge. These private
+ * records have no operational project FK; future APIs must re-authorize a live
+ * project. A retained capability row alone must never authorize a deleted job.
+ * This is a separate disposition, not a claim that an FK deletes these rows. */
+const RETAINED_ORIGINAL_EVIDENCE: Record<string, string> = {
+  work_job_menu_selections: "Immutable menu choice keeps the original job UUID",
+  work_job_management_grants: "Private grant/revocation audit keeps the original job UUID",
+  work_session_capture_metadata: "Immutable source capture keeps the original job UUID",
+};
+const captureFoundation = readFileSync(join(MIGRATIONS, "20261107020000_work_capture_foundation.sql"), "utf8");
+
+/** Any direct DELETE/UPDATE of retained evidence violates its disposition.
+ * Match ordinary SQL qualification, aliases, case and multiline whitespace. */
+function retainedEvidenceMutated(table: string, sql: string): boolean {
+  const target = `(?:(?:public|"public")\\s*\\.\\s*)?"?${table}"?(?![a-z0-9_])`;
+  return new RegExp(`\\b(?:delete\\s+from|update)\\s+(?:only\\s+)?${target}`, "i").test(sql);
+}
+
 function purgeBody(): string {
   // Follow the last deployed definition, as the history-count test does.
   const sql = readdirSync(MIGRATIONS).filter(f => f.endsWith(".sql")).sort().map(f => readFileSync(join(MIGRATIONS, f), "utf8")).filter(s => s.includes("create or replace function public.purge_project")).at(-1)!;
@@ -187,6 +205,7 @@ function purgeBody(): string {
  * on a fabricated table below, not only on today's schema.
  */
 function purgeCovers(table: string, body: string): boolean {
+  if (RETAINED_ORIGINAL_EVIDENCE[table]) return true; // explicit private history disposition
   if (CASCADE_COVERED[table]) return true; // covered by an FK, documented above
   const deleted = new RegExp(`\\bdelete from ${table}\\b`).test(body);
   const detached = new RegExp(`\\bupdate ${table} set\\b`).test(body);
@@ -215,7 +234,7 @@ describe("purge_project handles every project-scoped table", () => {
     it(`accounts for ${table}`, () => {
       expect(
         purgeCovers(table, body),
-        `${table} is project-scoped (per sandbox_scoped_tables) but purge_project neither deletes nor detaches it, and it is not in CASCADE_COVERED — a purge would orphan its rows or hit an FK`,
+        `${table} is project-scoped (per sandbox_scoped_tables) but purge_project neither deletes nor detaches it, and it has no documented cascade or private retained-evidence disposition — a purge would leave an unreviewed row or hit an FK`,
       ).toBe(true);
     });
   }
@@ -234,6 +253,38 @@ describe("purge_project handles every project-scoped table", () => {
   it("only claims a cascade for a table that is actually project-scoped", () => {
     for (const table of Object.keys(CASCADE_COVERED)) {
       expect(census[table], `${table} in CASCADE_COVERED is not project-scoped`).toBeDefined();
+    }
+  });
+
+  it("retained original evidence stays private, project-scoped and uncascaded", () => {
+    for (const table of Object.keys(RETAINED_ORIGINAL_EVIDENCE)) {
+      expect(census[table]).toBe("project_id");
+      expect(retainedEvidenceMutated(table, body)).toBe(false);
+      const definition = captureFoundation.split(`create table public.${table} (`)[1]?.split("\n);")[0];
+      expect(definition).toBeDefined();
+      expect(definition).toMatch(/project_id uuid not null,/);
+      expect(definition).not.toMatch(/references public\.projects|on delete cascade/i);
+      expect(captureFoundation).toContain(`alter table public.${table} enable row level security;`);
+      expect(captureFoundation).toContain(`revoke all on table public.${table} from public,anon,authenticated;`);
+    }
+    expect(captureFoundation).toContain("enable row level security");
+    expect(captureFoundation).toContain("select public.attach_sandbox_guards();");
+    expect(purgeCovers("zztest_unreviewed_retained_evidence", body)).toBe(false);
+    for (const table of Object.keys(RETAINED_ORIGINAL_EVIDENCE)) {
+      // Mutated purge bodies must fail the retention invariant independently
+      // of the registry's recognition of an intentional retained disposition.
+      expect(retainedEvidenceMutated(table, body)).toBe(false);
+      for (const mutation of [
+        `delete from ${table} where project_id = p_project_id;`,
+        `delete from ${table};`,
+        `DELETE FROM "public"."${table}";`,
+        `update ${table} set project_id = null;`,
+        `DELETE FROM public.${table} AS evidence WHERE true;`,
+        `UPDATE\npublic.${table} evidence\nSET project_id = null;`,
+        `delete from only public."${table}" where true;`,
+        `update public . "${table}" as evidence set project_id = null;`,
+      ]) expect(retainedEvidenceMutated(table, body + mutation), mutation).toBe(true);
+      expect(retainedEvidenceMutated(table, `delete from ${table}_unrelated where true;`)).toBe(false);
     }
   });
 
