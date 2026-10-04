@@ -161,7 +161,7 @@ function SelectedJobWorkRouteBody({owner, generation, previewDisabled}: {owner: 
         units={unitRead.units} featureEnabled={sourceReady && freshClock && unitRead.state === "ready"}
         previewDisabled={previewDisabled} paidSeconds={paid.stale ? null : paid.seconds}
         setupAllocation={freshClock && native?.current?.kind === "open" && costId ? {projectId: project.id, costCodeId: costId} : null}
-        onAddUnit={() => navigate(`/current-work?job=${project.id}`)}
+        onAddUnit={() => navigate(`/current-work?job=${project.id}&new_unit=1`)}
         onOpenClock={() => openClockGlobally()} onBreak={() => openClockGlobally()} onClockOut={() => openClockGlobally()}
         onSchedule={() => navigate("/my-schedule")} onAsk={() => navigate("/ask")} />
       <CrewGoalCard projectId={project.id} />

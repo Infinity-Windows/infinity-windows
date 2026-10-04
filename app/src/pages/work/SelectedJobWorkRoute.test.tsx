@@ -62,7 +62,7 @@ describe("real selected-job route caller",()=>{
   it("maps only current selected-job units and keeps new-unit/editor/goals and clock navigation",async()=>{
     m.units=[{id:"u1",project_id:A,label:"Unit 1",type_label:"Bifold"},{id:"hidden",project_id:B,label:"Private"}];await render();await pick();
     expect(seen?.units).toEqual([{id:"u1",label:"Unit 1",detail:"Bifold"}]);expect(host.querySelector('[data-testid="goals"]')).toBeTruthy();
-    seen!.onAddUnit();expect(m.navigate).toHaveBeenLastCalledWith(`/current-work?job=${A}`);
+    seen!.onAddUnit();expect(m.navigate).toHaveBeenLastCalledWith(`/current-work?job=${A}&new_unit=1`);
     seen!.onBreak();seen!.onClockOut();seen!.onOpenClock();expect(m.openClock).toHaveBeenCalledTimes(3);
     seen!.onSchedule();expect(m.navigate).toHaveBeenLastCalledWith("/my-schedule");seen!.onAsk();expect(m.navigate).toHaveBeenLastCalledWith("/ask");
     expect(host.querySelector(`a[href="/current-work?job=${A}&unit=u1"]`)).toBeTruthy();

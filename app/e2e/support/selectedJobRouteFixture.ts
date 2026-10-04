@@ -18,7 +18,7 @@ function unitBasis(bindingEpoch = 3) { return { id: UNIT, projectId: PROJECT, op
     dimensions: { widthIn: 10, heightIn: 20, source: "measured",
       original: { width: 10, height: 20, unit: "in", source: "measured", sourceReference: null } }, estimated: false },
   eligibleForCapture: true, ineligibleReason: null }; }
-export async function setupRoute(page: Page, shell = false) {
+export async function setupRoute(page: Page, shell = false, fixtureUrl?: string) {
   await page.addInitScript(({key, session})=>localStorage.setItem(key,JSON.stringify(session)),{key:FIXTURE_AUTH_KEY,session:FIXTURE_SESSION});
   // Browser-only dependency injection: production release constant stays false
   // on disk. All actual API requests are replayed; no real writes are possible.
@@ -65,7 +65,7 @@ export async function setupRoute(page: Page, shell = false) {
     unexpected.push(url.pathname);return json(r,[],null);
   });
   page.on('pageerror',e=>{throw e;});
-  await page.goto(shell?'/e2e/support/selected-job-shell.html':'/e2e/support/selected-job-route.html');
+  await page.goto(fixtureUrl ?? (shell?'/e2e/support/selected-job-shell.html':'/e2e/support/selected-job-route.html'));
   if(!shell)await page.getByRole('button',{name:/BLACK22.*Black Desert/}).click();
   if(!shell)await expect(page.locator('.pav')).toBeVisible();
   if(!shell)await expect(page.locator('.pav-tile')).toHaveCount(1);
