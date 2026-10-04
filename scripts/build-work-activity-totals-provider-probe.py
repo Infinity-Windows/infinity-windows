@@ -16,7 +16,7 @@ PINS={
  source_path: 'e0e74c2d1985d332af81f95d20d2a6625c40cb5fcf995b4aa6e267d75e092140',
  metadata: '215399700dfaf630313f00348e190a9aaabf3eef2a926a105ec467c4ef03c077',
  calls: '4f93fdfd6e61abe9e57623da6ad06aaa600bd025b09f7a8fb798e68eb7ea81dc',
- diagnostic: '99f16aa9bc1774b8c4b601ad8bafc8737d8c30f8ae7d58ec801141d8cb2b6fb1',
+ diagnostic: '04835cac7d8d742f6b9d91c68e15a4b3345027c558ef43cb64577b9d53fbcb18',
 }
 assert len(PINS)==5, 'Totals provider pins pending source freeze; nothing sent'
 for path,sha in PINS.items():
@@ -30,6 +30,7 @@ sql+='\ndo $totals_metadata$ declare result record; begin for result in ('+fragm
 sql+="perform pg_temp.dry_run_check('provider/'||result.check_name,result.passed,'Exact totals source/ACL/capture-off metadata');\n"
 sql+='end loop; end; $totals_metadata$;\n'+calls.read_text()
 diagnostic_sql=diagnostic.read_text().strip().removesuffix(';')
+assert '${' not in diagnostic_sql.split('$expected_totals$')[-1], 'Unresolved JavaScript template in actual provider SQL; nothing sent'
 assert len(split_statements(diagnostic_sql+';'))==1
 sql+='\ndo $totals_diagnostic$ declare result record; begin if not public._work_totals_coverage() then for result in ('+diagnostic_sql+') loop\n'
 sql+="perform pg_temp.dry_run_check('provider/'||result.check_name,result.passed,'category='||result.category||';object='||result.object_name||';attribute='||result.attribute||';'||result.detail);\n"
