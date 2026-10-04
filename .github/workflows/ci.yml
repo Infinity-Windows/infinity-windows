@@ -326,6 +326,18 @@ jobs:
         env:
           WORK_ACTIVITY_ROLE_TEST_DB_URL: postgresql://supabase_admin:fixture-only@localhost:5432/forge_work_activity_role_test
         run: python3 scripts/verify-work-unit-review-concurrency.py
+      - name: Measure review volume and actual payroll waits in the disposable fixture
+        env:
+          WORK_ACTIVITY_ROLE_TEST_DB_URL: postgresql://supabase_admin:fixture-only@localhost:5432/forge_work_activity_role_test
+          WORK_UNIT_REVIEW_VOLUME_OUT: ${{ runner.temp }}/work-unit-review-volume.json
+        run: python3 scripts/verify-work-unit-review-volume.py
+      - name: Preserve review volume evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: work-unit-review-volume
+          path: ${{ runner.temp }}/work-unit-review-volume.json
+          if-no-files-found: ignore
 
   values-sql-concurrency:
     name: Monthly reviews database and concurrent acceptance

@@ -37,11 +37,12 @@ revoke execute on function public._work_activity_uuid(jsonb,boolean) from servic
 -- UUID order is canonical encoding order; tx_order preserves intermediate order.
 create table public.work_activity_source_history (
  id uuid primary key default gen_random_uuid(), source_kind text not null, source_id text not null,
- operation_id uuid, transition_ids uuid[] not null default '{}', transaction_id xid8 not null, tx_order numeric not null,
+ predecessor_id uuid, operation_id uuid, transition_ids uuid[] not null default '{}', transaction_id xid8 not null, tx_order numeric not null,
  actor_id uuid, recorded_at timestamptz not null default clock_timestamp(),
  before_value jsonb not null, after_value jsonb not null, legacy_baseline boolean not null default false
 );
 create index work_activity_source_history_source on public.work_activity_source_history(source_kind,source_id);
+create index work_activity_source_history_predecessor on public.work_activity_source_history(predecessor_id);
 create index work_activity_source_history_order on public.work_activity_source_history(transaction_id,tx_order);
 alter table public.work_activity_source_history enable row level security;
 revoke all on public.work_activity_source_history from public,anon,authenticated,service_role;
@@ -51,14 +52,25 @@ create trigger work_activity_source_history_no_truncate before truncate on publi
  for each statement execute function public.work_capture_immutable_record();
 create function public._work_activity_retain_source(p_kind text,p_id text,p_before jsonb,p_after jsonb) returns void
 language plpgsql volatile security definer set search_path=public,pg_temp as $$
-declare o public.work_activity_operations;
+declare o public.work_activity_operations; prior public.work_activity_source_history; heads bigint;
 begin
  o:=public._work_activity_operation();
- insert into public.work_activity_source_history(source_kind,source_id,operation_id,transition_ids,transaction_id,tx_order,actor_id,before_value,after_value,legacy_baseline)
- select p_kind,p_id,o.id,(select coalesce(array_agg(transition_id order by profile_id),'{}') from public.work_activity_operation_people where operation_id=o.id and profile_id::text in (p_before->>'profile_id',p_after->>'profile_id',p_before->>'started_by',p_after->>'started_by')),pg_current_xact_id(),coalesce(max(tx_order),0::numeric)+1,auth.uid(),coalesce(p_before,'{}'),coalesce(p_after,'{}'),
+ -- All attached writers already hold G before row mutation. Their AFTER capture
+ -- observes the previous committed/own source state. XIDs and wall clocks do
+ -- not order lock acquisition; immutable predecessor edges do, including reuse
+ -- after a tombstone. No mutable pointer, bounded counter, FK or new lock.
+ select count(*) into heads from public.work_activity_source_history h
+ where h.source_kind=p_kind and h.source_id=p_id and not exists(
+ select 1 from public.work_activity_source_history n where n.predecessor_id=h.id);
+ select h.* into prior from public.work_activity_source_history h
+ where h.source_kind=p_kind and h.source_id=p_id and not exists(
+ select 1 from public.work_activity_source_history n where n.predecessor_id=h.id)
+ order by h.id limit 1;
+ insert into public.work_activity_source_history(source_kind,source_id,predecessor_id,operation_id,transition_ids,transaction_id,tx_order,actor_id,before_value,after_value,legacy_baseline)
+ select p_kind,p_id,prior.id,o.id,(select coalesce(array_agg(transition_id order by profile_id),'{}') from public.work_activity_operation_people where operation_id=o.id and profile_id::text in (p_before->>'profile_id',p_after->>'profile_id',p_before->>'started_by',p_after->>'started_by')),pg_current_xact_id(),coalesce(max(tx_order),0::numeric)+1,auth.uid(),coalesce(p_before,'{}'),coalesce(p_after,'{}'),
  -- A captured mutation cannot invent the missing origin of a previously
  -- uncaptured source/state. Keep uncertainty even after later deletion/reuse.
- coalesce(p_before,'{}')<>'{}' and not exists(select 1 from public.work_activity_source_history h where h.source_kind=p_kind and h.source_id=p_id and h.after_value=p_before)
+ heads>1 or coalesce(prior.after_value,'{}') is distinct from coalesce(p_before,'{}')
  from public.work_activity_source_history where transaction_id=pg_current_xact_id();
 end; $$;
 revoke all on function public._work_activity_retain_source(text,text,jsonb,jsonb) from public,anon,authenticated,service_role;
@@ -446,9 +458,26 @@ begin
  select coalesce(jsonb_agg(jsonb_build_object('kind',s.kind,'id',s.source_id,'value',s.value) order by s.kind,s.source_id),'[]') into live
  from public._work_unit_review_live_sources s where exists(select 1 from jsonb_array_elements(sourceids) x where x->>'kind'=s.kind and x->>'id'=s.source_id);
  -- Re-enabled triggers cannot make an uncaptured live source trustworthy.
- -- Also reject current material never retained for that exact source identity.
- if exists(select 1 from jsonb_array_elements(live) l where not exists(
- select 1 from public.work_activity_source_history h where h.source_kind=l->>'kind' and h.source_id=l->>'id' and h.after_value=l->'value')) then proven:=false;end if;
+ -- Compare only the terminal captured state, including captured tombstones.
+ -- An older matching NEW cannot conceal a bypassed A -> B -> A reversal.
+ with recursive included as materialized (
+ select h.* from public.work_activity_source_history h where exists(
+ select 1 from jsonb_array_elements(sourceids) s where s->>'kind'=h.source_kind and s->>'id'=h.source_id)
+ ), heads as (
+ select h.* from included h where not exists(select 1 from included n where n.predecessor_id=h.id)
+ ), chain(id,predecessor_id) as (
+ select id,predecessor_id from heads union select h.id,h.predecessor_id from included h join chain n on h.id=n.predecessor_id
+ ) select proven and not (
+ exists(select 1 from jsonb_array_elements(sourceids) s where
+ (select count(*) from heads h where h.source_kind=s->>'kind' and h.source_id=s->>'id')<>1
+ or (select count(*) from included h where h.source_kind=s->>'kind' and h.source_id=s->>'id' and h.predecessor_id is null)<>1
+ or coalesce((select h.after_value from heads h where h.source_kind=s->>'kind' and h.source_id=s->>'id' order by h.id limit 1),'{}')
+ is distinct from coalesce((select l->'value' from jsonb_array_elements(live) l where l->>'kind'=s->>'kind' and l->>'id'=s->>'id'),'{}'))
+ or exists(select 1 from included h where h.predecessor_id is not null and not exists(
+ select 1 from included p where p.id=h.predecessor_id and p.source_kind=h.source_kind and p.source_id=h.source_id))
+ or exists(select 1 from included where predecessor_id is not null group by predecessor_id having count(*)>1)
+ or (select count(*) from chain)<>(select count(*) from included)
+ ) into proven;
  select coalesce(jsonb_agg(jsonb_build_object('source',to_jsonb(e),'actor',t.actor_id,'recordedAt',t.received_at,
  'selectedAt',t.selected_effective_at,'timeReason',t.time_selection_reason,'commandId',t.command_id,'requestId',t.source_request_id) order by e.id),'[]') into normal_sources
  from public.personal_activity_transition_sources e join public.personal_activity_transitions t on t.id=e.transition_id
@@ -931,7 +960,7 @@ grant execute on function public.person_record_counts(uuid) to service_role;
 -- Generated exact source/column/trigger coverage; unknown source shape fails closed.
 create or replace function public._work_unit_review_coverage() returns boolean
 language sql stable security definer set search_path=public,pg_temp as $coverage$
- select encode(sha256(convert_to(c.value::text,'UTF8')),'hex')='57bef054df03f0591dc0d22d81c2c4ca17f4795431b451880d392eff040573bc' from (select jsonb_build_object(
+ select encode(sha256(convert_to(c.value::text,'UTF8')),'hex')='54a7c09f3cf46835f340b8d662ec8b0af98781c2f8cc193e4e0ed8038ed0b5c2' from (select jsonb_build_object(
  'functions',(select jsonb_agg(jsonb_build_object('name',p.proname,'args',pg_get_function_identity_arguments(p.oid),'body',encode(sha256(convert_to(p.prosrc,'UTF8')),'hex'),'config',p.proconfig,'owner',pg_get_userbyid(p.proowner),'definer',p.prosecdef,'volatility',p.provolatile) order by p.proname,pg_get_function_identity_arguments(p.oid)) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname=any(array['_work_activity_operation_exit','_work_activity_event','_work_activity_touch','_work_activity_safety_exit','_work_activity_shift_lifecycle','_work_activity_retain_source','_work_activity_parent_source_history','_work_activity_source_material','_work_activity_row_event','_work_activity_gate','_work_activity_parent_gate','_work_activity_statement_begin','_work_activity_statement_end','_work_activity_row_before','_work_activity_read_committed','_work_activity_actor','_work_activity_unit_basis','_work_unit_fact_context_visible','_work_unit_fact_peek_epoch','_work_unit_fact_bump_epoch','_ai_job_visible','_work_config_internal','_work_config_is_supervisor','_work_config_is_foreman','is_test_profile','is_sandbox_project','service_job_access','service_internal','_work_unit_review_scope','_work_unit_review_view','_work_unit_review_authority','_work_unit_review_defect_projection','_work_unit_review_payload','_work_unit_review_decimal','_work_unit_review_text','person_record_counts','_work_activity_evidence','_work_activity_operation','work_capture_immutable_record','_work_activity_no_truncate','_work_activity_uuid','_work_activity_integer','_work_activity_object','work_unit_review_command','work_unit_review_read','work_unit_review_command_receipt'])),
  'triggers',(select jsonb_agg(jsonb_build_object('table',c.relname,'name',t.tgname,'definition',pg_get_triggerdef(t.oid,true),'enabled',t.tgenabled) order by c.relname,t.tgname) from pg_trigger t join pg_class c on c.oid=t.tgrelid join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relname=any(array['time_shifts','personal_activity_state','personal_activity_transition_sources','personal_activity_transitions','work_activity_safety_events','work_unit_fact_revisions','work_unit_fact_current','work_unit_fact_context_epochs','custom_work_units','project_openings','service_visit_units','service_visits','summons','unit_redos','qc_checks','install_events','crew_work_records','crew_work_record_people','work_session_capture_metadata','custom_work_history','custom_work_sessions','unit_sessions','task_sessions','service_time_sessions','opening_phases','summon_helpers','work_activity_source_history','work_unit_review_commands','work_unit_dimension_verifications','work_unit_review_events','work_unit_review_current','work_unit_review_defects','work_unit_review_defect_events']) and not t.tgisinternal),
  'columns',(select jsonb_agg(jsonb_build_object('table',c.relname,'column',a.attname,'type',format_type(a.atttypid,a.atttypmod),'nullable',not a.attnotnull,'generated',a.attgenerated,'identity',a.attidentity) order by c.relname,a.attnum) from pg_class c join pg_namespace n on n.oid=c.relnamespace join pg_attribute a on a.attrelid=c.oid and a.attnum>0 and not a.attisdropped where n.nspname='public' and c.relname=any(array['time_shifts','personal_activity_state','personal_activity_transition_sources','personal_activity_transitions','work_activity_safety_events','work_unit_fact_revisions','work_unit_fact_current','work_unit_fact_context_epochs','custom_work_units','project_openings','service_visit_units','service_visits','summons','unit_redos','qc_checks','install_events','crew_work_records','crew_work_record_people','work_session_capture_metadata','custom_work_history','custom_work_sessions','unit_sessions','task_sessions','service_time_sessions','opening_phases','summon_helpers','work_activity_source_history','work_unit_review_commands','work_unit_dimension_verifications','work_unit_review_events','work_unit_review_current','work_unit_review_defects','work_unit_review_defect_events'])),

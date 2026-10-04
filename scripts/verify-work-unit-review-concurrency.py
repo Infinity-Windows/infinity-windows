@@ -155,4 +155,26 @@ check(hole_read()['qc']['lifecycle']=='unproven','Genuine uncaptured live interv
 run('delete from unit_sessions where id='+ql(hole_session)+';')
 check(run("select bool_and(legacy_baseline) from work_activity_source_history where source_kind='unit_sessions' and source_id="+ql(hole_session))=='t','Genuine later deletion retains unknown origin')
 check(hole_read()['qc']['lifecycle']=='unproven','Genuine deleted hole cannot regain proof')
+# Causal source order: an earlier XID can perform its write after a newer XID.
+latest_unit,latest_opening,latest_phase=id(1100),id(1101),id(1102)
+run('insert into project_openings(id,project_id,opening_code) values('+ql(latest_opening)+','+ql(job)+",'LATEST');")
+latest_data={**unit_data,'id':latest_unit,'opening_id':latest_opening}
+run(auth(owner)+'select custom_work_command('+ql(id(1103))+",'unit',"+ql(json.dumps(latest_data))+'::jsonb);','authenticator')
+run('insert into opening_phases(id,opening_id,kind,status,started_at,submitted_at,minutes) values('+ql(latest_phase)+','+ql(latest_opening)+",'flashing','submitted',now()-interval '2 minutes',now()-interval '1 minute',701);")
+def latest_read():return obj(auth(reviewer)+'select work_unit_review_read('+ql(latest_unit)+');','authenticator')['review']
+a=start("set application_name='review_older_xid';begin;select pg_current_xact_id();",'postgres')
+deadline=time.monotonic()+4
+while time.monotonic()<deadline:
+ if run("select exists(select 1 from pg_stat_activity where application_name='review_older_xid' and state='idle in transaction')::int")=='1':break
+ time.sleep(.03)
+else:raise AssertionError('Older XID barrier absent')
+run('update opening_phases set minutes=702 where id='+ql(latest_phase)+';')
+ao,ae=finish(a,'update opening_phases set minutes=701 where id='+ql(latest_phase)+';commit;');check(a.returncode==0,'Older XID later write succeeds: '+ae)
+check(run("select (h.transaction_id<p.transaction_id)::int from work_activity_source_history h join work_activity_source_history p on p.id=h.predecessor_id where h.source_kind='opening_phases' and h.source_id="+ql(latest_phase)+" and not exists(select 1 from work_activity_source_history n where n.predecessor_id=h.id)")=='1','Actual XID order reverses causal append order')
+check(latest_read()['qc']['lifecycle']=='proven','Legitimate captured reversal with older XID stays proven')
+run('update opening_phases set minutes=702 where id='+ql(latest_phase)+';alter table opening_phases disable trigger zz_work_activity_row;update opening_phases set minutes=701 where id='+ql(latest_phase)+';alter table opening_phases enable trigger zz_work_activity_row;')
+check(latest_read()['qc']['lifecycle']=='unproven','Genuine bypassed prior-value reversal fails latest proof')
+run('update opening_phases set minutes=703 where id='+ql(latest_phase)+';')
+check(run("select legacy_baseline::int from work_activity_source_history where source_kind='opening_phases' and source_id="+ql(latest_phase)+" and after_value->>'minutes'='703'")=='1','Genuine next captured write preserves predecessor mismatch')
+check(latest_read()['qc']['lifecycle']=='unproven','Genuine next captured write cannot heal bypass')
 print(json.dumps({'result':'PASS','checks':checks,'observedBlockingEdges':edges,'reviewSha256':source_hash,'scope':'Actual PG17 source-owner/authenticator logins; provider/JWT transport excluded'}))

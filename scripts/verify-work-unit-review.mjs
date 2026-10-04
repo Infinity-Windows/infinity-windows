@@ -223,6 +223,45 @@ await as(id(2),'postgres');await db.query('update opening_phases set minutes=998
 check((await q("select count(*)::int n from work_activity_source_history where source_kind='opening_phases' and source_id=$1 and legacy_baseline and before_value->>'minutes'='999'",[id(600)])).n===1,'Captured update retains never-recorded predecessor material as unknown');
 await as(id(2));check((await readView()).review.qc.lifecycle==='unproven','Later captured update cannot heal an existing source material gap');
 await as(id(2),'postgres');await db.exec('rollback to savepoint capture_changed_material');
+// Latest state is a causal append head, never any historical matching NEW.
+await db.exec('savepoint captured_reversal');
+await db.query('update opening_phases set minutes=701 where id=$1',[id(600)]);
+await db.query('update opening_phases set minutes=702 where id=$1',[id(600)]);
+await db.query('update opening_phases set minutes=701 where id=$1',[id(600)]);
+await as(id(2));check((await readView()).review.qc.lifecycle==='proven','Legitimate captured A to B to A stays proven');
+await as(id(2),'postgres');await db.query('update opening_phases set minutes=702 where id=$1',[id(600)]);
+await db.exec('alter table opening_phases disable trigger zz_work_activity_row');
+await db.query('update opening_phases set minutes=701 where id=$1',[id(600)]);
+await db.exec('alter table opening_phases enable trigger zz_work_activity_row');
+await as(id(2));check((await readView()).review.qc.lifecycle==='unproven','Captured A to B then bypass back to A fails latest-state proof');
+check((await readView(31)).review.qc.qcAccepted,'Bypassed source reversal preserves unrelated unit acceptance');
+await as(id(2),'postgres');await db.query('update opening_phases set minutes=703 where id=$1',[id(600)]);
+check((await q("select legacy_baseline yes from work_activity_source_history h where source_kind='opening_phases' and source_id=$1 and after_value->>'minutes'='703'",[id(600)])).yes,'Later captured A to C retains latest-predecessor mismatch');
+await as(id(2));check((await readView()).review.qc.lifecycle==='unproven','Later captured A to C cannot heal bypassed reversal');
+await as(id(2),'postgres');await db.exec('rollback to savepoint captured_reversal');
+await db.exec('savepoint bypass_delete');await db.exec('alter table opening_phases disable trigger zz_work_activity_row');
+await db.query('delete from opening_phases where id=$1',[id(600)]);await db.exec('alter table opening_phases enable trigger zz_work_activity_row');
+await as(id(2));check((await readView()).review.qc.lifecycle==='unproven','Uncaptured disappearance differs from terminal retained live state');
+await as(id(2),'postgres');await db.exec('rollback to savepoint bypass_delete');
+check((await q("select count(*)::int n from work_activity_source_history h where source_kind='opening_phases' and source_id=$1 and not exists(select 1 from work_activity_source_history n where n.predecessor_id=h.id)",[id(600)])).n===1,'Same-transaction intermediate states have one terminal append head');
+// Synthetic clock-regression control: causal order must not sort wall time.
+await db.exec('savepoint history_clock');await db.exec('alter table work_activity_source_history disable trigger work_activity_source_history_immutable');
+await db.query("update work_activity_source_history h set recorded_at=case when not exists(select 1 from work_activity_source_history n where n.predecessor_id=h.id) then '2000-01-01'::timestamptz else '2030-01-01'::timestamptz end where source_kind='opening_phases' and source_id=$1",[id(600)]);
+await db.exec('alter table work_activity_source_history enable trigger work_activity_source_history_immutable');await as(id(2));
+check((await readView()).review.qc.lifecycle==='proven','Synthetic reversed recording timestamps do not reverse the causal source chain');
+await as(id(2),'postgres');await db.exec('rollback to savepoint history_clock');
+// Corrupt private topology is uncertainty, never a new writer refusal.
+for(const topology of ['missing','fork','cycle']){
+ await db.exec('savepoint history_topology');
+ const phaseMaterial=(await q("select _work_activity_source_material('opening_phases',to_jsonb(p)) value from opening_phases p where id=$1",[id(600)])).value;
+ const parent=(await q("select id from work_activity_source_history where source_kind='opening_phases' and source_id=$1 order by tx_order limit 1",[id(600)])).id;
+ const links=topology==='cycle'?[[id(870),id(871)],[id(871),id(870)]]:[[id(870),topology==='missing'?id(879):parent]];
+ for(const [hid,pred] of links)await db.query("insert into work_activity_source_history(id,source_kind,source_id,predecessor_id,transaction_id,tx_order,before_value,after_value) values($1,'opening_phases',$2,$3,pg_current_xact_id(),0,'{}',$4)",[hid,id(600),pred,JSON.stringify(phaseMaterial)]);
+ await as(id(2));check((await readView()).review.qc.lifecycle==='unproven',topology+' history topology cannot certify latest state');
+ await as(id(2),'postgres');await db.query('update opening_phases set minutes=704 where id=$1',[id(600)]);
+ await as(id(2));check((await readView()).review.qc.lifecycle==='unproven','Normal source append succeeds but cannot heal '+topology+' history');
+ await as(id(2),'postgres');await db.exec('rollback to savepoint history_topology');
+}
 // Metadata drift can never silently continue certifying coverage.
 await as(id(2),'postgres');await db.exec('savepoint drift');await db.exec('alter table opening_phases disable trigger zz_work_activity_row');await as(id(2));
 check((await readView()).review.qc.lifecycle==='unproven'&&!(await readView()).review.qc.qcAccepted,'Missing source capture marker fails closed');await as(id(2),'postgres');await db.exec('rollback to savepoint drift');await db.exec('savepoint acl_drift');await db.exec('grant select on work_unit_review_events to authenticated');await as(id(2));check((await readView()).review.qc.lifecycle==='unproven','Raw private ACL drift invalidates coverage');await as(id(2),'postgres');await db.exec('rollback to savepoint acl_drift');
@@ -356,5 +395,6 @@ await db.query('insert into custom_work_units select (jsonb_populate_record(null
 await as(id(2),'postgres');await db.exec('rollback to savepoint retained_purge');
 
 for(const row of (await db.query(read('scripts/verify-work-unit-review-installed.sql'))).rows)check(row.passed,row.check_name);
+if(process.env.WORK_UNIT_REVIEW_VOLUME_OUT){const {runVolume}=await import('./verify-work-unit-review-volume.mjs');await runVolume({db,as,id,readView,command,sourceSha256:hash(review),sourceSql:review,output:process.env.WORK_UNIT_REVIEW_VOLUME_OUT});}
 if(process.env.WORK_UNIT_REVIEW_WIRE_OUT){assert.ok(JSON.stringify(wire).length<2000000,'Bounded wire corpus');writeFileSync(process.env.WORK_UNIT_REVIEW_WIRE_OUT,JSON.stringify({reviewSha256:hash(read('supabase/migrations/20261108440000_work_unit_review.sql')),scope:'Actual source-matched synthetic SQL RPC results; not provider evidence',calls:wire},null,2));}
 await db.exec('rollback');await db.close();console.log(JSON.stringify({checks,reviewSha256:hash(read('supabase/migrations/20261108440000_work_unit_review.sql')),scope:'Source-matched sequential PGlite; not genuine-role or wait proof'}));
