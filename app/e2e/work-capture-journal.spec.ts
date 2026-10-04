@@ -83,20 +83,17 @@ test("native journal transactions serialize appends, scope owners, and preserve 
     const readOutbox = async () => {
       const db = await openOutbox();
       const tx = db.transaction(["entries", "metadata"], "readonly");
-      const rows = await Promise.all([
+      // Register completion before awaiting requests or reading a disk-backed
+      // Blob. WebKit may commit while Blob.arrayBuffer() is still pending.
+      const complete = new Promise<void>((resolve, reject) => {
+        tx.oncomplete = () => resolve();
+        tx.onabort = () => reject(tx.error);
+        tx.onerror = () => reject(tx.error);
+      });
+      const [entries, metadata] = await Promise.all([
         new Promise<any[]>((resolve, reject) => {
           const req = tx.objectStore("entries").getAll();
-          req.onsuccess = async () => {
-            const all = req.result;
-            const normalized = [];
-            for (const row of all) normalized.push({
-              id: row.id,
-              meta: row.meta,
-              blobType: row.blob?.type ?? null,
-              blobBytes: row.blob ? Array.from(new Uint8Array(await row.blob.arrayBuffer())) : null,
-            });
-            resolve(normalized);
-          };
+          req.onsuccess = () => resolve(req.result);
           req.onerror = () => reject(req.error);
         }),
         new Promise<any[]>((resolve, reject) => {
@@ -104,12 +101,15 @@ test("native journal transactions serialize appends, scope owners, and preserve 
           req.onsuccess = () => resolve(req.result);
           req.onerror = () => reject(req.error);
         }),
+        complete,
       ]);
-      await new Promise<void>((resolve, reject) => {
-        tx.oncomplete = () => resolve();
-        tx.onabort = () => reject(tx.error);
-      });
-      const result = { version: db.version, stores: Array.from(db.objectStoreNames).sort(), entries: rows[0], metadata: rows[1] };
+      const normalized = await Promise.all(entries.map(async row => ({
+        id: row.id,
+        meta: row.meta,
+        blobType: row.blob?.type ?? null,
+        blobBytes: row.blob ? Array.from(new Uint8Array(await row.blob.arrayBuffer())) : null,
+      })));
+      const result = { version: db.version, stores: Array.from(db.objectStoreNames).sort(), entries: normalized, metadata };
       db.close();
       return result;
     };
