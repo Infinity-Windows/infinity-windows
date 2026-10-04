@@ -1,0 +1,38 @@
+// Local schema-only probe compilation and non-disclosure checks. No network DB.
+import {readFileSync} from 'node:fs';
+import {createHash} from 'node:crypto';
+import assert from 'node:assert/strict';
+process.on('uncaughtException',e=>{console.error(JSON.stringify({message:e.message,code:e.code,where:e.where}));process.exit(1);});
+const {PGlite}=await import(process.env.PGLITE_MODULE??'@electric-sql/pglite');
+const db=new PGlite();
+await db.exec(`create schema auth;
+ create role anon;create role authenticated;create role service_role;create role supabase_admin;
+ create role supabase_auth_admin;create role authenticator noinherit;create role fixture_ancestor;
+ grant fixture_ancestor to service_role with inherit true,set false;
+ grant service_role to authenticator with inherit false,set true;
+ alter role authenticator set statement_timeout='8s';
+ alter role authenticator set "fixture.private_token"='SYNTHETIC_DO_NOT_DISCLOSE';
+ create temporary table probe_chunks(key text,value text);
+ create function pg_temp.dry_run_as_system() returns void language sql as $$select$$;
+ create function pg_temp.dry_run_check(p_key text,p_ok boolean,p_detail text) returns void language plpgsql as $$begin
+ if not p_ok then raise exception 'Probe check failed';end if;insert into probe_chunks values(p_key,p_detail);end$$;`);
+await db.exec(readFileSync(new URL('./dry-run-probes/work-activity-installed-role-parity.sql',import.meta.url),'utf8'));
+const parts=(await db.query('select key,value from probe_chunks order by key')).rows;
+const header=JSON.parse(parts.find(p=>p.key==='roleParityHeader').value);
+const chunks=parts.filter(p=>p.key.startsWith('roleParityPart/'));
+assert.equal(chunks.length,header.parts);
+const encoded=chunks.map(p=>p.value).join('');
+assert.equal([...encoded].length,header.characters);
+assert.equal(createHash('sha256').update(encoded).digest('hex'),header.sha256);
+assert.ok(!encoded.includes('SYNTHETIC_DO_NOT_DISCLOSE'));
+const result=JSON.parse(encoded);
+assert.ok(result.roles.some(r=>r.name==='fixture_ancestor'));
+assert.ok(result.memberships.some(m=>m.role==='fixture_ancestor'&&m.member==='service_role'&&!m.setOption&&m.inheritOption));
+assert.ok(result.rolePaths.some(p=>p.actor==='authenticator'&&p.target==='service_role'&&p.set&&!p.usage));
+const settings=result.settings.find(s=>s.role==='authenticator');
+assert.ok(settings.safeValues.includes('statement_timeout=8s'));
+assert.ok(settings.withheldKeys.includes('fixture.private_token'));
+assert.match(settings.settingsSha256,/^[a-f0-9]{64}$/);
+assert.ok(result.database.owner);
+assert.ok(result.capabilities.some(c=>c.role==='authenticated'&&typeof c.databaseConnect==='boolean'));
+await db.close();console.log('PASS 12 role-metadata probe compilation, transitive membership, capability, chunk/hash and secret-value withholding checks; synthetic local catalog only');
