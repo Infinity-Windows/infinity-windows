@@ -430,6 +430,6 @@
   "roundTrip": "PASS in a second fresh PGlite database",
   "reconstructionToolsSha256": {
     "scripts/build-work-activity-engine-schema-fixture.py": "d03751316c0e7b18239ecab00561159597553d0c311dcca530f05bcd7b3dc8e7",
-    "scripts/verify-work-activity-engine-schema-fixture.mjs": "9416c293dd192f3fd4fc7dcf4d53b65c4f5a2959058c72ca893aaefb13cf4849"
+    "scripts/verify-work-activity-engine-schema-fixture.mjs": "c4b29677e06fef4588b67703f64ed0bc36dd29cb561b2a5a5d10f50080b64e1c"
   }
 }

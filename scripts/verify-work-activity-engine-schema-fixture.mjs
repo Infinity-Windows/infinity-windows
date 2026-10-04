@@ -3,13 +3,17 @@
 import {readFileSync,writeFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import assert from 'node:assert/strict';
+import {isAbsolute} from 'node:path';
+import {pathToFileURL} from 'node:url';
 process.on('uncaughtException',e=>{console.error(JSON.stringify({message:e.message,code:e.code,where:e.where},null,2));process.exit(1);});
 const input=process.env.WORK_ACTIVITY_SCHEMA_CANDIDATES;
 assert.ok(input,'WORK_ACTIVITY_SCHEMA_CANDIDATES is required');
 const data=JSON.parse(readFileSync(input,'utf8')), shape=data.shape;
-const {PGlite}=await import(process.env.PGLITE_MODULE??'@electric-sql/pglite');
-const pgcryptoPath=new URL('./contrib/pgcrypto.js',process.env.PGLITE_MODULE??import.meta.resolve('@electric-sql/pglite')).href;
-const uuidPath=new URL('./contrib/uuid_ossp.js',process.env.PGLITE_MODULE??import.meta.resolve('@electric-sql/pglite')).href;
+const module=process.env.PGLITE_MODULE??'@electric-sql/pglite';
+const moduleUrl=isAbsolute(module)?pathToFileURL(module).href:import.meta.resolve(module);
+const {PGlite}=await import(moduleUrl);
+const pgcryptoPath=new URL('./contrib/pgcrypto.js',moduleUrl).href;
+const uuidPath=new URL('./contrib/uuid_ossp.js',moduleUrl).href;
 const {pgcrypto}=await import(pgcryptoPath);
 // uuid-ossp is loaded only if the already bundled extension is available.
 let uuidExtension;try{uuidExtension=(await import(uuidPath)).uuid_ossp;}catch{}

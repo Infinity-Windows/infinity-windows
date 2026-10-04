@@ -103,3 +103,23 @@ refusal with unchanged helper/unit/state/transition evidence, and successful
 completion of a legitimately active helper with an unchanged full payroll shift
 and closure of its own helper unit session. This is sequential local evidence;
 independent-backend and actual installed-schema gates remain separate.
+
+## Paid-clock runtime expansion and module-path correction
+
+The runtime verifier now has 30 sequential assertions. In addition to the helper
+regression, it executes the actual twelve-argument clock-in route, company paid
+start-day refusal, trusted original tap, snapshot-confirmed setup, immutable
+retained receipt/replay, break pause/resume and exactly-once break deduction,
+clock-out, old eleven-argument receipt protocol conflict, unchecked delayed
+arrival without automatic setup, and foreign-person safety-action refusals.
+These are synthetic local cases, not independent-backend or production proof.
+Published General/Specific completion, role-equivalent real connections and the
+root-owned catalog integration remain separate acceptance work.
+
+`PGLITE_MODULE` accepts an absolute filesystem path, a `file:` URL or an installed
+package specifier. Absolute paths are normalized with `pathToFileURL` before
+resolving bundled contrib modules. The initial PG17 CI attempt failed before
+runtime because it used an absolute path as a URL base. That failure provides no
+PostgreSQL behavior evidence. The corrected verifier has been exercised through
+all three module-loading forms without installing a package; the default-package
+check used a temporary directory linked to the existing local runtime.
