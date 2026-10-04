@@ -1,0 +1,7 @@
+.dimension-observation { min-width: 0; margin: 0; padding: 12px; border: 1px solid var(--border, #445); border-radius: 10px; }
+.dimension-observation label { display: grid; gap: 5px; margin-top: 10px; min-width: 0; }
+.dimension-observation input, .dimension-observation select { box-sizing: border-box; width: 100%; min-width: 0; max-width: 100%; }
+.dimension-observation select { appearance: none; overflow: hidden; text-overflow: ellipsis; padding-right: 28px; background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%); background-position: calc(100% - 17px) 50%, calc(100% - 12px) 50%; background-size: 5px 5px; background-repeat: no-repeat; }
+.dimension-observation-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.dimension-observation p { font-size: 13px; overflow-wrap: anywhere; }
+.dimension-observation-estimate { font-weight: 600; }

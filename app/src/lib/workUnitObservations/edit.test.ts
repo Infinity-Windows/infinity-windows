@@ -1,0 +1,17 @@
+import { describe,expect,it } from "vitest";
+import type { WorkUnit } from "../customWork/model";
+import { unitObservationEdit } from "./edit";
+import type { UnitFactSnapshot } from "./model";
+const UNIT="00000000-0000-4000-8000-000000000001",JOB="00000000-0000-4000-8000-000000000002",ACTOR="00000000-0000-4000-8000-000000000003";
+const unit:WorkUnit={id:UNIT,project_id:JOB,opening_id:null,created_by:ACTOR,label:"Window 12",type_label:"Window",revision:5,created_at:"2026-10-03T00:00:00Z",updated_at:"2026-10-03T00:00:00Z",facts:{width_in:12,height_in:24,measurement_source:"Old source text",area_source:"Original plans",material:"Aluminum",components:[{label:"Panel",quantity:3}],unknown_fields:["story"],note:"Original detail",installation_complete:"Yes"}};
+const basis:UnitFactSnapshot={unitId:UNIT,revision:4,eventKind:"legacy_observation",observation:null,widthIn:12,heightIn:24,observationActorId:null,recordedAt:"2026-10-03T00:00:00Z"};
+const observation={width:2,height:3,unit:"ft",source:"measured",sourceReference:"On-site tape"};
+describe("canonical measurement edit intent",()=>{
+  it("binds both revisions and leaves original units for server normalization",()=>{const data=unitObservationEdit(unit,basis,observation);expect(data).toMatchObject({id:UNIT,revision:5,expected_fact_revision:4,project_id:JOB,opening_id:null,dimension_observation:observation});expect(data).not.toHaveProperty("observerId");expect(data).not.toHaveProperty("verified");});
+  it("preserves unrelated builder/AI facts and replaces only the dimension tuple",()=>{const data=unitObservationEdit(unit,basis,observation);expect(data.facts).toEqual({material:"Aluminum",components:[{label:"Panel",quantity:3}],unknown_fields:["story"],note:"Original detail",installation_complete:"Yes"});expect(unit.facts.width_in).toBe(12);expect(unit.facts.measurement_source).toBe("Old source text");});
+  it("copies and freezes the intent so later form changes cannot alter a retry",()=>{const data=unitObservationEdit(unit,basis,observation);expect(data.facts).not.toBe(unit.facts);expect(Object.isFrozen(data)).toBe(true);expect(Object.isFrozen(data.facts)).toBe(true);expect(Object.isFrozen((data.facts as Record<string,unknown>).components)).toBe(true);expect(Object.isFrozen(data.dimension_observation)).toBe(true);});
+  it("permits the first explicit observation of an untouched legacy unit",()=>{expect(unitObservationEdit(unit,{...basis,revision:0,eventKind:null,widthIn:null,heightIn:null},observation).expected_fact_revision).toBe(0);});
+  it("refuses mismatched unit bases and unsafe operational/fact revisions",()=>{expect(()=>unitObservationEdit(unit,{...basis,unitId:JOB},observation)).toThrow();expect(()=>unitObservationEdit({...unit,revision:0},basis,observation)).toThrow();expect(()=>unitObservationEdit(unit,{...basis,revision:Number.MAX_SAFE_INTEGER},observation)).toThrow();});
+  it("refuses malformed graph properties without invoking their getters",()=>{let reads=0;const malformed={...unit};Object.defineProperty(malformed,"facts",{enumerable:true,get(){reads++;return unit.facts;}});expect(()=>unitObservationEdit(malformed,basis,observation)).toThrow();expect(reads).toBe(0);});
+  it("refuses an accessor in the fact basis without executing it",()=>{let reads=0;const malformed={...basis};Object.defineProperty(malformed,"revision",{enumerable:true,get(){reads++;return basis.revision;}});expect(()=>unitObservationEdit(unit,malformed,observation)).toThrow();expect(reads).toBe(0);});
+});
