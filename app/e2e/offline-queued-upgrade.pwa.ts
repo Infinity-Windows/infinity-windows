@@ -284,6 +284,8 @@ test(legacyOwnerless
 
 test("a clock-in saved by the current build keeps its owner and tap time through an offline relaunch", async ({ page, context, request }) => {
   const sent: Array<{ authorization: string | undefined; body: Record<string, unknown> }> = [];
+  let releaseClockResponse!: () => void;
+  const clockResponse = new Promise<void>((resolve) => { releaseClockResponse = resolve; });
   let backendDown = false;
   await useSupabaseFixtures(page, { role: "installer" });
   await hideWrongProjectBanner(page);
@@ -304,8 +306,9 @@ test("a clock-in saved by the current build keeps its owner and tap time through
     }], 0);
   });
   await page.route(/\/rest\/v1\/rpc\/server_now(\?|$)/, (r) => json(r, new Date().toISOString(), null));
-  await page.route(/\/rest\/v1\/rpc\/clock_in(\?|$)/, (r) => {
+  await page.route(/\/rest\/v1\/rpc\/clock_in(\?|$)/, async (r) => {
     sent.push({ authorization: r.request().headers()["authorization"], body: r.request().postDataJSON() });
+    await clockResponse;
     return json(r, { id: SHIFT, status: "open" }, null);
   });
   await page.route(/https:\/\/e2efixture\.supabase\.co\/(rest|storage|functions)\/v1\//, (r) =>
@@ -340,7 +343,11 @@ test("a clock-in saved by the current build keeps its owner and tap time through
   await expect.poll(() => sent.length, { timeout: 60_000 }).toBe(1);
   expect(sent[0]?.authorization).toBe("Bearer e2e-fixture-access-token");
   expect(sent[0]?.body).toMatchObject({ p_tapped_at: saved[0]?.tappedAt, p_client_id: saved[0]?.clientId });
-  expect(await queuedIds(page)).toEqual([]);
+  // A started request is not an acknowledgment: keep its original evidence
+  // until the server responds and the local deletion has committed.
+  expect(await queuedSnapshot(page)).toEqual(saved);
+  releaseClockResponse();
+  await expect.poll(() => queuedIds(page), { timeout: 60_000 }).toEqual([]);
   await page.reload();
   expect(sent).toHaveLength(1);
 });
