@@ -67,7 +67,13 @@ async function rows(page:Page):Promise<PaidClockRecord[]>{return page.evaluate(a
   const auth=await import("/src/lib/signedIn.ts");return store.readPaidClockRecords(auth.signInMark());
 });}
 test("the original screen saves offline break, resume and out in order without announcing payroll completion",async({page,context})=>{
-  const writes=await open(page,current());await context.setOffline(true);
+  const writes=await open(page,current());
+  // A fresh flow can arrive before ClockSheet's lazy recovery module and CSS.
+  // Start this offline-use scenario after that real UI has mounted; interrupted
+  // application downloads are exercised separately by the PWA upgrade gate.
+  await expect(page.locator(".paid-clock-queue")).toBeAttached();
+  await expect(page.getByRole("button",{name:"Go on break",exact:true})).toBeVisible();
+  await context.setOffline(true);
   await expect(page.getByTestId("screen-state")).toHaveText("activation_blocked:stale:open");
   await page.getByRole("button",{name:"Go on break",exact:true}).click();
   await page.getByRole("button",{name:"Rest",exact:true}).click();
