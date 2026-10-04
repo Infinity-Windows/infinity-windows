@@ -239,18 +239,30 @@ revoke all on function public.work_capture_immutable_record() from public,anon,a
 
 -- All access remains revoked. A future caller-bound API will authorize reads,
 -- publishing and job actions separately; no broad raw ledger SELECT is added.
+alter table public.work_activity_definitions enable row level security;
+revoke all on table public.work_activity_definitions from public,anon,authenticated;
+alter table public.work_activity_definition_versions enable row level security;
+revoke all on table public.work_activity_definition_versions from public,anon,authenticated;
+alter table public.work_capture_menus enable row level security;
+revoke all on table public.work_capture_menus from public,anon,authenticated;
+alter table public.work_capture_menu_versions enable row level security;
+revoke all on table public.work_capture_menu_versions from public,anon,authenticated;
+alter table public.work_job_menu_selections enable row level security;
+revoke all on table public.work_job_menu_selections from public,anon,authenticated;
+alter table public.work_job_management_grants enable row level security;
+revoke all on table public.work_job_management_grants from public,anon,authenticated;
+alter table public.personal_activity_state enable row level security;
+revoke all on table public.personal_activity_state from public,anon,authenticated;
+alter table public.personal_activity_commands enable row level security;
+revoke all on table public.personal_activity_commands from public,anon,authenticated;
+alter table public.personal_activity_transitions enable row level security;
+revoke all on table public.personal_activity_transitions from public,anon,authenticated;
+alter table public.work_session_capture_metadata enable row level security;
+revoke all on table public.work_session_capture_metadata from public,anon,authenticated;
+
 do $$
 declare table_name text;
 begin
-  foreach table_name in array array[
-    'work_activity_definitions','work_activity_definition_versions',
-    'work_capture_menus','work_capture_menu_versions',
-    'work_job_menu_selections','work_job_management_grants','personal_activity_state',
-    'personal_activity_commands','personal_activity_transitions','work_session_capture_metadata'
-  ] loop
-    execute format('alter table public.%I enable row level security',table_name);
-    execute format('revoke all on table public.%I from public,anon,authenticated',table_name);
-  end loop;
   foreach table_name in array array[
     'work_activity_definition_versions','work_capture_menu_versions',
     'work_job_menu_selections','personal_activity_commands','personal_activity_transitions',

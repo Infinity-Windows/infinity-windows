@@ -870,6 +870,19 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     # Reserved push ledger: the unique dedupe key identifies one claim, not
     # just two notifications that happen to have the same wording.
     "values_reminder_claims": ("dedupe_key",),
+    # Stable capture identities are never label/code-deduped or generically
+    # imported. Nonempty graphs need reviewed content/source reconciliation.
+    "work_activity_definitions": ('id',),
+    "work_activity_definition_versions": ('id',),
+    "work_capture_menus": ('id',),
+    "work_capture_menu_versions": ('id',),
+    "work_job_menu_selections": ('id',),
+    "work_job_management_grants": ('id',),
+    "personal_activity_state": ('profile_id',),
+    "personal_activity_commands": ('command_id',),
+    "personal_activity_transitions": ('id',),
+    "work_session_capture_metadata": ('session_id',),
+
 }
 
 #: The monthly-values graph contains private policy snapshots, immutable
@@ -889,6 +902,22 @@ VALUES_MANUAL_RECONCILIATION_TABLES = frozenset({
     "values_quarterly_accounting",
     "values_quarterly_manifest",
     "values_reminder_claims",
+})
+
+# Immutable version/source identity and personal revisions must not be silently
+# remapped or discarded by ON CONFLICT DO NOTHING. None of these tables can
+# produce generic merge inserts, including target-only/count-only inventory.
+WORK_CAPTURE_MANUAL_RECONCILIATION_TABLES = frozenset({
+    "work_activity_definitions",
+    "work_activity_definition_versions",
+    "work_capture_menus",
+    "work_capture_menu_versions",
+    "work_job_menu_selections",
+    "work_job_management_grants",
+    "personal_activity_state",
+    "personal_activity_commands",
+    "personal_activity_transitions",
+    "work_session_capture_metadata",
 })
 
 #: Tables where combining two projects' rows is meaningless or actively wrong.
