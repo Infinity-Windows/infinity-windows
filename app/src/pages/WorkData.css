@@ -1,13 +1,16 @@
 .work-data { overflow-wrap: anywhere; }
-.work-data-filters { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 12px; }
+.work-data-filters { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
 .work-data label { display: grid; gap: 6px; min-width: 0; }
 .work-data input, .work-data select { min-width: 0; width: 100%; box-sizing: border-box; }
 .work-data-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin: 16px 0; }
-.work-data-stats > div, .work-data-card { border: 1px solid var(--border, #ccc); border-radius: 12px; padding: 12px; }
+.work-data-stats > div, .work-data-card { min-width: 0; max-width: 100%; border: 1px solid var(--border, #ccc); border-radius: 12px; padding: 12px; }
 .work-data-stats span, .work-data-stats strong { display: block; }
 .work-data-stats strong { font-size: 1.3rem; margin-top: 6px; }
 .work-data-card { margin: 10px 0; }
 .work-data-card summary { cursor: pointer; font-weight: 600; }
 .work-data-source { border-top: 1px solid var(--border, #ccc); padding: 12px 0; }
 .work-data code { white-space: normal; font-size: .8rem; }
-@media (max-width: 600px) { .work-data-filters { grid-template-columns: 1fr 1fr; } .work-data-filters > label:first-child { grid-column: 1 / -1; } }
+@media (max-width: 600px) { .work-data-filters { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .work-data-filters > label:first-child { grid-column: 1 / -1; } }
+
+/* Native date controls need a full row on the narrowest phones. */
+@media (max-width: 360px) { .work-data-filters { grid-template-columns: minmax(0, 1fr); } }

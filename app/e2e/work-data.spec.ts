@@ -324,7 +324,13 @@ test("the layout stays within narrow portrait and landscape viewports", async ({
     { width: 844, height: 390 },
   ]) {
     await page.setViewportSize(viewport);
-    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await expect.poll(() => page.evaluate(() => ({
+      width: window.innerWidth,
+      overflow: Math.max(0, document.documentElement.scrollWidth - window.innerWidth),
+      outside: Array.from(document.querySelectorAll<HTMLElement>(".work-data *"))
+        .filter(el => el.getClientRects().length && el.getBoundingClientRect().right > window.innerWidth)
+        .map(el => `${el.tagName}.${el.className}: ${Math.round(el.getBoundingClientRect().right)}`),
+    }))).toEqual({ width: viewport.width, overflow: 0, outside: [] });
   }
 });
 
