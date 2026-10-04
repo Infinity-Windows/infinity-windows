@@ -79,7 +79,8 @@ await db.query("insert into profiles(id,display_name,role,is_test) values($1,'To
 await db.query("insert into projects(id,job_code,name) values($1,'TOTALS-A','Synthetic A'),($2,'TOTALS-B','Synthetic B')",[id(10),id(11)]);
 await db.query("insert into project_openings(id,project_id,opening_code) values($1,$2,'TOTALS-UNIT')",[id(20),id(10)]);
 await as(id(1));
-await q("select custom_work_command($1,'unit',$2::jsonb)",[id(seq++),JSON.stringify({id:id(30),revision:0,project_id:id(10),opening_id:id(20),label:'Totals synthetic',type_label:'Window',facts:{},dimension_observation:{width:36,height:48,unit:'in',source:'estimated'},expected_fact_revision:0})]);
+const unitCreation=await q("select to_jsonb(custom_work_command($1,'unit',$2::jsonb))::text serialized",[id(seq++),JSON.stringify({id:id(30),revision:0,project_id:id(10),opening_id:id(20),label:'Totals synthetic',type_label:'Window',facts:{},dimension_observation:{width:36,height:48,unit:'in',source:'estimated'},expected_fact_revision:0})]);
+check(JSON.parse(unitCreation.serialized)===id(30),'UUID-returning unit creation uses actual SQL JSON serialization for genuine harness');
 for(const [code,scope] of [['totals_general','general'],['totals_specific','specific']])await q("select work_publish_activity_version($1,$2,0,$3,$4,$4,$5::boolean,'[]')",[id(seq++),code,scope,code,scope==='general']);
 await as(id(1),'postgres');
 const defs=(await db.query("select d.code,d.id definition_id,v.id version_id from work_activity_definitions d join work_activity_definition_versions v on v.definition_id=d.id where d.code like 'totals_%' order by d.code")).rows;
