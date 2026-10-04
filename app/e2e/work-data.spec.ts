@@ -318,22 +318,101 @@ test("the layout stays within narrow portrait and landscape viewports", async ({
   await hideWrongProjectBanner(page);
   await mockWorkDataSnapshot(page);
   await loadReport(page);
+  await page.setViewportSize({ width: 320, height: 720 });
+
+  const experiment = await page.evaluate(async () => {
+    const frame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    const settle = async () => { await frame(); await frame(); };
+    const measure = () => {
+      const select = document.querySelector<HTMLElement>(".work-data select");
+      const label = select?.closest("label");
+      if (!select || !label) throw new Error("Work Data job selector is not rendered.");
+      const selectRect = select.getBoundingClientRect();
+      const labelRect = label.getBoundingClientRect();
+      const outside = Array.from(document.querySelectorAll<HTMLElement>(".work-data *"))
+        .filter((el) => el.getClientRects().length && el.getBoundingClientRect().right > window.innerWidth)
+        .map((el) => `${el.tagName}.${el.className}: ${Math.round(el.getBoundingClientRect().right)}`);
+      return {
+        viewport: window.innerWidth,
+        document: document.documentElement.scrollWidth,
+        label: { left: labelRect.left, right: labelRect.right, scroll: label.scrollWidth, client: label.clientWidth },
+        select: {
+          left: selectRect.left, right: selectRect.right, scroll: select.scrollWidth, client: select.clientWidth,
+          overflow: getComputedStyle(select).overflowX, textOverflow: getComputedStyle(select).textOverflow,
+          appearance: getComputedStyle(select).appearance, webkitAppearance: getComputedStyle(select).getPropertyValue("-webkit-appearance"),
+        },
+        outside,
+      };
+    };
+    const candidates = [
+      {
+        name: "select-overflow-hidden-ellipsis",
+        css: ".work-data select { overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important; }",
+      },
+      {
+        name: "label-minmax-zero-track",
+        css: ".work-data label { grid-template-columns: minmax(0, 1fr) !important; }",
+      },
+      {
+        name: "select-explicit-bounded-inline-size",
+        css: ".work-data select { min-inline-size: 0 !important; max-inline-size: 100% !important; inline-size: 100% !important; box-sizing: border-box !important; }",
+      },
+      {
+        name: "native-appearance-with-clipped-text",
+        css: ".work-data select { appearance: auto !important; -webkit-appearance: menulist !important; overflow: hidden !important; text-overflow: ellipsis !important; max-inline-size: 100% !important; }",
+      },
+    ];
+    const matrix = [] as Array<{ name: string; css: string; before: ReturnType<typeof measure>; after: ReturnType<typeof measure>; passed320: boolean }>;
+    await settle();
+    const before = measure();
+    for (const candidate of candidates) {
+      const style = document.createElement("style");
+      style.dataset.layoutExperiment = candidate.name;
+      style.textContent = candidate.css;
+      document.head.append(style);
+      await settle();
+      const after = measure();
+      matrix.push({ name: candidate.name, css: candidate.css, before, after, passed320: after.document <= after.viewport && after.outside.length === 0 });
+      style.remove();
+      await settle();
+    }
+    const winner = matrix.find((candidate) => candidate.passed320) ?? null;
+    if (winner) {
+      const style = document.createElement("style");
+      style.id = "work-data-layout-winner";
+      style.textContent = winner.css;
+      document.head.append(style);
+      await settle();
+    }
+    return { before, matrix, winner: winner?.name ?? null };
+  });
+  console.log("DATA_SELECT_EXPERIMENT_MATRIX", JSON.stringify(experiment));
+
   for (const viewport of [
     { width: 320, height: 720 },
     { width: 390, height: 844 },
     { width: 844, height: 390 },
   ]) {
     await page.setViewportSize(viewport);
-    console.log("LAYOUT_DIAG", JSON.stringify(await page.evaluate(() => ({
-      viewport: window.innerWidth, doc: document.documentElement.scrollWidth,
-      boxes: Array.from(document.querySelectorAll<HTMLElement>("*")).filter(el => el.getClientRects().length).map(el => ({
-        tag: el.tagName, class: el.className, text: el.textContent?.slice(0,80),
-        left: el.getBoundingClientRect().left, right: el.getBoundingClientRect().right,
-        scroll: el.scrollWidth, client: el.clientWidth, style: getComputedStyle(el).display,
-        position: getComputedStyle(el).position, overflow: getComputedStyle(el).overflowX,
-        padding: getComputedStyle(el).padding, grid: getComputedStyle(el).gridTemplateColumns,
-      })).filter(el => el.right > window.innerWidth || el.scroll > el.client),
-    }))));
+    const layout = await page.evaluate(async () => {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      const select = document.querySelector<HTMLElement>(".work-data select")!;
+      const label = select.closest("label")!;
+      const rect = (el: Element) => { const r = el.getBoundingClientRect(); return { left: r.left, right: r.right }; };
+      return {
+        viewport: window.innerWidth, document: document.documentElement.scrollWidth,
+        label: { ...rect(label), scroll: label.scrollWidth, client: label.clientWidth },
+        select: { ...rect(select), scroll: select.scrollWidth, client: select.clientWidth,
+          overflow: getComputedStyle(select).overflowX, textOverflow: getComputedStyle(select).textOverflow },
+        outside: Array.from(document.querySelectorAll<HTMLElement>(".work-data *"))
+          .filter(el => el.getClientRects().length && el.getBoundingClientRect().right > window.innerWidth)
+          .map(el => `${el.tagName}.${el.className}: ${Math.round(el.getBoundingClientRect().right)}`),
+      };
+    });
+    console.log("LAYOUT_DIAG", JSON.stringify(layout));
+    expect(page.locator(".work-data select").first()).toHaveValue(JOB.projectId);
+    await expect(page.getByText("People and payroll sources", { exact: true })).toBeVisible();
     await expect.poll(() => page.evaluate(() => ({
       width: window.innerWidth,
       overflow: Math.max(0, document.documentElement.scrollWidth - window.innerWidth),
