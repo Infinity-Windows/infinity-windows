@@ -70,8 +70,13 @@ is recorded only for a consistently recognized nonestimated source. These
 values never confer verification or QC acceptance.
 
 The before/applied JSON bounds are 32768 bytes: sufficient for the legal
-20000-byte legacy dimension/source subset, a 2000-byte raw observation and
-bounded reason/context metadata. Neither source strings nor old evidence are
+20000-byte legacy dimension/source subset, a 4096-byte accepted observation and
+bounded reason/context metadata. Observation requests are limited to 4096 bytes
+of PostgreSQL JSONB text; stored raw observations have an 8192-byte ceiling for
+headroom. A source reference may contain up to 500 characters, including
+multibyte text, within the request limit. Normalization trims the reference and
+recursive null stripping removes an omitted optional reference before storage.
+Neither source strings nor old evidence are
 truncated. Other unrelated facts remain in the canonical unit/history.
 
 ## Source authority and original identity

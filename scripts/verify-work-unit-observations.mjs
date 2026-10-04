@@ -707,5 +707,63 @@ try {
   await refuse(`select _work_unit_fact_legacy_source('measured')`, '42501');
 } finally { await db.exec('reset role'); }
 
+// Byte limits and PostgreSQL character limits are different. Execute the
+// canonical writer, including lossless SQL numeric values that JavaScript
+// would underflow; do not mistake a client serialization limit for storage.
+await as(AUTHOR);
+const unicodeRef = '😀'.repeat(500), unicodeUnit = nextId();
+await command('unit',{id:unicodeUnit,revision:0,project_id:JOB_A,label:'Multibyte reference',facts:{},dimension_observation:obs(2,3,'in','plans',unicodeRef),expected_fact_revision:0},nextId());
+check((await one(`select work_unit_fact_current_read('${unicodeUnit}') as r`)).r.observation.sourceReference===unicodeRef,'A 500-character four-byte reference round trips through the canonical writer and reader');
+check((await currentFact(unicodeUnit)).raw_observation.sourceReference===unicodeRef,'Raw evidence preserves the exact multibyte reference');
+await atomicRefuse({id:nextId(),revision:0,project_id:JOB_A,label:'Too many characters',facts:{},dimension_observation:obs(2,3,'in','plans','😀'.repeat(501)),expected_fact_revision:0},'23514');
+const boundaryObservation = async target => {
+  const make = count => "'{\"width\":0." + '0'.repeat(count) + "1,\"height\":1,\"unit\":\"in\",\"source\":\"measured\"}'::jsonb";
+  const base = (await one(`select octet_length((${make(0)})::text) as n`)).n;
+  return make(target-base);
+};
+const boundary = await boundaryObservation(4096), boundaryUnit = nextId();
+check((await one(`select octet_length((${boundary})::text) as n`)).n===4096,'Positive boundary is exactly 4096 bytes of PostgreSQL JSONB text');
+await one(`select custom_work_command('${nextId()}','unit',${quote({id:boundaryUnit,revision:0,project_id:JOB_A,label:'Lossless SQL numeric boundary',facts:{},expected_fact_revision:0})}::jsonb || jsonb_build_object('dimension_observation',${boundary}))`);
+const boundaryState = async () => one(`select octet_length(r.raw_observation::text) as raw_bytes,
+  r.raw_observation->>'width' = (${boundary})->>'width' as raw_exact,
+  (work_unit_fact_current_read('${boundaryUnit}')->'observation'->>'width') = (${boundary})->>'width' as read_exact,
+  r.raw_observation ? 'sourceReference' as reference_present,
+  octet_length(r.applied_intent::text) <= 32768 as applied_bounded,
+  r.before_snapshot is null or octet_length(r.before_snapshot::text) <= 32768 as before_bounded
+  from work_unit_fact_revisions r join work_unit_fact_current c on c.current_revision_id=r.id where c.unit_id='${boundaryUnit}'`);
+let boundaryResult = await boundaryState();
+check(boundaryResult.raw_bytes===4096 && boundaryResult.raw_exact && boundaryResult.read_exact && !boundaryResult.reference_present,'Accepted boundary is lossless and optional null does not expand stored raw JSON');
+check(boundaryResult.applied_bounded && boundaryResult.before_bounded,'Boundary private snapshots remain within their separate ceiling');
+// Keep numeric facts in PostgreSQL instead of JSON.parse/JSON.stringify.
+const sqlEdit = (unit, changes) => `jsonb_build_object('id','${unit}','revision',(select revision from custom_work_units where id='${unit}'),'project_id',(select project_id from custom_work_units where id='${unit}'),'label',(select label from custom_work_units where id='${unit}'),'facts',(select facts from custom_work_units where id='${unit}')) || ${quote(changes)}::jsonb`;
+await as(SUPERVISOR);
+await one(`select custom_work_command('${nextId()}','link',${sqlEdit(boundaryUnit,{project_id:JOB_B,reason:'Move exact numeric evidence'})})`);
+boundaryResult = await boundaryState();
+check(boundaryResult.raw_exact && boundaryResult.read_exact && boundaryResult.applied_bounded && boundaryResult.before_bounded,'Relink retains exact boundary observation and bounded snapshots');
+await one(`select custom_work_command('${nextId()}','unit',${sqlEdit(boundaryUnit,{dimension_observation:null,expected_fact_revision:2,dimension_observation_reason:'Clear exact numeric evidence'})})`);
+check((await one(`select (r.before_snapshot->'raw_observation'->>'width') = (${boundary})->>'width' as exact from work_unit_fact_revisions r join work_unit_fact_current c on c.current_revision_id=r.id where c.unit_id='${boundaryUnit}'`)).exact,'Reset retains exact boundary numeric evidence in the before snapshot');
+check((await one(`select work_unit_fact_current_read('${boundaryUnit}') as r`)).r.observation===null && (await factCount(boundaryUnit))===3,'Boundary create, relink and reset produce three immutable revisions');
+const oversized = await boundaryObservation(4097), oversizedUnit=nextId();
+const beforeOversized = await savedState();
+await refuse(`select custom_work_command('${nextId()}','unit',${quote({id:oversizedUnit,revision:0,project_id:JOB_A,label:'Oversized observation',facts:{},expected_fact_revision:0})}::jsonb || jsonb_build_object('dimension_observation',${oversized}))`,'23514');
+assert.deepEqual(await savedState(),beforeOversized,'4097-byte refusal preserves all operational/private/audit/receipt state'); checks++;
+// Both 4000-character sources are legal only if their entire facts object
+// also fits the existing 20000-byte validator. Two four-byte-only sources
+// do not; this is an atomic validator refusal, not a private storage defect.
+await atomicRefuse({id:nextId(),revision:0,project_id:JOB_A,label:'Invalid legacy total bytes',facts:{width_in:1,height_in:2,measurement_source:'😀'.repeat(4000),area_source:'😀'.repeat(4000)}},'P0001');
+const nearLimitSource='😀'.repeat(1900)+'a'.repeat(2100), nearLimitUnit=nextId();
+const nearLimitFacts={width_in:11,height_in:12,measurement_source:nearLimitSource,area_source:nearLimitSource};
+const nearLimitSize=await one(`select length(${quote(nearLimitFacts)}::jsonb->>'measurement_source') as chars,octet_length((${quote(nearLimitFacts)}::jsonb)::text) as bytes`);
+check(nearLimitSize.chars===4000 && nearLimitSize.bytes>19000 && nearLimitSize.bytes<=20000,'Positive legacy fixture has two maximum-character sources within the actual whole-facts byte limit');
+await command('unit',{id:nearLimitUnit,revision:0,project_id:JOB_A,label:'Near-limit legacy evidence',facts:nearLimitFacts},nextId());
+check((await currentFact(nearLimitUnit)).legacy_measurement_source===nearLimitSource && (await currentFact(nearLimitUnit)).legacy_area_source===nearLimitSource,'Both valid near-limit legacy sources remain exact');
+await command('unit',await edit(nearLimitUnit,{facts:{},dimension_observation:obs(3,4,'in','plans',unicodeRef),expected_fact_revision:1}),nextId());
+check((await currentFact(nearLimitUnit)).before_snapshot.measurement_source===nearLimitSource && (await currentFact(nearLimitUnit)).before_snapshot.area_source===nearLimitSource,'Explicit multibyte observation preserves both valid near-limit legacy sources in its before snapshot');
+await command('link',await edit(nearLimitUnit,{project_id:JOB_B,reason:'Move multibyte observation'}),nextId());
+check((await currentFact(nearLimitUnit)).raw_observation.sourceReference===unicodeRef,'Relink preserves maximum multibyte reference');
+await command('unit',await edit(nearLimitUnit,{dimension_observation:null,expected_fact_revision:3,dimension_observation_reason:'Reset multibyte observation'}),nextId());
+check((await currentFact(nearLimitUnit)).before_snapshot.raw_observation.sourceReference===unicodeRef && (await factCount(nearLimitUnit))===4,'Reset retains maximum multibyte raw reference and all prior revisions');
+check((await one(`select bool_and(octet_length(applied_intent::text)<=32768 and (before_snapshot is null or octet_length(before_snapshot::text)<=32768)) as bounded from work_unit_fact_revisions where unit_id in ('${boundaryUnit}','${nearLimitUnit}')`)).bounded,'Every boundary and near-limit legacy revision fits the private JSON ceiling');
+
 await db.close();
 console.log(`Work unit observations: ${checks} checks passed.`);

@@ -67,7 +67,7 @@ create table public.work_unit_fact_revisions (
   source_reference text check (source_reference is null or length(btrim(source_reference)) between 1 and 500),
   -- Original client width/height exactly as supplied, before inch conversion
   -- -- display rounding is a read-time concern, never baked in here.
-  raw_observation jsonb check (raw_observation is null or (jsonb_typeof(raw_observation) = 'object' and octet_length(raw_observation::text) <= 2000)),
+  raw_observation jsonb check (raw_observation is null or (jsonb_typeof(raw_observation) = 'object' and octet_length(raw_observation::text) <= 8192)),
   estimated boolean,
   -- Plain snapshot of the context epochs (section 2) as of this write, using
   -- an explicit 0 baseline distinct from "epoch 1" (B6): 0 means no bump has
@@ -76,7 +76,7 @@ create table public.work_unit_fact_revisions (
   opening_context_epoch bigint check (opening_context_epoch is null or opening_context_epoch between 0 and 9007199254740991),
   project_context_epoch bigint check (project_context_epoch is null or project_context_epoch between 0 and 9007199254740991),
   -- 32 KiB accommodates the legal <=20,000-byte legacy facts subset, a
-  -- <=2,000-byte raw observation and bounded reason/context metadata without
+  -- <=4,096-byte accepted observation and bounded reason/context metadata without
   -- truncating any accepted old evidence.
   -- The private helper's own description of what it applied, independent of
   -- custom_work_commands.payload, which record_crew_work later rewrites.
@@ -229,7 +229,7 @@ language plpgsql set search_path = public, pg_temp as $$
 declare v_unit text; v_source text; v_ref text; v_w numeric; v_h numeric;
 begin
   if p_observation is null or jsonb_typeof(p_observation) <> 'object'
-      or octet_length(p_observation::text) > 2000 then
+      or octet_length(p_observation::text) > 4096 then
     raise exception using errcode = '23514', message = 'Invalid dimension observation.';
   end if;
   if not (p_observation ?& array['width','height','unit','source']) then

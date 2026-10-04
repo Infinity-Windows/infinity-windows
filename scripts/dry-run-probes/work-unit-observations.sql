@@ -7,6 +7,10 @@ declare
   v_unit uuid:=gen_random_uuid(); v_req uuid:=gen_random_uuid(); v_req2 uuid:=gen_random_uuid();
   v_failed_unit uuid:=gen_random_uuid(); v_failed_req uuid:=gen_random_uuid();
   v_legacy uuid:=gen_random_uuid(); v_legacy_req uuid:=gen_random_uuid();
+  v_unicode uuid:=gen_random_uuid(); v_boundary uuid:=gen_random_uuid();
+  v_oversized uuid:=gen_random_uuid(); v_oversized_req uuid:=gen_random_uuid();
+  v_bad_legacy uuid:=gen_random_uuid(); v_bad_legacy_req uuid:=gen_random_uuid();
+  v_observation jsonb; v_base_bytes int;
   v_payload jsonb; v_data jsonb; v_read jsonb; v_count int; v_refused boolean:=false;
   v_shifts jsonb; v_custom_sessions jsonb; v_mapped_sessions jsonb; v_task_sessions jsonb;
   v_after jsonb; v_whole jsonb;
@@ -91,6 +95,49 @@ begin
   v_read:=public.work_unit_fact_current_read(v_legacy);
   perform pg_temp.dry_run_check('legal legacy free-text dimension sources remain accepted',
     v_read->>'revision'='1' and v_read->>'widthIn'='30' and v_read->'observation'='null'::jsonb,'checked');
+  perform public.custom_work_command(gen_random_uuid(),'unit',jsonb_build_object('id',v_unicode,'revision',0,'project_id',v_job,
+    'label','DRY-UNICODE-'||left(v_unicode::text,8),'facts','{}'::jsonb,'expected_fact_revision',0,
+    'dimension_observation',jsonb_build_object('width',2,'height',3,'unit','in','source','plans','sourceReference',repeat('😀',500))));
+  v_read:=public.work_unit_fact_current_read(v_unicode);
+  perform pg_temp.dry_run_check('500-character four-byte observation reference round trips',
+    v_read->'observation'->>'sourceReference'=repeat('😀',500),'checked');
+  v_base_bytes:=octet_length('{"width":0.1,"height":1,"unit":"in","source":"measured"}'::jsonb::text);
+  v_observation:=('{"width":0.'||repeat('0',4096-v_base_bytes)||'1,"height":1,"unit":"in","source":"measured"}')::jsonb;
+  perform public.custom_work_command(gen_random_uuid(),'unit',jsonb_build_object('id',v_boundary,'revision',0,'project_id',v_job,
+    'label','DRY-BOUNDARY-'||left(v_boundary::text,8),'facts','{}'::jsonb,'expected_fact_revision',0,'dimension_observation',v_observation));
+  v_read:=public.work_unit_fact_current_read(v_boundary);
+  perform pg_temp.dry_run_check('exact 4096-byte observation retains SQL numeric precision',
+    octet_length(v_observation::text)=4096 and v_read->'observation'->>'width'=v_observation->>'width','checked');
+  v_observation:=('{"width":0.'||repeat('0',4097-v_base_bytes)||'1,"height":1,"unit":"in","source":"measured"}')::jsonb;
+  v_refused:=false;
+  begin
+    perform public.custom_work_command(v_oversized_req,'unit',jsonb_build_object('id',v_oversized,'revision',0,'project_id',v_job,
+      'label','DRY-OVERSIZE-'||left(v_oversized::text,8),'facts','{}'::jsonb,'expected_fact_revision',0,'dimension_observation',v_observation));
+  exception when check_violation then v_refused:=true;
+  end;
+  perform pg_temp.dry_run_as_system();
+  perform pg_temp.dry_run_check('4097-byte observation refuses with no partial operational or private writes',
+    v_refused and not exists(select 1 from public.custom_work_units where id=v_oversized)
+    and not exists(select 1 from public.custom_work_commands where id=v_oversized_req)
+    and not exists(select 1 from public.custom_work_history where entity_id=v_oversized)
+    and not exists(select 1 from public.work_unit_fact_revisions where unit_id=v_oversized)
+    and not exists(select 1 from public.work_unit_fact_current where unit_id=v_oversized)
+    and not exists(select 1 from public.work_unit_fact_context_epochs where scope_id=v_oversized),'checked');
+  perform pg_temp.dry_run_act_as(v_installer);
+  v_refused:=false;
+  begin
+    perform public.custom_work_command(v_bad_legacy_req,'unit',jsonb_build_object('id',v_bad_legacy,'revision',0,'project_id',v_job,
+      'label','DRY-BAD-LEGACY-'||left(v_bad_legacy::text,8),'facts',jsonb_build_object('width_in',1,'height_in',2,
+        'measurement_source',repeat('😀',4000),'area_source',repeat('😀',4000))));
+  exception when raise_exception then v_refused:=true;
+  end;
+  perform pg_temp.dry_run_as_system();
+  perform pg_temp.dry_run_check('two 4000-character four-byte sources violate existing whole-facts limit atomically',
+    v_refused and not exists(select 1 from public.custom_work_units where id=v_bad_legacy)
+    and not exists(select 1 from public.custom_work_commands where id=v_bad_legacy_req)
+    and not exists(select 1 from public.custom_work_history where entity_id=v_bad_legacy)
+    and not exists(select 1 from public.work_unit_fact_revisions where unit_id=v_bad_legacy),'checked');
+  perform pg_temp.dry_run_act_as(v_installer);
   perform pg_temp.dry_run_expect_error('anonymous caller receives no unit fact projection',
     format('set local role anon; select public.work_unit_fact_current_read(%L)',v_unit),'permission denied');
   perform pg_temp.dry_run_as_system();
