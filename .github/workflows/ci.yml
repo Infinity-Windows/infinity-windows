@@ -449,7 +449,7 @@ jobs:
       - name: Reproduce unchanged original bundles with causal document timeline
         env:
           IW_PWA_CACHE: ${{ runner.temp }}/pwa-original/_temp/pwa-current
-        run: npx playwright test --config playwright.pwa.config.ts upgrade-path.pwa.ts -g 'a download that broke halfway' --repeat-each=2
+        run: npx playwright test --config playwright.pwa.config.ts upgrade-path.pwa.ts -g 'a download that broke halfway' --repeat-each=3
       - uses: actions/upload-artifact@v4
         if: always()
         with:

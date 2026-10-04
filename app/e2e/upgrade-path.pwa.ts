@@ -357,6 +357,21 @@ test("a download that broke halfway does not leave Refresh doing nothing afterwa
   // worker waiting, asks it to take over, it does, and the page stays on the
   // old shell: Refresh, ten seconds, Refresh, ten seconds.
   const causal: unknown[] = [];
+  const network: unknown[] = [];
+  const cdp=await page.context().newCDPSession(page);
+  await cdp.send('Network.enable');
+  const tracked=new Set<string>();
+  cdp.on('Network.requestWillBeSent',event=>{
+    if(event.type==='Document' || /\/assets\/(?:index-|timeclock-)[^/]+\.js/.test(event.request.url)){
+      tracked.add(event.requestId);
+      network.push({event:'request',at:Date.now(),requestId:event.requestId,loaderId:event.loaderId,url:event.request.url,type:event.type,
+        initiator:{type:event.initiator.type,url:event.initiator.url,line:event.initiator.lineNumber,stack:event.initiator.stack?.callFrames.slice(0,3)}});
+    }
+  });
+  cdp.on('Network.responseReceived',event=>{if(tracked.has(event.requestId))network.push({event:'response',at:Date.now(),requestId:event.requestId,
+    status:event.response.status,mimeType:event.response.mimeType,fromServiceWorker:event.response.fromServiceWorker,fromDiskCache:event.response.fromDiskCache,fromPrefetchCache:event.response.fromPrefetchCache});});
+  cdp.on('Network.loadingFailed',event=>{if(tracked.has(event.requestId))network.push({event:'failed',at:Date.now(),requestId:event.requestId,
+    type:event.type,error:event.errorText,canceled:event.canceled,blockedReason:event.blockedReason});});
   page.context().on("console", message => {
     if (message.text().startsWith("FORGE-PWA-")) causal.push({event:"console",at:Date.now(),text:message.text(),location:message.location()});
   });
@@ -370,10 +385,22 @@ test("a download that broke halfway does not leave Refresh doing nothing afterwa
     note("document-start", {empty:sessionStorage.getItem("wops-empty-boot-diagnostic"),reload:sessionStorage.getItem("wops-update-reload-diagnostic")});
     window.addEventListener("load",()=>note("load",{boot:document.documentElement.dataset.forgeBootStarted,rootChildren:document.getElementById("root")?.childElementCount}));
     window.addEventListener("beforeunload",()=>note("beforeunload",{boot:document.documentElement.dataset.forgeBootStarted,empty:sessionStorage.getItem("wops-empty-boot-diagnostic"),reload:sessionStorage.getItem("wops-update-reload-diagnostic")}));
-    navigator.serviceWorker.addEventListener("controllerchange",()=>note("controllerchange",{url:navigator.serviceWorker.controller?.scriptURL,state:navigator.serviceWorker.controller?.state}));
+    navigator.serviceWorker.addEventListener("controllerchange",()=>{
+      const controller=navigator.serviceWorker.controller;
+      note("controllerchange",{url:controller?.scriptURL,state:controller?.state});
+      controller?.addEventListener('statechange',()=>note('controller-state',{url:controller.scriptURL,state:controller.state}));
+    });
     const post=ServiceWorker.prototype.postMessage;
     ServiceWorker.prototype.postMessage=function(message:unknown,options?:Transferable[]|StructuredSerializeOptions){note("post-message",{url:this.scriptURL,type:(message as {type?:unknown})?.type});return Reflect.apply(post,this,[message,options]);};
-    window.addEventListener("error",(e:Event)=>note("window-error",e instanceof ErrorEvent?e.message:(e.target instanceof HTMLScriptElement?e.target.src:"resource")),true);
+    window.addEventListener("error",(e:Event)=>{
+      const target=e.target;
+      const url=target instanceof HTMLScriptElement?target.src:target instanceof HTMLLinkElement?target.href:null;
+      const entries=url?performance.getEntriesByName(url).map(entry=>{
+        const r=entry as PerformanceResourceTiming & {responseStatus?:number};
+        return {name:r.name,start:r.startTime,duration:r.duration,initiator:r.initiatorType,status:r.responseStatus,transferSize:r.transferSize,decodedBodySize:r.decodedBodySize};
+      }):[];
+      note("window-error",e instanceof ErrorEvent?{message:e.message}:{url,tag:target instanceof Element?target.tagName:null,rel:target instanceof HTMLLinkElement?target.rel:null,entries});
+    },true);
     window.addEventListener("unhandledrejection",e=>note("unhandled-rejection",String(e.reason)));
   });
   try {
@@ -431,6 +458,7 @@ test("a download that broke halfway does not leave Refresh doing nothing afterwa
   } finally {
     let documentTimeline: unknown = null;
     try { documentTimeline=await page.evaluate(()=>JSON.parse(sessionStorage.getItem("wops-e2e-half-download-causal")||"[]")); } catch { /* navigation may still be active */ }
-    await test.info().attach("half-download-causal",{body:Buffer.from(JSON.stringify({causal,documentTimeline},null,2)),contentType:"application/json"});
+    await test.info().attach("half-download-causal",{body:Buffer.from(JSON.stringify({causal,documentTimeline,network},null,2)),contentType:"application/json"});
+    await cdp.detach();
   }
 });
