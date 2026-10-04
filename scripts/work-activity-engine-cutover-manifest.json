@@ -3838,7 +3838,10 @@
         "time_clock_actions",
         "time_shifts"
       ],
-      "replacement": "preserved_header_generated_entry"
+      "replacement": "preserved_header_generated_entry",
+      "deliberateProtocolChanges": [
+        "keyed11 admits unsigned paid setup only through exact one-time private new12 root claim; ordinary11 policy unchanged"
+      ]
     },
     {
       "identity": "clock_out(uuid, text, boolean, boolean, integer, double precision, double precision, text, uuid, timestamp with time zone, timestamp with time zone, integer)",

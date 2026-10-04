@@ -11,7 +11,6 @@ Every response contains `protocolVersion: 1`, server `asOf`,
 | mode | setupReason | canAuthorSetup |
 | --- | --- | --- |
 | active | null | true |
-| active | toolbox_required | false |
 | closing_only | starts_disabled | false |
 | unavailable | not_ready | false |
 
@@ -71,3 +70,5 @@ edges before testing capture disable and account revocation freshness. Its URI
 and fresh-database guards, bounded processes, real installed timeout settings and
 provider exclusions are unchanged. Local PGlite execution is not PostgreSQL 17
 network/concurrency proof; preserve the separate CI receipts.
+
+The explicit new setup route may admit the original paid tap before toolbox signing when capture is active and healthy. Retained clock routes keep their existing toolbox/company-paid-date policy. Activity starts, Prep, and finishing setup still require actual toolbox signing. The private one-use setup-root claim is checked inside the existing payroll route; client readiness alone cannot authorize a punch.

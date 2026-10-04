@@ -20,7 +20,7 @@ BOOTSTRAP = 'supabase_admin'
 ROLE_FILE = ROOT/'scripts/fixtures/work-activity-engine-role-parity.json'
 EXPECTED_ROLE_SHA = '7df27ee90e2358a7b90eab3104f54b80c24537e736dde4555b101690e57513d2'
 EXPECTED_SCHEMA_SHA = 'ee41a980b19f76baa8637101b62703ecdf798a32eccbb0e9f074fbfd71c62471'
-EXPECTED_CUTOVER_SHA = 'e2c57266fa2f63e345b8ce232d737c7810c7e9509334b9abae56d7c8b77b5d15'
+EXPECTED_CUTOVER_SHA = 'aa767e67de301cd0ce5961758cc5afefe89bdf25fe27b3c4156a219c9cb2f648'
 assert hashlib.sha256(ROLE_FILE.read_bytes()).hexdigest() == EXPECTED_ROLE_SHA
 metadata = json.loads(ROLE_FILE.read_text())
 assert sys.argv[1:] in ([], ['--check-plan'])
@@ -204,7 +204,7 @@ check(run("select count(*) from work_activity_operations",'postgres')=='0','Supp
 # Create synthetic subjects using the actual non-super source owner. These IDs
 # exist only in the fresh exact-name local database and have no employee data.
 uid='00000000-0000-4000-8000-000000004001';project='00000000-0000-4000-8000-000000004002'
-run(f"insert into auth.users(id) values('{uid}');insert into profiles(id,display_name,role,is_test) values('{uid}','Role parity fixture','installer',false);insert into projects(id,job_code,name) values('{project}','ROLE-SYNTHETIC','Role fixture');insert into company_settings(id,paid_time_from_start_day_on) values(1,(clock_timestamp() at time zone 'America/Denver')::date);",'postgres')
+run(f"insert into auth.users(id) values('{uid}');insert into profiles(id,display_name,role,is_test) values('{uid}','Role parity fixture','installer',false);insert into projects(id,job_code,name) values('{project}','ROLE-SYNTHETIC','Role fixture');",'postgres')
 # Fixture-only control functions make the otherwise subtle SET ROLE premise
 # visible under the same authenticator login. Never installed in a migration.
 run("create schema role_fixture;grant usage on schema role_fixture to authenticated;create function role_fixture.definer_role_change() returns text language plpgsql security definer set search_path=public,pg_temp as $$begin perform set_config('role','service_role',false);return current_setting('role');end$$;create function role_fixture.invoker_role_change() returns text language plpgsql as $$begin perform set_config('role','service_role',false);return current_setting('role');end$$;grant execute on all functions in schema role_fixture to authenticated;",'postgres')
@@ -215,8 +215,12 @@ auth=f"set role authenticated;set request.jwt.claim.sub='{uid}';"
 run(auth+"select _work_activity_operation_enter('fixture')",'authenticator','42501')
 run("begin;select _work_activity_gate();update work_activity_authority_generation set capture_enabled=true,revision=revision+1;commit",'postgres')
 clock=f"select to_jsonb(clock_in('{project}'::uuid,null::uuid,null::text,null::double precision,null::double precision,null::text,null::text,'00000000-0000-4000-8000-000000004003'::uuid,clock_timestamp()-interval '1 minute',clock_timestamp(),0,1))"
+run(auth+clock.replace(',0,1))',',0))'),'authenticator','P0001')
+run(auth+"set app.work_setup='true';set request.jwt.claim.setup_version='1';"+clock.replace(',0,1))',',0))'),'authenticator','P0001')
+run(auth+"select _work_activity_claim_clock_setup(null,null,null,null,null,null,null,null,null,null,null)",'authenticator','42501')
+run(auth+"select _work_activity_clock_setup_digest(null,null,null,null,null,null,null,null,null,null,null)",'authenticator','42501')
 paid=json.loads(run(auth+clock,'authenticator'))
-check(paid['profile_id']==uid and paid['clock_out_at'] is None,'Twelve-argument clock succeeds through actual authenticator and non-super definer')
+check(paid['profile_id']==uid and paid['clock_out_at'] is None,'Unsigned twelve-argument clock succeeds with paid-date absent through genuine authenticator and non-super definer')
 snapshot=json.loads(run(auth+"select work_activity_snapshot('00000000-0000-4000-8000-000000004004')",'authenticator'))
 check(snapshot['state']['status']=='setup','Actual setup state under source role attributes')
 shift=paid['id']
@@ -230,12 +234,12 @@ check(run("select count(*) from work_activity_operations",'postgres')=='0','No o
 # owner only after the complete engine. It cannot stand in for activation.
 capability_source=(ROOT/'supabase/migrations/20261108430000_work_activity_clock_capability.sql').read_text()
 capability_hash=hashlib.sha256(capability_source.encode()).hexdigest()
-assert capability_hash=='f0fc5f6792263daee2880e4588c5139021dadcd464d21e824ec073b415b71576'
+assert capability_hash=='1e77a1c2ab09df91f16fe160ca640de4e9c825be6cec4fe7b46a1f941c255e61'
 run(capability_source,'postgres');checks+=1
 counts="select json_build_array((select count(*) from personal_activity_state),(select count(*) from work_activity_observations),(select count(*) from work_activity_clock_receipts),(select count(*) from personal_activity_transitions),(select count(*) from work_activity_operations),(select count(*) from time_shifts))"
 before_counts=run(counts,'postgres')
 capability=json.loads(run(auth+'begin read only;select work_activity_clock_capability();commit;','authenticator'))
-check(capability['mode']=='active' and capability['canAuthorSetup'] and capability['setupReason'] is None,'Actual read-only readiness uses the real toolbox gate')
+check(capability['mode']=='active' and capability['canAuthorSetup'] and capability['setupReason'] is None,'Actual read-only readiness permits explicit setup before signing')
 check(run(counts,'postgres')==before_counts,'Readiness leaves all capture/payroll/history counts unchanged')
 run(auth+'select _work_activity_clock_contract_marker()','authenticator','42501')
 run('set role anon;select work_activity_clock_capability()','authenticator','42501')
@@ -298,6 +302,49 @@ try:
             check(not reader_out.strip(),'Revoked reader returns no private readiness envelope')
     check(wait_edges==2,'Two exact independent-backend blocking edges observed')
     check(run(counts,'postgres')==before_counts,'Both waiting reads leave payroll/capture/history unchanged')
+    # Three actual payroll-entry waits, including the reverse capture direction.
+    # Every original stamp is frozen before either connection enters G; no client
+    # chooses a replacement timestamp after the wait.
+    for index,case in enumerate(['disable','enable','revoke']):
+        subject=f'00000000-0000-4000-8000-{5000+index:012d}'
+        command=f'00000000-0000-4000-8000-{5100+index:012d}'
+        run(f"insert into auth.users(id) values('{subject}');insert into profiles(id,display_name,role,is_test) values('{subject}','Synthetic waiting setup','installer',false);begin;select _work_activity_gate();update work_activity_authority_generation set capture_enabled={'false' if case=='enable' else 'true'},revision=revision+1;commit",'postgres')
+        stamp=json.loads(run("select json_build_object('tap',clock_timestamp()-interval '1 minute','checked',clock_timestamp())",'postgres'))
+        change=(f"update profiles set access_revoked_at=clock_timestamp() where id='{subject}'" if case=='revoke' else f"update work_activity_authority_generation set capture_enabled={'true' if case=='enable' else 'false'},revision=revision+1 where singleton")
+        app_a=f'setup_holder_{index}';app_b=f'setup_writer_{index}'
+        holder=start_race(f"set application_name='{app_a}';set statement_timeout='8s';set lock_timeout='8s';begin;select _work_activity_gate();{change};",'postgres')
+        deadline=time.monotonic()+4
+        while time.monotonic()<deadline:
+            if holder.poll() is not None:raise AssertionError('Setup holder exited before barrier: '+holder.stderr.read())
+            if run("set statement_timeout='2s';select exists(select 1 from pg_stat_activity where datname=current_database() and application_name="+ql(app_a)+" and state='idle in transaction')::int",'postgres',timeout=4)=='1':break
+            time.sleep(.03)
+        else:raise AssertionError('Setup holder did not reach G barrier')
+        waiting_clock=f"select to_jsonb(clock_in(null::uuid,null::uuid,null::text,null::double precision,null::double precision,null::text,null::text,'{command}'::uuid,{ql(stamp['tap'])}::timestamptz,{ql(stamp['checked'])}::timestamptz,0,1))"
+        reader=start_race(f"set application_name='{app_b}';set role authenticated;set request.jwt.claim.sub='{subject}';"+waiting_clock,'authenticator')
+        deadline=time.monotonic()+4
+        while time.monotonic()<deadline:
+            if reader.poll() is not None:raise AssertionError('Setup writer exited without waiting: '+reader.stderr.read())
+            if run("set statement_timeout='2s';select exists(select 1 from pg_stat_activity a join pg_stat_activity b on b.datname=a.datname where a.datname=current_database() and a.application_name="+ql(app_a)+" and b.application_name="+ql(app_b)+" and a.pid<>b.pid and a.pid=any(pg_blocking_pids(b.pid)))::int",'postgres',timeout=4)=='1':wait_edges+=1;break
+            time.sleep(.03)
+        else:raise AssertionError('No actual setup writer G wait observed')
+        _,holder_error=finish_race(holder,'commit;');assert holder.returncode==0,holder_error
+        reader_out,reader_error=finish_race(reader)
+        if case=='enable':
+            assert reader.returncode==0,reader_error
+            fresh_shift=json.loads(reader_out)
+            from datetime import datetime
+            check(datetime.fromisoformat(fresh_shift['clock_in_at'])==datetime.fromisoformat(stamp['tap']),'Post-G enabled setup preserves the frozen original paid tap with no job selected')
+            check(run(f"select count(*) from work_setup_sessions where profile_id='{subject}' and shift_id='{fresh_shift['id']}' and started_at={ql(stamp['tap'])}::timestamptz",'postgres')=='1','Post-G enabled setup opens exactly one original-tap setup source')
+            check(run(f"select count(*) from work_activity_clock_receipts where client_id='{command}' and receipt_protocol='setup_v1' and used_tap_time and review_reason is null",'postgres')=='1','Post-G enabled setup retains one genuine keyed receipt')
+        else:
+            expected='42501' if case=='revoke' else 'P0001'
+            check(reader.returncode!=0 and re.search(r'\b'+expected+r'\b',reader_error),'Waiting setup uses fresh '+case+' admission')
+            check(not reader_out.strip(),'Refused setup exposes no shift result')
+            check(run(f"select (not exists(select 1 from time_shifts where profile_id='{subject}') and not exists(select 1 from work_setup_sessions where profile_id='{subject}') and not exists(select 1 from work_activity_clock_receipts where client_id='{command}') and not exists(select 1 from time_clock_actions where client_id='{command}'))::int",'postgres')=='1','Refused waiting setup leaves no payroll/setup/original or retained receipt')
+    check(wait_edges==5,'All five readiness and actual payroll admission waits observed')
+    check(run('select count(*) from company_settings','postgres')=='0','No scenario relies on or changes paid-date company policy')
+    check(run('select count(*) from work_activity_operations','postgres')=='0','No setup admission frame survives a completed or refused call')
+
 finally:
     for proc in race_processes:
         if proc.poll() is None:
@@ -305,4 +352,4 @@ finally:
             try:proc.wait(timeout=2)
             except subprocess.TimeoutExpired:proc.kill();proc.wait(timeout=2)
 
-print(json.dumps({'result':'PASS','checks':checks,'cutoverSha256':EXPECTED_CUTOVER_SHA,'roleMetadataSha256':EXPECTED_ROLE_SHA,'capabilitySha256':capability_hash,'readinessBlockingEdges':wait_edges,**plan}))
+print(json.dumps({'result':'PASS','checks':checks,'cutoverSha256':EXPECTED_CUTOVER_SHA,'roleMetadataSha256':EXPECTED_ROLE_SHA,'capabilitySha256':capability_hash,'readinessBlockingEdges':2,'setupAdmissionBlockingEdges':wait_edges-2,**plan}))

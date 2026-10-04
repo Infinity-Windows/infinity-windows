@@ -100,10 +100,45 @@ async function refused(sql,args,code){
 }
 const paidArgs=[id(110),null,id(120),at(-3600),at(0)];
 await as(id(100));
-await refused(clock12,paidArgs,'P0001');
+await refused(clock11,paidArgs,'P0001');
 await as(id(100),'postgres');
-check((await q('select count(*)::int n from time_shifts where profile_id=$1',[id(100)])).n===0,'Paid setup retains the actual company paid-time admission boundary');
-await db.exec("insert into company_settings(id,paid_time_from_start_day_on) values(1,(clock_timestamp() at time zone 'America/Denver')::date)");
+check((await q('select count(*)::int n from time_shifts where profile_id=$1',[id(100)])).n===0,'Unsigned retained eleven-argument clock preserves its original company admission boundary');
+// A custom claim is not admission; private helpers and frames remain inaccessible.
+await as(id(100));
+await db.exec("set app.work_setup='true';set request.jwt.claim.setup_version='1'");
+await refused(clock11,paidArgs,'P0001');
+const claimSql=clock11.replace('to_jsonb(clock_in(', '_work_activity_claim_clock_setup(').replace(',0)) value', ',0) value');
+await refused(claimSql,paidArgs,'42501');
+await refused("select _work_activity_operation_enter('clock_in_setup','{}'::jsonb,$1)",[id(120)],'42501');
+await refused("insert into work_activity_operations(top_xid,backend_pid,actor_id,route,arrival_at,request_id,arguments) values(pg_current_xact_id(),pg_backend_pid(),$1,'clock_in_setup',clock_timestamp(),$2,'{}')",[id(100),id(120)],'42501');
+await as(id(100),'postgres');
+const digestSql=claimSql.replace('_work_activity_claim_clock_setup','_work_activity_clock_setup_digest');
+const exactDigest=(await q(digestSql,paidArgs)).value;
+// Trusted fixture corruption proves every claimed identity is checked, rather
+// than merely checking a forgeable route label. Each attempt rolls back fully.
+for(const [request,args,command] of [
+ [id(999),{setupVersion:1,clockPayloadDigest:exactDigest},null],
+ [id(120),{setupVersion:1,clockPayloadDigest:'wrong'},null],
+ [id(120),{setupVersion:1,clockPayloadDigest:exactDigest},id(999)],
+ [id(120),{setupVersion:1,clockPayloadDigest:exactDigest,extra:true},null]
+]){
+ await db.exec('savepoint corrupt_setup_claim');
+ await q("select _work_activity_operation_enter('clock_in_setup',$1::jsonb,$2,$3)",[JSON.stringify(args),request,command]);
+ await as(id(100));await refused(clock11,paidArgs,'42501');
+ await as(id(100),'postgres');await db.exec('rollback to savepoint corrupt_setup_claim');
+}
+await db.exec('savepoint consumed_setup_claim');
+await q("select _work_activity_operation_enter('clock_in_setup',$1::jsonb,$2)",[JSON.stringify({setupVersion:1,clockPayloadDigest:exactDigest}),id(120)]);
+check((await q(claimSql,paidArgs)).value===true,'Exact private setup admission is consumed once');
+await refused(claimSql,paidArgs,'42501');
+await refused('update work_activity_operations set clock_entry_claimed=false',[],'23514');
+await refused("update work_activity_operations set arguments='{}'",[],'23514');
+await refused("update work_activity_operations set route='clock_in'",[],'23514');
+await db.exec('rollback to savepoint consumed_setup_claim');
+await db.exec('savepoint disabled_setup');await db.exec('update work_activity_authority_generation set capture_enabled=false,revision=revision+1');
+await as(id(100));await refused(clock12,paidArgs,'P0001');
+await as(id(100),'postgres');check((await q('select count(*)::int n from time_shifts where profile_id=$1',[id(100)])).n===0,'Capture disabled refuses unsigned new setup atomically');
+await db.exec('rollback to savepoint disabled_setup');
 await as(id(100));
 const paid=(await q(clock12,paidArgs)).value;
 check(new Date(paid.clock_in_at).toISOString()===at(-3600),'Twelve-argument payroll clock preserves the original trusted paid tap before toolbox');
@@ -112,6 +147,12 @@ check(setupView.state.status==='setup'&&setupView.state.shift.id===paid.id,'Fres
 const ack=(await q('select work_activity_clock_receipt($1) value',[id(120)])).value;
 check(ack.receipt.usedTapTime&&ack.receipt.receiptProtocol==='setup_v1'&&ack.receipt.retention==='retained','Trusted setup protocol retains the actual keyed payroll acknowledgement');
 check((await q(clock12,paidArgs)).value.id===paid.id,'Exact twelve-argument replay returns the same payroll row');
+await as(id(100),'postgres');await db.exec('savepoint disabled_replay');await db.exec('update work_activity_authority_generation set capture_enabled=false,revision=revision+1');
+await as(id(100));check((await q(clock12,paidArgs)).value.id===paid.id,'Unsigned exact setup replay remains available after capture disable');
+await as(id(100),'postgres');await db.exec('rollback to savepoint disabled_replay');await as(id(100));
+await refused('select _prep_time_gate($1)',[id(100)],'P0001');
+await refused('select _unit_work_gate($1)',[id(100)],'P0001');
+
 await refused(clock12,[...paidArgs.slice(0,1),'changed immutable note',...paidArgs.slice(2)],'23514');
 await q('select start_break($1::uuid,$2::text,$3::uuid,$4::timestamptz,$5::timestamptz,0)',[paid.id,'rest',id(121),at(-600),at(0)]);
 const onBreak=(await q('select work_activity_snapshot($1) value',[id(130)])).value;
@@ -130,12 +171,28 @@ const closed=(await q(outSql,[paid.id,id(123),at(-30),at(0)])).value;
 check(new Date(closed.clock_out_at).toISOString()===at(-30)&&closed.break_seconds===540,'Existing clock-out preserves the original finish and already-counted break seconds');
 await as(id(100),'postgres');
 check((await q('select count(*)::int n from work_setup_sessions where profile_id=$1 and ended_at is null',[id(100)])).n===0,'Clock-out closes setup without manufacturing a second paid shift');
+await as(id(100),'postgres');
+check((await q('select count(*)::int n from company_settings')).n===0,'New setup writes no company policy row');
+await db.exec('savepoint signed_legacy');
+await db.query("insert into toolbox_completions(profile_id,signed_at,typed_name) values($1,clock_timestamp(),'Synthetic signature')",[id(101)]);
+await as(id(101));
+check((await q(clock11,[id(110),null,id(129),at(-20),at(0)])).value.profile_id===id(101),'Retained eleven-argument signature admission remains valid');
+await as(id(100),'postgres');await db.exec('rollback to savepoint signed_legacy');
+
+await db.exec("insert into company_settings(id,paid_time_from_start_day_on) values(1,(clock_timestamp() at time zone 'America/Denver')::date)");
 await as(id(101));
 const legacyArgs=[id(110),null,id(124),at(-20),at(0)];
 const legacy=(await q(clock11,legacyArgs)).value;
 await refused(clock12,legacyArgs,'23514');
 await as(id(101),'postgres');
 check((await q('select count(*)::int n from work_setup_sessions where profile_id=$1',[id(101)])).n===0,'Replaying an old eleven-argument receipt through twelve arguments never retroactively opens setup');
+await as(id(102),'postgres');await db.exec('savepoint disabled_legacy_policy');
+await db.exec('update work_activity_authority_generation set capture_enabled=false,revision=revision+1');
+await as(id(102));
+check((await q(clock12,[id(110),null,id(128),at(-20),at(0)])).value.profile_id===id(102),'Capture-off new twelve-argument call retains existing paid-date admission');
+await as(id(102),'postgres');
+check((await q('select count(*)::int n from work_setup_sessions where profile_id=$1',[id(102)])).n===0,'Capture-off payroll admission does not create setup');
+await db.exec('rollback to savepoint disabled_legacy_policy');
 await as(id(102));
 const reviewedArgs=[id(110),null,id(125),at(-20),null];
 const reviewed=(await q(clock12,reviewedArgs)).value;

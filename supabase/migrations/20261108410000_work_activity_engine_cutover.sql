@@ -349,6 +349,7 @@ create table public.work_activity_operations (
  id uuid primary key default gen_random_uuid(),top_xid xid8 not null,backend_pid integer not null,
  actor_id uuid,route text not null check(route ~ '^[a-z_][a-z0-9_]{0,119}$'),
  arrival_at timestamptz not null check(isfinite(arrival_at)),request_id uuid,command_id uuid,
+ clock_entry_claimed boolean not null default false,
  arguments jsonb not null check(jsonb_typeof(arguments)='object' and octet_length(arguments::text)<=4000),
  unique(top_xid,backend_pid)
 );
@@ -495,7 +496,10 @@ language plpgsql security definer set search_path=public,pg_temp as $$
 declare o public.work_activity_operations;
 begin
  if tg_table_name='work_activity_operations' then
-   if tg_op='UPDATE' then raise exception using errcode='23514',message='Activity operation identity is immutable.'; end if;
+   if tg_op='UPDATE' and not (old.route='clock_in_setup' and not old.clock_entry_claimed and new.clock_entry_claimed
+     and (to_jsonb(new)-'clock_entry_claimed')=(to_jsonb(old)-'clock_entry_claimed')) then
+     raise exception using errcode='23514',message='Activity operation identity is immutable.';
+   end if;
    if tg_op='INSERT' then o:=new; else o:=old; end if;
  else
    select * into o from public.work_activity_operations where id=case when tg_op='DELETE' then old.operation_id else new.operation_id end;
@@ -1845,6 +1849,9 @@ begin
    or new.action is distinct from (case o.route when 'clock_in_setup' then 'clock_in' when 'start_break' then 'break_start' when 'end_break' then 'break_end' else o.route end) then
    raise exception using errcode='42501',message='The keyed payroll receipt does not belong to its actual root.';
  end if;
+ if o.route='clock_in_setup' and not o.clock_entry_claimed then
+   raise exception using errcode='42501',message='Paid setup receipt lacks its claimed payroll entry.';
+ end if;
  protocol:=case when o.route='clock_in_setup' then 'setup_v1' else 'legacy' end;
  insert into public.work_activity_clock_receipts(client_id,profile_id,shift_id,action,outcome,tapped_at,arrived_at,clock_checked_at,clock_skew_ms,used_tap_time,review_reason,source_created_at,receipt_protocol,setup_payload_digest)
  values(new.client_id,new.profile_id,new.shift_id,new.action,new.outcome,new.tapped_at,new.arrived_at,new.clock_checked_at,new.clock_skew_ms,new.used_tap_time,new.review_reason,new.created_at,protocol,
@@ -1910,6 +1917,44 @@ end; $$;
 revoke all on function public.work_activity_clock_receipt(uuid) from public,anon;
 grant execute on function public.work_activity_clock_receipt(uuid) to authenticated;
 
+-- Protocol admission is proved by the private root, never a client flag/GUC.
+-- One exact spelling is shared by the adapter and the existing keyed payroll
+-- body. The gate is consumed once, before that body can write a fresh punch.
+create function public._work_activity_clock_setup_digest(p_project_id uuid,p_cost_code_id uuid,p_photo text,p_lat double precision,p_lng double precision,
+ p_note text,p_mode text,p_client_id uuid,p_tapped_at timestamptz,p_clock_checked_at timestamptz,p_clock_skew_ms integer) returns text
+language sql stable set search_path=public,pg_temp as $$
+ select encode(sha256(convert_to(jsonb_build_object('projectId',p_project_id,'costCodeId',p_cost_code_id,'photo',p_photo,'lat',p_lat,'lng',p_lng,'note',p_note,'mode',p_mode,'clientId',p_client_id,'tappedAt',public._work_activity_iso(p_tapped_at),'clockCheckedAt',public._work_activity_iso(p_clock_checked_at),'clockSkewMs',p_clock_skew_ms,'setupVersion',1)::text,'UTF8')),'hex')
+$$;
+revoke all on function public._work_activity_clock_setup_digest(uuid,uuid,text,double precision,double precision,text,text,uuid,timestamptz,timestamptz,integer) from public,anon,authenticated,service_role;
+
+create function public._work_activity_claim_clock_setup(p_project_id uuid,p_cost_code_id uuid,p_photo text,p_lat double precision,p_lng double precision,
+ p_note text,p_mode text,p_client_id uuid,p_tapped_at timestamptz,p_clock_checked_at timestamptz,p_clock_skew_ms integer) returns boolean
+language plpgsql volatile security definer set search_path=public,pg_temp as $$
+declare o public.work_activity_operations;actor uuid;enabled boolean;generation bigint;s public.personal_activity_state;
+begin
+ o:=public._work_activity_operation();
+ -- All retained direct overloads keep their original admission policy.
+ if o.id is null or o.route is distinct from 'clock_in_setup' then return false;end if;
+ actor:=auth.uid();
+ if actor is null or not public._work_config_internal(actor)
+  or o.actor_id is distinct from actor or o.top_xid is distinct from pg_current_xact_id() or o.backend_pid is distinct from pg_backend_pid()
+  or p_client_id is null or o.request_id is distinct from p_client_id or o.command_id is not null or o.clock_entry_claimed
+  or o.arguments is distinct from jsonb_build_object('setupVersion',1,'clockPayloadDigest',public._work_activity_clock_setup_digest(p_project_id,p_cost_code_id,p_photo,p_lat,p_lng,p_note,p_mode,p_client_id,p_tapped_at,p_clock_checked_at,p_clock_skew_ms)) then
+   raise exception using errcode='42501',message='Paid setup does not match its original clock entry.';
+ end if;
+ -- An ordinary caller cannot create this private row, consume this helper,
+ -- or relabel a different root. Replays return before reaching this claim.
+ update public.work_activity_operations set clock_entry_claimed=true where id=o.id;
+ select capture_enabled,revision into enabled,generation from public.work_activity_authority_generation where singleton;
+ select * into s from public.personal_activity_state where profile_id=actor;
+ -- Closing-only retains existing payroll/replay policy, but cannot grant a
+ -- NEW unsigned-start exemption. No setup counter/state is initialized here.
+ return coalesce(enabled,false) and generation<9007199254740991
+  and (s.profile_id is null or (s.integrity_state='clean' and s.revision<9007199254740991))
+  and not exists(select 1 from public.work_activity_safety_events where profile_id=actor);
+end; $$;
+revoke all on function public._work_activity_claim_clock_setup(uuid,uuid,text,double precision,double precision,text,text,uuid,timestamptz,timestamptz,integer) from public,anon,authenticated,service_role;
+
 -- Explicit protocol opt-in. All twelve arguments are required. Old overloads
 -- retain their original meaning; a replay never retroactively creates setup.
 create function public.clock_in(
@@ -1924,7 +1969,7 @@ begin
  if p_project_id is not null and not public._ai_job_visible(p_project_id,actor) then raise exception using errcode='42501',message='The clock source is unavailable.';end if;
  if p_client_id is null or p_tapped_at is null or not isfinite(p_tapped_at) or (p_clock_checked_at is not null and not isfinite(p_clock_checked_at)) then
    raise exception using errcode='23514',message='Paid setup requires its original keyed clock stamp.';end if;
- digest:=encode(sha256(convert_to(jsonb_build_object('projectId',p_project_id,'costCodeId',p_cost_code_id,'photo',p_photo,'lat',p_lat,'lng',p_lng,'note',p_note,'mode',p_mode,'clientId',p_client_id,'tappedAt',public._work_activity_iso(p_tapped_at),'clockCheckedAt',public._work_activity_iso(p_clock_checked_at),'clockSkewMs',p_clock_skew_ms,'setupVersion',p_setup_version)::text,'UTF8')),'hex');
+ digest:=public._work_activity_clock_setup_digest(p_project_id,p_cost_code_id,p_photo,p_lat,p_lng,p_note,p_mode,p_client_id,p_tapped_at,p_clock_checked_at,p_clock_skew_ms);
  operation:=public._work_activity_operation_enter('clock_in_setup',jsonb_build_object('setupVersion',1,'clockPayloadDigest',digest),p_client_id);
  if operation is null then raise exception using errcode='23514',message='Paid setup requires its original clock root.';end if;
  perform public._work_activity_clock_replay_guard(p_client_id,'clock_in');
@@ -12178,6 +12223,7 @@ declare
   v_shift public.time_shifts;
   v_pick public.clock_time_pick;
   v_had_open boolean;
+  v_setup_admitted boolean;
   v_previous_end timestamptz;
 begin
   if v_uid is null then
@@ -12212,7 +12258,8 @@ begin
     return public._work_activity_finish(__work_activity_root_id,(v_shift)::public.time_shifts);
   end if;
 
-  if not public._toolbox_gate_open(v_uid) then
+  v_setup_admitted:=public._work_activity_claim_clock_setup(p_project_id,p_cost_code_id,p_photo,p_lat,p_lng,p_note,p_mode,p_client_id,p_tapped_at,p_clock_checked_at,p_clock_skew_ms);
+  if not public._toolbox_gate_open(v_uid) and not v_setup_admitted then
     raise exception 'complete today''s toolbox talk before clocking in';
   end if;
 
@@ -12273,7 +12320,7 @@ end;
 
  perform public._work_activity_operation_exit(__work_activity_root_id);
 end;
-$activity_body_189$::text,false,'f567f8e3617861e22c6cded1b27e11f7de6f7b7654db1120b5e4ce0e74a1a42d'::text,'2b90743344824e7b213d210d2837a63a4f3688fb817717fada57b738e145efc9'::text,'clock_in'::text,'p_project_id uuid, p_cost_code_id uuid, p_photo text, p_lat double precision, p_lng double precision, p_note text, p_mode text, p_client_id uuid, p_tapped_at timestamp with time zone, p_clock_checked_at timestamp with time zone, p_clock_skew_ms integer'::text),
+$activity_body_189$::text,false,'f567f8e3617861e22c6cded1b27e11f7de6f7b7654db1120b5e4ce0e74a1a42d'::text,'ad7268b517980f7a4fc9f8cf7949bda734b127ccd2ee7eeec04119bffaf1c7e5'::text,'clock_in'::text,'p_project_id uuid, p_cost_code_id uuid, p_photo text, p_lat double precision, p_lng double precision, p_note text, p_mode text, p_client_id uuid, p_tapped_at timestamp with time zone, p_clock_checked_at timestamp with time zone, p_clock_skew_ms integer'::text),
 ('clock_out(uuid, text, boolean, boolean, integer, double precision, double precision, text, uuid, timestamp with time zone, timestamp with time zone, integer)'::text,$activity_body_190$
 declare __work_activity_root_id uuid;__work_activity_arrival timestamptz;
 begin

@@ -14,7 +14,7 @@ const {uuid_ossp}=await import(new URL('./contrib/uuid_ossp.js',moduleUrl));
 const hash=s=>createHash('sha256').update(s).digest('hex');
 const root=new URL('../',import.meta.url);
 const cutover=readFileSync(new URL('supabase/migrations/20261108410000_work_activity_engine_cutover.sql',root),'utf8');
-const cutoverHash='e2c57266fa2f63e345b8ce232d737c7810c7e9509334b9abae56d7c8b77b5d15';
+const cutoverHash='aa767e67de301cd0ce5961758cc5afefe89bdf25fe27b3c4156a219c9cb2f648';
 assert.equal(hash(cutover),cutoverHash,'Cutover source changed; deliberately review and regenerate the completion contract');
 const schema=readFileSync(new URL('scripts/fixtures/work-activity-engine-online-schema.sql',root),'utf8');
 assert.equal(hash(schema),'ee41a980b19f76baa8637101b62703ecdf798a32eccbb0e9f074fbfd71c62471');
@@ -31,7 +31,7 @@ const contract=(await db.query(`select p.proname name,pg_get_function_identity_a
 const triggerValue=`jsonb_build_object('definition',pg_get_triggerdef(t.oid,true),'enabled',t.tgenabled)`;
 const triggers=(await db.query(`select c.relname relation,t.tgname name,${triggerValue} value from pg_trigger t join pg_class c on c.oid=t.tgrelid join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and not t.tgisinternal order by c.relname,t.tgname`)).rows;
 const tables=(await db.query(`select c.relname name,jsonb_agg(jsonb_build_object('name',a.attname,'type',format_type(a.atttypid,a.atttypmod),'nullable',not a.attnotnull,'generated',a.attgenerated,'identity',a.attidentity) order by a.attnum) columns from pg_class c join pg_namespace n on n.oid=c.relnamespace join pg_attribute a on a.attrelid=c.oid and a.attnum>0 and not a.attisdropped where n.nspname='public' and c.relkind='r' and (c.relname like 'work_activity_%' or c.relname like 'personal_activity_%' or c.relname in ('work_setup_sessions','work_session_capture_metadata')) group by c.relname order by c.relname`)).rows;
-const essentialNames=['clock_in','start_break','end_break','clock_out','work_activity_clock_receipt','_work_activity_gate','_work_activity_actor','_work_activity_read_committed','_toolbox_gate_open','_toolbox_signed_today','_work_config_internal','_work_activity_clock_replay_guard','_work_activity_mirror_clock_receipt'];
+const essentialNames=['clock_in','start_break','end_break','clock_out','work_activity_clock_receipt','_work_activity_gate','_work_activity_actor','_work_activity_read_committed','_toolbox_gate_open','_toolbox_signed_today','_work_config_internal','_work_activity_clock_replay_guard','_work_activity_mirror_clock_receipt','_work_activity_clock_setup_digest','_work_activity_claim_clock_setup','_work_activity_keep_clock_receipt'];
 const runtime=contract.filter(x=>essentialNames.includes(x.name));
 assert.ok(contract.length>650&&triggers.length>300&&tables.length>15&&runtime.length>15,'Completion contract unexpectedly small');
 const checkFunctions=(name,list)=>`for e in select value from jsonb_array_elements($${name}$${JSON.stringify(list)}$${name}$::jsonb) loop
@@ -97,8 +97,9 @@ begin
  mode:='unavailable';reason:='not_ready';
  elsif not enabled then mode:='closing_only';reason:='starts_disabled';
  else
- mode:='active';author_setup:=coalesce(public._toolbox_gate_open(actor),false);
- if not author_setup then reason:='toolbox_required';end if;
+ -- The exact setup_v1 root may start paid setup before signing. Ordinary
+ -- overloads keep their existing toolbox/company-date policy.
+ mode:='active';author_setup:=true;
  end if;
  return jsonb_build_object('protocolVersion',1,'asOf',public._work_activity_iso(as_of),
  'clockProtocol','setup_v1','receiptProtocol','retained_v1','mode',mode,'canAuthorSetup',author_setup,'setupReason',reason,
@@ -150,7 +151,7 @@ await as(id(1),'service_role');await refused('select work_activity_clock_capabil
 await as(id(1),'anon');await refused('select work_activity_clock_capability()');
 await as(id(1));await refused('select _work_activity_clock_contract_marker()');
 await as(null,'postgres');await db.exec('select _work_activity_gate();update work_activity_authority_generation set capture_enabled=true,revision=revision+1');
-await as(id(1));matrix(await read(),'active','toolbox_required',false);
+await as(id(1));matrix(await read(),'active',null,true);
 await as(null,'postgres');
 await db.exec('savepoint signed_toolbox');
 await db.query("insert into toolbox_completions(profile_id,signed_at,typed_name) values($1,clock_timestamp(),'Synthetic signature')",[id(1)]);

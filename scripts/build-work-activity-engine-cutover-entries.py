@@ -154,6 +154,16 @@ for f in selected:
   if name=='_close_dangling_shift':
    at=re.search(r'\bbegin\b',newbody,re.I).end()
    newbody=newbody[:at]+"\n if exists(select 1 from public.time_shifts where profile_id=p_profile and status='open' and clock_out_at is null and greatest(clock_in_at,last_punch_at,break_started_at)>__work_activity_arrival) then raise exception 'Existing clock times need foreman review before a new shift can start.';end if;\n"+newbody[at:]
+  if name=='clock_in' and 'p_tapped_at' in f['header']:
+   # The explicit twelve-argument adapter alone may admit unsigned paid setup.
+   # Ordinary eleven-argument calls consume no claim and retain old policy.
+   old="  if not public._toolbox_gate_open(v_uid) then"
+   if newbody.count(old)!=1:raise ValueError('keyed clock toolbox gate source drift '+identity)
+   declaration='  v_had_open boolean;'
+   if newbody.count(declaration)!=1:raise ValueError('keyed clock declaration drift '+identity)
+   newbody=newbody.replace(declaration,declaration+'\n  v_setup_admitted boolean;')
+   call='public._work_activity_claim_clock_setup(p_project_id,p_cost_code_id,p_photo,p_lat,p_lng,p_note,p_mode,p_client_id,p_tapped_at,p_clock_checked_at,p_clock_skew_ms)'
+   newbody=newbody.replace(old,'  v_setup_admitted:='+call+';\n  if not public._toolbox_gate_open(v_uid) and not v_setup_admitted then')
   if name=='clock_in':
    call=re.search(r'perform (?:public\.)?_close_dangling_shift\(',newbody,re.I)
    if not call:raise ValueError('missing dangling guard '+identity)
@@ -284,7 +294,8 @@ manifest={
   'securityDefiner':f['installedSecurityDefiner'],'acl':f['installedAcl'],
   'callsInClosure':sorted(f['calls']&closure),'directRelationCandidates':f['directRelations'],
   'replacement':'manual_lifecycle_callback' if f['name'] in overrides else 'preserved_header_generated_entry',
-  **({'deliberateSafetyCorrections':['completion excludes cancelled helper rows']} if f['name']=='complete_summon_help' else {})
+  **({'deliberateSafetyCorrections':['completion excludes cancelled helper rows']} if f['name']=='complete_summon_help' else {}),
+  **({'deliberateProtocolChanges':['keyed11 admits unsigned paid setup only through exact one-time private new12 root claim; ordinary11 policy unchanged']} if f['name']=='clock_in' and 'p_tapped_at' in f['header'] else {})
  } for f in selected],
  'limitations':['Lexical candidate graph requires installed FK/trigger/API review.',
   'Provider auth.users and drained administrator multi-statement maintenance are outside online G-first boundary.',
