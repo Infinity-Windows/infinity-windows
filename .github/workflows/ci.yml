@@ -419,9 +419,9 @@ jobs:
           retention-days: 7
 
   pwa-causal-original:
-    name: Diagnose original bundles with new HTML preload treatment
+    name: Compare original update with activation-gated old page
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     permissions:
       contents: read
       actions: read
@@ -449,8 +449,9 @@ jobs:
       - name: Reproduce unchanged original bundles with causal document timeline
         env:
           IW_PWA_CACHE: ${{ runner.temp }}/pwa-original/_temp/pwa-current
-          IW_PWA_NO_HTML_MODULEPRELOAD: "1"
-        run: npx playwright test --config playwright.pwa.config.ts upgrade-path.pwa.ts -g 'a download that broke halfway' --repeat-each=3
+          IW_PWA_ACTIVATION_GATE_COMPARE: "1"
+          IW_PWA_CAUSAL_TRACE: "1"
+        run: npx playwright test --config playwright.pwa.config.ts upgrade-path.pwa.ts -g 'a download that broke halfway' --repeat-each=12
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -358,25 +358,28 @@ test("a download that broke halfway does not leave Refresh doing nothing afterwa
   // old shell: Refresh, ten seconds, Refresh, ten seconds.
   const causal: unknown[] = [];
   const network: unknown[] = [];
+  const activationGateTreatment=process.env.IW_PWA_ACTIVATION_GATE_COMPARE==='1' && test.info().repeatEachIndex%2===1;
   const cdp=await page.context().newCDPSession(page);
   await cdp.send('Network.enable');
   const tracked=new Set<string>();
   cdp.on('Network.requestWillBeSent',event=>{
-    if(event.type==='Document' || /\/assets\/(?:index-|timeclock-)[^/]+\.js/.test(event.request.url)){
+    if(event.type==='Document' || /\.(?:js|css)(?:\?|$)/.test(event.request.url)){
       tracked.add(event.requestId);
-      network.push({event:'request',at:Date.now(),requestId:event.requestId,loaderId:event.loaderId,url:event.request.url,type:event.type,
+      network.push({event:'request',at:Date.now(),timestamp:event.timestamp,requestId:event.requestId,loaderId:event.loaderId,url:event.request.url,type:event.type,
         initiator:{type:event.initiator.type,url:event.initiator.url,line:event.initiator.lineNumber,stack:event.initiator.stack?.callFrames.slice(0,3)}});
     }
   });
   cdp.on('Network.responseReceived',event=>{if(tracked.has(event.requestId))network.push({event:'response',at:Date.now(),requestId:event.requestId,
-    status:event.response.status,mimeType:event.response.mimeType,fromServiceWorker:event.response.fromServiceWorker,fromDiskCache:event.response.fromDiskCache,fromPrefetchCache:event.response.fromPrefetchCache});});
+    timestamp:event.timestamp,status:event.response.status,mimeType:event.response.mimeType,fromServiceWorker:event.response.fromServiceWorker,fromDiskCache:event.response.fromDiskCache,fromPrefetchCache:event.response.fromPrefetchCache});});
+  cdp.on('Network.loadingFinished',event=>{if(tracked.has(event.requestId))network.push({event:'finished',at:Date.now(),timestamp:event.timestamp,requestId:event.requestId,encodedDataLength:event.encodedDataLength});});
   cdp.on('Network.loadingFailed',event=>{if(tracked.has(event.requestId))network.push({event:'failed',at:Date.now(),requestId:event.requestId,
-    type:event.type,error:event.errorText,canceled:event.canceled,blockedReason:event.blockedReason});});
+    timestamp:event.timestamp,type:event.type,error:event.errorText,canceled:event.canceled,blockedReason:event.blockedReason});});
+  page.on('pageerror',error=>causal.push({event:'pageerror',at:Date.now(),message:error.message,stack:error.stack}));
   page.context().on("console", message => {
     if (message.text().startsWith("FORGE-PWA-")) causal.push({event:"console",at:Date.now(),text:message.text(),location:message.location()});
   });
   page.on("request", req => { if(req.isNavigationRequest())causal.push({event:"navigation-request",at:Date.now(),url:req.url()}); });
-  await page.addInitScript(() => {
+  await page.addInitScript((gateTreatment:boolean) => {
     const key="wops-e2e-half-download-causal";
     const note=(event:string,detail:unknown=null)=>{
       const old=JSON.parse(sessionStorage.getItem(key)||"[]") as unknown[];
@@ -385,6 +388,28 @@ test("a download that broke halfway does not leave Refresh doing nothing afterwa
     note("document-start", {empty:sessionStorage.getItem("wops-empty-boot-diagnostic"),reload:sessionStorage.getItem("wops-update-reload-diagnostic")});
     window.addEventListener("load",()=>note("load",{boot:document.documentElement.dataset.forgeBootStarted,rootChildren:document.getElementById("root")?.childElementCount}));
     window.addEventListener("beforeunload",()=>note("beforeunload",{boot:document.documentElement.dataset.forgeBootStarted,empty:sessionStorage.getItem("wops-empty-boot-diagnostic"),reload:sessionStorage.getItem("wops-update-reload-diagnostic")}));
+    // Diagnostic event-delivery treatment only; archived app and worker bytes
+    // remain unchanged. Arm only for the successful second update below.
+    const gateWindow=window as unknown as {__pwaActivationGateArmed?:boolean};
+    let forwarding=false;
+    navigator.serviceWorker.addEventListener('controllerchange',event=>{
+      if(!gateTreatment || !gateWindow.__pwaActivationGateArmed || forwarding)return;
+      gateWindow.__pwaActivationGateArmed=false;
+      const controller=navigator.serviceWorker.controller;
+      note('gate-native',{url:controller?.scriptURL,state:controller?.state,trusted:event.isTrusted});
+      if(!controller || controller.state!=='activating'){note('gate-invalid',{reason:'controller_not_activating'});return;}
+      event.stopImmediatePropagation();
+      const deadline=setTimeout(()=>{note('gate-invalid',{reason:'activation_timeout',state:controller.state});},8000);
+      const changed=()=>{
+        if(controller.state==='redundant'){clearTimeout(deadline);controller.removeEventListener('statechange',changed);note('gate-invalid',{reason:'controller_redundant'});return;}
+        if(controller.state!=='activated')return;
+        clearTimeout(deadline);controller.removeEventListener('statechange',changed);
+        if(navigator.serviceWorker.controller!==controller){note('gate-invalid',{reason:'controller_replaced'});return;}
+        note('gate-forward',{url:controller.scriptURL,state:controller.state});
+        forwarding=true;navigator.serviceWorker.dispatchEvent(new Event('controllerchange'));forwarding=false;
+      };
+      controller.addEventListener('statechange',changed);changed();
+    },true);
     navigator.serviceWorker.addEventListener("controllerchange",()=>{
       const controller=navigator.serviceWorker.controller;
       note("controllerchange",{url:controller?.scriptURL,state:controller?.state});
@@ -402,7 +427,7 @@ test("a download that broke halfway does not leave Refresh doing nothing afterwa
       note("window-error",e instanceof ErrorEvent?{message:e.message}:{url,tag:target instanceof Element?target.tagName:null,rel:target instanceof HTMLLinkElement?target.rel:null,entries});
     },true);
     window.addEventListener("unhandledrejection",e=>note("unhandled-rejection",String(e.reason)));
-  });
+  },activationGateTreatment);
   try {
   const { builds } = await harnessState(request);
   await serveBuild(request, "old");
@@ -443,6 +468,7 @@ test("a download that broke halfway does not leave Refresh doing nothing afterwa
   // The deploy finishes. The next check downloads the whole thing, and the
   // app switches to it — on the sign-in screen, by itself.
   await serveBuild(request, "new");
+  if(activationGateTreatment)await page.evaluate(()=>{(window as unknown as {__pwaActivationGateArmed:boolean}).__pwaActivationGateArmed=true;});
   const { loads } = countLoads(page);
   const { navigations } = countNavigations(page);
   await nudgeUpdateCheck(page);
@@ -454,11 +480,20 @@ test("a download that broke halfway does not leave Refresh doing nothing afterwa
     })
     .toBe(builds.new.entry);
   await expectSettledOn(page, builds.new.entry, loads);
+  if(activationGateTreatment){
+    const gate=await page.evaluate(()=>JSON.parse(sessionStorage.getItem('wops-e2e-half-download-causal')||'[]') as {event:string;at:number;detail:{state?:string}}[]);
+    expect(gate.filter(e=>e.event==='gate-invalid'),'invalid treatment is not a passing activation gate').toHaveLength(0);
+    expect(gate.filter(e=>e.event==='gate-native')).toHaveLength(1);
+    const forward=gate.filter(e=>e.event==='gate-forward');expect(forward).toHaveLength(1);expect(forward[0].detail.state).toBe('activated');
+    const unload=gate.find(e=>e.event==='beforeunload' && e.at>=forward[0].at);
+    expect(unload,'forwarded old-page handler must reload before worker fallback').toBeDefined();
+    expect(unload!.at-forward[0].at).toBeLessThan(3000);
+  }
   expect(navigations(), "the switch was more than one navigation: two racing reloads can leave the new build blank").toHaveLength(1);
   } finally {
     let documentTimeline: unknown = null;
     try { documentTimeline=await page.evaluate(()=>JSON.parse(sessionStorage.getItem("wops-e2e-half-download-causal")||"[]")); } catch { /* navigation may still be active */ }
-    await test.info().attach("half-download-causal",{body:Buffer.from(JSON.stringify({htmlPreloadTreatment:process.env.IW_PWA_NO_HTML_MODULEPRELOAD==='1',causal,documentTimeline,network},null,2)),contentType:"application/json"});
+    await test.info().attach("half-download-causal",{body:Buffer.from(JSON.stringify({repeatIndex:test.info().repeatEachIndex,activationGateTreatment,htmlPreloadTreatment:process.env.IW_PWA_NO_HTML_MODULEPRELOAD==='1',causal,documentTimeline,network},null,2)),contentType:"application/json"});
     await cdp.detach();
   }
 });

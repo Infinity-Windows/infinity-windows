@@ -53,7 +53,7 @@ export default defineConfig({
     baseURL: `http://localhost:${PORT}`,
     viewport: { width: 390, height: 844 },
     deviceScaleFactor: 2,
-    trace: "retain-on-failure",
+    trace: process.env.IW_PWA_CAUSAL_TRACE==='1' ? 'on' : 'retain-on-failure',
     video: "off",
     serviceWorkers: "allow",
   },
