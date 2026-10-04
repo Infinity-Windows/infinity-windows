@@ -54,6 +54,7 @@ export function CurrentWork() {
   const online = useSyncExternalStore(subscribeConnection, connected, () => false);
   const previewing = !!view.previewRole || !!view.previewPerson;
   const consumedEntry = useRef<string | null>(null);
+  const [storedUnitRequest, setStoredUnitRequest] = useState(false);
   const [unitEntry, setUnitEntry] = useState<{ jobId: string; login: SignInMark } | null>(null);
   const [idle, setIdle] = useState(false),
     [idleNote, setIdleNote] = useState("");
@@ -243,7 +244,8 @@ export function CurrentWork() {
         throw new Error("Return to your selected job while online and viewing your own account before saving this unit.");
       }
       await work.command("unit", data);
-      if (begin) await start(data as unknown as WorkUnit);
+      if (unitEntry) { setStoredUnitRequest(true); closeUnitEntry(); }
+      else if (begin) await start(data as unknown as WorkUnit);
       else closeUnitEntry();
     });
   const blocked =
@@ -263,6 +265,7 @@ export function CurrentWork() {
         </button>
       </div>
       <QueueNotice work={work} />
+      {storedUnitRequest && <p role="status" className="cw-notice">Unit request saved on this device. Check sync status before selecting it for work. <Link to="/work">Return to Work</Link></p>}
       <CrewWork work={work} jobId={jobId} canRecord={lead} />
       {error && (
         <p role="alert" className="cw-error">
@@ -486,6 +489,7 @@ export function CurrentWork() {
               // (UnitEditor fills a blank Job field itself). The form resets
               // only on Cancel or Save, never on a clock refresh.
               key={editing === "new" ? `new-${openingId ?? "blank"}` : editing.id}
+              requiredDimensions={editing === "new" && !!unitEntry}
               unit={editing === "new" ? undefined : editing}
               jobId={opening.data?.project_id ?? jobId}
               openingId={editing === "new" ? opening.data?.id : undefined}
