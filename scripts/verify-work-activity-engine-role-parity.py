@@ -82,7 +82,14 @@ for s in metadata['settings']:
         assert re.fullmatch('[a-z_]+',key)
         prefix='ALTER ROLE '+qi(s['role']) if s['role'] else 'ALTER DATABASE '+qi(DATABASE)
         if s['role'] and s['scope']=='current_database': prefix+=' IN DATABASE '+qi(DATABASE)
-        settings.append(prefix+' SET '+qi(key)+' TO '+ql(value)+';')
+        # List-valued GUCs cannot be replayed as one ALTER SET literal: that
+        # quotes the whole search_path as a single schema name. Preserve the
+        # actual GUC value through its native setter, then capture FROM CURRENT.
+        if key=='search_path':
+            settings.append('SELECT pg_catalog.set_config('+ql(key)+','+ql(value)+',false);'+prefix+' SET '+qi(key)+' FROM CURRENT;RESET '+qi(key)+';')
+        else:
+            assert key in ('statement_timeout','lock_timeout','idle_in_transaction_session_timeout'),key
+            settings.append(prefix+' SET '+qi(key)+' TO '+ql(value)+';')
 # Match effective DB privileges. Preserve provider ACL-only names, without
 # inventing additional memberships into the actors being tested.
 database_acl=[f'REVOKE ALL ON DATABASE {qi(DATABASE)} FROM PUBLIC;']
@@ -172,6 +179,13 @@ for cap in metadata['capabilities']:
     r=ql(cap['role'])
     actual=json.loads(run("select json_build_object('role',"+r+",'databaseConnect',has_database_privilege("+r+",current_database(),'CONNECT'),'databaseCreate',has_database_privilege("+r+",current_database(),'CREATE'),'databaseTemp',has_database_privilege("+r+",current_database(),'TEMPORARY'),'publicUsage',has_schema_privilege("+r+",'public','USAGE'),'publicCreate',has_schema_privilege("+r+",'public','CREATE'),'authUsage',has_schema_privilege("+r+",'auth','USAGE'),'authCreate',has_schema_privilege("+r+",'auth','CREATE'))"))
     check(actual==cap,'Exact DB/schema capability '+cap['role'])
+for configured in metadata['settings']:
+    role_predicate='setrole=0' if configured['role'] is None else 'setrole=(select oid from pg_roles where rolname='+ql(configured['role'])+')'
+    db_predicate='setdatabase=0' if configured['scope']=='all_databases' else 'setdatabase=(select oid from pg_database where datname=current_database())'
+    stored=json.loads(run("select coalesce((select to_json(setconfig) from pg_db_role_setting where "+role_predicate+' and '+db_predicate+"),'[]'::json)"))
+    for entry in configured['safeValues']:
+        check(entry in stored,'Exact safe stored setting '+str(configured['role'])+':'+entry.split('=',1)[0])
+check(run("select (to_regtype('project_openings') is not null)::int",'postgres')=='1','Actual source-owner login resolves the installed public row type')
 run(source_guard+'\nbegin;\n'+cutover,'postgres')
 checks+=1
 check(run("select (not capture_enabled)::int from work_activity_authority_generation where singleton",'postgres')=='1','App DDL keeps capture disabled')

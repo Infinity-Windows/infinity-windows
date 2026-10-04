@@ -70,9 +70,13 @@ The SQL assembly refusal and final ROLLBACK remain unchanged.
 `python3 scripts/verify-work-activity-engine-role-parity.py --check-plan` validates
 the pinned metadata, source hashes, role DDL plan and explicit exclusions without
 connecting to a database. Python compilation and URL refusal checks are also
-local. PGlite rejects changing its built-in postgres role with SQLSTATE 0A000;
-that limitation is preserved rather than replacing real-login proof with an
-invented account. Actual PostgreSQL execution is a separate CI gate.
+local. The first local compile attempt tried demoting the cluster bootstrap role and
+hit the standard PostgreSQL 0A000 restriction. The corrected local compile
+renamed that bootstrap role from another test controller, then created the
+separate NOSUPERUSER postgres role. Full role DDL and cutover compilation passed
+with the real source-owner name/attributes under SET SESSION AUTHORIZATION; this
+remains local compilation evidence, not genuine backend-login proof. Actual
+PostgreSQL execution is a separate CI gate.
 
 The earlier module-path correction passed all 30 sequential runtime checks via
 an absolute PGlite path, file URL and installed-package resolution. The matching
@@ -92,3 +96,21 @@ fixture initializes as supabase_admin and still executes application DDL and
 user calls through the separate NOSUPERUSER postgres/authenticator logins. No
 grantor check was removed, no fake extra membership was added, and no engine SQL
 changed. This follows the official [PostgreSQL17 GRANT semantics](https://www.postgresql.org/docs/17/sql-grant.html).
+
+## Role setting replay correction
+
+The second real PG17 attempt (37199981734/job111429503337) passed exact attributes,
+memberships,105 effective paths and database/schema capabilities. Cutover DDL then
+failed to resolve an unqualified project_openings row type. The fixture had
+replayed comma-valued search_path as one ALTER ROLE literal, creating one quoted
+schema element. The correction sets the captured value with pg_catalog.set_config
+and saves search_path using ALTER ROLE SET FROM CURRENT. Scalar timeout values
+retain their exact captured literals, avoiding needless60000-to-1min serialization
+changes. Every safe stored setting is now checked before cutover installation,
+as is row-type resolution through the real postgres login.
+
+The dedicated role-settings verifier has11passing local assertions, including
+the old malformed-path counterexample and corrected type resolution. The complete
+role DDL/cutover also compiled locally under NOSUPERUSER postgres after the fix.
+The same strict genuine-login PG17 job remains required; no ownership, role
+comparison or application source check was removed.

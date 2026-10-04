@@ -274,6 +274,8 @@ jobs:
         env:
           WORK_ACTIVITY_MATCHED_SCHEMA: scripts/fixtures/work-activity-engine-online-schema.sql
         run: PGLITE_MODULE="$RUNNER_TEMP/work-cutover-matched-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-work-activity-engine-schema-runtime.mjs
+      - name: Verify captured role-setting replay
+        run: PGLITE_MODULE="$RUNNER_TEMP/work-cutover-matched-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-work-activity-engine-role-settings.mjs
       - name: Verify independent backends on the source-matched application schema
         env:
           WORK_ACTIVITY_CUTOVER_TEST_DB_URL: postgresql://postgres:fixture-only@localhost:5432/forge_work_activity_cutover_test
