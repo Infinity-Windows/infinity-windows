@@ -279,6 +279,34 @@ jobs:
           WORK_ACTIVITY_CUTOVER_TEST_DB_URL: postgresql://postgres:fixture-only@localhost:5432/forge_work_activity_cutover_test
         run: PGLITE_MODULE="$RUNNER_TEMP/work-cutover-matched-db/node_modules/@electric-sql/pglite/dist/index.js" python3 scripts/verify-work-activity-engine-cutover-concurrency.py --source-matched
 
+  work-activity-cutover-role-parity:
+    name: Activity actual source-role fixture (release held)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: forge_fixture_bootstrap
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: forge_work_activity_role_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U forge_fixture_bootstrap -d forge_work_activity_role_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify source-owner and authenticator login authority
+        env:
+          WORK_ACTIVITY_ROLE_TEST_DB_URL: postgresql://forge_fixture_bootstrap:fixture-only@localhost:5432/forge_work_activity_role_test
+        run: python3 scripts/verify-work-activity-engine-role-parity.py
+
   values-sql-concurrency:
     name: Monthly reviews database and concurrent acceptance
     runs-on: ubuntu-latest
