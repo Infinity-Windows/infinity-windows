@@ -286,6 +286,12 @@ jobs:
         env:
           WORK_ACTIVITY_MATCHED_SCHEMA: scripts/fixtures/work-activity-engine-online-schema.sql
         run: PGLITE_MODULE="$RUNNER_TEMP/work-cutover-matched-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-work-unit-review-payroll.mjs
+      - name: Verify exact activity totals and permission-safe reconciliation
+        run: PGLITE_MODULE="$RUNNER_TEMP/work-cutover-matched-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-work-activity-totals.mjs
+      - name: Preserve complete payroll behavior with totals installed
+        env:
+          WORK_ACTIVITY_MATCHED_SCHEMA: scripts/fixtures/work-activity-engine-online-schema.sql
+        run: PGLITE_MODULE="$RUNNER_TEMP/work-cutover-matched-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-work-activity-totals-payroll.mjs
       - name: Verify independent backends on the source-matched application schema
         env:
           WORK_ACTIVITY_CUTOVER_TEST_DB_URL: postgresql://postgres:fixture-only@localhost:5432/forge_work_activity_cutover_test
@@ -294,7 +300,7 @@ jobs:
   work-activity-cutover-role-parity:
     name: Activity actual source-role fixture (release held)
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 25
     services:
       postgres:
         image: postgres:17
@@ -337,6 +343,19 @@ jobs:
         with:
           name: work-unit-review-volume
           path: ${{ runner.temp }}/work-unit-review-volume.json
+          if-no-files-found: ignore
+
+      - name: Verify genuine totals permissions, unit and job volume, and active-read payroll waits
+        env:
+          WORK_ACTIVITY_ROLE_TEST_DB_URL: postgresql://supabase_admin:fixture-only@localhost:5432/forge_work_activity_role_test
+          WORK_ACTIVITY_TOTALS_VOLUME_OUT: ${{ runner.temp }}/work-activity-totals-volume.json
+        run: python3 scripts/verify-work-activity-totals-postgres.py
+      - name: Preserve activity totals performance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: work-activity-totals-volume
+          path: ${{ runner.temp }}/work-activity-totals-volume.json
           if-no-files-found: ignore
 
   values-sql-concurrency:
