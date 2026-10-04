@@ -2,8 +2,10 @@ import type { ClockPunch } from "../clockPunch";
 import { stillSignedInAs, type SignInMark } from "../signedIn";
 import { ClockAccountChangedError, fetchOwnClockSafetyBasis } from "./api";
 import { dispatchPaidClockRequest, type PaidClockDispatch } from "./dispatch";
+import { readObservedClockTarget } from "./current";
+import { isPaidClockTransportFailure } from "./readFailure";
 import { parseClockIntent, type ClockIntent } from "./protocol";
-import { appendPaidClockIntent, getPaidClockDeviceId, readPaidClockRecords } from "./storage";
+import { appendPaidClockIntent, appendPendingPaidClockIntent, getPaidClockDeviceId, readPaidClockRecords } from "./storage";
 
 export type PaidClockSubmission =
   | { kind: "saved"; clientId: string; dispatch: PaidClockDispatch }
@@ -34,15 +36,39 @@ export async function submitPaidClockIntent(login: SignInMark, raw: ClockIntent,
     const existing = rows.find(row => row.clientId === intent.clientId);
     const predecessor = rows.find(row => row.clientId === expectedHeadClientId);
     const deviceId = existing?.deviceId ?? predecessor?.deviceId ?? await getPaidClockDeviceId(login); requireCurrent(login);
-    let basis;
+    let basis, target;
+    let pendingOnly = navigator.onLine === false;
+    if (pendingOnly && intent.action === "clock_in" && !existing) {
+      return { kind: "held", clientId: intent.clientId, reason: "basis_unavailable" };
+    }
     // A repeated original can already have closed its shift. Native duplicate
     // validation is still exact; it must not require that shift to be open.
     if (!existing && intent.action !== "clock_in" && intent.shiftRef.kind === "shift" && expectedHeadClientId === null) {
       phase = "basis";
-      basis = await fetchOwnClockSafetyBasis(intent.shiftRef.id, login); requireCurrent(login);
+      if (!pendingOnly) {
+        try { basis = await fetchOwnClockSafetyBasis(intent.shiftRef.id, login); requireCurrent(login); }
+        catch (error) {
+          requireCurrent(login);
+          if (!isPaidClockTransportFailure(error)) throw error;
+          pendingOnly = true;
+        }
+      }
+      if (pendingOnly) {
+        target = readObservedClockTarget(login, intent.shiftRef.id);
+        if (!target) return { kind: "held", clientId: intent.clientId, reason: "basis_unavailable" };
+      }
     }
     phase = "storage";
-    const saved = await appendPaidClockIntent(login, deviceId, intent, expectedHeadClientId, basis); requireCurrent(login);
+    // Recheck transport after awaited reads. A pending save must not call the
+    // dispatcher at all, including check-only; reconnection is not a resend.
+    pendingOnly ||= navigator.onLine === false;
+    if (pendingOnly && intent.action !== "clock_in" && intent.shiftRef.kind === "shift") {
+      target ??= readObservedClockTarget(login, intent.shiftRef.id);
+    }
+    const saved = pendingOnly ? await appendPendingPaidClockIntent(login, deviceId, intent, expectedHeadClientId, target) :
+      await appendPaidClockIntent(login, deviceId, intent, expectedHeadClientId, basis);
+    requireCurrent(login);
+    if (pendingOnly) return { kind: "saved", clientId: saved.clientId, dispatch: { kind: "held", reason: "offline" } };
     // A competing tap may check the winning original, never resend it.
     const dispatch = await dispatchPaidClockRequest(saved.clientId, login,
       existing || saved.clientId !== intent.clientId ? "check_only" : "first_attempt"); requireCurrent(login);

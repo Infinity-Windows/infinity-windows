@@ -12,6 +12,11 @@ import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+// This suite exercises the preserved classic route after the provider's
+// native admission read has completed. New native routing has separate tests.
+vi.mock("../../lib/paidClock/flowRegistry",()=>({readClockFlow:()=>classicFlow,subscribeClockFlow:()=>()=>{}}));
+const classicFlow=vi.hoisted(()=>({route:"legacy"}));
+
 // Keep the read helpers real (formatClock/elapsedWorkSeconds/isOnTheClock) but
 // hold the network still: the writes and reads all become resolved spies, so a
 // cache invalidation after a punch never reaches for a server behind the test.
@@ -226,8 +231,9 @@ function openShift(hoursAgo: number): TimeShift {
 }
 
 describe("the clock-in block", () => {
-  it("shows the big off-the-clock card with the pick flow", () => {
+  it("waits for its queue before showing the big off-the-clock card with the pick flow", async () => {
     const el = mount({ costCodes: [CC], recents: [recent(null)], projects: [] });
+    await act(async()=>{await new Promise(resolve=>setTimeout(resolve,0));});
     expect(el.querySelector(".clockin-block")).toBeTruthy();
     expect(el.querySelector(".clockin-bar")).toBeNull();
     expect(el.textContent).toContain("Clock in");

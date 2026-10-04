@@ -1,10 +1,11 @@
 
 // One-tap clock buttons (K2.4): the tap uses the clock sheet's own path and
 // refuses honestly when the button no longer fits the person's clock.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { oneTapFits, runOneTap, type OneTapDeps } from "./clockOneTap";
 import type { ClockPunch } from "./clockPunch";
 import type { TimeShift } from "./timeclock";
+import type { NativeClockFlow } from "./paidClock/flow";
 
 const shift = (over: Partial<TimeShift> = {}): TimeShift => ({
   id: "00000000-0000-4000-8000-000000000501", profile_id: "p1", project_id: "j1", cost_code_id: null,
@@ -54,6 +55,20 @@ describe("does the button fit the clock?", () => {
 });
 
 describe("the tap", () => {
+  it("preserves the original native tap and reports unknown delivery without invoking any old RPC or queue",async()=>{
+    const {d,calls,punches}=deps();
+    const authorSafety=vi.fn().mockResolvedValue({kind:"saved",clientId:"tap-1",dispatch:{kind:"held",reason:"unknown"}});
+    const native={route:"isolated",authorSafety} as unknown as NativeClockFlow;
+    expect(await runOneTap({action:"start_break",break_type:"lunch"},shift(),null,d,native)).toEqual({kind:"native_result",status:"unknown"});
+    expect(authorSafety).toHaveBeenCalledWith({...punches[0],action:"break_start",shiftRef:{kind:"shift",id:REAL},breakType:"lunch"});
+    expect(punches).toHaveLength(1);expect(calls).toEqual([]);
+    authorSafety.mockResolvedValueOnce({kind:"held",clientId:"tap-2",reason:"storage_unavailable"});
+    expect(await runOneTap({action:"end_break",break_type:null},shift({break_started_at:"2026-09-23T17:00:00Z"}),null,d,native)).toEqual({kind:"native_result",status:"held"});
+    expect(calls).toEqual([]);
+    authorSafety.mockRejectedValueOnce(Error("lost after native save"));
+    expect(await runOneTap({action:"start_break",break_type:"rest"},shift(),null,d,native)).toEqual({kind:"refused",reason:"failed"});
+    expect(calls).toEqual([]);
+  });
   it("starts the break through the RPC, with the type the person chose and the tap's punch", async () => {
     const { d, calls } = deps();
     expect(await runOneTap({ action: "start_break", break_type: null }, shift(), "lunch", d)).toEqual({ kind: "done", action: "start_break", queued: false });

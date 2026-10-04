@@ -2,11 +2,14 @@ import { LunchReminder } from "../components/clock/LunchReminder";
 import "../components/timeOff/timeOff.css";
 import {
   createContext,
+  lazy,
+  Suspense,
   useCallback,
   useContext,
   useEffect,
   useMemo,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -22,6 +25,10 @@ import {
   type RefusedClockAction,
 } from "./clockQueueView";
 import { useOpenShiftView } from "./useOpenShiftView";
+import type { NativeClockFlow } from "./paidClock/flow";
+import { publishClockFlow, readClockFlow, subscribeClockFlow } from "./paidClock/flowRegistry";
+import {signInGeneration,subscribeSignedIn} from "./signedIn";
+const ClockFlowBridge=lazy(()=>import("./paidClock/ClockFlowBridge"));
 
 /**
  * App-wide clock state. The clock is a bottom sheet that any surface can open
@@ -52,6 +59,7 @@ interface ClockContextValue {
   loading: boolean;
   pending: QueuedClockAction | null;
   refused: RefusedClockAction[];
+  nativeFlow:NativeClockFlow|null;
   isOpen: boolean;
   openClock: () => void;
   closeClock: () => void;
@@ -74,14 +82,18 @@ export function ClockProvider({ children }: { children: ReactNode }) {
   // What the sheet should open pre-filled with; cleared on close so a later
   // bare open (the nav tab, next morning) primes from the schedule again.
   const [initialPick, setInitialPick] = useState<ClockInPick | null>(null);
+  const loginGeneration=useSyncExternalStore(subscribeSignedIn,signInGeneration,()=>0);
+  useEffect(()=>subscribeSignedIn(()=>{setIsOpen(false);setInitialPick(null);}),[]);
 
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const profileId = me.data?.id ?? null;
 
   // Polls, to keep the nav timer honest if the tab was backgrounded through
   // a punch made elsewhere (a supervisor clocking the crew out).
-  const view = useOpenShiftView(profileId, { poll: true });
-  const shift = view.shift;
+  const view = useOpenShiftView(profileId, { poll: true, legacyOnly:true });
+  const nativeFlow=useSyncExternalStore(subscribeClockFlow,()=>readClockFlow(profileId),()=>null);
+  const independentCurrent=!!nativeFlow && nativeFlow.route!=="legacy";
+  const shift=independentCurrent?nativeFlow.current?.shift ?? null:view.shift;
 
   // The moment a queued punch is confirmed, the row the server answered with
   // becomes the cached server shift. The queue entry is deleted right after,
@@ -110,6 +122,7 @@ export function ClockProvider({ children }: { children: ReactNode }) {
   }, []);
   const refresh = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: ["openShift", profileId] });
+    readClockFlow(profileId)?.refresh();
   }, [queryClient, profileId]);
 
   useEffect(() => {
@@ -126,14 +139,16 @@ export function ClockProvider({ children }: { children: ReactNode }) {
   useEffect(
     () =>
       subscribeSynced(() => {
+        readClockFlow(profileId)?.refresh();
         void queryClient.invalidateQueries({ queryKey: ["openShift"] });
         void queryClient.invalidateQueries({ queryKey: ["myShifts"] });
         void queryClient.invalidateQueries({ queryKey: ["recentJobs"] });
       }),
-    [queryClient],
+    [queryClient,profileId],
   );
 
-  const loading = Boolean(profileId) && (view.query.isLoading || !view.ready);
+  const loading=Boolean(profileId) && (!nativeFlow || nativeFlow.nativeRead==="loading" || (independentCurrent?
+    nativeFlow.currentRead==="loading" || nativeFlow.currentRead==="blocked":view.query.isLoading || !view.ready));
   const value = useMemo<ClockContextValue>(
     () => ({
       profileId,
@@ -141,24 +156,30 @@ export function ClockProvider({ children }: { children: ReactNode }) {
       loading,
       pending: view.pending,
       refused: view.refused,
+      nativeFlow,
       isOpen,
       openClock,
       closeClock,
       refresh,
     }),
-    [profileId, shift, loading, view.pending, view.refused, isOpen, openClock, closeClock, refresh],
+    [profileId, shift, loading, view.pending, view.refused, nativeFlow, isOpen, openClock, closeClock, refresh],
   );
 
   return (
     <ClockContext.Provider value={value}>
       {children}
+      <Suspense fallback={null}><ClockFlowBridge profileId={profileId} legacyReady={!view.query.isLoading && view.ready}
+        legacyShift={view.shift} legacyPending={view.pending} onFlow={publishClockFlow}/></Suspense>
       <LunchReminder shift={shift} onOpen={openClock} />
       {isOpen && (
         <ClockSheet
+          key={`${profileId}:${loginGeneration}`}
           profileId={profileId}
           shift={shift}
           pending={view.pending}
           refused={view.refused}
+          nativeFlow={nativeFlow}
+          admissionReady={!loading && !!nativeFlow}
           initialPick={initialPick}
           onClose={closeClock}
           onChanged={refresh}
@@ -168,7 +189,7 @@ export function ClockProvider({ children }: { children: ReactNode }) {
           because "you're 14 miles from the job" is worth asking wherever the
           person happens to be looking when they open the app. Renders nothing
           until it has something to ask. */}
-      <FarFromJobPrompt shift={shift} onChanged={refresh} />
+      {!loading && nativeFlow && <FarFromJobPrompt shift={shift} onChanged={refresh} nativeFlow={nativeFlow}/>}
     </ClockContext.Provider>
   );
 }

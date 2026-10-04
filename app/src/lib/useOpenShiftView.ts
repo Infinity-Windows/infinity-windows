@@ -10,6 +10,7 @@ import { mergeClockQueue, type ClockNameLookups, type ClockQueueView } from "./c
 import { getClockQueueSnapshot, initOutboxAutoFlush, resolveShiftRef, subscribe } from "./offline/outbox";
 import { getOpenShift, type CostCode, type TimeShift } from "./timeclock";
 import type { Project } from "./types";
+import { readClockFlow, subscribeClockFlow } from "./paidClock/flowRegistry";
 
 export interface OpenShiftView extends ClockQueueView {
   /** The server's own answer, untouched — what the merge started from. */
@@ -44,7 +45,7 @@ function lookupsFrom(qc: QueryClient): ClockNameLookups {
 
 export function useOpenShiftView(
   profileId: string | null,
-  opts: { poll?: boolean } = {},
+  opts: { poll?: boolean;legacyOnly?:boolean } = {},
 ): OpenShiftView {
   const qc = useQueryClient();
   const query = useQuery({
@@ -56,6 +57,7 @@ export function useOpenShiftView(
     ...(opts.poll ? { refetchInterval: 60_000, refetchOnWindowFocus: true } : {}),
   });
   const snapshot = useSyncExternalStore(subscribe, getClockQueueSnapshot, getClockQueueSnapshot);
+  const native=useSyncExternalStore(subscribeClockFlow,()=>readClockFlow(profileId),()=>null);
   // The snapshot is filled by the outbox's own startup read; make sure that
   // has been asked for, whoever mounts first (the pill asks too — it's once).
   useEffect(() => {
@@ -76,5 +78,7 @@ export function useOpenShiftView(
       }),
     [query.data, snapshot, profileId, qc],
   );
-  return { ...view, query, ready: snapshot.ready };
+  if(!opts.legacyOnly && native && native.route!=="legacy")return {...view,query,shift:native.current?.shift ?? null,
+    ready:snapshot.ready && (native.currentRead==="ready" || native.currentRead==="stale")};
+  return { ...view, query, ready: snapshot.ready && (opts.legacyOnly || !profileId || native!==null) };
 }

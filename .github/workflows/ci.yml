@@ -286,6 +286,10 @@ jobs:
         run: |
           npm run e2e -- paid-clock-chain.spec.ts
           npm run e2e -- paid-clock-chain.spec.ts --browser=webkit
+      - name: Original clock screen and current-login offline authority on phone browsers
+        run: |
+          npm run e2e -- paid-clock-offline-authority.spec.ts paid-clock-screen.spec.ts
+          npm run e2e -- paid-clock-offline-authority.spec.ts paid-clock-screen.spec.ts --browser=webkit
       - name: Controlled Work tiles and dimensions on phone browsers
         run: |
           npm run e2e -- project-activity-view.spec.ts selected-job-work.spec.ts

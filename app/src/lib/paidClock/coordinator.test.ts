@@ -2,10 +2,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { rememberSignedIn, signInMark } from "../signedIn";
 import type { ClockIntent } from "./protocol";
-const m = vi.hoisted(() => ({ device: vi.fn(), records: vi.fn(), basis: vi.fn(), append: vi.fn(), dispatch: vi.fn() }));
+const m = vi.hoisted(() => ({ device: vi.fn(), records: vi.fn(), basis: vi.fn(), append: vi.fn(), pending: vi.fn(), observed: vi.fn(), dispatch: vi.fn() }));
 vi.mock("../workActivity/device", () => ({ getActivityDeviceId: () => { throw Error("Activity metadata unavailable"); } }));
-vi.mock("./storage", () => ({ readPaidClockRecords: m.records, appendPaidClockIntent: m.append, getPaidClockDeviceId: m.device }));
+vi.mock("./storage", () => ({ readPaidClockRecords: m.records, appendPaidClockIntent: m.append, appendPendingPaidClockIntent: m.pending, getPaidClockDeviceId: m.device }));
 vi.mock("./api", () => ({ fetchOwnClockSafetyBasis: m.basis, ClockAccountChangedError: class extends Error {} }));
+vi.mock("./current", () => ({ readObservedClockTarget: m.observed }));
 vi.mock("./dispatch", () => ({ dispatchPaidClockRequest: m.dispatch }));
 const { paidSetupIntent, submitPaidClockIntent, recoverPaidClockRequest } = await import("./coordinator");
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12,"0")}`;
@@ -15,10 +16,13 @@ const clock = () => paidSetupIntent(punch);
 const out = ():ClockIntent => ({ ...punch, action:"clock_out", shiftRef:{kind:"shift",id:SHIFT},
   photo:null, injured:false, timeConfirmed:false, breakSeconds:0, lat:null, lng:null, injuryNote:null });
 beforeEach(() => {
+  Object.defineProperty(navigator,"onLine",{configurable:true,value:true});
   rememberSignedIn({user:{id:OWNER}});
   Object.values(m).forEach(mock => mock.mockReset());
   m.device.mockResolvedValue(DEVICE); m.records.mockResolvedValue([]); m.basis.mockResolvedValue({proof:"fresh"});
   m.append.mockImplementation(async (_login,_device,intent) => ({clientId:intent.clientId}));
+  m.pending.mockImplementation(async (_login,_device,intent) => ({clientId:intent.clientId}));
+  m.observed.mockReturnValue({proof:"current-login-observed"});
   m.dispatch.mockResolvedValue({kind:"held",reason:"unknown"});
 });
 describe("original paid clock coordinator", () => {
@@ -105,4 +109,43 @@ describe("original paid clock coordinator", () => {
     m.dispatch.mockImplementationOnce(async()=>{rememberSignedIn(null);return {kind:"settled",record:{}};});
     expect(await recoverPaidClockRequest(CLIENT,login,"check")).toEqual({kind:"held",reason:"account_changed"});
   });
+  it("saves an offline independent safety original from the opaque target without a read or dispatch",async()=>{
+    Object.defineProperty(navigator,"onLine",{configurable:true,value:false});
+    const login=signInMark(), result=await submitPaidClockIntent(login,out(),null);
+    expect(m.pending).toHaveBeenCalledWith(login,DEVICE,out(),null,{proof:"current-login-observed"});
+    expect(result).toEqual({kind:"saved",clientId:CLIENT,dispatch:{kind:"held",reason:"offline"}});
+    expect(m.basis).not.toHaveBeenCalled();expect(m.append).not.toHaveBeenCalled();expect(m.dispatch).not.toHaveBeenCalled();
+  });
+  it("falls back only on explicit transport loss, and never checks or sends the pending save",async()=>{
+    m.basis.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    expect(await submitPaidClockIntent(signInMark(),out(),null)).toMatchObject({kind:"saved",dispatch:{kind:"held",reason:"offline"}});
+    expect(m.pending).toHaveBeenCalledOnce();expect(m.dispatch).not.toHaveBeenCalled();
+    m.pending.mockClear();m.basis.mockRejectedValueOnce({code:"42501",message:"Failed to fetch"});
+    expect(await submitPaidClockIntent(signInMark(),out(),null)).toMatchObject({kind:"held",reason:"basis_unavailable"});
+    expect(m.pending).not.toHaveBeenCalled();expect(m.dispatch).not.toHaveBeenCalled();
+  });
+  it("refuses unknown offline targets and new offline Start day without admitting saved history",async()=>{
+    Object.defineProperty(navigator,"onLine",{configurable:true,value:false});m.observed.mockReturnValue(null);
+    expect(await submitPaidClockIntent(signInMark(),out(),null)).toMatchObject({kind:"held",reason:"basis_unavailable"});
+    expect(await submitPaidClockIntent(signInMark(),clock(),null)).toMatchObject({kind:"held",reason:"basis_unavailable"});
+    expect(m.pending).not.toHaveBeenCalled();expect(m.dispatch).not.toHaveBeenCalled();
+  });
+  it("routes offline descendants through native lineage admission and preserves a refused head",async()=>{
+    Object.defineProperty(navigator,"onLine",{configurable:true,value:false});m.records.mockResolvedValue([{clientId:PREVIOUS,deviceId:DEVICE}]);
+    const login=signInMark();await submitPaidClockIntent(login,out(),PREVIOUS);
+    expect(m.pending).toHaveBeenCalledWith(login,DEVICE,out(),PREVIOUS,{proof:"current-login-observed"});
+    expect(m.basis).not.toHaveBeenCalled();expect(m.dispatch).not.toHaveBeenCalled();
+    m.pending.mockRejectedValueOnce(Error("No current-login lineage"));
+    expect(await submitPaidClockIntent(login,out(),PREVIOUS)).toMatchObject({kind:"held",reason:"storage_unavailable"});
+    expect(m.dispatch).not.toHaveBeenCalled();
+  });
+  it("does not use a late transport failure after owner ABA, or send a pending dedup winner",async()=>{
+    m.basis.mockImplementationOnce(async()=>{rememberSignedIn(null);rememberSignedIn({user:{id:OWNER}});throw new TypeError("Failed to fetch");});
+    expect(await submitPaidClockIntent(signInMark(),out(),null)).toMatchObject({kind:"held",reason:"account_changed"});
+    expect(m.pending).not.toHaveBeenCalled();
+    Object.defineProperty(navigator,"onLine",{configurable:true,value:false});m.pending.mockResolvedValueOnce({clientId:PREVIOUS});
+    expect(await submitPaidClockIntent(signInMark(),out(),null)).toMatchObject({kind:"saved",clientId:PREVIOUS,dispatch:{kind:"held",reason:"offline"}});
+    expect(m.dispatch).not.toHaveBeenCalled();
+  });
+
 });

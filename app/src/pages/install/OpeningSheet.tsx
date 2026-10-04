@@ -93,6 +93,7 @@ import {
   getOpenShift,
   isOnTheClock,
   startBreak,
+  mintPunch,
   type BreakType,
 } from "../../lib/timeclock";
 import { useToolboxToday } from "../../lib/useToolboxGate";
@@ -1249,11 +1250,21 @@ export function OpeningSheet() {
   });
 
   const takeBreak = useMutation({
+    networkMode:"offlineFirst",
     mutationFn: async (kind: BreakType) => {
+      const punch=mintPunch();
+      if(clock.loading || !clock.nativeFlow)throw Error(t("paidClock.actionHeld"));
+      if(clock.nativeFlow && clock.nativeFlow.route!=="legacy") {
+        if(!clock.shift)throw Error(t("paidClock.actionHeld"));
+        const result=await clock.nativeFlow.authorSafety({...punch,action:"break_start",shiftRef:{kind:"shift",id:clock.shift.id},breakType:kind});
+        clock.refresh();
+        if(result.kind==="held")throw Error(t("paidClock.actionHeld"));
+        return;
+      }
       const shift = clock.shift ?? (myProfile.data?.id
         ? await getOpenShift(myProfile.data.id)
         : null);
-      if (shift) await startBreak(shift.id, kind);
+      if (shift) await startBreak(shift.id, kind,punch);
     },
     onSettled: () => navigate("/clock"),
   });

@@ -41,6 +41,8 @@ import { farFromJob, type DeviceFix } from "../../lib/jobProximity";
 import { pushToast, toastSuccess } from "../../lib/toast";
 import { formatApiError } from "../../lib/errors";
 import { openClockGlobally } from "../../lib/clockContext";
+import { useNativeClockFlow } from "../../lib/paidClock/useNativeClockFlow";
+import type { PaidClockSubmission } from "../../lib/paidClock/coordinator";
 import { useOpenShiftView } from "../../lib/useOpenShiftView";
 import { ToolboxSignCard } from "./ToolboxSignCard";
 import { ToolboxSignStatus } from "./ToolboxSignStatus";
@@ -75,6 +77,8 @@ export function ClockInBlock() {
   const queryClient = useQueryClient();
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const profileId = me.data?.id ?? null;
+  const nativeFlow=useNativeClockFlow(profileId);
+  const nativeRoute=!!nativeFlow && nativeFlow.route!=="legacy";
 
   // The same view the clock provider shows — the server's shift with this
   // phone's queued punches applied (K0.1) — so the block and the nav timer
@@ -256,7 +260,9 @@ export function ClockInBlock() {
   };
   const tapNow = (): StartTap => ({ punch: mintPunch(), ...picksRef.current });
   const doStart = useMutation({
-    mutationFn: async (tap: StartTap): Promise<{ behindSignature: boolean }> => {
+    networkMode:nativeRoute?"always":"offlineFirst",
+    mutationFn: async (tap: StartTap): Promise<{ behindSignature: boolean;native?:PaidClockSubmission }> => {
+      if(nativeRoute)return {behindSignature:false,native:await nativeFlow!.authorStart(tap.punch)};
       const geo = await captureGeoSoft();
       // Today's signature is still on this phone: the punch waits behind it
       // in the outbox (see the note at the top). It shows as clocked in at
@@ -279,6 +285,11 @@ export function ClockInBlock() {
       return { behindSignature: false };
     },
     onSuccess: (r) => {
+      if(r.native){
+        const status=r.native.kind==="saved" && r.native.dispatch.kind==="settled"?r.native.dispatch.record.delivery.status:null;
+        pushToast(t(r.native.kind==="held"?"paidClock.actionHeld":status==="acknowledged"?"paidClock.acknowledged":status==="attention"?"paidClock.review":"paidClock.unknown"),"info");
+        nativeFlow?.refresh();return;
+      }
       toastSuccess(t(r.behindSignature ? "clock.toast.clockedInAfterTalk" : "clock.action.clockingIn"));
       refresh();
     },
@@ -291,6 +302,7 @@ export function ClockInBlock() {
     // Start sends this tap, paid from this tap, even when this request never
     // reached the server (see ClockInPick.punch).
     onError: (e, tap) => {
+      if(nativeRoute){pushToast(t("paidClock.actionHeld"),"error");nativeFlow?.refresh();openClockGlobally();return;}
       pushToast(t("clockblock.handoff", { reason: formatApiError(e) }), "error");
       openClockGlobally({
         projectId: tap.projectId,
@@ -354,11 +366,15 @@ export function ClockInBlock() {
   // than a half-built card. In the running app the provider has this cached, so
   // there is no flash.
   if (!profileId) return null;
+  if(!nativeFlow || !openShift.ready || openShift.query.isLoading)return <section className="clockin-block" aria-busy="true">
+    <p role="status">{t("clockblock.checking")}</p>
+    <button type="button" onClick={()=>openClockGlobally()}>{t("clockblock.moreOptions")}</button>
+  </section>;
 
   // ---- ON THE CLOCK: a slim status bar. Switch / Clock out open the full
   // sheet, which owns the injury flag and the runaway-shift finish guard. ----
   if (shift && onClock) {
-    const workSec = elapsedWorkSeconds(shift, now);
+    const workSec = elapsedWorkSeconds(shift,nativeFlow?.currentRead==="stale"?Date.parse(nativeFlow.current?.observedAt ?? shift.clock_in_at):now);
     const jobLine = shift.projects
       ? `${shift.projects.job_code} · ${shift.projects.name}`
       : t("clock.status.working");
@@ -374,6 +390,7 @@ export function ClockInBlock() {
           <ClockQueueStatus pending={openShift.pending} refused={openShift.refused} />
           {/* …and so, maybe, is the signature it waits behind. */}
           <ToolboxSignStatus done={toolboxDone} showSent={false} />
+          {nativeFlow?.currentRead==="stale" && <p role="status">{t("paidClock.staleHelp")}</p>}
         </div>
         <span className="clockin-bar-timer" aria-label={t("clock.a11y.timeWorked")}>
           {formatClock(workSec)}
@@ -418,7 +435,7 @@ export function ClockInBlock() {
 
   // ---- OFF THE CLOCK: the big, can't-miss block. ----
   const busy = doStart.isPending;
-  const canStart = Boolean(pickProjectId && pickCostCodeId);
+  const canStart=nativeRoute?nativeFlow!.canStartDay:Boolean(pickProjectId && pickCostCodeId);
   canStartRef.current = canStart;
   // The server refuses the first clock-in of the day without today's signed
   // toolbox talk (20260970000000_job_modes.sql, clock_in). Hold the button
@@ -428,7 +445,7 @@ export function ClockInBlock() {
   // right here (the sheet's own ToolboxSignCard, not a second copy of the
   // sign-off), and signing it fires this block's clockIn with the job, cost
   // code, note and mode already picked — one pass through the morning.
-  const toolboxKnownUnsigned =
+  const toolboxKnownUnsigned =nativeRoute?nativeFlow?.setupReason==="toolbox_required":
     todayTalk.isSuccess &&
     todayTalk.data !== null &&
     toolboxDone.isSuccess &&
@@ -437,6 +454,18 @@ export function ClockInBlock() {
   // disables the button — a real reason to clock in off-site is common enough
   // (staging, the shop, a bad address) that this only ever whispers.
   const showFarNote = farFromJob(myGeo, jobGeo.data ?? null);
+
+  if(nativeRoute)return <section className="clockin-block" aria-label={t("clockblock.title")}>
+    <h2 className="clockin-block-title">{t("clockblock.title")}</h2>
+    <p>{t("paidClock.startHelp")}</p>
+    {toolboxKnownUnsigned && todayTalk.data && showSign ? <ToolboxSignCard profileId={profileId} talk={todayTalk.data}
+      onSigned={()=>{if(canStartRef.current)doStart.mutate(tapNow());}}/>:
+      <button type="button" className="clock-btn primary big" disabled={busy || !canStart}
+        onClick={()=>{if(toolboxKnownUnsigned)setShowSign(true);else doStart.mutate(tapNow());}}>
+        <Play size={18} aria-hidden/>{toolboxKnownUnsigned?t("clockblock.signAndClockIn"):t("clock.action.startClock")}
+      </button>}
+    <button type="button" className="clock-list-toggle" onClick={()=>openClockGlobally()}>{t("clockblock.moreOptions")}</button>
+  </section>;
 
   return (
     <section className="clockin-block" aria-label={t("clockblock.title")}>

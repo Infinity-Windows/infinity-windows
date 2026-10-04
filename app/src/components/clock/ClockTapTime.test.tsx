@@ -26,6 +26,10 @@ import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// Preserved classic route after its separate native admission read.
+const classicFlow=vi.hoisted(()=>({route:"legacy"}));
+vi.mock("../../lib/paidClock/flowRegistry",()=>({readClockFlow:()=>classicFlow,subscribeClockFlow:()=>()=>{}}));
+
 const { CC, CC2, RECENT } = vi.hoisted(() => ({
   CC: { id: "cc1", code: "100", label: "Install", active: true },
   CC2: { id: "cc2", code: "200", label: "Service call", active: true },
@@ -269,6 +273,7 @@ describe("the landing block's Start", () => {
   it("is stamped at the tap, not when the location fix arrives seconds later", async () => {
     fixAfterMs = 9_000;
     const el = render(<ClockInBlock />);
+    await pass(0);
     await tap(el, ".clock-btn.primary.big");
     // Nothing leaves before the fix: the punch waits for it …
     await pass(8_999);

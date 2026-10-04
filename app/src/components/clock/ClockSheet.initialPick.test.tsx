@@ -46,6 +46,11 @@ vi.mock("../../lib/clockSkew", async (importOriginal) => {
 import { ClockSheet } from "./ClockSheet";
 import { localDateOf } from "../../lib/toolboxSign";
 import type { ClockInPick, ClockPunch } from "../../lib/timeclock";
+import type { NativeClockFlow } from "../../lib/paidClock/flow";
+// The real lazy bridge registers these before publishing a native route.
+import "../../lib/i18n/paidClockCatalog";
+
+vi.mock("./PaidClockQueueStatus",()=>({PaidClockQueueStatus:()=> <div data-testid="native-saved-punches"/>}));
 
 let root: Root | null = null;
 let host: HTMLDivElement | null = null;
@@ -78,7 +83,7 @@ function todayLocalISO(): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-function mount(initialPick: ClockInPick | null, opts: { talk?: unknown } = {}): HTMLElement {
+function mount(initialPick: ClockInPick | null, opts: { talk?: unknown;native?:NativeClockFlow;emptyChoices?:boolean;admissionReady?:boolean } = {}): HTMLElement {
   const qc = new QueryClient({
     defaultOptions: {
       queries: { retry: false, staleTime: Infinity, refetchOnMount: false, gcTime: Infinity },
@@ -98,6 +103,7 @@ function mount(initialPick: ClockInPick | null, opts: { talk?: unknown } = {}): 
   qc.setQueryData(["todayTalk", localDateOf(new Date())], opts.talk ?? null);
   qc.setQueryData(["toolboxToday", "me"], { id: "done1" });
   qc.setQueryData(["myOpenings", "me"], []);
+  if(opts.emptyChoices){qc.setQueryData(["projects"],[]);qc.setQueryData(["clockCostCodes","all"],[]);qc.setQueryData(["recentJobs","me"],[]);}
 
   host = document.createElement("div");
   document.body.appendChild(host);
@@ -109,6 +115,8 @@ function mount(initialPick: ClockInPick | null, opts: { talk?: unknown } = {}): 
           <ClockSheet
             profileId="me"
             shift={null}
+            nativeFlow={opts.native}
+            admissionReady={opts.admissionReady}
             initialPick={initialPick}
             onClose={() => {}}
             onChanged={() => {}}
@@ -119,6 +127,35 @@ function mount(initialPick: ClockInPick | null, opts: { talk?: unknown } = {}): 
   });
   return host;
 }
+
+describe("the same sheet's native Start day",()=>{
+  it("keeps unread route admission unknown even when legacy job choices are already cached",()=>{
+    const el=mount(null,{admissionReady:false});
+    expect(el.textContent).toContain("Checking your clock");
+    expect(el.querySelector(".clock-btn.primary.big")).toBeNull();
+    expect(clockInSpy).not.toHaveBeenCalled();expect(enqueueSpy).not.toHaveBeenCalled();
+  });
+  function native(over:Partial<NativeClockFlow>={}):NativeClockFlow {
+    return {ownerId:"me",loginGeneration:1,route:"isolated",nativeRead:"ready",records:[],currentRead:"ready",
+      current:{kind:"off",shift:null},canStartDay:true,canRequestSafety:false,setupReason:null,
+      refresh:vi.fn(),authorStart:vi.fn().mockResolvedValue({kind:"held",clientId:"original",reason:"basis_unavailable"}),
+      authorSafety:vi.fn(),...over};
+  }
+  it("starts without a job or cost choice, preserving the tap and never falling back after an unknown native result",async()=>{
+    const flow=native();const el=mount(null,{native:flow,emptyChoices:true});
+    expect(el.querySelector(".clock-costcode-list")).toBeNull();expect(el.querySelector(".clock-project-list")).toBeNull();
+    const start=el.querySelector<HTMLButtonElement>(".clock-btn.primary.big")!;expect(start.disabled).toBe(false);
+    await act(async()=>start.click());
+    expect(flow.authorStart).toHaveBeenCalledOnce();
+    const original=vi.mocked(flow.authorStart).mock.calls[0][0];expect(original.clientId).toMatch(/^[\da-f-]{36}$/);expect(Date.parse(original.tappedAt)).not.toBeNaN();
+    expect(clockInSpy).not.toHaveBeenCalled();expect(enqueueSpy).not.toHaveBeenCalled();
+  });
+  it("says current time is unknown and holds another Start when source state is unread",()=>{
+    const flow=native({currentRead:"unavailable",current:null,canStartDay:false});const el=mount(null,{native:flow,emptyChoices:true});
+    expect(el.textContent).toContain("Current paid time is unavailable");expect(el.querySelector<HTMLButtonElement>(".clock-btn.primary.big")!.disabled).toBe(true);
+    expect(flow.authorStart).not.toHaveBeenCalled();
+  });
+});
 
 /** The pick summary — the one `.clock-pick-summary` that names a job in bold. */
 function pickSummary(el: HTMLElement): Element | null {

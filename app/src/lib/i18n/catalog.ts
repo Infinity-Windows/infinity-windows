@@ -497,6 +497,8 @@ export const CATALOG = {
 
   // ---- Clock-in block (the one big clock-in spot on every landing) ------
   "clockblock.title": { en: "Clock in", es: "Marcar entrada" },
+  "clockblock.checking": { en:"Checking your clock…", es:"Revisando tu reloj…" },
+  "clockBadge.lastConfirmed": { en:"Last confirmed clock", es:"Último reloj confirmado" },
   "clockblock.subtitle": {
     en: "Pick your job and cost code — your time flows to payroll and job costing.",
     es: "Elige tu trabajo y código de costo — tu tiempo va a la nómina y al costo del trabajo.",

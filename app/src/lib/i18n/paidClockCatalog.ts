@@ -21,6 +21,15 @@ export const PAID_CLOCK_CATALOG = {
   "paidClock.held": { en:"No new confirmation was found. This punch is not treated as complete; review the saved requests above.", es:"No se encontró una confirmación nueva. Esta marcación no se considera completa; revisa las solicitudes guardadas arriba." },
   "paidClock.failed": { en:"This punch could not be checked. Read the saved requests again before trying another action.", es:"No se pudo revisar esta marcación. Vuelve a leer las solicitudes guardadas antes de intentar otra acción." },
   "paidClock.refresh": { en:"Read saved punches again", es:"Volver a leer marcaciones guardadas" },
+  "paidClock.actionHeld": { en:"This clock action is not confirmed. Review saved punches before making a replacement.", es:"Esta acción del reloj no está confirmada. Revisa las marcaciones guardadas antes de crear otra." },
+  "paidClock.startHelp": { en:"Start paid time here. Choose your job and activity from Work.", es:"Comienza el tiempo pagado aquí. Elige tu obra y actividad en Trabajo." },
+  "paidClock.currentUnknown": { en:"Checking current paid time", es:"Revisando el tiempo pagado actual" },
+  "paidClock.lastConfirmed": { en:"Last confirmed clock", es:"Último reloj confirmado" },
+  "paidClock.requestResume": { en:"Save resume request · break still pending", es:"Guardar solicitud de reanudación · descanso pendiente" },
+  "paidClock.staleHelp": { en:"Showing the last confirmed state. New break or clock-out requests stay pending until Forge confirms them.", es:"Se muestra el último estado confirmado. Las nuevas solicitudes de descanso o salida siguen pendientes hasta que Forge las confirme." },
+  "paidClock.currentUnknownHelp": { en:"Current paid time is unavailable. Saved punches remain separate; read your clock again before starting another shift.", es:"El tiempo pagado actual no está disponible. Las marcaciones guardadas siguen separadas; vuelve a revisar el reloj antes de comenzar otro turno." },
+  "paidClock.startResendWarning": { en:"Before resending this clock-in, check for a later clock-out or a new shift. This resends the original time and may change which shift is open.", es:"Antes de reenviar esta entrada, revisa si hay una salida posterior o un turno nuevo. Esto reenvía la hora original y puede cambiar qué turno está abierto." },
+  "paidClock.chooseWorkJob": { en:"Choose the job and activity from Work. This will keep the same paid shift.", es:"Elige la obra y la actividad en Trabajo. Esto conservará el mismo turno pagado." },
 } satisfies Record<string,CatalogEntry>;
 export type PaidClockKey = keyof typeof PAID_CLOCK_CATALOG;
 registerCatalog(PAID_CLOCK_CATALOG);

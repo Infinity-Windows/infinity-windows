@@ -249,6 +249,7 @@ export function WorkScreen() {
       <h1 className="ws-sr-only">{t("work.title")}</h1>
       <LiveSummonsStrip />
       <ClockStrip
+        nativeFlow={clock.nativeFlow}
         profileId={profileId}
         shift={shift}
         clockKnown={clockKnown}

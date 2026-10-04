@@ -3,6 +3,8 @@ import { cloneJson, uuid } from "../workConfiguration/model";
 import { isCurrentClockSafetyBasis, type ConfirmedClockSafetyBasis } from "./api";
 import { parseClockIntent, parseClockReceiptRead, type ClockIntent, type ClockReceipt } from "./protocol";
 import { notifyPaidClockChanges } from "./notifications";
+import { isCurrentLoginSafetyTarget, readObservedClockTarget, readObservedShiftBinding, subscribeObservedClockChanges,
+  type CurrentLoginSafetyTarget } from "./current";
 
 export const PAID_CLOCK_DB = "iw-paid-clock-chain-v1";
 export { PAID_CLOCK_EVENT } from "./notifications";
@@ -109,7 +111,8 @@ function openDb(): Promise<IDBDatabase> {
 const result = <T>(request: IDBRequest<T>): Promise<T> => new Promise((resolve, reject) => {
   request.onsuccess = () => resolve(request.result); request.onerror = () => reject(new PaidClockStorageError());
 });
-async function transaction<T>(login: SignInMark, owner: string, mode: IDBTransactionMode, run: (tx: IDBTransaction) => Promise<T>): Promise<T> {
+async function transaction<T>(login: SignInMark, owner: string, mode: IDBTransactionMode, run: (tx: IDBTransaction) => Promise<T>,
+  admission: () => boolean = () => true): Promise<T> {
   assertOwner(login, owner);
   const db = await openDb(); assertOwner(login, owner);
   const tx = db.transaction(["requests", "heads"], mode);
@@ -117,14 +120,16 @@ async function transaction<T>(login: SignInMark, owner: string, mode: IDBTransac
     tx.oncomplete = () => resolve(); tx.onabort = tx.onerror = () => reject(new PaidClockStorageError());
   });
   void done.catch(() => {}); // abort can arrive before the request callback finishes
-  const unsubscribe = subscribeSignedIn(() => { if (!stillSignedInAs(login, owner)) { try { tx.abort(); } catch { /* already committed */ } } });
+  const abortInvalid = () => { if (!stillSignedInAs(login, owner) || !admission()) { try { tx.abort(); } catch { /* already committed */ } } };
+  const unsubscribe = subscribeSignedIn(abortInvalid);
+  const unsubscribeSource = subscribeObservedClockChanges(abortInvalid);
   try {
     let value: T;
-    try { value = await run(tx); assertOwner(login, owner); }
+    try { value = await run(tx); assertOwner(login, owner); if (!admission()) fail(); }
     catch (error) { try { tx.abort(); } catch { /* already committed */ } await done.catch(() => {}); throw error; }
-    await done; assertOwner(login, owner); return value;
+    await done; assertOwner(login, owner); if (!admission()) fail(); return value;
   }
-  finally { unsubscribe(); }
+  finally { unsubscribe(); unsubscribeSource(); }
 }
 const notify = notifyPaidClockChanges;
 
@@ -146,15 +151,64 @@ export async function getPaidClockDeviceId(login: SignInMark): Promise<string> {
   });
 }
 
+// Admission is current-login RAM, never a serialized credential or receipt.
+// Only a NEW row whose native commit completed here can establish a lineage.
+let observationSerial = 0;
+declare const committedHeadBrand: unique symbol;
+export type CurrentLoginCommittedHead = Readonly<{ clientId: string; action: ClockIntent["action"]; origin: Readonly<ClockChainOrigin> }> &
+  { readonly [committedHeadBrand]: true };
+let commitOrdinal = 0;
+const committedLineages = new Map<string, { origin: string; row: PaidClockRecord; head: CurrentLoginCommittedHead; ordinal: number }>();
+const lineageKey = (login: SignInMark, row: PaidClockRecord) => `${row.ownerId}:${login.generation}:${row.storageGeneration}`;
+const lineageOrigin = (row: PaidClockRecord) => chainKey(row.ownerId, row.origin);
+const hasLineage = (login: SignInMark, row: PaidClockRecord) => stillSignedInAs(login, row.ownerId) &&
+  committedLineages.get(lineageKey(login, row))?.origin === lineageOrigin(row);
+subscribeSignedIn(() => { committedLineages.clear(); observationSerial++; });
+subscribeObservedClockChanges(() => { committedLineages.clear(); observationSerial++; });
+/** Only this login's NEW committed head, never a history scan or dedup winner.
+ * The returned object is opaque/frozen; source/auth invalidation removes it.
+ * Flow may use it to choose an explicit causal predecessor, while native append
+ * still validates actual head identity and current admission independently. */
+export function getCurrentLoginCommittedHead(login: SignInMark, shiftId: string): CurrentLoginCommittedHead | null {
+  if (!login.userId || !stillSignedInAs(login, login.userId)) return null;
+  uuid(shiftId);
+  const binding = readObservedShiftBinding(login);
+  let newest: { head: CurrentLoginCommittedHead; ordinal: number } | null = null;
+  for (const entry of committedLineages.values()) {
+    const row = entry.row;
+    if (row.ownerId !== login.userId || !hasLineage(login, row)) continue;
+    const matches = row.origin.kind === "shift" ? row.origin.id === shiftId : binding?.kind === "open" &&
+      binding.shiftId === shiftId && binding.clockInCommandId === row.origin.id;
+    if (matches && (!newest || entry.ordinal > newest.ordinal)) newest = entry;
+  }
+  return newest?.head ?? null;
+}
+export function isCurrentLoginCommittedHead(value: unknown, login: SignInMark, shiftId: string): value is CurrentLoginCommittedHead {
+  return value !== null && value !== undefined && value === getCurrentLoginCommittedHead(login, shiftId);
+}
+
 /** Every append, duplicate check and causal-head comparison shares ONE native
- * owner transaction. Null predecessor + fresh branded shift basis explicitly
- * starts an independent safety generation; it never replaces an older head. */
-export async function appendPaidClockIntent(login: SignInMark, deviceId: string, raw: ClockIntent,
+ * owner transaction. Fresh online safety bases retain their original meaning. */
+export function appendPaidClockIntent(login: SignInMark, deviceId: string, raw: ClockIntent,
   expectedHeadClientId: string | null, safetyBasis?: ConfirmedClockSafetyBasis): Promise<PaidClockRecord> {
+  return append(login, deviceId, raw, expectedHeadClientId, safetyBasis, false);
+}
+/** Pending-only authoring. A boolean, saved row or copied target cannot grant
+ * admission: the native transaction validates the current opaque target or a
+ * lineage minted here only after this login's actual new native commit. */
+export function appendPendingPaidClockIntent(login: SignInMark, deviceId: string, raw: ClockIntent,
+  expectedHeadClientId: string | null, target?: CurrentLoginSafetyTarget | null): Promise<PaidClockRecord> {
+  return append(login, deviceId, raw, expectedHeadClientId, undefined, true, target);
+}
+async function append(login: SignInMark, deviceId: string, raw: ClockIntent,
+  expectedHeadClientId: string | null, safetyBasis: ConfirmedClockSafetyBasis | undefined,
+  pendingOnly: boolean, target?: CurrentLoginSafetyTarget | null): Promise<PaidClockRecord> {
   const owner = uuid(login.userId), defaultDevice = uuid(deviceId), intent = parseClockIntent(raw);
   if (expectedHeadClientId !== null) uuid(expectedHeadClientId);
   const origin: ClockChainOrigin = intent.action === "clock_in" ? { kind: "clock_command", id: intent.clientId } : { ...intent.shiftRef };
-  const generation = crypto.randomUUID();
+  const generation = crypto.randomUUID(), serial = observationSerial;
+  let created = false, mintLineage = false;
+  let admission = () => true;
   const saved = await transaction(login, owner, "readwrite", async (tx) => {
     const requests = tx.objectStore("requests"), heads = tx.objectStore("heads");
     const existing = await result(requests.get(intent.clientId)); assertOwner(login, owner);
@@ -164,6 +218,8 @@ export async function appendPaidClockIntent(login: SignInMark, deviceId: string,
       // Draft originals retain their device identity across new metadata.
       return row;
     }
+    // A duplicate is recovery of the original, never fresh lineage admission.
+    if (pendingOnly && intent.action === "clock_in") fail();
     const ownRows = (await result(requests.index("by_owner").getAll(owner))).map(parseRecord); assertOwner(login, owner);
     if (ownRows.some(row => row.ownerId !== owner)) fail();
     if (intent.action === "clock_in" && ownRows.some(row => row.intent.action === "clock_in" && row.delivery.status !== "acknowledged")) fail();
@@ -171,6 +227,14 @@ export async function appendPaidClockIntent(login: SignInMark, deviceId: string,
     if (expectedHeadClientId !== null) {
       const previous = ownRows.find(row => row.clientId === expectedHeadClientId);
       if (!previous || chainKey(owner, previous.origin) !== key) return fail();
+      const binding = readObservedShiftBinding(login);
+      const boundShift = origin.kind === "shift" ? origin.id : binding?.kind === "open" &&
+        binding.clockInCommandId === origin.id ? binding.shiftId : null;
+      const observed = boundShift ? target ?? readObservedClockTarget(login, boundShift) : null;
+      const currentAdmission = () => hasLineage(login, previous) || !!boundShift &&
+        isCurrentLoginSafetyTarget(observed, owner, boundShift, login);
+      if (pendingOnly) { admission = currentAdmission; if (!admission()) fail(); }
+      mintLineage = currentAdmission();
       // Prefer this exact generation. Draft base-key heads continue in place.
       if (origin.kind === "shift") {
         const qualified = generationKey(owner, origin, previous.storageGeneration);
@@ -186,7 +250,10 @@ export async function appendPaidClockIntent(login: SignInMark, deviceId: string,
         intent.action === "break_start" && previous.intent.action === "break_start" ||
         intent.action === "break_end" && previous.intent.action !== "break_start") fail();
     } else if (origin.kind === "shift") {
-      if (!isCurrentClockSafetyBasis(safetyBasis, owner, origin.id, login)) fail();
+      admission = pendingOnly ? () => isCurrentLoginSafetyTarget(target, owner, origin.id, login) :
+        () => isCurrentClockSafetyBasis(safetyBasis, owner, origin.id, login);
+      if (!admission()) fail();
+      mintLineage = true;
       // Competing tabs reuse the first immutable same-action safety original.
       // Different answers must not overwrite/duplicate an unresolved request.
       const pending = ownRows.filter(row => row.origin.kind === "shift" && row.origin.id === origin.id &&
@@ -201,6 +268,7 @@ export async function appendPaidClockIntent(login: SignInMark, deviceId: string,
       if (await result(heads.get(key)) !== undefined) fail(); assertOwner(login, owner);
     } else {
       if (intent.action !== "clock_in" || await result(heads.get(key)) !== undefined) fail(); assertOwner(login, owner);
+      mintLineage = true;
     }
     const sequence = head ? head.sequence + 1 : 0;
     if (!Number.isSafeInteger(sequence) || sequence < 0) fail();
@@ -208,9 +276,15 @@ export async function appendPaidClockIntent(login: SignInMark, deviceId: string,
     const row: PaidClockRecord = { version: 1, clientId: intent.clientId, ownerId: owner, deviceId: device,
       storageGeneration: head?.storageGeneration ?? generation, sequence, origin, predecessorClientId: head?.lastClientId ?? null, intent,
       delivery: { status: "queued", attemptToken: null, everAttempted: false, everUncertain: false, resolvedShiftId: null, receipt: null, attentionReason: null } };
+    if (!admission()) fail();
+    created = true;
     requests.add(row); heads.put({ key, ownerId: owner, deviceId: device, storageGeneration: row.storageGeneration, sequence, lastClientId: row.clientId });
     return row;
-  });
+  }, () => admission());
+  if (created && mintLineage && serial === observationSerial) {
+    const head = Object.freeze({ clientId: saved.clientId, action: saved.intent.action, origin: Object.freeze({ ...saved.origin }) }) as CurrentLoginCommittedHead;
+    committedLineages.set(lineageKey(login, saved), { origin: lineageOrigin(saved), row: saved, head, ordinal: ++commitOrdinal });
+  }
   notify(); return parseRecord(saved);
 }
 export async function readPaidClockRecords(login: SignInMark): Promise<PaidClockRecord[]> {

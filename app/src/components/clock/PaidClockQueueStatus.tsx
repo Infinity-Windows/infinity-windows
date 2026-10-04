@@ -58,6 +58,7 @@ export function PaidClockQueueStatus({ profileId, legacyPending=null, legacyRefu
             {retry && <button type="button" disabled={!!busy || !online} onClick={()=>void recover(row.clientId,"retry_original")}>{t("paidClock.resend")}</button>}
           </div>}
           {retry && <p className="paid-clock-help">{t("paidClock.resendHelp")}</p>}
+          {retry && row.intent.action==="clock_in" && <p className="paid-clock-help">{t("paidClock.startResendWarning")}</p>}
         </article>;
       })}
       {ownVisible.length>0 && !online && <p>{t("paidClock.offline")}</p>}
