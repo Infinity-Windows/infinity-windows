@@ -292,6 +292,12 @@ jobs:
         env:
           WORK_ACTIVITY_MATCHED_SCHEMA: scripts/fixtures/work-activity-engine-online-schema.sql
         run: PGLITE_MODULE="$RUNNER_TEMP/work-cutover-matched-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-work-activity-totals-payroll.mjs
+      - name: Verify exact contributor labor and private participant attribution
+        run: PGLITE_MODULE="$RUNNER_TEMP/work-cutover-matched-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-work-unit-contributors.mjs
+      - name: Preserve complete payroll behavior with contributors installed
+        env:
+          WORK_ACTIVITY_MATCHED_SCHEMA: scripts/fixtures/work-activity-engine-online-schema.sql
+        run: PGLITE_MODULE="$RUNNER_TEMP/work-cutover-matched-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-work-unit-contributors-payroll.mjs
       - name: Verify independent backends on the source-matched application schema
         env:
           WORK_ACTIVITY_CUTOVER_TEST_DB_URL: postgresql://postgres:fixture-only@localhost:5432/forge_work_activity_cutover_test
@@ -356,6 +362,19 @@ jobs:
         with:
           name: work-activity-totals-volume
           path: ${{ runner.temp }}/work-activity-totals-volume.json
+          if-no-files-found: ignore
+
+      - name: Verify genuine contributor permissions, source races and active-read payroll waits
+        env:
+          WORK_ACTIVITY_ROLE_TEST_DB_URL: postgresql://supabase_admin:fixture-only@localhost:5432/forge_work_activity_role_test
+          WORK_UNIT_CONTRIBUTORS_VOLUME_OUT: ${{ runner.temp }}/work-unit-contributors-volume.json
+        run: python3 scripts/verify-work-unit-contributors-postgres.py
+      - name: Preserve contributor performance and partial failure evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: work-unit-contributors-volume
+          path: ${{ runner.temp }}/work-unit-contributors-volume.json
           if-no-files-found: ignore
 
   values-sql-concurrency:
