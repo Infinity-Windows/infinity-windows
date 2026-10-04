@@ -323,6 +323,10 @@ export const CATALOG = {
     en: "Your clock-in is still being sent. Wait a moment and try again.",
     es: "Tu entrada todavía se está enviando. Espera un momento y vuelve a intentarlo.",
   },
+  "clock.error.requiresReview": {
+    en: "Your time records need review. This punch did not complete. Ask your foreman to check them.",
+    es: "Tus registros de tiempo necesitan revisión. Esta marcación no se completó. Pide a tu capataz que los revise.",
+  },
   // Release 0 (K0.1): a punch saved on this phone reads as real, with the
   // tap time and where it stands — sending, or waiting for signal.
   "clock.queued.clockIn": {

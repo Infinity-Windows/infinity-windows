@@ -293,7 +293,7 @@ export function ClockSheet({
   // this used to wrap it in, so the wrapper was a second copy of one rule
   // saying the same thing. There is one copy now, and the far-from-job prompt
   // (Wave K) queues its switch off exactly this test rather than a third.
-  const shouldQueue = isNetworkError;
+  const shouldQueue = (error: unknown) => !(error instanceof ClockRefusal) && isNetworkError(error);
 
   // A refusal the server wrote for the person to read (K0.4: "we couldn't
   // find the start of that break") is shown in their language; anything else
@@ -301,6 +301,10 @@ export function ClockSheet({
   const toastPunchError = (e: unknown) => {
     if (e instanceof ClockRefusal) {
       pushToast(t(CLOCK_REFUSAL_KEY[e.code]), "error");
+      if(e.code==='requires_review'){
+        refresh();
+        void queryClient.invalidateQueries({queryKey:["myActivePhases"]});
+      }
       return;
     }
     toastError(e);

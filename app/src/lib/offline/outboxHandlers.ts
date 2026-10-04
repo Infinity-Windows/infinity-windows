@@ -463,6 +463,7 @@ export function createSupabaseHandlers(
       res = await supabase.rpc("clock_out", base);
     }
     if (res.error) throw res.error;
+    if((res.data as {status?:unknown}|null)?.status==='needs_finish')throw tagPermanent(new Error(translate(CATALOG,'en','clock.error.requiresReview')));
     return res.data;
   };
 
@@ -476,6 +477,7 @@ export function createSupabaseHandlers(
       res = await supabase.rpc("start_break", base);
     }
     if (res.error) throw res.error;
+    if((res.data as {status?:unknown}|null)?.status==='needs_finish')throw tagPermanent(new Error(translate(CATALOG,'en','clock.error.requiresReview')));
     return res.data;
   };
 
@@ -487,10 +489,12 @@ export function createSupabaseHandlers(
     if (res.error && isMissingFunction(res.error)) {
       res = await supabase.rpc("end_break", { p_shift_id: shiftId });
       if (res.error) throw res.error;
+      if((res.data as {status?:unknown}|null)?.status==='needs_finish')throw tagPermanent(new Error(translate(CATALOG,'en','clock.error.requiresReview')));
       return res.data;
     }
     if (res.error) throw res.error;
     const out = res.data as { outcome?: string; shift?: unknown } | null;
+    if(out?.outcome==='requires_review' || (out?.shift as {status?:unknown}|null)?.status==='needs_finish')throw tagPermanent(new Error(translate(CATALOG,'en','clock.error.requiresReview')));
     if (out?.outcome === "no_break_running") {
       // K0.4: the server kept the request and marked the shift for the
       // foreman; here it stays on /stuck, in the person's own words, rather

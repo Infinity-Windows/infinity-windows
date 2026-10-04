@@ -23,7 +23,7 @@ export { carriedPunch, isPendingShiftRef, mintPunch, newClockActionId, type Cloc
  * so a caller that only has formatApiError still shows a plain sentence.
  */
 export class ClockRefusal extends Error {
-  readonly code: "no_break_running" | "shift_closed" | "clock_pending_sync";
+  readonly code: "no_break_running" | "shift_closed" | "clock_pending_sync" | "requires_review";
   constructor(code: ClockRefusal["code"]) {
     super(translate(CATALOG, "en", CLOCK_REFUSAL_KEY[code]));
     this.name = "ClockRefusal";
@@ -35,7 +35,16 @@ export const CLOCK_REFUSAL_KEY = {
   no_break_running: "clock.error.noBreakRunning",
   shift_closed: "clock.error.shiftAlreadyClosed",
   clock_pending_sync: "clock.error.clockPendingSync",
+  requires_review: "clock.error.requiresReview",
 } as const;
+
+/** A successful transport may still represent an incomplete payroll action.
+ * The preserved needs_finish row is evidence for review, never a completed
+ * break or clock-out. Leave its original timestamps and minutes untouched. */
+function readPunchShift(data: unknown): TimeShift {
+  if(data && typeof data==='object' && (data as {status?:unknown}).status==='needs_finish')throw new ClockRefusal('requires_review');
+  return data as TimeShift;
+}
 
 /**
  * The backstop behind every screen's own `pending:` guard: a made-up shift id
@@ -859,7 +868,7 @@ export async function clockOut(
     res = await supabase.rpc("clock_out", base);
   }
   if (res.error) throw res.error;
-  return res.data as TimeShift;
+  return readPunchShift(res.data);
 }
 
 /**
@@ -1178,7 +1187,7 @@ export async function startBreak(
     res = await supabase.rpc("start_break", base);
   }
   if (res.error) throw res.error;
-  return res.data as TimeShift;
+  return readPunchShift(res.data);
 }
 
 /** What the keyed end_break answers with (20261028000000). */
@@ -1201,7 +1210,7 @@ export async function endBreak(shiftId: string, punch?: ClockPunch | null): Prom
     // Database behind the app: the legacy end_break answers with the row itself.
     res = await supabase.rpc("end_break", { p_shift_id: shiftId });
     if (res.error) throw res.error;
-    return res.data as TimeShift;
+    return readPunchShift(res.data);
   }
   if (res.error) throw res.error;
   return readEndBreak(res.data);
@@ -1212,11 +1221,12 @@ export function readEndBreak(data: unknown): TimeShift {
   const out = data as EndBreakResult | null;
   if (!out || typeof out !== "object" || !("outcome" in out)) {
     // A row rather than an envelope: the legacy shape, already a shift.
-    return data as TimeShift;
+    return readPunchShift(data);
   }
   if (out.outcome === "no_break_running") throw new ClockRefusal("no_break_running");
   if (out.outcome === "shift_closed") throw new ClockRefusal("shift_closed");
-  return out.shift;
+  if (out.outcome === "requires_review") throw new ClockRefusal("requires_review");
+  return readPunchShift(out.shift);
 }
 
 /** Format seconds as H:MM:SS for the live timer. */
