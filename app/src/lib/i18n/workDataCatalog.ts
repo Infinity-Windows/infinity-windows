@@ -83,7 +83,7 @@ export const WORK_DATA_CATALOG = {
   "wdata.recordedFilters": { en: "Filters use recorded facts. Missing classifications remain Unknown; estimates and unverified dimensions are excluded from trusted averages.", es: "Los filtros usan datos registrados. Las clasificaciones faltantes siguen como Desconocido; las estimaciones y dimensiones sin verificar se excluyen de promedios confiables." },
   "wdata.category": { en: "Category", es: "Categoría" },
   "wdata.subtype": { en: "Unit type", es: "Tipo de unidad" },
-  "wdata.material": { en: "Material", es: "Material" },
+  "wdata.material": { en: "Material", es: "Material" }, // i18n-same-on-purpose: standard label in both languages
   "wdata.floor": { en: "Floor / level", es: "Piso / nivel" },
   "wdata.allValues": { en: "All", es: "Todos" },
   "wdata.minArea": { en: "Minimum area (sq ft)", es: "Área mínima (pie²)" },
