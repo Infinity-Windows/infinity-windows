@@ -139,8 +139,11 @@ checks=0
 def run(sql,user=BOOTSTRAP,error=None,timeout=120):
     global checks
     uri=URL if user==BOOTSTRAP else urlunparse((parsed.scheme,f'{user}:fixture-only@{parsed.hostname}:{port or 5432}',parsed.path,'','',''))
+    prelude="\\set VERBOSITY sqlstate\n"
+    if user!='authenticator':
+        prelude+="set statement_timeout='90s';set lock_timeout='8s';\n"
     result=subprocess.run(['psql',uri,'-X','-q','-t','-A','-v','ON_ERROR_STOP=1'],
-      input="\\set VERBOSITY sqlstate\nset statement_timeout='90s';set lock_timeout='8s';\n"+sql,
+      input=prelude+sql,
       capture_output=True,text=True,timeout=timeout,env=env)
     if error:
         assert result.returncode!=0 and re.search(r'\b'+error+r'\b',result.stderr),(error,result.stderr[-1200:])
@@ -189,6 +192,7 @@ check(run("select (to_regtype('project_openings') is not null)::int",'postgres')
 run(source_guard+'\nbegin;\n'+cutover,'postgres')
 checks+=1
 check(run("select (not capture_enabled)::int from work_activity_authority_generation where singleton",'postgres')=='1','App DDL keeps capture disabled')
+check(json.loads(run("select json_build_object('statementTimeout',current_setting('statement_timeout'),'lockTimeout',current_setting('lock_timeout'))",'authenticator'))=={'statementTimeout':'8s','lockTimeout':'8s'},'Actual authenticator login preserves installed timeout defaults')
 check(run("set role authenticated;select json_build_array(session_user,current_user,current_setting('role'))",'authenticator')=='["authenticator", "authenticated", "authenticated"]','Real authenticator connection preserves caller identity')
 run("set role authenticated;select _work_activity_operation_enter('fixture')",'authenticator','42501')
 run("set role authenticated;set request.jwt.claim.role='service_role';update time_shifts set note=note where false",'authenticator','42501')
@@ -217,8 +221,8 @@ snapshot=json.loads(run(auth+"select work_activity_snapshot('00000000-0000-4000-
 check(snapshot['state']['status']=='setup','Actual setup state under source role attributes')
 shift=paid['id']
 run(auth+f"select start_break('{shift}'::uuid,'rest'::text)",'authenticator')
-ended=json.loads(run(auth+f"select end_break('{shift}'::uuid)",'authenticator'))
-check(ended['outcome']=='ended','Actual payroll break completes under source roles')
+ended=json.loads(run(auth+f"select to_jsonb(end_break('{shift}'::uuid))",'authenticator'))
+check(ended['profile_id']==uid and ended['break_started_at'] is None and ended['clock_out_at'] is None,'Actual legacy payroll break returns its own resumed shift under source roles')
 closed=json.loads(run(auth+f"select to_jsonb(clock_out('{shift}'::uuid,null::text,false,true,null::integer,null::double precision,null::double precision,null::text))",'authenticator'))
 check(closed['clock_out_at'] is not None,'Actual payroll out completes under source roles')
 check(run("select count(*) from work_activity_operations",'postgres')=='0','No operation contexts persist after real-role calls')

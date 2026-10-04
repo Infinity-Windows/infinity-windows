@@ -100,17 +100,32 @@ changed. This follows the official [PostgreSQL17 GRANT semantics](https://www.po
 ## Role setting replay correction
 
 The second real PG17 attempt (37199981734/job111429503337) passed exact attributes,
-memberships,105 effective paths and database/schema capabilities. Cutover DDL then
+memberships, 105 effective paths and database/schema capabilities. Cutover DDL then
 failed to resolve an unqualified project_openings row type. The fixture had
 replayed comma-valued search_path as one ALTER ROLE literal, creating one quoted
 schema element. The correction sets the captured value with pg_catalog.set_config
 and saves search_path using ALTER ROLE SET FROM CURRENT. Scalar timeout values
-retain their exact captured literals, avoiding needless60000-to-1min serialization
+retain their exact captured literals, avoiding needless 60000-to-1min serialization
 changes. Every safe stored setting is now checked before cutover installation,
 as is row-type resolution through the real postgres login.
 
-The dedicated role-settings verifier has11passing local assertions, including
+The dedicated role-settings verifier has 11 passing local assertions, including
 the old malformed-path counterexample and corrected type resolution. The complete
 role DDL/cutover also compiled locally under NOSUPERUSER postgres after the fix.
 The same strict genuine-login PG17 job remains required; no ownership, role
 comparison or application source check was removed.
+
+Authenticator calls preserve the installed 8-second statement/lock timeout
+defaults and assert them through that actual login. Only bootstrap/source-owner
+DDL connections receive the longer bounded installation timeout.
+
+## Legacy return-shape assertion correction
+
+The 6b attempt (37200371973/job111430645343) installed the complete cutover as the
+actual NOSUPERUSER owner and passed the authenticator identity/ACL/null-actor/
+schema/definer/invoker checks and actual 12-argument setup. It then tried to parse
+the legacy one-argument end_break composite as JSON. The frozen existing signature
+returns time_shifts; the keyed overload returns JSON. The harness now projects
+the legacy result with to_jsonb and asserts its own resumed shift fields. The
+server call had succeeded before the client-side parser error. This corrects
+the fixture assertion and does not change either payroll API or its semantics.
