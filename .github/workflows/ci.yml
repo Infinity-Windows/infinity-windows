@@ -97,6 +97,7 @@ jobs:
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-partner-visibility.mjs
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-custom-work.mjs
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-work-data.mjs
+      - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-work-capture-foundation.mjs
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-crew-unit-records.mjs
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-qc-decision-authority.mjs
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-ai-field-operations.mjs
@@ -206,6 +207,10 @@ jobs:
         run: |
           node scripts/verify-values-idb.mjs
           node scripts/verify-values-idb.mjs --webkit
+      - name: Dormant activity journal preserves native storage on phone browsers
+        run: |
+          npm run e2e -- work-capture-journal.spec.ts
+          npm run e2e -- work-capture-journal.spec.ts --browser=webkit
       - name: Private work evidence and preserved Summary on phone browsers
         run: |
           npm run e2e -- work-data.spec.ts

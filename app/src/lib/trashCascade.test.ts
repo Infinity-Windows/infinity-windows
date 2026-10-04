@@ -171,6 +171,17 @@ const CASCADE_COVERED: Record<string, string> = {
   project_build_facts: "ON DELETE CASCADE from projects (the pk is the FK)",
 };
 
+/** Original identity evidence intentionally survives job purge. These private
+ * records have no operational project FK; future APIs must re-authorize a live
+ * project. A retained capability row alone must never authorize a deleted job.
+ * This is a separate disposition, not a claim that an FK deletes these rows. */
+const RETAINED_ORIGINAL_EVIDENCE: Record<string, string> = {
+  work_job_menu_selections: "Immutable menu choice keeps the original job UUID",
+  work_job_management_grants: "Private grant/revocation audit keeps the original job UUID",
+  work_session_capture_metadata: "Immutable source capture keeps the original job UUID",
+};
+const captureFoundation = readFileSync(join(MIGRATIONS, "20261107020000_work_capture_foundation.sql"), "utf8");
+
 function purgeBody(): string {
   // Follow the last deployed definition, as the history-count test does.
   const sql = readdirSync(MIGRATIONS).filter(f => f.endsWith(".sql")).sort().map(f => readFileSync(join(MIGRATIONS, f), "utf8")).filter(s => s.includes("create or replace function public.purge_project")).at(-1)!;
@@ -187,6 +198,7 @@ function purgeBody(): string {
  * on a fabricated table below, not only on today's schema.
  */
 function purgeCovers(table: string, body: string): boolean {
+  if (RETAINED_ORIGINAL_EVIDENCE[table]) return true; // explicit private history disposition
   if (CASCADE_COVERED[table]) return true; // covered by an FK, documented above
   const deleted = new RegExp(`\\bdelete from ${table}\\b`).test(body);
   const detached = new RegExp(`\\bupdate ${table} set\\b`).test(body);
@@ -235,6 +247,21 @@ describe("purge_project handles every project-scoped table", () => {
     for (const table of Object.keys(CASCADE_COVERED)) {
       expect(census[table], `${table} in CASCADE_COVERED is not project-scoped`).toBeDefined();
     }
+  });
+
+  it("retained original evidence stays private, project-scoped and uncascaded", () => {
+    for (const table of Object.keys(RETAINED_ORIGINAL_EVIDENCE)) {
+      expect(census[table]).toBe("project_id");
+      const definition = captureFoundation.split(`create table public.${table} (`)[1]?.split("\n);")[0];
+      expect(definition).toBeDefined();
+      expect(definition).toMatch(/project_id uuid not null,/);
+      expect(definition).not.toMatch(/references public\.projects|on delete cascade/i);
+      expect(captureFoundation).toContain(`'${table}'`);
+    }
+    expect(captureFoundation).toContain("enable row level security");
+    expect(captureFoundation).toContain("revoke all on table public.%I from public,anon,authenticated");
+    expect(captureFoundation).toContain("select public.attach_sandbox_guards();");
+    expect(purgeCovers("zztest_unreviewed_retained_evidence", body)).toBe(false);
   });
 
   it("deletes the projects row itself", () => {
