@@ -1,4 +1,4 @@
-name: Isolated Data WebKit layout diagnostic
+name: Isolated native capture WebKit diagnostic
 on:
   workflow_dispatch:
 permissions:
@@ -22,7 +22,7 @@ jobs:
           cache-dependency-path: app/package-lock.json
       - run: npm ci
       - run: npx playwright install --with-deps webkit
-      - run: IW_MAP_PORT=5203 npx playwright test work-data.spec.ts --browser=webkit -g 'layout stays'
+      - run: IW_MAP_PORT=5203 npx playwright test work-capture-journal.spec.ts --browser=webkit
       - uses: actions/upload-artifact@v4
         if: always()
         with:
