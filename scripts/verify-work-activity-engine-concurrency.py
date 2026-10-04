@@ -285,7 +285,7 @@ for reverse in (False,True):
 
 # A waiter statement begins before revocation but checks the actor after G.
 actor,device=seed();obs=observe(actor,device);cid=new_uuid()
-first=holder('revoke_first',actor,f"select _work_activity_gate();update profiles set active=false where id='{actor}';")
+first=holder('revoke_first',actor,f"select _work_activity_gate();update profiles set access_revoked_at=clock_timestamp() where id='{actor}';")
 second=waiter('revoke_second',actor,establish(cid,payload(obs,new_uuid())),'revoke_first')
 release(first);finish(first);finish_expect_error(second,'42501')
 assert one(retained_counts(actor))==dict(commands=0,streams=0,transitions=0)
