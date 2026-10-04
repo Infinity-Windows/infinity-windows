@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parent.parent
 CATALOG = ROOT/'supabase/migrations/20261108420000_work_activity_catalog.sql'
 CUTOVER = ROOT/'supabase/migrations/20261108410000_work_activity_engine_cutover.sql'
 assert hashlib.sha256(CATALOG.read_bytes()).hexdigest() == 'a97e733bd06c4ea8632ed330b02ffb14d90cad748395dcbc7a3cfafbf178d002'
-assert hashlib.sha256(CUTOVER.read_bytes()).hexdigest() == 'e2c57266fa2f63e345b8ce232d737c7810c7e9509334b9abae56d7c8b77b5d15'
+assert hashlib.sha256(CUTOVER.read_bytes()).hexdigest() == 'aa767e67de301cd0ce5961758cc5afefe89bdf25fe27b3c4156a219c9cb2f648'
 assert sys.argv[1:] in ([], ['--check-plan'])
 if sys.argv[1:] == ['--check-plan']:
     print(json.dumps({'result':'PLAN VALIDATED','databaseTests':False,'predecessor':'verify-work-activity-engine-role-parity.py on fresh PG17 role fixture'}))
