@@ -23,6 +23,7 @@
 // fixed in PwaBanners.tsx; see the notes on each.
 
 import { expect, test, type Page, type Worker } from "@playwright/test";
+import { preparePwaEngineTrace } from "./support/pwaEngineTrace";
 import {
   cutTheNetwork,
   expireBrowserCache,
@@ -361,6 +362,8 @@ test("a download that broke halfway does not leave Refresh doing nothing afterwa
   const activationGateTreatment=process.env.IW_PWA_ACTIVATION_GATE_COMPARE==='1' && test.info().repeatEachIndex%2===1;
   const cdp=await page.context().newCDPSession(page);
   await cdp.send('Network.enable');
+  const engineTrace=process.env.IW_PWA_ENGINE_TRACE==='1'
+    ? await preparePwaEngineTrace(page,cdp,test.info()) : null;
   const tracked=new Set<string>();
   cdp.on('Network.requestWillBeSent',event=>{
     if(event.type==='Document' || /\.(?:js|css)(?:\?|$)/.test(event.request.url)){
@@ -458,6 +461,7 @@ test("a download that broke halfway does not leave Refresh doing nothing afterwa
 
   // The deploy is half there: the new build, minus one chunk its worker
   // precaches. The download fails and the worker is thrown away.
+  await engineTrace?.start();
   await serveBuild(request, "new", [builds.new.entry]);
   await nudgeUpdateCheck(page);
   await expect.poll(states, { timeout: 60_000, message: "the half-deployed worker never failed to install" }).toContain(
@@ -494,6 +498,7 @@ test("a download that broke halfway does not leave Refresh doing nothing afterwa
     let documentTimeline: unknown = null;
     try { documentTimeline=await page.evaluate(()=>JSON.parse(sessionStorage.getItem("wops-e2e-half-download-causal")||"[]")); } catch { /* navigation may still be active */ }
     await test.info().attach("half-download-causal",{body:Buffer.from(JSON.stringify({repeatIndex:test.info().repeatEachIndex,activationGateTreatment,htmlPreloadTreatment:process.env.IW_PWA_NO_HTML_MODULEPRELOAD==='1',causal,documentTimeline,network},null,2)),contentType:"application/json"});
+    await engineTrace?.finish();
     await cdp.detach();
   }
 });

@@ -419,7 +419,7 @@ jobs:
           retention-days: 7
 
   pwa-causal-original:
-    name: Compare original update with activation-gated old page
+    name: Trace browser cancellation in unchanged original update
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
@@ -449,9 +449,9 @@ jobs:
       - name: Reproduce unchanged original bundles with causal document timeline
         env:
           IW_PWA_CACHE: ${{ runner.temp }}/pwa-original/_temp/pwa-current
-          IW_PWA_ACTIVATION_GATE_COMPARE: "1"
+          IW_PWA_ENGINE_TRACE: "1"
           IW_PWA_CAUSAL_TRACE: "1"
-        run: npx playwright test --config playwright.pwa.config.ts upgrade-path.pwa.ts -g 'a download that broke halfway' --repeat-each=12
+        run: npx playwright test --config playwright.pwa.config.ts upgrade-path.pwa.ts -g 'a download that broke halfway' --repeat-each=3 --max-failures=1
       - uses: actions/upload-artifact@v4
         if: always()
         with:
