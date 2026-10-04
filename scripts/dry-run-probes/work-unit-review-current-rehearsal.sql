@@ -15286,7 +15286,7 @@ select 'unit_review_diagnostic/'||kind||'/'||category||'/'||object_name||'/'||at
  'expected='||coalesce(expected_sha256,'ABSENT')||';actual='||coalesce(actual_sha256,'ABSENT') detail,
  category,object_name,attribute,expected_sha256,actual_sha256
 from differences order by kind,category,object_name,attribute) loop
-   perform pg_temp.dry_run_check('provider/'||probe_result.check_name,probe_result.passed,probe_result.detail);
+   perform pg_temp.dry_run_check('provider/'||probe_result.check_name,probe_result.passed,'category='||probe_result.category||';object='||probe_result.object_name||';attribute='||probe_result.attribute||';'||probe_result.detail);
   end loop;
  end if;
  end; $review_diagnostic$;

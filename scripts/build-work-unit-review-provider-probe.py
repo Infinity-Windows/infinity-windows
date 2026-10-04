@@ -39,7 +39,7 @@ assert len(diagnostic_statements) == 1 and diagnostic_statements[0].skeleton.sta
 sql += ('\ndo $review_diagnostic$ declare probe_result record; begin\n'
         + ' if not public._work_unit_review_coverage() then\n'
         + '  for probe_result in (' + diagnostic_sql + ') loop\n'
-        + "   perform pg_temp.dry_run_check('provider/'||probe_result.check_name,probe_result.passed,probe_result.detail);\n"
+        + "   perform pg_temp.dry_run_check('provider/'||probe_result.check_name,probe_result.passed,'category='||probe_result.category||';object='||probe_result.object_name||';attribute='||probe_result.attribute||';'||probe_result.detail);\n"
         + '  end loop;\n end if;\n end; $review_diagnostic$;\n')
 count = check_probe(str(target), sql)
 target.write_text(sql)
