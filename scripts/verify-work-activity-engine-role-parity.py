@@ -306,8 +306,9 @@ try:
     # Every original stamp is frozen before either connection enters G; no client
     # chooses a replacement timestamp after the wait.
     for index,case in enumerate(['disable','enable','revoke']):
-        subject=f'00000000-0000-4000-8000-{5000+index:012d}'
-        command=f'00000000-0000-4000-8000-{5100+index:012d}'
+        # The following catalog runner owns the 5000 fixture range.
+        subject=f'00000000-0000-4000-8000-{9000+index:012d}'
+        command=f'00000000-0000-4000-8000-{9100+index:012d}'
         run(f"insert into auth.users(id) values('{subject}');insert into profiles(id,display_name,role,is_test) values('{subject}','Synthetic waiting setup','installer',false);begin;select _work_activity_gate();update work_activity_authority_generation set capture_enabled={'false' if case=='enable' else 'true'},revision=revision+1;commit",'postgres')
         stamp=json.loads(run("select json_build_object('tap',clock_timestamp()-interval '1 minute','checked',clock_timestamp())",'postgres'))
         change=(f"update profiles set access_revoked_at=clock_timestamp() where id='{subject}'" if case=='revoke' else f"update work_activity_authority_generation set capture_enabled={'true' if case=='enable' else 'false'},revision=revision+1 where singleton")
