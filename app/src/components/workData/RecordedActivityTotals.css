@@ -1,0 +1,15 @@
+.recorded-totals { margin-block: 20px; background: var(--card); color: var(--text); }
+.recorded-totals h2 { margin-top: 0; }
+.recorded-totals-switch { display: flex; gap: 8px; margin-block: 12px; }
+.recorded-totals-switch button { flex: 1; min-width: 0; }
+.recorded-totals-switch button[aria-pressed="true"] { border-color: var(--accent, #ff452e); background: var(--accent, #ff452e); color: #140702; }
+.recorded-totals > button { margin-top: 12px; min-height: 44px; }
+.recorded-totals select, .recorded-totals-switch button { min-height: 44px; }
+.recorded-totals-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.recorded-totals-metrics dt { color: var(--muted); font-size: .9rem; }
+.recorded-totals-metrics dd { margin: 6px 0 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+.recorded-totals-activity, .recorded-totals-rate, .recorded-totals-reconciliation { border-top: 1px solid var(--border); padding-top: 12px; margin-top: 16px; }
+.recorded-totals-activity h4 { margin: 0; }
+.recorded-totals-activity h4 small { display: block; margin-top: 4px; color: var(--muted); font-weight: normal; }
+.recorded-totals :is(dd, h4, li) { overflow-wrap: anywhere; min-width: 0; }
+@media (max-width: 360px) { .recorded-totals-metrics { grid-template-columns: minmax(0, 1fr); } }

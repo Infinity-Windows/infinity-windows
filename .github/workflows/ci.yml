@@ -298,15 +298,15 @@ jobs:
         run: |
           npm run e2e -- paid-clock-offline-authority.spec.ts paid-clock-screen.spec.ts
           npm run e2e -- paid-clock-offline-authority.spec.ts paid-clock-screen.spec.ts --browser=webkit
+      - name: Mounted review and exact Work/Data activity totals on phone browsers
+        working-directory: app
+        run: |
+          npm run e2e -- unit-review-panel.spec.ts mounted-unit-review.spec.ts activity-totals.spec.ts mounted-activity-totals.spec.ts data-totals.spec.ts
+          npm run e2e -- unit-review-panel.spec.ts mounted-unit-review.spec.ts activity-totals.spec.ts mounted-activity-totals.spec.ts data-totals.spec.ts --browser=webkit
       - name: Controlled Work tiles and dimensions on phone browsers
         run: |
           npm run e2e -- project-activity-view.spec.ts selected-job-work.spec.ts selected-job-route.spec.ts selected-job-shell.spec.ts selected-job-unit-entry.spec.ts
           npm run e2e -- project-activity-view.spec.ts selected-job-work.spec.ts selected-job-route.spec.ts selected-job-shell.spec.ts selected-job-unit-entry.spec.ts --browser=webkit
-      - name: Mounted review and exact activity totals on phone browsers
-        working-directory: app
-        run: |
-          npm run e2e -- unit-review-panel.spec.ts mounted-unit-review.spec.ts activity-totals.spec.ts mounted-activity-totals.spec.ts
-          npm run e2e -- unit-review-panel.spec.ts mounted-unit-review.spec.ts activity-totals.spec.ts mounted-activity-totals.spec.ts --browser=webkit
       - run: npm run e2e -- qc-history.spec.ts monday-files.spec.ts schedule-time-conflicts.spec.ts usability-foundations.spec.ts display-layout.spec.ts trip-sheet.spec.ts travel-crew.spec.ts workflow-plans.spec.ts schedule-remove-day.spec.ts schedule-ai-review.spec.ts crew-start-bar.spec.ts crew-end-time.spec.ts crew-unit-records.spec.ts unit-contributors.spec.ts custom-work.spec.ts timecard-weekly.spec.ts unassigned-time.spec.ts project-hours.spec.ts time-entry-export.spec.ts daily-logs.spec.ts global-capture.spec.ts photos-upload.spec.ts honest-sync.spec.ts dictation.spec.ts monthly-salary.spec.ts servicing.spec.ts time-off.spec.ts hex-portal.spec.ts ask-reporting.spec.ts app-updates.spec.ts using-forge.spec.ts training-importer.spec.ts
       - name: Daily-log progress reports and pre-save photo capture
         run: npm run e2e -- daily-logs-progress.spec.ts

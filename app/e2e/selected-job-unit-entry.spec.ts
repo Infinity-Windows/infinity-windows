@@ -175,10 +175,14 @@ test('required creation fields and Save unit remain usable at320px',async({page}
  await page.getByRole('combobox',{name:'Dimension source',exact:true}).selectOption('measured');
  await expect.poll(async()=>{
   const layout=await page.evaluate(()=>({viewport:innerWidth,scrollWidth:document.documentElement.scrollWidth,
+   root:{htmlWidth:document.documentElement.clientWidth,bodyWidth:document.body.clientWidth,bodyScroll:document.body.scrollWidth,activeTag:document.activeElement?.tagName},
    overflow:[...document.querySelectorAll<HTMLElement>("body *")].map(el=>({tag:el.tagName,class:el.className,
+    scrollWidth:el.scrollWidth,clientWidth:el.clientWidth,overflowX:getComputedStyle(el).overflowX,outline:getComputedStyle(el).outline,outlineOffset:getComputedStyle(el).outlineOffset,
+    before:{content:getComputedStyle(el,"::before").content,width:getComputedStyle(el,"::before").width,position:getComputedStyle(el,"::before").position},
+    after:{content:getComputedStyle(el,"::after").content,width:getComputedStyle(el,"::after").width,position:getComputedStyle(el,"::after").position},
     left:el.getBoundingClientRect().left,right:el.getBoundingClientRect().right,width:el.getBoundingClientRect().width,
     minWidth:getComputedStyle(el).minWidth,whiteSpace:getComputedStyle(el).whiteSpace,display:getComputedStyle(el).display}))
-    .filter(el=>el.right>innerWidth+1||el.left< -1).slice(0,40)}));
+    .filter(el=>el.right>innerWidth||el.left<0||el.scrollWidth>el.clientWidth+1).slice(0,60)}));
   await testInfo.attach("creation-320-layout",{body:JSON.stringify(layout),contentType:"application/json"});
   return layout.scrollWidth<=layout.viewport+1;
  },{message:"All unit-creation content stays within the320px screen"}).toBe(true);

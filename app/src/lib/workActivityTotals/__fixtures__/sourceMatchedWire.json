@@ -1,5 +1,5 @@
 {
-  "totalsSha256": "41d6c5c8de77ab934362f097c23d85da64d1f19d6ada6603792f63a8796bdf86",
+  "totalsSha256": "e0e74c2d1985d332af81f95d20d2a6625c40cb5fcf995b4aa6e267d75e092140",
   "reviewSha256": "e32122a581bf995857983cc433323bc490381b6eb217c583bf95fd7376b3e53f",
   "calls": [
     {
@@ -10,7 +10,7 @@
       ],
       "result": {
         "totals": {
-          "asOf": "2026-10-04T19:59:08.646000Z",
+          "asOf": "2026-10-04T21:00:24.722000Z",
           "cohort": {
             "reason": "unit_selection_required",
             "availability": "unavailable"
@@ -19,7 +19,7 @@
           "window": {
             "from": null,
             "kind": "all_retained_selected_scope",
-            "until": "2026-10-04T19:59:08.646000Z",
+            "until": "2026-10-04T21:00:24.722000Z",
             "personalScope": "actual_actor_selected_scope"
           },
           "actorId": "00000000-0000-4000-8000-000000250001",
@@ -33,24 +33,24 @@
               "retired": false,
               "personal": {
                 "state": "known",
-                "knownMicros": "30031000",
+                "knownMicros": "30036000",
                 "includesLive": true,
-                "microseconds": "30031000"
+                "microseconds": "30036000"
               },
               "scopeTotal": {
                 "state": "known",
-                "knownMicros": "30031000",
-                "microseconds": "30031000"
+                "knownMicros": "30036000",
+                "microseconds": "30036000"
               },
-              "definitionId": "e89358f6-834e-48de-a327-a45f66437987",
+              "definitionId": "06e5050f-3ca5-4e66-8426-ef445d94e50c",
               "machineSubsets": [
                 {
                   "machineKind": "forklift",
-                  "microseconds": "30031000"
+                  "microseconds": "30036000"
                 }
               ],
               "definitionVersion": 1,
-              "definitionVersionId": "ff88663a-2676-43d9-ba9c-359c1d4cd7ea"
+              "definitionVersionId": "3582137b-a7e0-4877-9ee6-cf73cb8a4a6d"
             }
           ],
           "reconciliation": {
@@ -58,20 +58,20 @@
             "issues": [
               "own_live_provisional"
             ],
-            "grossMicros": "60067000",
+            "grossMicros": "60076000",
             "ledgerCount": 1,
-            "setupMicros": "30036000",
-            "payrollMicros": "60067000",
+            "setupMicros": "30040000",
+            "payrollMicros": "60076000",
             "unresolvedScope": false,
-            "classifiedMicros": "30031000",
+            "classifiedMicros": "30036000",
             "breakElapsedMicros": "0",
             "unclassifiedMicros": "0",
             "breakDeductionMicros": "0",
             "policyAdjustmentMicros": "0"
           },
           "personalComplete": true,
-          "scopeKnownMicros": "30031000",
-          "personalKnownMicros": "30031000"
+          "scopeKnownMicros": "30036000",
+          "personalKnownMicros": "30036000"
         },
         "availability": "available",
         "protocolVersion": 1
@@ -85,7 +85,7 @@
       ],
       "result": {
         "totals": {
-          "asOf": "2026-10-04T19:59:08.713000Z",
+          "asOf": "2026-10-04T21:00:24.796000Z",
           "cohort": {
             "floor": {
               "label": null,
@@ -103,8 +103,8 @@
             "availability": "available",
             "dimensionSource": "estimated",
             "eligibleUnitIds": [],
-            "actualLaborMicros": "16000",
-            "excludedLaborMicros": "16000",
+            "actualLaborMicros": "17000",
+            "excludedLaborMicros": "17000",
             "laborNumeratorMicros": "0",
             "dimensionVerification": "unverified",
             "areaSquareFeetNumerator": "0",
@@ -115,7 +115,7 @@
           "window": {
             "from": null,
             "kind": "all_retained_selected_scope",
-            "until": "2026-10-04T19:59:08.713000Z",
+            "until": "2026-10-04T21:00:24.796000Z",
             "personalScope": "actual_actor_selected_scope"
           },
           "actorId": "00000000-0000-4000-8000-000000250001",
@@ -129,19 +129,19 @@
               "retired": false,
               "personal": {
                 "state": "known",
-                "knownMicros": "16000",
+                "knownMicros": "17000",
                 "includesLive": true,
-                "microseconds": "16000"
+                "microseconds": "17000"
               },
               "scopeTotal": {
                 "state": "known",
-                "knownMicros": "16000",
-                "microseconds": "16000"
+                "knownMicros": "17000",
+                "microseconds": "17000"
               },
-              "definitionId": "752601de-0a5b-4cba-b079-d8518f1d2874",
+              "definitionId": "6e614ad7-43af-45fe-aa57-79abe41ab37e",
               "machineSubsets": [],
               "definitionVersion": 1,
-              "definitionVersionId": "60e765ae-3bfc-4ba4-9852-896090c2435c"
+              "definitionVersionId": "732a7523-0ddf-4093-b2ee-392279f603d6"
             }
           ],
           "reconciliation": {
@@ -149,20 +149,20 @@
             "issues": [
               "own_live_provisional"
             ],
-            "grossMicros": "60134000",
+            "grossMicros": "60150000",
             "ledgerCount": 1,
-            "setupMicros": "30036000",
-            "payrollMicros": "60134000",
+            "setupMicros": "30040000",
+            "payrollMicros": "60150000",
             "unresolvedScope": false,
-            "classifiedMicros": "30098000",
+            "classifiedMicros": "30110000",
             "breakElapsedMicros": "0",
             "unclassifiedMicros": "0",
             "breakDeductionMicros": "0",
             "policyAdjustmentMicros": "0"
           },
           "personalComplete": true,
-          "scopeKnownMicros": "16000",
-          "personalKnownMicros": "16000"
+          "scopeKnownMicros": "17000",
+          "personalKnownMicros": "17000"
         },
         "availability": "available",
         "protocolVersion": 1
@@ -176,7 +176,7 @@
       ],
       "result": {
         "totals": {
-          "asOf": "2026-10-04T19:59:08.779000Z",
+          "asOf": "2026-10-04T21:00:24.865000Z",
           "cohort": {
             "floor": {
               "label": null,
@@ -208,7 +208,7 @@
           "window": {
             "from": null,
             "kind": "all_retained_selected_scope",
-            "until": "2026-10-04T19:59:08.779000Z",
+            "until": "2026-10-04T21:00:24.865000Z",
             "personalScope": "actual_actor_selected_scope"
           },
           "actorId": "00000000-0000-4000-8000-000000250002",
@@ -222,10 +222,10 @@
             ],
             "grossMicros": null,
             "ledgerCount": 1,
-            "setupMicros": "30036000",
+            "setupMicros": "30040000",
             "payrollMicros": null,
             "unresolvedScope": false,
-            "classifiedMicros": "30082000",
+            "classifiedMicros": "30093000",
             "breakElapsedMicros": "0",
             "unclassifiedMicros": "0",
             "breakDeductionMicros": "0",
@@ -247,7 +247,7 @@
       ],
       "result": {
         "totals": {
-          "asOf": "2026-10-04T19:59:08.847000Z",
+          "asOf": "2026-10-04T21:00:24.937000Z",
           "cohort": {
             "floor": {
               "label": null,
@@ -265,8 +265,8 @@
             "availability": "available",
             "dimensionSource": "estimated",
             "eligibleUnitIds": [],
-            "actualLaborMicros": "138000",
-            "excludedLaborMicros": "138000",
+            "actualLaborMicros": "146000",
+            "excludedLaborMicros": "146000",
             "laborNumeratorMicros": "0",
             "dimensionVerification": "unverified",
             "areaSquareFeetNumerator": "0",
@@ -277,7 +277,7 @@
           "window": {
             "from": null,
             "kind": "all_retained_selected_scope",
-            "until": "2026-10-04T19:59:08.847000Z",
+            "until": "2026-10-04T21:00:24.937000Z",
             "personalScope": "actual_actor_selected_scope"
           },
           "actorId": "00000000-0000-4000-8000-000000250001",
@@ -291,19 +291,19 @@
               "retired": false,
               "personal": {
                 "state": "known",
-                "knownMicros": "138000",
+                "knownMicros": "146000",
                 "includesLive": false,
-                "microseconds": "138000"
+                "microseconds": "146000"
               },
               "scopeTotal": {
                 "state": "known",
-                "knownMicros": "138000",
-                "microseconds": "138000"
+                "knownMicros": "146000",
+                "microseconds": "146000"
               },
-              "definitionId": "752601de-0a5b-4cba-b079-d8518f1d2874",
+              "definitionId": "6e614ad7-43af-45fe-aa57-79abe41ab37e",
               "machineSubsets": [],
               "definitionVersion": 1,
-              "definitionVersionId": "60e765ae-3bfc-4ba4-9852-896090c2435c"
+              "definitionVersionId": "732a7523-0ddf-4093-b2ee-392279f603d6"
             }
           ],
           "reconciliation": {
@@ -312,20 +312,20 @@
               "break_policy_adjustment",
               "own_live_provisional"
             ],
-            "grossMicros": "60268000",
+            "grossMicros": "60291000",
             "ledgerCount": 1,
-            "setupMicros": "30036000",
-            "payrollMicros": "60268000",
+            "setupMicros": "30040000",
+            "payrollMicros": "60291000",
             "unresolvedScope": false,
-            "classifiedMicros": "30220000",
+            "classifiedMicros": "30239000",
             "breakElapsedMicros": "12000",
             "unclassifiedMicros": "0",
             "breakDeductionMicros": "0",
             "policyAdjustmentMicros": "12000"
           },
           "personalComplete": true,
-          "scopeKnownMicros": "138000",
-          "personalKnownMicros": "138000"
+          "scopeKnownMicros": "146000",
+          "personalKnownMicros": "146000"
         },
         "availability": "available",
         "protocolVersion": 1
@@ -339,7 +339,7 @@
       ],
       "result": {
         "totals": {
-          "asOf": "2026-10-04T19:59:08.922000Z",
+          "asOf": "2026-10-04T21:00:25.016000Z",
           "cohort": {
             "floor": {
               "label": null,
@@ -357,8 +357,8 @@
             "availability": "available",
             "dimensionSource": "estimated",
             "eligibleUnitIds": [],
-            "actualLaborMicros": "153000",
-            "excludedLaborMicros": "153000",
+            "actualLaborMicros": "161000",
+            "excludedLaborMicros": "161000",
             "laborNumeratorMicros": "0",
             "dimensionVerification": "unverified",
             "areaSquareFeetNumerator": "0",
@@ -369,7 +369,7 @@
           "window": {
             "from": null,
             "kind": "all_retained_selected_scope",
-            "until": "2026-10-04T19:59:08.922000Z",
+            "until": "2026-10-04T21:00:25.016000Z",
             "personalScope": "actual_actor_selected_scope"
           },
           "actorId": "00000000-0000-4000-8000-000000250001",
@@ -383,19 +383,19 @@
               "retired": false,
               "personal": {
                 "state": "known",
-                "knownMicros": "153000",
+                "knownMicros": "161000",
                 "includesLive": true,
-                "microseconds": "153000"
+                "microseconds": "161000"
               },
               "scopeTotal": {
                 "state": "known",
-                "knownMicros": "153000",
-                "microseconds": "153000"
+                "knownMicros": "161000",
+                "microseconds": "161000"
               },
-              "definitionId": "752601de-0a5b-4cba-b079-d8518f1d2874",
+              "definitionId": "6e614ad7-43af-45fe-aa57-79abe41ab37e",
               "machineSubsets": [],
               "definitionVersion": 1,
-              "definitionVersionId": "60e765ae-3bfc-4ba4-9852-896090c2435c"
+              "definitionVersionId": "732a7523-0ddf-4093-b2ee-392279f603d6"
             }
           ],
           "reconciliation": {
@@ -404,20 +404,20 @@
               "break_policy_adjustment",
               "own_live_provisional"
             ],
-            "grossMicros": "60343000",
+            "grossMicros": "60370000",
             "ledgerCount": 1,
-            "setupMicros": "30036000",
-            "payrollMicros": "60343000",
+            "setupMicros": "30040000",
+            "payrollMicros": "60370000",
             "unresolvedScope": false,
-            "classifiedMicros": "30235000",
-            "breakElapsedMicros": "72000",
+            "classifiedMicros": "30254000",
+            "breakElapsedMicros": "76000",
             "unclassifiedMicros": "0",
             "breakDeductionMicros": "0",
-            "policyAdjustmentMicros": "72000"
+            "policyAdjustmentMicros": "76000"
           },
           "personalComplete": true,
-          "scopeKnownMicros": "153000",
-          "personalKnownMicros": "153000"
+          "scopeKnownMicros": "161000",
+          "personalKnownMicros": "161000"
         },
         "availability": "available",
         "protocolVersion": 1
@@ -431,7 +431,7 @@
       ],
       "result": {
         "totals": {
-          "asOf": "2026-10-04T19:59:08.995000Z",
+          "asOf": "2026-10-04T21:00:25.094000Z",
           "cohort": {
             "floor": {
               "label": null,
@@ -448,8 +448,8 @@
             "availability": "available",
             "dimensionSource": "estimated",
             "eligibleUnitIds": [],
-            "actualLaborMicros": "287000",
-            "excludedLaborMicros": "287000",
+            "actualLaborMicros": "303000",
+            "excludedLaborMicros": "303000",
             "laborNumeratorMicros": "0",
             "dimensionVerification": "unverified",
             "areaSquareFeetNumerator": "0",
@@ -460,7 +460,7 @@
           "window": {
             "from": null,
             "kind": "all_retained_selected_scope",
-            "until": "2026-10-04T19:59:08.995000Z",
+            "until": "2026-10-04T21:00:25.094000Z",
             "personalScope": "actual_actor_selected_scope"
           },
           "actorId": "00000000-0000-4000-8000-000000250001",
@@ -474,38 +474,38 @@
               "retired": false,
               "personal": {
                 "state": "known",
-                "knownMicros": "287000",
+                "knownMicros": "303000",
                 "includesLive": false,
-                "microseconds": "287000"
+                "microseconds": "303000"
               },
               "scopeTotal": {
                 "state": "known",
-                "knownMicros": "287000",
-                "microseconds": "287000"
+                "knownMicros": "303000",
+                "microseconds": "303000"
               },
-              "definitionId": "752601de-0a5b-4cba-b079-d8518f1d2874",
+              "definitionId": "6e614ad7-43af-45fe-aa57-79abe41ab37e",
               "machineSubsets": [],
               "definitionVersion": 1,
-              "definitionVersionId": "60e765ae-3bfc-4ba4-9852-896090c2435c"
+              "definitionVersionId": "732a7523-0ddf-4093-b2ee-392279f603d6"
             }
           ],
           "reconciliation": {
             "scope": "authorized_scope",
             "issues": [],
-            "grossMicros": "60405000",
+            "grossMicros": "60436000",
             "ledgerCount": 1,
-            "setupMicros": "30036000",
-            "payrollMicros": "60405000",
+            "setupMicros": "30040000",
+            "payrollMicros": "60436000",
             "unresolvedScope": false,
-            "classifiedMicros": "30369000",
+            "classifiedMicros": "30396000",
             "breakElapsedMicros": "0",
             "unclassifiedMicros": "0",
             "breakDeductionMicros": "0",
             "policyAdjustmentMicros": "0"
           },
           "personalComplete": true,
-          "scopeKnownMicros": "287000",
-          "personalKnownMicros": "287000"
+          "scopeKnownMicros": "303000",
+          "personalKnownMicros": "303000"
         },
         "availability": "available",
         "protocolVersion": 1
@@ -519,7 +519,7 @@
       ],
       "result": {
         "totals": {
-          "asOf": "2026-10-04T19:59:09.054000Z",
+          "asOf": "2026-10-04T21:00:25.156000Z",
           "cohort": {
             "floor": {
               "label": null,
@@ -536,8 +536,8 @@
             "availability": "available",
             "dimensionSource": "estimated",
             "eligibleUnitIds": [],
-            "actualLaborMicros": "287000",
-            "excludedLaborMicros": "287000",
+            "actualLaborMicros": "303000",
+            "excludedLaborMicros": "303000",
             "laborNumeratorMicros": "0",
             "dimensionVerification": "unverified",
             "areaSquareFeetNumerator": "0",
@@ -548,7 +548,7 @@
           "window": {
             "from": null,
             "kind": "all_retained_selected_scope",
-            "until": "2026-10-04T19:59:09.054000Z",
+            "until": "2026-10-04T21:00:25.156000Z",
             "personalScope": "actual_actor_selected_scope"
           },
           "actorId": "00000000-0000-4000-8000-000000250001",
@@ -562,38 +562,38 @@
               "retired": false,
               "personal": {
                 "state": "known",
-                "knownMicros": "287000",
+                "knownMicros": "303000",
                 "includesLive": false,
-                "microseconds": "287000"
+                "microseconds": "303000"
               },
               "scopeTotal": {
                 "state": "known",
-                "knownMicros": "287000",
-                "microseconds": "287000"
+                "knownMicros": "303000",
+                "microseconds": "303000"
               },
-              "definitionId": "752601de-0a5b-4cba-b079-d8518f1d2874",
+              "definitionId": "6e614ad7-43af-45fe-aa57-79abe41ab37e",
               "machineSubsets": [],
               "definitionVersion": 1,
-              "definitionVersionId": "60e765ae-3bfc-4ba4-9852-896090c2435c"
+              "definitionVersionId": "732a7523-0ddf-4093-b2ee-392279f603d6"
             }
           ],
           "reconciliation": {
             "scope": "authorized_scope",
             "issues": [],
-            "grossMicros": "60405000",
+            "grossMicros": "60436000",
             "ledgerCount": 1,
-            "setupMicros": "30036000",
-            "payrollMicros": "60405000",
+            "setupMicros": "30040000",
+            "payrollMicros": "60436000",
             "unresolvedScope": false,
-            "classifiedMicros": "30369000",
+            "classifiedMicros": "30396000",
             "breakElapsedMicros": "0",
             "unclassifiedMicros": "0",
             "breakDeductionMicros": "0",
             "policyAdjustmentMicros": "0"
           },
           "personalComplete": true,
-          "scopeKnownMicros": "287000",
-          "personalKnownMicros": "287000"
+          "scopeKnownMicros": "303000",
+          "personalKnownMicros": "303000"
         },
         "availability": "available",
         "protocolVersion": 1
@@ -607,7 +607,7 @@
       ],
       "result": {
         "totals": {
-          "asOf": "2026-10-04T19:59:09.112000Z",
+          "asOf": "2026-10-04T21:00:25.217000Z",
           "cohort": {
             "floor": {
               "label": null,
@@ -624,8 +624,8 @@
             "availability": "available",
             "dimensionSource": "estimated",
             "eligibleUnitIds": [],
-            "actualLaborMicros": "287000",
-            "excludedLaborMicros": "287000",
+            "actualLaborMicros": "303000",
+            "excludedLaborMicros": "303000",
             "laborNumeratorMicros": "0",
             "dimensionVerification": "unverified",
             "areaSquareFeetNumerator": "0",
@@ -636,7 +636,7 @@
           "window": {
             "from": null,
             "kind": "all_retained_selected_scope",
-            "until": "2026-10-04T19:59:09.112000Z",
+            "until": "2026-10-04T21:00:25.217000Z",
             "personalScope": "actual_actor_selected_scope"
           },
           "actorId": "00000000-0000-4000-8000-000000250002",
@@ -656,31 +656,31 @@
               },
               "scopeTotal": {
                 "state": "known",
-                "knownMicros": "287000",
-                "microseconds": "287000"
+                "knownMicros": "303000",
+                "microseconds": "303000"
               },
-              "definitionId": "752601de-0a5b-4cba-b079-d8518f1d2874",
+              "definitionId": "6e614ad7-43af-45fe-aa57-79abe41ab37e",
               "machineSubsets": [],
               "definitionVersion": 1,
-              "definitionVersionId": "60e765ae-3bfc-4ba4-9852-896090c2435c"
+              "definitionVersionId": "732a7523-0ddf-4093-b2ee-392279f603d6"
             }
           ],
           "reconciliation": {
             "scope": "authorized_scope",
             "issues": [],
-            "grossMicros": "60405000",
+            "grossMicros": "60436000",
             "ledgerCount": 1,
-            "setupMicros": "30036000",
-            "payrollMicros": "60405000",
+            "setupMicros": "30040000",
+            "payrollMicros": "60436000",
             "unresolvedScope": false,
-            "classifiedMicros": "30369000",
+            "classifiedMicros": "30396000",
             "breakElapsedMicros": "0",
             "unclassifiedMicros": "0",
             "breakDeductionMicros": "0",
             "policyAdjustmentMicros": "0"
           },
           "personalComplete": true,
-          "scopeKnownMicros": "287000",
+          "scopeKnownMicros": "303000",
           "personalKnownMicros": "0"
         },
         "availability": "available",
@@ -695,7 +695,7 @@
       ],
       "result": {
         "totals": {
-          "asOf": "2026-10-04T19:59:09.283000Z",
+          "asOf": "2026-10-04T21:00:25.393000Z",
           "cohort": {
             "floor": {
               "label": null,
@@ -710,9 +710,9 @@
             "eligibleUnitIds": [
               "00000000-0000-4000-8000-000000250030"
             ],
-            "actualLaborMicros": "287000",
+            "actualLaborMicros": "303000",
             "excludedLaborMicros": "0",
-            "laborNumeratorMicros": "287000",
+            "laborNumeratorMicros": "303000",
             "dimensionVerification": "verified",
             "areaSquareFeetNumerator": "1728",
             "generalOverheadIncluded": false,
@@ -722,7 +722,7 @@
           "window": {
             "from": null,
             "kind": "all_retained_selected_scope",
-            "until": "2026-10-04T19:59:09.283000Z",
+            "until": "2026-10-04T21:00:25.393000Z",
             "personalScope": "actual_actor_selected_scope"
           },
           "actorId": "00000000-0000-4000-8000-000000250002",
@@ -742,31 +742,31 @@
               },
               "scopeTotal": {
                 "state": "known",
-                "knownMicros": "287000",
-                "microseconds": "287000"
+                "knownMicros": "303000",
+                "microseconds": "303000"
               },
-              "definitionId": "752601de-0a5b-4cba-b079-d8518f1d2874",
+              "definitionId": "6e614ad7-43af-45fe-aa57-79abe41ab37e",
               "machineSubsets": [],
               "definitionVersion": 1,
-              "definitionVersionId": "60e765ae-3bfc-4ba4-9852-896090c2435c"
+              "definitionVersionId": "732a7523-0ddf-4093-b2ee-392279f603d6"
             }
           ],
           "reconciliation": {
             "scope": "authorized_scope",
             "issues": [],
-            "grossMicros": "60405000",
+            "grossMicros": "60436000",
             "ledgerCount": 1,
-            "setupMicros": "30036000",
-            "payrollMicros": "60405000",
+            "setupMicros": "30040000",
+            "payrollMicros": "60436000",
             "unresolvedScope": false,
-            "classifiedMicros": "30369000",
+            "classifiedMicros": "30396000",
             "breakElapsedMicros": "0",
             "unclassifiedMicros": "0",
             "breakDeductionMicros": "0",
             "policyAdjustmentMicros": "0"
           },
           "personalComplete": true,
-          "scopeKnownMicros": "287000",
+          "scopeKnownMicros": "303000",
           "personalKnownMicros": "0"
         },
         "availability": "available",
@@ -805,7 +805,7 @@
       ],
       "result": {
         "totals": {
-          "asOf": "2026-10-04T19:59:09.387000Z",
+          "asOf": "2026-10-04T21:00:25.505000Z",
           "cohort": {
             "floor": {
               "label": null,
@@ -820,8 +820,8 @@
             "availability": "available",
             "dimensionSource": "estimated",
             "eligibleUnitIds": [],
-            "actualLaborMicros": "287000",
-            "excludedLaborMicros": "287000",
+            "actualLaborMicros": "303000",
+            "excludedLaborMicros": "303000",
             "laborNumeratorMicros": "0",
             "dimensionVerification": "verified",
             "areaSquareFeetNumerator": "0",
@@ -832,7 +832,7 @@
           "window": {
             "from": null,
             "kind": "all_retained_selected_scope",
-            "until": "2026-10-04T19:59:09.387000Z",
+            "until": "2026-10-04T21:00:25.505000Z",
             "personalScope": "actual_actor_selected_scope"
           },
           "actorId": "00000000-0000-4000-8000-000000250002",
@@ -852,13 +852,13 @@
               },
               "scopeTotal": {
                 "state": "known",
-                "knownMicros": "287000",
-                "microseconds": "287000"
+                "knownMicros": "303000",
+                "microseconds": "303000"
               },
-              "definitionId": "752601de-0a5b-4cba-b079-d8518f1d2874",
+              "definitionId": "6e614ad7-43af-45fe-aa57-79abe41ab37e",
               "machineSubsets": [],
               "definitionVersion": 1,
-              "definitionVersionId": "60e765ae-3bfc-4ba4-9852-896090c2435c"
+              "definitionVersionId": "732a7523-0ddf-4093-b2ee-392279f603d6"
             }
           ],
           "reconciliation": {
@@ -866,19 +866,19 @@
             "issues": [
               "break_policy_adjustment"
             ],
-            "grossMicros": "60405000",
+            "grossMicros": "60436000",
             "ledgerCount": 1,
-            "setupMicros": "30036000",
-            "payrollMicros": "59405000",
+            "setupMicros": "30040000",
+            "payrollMicros": "59436000",
             "unresolvedScope": false,
-            "classifiedMicros": "30369000",
+            "classifiedMicros": "30396000",
             "breakElapsedMicros": "0",
             "unclassifiedMicros": "0",
             "breakDeductionMicros": "1000000",
             "policyAdjustmentMicros": "-1000000"
           },
           "personalComplete": true,
-          "scopeKnownMicros": "287000",
+          "scopeKnownMicros": "303000",
           "personalKnownMicros": "0"
         },
         "availability": "available",
@@ -893,7 +893,7 @@
       ],
       "result": {
         "totals": {
-          "asOf": "2026-10-04T19:59:09.449000Z",
+          "asOf": "2026-10-04T21:00:25.575000Z",
           "cohort": {
             "floor": {
               "label": null,
@@ -923,7 +923,7 @@
           "window": {
             "from": null,
             "kind": "all_retained_selected_scope",
-            "until": "2026-10-04T19:59:09.449000Z",
+            "until": "2026-10-04T21:00:25.575000Z",
             "personalScope": "actual_actor_selected_scope"
           },
           "actorId": "00000000-0000-4000-8000-000000250002",
@@ -935,14 +935,14 @@
             "issues": [
               "activity_source_unproven"
             ],
-            "grossMicros": "60405000",
+            "grossMicros": "60436000",
             "ledgerCount": 1,
-            "setupMicros": "30036000",
-            "payrollMicros": "60405000",
+            "setupMicros": "30040000",
+            "payrollMicros": "60436000",
             "unresolvedScope": true,
-            "classifiedMicros": "30082000",
+            "classifiedMicros": "30093000",
             "breakElapsedMicros": "0",
-            "unclassifiedMicros": "287000",
+            "unclassifiedMicros": "303000",
             "breakDeductionMicros": "0",
             "policyAdjustmentMicros": "0"
           },
@@ -962,7 +962,7 @@
       ],
       "result": {
         "totals": {
-          "asOf": "2026-10-04T19:59:09.501000Z",
+          "asOf": "2026-10-04T21:00:25.629000Z",
           "cohort": {
             "reason": "role_restricted",
             "availability": "unavailable"
@@ -971,7 +971,7 @@
           "window": {
             "from": null,
             "kind": "all_retained_selected_scope",
-            "until": "2026-10-04T19:59:09.501000Z",
+            "until": "2026-10-04T21:00:25.629000Z",
             "personalScope": "actual_actor_selected_scope"
           },
           "actorId": "00000000-0000-4000-8000-000000250003",
@@ -991,13 +991,13 @@
               },
               "scopeTotal": {
                 "state": "known",
-                "knownMicros": "287000",
-                "microseconds": "287000"
+                "knownMicros": "303000",
+                "microseconds": "303000"
               },
-              "definitionId": "752601de-0a5b-4cba-b079-d8518f1d2874",
+              "definitionId": "6e614ad7-43af-45fe-aa57-79abe41ab37e",
               "machineSubsets": [],
               "definitionVersion": 1,
-              "definitionVersionId": "60e765ae-3bfc-4ba4-9852-896090c2435c"
+              "definitionVersionId": "732a7523-0ddf-4093-b2ee-392279f603d6"
             }
           ],
           "reconciliation": {
@@ -1015,7 +1015,7 @@
             "policyAdjustmentMicros": "0"
           },
           "personalComplete": true,
-          "scopeKnownMicros": "287000",
+          "scopeKnownMicros": "303000",
           "personalKnownMicros": "0"
         },
         "availability": "available",
@@ -1030,7 +1030,7 @@
       ],
       "result": {
         "totals": {
-          "asOf": "2026-10-04T19:59:09.559000Z",
+          "asOf": "2026-10-04T21:00:25.688000Z",
           "cohort": {
             "reason": "unit_selection_required",
             "availability": "unavailable"
@@ -1039,7 +1039,7 @@
           "window": {
             "from": null,
             "kind": "all_retained_selected_scope",
-            "until": "2026-10-04T19:59:09.559000Z",
+            "until": "2026-10-04T21:00:25.688000Z",
             "personalScope": "actual_actor_selected_scope"
           },
           "actorId": "00000000-0000-4000-8000-000000250003",
@@ -1059,18 +1059,18 @@
               },
               "scopeTotal": {
                 "state": "known",
-                "knownMicros": "30082000",
-                "microseconds": "30082000"
+                "knownMicros": "30093000",
+                "microseconds": "30093000"
               },
-              "definitionId": "e89358f6-834e-48de-a327-a45f66437987",
+              "definitionId": "06e5050f-3ca5-4e66-8426-ef445d94e50c",
               "machineSubsets": [
                 {
                   "machineKind": "forklift",
-                  "microseconds": "30082000"
+                  "microseconds": "30093000"
                 }
               ],
               "definitionVersion": 1,
-              "definitionVersionId": "ff88663a-2676-43d9-ba9c-359c1d4cd7ea"
+              "definitionVersionId": "3582137b-a7e0-4877-9ee6-cf73cb8a4a6d"
             }
           ],
           "reconciliation": {
@@ -1088,7 +1088,7 @@
             "policyAdjustmentMicros": "0"
           },
           "personalComplete": true,
-          "scopeKnownMicros": "30082000",
+          "scopeKnownMicros": "30093000",
           "personalKnownMicros": "0"
         },
         "availability": "available",
@@ -1103,7 +1103,7 @@
       ],
       "result": {
         "totals": {
-          "asOf": "2026-10-04T19:59:09.611000Z",
+          "asOf": "2026-10-04T21:00:25.744000Z",
           "cohort": {
             "reason": "role_restricted",
             "availability": "unavailable"
@@ -1112,7 +1112,7 @@
           "window": {
             "from": null,
             "kind": "all_retained_selected_scope",
-            "until": "2026-10-04T19:59:09.611000Z",
+            "until": "2026-10-04T21:00:25.744000Z",
             "personalScope": "actual_actor_selected_scope"
           },
           "actorId": "00000000-0000-4000-8000-000000250003",
@@ -1149,7 +1149,7 @@
       ],
       "result": {
         "totals": {
-          "asOf": "2026-10-04T19:59:09.656000Z",
+          "asOf": "2026-10-04T21:00:25.792000Z",
           "cohort": {
             "reason": "unit_selection_required",
             "availability": "unavailable"
@@ -1158,7 +1158,7 @@
           "window": {
             "from": null,
             "kind": "all_retained_selected_scope",
-            "until": "2026-10-04T19:59:09.656000Z",
+            "until": "2026-10-04T21:00:25.792000Z",
             "personalScope": "actual_actor_selected_scope"
           },
           "actorId": "00000000-0000-4000-8000-000000250003",
@@ -1195,7 +1195,7 @@
       ],
       "result": {
         "totals": {
-          "asOf": "2026-10-04T19:59:09.697000Z",
+          "asOf": "2026-10-04T21:00:25.837000Z",
           "cohort": {
             "reason": "role_restricted",
             "availability": "unavailable"
@@ -1204,7 +1204,7 @@
           "window": {
             "from": null,
             "kind": "all_retained_selected_scope",
-            "until": "2026-10-04T19:59:09.697000Z",
+            "until": "2026-10-04T21:00:25.837000Z",
             "personalScope": "actual_actor_selected_scope"
           },
           "actorId": "00000000-0000-4000-8000-000000250001",
@@ -1216,14 +1216,14 @@
             "issues": [
               "source_safety"
             ],
-            "grossMicros": "60405000",
+            "grossMicros": "60436000",
             "ledgerCount": 1,
             "setupMicros": "0",
-            "payrollMicros": "60405000",
+            "payrollMicros": "60436000",
             "unresolvedScope": true,
             "classifiedMicros": "0",
             "breakElapsedMicros": "0",
-            "unclassifiedMicros": "60405000",
+            "unclassifiedMicros": "60436000",
             "breakDeductionMicros": "0",
             "policyAdjustmentMicros": "0"
           },
@@ -1243,7 +1243,7 @@
       ],
       "result": {
         "totals": {
-          "asOf": "2026-10-04T19:59:09.745000Z",
+          "asOf": "2026-10-04T21:00:25.888000Z",
           "cohort": {
             "floor": {
               "label": null,
@@ -1273,7 +1273,7 @@
           "window": {
             "from": null,
             "kind": "all_retained_selected_scope",
-            "until": "2026-10-04T19:59:09.745000Z",
+            "until": "2026-10-04T21:00:25.888000Z",
             "personalScope": "actual_actor_selected_scope"
           },
           "actorId": "00000000-0000-4000-8000-000000250003",
@@ -1285,14 +1285,14 @@
             "issues": [
               "source_safety"
             ],
-            "grossMicros": "60405000",
+            "grossMicros": "60436000",
             "ledgerCount": 1,
             "setupMicros": "0",
-            "payrollMicros": "60405000",
+            "payrollMicros": "60436000",
             "unresolvedScope": true,
             "classifiedMicros": "0",
             "breakElapsedMicros": "0",
-            "unclassifiedMicros": "60405000",
+            "unclassifiedMicros": "60436000",
             "breakDeductionMicros": "0",
             "policyAdjustmentMicros": "0"
           },
@@ -1312,7 +1312,7 @@
       ],
       "result": {
         "totals": {
-          "asOf": "2026-10-04T19:59:09.807000Z",
+          "asOf": "2026-10-04T21:00:25.952000Z",
           "cohort": {
             "reason": "role_restricted",
             "availability": "unavailable"
@@ -1321,7 +1321,7 @@
           "window": {
             "from": null,
             "kind": "all_retained_selected_scope",
-            "until": "2026-10-04T19:59:09.807000Z",
+            "until": "2026-10-04T21:00:25.952000Z",
             "personalScope": "actual_actor_selected_scope"
           },
           "actorId": "00000000-0000-4000-8000-000000250003",
@@ -1358,7 +1358,7 @@
       ],
       "result": {
         "totals": {
-          "asOf": "2026-10-04T19:59:09.854000Z",
+          "asOf": "2026-10-04T21:00:26.002000Z",
           "cohort": {
             "floor": {
               "label": null,
@@ -1390,7 +1390,7 @@
           "window": {
             "from": null,
             "kind": "all_retained_selected_scope",
-            "until": "2026-10-04T19:59:09.854000Z",
+            "until": "2026-10-04T21:00:26.002000Z",
             "personalScope": "actual_actor_selected_scope"
           },
           "actorId": "00000000-0000-4000-8000-000000250003",
@@ -1403,14 +1403,14 @@
               "source_interval_changed",
               "source_safety"
             ],
-            "grossMicros": "60405000",
+            "grossMicros": "60436000",
             "ledgerCount": 1,
             "setupMicros": "0",
-            "payrollMicros": "60405000",
+            "payrollMicros": "60436000",
             "unresolvedScope": true,
             "classifiedMicros": "0",
             "breakElapsedMicros": "0",
-            "unclassifiedMicros": "60405000",
+            "unclassifiedMicros": "60436000",
             "breakDeductionMicros": "0",
             "policyAdjustmentMicros": "0"
           },
@@ -1465,8 +1465,200 @@
         "00000000-0000-4000-8000-000000250030"
       ],
       "result": {
+        "totals": null,
+        "availability": "unavailable",
+        "protocolVersion": 1
+      }
+    },
+    {
+      "sql": "select work_activity_totals_read($1,$2) value",
+      "args": [
+        "00000000-0000-4000-8000-000000250010",
+        "00000000-0000-4000-8000-000000250030"
+      ],
+      "result": {
+        "totals": null,
+        "availability": "unavailable",
+        "protocolVersion": 1
+      }
+    },
+    {
+      "sql": "select work_activity_totals_read($1,$2) value",
+      "args": [
+        "00000000-0000-4000-8000-000000250010",
+        "00000000-0000-4000-8000-000000250030"
+      ],
+      "result": {
+        "totals": null,
+        "availability": "unavailable",
+        "protocolVersion": 1
+      }
+    },
+    {
+      "sql": "select work_activity_totals_read($1,$2) value",
+      "args": [
+        "00000000-0000-4000-8000-000000250010",
+        "00000000-0000-4000-8000-000000250030"
+      ],
+      "result": {
+        "totals": null,
+        "availability": "unavailable",
+        "protocolVersion": 1
+      }
+    },
+    {
+      "sql": "select work_activity_totals_read($1,$2) value",
+      "args": [
+        "00000000-0000-4000-8000-000000250010",
+        "00000000-0000-4000-8000-000000250030"
+      ],
+      "result": {
+        "totals": null,
+        "availability": "unavailable",
+        "protocolVersion": 1
+      }
+    },
+    {
+      "sql": "select work_activity_totals_read($1,$2) value",
+      "args": [
+        "00000000-0000-4000-8000-000000250010",
+        "00000000-0000-4000-8000-000000250030"
+      ],
+      "result": {
+        "totals": null,
+        "availability": "unavailable",
+        "protocolVersion": 1
+      }
+    },
+    {
+      "sql": "select work_activity_totals_read($1,$2) value",
+      "args": [
+        "00000000-0000-4000-8000-000000250010",
+        "00000000-0000-4000-8000-000000250030"
+      ],
+      "result": {
+        "totals": null,
+        "availability": "unavailable",
+        "protocolVersion": 1
+      }
+    },
+    {
+      "sql": "select work_activity_totals_read($1,$2) value",
+      "args": [
+        "00000000-0000-4000-8000-000000250010",
+        "00000000-0000-4000-8000-000000250030"
+      ],
+      "result": {
+        "totals": null,
+        "availability": "unavailable",
+        "protocolVersion": 1
+      }
+    },
+    {
+      "sql": "select work_activity_totals_read($1,$2) value",
+      "args": [
+        "00000000-0000-4000-8000-000000250010",
+        "00000000-0000-4000-8000-000000250030"
+      ],
+      "result": {
+        "totals": null,
+        "availability": "unavailable",
+        "protocolVersion": 1
+      }
+    },
+    {
+      "sql": "select work_activity_totals_read($1,$2) value",
+      "args": [
+        "00000000-0000-4000-8000-000000250010",
+        "00000000-0000-4000-8000-000000250030"
+      ],
+      "result": {
+        "totals": null,
+        "availability": "unavailable",
+        "protocolVersion": 1
+      }
+    },
+    {
+      "sql": "select work_activity_totals_read($1,$2) value",
+      "args": [
+        "00000000-0000-4000-8000-000000250010",
+        "00000000-0000-4000-8000-000000250030"
+      ],
+      "result": {
+        "totals": null,
+        "availability": "unavailable",
+        "protocolVersion": 1
+      }
+    },
+    {
+      "sql": "select work_activity_totals_read($1,$2) value",
+      "args": [
+        "00000000-0000-4000-8000-000000250010",
+        "00000000-0000-4000-8000-000000250030"
+      ],
+      "result": {
+        "totals": null,
+        "availability": "unavailable",
+        "protocolVersion": 1
+      }
+    },
+    {
+      "sql": "select work_activity_totals_read($1,$2) value",
+      "args": [
+        "00000000-0000-4000-8000-000000250010",
+        "00000000-0000-4000-8000-000000250030"
+      ],
+      "result": {
+        "totals": null,
+        "availability": "unavailable",
+        "protocolVersion": 1
+      }
+    },
+    {
+      "sql": "select work_activity_totals_read($1,$2) value",
+      "args": [
+        "00000000-0000-4000-8000-000000250010",
+        "00000000-0000-4000-8000-000000250030"
+      ],
+      "result": {
+        "totals": null,
+        "availability": "unavailable",
+        "protocolVersion": 1
+      }
+    },
+    {
+      "sql": "select work_activity_totals_read($1,$2) value",
+      "args": [
+        "00000000-0000-4000-8000-000000250010",
+        "00000000-0000-4000-8000-000000250030"
+      ],
+      "result": {
+        "totals": null,
+        "availability": "unavailable",
+        "protocolVersion": 1
+      }
+    },
+    {
+      "sql": "select work_activity_totals_read($1,$2) value",
+      "args": [
+        "00000000-0000-4000-8000-000000250010",
+        "00000000-0000-4000-8000-000000250030"
+      ],
+      "result": {
+        "totals": null,
+        "availability": "unavailable",
+        "protocolVersion": 1
+      }
+    },
+    {
+      "sql": "select work_activity_totals_read($1,$2) value",
+      "args": [
+        "00000000-0000-4000-8000-000000250010",
+        "00000000-0000-4000-8000-000000250030"
+      ],
+      "result": {
         "totals": {
-          "asOf": "2026-10-04T19:59:10.010000Z",
+          "asOf": "2026-10-04T21:00:27.660000Z",
           "cohort": {
             "floor": {
               "label": null,
@@ -1481,9 +1673,9 @@
             "eligibleUnitIds": [
               "00000000-0000-4000-8000-000000250030"
             ],
-            "actualLaborMicros": "287000",
+            "actualLaborMicros": "303000",
             "excludedLaborMicros": "0",
-            "laborNumeratorMicros": "287000",
+            "laborNumeratorMicros": "303000",
             "dimensionVerification": "verified",
             "areaSquareFeetNumerator": "1728",
             "generalOverheadIncluded": false,
@@ -1493,7 +1685,7 @@
           "window": {
             "from": null,
             "kind": "all_retained_selected_scope",
-            "until": "2026-10-04T19:59:10.010000Z",
+            "until": "2026-10-04T21:00:27.660000Z",
             "personalScope": "actual_actor_selected_scope"
           },
           "actorId": "00000000-0000-4000-8000-000000250002",
@@ -1513,31 +1705,31 @@
               },
               "scopeTotal": {
                 "state": "known",
-                "knownMicros": "287000",
-                "microseconds": "287000"
+                "knownMicros": "303000",
+                "microseconds": "303000"
               },
-              "definitionId": "752601de-0a5b-4cba-b079-d8518f1d2874",
+              "definitionId": "6e614ad7-43af-45fe-aa57-79abe41ab37e",
               "machineSubsets": [],
               "definitionVersion": 1,
-              "definitionVersionId": "60e765ae-3bfc-4ba4-9852-896090c2435c"
+              "definitionVersionId": "732a7523-0ddf-4093-b2ee-392279f603d6"
             }
           ],
           "reconciliation": {
             "scope": "authorized_scope",
             "issues": [],
-            "grossMicros": "60405000",
+            "grossMicros": "60436000",
             "ledgerCount": 1,
-            "setupMicros": "30036000",
-            "payrollMicros": "60405000",
+            "setupMicros": "30040000",
+            "payrollMicros": "60436000",
             "unresolvedScope": false,
-            "classifiedMicros": "30369000",
+            "classifiedMicros": "30396000",
             "breakElapsedMicros": "0",
             "unclassifiedMicros": "0",
             "breakDeductionMicros": "0",
             "policyAdjustmentMicros": "0"
           },
           "personalComplete": true,
-          "scopeKnownMicros": "287000",
+          "scopeKnownMicros": "303000",
           "personalKnownMicros": "0"
         },
         "availability": "available",
@@ -1636,7 +1828,7 @@
       ],
       "result": {
         "totals": {
-          "asOf": "2026-10-04T19:59:10.314000Z",
+          "asOf": "2026-10-04T21:00:27.992000Z",
           "cohort": {
             "floor": {
               "label": null,
@@ -1666,7 +1858,7 @@
           "window": {
             "from": null,
             "kind": "all_retained_selected_scope",
-            "until": "2026-10-04T19:59:10.314000Z",
+            "until": "2026-10-04T21:00:27.992000Z",
             "personalScope": "actual_actor_selected_scope"
           },
           "actorId": "00000000-0000-4000-8000-000000250002",
@@ -1678,14 +1870,14 @@
             "issues": [
               "source_interval_changed"
             ],
-            "grossMicros": "60405000",
+            "grossMicros": "60436000",
             "ledgerCount": 1,
-            "setupMicros": "30036000",
-            "payrollMicros": "60405000",
+            "setupMicros": "30040000",
+            "payrollMicros": "60436000",
             "unresolvedScope": false,
-            "classifiedMicros": "30082000",
+            "classifiedMicros": "30093000",
             "breakElapsedMicros": "0",
-            "unclassifiedMicros": "287000",
+            "unclassifiedMicros": "303000",
             "breakDeductionMicros": "0",
             "policyAdjustmentMicros": "0"
           },
@@ -1705,7 +1897,7 @@
       ],
       "result": {
         "totals": {
-          "asOf": "2026-10-04T19:59:10.385000Z",
+          "asOf": "2026-10-04T21:00:28.068000Z",
           "cohort": {
             "floor": {
               "label": null,
@@ -1736,7 +1928,7 @@
           "window": {
             "from": null,
             "kind": "all_retained_selected_scope",
-            "until": "2026-10-04T19:59:10.385000Z",
+            "until": "2026-10-04T21:00:28.068000Z",
             "personalScope": "actual_actor_selected_scope"
           },
           "actorId": "00000000-0000-4000-8000-000000250002",
@@ -1749,14 +1941,14 @@
               "historical_payroll_review",
               "source_interval_changed"
             ],
-            "grossMicros": "60405000",
+            "grossMicros": "60436000",
             "ledgerCount": 1,
             "setupMicros": "0",
-            "payrollMicros": "60405000",
+            "payrollMicros": "60436000",
             "unresolvedScope": true,
             "classifiedMicros": "0",
             "breakElapsedMicros": "0",
-            "unclassifiedMicros": "60405000",
+            "unclassifiedMicros": "60436000",
             "breakDeductionMicros": "0",
             "policyAdjustmentMicros": "0"
           },
@@ -1776,7 +1968,7 @@
       ],
       "result": {
         "totals": {
-          "asOf": "2026-10-04T19:59:10.472000Z",
+          "asOf": "2026-10-04T21:00:28.158000Z",
           "cohort": {
             "floor": {
               "label": null,
@@ -1791,8 +1983,8 @@
             "availability": "available",
             "dimensionSource": "estimated",
             "eligibleUnitIds": [],
-            "actualLaborMicros": "287000",
-            "excludedLaborMicros": "287000",
+            "actualLaborMicros": "303000",
+            "excludedLaborMicros": "303000",
             "laborNumeratorMicros": "0",
             "dimensionVerification": "verified",
             "areaSquareFeetNumerator": "0",
@@ -1803,7 +1995,7 @@
           "window": {
             "from": null,
             "kind": "all_retained_selected_scope",
-            "until": "2026-10-04T19:59:10.472000Z",
+            "until": "2026-10-04T21:00:28.158000Z",
             "personalScope": "actual_actor_selected_scope"
           },
           "actorId": "00000000-0000-4000-8000-000000250002",
@@ -1823,31 +2015,31 @@
               },
               "scopeTotal": {
                 "state": "known",
-                "knownMicros": "287000",
-                "microseconds": "287000"
+                "knownMicros": "303000",
+                "microseconds": "303000"
               },
-              "definitionId": "752601de-0a5b-4cba-b079-d8518f1d2874",
+              "definitionId": "6e614ad7-43af-45fe-aa57-79abe41ab37e",
               "machineSubsets": [],
               "definitionVersion": 1,
-              "definitionVersionId": "60e765ae-3bfc-4ba4-9852-896090c2435c"
+              "definitionVersionId": "732a7523-0ddf-4093-b2ee-392279f603d6"
             }
           ],
           "reconciliation": {
             "scope": "authorized_scope",
             "issues": [],
-            "grossMicros": "60405000",
+            "grossMicros": "60436000",
             "ledgerCount": 1,
-            "setupMicros": "30036000",
-            "payrollMicros": "60405000",
+            "setupMicros": "30040000",
+            "payrollMicros": "60436000",
             "unresolvedScope": false,
-            "classifiedMicros": "30369000",
+            "classifiedMicros": "30396000",
             "breakElapsedMicros": "0",
             "unclassifiedMicros": "0",
             "breakDeductionMicros": "0",
             "policyAdjustmentMicros": "0"
           },
           "personalComplete": true,
-          "scopeKnownMicros": "287000",
+          "scopeKnownMicros": "303000",
           "personalKnownMicros": "0"
         },
         "availability": "available",
@@ -1862,7 +2054,7 @@
       ],
       "result": {
         "totals": {
-          "asOf": "2026-10-04T19:59:10.529000Z",
+          "asOf": "2026-10-04T21:00:28.220000Z",
           "cohort": {
             "floor": {
               "label": null,
@@ -1877,9 +2069,9 @@
             "eligibleUnitIds": [
               "00000000-0000-4000-8000-000000250030"
             ],
-            "actualLaborMicros": "287000",
+            "actualLaborMicros": "303000",
             "excludedLaborMicros": "0",
-            "laborNumeratorMicros": "287000",
+            "laborNumeratorMicros": "303000",
             "dimensionVerification": "verified",
             "areaSquareFeetNumerator": "1728",
             "generalOverheadIncluded": false,
@@ -1889,7 +2081,7 @@
           "window": {
             "from": null,
             "kind": "all_retained_selected_scope",
-            "until": "2026-10-04T19:59:10.529000Z",
+            "until": "2026-10-04T21:00:28.220000Z",
             "personalScope": "actual_actor_selected_scope"
           },
           "actorId": "00000000-0000-4000-8000-000000250002",
@@ -1909,31 +2101,31 @@
               },
               "scopeTotal": {
                 "state": "known",
-                "knownMicros": "287000",
-                "microseconds": "287000"
+                "knownMicros": "303000",
+                "microseconds": "303000"
               },
-              "definitionId": "752601de-0a5b-4cba-b079-d8518f1d2874",
+              "definitionId": "6e614ad7-43af-45fe-aa57-79abe41ab37e",
               "machineSubsets": [],
               "definitionVersion": 1,
-              "definitionVersionId": "60e765ae-3bfc-4ba4-9852-896090c2435c"
+              "definitionVersionId": "732a7523-0ddf-4093-b2ee-392279f603d6"
             }
           ],
           "reconciliation": {
             "scope": "authorized_scope",
             "issues": [],
-            "grossMicros": "60405000",
+            "grossMicros": "60436000",
             "ledgerCount": 1,
-            "setupMicros": "30036000",
-            "payrollMicros": "60405000",
+            "setupMicros": "30040000",
+            "payrollMicros": "60436000",
             "unresolvedScope": false,
-            "classifiedMicros": "30369000",
+            "classifiedMicros": "30396000",
             "breakElapsedMicros": "0",
             "unclassifiedMicros": "0",
             "breakDeductionMicros": "0",
             "policyAdjustmentMicros": "0"
           },
           "personalComplete": true,
-          "scopeKnownMicros": "287000",
+          "scopeKnownMicros": "303000",
           "personalKnownMicros": "0"
         },
         "availability": "available",
@@ -1948,7 +2140,7 @@
       ],
       "result": {
         "totals": {
-          "asOf": "2026-10-04T19:59:10.594000Z",
+          "asOf": "2026-10-04T21:00:28.289000Z",
           "cohort": {
             "floor": {
               "label": null,
@@ -1980,7 +2172,7 @@
           "window": {
             "from": null,
             "kind": "all_retained_selected_scope",
-            "until": "2026-10-04T19:59:10.594000Z",
+            "until": "2026-10-04T21:00:28.289000Z",
             "personalScope": "actual_actor_selected_scope"
           },
           "actorId": "00000000-0000-4000-8000-000000250002",
@@ -1992,14 +2184,14 @@
             "issues": [
               "source_interval_changed"
             ],
-            "grossMicros": "60405000",
+            "grossMicros": "60436000",
             "ledgerCount": 1,
-            "setupMicros": "30036000",
-            "payrollMicros": "60405000",
+            "setupMicros": "30040000",
+            "payrollMicros": "60436000",
             "unresolvedScope": true,
             "classifiedMicros": "0",
             "breakElapsedMicros": "0",
-            "unclassifiedMicros": "30369000",
+            "unclassifiedMicros": "30396000",
             "breakDeductionMicros": "0",
             "policyAdjustmentMicros": "0"
           },
@@ -2031,7 +2223,7 @@
       ],
       "result": {
         "totals": {
-          "asOf": "2026-10-04T19:59:10.693000Z",
+          "asOf": "2026-10-04T21:00:28.396000Z",
           "cohort": {
             "floor": {
               "label": null,
@@ -2046,9 +2238,9 @@
             "eligibleUnitIds": [
               "00000000-0000-4000-8000-000000250030"
             ],
-            "actualLaborMicros": "287000",
+            "actualLaborMicros": "303000",
             "excludedLaborMicros": "0",
-            "laborNumeratorMicros": "287000",
+            "laborNumeratorMicros": "303000",
             "dimensionVerification": "verified",
             "areaSquareFeetNumerator": "1728",
             "generalOverheadIncluded": false,
@@ -2058,7 +2250,7 @@
           "window": {
             "from": null,
             "kind": "all_retained_selected_scope",
-            "until": "2026-10-04T19:59:10.693000Z",
+            "until": "2026-10-04T21:00:28.396000Z",
             "personalScope": "actual_actor_selected_scope"
           },
           "actorId": "00000000-0000-4000-8000-000000250002",
@@ -2078,31 +2270,31 @@
               },
               "scopeTotal": {
                 "state": "known",
-                "knownMicros": "287000",
-                "microseconds": "287000"
+                "knownMicros": "303000",
+                "microseconds": "303000"
               },
-              "definitionId": "752601de-0a5b-4cba-b079-d8518f1d2874",
+              "definitionId": "6e614ad7-43af-45fe-aa57-79abe41ab37e",
               "machineSubsets": [],
               "definitionVersion": 1,
-              "definitionVersionId": "60e765ae-3bfc-4ba4-9852-896090c2435c"
+              "definitionVersionId": "732a7523-0ddf-4093-b2ee-392279f603d6"
             }
           ],
           "reconciliation": {
             "scope": "authorized_scope",
             "issues": [],
-            "grossMicros": "60405000",
+            "grossMicros": "60436000",
             "ledgerCount": 1,
-            "setupMicros": "30036000",
-            "payrollMicros": "60405000",
+            "setupMicros": "30040000",
+            "payrollMicros": "60436000",
             "unresolvedScope": false,
-            "classifiedMicros": "30369000",
+            "classifiedMicros": "30396000",
             "breakElapsedMicros": "0",
             "unclassifiedMicros": "0",
             "breakDeductionMicros": "0",
             "policyAdjustmentMicros": "0"
           },
           "personalComplete": true,
-          "scopeKnownMicros": "287000",
+          "scopeKnownMicros": "303000",
           "personalKnownMicros": "0"
         },
         "availability": "available",
@@ -2117,7 +2309,7 @@
       ],
       "result": {
         "totals": {
-          "asOf": "2026-10-04T19:59:10.755000Z",
+          "asOf": "2026-10-04T21:00:28.461000Z",
           "cohort": {
             "floor": {
               "label": null,
@@ -2133,8 +2325,8 @@
             "availability": "available",
             "dimensionSource": "estimated",
             "eligibleUnitIds": [],
-            "actualLaborMicros": "287000",
-            "excludedLaborMicros": "287000",
+            "actualLaborMicros": "303000",
+            "excludedLaborMicros": "303000",
             "laborNumeratorMicros": "0",
             "dimensionVerification": "verified",
             "areaSquareFeetNumerator": "0",
@@ -2145,7 +2337,7 @@
           "window": {
             "from": null,
             "kind": "all_retained_selected_scope",
-            "until": "2026-10-04T19:59:10.755000Z",
+            "until": "2026-10-04T21:00:28.461000Z",
             "personalScope": "actual_actor_selected_scope"
           },
           "actorId": "00000000-0000-4000-8000-000000250002",
@@ -2165,31 +2357,31 @@
               },
               "scopeTotal": {
                 "state": "partial",
-                "knownMicros": "287000",
+                "knownMicros": "303000",
                 "microseconds": null
               },
-              "definitionId": "752601de-0a5b-4cba-b079-d8518f1d2874",
+              "definitionId": "6e614ad7-43af-45fe-aa57-79abe41ab37e",
               "machineSubsets": [],
               "definitionVersion": 1,
-              "definitionVersionId": "60e765ae-3bfc-4ba4-9852-896090c2435c"
+              "definitionVersionId": "732a7523-0ddf-4093-b2ee-392279f603d6"
             }
           ],
           "reconciliation": {
             "scope": "authorized_scope",
             "issues": [],
-            "grossMicros": "60405000",
+            "grossMicros": "60436000",
             "ledgerCount": 1,
-            "setupMicros": "30036000",
-            "payrollMicros": "60405000",
+            "setupMicros": "30040000",
+            "payrollMicros": "60436000",
             "unresolvedScope": true,
-            "classifiedMicros": "30369000",
+            "classifiedMicros": "30396000",
             "breakElapsedMicros": "0",
             "unclassifiedMicros": "0",
             "breakDeductionMicros": "0",
             "policyAdjustmentMicros": "0"
           },
           "personalComplete": false,
-          "scopeKnownMicros": "287000",
+          "scopeKnownMicros": "303000",
           "personalKnownMicros": "0"
         },
         "availability": "available",
@@ -2204,7 +2396,7 @@
       ],
       "result": {
         "totals": {
-          "asOf": "2026-10-04T19:59:10.813000Z",
+          "asOf": "2026-10-04T21:00:28.523000Z",
           "cohort": {
             "floor": {
               "label": null,
@@ -2219,9 +2411,9 @@
             "eligibleUnitIds": [
               "00000000-0000-4000-8000-000000250030"
             ],
-            "actualLaborMicros": "287000",
+            "actualLaborMicros": "303000",
             "excludedLaborMicros": "0",
-            "laborNumeratorMicros": "287000",
+            "laborNumeratorMicros": "303000",
             "dimensionVerification": "verified",
             "areaSquareFeetNumerator": "1728",
             "generalOverheadIncluded": false,
@@ -2231,7 +2423,7 @@
           "window": {
             "from": null,
             "kind": "all_retained_selected_scope",
-            "until": "2026-10-04T19:59:10.813000Z",
+            "until": "2026-10-04T21:00:28.523000Z",
             "personalScope": "actual_actor_selected_scope"
           },
           "actorId": "00000000-0000-4000-8000-000000250002",
@@ -2251,31 +2443,31 @@
               },
               "scopeTotal": {
                 "state": "known",
-                "knownMicros": "287000",
-                "microseconds": "287000"
+                "knownMicros": "303000",
+                "microseconds": "303000"
               },
-              "definitionId": "752601de-0a5b-4cba-b079-d8518f1d2874",
+              "definitionId": "6e614ad7-43af-45fe-aa57-79abe41ab37e",
               "machineSubsets": [],
               "definitionVersion": 1,
-              "definitionVersionId": "60e765ae-3bfc-4ba4-9852-896090c2435c"
+              "definitionVersionId": "732a7523-0ddf-4093-b2ee-392279f603d6"
             }
           ],
           "reconciliation": {
             "scope": "authorized_scope",
             "issues": [],
-            "grossMicros": "60405000",
+            "grossMicros": "60436000",
             "ledgerCount": 1,
-            "setupMicros": "30036000",
-            "payrollMicros": "60405000",
+            "setupMicros": "30040000",
+            "payrollMicros": "60436000",
             "unresolvedScope": false,
-            "classifiedMicros": "30369000",
+            "classifiedMicros": "30396000",
             "breakElapsedMicros": "0",
             "unclassifiedMicros": "0",
             "breakDeductionMicros": "0",
             "policyAdjustmentMicros": "0"
           },
           "personalComplete": true,
-          "scopeKnownMicros": "287000",
+          "scopeKnownMicros": "303000",
           "personalKnownMicros": "0"
         },
         "availability": "available",

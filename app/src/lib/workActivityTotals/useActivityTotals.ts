@@ -2,8 +2,7 @@ import { useCallback, useLayoutEffect, useReducer, useRef, useSyncExternalStore 
 import { useQueryClient } from "@tanstack/react-query";
 import { signInGeneration, signInMark, stillSignedInAs, subscribeSignedIn } from "../signedIn";
 import { useViewAsRole } from "../viewAsRoleContext";
-import type { UnitReviewSelectionSource } from "../workUnitReview/useUnitReviewCoordinator";
-import { REVIEW_FRESH_MS } from "../workUnitReview/coordinator";
+import { REVIEW_FRESH_MS, type UnitReviewSelectionSource } from "../workUnitReview/selection";
 import { fetchActivityTotals } from "./api";
 import type { TotalsView } from "./protocol";
 import type { getRealProfile } from "../install/api";

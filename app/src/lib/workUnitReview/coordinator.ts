@@ -5,7 +5,8 @@ import { parseUnitReviewReply, type ReviewPayload, type ReviewReply } from "./pr
 import { bindReviewReceipt, claimReviewAttempt, freezeReviewOriginal, readReviewJournal, recordReviewReceipt,
   reserveReviewOriginal, reviewDeliveryState, settleReviewAttempt, type ReviewJournalRecord } from "./storage";
 
-export const REVIEW_FRESH_MS = 30_000;
+import { REVIEW_FRESH_MS } from "./selection";
+export { REVIEW_FRESH_MS } from "./selection";
 export interface ReviewContext {
   login: SignInMark; unitId: string; contextKey: string;
   /** Include real permissions, preview, visibility, and the job/route lifetime.

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { listProjectsAnyStatus } from "../lib/api";
@@ -12,6 +12,8 @@ import { fetchWorkDataSnapshot } from "../lib/workData/api";
 import { reconcileWorkday } from "../lib/workData/reconcile";
 import { unitLabor } from "../lib/workData/cohorts";
 import { WorkDataExplorer } from "../components/workData/WorkDataExplorer";
+import { RecordedActivityTotals } from "../components/workData/RecordedActivityTotals";
+import { useSelectedJobWorkGate } from "../lib/workActivity/selectedJobWorkGate";
 import "./WorkData.css";
 
 function subscribeNetwork(cb: () => void) {
@@ -50,6 +52,9 @@ function WorkDataReport({ boundary }: { boundary: string }) {
   const [projectId, setProjectId] = useState("");
   const [fromDay, setFromDay] = useState(() => day(-6));
   const [untilDay, setUntilDay] = useState(() => day(0));
+  const totalsEnabled = useSelectedJobWorkGate();
+  const closeTotals = useRef(() => {});
+  const registerTotals = useCallback((close: () => void) => { closeTotals.current = close; }, []);
   const mark = signInMark();
   useEffect(() => () => {
     // Only this boundary's private in-memory data; no durable field queues.
@@ -100,12 +105,13 @@ function WorkDataReport({ boundary }: { boundary: string }) {
     <header className="page-header"><h1>{t("wdata.title")}</h1><Link to="/summary" className="button-like">{t("wdata.summary")}</Link></header>
     <p>{t("wdata.intro")}</p>
     <div className="work-data-filters">
-      <label>{t("wdata.job")}<select value={projectId} onChange={e => setProjectId(e.target.value)}>
+      <label>{t("wdata.job")}<select value={projectId} onChange={e => { closeTotals.current(); setProjectId(e.target.value); }}>
         <option value="">{t("wdata.choose")}</option>{projects.data?.map(p => <option key={p.id} value={p.id}>{p.job_code} · {p.name}</option>)}
       </select></label>
       <label>{t("wdata.from")}<input type="date" value={fromDay} onChange={e => setFromDay(e.target.value)} /></label>
       <label>{t("wdata.until")}<input type="date" value={untilDay} onChange={e => setUntilDay(e.target.value)} /></label>
     </div>
+    {totalsEnabled && projectId && <RecordedActivityTotals key={projectId} projectId={projectId} enabled={totalsEnabled} registerInvalidation={registerTotals} />}
     <p className="muted">{t("wdata.basis")}</p>
     {!datesValid && <p role="alert">{t("wdata.invalidDates")}</p>}
     {(projects.isLoading || (projectId && snapshot.isLoading && datesValid)) && <p role="status">{t("wdata.loading")}</p>}
