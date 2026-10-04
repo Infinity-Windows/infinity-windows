@@ -15,6 +15,9 @@ import { SkeletonCard } from "../components/ui/States";
 const DesignSettings = lazy(() =>
   import("../components/design/DesignSettings").then((m) => ({ default: m.DesignSettings })),
 );
+const WorkConfigurationSettings = lazy(() =>
+  import("../components/workConfiguration/WorkConfigurationSettings").then((m) => ({ default: m.WorkConfigurationSettings })),
+);
 // Monthly core-value reviews (20261106000000) — same lazy-chunk reasoning as
 // DesignSettings: most mornings nobody opens this card, so it should not cost
 // the Settings chunk anything until it renders. Importing it registers
@@ -81,6 +84,9 @@ export function Settings() {
           owner's release switches, which the component shows only to owners. */}
       <Suspense fallback={<SkeletonCard height={120} />}>
         <DesignSettings />
+      </Suspense>
+      <Suspense fallback={<SkeletonCard height={120} />}>
+        <WorkConfigurationSettings />
       </Suspense>
 
       <section className="detail-card" style={{ marginBottom: 12 }}>

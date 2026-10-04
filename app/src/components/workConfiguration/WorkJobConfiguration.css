@@ -1,0 +1,7 @@
+.work-job-configuration { min-width: 0; }
+.work-job-configuration h2 { margin-top: 0; font-size: 18px; }
+.work-job-configuration label { display: grid; gap: 6px; margin: 12px 0; min-width: 0; }
+.work-job-configuration select { width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; appearance: none; overflow: hidden; text-overflow: ellipsis; padding-right: 16px; }
+.work-job-configuration button { max-width: 100%; white-space: normal; margin: 4px 8px 4px 0; }
+.work-job-configuration p { overflow-wrap: anywhere; }
+.work-job-grant { border-top: 1px solid var(--border, #ddd); padding-top: 8px; margin-top: 12px; }

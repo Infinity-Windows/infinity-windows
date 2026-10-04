@@ -2,13 +2,16 @@ import type { Session } from "@supabase/supabase-js";
 import { clientWithToken, supabase } from "../supabase";
 import { signInMark, stillSignedInAs } from "../signedIn";
 import {
-  WorkConfigurationUnavailableError, cloneJson, code, uuid, postgresInstantMicros, typedFields,
-  draftMenuItems, publishedMenuItems, parseWorkConfiguration, parseGrantSnapshot,
+  WorkConfigurationUnavailableError, WorkConfigurationRejectedError, cloneJson, code, uuid, postgresInstantMicros, typedFields,
+  draftMenuItems, publishedMenuItems, parseWorkConfiguration, parseGrantSnapshot, parseJobMenuChoices,
   parseReceipt, validate, type Capability, type WorkConfigurationSnapshot,
-  type GrantSnapshot, type JsonObject,
+  type GrantSnapshot, type JobMenuChoices, type JsonObject,
 } from "./model";
 
-export { WorkConfigurationUnavailableError } from "./model";
+export { WorkConfigurationUnavailableError, WorkConfigurationRejectedError } from "./model";
+export function isWorkConfigurationRejected(error: unknown): error is WorkConfigurationRejectedError {
+  return error instanceof WorkConfigurationRejectedError;
+}
 const changed = () => new WorkConfigurationUnavailableError();
 function online(): void {
   if (typeof navigator !== "undefined" && navigator.onLine === false) throw changed();
@@ -30,7 +33,16 @@ async function invoke(name: string, args: JsonObject): Promise<unknown> {
   try { result = await clientWithToken(session.access_token).rpc(name, args); }
   catch { throw changed(); }
   if (!stillSignedInAs(mark, who)) throw changed();
-  if (result.error || result.data === null || result.data === undefined) throw changed();
+  if (result.error) {
+    // These are the deliberate transactional refusal codes of this API. Do
+    // not classify a transport/gateway error as proof that nothing applied.
+    const descriptor = typeof result.error === "object"
+      ? Object.getOwnPropertyDescriptor(result.error, "code") : undefined;
+    if (descriptor && "value" in descriptor && ["23514", "23505", "42501"].includes(descriptor.value))
+      throw new WorkConfigurationRejectedError();
+    throw changed();
+  }
+  if (result.data === null || result.data === undefined) throw changed();
   return result.data;
 }
 function commandId(v: unknown): string { return uuid(v); }
@@ -91,6 +103,10 @@ export async function fetchWorkConfiguration(projectId: string | null): Promise<
 export async function fetchJobCapabilityGrants(projectId: string): Promise<GrantSnapshot> {
   uuid(projectId);
   return parseGrantSnapshot(await invoke("work_job_capability_grants", { p_project_id: projectId }), projectId);
+}
+export async function fetchJobMenuChoices(projectId: string): Promise<JobMenuChoices> {
+  uuid(projectId);
+  return parseJobMenuChoices(await invoke("work_job_menu_choices", { p_project_id: projectId }), projectId);
 }
 export interface ActivityDraftCommand { commandId: string; code: string; expectedRevision: number; scope: "general" | "specific"; labelEn: string; labelEs: string; machineSelection: boolean; typedFields: unknown[] }
 export interface MenuDraftCommand { commandId: string; code: string; expectedRevision: number; labelEn: string; labelEs: string; items: unknown[] }

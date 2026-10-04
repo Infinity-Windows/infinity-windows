@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { parseWorkConfiguration, parseGrantSnapshot, typedFields, iso, cloneJson, WorkConfigurationUnavailableError } from "./model";
+import { parseWorkConfiguration, parseGrantSnapshot, parseJobMenuChoices, typedFields, iso, cloneJson, WorkConfigurationUnavailableError } from "./model";
 const JOB = "3cc5b810-45e0-4445-a115-efa98f8efad3";
 const OTHER = "00000000-0000-4000-8000-00000000f0f0";
 const ME = "00000000-0000-4000-8000-0000000000e2";
@@ -34,6 +34,25 @@ const draft = { commandId: CMD, code: "window_install", expectedRevision: 0, sco
 const draftReceipt = { protocolVersion: 1, kind: "activity", code: draft.code, revision: 1, draftId: OTHER };
 beforeEach(() => { active = ME; returned = ME; generation = 0; afterSession = null; afterRpc = null; response = company(); rpcError = null; calls.length = 0; });
 describe("configuration snapshots", () => {
+  it("binds the minimal chooser to the job and preserves a retired current pointer", async () => {
+    response = { protocolVersion: 1, projectId: JOB, asOf, currentRevision: 3, currentSelection: { revision: 3, menuVersionId: OTHER }, choices: [] };
+    expect(await api.fetchJobMenuChoices(JOB)).toMatchObject({ currentRevision: 3, currentSelection: { menuVersionId: OTHER }, choices: [] });
+    expect(calls[0]).toMatchObject({ name: "work_job_menu_choices", args: { p_project_id: JOB } });
+    await expect(api.fetchJobMenuChoices(OTHER)).rejects.toBeInstanceOf(WorkConfigurationUnavailableError);
+  });
+  it("rejects malformed, oversized, future and duplicate menu choices", () => {
+    const choice = { menuVersionId: OTHER, version: 1, labelEn: "Main", labelEs: "Principal", publishedAt: asOf, effectiveFrom: asOf };
+    const valid = { protocolVersion: 1, projectId: JOB, asOf, currentRevision: 0, currentSelection: null, choices: [choice] };
+    expect(parseJobMenuChoices(valid, JOB).choices).toHaveLength(1);
+    for (const invalid of [
+      { ...valid, currentRevision: 1 }, { ...valid, currentRevision: Number.MAX_SAFE_INTEGER + 1 },
+      { ...valid, currentRevision: 2, currentSelection: { revision: 1, menuVersionId: OTHER } },
+      { ...valid, choices: [choice, choice] }, { ...valid, choices: Array(501).fill(choice) },
+      { ...valid, choices: [{ ...choice, effectiveFrom: "2030-01-01T00:00:00Z" }] },
+      { ...valid, choices: [{ ...choice, fields: [] }] }, { ...valid, asOf: "2026-02-31T00:00:00Z" },
+      { ...valid, drafts: [] },
+    ]) expect(() => parseJobMenuChoices(invalid, JOB)).toThrow(WorkConfigurationUnavailableError);
+  });
   it("accepts both roles and binds every job response", async () => {
     expect((await api.fetchWorkConfiguration(null)).role).toBe("company");
     response = crew();
@@ -93,6 +112,33 @@ describe("configuration snapshots", () => {
   });
 });
 describe("configuration commands", () => {
+  it("distinguishes confirmed domain refusals from unknown outcomes without leaking server details", async () => {
+    for (const code of ["23514", "23505", "42501"]) {
+      rpcError = { code, message: "private constraint and job identifiers" };
+      const error = await api.proposeActivityDraft(draft).catch(error => error);
+      expect(api.isWorkConfigurationRejected(error)).toBe(true);
+      expect(error.message).not.toContain("private constraint");
+    }
+    for (const error of [{ code: "PGRST301" }, { code: "08006" }, { message: "network disconnected" }]) {
+      rpcError = error;
+      const failure = await api.proposeActivityDraft(draft).catch(error => error);
+      expect(failure).toBeInstanceOf(WorkConfigurationUnavailableError);
+      expect(api.isWorkConfigurationRejected(failure)).toBe(false);
+    }
+    rpcError = null; response = { ...draftReceipt, revision: 999 };
+    expect(api.isWorkConfigurationRejected(await api.proposeActivityDraft(draft).catch(error => error))).toBe(false);
+  });
+  it("checks identity before classifying a late refusal and never invokes error accessors", async () => {
+    rpcError = { code: "23514" };
+    afterRpc = () => { generation++; };
+    const stale = await api.proposeActivityDraft(draft).catch(error => error);
+    expect(api.isWorkConfigurationRejected(stale)).toBe(false);
+    afterRpc = null;
+    const getter = vi.fn(() => "23514");
+    rpcError = Object.defineProperty({}, "code", { get: getter });
+    expect(api.isWorkConfigurationRejected(await api.proposeActivityDraft(draft).catch(error => error))).toBe(false);
+    expect(getter).not.toHaveBeenCalled();
+  });
   it("captures mark before session and refuses logout or ABA before sending", async () => {
     afterSession = () => { active = null; generation++; active = ME; generation++; };
     await expect(api.proposeActivityDraft(draft)).rejects.toBeInstanceOf(WorkConfigurationUnavailableError);
