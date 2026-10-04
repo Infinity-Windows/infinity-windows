@@ -14,7 +14,7 @@ assert re.search(r'rollback;\s*$',source)
 assert hashlib.sha256(review.encode()).hexdigest()=='e32122a581bf995857983cc433323bc490381b6eb217c583bf95fd7376b3e53f'
 assert sys.argv[1:] in ([],['--check-plan'])
 if sys.argv[1:]==['--check-plan']:
- print(json.dumps({'result':'PLAN VALIDATED','databaseTests':False,'sourceSha256':sha,'predecessor':'verify-work-unit-review-concurrency.py','tiers':[[0,0],[1000,100],[10000,1000]],'waits':['G held by actual source permission change then read rechecks','unit and General real active totals RPC holding G/7710 versus actual start_break; two attempts each, no idle holder'], 'timeoutsSeconds':{'statement':20,'lock':12},'requiredEvidence':['actual authenticator/postgres session_user','EXPLAIN ANALYZE BUFFERS','median/p95/max','pg_blocking_pids active holder','payroll break/resume/out success']}));sys.exit()
+ print(json.dumps({'result':'PLAN VALIDATED','databaseTests':False,'sourceSha256':sha,'predecessor':'verify-work-unit-review-concurrency.py','tiers':[[0,0],[1000,100],[10000,1000]],'seedBatchSize':100,'partialEvidence':'atomic snapshot after committed seed batches and each measured read','waits':['G held by actual source permission change then read rechecks','unit and General real active totals RPC holding G/7710 versus actual start_break; two attempts each, no idle holder'], 'timeoutsSeconds':{'statement':20,'lock':12},'requiredEvidence':['actual authenticator/postgres session_user','EXPLAIN ANALYZE BUFFERS','median/p95/max','pg_blocking_pids active holder','payroll break/resume/out success']}));sys.exit()
 p=urlparse(os.environ.get('WORK_ACTIVITY_ROLE_TEST_DB_URL',''))
 if p.scheme not in ('postgres','postgresql') or p.hostname not in ('localhost','127.0.0.1') or p.port not in (None,5432) or p.path!='/forge_work_activity_role_test' or p.username!='supabase_admin' or p.query or p.fragment:raise SystemExit('Refused: exact disposable localhost role fixture required')
 env={k:v for k,v in os.environ.items() if not k.startswith('PG')};env['PGCONNECT_TIMEOUT']='3'
@@ -22,6 +22,19 @@ def uri(user):return urlunparse((p.scheme,f'{user}:fixture-only@{p.hostname}:{p.
 def lit(v):return 'null' if v is None else "'"+str(v).replace("'","''")+"'"
 def ident(n):return '00000000-0000-4000-8000-'+str(350000+n).zfill(12)
 checks=0
+SEED_BATCH_SIZE=100
+report={'sourceSha256':sha,'harnessSha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),'scope':'Actual PG17 disposable localhost roles; no provider operations','timeoutsSeconds':{'statement':20,'lock':12},'status':'running','stage':'source_and_setup','seedBatchSize':SEED_BATCH_SIZE,'seedBatches':[],'committedInsertedRows':{'project_openings':0,'opening_phases':0,'personal_activity_transition_sources':0},'verifiedSeedCounts':None,'tiers':[],'activeReadPayrollWaits':{},'activeReadWaitGate':{}}
+def persist(stage=None):
+ if stage is not None:report['stage']=stage
+ report['checks']=checks
+ if os.environ.get('WORK_ACTIVITY_TOTALS_VOLUME_OUT'):
+  target=Path(os.environ['WORK_ACTIVITY_TOTALS_VOLUME_OUT']);temporary=target.with_name(target.name+'.tmp')
+  temporary.write_text(json.dumps(report,indent=2)+'\n');temporary.replace(target)
+def preserve_failure(kind,error,traceback):
+ report['status']='failed';report['failure']={'type':kind.__name__,'message':str(error)[-2200:]};persist()
+ sys.__excepthook__(kind,error,traceback)
+sys.excepthook=preserve_failure
+persist()
 def run(sql,user='postgres',error=None):
  global checks
  r=subprocess.run(['psql',uri(user),'-X','-q','-t','-A','-v','ON_ERROR_STOP=1'],input="\\set VERBOSITY verbose\nset statement_timeout='20s';set lock_timeout='12s';"+sql,text=True,capture_output=True,timeout=30,env=env)
@@ -30,7 +43,7 @@ def run(sql,user='postgres',error=None):
 def obj(sql,user='postgres'):return json.loads(run(sql,user).splitlines()[-1])
 def check(value,label):
  global checks
- assert value,label;checks+=1;print('PASS',checks,label,flush=True)
+ assert value,label;checks+=1;persist();print('PASS',checks,label,flush=True)
 def auth(actor):return 'set role authenticated;set request.jwt.claim.sub='+lit(actor)+';'
 worker,reviewer,job,other,opening,unit,device,generation=[ident(x) for x in (1,2,10,11,20,30,40,41)]
 def rpc(sql,actor=worker):return obj(auth(actor)+sql,'authenticator')
@@ -155,34 +168,52 @@ try:
 finally:
  if a.poll() is None:a.terminate();a.wait(timeout=3)
 run('update projects set deleted_at=null where id='+lit(job)+';')
-report={'sourceSha256':sha,'scope':'Actual PG17 disposable localhost roles; no provider operations','timeoutsSeconds':{'statement':20,'lock':12},'tiers':[]}
+persist('volume_setup')
 run('insert into opening_phases(id,opening_id,kind,status,started_at,submitted_at,minutes) values('+lit(ident(80))+','+lit(opening)+",'flashing','submitted',now()-interval '2 hours',now()-interval '1 hour',0);")
 run("insert into task_sessions(id,project_id,profile_id,state,started_at,ended_at) values("+lit(ident(90))+','+lit(job)+','+lit(reviewer)+",'on_task',now()-interval '2 hours',now()-interval '1 hour');")
 parent=run('select id from personal_activity_transitions where source_shift_id='+lit(shift)+' order by revision_after limit 1')
+def seed_insert(table,lo,hi,sql):
+ report['pendingSeedBatch']={'table':table,'first':lo,'last':hi};persist('volume_seed')
+ started=time.monotonic();inserted=int(run('with inserted as ('+sql+' returning 1) select count(*) from inserted;'))
+ report['committedInsertedRows'][table]+=inserted
+ report['seedBatches'].append({'table':table,'first':lo,'last':hi,'insertedRows':inserted,'wallMs':(time.monotonic()-started)*1000})
+ report.pop('pendingSeedBatch',None);persist()
+ assert inserted==hi-lo+1,(table,lo,hi,inserted)
+def verify_seed_counts(rows,changes):
+ counts=obj("select jsonb_build_object('projectOpenings',(select count(*) from project_openings where project_id="+lit(other)+" and opening_code like 'TOTALS-PG-U-%'),'openingPhases',(select count(*) from opening_phases p join project_openings o on o.id=p.opening_id where o.project_id="+lit(other)+" and o.opening_code like 'TOTALS-PG-U-%'),'transitionSources',(select count(*) from personal_activity_transition_sources e join opening_phases p on p.id=e.source_id join project_openings o on o.id=p.opening_id where e.transition_id="+lit(parent)+" and e.source_kind='phase' and e.relation='phase_participation' and o.project_id="+lit(other)+" and o.opening_code like 'TOTALS-PG-U-%'),'unitTargetChanges',(select count(*) from work_activity_source_history where source_kind='opening_phases' and source_id="+lit(ident(80))+" and before_value<>'{}'::jsonb and after_value<>'{}'::jsonb and before_value->'minutes' is distinct from after_value->'minutes'),'generalTargetChanges',(select count(*) from work_activity_source_history where source_kind='task_sessions' and source_id="+lit(ident(90))+" and before_value<>'{}'::jsonb and after_value<>'{}'::jsonb and before_value->'ended_at' is distinct from after_value->'ended_at'))")
+ report['verifiedSeedCounts']=counts;persist()
+ check(counts=={'projectOpenings':rows,'openingPhases':rows,'transitionSources':rows,'unitTargetChanges':changes,'generalTargetChanges':changes},'Actual complete seed census for '+str(rows)+' unrelated rows and '+str(changes)+' target changes')
 previous_rows=previous_changes=0
 for rows,changes in ((0,0),(1000,100),(10000,1000)):
- if rows>previous_rows:
-  run("insert into project_openings(id,project_id,opening_code) select md5('totals-pg-opening-'||g)::uuid,"+lit(other)+",'TOTALS-PG-U-'||g from generate_series("+str(previous_rows+1)+','+str(rows)+')g;')
-  run("insert into opening_phases(id,opening_id,kind,status,started_at,submitted_at,minutes) select md5('totals-pg-phase-'||g)::uuid,md5('totals-pg-opening-'||g)::uuid,'flashing','submitted',now()-interval '2 hours',now()-interval '1 hour',60 from generate_series("+str(previous_rows+1)+','+str(rows)+")g;")
-  run("insert into personal_activity_transition_sources(transition_id,profile_id,source_kind,source_id,relation,before_evidence,after_evidence) select "+lit(parent)+','+lit(worker)+",'phase',md5('totals-pg-phase-'||g)::uuid,'phase_participation','{}',jsonb_build_object('opening_id',md5('totals-pg-opening-'||g)::uuid,'project_id',"+lit(other)+"::uuid) from generate_series("+str(previous_rows+1)+','+str(rows)+')g;')
- if changes>previous_changes:run('do $$begin for n in '+str(previous_changes+1)+'..'+str(changes)+' loop update opening_phases set minutes=n where id='+lit(ident(80))+";update task_sessions set ended_at=ended_at+interval '1 microsecond' where id="+lit(ident(90))+';end loop;end$$;')
+ # Every normal row trigger still fires. Small committed statements bound only
+ # seed work; measurement/clock statement and lock limits remain20s/12s.
+ for lo in range(previous_rows+1,rows+1,SEED_BATCH_SIZE):
+  hi=min(rows,lo+SEED_BATCH_SIZE-1);series=' from generate_series('+str(lo)+','+str(hi)+')g'
+  seed_insert('project_openings',lo,hi,"insert into project_openings(id,project_id,opening_code) select md5('totals-pg-opening-'||g)::uuid,"+lit(other)+",'TOTALS-PG-U-'||g"+series)
+  seed_insert('opening_phases',lo,hi,"insert into opening_phases(id,opening_id,kind,status,started_at,submitted_at,minutes) select md5('totals-pg-phase-'||g)::uuid,md5('totals-pg-opening-'||g)::uuid,'flashing','submitted',now()-interval '2 hours',now()-interval '1 hour',60"+series)
+  seed_insert('personal_activity_transition_sources',lo,hi,"insert into personal_activity_transition_sources(transition_id,profile_id,source_kind,source_id,relation,before_evidence,after_evidence) select "+lit(parent)+','+lit(worker)+",'phase',md5('totals-pg-phase-'||g)::uuid,'phase_participation','{}',jsonb_build_object('opening_id',md5('totals-pg-opening-'||g)::uuid,'project_id',"+lit(other)+"::uuid)"+series)
+ for lo in range(previous_changes+1,changes+1,SEED_BATCH_SIZE):
+  hi=min(changes,lo+SEED_BATCH_SIZE-1);report['pendingSeedBatch']={'table':'target_changes','first':lo,'last':hi};persist('volume_seed');started=time.monotonic()
+  run('do $$declare changed bigint;begin for n in '+str(lo)+'..'+str(hi)+' loop update opening_phases set minutes=n where id='+lit(ident(80))+";get diagnostics changed=row_count;if changed<>1 then raise exception 'Target phase missing';end if;update task_sessions set ended_at=ended_at+interval '1 microsecond' where id="+lit(ident(90))+";get diagnostics changed=row_count;if changed<>1 then raise exception 'Target task missing';end if;end loop;end$$;")
+  report['seedBatches'].append({'table':'target_changes','first':lo,'last':hi,'phaseMutations':hi-lo+1,'taskMutations':hi-lo+1,'wallMs':(time.monotonic()-started)*1000});report.pop('pendingSeedBatch',None);persist()
+ verify_seed_counts(rows,changes)
  run('analyze work_activity_source_history;analyze personal_activity_transition_sources;analyze opening_phases;')
  for mode in ('unit','general'):
-  samples=[]
+  samples=[];report['currentMeasurement']={'mode':mode,'unrelatedLiveRows':rows,'targetChanges':changes,'samplesMs':samples};persist('volume_measurement')
   for _ in range(10):
    measure=rpc("create temp table totals_measure(ms double precision,value jsonb);do $$declare t timestamptz;r jsonb;begin t:=clock_timestamp();r:=work_activity_totals_read("+lit(job)+','+lit(unit if mode=='unit' else None)+");insert into totals_measure values(extract(epoch from clock_timestamp()-t)*1000,r);end$$;select jsonb_build_object('ms',ms,'value',value) from totals_measure;")
-   assert measure['value']['availability']=='available';samples.append(measure['ms'])
+   assert measure['value']['availability']=='available';samples.append(measure['ms']);persist()
   samples.sort();plan=json.loads(run("explain(analyze,buffers,format json) select source_id from work_activity_source_history where source_kind in ('custom_work_sessions','service_time_sessions','time_shifts','task_sessions','project_openings') and before_value->>'project_id'="+lit(job)))
-  tier={'mode':mode,'unrelatedLiveRows':rows,'unrelatedTransitionSources':rows,'unitTargetRetainedChanges':changes,'generalTargetRetainedChanges':changes,'samplesMs':samples,'medianMs':statistics.median(samples),'p95Ms':samples[-1],'maxMs':max(samples),'lookupExplain':plan};report['tiers'].append(tier);print('VOLUME',json.dumps(tier),flush=True)
+  tier={'mode':mode,'unrelatedLiveRows':rows,'unrelatedTransitionSources':rows,'unitTargetRetainedChanges':changes,'generalTargetRetainedChanges':changes,'samplesMs':samples,'medianMs':statistics.median(samples),'p95Ms':samples[-1],'maxMs':max(samples),'lookupExplain':plan};report['tiers'].append(tier);report.pop('currentMeasurement',None);persist();print('VOLUME',json.dumps(tier),flush=True)
  previous_rows,previous_changes=rows,changes
 # One real RPC, not an idle transaction or a synthetic pg_sleep. Observe the
 # payroll blocking edge while that exact RPC remains active. Two attempts max.
 observed_modes={}
-report['activeReadPayrollWaits']={}
+persist('active_read_payroll_waits')
 for mode in ('unit','general'):
  observed=False
  for attempt in range(2):
-  a=b=None
+  a=b=None;report['currentWaitAttempt']={'mode':mode,'attempt':attempt+1};persist()
   try:
    a=start("set application_name='totals_active_reader';"+auth(worker)+'select work_activity_totals_read('+lit(job)+','+lit(unit if mode=='unit' else None)+');')
    active=until("select exists(select 1 from pg_stat_activity a join pg_locks l on l.pid=a.pid where a.application_name='totals_active_reader' and a.state='active' and l.locktype='advisory' and l.classid=7710 and l.granted)",2)
@@ -190,16 +221,16 @@ for mode in ('unit','general'):
    before=time.monotonic();b=start("set application_name='totals_actual_payroll';"+auth(worker)+'select to_jsonb(start_break('+lit(shift)+"::uuid,'rest'::text));")
    observed=until("select exists(select 1 from pg_stat_activity a join pg_stat_activity b on a.datname=b.datname where a.application_name='totals_active_reader' and a.state='active' and b.application_name='totals_actual_payroll' and a.pid=any(pg_blocking_pids(b.pid)))",2)
    read_answer=json.loads(finish(a).splitlines()[-1]);pay_answer=json.loads(finish(b).splitlines()[-1]);assert read_answer['availability']=='available' and pay_answer['break_started_at'] is not None
-   report['activeReadPayrollWaits'][mode]={'observed':observed,'requestWallMs':(time.monotonic()-before)*1000,'holderWasActive':observed,'controlledIdleHold':False}
+   report['activeReadPayrollWaits'][mode]={'observed':observed,'requestWallMs':(time.monotonic()-before)*1000,'holderWasActive':observed,'controlledIdleHold':False};persist()
    resumed=rpc('select to_jsonb(end_break('+lit(shift)+'::uuid));');assert resumed['break_started_at'] is None
    if observed:break
   finally:
    for proc in (a,b):
     if proc is not None and proc.poll() is None:proc.terminate();proc.wait(timeout=3)
- observed_modes[mode]=observed
+ observed_modes[mode]=observed;report['activeReadWaitGate']=dict(observed_modes);report.pop('currentWaitAttempt',None);persist()
+persist('final_payroll_out')
 closed=rpc('select to_jsonb(clock_out('+lit(shift)+'::uuid,null::text,false,true,null::integer,null::double precision,null::double precision,null::text));')
 check(closed['clock_out_at'] is not None,'Break/end-break/out remain actual successful payroll operations')
 report['checks']=checks;report['activeReadWaitGate']=observed_modes
-if os.environ.get('WORK_ACTIVITY_TOTALS_VOLUME_OUT'):Path(os.environ['WORK_ACTIVITY_TOTALS_VOLUME_OUT']).write_text(json.dumps(report,indent=2)+'\n')
-print(json.dumps(report),flush=True)
 assert all(observed_modes.values()),'Execution gate unresolved: no real active-read payroll blocking edge observed in two bounded attempts; no artificial hold substituted'
+report['status']='passed';persist('complete');print(json.dumps(report),flush=True)
