@@ -185,7 +185,7 @@ const captureFoundation = readFileSync(join(MIGRATIONS, "20261107020000_work_cap
 /** Any direct DELETE/UPDATE of retained evidence violates its disposition.
  * Match ordinary SQL qualification, aliases, case and multiline whitespace. */
 function retainedEvidenceMutated(table: string, sql: string): boolean {
-  const target = `(?:public\\s*\\.\\s*)?"?${table}"?(?=\\s|$)`;
+  const target = `(?:(?:public|"public")\\s*\\.\\s*)?"?${table}"?(?![a-z0-9_])`;
   return new RegExp(`\\b(?:delete\\s+from|update)\\s+(?:only\\s+)?${target}`, "i").test(sql);
 }
 
@@ -276,6 +276,8 @@ describe("purge_project handles every project-scoped table", () => {
       expect(retainedEvidenceMutated(table, body)).toBe(false);
       for (const mutation of [
         `delete from ${table} where project_id = p_project_id;`,
+        `delete from ${table};`,
+        `DELETE FROM "public"."${table}";`,
         `update ${table} set project_id = null;`,
         `DELETE FROM public.${table} AS evidence WHERE true;`,
         `UPDATE\npublic.${table} evidence\nSET project_id = null;`,
