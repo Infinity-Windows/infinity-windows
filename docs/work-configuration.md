@@ -63,13 +63,13 @@ consumer and must recheck canonical versions and current authority on the server
 
 Field definitions reject unknown keys, missing/null required attributes,
 duplicate IDs, invalid field types/options, reversed bounds and fractional bounds
-for a number whose explicit unit is count. Captured count values are not handled
+for a number whose explicit unit is count. Count bounds must be nonnegative safe integers; all numeric bounds must fit finite JavaScript numbers. Captured count values are not handled
 in this configuration slice; their integer requirement belongs in the future
 capture validator. Supported types are text, number, boolean, single_select and
 multi_select. Only number fields carry units/min/max. Units are the stable codes
 count, in, ft, mm, cm, sq_ft, sq_m, min, h, lb and kg. Labels and option labels require English and Spanish strings.
 
-Company snapshots include complete current draft bodies, proposer and creation
+Every snapshot includes its asOf instant and exact requested projectId. Company snapshots always include currentSelection, explicitly null for a global read or unselected job. Company snapshots include complete current draft bodies, proposer and creation
 instant, immutable published versions and publication/effective dates. A supplied
 job is validated before any snapshot is returned. Ordinary crew and QA accounts
 receive only a visible job's frozen menu; no company drafts or raw receipt ledger.
@@ -85,7 +85,7 @@ QA boundaries, NULL inputs, immutable identity/history, expected revisions,
 publication times, stale grants, complete draft reads and raw table denial.
 The original source-only author did not execute tests; the parent executes and
 retains test logs. The initial57 checks passed after correcting fixture reads of
-append-only revisions and decoded JSON. The expanded118 regression checks pass under Node22/PGlite, including
+append-only revisions and decoded JSON. The expanded128 regression checks pass under Node22/PGlite, including
 actual authenticated-role denials. The parent merge-tool suite also passes63
 checks and protects all three private configuration tables from generic merges.
 

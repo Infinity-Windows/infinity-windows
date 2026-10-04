@@ -105,11 +105,9 @@ revoke all on function public._work_config_can_manage_menu(uuid, uuid) from publ
 --    fractional bound on a `count` unit, an invalid/duplicated field or
 --    option id, an invalid bound (min > max), an invalid field type, and
 --    options on a type that is not single/multi-select are all refused.
---    "Fractional count" is this migration's literal reading of an ambiguous
---    owner phrase: a field whose `unit` is exactly 'count' cannot declare a
---    non-integer min/max. Flagged in docs/work-configuration.md for the
---    parent to confirm or correct; nothing here invents a final meaning
---    beyond that narrow, explicit rule.
+--    Count bounds must be nonnegative safe integers. Every numeric bound
+--    must fit a finite JavaScript number, so published snapshots are usable
+--    by the app without losing an integer count or overflowing to infinity.
 -- ---------------------------------------------------------------------------
 
 create function public._work_config_validate_typed_fields(p_fields jsonb) returns void
@@ -173,13 +171,18 @@ begin
       end if;
       max_val := (field->>'max')::numeric;
     end if;
+    -- Bounds must round-trip to finite JavaScript numbers in the published DTO.
+    if (min_val is not null and abs(min_val) > 1.7976931348623157e308::numeric)
+        or (max_val is not null and abs(max_val) > 1.7976931348623157e308::numeric) then
+      raise exception using errcode = '23514', message = 'Typed field bounds exceed the supported number range.';
+    end if;
     if min_val is not null and max_val is not null and min_val > max_val then
       raise exception using errcode = '23514', message = 'Typed field bounds are invalid.';
     end if;
     if unit_val = 'count' and (
-        (min_val is not null and min_val <> trunc(min_val)) or
-        (max_val is not null and max_val <> trunc(max_val))) then
-      raise exception using errcode = '23514', message = 'A count field cannot have a fractional bound.';
+        (min_val is not null and (min_val <> trunc(min_val) or min_val < 0 or min_val > 9007199254740991)) or
+        (max_val is not null and (max_val <> trunc(max_val) or max_val < 0 or max_val > 9007199254740991))) then
+      raise exception using errcode = '23514', message = 'A count bound must be a nonnegative safe integer.';
     end if;
     if field ? 'options' then
       if field_type not in ('single_select', 'multi_select') then
@@ -949,7 +952,8 @@ begin
       raise exception using errcode = '54000', message = 'Configuration catalog exceeds the snapshot limit.';
     end if;
     v_result := jsonb_build_object(
-      'protocolVersion', 1, 'role', 'company',
+      'protocolVersion', 1, 'role', 'company', 'asOf', statement_timestamp(),
+      'projectId', p_project_id, 'currentSelection', null,
       'activities', coalesce((
         select jsonb_agg(jsonb_build_object(
           'code', d.code, 'definitionId', d.id, 'retiredAt', d.retired_at,
@@ -1011,10 +1015,10 @@ begin
     from public.work_job_menu_selections s
    where s.project_id = p_project_id order by s.revision desc limit 1;
   if not found then
-    return jsonb_build_object('protocolVersion', 1, 'role', 'crew', 'projectId', p_project_id, 'menu', null);
+    return jsonb_build_object('protocolVersion', 1, 'role', 'crew', 'asOf', statement_timestamp(), 'projectId', p_project_id, 'menu', null);
   end if;
   select mv.items into v_items from public.work_capture_menu_versions mv where mv.id = v_selection.menu_version_id;
-  v_result := jsonb_build_object('protocolVersion', 1, 'role', 'crew', 'projectId', p_project_id,
+  v_result := jsonb_build_object('protocolVersion', 1, 'role', 'crew', 'asOf', statement_timestamp(), 'projectId', p_project_id,
     'menu', jsonb_build_object('revision', v_selection.revision, 'menuVersionId', v_selection.menu_version_id,
       'activities', coalesce((
         select jsonb_agg(jsonb_build_object(

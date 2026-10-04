@@ -53,6 +53,18 @@ begin
   perform pg_temp.dry_run_expect_error('numeric bounds on text refused',
     $q$select public._work_config_validate_typed_fields('[{"id":"note","label_en":"Note","label_es":"Nota","type":"text","required":false,"min":0}]')$q$,
     'Only a number field');
+  perform pg_temp.dry_run_expect_error('overflowing positive numeric bound refused',
+    $q$select public._work_config_validate_typed_fields('[{"id":"qty","label_en":"Quantity","label_es":"Cantidad","type":"number","required":false,"max":1e309}]')$q$,
+    'supported number range');
+  perform pg_temp.dry_run_expect_error('overflowing negative numeric bound refused',
+    $q$select public._work_config_validate_typed_fields('[{"id":"qty","label_en":"Quantity","label_es":"Cantidad","type":"number","required":false,"min":-1e309}]')$q$,
+    'supported number range');
+  perform pg_temp.dry_run_expect_error('negative count bound refused',
+    $q$select public._work_config_validate_typed_fields('[{"id":"qty","label_en":"Quantity","label_es":"Cantidad","type":"number","required":false,"unit":"count","min":-1}]')$q$,
+    'nonnegative safe integer');
+  perform pg_temp.dry_run_expect_error('unsafe count bound refused',
+    $q$select public._work_config_validate_typed_fields('[{"id":"qty","label_en":"Quantity","label_es":"Cantidad","type":"number","required":false,"unit":"count","max":9007199254740992}]')$q$,
+    'nonnegative safe integer');
   insert into public.work_activity_definitions(id,code,created_by) values(v_definition,v_code,v_actor);
   insert into public.work_activity_definition_versions(id,definition_id,version,scope,label_en,label_es,published_by,published_at,effective_from)
     values(v_version,v_definition,1,'general','Rollback fixture','Prueba temporal',v_actor,clock_timestamp(),clock_timestamp()+interval '1 day');

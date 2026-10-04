@@ -136,6 +136,17 @@ await refuse(publishNamed(1182, 'unknown_unit', [tf('money', 'number', { unit: '
 await refuse(publishNamed(1183, 'text_with_unit', [tf('label', 'text', { unit: 'in' })]));
 await refuse(publishNamed(1184, 'boolean_with_bounds', [tf('flag', 'boolean', { min: 0 })]));
 await refuse(publishNamed(1185, 'select_with_max', [tf('choice', 'single_select', { options: [{ id: 'a', label_en: 'A', label_es: 'A' }], max: 3 })]));
+await refuse(publishNamed(1186, 'negative_count', [tf('count', 'number', { unit: 'count', min: -1 })]));
+await refuse(publishNamed(1187, 'unsafe_count', [tf('count', 'number', { unit: 'count', max: 9007199254740992 })]));
+for (const [n, bound, literal] of [[1188, 'max', '1e309'], [1189, 'min', '-1e309']]) {
+  const fieldJson = JSON.stringify([tf('value', 'number')]).replace('"required":false', `"required":false,"${bound}":${literal}`);
+  await refuse(rawPublish(`'${id(n)}'`, `'overflow_${bound}'`, '0', `'general'`, `'V'`, `'V'`, 'false', `'${fieldJson}'`));
+}
+await db.exec(publishNamed(11810, 'safe_count', [tf('count', 'number', { unit: 'count', min: 0, max: 9007199254740991 })]));
+check((await one("select v.typed_fields->0->>'max' as bound from work_activity_definition_versions v join work_activity_definitions d on d.id=v.definition_id where d.code='safe_count'")).bound === '9007199254740991', 'Count maximum retains the exact safe integer');
+await db.exec(publishNamed(11811, 'finite_limits', [tf('value', 'number', { min: -Number.MAX_VALUE, max: Number.MAX_VALUE })]));
+check((await one("select count(*)::int as n from work_activity_definitions where code='finite_limits'")).n === 1, 'Finite JavaScript numeric limits are accepted');
+
 
 
 await db.exec(`select work_publish_activity_version('${id(1210)}','future_activity',0,'specific','Future','Futuro',false,'[]',now()+interval '1 day')`);
@@ -195,6 +206,12 @@ check((await one(`select count(*)::int as n from work_configuration_commands whe
 // 5. Job menu selection: owner/supervisor on a visible job; granted vs
 //    ungranted foreman; deleted job; hidden test job for a non-test foreman.
 // ---------------------------------------------------------------------------
+const emptyCompanyJob = (await one(`select work_configuration_snapshot('${LIVE_JOB}') as s`)).s;
+check(emptyCompanyJob.projectId === LIVE_JOB && emptyCompanyJob.currentSelection === null && Number.isFinite(Date.parse(emptyCompanyJob.asOf)), 'Company snapshot binds an unselected job and explicit null selection with asOf');
+await as(INSTALLER);
+const emptyCrewJob = (await one(`select work_configuration_snapshot('${LIVE_JOB}') as s`)).s;
+check(emptyCrewJob.projectId === LIVE_JOB && emptyCrewJob.menu === null && Number.isFinite(Date.parse(emptyCrewJob.asOf)), 'Crew empty-menu snapshot retains job context and asOf');
+await as(OWNER);
 await db.exec(`select work_select_job_menu('${id(130)}','${LIVE_JOB}','${menuVersionId}',0)`);
 check((await one(`select revision from work_job_menu_selections where project_id='${LIVE_JOB}'`)).revision === 1, 'Owner selects job menu, revision 1');
 await refuse(`select work_select_job_menu('${id(131)}','${DELETED_JOB}','${menuVersionId}',0)`, '42501');
@@ -295,6 +312,7 @@ await refuse(`select work_publish_activity_version('${id(162)}','blocked',0,'gen
 await as(SUPERVISOR);
 const companySnapshot = (await one(`select work_configuration_snapshot(null) as s`)).s;
 check(companySnapshot.role === 'company' && Array.isArray(companySnapshot.drafts) && companySnapshot.drafts.length > 0, 'Owner/supervisor snapshot includes company drafts');
+check(companySnapshot.projectId === null && companySnapshot.currentSelection === null && Number.isFinite(Date.parse(companySnapshot.asOf)), 'Global company snapshot has explicit null job/selection and valid asOf');
 const activityDraft = companySnapshot.drafts.find(d => d.kind === 'activity' && d.code === 'flashing');
 check(activityDraft?.body?.scope === 'specific' && activityDraft?.body?.typedFields?.length === 0, 'Company snapshot exposes the exact latest draft body');
 check(activityDraft?.proposedBy === SUPERVISOR && Number.isFinite(Date.parse(activityDraft?.createdAt)), 'Draft snapshot identifies its proposer and creation time');
@@ -304,6 +322,7 @@ await as(INSTALLER);
 await refuse(`select work_configuration_snapshot(null)`, '23514'); // crew must name a visible job
 const crewSnapshot = (await one(`select work_configuration_snapshot('${LIVE_JOB}') as s`)).s;
 check(crewSnapshot.role === 'crew' && crewSnapshot.menu && !('drafts' in crewSnapshot), 'Crew snapshot is the frozen job menu only, no drafts or raw commands');
+check(crewSnapshot.projectId === LIVE_JOB && Number.isFinite(Date.parse(crewSnapshot.asOf)), 'Selected crew snapshot retains exact job and asOf');
 const retiredFrozenActivity = crewSnapshot.menu.activities.find(a => a.versionId === validateMeVersion.id);
 check(retiredFrozenActivity?.enabled === true && retiredFrozenActivity?.eligibleNow === false, 'Frozen enabled choice remains visible while a retired activity is marked ineligible now');
 await refuse(`select work_configuration_snapshot('${DELETED_JOB}')`, '23514');
