@@ -9,7 +9,7 @@ import { LanguageContext } from "../../lib/i18n/context";
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 let root: Root | null = null, host: HTMLDivElement | null = null;
 afterEach(() => { act(() => root?.unmount()); host?.remove(); root = null; host = null; vi.restoreAllMocks(); });
-const context = (): ReviewContext => ({ basisStatus: "current", actorId: "reviewer", observerId: "installer", original: { width: 6, height: 8, units: "ft", source: "estimated", sourceReference: "Original field estimate" },
+const context = (): ReviewContext => ({ basisStatus: "current", actorId: "reviewer", original: { observerId: "installer", widthDecimal: "6", heightDecimal: "8", unit: "ft", source: "estimated", sourceReference: "Original field estimate" },
   basis: { unitId: "unit-42", unitRevision: 9, factId: "fact-4", factRevision: 4, scopeToken: "opaque-server-token", reviewRevision: 2, submissionId: null, generation: 1 } });
 function props(): UnitVerificationFieldsProps {
   const ctx = context();
@@ -26,16 +26,16 @@ describe("controlled independent dimension review", () => {
   it("preserves original estimate and sends only an exact-basis intent, without recording a verified state", () => {
     const p = props(); render(p); expect(host!.textContent).toContain("Original field estimate"); expect(host!.textContent).toContain("Estimated");
     submit(); expect(p.onIntent).toHaveBeenCalledTimes(1);
-    const intent = vi.mocked(p.onIntent).mock.calls[0][0]; expect(intent).toMatchObject({ kind: "verify_dimensions", basis: context().basis, evidence: { width: 72, height: 96, units: "in", source: "measured" } });
+    const intent = vi.mocked(p.onIntent).mock.calls[0][0]; expect(intent).toMatchObject({ action: "verify_dimensions", basis: context().basis, data: { widthDecimal: "72", heightDecimal: "96", unit: "in", source: "measured" } });
     expect(intent).not.toHaveProperty("verified"); expect(intent).not.toHaveProperty("actorId"); expect(p.context.original!.source).toBe("estimated");
     expect(host!.textContent).toContain("Review not sent");
   });
   it("requires an independent actual observer and refuses a forced submit on one's own measurements", () => {
-    const p = props(); p.context = { ...p.context, observerId: "reviewer" }; render(p); expect(host!.textContent).toContain("Another authorized person"); submit(); expect(p.onIntent).not.toHaveBeenCalled();
-    p.context = { ...p.context, observerId: null }; render(p); expect(host!.textContent).toContain("original observer is unknown"); submit(); expect(p.onIntent).not.toHaveBeenCalled();
+    const p = props(); p.context = { ...p.context, original: { ...p.context.original!, observerId: "reviewer" } }; render(p); expect(host!.textContent).toContain("Another authorized person"); submit(); expect(p.onIntent).not.toHaveBeenCalled();
+    p.context = { ...p.context, original: { ...p.context.original!, observerId: null } }; render(p); expect(host!.textContent).toContain("original observer is unknown"); submit(); expect(p.onIntent).not.toHaveBeenCalled();
   });
   it("blocks mismatching dimensions and offers a new observation rather than replacing saved numbers", () => {
-    const p = props(); p.value = { ...p.value, width: "72.00001" }; render(p); expect(host!.textContent).toContain("Record a new size observation first"); submit(); expect(p.onIntent).not.toHaveBeenCalled(); expect(p.context.original!.width).toBe(6);
+    const p = props(); p.value = { ...p.value, width: "72.00001" }; render(p); expect(host!.textContent).toContain("Record a new size observation first"); submit(); expect(p.onIntent).not.toHaveBeenCalled(); expect(p.context.original!.widthDecimal).toBe("6");
   });
   it.each(["pending", "unknown", "applied"] as const)("blocks duplicate submission while delivery is %s", delivery => {
     const p = props(); p.delivery = delivery; render(p); expect(host!.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled).toBe(true); submit(); expect(p.onIntent).not.toHaveBeenCalled();
@@ -56,8 +56,21 @@ describe("controlled independent dimension review", () => {
     expect(host!.textContent).toContain("Estimado");
   });
   it("does not round away entered precision to manufacture agreement", () => {
-    const p = props(); p.context = { ...p.context, original: { width: 1, height: 1, units: "in", source: "measured", sourceReference: null } };
+    const p = props(); p.context = { ...p.context, original: { observerId: "installer", widthDecimal: "1", heightDecimal: "1", unit: "in", source: "measured", sourceReference: null } };
     p.value = { ...p.value, width: "1.00000000000000001", height: "1" }; render(p); submit(); expect(p.onIntent).not.toHaveBeenCalled();
+  });
+  it("preserves beyond-JavaScript precision from original observation through JSON transport", () => {
+    const p = props(), exact = "1.00000000000000001";
+    p.context = { ...p.context, original: { observerId: "installer", widthDecimal: exact, heightDecimal: "1", unit: "in", source: "estimated", sourceReference: "Exact canonical observation" } };
+    p.value = { ...p.value, width: exact, height: "1" }; render(p); submit();
+    expect(p.onIntent).toHaveBeenCalledTimes(1);
+    const transported = JSON.parse(JSON.stringify(vi.mocked(p.onIntent).mock.calls[0][0]));
+    expect(transported).toMatchObject({ action: "verify_dimensions", data: { widthDecimal: exact, heightDecimal: "1", unit: "in" } });
+    expect(host!.textContent).toContain(exact); expect(p.context.original!.source).toBe("estimated");
+  });
+  it.each(["+72", "72e0", "72.", ".72", " 72"])("keeps invalid transport spelling %s as a draft without sending", width => {
+    const p = props(); p.value = { ...p.value, width }; render(p); submit();
+    expect(p.onIntent).not.toHaveBeenCalled(); expect(host!.querySelector<HTMLInputElement>("input")!.value).toBe(width);
   });
   it("renders permission refusal without a callback", () => { const p = props(); p.allowed = false; render(p); submit(); expect(p.onIntent).not.toHaveBeenCalled(); expect(host!.textContent).toContain("do not have permission"); });
 });
