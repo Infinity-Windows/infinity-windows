@@ -14269,6 +14269,29 @@ do $$ begin
  raise exception using errcode='55000',message='Unit review source contract is unavailable.'; end if;
 end; $$;
 
+-- Exact provider evidence (37219041988): these newly created private engine
+-- helpers inherited service_role EXECUTE from provider defaults. Close only
+-- those eighteen raw entry points; owner/SECURITY DEFINER execution is retained.
+-- No function body, role membership or global default privilege is changed.
+revoke execute on function public._work_activity_event(uuid,text,uuid,text,timestamp with time zone,text,jsonb,jsonb) from service_role;
+revoke execute on function public._work_activity_evidence(text,jsonb) from service_role;
+revoke execute on function public._work_activity_integer(jsonb,bigint,bigint) from service_role;
+revoke execute on function public._work_activity_no_truncate() from service_role;
+revoke execute on function public._work_activity_object(jsonb,text[]) from service_role;
+revoke execute on function public._work_activity_operation() from service_role;
+revoke execute on function public._work_activity_operation_exit(uuid) from service_role;
+revoke execute on function public._work_activity_parent_gate() from service_role;
+revoke execute on function public._work_activity_read_committed() from service_role;
+revoke execute on function public._work_activity_row_before() from service_role;
+revoke execute on function public._work_activity_row_event() from service_role;
+revoke execute on function public._work_activity_safety_exit(uuid,uuid,text) from service_role;
+revoke execute on function public._work_activity_shift_lifecycle() from service_role;
+revoke execute on function public._work_activity_statement_begin() from service_role;
+revoke execute on function public._work_activity_statement_end() from service_role;
+revoke execute on function public._work_activity_touch(uuid) from service_role;
+revoke execute on function public._work_activity_unit_basis(uuid,uuid) from service_role;
+revoke execute on function public._work_activity_uuid(jsonb,boolean) from service_role;
+
 -- No source FK, finite sequence, bounded payload CHECK, or review-domain validation
 -- in this append. Actual OLD/NEW source changes survive parent cascade and purge.
 -- UUID order is canonical encoding order; tx_order preserves intermediate order.

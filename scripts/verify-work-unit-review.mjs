@@ -11,8 +11,18 @@ const schema=read('scripts/fixtures/work-activity-engine-online-schema.sql');con
 assert.equal(hash(schema),'ee41a980b19f76baa8637101b62703ecdf798a32eccbb0e9f074fbfd71c62471');assert.equal(hash(engine),'aa767e67de301cd0ce5961758cc5afefe89bdf25fe27b3c4156a219c9cb2f648');
 const review=read('supabase/migrations/20261108440000_work_unit_review.sql');
 const wire=[];const db=new PGlite({extensions:{pgcrypto,uuid_ossp}});const q=async(s,a=[])=>{const row=(await db.query(s,a)).rows[0];if(/select work_unit_review_(read|command|command_receipt)\(/.test(s)&&row?.value)wire.push({sql:s,args:a,result:row.value});return row;};
-await db.exec(schema);await db.exec(engine.slice(engine.indexOf('-- INSTALLED_SOURCE_GUARD:'),engine.indexOf('-- INSTALLED_GRAPH_GUARD:')));
+// Disposable fixture only: reproduce the provider's inherited function grant.
+// The production migration changes no global/default privileges.
+await db.exec(schema);
+await db.exec('alter default privileges for role postgres in schema public grant execute on functions to service_role');
+await db.exec(engine.slice(engine.indexOf('-- INSTALLED_SOURCE_GUARD:'),engine.indexOf('-- INSTALLED_GRAPH_GUARD:')));
 await db.exec('begin;'+engine.slice(engine.indexOf('-- DEVELOPMENT_PRIVATE_PREFIX:')).replace(/rollback;\s*$/,'commit;'));
+const inheritedHelperSignatures=["public._work_activity_event(uuid,text,uuid,text,timestamp with time zone,text,jsonb,jsonb)","public._work_activity_evidence(text,jsonb)","public._work_activity_integer(jsonb,bigint,bigint)","public._work_activity_no_truncate()","public._work_activity_object(jsonb,text[])","public._work_activity_operation()","public._work_activity_operation_exit(uuid)","public._work_activity_parent_gate()","public._work_activity_read_committed()","public._work_activity_row_before()","public._work_activity_row_event()","public._work_activity_safety_exit(uuid,uuid,text)","public._work_activity_shift_lifecycle()","public._work_activity_statement_begin()","public._work_activity_statement_end()","public._work_activity_touch(uuid)","public._work_activity_unit_basis(uuid,uuid)","public._work_activity_uuid(jsonb,boolean)"];
+const inheritedAclSql=`select count(*)::int count,bool_and(has_function_privilege('service_role',f,'EXECUTE')) service,
+ bool_and(not has_function_privilege('anon',f,'EXECUTE') and not has_function_privilege('authenticated',f,'EXECUTE')) private,
+ bool_and(has_function_privilege('postgres',f,'EXECUTE')) owner from unnest($1::text[]) f`;
+const inheritedAcl=await q(inheritedAclSql,[inheritedHelperSignatures]);
+assert.equal(inheritedAcl.count,18);assert.equal(inheritedAcl.service,true,'All eighteen provider-default grants must reproduce before review');
 // Incompatible prior installed writer is refused atomically before DDL.
 const priorWriter=(await q("select pg_get_functiondef('public._work_activity_row_event()'::regprocedure) value")).value;
 assert.ok(priorWriter.includes('AS $function$'));
@@ -22,6 +32,11 @@ assert.equal(incompatible?.code,'55000','Incompatible prior writer must refuse i
 assert.equal((await q("select to_regclass('public.work_activity_source_history') value")).value,null,'Failed install leaves no partial history table');
 await db.exec(review.replace(/rollback;\s*$/,'commit;'));
 console.log('Installed exact review candidate',hash(review));
+const closedAcl=await q(inheritedAclSql,[inheritedHelperSignatures]);
+assert.equal(closedAcl.service,false);assert.equal(closedAcl.private,true);assert.equal(closedAcl.owner,true);
+const deniedCount=(await q("select count(*)::int n from unnest($1::text[]) f where not has_function_privilege('service_role',f,'EXECUTE')",[inheritedHelperSignatures])).n;
+assert.equal(deniedCount,18,'Exactly all eighteen inherited entry points are denied after review');
+
 const watchedTables=['time_shifts','personal_activity_state','personal_activity_transition_sources','personal_activity_transitions','work_activity_safety_events','work_unit_fact_revisions','work_unit_fact_current','work_unit_fact_context_epochs','custom_work_units','project_openings','service_visit_units','service_visits','summons','unit_redos','qc_checks','install_events','crew_work_records','crew_work_record_people','work_session_capture_metadata','custom_work_history','custom_work_sessions','unit_sessions','task_sessions','service_time_sessions','opening_phases','summon_helpers','work_activity_source_history','work_unit_review_commands','work_unit_dimension_verifications','work_unit_review_events','work_unit_review_current','work_unit_review_defects','work_unit_review_defect_events'];
 const watchedFunctions=['_work_activity_operation_exit','_work_activity_event','_work_activity_touch','_work_activity_safety_exit','_work_activity_shift_lifecycle','_work_activity_retain_source','_work_activity_parent_source_history','_work_activity_source_material','_work_activity_row_event','_work_activity_gate','_work_activity_parent_gate','_work_activity_statement_begin','_work_activity_statement_end','_work_activity_row_before','_work_activity_read_committed','_work_activity_actor','_work_activity_unit_basis','_work_unit_fact_context_visible','_work_unit_fact_peek_epoch','_work_unit_fact_bump_epoch','_ai_job_visible','_work_config_internal','_work_config_is_supervisor','_work_config_is_foreman','is_test_profile','is_sandbox_project','service_job_access','service_internal','_work_unit_review_scope','_work_unit_review_view','_work_unit_review_authority','_work_unit_review_defect_projection','_work_unit_review_payload','_work_unit_review_decimal','_work_unit_review_text','person_record_counts','_work_activity_evidence','_work_activity_operation','work_capture_immutable_record','_work_activity_no_truncate','_work_activity_uuid','_work_activity_integer','_work_activity_object','work_unit_review_command','work_unit_review_read','work_unit_review_command_receipt'];
 const sqlArray=xs=>'array['+xs.map(x=>"'"+x+"'").join(',')+']';
@@ -35,7 +50,6 @@ const catalogQuery=`select jsonb_build_object(
  'tables',(select jsonb_agg(jsonb_build_object('table',c.relname,'rls',c.relrowsecurity,'owner',pg_get_userbyid(c.relowner)) order by c.relname) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relname=any(${sqlArray(watchedTables)}))
 ) value`;
 const catalog=(await q(catalogQuery)).value;
-const catalogHash=hash(JSON.stringify(catalog)); // JS hash is fixture receipt only; SQL hashes its own canonical jsonb below.
 // SQL canonical hash must be calculated by PostgreSQL, never JSON.stringify.
 const expected=(await q(`select encode(sha256(convert_to(c.value::text,'UTF8')),'hex') digest from (${catalogQuery}) c`)).digest;
 const contract=`-- Generated exact source/column/trigger coverage; unknown source shape fails closed.
@@ -53,10 +67,40 @@ if(process.argv.includes('--build-coverage')){
 }else assert.ok(review.includes(contract),'Coverage source drift: explicitly regenerate and review exact changes');
 assert.equal((await q('select _work_unit_review_coverage() yes')).yes,true,'Actual catalog coverage must match');
 
+// Catalog-only diagnostic export: no operational rows or raw function bodies.
+// Both aggregate and item hashes are computed from PostgreSQL canonical jsonb.
+if(process.env.WORK_UNIT_REVIEW_CATALOG_OUT){
+ const rows=(await db.query(`with c as (${catalogQuery}), categories as(select e.key category,e.value from c cross join lateral jsonb_each(c.value) e), items as (
+ select category,case when category='view' then 'view' else coalesce(item->>'table',item->>'name','')||'/'||coalesce(item->>'column',item->>'args',item->>'name','')||'/'||coalesce(item->>'role','')||'/'||coalesce(item->>'privilege','') end object_name,item
+ from categories cross join lateral jsonb_array_elements(case when jsonb_typeof(value)='array' then value else jsonb_build_array(value) end) item
+ ) select 'category' kind,category,'' object_name,'' attribute,encode(sha256(convert_to(value::text,'UTF8')),'hex') digest from categories
+ union all select 'item',category,object_name,'',encode(sha256(convert_to(item::text,'UTF8')),'hex') from items
+ union all select 'attribute',category,object_name,attr.key,encode(sha256(convert_to(attr.value::text,'UTF8')),'hex') from items cross join lateral jsonb_each(case when jsonb_typeof(item)='object' then item else jsonb_build_object('definition',item) end) attr
+ order by 1,2,3,4`)).rows;
+ const callers=(await db.query(`select p.proname name,pg_get_function_identity_arguments(p.oid) args,p.prosecdef definer,pg_get_userbyid(p.proowner) owner,
+ has_function_privilege('anon',p.oid,'EXECUTE') anon,has_function_privilege('authenticated',p.oid,'EXECUTE') authenticated,has_function_privilege('service_role',p.oid,'EXECUTE') service_role,
+ (select array_agg(distinct match[1] order by match[1]) from regexp_matches(p.prosrc,'(_work_activity_[a-z_]+) *\\(','g') match) calls
+ from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.prosrc~'_work_activity_' order by p.proname,pg_get_function_identity_arguments(p.oid)`)).rows;
+ writeFileSync(process.env.WORK_UNIT_REVIEW_CATALOG_OUT,JSON.stringify({reviewSha256:hash(review),catalogSqlDigest:expected,catalogQuery,metadata:catalog,hashes:rows,callers},null,2)+'\n');
+}
+if(process.env.WORK_UNIT_REVIEW_DIAGNOSTIC_SQL){
+ const diagnostic=(await db.query(readFileSync(process.env.WORK_UNIT_REVIEW_DIAGNOSTIC_SQL,'utf8'))).rows;
+ assert.equal(diagnostic.length,7,'Unchanged local catalog has seven category comparisons');
+ assert.ok(diagnostic.every(x=>x.passed),'Local catalog diagnostic must exactly match');
+ console.log(JSON.stringify({reviewSha256:hash(review),diagnostic}));
+ await db.exec('begin;alter table opening_phases disable trigger zz_work_activity_row');
+ const drift=(await db.query(readFileSync(process.env.WORK_UNIT_REVIEW_DIAGNOSTIC_SQL,'utf8'))).rows;
+ const changed=drift.filter(x=>x.attribute);
+ assert.equal(changed.length,1,'Diagnostic isolates one changed metadata attribute');
+ assert.equal(changed[0].category,'triggers');assert.equal(changed[0].object_name,'opening_phases/zz_work_activity_row//');assert.equal(changed[0].attribute,'enabled');assert.equal(changed[0].passed,false);
+ await db.exec('rollback');
+ console.log(JSON.stringify({diagnosticNegativeControl:'PASS',category:'triggers',object:'opening_phases/zz_work_activity_row//',attribute:'enabled'}));
+}
+
 if(process.argv.includes('--install-only')){await db.close();process.exit(0);}
 const id=n=>'00000000-0000-4000-8000-'+String(n).padStart(12,'0');
 const as=async(uid,role='authenticated')=>{await db.exec('reset role');await db.query("select set_config('request.jwt.claim.sub',$1,false)",[uid??'']);await db.exec('set role '+role);};
-let checks=1;console.log('PASS 1 Exact incompatible prerequisite refused atomically');const check=(yes,label)=>{assert.ok(yes,label);checks++;console.log('PASS',checks,label)};
+let checks=4;console.log('PASS 1 Exact incompatible prerequisite refused atomically');console.log('PASS 2 All eighteen provider-default EXECUTE grants reproduced');console.log('PASS 3 All eighteen service/client raw grants denied after review');console.log('PASS 4 Source owner retains helper execution');const check=(yes,label)=>{assert.ok(yes,label);checks++;console.log('PASS',checks,label)};
 async function refuse(sql,args=[],code){await db.exec('savepoint expected_refusal');let error;try{await db.query(sql,args)}catch(e){error=e}await db.exec('rollback to savepoint expected_refusal');assert.ok(error,'Expected refusal: '+sql);if(code)assert.equal(error.code,code,error.message);checks++;}
 await db.exec('begin');
 await db.query('insert into auth.users(id) values($1),($2),($3),($4)',[id(1),id(2),id(3),id(4)]);
@@ -187,7 +231,7 @@ const hidden=await readView();check(hidden.availability==='unavailable'&&hidden.
 check((await q('select work_unit_review_command_receipt($1) value',[verification.cid])).value.receipt===null,'Hidden source removes historical receipt projection');await as(id(2),'postgres');await db.exec('rollback to savepoint hidden');
 await as(id(2));
 for(const table of watchedTables.filter(x=>x.startsWith('work_unit_')||x==='work_activity_source_history')) await refuse(`select * from ${table}`,[],'42501');
-await as(id(2),'service_role');await refuse('select * from work_unit_review_commands',[],'42501');await refuse('select _work_activity_retain_source(\'custom_work_units\',\'forged\',\'{}\',\'{}\')',[],'42501');
+await as(id(2),'service_role');await refuse('select * from work_unit_review_commands',[],'42501');await refuse('select _work_activity_operation()',[],'42501');await refuse('select _work_activity_uuid($1::jsonb,false)',[JSON.stringify(id(30))],'42501');await refuse('select _work_activity_retain_source(\'custom_work_units\',\'forged\',\'{}\',\'{}\')',[],'42501');
 await as(id(2),'postgres');await refuse('delete from work_unit_review_events',[],'23514');await refuse('truncate work_activity_source_history',[],'23514');
 const census=(await q('select person_record_counts($1) value',[id(1)])).value;check(census['work_unit_dimension_verifications.observation_actor_id']>0&&census['work_activity_source_history.original_identities']>0,'Account census retains immutable observer and original source identities');
 

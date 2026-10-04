@@ -13,7 +13,7 @@ diagnostic = ROOT / 'scripts/dry-run-probes/work-unit-review-coverage-diagnostic
 target = ROOT / 'scripts/dry-run-probes/work-unit-review-current-rehearsal.sql'
 pins = {
     base: 'e5083557889fb1fb58dd0408b3c6d1aa937662f8966ff0f964ac4e231f492f55',
-    review: '4ec3c7486cba34976af5670aab08659b7525eff9fd714478b2cd10782877b474',
+    review: 'ed4fd0841551a88d07099d225393bfe588c176c9612390bacfabdb8c1eda9eba',
     metadata: 'f84779c3982e3cbe4d11e9c46e85a13ed091c356d6c2f4e9e211192b9cc790ce',
     diagnostic: 'df642efcd812f2cb0b1399f2ff371acf255ab47f37ca109d4f5c38da0ce6da05',
 }
