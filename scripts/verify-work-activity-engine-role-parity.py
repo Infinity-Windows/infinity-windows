@@ -320,7 +320,7 @@ try:
             time.sleep(.03)
         else:raise AssertionError('Setup holder did not reach G barrier')
         waiting_clock=f"select to_jsonb(clock_in(null::uuid,null::uuid,null::text,null::double precision,null::double precision,null::text,null::text,'{command}'::uuid,{ql(stamp['tap'])}::timestamptz,{ql(stamp['checked'])}::timestamptz,0,1))"
-        reader=start_race(f"set application_name='{app_b}';set role authenticated;set request.jwt.claim.sub='{subject}';"+waiting_clock,'authenticator')
+        reader=start_race(f"set application_name='{app_b}';set role authenticated;set request.jwt.claim.sub='{subject}';"+waiting_clock+';','authenticator')
         deadline=time.monotonic()+4
         while time.monotonic()<deadline:
             if reader.poll() is not None:raise AssertionError('Setup writer exited without waiting: '+reader.stderr.read())

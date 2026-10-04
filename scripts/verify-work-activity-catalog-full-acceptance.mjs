@@ -11,7 +11,7 @@ const source=readFileSync(new URL('supabase/migrations/20261108410000_work_activ
 const catalog=readFileSync(new URL('supabase/migrations/20261108420000_work_activity_catalog.sql',root),'utf8');
 const schema=readFileSync(new URL('scripts/fixtures/work-activity-engine-online-schema.sql',root),'utf8');
 const hash=s=>createHash('sha256').update(s).digest('hex');
-assert.equal(hash(source),'e2c57266fa2f63e345b8ce232d737c7810c7e9509334b9abae56d7c8b77b5d15');
+assert.equal(hash(source),'aa767e67de301cd0ce5961758cc5afefe89bdf25fe27b3c4156a219c9cb2f648');
 assert.equal(hash(catalog),'a97e733bd06c4ea8632ed330b02ffb14d90cad748395dcbc7a3cfafbf178d002');
 assert.equal(hash(schema),'ee41a980b19f76baa8637101b62703ecdf798a32eccbb0e9f074fbfd71c62471');
 const module=process.env.PGLITE_MODULE??'@electric-sql/pglite';
