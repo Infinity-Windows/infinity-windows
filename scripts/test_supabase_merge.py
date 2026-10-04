@@ -210,7 +210,7 @@ class TestSchemaParsing(unittest.TestCase):
         # 20261035000000 to land after the bill-to migrations).
         # +10 monthly-values tables: private policy, immutable reviews and
         # frozen accounting/provenance, plus reserved reminder claims.
-        self.assertEqual(len(SCHEMA.tables), 219)  # six private engine tables, including two nonportable ephemeral tables
+        self.assertEqual(len(SCHEMA.tables), 226)  # substrate, cutover frames, authority, retained payroll safety and clock receipts
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 
@@ -741,9 +741,13 @@ class TestPlan(unittest.TestCase):
 
     def test_engine_retained_and_ephemeral_tables_refuse_every_generic_merge_side(self):
         names = ("work_activity_observations", "work_activity_streams", "work_setup_sessions",
-                 "personal_activity_transition_sources", "work_activity_transaction_context", "work_activity_expected_mutations")
-        for table in names:
-            self.assertEqual(DEDUP_KEYS[table], ("id",))
+                 "personal_activity_transition_sources", "work_activity_transaction_context", "work_activity_expected_mutations",
+                 "work_activity_operations", "work_activity_operation_people", "work_activity_operation_events", "work_activity_statement_frames", "work_activity_safety_events", "work_activity_clock_receipts")
+        identities = {table: ("id",) for table in names}
+        identities["work_activity_clock_receipts"] = ("client_id",)
+        identities["work_activity_authority_generation"] = ("singleton",)
+        for table, identity in identities.items():
+            self.assertEqual(DEDUP_KEYS[table], identity)
             self.assertIn(table, WORK_CAPTURE_MANUAL_RECONCILIATION_TABLES)
             for source, target, source_rows, target_rows in [
                 ({"tables": {table: {"rows": 1}}}, {}, {table: [{"id": "private-source"}]}, {}),

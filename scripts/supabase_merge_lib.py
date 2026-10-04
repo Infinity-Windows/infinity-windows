@@ -895,10 +895,18 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     # Private stream/setup identity is retained; transaction frames and exact
     # allowances are ephemeral and must never be copied to another backend.
     # Both dispositions refuse the generic merge path even for count-only data.
+    "work_activity_authority_generation": ("singleton",),
+    "work_activity_safety_events": ("id",),
+    "work_activity_clock_receipts": ("client_id",),
     "work_activity_observations": ("id",),
     "work_activity_streams": ("id",),
     "work_activity_transaction_context": ("id",),
     "work_activity_expected_mutations": ("id",),
+    "work_activity_operations": ("id",),
+    "work_activity_operation_people": ("id",),
+    "work_activity_operation_events": ("id",),
+    "work_activity_statement_frames": ("id",),
+
     "work_setup_sessions": ("id",),
     "personal_activity_transition_sources": ("id",),
 
@@ -946,6 +954,9 @@ WORK_CAPTURE_MANUAL_RECONCILIATION_TABLES = frozenset({
     "work_unit_fact_revisions",
     "work_unit_fact_current",
     "work_unit_fact_context_epochs",
+    "work_activity_authority_generation",
+    "work_activity_safety_events",
+    "work_activity_clock_receipts",
     "work_activity_observations",
     "work_activity_streams",
     "work_setup_sessions",
@@ -954,6 +965,10 @@ WORK_CAPTURE_MANUAL_RECONCILIATION_TABLES = frozenset({
     # portable work evidence. Never emit inserts or discard it silently.
     "work_activity_transaction_context",
     "work_activity_expected_mutations",
+    "work_activity_operations",
+    "work_activity_operation_people",
+    "work_activity_operation_events",
+    "work_activity_statement_frames",
 })
 
 #: Tables where combining two projects' rows is meaningless or actively wrong.

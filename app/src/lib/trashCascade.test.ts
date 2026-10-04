@@ -191,6 +191,7 @@ const UNIT_FACT_RETAINED = {
 } as const;
 const unitFactMigration = readFileSync(join(MIGRATIONS, UNIT_FACT_RETAINED.work_unit_fact_revisions.migration), "utf8");
 const engineSubstrate = readFileSync(join(MIGRATIONS, "20261108400000_work_activity_engine_substrate.sql"), "utf8");
+const engineCutover = readFileSync(join(MIGRATIONS, "20261108410000_work_activity_engine_cutover.sql"), "utf8");
 const ENGINE_RETAINED = ["work_activity_observations", "work_activity_streams", "work_setup_sessions", "personal_activity_transition_sources"] as const;
 const ENGINE_EPHEMERAL = ["work_activity_transaction_context", "work_activity_expected_mutations"] as const;
 
@@ -282,6 +283,29 @@ describe("purge_project handles every project-scoped table", () => {
       expect(ENGINE_RETAINED as readonly string[]).not.toContain(table);
     }
     expect(engineSubstrate).toContain("Deferred guard rejects commit unless every frame is closed");
+  });
+
+  it("retains authority and payroll safety evidence while cutover frames stay private and transient", () => {
+    const retained=["work_activity_authority_generation","work_activity_safety_events","work_activity_clock_receipts"];
+    const ephemeral=["work_activity_operations","work_activity_operation_people","work_activity_operation_events","work_activity_statement_frames"];
+    for(const table of [...retained,...ephemeral]){
+      const definition=engineCutover.split(`create table public.${table} (`)[1]?.split("\n);")[0];
+      expect(definition,table).toBeDefined();
+      expect(census[table],table).toBeUndefined();
+      expect(retainedEvidenceMutated(table,body),table).toBe(false);
+      expect(engineCutover).toContain(`alter table public.${table} enable row level security;`);
+      expect(engineCutover).toContain(`revoke all on table public.${table} from public,anon,authenticated;`);
+      expect(definition).not.toMatch(/references\s+public\.(projects|profiles|shifts|custom_work_units|project_openings)\b|on delete (cascade|set null)/i);
+      for(const mutation of [`DELETE FROM public.${table} WHERE true;`,`UPDATE public.${table} SET id=NULL;`]){
+        expect(retainedEvidenceMutated(table,body+mutation),table).toBe(true);
+      }
+    }
+    expect(retained).not.toContain(ephemeral[0]);
+    const safety=engineCutover.split("create table public.work_activity_safety_events (")[1]?.split("\n);")[0];
+    expect(safety).toMatch(/\bid uuid primary key/);
+    expect(safety).toMatch(/\bprofile_id uuid not null/);
+    expect(safety).toMatch(/\bactor_id uuid/);
+    expect(engineCutover).toContain("create trigger work_activity_safety_immutable before update or delete");
   });
 
   it("only claims a cascade for a table that is actually project-scoped", () => {
