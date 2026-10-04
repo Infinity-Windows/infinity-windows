@@ -18,6 +18,28 @@ const receipt = () => ({ protocolVersion: 1, commandId: COMMAND, action: "verify
   reviewRevision: 1, generation: 0, submissionId: null, recordedAt: AT, outcome: "applied" });
 
 describe("exact unit review boundary", () => {
+  const LETTER_ID = "abcdef12-abcd-4abc-8abc-abcdef123456";
+  it("normalizes request UUID spelling before durable identity comparisons", () => {
+    const raw = verify(); raw.basis.unitId = LETTER_ID.toUpperCase(); raw.basis.factId = LETTER_ID.toUpperCase();
+    expect(parseUnitReviewPayload(raw).basis).toMatchObject({ unitId: LETTER_ID, factId: LETTER_ID });
+    expect(raw.basis.unitId).toBe(LETTER_ID.toUpperCase());
+  });
+  it("rejects case-distinct duplicates as the same logical defect", () => {
+    expect(() => parseUnitReviewPayload({ action: "fail", basis: basis(), data: { note: null,
+      defects: [{ id: LETTER_ID, summary: "Seal" }, { id: LETTER_ID.toUpperCase(), summary: "Seal again" }] } })).toThrow();
+    expect(() => parseUnitReviewPayload({ action: "claim_resolved", basis: basis(), data: { note: null,
+      defectIds: [LETTER_ID, LETTER_ID.toUpperCase()] } })).toThrow();
+    const raw = reply(); raw.review.defects = [{ id: LETTER_ID, summary: "Seal", state: "open" },
+      { id: LETTER_ID.toUpperCase(), summary: "Seal", state: "open" }];
+    expect(() => parseUnitReviewReply(raw, UNIT)).toThrow();
+  });
+  it("binds SQL receipts and reads across equivalent UUID spellings", () => {
+    const raw = reply(); raw.review.basis.unitId = LETTER_ID;
+    expect(parseUnitReviewReply(raw, LETTER_ID.toUpperCase()).availability).toBe("available");
+    const original = parseUnitReviewPayload(verify()); original.basis.unitId = LETTER_ID.toUpperCase();
+    const historical = { ...receipt(), commandId: LETTER_ID, unitId: LETTER_ID };
+    expect(parseUnitReviewReceipt(historical, LETTER_ID.toUpperCase(), original)).toMatchObject({ commandId: LETTER_ID, unitId: LETTER_ID });
+  });
   it("retains original estimate and exact corroboration without numeric conversion", () => {
     const raw = reply(), parsed = parseUnitReviewReply(raw, UNIT);
     expect(parsed.availability).toBe("available");

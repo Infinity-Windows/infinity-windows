@@ -274,6 +274,10 @@ jobs:
         run: |
           npm run e2e -- work-capture-journal.spec.ts activity-protocol-journal.spec.ts
           npm run e2e -- work-capture-journal.spec.ts activity-protocol-journal.spec.ts --browser=webkit
+      - name: Original unit decisions survive native storage and explicit recovery
+        run: |
+          npm run e2e -- unit-review-native.spec.ts
+          npm run e2e -- unit-review-native.spec.ts --browser=webkit
       - name: Private work evidence and preserved Summary on phone browsers
         run: |
           npm run e2e -- work-data.spec.ts

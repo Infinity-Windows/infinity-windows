@@ -1,4 +1,4 @@
-import { cloneJson, postgresInstantMicros, uuid } from "../workConfiguration/model";
+import { cloneJson, postgresInstantMicros, uuid as validateUuid } from "../workConfiguration/model";
 
 export class UnitReviewProtocolError extends Error {
   constructor() { super("Unit review is unavailable. Refresh before another action."); this.name = "UnitReviewProtocolError"; }
@@ -64,6 +64,9 @@ function text(value: unknown, max: number, nonblank = false): string {
   return value;
 }
 const nullableText = (value: unknown, max: number, nonblank = false) => value === null ? null : text(value, max, nonblank);
+// PostgreSQL uuid values and normalized JSON requests use lowercase spelling.
+// Canonicalize before identity comparisons and duplicate checks as SQL does.
+const uuid = (value: unknown) => validateUuid(value).toLowerCase();
 const nullableUuid = (value: unknown) => value === null ? null : uuid(value);
 function utc(value: unknown): string {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z$/.test(value)) return fail();
@@ -140,7 +143,7 @@ function parseView(raw: unknown, unitId: string): ReviewView {
 }
 export function parseUnitReviewReply(raw: unknown, expectedUnitId: string): ReviewReply {
   try {
-    uuid(expectedUnitId);
+    expectedUnitId = uuid(expectedUnitId);
     const value = object(boundedClone(raw, 100000), ["protocolVersion", "asOf", "availability", "review"]);
     if (value.protocolVersion !== 1) fail();
     const asOf = utc(value.asOf);
@@ -179,18 +182,18 @@ export function parseUnitReviewPayload(raw: unknown): ReviewPayload {
 }
 export function parseUnitReviewReceipt(raw: unknown, commandId: string, expected?: Pick<ReviewPayload, "action" | "basis">): ReviewReceipt {
   try {
-    uuid(commandId);
+    commandId = uuid(commandId);
     const r = object(boundedClone(raw, 100000), ["protocolVersion", "commandId", "action", "unitId", "eventId", "reviewRevision", "generation", "submissionId", "recordedAt", "outcome"]);
     if (r.protocolVersion !== 1 || uuid(r.commandId) !== commandId || r.outcome !== "applied") fail();
     const action = oneOf(r.action, ACTIONS), unitId = uuid(r.unitId);
-    if (expected && (action !== expected.action || unitId !== expected.basis.unitId)) fail();
+    if (expected && (action !== expected.action || unitId !== uuid(expected.basis.unitId))) fail();
     return { protocolVersion: 1, commandId, action, unitId, eventId: uuid(r.eventId), reviewRevision: integer(r.reviewRevision, 1),
       generation: integer(r.generation), submissionId: nullableUuid(r.submissionId), recordedAt: utc(r.recordedAt), outcome: "applied" };
   } catch { return fail(); }
 }
 export function parseUnitReviewReceiptReply(raw: unknown, commandId: string): ReviewReceiptReply {
   try {
-    uuid(commandId);
+    commandId = uuid(commandId);
     const r = object(boundedClone(raw, 100000), ["protocolVersion", "availability", "receipt"]);
     if (r.protocolVersion !== 1) fail();
     if (r.availability === "unavailable") { if (r.receipt !== null) fail(); return { protocolVersion: 1, availability: "unavailable", receipt: null }; }
