@@ -165,13 +165,36 @@ async function fits(page: Page) {
   // WebKit can finish setViewportSize before its next layout is committed.
   // Require the same zero-overflow result after layout; persistent overflow
   // still fails and reports every offending element, including fixture controls.
-  await expect.poll(() => page.evaluate(() => ({
+  try { await expect.poll(() => page.evaluate(() => ({
     overflow: Math.max(0, document.documentElement.scrollWidth - innerWidth),
     outside: [...document.querySelectorAll<HTMLElement>("body *")]
       .filter((e) => e.getClientRects().length && (e.getBoundingClientRect().left < -.1 ||
         e.getBoundingClientRect().right > innerWidth + .1))
       .map((e) => e.tagName + "." + e.className),
-  }))).toEqual({ overflow: 0, outside: [] });
+  }))).toEqual({ overflow: 0, outside: [] }); }
+  catch (error) {
+    const measure = () => page.evaluate(() => {
+      const elements = [...document.querySelectorAll<HTMLElement>("html,body,body *")];
+      return {
+        viewport: { innerWidth, outerWidth, scrollX, rootClient: document.documentElement.clientWidth,
+          rootScroll: document.documentElement.scrollWidth, bodyClient: document.body.clientWidth, bodyScroll: document.body.scrollWidth,
+          visual: window.visualViewport ? { width: visualViewport!.width, scale: visualViewport!.scale, offsetLeft: visualViewport!.offsetLeft } : null },
+        active: document.activeElement?.outerHTML,
+        overflowing: elements.filter(e => e.getClientRects().length && (e.scrollWidth > e.clientWidth + 1 || e.getBoundingClientRect().right > innerWidth + .1))
+          .map(e => { const rect=e.getBoundingClientRect(), css=getComputedStyle(e); return { tag:e.tagName, class:e.className,
+            text:e.textContent?.slice(0,80), scroll:e.scrollWidth, client:e.clientWidth, rect:{left:rect.left,right:rect.right,width:rect.width},
+            width:css.width,minWidth:css.minWidth,maxWidth:css.maxWidth,overflow:css.overflow,font:css.fontSize,position:css.position,
+            before:getComputedStyle(e,"::before").content,after:getComputedStyle(e,"::after").content }; }),
+      };
+    });
+    console.log("[selected-job-layout/focused]", JSON.stringify(await measure()));
+    await page.screenshot({ path:"e2e/test-results/selected-job-layout-failure-focused.png",fullPage:true });
+    // Diagnostic only, after the original failure: establish whether focused
+    // native input state causes the width without allowing the test to pass.
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    console.log("[selected-job-layout/blurred]", JSON.stringify(await measure()));
+    throw error;
+  }
 }
 async function privateCache(page: Page): Promise<string> {
   return page.evaluate(() => JSON.stringify((window as Window & { readPrivateCache?: () => unknown }).readPrivateCache?.() ?? []));
