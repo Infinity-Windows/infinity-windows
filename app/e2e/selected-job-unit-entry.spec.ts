@@ -24,13 +24,13 @@ async function fixture(page:Page,entry="/") {
  if(entry!=="/")await page.evaluate(path=>window.dispatchEvent(new CustomEvent("fixture-navigate",{detail:path})),entry);
  return {writes,unexpected};
 }
-test('Add unit opens actual builder for selected job; cancel preserves current activity and clock',async({page})=>{
+test('Add unit opens actual builder for selected job; cancel preserves current activity and clock',async({page},testInfo)=>{
  const state=await fixture(page);
  await page.getByRole('button',{name:/BLACK22.*Black Desert/}).click();
  await page.getByRole('tab',{name:'Specific',exact:true}).click();
  await page.getByRole('button',{name:'Add unit',exact:true}).click();
  await expect(page.getByLabel('Unit number / name',{exact:true})).toBeVisible();
- await page.screenshot({path:'/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Selected-Job-Route-2026-10-04/UNIT-ENTRY-PHONE.png'});
+ await page.screenshot({path:testInfo.outputPath('UNIT-ENTRY-PHONE.png')});
  const box=await page.locator('.cw-editor').boundingBox();expect(box).not.toBeNull();expect(box!.x).toBeGreaterThanOrEqual(0);expect(box!.x+box!.width).toBeLessThanOrEqual(page.viewportSize()!.width+1);
  await expect(page.getByRole('combobox',{name:'Job',exact:true})).toHaveValue(PROJECT);
  await expect(page.getByRole('region',{name:'Current activity'})).toContainText('Unit 42');
@@ -42,14 +42,15 @@ test('Add unit opens actual builder for selected job; cancel preserves current a
  expect(await page.evaluate(()=>(window as Window&{__clockDoors?:number}).__clockDoors??0)).toBe(0);
 });
 
-test('Save unit records a canonical observation for the selected job without starting another activity',async({page})=>{
+test('Save unit records a canonical observation for the selected job without starting another activity',async({page},testInfo)=>{
  const state=await fixture(page,`/current-work?job=${PROJECT}&new_unit=1`);
  await page.getByLabel('Unit number / name',{exact:true}).fill('Unit 43');
+ await page.getByLabel('Type',{exact:true}).fill('Window');
  await page.getByLabel('Width',{exact:true}).fill('72');
  await page.getByLabel('Height',{exact:true}).fill('96');
  await page.getByRole('combobox',{name:'Dimension source',exact:true}).selectOption('estimated');
  await page.getByLabel('Width',{exact:true}).scrollIntoViewIfNeeded();
- await page.screenshot({path:'/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/UNIT-CREATION-PHONE-DIMENSIONS.png'});
+ await page.screenshot({path:testInfo.outputPath('UNIT-CREATION-PHONE-DIMENSIONS.png')});
  await expect(page.getByRole('combobox',{name:'Job',exact:true})).toBeDisabled();
  await expect(page.getByRole('button',{name:'Start this unit',exact:true})).toHaveCount(0);
  await page.getByRole('button',{name:'Save unit',exact:true}).click();
@@ -84,6 +85,8 @@ test('malformed or ambiguous create links never open a new draft or write',async
 test('a draft cannot save offline or in role preview; cancel still works',async({page})=>{
  const state=await fixture(page,`/current-work?job=${PROJECT}&new_unit=1`);
  await expect(page.getByLabel('Unit number / name',{exact:true})).toBeVisible();
+ await page.getByLabel('Unit number / name',{exact:true}).fill('Unit 43');
+ await page.getByLabel('Type',{exact:true}).fill('Window');
  await page.getByLabel('Width',{exact:true}).fill('72');
  await page.getByLabel('Height',{exact:true}).fill('96');
  await page.getByRole('combobox',{name:'Dimension source',exact:true}).selectOption('measured');
@@ -148,6 +151,8 @@ test('new unit dimensions are required; invalid values never reach the unit writ
 });
 for(const unit of ['in','ft','mm','cm']) test(`new unit retains original ${unit} observation and plan reference`,async({page})=>{
  const state=await fixture(page,`/current-work?job=${PROJECT}&new_unit=1`);
+ await page.getByLabel('Unit number / name',{exact:true}).fill('Unit 43');
+ await page.getByLabel('Type',{exact:true}).fill('Window');
  await page.getByLabel('Width',{exact:true}).fill('12.25');
  await page.getByLabel('Height',{exact:true}).fill('24.5');
  await page.getByRole('combobox',{name:'Measurement unit',exact:true}).selectOption(unit);
@@ -162,6 +167,8 @@ for(const unit of ['in','ft','mm','cm']) test(`new unit retains original ${unit}
 test('required creation fields and Save unit remain usable at320px',async({page})=>{
  await page.setViewportSize({width:320,height:720});
  const state=await fixture(page,`/current-work?job=${PROJECT}&new_unit=1`);
+ await page.getByLabel('Unit number / name',{exact:true}).fill('Unit 43');
+ await page.getByLabel('Type',{exact:true}).fill('Window');
  await page.getByLabel('Width',{exact:true}).fill('10');
  await page.getByLabel('Height',{exact:true}).fill('20');
  await page.getByRole('combobox',{name:'Dimension source',exact:true}).selectOption('measured');
@@ -172,6 +179,8 @@ test('required creation fields and Save unit remain usable at320px',async({page}
 });
 test('Spanish required dimensions preserve draft values with a reduced visible viewport',async({page})=>{
  const state=await fixture(page,`/current-work?job=${PROJECT}&new_unit=1`);
+ await page.getByLabel('Unit number / name',{exact:true}).fill('Unit 43');
+ await page.getByLabel('Type',{exact:true}).fill('Window');
  await page.getByLabel('Width',{exact:true}).fill('10');
  await page.getByLabel('Height',{exact:true}).fill('20');
  await page.evaluate(()=>window.dispatchEvent(new Event('fixture-language')));
@@ -182,4 +191,23 @@ test('Spanish required dimensions preserve draft values with a reduced visible v
  await page.getByRole('button',{name:'Guardar unidad',exact:true}).click();
  await expect.poll(()=>state.writes.length).toBe(1);
  expect(state.writes[0]).toMatchObject({p_action:'unit',p_data:{dimension_observation:{width:10,height:20,source:'estimated'}}});
+});
+
+test('selected job creation requires deliberate unit identity and rejects a known duplicate',async({page})=>{
+ const state=await fixture(page,`/current-work?job=${PROJECT}&new_unit=1`);
+ await page.getByLabel('Width',{exact:true}).fill('10');
+ await page.getByLabel('Height',{exact:true}).fill('20');
+ await page.getByRole('combobox',{name:'Dimension source',exact:true}).selectOption('measured');
+ for(const [name,type] of [['','Unknown'],['Unit 43','Unknown'],['Unit 43',''],['Unit 42','Window']]) {
+  await page.getByLabel('Unit number / name',{exact:true}).fill(name);
+  await page.getByLabel('Type',{exact:true}).fill(type);
+  await page.getByRole('button',{name:'Save unit',exact:true}).click();
+  await expect(page.getByRole('alert').filter({hasText:'Enter a distinct unit'})).toBeVisible();
+  expect(state.writes).toEqual([]);
+ }
+ await page.getByLabel('Unit number / name',{exact:true}).fill('Unit 43');
+ await page.getByLabel('Type',{exact:true}).fill('Window');
+ await page.getByRole('button',{name:'Save unit',exact:true}).click();
+ await expect.poll(()=>state.writes.length).toBe(1);
+ expect(state.writes[0]).toMatchObject({p_action:'unit',p_data:{label:'Unit 43',type_label:'Window'}});
 });

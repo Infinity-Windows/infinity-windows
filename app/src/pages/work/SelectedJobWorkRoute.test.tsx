@@ -85,4 +85,19 @@ describe("real selected-job route caller",()=>{
     let resolve!:(v:unknown[])=>void;m.projects=()=>new Promise(r=>{resolve=r;});await render();await act(async()=>{rememberSignedIn(null);rememberSignedIn({user:{id:ME}});});await flush();
     await act(async()=>resolve([]));await flush();expect(seen).toBeNull();expect(button("Alpha")).toBeUndefined();
   });
+  it("invalidates the stable review controller before route doors and global links",async()=>{
+    await render();await pick();const source=seen!.reviewSource!, invalidated=vi.spyOn(source,"invalidate");
+    m.navigate.mockImplementation(()=>expect(invalidated).toHaveBeenCalled());
+    seen!.onAsk();expect(m.navigate).toHaveBeenLastCalledWith("/ask");
+    const prior=invalidated.mock.calls.length;const link=document.createElement("a");link.href="/elsewhere";link.onclick=e=>e.preventDefault();document.body.append(link);
+    await act(async()=>link.click());link.remove();expect(invalidated.mock.calls.length).toBeGreaterThan(prior);
+    await render();expect(seen!.reviewSource).toBe(source);
+    const count=invalidated.mock.calls.length;await act(async()=>window.dispatchEvent(new PopStateEvent("popstate")));expect(invalidated.mock.calls.length).toBeGreaterThan(count);
+    // happy-dom dispatch exposes its internal GlobalWindow, not the public
+    // window proxy. Native Chromium separately exercises the real focus event.
+    const beforeFocus=invalidated.mock.calls.length, focus=new FocusEvent("focus");
+    Object.defineProperty(focus,"target",{value:window});
+    await act(async()=>window.dispatchEvent(focus));expect(invalidated.mock.calls.length).toBeGreaterThan(beforeFocus);
+  });
+
 });

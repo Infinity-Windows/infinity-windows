@@ -1,8 +1,8 @@
-import { useCallback, useMemo, useState, type ReactNode } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getRealProfile } from "./install/api";
 import { isOwner, isSupervisorPlus, type CrewRole } from "./install/types";
-import { ViewAsRoleContext, type PreviewPerson, type ViewAsRoleValue } from "./viewAsRoleContext";
+import { createSensitivePreviewLifetime, ViewAsRoleContext, type PreviewPerson, type ViewAsRoleValue } from "./viewAsRoleContext";
 
 const STORAGE_KEY = "infinity.viewAsRole";
 /** Read by getMyProfile too (outside React) — keep the key in sync there. */
@@ -40,6 +40,7 @@ export function ViewAsRoleProvider({ children }: { children: ReactNode }) {
   // the preview controls on it would lock the owner out of Reset the moment
   // a preview starts (the provider would "become" the previewed installer).
   const me = useQuery({ queryKey: ["myRealProfile"], queryFn: getRealProfile });
+  const queryClient = useQueryClient();
   const canPreview = isSupervisorPlus(me.data?.role);
   const canPreviewPerson = isOwner(me.data?.role);
   const [previewRole, setPreviewRoleState] = useState<CrewRole | null>(() => readStored());
@@ -47,9 +48,27 @@ export function ViewAsRoleProvider({ children }: { children: ReactNode }) {
     () => readStoredPerson(),
   );
 
+  // Raw preview survives presentation suppression when the real role changes.
+  // Sensitive work must never mistake that suppression for leaving preview.
+  const rawPreview = useRef({ role: previewRole, person: previewPerson });
+  const [sensitiveLifetime] = useState(() => createSensitivePreviewLifetime(() => {
+    const state = queryClient.getQueryState<Awaited<ReturnType<typeof getRealProfile>>>(["myRealProfile"]);
+    return { stamp: JSON.stringify([state?.dataUpdateCount, state?.errorUpdateCount, state?.status, state?.isInvalidated]),
+      ownerId: state?.data?.id ?? null, role: state?.data?.role ?? null,
+      ready: state?.status === "success" && !state.isInvalidated && !!state.data && !state.data.retired_at };
+  }, !!previewRole || !!previewPerson));
+  useLayoutEffect(() => {
+    sensitiveLifetime.authorityChanged();
+    return queryClient.getQueryCache().subscribe(event => {
+      if (event.query.queryKey.length === 1 && event.query.queryKey[0] === "myRealProfile") sensitiveLifetime.authorityChanged();
+    });
+  }, [queryClient, sensitiveLifetime]);
+
   const setPreviewRole = useCallback(
     (role: CrewRole | null) => {
       if (!canPreview) return;
+      rawPreview.current.role = role;
+      sensitiveLifetime.previewChanged(!!role || !!rawPreview.current.person);
       setPreviewRoleState(role);
       try {
         if (role) sessionStorage.setItem(STORAGE_KEY, role);
@@ -58,12 +77,15 @@ export function ViewAsRoleProvider({ children }: { children: ReactNode }) {
         /* sessionStorage unavailable (private mode) — keep in-memory only */
       }
     },
-    [canPreview],
+    [canPreview, sensitiveLifetime],
   );
 
   const setPreviewPerson = useCallback(
     (p: PreviewPerson | null) => {
       if (!canPreviewPerson) return;
+      rawPreview.current.person = p;
+      if (p) rawPreview.current.role = null;
+      sensitiveLifetime.previewChanged(!!rawPreview.current.role || !!p);
       setPreviewPersonState(p);
       // Person and role previews are mutually exclusive — one lens at a time.
       if (p) setPreviewRoleState(null);
@@ -75,11 +97,26 @@ export function ViewAsRoleProvider({ children }: { children: ReactNode }) {
         /* in-memory only */
       }
     },
-    [canPreviewPerson],
+    [canPreviewPerson, sensitiveLifetime],
   );
+
+  const returnAsYourself = useCallback(() => {
+    // Clearing one's stale session lens needs no permission to start a preview.
+    // Advance first: callbacks from the old lifetime must never revive.
+    sensitiveLifetime.previewChanged(true);
+    try {
+      sessionStorage.removeItem(STORAGE_KEY); sessionStorage.removeItem(PERSON_STORAGE_KEY);
+      if (sessionStorage.getItem(STORAGE_KEY) !== null || sessionStorage.getItem(PERSON_STORAGE_KEY) !== null) return;
+    } catch { return; } // A stored person lens may still affect other reads.
+    rawPreview.current = { role: null, person: null };
+    setPreviewRoleState(null); setPreviewPersonState(null);
+    sensitiveLifetime.previewChanged(false);
+  }, [sensitiveLifetime]);
 
   const value = useMemo<ViewAsRoleValue>(
     () => ({
+      sensitiveLifetime,
+      returnAsYourself,
       previewRole: canPreview ? previewRole : null,
       setPreviewRole,
       canPreview,
@@ -87,7 +124,7 @@ export function ViewAsRoleProvider({ children }: { children: ReactNode }) {
       setPreviewPerson,
       canPreviewPerson,
     }),
-    [canPreview, previewRole, setPreviewRole, canPreviewPerson, previewPerson, setPreviewPerson],
+    [canPreview, previewRole, setPreviewRole, canPreviewPerson, previewPerson, setPreviewPerson, sensitiveLifetime, returnAsYourself],
   );
 
   return <ViewAsRoleContext.Provider value={value}>{children}</ViewAsRoleContext.Provider>;

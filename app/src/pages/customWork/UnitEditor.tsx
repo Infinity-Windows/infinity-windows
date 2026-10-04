@@ -49,6 +49,7 @@ export function UnitEditor({
     in: "Pulgadas", ft: "Pies", mm: "Milímetros", cm: "Centímetros", save: "Guardar unidad",
     help: "Registra ancho, alto, unidad de medida y fuente. Guardar la unidad no inicia un temporizador.",
     estimate: "Esta estimación queda excluida de los promedios confiables hasta que se verifique.",
+    identity: "Ingresa un número o nombre único para la unidad y elige su tipo.",
     invalid: "Ingresa ancho y alto positivos y elige la unidad de medida y la fuente.",
   } : {
     width: "Width", height: "Height", units: "Measurement unit", source: "Dimension source", choose: "Choose a source",
@@ -56,6 +57,7 @@ export function UnitEditor({
     in: "Inches", ft: "Feet", mm: "Millimeters", cm: "Centimeters", save: "Save unit",
     help: "Record width, height, units and source. Saving the unit does not start a timer.",
     estimate: "This estimate is excluded from trusted averages until verified.",
+    identity: "Enter a distinct unit number or name and choose its type.",
     invalid: "Enter positive width and height, then choose measurement units and source.",
   };
   const [dimensions, setDimensions] = useState<DimensionDraft>({
@@ -63,6 +65,7 @@ export function UnitEditor({
     source: defaults?.facts.area_source === "From plans" ? "plans" : "", reference: "",
   });
   const [dimensionError, setDimensionError] = useState("");
+  const [identityError, setIdentityError] = useState("");
   const [name, setName] = useState(unit?.label ?? label ?? "");
   const [job, setJob] = useState(
     unit ? (unit.project_id ?? "") : (jobId ?? ""),
@@ -160,6 +163,13 @@ export function UnitEditor({
       try { observation = observationFromDraft(dimensions); setDimensionError(""); }
       catch { setDimensionError(c.invalid); return; }
     }
+    if (requiredDimensions) {
+      if (!name.trim() || !type.trim() || type.trim().toLowerCase() === "unknown" ||
+          existingUnits?.some(u => u.project_id === job && u.label.trim().toLowerCase() === name.trim().toLowerCase())) {
+        setIdentityError(c.identity); return;
+      }
+      setIdentityError("");
+    }
     const value = {
         id: unit?.id ?? crypto.randomUUID(),
         revision: unit?.revision ?? 0,
@@ -230,6 +240,7 @@ export function UnitEditor({
             </select>
           </label>
         </div>
+        {identityError && <p role="alert" className="cw-error">{identityError}</p>}
         {(unit?.project_id ?? null) !== (job || null) && unit && (
           <label>
             Assignment reason

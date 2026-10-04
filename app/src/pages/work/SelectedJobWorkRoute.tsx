@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useIsRestoring, useQuery, useQueryClient } from "@tanstack/react-query";
 import { SelectedJobWork } from "./SelectedJobWork";
@@ -23,6 +23,7 @@ import { getMyProfile } from "../../lib/install/api";
 import { isForemanPlus } from "../../lib/install/types";
 import { signedInUserId, signInGeneration, subscribeSignedIn } from "../../lib/signedIn";
 import { useViewAsRole } from "../../lib/viewAsRoleContext";
+import { createUnitReviewSelectionSource } from "../../lib/workUnitReview/useUnitReviewCoordinator";
 import { useSelectedJobWorkGate } from "../../lib/workActivity/selectedJobWorkGate";
 import { useSelectedJobPreference } from "../../lib/workActivity/selectedJobPreference";
 import { useRouteJobUnits } from "../../lib/workActivity/useRouteJobUnits";
@@ -77,6 +78,19 @@ export function SelectedJobWorkRoute() {
 function SelectedJobWorkRouteBody({owner, generation, previewDisabled}: {owner: string | null; generation: number; previewDisabled: boolean}) {
   const t = useT(), { lang } = useLanguage(), c = copy[lang === "es" ? "es" : "en"];
   const navigate = useNavigate(), qc = useQueryClient(), clock = useClock();
+  const [reviewSource] = useState(createUnitReviewSelectionSource);
+  const closeReview = () => reviewSource.invalidate();
+  const go = (path: string) => { closeReview(); navigate(path); };
+  useLayoutEffect(() => {
+    const close = () => reviewSource.invalidate();
+    const link = (event: MouseEvent) => { if (event.target instanceof Element && event.target.closest("a[href]")) close(); };
+    const focus = (event: FocusEvent) => { if (event.target === window) close(); };
+    window.addEventListener("popstate", close);
+    // Close before useRouteRead starts its focus-driven job/unit refresh.
+    window.addEventListener("focus", focus, true);
+    document.addEventListener("click", link, true);
+    return () => { close(); window.removeEventListener("popstate", close); window.removeEventListener("focus", focus, true); document.removeEventListener("click", link, true); };
+  }, [reviewSource]);
   useSafeSurface();
   const rollout = useSelectedJobWorkGate();
   const allowed = rollout && !!owner && !previewDisabled;
@@ -119,20 +133,23 @@ function SelectedJobWorkRouteBody({owner, generation, previewDisabled}: {owner: 
   const settings = useQuery({queryKey: ["companySettings"], queryFn: getCompanySettings});
   const gate = {talkExists: talk.isSuccess ? talk.data !== null : null,
     signedToday: toolbox.isSuccess ? !!toolbox.data : null, ruleActive: paidTimeRuleActive(settings.data, today)};
-  const refreshClock = () => { clock.refresh(); void qc.invalidateQueries({queryKey: ["openShift"]}); };
+  const refreshClock = () => { closeReview(); clock.refresh(); void qc.invalidateQueries({queryKey: ["openShift"]}); };
   // Dialog drafts belong to this login and explicit job, not a read observer.
   // A foreground refetch must not unmount and erase a worker's unsaved text.
   const [logFor, setLogFor] = useState<{id: string; name: string} | null>(null);
   const [problemFor, setProblemFor] = useState<string | null>(null);
   const sourceReady = allowed && projects.state === "ready" && !!profileId;
-  return <div className="page work-screen sjwr" data-testid="selected-job-work-route">
+  return <div className="page work-screen sjwr" data-testid="selected-job-work-route" onClickCapture={event => {
+      // Covers local saved-unit/Ask/Schedule links before React Router navigates.
+      if (event.target instanceof Element && event.target.closest("a[href]")) closeReview();
+    }}>
     <LiveSummonsStrip />
     <ClockStrip nativeFlow={previewDisabled ? null : native} profileId={profileId ?? owner ?? ""} shift={currentShift}
       clockKnown={freshClock && !clock.loading && !restoring} todayJobId={null}
       scheduleSettled={schedule.state === "ready" || schedule.state === "unavailable"}
       talk={talk.data ?? null} gate={gate} toolboxDone={toolbox} onShiftChanged={refreshClock} />
     <nav className="sjwr-navigation" aria-label={t("work.title")}>
-      <button className="ws-btn" onClick={() => openClockGlobally()}>{t("work.clock.moreOptions")}</button>
+      <button className="ws-btn" onClick={() => { closeReview(); openClockGlobally(); }}>{t("work.clock.moreOptions")}</button>
       <Link className="ws-btn" to="/my-schedule">{lang === "es" ? "Horario" : "Schedule"}</Link>
       <Link className="ws-btn" to="/ask">{lang === "es" ? "Preguntar" : "Ask"}</Link>
     </nav>
@@ -141,13 +158,13 @@ function SelectedJobWorkRouteBody({owner, generation, previewDisabled}: {owner: 
       <label className="ws-search"><input type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder={c.search} aria-label={c.search} /></label>
       {!sourceReady && <p role="status" className="ws-meta">{projects.state === "loading" && allowed ? t("crewStart.loading") : c.unavailable}</p>}
       <div className="ws-list">{filtered.map(p => <button key={p.id} className="ws-list-item" disabled={!sourceReady}
-        onClick={() => { pref.pick(p.id); setCostPick(null); }}>
+        onClick={() => { closeReview(); pref.pick(p.id); setCostPick(null); }}>
         <span className="ws-list-code">{p.job_code}</span><span className="ws-list-name">{p.name}</span>
         {p.id === scheduledId && <small>{c.scheduled}</small>}
       </button>)}</div>
       {sourceReady && filtered.length === 0 && <p className="ws-meta">{c.noMatch}</p>}
     </section> : <>
-      <button className="ws-btn" data-testid="sjwr-change-job" onClick={() => { pref.clear(); setCostPick(null); setLogFor(null); setProblemFor(null); }}>{c.change}</button>
+      <button className="ws-btn" data-testid="sjwr-change-job" onClick={() => { closeReview(); pref.clear(); setCostPick(null); setLogFor(null); setProblemFor(null); }}>{c.change}</button>
       <section className="ws-card">
         <label className="ws-label" htmlFor="sjwr-cost">{lang === "es" ? "Código de costo para completar configuración" : "Cost code to finish setup"}</label>
         <select id="sjwr-cost" value={costId ?? ""} disabled={codes.state !== "ready"} onChange={e => setCostPick({job: project.id, id: e.target.value})}>
@@ -157,13 +174,13 @@ function SelectedJobWorkRouteBody({owner, generation, previewDisabled}: {owner: 
       </section>
       {paid.stale && <p role="status" className="ws-meta">{t("paidClock.staleHelp")}</p>}
       {unitRead.state !== "ready" && <p role="status" className="ws-meta">{c.unavailable}</p>}
-      <SelectedJobWork project={{id: project.id, name: project.name, code: project.job_code}}
+      <SelectedJobWork reviewSource={reviewSource} project={{id: project.id, name: project.name, code: project.job_code}}
         units={unitRead.units} featureEnabled={sourceReady && freshClock && unitRead.state === "ready"}
         previewDisabled={previewDisabled} paidSeconds={paid.stale ? null : paid.seconds}
         setupAllocation={freshClock && native?.current?.kind === "open" && costId ? {projectId: project.id, costCodeId: costId} : null}
-        onAddUnit={() => navigate(`/current-work?job=${project.id}&new_unit=1`)}
-        onOpenClock={() => openClockGlobally()} onBreak={() => openClockGlobally()} onClockOut={() => openClockGlobally()}
-        onSchedule={() => navigate("/my-schedule")} onAsk={() => navigate("/ask")} />
+        onAddUnit={() => go(`/current-work?job=${project.id}&new_unit=1`)}
+        onOpenClock={() => { closeReview(); openClockGlobally(); }} onBreak={() => { closeReview(); openClockGlobally(); }} onClockOut={() => { closeReview(); openClockGlobally(); }}
+        onSchedule={() => go("/my-schedule")} onAsk={() => go("/ask")} />
       <CrewGoalCard projectId={project.id} />
       <section className="ws-card" aria-label={t("work.unit.savedUnits")}>
         <h2 className="ws-h2">{t("work.unit.savedUnits")}</h2>

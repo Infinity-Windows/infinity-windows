@@ -1,0 +1,7 @@
+.activity-totals-panel{max-width:100%;min-width:0;overflow-wrap:anywhere}
+.activity-totals-panel dl{margin:12px 0}
+.activity-totals-panel dl>div{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:4px 12px;padding:8px 0;border-bottom:1px solid var(--border,#ddd)}
+.activity-totals-panel dt,.activity-totals-panel dd{min-width:0;margin:0;overflow-wrap:anywhere}
+.activity-totals-panel dd+dd{grid-column:1/-1;font-size:.875rem}
+.activity-totals-panel button{min-height:44px;white-space:normal}
+.activity-totals-panel ul{padding-inline-start:20px}

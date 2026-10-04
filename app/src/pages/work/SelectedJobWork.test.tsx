@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { rememberSignedIn } from "../../lib/signedIn";
 import type { ProjectActivityViewProps } from "../../components/work/ProjectActivityView";
 import type { Snapshot } from "../../lib/workActivity/protocol";
+import type { SelectedUnitReviewProps } from "./SelectedUnitReview";
+import { createUnitReviewSelectionSource } from "../../lib/workUnitReview/useUnitReviewCoordinator";
 import type { SelectedJobWorkProps } from "./SelectedJobWork";
 import type { SelectedJobUnitDimensionsProps } from "./SelectedJobUnitDimensions";
 import type { UnitBasis } from "../../lib/workActivity/protocol";
@@ -12,12 +14,17 @@ import type { UnitBasis } from "../../lib/workActivity/protocol";
 const ID = (n: number) => `00000000-0000-0000-0000-${String(n).padStart(12, "0")}`;
 const OWNER = ID(1), DEVICE = ID(2), JOB = ID(3), COMMAND = ID(4);
 const at = "2026-10-04T06:00:00.000000Z";
+let reviewSeen: SelectedUnitReviewProps | null = null;
+vi.mock("./SelectedUnitReview", () => ({ SelectedUnitReview: (p: SelectedUnitReviewProps) => { reviewSeen = p; return <div>Review binding</div>; } }));
 let seen: ProjectActivityViewProps | null = null;
 let dimensionSeen: SelectedJobUnitDimensionsProps | null = null;
 const m = vi.hoisted(() => ({
   device: vi.fn(), head: vi.fn(), save: vi.fn(), dispatch: vi.fn(),
   snapshot: vi.fn(), catalog: vi.fn(), unit: vi.fn(),
+  totals: vi.fn(),
 }));
+vi.mock("../../lib/workActivityTotals/useActivityTotals", () => ({ useActivityTotals: (...args: unknown[]) => m.totals(...args) }));
+vi.mock("../../components/work/ActivityTotalsPanel", () => ({ ActivityTotalsPanel: () => <div>Totals adapter</div> }));
 vi.mock("../../components/work/ProjectActivityView", () => ({
   ProjectActivityView: (props: ProjectActivityViewProps) => {
     seen = props;
@@ -68,8 +75,9 @@ async function render(changes: Partial<SelectedJobWorkProps> = {}) {
 function button(label: string) { return [...host.querySelectorAll("button")].find((b) => b.textContent === label)!; }
 async function click(label: string) { await act(async () => button(label).click()); }
 beforeEach(() => {
-  rememberSignedIn({ user: { id: OWNER } }); seen = null; dimensionSeen = null;
+  rememberSignedIn({ user: { id: OWNER } }); seen = null; dimensionSeen = null; reviewSeen = null;
   for (const fn of Object.values(m)) fn.mockReset();
+  m.totals.mockReturnValue({ state: "held", data: null, liveElapsedMicros: 0n, refresh: vi.fn() });
   m.device.mockResolvedValue(DEVICE); m.head.mockResolvedValue(null);
   m.snapshot.mockImplementation((_id: string | null, enabled: boolean) => ({
     state: enabled ? "ready" : "blocked", data: enabled ? { value: snapshot, requestStartedAt: performance.now(), login: { userId: OWNER, generation: 1 } } : undefined,
@@ -250,14 +258,15 @@ describe("dormant selected-job orchestration", () => {
       state: { ...snapshot.state!, revision: 1, actions: { canEstablishStream: false, canSwitch: true, canFinishSetup: false, canStop: false } } };
     m.snapshot.mockReturnValue({ state: "ready", data: { value: active }, refresh: vi.fn() });
     m.head.mockResolvedValue({ ...record, receipt: { status: "applied", afterRevision: 1 } });
-    const onSave = vi.fn(async () => { throw Error("Unknown save outcome"); });
+    const reviewSource = createUnitReviewSelectionSource(), invalidated = vi.spyOn(reviewSource, "invalidate");
+    const onSave = vi.fn(async () => { expect(invalidated).toHaveBeenCalled(); throw Error("Unknown save outcome"); });
     const entry = (): NonNullable<SelectedJobWorkProps["dimensionEntry"]> => ({ units: [{ id: UNIT, project_id: JOB, opening_id: null,
       created_by: OWNER, label: "Unit", type_label: "Aluminum", revision: unitRevision, facts: {}, created_at: at, updated_at: at }],
       unitSourceState: "ready", canEditDimensions: true, pendingUnitIds: [], onSave, onRefreshUnits: vi.fn() });
-    await render({ units: [{ id: UNIT, label: "Unit" }], dimensionEntry: entry() });
+    await render({ reviewSource, units: [{ id: UNIT, label: "Unit" }], dimensionEntry: entry() });
     await act(async () => seen!.onSelectUnit(UNIT));
     expect(seen!.selectedUnitState).toBe("ready");
-    const original = { id: UNIT, revision: 5, expected_fact_revision: 2 };
+    const original = { id: UNIT, revision: 5, expected_fact_revision: 2 }; invalidated.mockClear();
     await act(async () => { await expect(dimensionSeen!.onSave(original)).rejects.toThrow("Unknown save outcome"); });
     expect(onSave).toHaveBeenCalledWith(original);
     expect(seen!.selectedUnitState).toBe("unavailable");
@@ -280,6 +289,48 @@ describe("dormant selected-job orchestration", () => {
     const oldSave = dimensionSeen!.onSave;
     await act(async () => seen!.onSelectUnit(ID(32)));
     await expect(oldSave({ id: ID(30), revision: 5, expected_fact_revision: 2 })).rejects.toThrow();
+    await act(async () => seen!.onSelectUnit(ID(30)));
+    await expect(oldSave({ id: ID(30), revision: 5, expected_fact_revision: 2 })).rejects.toThrow();
     expect(onSave).not.toHaveBeenCalled();
   });
+  it("closes review before unit, tab, navigation and refresh actions", async () => {
+    const reviewSource=createUnitReviewSelectionSource(), invalidate=vi.spyOn(reviewSource,"invalidate");
+    await render({reviewSource,units:[{id:ID(10),label:"One"},{id:ID(11),label:"Two"}]});
+    await act(async()=>{seen!.onTabChange("specific");seen!.onSelectUnit(ID(10));});
+    expect(reviewSeen?.unitId).toBe(ID(10));const old=reviewSeen!;
+    const count=invalidate.mock.calls.length;await act(async()=>seen!.onSelectUnit(ID(11)));
+    expect(invalidate.mock.calls.length).toBeGreaterThan(count);expect(old.admitted()).toBe(false);
+    await act(async()=>seen!.onSelectUnit(ID(10)));const beforeStale=invalidate.mock.calls.length;await act(async()=>old.onRefresh());expect(invalidate.mock.calls.length).toBe(beforeStale);
+    const before=invalidate.mock.calls.length;await act(async()=>reviewSeen!.onRefresh());expect(invalidate.mock.calls.length).toBeGreaterThan(before);
+    await act(async()=>seen!.onTabChange("general"));expect(old.admitted()).toBe(false);
+    const onAsk=vi.fn(()=>expect(invalidate.mock.calls.length).toBeGreaterThan(before));await render({onAsk});await click("Ask");expect(onAsk).toHaveBeenCalledOnce();
+  });
+
+  for (const boundary of ["unit", "back"] as const) it(`refreshes settled activity after ${boundary} changes without reviving review or writing again`, async () => {
+    let revision = 1;
+    const refresh = vi.fn(async () => { revision = 2; });
+    const read = () => ({ ...snapshot,
+      stream: { clientGeneration: ID(14), headSequence: 0, headCommandId: COMMAND, headAfterRevision: revision, status: "active" },
+      state: { ...snapshot.state!, revision, actions: { canEstablishStream: false, canSwitch: false, canFinishSetup: false, canStop: true } } });
+    m.snapshot.mockImplementation(() => ({ state: "ready", data: { value: read(), requestStartedAt: performance.now() }, refresh }));
+    m.head.mockResolvedValue({ ...record, receipt: { status: "applied", afterRevision: 1 } });
+    m.save.mockResolvedValue({ kind: "saved", record });
+    let settle!: (value: unknown) => void;
+    m.dispatch.mockImplementation(() => new Promise(resolve => { settle = resolve; }));
+    const reviewSource = createUnitReviewSelectionSource();
+    await render({ reviewSource, units: [{ id: ID(30), label: "One" }] });
+    await act(async () => { button("Stop current activity").click(); });
+    expect(m.dispatch).toHaveBeenCalledOnce();
+    await act(async () => {
+      if (boundary === "unit") { seen!.onTabChange("specific"); seen!.onSelectUnit(ID(30)); }
+      else window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+    await act(async () => { settle({ kind: "settled", receipt: { status: "applied", afterRevision: 2 } }); await Promise.resolve(); });
+    expect(refresh).toHaveBeenCalledOnce();
+    expect(button("Stop current activity")).toBeTruthy();
+    expect(button("Stop current activity").disabled).toBe(false);
+    expect(reviewSource.getSnapshot().selection).toBeNull();
+    expect(m.save).toHaveBeenCalledOnce(); expect(m.dispatch).toHaveBeenCalledOnce();
+  });
+
 });

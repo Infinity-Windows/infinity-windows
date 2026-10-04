@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useLanguage } from "../../lib/i18n";
 import { signedInUserId, signInGeneration, stillSignedInAs, subscribeSignedIn } from "../../lib/signedIn";
 import { useViewAsRole } from "../../lib/viewAsRoleContext";
@@ -11,7 +11,14 @@ import { saveActivityTap } from "../../lib/workActivity/saveTap";
 import { dispatchSavedActivityCommand } from "../../lib/workActivity/dispatch";
 import { unitCommandBasis, type Intent } from "../../lib/workActivity/protocol";
 import { SelectedJobUnitDimensions, type SelectedJobUnitDimensionsProps } from "./SelectedJobUnitDimensions";
+import { createUnitReviewSelectionSource } from "../../lib/workUnitReview/useUnitReviewCoordinator";
+import type { SelectedUnitReviewSource } from "./SelectedUnitReview";
+import { useActivityTotals } from "../../lib/workActivityTotals/useActivityTotals";
+import { choiceTotals, personalScopeSeconds } from "../../lib/workActivityTotals/format";
+import { REVIEW_FRESH_MS } from "../../lib/workUnitReview/coordinator";
 import "./SelectedJobWork.css";
+const UnitReview = lazy(async () => ({ default: (await import("./SelectedUnitReview")).SelectedUnitReview }));
+const ActivityTotals = lazy(async () => ({ default: (await import("../../components/work/ActivityTotalsPanel")).ActivityTotalsPanel }));
 
 export interface SelectedJobWorkProps {
   /** The real selected job, supplied by the production route; never a schedule fallback. */
@@ -25,6 +32,8 @@ export interface SelectedJobWorkProps {
   paidSeconds: number | null;
   /** Explicit setup allocation chosen upstream, or null when none is selected. */
   setupAllocation: { projectId: string; costCodeId: string | null } | null;
+  /** Shared with the route so every navigation door closes review first. */
+  reviewSource?: SelectedUnitReviewSource;
   dimensionsSlot?: ReactNode;
   /** Fresh canonical units and their existing durable save seam, owned by the route. */
   dimensionEntry?: Omit<SelectedJobUnitDimensionsProps, "projectId" | "selectedUnitId" | "unitBasis" | "enabled" | "onRefreshActivity">;
@@ -84,6 +93,9 @@ export function SelectedJobWork(props: SelectedJobWorkProps) {
   const owner = useSyncExternalStore(subscribeSignedIn, signedInUserId, () => null);
   const generation = useSyncExternalStore(subscribeSignedIn, signInGeneration, () => 0);
   const preview = useViewAsRole();
+  const [localReviewSource] = useState(createUnitReviewSelectionSource);
+  const reviewSource = props.reviewSource ?? localReviewSource;
+  useLayoutEffect(() => () => reviewSource.invalidate(), [reviewSource]);
   const { lang } = useLanguage();
   const locale = lang === "es" ? "es" : "en";
   const enabled = props.featureEnabled && !props.previewDisabled && !preview.previewPerson && !preview.previewRole && !!owner && validId(props.project.id);
@@ -95,12 +107,23 @@ export function SelectedJobWork(props: SelectedJobWorkProps) {
     onOpenClock={props.onOpenClock} onBreak={props.onBreak} onClockOut={props.onClockOut}
     onSchedule={props.onSchedule} onAsk={props.onAsk} />;
   return <SelectedJobWorkActive key={owner + ":" + generation + ":" + props.project.id}
-    {...props} owner={owner!} generation={generation} locale={locale} />;
+    {...props} reviewSource={reviewSource} owner={owner!} generation={generation} locale={locale} />;
 }
 
-function SelectedJobWorkActive(props: SelectedJobWorkProps & { owner: string; generation: number; locale: "en" | "es" }) {
+function SelectedJobWorkActive(props: SelectedJobWorkProps & { reviewSource: SelectedUnitReviewSource; owner: string; generation: number; locale: "en" | "es" }) {
   const { owner, generation, locale, project } = props;
   const t = copy[locale];
+  const reviewSource = props.reviewSource;
+  const reviewLifetime = useRef(0), selectionLifetime = useRef(0), reviewOpen = useRef(true);
+  const [, repaintSelection] = useState(0);
+  const closeReview = () => { reviewLifetime.current++; reviewSource.invalidate(); };
+  const leaveReview = (next: () => void) => { selectionLifetime.current++; reviewOpen.current = false; closeReview(); next(); };
+  useLayoutEffect(() => {
+    reviewOpen.current = true;
+    const close = () => { selectionLifetime.current++; reviewOpen.current = false; reviewLifetime.current++; reviewSource.invalidate(); };
+    window.addEventListener("popstate", close);
+    return () => { close(); window.removeEventListener("popstate", close); };
+  }, [reviewSource]);
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const [deviceError, setDeviceError] = useState(false);
   const [tab, setTab] = useState<ActivityScope>("general");
@@ -146,6 +169,28 @@ function SelectedJobWorkActive(props: SelectedJobWorkProps & { owner: string; ge
     canonicalUnit.opening_id === matchingUnitBasis.openingId && canonicalUnit.revision === matchingUnitBasis.operationalRevision &&
     canonicalUnit.revision > heldBasis.unitRevision && (matchingUnitBasis.fact?.revision ?? 0) > heldBasis.factRevision;
   const dimensionHeld = !!unitId && (!!dimensionEntry?.pendingUnitIds.includes(unitId) || (!!heldBasis && !laterDimensionBasis));
+  const reviewLive = useRef({ unitId, tab, unit: basis.data, catalog: catalog.data, dimensionHeld });
+  useLayoutEffect(() => { reviewLive.current = { unitId, tab, unit: basis.data, catalog: catalog.data, dimensionHeld }; });
+  const reviewEpoch = reviewLifetime.current, selectionEpoch = selectionLifetime.current;
+  const reviewAdmitted = () => current() && reviewOpen.current && reviewLifetime.current === reviewEpoch
+    && liveUnitId.current === unitId && reviewLive.current.unitId === unitId && reviewLive.current.tab === "specific"
+    && reviewLive.current.unit?.requestStartedAt === basis.data?.requestStartedAt
+    && reviewLive.current.catalog?.requestStartedAt === catalog.data?.requestStartedAt
+    && reviewLive.current.unit?.value === basis.data?.value && reviewLive.current.catalog?.value === catalog.data?.value
+    && !reviewLive.current.dimensionHeld;
+  const totalsUnitId = tab === "specific" ? unitId : null;
+  const totalsAdmitted = () => current() && reviewOpen.current && reviewLifetime.current === reviewEpoch
+    && selectionLifetime.current === selectionEpoch && reviewLive.current.tab === tab
+    && catalogReady && catalog.state === "ready" && !!catalog.data
+    && performance.now() - catalog.data.requestStartedAt >= 0
+    && performance.now() - catalog.data.requestStartedAt < REVIEW_FRESH_MS
+    && reviewLive.current.catalog === catalog.data
+    && (tab === "general" || (!!unitId && reviewAdmitted()));
+  // Only real read/selection transitions reopen totals. An unrelated clock
+  // repaint updates the live callback without starting another server read.
+  const totalsAdmissionRevision = JSON.stringify([reviewEpoch, selectionEpoch, tab,
+    catalog.state, catalog.data?.requestStartedAt, basis.state, basis.data?.requestStartedAt, catalogReady]);
+  const totals = useActivityTotals(project.id, totalsUnitId, reviewSource, totalsAdmitted, totalsAdmissionRevision);
   let frozenUnit: ReturnType<typeof unitCommandBasis> | null = null;
   if (!dimensionHeld && unitId && basis.state === "ready" && unitReply?.availability === "available" &&
       catalogUnit?.id === unitId && unitReply.unit.projectId === project.id) {
@@ -165,7 +210,7 @@ function SelectedJobWorkActive(props: SelectedJobWorkProps & { owner: string; ge
     menuVersionId: selection.menuVersionId, definitionVersionId: activity.definitionVersionId,
     definitionId: activity.definitionId, scope: activity.scope,
     label: { en: activity.labelEn, es: activity.labelEs }, kind: activity.machineSelection ? "machinery" : "activity",
-    fields: activity.typedFields, personalSeconds: null, scopeTotalSeconds: null,
+    fields: activity.typedFields, ...choiceTotals(totals.data, activity.definitionVersionId, totals.liveElapsedMicros),
     eligible: activity.eligibleNow,
     unavailableReason: activity.eligibleNow ? undefined : { en: "This activity is unavailable.", es: "Esta actividad no está disponible." },
   })) : [];
@@ -211,12 +256,26 @@ function SelectedJobWorkActive(props: SelectedJobWorkProps & { owner: string; ge
   }, [deviceId, owner, generation]);
 
   async function refreshReads() {
+    if (!current() || !reviewOpen.current || selectionLifetime.current !== selectionEpoch || liveUnitId.current !== unitId) return;
+    closeReview();
     await Promise.all([snapshot.refresh(), catalog.refresh(), unitId ? basis.refresh() : Promise.resolve()]);
   }
+  // Activity receipts belong to the current login/device stream even if its
+  // selected unit changed during delivery. Refresh the latest committed read
+  // callbacks so the activity controls recover, while closing review first.
+  const refreshAfterActivity = useRef(async () => {});
+  useLayoutEffect(() => {
+    refreshAfterActivity.current = async () => {
+      if (!current()) return;
+      closeReview();
+      await Promise.all([snapshot.refresh(), catalog.refresh(), unitId ? basis.refresh() : Promise.resolve()]);
+    };
+  });
   async function saveDimension(data: Readonly<Record<string, unknown>>) {
-    if (!dimensionEntry || !unitId || liveUnitId.current !== unitId || data.id !== unitId || !current() ||
+    if (!dimensionEntry || !unitId || !reviewOpen.current || selectionLifetime.current !== selectionEpoch || liveUnitId.current !== unitId || data.id !== unitId || !current() ||
       !Number.isSafeInteger(data.revision) || (data.revision as number) < 1 ||
       !Number.isSafeInteger(data.expected_fact_revision) || (data.expected_fact_revision as number) < 0) throw new Error(t.review);
+    closeReview();
     setDimensionHolds((old) => ({ ...old, [unitId]: {
       unitRevision: data.revision as number, factRevision: data.expected_fact_revision as number,
     } }));
@@ -228,7 +287,7 @@ function SelectedJobWorkActive(props: SelectedJobWorkProps & { owner: string; ge
     if (outcome.kind === "settled") {
       setHead({ ...row, receipt: outcome.receipt, uncertain: false });
       setMessage(outcome.receipt.status === "applied" || outcome.receipt.status === "noop" ? null : t.rejected);
-      await refreshReads();
+      await refreshAfterActivity.current();
     } else {
       if (outcome.kind === "unknown" || outcome.reason === "receipt_unknown") setHead({ ...row, uncertain: true });
       setMessage(outcome.kind === "unknown" || outcome.reason === "receipt_unknown" ? t.saved : t.held);
@@ -236,6 +295,7 @@ function SelectedJobWorkActive(props: SelectedJobWorkProps & { owner: string; ge
   }
   async function act(intent: Intent) {
     if (inFlight.current || !source || !deviceId || !current() || !recovered || !snapshotReady) return;
+    closeReview();
     inFlight.current = true; setBusy(true); setMessage(null);
     try {
       const saved = await saveActivityTap(deviceId, source, intent);
@@ -254,6 +314,7 @@ function SelectedJobWorkActive(props: SelectedJobWorkProps & { owner: string; ge
   }
   async function retryOriginal() {
     if (!head || head.receipt || !deviceId || inFlight.current || !current()) return;
+    closeReview();
     inFlight.current = true; setBusy(true);
     try { await dispatchOriginal(head, "retry_original"); }
     catch { if (current()) setMessage(t.saved); }
@@ -285,19 +346,32 @@ function SelectedJobWorkActive(props: SelectedJobWorkProps & { owner: string; ge
   const canFinish = allowControl && headReady && view?.capability.mode === "active" && !!state?.actions.canFinishSetup &&
     props.setupAllocation?.projectId === project.id && !!state.shift;
   return <div className="selected-job-work">
-    <ProjectActivityView locale={locale} project={project} tab={tab} onTabChange={setTab}
-      paidSeconds={props.paidSeconds} scopeSeconds={{ general: null, specific: null }} running={running}
+    <ProjectActivityView locale={locale} project={project} tab={tab} onTabChange={next => { selectionLifetime.current++; closeReview(); reviewOpen.current = true; repaintSelection(n => n + 1); setTab(next); }}
+      paidSeconds={props.paidSeconds} scopeSeconds={{ general: tab === "general" ? personalScopeSeconds(totals.data, totals.liveElapsedMicros) : null,
+        specific: tab === "specific" ? personalScopeSeconds(totals.data, totals.liveElapsedMicros) : null }} running={running}
       catalog={displayCatalog} units={props.units} selectedUnitId={unitId}
       selectedUnitState={unitState} selectedUnitBasis={frozenUnit}
       selectedUnitBlockReason={unitState === "needs_dimensions" ? t.dimensions : t.unit}
-      onSelectUnit={(id) => setSelectedUnitId(props.units.some((u) => u.id === id) ? id : null)}
-      onAddUnit={props.onAddUnit} dimensionsSlot={dimensionEntry ? <SelectedJobUnitDimensions {...dimensionEntry}
+      onSelectUnit={(id) => {
+        selectionLifetime.current++; closeReview(); reviewOpen.current = true; repaintSelection(n => n + 1);
+        const next = props.units.some((u) => u.id === id) ? id : null;
+        liveUnitId.current = next; setSelectedUnitId(next);
+      }}
+      onAddUnit={() => leaveReview(props.onAddUnit)} dimensionsSlot={dimensionEntry ? <SelectedJobUnitDimensions {...dimensionEntry}
         projectId={project.id} selectedUnitId={unitId} unitBasis={matchingUnitBasis} enabled={catalogReady}
         pendingUnitIds={dimensionHeld && unitId ? [...new Set([...dimensionEntry.pendingUnitIds, unitId])] : dimensionEntry.pendingUnitIds}
         onSave={saveDimension} onRefreshActivity={refreshReads} /> : props.dimensionsSlot} unitActionsSlot={props.unitActionsSlot}
       activityPending={busy || pending} activityStatus={message ? { kind: "info", message } : null}
-      onStartActivity={onStart} onOpenClock={props.onOpenClock} onBreak={props.onBreak}
-      onClockOut={props.onClockOut} onSchedule={props.onSchedule} onAsk={props.onAsk} />
+      onStartActivity={onStart} onOpenClock={() => { closeReview(); props.onOpenClock(); }} onBreak={() => { closeReview(); props.onBreak(); }}
+      onClockOut={() => { closeReview(); props.onClockOut(); }} onSchedule={() => leaveReview(props.onSchedule)} onAsk={() => leaveReview(props.onAsk)} />
+    {tab === "specific" && unitId && <Suspense fallback={<p role="status">{locale === "es" ? "Cargando revisión…" : "Loading review…"}</p>}>
+      <UnitReview source={reviewSource} login={{ userId: owner, generation }} projectId={project.id} unitId={unitId}
+        admitted={reviewAdmitted} unitRequestStartedAt={basis.data?.requestStartedAt ?? NaN}
+        catalogRequestStartedAt={catalog.data?.requestStartedAt ?? NaN} onRefresh={refreshReads} locale={locale} />
+    </Suspense>}
+    <Suspense fallback={<p role="status">{locale === "es" ? "Cargando totales…" : "Loading totals…"}</p>}>
+      <ActivityTotals totals={totals} onRefresh={refreshReads} />
+    </Suspense>
     <div className="selected-job-work-controls">
       {canEstablish && <button type="button" disabled={busy} onClick={() => void act({ kind: "establish_stream", previousGeneration: null, previousHeadCommandId: null })}>{t.ready}</button>}
       {canStop && <button type="button" disabled={busy} onClick={() => void act({ kind: "stop" })}>{t.stop}</button>}
