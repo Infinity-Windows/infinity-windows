@@ -458,7 +458,7 @@ test("a download that broke halfway does not leave Refresh doing nothing afterwa
   } finally {
     let documentTimeline: unknown = null;
     try { documentTimeline=await page.evaluate(()=>JSON.parse(sessionStorage.getItem("wops-e2e-half-download-causal")||"[]")); } catch { /* navigation may still be active */ }
-    await test.info().attach("half-download-causal",{body:Buffer.from(JSON.stringify({causal,documentTimeline,network},null,2)),contentType:"application/json"});
+    await test.info().attach("half-download-causal",{body:Buffer.from(JSON.stringify({htmlPreloadTreatment:process.env.IW_PWA_NO_HTML_MODULEPRELOAD==='1',causal,documentTimeline,network},null,2)),contentType:"application/json"});
     await cdp.detach();
   }
 });

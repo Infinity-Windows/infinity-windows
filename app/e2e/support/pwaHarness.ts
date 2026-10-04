@@ -242,7 +242,14 @@ function main(): void {
       exists = false;
     }
     if (!exists) return notFound();
-    send(res, 200, TYPES[extname(file)] ?? "application/octet-stream", readFileSync(file));
+    let content=readFileSync(file);
+    // Diagnostic treatment only. Keep archived files byte-identical on disk;
+    // same original JS/SW, with only new HTML's speculative preload hints
+    // removed in the response. Normal builds/tests never enter this branch.
+    if(process.env.IW_PWA_NO_HTML_MODULEPRELOAD==='1' && build.name==='new' && relative.endsWith('.html')){
+      content=Buffer.from(content.toString('utf8').replace(/<link\b(?=[^>]*\brel=["']modulepreload["'])[^>]*>/g,''));
+    }
+    send(res, 200, TYPES[extname(file)] ?? "application/octet-stream", content);
   });
 
   server.listen(PORT, () => log(`serving the ${serving} build on http://localhost:${PORT}/`));

@@ -419,7 +419,7 @@ jobs:
           retention-days: 7
 
   pwa-causal-original:
-    name: Diagnose half-download with exact failed-master bundles
+    name: Diagnose original bundles with new HTML preload treatment
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -449,6 +449,7 @@ jobs:
       - name: Reproduce unchanged original bundles with causal document timeline
         env:
           IW_PWA_CACHE: ${{ runner.temp }}/pwa-original/_temp/pwa-current
+          IW_PWA_NO_HTML_MODULEPRELOAD: "1"
         run: npx playwright test --config playwright.pwa.config.ts upgrade-path.pwa.ts -g 'a download that broke halfway' --repeat-each=3
       - uses: actions/upload-artifact@v4
         if: always()
