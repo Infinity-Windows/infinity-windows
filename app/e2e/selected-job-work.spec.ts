@@ -27,7 +27,9 @@ function receipt(commandId: string, before: number) {
   } };
 }
 function unavailableReceipt() { return { protocolVersion: 1, availability: "unavailable", receipt: null }; }
-interface FixtureLog { commands: CommandArgs[]; committed: boolean[]; receipts: string[]; unexpected: string[]; mismatchBasis: boolean }
+type UnitCommandArgs = { p_id: string; p_action: string; p_data: Record<string, unknown> };
+interface FixtureLog { commands: CommandArgs[]; committed: boolean[]; receipts: string[]; unexpected: string[]; mismatchBasis: boolean;
+  unitCommands: UnitCommandArgs[]; unitCommitted: boolean[]; allowUnitReply: boolean }
 function unitBasis(bindingEpoch = 3) { return { id: UNIT, projectId: PROJECT, openingId: null,
   operationalRevision: 5, incarnationEpoch: 2, bindingEpoch, projectEpoch: 1, openingEpoch: null,
   fact: { id: FACT, revision: 2, eventKind: "observation", originProjectEpoch: 1, originOpeningEpoch: null,
@@ -35,12 +37,20 @@ function unitBasis(bindingEpoch = 3) { return { id: UNIT, projectId: PROJECT, op
       original: { width: 10, height: 20, unit: "in", source: "measured", sourceReference: null } }, estimated: false },
   eligibleForCapture: true, ineligibleReason: null }; }
 async function setup(page: Page): Promise<FixtureLog> {
-  const log: FixtureLog = { commands: [], committed: [], receipts: [], unexpected: [], mismatchBasis: false };
+  const log: FixtureLog = { commands: [], committed: [], receipts: [], unexpected: [], mismatchBasis: false,
+    unitCommands: [], unitCommitted: [], allowUnitReply: false };
   await page.addInitScript(({ key, session }) => localStorage.setItem(key, JSON.stringify(session)),
     { key: FIXTURE_AUTH_KEY, session: FIXTURE_SESSION });
   let revision = 0;
   let stream: { clientGeneration: string; headSequence: number; headCommandId: string; headAfterRevision: number; status: "active" } | null = null;
   const applied = new Map<string, ReturnType<typeof receipt>>();
+  const unitReceipts = new Set<string>();
+  let unitRevision = 5, factRevision = 2;
+  let original = { width: 10, height: 20, unit: "in", source: "measured", sourceReference: null as string | null };
+  const inches = (n: number) => original.unit === "in" ? n : original.unit === "ft" ? n * 12 : n / (original.unit === "mm" ? 25.4 : 2.54);
+  const currentUnitBasis = (epoch = 3) => ({ ...unitBasis(epoch), operationalRevision: unitRevision,
+    fact: { ...unitBasis(epoch).fact, revision: factRevision, estimated: original.source === "estimated",
+      dimensions: { widthIn: inches(original.width), heightIn: inches(original.height), source: original.source, original } } });
   const snapshot = (deviceId: string) => {
     const now = new Date(), asOf = utc(now), issuedAt = utc(new Date(now.getTime() - 1000)),
       expiresAt = utc(new Date(now.getTime() + 10 * 60_000));
@@ -60,7 +70,7 @@ async function setup(page: Page): Promise<FixtureLog> {
         activity: null } };
   };
   const catalog = (unitId: string | null) => ({ protocolVersion: 1, asOf: utc(), availability: "available",
-    projectId: PROJECT, unit: unitId === UNIT ? unitBasis() : null,
+    projectId: PROJECT, unit: unitId === UNIT ? currentUnitBasis() : null,
     selection: { selectionId: SELECTION, selectionRevision: 2, menuVersionId: MENU, eligibleNow: true,
       activities: [{ definitionId: DEFINITION, definitionVersionId: VERSION, position: 0, enabled: true,
         scope: "general", labelEn: "Framing a deliberately long aluminum assembly", labelEs: "Enmarcar un conjunto de aluminio excepcionalmente largo",
@@ -89,8 +99,36 @@ async function setup(page: Page): Promise<FixtureLog> {
   await page.route("**/rest/v1/rpc/work_activity_unit_basis", (route) => {
     const args = route.request().postDataJSON() as { p_unit_id: string };
     return json(route, args.p_unit_id === UNIT
-      ? { protocolVersion: 1, asOf: utc(), availability: "available", unit: unitBasis(log.mismatchBasis ? 4 : 3) }
+      ? { protocolVersion: 1, asOf: utc(), availability: "available", unit: currentUnitBasis(log.mismatchBasis ? 4 : 3) }
       : { protocolVersion: 1, asOf: utc(), availability: "unavailable", unit: null }, null);
+  });
+  await page.route("**/rest/v1/rpc/work_unit_fact_current_read", (route) => {
+    expect(route.request().postDataJSON()).toEqual({ p_unit_id: UNIT });
+    return json(route, { protocolVersion: 1, unitId: UNIT, revision: factRevision, eventKind: "observation",
+      observation: { ...original, estimated: original.source === "estimated" }, widthIn: inches(original.width),
+      heightIn: inches(original.height), observationActorId: TEST_USER.id, recordedAt: utc() }, null);
+  });
+  await page.route("**/rest/v1/custom_work_units?**", (route) => {
+    expect(new URL(route.request().url()).searchParams.get("id")).toBe(`eq.${UNIT}`);
+    return json(route, { id: UNIT, project_id: PROJECT, opening_id: null, created_by: TEST_USER.id,
+      label: "Unit 12", type_label: "Aluminum", revision: unitRevision,
+      facts: { width_in: inches(original.width), height_in: inches(original.height), note: "Keep original note" },
+      created_at: utc(), updated_at: utc() }, null);
+  });
+  await page.route("**/rest/v1/rpc/custom_work_command", async (route) => {
+    const args = route.request().postDataJSON() as UnitCommandArgs;
+    log.unitCommands.push(args);
+    const stored = await page.evaluate((owner) => JSON.parse(localStorage.getItem(`forge-custom-work-v1:${owner}`) ?? "[]"), TEST_USER.id);
+    log.unitCommitted.push(stored.some((row: { id: string; action: string; data: unknown }) =>
+      row.id === args.p_id && row.action === args.p_action && JSON.stringify(row.data) === JSON.stringify(args.p_data)));
+    if (!log.allowUnitReply) return route.abort("failed");
+    if (!unitReceipts.has(args.p_id)) {
+      expect(args.p_action).toBe("unit"); expect(args.p_data.id).toBe(UNIT);
+      expect(args.p_data.revision).toBe(unitRevision); expect(args.p_data.expected_fact_revision).toBe(factRevision);
+      original = args.p_data.dimension_observation as typeof original;
+      unitRevision++; factRevision++; unitReceipts.add(args.p_id);
+    }
+    return json(route, UNIT, null);
   });
   await page.route("**/rest/v1/rpc/work_activity_command_receipt", (route) => {
     const args = route.request().postDataJSON() as { p_command_id: string };
@@ -154,7 +192,7 @@ test("native journal commit precedes RPC; unknown start blocks descendants and r
   const original = structuredClone(log.commands[1]);
   await page.getByRole("button", { name: "Remount Work" }).click();
   await expect(page.getByRole("button", { name: "Check receipt and retry original request" })).toBeVisible();
-  expect(log.receipts).toContain(original.p_command_id);
+  await expect.poll(() => log.receipts).toContain(original.p_command_id);
   expect(log.commands).toHaveLength(2); // receipt read cannot resend the uncertain command
   await page.getByRole("button", { name: "Check receipt and retry original request" }).click();
   await expect.poll(() => log.commands.length).toBe(3);
@@ -186,6 +224,67 @@ test("Specific uses the exact current ten-token basis and refuses catalog/basis 
     incarnationEpoch: 2, bindingEpoch: 3, projectEpoch: 1, openingEpoch: null,
     originProjectEpoch: 1, originOpeningEpoch: null });
   expect(log.committed).toEqual([true, true]);
+  expect(log.unexpected).toEqual([]);
+});
+
+test("selected-unit dimensions use the canonical durable queue and hold Specific through a lost reply and remount", async ({ page, context }) => {
+  const log = await setup(page); await open(page);
+  await page.getByRole("button", { name: "Reaffirm activity stream" }).click();
+  await page.getByRole("tab", { name: "Specific" }).click();
+  await page.getByRole("combobox", { name: "Choose a unit" }).selectOption(UNIT);
+  const tile = page.getByRole("button", { name: "Set this unit in the opening" });
+  await expect(tile).toBeEnabled();
+  await page.getByRole("button", { name: "Enter dimensions", exact: true }).click();
+  await page.getByLabel("Width", { exact: true }).fill("500");
+  await page.getByLabel("Height", { exact: true }).fill("1000");
+  await page.getByLabel("Measurement unit", { exact: true }).selectOption("mm");
+  await page.getByLabel("Dimension source", { exact: true }).selectOption("estimated");
+  await page.getByLabel("Source reference (optional)", { exact: true }).fill("Synthetic plan A-12");
+  for (const locale of ["en", "es"] as const) {
+    if (locale === "es") await page.getByRole("button", { name: "Change language" }).click();
+    for (const viewport of [{ width: 320, height: 720 }, { width: 390, height: 844 }, { width: 844, height: 390 }]) {
+      await page.setViewportSize(viewport); await fits(page);
+      if (viewport.width === 320) await page.screenshot({ path: `e2e/test-results/selected-unit-dimensions-${locale}-320.png`, fullPage: true });
+    }
+  }
+  await page.getByRole("button", { name: "Change language" }).click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByLabel("Width", { exact: true })).toHaveValue("500");
+  await page.getByRole("button", { name: "Save dimension request", exact: true }).click();
+  await expect.poll(() => log.unitCommands.length).toBe(1);
+  expect(log.unitCommitted).toEqual([true]);
+  const saved = structuredClone(log.unitCommands[0]);
+  expect(saved.p_action).toBe("unit");
+  expect(saved.p_data).toMatchObject({ id: UNIT, revision: 5, expected_fact_revision: 2,
+    facts: { note: "Keep original note" }, dimension_observation: {
+      width: 500, height: 1000, unit: "mm", source: "estimated", sourceReference: "Synthetic plan A-12" } });
+  expect(saved.p_data.facts).not.toHaveProperty("width_in");
+  await expect(tile).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Save dimension request", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "Remount Work" }).click();
+  await page.getByRole("tab", { name: "Specific" }).click();
+  await page.getByRole("combobox", { name: "Choose a unit" }).selectOption(UNIT);
+  await expect(tile).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Enter dimensions", exact: true })).toBeDisabled();
+  expect(log.unitCommands).toHaveLength(1);
+  log.allowUnitReply = true;
+  await page.getByRole("button", { name: "Retry saved unit requests", exact: true }).click();
+  await expect.poll(() => log.unitCommands.length).toBe(2);
+  expect(log.unitCommands[1]).toEqual(saved); // same canonical UUID and frozen payload
+  expect(log.unitCommitted).toEqual([true, true]);
+  await page.getByRole("button", { name: "Refresh current unit", exact: true }).click();
+  await expect(page.getByText("500 × 1000 mm", { exact: false })).toBeVisible();
+  await expect(page.getByText("Estimate — not verified", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Enter dimensions", exact: true })).toBeEnabled();
+  await expect(tile).toBeEnabled();
+  expect(log.commands).toHaveLength(1); // recording dimensions never starts activity
+  await context.setOffline(true);
+  await expect(page.getByText("500 × 1000 mm", { exact: false })).toHaveCount(0);
+  await expect.poll(() => privateCache(page)).not.toContain(TEST_USER.id);
+  expect(await privateCache(page)).not.toContain(PROJECT);
+  expect(await privateCache(page)).not.toContain(UNIT);
+  await page.getByRole("button", { name: "Clock out", exact: true }).click();
+  await expect(page.getByTestId("controls-json")).toHaveText('["out"]');
   expect(log.unexpected).toEqual([]);
 });
 

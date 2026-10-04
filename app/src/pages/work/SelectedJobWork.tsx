@@ -10,6 +10,7 @@ import { getCurrentActivityCommand, type ActivityCommandRecord } from "../../lib
 import { saveActivityTap } from "../../lib/workActivity/saveTap";
 import { dispatchSavedActivityCommand } from "../../lib/workActivity/dispatch";
 import { unitCommandBasis, type Intent } from "../../lib/workActivity/protocol";
+import { SelectedJobUnitDimensions, type SelectedJobUnitDimensionsProps } from "./SelectedJobUnitDimensions";
 import "./SelectedJobWork.css";
 
 export interface SelectedJobWorkProps {
@@ -25,6 +26,8 @@ export interface SelectedJobWorkProps {
   /** Explicit setup allocation chosen upstream, or null when none is selected. */
   setupAllocation: { projectId: string; costCodeId: string | null } | null;
   dimensionsSlot?: ReactNode;
+  /** Fresh canonical units and their existing durable save seam, owned by the route. */
+  dimensionEntry?: Omit<SelectedJobUnitDimensionsProps, "projectId" | "selectedUnitId" | "unitBasis" | "enabled" | "onRefreshActivity">;
   unitActionsSlot?: ReactNode;
   onAddUnit: () => void;
   onOpenClock: () => void;
@@ -107,11 +110,14 @@ function SelectedJobWorkActive(props: SelectedJobWorkProps & { owner: string; ge
   const [recoveryError, setRecoveryError] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [dimensionHolds, setDimensionHolds] = useState<Record<string, { unitRevision: number; factRevision: number }>>({});
   const inFlight = useRef(false);
   const alive = useRef(true);
   const current = () => alive.current && stillSignedInAs({ userId: owner, generation }, owner);
   const selectedUnit = props.units.find((unit) => unit.id === selectedUnitId) ?? null;
   const unitId = selectedUnit?.id ?? null;
+  const liveUnitId = useRef(unitId);
+  liveUnitId.current = unitId;
   const snapshot = useActivitySnapshot(deviceId, !!deviceId);
   const catalog = useActivityCatalog(project.id, unitId, !!deviceId);
   const basis = useActivityUnitBasis(unitId, !!deviceId && !!unitId);
@@ -127,8 +133,21 @@ function SelectedJobWorkActive(props: SelectedJobWorkProps & { owner: string; ge
     view?.stream?.headCommandId === head.commandId && head.receipt.afterRevision === state?.revision;
   const unitReply = basis.data?.value;
   const catalogUnit = catalog.data?.value.availability === "available" ? catalog.data.value.unit : null;
+  const matchingUnitBasis = unitId && basis.state === "ready" && unitReply?.availability === "available" &&
+    catalogUnit?.id === unitId && unitReply.unit.projectId === project.id &&
+    JSON.stringify(unitReply.unit) === JSON.stringify(catalogUnit) ? unitReply.unit : null;
+  const dimensionEntry = props.dimensionEntry;
+  const canonicalUnit = dimensionEntry?.units.find((unit) => unit.id === unitId);
+  const heldBasis = unitId ? dimensionHolds[unitId] : undefined;
+  // A fresh later unit+fact basis fences the original immutable write by its
+  // old revisions. Queue disappearance alone never confirms that write.
+  const laterDimensionBasis = !!heldBasis && dimensionEntry?.unitSourceState === "ready" && !!canonicalUnit &&
+    !!matchingUnitBasis && canonicalUnit.project_id === project.id &&
+    canonicalUnit.opening_id === matchingUnitBasis.openingId && canonicalUnit.revision === matchingUnitBasis.operationalRevision &&
+    canonicalUnit.revision > heldBasis.unitRevision && (matchingUnitBasis.fact?.revision ?? 0) > heldBasis.factRevision;
+  const dimensionHeld = !!unitId && (!!dimensionEntry?.pendingUnitIds.includes(unitId) || (!!heldBasis && !laterDimensionBasis));
   let frozenUnit: ReturnType<typeof unitCommandBasis> | null = null;
-  if (unitId && basis.state === "ready" && unitReply?.availability === "available" &&
+  if (!dimensionHeld && unitId && basis.state === "ready" && unitReply?.availability === "available" &&
       catalogUnit?.id === unitId && unitReply.unit.projectId === project.id) {
     try {
       const a = unitCommandBasis(unitReply.unit), b = unitCommandBasis(catalogUnit);
@@ -193,6 +212,15 @@ function SelectedJobWorkActive(props: SelectedJobWorkProps & { owner: string; ge
 
   async function refreshReads() {
     await Promise.all([snapshot.refresh(), catalog.refresh(), unitId ? basis.refresh() : Promise.resolve()]);
+  }
+  async function saveDimension(data: Readonly<Record<string, unknown>>) {
+    if (!dimensionEntry || !unitId || liveUnitId.current !== unitId || data.id !== unitId || !current() ||
+      !Number.isSafeInteger(data.revision) || (data.revision as number) < 1 ||
+      !Number.isSafeInteger(data.expected_fact_revision) || (data.expected_fact_revision as number) < 0) throw new Error(t.review);
+    setDimensionHolds((old) => ({ ...old, [unitId]: {
+      unitRevision: data.revision as number, factRevision: data.expected_fact_revision as number,
+    } }));
+    await dimensionEntry.onSave(data);
   }
   async function dispatchOriginal(row: ActivityCommandRecord, policy: "first_attempt" | "retry_original") {
     const outcome = await dispatchSavedActivityCommand(deviceId!, row.commandId, { userId: owner, generation }, policy);
@@ -263,7 +291,10 @@ function SelectedJobWorkActive(props: SelectedJobWorkProps & { owner: string; ge
       selectedUnitState={unitState} selectedUnitBasis={frozenUnit}
       selectedUnitBlockReason={unitState === "needs_dimensions" ? t.dimensions : t.unit}
       onSelectUnit={(id) => setSelectedUnitId(props.units.some((u) => u.id === id) ? id : null)}
-      onAddUnit={props.onAddUnit} dimensionsSlot={props.dimensionsSlot} unitActionsSlot={props.unitActionsSlot}
+      onAddUnit={props.onAddUnit} dimensionsSlot={dimensionEntry ? <SelectedJobUnitDimensions {...dimensionEntry}
+        projectId={project.id} selectedUnitId={unitId} unitBasis={matchingUnitBasis} enabled={catalogReady}
+        pendingUnitIds={dimensionHeld && unitId ? [...new Set([...dimensionEntry.pendingUnitIds, unitId])] : dimensionEntry.pendingUnitIds}
+        onSave={saveDimension} onRefreshActivity={refreshReads} /> : props.dimensionsSlot} unitActionsSlot={props.unitActionsSlot}
       activityPending={busy || pending} activityStatus={message ? { kind: "info", message } : null}
       onStartActivity={onStart} onOpenClock={props.onOpenClock} onBreak={props.onBreak}
       onClockOut={props.onClockOut} onSchedule={props.onSchedule} onAsk={props.onAsk} />

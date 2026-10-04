@@ -6,11 +6,14 @@ import { rememberSignedIn } from "../../lib/signedIn";
 import type { ProjectActivityViewProps } from "../../components/work/ProjectActivityView";
 import type { Snapshot } from "../../lib/workActivity/protocol";
 import type { SelectedJobWorkProps } from "./SelectedJobWork";
+import type { SelectedJobUnitDimensionsProps } from "./SelectedJobUnitDimensions";
+import type { UnitBasis } from "../../lib/workActivity/protocol";
 
 const ID = (n: number) => `00000000-0000-0000-0000-${String(n).padStart(12, "0")}`;
 const OWNER = ID(1), DEVICE = ID(2), JOB = ID(3), COMMAND = ID(4);
 const at = "2026-10-04T06:00:00.000000Z";
 let seen: ProjectActivityViewProps | null = null;
+let dimensionSeen: SelectedJobUnitDimensionsProps | null = null;
 const m = vi.hoisted(() => ({
   device: vi.fn(), head: vi.fn(), save: vi.fn(), dispatch: vi.fn(),
   snapshot: vi.fn(), catalog: vi.fn(), unit: vi.fn(),
@@ -23,9 +26,13 @@ vi.mock("../../components/work/ProjectActivityView", () => ({
       <button onClick={props.onBreak}>Break</button><button onClick={props.onClockOut}>Clock out</button>
       <button onClick={props.onSchedule}>Schedule</button><button onClick={props.onAsk}>Ask</button>
       <button onClick={props.onOpenClock}>Clock</button>
+      {props.dimensionsSlot}
     </div>;
   },
 }));
+vi.mock("./SelectedJobUnitDimensions", () => ({ SelectedJobUnitDimensions: (props: SelectedJobUnitDimensionsProps) => {
+  dimensionSeen = props; return <div>Dimension adapter</div>;
+} }));
 vi.mock("../../lib/workActivity/device", () => ({ getActivityDeviceId: () => m.device() }));
 vi.mock("../../lib/workActivity/journal", () => ({ getCurrentActivityCommand: () => m.head() }));
 vi.mock("../../lib/workActivity/saveTap", () => ({ saveActivityTap: (...args: unknown[]) => m.save(...args) }));
@@ -61,7 +68,7 @@ async function render(changes: Partial<SelectedJobWorkProps> = {}) {
 function button(label: string) { return [...host.querySelectorAll("button")].find((b) => b.textContent === label)!; }
 async function click(label: string) { await act(async () => button(label).click()); }
 beforeEach(() => {
-  rememberSignedIn({ user: { id: OWNER } }); seen = null;
+  rememberSignedIn({ user: { id: OWNER } }); seen = null; dimensionSeen = null;
   for (const fn of Object.values(m)) fn.mockReset();
   m.device.mockResolvedValue(DEVICE); m.head.mockResolvedValue(null);
   m.snapshot.mockImplementation((_id: string | null, enabled: boolean) => ({
@@ -225,5 +232,54 @@ describe("dormant selected-job orchestration", () => {
     expect(m.dispatch).not.toHaveBeenCalled();
     expect(seen?.catalog.capturable).toBe(false);
     expect(button("Reaffirm activity stream")).toBeUndefined();
+  });
+  it("holds Specific after a dimension save until both fresh revisions advance, keeping General and clock controls", async () => {
+    const UNIT = ID(30);
+    let unitRevision = 5, factRevision = 2;
+    const unitBasis = (): UnitBasis => ({ id: UNIT, projectId: JOB, openingId: null,
+      operationalRevision: unitRevision, incarnationEpoch: 1, bindingEpoch: 1, projectEpoch: 1, openingEpoch: null,
+      fact: { id: ID(31), revision: factRevision, eventKind: "observation", originProjectEpoch: 1, originOpeningEpoch: null,
+        dimensions: { widthIn: 10, heightIn: 20, source: "measured", original: { width: 10, height: 20, unit: "in", source: "measured", sourceReference: null } }, estimated: false },
+      eligibleForCapture: true, ineligibleReason: null });
+    const selection = { selectionId: ID(10), selectionRevision: 3, menuVersionId: ID(11), eligibleNow: true, activities: [] };
+    m.catalog.mockImplementation((_job: string, id: string | null, enabled: boolean) => ({ state: enabled ? "ready" : "blocked",
+      data: enabled ? { value: { availability: "available", selection, unit: id ? unitBasis() : null } } : undefined, refresh: vi.fn() }));
+    m.unit.mockImplementation((id: string | null) => ({ state: id ? "ready" : "blocked",
+      data: id ? { value: { availability: "available", unit: unitBasis() } } : undefined, refresh: vi.fn() }));
+    const active = { ...snapshot, stream: { clientGeneration: ID(14), headSequence: 0, headCommandId: COMMAND, headAfterRevision: 1, status: "active" },
+      state: { ...snapshot.state!, revision: 1, actions: { canEstablishStream: false, canSwitch: true, canFinishSetup: false, canStop: false } } };
+    m.snapshot.mockReturnValue({ state: "ready", data: { value: active }, refresh: vi.fn() });
+    m.head.mockResolvedValue({ ...record, receipt: { status: "applied", afterRevision: 1 } });
+    const onSave = vi.fn(async () => { throw Error("Unknown save outcome"); });
+    const entry = (): NonNullable<SelectedJobWorkProps["dimensionEntry"]> => ({ units: [{ id: UNIT, project_id: JOB, opening_id: null,
+      created_by: OWNER, label: "Unit", type_label: "Aluminum", revision: unitRevision, facts: {}, created_at: at, updated_at: at }],
+      unitSourceState: "ready", canEditDimensions: true, pendingUnitIds: [], onSave, onRefreshUnits: vi.fn() });
+    await render({ units: [{ id: UNIT, label: "Unit" }], dimensionEntry: entry() });
+    await act(async () => seen!.onSelectUnit(UNIT));
+    expect(seen!.selectedUnitState).toBe("ready");
+    const original = { id: UNIT, revision: 5, expected_fact_revision: 2 };
+    await act(async () => { await expect(dimensionSeen!.onSave(original)).rejects.toThrow("Unknown save outcome"); });
+    expect(onSave).toHaveBeenCalledWith(original);
+    expect(seen!.selectedUnitState).toBe("unavailable");
+    expect(seen!.catalog.capturable).toBe(true); // independent General eligibility survives
+    expect(dimensionSeen!.pendingUnitIds).toContain(UNIT);
+    await click("Break"); expect(props.onBreak).toHaveBeenCalledOnce();
+    unitRevision = 6; await render({ dimensionEntry: entry() });
+    expect(seen!.selectedUnitState).toBe("unavailable"); // operation-only change is insufficient
+    factRevision = 3; await render({ dimensionEntry: { ...entry(), pendingUnitIds: [UNIT] } });
+    expect(seen!.selectedUnitState).toBe("unavailable"); // pending write still holds
+    await render({ dimensionEntry: entry() });
+    expect(seen!.selectedUnitState).toBe("ready");
+    expect(m.save).not.toHaveBeenCalled();
+  });
+  it("refuses a dimension callback retained from a different unit selection", async () => {
+    const onSave = vi.fn();
+    await render({ units: [{ id: ID(30), label: "Unit" }, { id: ID(32), label: "Other unit" }], dimensionEntry: { units: [], unitSourceState: "unavailable",
+      canEditDimensions: true, pendingUnitIds: [], onSave, onRefreshUnits: vi.fn() } });
+    await act(async () => seen!.onSelectUnit(ID(30)));
+    const oldSave = dimensionSeen!.onSave;
+    await act(async () => seen!.onSelectUnit(ID(32)));
+    await expect(oldSave({ id: ID(30), revision: 5, expected_fact_revision: 2 })).rejects.toThrow();
+    expect(onSave).not.toHaveBeenCalled();
   });
 });

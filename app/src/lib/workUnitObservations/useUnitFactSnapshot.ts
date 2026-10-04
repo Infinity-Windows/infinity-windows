@@ -19,8 +19,10 @@ export function useUnitFactSnapshot(projectId: string | null, unitId: string | n
   const connected=useSyncExternalStore(subscribeOnline,online,()=>false);
   const queryClient=useQueryClient();
   const allowed=enabled && connected && !!owner && validId(projectId) && validId(unitId);
-  const key=useMemo(()=>["workUnitFactCurrent",owner,generation,projectId,unitId],[owner,generation,projectId,unitId]);
-  const query=useQuery({queryKey:["workUnitFactCurrent",owner,generation,projectId,unitId],queryFn:async()=>{
+  // A disabled mounted observer can recreate an empty query after removal.
+  // Its anonymous key must not retain the former owner or source identities.
+  const key=useMemo(()=>["workUnitFactCurrent",allowed?owner:null,allowed?generation:0,allowed?projectId:null,allowed?unitId:null],[owner,generation,projectId,unitId,allowed]);
+  const query=useQuery({queryKey:key,queryFn:async()=>{
     try { return {status:"ready" as const,snapshot:await fetchUnitFactSnapshot(unitId!,{userId:owner,generation})}; }
     // A failed fresh read replaces earlier private details with an explicit
     // unavailable state. It never means that no measurements were recorded.

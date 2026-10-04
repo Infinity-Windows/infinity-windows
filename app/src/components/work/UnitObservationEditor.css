@@ -1,0 +1,8 @@
+.unit-observation-editor { min-width: 0; display: grid; gap: .65rem; padding: .8rem; border: 1px solid var(--line, #ccd3d9); border-radius: .75rem; }
+.unit-observation-editor > * { min-width: 0; margin: 0; }
+.unit-observation-editor-recorded { min-width: 0; overflow-wrap: anywhere; padding: .65rem; background: var(--surface-2, #f4f6f7); border-radius: .5rem; }
+.unit-observation-editor-recorded p { margin: .25rem 0; }
+.unit-observation-editor-form, .unit-observation-editor-actions { min-width: 0; display: grid; gap: .5rem; }
+.unit-observation-editor button { max-width: 100%; min-width: 0; min-height: 44px; padding: .55rem .7rem; border: 1px solid var(--pav-line, #b9d0c0); border-radius: .6rem; background: var(--surface, #fff); color: inherit; font: inherit; white-space: normal; overflow-wrap: anywhere; }
+.unit-observation-editor button:disabled { opacity: .55; cursor: not-allowed; }
+@media (min-width: 390px) { .unit-observation-editor-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
