@@ -33,6 +33,8 @@ export interface QueryKeyRootEntry {
  * beside the hand-kept offline list now live in each row's `why`.
  */
 export const QUERY_KEY_ROOTS: QueryKeyRootEntry[] = [
+  { root: "workDataSnapshot", offline: false, why: "Named work/payroll evidence is token-bound, private in memory, and discarded on auth, preview or offline boundaries." },
+  { root: "workDataProjects", offline: false, why: "This private report picker is discarded with its viewer boundary." },
   { root: "hexPortalCases", offline: false, why: "Original records remain in Forge; pending writes use the durable outbox." },
   { root: "hexLearningReviews", offline: false, why: "Review state is decided on the server; drafts wait in the durable outbox, not in a cached list." },
   { root: "hexLearningWaiting", offline: false, why: "A review notice must reflect who the write-up is waiting with now." },

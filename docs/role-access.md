@@ -86,6 +86,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Job history (`/jobs/history`)
 - Studio (`/studio`)
 - Data (`/data`)
+- Summary (`/summary`)
 - Team (`/team`)
 - Team timecards (`/team-timecards`)
 - Issues (`/issues`)
@@ -207,6 +208,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Job history (`/jobs/history`)
 - Studio (`/studio`)
 - Data (`/data`)
+- Summary (`/summary`)
 - Roster (`/crew`)
 - AI Knowledge (`/knowledge`)
 - Vehicles (`/vehicles`)
@@ -283,7 +285,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Catalog (`/catalog`)
 - Admin (`/admin`)
 
-**Can reach (all 54 allowed destinations):**
+**Can reach (all 55 allowed destinations):**
 
 - Home (`/`)
 - Current Work (`/current-work`)
@@ -305,6 +307,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Job history (`/jobs/history`)
 - Studio (`/studio`)
 - Data (`/data`)
+- Summary (`/summary`)
 - Ask (`/ask`)
 - Notifications (`/notifications`)
 - Stuck writes (`/stuck`)
@@ -412,7 +415,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Admin (`/admin`)
 - Builder logins (`/account/builders`)
 
-**Can reach (all 58 allowed destinations):**
+**Can reach (all 59 allowed destinations):**
 
 - Home (`/`)
 - Current Work (`/current-work`)
@@ -434,6 +437,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Job history (`/jobs/history`)
 - Studio (`/studio`)
 - Data (`/data`)
+- Summary (`/summary`)
 - Ask (`/ask`)
 - Notifications (`/notifications`)
 - Stuck writes (`/stuck`)

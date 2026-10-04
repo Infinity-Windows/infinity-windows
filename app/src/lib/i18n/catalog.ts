@@ -19,6 +19,7 @@ import type { WorkKey } from "./workCatalog";
 import type { DesignKey } from "./designCatalog";
 import type { ScheduleConflictKey } from "./scheduleConflictCatalog";
 import type { ValuesKey } from "./valuesCatalog";
+import type { WorkDataKey } from "./workDataCatalog";
 
 /**
  * Keys whose Spanish still needs a bilingual crew member to verify it — the
@@ -93,6 +94,8 @@ export const SAFETY_KEYS = [
 ] as const;
 
 export const CATALOG = {
+  "nav.item.summary": { en: "Summary", es: "Resumen" },
+  "nav.item.data": { en: "Data", es: "Datos" },
   "crewRecord.wholeComplete": { en: "Entire installation finished (all visits)", es: "Instalación completa terminada (todas las visitas)" },
   "crewRecord.title": { en: "Record crew work", es: "Registrar trabajo del equipo" },
   "crewRecord.entryHelp": { en: "Build or select a unit · Assign crew · File completed work", es: "Crear o elegir unidad · Asignar equipo · Registrar trabajo terminado" },
@@ -5603,7 +5606,7 @@ export const CATALOG = {
  * keys are part of this type through a type-only import, which costs the
  * entry chunk nothing, while its strings ride in the route's own chunk.
  */
-export type TKey = keyof typeof CATALOG | WorkKey | DesignKey | ScheduleConflictKey | ValuesKey;
+export type TKey = keyof typeof CATALOG | WorkKey | DesignKey | ScheduleConflictKey | ValuesKey | WorkDataKey;
 
 /**
  * Add a lazily loaded phrasebook to the live catalog. Called at module load

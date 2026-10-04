@@ -498,7 +498,7 @@ describe("every NAV destination has a door", () => {
   it("every other NAV path appears in some role's menu or bottom bar", () => {
     const reachable = new Set<string>();
     for (const role of ["installer", "foreman", "supervisor", "owner"] as const) {
-      for (const s of menuForRole(role))
+      for (const s of [...menuForRole(role), ...menuForRole(role, undefined, "new")])
         for (const item of s.items) if (item.to) reachable.add(item.to);
       for (const tab of bottomBarForRole(role))
         if ("to" in tab) reachable.add(tab.to);
