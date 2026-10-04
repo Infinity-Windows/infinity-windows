@@ -252,7 +252,7 @@ for reverse in (False,True):
     assert receipt(ids[second_index])['status']=='conflict'
     assert receipt(ids[second_index])['reasonCode']=='stream_changed'
     assert current(actor,device)==generations[first_index]
-    assert one(retained_counts(actor))==dict(commands=2,streams=1,transitions=0)
+    assert json.loads(retained_counts(actor))==dict(commands=2,streams=1,transitions=0)
     cases+=1
 
 # Exact duplicate receipt under contention; changed payload cannot replace it.
@@ -264,7 +264,7 @@ for changed in (False,True):
     release(first);a=finish(first)
     if changed:finish_expect_error(second,'23514')
     else:assert a.splitlines()[-1]==finish(second).splitlines()[-1]
-    assert one(retained_counts(actor))==dict(commands=1,streams=1,transitions=0)
+    assert json.loads(retained_counts(actor))==dict(commands=1,streams=1,transitions=0)
     assert current(actor,device)==generation
     cases+=1
 
@@ -280,7 +280,7 @@ for reverse in (False,True):
     assert receipt(ids[i])['status']=='noop' and receipt(ids[j])['status']=='conflict'
     assert current(actor,device)==generations[i]
     assert run(f"select status from work_activity_streams where actor_id='{actor}' and client_generation='{old}'")=='retired'
-    assert one(retained_counts(actor))==dict(commands=3,streams=2,transitions=0)
+    assert json.loads(retained_counts(actor))==dict(commands=3,streams=2,transitions=0)
     cases+=1
 
 # A waiter statement begins before revocation but checks the actor after G.
@@ -288,7 +288,7 @@ actor,device=seed();obs=observe(actor,device);cid=new_uuid()
 first=holder('revoke_first',actor,f"select _work_activity_gate();update profiles set access_revoked_at=clock_timestamp() where id='{actor}';")
 second=waiter('revoke_second',actor,establish(cid,payload(obs,new_uuid())),'revoke_first')
 release(first);finish(first);finish_expect_error(second,'42501')
-assert one(retained_counts(actor))==dict(commands=0,streams=0,transitions=0)
+assert json.loads(retained_counts(actor))==dict(commands=0,streams=0,transitions=0)
 cases+=1
 
 # Simulated external revision under G (not an installed lifecycle callback).
@@ -297,7 +297,7 @@ first=holder('revision_first',actor,f"select _work_activity_gate();update person
 second=waiter('revision_second',actor,establish(cid,payload(obs,new_uuid())),'revision_first')
 release(first);finish(first);finish(second)
 assert receipt(cid)['status']=='conflict' and receipt(cid)['reasonCode']=='state_changed'
-assert current(actor,device)=='' and one(retained_counts(actor))==dict(commands=1,streams=0,transitions=0)
+assert current(actor,device)=='' and json.loads(retained_counts(actor))==dict(commands=1,streams=0,transitions=0)
 cases+=1
 
 # Construct a legal short lease once, then let it expire during an observed wait.
