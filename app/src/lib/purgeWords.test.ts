@@ -74,6 +74,19 @@ describe("shapeFor", () => {
     expect(shapeFor({ "personal_activity_commands.subject_profile_id": 1 })).toBe("retired");
     expect(shapeFor({ "work_activity_clock_receipts.profile_id": 1 })).toBe("retired");
   });
+
+  it.each([
+    "work_activity_source_history.actor_id", "work_activity_source_history.original_identities",
+    "work_unit_review_commands.actor_id", "work_unit_dimension_verifications.reviewer_id",
+    "work_unit_dimension_verifications.observation_actor_id", "work_unit_review_events.actor_id",
+    "work_unit_review_events.original_identities", "work_unit_review_defects.creator_id",
+    "work_unit_review_defect_events.actor_id",
+  ])("keeps the person's history and names a lone retained %s record", key => {
+    const counts = { ...NOTHING, [key]: 1 };
+    expect(shapeFor(counts)).toBe("retired");
+    expect(historyHighlights(counts)).toMatchObject([{ key, words: expect.stringMatching(/^1 /) }]);
+    expect(removalSentence("Mia", counts)).toContain("every record kept under their name");
+  });
 });
 
 describe("the sentence the owner reads", () => {

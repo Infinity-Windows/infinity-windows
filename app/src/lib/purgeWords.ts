@@ -136,6 +136,15 @@ export const WORK_HISTORY_PROBES: readonly HistoryProbe[] = [
   { table: "work_session_capture_metadata", column: "profile_id", one: "captured work session", many: "captured work sessions" },
   { table: "work_setup_sessions", column: "profile_id", one: "paid setup session", many: "paid setup sessions" },
   { table: "work_activity_clock_receipts", column: "profile_id", one: "retained clock receipt", many: "retained clock receipts" },
+  { table: "work_activity_source_history", column: "actor_id", one: "retained work change they recorded", many: "retained work changes they recorded" },
+  { table: "work_activity_source_history", column: "original_identities", one: "retained work record about them", many: "retained work records about them" },
+  { table: "work_unit_review_commands", column: "actor_id", one: "unit review request", many: "unit review requests" },
+  { table: "work_unit_dimension_verifications", column: "reviewer_id", one: "independent measurement check", many: "independent measurement checks" },
+  { table: "work_unit_dimension_verifications", column: "observation_actor_id", one: "measurement checked by another person", many: "measurements checked by another person" },
+  { table: "work_unit_review_events", column: "actor_id", one: "unit review decision", many: "unit review decisions" },
+  { table: "work_unit_review_events", column: "original_identities", one: "unit review record about them", many: "unit review records about them" },
+  { table: "work_unit_review_defects", column: "creator_id", one: "unit defect they reported", many: "unit defects they reported" },
+  { table: "work_unit_review_defect_events", column: "actor_id", one: "unit defect follow-up", many: "unit defect follow-ups" },
 
   // Time and money.
   { table: "time_shifts", column: "profile_id", one: "punch", many: "punches" },
