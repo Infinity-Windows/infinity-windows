@@ -24,7 +24,7 @@ def ident(n):return '00000000-0000-4000-8000-'+str(350000+n).zfill(12)
 checks=0
 def run(sql,user='postgres',error=None):
  global checks
- r=subprocess.run(['psql',uri(user),'-X','-q','-t','-A','-v','ON_ERROR_STOP=1'],input="\\set VERBOSITY sqlstate\nset statement_timeout='20s';set lock_timeout='12s';"+sql,text=True,capture_output=True,timeout=30,env=env)
+ r=subprocess.run(['psql',uri(user),'-X','-q','-t','-A','-v','ON_ERROR_STOP=1'],input="\\set VERBOSITY verbose\nset statement_timeout='20s';set lock_timeout='12s';"+sql,text=True,capture_output=True,timeout=30,env=env)
  if error:assert r.returncode and re.search(r'\b'+error+r'\b',r.stderr),(error,r.stderr[-2000:]);checks+=1;return
  assert r.returncode==0,r.stderr[-2200:];return r.stdout.strip()
 def obj(sql,user='postgres'):return json.loads(run(sql,user).splitlines()[-1])
@@ -76,7 +76,11 @@ rpc('select work_publish_menu_version('+lit(ident(102))+",'totals_pg_menu',0,'To
 menu=run("select v.id from work_capture_menu_versions v join work_capture_menus m on m.id=v.menu_id where m.code='totals_pg_menu'")
 rpc('select work_select_job_menu('+lit(ident(103))+','+lit(job)+','+lit(menu)+',0);')
 selection=obj('select to_jsonb(s) from work_job_menu_selections s where project_id='+lit(job))
-run("select _work_activity_gate();update work_activity_authority_generation set capture_enabled=true,revision=revision+1;insert into toolbox_completions(profile_id,signed_at,typed_name) values("+lit(worker)+",clock_timestamp(),'Synthetic');")
+run('begin;select _work_activity_gate();update work_activity_authority_generation set capture_enabled=true,revision=revision+1;commit;')
+def sign_toolbox(actor,command_id):
+ result=rpc('select to_jsonb(sign_toolbox_talk('+lit(command_id)+','+lit(actor)+",null::uuid,'Synthetic signature',null::text,null::text,'Synthetic local fixture',clock_timestamp()));",actor)
+ check(result['profile_id']==actor,'Actual authenticated toolbox signing entry accepts its own synthetic signer')
+sign_toolbox(worker,ident(107))
 shift=rpc('select to_jsonb(clock_in('+lit(job)+'::uuid,null::uuid,null::text,null::double precision,null::double precision,null::text,null::text,'+lit(ident(104))+"::uuid,clock_timestamp()-interval '1 minute',clock_timestamp(),0,1));")['id']
 seq=0;head=None
 
@@ -88,7 +92,10 @@ def command(intent):
  answer=rpc('select work_activity_command('+lit(cid)+',1,'+lit(json.dumps(payload))+'::jsonb);');assert answer['receipt']['status'] in ('noop','applied'),answer;head=cid;seq+=1;return answer
 command({'kind':'establish_stream','previousGeneration':None,'previousHeadCommandId':None})
 command({'kind':'finish_setup','projectId':job,'costCodeId':None})
-basis=obj('select _work_activity_command_basis(_work_activity_unit_basis('+lit(unit)+','+lit(worker)+'));')
+unit_view=rpc('select work_activity_unit_basis('+lit(unit)+');')['unit']
+check(unit_view['id']==unit and unit_view['eligibleForCapture'],'Actual authenticated unit-basis read authorizes the switch')
+basis={key:unit_view[key] for key in ('id','operationalRevision','incarnationEpoch','bindingEpoch','projectEpoch','openingEpoch')}
+basis.update({'factId':unit_view['fact']['id'],'factRevision':unit_view['fact']['revision'],'originProjectEpoch':unit_view['fact']['originProjectEpoch'],'originOpeningEpoch':unit_view['fact']['originOpeningEpoch']})
 command({'kind':'switch','projectId':job,'selectionId':selection['id'],'selectionRevision':selection['revision'],'menuVersionId':menu,'definitionVersionId':definition['id'],'scope':'specific','unit':basis,'machineKind':None,'values':{}})
 check(totals()['totals']['activities'][0]['personal']['includesLive'],'Actual own confirmed live source')
 # Actual authenticator login, actual SET ROLE service_role and an eligible uid:
@@ -105,11 +112,11 @@ check(totals(reviewer)['totals']['activities']==[],'Another actor gets no fabric
 for role in ('anon','service_role'):
  run('set role '+role+';select work_activity_totals_read('+lit(job)+','+lit(unit)+');','authenticator',error='42501')
 run(auth(worker)+'select _work_totals_source(\'custom_work_units\','+lit(unit)+');','authenticator',error='42501')
-run(auth(worker)+'begin isolation level repeatable read;select work_activity_totals_read('+lit(job)+','+lit(unit)+');','authenticator',error='25000')
+run(auth(worker)+'begin isolation level repeatable read;select work_activity_totals_read('+lit(job)+','+lit(unit)+');','authenticator',error='25001')
 
 # Genuine-role privacy: a separate worker's actual closed setup/payroll ledger
 # plus guarded source safety remains private to an installer reading General.
-run("insert into toolbox_completions(profile_id,signed_at,typed_name) values("+lit(reviewer)+",clock_timestamp(),'Synthetic privacy');")
+sign_toolbox(reviewer,ident(108))
 coworker_shift=rpc('select to_jsonb(clock_in('+lit(job)+'::uuid,null::uuid,null::text,null::double precision,null::double precision,null::text,null::text,'+lit(ident(105))+"::uuid,clock_timestamp()-interval '1 minute',clock_timestamp(),0,1));",reviewer)['id']
 rpc('select to_jsonb(clock_out('+lit(coworker_shift)+'::uuid,null::text,false,true,null::integer,null::double precision,null::double precision,null::text));',reviewer)
 run('insert into opening_phases(id,opening_id,kind,status,started_by,started_at,submitted_at,minutes) values('+lit(ident(91))+','+lit(ident(21))+",'flashing','submitted',"+lit(reviewer)+",now()-interval '2 hours',now()-interval '1 hour',60);")
