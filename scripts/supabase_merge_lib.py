@@ -881,6 +881,9 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     "personal_activity_state": ('profile_id',),
     "personal_activity_commands": ('command_id',),
     "personal_activity_transitions": ('id',),
+    "work_configuration_commands": ("command_id",),
+    "work_configuration_draft_revisions": ("id",),
+    "work_configuration_draft_pointers": ("kind", "code"),
     "work_session_capture_metadata": ('session_id',),
 
 }
@@ -918,6 +921,9 @@ WORK_CAPTURE_MANUAL_RECONCILIATION_TABLES = frozenset({
     "personal_activity_commands",
     "personal_activity_transitions",
     "work_session_capture_metadata",
+    "work_configuration_commands",
+    "work_configuration_draft_revisions",
+    "work_configuration_draft_pointers",
 })
 
 #: Tables where combining two projects' rows is meaningless or actively wrong.
