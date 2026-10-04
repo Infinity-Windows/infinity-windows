@@ -73,7 +73,7 @@ begin
     and not exists(select 1 from public.work_activity_expected_mutations where frame_id=frame),'checked');
   perform pg_temp.dry_run_act_as(other_actor); execute 'reset role';
   denied:=false;
-  begin perform public._work_activity_establish_stream(v_command_id,data); exception when insufficient_privilege then denied:=true; end;
+  begin perform public._work_activity_establish_stream(v_command_id,data); exception when check_violation then denied:=true; end;
   perform pg_temp.dry_run_check('different QA actor cannot obtain the private receipt',denied,'checked');
   perform pg_temp.dry_run_as_system();
   select jsonb_build_object(
