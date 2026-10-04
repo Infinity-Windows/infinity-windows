@@ -885,7 +885,7 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     "work_configuration_draft_revisions": ("id",),
     "work_configuration_draft_pointers": ("kind", "code"),
     "work_session_capture_metadata": ('session_id',),
-    # Retained unit-observation graph (20261108100000). These are original
+    # Retained unit-observation graph (20261108300000). These are original
     # private identities, not rows to reconstruct from a surviving unit/job:
     # revisions are immutable, current is one pointer per original unit UUID,
     # and epochs are original scope keys that prevent ABA after source purge.

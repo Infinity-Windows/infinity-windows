@@ -1,4 +1,4 @@
-// Execute the actual corrected migration (20261108100000_work_unit_observations.sql)
+// Execute the actual corrected migration (20261108300000_work_unit_observations.sql)
 // and its actual real dependency helper bodies on a disposable embedded
 // PostgreSQL. Synthetic profiles/projects/units only -- no production
 // credentials, no clocks/payroll changes. Follows
@@ -132,7 +132,7 @@ for (const [file, names] of [
 
 // The actual new slice under review. Export contains DDL only, in the exact
 // order executed here. Used by the parent's isolated real PostgreSQL harness.
-await schemaExec(readFileSync(new URL('../supabase/migrations/20261108100000_work_unit_observations.sql', import.meta.url), 'utf8'));
+await schemaExec(readFileSync(new URL('../supabase/migrations/20261108300000_work_unit_observations.sql', import.meta.url), 'utf8'));
 if (process.env.WORK_UNIT_SCHEMA_OUT) {
   writeFileSync(process.env.WORK_UNIT_SCHEMA_OUT, schemaSql.join('\n\n') + '\n');
   await db.close();

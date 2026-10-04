@@ -185,9 +185,9 @@ const captureFoundation = readFileSync(join(MIGRATIONS, "20261107020000_work_cap
  * direct project scope; that original UUID is nullable for legacy/unassigned
  * evidence. Current pointers and ABA epochs have their own exact identities. */
 const UNIT_FACT_RETAINED = {
-  work_unit_fact_revisions: { migration: "20261108100000_work_unit_observations.sql", project: "nullable" },
-  work_unit_fact_current: { migration: "20261108100000_work_unit_observations.sql", project: "none" },
-  work_unit_fact_context_epochs: { migration: "20261108100000_work_unit_observations.sql", project: "none" },
+  work_unit_fact_revisions: { migration: "20261108300000_work_unit_observations.sql", project: "nullable" },
+  work_unit_fact_current: { migration: "20261108300000_work_unit_observations.sql", project: "none" },
+  work_unit_fact_context_epochs: { migration: "20261108300000_work_unit_observations.sql", project: "none" },
 } as const;
 const unitFactMigration = readFileSync(join(MIGRATIONS, UNIT_FACT_RETAINED.work_unit_fact_revisions.migration), "utf8");
 
@@ -301,7 +301,7 @@ describe("purge_project handles every project-scoped table", () => {
     const expected = ["work_unit_fact_revisions", "work_unit_fact_current", "work_unit_fact_context_epochs"] as const;
     for (const table of expected) {
       const disposition = UNIT_FACT_RETAINED[table];
-      expect(disposition.migration).toBe("20261108100000_work_unit_observations.sql");
+      expect(disposition.migration).toBe("20261108300000_work_unit_observations.sql");
       expect(retainedEvidenceMutated(table, body)).toBe(false);
       expect(purgeCovers(table, body)).toBe(true);
       const definition = unitFactMigration.split(`create table public.${table} (`)[1]?.split("\n);")[0];

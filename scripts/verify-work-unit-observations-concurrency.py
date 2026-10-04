@@ -192,7 +192,7 @@ with tempfile.TemporaryDirectory(prefix='forge-unit-schema-') as directory:
             "') then create role " + role + "; end if; end $$;")
     run('set check_function_bodies=off;\n' + schema, timeout=120)
 
-migration = ROOT / 'supabase/migrations/20261108100000_work_unit_observations.sql'
+migration = ROOT / 'supabase/migrations/20261108300000_work_unit_observations.sql'
 print('Actual unit migration SHA256', hashlib.sha256(migration.read_bytes()).hexdigest())
 OWNER_A, OWNER_B, FOREMAN = new_uuid(), new_uuid(), new_uuid()
 JOB_A, JOB_B, JOB_C = new_uuid(), new_uuid(), new_uuid()

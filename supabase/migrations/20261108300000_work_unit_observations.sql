@@ -536,7 +536,7 @@ begin
     if u.project_id is not null and jid is distinct from u.project_id and not public._is_lead(uid) then raise exception 'Ask a foreman to move a record already assigned to a job.'; end if;
     if u.id is not null and (jid is distinct from u.project_id or oid is distinct from u.opening_id) and length(btrim(coalesce(p_data->>'reason','')))<3 then raise exception 'Add a short reason for assigning or linking this record.'; end if;
 
-    -- Unit dimension observation (20261108100000). f is validated against
+    -- Unit dimension observation (20261108300000). f is validated against
     -- the ORIGINAL caller shape first (B8), before any server-derived value
     -- can merge over -- and thereby hide -- an invalid supplied type.
     f:=coalesce(p_data->'facts','{}');
