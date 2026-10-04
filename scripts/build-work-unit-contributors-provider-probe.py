@@ -12,7 +12,7 @@ calls = ROOT / 'scripts/dry-run-probes/work-unit-contributors-provider-calls.sql
 target = ROOT / 'scripts/dry-run-probes/work-unit-contributors-current-rehearsal.sql'
 PINS = {
     base: '642b9f555ee1d4368640447d6273f83e5547a0ff372dc06791f4ff52e0b11fb2',
-    source_path: '744b2cb56295b691cbaeaba35df0185e25d90a9d6795119c3bccbbdca014e1b5',
+    source_path: 'ae6185e4b390b7cff8f3d7aca837688fda2756792bdf055ef8c3a1f290d438c5',
     metadata: '543e409d04bd6f064dd0900b3062b6da43049b6991910aa8ff9cf8eae9be4af7',
     calls: 'e2e8369708e2bffef31f92230796f42623f69f394b449fd26cd420c6b5259465',
 }

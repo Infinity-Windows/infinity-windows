@@ -79,6 +79,11 @@ const zeroStart=await zeroCommand({...intent('specific'),unit:zeroCommandBasis})
 await as(id(3),'postgres');
 const negativeLedger=(await q("select _work_unit_contributors_shift($1,$2,$3::timestamptz-interval '1 microsecond') value",[id(3),zeroShift.id,zeroStart.receipt.effectiveAt])).value;
 check(!negativeLedger.proven&&negativeLedger.claims.length===0&&negativeLedger.issues.includes('negative_interval'),'Negative private validation interval is unproven and contributes no claim');
+const boundaryLedger=(await q('select _work_unit_contributors_shift($1,$2,$3) value',[id(3),zeroShift.id,zeroStart.receipt.effectiveAt])).value;
+const boundaryClaims=boundaryLedger.claims.filter(c=>c.unitId===zeroUnit);
+check(boundaryLedger.proven&&boundaryClaims.length===1&&boundaryClaims[0].microseconds==='0'&&boundaryClaims[0].live,'Actual own source at exact captured start boundary has a validated zero live claim');
+const boundaryPerson=(await q("select _work_unit_contributors_person($1,$2::jsonb,array['open_shift'],0,array['open_shift']) value",[id(3),JSON.stringify(boundaryClaims)])).value;
+check(!boundaryPerson.includesLive,'Zero elapsed own live boundary does not mark person live without positive live time');
 await as(id(3));await zeroCommand(intent('general'),zeroStart.receipt.effectiveAt);
 await as(id(2));const openZero=(await q('select work_unit_contributors_read($1,$2,1) value',[id(10),zeroUnit])).value;
 contributorWire.push({label:'open_shift_zero_not_a_proven_tap',request:{projectId:id(10),unitId:zeroUnit,protocolVersion:1},reply:openZero});
@@ -90,6 +95,14 @@ await as(id(2));const zeroReply=(await q('select work_unit_contributors_read($1,
 contributorWire.push({label:'proven_zero_only_tap',request:{projectId:id(10),unitId:zeroUnit,protocolVersion:1},reply:zeroReply});
 check(zeroReply.contributors.unitKnownMicros==='0'&&zeroReply.contributors.people.length===0&&zeroReply.contributors.zeroOnly.length===1&&zeroReply.contributors.participantCounts.total===0,'Actual zero-length captured tap is audit only, never a worked/timed contributor');
 check(zeroReply.contributors.zeroOnly[0].measurementState==='recorded_zero'&&zeroReply.contributors.zeroOnly[0].share.state==='unavailable','Zero proof reaches capture/identity validation and yields no percentage');
+await as(id(2),'postgres');
+await db.query("insert into crew_work_records(id,project_id,unit_id,filed_by,work_date,stage,outcome,whole_complete,description) values($1,$2,$3,$4,(clock_timestamp() at time zone 'America/Denver')::date,'install','partial',false,'Synthetic named work plus actual zero tap')",[id(9970),id(10),zeroUnit,id(2)]);
+await db.query('insert into crew_work_record_people(record_id,profile_id) values($1,$2)',[id(9970),id(3)]);
+await as(id(2));const namedZero=(await q('select work_unit_contributors_read($1,$2,1) value',[id(10),zeroUnit])).value;
+contributorWire.push({label:'validated_zero_tap_plus_named_work',request:{projectId:id(10),unitId:zeroUnit,protocolVersion:1},reply:namedZero});
+check(namedZero.contributors.people.length===1&&namedZero.contributors.people[0].profileId===id(3)&&namedZero.contributors.people[0].measurementState==='unproven'&&namedZero.contributors.people[0].activities.length===0&&!namedZero.contributors.people[0].includesLive&&namedZero.contributors.zeroOnly.length===0&&namedZero.contributors.untimedParticipants.length===1,'Validated zero tap plus named work retains uncertain timing and named evidence');
+assert.deepEqual(namedZero.contributors.participantCounts,{timed:0,timingUncertain:1,untimedOnly:0,zeroOnly:0,total:1});
+check(!namedZero.contributors.unitComplete&&namedZero.contributors.completenessReasons.includes('named_unlinked'),'Named zero timer counts once as timing uncertain rather than untimed only');
 await as(id(2),'postgres');await db.exec('rollback to savepoint zero_scenario');
 async function contributorControl(label,mutate,accept,unitId=id(30)){
  await as(id(2),'postgres');await db.exec('savepoint contributor_control');await mutate();await as(id(2));
@@ -213,6 +226,14 @@ contributorWire.push({label:'positive_unit_with_zero_only_audit',request:{projec
 check(mixedZeroReply.contributors.unitComplete&&mixedZeroReply.contributors.unitKnownMicros==='7200000000'&&mixedZeroReply.contributors.people.length===2&&mixedZeroReply.contributors.zeroOnly.length===1&&mixedZeroReply.contributors.participantCounts.total===2,'Proven zero audit does not add a worked contributor to positive unit');
 check(mixedZeroReply.contributors.zeroOnly[0].share.state==='unavailable'&&mixedZeroReply.contributors.zeroOnly[0].share.reasons.includes('zero'),'Zero-only audit has no percentage even when other people have positive time');
 
+await as(id(2),'postgres');
+await db.query("insert into crew_work_records(id,project_id,unit_id,filed_by,work_date,stage,outcome,whole_complete,description) values($1,$2,$3,$4,(clock_timestamp() at time zone 'America/Denver')::date,'install','partial',false,'Synthetic positive unit with named zero timer')",[id(15090),id(10),trioUnit,id(2)]);
+await db.query('insert into crew_work_record_people(record_id,profile_id) values($1,$2)',[id(15090),trio[2]]);
+await as(id(2));const mixedNamedZero=(await q('select work_unit_contributors_read($1,$2,1) value',[id(10),trioUnit])).value;
+contributorWire.push({label:'positive_unit_named_validated_zero_timer',request:{projectId:id(10),unitId:trioUnit,protocolVersion:1},reply:mixedNamedZero});
+assert.deepEqual(mixedNamedZero.contributors.participantCounts,{timed:2,timingUncertain:1,untimedOnly:0,zeroOnly:0,total:3});
+check(mixedNamedZero.contributors.unitKnownMicros==='7200000000'&&mixedNamedZero.contributors.people.find(p=>p.profileId===trio[2]).measurementState==='unproven'&&!mixedNamedZero.contributors.people.find(p=>p.profileId===trio[2]).share.reasons.includes('zero'),'Positive mixed unit retains named zero timer once without false zero share reason');
+
 await as(id(2),'postgres');await db.exec('rollback to savepoint trio_ready');await as(id(2));
 await q("select work_publish_activity_version($1,'contributors_machine',0,'specific','Machine unit activity','Machine unit activity',true,'[]')",[id(15000)]);
 await as(id(2),'postgres');const machineDef=(await q("select d.id definition_id,v.id version_id from work_activity_definitions d join work_activity_definition_versions v on v.definition_id=d.id where d.code='contributors_machine'")).definition_id;
@@ -241,6 +262,12 @@ const cap201=(await q('select work_unit_contributors_read($1,$2,1) value',[id(10
 check(concealed(cap201),'Subject201 refuses generically rather than leaking a truncated or reweighted breakdown');
 await as(id(2),'postgres');await db.exec('rollback to savepoint contributor_caps');
 
+for(const wireCase of contributorWire){if(wireCase.reply.availability!=='available')continue;const c=wireCase.reply.contributors;const peopleIds=new Set(c.people.map(p=>p.profileId)),namedIds=new Set(c.untimedParticipants.map(p=>p.profileId)),zeroIds=new Set(c.zeroOnly.map(p=>p.profileId));
+assert.deepEqual(c.participantCounts,{timed:c.people.filter(p=>BigInt(p.knownMicros)>0n).length,timingUncertain:c.people.filter(p=>p.measurementState==='unproven').length,untimedOnly:[...namedIds].filter(id=>!peopleIds.has(id)).length,zeroOnly:zeroIds.size,total:new Set([...peopleIds,...namedIds]).size},wireCase.label);
+assert.ok([...zeroIds].every(id=>!peopleIds.has(id)&&!namedIds.has(id)),wireCase.label);
+assert.equal(c.includesLive,c.people.some(p=>p.includesLive&&BigInt(p.knownMicros)>0n),wireCase.label);
+}
+check(true,'All actual corpus cases preserve timed, uncertain, named-only, zero-audit, distinct-total and live flag sets');
 if(process.env.WORK_UNIT_CONTRIBUTORS_WIRE_OUT)writeFileSync(process.env.WORK_UNIT_CONTRIBUTORS_WIRE_OUT,JSON.stringify({contributorsSha256:hash(contributors),totalsSha256:hash(totals),calls:contributorWire},null,2)+'\n');
 console.log('CONTRIBUTORS_SOURCE',hash(contributors));
 `;
