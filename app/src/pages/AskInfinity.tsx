@@ -18,7 +18,7 @@ import { Sparkles } from "lucide-react";
 import { supabaseConfigured } from "../lib/supabase";
 import { queryClient } from "../lib/queryClient";
 import { useAskSessionActor } from "../lib/useAskSessionActor";
-import { askInfinity, liveAnswer, shouldUseLLM, type AskLiveData, type KnowledgeSource } from "../lib/knowledge";
+import { askInfinity, liveAnswer, readAskArtifacts, shouldUseLLM, type AskLiveData, type KnowledgeSource } from "../lib/knowledge";
 import { askBrain, getBrainIndex, type BrainOutcome } from "../lib/brain/answer";
 import { currentCatalog, refreshCatalogCache } from "../lib/brain/catalogCache";
 import { logAskedQuestion } from "../lib/brain/askLog";
@@ -454,7 +454,7 @@ export function AskInfinity({ active = true, onLiveState, registerLiveControls }
           restored.push({ who: "me", text: turn.transcript, memoPath: turn.audio_path, requestId: turn.id });
           if (turn.reply || turn.receipts.length)
             restored.push({ who: "infinity", text: turn.reply?.answer ?? "", toolActivity: turn.reply?.toolActivity, buttons: readClockButtons(turn.reply?.buttons), navigation: readNavigationAction(turn.reply?.navigation) ?? undefined,
-              artifacts: (turn.reply?.artifacts ?? []).filter((a) => a && ["time_report", "job_summary"].includes(a.kind)).slice(0, 4),
+              artifacts: readAskArtifacts(turn.reply?.artifacts),
               sources: turn.reply?.sources ?? [],
               field: { request_id: turn.id, receipts: turn.receipts, checklist: turn.captured?.checklist ?? null, draft: turn.captured?.answers ?? undefined, learning: turn.captured?.learning ?? null } });
         }

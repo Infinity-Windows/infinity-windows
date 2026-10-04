@@ -20,6 +20,18 @@ describe('AI reports use the same labor arithmetic as the app',()=>{
   const r=buildTimeReport([shift(),shift({id:'s2',profile_id:other})],scope,now,'r',2);
   expect(r.people).toHaveLength(2);expect(r.groups).toHaveLength(2);expect(reportRows(r)).toHaveLength(3);expect(r.jobs[0].name).toContain('Completed job');
  });
+ it('excludes named people by exact ID without reducing other job hours',()=>{
+  const selected={...scope,groupBy:'job' as const,includeProjects:true,excludeProfileIds:[other]};
+  const report=buildTimeReport([shift(),shift({id:'s2',profile_id:other})],selected,now,'r',2);
+  expect(report.totals.recordedHours).toBe(8);
+  expect(report.rows.map(r=>r.profile_id)).toEqual([person]);
+  expect(parseReportScope(selected,scope.timeZone,person,2).excludeProfileIds).toEqual([other]);
+  expect(()=>parseReportScope(selected,scope.timeZone,person,0)).toThrow('exclusions');
+  report.excludedPeople=[{id:other,name:'Excluded worker'}];
+  const csv=askReportCsv(report);
+  expect(csv).toContain('Excluded people');
+  expect(csv).toContain('Excluded worker');
+ });
  it('filters jobs without silently including unassigned time and rejects duplicate rows',()=>{
   const r=buildTimeReport([shift(),shift({id:'s2',project_id:null})],{...scope,projectIds:[job]},now,'r',1);
   expect(r.totals.recordedHours).toBe(8);expect(r.totals.unassignedHours).toBe(0);
@@ -57,7 +69,7 @@ describe('AI reports use the same labor arithmetic as the app',()=>{
   const {PDFDocument}=await import('pdf-lib');const bytes=await askReportPdf(r);const pdf=await PDFDocument.load(bytes);expect(pdf.getPageCount()).toBe(1);
  });
  it('routes reports and follow-ups to fresh tools in English and Spanish',()=>{
-  for(const q of ['export my timecards','How many hours?','Resumen de la obra','muéstrame mis horas'])expect(isOperationalAsk(q)).toBe(true);
+  for(const q of ['export my timecards','How many hours?','Resumen de la obra','muéstrame mis horas','Who is clocked in right now?','Delete units 42 and 43','Show yesterday’s daily log','¿Dónde está cada quien ahora?','¿Quiénes están trabajando ahora?','Eliminar unidades 42 y 43'])expect(isOperationalAsk(q)).toBe(true);
   expect(isOperationalAsk('What about Carol?',true)).toBe(true);expect(isOperationalAsk('What is flashing?')).toBe(false);
  });
 });

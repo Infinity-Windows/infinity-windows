@@ -14,6 +14,7 @@ export interface ReportShift extends ShiftTime {
 export interface ReportScope {
   from: string | null; through: string | null; timeZone: string;
   profileIds: string[] | null; projectIds: string[] | null;
+  excludeProfileIds?: string[] | null;
   groupBy: 'employee' | 'job' | 'day'; includeProjects: boolean;
 }
 export interface ReportTotal {
@@ -23,6 +24,7 @@ export interface ReportTotal {
 export interface ReportGroup extends ReportTotal { id: string; label: string }
 export interface TimeReportArtifact {
   kind: 'time_report'; id: string; generatedAt: string; scope: ReportScope;
+  excludedPeople?: Array<{ id: string; name: string }>;
   rows: ReportShift[]; totals: ReportTotal; groups: ReportGroup[];
   people: Array<{ id: string; name: string }>;
   jobs: Array<{ id: string; name: string }>;
@@ -37,7 +39,12 @@ export interface JobSummaryArtifact {
   logs: Array<{ id: string; log_date: string; headline: string | null; notes: string | null }>;
   unavailable: string[];
 }
-export type AskArtifact = TimeReportArtifact | JobSummaryArtifact;
+export interface UnitRemovalReviewArtifact {
+  kind: 'unit_removal_review'; id: string; generatedAt: string;
+  project: { id: string; job_code: string; name: string };
+  openings: Array<{ id: string; code: string; status: string }>;
+}
+export type AskArtifact = TimeReportArtifact | JobSummaryArtifact | UnitRemovalReviewArtifact;
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export function validId(value: unknown): value is string { return typeof value === 'string' && uuid.test(value); }
 export function validDay(value: unknown): value is string {
@@ -86,11 +93,13 @@ export function parseReportScope(input: unknown, timeZone: string, callerId: str
   const scope: ReportScope = {
     from: p.from as string | null, through: p.through as string | null,
     timeZone: validateZone(timeZone), profileIds: ids(p.profileIds, false), projectIds: ids(p.projectIds, true),
+    excludeProfileIds: p.excludeProfileIds == null ? null : ids(p.excludeProfileIds, false),
     groupBy: p.groupBy as ReportScope['groupBy'], includeProjects: p.includeProjects === true,
   };
   if (!['employee', 'job', 'day'].includes(scope.groupBy) || typeof p.includeProjects !== 'boolean') throw new Error('Choose employee, job, or day grouping and whether to include projects.');
   reportBounds(scope);
   if (rank < 1) {
+    if (scope.excludeProfileIds?.length) throw new Error('Team exclusions require foreman access.');
     if (scope.profileIds?.some(id => id !== callerId)) throw new Error('You can report on your own hours. Team hours require foreman access.');
     scope.profileIds = [callerId];
   }
@@ -114,7 +123,7 @@ export function rowTotals(row: ReportShift, now: number): ReportTotal {
   return total;
 }
 export function buildTimeReport(rows: ReportShift[], scope: ReportScope, now: number, id: string, rank: number): TimeReportArtifact {
-  const selected = rows.filter(s => s.status !== 'voided' && (scope.profileIds === null || scope.profileIds.includes(s.profile_id)) && (scope.projectIds === null || scope.projectIds.includes(s.project_id ?? 'unassigned')));
+  const selected = rows.filter(s => s.status !== 'voided' && (scope.profileIds === null || scope.profileIds.includes(s.profile_id)) && !scope.excludeProfileIds?.includes(s.profile_id) && (scope.projectIds === null || scope.projectIds.includes(s.project_id ?? 'unassigned')));
   if (new Set(selected.map(s => s.id)).size !== selected.length) throw new Error('Time records changed while loading. Refresh the report.');
   const groups = new Map<string, ReportGroup>();
   const people = new Map<string, string>(); const jobs = new Map<string, string>(); const totals = empty();
@@ -153,17 +162,22 @@ export async function completeReportRows<T extends { id: string }>(read: (offset
 
 const nullableIds = { type: ['array', 'null'], items: { type: 'string' }, description: 'Resolved UUIDs, or null for all. Project IDs may also include unassigned.' };
 export const REPORTING_TOOLS: AnthropicToolDef[] = [
-  { name: 'find_report_records', description: 'Find exact employee or job IDs before selecting filters. Includes completed jobs. Does not provide payroll rates. Ask the user when similar names are ambiguous.', input_schema: { type: 'object', properties: { kind: { type: 'string', enum: ['people','jobs'] }, search: { type: 'string' } }, required: ['kind','search'], additionalProperties: false } },
+  { name: 'find_report_records', description: 'Find employee or job IDs before selecting filters. For several exclusions, pass every name in searches IN ONE CALL. Includes completed jobs. Do not guess IDs.', input_schema: { type: 'object', properties: { kind: { type: 'string', enum: ['people','jobs'] }, search: { type: ['string','null'] }, searches: { type: ['array','null'], items: { type: 'string' } } }, required: ['kind','search','searches'], additionalProperties: false } },
   { name: 'get_hours_report', description: 'Retrieve COMPLETE permitted shifts and create a report card with downloadable CSV and printable PDF. All company hours include unassigned time. Finished shifts and running clocks are separate. Employee, day or job totals; completed jobs supported. Use null dates only for explicitly requested all time. No payroll presets or salary exclusions are inferred; resolve requested people first.', input_schema: { type: 'object', properties: {
     from: { type: ['string','null'], description: 'Inclusive YYYY-MM-DD clock-in day; null for all time.' }, through: { type: ['string','null'], description: 'Inclusive last day; null with from for all time.' },
-    profileIds: nullableIds, projectIds: nullableIds, groupBy: { type: 'string', enum: ['employee','job','day'] }, includeProjects: { type: 'boolean', description: 'False for daily employee payroll reports without projects.' },
-  }, required: ['from','through','profileIds','projectIds','groupBy','includeProjects'], additionalProperties: false } },
+    profileIds: nullableIds, excludeProfileIds: nullableIds, projectIds: nullableIds, groupBy: { type: 'string', enum: ['employee','job','day'] }, includeProjects: { type: 'boolean', description: 'False for daily employee payroll reports without projects.' },
+  }, required: ['from','through','profileIds','excludeProfileIds','projectIds','groupBy','includeProjects'], additionalProperties: false } },
+  { name: 'get_crew_clock_status', description: 'Read current open job clocks and break state for the visible crew. Foreman sees installers/foremen; supervisor and owner see all. Never infer live status from cached context.', input_schema: { type: 'object', properties: {}, required: [], additionalProperties: false } },
+  { name: 'get_daily_report', description: 'Read a filed daily log for a calendar day. If no job ID is supplied, choose a job with a crew shift that day and a filed log. Returns actual headline, notes and reflection. Does not create a log.', input_schema: { type: 'object', properties: { day: { type: 'string', description: 'YYYY-MM-DD in report time zone' }, projectId: { type: ['string','null'] } }, required: ['day','projectId'], additionalProperties: false } },
+  { name: 'prepare_unit_removal', description: 'Prepare an exact-job, exact-unit review card. Does not remove anything. The authorized person must tap the card, and the database will reject units with recorded work or assignments. Foreman or above.', input_schema: { type: 'object', properties: { projectId: { type: 'string' }, unitCodes: { type: 'array', items: { type: 'string' } } }, required: ['projectId','unitCodes'], additionalProperties: false } },
   { name: 'get_job_summary', description: 'Read a resolved active or completed job, all its labor, recorded stages, labor targets and the most recent daily logs. Produces a job summary card. Foreman or above only. Missing sources are explicit; hours consumed are not percent installed.', input_schema: { type: 'object', properties: { projectId: { type: 'string' } }, required: ['projectId'], additionalProperties: false } },
 ];
 export const REPORTING_SYSTEM_PROMPT = `
 You can now produce actual hours reports, downloadable timecards, and job summaries through tools.
 For any hours, export, payroll, or job-progress request, use the appropriate tool BEFORE claiming a total, a file, or current job progress. Cached context is not a complete ledger.
-Resolve names with find_report_records; do not guess UUIDs or silently choose similar jobs/people. Ask for missing dates/year. Explicit all time uses null dates.
+Resolve names with find_report_records; batch several names in searches in one call. For an exclusion request, use excludeProfileIds rather than enumerating everyone to include. List exact excluded names in the answer. Do not guess UUIDs or silently choose similar jobs/people. Ask for missing dates/year. Explicit all time uses null dates.
+For live crew status, call get_crew_clock_status. For a past daily report, call get_daily_report and show the filed content; a timecard is not a daily report.
+For a request to remove several units, resolve the exact job ID, then call prepare_unit_removal with the exact codes. That only creates a review card; the user must tap it to remove anything. Never claim a unit was removed from a preview.
 Tool report cards are rendered by Forge and include download controls. Describe their real filters and calculated totals. Never invent a download URL. A report is not a payroll submission or approval.
 All company hours include unassigned time and salaried labor unless the user explicitly selects exclusions. There is no saved payroll preset tool yet: ask which people to include if the requested group is undefined. Do not infer exclusions from salaries.
 Explain recorded, running, unresolved and unapproved time separately. Report data is a snapshot taken now; unit timers are not additional hours. Stage counts and labor budget consumption are different measures.

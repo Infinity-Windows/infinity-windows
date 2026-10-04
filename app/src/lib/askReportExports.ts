@@ -21,7 +21,13 @@ function csvCell(value: string): string {
   return /[",\r\n]/.test(safe) ? `"${safe.replace(/"/g,'""')}"` : safe;
 }
 export function askReportCsv(report: TimeReportArtifact): string {
-  return '\uFEFF' + reportRows(report).map(row=>row.map(csvCell).join(',')).join('\r\n');
+  const rows = reportRows(report);
+  if (report.excludedPeople?.length) {
+    const excluded = report.excludedPeople.map(p=>p.name).join('; ');
+    rows[0].push('Excluded people');
+    for (const row of rows.slice(1)) row.push(excluded);
+  }
+  return '\uFEFF' + rows.map(row=>row.map(csvCell).join(',')).join('\r\n');
 }
 /** A file generated from the exact card snapshot, with no second database query. */
 export async function askReportPdf(report: TimeReportArtifact): Promise<Uint8Array> {
@@ -54,6 +60,7 @@ export async function askReportPdf(report: TimeReportArtifact): Promise<Uint8Arr
   line(`Recorded: ${report.totals.recordedHours.toFixed(2)} hours after breaks`,12,bold);
   wrapped(`Running: ${report.totals.runningHours.toFixed(2)} hours (excluded from export). Unresolved: ${report.totals.unresolvedCount}. Unapproved finished entries: ${report.totals.unapprovedCount}. Suspect timestamps: ${report.totals.suspectCount}.`);
   wrapped(`People: ${report.scope.profileIds ? report.people.map(p=>p.name).join(', ') || 'Selected people; no entries' : 'All permitted crew'}. Jobs: ${report.scope.projectIds ? report.jobs.map(j=>j.name).join(', ') || 'Selected jobs; no entries' : 'All jobs, including unassigned time'}.`);
+  if (report.excludedPeople?.length) wrapped(`Excluded people: ${report.excludedPeople.map(p=>p.name).join(', ')}.`);
   line(`Snapshot: ${report.generatedAt}`,8,regular,muted);
   line(`Report ID: ${report.id}`,8,regular,muted);
   wrapped('Clock-in dates determine inclusion. These are recorded hours, not payroll approval or an overtime calculation.',9);

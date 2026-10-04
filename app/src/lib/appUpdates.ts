@@ -61,6 +61,7 @@ export const INCLUDED_UPDATE_IDS = [
   '2026-10-01-semimonthly-pay-periods',
   '2026-10-01-job-phone-layout',
   '2026-10-01-receipt-viewer',
+  '2026-10-01-ask-operations',
 ] as const;
 export interface AppUpdate {
   id: string; published_on: string; audience: number[]; kind: 'fix' | 'improvement';

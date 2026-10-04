@@ -82,6 +82,9 @@ function toolActivityLine(name: string, input: unknown): string {
   switch (name) {
     case "find_report_records": return "Looked up people and jobs";
     case "get_hours_report": return "Prepared an hours report";
+    case "get_crew_clock_status": return "Read live crew clocks";
+    case "get_daily_report": return "Read a filed daily report";
+    case "prepare_unit_removal": return "Prepared a unit removal review; nothing removed";
     case "get_job_summary": return "Read the job summary sources";
     case "get_scheduling_picture":
       return "Reading the week…";
