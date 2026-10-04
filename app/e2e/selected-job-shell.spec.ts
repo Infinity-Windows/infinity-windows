@@ -5,7 +5,8 @@ test.use({colorScheme:'dark'});
 
 async function chooseJob(page:Page){
  const search=page.getByRole('searchbox');await search.fill('Black');
- await search.press('Tab');await expect(page.getByRole('button',{name:/BLACK22.*Black Desert/})).toBeFocused();
+ const job=page.getByRole('button',{name:/BLACK22.*Black Desert/});await expect(job).toBeVisible();
+ await search.press('Tab');await expect(job).toBeFocused();
  await page.keyboard.press('Enter');await expect(page.locator('.pav-tile')).toHaveCount(1);
  const codes=page.locator('#sjwr-cost');await codes.focus();await expect(codes).toBeFocused();
  // Native OS picker keystrokes are not replayed reliably by headless macOS.
