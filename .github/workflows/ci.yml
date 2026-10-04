@@ -278,6 +278,8 @@ jobs:
         run: PGLITE_MODULE="$RUNNER_TEMP/work-cutover-matched-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-work-activity-engine-role-settings.mjs
       - name: Verify read-only paid-clock capability and full cutover admission
         run: PGLITE_MODULE="$RUNNER_TEMP/work-cutover-matched-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-work-activity-clock-capability.mjs
+      - name: Verify selected-job catalog against the full authored cutover
+        run: PGLITE_MODULE="$RUNNER_TEMP/work-cutover-matched-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-work-activity-catalog-full-acceptance.mjs
       - name: Verify independent backends on the source-matched application schema
         env:
           WORK_ACTIVITY_CUTOVER_TEST_DB_URL: postgresql://postgres:fixture-only@localhost:5432/forge_work_activity_cutover_test
@@ -310,6 +312,10 @@ jobs:
         env:
           WORK_ACTIVITY_ROLE_TEST_DB_URL: postgresql://supabase_admin:fixture-only@localhost:5432/forge_work_activity_role_test
         run: python3 scripts/verify-work-activity-engine-role-parity.py
+      - name: Verify genuine-role read-only catalog and observed revocation wait
+        env:
+          WORK_ACTIVITY_ROLE_TEST_DB_URL: postgresql://supabase_admin:fixture-only@localhost:5432/forge_work_activity_role_test
+        run: python3 scripts/verify-work-activity-catalog-concurrency.py
 
   values-sql-concurrency:
     name: Monthly reviews database and concurrent acceptance
