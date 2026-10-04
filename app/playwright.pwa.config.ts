@@ -41,6 +41,7 @@ export default defineConfig({
   testDir: "./e2e",
   testMatch: /\.pwa\.ts$/,
   outputDir: "./e2e/test-results",
+  preserveOutput: "always",
   fullyParallel: false,
   workers: 1,
   // A worker install precaches ~8 MB, and the loop spec waits out

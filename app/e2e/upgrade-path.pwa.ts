@@ -356,6 +356,27 @@ test("a download that broke halfway does not leave Refresh doing nothing afterwa
   // worker and never attaches its reload. The app itself sees the second
   // worker waiting, asks it to take over, it does, and the page stays on the
   // old shell: Refresh, ten seconds, Refresh, ten seconds.
+  const causal: unknown[] = [];
+  page.context().on("console", message => {
+    if (message.text().startsWith("FORGE-PWA-")) causal.push({event:"console",at:Date.now(),text:message.text(),location:message.location()});
+  });
+  page.on("request", req => { if(req.isNavigationRequest())causal.push({event:"navigation-request",at:Date.now(),url:req.url()}); });
+  await page.addInitScript(() => {
+    const key="wops-e2e-half-download-causal";
+    const note=(event:string,detail:unknown=null)=>{
+      const old=JSON.parse(sessionStorage.getItem(key)||"[]") as unknown[];
+      old.push({event,at:Date.now(),detail});sessionStorage.setItem(key,JSON.stringify(old.slice(-100)));
+    };
+    note("document-start", {empty:sessionStorage.getItem("wops-empty-boot-diagnostic"),reload:sessionStorage.getItem("wops-update-reload-diagnostic")});
+    window.addEventListener("load",()=>note("load",{boot:document.documentElement.dataset.forgeBootStarted,rootChildren:document.getElementById("root")?.childElementCount}));
+    window.addEventListener("beforeunload",()=>note("beforeunload",{boot:document.documentElement.dataset.forgeBootStarted,empty:sessionStorage.getItem("wops-empty-boot-diagnostic"),reload:sessionStorage.getItem("wops-update-reload-diagnostic")}));
+    navigator.serviceWorker.addEventListener("controllerchange",()=>note("controllerchange",{url:navigator.serviceWorker.controller?.scriptURL,state:navigator.serviceWorker.controller?.state}));
+    const post=ServiceWorker.prototype.postMessage;
+    ServiceWorker.prototype.postMessage=function(message:unknown,options?:Transferable[]|StructuredSerializeOptions){note("post-message",{url:this.scriptURL,type:(message as {type?:unknown})?.type});return Reflect.apply(post,this,[message,options]);};
+    window.addEventListener("error",(e:Event)=>note("window-error",e instanceof ErrorEvent?e.message:(e.target instanceof HTMLScriptElement?e.target.src:"resource")),true);
+    window.addEventListener("unhandledrejection",e=>note("unhandled-rejection",String(e.reason)));
+  });
+  try {
   const { builds } = await harnessState(request);
   await serveBuild(request, "old");
   await page.goto("/");
@@ -407,4 +428,9 @@ test("a download that broke halfway does not leave Refresh doing nothing afterwa
     .toBe(builds.new.entry);
   await expectSettledOn(page, builds.new.entry, loads);
   expect(navigations(), "the switch was more than one navigation: two racing reloads can leave the new build blank").toHaveLength(1);
+  } finally {
+    let documentTimeline: unknown = null;
+    try { documentTimeline=await page.evaluate(()=>JSON.parse(sessionStorage.getItem("wops-e2e-half-download-causal")||"[]")); } catch { /* navigation may still be active */ }
+    await test.info().attach("half-download-causal",{body:Buffer.from(JSON.stringify({causal,documentTimeline},null,2)),contentType:"application/json"});
+  }
 });
