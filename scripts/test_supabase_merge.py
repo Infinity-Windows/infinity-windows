@@ -210,7 +210,7 @@ class TestSchemaParsing(unittest.TestCase):
         # 20261035000000 to land after the bill-to migrations).
         # +10 monthly-values tables: private policy, immutable reviews and
         # frozen accounting/provenance, plus reserved reminder claims.
-        self.assertEqual(len(SCHEMA.tables), 207)  # includes ten private capture foundation tables
+        self.assertEqual(len(SCHEMA.tables), 210)  # includes capture foundation and three private configuration tables
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 
@@ -726,6 +726,7 @@ class TestPlan(unittest.TestCase):
 
     def test_capture_graph_never_generates_private_insert_sql(self):
         tables = sorted(WORK_CAPTURE_MANUAL_RECONCILIATION_TABLES)
+        self.assertTrue({"work_configuration_commands", "work_configuration_draft_revisions", "work_configuration_draft_pointers"}.issubset(WORK_CAPTURE_MANUAL_RECONCILIATION_TABLES))
         private = "sentinel-private-capture-payload"
         source = {"project_ref": "source", "tables": {name: {"rows": 1} for name in tables}}
         target = {"project_ref": "target", "tables": {name: {"rows": 0} for name in tables}}
