@@ -419,7 +419,7 @@ jobs:
           retention-days: 7
 
   pwa-causal-original:
-    name: Trace exact retained slow-shell failure on Linux
+    name: Trace exact retained installed-app sequence on Linux
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
@@ -448,13 +448,16 @@ jobs:
           path: ${{ runner.temp }}/pwa-original
       - name: Refuse missing or changed archived bundles before the harness can rebuild
         run: python3 ../scripts/verify-pwa-archived-bundles.py "$RUNNER_TEMP/pwa-original/_temp/pwa-older" "$RUNNER_TEMP/pwa-archive-receipt.json"
-      - name: Reproduce unchanged original bundles with causal document timeline
+      - name: Replay the original complete sequence once with causal document timeline
         env:
           IW_PWA_CACHE: ${{ runner.temp }}/pwa-original/_temp/pwa-older
           IW_PWA_ENGINE_TRACE: "1"
           IW_PWA_SLOW_SHELL_TRACE: "1"
           IW_PWA_CAUSAL_TRACE: "1"
-        run: npx playwright test --config playwright.pwa.config.ts upgrade-path.pwa.ts -g 'an in-flight self reload' --repeat-each=3 --max-failures=1
+        run: npx playwright test --config playwright.pwa.config.ts --max-failures=1
+      - name: Verify archived bundles remain unchanged after the sequence
+        if: always()
+        run: python3 ../scripts/verify-pwa-archived-bundles.py "$RUNNER_TEMP/pwa-original/_temp/pwa-older" "$RUNNER_TEMP/pwa-archive-after-receipt.json"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -462,6 +465,7 @@ jobs:
           path: |
             app/e2e/test-results/
             ${{ runner.temp }}/pwa-archive-receipt.json
+            ${{ runner.temp }}/pwa-archive-after-receipt.json
           retention-days: 7
 
   verify-script:
