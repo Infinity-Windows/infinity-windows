@@ -23,6 +23,7 @@
 // fixed in PwaBanners.tsx; see the notes on each.
 
 import { expect, test, type Page, type Worker } from "@playwright/test";
+import { prepareSlowReloadEvidence } from "./support/pwaSlowReloadEvidence";
 import { preparePwaEngineTrace } from "./support/pwaEngineTrace";
 import {
   cutTheNetwork,
@@ -276,7 +277,9 @@ test("an in-flight self reload is not cancelled when the new worker's shell look
   page,
   context,
   request,
-}) => {
+}, testInfo) => {
+  const capture=process.env.IW_PWA_SLOW_SHELL_TRACE==="1"?await prepareSlowReloadEvidence(page,testInfo):null;
+  try {
   const { builds } = await harnessState(request);
   await serveBuild(request, "old");
   await page.goto("/");
@@ -304,6 +307,7 @@ test("an in-flight self reload is not cancelled when the new worker's shell look
     });
   });
 
+  await capture?.start();
   await serveBuild(request, "new");
   const { navigations } = countNavigations(page);
   await nudgeUpdateCheck(page);
@@ -312,6 +316,7 @@ test("an in-flight self reload is not cancelled when the new worker's shell look
   await expect(signInButton(page)).toBeVisible();
   expect(await worker.evaluate(() => (self as unknown as { __slowShellLookups: number }).__slowShellLookups)).toBeGreaterThan(0);
   expect(navigations(), "the worker cancelled an in-flight self reload").toHaveLength(1);
+  } finally {await capture?.finish();}
 });
 
 test("a second tab on the same URL can reload without suppressing the asking tab", async ({

@@ -2,7 +2,7 @@ import { open, writeFile } from "node:fs/promises";
 import type { CDPSession, Page, TestInfo } from "@playwright/test";
 
 /** Observation only: no worker mutation, cache operation, or request interception. */
-export async function preparePwaEngineTrace(page: Page, pageSession: CDPSession, info: TestInfo) {
+export async function preparePwaEngineTrace(page: Page, pageSession: CDPSession, info: TestInfo, scope="Passive capture of selected installed-app test") {
   const browser = page.context().browser();
   if (!browser) throw new Error("Engine trace requires a Chromium browser connection");
   const session = await browser.newBrowserCDPSession();
@@ -27,7 +27,7 @@ export async function preparePwaEngineTrace(page: Page, pageSession: CDPSession,
     },
     async finish() {
       const receipt: Record<string, unknown> = { version, inventory, selected, started, lifecycle,
-        scope: "unchanged control; tracing starts immediately before failed-install stage" };
+        scope };
       if (started) {
         let timer: ReturnType<typeof setTimeout> | undefined;
         try {

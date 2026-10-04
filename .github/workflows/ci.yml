@@ -419,7 +419,7 @@ jobs:
           retention-days: 7
 
   pwa-causal-original:
-    name: Trace browser cancellation in unchanged original update
+    name: Trace exact retained slow-shell failure on Linux
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
@@ -442,21 +442,26 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - uses: actions/download-artifact@v4
         with:
-          name: pwa-current-builds-and-results
-          run-id: 37177455416
+          name: pwa-older-builds-and-results
+          run-id: 37231644970
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/pwa-original
+      - name: Refuse missing or changed archived bundles before the harness can rebuild
+        run: python3 ../scripts/verify-pwa-archived-bundles.py "$RUNNER_TEMP/pwa-original/_temp/pwa-older" "$RUNNER_TEMP/pwa-archive-receipt.json"
       - name: Reproduce unchanged original bundles with causal document timeline
         env:
-          IW_PWA_CACHE: ${{ runner.temp }}/pwa-original/_temp/pwa-current
+          IW_PWA_CACHE: ${{ runner.temp }}/pwa-original/_temp/pwa-older
           IW_PWA_ENGINE_TRACE: "1"
+          IW_PWA_SLOW_SHELL_TRACE: "1"
           IW_PWA_CAUSAL_TRACE: "1"
-        run: npx playwright test --config playwright.pwa.config.ts upgrade-path.pwa.ts -g 'a download that broke halfway' --repeat-each=3 --max-failures=1
+        run: npx playwright test --config playwright.pwa.config.ts upgrade-path.pwa.ts -g 'an in-flight self reload' --repeat-each=3 --max-failures=1
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: pwa-causal-original-results
-          path: app/e2e/test-results/
+          path: |
+            app/e2e/test-results/
+            ${{ runner.temp }}/pwa-archive-receipt.json
           retention-days: 7
 
   verify-script:
