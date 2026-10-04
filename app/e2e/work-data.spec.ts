@@ -324,6 +324,16 @@ test("the layout stays within narrow portrait and landscape viewports", async ({
     { width: 844, height: 390 },
   ]) {
     await page.setViewportSize(viewport);
+    console.log("LAYOUT_DIAG", JSON.stringify(await page.evaluate(() => ({
+      viewport: window.innerWidth, doc: document.documentElement.scrollWidth,
+      boxes: Array.from(document.querySelectorAll<HTMLElement>("*")).filter(el => el.getClientRects().length).map(el => ({
+        tag: el.tagName, class: el.className, text: el.textContent?.slice(0,80),
+        left: el.getBoundingClientRect().left, right: el.getBoundingClientRect().right,
+        scroll: el.scrollWidth, client: el.clientWidth, style: getComputedStyle(el).display,
+        position: getComputedStyle(el).position, overflow: getComputedStyle(el).overflowX,
+        padding: getComputedStyle(el).padding, grid: getComputedStyle(el).gridTemplateColumns,
+      })).filter(el => el.right > window.innerWidth || el.scroll > el.client),
+    }))));
     await expect.poll(() => page.evaluate(() => ({
       width: window.innerWidth,
       overflow: Math.max(0, document.documentElement.scrollWidth - window.innerWidth),
