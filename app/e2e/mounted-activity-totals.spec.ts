@@ -34,3 +34,21 @@ test("Specific never displays the previous General total and explicit check rest
   await expect(panel.getByText("Machine time is included in activity time.")).toBeVisible();
   expect(server.unexpected).toEqual([]);
 });
+test("Check totals recovers after in-route Back without repeated old-source reads",async({page})=>{
+  const server=await setup(page),panel=page.getByRole("region",{name:"Recorded activity totals"});
+  await expect(panel.getByText("Machine time is included in activity time.")).toBeVisible();
+  await page.evaluate(()=>window.dispatchEvent(new PopStateEvent("popstate")));
+  await expect(panel.getByText("Totals are unavailable. Check the current records.")).toBeVisible();
+  const count=server.calls.length;await panel.getByRole("button",{name:"Check totals",exact:true}).click();
+  await expect(panel.getByText("Machine time is included in activity time.")).toBeVisible();
+  await page.waitForTimeout(1200);expect(server.calls.length-count).toBe(1);expect(server.unexpected).toEqual([]);
+});
+test("a General check with a selected unit reads totals once after fresh catalog admission",async({page})=>{
+  const server=await setup(page),panel=page.getByRole("region",{name:"Recorded activity totals"});
+  await page.getByRole("tab",{name:"Specific",exact:true}).click();await page.getByRole("combobox",{name:"Choose a unit"}).selectOption(UNIT);
+  await expect.poll(()=>server.calls.some(c=>c.p_unit_id===UNIT)).toBe(true);
+  await page.getByRole("tab",{name:"General",exact:true}).click();await expect(panel.getByText("Machine time is included in activity time.")).toBeVisible();
+  const count=server.calls.length;await panel.getByRole("button",{name:"Check totals",exact:true}).click();
+  await expect(panel.getByText("Machine time is included in activity time.")).toBeVisible();
+  await page.waitForTimeout(1200);expect(server.calls.length-count).toBe(1);expect(server.unexpected).toEqual([]);
+});

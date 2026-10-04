@@ -51,7 +51,9 @@ export function useActivityTotals(projectId:string,unitId:string|null,source:Uni
    session.state=session.data?"ready":"unavailable";paint();
   }).catch(()=>{if(current()&&active.current===session){session.state="unavailable";session.data=null;paint();}});
   // This timer changes only a labelled display estimate. Never raw SQL data.
-  const tick=window.setInterval(()=>{if(current()&&active.current===session&&session.data)paint();},1000);
+  // Repaint even when admission just closed: render must erase the old answer
+  // as soon as its parent source deadline passes, before this read's deadline.
+  const tick=window.setInterval(()=>{if(active.current===session&&session.data)paint();},1000);
   return()=>{alive=false;session.data=null;window.clearTimeout(timer);window.clearInterval(tick);if(active.current===session)active.current=null;};
  },[projectId,unitId,source,selected,preview,previewRevision,auth,network,qc,profile,profileStamp,revision,admissionRevision]);
  const session=active.current;

@@ -172,6 +172,7 @@ function SelectedJobWorkActive(props: SelectedJobWorkProps & { reviewSource: Sel
   const reviewLive = useRef({ unitId, tab, unit: basis.data, catalog: catalog.data, dimensionHeld });
   useLayoutEffect(() => { reviewLive.current = { unitId, tab, unit: basis.data, catalog: catalog.data, dimensionHeld }; });
   const reviewEpoch = reviewLifetime.current, selectionEpoch = selectionLifetime.current;
+  const refreshingSelection = useRef<number | null>(null);
   const reviewAdmitted = () => current() && reviewOpen.current && reviewLifetime.current === reviewEpoch
     && liveUnitId.current === unitId && reviewLive.current.unitId === unitId && reviewLive.current.tab === "specific"
     && reviewLive.current.unit?.requestStartedAt === basis.data?.requestStartedAt
@@ -181,6 +182,7 @@ function SelectedJobWorkActive(props: SelectedJobWorkProps & { reviewSource: Sel
   const totalsUnitId = tab === "specific" ? unitId : null;
   const totalsAdmitted = () => current() && reviewOpen.current && reviewLifetime.current === reviewEpoch
     && selectionLifetime.current === selectionEpoch && reviewLive.current.tab === tab
+    && refreshingSelection.current !== selectionEpoch
     && catalogReady && catalog.state === "ready" && !!catalog.data
     && performance.now() - catalog.data.requestStartedAt >= 0
     && performance.now() - catalog.data.requestStartedAt < REVIEW_FRESH_MS
@@ -189,7 +191,9 @@ function SelectedJobWorkActive(props: SelectedJobWorkProps & { reviewSource: Sel
   // Only real read/selection transitions reopen totals. An unrelated clock
   // repaint updates the live callback without starting another server read.
   const totalsAdmissionRevision = JSON.stringify([reviewEpoch, selectionEpoch, tab,
-    catalog.state, catalog.data?.requestStartedAt, basis.state, basis.data?.requestStartedAt, catalogReady]);
+    catalog.state, catalog.data?.requestStartedAt,
+    tab === "specific" ? basis.state : null, tab === "specific" ? basis.data?.requestStartedAt : null,
+    dimensionHeld, refreshingSelection.current === selectionEpoch, catalogReady]);
   const totals = useActivityTotals(project.id, totalsUnitId, reviewSource, totalsAdmitted, totalsAdmissionRevision);
   let frozenUnit: ReturnType<typeof unitCommandBasis> | null = null;
   if (!dimensionHeld && unitId && basis.state === "ready" && unitReply?.availability === "available" &&
@@ -255,10 +259,18 @@ function SelectedJobWorkActive(props: SelectedJobWorkProps & { reviewSource: Sel
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deviceId, owner, generation]);
 
-  async function refreshReads() {
-    if (!current() || !reviewOpen.current || selectionLifetime.current !== selectionEpoch || liveUnitId.current !== unitId) return;
+  async function refreshReads(reopen = false) {
+    if (!current() || (!reviewOpen.current && !reopen) || selectionLifetime.current !== selectionEpoch || liveUnitId.current !== unitId
+      || refreshingSelection.current === selectionEpoch) return;
+    if (reopen) reviewOpen.current = true;
+    refreshingSelection.current = selectionEpoch;
     closeReview();
-    await Promise.all([snapshot.refresh(), catalog.refresh(), unitId ? basis.refresh() : Promise.resolve()]);
+    try {
+      await Promise.all([snapshot.refresh(), catalog.refresh(), tab === "specific" && unitId ? basis.refresh() : Promise.resolve()]);
+    } finally {
+      if (refreshingSelection.current === selectionEpoch) refreshingSelection.current = null;
+      if (current() && selectionLifetime.current === selectionEpoch) repaintSelection(n => n + 1);
+    }
   }
   // Activity receipts belong to the current login/device stream even if its
   // selected unit changed during delivery. Refresh the latest committed read
@@ -370,7 +382,7 @@ function SelectedJobWorkActive(props: SelectedJobWorkProps & { reviewSource: Sel
         catalogRequestStartedAt={catalog.data?.requestStartedAt ?? NaN} onRefresh={refreshReads} locale={locale} />
     </Suspense>}
     <Suspense fallback={<p role="status">{locale === "es" ? "Cargando totales…" : "Loading totals…"}</p>}>
-      <ActivityTotals totals={totals} onRefresh={refreshReads} />
+      <ActivityTotals totals={totals} onRefresh={() => refreshReads(true)} />
     </Suspense>
     <div className="selected-job-work-controls">
       {canEstablish && <button type="button" disabled={busy} onClick={() => void act({ kind: "establish_stream", previousGeneration: null, previousHeadCommandId: null })}>{t.ready}</button>}
