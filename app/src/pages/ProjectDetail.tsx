@@ -60,6 +60,7 @@ import { listRoster } from "../lib/chat/api";
 import { mergeJobPeople } from "../lib/whoOnJob";
 import { CalendarClock, Plane, Truck, Users } from "lucide-react";
 import { SkeletonCard } from "../components/ui/States";
+const WorkJobConfiguration = lazy(() => import("../components/workConfiguration/WorkJobConfiguration").then(m => ({ default: m.WorkJobConfiguration })));
 
 // Lazy: the Maps Interactive tab pulls in pdf.js (via ProjectMap/PlansPanel,
 // for the planset sheets it overlays) — a phone opening this job's overview
@@ -672,6 +673,7 @@ function OverviewTab({
           question "is this job going to happen on time" is the one somebody
           opens a job to answer, and the customer's phone number is not. */}
       {project && isLead && <JobExecutionPanel key={projectId} projectId={projectId} completed={project.status === "completed"} />}
+      {project && isLead && <Suspense fallback={null}><WorkJobConfiguration projectId={projectId} /></Suspense>}
       {project && <Suspense fallback={null}><CrewGoalCard projectId={projectId} /></Suspense>}
       {project && <PipelinePanel project={project} isLead={isLead} />}
 

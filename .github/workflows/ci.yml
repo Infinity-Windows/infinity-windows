@@ -98,6 +98,7 @@ jobs:
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-custom-work.mjs
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-work-data.mjs
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-work-capture-foundation.mjs
+      - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-work-job-menu-choices.mjs
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-crew-unit-records.mjs
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-qc-decision-authority.mjs
       - run: PGLITE_MODULE="$RUNNER_TEMP/custom-work-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-ai-field-operations.mjs
@@ -245,6 +246,10 @@ jobs:
         run: |
           npm run e2e -- work-data.spec.ts
           npm run e2e -- work-data.spec.ts --browser=webkit
+      - name: Company configuration and exact-job management on phone browsers
+        run: |
+          npm run e2e -- work-configuration.spec.ts
+          npm run e2e -- work-configuration.spec.ts --browser=webkit
       - run: npm run e2e -- qc-history.spec.ts monday-files.spec.ts schedule-time-conflicts.spec.ts usability-foundations.spec.ts display-layout.spec.ts trip-sheet.spec.ts travel-crew.spec.ts workflow-plans.spec.ts schedule-remove-day.spec.ts schedule-ai-review.spec.ts crew-start-bar.spec.ts crew-end-time.spec.ts crew-unit-records.spec.ts unit-contributors.spec.ts custom-work.spec.ts timecard-weekly.spec.ts unassigned-time.spec.ts project-hours.spec.ts time-entry-export.spec.ts daily-logs.spec.ts global-capture.spec.ts photos-upload.spec.ts honest-sync.spec.ts dictation.spec.ts monthly-salary.spec.ts servicing.spec.ts time-off.spec.ts hex-portal.spec.ts ask-reporting.spec.ts app-updates.spec.ts using-forge.spec.ts training-importer.spec.ts
       - name: Daily-log progress reports and pre-save photo capture
         run: npm run e2e -- daily-logs-progress.spec.ts

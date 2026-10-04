@@ -2,6 +2,11 @@
 export class WorkConfigurationUnavailableError extends Error {
   constructor() { super("Work configuration is unavailable right now. Refresh and try again."); this.name = "WorkConfigurationUnavailableError"; }
 }
+/** A returned domain SQL error proves that this attempt's database transaction
+ * was refused. Transport failures and malformed replies remain unknown. */
+export class WorkConfigurationRejectedError extends WorkConfigurationUnavailableError {
+  constructor() { super(); this.name = "WorkConfigurationRejectedError"; this.message = "The request was refused. Refresh the current records before trying again."; }
+}
 const fail = (): never => { throw new WorkConfigurationUnavailableError(); };
 const CODE = /^[a-z][a-z0-9_]{0,79}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -134,6 +139,28 @@ export interface ActivityDefinition { code: string; definitionId: string; retire
 export interface MenuDefinition { code: string; menuId: string; retiredAt: string | null; versions: MenuVersion[] }
 export interface Draft { kind: "activity" | "menu"; code: string; revision: number; draftId: string; body: JsonObject; proposedBy: string; createdAt: string }
 export interface CurrentSelection { revision: number; menuVersionId: string }
+export interface JobMenuChoice { menuVersionId: string; version: number; labelEn: string; labelEs: string; publishedAt: string; effectiveFrom: string }
+export interface JobMenuChoices { protocolVersion: 1; projectId: string; asOf: string; currentRevision: number; currentSelection: CurrentSelection | null; choices: JobMenuChoice[] }
+export function parseJobMenuChoices(raw: unknown, expectedProjectId: string): JobMenuChoices {
+  const s = object(cloneJson(raw), ["protocolVersion", "projectId", "asOf", "currentRevision", "currentSelection", "choices"]);
+  protocol(s);
+  if (uuid(s.projectId) !== expectedProjectId) fail();
+  const asOf = iso(s.asOf), currentRevision = integer(s.currentRevision, 0);
+  let currentSelection: CurrentSelection | null = null;
+  if (s.currentSelection !== null) {
+    const c = object(s.currentSelection, ["revision", "menuVersionId"]);
+    currentSelection = { revision: integer(c.revision, 1), menuVersionId: uuid(c.menuVersionId) };
+    if (currentSelection.revision !== currentRevision) fail();
+  } else if (currentRevision !== 0) fail();
+  const choices = arr(s.choices, 500).map(value => {
+    const c = object(value, ["menuVersionId", "version", "labelEn", "labelEs", "publishedAt", "effectiveFrom"]);
+    orderedDates(c.publishedAt, c.effectiveFrom);
+    if (postgresInstantMicros(c.effectiveFrom) > postgresInstantMicros(asOf)) fail();
+    return { menuVersionId: uuid(c.menuVersionId), version: integer(c.version, 1, 2147483647), labelEn: label(c.labelEn), labelEs: label(c.labelEs), publishedAt: iso(c.publishedAt), effectiveFrom: iso(c.effectiveFrom) };
+  });
+  unique(choices.map(c => c.menuVersionId));
+  return { protocolVersion: 1, projectId: expectedProjectId, asOf, currentRevision, currentSelection, choices };
+}
 export interface CompanySnapshot { protocolVersion: 1; role: "company"; asOf: string; projectId: string | null; currentSelection: CurrentSelection | null; activities: ActivityDefinition[]; menus: MenuDefinition[]; drafts: Draft[] }
 export interface CrewActivity extends Omit<ActivityVersion, "version" | "eligibleNow"> { definitionId: string; position: number; enabled: boolean; retiredAt: string | null; eligibleNow: boolean }
 export interface CrewMenu { revision: number; menuVersionId: string; activities: CrewActivity[] }

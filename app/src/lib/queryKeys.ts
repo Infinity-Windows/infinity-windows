@@ -35,6 +35,10 @@ export interface QueryKeyRootEntry {
 export const QUERY_KEY_ROOTS: QueryKeyRootEntry[] = [
   { root: "workDataSnapshot", offline: false, why: "Named work/payroll evidence is token-bound, private in memory, and discarded on auth, preview or offline boundaries." },
   { root: "workDataProjects", offline: false, why: "This private report picker is discarded with its viewer boundary." },
+  { root: "workConfigurationCompany", offline: false, why: "Private configuration drafts and publications are read online for the current account generation only." },
+  { root: "workJobMenuChoices", offline: false, why: "Exact-job selection choices are private, online and scoped to the current account generation." },
+  { root: "workJobCapabilityGrants", offline: false, why: "Job management grants must be checked fresh before changing authority." },
+  { root: "workJobCapabilityPeople", offline: false, why: "This permission picker is private to its account, job and mounted panel." },
   { root: "hexPortalCases", offline: false, why: "Original records remain in Forge; pending writes use the durable outbox." },
   { root: "hexLearningReviews", offline: false, why: "Review state is decided on the server; drafts wait in the durable outbox, not in a cached list." },
   { root: "hexLearningWaiting", offline: false, why: "A review notice must reflect who the write-up is waiting with now." },
