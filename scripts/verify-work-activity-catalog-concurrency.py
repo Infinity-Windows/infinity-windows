@@ -152,7 +152,7 @@ def ready(proc,app):
         if call('select count(*) from pg_stat_activity where application_name='+ql(app)+" and state='idle in transaction'")=='1':return
         time.sleep(.03)
     raise AssertionError(app+' did not reach its transaction barrier')
-def observe(holder,reader,holder_app,reader_app,lock_class,gate_owner=None):
+def observe(holder,reader,holder_app,reader_app,holder_config=False):
     global wait_edges
     deadline=time.monotonic()+5
     while time.monotonic()<deadline:
@@ -161,29 +161,28 @@ def observe(holder,reader,holder_app,reader_app,lock_class,gate_owner=None):
           "join pg_locks held on held.pid=h.pid and held.locktype='advisory' and held.granted "
           "join pg_locks wanted on wanted.pid=r.pid and wanted.locktype='advisory' and not wanted.granted "
           "where h.application_name="+ql(holder_app)+" and r.application_name="+ql(reader_app)+
-          " and h.pid=any(pg_blocking_pids(r.pid)) and held.classid="+str(lock_class)+"::oid "
+          " and h.pid=any(pg_blocking_pids(r.pid)) and held.classid=7712::oid "
           "and wanted.classid=held.classid and held.objid=0::oid and wanted.objid=held.objid"+
-          (" and exists(select 1 from pg_locks gate where gate.pid="+
-           ("r.pid" if gate_owner=='waiter' else "h.pid")+
-           " and gate.locktype='advisory' and gate.granted and gate.classid=7712::oid and gate.objid=0::oid)"
-           if gate_owner else ''),'postgres',timeout=4)
+          (" and exists(select 1 from pg_locks config where config.pid=h.pid"+
+           " and config.locktype='advisory' and config.granted and config.classid=7710::oid and config.objid=0::oid)"
+           if holder_config else ''),'postgres',timeout=4)
         if n=='1':wait_edges+=1;return
         time.sleep(.03)
     raise AssertionError('No observed advisory blocking PID edge: '+holder_app+' / '+reader_app)
 holder=start("set application_name='catalog_holder';begin;select _work_activity_gate();update profiles set access_revoked_at=clock_timestamp() where id="+ql(crew)+';','postgres')
 ready(holder,'catalog_holder')
 reader=start("set application_name='catalog_reader';"+auth(crew)+'select work_activity_catalog('+ql(job)+',null);','authenticator')
-observe(holder,reader,'catalog_holder','catalog_reader',7712)
+observe(holder,reader,'catalog_holder','catalog_reader')
 code,out,err=finish(holder,'commit;');assert code==0,err[-500:]
 code,out,err=finish(reader);assert code and re.search(r'\b42501\b',err) and not out,(code,out,err[-500:]);checks+=1
 
-# Forward configuration order: owner commits selection while the reader has G
-# and waits on 7710. After release, the read sees the newly selected version.
+# The assembled writer takes G before configuration 7710. A catalog reader
+# waits on G while the owner holds both; the post-wait read sees the new version.
 select2='select work_select_job_menu('+ql(ident(106))+','+ql(job)+','+ql(menu2['versionId'])+',1);'
 holder=start("set application_name='catalog_select_holder';"+auth(owner)+'begin;'+select2,'authenticator')
 ready(holder,'catalog_select_holder')
 reader=start("set application_name='catalog_select_reader';"+auth(foreman)+'begin isolation level read committed read only;select work_activity_catalog('+ql(job)+',null);commit;','authenticator')
-observe(holder,reader,'catalog_select_holder','catalog_select_reader',7710,'waiter')
+observe(holder,reader,'catalog_select_holder','catalog_select_reader',holder_config=True)
 code,out,err=finish(holder,'commit;');assert code==0,err[-500:]
 selected2=json.loads(out)
 code,out,err=finish(reader);assert code==0,err[-500:]
@@ -194,13 +193,13 @@ assert after_select['selection']['activities'][0]['labelEn']=='New general'
 checks+=1
 
 # Reverse order: the reader finishes its SELECT while holding the read-only
-# transaction. The owner then waits on that reader's 7710 lock. The delivered
+# transaction. The owner then waits on the reader's G while it also owns 7710. The delivered
 # response is a coherent old selection; the next read sees the committed new one.
 reader=start("set application_name='catalog_reverse_reader';"+auth(foreman)+'begin isolation level read committed read only;select work_activity_catalog('+ql(job)+',null);','authenticator')
 ready(reader,'catalog_reverse_reader')
 select3='select work_select_job_menu('+ql(ident(107))+','+ql(job)+','+ql(menu1['versionId'])+',2);'
 holder=start("set application_name='catalog_reverse_holder';"+auth(owner)+'begin;'+select3+'commit;','authenticator')
-observe(reader,holder,'catalog_reverse_reader','catalog_reverse_holder',7710,'holder')
+observe(reader,holder,'catalog_reverse_reader','catalog_reverse_holder',holder_config=True)
 code,out,err=finish(reader,'commit;');assert code==0,err[-500:]
 reverse_old=json.loads(out)
 assert reverse_old['selection']['selectionId']==selected2['selectionId'] and reverse_old['selection']['activities'][0]['labelEn']=='New general';checks+=1
@@ -209,13 +208,13 @@ selected3=json.loads(out)
 reverse_new=read(foreman,job)
 assert reverse_new['selection']['selectionId']==selected3['selectionId'] and reverse_new['selection']['activities'][0]['labelEn']=='Original general';checks+=1
 
-# Enabled-child retirement is a second actual configuration writer. Every
-# enabled item in the frozen menu becomes ineligible after its 7710 wait.
+# Enabled-child retirement is a second actual G-first configuration writer.
+# Every enabled item in the frozen menu becomes ineligible after its G wait.
 retire='select work_retire_activity('+ql(ident(108))+",'catalog_real_specific',1);"
 holder=start("set application_name='catalog_retire_holder';"+auth(owner)+'begin;'+retire,'authenticator')
 ready(holder,'catalog_retire_holder')
 reader=start("set application_name='catalog_retire_reader';"+auth(foreman)+'begin isolation level read committed read only;select work_activity_catalog('+ql(job)+',null);commit;','authenticator')
-observe(holder,reader,'catalog_retire_holder','catalog_retire_reader',7710,'waiter')
+observe(holder,reader,'catalog_retire_holder','catalog_retire_reader',holder_config=True)
 code,out,err=finish(holder,'commit;');assert code==0,err[-500:]
 code,out,err=finish(reader);assert code==0,err[-500:]
 retired=json.loads(out)
