@@ -450,3 +450,15 @@
 @media (min-width: 860px) {
   .work-screen { max-width: 720px; }
 }
+
+/* Selected-job route: retain the compact activity boxes and clear clock doors. */
+.sjwr { min-width: 0; padding-top: 60px; }
+.sjwr-navigation { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.sjwr-navigation .ws-btn { flex: 1 1 80px; }
+.sjwr .ws-list-item { flex-wrap: wrap; min-height: 48px; }
+.sjwr select { min-height: 48px; width: 100%; max-width: 100%; font-size: 16px; }
+.sjwr .pav-clock { min-height: 44px; }
+.sjwr .pav { --pav-ink: var(--text); --pav-muted: var(--text-secondary); --pav-line: var(--border); --pav-mint: var(--card-raised); }
+.sjwr .pav-project { padding-right: 0; }
+.sjwr .pav-clock, .sjwr .pav-actions button, .sjwr .pav-tile, .sjwr .pav-tabs button, .sjwr .pav-unit-picker button, .sjwr .pav-unit-picker select, .sjwr .pav-unit { color: var(--text); background-color: var(--card-raised); border-color: var(--border); }
+.sjwr .pav-tabs button[aria-selected="true"], .sjwr .pav-tile-running { border-color: var(--accent); background: var(--accent-bg); color: var(--text); }
