@@ -93,17 +93,15 @@ const entrySection=source.split('-- INSTALLED_ENTRY_ASSEMBLY:')[1];
 const recordPattern=/\('((?:[^']|'')+)'::text,\$(activity_body_\d+)\$([\s\S]*?)\$\2\$::text,(true|false),'([a-f0-9]{64})'::text,'([a-f0-9]{64})'::text,'([a-z_][a-z0-9_]*)'::text,'((?:[^']|'')*)'::text\)/g;
 const allEntries=[...entrySection.matchAll(recordPattern)].map(m=>({identity:m[1].replaceAll("''","'"),body:m[3],convertInvokerPayroll:m[4]==='true',expectedBodySha256:m[5],newBodySha256:m[6],name:m[7],arguments:m[8].replaceAll("''","'"),sql:m[0]}));
 assert.equal(allEntries.length,212,'Every readable installed entry is parsed');
-const supported=new Set(['clock_in','clock_out','start_break','end_break','_close_dangling_shift','_flag_shift_for_review','custom_work_command','_end_open_session','_close_stale_sessions']);
 const exercised=[];
 for(const entry of allEntries){
- if(!supported.has(entry.identity.split('(')[0]))continue;
  const exists=await one('select p.prosrc body from pg_proc p where p.pronamespace=\'public\'::regnamespace and p.proname=$1 and pg_get_function_identity_arguments(p.oid)=$2',[entry.name,entry.arguments]);
- assert.ok(exists,'Actual fixture root '+entry.identity);
+ if(!exists)continue; // Missing domains remain explicitly outside this fixture.
  assert.equal(createHash('sha256').update(exists.body).digest('hex'),entry.expectedBodySha256,'Fixture matches exact installed source body '+entry.identity);
  exercised.push(entry);
 }
 await db.exec('-- INSTALLED_ENTRY_ASSEMBLY:'+entrySection.slice(0,entrySection.indexOf('$activity_entries$;')+'$activity_entries$;'.length).replace(/-- ENTRY_VALUES_BEGIN[\s\S]*?-- ENTRY_VALUES_END/,()=>'-- ENTRY_VALUES_BEGIN\n'+exercised.map(e=>e.sql).join(',\n')+'\n-- ENTRY_VALUES_END'));
-check(exercised.length===17,'Seventeen actual source payroll/canonical routines use the generated entry seam');
+check(exercised.length===29,'All 29 present actual-source entry routines install the generated seam; 183 domains remain absent');
 // The reduced historical fixture disables body checks for unavailable domains.
 // Explicitly compile every authored PL/pgSQL cutover body now its declarations
 // exist; do not mistake creating an unchecked function for syntax validation.

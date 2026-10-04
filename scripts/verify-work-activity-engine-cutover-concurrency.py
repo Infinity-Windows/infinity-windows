@@ -403,4 +403,120 @@ clean_frames();cases+=1
 run(client(actor)+"select _work_activity_operation_enter('forged');",expect_error='42501')
 run(client(actor)+"select * from work_activity_operations;",expect_error='42501')
 clean_frames();cases+=1
-print(f'PASS {cases} cutover development backend/transaction scenarios; blocking PIDs observed for 10 races. No full installed-route, activation, load-latency or production-data claim.')
+
+# Profile access may be revoked after the caller's query began but before it
+# acquires G. Fresh actor refusal occurs before any command receipt is created.
+actor,shift,source=seed();data=dict(establish(actor),intent=dict(kind='stop'));cid=new_uuid();before=evidence(actor)
+first=holder('account_first',auth(owner)+f"update profiles set access_revoked_at=clock_timestamp() where id='{actor}';")
+second=waiter('account_second',client(actor)+command(cid,data),'account_first')
+release(first);finish(first);finish_expect_error(second,'42501')
+assert evidence(actor)==before and run(f"select count(*) from personal_activity_commands where command_id='{cid}'")=='0'
+clean_frames();cases+=1
+
+# Publish a real Specific version with the original General sibling preserved.
+run(client(owner)+f"select work_publish_activity_version('{new_uuid()}','cutover_specific',0,'specific','Specific task','Tarea',false,'[]');")
+specific=one("select jsonb_build_object('id',d.id,'version',v.id) from work_activity_definitions d join work_activity_definition_versions v on v.definition_id=d.id where d.code='cutover_specific'")
+items.append(dict(definitionId=specific['id'],versionId=specific['version'],position=1,enabled=True))
+run(client(owner)+f"select work_publish_menu_version('{new_uuid()}','cutover_menu',1,'Menu','Menu',{js(items)});")
+menu=run("select v.id from work_capture_menus m join work_capture_menu_versions v on v.menu_id=m.id where m.code='cutover_menu' order by v.version desc limit 1")
+run(client(owner)+f"select work_select_job_menu('{new_uuid()}','{job}','{menu}',1);")
+selection=one(f"select jsonb_build_object('id',id,'revision',revision) from work_job_menu_selections where project_id='{job}' order by revision desc limit 1")
+
+
+def basis(actor, unit):
+    u=one(client(actor)+f"select work_activity_unit_basis('{unit}');")['unit']
+    return dict(id=u['id'],operationalRevision=u['operationalRevision'],factId=u['fact']['id'],factRevision=u['fact']['revision'],
+        incarnationEpoch=u['incarnationEpoch'],bindingEpoch=u['bindingEpoch'],projectEpoch=u['projectEpoch'],openingEpoch=u['openingEpoch'],
+        originProjectEpoch=u['fact']['originProjectEpoch'],originOpeningEpoch=u['fact']['originOpeningEpoch'])
+
+
+# Unit fact change versus new Specific start: real canonical receipt/person/unit
+# locking and current+origin basis are exercised in both actual commit orders.
+for edit_first in (False,True):
+    actor,shift,source=seed();unit=new_uuid()
+    unit_data=dict(id=unit,revision=0,project_id=job,label='Synthetic race unit',facts={},
+        dimension_observation=dict(width=12,height=24,unit='in',source='measured'),expected_fact_revision=0)
+    run(client(actor)+f"select custom_work_command('{new_uuid()}','unit',{js(unit_data)});")
+    old_basis=basis(actor,unit);data=establish(actor);cid=new_uuid()
+    data['intent']=dict(kind='switch',projectId=job,selectionId=selection['id'],selectionRevision=selection['revision'],menuVersionId=menu,
+        definitionVersionId=specific['version'],scope='specific',unit=old_basis,machineKind=None,values={})
+    edit=dict(unit_data,revision=old_basis['operationalRevision'],expected_fact_revision=old_basis['factRevision'],
+        dimension_observation=dict(width=18,height=24,unit='in',source='measured'))
+    edit_sql=f"select custom_work_command('{new_uuid()}','unit',{js(edit)});"
+    first_sql,second_sql=(edit_sql,command(cid,data)) if edit_first else (command(cid,data),edit_sql)
+    before=evidence(actor)
+    first=holder('fact_first',client(actor)+first_sql)
+    second=waiter('fact_second',client(actor)+second_sql,'fact_first')
+    release(first);finish(first);finish(second)
+    result=receipt(cid)
+    assert result['status']==('conflict' if edit_first else 'applied'),result
+    if edit_first:
+        assert result['reasonCode']=='unit_changed',result
+        assert run(f"select count(*) from work_session_capture_metadata where profile_id='{actor}'")=='0'
+    else:
+        pinned=one(f"select jsonb_build_object('revision',fact_revision,'basis',unit_basis,'facts',unit_facts) from work_session_capture_metadata where profile_id='{actor}'")
+        assert pinned['revision']==old_basis['factRevision'] and pinned['basis']==old_basis
+        assert pinned['facts']['width_in']==12
+    assert basis(actor,unit)['factRevision']==old_basis['factRevision']+1
+    assert evidence(actor)['shifts']==before['shifts']
+    clean_frames();cases+=1
+
+# Retained clock acknowledgement survives a real shift/ledger cascade; replay
+# cannot recreate a deleted paid shift. Reverse replay/delete admission order.
+for deletion_first in (False,True):
+    actor,clock_id=new_uuid(),new_uuid();tap,checked=now_iso(),now_iso()
+    run(f"insert into profiles(id,role,is_test) values('{actor}','installer',false);")
+    clock_sql=f"select to_jsonb(clock_in('{job}'::uuid,null::uuid,null::text,null::double precision,null::double precision,null::text,null::text,'{clock_id}'::uuid,'{tap}'::timestamptz,'{checked}'::timestamptz,0,1));"
+    paid=one(client(actor)+clock_sql);shift=paid['id']
+    receipt_before=one(client(actor)+f"select work_activity_clock_receipt('{clock_id}');")
+    assert receipt_before['receipt']['receiptProtocol']=='setup_v1' and receipt_before['receipt']['sourcePresent']
+    assert run(f"select count(*) from work_setup_sessions where profile_id='{actor}' and ended_at is null")=='1'
+    delete_sql=client(owner)+f"delete from time_shifts where id='{shift}';"
+    first_sql,second_sql=(delete_sql,client(actor)+clock_sql) if deletion_first else (client(actor)+clock_sql,delete_sql)
+    first=holder('clock_delete_first',first_sql)
+    second=waiter('clock_delete_second',second_sql,'clock_delete_first')
+    release(first);finish(first)
+    if deletion_first:finish_expect_error(second,'42501')
+    else:finish(second)
+    assert run(f"select count(*) from time_shifts where profile_id='{actor}'")=='0'
+    assert run(f"select count(*) from time_clock_actions where client_id='{clock_id}'")=='0'
+    retained=one(client(actor)+f"select work_activity_clock_receipt('{clock_id}');")
+    expected=dict(receipt_before['receipt'],sourcePresent=False)
+    assert retained['receipt']==expected and retained['availability']=='available'
+    assert run(f"select count(*) from work_setup_sessions where profile_id='{actor}' and ended_at is not null")=='1'
+    run(client(actor)+clock_sql,expect_error='42501')
+    assert one(client(owner)+f"select work_activity_clock_receipt('{clock_id}');")==dict(protocolVersion=1,availability='unavailable',receipt=None)
+    clean_frames();cases+=1
+
+# A menu/definition retirement uses the real G-first configuration entry. Starts
+# after the wait cannot reuse their older permission observation. Retirement
+# after an already accepted start preserves its immutable source metadata.
+for retirement_first in (False,True):
+    code='retire_'+new_uuid().replace('-','')[:16]
+    run(client(owner)+f"select work_publish_activity_version('{new_uuid()}','{code}',0,'general','Retirement task','Tarea',false,'[]');")
+    retiring=one(f"select jsonb_build_object('id',d.id,'version',v.id) from work_activity_definitions d join work_activity_definition_versions v on v.definition_id=d.id where d.code='{code}'")
+    menu_code='menu_'+code
+    run(client(owner)+f"select work_publish_menu_version('{new_uuid()}','{menu_code}',0,'Menu','Menu',{js([dict(definitionId=retiring['id'],versionId=retiring['version'],position=0,enabled=True)])});")
+    current_menu=run(f"select v.id from work_capture_menus m join work_capture_menu_versions v on v.menu_id=m.id where m.code='{menu_code}'")
+    old_selection=int(run(f"select max(revision) from work_job_menu_selections where project_id='{job}'"))
+    run(client(owner)+f"select work_select_job_menu('{new_uuid()}','{job}','{current_menu}',{old_selection});")
+    selected=one(f"select jsonb_build_object('id',id,'revision',revision) from work_job_menu_selections where project_id='{job}' order by revision desc limit 1")
+    actor,shift,source=seed();data=establish(actor);cid=new_uuid()
+    data['intent']=dict(kind='switch',projectId=job,selectionId=selected['id'],selectionRevision=selected['revision'],menuVersionId=current_menu,
+        definitionVersionId=retiring['version'],scope='general',unit=None,machineKind=None,values={})
+    retire=client(owner)+f"select work_retire_activity('{new_uuid()}','{code}',1);"
+    first_sql,second_sql=(retire,client(actor)+command(cid,data)) if retirement_first else (client(actor)+command(cid,data),retire)
+    before=evidence(actor)
+    first=holder('retire_first',first_sql)
+    second=waiter('retire_second',second_sql,'retire_first')
+    release(first);finish(first);finish(second)
+    result=receipt(cid)
+    assert result['status']==('conflict' if retirement_first else 'applied'),result
+    if retirement_first:
+        assert result['reasonCode']=='state_changed'
+        assert run(f"select count(*) from work_session_capture_metadata where profile_id='{actor}'")=='0'
+    else:
+        assert run(f"select definition_version_id from work_session_capture_metadata where profile_id='{actor}'")==retiring['version']
+    assert evidence(actor)['shifts']==before['shifts']
+    clean_frames();cases+=1
+print(f'PASS {cases} cutover development backend/transaction scenarios; blocking PIDs observed for 17 races. No full installed-route, activation, load-latency or production-data claim.')
