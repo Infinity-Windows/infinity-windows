@@ -14018,7 +14018,8 @@ create trigger "000_work_activity_profile_history" before delete on public.profi
  $activity_ddl_rehearsal$;
  
 -- Exact read-only0842 catalog staged only inside forced rollback.
-begin;
+-- [dry run] the file's own `begin;` was set aside here: the batch owns the transaction
+
 
 -- Selected-job material only. This is not a command observation, a company
 -- administration snapshot, or a second source of payroll totals.
@@ -14103,7 +14104,8 @@ end; $$;
 revoke all on function public.work_activity_catalog(uuid,uuid) from public,anon;
 grant execute on function public.work_activity_catalog(uuid,uuid) to authenticated;
 
-commit;
+-- [dry run] the file's own `commit;` was set aside here: the batch's forced error rolls everything back
+
 
 -- Exact0843 outer transaction wrapper belongs to forced-rollback harness.
 -- Read-only readiness for the explicit paid-setup protocol. No activation.
