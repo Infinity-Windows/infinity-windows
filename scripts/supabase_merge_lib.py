@@ -892,6 +892,15 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     "work_unit_fact_revisions": ("id",),
     "work_unit_fact_current": ("unit_id",),
     "work_unit_fact_context_epochs": ("scope_kind", "scope_id"),
+    # Private stream/setup identity is retained; transaction frames and exact
+    # allowances are ephemeral and must never be copied to another backend.
+    # Both dispositions refuse the generic merge path even for count-only data.
+    "work_activity_observations": ("id",),
+    "work_activity_streams": ("id",),
+    "work_activity_transaction_context": ("id",),
+    "work_activity_expected_mutations": ("id",),
+    "work_setup_sessions": ("id",),
+    "personal_activity_transition_sources": ("id",),
 
 }
 
@@ -937,6 +946,14 @@ WORK_CAPTURE_MANUAL_RECONCILIATION_TABLES = frozenset({
     "work_unit_fact_revisions",
     "work_unit_fact_current",
     "work_unit_fact_context_epochs",
+    "work_activity_observations",
+    "work_activity_streams",
+    "work_setup_sessions",
+    "personal_activity_transition_sources",
+    # A committed/stale transaction frame is a drain/cleanup blocker, not
+    # portable work evidence. Never emit inserts or discard it silently.
+    "work_activity_transaction_context",
+    "work_activity_expected_mutations",
 })
 
 #: Tables where combining two projects' rows is meaningless or actively wrong.

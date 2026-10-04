@@ -180,6 +180,36 @@ jobs:
           WORK_UNIT_OBSERVATION_TEST_DB_URL: postgresql://postgres:fixture-only@localhost:5432/forge_work_unit_observations_test
         run: PGLITE_MODULE="$RUNNER_TEMP/work-unit-db/node_modules/@electric-sql/pglite/dist/index.js" python3 scripts/verify-work-unit-observations-concurrency.py
 
+  work-activity-engine-sql:
+    name: Activity engine substrate and concurrent acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: forge_work_activity_engine_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: npm install --prefix "$RUNNER_TEMP/work-activity-db" --no-save @electric-sql/pglite@0.5.8
+      - name: Verify private streams, receipts and paid setup transaction guards
+        run: PGLITE_MODULE="$RUNNER_TEMP/work-activity-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-work-activity-engine-substrate.mjs
+      - name: Verify real independent stream, expiry and transaction races
+        env:
+          WORK_ACTIVITY_ENGINE_TEST_DB_URL: postgresql://postgres:fixture-only@localhost:5432/forge_work_activity_engine_test
+        run: PGLITE_MODULE="$RUNNER_TEMP/work-activity-db/node_modules/@electric-sql/pglite/dist/index.js" python3 scripts/verify-work-activity-engine-concurrency.py
+
   values-sql-concurrency:
     name: Monthly reviews database and concurrent acceptance
     runs-on: ubuntu-latest

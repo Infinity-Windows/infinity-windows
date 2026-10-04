@@ -190,6 +190,9 @@ const UNIT_FACT_RETAINED = {
   work_unit_fact_context_epochs: { migration: "20261108300000_work_unit_observations.sql", project: "none" },
 } as const;
 const unitFactMigration = readFileSync(join(MIGRATIONS, UNIT_FACT_RETAINED.work_unit_fact_revisions.migration), "utf8");
+const engineSubstrate = readFileSync(join(MIGRATIONS, "20261108400000_work_activity_engine_substrate.sql"), "utf8");
+const ENGINE_RETAINED = ["work_activity_observations", "work_activity_streams", "work_setup_sessions", "personal_activity_transition_sources"] as const;
+const ENGINE_EPHEMERAL = ["work_activity_transaction_context", "work_activity_expected_mutations"] as const;
 
 /** Any direct DELETE/UPDATE of retained evidence violates its disposition.
  * Match ordinary SQL qualification, aliases, case and multiline whitespace. */
@@ -257,6 +260,28 @@ describe("purge_project handles every project-scoped table", () => {
     expect(purgeCovers("zztest_new_unhandled_scoped_table", body)).toBe(false);
     expect(purgeCovers("project_openings", body)).toBe(true);
     expect(purgeCovers("movements", body)).toBe(true); // detached, not deleted
+  });
+
+  it("keeps private engine identities separate from job purge and transient backend frames", () => {
+    const privateParents = new Set(["personal_activity_commands", "personal_activity_transitions", "work_activity_observations", "work_setup_sessions"]);
+    for (const table of ENGINE_RETAINED) {
+      const definition = engineSubstrate.split(`create table public.${table} (`)[1]?.split("\n);")[0];
+      expect(definition, table).toBeDefined();
+      expect(definition).not.toMatch(/on delete (cascade|set null)/i);
+      expect(retainedEvidenceMutated(table, body), table).toBe(false);
+      const parents = [...(definition!.matchAll(/references\s+public\.([a-z0-9_]+)/gi) ?? [])].map(m => m[1]);
+      expect(parents.every(name => privateParents.has(name)), `${table} has no operational parent cascade`).toBe(true);
+      expect(census[table]).toBeUndefined();
+      expect(engineSubstrate).toContain(`alter table public.${table} enable row level security;`);
+      expect(engineSubstrate).toContain(`revoke all on table public.${table} from public,anon,authenticated;`);
+      expect(retainedEvidenceMutated(table, body + `\nDELETE FROM public.${table} WHERE true;`)).toBe(true);
+    }
+    for (const table of ENGINE_EPHEMERAL) {
+      expect(census[table]).toBeUndefined();
+      expect(retainedEvidenceMutated(table, body)).toBe(false);
+      expect(ENGINE_RETAINED as readonly string[]).not.toContain(table);
+    }
+    expect(engineSubstrate).toContain("Deferred guard rejects commit unless every frame is closed");
   });
 
   it("only claims a cascade for a table that is actually project-scoped", () => {

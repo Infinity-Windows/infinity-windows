@@ -210,7 +210,7 @@ class TestSchemaParsing(unittest.TestCase):
         # 20261035000000 to land after the bill-to migrations).
         # +10 monthly-values tables: private policy, immutable reviews and
         # frozen accounting/provenance, plus reserved reminder claims.
-        self.assertEqual(len(SCHEMA.tables), 213)  # adds three retained unit-fact tables to the prior 210
+        self.assertEqual(len(SCHEMA.tables), 219)  # six private engine tables, including two nonportable ephemeral tables
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 
@@ -738,6 +738,28 @@ class TestPlan(unittest.TestCase):
         self.assertNotIn(private, render(plan, "source", "target"))
         for name in tables:
             self.assertTrue(any(b.startswith(name + ":") for b in plan.blockers))
+
+    def test_engine_retained_and_ephemeral_tables_refuse_every_generic_merge_side(self):
+        names = ("work_activity_observations", "work_activity_streams", "work_setup_sessions",
+                 "personal_activity_transition_sources", "work_activity_transaction_context", "work_activity_expected_mutations")
+        for table in names:
+            self.assertEqual(DEDUP_KEYS[table], ("id",))
+            self.assertIn(table, WORK_CAPTURE_MANUAL_RECONCILIATION_TABLES)
+            for source, target, source_rows, target_rows in [
+                ({"tables": {table: {"rows": 1}}}, {}, {table: [{"id": "private-source"}]}, {}),
+                ({}, {"tables": {table: {"rows": 1}}}, {}, {table: [{"id": "private-target"}]}),
+                ({"tables": {table: {"rows": 1}}}, {}, {}, {}),
+                ({}, {"tables": {table: {"rows": 1}}}, {}, {},),
+            ]:
+                with self.subTest(table=table, source=source, target=target):
+                    plan = Plan(SCHEMA, {"project_ref": "source", **source}, {"project_ref": "target", **target}, source_rows, target_rows, 0)
+                    self.assertEqual(plan.manual_capture_tables, [table])
+                    self.assertEqual(plan.statements(), [])
+                    self.assertNotIn("private-source", render(plan, "source", "target"))
+                    self.assertNotIn("private-target", render(plan, "source", "target"))
+            empty = Plan(SCHEMA, {"tables": {table: {"rows": 0}}}, {}, {}, {}, 0)
+            self.assertEqual(empty.statements(), [])
+            self.assertEqual(empty.blockers, [])
 
     def test_capture_count_target_and_empty_inventory(self):
         for source, target, source_rows, target_rows in [
