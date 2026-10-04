@@ -56,10 +56,17 @@ for label,ddl in [
  ('Required column','alter table work_job_menu_selections alter column revision drop not null'),
  ('CHECK constraint','alter table work_job_menu_selections drop constraint work_job_menu_selections_revision_check'),
  ('Foreign key','alter table work_job_menu_selections drop constraint work_job_menu_selections_menu_version_id_fkey'),
- ('Raw service safety ACL','grant all on table work_activity_safety_events to service_role')
+ ('Raw service safety ACL','grant all on table work_activity_safety_events to service_role'),
+ ('Private helper service EXECUTE','grant execute on function _work_activity_fact_snapshot(uuid) to service_role'),
+ ('Employee entry service EXECUTE','grant execute on function work_activity_snapshot(uuid) to service_role')
 ]:
  check(run('begin;'+ddl+';select not _work_totals_coverage();rollback;')=='t',label+' drift refuses on genuine PostgreSQL17')
 check(run('select _work_totals_coverage()')=='t','Rolled-back metadata mutations restore exact coverage')
+service_denied_functions=['public._work_activity_answers(jsonb,jsonb)', 'public._work_activity_authority_changed()', 'public._work_activity_authority_guard()', 'public._work_activity_authority_revision()', 'public._work_activity_bookkeeping_guard()', 'public._work_activity_clock_replay_guard(uuid,text,uuid)', 'public._work_activity_clock_review(uuid,uuid,text,timestamptz,timestamptz,integer)', 'public._work_activity_close_all(uuid,timestamptz,text,text,uuid)', 'public._work_activity_close_source(uuid,text,uuid,timestamptz,text)', 'public._work_activity_command_basis(jsonb)', 'public._work_activity_context_for(uuid,text,timestamptz)', 'public._work_activity_ephemeral_commit_guard()', 'public._work_activity_fact_snapshot(uuid)', 'public._work_activity_finish(uuid,anyelement)', 'public._work_activity_insert_source(uuid,text,jsonb,timestamptz,text)', 'public._work_activity_instant(jsonb,boolean)', 'public._work_activity_iso(timestamptz)', 'public._work_activity_keep_clock_receipt()', 'public._work_activity_live_sources(uuid)', 'public._work_activity_operation_enter(text,jsonb,uuid,uuid)', 'public._work_activity_payload(jsonb)', 'public._work_activity_profile_delete_guard()', 'public._work_activity_project_view(uuid,uuid)', 'public._work_activity_refresh_state(uuid)', 'public._work_activity_resume(public.personal_activity_state,public.time_shifts,timestamptz)', 'public._work_activity_review_visit(uuid,timestamptz,text)', 'public._work_activity_row_allowance(oid,text,jsonb,jsonb)', 'public._work_activity_safety_guard()', 'public._work_activity_source_view(public.personal_activity_state)', 'public._work_activity_start_setup(public.time_shifts,uuid,uuid)', 'public._work_activity_validate_switch(jsonb,uuid)', 'public.clock_in(uuid,uuid,text,double precision,double precision,text,text,uuid,timestamptz,timestamptz,integer,integer)', 'public.work_activity_command(uuid,integer,jsonb)', 'public.work_activity_snapshot(uuid)']
+service_function_array='array['+','.join(lit(f) for f in service_denied_functions)+']'
+check(run("select bool_and(not has_function_privilege('service_role',f::regprocedure,'EXECUTE')) from unnest("+service_function_array+") f")=='t','All34 observed provider function defaults explicitly denied to service role')
+check(run("select bool_and(has_function_privilege('postgres',f::regprocedure,'EXECUTE')) from unnest("+service_function_array+") f")=='t','Actual owner retains all34 internal function privileges')
+check(run("select bool_and(has_function_privilege('authenticated',f::regprocedure,'EXECUTE')) from unnest(array["+','.join(lit(f) for f in service_denied_functions[-3:])+"]) f")=='t','Authenticated employee retains all three public entry privileges')
 run('insert into auth.users(id) values('+lit(worker)+'),('+lit(reviewer)+');insert into profiles(id,display_name,role,is_test) values('+lit(worker)+",'Totals PG worker','owner',false),("+lit(reviewer)+",'Totals PG reviewer','owner',false);insert into projects(id,job_code,name) values("+lit(job)+",'TOTALS-PG','Synthetic'),("+lit(other)+",'TOTALS-PG-OTHER','Synthetic');insert into project_openings(id,project_id,opening_code) values("+lit(opening)+','+lit(job)+",'TOTALS-PG-UNIT'),("+lit(ident(21))+','+lit(other)+",'TOTALS-PG-UNRELATED');")
 unit_payload={'id':unit,'revision':0,'project_id':job,'opening_id':opening,'label':'Synthetic PG totals','type_label':'Window','facts':{},'dimension_observation':{'width':36,'height':48,'unit':'in','source':'estimated'},'expected_fact_revision':0}
 rpc('select custom_work_command('+lit(ident(100))+",'unit',"+lit(json.dumps(unit_payload))+'::jsonb);')
@@ -84,6 +91,16 @@ command({'kind':'finish_setup','projectId':job,'costCodeId':None})
 basis=obj('select _work_activity_command_basis(_work_activity_unit_basis('+lit(unit)+','+lit(worker)+'));')
 command({'kind':'switch','projectId':job,'selectionId':selection['id'],'selectionRevision':selection['revision'],'menuVersionId':menu,'definitionVersionId':definition['id'],'scope':'specific','unit':basis,'machineKind':None,'values':{}})
 check(totals()['totals']['activities'][0]['personal']['includesLive'],'Actual own confirmed live source')
+# Actual authenticator login, actual SET ROLE service_role and an eligible uid:
+# rejection is SQL ACL admission, not a missing/ineligible synthetic identity.
+for sql in [
+ 'select _work_activity_fact_snapshot('+lit(unit)+');',
+ 'select * from _work_activity_live_sources('+lit(worker)+');',
+ 'select work_activity_snapshot('+lit(ident(6666))+');',
+ "select work_activity_command(null::uuid,0,'{}'::jsonb);",
+ 'select clock_in(null::uuid,null::uuid,null::text,null::double precision,null::double precision,null::text,null::text,null::uuid,null::timestamptz,null::timestamptz,null::integer,0);'
+]:run('set role service_role;set request.jwt.claim.sub='+lit(worker)+';'+sql,'authenticator',error='42501')
+
 check(totals(reviewer)['totals']['activities']==[],'Another actor gets no fabricated open elapsed')
 for role in ('anon','service_role'):
  run('set role '+role+';select work_activity_totals_read('+lit(job)+','+lit(unit)+');','authenticator',error='42501')
