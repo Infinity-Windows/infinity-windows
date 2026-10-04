@@ -32,4 +32,46 @@ describe("groupPhotosByDay", () => {
   it("returns an empty array for no photos", () => {
     expect(groupPhotosByDay([], "UTC")).toEqual([]);
   });
+
+  it("sorts delayed uploads by capture date across jobs and by time within each day", () => {
+    // Server upload order reproduces the gallery's Sep 9 / Sep 21 / Sep 8 jump.
+    const photos = [
+      { id: "sep9-early", projectId: "job-a", takenAt: "2026-09-09T10:25:00Z", createdAt: "2026-10-01T12:00:00Z" },
+      { id: "sep21-early", projectId: "job-b", takenAt: "2026-09-21T09:40:00Z", createdAt: "2026-10-01T11:00:00Z" },
+      { id: "sep8", projectId: "job-c", takenAt: "2026-09-08T16:17:00Z", createdAt: "2026-10-01T10:00:00Z" },
+      { id: "sep21-late", projectId: "job-b", takenAt: "2026-09-21T13:55:00Z", createdAt: "2026-10-01T09:00:00Z" },
+      { id: "sep9-late", projectId: "job-a", takenAt: "2026-09-09T11:12:00Z", createdAt: "2026-10-01T08:00:00Z" },
+    ];
+    const original = [...photos];
+    const groups = groupPhotosByDay(Object.freeze(photos), "UTC");
+
+    expect(groups.map((g) => g.key)).toEqual(["2026-09-21", "2026-09-09", "2026-09-08"]);
+    expect(groups.map((g) => g.photos.map((p) => p.id))).toEqual([
+      ["sep21-late", "sep21-early"], ["sep9-late", "sep9-early"], ["sep8"],
+    ]);
+    expect(photos).toEqual(original);
+    expect(groups[0].photos[0]).toBe(photos[3]);
+  });
+
+  it("sorts missing capture times by insert time and compares timezone offsets as instants", () => {
+    const photos = [
+      { id: "earlier", takenAt: "2026-09-21T10:00:00+02:00", createdAt: "2026-10-01T12:00:00Z" },
+      { id: "fallback", takenAt: null, createdAt: "2026-09-21T09:00:00Z" },
+      { id: "latest", takenAt: "2026-09-21T07:00:00-06:00", createdAt: "2026-09-21T13:00:00Z" },
+    ];
+    expect(groupPhotosByDay(photos, "UTC")[0].photos.map((p) => p.id)).toEqual([
+      "latest", "fallback", "earlier",
+    ]);
+  });
+
+  it("keeps local-day boundaries and stable order for matching capture times", () => {
+    const photos = [
+      { id: "previous-day", takenAt: "2026-09-22T05:59:00Z", createdAt: "2026-10-01T12:00:00Z" },
+      { id: "a", takenAt: "2026-09-22T06:01:00Z", createdAt: "2026-09-22T06:01:00Z" },
+      { id: "b", takenAt: "2026-09-22T06:01:00Z", createdAt: "2026-09-22T06:02:00Z" },
+    ];
+    const groups = groupPhotosByDay(photos, "America/Denver");
+    expect(groups.map((g) => g.key)).toEqual(["2026-09-22", "2026-09-21"]);
+    expect(groups[0].photos.map((p) => p.id)).toEqual(["a", "b"]);
+  });
 });

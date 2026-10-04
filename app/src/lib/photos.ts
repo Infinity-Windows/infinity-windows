@@ -253,13 +253,15 @@ export interface PhotoDayGroup<T> {
 }
 
 /**
- * Group an already-sorted (newest-first) photo list into day buckets, keeping
- * input order within and across groups. `timeZone` is exposed for deterministic
- * tests; production uses the device's local zone.
+ * Sort by capture time (falling back to insert time), then group newest-first
+ * into local day buckets. Upload order can differ from capture order when
+ * photos sync later. Sort a copy so the query cache's array stays untouched.
+ * `timeZone` is exposed for deterministic tests; production uses the device's
+ * local zone.
  */
 export function groupPhotosByDay<
   T extends Pick<FeedPhoto, "takenAt" | "createdAt">,
->(photos: T[], timeZone?: string): PhotoDayGroup<T>[] {
+>(photos: readonly T[], timeZone?: string): PhotoDayGroup<T>[] {
   const tz = timeZone ? { timeZone } : {};
   const keyFmt = new Intl.DateTimeFormat("en-CA", {
     year: "numeric",
@@ -276,7 +278,10 @@ export function groupPhotosByDay<
   });
   const groups: PhotoDayGroup<T>[] = [];
   const byKey = new Map<string, PhotoDayGroup<T>>();
-  for (const p of photos) {
+  const newestFirst = [...photos].sort(
+    (a, b) => Date.parse(photoTime(b)) - Date.parse(photoTime(a)),
+  );
+  for (const p of newestFirst) {
     const d = new Date(photoTime(p));
     const key = keyFmt.format(d);
     let group = byKey.get(key);
