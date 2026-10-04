@@ -33,8 +33,10 @@ export function Harness() {
   }}>
     <style>{`html,body,#root{margin:0;min-width:0;width:100%;font-family:system-ui;background:#f3f6f3}
       *,*::before,*::after{box-sizing:border-box}button,input,select{font:inherit}
-      .fixture-controls{display:flex;flex-wrap:wrap;gap:.35rem;padding:.4rem}
-      .fixture-controls button{min-height:42px}.fixture-results{padding:.4rem;overflow-wrap:anywhere}`}</style>
+      /* Keep fixture-only controls below the product's fixed clock, including
+         WebKit's scroll-into-view positioning. Ordinary clicks remain required. */
+      .fixture-controls{display:flex;flex-wrap:wrap;gap:.35rem;padding:64px .4rem .4rem}
+      .fixture-controls button{min-height:42px;scroll-margin-top:64px}.fixture-results{padding:.4rem;overflow-wrap:anywhere}`}</style>
     <div className="fixture-controls">
       <button type="button" onClick={() => setLocale(locale === "en" ? "es" : "en")}>Change language</button>
       <button type="button" onClick={() => setMount((n) => n + 1)}>Remount Work</button>
