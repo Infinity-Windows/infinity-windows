@@ -12,6 +12,9 @@ declare
   v_after jsonb; v_whole jsonb;
 begin
   perform pg_temp.dry_run_as_system();
+  perform pg_temp.dry_run_check('unit size history note bilingual for all internal roles',
+    (select audience=array[0,1,2,3] and href='/work' and length(title_en)>0 and length(title_es)>0
+      and length(body_en)>0 and length(body_es)>0 from public.app_release_notes where id='2026-10-03-unit-size-history'),'checked');
   v_foreman:=pg_temp.dry_run_pick('foreman');
   v_installer:=pg_temp.dry_run_pick('installer');
   v_job:=pg_temp.dry_run_sandbox_job();
