@@ -1,16 +1,21 @@
 import {expect,test} from '@playwright/test';
 import {useSupabaseFixtures,TEST_USER} from './support/supabaseFixtures';
 import {hideWrongProjectBanner,json} from './support/specHelpers';
+import {captureClockRouteEvidence,captureFocusReturnEvidence} from './support/focusReturnEvidence';
 
-for(const width of [390,1440])test(`clock dialog stays readable and keyboard focus survives timer ticks at ${width}px`,async({page})=>{
+for(const width of [390,1440])test(`clock dialog stays readable and keyboard focus survives timer ticks at ${width}px`,async({page},info)=>{
  test.setTimeout(45000);
+ const finishEvidence=await captureFocusReturnEvidence(page);
+ try {
  await page.setViewportSize({width,height:960});
  await useSupabaseFixtures(page,{role:'installer'});await hideWrongProjectBanner(page);
- const shift={id:'20000000-0000-4000-8000-000000000001',profile_id:TEST_USER.id,project_id:null,cost_code_id:null,clock_in_at:new Date(Date.now()-3*3600000).toISOString(),clock_out_at:null,status:'open',created_at:new Date().toISOString(),break_seconds:0,break_started_at:new Date(Date.now()-31*60000).toISOString(),break_type:'lunch',injured:null,time_confirmed:null};
+ const shift={id:'20000000-0000-4000-8000-000000000001',profile_id:TEST_USER.id,project_id:null,cost_code_id:null,clock_in_at:new Date(Date.now()-3*3600000).toISOString(),clock_out_at:null,status:'open',created_at:new Date().toISOString(),break_seconds:0,break_started_at:new Date(Date.now()-31*60000).toISOString(),break_type:'lunch',injured:null,time_confirmed:null,
+  client_id:null,job_mode:null,review_reason:null,note:null,injury_note:null,projects:null,cost_codes:null};
  await page.route('**/rest/v1/time_shifts**',route=>json(route,route.request().headers().accept?.includes('object')?shift:[shift]));
  await page.addInitScript(()=>localStorage.setItem('infinity.theme','dark'));
  await page.route('**/rest/v1/rpc/server_now',route=>json(route,new Date().toISOString()));
  await page.goto('/my-schedule');
+ await captureClockRouteEvidence(page,TEST_USER.id);
  const trigger=page.getByRole('button',{name:'Open my clock',exact:true});
  await trigger.click();const dialog=page.locator('.clock-sheet');await expect(dialog).toBeVisible();
  const close=dialog.getByRole('button',{name:/close/i});await expect(close).toBeFocused();
@@ -24,4 +29,5 @@ for(const width of [390,1440])test(`clock dialog stays readable and keyboard foc
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await page.screenshot({path:`e2e/test-results/clock-usability-${width}.png`,fullPage:true});
  await page.keyboard.press('Escape');await expect(dialog).toHaveCount(0);await expect(trigger).toBeFocused();
+ } finally { await finishEvidence(info); }
 });

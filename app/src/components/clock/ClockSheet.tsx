@@ -78,6 +78,7 @@ import {
 } from "../../lib/shiftGuard";
 import { useT } from "../../lib/i18n";
 import { useFocusTrap } from "../../lib/useFocusTrap";
+import { signInMark, stillSignedInAs } from "../../lib/signedIn";
 import { effectiveClockInMode } from "../../lib/jobModes";
 import { askClockEntryMode } from "../../lib/askClockHandoff";
 import type { NativeClockFlow } from "../../lib/paidClock/flow";
@@ -155,7 +156,14 @@ export function ClockSheet({
   // in a ref for exactly the same reason, so a fresh callback each render is
   // fine.
   const sheetRef = useRef<HTMLDivElement>(null);
-  useFocusTrap(sheetRef, true, onClose);
+  const focusLogin = signInMark();
+  useFocusTrap(sheetRef, true, onClose, {
+    canRestore: () => !!profileId && stillSignedInAs(focusLogin, profileId),
+    fallback: () => {
+      const landmarks = document.querySelectorAll<HTMLElement>("main.app-main");
+      return landmarks.length === 1 ? landmarks[0] : null;
+    },
+  });
   const entryMode = askClockEntryMode(shift, initialPick);
   const [mode, setMode] = useState<Mode>(entryMode);
   const appliedEntryRef = useRef<string | null>(null);

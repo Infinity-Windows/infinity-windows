@@ -3,8 +3,8 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
 /** Passive test evidence; never consumes application receipts or changes takeover. */
-export async function capturePwaReloadEvidence(page: Page, context: BrowserContext, chromium: boolean) {
-  const key = "wops-e2e-half-download-reload-evidence";
+export async function capturePwaReloadEvidence(page: Page, context: BrowserContext, chromium: boolean, label = "half-download") {
+  const key = `wops-e2e-${label}-reload-evidence`;
   await page.addInitScript((storageKey) => {
     const note = (event: string, detail: unknown = null) => {
       try {
@@ -70,10 +70,10 @@ export async function capturePwaReloadEvidence(page: Page, context: BrowserConte
   return async (info: TestInfo) => {
     const documents = await page.evaluate((storageKey) => JSON.parse(sessionStorage.getItem(storageKey) || "[]"), key)
       .catch((error: unknown) => ({ readError: String(error) }));
-    const artifact = info.outputPath("half-download-reload-evidence.json");
+    const artifact = info.outputPath(`${label}-reload-evidence.json`);
     await mkdir(dirname(artifact), { recursive: true });
     await writeFile(artifact, JSON.stringify({ documents, browserEvents: events }, null, 2));
-    await info.attach("half-download-reload-evidence.json", { path: artifact, contentType: "application/json" });
+    await info.attach(`${label}-reload-evidence.json`, { path: artifact, contentType: "application/json" });
     await cdp?.detach();
   };
 }

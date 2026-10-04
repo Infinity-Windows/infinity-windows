@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { UtensilsCrossed } from "lucide-react";
 import { lunchReminder } from "../../lib/lunchReminder";
 import { notifyLocal } from "../../lib/permissions/notifyLocal";
+import { signInGeneration } from "../../lib/signedIn";
 import { useT } from "../../lib/i18n";
 import type { TimeShift } from "../../lib/timeclock";
 export function LunchReminder({
@@ -33,7 +34,7 @@ export function LunchReminder({
         url: "/clock",
       });
   }, [tag, t]);
-  if (!due) return null;
+  if (!due || !shift) return null;
   return (
     <div className="lunch-reminder" role="status">
       <UtensilsCrossed size={22} aria-hidden />
@@ -41,7 +42,8 @@ export function LunchReminder({
         <strong>{t("lunch.title")}</strong>
         <p>{t("lunch.body")}</p>
       </div>
-      <button className="primary" onClick={onOpen}>
+      <button className="primary" onClick={onOpen}
+        data-focus-return-key={`clock-lunch:${shift.profile_id}:${signInGeneration()}:${shift.id}`}>
         {t("lunch.open")}
       </button>
     </div>

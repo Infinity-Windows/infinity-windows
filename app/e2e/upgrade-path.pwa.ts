@@ -318,13 +318,18 @@ test("a second tab on the same URL can reload without suppressing the asking tab
   page,
   context,
   request,
-}) => {
+  browserName,
+}, info) => {
+  const finishAsking = await capturePwaReloadEvidence(page, context, browserName === "chromium", "two-tab-asking");
+  let finishOther: Awaited<ReturnType<typeof capturePwaReloadEvidence>> | undefined;
+  try {
   const { builds } = await harnessState(request);
   await serveBuild(request, "old");
   await page.goto("/");
   await expect(signInButton(page)).toBeVisible();
   await serviceWorkerReady(page);
   const other = await context.newPage();
+  finishOther = await capturePwaReloadEvidence(other, context, browserName === "chromium", "two-tab-other");
   await other.goto("/");
   await expect(signInButton(other)).toBeVisible();
   await serviceWorkerReady(other);
@@ -343,6 +348,10 @@ test("a second tab on the same URL can reload without suppressing the asking tab
   await expect.poll(() => runningEntry(other), { timeout: 60_000 }).toBe(builds.new.entry);
   await expect(signInButton(page)).toBeVisible();
   expect(navigations(), "the asking tab must switch exactly once").toHaveLength(1);
+  } finally {
+    await finishAsking(info);
+    await finishOther?.(info);
+  }
 });
 
 test("a download that broke halfway does not leave Refresh doing nothing afterwards", async ({
