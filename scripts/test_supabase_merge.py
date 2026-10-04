@@ -210,7 +210,7 @@ class TestSchemaParsing(unittest.TestCase):
         # 20261035000000 to land after the bill-to migrations).
         # +10 monthly-values tables: private policy, immutable reviews and
         # frozen accounting/provenance, plus reserved reminder claims.
-        self.assertEqual(len(SCHEMA.tables), 226)  # substrate, cutover frames, authority, retained payroll safety and clock receipts
+        self.assertEqual(len(SCHEMA.tables), 233)  # plus seven retained unit-review/source-history tables
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 
@@ -799,6 +799,14 @@ class TestPlan(unittest.TestCase):
             "work_unit_fact_revisions": ("id",),
             "work_unit_fact_current": ("unit_id",),
             "work_unit_fact_context_epochs": ("scope_kind", "scope_id"),
+            'work_activity_source_history': ('id',),
+            'work_unit_review_commands': ('command_id',),
+            'work_unit_dimension_verifications': ('id',),
+            'work_unit_review_events': ('id',),
+            'work_unit_review_current': ('unit_id', 'incarnation'),
+            'work_unit_review_defects': ('id',),
+            'work_unit_review_defect_events': ('id',),
+
         }
         for table, key in identities.items():
             with self.subTest(table=table):
@@ -812,6 +820,9 @@ class TestPlan(unittest.TestCase):
                     ({}, {"tables": {table: {"rows": 1}}}, {}, {table: [{"id": "private-target"}]}),
                     ({"tables": {table: {"rows": 1}}}, {}, {}, {}),
                     ({}, {"tables": {table: {"rows": 1}}}, {}, {}),
+                    ({"tables": {table: {"rows": 1}}}, {"tables": {table: {"rows": 1}}},
+                     {table: [{"id": "same-private-id", "note": "private-source"}]},
+                     {table: [{"id": "same-private-id", "note": "private-target"}]}),
                 ]:
                     plan = Plan(SCHEMA, {"project_ref": "source", **source}, {"project_ref": "target", **target}, source_rows, target_rows, 0)
                     self.assertEqual(plan.manual_capture_tables, [table])

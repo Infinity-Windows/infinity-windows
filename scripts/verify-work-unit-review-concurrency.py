@@ -1,0 +1,131 @@
+#!/usr/bin/env python3
+"""Actual PG17 logins and observed review waits after the engine role fixture.
+Requires its exact fresh disposable localhost database; never provider SQL.
+"""
+import hashlib,json,os,re,subprocess,sys,time
+from pathlib import Path
+from urllib.parse import urlparse,urlunparse
+ROOT=Path(__file__).resolve().parent.parent
+SOURCE=ROOT/'supabase/migrations/20261108440000_work_unit_review.sql'
+source=SOURCE.read_text();source_hash=hashlib.sha256(source.encode()).hexdigest()
+assert re.search(r'rollback;\s*$',source)
+assert sys.argv[1:] in ([],['--check-plan'])
+if sys.argv[1:]==['--check-plan']:
+ print(json.dumps({'result':'PLAN VALIDATED','databaseTests':False,'sourceSha256':source_hash,'predecessor':'verify-work-activity-engine-role-parity.py','plannedObservedWaits':['fact CAS','original source hidden','grant revoked','actor revoked','duplicate receipt','unit row']}));sys.exit(0)
+url=os.environ.get('WORK_ACTIVITY_ROLE_TEST_DB_URL','');p=urlparse(url)
+try: port=p.port
+except ValueError:raise SystemExit('Invalid local fixture URL')
+if p.scheme not in ('postgres','postgresql') or p.hostname not in ('localhost','127.0.0.1') or port not in (None,5432) or p.path!='/forge_work_activity_role_test' or p.username!='supabase_admin' or p.query or p.fragment:
+ raise SystemExit('Refused: exact disposable localhost role fixture required')
+env={k:v for k,v in os.environ.items() if not k.startswith('PG')};env['PGCONNECT_TIMEOUT']='3'
+def uri(user):return urlunparse((p.scheme,f'{user}:fixture-only@{p.hostname}:{port or 5432}',p.path,'','',''))
+def ql(v):return "'"+str(v).replace("'","''")+"'"
+checks=0
+
+def run(sql,user='postgres',error=None):
+ global checks
+ r=subprocess.run(['psql',uri(user),'-X','-q','-t','-A','-v','ON_ERROR_STOP=1'],input="\\set VERBOSITY sqlstate\nset statement_timeout='12s';set lock_timeout='8s';\n"+sql,text=True,capture_output=True,timeout=30,env=env)
+ if error:
+  assert r.returncode and re.search(r'\b'+error+r'\b',r.stderr),(error,r.stderr[-1000:]);checks+=1;return
+ assert r.returncode==0,r.stderr[-1600:];return r.stdout.strip()
+def obj(sql,user='postgres'):return json.loads(run(sql,user).splitlines()[-1])
+def check(v,label):
+ global checks
+ assert v,label;checks+=1
+
+def id(n):return '00000000-0000-4000-8000-'+str(12000+n).zfill(12)
+owner,reviewer,foreman,worker=[id(n) for n in range(1,5)];job,other=id(10),id(11);opening,unit=id(20),id(30)
+def auth(actor):return 'set role authenticated;set request.jwt.claim.sub='+ql(actor)+';'
+def read(actor=reviewer):return obj(auth(actor)+'begin read only;select work_unit_review_read('+ql(unit)+');commit;','authenticator')
+def payload(action,data,actor=reviewer):return {'action':action,'basis':read(actor)['review']['basis'],'data':data}
+def sql_command(cid,pay):return 'select work_unit_review_command('+ql(cid)+',1,'+ql(json.dumps(pay))+'::jsonb);'
+def command(cid,pay,actor=reviewer):return obj(auth(actor)+sql_command(cid,pay),'authenticator')
+check(run("select (session_user='postgres' and not (select rolsuper from pg_roles where rolname=session_user))::int")=='1','Actual nonsuperuser source owner login')
+check(run("select (session_user='authenticator' and not (select rolsuper from pg_roles where rolname=session_user) and not (select rolinherit from pg_roles where rolname=session_user))::int",'authenticator')=='1','Actual noninheriting caller login')
+check(run('select current_database()')=='forge_work_activity_role_test','Exact disposable database')
+check(run("select current_setting('server_version_num')::int/10000")=='17','Actual PG17')
+check(run("select to_regprocedure('public.work_unit_review_read(uuid)') is null")=='t','Review-free predecessor required')
+run(re.sub(r'rollback;\s*$','commit;',source))
+check(run('select _work_unit_review_coverage()')=='t','Genuine-role installed source contract matches')
+run('insert into auth.users(id) values '+','.join('('+ql(x)+')' for x in (owner,reviewer,foreman,worker))+';insert into profiles(id,display_name,role,is_test) values '+','.join('('+ql(x)+",'Synthetic review',"+ql(role)+',false)' for x,role in [(owner,'owner'),(reviewer,'owner'),(foreman,'foreman'),(worker,'installer')])+';')
+run("insert into projects(id,job_code,name) values("+ql(job)+",'REVIEW-PG','Review synthetic'),("+ql(other)+",'REVIEW-PG-OTHER','Review synthetic other');insert into project_openings(id,project_id,opening_code) values("+ql(opening)+','+ql(job)+",'ONE');")
+unit_data={'id':unit,'revision':0,'project_id':job,'opening_id':opening,'label':'Synthetic unit','type_label':'Window','facts':{},'dimension_observation':{'width':36,'height':48,'unit':'in','source':'estimated'},'expected_fact_revision':0}
+run(auth(owner)+'select custom_work_command('+ql(id(100)) +",'unit',"+ql(json.dumps(unit_data))+'::jsonb);','authenticator')
+check(read()['review']['capabilities']['verifyDimensions'],'Real reviewer capability')
+verification=payload('verify_dimensions',{'widthDecimal':'3','heightDecimal':'4','unit':'ft','source':'plans','sourceReference':None})
+receipt=command(id(101),verification)
+check(command(id(101),verification)==receipt,'Actual immutable receipt replay')
+run(auth(owner)+sql_command(id(101),verification),'authenticator','42501')
+for action,n in [('submit',102),('pass',103)]:command(id(n),payload(action,{'note':None}))
+check(read()['review']['qc']['qcAccepted'],'Actual authenticated exact-basis pass accepted')
+for table in ['work_activity_source_history','work_unit_review_commands','work_unit_dimension_verifications','work_unit_review_events','work_unit_review_current','work_unit_review_defects','work_unit_review_defect_events']:
+ run(auth(reviewer)+'select * from '+table,'authenticator','42501')
+run(auth(reviewer)+'begin isolation level repeatable read;select work_unit_review_read('+ql(unit)+')','authenticator','25001')
+run(auth(reviewer)+'begin isolation level serializable;select work_unit_review_read('+ql(unit)+')','authenticator','25001')
+run(auth(owner)+'select work_grant_job_capability('+ql(id(110))+','+ql(job)+','+ql(foreman)+",'dimensions_edit');select work_grant_job_capability("+ql(id(111))+','+ql(job)+','+ql(foreman)+",'final_qc');",'authenticator')
+# Same foreman may submit and pass their own work. Independent dimensions remain separate.
+command(id(112),payload('submit',{'note':None},foreman),foreman);command(id(113),payload('pass',{'note':None},foreman),foreman)
+check(read(foreman)['review']['qc']['qcAccepted'],'Authorized foreman self final QC allowed')
+processes=[];edges=0
+
+def start(sql,user):
+ r=subprocess.Popen(['psql',uri(user),'-X','-q','-t','-A','-v','ON_ERROR_STOP=1'],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,env=env)
+ processes.append(r);r.stdin.write('\\set VERBOSITY sqlstate\n'+sql+'\n');r.stdin.flush();return r
+
+def finish(r,sql=''):
+ if sql:r.stdin.write(sql+'\n');r.stdin.flush()
+ r.stdin.close();r.stdin=None;return r.communicate(timeout=12)
+
+def race(name,holder_sql,reader_sql,error=None,holder_user='postgres',g=True):
+ global edges
+ aa='review_holder_'+name;bb='review_waiter_'+name
+ a=start("set application_name="+ql(aa)+";set statement_timeout='10s';begin;"+('select _work_activity_gate();' if g else '')+holder_sql,holder_user)
+ deadline=time.monotonic()+4
+ while time.monotonic()<deadline:
+  if a.poll() is not None:raise AssertionError(a.stderr.read())
+  if run("select exists(select 1 from pg_stat_activity where application_name="+ql(aa)+" and state='idle in transaction')::int")=='1':break
+  time.sleep(.03)
+ else:raise AssertionError('Holder barrier absent')
+ b=start('set application_name='+ql(bb)+';'+reader_sql,'authenticator')
+ deadline=time.monotonic()+4
+ while time.monotonic()<deadline:
+  if b.poll() is not None:raise AssertionError('No wait: '+b.stderr.read())
+  if run("select exists(select 1 from pg_stat_activity a join pg_stat_activity b on a.datname=b.datname where a.application_name="+ql(aa)+' and b.application_name='+ql(bb)+" and a.pid<>b.pid and a.pid=any(pg_blocking_pids(b.pid)))::int")=='1':edges+=1;break
+  time.sleep(.03)
+ else:raise AssertionError('No actual blocking edge')
+ _,ae=finish(a,'commit;');assert a.returncode==0,ae
+ bo,be=finish(b)
+ if error:check(b.returncode!=0 and re.search(r'\b'+error+r'\b',be),'Fresh post-wait '+name);check(not bo.strip(),'Refusal discloses no result');return
+ check(b.returncode==0,'Successful waiter '+name+': '+be);return json.loads(bo.splitlines()[-1])
+try:
+ pay=payload('verify_dimensions',verification['data']);new_data={**unit_data,'revision':1,'expected_fact_revision':1,'dimension_observation':{'width':37,'height':48,'unit':'in','source':'estimated'}}
+ edit="set request.jwt.claim.sub="+ql(owner)+';select custom_work_command('+ql(id(120))+",'unit',"+ql(json.dumps(new_data))+'::jsonb);'
+ race('fact',edit,auth(reviewer)+sql_command(id(121),pay),'40001')
+ # Original source closure remains required after a canonical relink.
+ moved={**new_data,'revision':2,'project_id':other,'opening_id':None,'reason':'Synthetic relink'};moved.pop('dimension_observation');moved.pop('expected_fact_revision');moved['facts']=obj('select facts from custom_work_units where id='+ql(unit))
+ run(auth(owner)+'select custom_work_command('+ql(id(122))+",'link',"+ql(json.dumps(moved))+'::jsonb);','authenticator')
+ pay=payload('submit',{'note':None})
+ race('original_hidden','update projects set deleted_at=clock_timestamp() where id='+ql(job)+';',auth(reviewer)+sql_command(id(123),pay),'42501')
+ run('update projects set deleted_at=null where id='+ql(job)+';')
+ run(auth(owner)+'select work_grant_job_capability('+ql(id(124))+','+ql(other)+','+ql(foreman)+",'dimensions_edit');",'authenticator')
+ pay=payload('verify_dimensions',{'widthDecimal':'37','heightDecimal':'48','unit':'in','source':'measured','sourceReference':None},foreman)
+ grant=run("select id from work_job_management_grants where profile_id="+ql(foreman)+' and project_id='+ql(job)+" and capability='dimensions_edit' and revoked_at is null")
+ revoke=auth(owner)+'select work_revoke_job_capability('+ql(id(125))+','+ql(job)+','+ql(foreman)+",'dimensions_edit',"+ql(grant)+');'
+ race('grant',revoke,auth(foreman)+sql_command(id(126),pay),'42501',holder_user='authenticator',g=False)
+ pay=payload('submit',{'note':None})
+ race('actor','update profiles set access_revoked_at=clock_timestamp() where id='+ql(reviewer)+';',auth(reviewer)+sql_command(id(127),pay),'42501')
+ run('update profiles set access_revoked_at=null where id='+ql(reviewer)+';')
+ pay=payload('submit',{'note':None});cid=id(128)
+ duplicate=race('duplicate',auth(reviewer)+sql_command(cid,pay),auth(reviewer)+sql_command(cid,pay),holder_user='authenticator',g=False)
+ check(duplicate==command(cid,pay),'Waiting same UUID returns same applied receipt')
+ pay=payload('reopen',{'note':None})
+ row=race('unit_row','select id from custom_work_units where id='+ql(unit)+' for update;',auth(reviewer)+sql_command(id(129),pay),g=False)
+ check(row['outcome']=='applied','Unit row wait completes without parent lock inversion')
+ check(edges==6,'Six independent backend waits observed')
+finally:
+ for proc in processes:
+  if proc.poll() is None:
+   proc.terminate()
+   try:proc.wait(timeout=2)
+   except subprocess.TimeoutExpired:proc.kill();proc.wait(timeout=2)
+print(json.dumps({'result':'PASS','checks':checks,'observedBlockingEdges':edges,'reviewSha256':source_hash,'scope':'Actual PG17 source-owner/authenticator logins; provider/JWT transport excluded'}))
