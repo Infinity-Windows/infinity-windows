@@ -151,6 +151,7 @@ export async function getActivityDispatchReadiness(ownerId:string,deviceId:strin
       if(row.payload.intent.kind==='establish_stream'){set({ready:true});return;}
       const predecessor=store.get(row.payload.predecessorCommandId!);
       predecessor.onsuccess=()=>{try{
+        if(predecessor.result===undefined){set({ready:false,reason:'predecessor_unknown'});return;}
         const prior=parseRecord(predecessor.result);
         if(prior.ownerId!==ownerId || prior.payload.deviceId!==deviceId || prior.payload.clientGeneration!==row.payload.clientGeneration || prior.payload.clientSequence+1!==row.payload.clientSequence)return conflict();
         if(!prior.receipt){set({ready:false,reason:'predecessor_unknown'});return;}

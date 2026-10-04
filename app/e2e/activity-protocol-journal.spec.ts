@@ -119,3 +119,23 @@ test('the exact uncertain protocol head survives page reload without dispatch or
   });
   expect(restored).toEqual({head:saved,foreign:null});expect(restored.head.uncertain).toBe(true);
 });
+
+test('a missing predecessor holds the exact descendant without throwing or making it dispatchable',async({journalPage:page})=>{
+  await fixture(page);
+  const result=await page.evaluate(async()=>{
+    // @ts-expect-error Browser Vite module URL.
+    const j=await import('/src/lib/workActivity/journal.ts');
+    // @ts-expect-error Browser Vite module URL.
+    const storage=await import('/src/lib/workCapture/storage.ts');
+    const id=(n:number)=>`00000000-0000-0000-0000-${String(n).padStart(12,'0')}`;
+    const payload={deviceId:id(2),clientGeneration:id(3),clientSequence:0,predecessorCommandId:null,expectedRevision:0,basis:{observationId:id(4)},shiftRef:null,tappedAt:'2026-10-04T00:00:00.123456Z',clockCheckedAt:null,clockSkewMs:null,intent:{kind:'establish_stream',previousGeneration:null,previousHeadCommandId:null}};
+    await j.appendActivityCommand({ownerId:id(1),commandId:id(5),payload});
+    const child={...payload,clientSequence:1,predecessorCommandId:id(5),shiftRef:{kind:'shift',id:id(7)},intent:{kind:'stop'}};
+    const saved=await j.appendActivityCommand({ownerId:id(1),commandId:id(6),payload:child});
+    // Deliberately corrupt only this disposable test database.
+    const db=await storage.openWorkJournal(indexedDB),tx=db.transaction(storage.PROTOCOL_COMMANDS,'readwrite');tx.objectStore(storage.PROTOCOL_COMMANDS).delete(id(5));
+    await new Promise<void>((resolve,reject)=>{tx.oncomplete=()=>resolve();tx.onabort=()=>reject(tx.error);});db.close();
+    return {readiness:await j.getActivityDispatchReadiness(id(1),id(2),id(6)),unchanged:JSON.stringify(await j.getActivityCommand(id(1),id(2),id(6)))===JSON.stringify(saved)};
+  });
+  expect(result).toEqual({readiness:{ready:false,reason:'predecessor_unknown'},unchanged:true});
+});
