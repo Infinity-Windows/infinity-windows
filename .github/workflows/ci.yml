@@ -431,7 +431,6 @@ jobs:
     env:
       IW_MAP_PORT: "5196"
       IW_PWA_REUSE: "1"
-      IW_PWA_CACHE: ${{ runner.temp }}/pwa-original/_temp/pwa-current
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -448,6 +447,8 @@ jobs:
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/pwa-original
       - name: Reproduce unchanged original bundles with causal document timeline
+        env:
+          IW_PWA_CACHE: ${{ runner.temp }}/pwa-original/_temp/pwa-current
         run: npx playwright test --config playwright.pwa.config.ts upgrade-path.pwa.ts -g 'a download that broke halfway' --repeat-each=2
       - uses: actions/upload-artifact@v4
         if: always()
