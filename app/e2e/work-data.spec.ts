@@ -391,7 +391,7 @@ function explorationSnapshot(): WorkDataSnapshot {
   ] as const) {
     const shiftId = `${id}-shift`;
     report.units.push({ ...report.units[0], id, label: id, category, subtype, floor,
-      widthIn: width, heightIn: width, dimensionsVerified: width !== null });
+      widthIn: width, heightIn: width, dimensionSource: width === null ? "" : report.units[0].dimensionSource, dimensionsVerified: width !== null });
     report.shifts.push({ ...report.shifts[2], id: shiftId, profileId: person, profileName: person,
       startedAt: "2026-10-02T16:00:00.000Z", endedAt: `2026-10-02T${16 + hours}:00:00.000Z` });
     report.claims.push({ ...report.claims[1], sourceId: `${id}-source`, unitId: id,
@@ -455,6 +455,9 @@ test("unit activities keep helper labor and sources without double-counting area
   await expect(unit).toContainText("claim-unit-helper");
   await expect(unit.locator(".work-data-stage")).toHaveCount(2);
   await expect(unit.locator("summary")).toContainText("2.00 h · 12.00 ft²");
+  const missing = explorer.locator(".work-data-unit").filter({ hasText: "unknown-unit" });
+  await missing.locator("summary").click();
+  await expect(missing.locator("dt").filter({ hasText: "Recorded dimension source" }).locator("..").locator("dd")).toHaveText("Unknown");
   await explorer.getByText("Why units are excluded", { exact: true }).click();
   await expect(explorer).toContainText("do not add their hours together");
   await explorer.getByText("Recorded area by floor", { exact: true }).click();
