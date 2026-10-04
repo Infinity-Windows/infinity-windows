@@ -2,11 +2,18 @@
 """Attest immutable failed-run bundles before observation; never build/edit them."""
 import hashlib,json,sys
 from pathlib import Path
-assert len(sys.argv)==3,"Expected archive directory and receipt path"
-base,target=map(Path,sys.argv[1:])
+assert len(sys.argv) in (3,4),"Expected archive directory, receipt path and optional exact archive profile"
+base,target=map(Path,sys.argv[1:3])
+profile=sys.argv[3] if len(sys.argv)==4 else "original"
+assert profile in ("original","current-701"),"Unknown archive profile; refuse unpinned bundles"
 expected={"old":(304,"4f1ef9bf86ef045992a1c4222fa04a03a5d7b95d2b0a6e39a4887e0434b7f828"),
  "new":(357,"f74b1a9011b426dfad33fcce470d5375ac6cda0c816f0d0ef50418d107f683ec")}
-report={"runId":37231644970,"artifact":"pwa-older-builds-and-results","bundles":{}}
+run_id,artifact=37231644970,"pwa-older-builds-and-results"
+if profile=="current-701":
+ expected={"old":(330,"3051b303ccc20ca5d7c6f9ac47d683643e522f4ab928910a5774f45800e15cf4"),
+  "new":(330,"02cee35d453773334c5022b2e0796463727dc12f89a73c5e35942ec518f51493")}
+ run_id,artifact=37241657741,"pwa-current-builds-and-results"
+report={"runId":run_id,"artifact":artifact,"profile":profile,"bundles":{}}
 for kind,(count,digest) in expected.items():
  folder=base/(kind+"-dist")
  assert folder.is_dir(),f"Missing archived {kind} directory; refuse fallback rebuild"
@@ -17,4 +24,5 @@ for kind,(count,digest) in expected.items():
  assert (len(items),actual)==(count,digest),(kind,len(items),actual,"Archived bundle differs")
  report["bundles"][kind]={"files":len(items),"manifestSha256":actual,"sha256":items}
 target.parent.mkdir(parents=True,exist_ok=True);target.write_text(json.dumps(report,indent=2)+"\n")
-print("Verified exact retained failed-run bundles:304 old files/357 new files; no rebuilding")
+print(f"Verified exact retained failed-run bundles from {run_id}:"
+      f"{expected['old'][0]} old files/{expected['new'][0]} new files; no rebuilding")
