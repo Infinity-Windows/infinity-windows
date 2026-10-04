@@ -86,7 +86,7 @@ export function WorkDataExplorer({ rows, claims, coverage, issue }: {
         <dl className="work-data-metrics">
           {facets.map(field => <div key={field}><dt>{t(`wdata.${field}` as WorkDataKey)}</dt><dd>{row.unit[field]?.trim() ? row.unit[field] : t("wdata.unknown")}</dd></div>)}
           <div><dt>{t("wdata.area")}</dt><dd>{row.areaSqFt === null ? "—" : area(row.areaSqFt)}</dd></div>
-          <div><dt>{t("wdata.dimensionSource")}</dt><dd>{row.unit.dimensionSource ?? t("wdata.unknown")}</dd></div>
+          <div><dt>{t("wdata.dimensionSource")}</dt><dd>{row.unit.dimensionSource?.trim() ? row.unit.dimensionSource : t("wdata.unknown")}</dd></div>
         </dl>
         <ul>{row.exclusions.map(reason => <li key={reason}>{issue(reason)}</li>)}</ul>
         {row.eligible && <p>{t("wdata.eligible")}</p>}
