@@ -278,6 +278,10 @@ jobs:
         run: |
           npm run e2e -- work-data.spec.ts
           npm run e2e -- work-data.spec.ts --browser=webkit
+      - name: Independent dimension and final QC forms on phone browsers
+        run: |
+          npm run e2e -- unit-review-forms.spec.ts
+          npm run e2e -- unit-review-forms.spec.ts --browser=webkit
       - name: Company configuration and exact-job management on phone browsers
         run: |
           npm run e2e -- work-configuration.spec.ts
