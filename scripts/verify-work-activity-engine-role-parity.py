@@ -226,4 +226,83 @@ check(ended['profile_id']==uid and ended['break_started_at'] is None and ended['
 closed=json.loads(run(auth+f"select to_jsonb(clock_out('{shift}'::uuid,null::text,false,true,null::integer,null::double precision,null::double precision,null::text))",'authenticator'))
 check(closed['clock_out_at'] is not None,'Actual payroll out completes under source roles')
 check(run("select count(*) from work_activity_operations",'postgres')=='0','No operation contexts persist after real-role calls')
-print(json.dumps({'result':'PASS','checks':checks,'cutoverSha256':EXPECTED_CUTOVER_SHA,'roleMetadataSha256':EXPECTED_ROLE_SHA,**plan}))
+# Readiness is a separate no-write migration, installed through the real source
+# owner only after the complete engine. It cannot stand in for activation.
+capability_source=(ROOT/'supabase/migrations/20261108430000_work_activity_clock_capability.sql').read_text()
+capability_hash=hashlib.sha256(capability_source.encode()).hexdigest()
+assert capability_hash=='f0fc5f6792263daee2880e4588c5139021dadcd464d21e824ec073b415b71576'
+run(capability_source,'postgres');checks+=1
+counts="select json_build_array((select count(*) from personal_activity_state),(select count(*) from work_activity_observations),(select count(*) from work_activity_clock_receipts),(select count(*) from personal_activity_transitions),(select count(*) from work_activity_operations),(select count(*) from time_shifts))"
+before_counts=run(counts,'postgres')
+capability=json.loads(run(auth+'begin read only;select work_activity_clock_capability();commit;','authenticator'))
+check(capability['mode']=='active' and capability['canAuthorSetup'] and capability['setupReason'] is None,'Actual read-only readiness uses the real toolbox gate')
+check(run(counts,'postgres')==before_counts,'Readiness leaves all capture/payroll/history counts unchanged')
+run(auth+'select _work_activity_clock_contract_marker()','authenticator','42501')
+run('set role anon;select work_activity_clock_capability()','authenticator','42501')
+run(auth+'begin isolation level repeatable read;select work_activity_clock_capability()','authenticator','25001')
+run(auth+'begin isolation level serializable;select work_activity_clock_capability()','authenticator','25001')
+
+# Two genuine independent-backend races. The waiting reader uses the actual
+# authenticator login and its installed 8s timeout. PID/blocker observation is
+# required before release; sleeping or assuming a race is not evidence.
+import time
+race_processes=[]
+def start_race(sql,user):
+    uri=urlunparse((parsed.scheme,f'{user}:fixture-only@{parsed.hostname}:{port or 5432}',parsed.path,'','',''))
+    proc=subprocess.Popen(['psql',uri,'-X','-q','-t','-A','-v','ON_ERROR_STOP=1'],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,env=env)
+    race_processes.append(proc)
+    proc.stdin.write('\\set VERBOSITY sqlstate\n'+sql+'\n');proc.stdin.flush()
+    return proc
+
+def finish_race(proc,sql=''):
+    if sql:proc.stdin.write(sql+'\n');proc.stdin.flush()
+    proc.stdin.close();proc.stdin=None
+    return proc.communicate(timeout=10)
+
+wait_edges=0
+try:
+    for index,change in enumerate([
+        "update work_activity_authority_generation set capture_enabled=false,revision=revision+1 where singleton",
+        f"update profiles set access_revoked_at=clock_timestamp() where id='{uid}'"
+    ]):
+        app_a=f'capability_holder_{index}';app_b=f'capability_reader_{index}'
+        holder=start_race(f"set application_name='{app_a}';set statement_timeout='8s';set lock_timeout='8s';begin;select _work_activity_gate();{change};",'postgres')
+        deadline=time.monotonic()+4
+        while time.monotonic()<deadline:
+            if holder.poll() is not None:raise AssertionError('Holder exited before barrier: '+holder.stderr.read())
+            ready=run("set statement_timeout='2s';select exists(select 1 from pg_stat_activity where datname=current_database() and application_name="+ql(app_a)+" and state='idle in transaction')::int",'postgres',timeout=4)
+            if ready=='1':break
+            time.sleep(.03)
+        else:raise AssertionError('Holder did not reach its transaction barrier')
+        reader=start_race(f"set application_name='{app_b}';"+auth+'select work_activity_clock_capability();','authenticator')
+        deadline=time.monotonic()+4
+        while time.monotonic()<deadline:
+            if reader.poll() is not None:raise AssertionError('Reader exited without waiting: '+reader.stderr.read())
+            blocked=run("set statement_timeout='2s';select exists(select 1 from pg_stat_activity a join pg_stat_activity b on b.datname=a.datname where a.datname=current_database() and a.application_name="+ql(app_a)+" and b.application_name="+ql(app_b)+" and a.pid<>b.pid and a.pid=any(pg_blocking_pids(b.pid)))::int",'postgres',timeout=4)
+            if blocked=='1':wait_edges+=1;break
+            time.sleep(.03)
+        else:raise AssertionError('No actual independent G blocking edge observed')
+        released_at=float(run('select extract(epoch from clock_timestamp())','postgres'))
+        holder_out,holder_error=finish_race(holder,'commit;')
+        assert holder.returncode==0,holder_error
+        reader_out,reader_error=finish_race(reader)
+        if index==0:
+            assert reader.returncode==0,reader_error
+            fresh=json.loads(reader_out)
+            check(fresh['mode']=='closing_only' and fresh['setupReason']=='starts_disabled' and not fresh['canAuthorSetup'],'Post-G reader sees committed capture disable')
+            from datetime import datetime
+            check(datetime.fromisoformat(fresh['asOf'].replace('Z','+00:00')).timestamp()>=released_at,'asOf is captured after the actual gate wait')
+            check(all(fresh[k] for k in ('canDispatchExistingSetup','canReadOwnReceipts','canDispatchPayrollSafety')),'Closing preserves original clock/safety compatibility')
+        else:
+            check(reader.returncode!=0 and re.search(r'\b42501\b',reader_error),'Post-G account revocation refuses before any readiness projection')
+            check(not reader_out.strip(),'Revoked reader returns no private readiness envelope')
+    check(wait_edges==2,'Two exact independent-backend blocking edges observed')
+    check(run(counts,'postgres')==before_counts,'Both waiting reads leave payroll/capture/history unchanged')
+finally:
+    for proc in race_processes:
+        if proc.poll() is None:
+            proc.terminate()
+            try:proc.wait(timeout=2)
+            except subprocess.TimeoutExpired:proc.kill();proc.wait(timeout=2)
+
+print(json.dumps({'result':'PASS','checks':checks,'cutoverSha256':EXPECTED_CUTOVER_SHA,'roleMetadataSha256':EXPECTED_ROLE_SHA,'capabilitySha256':capability_hash,'readinessBlockingEdges':wait_edges,**plan}))
