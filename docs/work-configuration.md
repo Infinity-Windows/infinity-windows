@@ -77,6 +77,14 @@ Catalog and response size limits fail explicitly instead of returning a successf
 silently incomplete snapshot. Grant lists fail explicitly above200 entries and remain owner/supervisor only;
 pagination for larger grant history remains a future UI/API extension.
 
+The dormant client validates every response and binds reads to the requested job.
+Writes preserve the caller's command UUID, copy inputs before waiting, and bind
+the checked account token and sign-in generation. Publication receipts must
+match the requested effective instant at PostgreSQL microsecond precision;
+equivalent time-zone formats are accepted. Explicit input beyond six fractional
+digits is refused rather than silently rounded. No screen imports this client.
+The English/Spanish owner and supervisor note describes the forthcoming screens.
+
 ## Validation and limits
 
 The actual SQL migration and real dependency helper bodies run in disposable

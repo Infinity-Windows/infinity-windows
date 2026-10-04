@@ -162,6 +162,32 @@ describe("configuration commands", () => {
     response = { protocolVersion: 1, projectId: JOB, revision: 3, menuVersionId: OTHER, selectionId: CMD, frozenDefinitionVersionIds: [] };
     await expect(api.selectJobMenu({ commandId: CMD, projectId: JOB, menuVersionId: OTHER, expectedCurrentRevision: 0 })).rejects.toBeInstanceOf(WorkConfigurationUnavailableError);
   });
+  it("binds both publish receipts to the exact requested instant, accepting equivalent offsets", async () => {
+    const explicit = "2026-11-08T12:01:00.1234Z";
+    const equivalent = "2026-11-08T13:01:00.123400+01:00";
+    const activity = { commandId: CMD, code: draft.code, expectedLatestVersion: 0, scope: draft.scope, labelEn: draft.labelEn, labelEs: draft.labelEs, machineSelection: false, typedFields: [], effectiveFrom: explicit };
+    const menu = { commandId: CMD, code: "main_menu", expectedLatestVersion: 0, labelEn: "Main", labelEs: "Principal", items: [], effectiveFrom: explicit };
+    for (const [run, code] of [[() => api.publishActivityVersion(activity), draft.code], [() => api.publishMenuVersion(menu), menu.code]] as const) {
+      response = { protocolVersion: 1, code, version: 1, versionId: OTHER, publishedAt: asOf, effectiveFrom: equivalent };
+      await expect(run()).resolves.toMatchObject({ effectiveFrom: equivalent });
+      response = { protocolVersion: 1, code, version: 1, versionId: OTHER, publishedAt: asOf, effectiveFrom: "2026-11-08T12:01:00.123401Z" };
+      await expect(run()).rejects.toBeInstanceOf(WorkConfigurationUnavailableError);
+    }
+  });
+  it("binds immediate publish to its publication instant and refuses overprecise input", async () => {
+    const activity = { commandId: CMD, code: draft.code, expectedLatestVersion: 0, scope: draft.scope, labelEn: draft.labelEn, labelEs: draft.labelEs, machineSelection: false, typedFields: [], effectiveFrom: null };
+    const menu = { commandId: CMD, code: "main_menu", expectedLatestVersion: 0, labelEn: "Main", labelEs: "Principal", items: [], effectiveFrom: null };
+    for (const [run, code] of [[() => api.publishActivityVersion(activity), draft.code], [() => api.publishMenuVersion(menu), menu.code]] as const) {
+      response = { protocolVersion: 1, code, version: 1, versionId: OTHER, publishedAt: "2026-11-08T12:00:00.123456Z", effectiveFrom: "2026-11-08T13:00:00.123456+01:00" };
+      await expect(run()).resolves.toMatchObject({ version: 1 });
+      response = { protocolVersion: 1, code, version: 1, versionId: OTHER, publishedAt: "2026-11-08T12:00:00.123456Z", effectiveFrom: "2026-11-08T12:00:00.123457Z" };
+      await expect(run()).rejects.toBeInstanceOf(WorkConfigurationUnavailableError);
+    }
+    const before = calls.length;
+    await expect(api.publishActivityVersion({ ...activity, effectiveFrom: "2026-11-08T12:01:00.1234567Z" })).rejects.toBeInstanceOf(WorkConfigurationUnavailableError);
+    await expect(api.publishMenuVersion({ ...menu, effectiveFrom: "2026-11-08T12:01:00.1234567Z" })).rejects.toBeInstanceOf(WorkConfigurationUnavailableError);
+    expect(calls).toHaveLength(before);
+  });
   it("keeps the same caller-supplied id for an exact retry", async () => {
     response = draftReceipt;
     await api.proposeActivityDraft(draft); await api.proposeActivityDraft(draft);

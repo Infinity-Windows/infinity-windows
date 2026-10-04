@@ -85,6 +85,10 @@ begin
   perform pg_temp.dry_run_expect_error('normalized payload mismatch refused even with same supplied hash',
     format('select public._work_config_replay(%L,%L,''publish_activity_version'',%L,''{"different":true}'')',v_command,v_actor,repeat('0',64)),
     'different request');
+  perform pg_temp.dry_run_check('configuration note is bilingual and owner/supervisor only',
+    (select audience=array[2,3] and length(btrim(title_en))>0 and length(btrim(title_es))>0
+      and length(btrim(body_en))>0 and length(btrim(body_es))>0 and href='/settings'
+     from public.app_release_notes where id='2026-10-03-work-configuration-preparation'),'checked');
   v_qa := pg_temp.dry_run_pick('installer');
   perform pg_temp.dry_run_act_as(v_qa);
   perform pg_temp.dry_run_check('actual caller is the QA authenticated profile',

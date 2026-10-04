@@ -74,9 +74,17 @@ export function iso(v: unknown): string {
   if (m[7] !== "Z" && (Number(m[7].slice(1, 3)) > 23 || Number(m[7].slice(4)) > 59)) return fail();
   return v;
 }
+/** PostgreSQL timestamptz precision is six fractional digits. Compare UTC instants exactly at that precision. */
+export function postgresInstantMicros(v: unknown): bigint {
+  const timestamp = iso(v);
+  const fraction = /\.(\d+)(?:Z|[+-]\d{2}:\d{2})$/.exec(timestamp)?.[1] ?? "";
+  if (fraction.length > 6) return fail();
+  const tailMicros = Number(fraction.padEnd(6, "0").slice(3, 6));
+  return BigInt(Date.parse(timestamp)) * 1000n + BigInt(tailMicros);
+}
 function optionalIso(v: unknown): string | null { return v === null ? null : iso(v); }
 function finite(v: unknown): number { if (typeof v !== "number" || !Number.isFinite(v)) return fail(); return v; }
-function orderedDates(published: unknown, effective: unknown): void { if (Date.parse(iso(effective)) < Date.parse(iso(published))) fail(); }
+function orderedDates(published: unknown, effective: unknown): void { if (postgresInstantMicros(effective) < postgresInstantMicros(published)) fail(); }
 function eligible(v: unknown): boolean { return bool(v); }
 function capability(v: unknown): Capability { if (!CAPABILITIES.includes(v as Capability)) return fail(); return v as Capability; }
 function protocol(o: JsonObject): void { if (o.protocolVersion !== 1) fail(); }

@@ -2,7 +2,7 @@ import type { Session } from "@supabase/supabase-js";
 import { clientWithToken, supabase } from "../supabase";
 import { signInMark, stillSignedInAs } from "../signedIn";
 import {
-  WorkConfigurationUnavailableError, cloneJson, code, uuid, iso, typedFields,
+  WorkConfigurationUnavailableError, cloneJson, code, uuid, postgresInstantMicros, typedFields,
   draftMenuItems, publishedMenuItems, parseWorkConfiguration, parseGrantSnapshot,
   parseReceipt, validate, type Capability, type WorkConfigurationSnapshot,
   type GrantSnapshot, type JsonObject,
@@ -28,7 +28,7 @@ async function invoke(name: string, args: JsonObject): Promise<unknown> {
   // The client is frozen to this checked token; the ambient client follows later auth changes.
   let result: { data: unknown; error: unknown };
   try { result = await clientWithToken(session.access_token).rpc(name, args); }
-  catch { if (!stillSignedInAs(mark, who)) throw changed(); throw changed(); }
+  catch { throw changed(); }
   if (!stillSignedInAs(mark, who)) throw changed();
   if (result.error || result.data === null || result.data === undefined) throw changed();
   return result.data;
@@ -46,13 +46,13 @@ function publishActivityPayload(v: unknown): JsonObject {
   const o = validate.object(cloneJson(v), ["commandId", "code", "expectedLatestVersion", "scope", "labelEn", "labelEs", "machineSelection", "typedFields", "effectiveFrom"]);
   activityPayload({ commandId: o.commandId, code: o.code, expectedRevision: o.expectedLatestVersion, scope: o.scope, labelEn: o.labelEn, labelEs: o.labelEs, machineSelection: o.machineSelection, typedFields: o.typedFields });
   nonnegative(o.expectedLatestVersion, 2147483646);
-  if (o.effectiveFrom !== null) iso(o.effectiveFrom);
+  if (o.effectiveFrom !== null) postgresInstantMicros(o.effectiveFrom);
   return o;
 }
 function menuPayload(v: unknown, published: boolean): JsonObject {
   const o = validate.object(cloneJson(v), published ? ["commandId", "code", "expectedLatestVersion", "labelEn", "labelEs", "items", "effectiveFrom"] : ["commandId", "code", "expectedRevision", "labelEn", "labelEs", "items"]);
   commandId(o.commandId); code(o.code); validate.label(o.labelEn); validate.label(o.labelEs);
-  if (published) { nonnegative(o.expectedLatestVersion, 2147483646); publishedMenuItems(o.items); if (o.effectiveFrom !== null) iso(o.effectiveFrom); }
+  if (published) { nonnegative(o.expectedLatestVersion, 2147483646); publishedMenuItems(o.items); if (o.effectiveFrom !== null) postgresInstantMicros(o.effectiveFrom); }
   else { nonnegative(o.expectedRevision); draftMenuItems(o.items); }
   return o;
 }
@@ -74,7 +74,11 @@ function receipt(data: unknown, kind: Parameters<typeof parseReceipt>[1], o: Jso
   const parsed = parseReceipt(data, kind, { code: o.code as string | undefined, projectId: o.projectId as string | undefined, profileId: o.profileId as string | undefined, capability: o.capability as Capability | undefined });
   if (expectedDraftKind && parsed.kind !== expectedDraftKind) throw changed();
   if (kind === "draft" && parsed.revision !== (o.expectedRevision as number) + 1) throw changed();
-  if (kind === "publish" && parsed.version !== (o.expectedLatestVersion as number) + 1) throw changed();
+  if (kind === "publish") {
+    if (parsed.version !== (o.expectedLatestVersion as number) + 1) throw changed();
+    const requested = o.effectiveFrom === null ? parsed.publishedAt : o.effectiveFrom;
+    if (postgresInstantMicros(parsed.effectiveFrom) !== postgresInstantMicros(requested)) throw changed();
+  }
   if (kind === "select" && (parsed.revision !== (o.expectedCurrentRevision as number) + 1 || parsed.menuVersionId !== o.menuVersionId)) throw changed();
   return parsed;
 }
