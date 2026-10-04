@@ -13,13 +13,16 @@ function validId(value:string|null){try{activityUuid(value);return true;}catch{r
 type ReadResult<T>={status:'ready';requestStartedAt:number;value:T;login:SignInMark}|{status:'unavailable'};
 /** Both roots are private (not in the offline query allowlist). Logout, preview,
  * offline and navigation erase them. A failed fresh read replaces old details. */
-function useActivityRead<T>(kind:'snapshot'|'unit',id:string|null,enabled:boolean,read:(id:string,mark:SignInMark)=>Promise<T>){
+export function useActivityRead<T>(kind:'snapshot'|'unit'|'catalog',id:string|null,enabled:boolean,read:(id:string,mark:SignInMark)=>Promise<T>,selectedUnitId?:string|null){
   const owner=useSyncExternalStore(subscribeSignedIn,signedInUserId,()=>null);
   const generation=useSyncExternalStore(subscribeSignedIn,signInGeneration,()=>0);
   const connected=useSyncExternalStore(subscribeOnline,online,()=>false),qc=useQueryClient();
-  const allowed=enabled && connected && !!owner && validId(id);
-  const key=useMemo(()=>['workActivityPrivate',owner,generation,kind,id],[owner,generation,kind,id]);
-  const query=useQuery({queryKey:['workActivityPrivate',owner,generation,kind,id],queryFn:async():Promise<ReadResult<T>>=>{
+  const allowed=enabled && connected && !!owner && validId(id) && (selectedUnitId==null || validId(selectedUnitId));
+  // A mounted disabled QueryObserver may recreate an empty cache entry after
+  // removeQueries. Give that observer an anonymous key, never the former
+  // person's or unit's identity. Cleanup still cancels/removes the old key.
+  const key=useMemo(()=>['workActivityPrivate',allowed?owner:null,allowed?generation:0,kind,allowed?id:null,...(selectedUnitId===undefined?[]:[allowed?selectedUnitId:null])],[owner,generation,kind,id,selectedUnitId,allowed]);
+  const query=useQuery({queryKey:['workActivityPrivate',allowed?owner:null,allowed?generation:0,kind,allowed?id:null,...(selectedUnitId===undefined?[]:[allowed?selectedUnitId:null])],queryFn:async():Promise<ReadResult<T>>=>{
     const requestStartedAt=performance.now();
     const login={userId:owner,generation};
     try{return {status:'ready' as const,requestStartedAt,value:await read(id!,login),login};}
