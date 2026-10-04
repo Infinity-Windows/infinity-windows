@@ -283,6 +283,8 @@ jobs:
       - name: Verify independent dimensions and exact-source unit QC
         run: PGLITE_MODULE="$RUNNER_TEMP/work-cutover-matched-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-work-unit-review.mjs
       - name: Preserve complete payroll behavior with review installed
+        env:
+          WORK_ACTIVITY_MATCHED_SCHEMA: scripts/fixtures/work-activity-engine-online-schema.sql
         run: PGLITE_MODULE="$RUNNER_TEMP/work-cutover-matched-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-work-unit-review-payroll.mjs
       - name: Verify independent backends on the source-matched application schema
         env:

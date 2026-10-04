@@ -134,6 +134,51 @@ check((await q("select count(*)::int n from work_activity_source_history where s
 check((await q('select count(*)::int n from work_activity_source_history where operation_id=$1',[retainedRoot])).n===3&&(await q('select count(*)::int n from work_activity_operations where id=$1',[retainedRoot])).n===0,'Three intermediate mutations retain root identity after ephemeral operation deletion');
 await as(id(2));await command('submit',{note:null});await command('pass',{note:null});
 check((await readView()).review.qc.qcAccepted,'Quiescent completed phase can be explicitly resubmitted and accepted');
+// The phase's only worker must be included even without any profile_id source.
+await as(id(2),'postgres');await db.exec('savepoint phase_only_worker');
+await db.query('insert into auth.users(id) values($1)',[id(5)]);
+await db.query("insert into profiles(id,display_name,role,is_test) values($1,'Phase-only worker','installer',false)",[id(5)]);
+await db.query('update opening_phases set started_by=$1 where id=$2',[id(5),id(600)]);
+await as(id(2));await command('submit',{note:null});await command('pass',{note:null});
+check((await readView()).review.qc.qcAccepted,'Clean phase-only worker supports proven acceptance');
+const phaseOtherToken=(await readView(31)).review.basis.scopeToken;
+await as(id(2),'postgres');await db.exec('savepoint phase_dirty_state');
+await db.query("update personal_activity_state set integrity_state='review' where profile_id=$1",[id(5)]);
+await as(id(2));view=await readView();check(view.review.qc.lifecycle==='unproven'&&view.review.qc.acceptance==='recorded_only'&&!view.review.qc.qcAccepted,'Phase-only dirty subject state cannot retain accepted QC');
+check((await readView(31)).review.qc.qcAccepted&&(await readView(31)).review.basis.scopeToken===phaseOtherToken,'Phase-only dirty state preserves unrelated unit');
+await as(id(2),'postgres');await db.exec('rollback to savepoint phase_dirty_state');
+const phaseRevision=(await q('select revision from personal_activity_state where profile_id=$1',[id(5)])).revision;
+await db.query('update personal_activity_state set revision=9007199254740991 where profile_id=$1',[id(5)]);
+await db.query("update opening_phases set submitted_at=submitted_at+interval '1 second' where id=$1",[id(600)]);
+check((await q("select count(*)::int n from work_activity_safety_events where source_kind='phase' and source_id=$1 and profile_id=$2",[id(600),id(5)])).n===1,'Real phase operation emits source-linked safety for phase-only worker');
+// Clear only the disposable current-state uncertainty to isolate retained safety.
+await db.query("update personal_activity_state set revision=$1,integrity_state='clean' where profile_id=$2",[phaseRevision,id(5)]);
+await as(id(2));view=await readView();check(view.review.qc.lifecycle==='unproven'&&!view.review.qc.qcAccepted,'Retained exact phase safety remains unproven after current state is clean');
+await command('submit',{note:null});await command('pass',{note:null});view=await readView();
+check(view.review.qc.acceptance==='recorded_only'&&!view.review.qc.qcAccepted,'A recorded pass never accepts a phase-only unsafe source');
+check((await readView(31)).review.qc.qcAccepted&&(await readView(31)).review.basis.scopeToken===phaseOtherToken,'Exact phase safety preserves unrelated unit');
+await as(id(2),'postgres');await db.exec('rollback to savepoint phase_only_worker');
+// Restoring trigger metadata cannot conceal current source holes.
+for(const [table,sid,insertSql,args] of [
+ ['unit_sessions',id(780),"insert into unit_sessions(id,opening_id,profile_id,started_at,ended_at) values($1,$2,$3,now()-interval '2 hours',now()-interval '1 hour')",[id(780),id(20),id(1)]],
+ ['task_sessions',id(781),"insert into task_sessions(id,opening_id,project_id,profile_id,state,started_at,ended_at) values($1,$2,$3,$4,'on_task',now()-interval '2 hours',now()-interval '1 hour')",[id(781),id(20),id(10),id(1)]]]){
+ await db.exec('savepoint capture_hole');await db.exec('alter table '+table+' disable trigger zz_work_activity_row');await db.query(insertSql,args);await db.exec('alter table '+table+' enable trigger zz_work_activity_row');
+ check((await q('select _work_unit_review_coverage() yes')).yes,'Restored '+table+' catalog alone is current');
+ check((await q('select count(*)::int n from work_activity_source_history where source_kind=$1 and source_id=$2',[table,sid])).n===0,table+' fixture has an actual uncaptured live source');
+ await as(id(2));view=await readView();check(view.review.qc.lifecycle==='unproven'&&!view.review.qc.qcAccepted,'Live '+table+' hole cannot preserve accepted QC after capture restoration');
+ check((await readView(31)).review.qc.qcAccepted,'Uncaptured '+table+' preserves unrelated unit');
+ await as(id(2),'postgres');await db.query('delete from '+table+' where id=$1',[sid]);
+ check((await q('select bool_and(legacy_baseline) yes from work_activity_source_history where source_kind=$1 and source_id=$2',[table,sid])).yes,'Later captured '+table+' deletion retains unknown original provenance');
+ await as(id(2));check((await readView()).review.qc.lifecycle==='unproven'&&!(await readView()).review.qc.qcAccepted,'Deleting uncaptured '+table+' cannot heal its history gap');
+ await as(id(2),'postgres');await db.exec('rollback to savepoint capture_hole');
+}
+await db.exec('savepoint capture_changed_material');await db.exec('alter table opening_phases disable trigger zz_work_activity_row');
+await db.query('update opening_phases set minutes=999 where id=$1',[id(600)]);await db.exec('alter table opening_phases enable trigger zz_work_activity_row');
+await as(id(2));check((await readView()).review.qc.lifecycle==='unproven'&&!(await readView()).review.qc.qcAccepted,'Existing source with never-retained current material is unproven');
+await as(id(2),'postgres');await db.query('update opening_phases set minutes=998 where id=$1',[id(600)]);
+check((await q("select count(*)::int n from work_activity_source_history where source_kind='opening_phases' and source_id=$1 and legacy_baseline and before_value->>'minutes'='999'",[id(600)])).n===1,'Captured update retains never-recorded predecessor material as unknown');
+await as(id(2));check((await readView()).review.qc.lifecycle==='unproven','Later captured update cannot heal an existing source material gap');
+await as(id(2),'postgres');await db.exec('rollback to savepoint capture_changed_material');
 // Metadata drift can never silently continue certifying coverage.
 await as(id(2),'postgres');await db.exec('savepoint drift');await db.exec('alter table opening_phases disable trigger zz_work_activity_row');await as(id(2));
 check((await readView()).review.qc.lifecycle==='unproven'&&!(await readView()).review.qc.qcAccepted,'Missing source capture marker fails closed');await as(id(2),'postgres');await db.exec('rollback to savepoint drift');await db.exec('savepoint acl_drift');await db.exec('grant select on work_unit_review_events to authenticated');await as(id(2));check((await readView()).review.qc.lifecycle==='unproven','Raw private ACL drift invalidates coverage');await as(id(2),'postgres');await db.exec('rollback to savepoint acl_drift');

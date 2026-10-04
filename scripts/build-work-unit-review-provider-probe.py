@@ -12,7 +12,7 @@ calls = ROOT / 'scripts/dry-run-probes/work-unit-review-provider-calls.sql'
 target = ROOT / 'scripts/dry-run-probes/work-unit-review-current-rehearsal.sql'
 pins = {
     base: 'e5083557889fb1fb58dd0408b3c6d1aa937662f8966ff0f964ac4e231f492f55',
-    review: '2acd7ece715122550628e115c3866ed0f9fb46c94987e80391d906a5c7fe36de',
+    review: '4ec3c7486cba34976af5670aab08659b7525eff9fd714478b2cd10782877b474',
     metadata: 'f84779c3982e3cbe4d11e9c46e85a13ed091c356d6c2f4e9e211192b9cc790ce',
 }
 for path, expected in pins.items():
@@ -25,9 +25,9 @@ assert first.skeleton == 'begin' and last.skeleton == 'rollback'
 body = source[:first.code_start] + source[first.end:last.code_start] + source[last.end:]
 fragment = metadata.read_text().strip().removesuffix(';')
 sql = (base.read_text() + '\n-- Additive held review candidate; batch still owns rollback.\n' + body
-       + '\ndo $review_metadata$ declare r record; begin\n'
-       + ' for r in (' + fragment + ') loop\n'
-       + "  perform pg_temp.dry_run_check('provider/'||r.check_name,r.passed,'Exact private review metadata');\n"
+       + '\ndo $review_metadata$ declare probe_result record; begin\n'
+       + ' for probe_result in (' + fragment + ') loop\n'
+       + "  perform pg_temp.dry_run_check('provider/'||probe_result.check_name,probe_result.passed,'Exact private review metadata');\n"
        + ' end loop; end; $review_metadata$;\n' + calls.read_text())
 count = check_probe(str(target), sql)
 target.write_text(sql)
