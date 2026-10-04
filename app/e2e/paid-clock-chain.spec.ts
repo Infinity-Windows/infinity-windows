@@ -1,8 +1,25 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test as base, webkit, type Page } from "@playwright/test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { FIXTURE_AUTH_KEY, FIXTURE_SESSION, TEST_USER } from "./support/supabaseFixtures";
 import { json } from "./support/specHelpers";
 import type { PaidClockRecord } from "../src/lib/paidClock/storage";
 import type { PaidClockPolicy } from "../src/lib/paidClock/dispatch";
+// Linux WebKit's transient profile cannot prepare IndexedDB Blob storage.
+// Use the same persistent-profile fixture as work-capture-journal.spec.ts;
+// this preserves the real old-outbox Blob and byte-for-byte assertions.
+const test = base.extend({
+  context: async ({ browserName, context: inherited }, use) => {
+    if (browserName !== "webkit") { await use(inherited); return; }
+    const directory=mkdtempSync(join(tmpdir(),"paid-clock-webkit-"));
+    let persistent;
+    try {
+      persistent=await webkit.launchPersistentContext(directory,{headless:true,viewport:{width:390,height:844},deviceScaleFactor:2});
+      await use(persistent);
+    } finally { try { await persistent?.close(); } finally { rmSync(directory,{recursive:true,force:true}); } }
+  },
+});
 const OWNER = TEST_USER.id, DEVICE = "00000000-0000-4000-8000-000000000401", SHIFT = "00000000-0000-4000-8000-000000000402";
 async function open(page: Page) {
   await page.addInitScript(({ key, session }) => localStorage.setItem(key, JSON.stringify(session)), { key: FIXTURE_AUTH_KEY, session: FIXTURE_SESSION });

@@ -1,6 +1,7 @@
 import { clientWithToken, supabase } from "../supabase";
 import { stillSignedInAs, type SignInMark } from "../signedIn";
 import { uuid } from "../workConfiguration/model";
+import { isMissingFunction } from "../schemaErrors";
 import { clockSqlCall, parseClockIntent, parseClockReceiptRead, type ClockIntent } from "./protocol";
 
 export class ClockAccountChangedError extends Error {
@@ -60,7 +61,7 @@ export async function sendPaidClockIntent(raw: ClockIntent, login: SignInMark, r
   if (error) {
     // These replies explicitly report a SQL/PostgREST refusal. A prior unknown
     // attempt remains uncertain even when a later attempt receives this reply.
-    if (["42501", "23514", "22023", "22P02", "PGRST202"].includes(error.code ?? "")) throw new ClockRequestRefusedError(error.code);
+    if (isMissingFunction(error) || ["42501", "23514", "22023", "22P02"].includes(error.code ?? "")) throw new ClockRequestRefusedError(error.code ?? "missing_function");
     throw error;
   }
 }
