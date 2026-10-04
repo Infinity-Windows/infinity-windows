@@ -37,9 +37,10 @@ export function Dimensions({preview}:{preview:boolean}){
 }
 export function FixtureNavigation(){
  const navigate=useNavigate();
+ const [ready,setReady]=useState(false);
  useEffect(()=>{const move=(event:Event)=>navigate((event as CustomEvent<string>).detail);
- window.addEventListener("fixture-navigate",move);return()=>window.removeEventListener("fixture-navigate",move);},[navigate]);
- return null;
+ window.addEventListener("fixture-navigate",move);setReady(true);return()=>window.removeEventListener("fixture-navigate",move);},[navigate]);
+ return ready?<span hidden data-testid="fixture-navigation-ready"/>:null;
 }
 export function Harness(){
  const [lang,setLang]=useState<Lang>("en");

@@ -21,6 +21,7 @@ async function fixture(page:Page,entry="/") {
   if(endpoint?.includes('clock')||endpoint?.includes('punch')){writes.push({unexpectedPayroll:url.pathname});return route.abort();}
   return route.fallback();
  });
+ await expect(page.getByTestId("fixture-navigation-ready")).toHaveCount(1);
  if(entry!=="/")await page.evaluate(path=>window.dispatchEvent(new CustomEvent("fixture-navigate",{detail:path})),entry);
  return {writes,unexpected};
 }
@@ -164,7 +165,7 @@ for(const unit of ['in','ft','mm','cm']) test(`new unit retains original ${unit}
  expect(state.unexpected).toEqual([]);
 });
 
-test('required creation fields and Save unit remain usable at320px',async({page})=>{
+test('required creation fields and Save unit remain usable at320px',async({page},testInfo)=>{
  await page.setViewportSize({width:320,height:720});
  const state=await fixture(page,`/current-work?job=${PROJECT}&new_unit=1`);
  await page.getByLabel('Unit number / name',{exact:true}).fill('Unit 43');
@@ -172,7 +173,15 @@ test('required creation fields and Save unit remain usable at320px',async({page}
  await page.getByLabel('Width',{exact:true}).fill('10');
  await page.getByLabel('Height',{exact:true}).fill('20');
  await page.getByRole('combobox',{name:'Dimension source',exact:true}).selectOption('measured');
- expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+ await expect.poll(async()=>{
+  const layout=await page.evaluate(()=>({viewport:innerWidth,scrollWidth:document.documentElement.scrollWidth,
+   overflow:[...document.querySelectorAll<HTMLElement>("body *")].map(el=>({tag:el.tagName,class:el.className,
+    left:el.getBoundingClientRect().left,right:el.getBoundingClientRect().right,width:el.getBoundingClientRect().width,
+    minWidth:getComputedStyle(el).minWidth,whiteSpace:getComputedStyle(el).whiteSpace,display:getComputedStyle(el).display}))
+    .filter(el=>el.right>innerWidth+1||el.left< -1).slice(0,40)}));
+  await testInfo.attach("creation-320-layout",{body:JSON.stringify(layout),contentType:"application/json"});
+  return layout.scrollWidth<=layout.viewport+1;
+ },{message:"All unit-creation content stays within the320px screen"}).toBe(true);
  await page.getByRole('button',{name:'Save unit',exact:true}).click();
  await expect.poll(()=>state.writes.length).toBe(1);
  expect(state.writes[0]).toMatchObject({p_action:'unit'});
