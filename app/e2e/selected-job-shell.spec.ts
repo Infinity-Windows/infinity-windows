@@ -13,9 +13,11 @@ async function chooseJob(page:Page){
 }
 async function layoutEvidence(page:Page){return page.evaluate(()=>{
  const rect=(selector:string)=>{const r=document.querySelector(selector)!.getBoundingClientRect();return {x:r.x,y:r.y,right:r.right,bottom:r.bottom,width:r.width,height:r.height};};
- const clock=rect('.pav-clock'),sync=rect('.sync-strip'),dock=rect('.tabbar');
+ const clock=rect('.pav-clock'),sync=rect('.sync-strip'),dock=rect('.tabbar'),nativeClock=rect('.clock-badge'),photoBadge=rect('.sync-strip .sync-pill');
  const overlapping=clock.x<sync.right&&clock.right>sync.x&&clock.y<sync.bottom&&clock.bottom>sync.y;
- return {clock,sync,dock,overlapping,scrollWidth:document.documentElement.scrollWidth,viewport:innerWidth,height:innerHeight,dockPosition:getComputedStyle(document.querySelector('.tabbar')!).position};
+ const badgesOverlap=nativeClock.x<photoBadge.right&&nativeClock.right>photoBadge.x&&nativeClock.y<photoBadge.bottom&&nativeClock.bottom>photoBadge.y;
+ const textFits=(selector:string)=>{const el=document.querySelector(selector)!;return el.scrollWidth<=el.clientWidth+1;};
+ return {clock,sync,dock,overlapping,badgesOverlap,nativeTextFits:textFits('.clock-badge-text'),photoTextFits:textFits('.sync-strip .sync-pill-text'),scrollWidth:document.documentElement.scrollWidth,viewport:innerWidth,height:innerHeight,dockPosition:getComputedStyle(document.querySelector('.tabbar')!).position};
  });}
 for(const viewport of [{width:320,height:740},{width:390,height:844},{width:844,height:390}]){
  test(`actual shell ${viewport.width} EN/ES: badges, fixed dock, keyboard and real navigation doors`,async({page})=>{
@@ -28,7 +30,7 @@ for(const viewport of [{width:320,height:740},{width:390,height:844},{width:844,
     await page.evaluate(p=>scrollTo(0,p==='top'?0:p==='middle'?document.body.scrollHeight/2:document.body.scrollHeight),position);
     const e=await layoutEvidence(page);await test.info().attach(`geometry-${lang}-${position}`,{body:JSON.stringify(e),contentType:'application/json'});
     if(process.env.FORGE_SHELL_ARTIFACTS)await page.screenshot({path:`${process.env.FORGE_SHELL_ARTIFACTS}/shell-${viewport.width}-${lang}-${position}.png`,fullPage:false});expect(e.scrollWidth).toBeLessThanOrEqual(e.viewport+1);
-    expect(e.dockPosition).toBe('fixed');expect(e.dock.bottom).toBeCloseTo(e.height,0);expect(e.overlapping).toBe(false);
+    expect(e.dockPosition).toBe('fixed');expect(e.dock.bottom).toBeCloseTo(e.height,0);expect(e.overlapping).toBe(false);expect(e.badgesOverlap).toBe(false);expect(e.nativeTextFits).toBe(true);expect(e.photoTextFits).toBe(true);
     await expect(page.getByTestId('clock-badge')).toBeVisible();
    }
   }
@@ -61,6 +63,7 @@ test('320px stale clock is labelled and reachable with no fabricated live counte
  await page.evaluate(()=>dispatchEvent(new Event('fixture-clock-stale')));await expect(page.locator('.pav-tile')).toHaveCount(0);
  for(const lang of ['en','es']){
   if(lang==='es')await page.evaluate(()=>dispatchEvent(new Event('fixture-language')));
+  await expect(page.getByTestId('ws-clock-recovering')).toContainText(lang==='en'?'Recovering your clock':'Recuperando tu reloj');
   const badge=page.getByTestId('clock-badge');await expect(badge).toContainText(lang==='en'?'Last confirmed':'Último');
   await expect(page.locator('.ws-clock-timer')).toHaveCount(0);
   const before=await badge.textContent();await page.waitForTimeout(1100);expect(await badge.textContent()).toBe(before);
