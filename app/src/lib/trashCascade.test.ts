@@ -182,6 +182,13 @@ const RETAINED_ORIGINAL_EVIDENCE: Record<string, string> = {
 };
 const captureFoundation = readFileSync(join(MIGRATIONS, "20261107020000_work_capture_foundation.sql"), "utf8");
 
+/** Any direct DELETE/UPDATE of retained evidence violates its disposition.
+ * Match ordinary SQL qualification, aliases, case and multiline whitespace. */
+function retainedEvidenceMutated(table: string, sql: string): boolean {
+  const target = `(?:public\\s*\\.\\s*)?"?${table}"?(?=\\s|$)`;
+  return new RegExp(`\\b(?:delete\\s+from|update)\\s+(?:only\\s+)?${target}`, "i").test(sql);
+}
+
 function purgeBody(): string {
   // Follow the last deployed definition, as the history-count test does.
   const sql = readdirSync(MIGRATIONS).filter(f => f.endsWith(".sql")).sort().map(f => readFileSync(join(MIGRATIONS, f), "utf8")).filter(s => s.includes("create or replace function public.purge_project")).at(-1)!;
@@ -252,8 +259,7 @@ describe("purge_project handles every project-scoped table", () => {
   it("retained original evidence stays private, project-scoped and uncascaded", () => {
     for (const table of Object.keys(RETAINED_ORIGINAL_EVIDENCE)) {
       expect(census[table]).toBe("project_id");
-      expect(new RegExp(`\\bdelete from ${table}\\b`).test(body)).toBe(false);
-      expect(new RegExp(`\\bupdate ${table} set\\b`).test(body)).toBe(false);
+      expect(retainedEvidenceMutated(table, body)).toBe(false);
       const definition = captureFoundation.split(`create table public.${table} (`)[1]?.split("\n);")[0];
       expect(definition).toBeDefined();
       expect(definition).toMatch(/project_id uuid not null,/);
@@ -267,10 +273,16 @@ describe("purge_project handles every project-scoped table", () => {
     for (const table of Object.keys(RETAINED_ORIGINAL_EVIDENCE)) {
       // Mutated purge bodies must fail the retention invariant independently
       // of the registry's recognition of an intentional retained disposition.
-      const mutates = (sql: string) => new RegExp(`\\b(?:delete from ${table}\\b|update ${table} set\\b)`).test(sql);
-      expect(mutates(body)).toBe(false);
-      expect(mutates(body + ` delete from ${table} where project_id = p_project_id;`)).toBe(true);
-      expect(mutates(body + ` update ${table} set project_id = null;`)).toBe(true);
+      expect(retainedEvidenceMutated(table, body)).toBe(false);
+      for (const mutation of [
+        `delete from ${table} where project_id = p_project_id;`,
+        `update ${table} set project_id = null;`,
+        `DELETE FROM public.${table} AS evidence WHERE true;`,
+        `UPDATE\npublic.${table} evidence\nSET project_id = null;`,
+        `delete from only public."${table}" where true;`,
+        `update public . "${table}" as evidence set project_id = null;`,
+      ]) expect(retainedEvidenceMutated(table, body + mutation), mutation).toBe(true);
+      expect(retainedEvidenceMutated(table, `delete from ${table}_unrelated where true;`)).toBe(false);
     }
   });
 
