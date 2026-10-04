@@ -8,7 +8,7 @@ const payload = (): ReviewPayload => ({ action: "verify_dimensions", basis: { ..
   widthDecimal: "0001.00000000000000000100", heightDecimal: "072.00", unit: "in", source: "measured", sourceReference: "tape" } });
 const receipt = (): ReviewReceipt => ({ protocolVersion: 1, commandId: id(4), action: "verify_dimensions", unitId: id(1), eventId: id(5),
   reviewRevision: 3, generation: 4, submissionId: id(3), recordedAt: "2026-10-04T10:00:00Z", outcome: "applied" });
-const row = () => ({ version: 1, ownerId: id(6), unitId: id(1), commandId: id(4), sequence: 0,
+const row = () => ({ version: 1, durability: "strict", ownerId: id(6), unitId: id(1), commandId: id(4), sequence: 0,
   predecessorId: null, revision: 0, payload: payload(), attempts: [], receipt: null });
 
 describe("frozen unit review original and historical receipt", () => {
@@ -46,19 +46,37 @@ describe("frozen unit review original and historical receipt", () => {
     expect(() => bindReviewReceipt({ ...receipt(), action: "claim_resolved", generation: 5 }, original("claim_resolved"))).toThrow();
   });
   it("never erases earlier unknown delivery with a later known refusal or held attempt", () => {
-    const prior = { token: id(10), startedAt: 0, leaseUntil: REVIEW_LEASE_MS, outcome: "unknown", sqlState: null };
+    const prior = { purpose: "deliver", token: id(10), startedAt: 0, leaseUntil: REVIEW_LEASE_MS, outcome: "unknown", sqlState: null };
     for (const outcome of ["refused", "held"]) {
-      const parsed = parseReviewJournalRecord({ ...row(), attempts: [prior, { ...prior, token: id(11), outcome, sqlState: outcome === "refused" ? "23514" : null }] });
+      const parsed = parseReviewJournalRecord({ ...row(), attempts: [prior, { ...prior, purpose: "deliver", token: id(11), outcome, sqlState: outcome === "refused" ? "23514" : null }] });
       expect(reviewDeliveryState(parsed)).toBe("unknown");
       expect(reviewDeliveryState(parseReviewJournalRecord({ ...parsed, receipt: receipt() }))).toBe("recorded");
     }
   });
   it("treats a crashed pending lease as unknown and rejects malformed persisted history", () => {
-    const attempt = { token: id(10), startedAt: 0, leaseUntil: REVIEW_LEASE_MS, outcome: "pending", sqlState: null };
+    const attempt = { purpose: "deliver", token: id(10), startedAt: 0, leaseUntil: REVIEW_LEASE_MS, outcome: "pending", sqlState: null };
     expect(reviewDeliveryState(parseReviewJournalRecord({ ...row(), attempts: [attempt] }))).toBe("unknown");
-    for (const attempts of [[{ ...attempt, leaseUntil: 3 }], [attempt, { ...attempt, token: id(11) }], [{ ...attempt, outcome: "refused" }], [{ ...attempt, outcome: "recorded" }]]) {
+    for (const attempts of [[{ ...attempt, leaseUntil: 3 }], [attempt, { ...attempt, purpose: "deliver", token: id(11) }], [{ ...attempt, outcome: "refused" }], [{ ...attempt, outcome: "recorded" }]]) {
       expect(() => parseReviewJournalRecord({ ...row(), attempts })).toThrow();
     }
     expect(() => parseReviewJournalRecord({ ...row(), unexpected: "private view" })).toThrow();
+  });
+});
+
+
+describe("strict original evidence and permanent cancellation", () => {
+  it("rejects older unmarked records instead of assuming their first attempt never dispatched", () => {
+    const old: Record<string, unknown> = row(); delete old.durability;
+    expect(() => parseReviewJournalRecord(old)).toThrow();
+    expect(() => parseReviewJournalRecord({ ...row(), durability: "relaxed" })).toThrow();
+  });
+  it("retains every uncertain attempt behind an exactly bound cancellation receipt", () => {
+    const original = freezeReviewOriginal(id(4), payload());
+    const cancellation = { protocolVersion: 1, commandId: id(4), action: original.payload.action, unitId: id(1),
+      recordedAt: "2026-10-04T10:00:00Z", outcome: "cancelled", original: original.payload };
+    const saved = parseReviewJournalRecord({ ...row(), attempts: [{ token: id(10), purpose: "deliver", startedAt: 0,
+      leaseUntil: REVIEW_LEASE_MS, outcome: "unknown", sqlState: null }], receipt: cancellation });
+    expect(reviewDeliveryState(saved)).toBe("cancelled"); expect(saved.attempts[0].outcome).toBe("unknown");
+    expect(() => bindReviewReceipt({ ...cancellation, original: { ...original.payload, basis: { ...basis, reviewRevision: 99 } } }, original)).toThrow();
   });
 });

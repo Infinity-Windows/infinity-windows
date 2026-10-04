@@ -1,6 +1,6 @@
 import { stillSignedInAs, type SignInMark } from "../signedIn";
 import { uuid } from "../workConfiguration/model";
-import { fetchUnitReview, fetchUnitReviewReceipt, submitUnitReview } from "./api";
+import { cancelUnitReview, fetchUnitReview, fetchUnitReviewReceipt, submitUnitReview } from "./api";
 import { parseUnitReviewReply, type ReviewPayload, type ReviewReply } from "./protocol";
 import { bindReviewReceipt, claimReviewAttempt, freezeReviewOriginal, readReviewJournal, recordReviewReceipt,
   reserveReviewOriginal, reviewDeliveryState, settleReviewAttempt, type ReviewJournalRecord } from "./storage";
@@ -13,13 +13,13 @@ export interface ReviewContext {
   admission: () => boolean;
 }
 export interface ReviewCoordinatorDependencies {
-  read: typeof fetchUnitReview; receipt: typeof fetchUnitReviewReceipt; send: typeof submitUnitReview;
+  read: typeof fetchUnitReview; receipt: typeof fetchUnitReviewReceipt; send: typeof submitUnitReview; cancel: typeof cancelUnitReview;
   journal: typeof readReviewJournal; reserve: typeof reserveReviewOriginal; claim: typeof claimReviewAttempt;
   settle: typeof settleReviewAttempt; recordReceipt: typeof recordReviewReceipt;
   monotonicNow: () => number; wallNow: () => number; token: () => string;
 }
 const defaults: ReviewCoordinatorDependencies = {
-  read: fetchUnitReview, receipt: fetchUnitReviewReceipt, send: submitUnitReview,
+  read: fetchUnitReview, receipt: fetchUnitReviewReceipt, send: submitUnitReview, cancel: cancelUnitReview,
   journal: readReviewJournal, reserve: reserveReviewOriginal, claim: claimReviewAttempt,
   settle: settleReviewAttempt, recordReceipt: recordReviewReceipt,
   monotonicNow: () => performance.now(), wallNow: () => Date.now(), token: () => crypto.randomUUID(),
@@ -32,7 +32,7 @@ export interface ReviewInspection {
   history: { record: ReviewJournalRecord; delivery: ReturnType<typeof reviewDeliveryState> }[];
   hasHiddenOriginal: boolean;
 }
-export type ReviewDeliveryResult = ReviewHeld | { kind: "recorded" | "unknown" | "refused" | "saved"; commandId: string };
+export type ReviewDeliveryResult = ReviewHeld | { kind: "recorded" | "unknown" | "refused" | "saved" | "cancelled"; commandId: string };
 interface Snapshot { startedAt: number; serial: number; current: ReviewInspection["current"]; rows: ReviewJournalRecord[]; exposed: Set<string> }
 const capability = (action: ReviewPayload["action"]) => action === "verify_dimensions" ? "verifyDimensions" : action === "claim_resolved" ? "claimResolved" : action;
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
@@ -88,7 +88,8 @@ export class UnitReviewCoordinator {
         let row = rows[i];
         // A changed token cannot prove the old incarnation's private scope.
         // Fresh receipt authorization includes the server's incarnation check.
-        let originalScope = current.review.basis?.scopeToken === row.payload.basis.scopeToken;
+        let originalScope = current.review.basis?.scopeToken === row.payload.basis.scopeToken
+          && current.review.capabilities[capability(row.payload.action)];
         if (row.attempts.length || row.receipt || !originalScope) {
           const reply = await this.deps.receipt(row.commandId, this.context.login, admission);
           if (!admission()) return held("context_changed");
@@ -118,7 +119,7 @@ export class UnitReviewCoordinator {
       || !s.current.review.capabilities[capability(original.payload.action)]) return held("basis_changed");
     const head = s.rows.at(-1);
     if (head && !s.exposed.has(head.commandId)) return held("original_hidden");
-    if (head && !["recorded", "refused"].includes(reviewDeliveryState(head))) return held("competing_request");
+    if (head && !["recorded", "refused", "cancelled"].includes(reviewDeliveryState(head))) return held("competing_request");
     const admission = this.fence(s.serial);
     try {
       const saved = await this.deps.reserve(this.context.login, original, head?.commandId ?? null, () => admission() && this.fresh(s));
@@ -126,23 +127,31 @@ export class UnitReviewCoordinator {
       this.invalidate(); return { kind: "saved", commandId: saved.record.commandId, created: saved.created };
     } catch { return held(!admission() ? "context_changed" : "storage_unavailable"); }
   }
-  /** Explicit delivery of the SAME UUID/basis/data. Changed bases permit only
-   * receipt recovery. No silent rebasing, retirement, or replacement exists. */
-  async deliverOriginal(commandId: string): Promise<ReviewDeliveryResult> {
-    commandId = uuid(commandId).toLowerCase(); const refreshed = await this.refresh();
+  /** Explicit delivery of the same UUID/basis/data; changed bases never rebase. */
+  deliverOriginal(commandId: string): Promise<ReviewDeliveryResult> {
+    return this.attemptOriginal(uuid(commandId).toLowerCase(), false);
+  }
+  /** Deliberate closure may submit the hidden owner's original to the server,
+   * but cannot expose it. Server authorization includes its original fact and
+   * incarnation; only a confirmed cancellation permits replacement. */
+  cancelRetainedHead(): Promise<ReviewDeliveryResult> { return this.attemptOriginal(null, true); }
+  private async attemptOriginal(commandId: string | null, cancelling: boolean): Promise<ReviewDeliveryResult> {
+    const refreshed = await this.refresh();
     if (refreshed.kind !== "ready") return refreshed;
-    const s = this.snapshot!, row = s.rows.find(r => r.commandId === commandId);
-    if (!row || !s.exposed.has(commandId)) return held("original_hidden");
-    if (row.receipt) return { kind: "recorded", commandId };
+    const s = this.snapshot!, row = commandId === null ? s.rows.at(-1) : s.rows.find(r => r.commandId === commandId);
+    if (!row || !cancelling && !s.exposed.has(row.commandId)) return held("original_hidden");
+    commandId = row.commandId;
+    if (row.receipt && !s.exposed.has(commandId)) return held("original_hidden");
+    if (row.receipt) return { kind: row.receipt.outcome === "cancelled" ? "cancelled" : "recorded", commandId };
     if (s.rows.at(-1)?.commandId !== commandId) return held("competing_request");
-    if (!same(row.payload.basis, s.current.review.basis) || !s.current.review.capabilities[capability(row.payload.action)]) return held("basis_changed");
+    if (!cancelling && (!same(row.payload.basis, s.current.review.basis) || !s.current.review.capabilities[capability(row.payload.action)])) return held("basis_changed");
     const admission = () => this.fence(s.serial)() && this.fresh(s);
     let claimed = false;
     try {
       const token = this.deps.token();
-      const reserved = await this.deps.claim(this.context.login, this.context.unitId, commandId, row.revision, token, this.deps.wallNow(), admission);
+      const reserved = await this.deps.claim(this.context.login, this.context.unitId, commandId, row.revision, token, this.deps.wallNow(), admission, cancelling ? "cancel" : "deliver");
       claimed = true; if (!admission()) return held("context_changed");
-      const attempt = await this.deps.send(commandId, reserved.payload, this.context.login, admission);
+      const attempt = await (cancelling ? this.deps.cancel : this.deps.send)(commandId, reserved.payload, this.context.login, admission);
       // Crossing logout/preview/navigation keeps pending disk evidence intact.
       if (!admission()) return held("context_changed");
       const settled = await this.deps.settle(this.context.login, this.context.unitId, commandId, reserved.revision, token, attempt, admission);

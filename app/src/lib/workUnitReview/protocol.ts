@@ -32,7 +32,12 @@ export interface ReviewReceipt {
   protocolVersion: 1; commandId: string; action: ReviewAction; unitId: string; eventId: string;
   reviewRevision: number; generation: number; submissionId: string | null; recordedAt: string; outcome: "applied";
 }
-export type ReviewReceiptReply = { protocolVersion: 1; availability: "available"; receipt: ReviewReceipt }
+export interface ReviewCancellation {
+  protocolVersion: 1; commandId: string; action: ReviewAction; unitId: string;
+  recordedAt: string; outcome: "cancelled"; original: ReviewPayload;
+}
+export type ReviewStoredReceipt = ReviewReceipt | ReviewCancellation;
+export type ReviewReceiptReply = { protocolVersion: 1; availability: "available"; receipt: ReviewStoredReceipt }
   | { protocolVersion: 1; availability: "unavailable"; receipt: null };
 export type ReviewPayload = { action: "verify_dimensions"; basis: ReviewBasis; data: {
   widthDecimal: string; heightDecimal: string; unit: DimensionUnit; source: "measured" | "plans"; sourceReference: string | null } }
@@ -191,6 +196,20 @@ export function parseUnitReviewReceipt(raw: unknown, commandId: string, expected
       generation: integer(r.generation), submissionId: nullableUuid(r.submissionId), recordedAt: utc(r.recordedAt), outcome: "applied" };
   } catch { return fail(); }
 }
+/** Cancellation binds the complete original. It proves that this UUID can no
+ * longer apply, not that the current unit is accepted or free of other work. */
+export function parseUnitReviewStoredReceipt(raw: unknown, commandId: string, expected?: ReviewPayload): ReviewStoredReceipt {
+  try {
+    const copy = boundedClone(raw, 100000) as Record<string, unknown>;
+    if (copy?.outcome !== "cancelled") return parseUnitReviewReceipt(copy, commandId, expected);
+    const r = object(copy, ["protocolVersion", "commandId", "action", "unitId", "recordedAt", "outcome", "original"]);
+    const original = parseUnitReviewPayload(r.original), normalizedCommand = uuid(commandId);
+    if (r.protocolVersion !== 1 || uuid(r.commandId) !== normalizedCommand || r.action !== original.action
+      || uuid(r.unitId) !== original.basis.unitId || expected && JSON.stringify(original) !== JSON.stringify(parseUnitReviewPayload(expected))) fail();
+    return { protocolVersion: 1, commandId: normalizedCommand, action: original.action, unitId: original.basis.unitId,
+      recordedAt: utc(r.recordedAt), outcome: "cancelled", original };
+  } catch { return fail(); }
+}
 export function parseUnitReviewReceiptReply(raw: unknown, commandId: string): ReviewReceiptReply {
   try {
     commandId = uuid(commandId);
@@ -198,6 +217,6 @@ export function parseUnitReviewReceiptReply(raw: unknown, commandId: string): Re
     if (r.protocolVersion !== 1) fail();
     if (r.availability === "unavailable") { if (r.receipt !== null) fail(); return { protocolVersion: 1, availability: "unavailable", receipt: null }; }
     if (r.availability !== "available") fail();
-    return { protocolVersion: 1, availability: "available", receipt: parseUnitReviewReceipt(r.receipt, commandId) };
+    return { protocolVersion: 1, availability: "available", receipt: parseUnitReviewStoredReceipt(r.receipt, commandId) };
   } catch { return fail(); }
 }

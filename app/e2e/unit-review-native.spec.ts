@@ -203,3 +203,149 @@ test("native case variants of one UUID share one unit head and original identity
   expect(result).toMatchObject({ first: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", createdAgain: false, differentBlocked: true });
   expect(result.records).toHaveLength(1); expect(result.records[0].unitId).toBe("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
 });
+
+
+test("native strict durability is required on every write and ignored or unsupported options hold delivery", async ({ page }) => {
+  await open(page);
+  const result = await page.evaluate(async () => {
+    const f = window.unitReviewFixture, transaction = IDBDatabase.prototype.transaction;
+    const modes: string[] = [], failures: string[] = [];
+    for (const mode of ["unsupported", "ignored"]) {
+      IDBDatabase.prototype.transaction = function (...args: Parameters<typeof transaction>) {
+        if (this.name === f.storage.UNIT_REVIEW_DB && args[1] === "readwrite") {
+          modes.push(args[2]?.durability ?? "missing");
+          if (mode === "unsupported") throw new TypeError("Fixture browser lacks strict transactions");
+          const tx = transaction.call(this, args[0], args[1]);
+          Object.defineProperty(tx, "durability", { value: "relaxed" }); return tx;
+        }
+        return transaction.apply(this, args);
+      };
+      await f.coordinator.refresh(); const saved = await f.coordinator.reserve(f.id(10), f.payload());
+      failures.push(saved.kind === "held" ? saved.reason : "incorrectly saved");
+    }
+    IDBDatabase.prototype.transaction = transaction;
+    const rows = await f.storage.readReviewJournal(f.auth.signInMark(), f.UNIT, () => true);
+    await f.coordinator.refresh(); const saved = await f.coordinator.reserve(f.id(10), f.payload());
+    const strictRows = await f.storage.readReviewJournal(f.auth.signInMark(), f.UNIT, () => true);
+    return { modes, failures, rows, saved, strict: strictRows[0].durability, sends: f.sends() };
+  });
+  expect(result).toMatchObject({ modes: ["strict", "strict"], failures: ["storage_unavailable", "storage_unavailable"], rows: [],
+    saved: { kind: "saved" }, strict: "strict", sends: 0 });
+});
+
+test("native older unmarked records stay retained and cannot become a false first refusal", async ({ page }) => {
+  await open(page); await reserve(page, 10);
+  const result = await page.evaluate(async () => {
+    const f = window.unitReviewFixture;
+    const db = await new Promise<IDBDatabase>(resolve => { const r = indexedDB.open(f.storage.UNIT_REVIEW_DB); r.onsuccess = () => resolve(r.result); });
+    const tx = db.transaction("requests", "readwrite", { durability: "strict" }), store = tx.objectStore("requests");
+    const row = await new Promise<Record<string, unknown>>(resolve => { const r = store.get(f.id(10)); r.onsuccess = () => resolve(r.result); });
+    delete row.durability; store.put(row);
+    await new Promise<void>(resolve => { tx.oncomplete = () => resolve(); });
+    const delivery = await f.coordinator.deliverOriginal(f.id(10));
+    const retained = await new Promise<Record<string, unknown>>(resolve => { const r = db.transaction("requests").objectStore("requests").get(f.id(10)); r.onsuccess = () => resolve(r.result); });
+    db.close(); return { delivery, sends: f.sends(), retained };
+  });
+  expect(result).toMatchObject({ delivery: { kind: "held", reason: "storage_unavailable" }, sends: 0, retained: { commandId: "00000000-0000-4000-8000-000000000010", attempts: [] } });
+  expect(result.retained).not.toHaveProperty("durability");
+});
+
+test("native owner UUID spellings share a retained head without bypassing login generation", async ({ page }) => {
+  await open(page);
+  const result = await page.evaluate(async () => {
+    const f = window.unitReviewFixture, owner = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+    f.auth.rememberSignedIn({ user: { id: owner.toUpperCase() } }); const prior = f.auth.signInMark();
+    await f.storage.reserveReviewOriginal(prior, f.storage.freezeReviewOriginal(f.id(10), f.payload()), null, () => true);
+    f.auth.rememberSignedIn({ user: { id: owner } }); const rows = await f.storage.readReviewJournal(f.auth.signInMark(), f.UNIT, () => true);
+    let staleBlocked = false; try { await f.storage.readReviewJournal(prior, f.UNIT, () => true); } catch { staleBlocked = true; }
+    let replacementBlocked = false; try { await f.storage.reserveReviewOriginal(f.auth.signInMark(), f.storage.freezeReviewOriginal(f.id(11), f.payload()), null, () => true); } catch { replacementBlocked = true; }
+    return { rows, staleBlocked, replacementBlocked };
+  });
+  expect(result).toMatchObject({ rows: [{ ownerId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" }], staleBlocked: true, replacementBlocked: true });
+  expect(result.rows).toHaveLength(1);
+});
+
+test("native explicit cancellation recovers a stale hidden original after lease expiry and retains uncertainty history", async ({ page }) => {
+  await open(page); await reserve(page, 10);
+  const result = await page.evaluate(async () => {
+    const f = window.unitReviewFixture, login = f.auth.signInMark(); let cancels = 0, sends = 0, serverReceipt: ReturnType<typeof f.cancellation> | null = null;
+    await f.storage.claimReviewAttempt(login, f.UNIT, f.id(10), 0, f.id(20), 0, () => true);
+    const current = f.view(); if (current.availability !== "available") throw Error();
+    current.review.basis!.scopeToken = `ur1:${"b".repeat(64)}`; current.review.basis!.reviewRevision++;
+    const c = new f.UnitReviewCoordinator({ login, unitId: f.UNIT, contextKey: "reopened-job", admission: () => true }, {
+      read: async () => current,
+      receipt: async () => serverReceipt ? { protocolVersion: 1, availability: "available", receipt: serverReceipt } : { protocolVersion: 1, availability: "unavailable", receipt: null },
+      send: async () => { sends++; return { kind: "unknown" }; },
+      cancel: async (command, original) => { cancels++; serverReceipt = f.cancellation(command, original); return { kind: "cancelled", receipt: serverReceipt }; },
+      wallNow: () => f.storage.REVIEW_LEASE_MS + 1,
+    });
+    const before = await c.refresh(); const closed = await c.cancelRetainedHead();
+    const after = await c.refresh(); const next = await c.reserve(f.id(11), { ...f.payload(), basis: current.review.basis! });
+    const rows = await f.storage.readReviewJournal(login, f.UNIT, () => true);
+    return { before, closed, after, next, cancels, sends, attempts: rows[0].attempts, oldOriginal: rows[0].payload, count: rows.length };
+  });
+  expect(result).toMatchObject({ before: { hasHiddenOriginal: true, history: [] }, closed: { kind: "cancelled" }, after: { history: [{ delivery: "cancelled" }] }, next: { kind: "saved" },
+    cancels: 1, sends: 0, attempts: [{ purpose: "deliver", outcome: "unknown" }, { purpose: "cancel", outcome: "cancelled" }], count: 2 });
+  expect(result.oldOriginal.basis.reviewRevision).toBe(0);
+});
+
+test("native cancellation refuses a live lease and receipt-only reads never close it", async ({ page }) => {
+  await open(page); await reserve(page, 10);
+  const result = await page.evaluate(async () => {
+    const f = window.unitReviewFixture, login = f.auth.signInMark(); let cancels = 0;
+    await f.storage.claimReviewAttempt(login, f.UNIT, f.id(10), 0, f.id(20), Date.now(), () => true);
+    const c = new f.UnitReviewCoordinator({ login, unitId: f.UNIT, contextKey: "same-job", admission: () => true }, {
+      read: async () => f.view(), receipt: async () => ({ protocolVersion: 1, availability: "unavailable", receipt: null }),
+      cancel: async () => { cancels++; return { kind: "unknown" }; },
+    });
+    await c.refresh(); const result = await c.cancelRetainedHead();
+    return { result, cancels, rows: await f.storage.readReviewJournal(login, f.UNIT, () => true) };
+  });
+  expect(result).toMatchObject({ result: { kind: "held" }, cancels: 0, rows: [{ receipt: null, attempts: [{ outcome: "pending", purpose: "deliver" }] }] });
+});
+
+test("native cancellation permission loss or owner ABA cannot release an uncertain original", async ({ page }) => {
+  await open(page); await reserve(page, 10);
+  const result = await page.evaluate(async () => {
+    const f = window.unitReviewFixture, login = f.auth.signInMark();
+    await f.storage.claimReviewAttempt(login, f.UNIT, f.id(10), 0, f.id(20), 0, () => true);
+    const current = f.view(); if (current.availability !== "available") throw Error();
+    current.review.basis!.scopeToken = `ur1:${"b".repeat(64)}`;
+    const deps = { read: async () => current, receipt: async () => ({ protocolVersion: 1 as const, availability: "unavailable" as const, receipt: null }),
+      wallNow: () => 2 * f.storage.REVIEW_LEASE_MS };
+    const c = new f.UnitReviewCoordinator({ login, unitId: f.UNIT, contextKey: "permission-lost", admission: () => true }, {
+      ...deps, cancel: async () => ({ kind: "attempt_refused", sqlState: "42501" }),
+    });
+    const refused = await c.cancelRetainedHead(); await c.refresh();
+    const replacement = await c.reserve(f.id(11), { ...f.payload(), basis: current.review.basis! });
+    const c2 = new f.UnitReviewCoordinator({ login, unitId: f.UNIT, contextKey: "owner-changes", admission: () => true }, {
+      ...deps, cancel: async () => { f.auth.rememberSignedIn(null); f.auth.rememberSignedIn({ user: { id: f.OWNER } }); return { kind: "cancelled", receipt: f.cancellation(f.id(10)) }; },
+    });
+    const aba = await c2.cancelRetainedHead();
+    const rows = await f.storage.readReviewJournal(f.auth.signInMark(), f.UNIT, () => true);
+    return { refused, replacement, aba, state: f.storage.reviewDeliveryState(rows[0]), attempts: rows[0].attempts, receipt: rows[0].receipt };
+  });
+  expect(result).toMatchObject({ refused: { kind: "unknown" }, replacement: { kind: "held", reason: "original_hidden" }, aba: { kind: "held", reason: "context_changed" },
+    state: "unknown", receipt: null, attempts: [{ outcome: "unknown" }, { outcome: "refused", sqlState: "42501" }, { outcome: "pending", purpose: "cancel" }] });
+});
+
+test("native legacy owner-key aliases are held instead of mistaken for an empty queue", async ({ page }) => {
+  await open(page);
+  const result = await page.evaluate(async () => {
+    const f = window.unitReviewFixture, owner = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+    f.auth.rememberSignedIn({ user: { id: owner } });
+    await f.storage.reserveReviewOriginal(f.auth.signInMark(), f.storage.freezeReviewOriginal(f.id(10), f.payload()), null, () => true);
+    const db = await new Promise<IDBDatabase>(resolve => { const r = indexedDB.open(f.storage.UNIT_REVIEW_DB); r.onsuccess = () => resolve(r.result); });
+    const tx = db.transaction(["requests", "heads"], "readwrite", { durability: "strict" });
+    const row = await new Promise<Record<string, unknown>>(resolve => { const r = tx.objectStore("requests").get(f.id(10)); r.onsuccess = () => resolve(r.result); });
+    row.ownerId = owner.toUpperCase(); delete row.durability; tx.objectStore("requests").put(row);
+    tx.objectStore("heads").delete(`${owner}:${f.UNIT}`);
+    tx.objectStore("heads").put({ key: `${owner.toUpperCase()}:${f.UNIT}`, ownerId: owner.toUpperCase(), unitId: f.UNIT, commandId: f.id(10), sequence: 0 });
+    await new Promise<void>(resolve => { tx.oncomplete = () => resolve(); }); db.close();
+    let readBlocked = false, replacementBlocked = false;
+    try { await f.storage.readReviewJournal(f.auth.signInMark(), f.UNIT, () => true); } catch { readBlocked = true; }
+    try { await f.storage.reserveReviewOriginal(f.auth.signInMark(), f.storage.freezeReviewOriginal(f.id(11), f.payload()), null, () => true); } catch { replacementBlocked = true; }
+    return { readBlocked, replacementBlocked };
+  });
+  expect(result).toEqual({ readBlocked: true, replacementBlocked: true });
+});

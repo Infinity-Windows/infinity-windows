@@ -1,13 +1,14 @@
 import { clientWithToken, supabase } from "../supabase";
 import { signInMark, stillSignedInAs, type SignInMark } from "../signedIn";
 import { uuid } from "../workConfiguration/model";
-import { parseUnitReviewPayload, parseUnitReviewReceipt, parseUnitReviewReceiptReply, parseUnitReviewReply,
-  type ReviewPayload, type ReviewReceipt, type ReviewReceiptReply, type ReviewReply } from "./protocol";
+import { parseUnitReviewPayload, parseUnitReviewStoredReceipt, parseUnitReviewReceiptReply, parseUnitReviewReply,
+  type ReviewPayload, type ReviewReceipt, type ReviewCancellation, type ReviewReceiptReply, type ReviewReply } from "./protocol";
 
 export class UnitReviewUnavailableError extends Error {
   constructor() { super("Unit review is unavailable. Refresh before another action."); this.name = "UnitReviewUnavailableError"; }
 }
 export type ReviewAttempt = { kind: "applied"; receipt: ReviewReceipt }
+  | { kind: "cancelled"; receipt: ReviewCancellation }
   | { kind: "attempt_refused"; sqlState: "23514" | "42501" }
   | { kind: "held" }
   | { kind: "unknown" };
@@ -35,8 +36,18 @@ export async function fetchUnitReview(unitId: string, login: SignInMark = signIn
 /** No UUID minting, fallback, retries or optimistic currentness. An applied
  * receipt is historical evidence; the caller must fetch the latest review.
  * Refusal applies only to THIS attempt and cannot erase earlier uncertainty. */
-export async function submitUnitReview(commandId: string, payload: ReviewPayload, login: SignInMark,
+export function submitUnitReview(commandId: string, payload: ReviewPayload, login: SignInMark,
   admission: () => boolean): Promise<ReviewAttempt> {
+  return sendOriginal("work_unit_review_command", commandId, payload, login, admission);
+}
+/** Deliberate permanent closure of this UUID, or its existing applied receipt.
+ * A held/unknown response never proves cancellation. Never call from polling. */
+export function cancelUnitReview(commandId: string, payload: ReviewPayload, login: SignInMark,
+  admission: () => boolean): Promise<ReviewAttempt> {
+  return sendOriginal("work_unit_review_cancel", commandId, payload, login, admission);
+}
+async function sendOriginal(rpc: "work_unit_review_command" | "work_unit_review_cancel", commandId: string, payload: ReviewPayload,
+  login: SignInMark, admission: () => boolean): Promise<ReviewAttempt> {
   uuid(commandId); const original = parseUnitReviewPayload(payload), mark = { ...login };
   let dispatched = false;
   try {
@@ -44,7 +55,7 @@ export async function submitUnitReview(commandId: string, payload: ReviewPayload
     const access = await token(mark), client = clientWithToken(access);
     if (!current(mark) || !online() || !admission()) return { kind: "held" };
     dispatched = true;
-    const { data, error } = await client.rpc("work_unit_review_command", {
+    const { data, error } = await client.rpc(rpc, {
       p_command_id: commandId, p_protocol_version: 1, p_payload: original,
     });
     if (!current(mark) || !admission()) return { kind: "unknown" };
@@ -54,7 +65,8 @@ export async function submitUnitReview(commandId: string, payload: ReviewPayload
         return { kind: "attempt_refused", sqlState: descriptor.value };
       return { kind: "unknown" };
     }
-    return { kind: "applied", receipt: parseUnitReviewReceipt(data, commandId, original) };
+    const receipt = parseUnitReviewStoredReceipt(data, commandId, original);
+    return receipt.outcome === "cancelled" ? { kind: "cancelled", receipt } : { kind: "applied", receipt };
   } catch { return { kind: dispatched ? "unknown" : "held" }; }
 }
 /** A missing/hidden receipt remains unavailable, not a proof of non-delivery.

@@ -17,15 +17,15 @@ const view = () => parseUnitReviewReply({ protocolVersion: 1, asOf: "2026-10-04T
   work: { availability: "available", activeCount: 0, pendingCount: 0 }, defects: [] } }, UNIT);
 const receipt = (): ReviewReceipt => ({ protocolVersion: 1, commandId: COMMAND, action: "verify_dimensions", unitId: UNIT, eventId: id(7),
   reviewRevision: 1, generation: 0, submissionId: null, recordedAt: "2026-10-04T10:00:00Z", outcome: "applied" });
-const row = (): ReviewJournalRecord => parseReviewJournalRecord({ version: 1, ownerId: OWNER, unitId: UNIT, commandId: COMMAND, sequence: 0,
+const row = (): ReviewJournalRecord => parseReviewJournalRecord({ version: 1, durability: "strict", ownerId: OWNER, unitId: UNIT, commandId: COMMAND, sequence: 0,
   predecessorId: null, revision: 0, payload: payload(), attempts: [], receipt: null });
 function setup(initial: ReviewJournalRecord[] = []) {
   let rows = initial, time = 100, admitted = true;
   const deps = {
     read: vi.fn().mockResolvedValue(view()), receipt: vi.fn().mockResolvedValue({ protocolVersion: 1, availability: "unavailable", receipt: null }),
-    send: vi.fn().mockResolvedValue({ kind: "unknown" }), journal: vi.fn(async () => structuredClone(rows)),
+    send: vi.fn().mockResolvedValue({ kind: "unknown" }), cancel: vi.fn().mockResolvedValue({ kind: "unknown" }), journal: vi.fn(async () => structuredClone(rows)),
     reserve: vi.fn(async (_login, original) => { rows = [parseReviewJournalRecord({ ...row(), ...original })]; return { record: rows[0], created: true }; }),
-    claim: vi.fn(async () => { rows[0] = { ...rows[0], revision: 1, attempts: [{ token: id(8), startedAt: 100, leaseUntil: 100 + REVIEW_LEASE_MS, outcome: "pending", sqlState: null }] }; return rows[0]; }),
+    claim: vi.fn(async () => { rows[0] = { ...rows[0], revision: 1, attempts: [{ purpose: "deliver", token: id(8), startedAt: 100, leaseUntil: 100 + REVIEW_LEASE_MS, outcome: "pending", sqlState: null }] }; return rows[0]; }),
     settle: vi.fn(async (_login, _unit, _command, _revision, _token, attempt) => {
       const last = rows[0].attempts[0]; rows[0] = { ...rows[0], revision: 2, attempts: [{ ...last, outcome: attempt.kind === "applied" ? "recorded" : attempt.kind }], receipt: attempt.receipt ?? null };
       return rows[0];
@@ -55,7 +55,7 @@ describe("permission fenced unit review delivery", () => {
     expect(s.deps.send).not.toHaveBeenCalled();
   });
   it("does not replay an expired pending request on repeated refresh or missing receipt", async () => {
-    const pending = row(); pending.attempts = [{ token: id(9), startedAt: 0, leaseUntil: REVIEW_LEASE_MS, outcome: "pending", sqlState: null }];
+    const pending = row(); pending.attempts = [{ purpose: "deliver", token: id(9), startedAt: 0, leaseUntil: REVIEW_LEASE_MS, outcome: "pending", sqlState: null }];
     const s = setup([pending]); for (let n = 0; n < 3; n++) await s.coordinator.refresh();
     expect(s.deps.send).not.toHaveBeenCalled(); expect(s.deps.claim).not.toHaveBeenCalled();
     expect(s.coordinator.inspection()).toMatchObject({ history: [{ delivery: "unknown" }] });
@@ -102,7 +102,7 @@ describe("permission fenced unit review delivery", () => {
     expect(s.coordinator.inspection().kind).toBe("held");
   });
   it("does not record or expose a mismatched receipt", async () => {
-    const r = row(); r.attempts = [{ token: id(9), startedAt: 0, leaseUntil: REVIEW_LEASE_MS, outcome: "unknown", sqlState: null }];
+    const r = row(); r.attempts = [{ purpose: "deliver", token: id(9), startedAt: 0, leaseUntil: REVIEW_LEASE_MS, outcome: "unknown", sqlState: null }];
     const s = setup([r]); s.deps.receipt.mockResolvedValue({ protocolVersion: 1, availability: "available", receipt: { ...receipt(), reviewRevision: 99 } });
     expect(await s.coordinator.refresh()).toEqual({ kind: "held", reason: "unavailable" });
     expect(s.deps.recordReceipt).not.toHaveBeenCalled(); expect(s.coordinator.inspection().kind).toBe("held");
@@ -113,5 +113,25 @@ describe("permission fenced unit review delivery", () => {
     });
     expect(await s.coordinator.deliverOriginal(COMMAND)).toEqual({ kind: "held", reason: "context_changed" });
     expect(s.deps.settle).not.toHaveBeenCalled(); expect(s.rows()[0].attempts[0].outcome).toBe("pending");
+  });
+});
+
+
+describe("cancelled originals and current authority", () => {
+  it("does not expose a same-token draft after its current action authority is lost", async () => {
+    const s = setup([row()]), current = view(); if (current.availability !== "available") throw Error();
+    current.review.capabilities.verifyDimensions = false; s.deps.read.mockResolvedValue(current);
+    expect(await s.coordinator.refresh()).toMatchObject({ history: [], hasHiddenOriginal: true });
+    expect(s.deps.send).not.toHaveBeenCalled(); expect(s.deps.cancel).not.toHaveBeenCalled();
+  });
+  it("can explicitly cancel a changed basis without silently resending or replacing the decision", async () => {
+    const s = setup([row()]), current = view(); if (current.availability !== "available") throw Error();
+    current.review.basis!.scopeToken = `ur1:${"b".repeat(64)}`; s.deps.read.mockResolvedValue(current);
+    const original = freezeReviewOriginal(COMMAND, payload()).payload;
+    s.deps.cancel.mockResolvedValueOnce({ kind: "cancelled", receipt: { protocolVersion: 1, commandId: COMMAND,
+      action: original.action, unitId: UNIT, recordedAt: "2026-10-04T10:00:00Z", outcome: "cancelled", original } });
+    expect(await s.coordinator.cancelRetainedHead()).toEqual({ kind: "cancelled", commandId: COMMAND });
+    expect(s.deps.cancel.mock.calls[0].slice(0, 2)).toEqual([COMMAND, original]);
+    expect(s.deps.send).not.toHaveBeenCalled(); expect(s.deps.reserve).not.toHaveBeenCalled();
   });
 });
