@@ -23,6 +23,7 @@
 // fixed in PwaBanners.tsx; see the notes on each.
 
 import { expect, test, type Page, type Worker } from "@playwright/test";
+import { capturePwaReloadEvidence } from "./support/pwaReloadEvidence";
 import {
   cutTheNetwork,
   expireBrowserCache,
@@ -346,8 +347,12 @@ test("a second tab on the same URL can reload without suppressing the asking tab
 
 test("a download that broke halfway does not leave Refresh doing nothing afterwards", async ({
   page,
+  context,
+  browserName,
   request,
 }) => {
+  const attachEvidence = await capturePwaReloadEvidence(page, context, browserName === "chromium");
+  try {
   // Four deploys landed within an hour on 2026-09-25. A check that lands
   // while a deploy is half there downloads a worker whose file list names a
   // chunk the server does not have yet, so that install fails. The NEXT
@@ -407,4 +412,7 @@ test("a download that broke halfway does not leave Refresh doing nothing afterwa
     .toBe(builds.new.entry);
   await expectSettledOn(page, builds.new.entry, loads);
   expect(navigations(), "the switch was more than one navigation: two racing reloads can leave the new build blank").toHaveLength(1);
+  } finally {
+    await attachEvidence(test.info());
+  }
 });
