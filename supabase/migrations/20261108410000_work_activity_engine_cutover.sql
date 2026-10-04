@@ -5019,7 +5019,7 @@ begin
   update summon_helpers
   set completed_at = now(),
       minutes = least(480, greatest(0, floor(extract(epoch from now() - joined_at) / 60))::int)
-  where summon_id = p_summon_id and profile_id = v_uid and completed_at is null
+  where summon_id = p_summon_id and profile_id = v_uid and completed_at is null and canceled_at is null
   returning * into v_row;
   if v_row.id is null then
     raise exception 'no open help of yours on this summon';
@@ -5029,7 +5029,7 @@ end;
 
  perform public._work_activity_operation_exit(__work_activity_root_id);
 end;
-$activity_body_77$::text,false,'dcce01f06c1dbe85a747648bb9ea6c0b6358c62d966244058baeec08ca281439'::text,'7cb944c52d1a8851a8de0148187e149c06ed4b747f50ab5f22c4483467832342'::text,'complete_summon_help'::text,'p_summon_id uuid'::text),
+$activity_body_77$::text,false,'dcce01f06c1dbe85a747648bb9ea6c0b6358c62d966244058baeec08ca281439'::text,'c2d3859c665a7c735a8c898727db1956f20c0b50fac043cfe1fc8fc8d100c3e1'::text,'complete_summon_help'::text,'p_summon_id uuid'::text),
 ('close_summon(uuid)'::text,$activity_body_78$
 declare __work_activity_root_id uuid;__work_activity_arrival timestamptz;
 begin

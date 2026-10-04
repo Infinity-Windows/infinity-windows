@@ -243,6 +243,42 @@ jobs:
           WORK_ACTIVITY_CUTOVER_TEST_DB_URL: postgresql://postgres:fixture-only@localhost:5432/forge_work_activity_cutover_test
         run: PGLITE_MODULE="$RUNNER_TEMP/work-cutover-db/node_modules/@electric-sql/pglite/dist/index.js" python3 scripts/verify-work-activity-engine-cutover-concurrency.py
 
+  work-activity-cutover-source-matched:
+    name: Activity source-matched application fixture (release held)
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        # Installed relation ACLs include PG17 MAINTAIN; PG16 cannot reproduce them.
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: forge_work_activity_cutover_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: npm install --prefix "$RUNNER_TEMP/work-cutover-matched-db" --no-save @electric-sql/pglite@0.5.8
+      # Exact application constraints, grants, policies and callbacks; vector
+      # search and provider internals remain documented exclusions. No release
+      # or production migration guard is bypassed by this disposable fixture.
+      - name: Verify whole authored cutover and cancelled-helper regression
+        env:
+          WORK_ACTIVITY_MATCHED_SCHEMA: scripts/fixtures/work-activity-engine-online-schema.sql
+        run: PGLITE_MODULE="$RUNNER_TEMP/work-cutover-matched-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-work-activity-engine-schema-runtime.mjs
+      - name: Verify independent backends on the source-matched application schema
+        env:
+          WORK_ACTIVITY_CUTOVER_TEST_DB_URL: postgresql://postgres:fixture-only@localhost:5432/forge_work_activity_cutover_test
+        run: PGLITE_MODULE="$RUNNER_TEMP/work-cutover-matched-db/node_modules/@electric-sql/pglite/dist/index.js" python3 scripts/verify-work-activity-engine-cutover-concurrency.py --source-matched
+
   values-sql-concurrency:
     name: Monthly reviews database and concurrent acceptance
     runs-on: ubuntu-latest

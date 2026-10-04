@@ -11,12 +11,15 @@ import json
 import os
 import re
 import select
+import sys
 import subprocess
 import time
 import uuid as uuidlib
 from pathlib import Path
 from urllib.parse import urlparse
 
+assert sys.argv[1:] in ([],['--source-matched']), 'Unknown fixture mode'
+SOURCE_MATCHED = sys.argv[1:]==['--source-matched']
 URL = os.environ.get('WORK_ACTIVITY_CUTOVER_TEST_DB_URL', '')
 try:
     parsed = urlparse(URL)
@@ -180,9 +183,15 @@ import hashlib
 from datetime import datetime, timezone
 with tempfile.TemporaryDirectory(prefix='forge-cutover-schema-') as directory:
     schema_path = Path(directory) / 'schema.sql'
-    exported = subprocess.run(['node', str(ROOT / 'scripts/verify-work-activity-engine-cutover.mjs'), '--development-prefix'],
-        text=True, capture_output=True, timeout=120,
-        env=dict(os.environ, WORK_ACTIVITY_CUTOVER_SCHEMA_OUT=str(schema_path)))
+    if SOURCE_MATCHED:
+        exported = subprocess.run(['node', str(ROOT / 'scripts/verify-work-activity-engine-schema-runtime.mjs')],
+            text=True,capture_output=True,timeout=120,env=dict(os.environ,
+                WORK_ACTIVITY_MATCHED_SCHEMA=str(ROOT/'scripts/fixtures/work-activity-engine-online-schema.sql'),
+                WORK_ACTIVITY_MATCHED_CUTOVER_OUT=str(schema_path)))
+    else:
+        exported = subprocess.run(['node', str(ROOT / 'scripts/verify-work-activity-engine-cutover.mjs'), '--development-prefix'],
+            text=True, capture_output=True, timeout=120,
+            env=dict(os.environ, WORK_ACTIVITY_CUTOVER_SCHEMA_OUT=str(schema_path)))
     assert exported.returncode == 0, 'Cutover schema export failed: ' + exported.stderr
     schema = schema_path.read_text()
     assert 'create function public.work_activity_command(' in schema
@@ -194,7 +203,7 @@ with tempfile.TemporaryDirectory(prefix='forge-cutover-schema-') as directory:
             "') then create role " + role + "; end if; end $$;")
     run(schema, timeout=120)
 print('Cutover source SHA256', hashlib.sha256((ROOT/'supabase/migrations/20261108410000_work_activity_engine_cutover.sql').read_bytes()).hexdigest())
-print('Executed development schema SHA256', hashlib.sha256(schema.encode()).hexdigest())
+print('Executed source-matched schema SHA256' if SOURCE_MATCHED else 'Executed development schema SHA256', hashlib.sha256(schema.encode()).hexdigest())
 
 
 def js(value):
@@ -234,8 +243,16 @@ def clean_frames():
         assert run(f'select count(*) from public.{name}') == '0', 'Leaked frame: ' + name
 
 
+def seed_profile(actor,role):
+    if SOURCE_MATCHED:
+        run(f"insert into auth.users(id) values('{actor}');"
+            f"insert into profiles(id,display_name,role,is_test) values('{actor}','Synthetic race fixture','{role}',false);")
+    else:
+        run(f"insert into profiles(id,role,is_test) values('{actor}','{role}',false);")
+
 job, owner = new_uuid(), new_uuid()
-run(f"insert into profiles(id,role,is_test) values('{owner}','owner',false);"
+seed_profile(owner,'owner')
+run(f"insert into projects(id,job_code,name,is_test) values('{job}','SYNTHETIC-ENGINE','Synthetic race fixture',false);" if SOURCE_MATCHED else
     f"insert into projects(id,is_test) values('{job}',false);")
 # Actual published configuration and selection, never a fake eligibility helper.
 run(client(owner)+f"select work_publish_activity_version('{new_uuid()}','cutover_general',0,'general','General task','Tarea',false,'[]');")
@@ -251,7 +268,7 @@ run("insert into company_settings(id,paid_time_from_start_day_on) values(1,(cloc
 
 def seed(kind='custom'):
     actor, shift, source = new_uuid(), new_uuid(), new_uuid()
-    run(f"insert into profiles(id,role,is_test) values('{actor}','installer',false);")
+    seed_profile(actor,'installer')
     run(auth(actor)+f"insert into toolbox_completions(profile_id,signed_at) values('{actor}',clock_timestamp());"
         f"insert into time_shifts(id,profile_id,project_id,clock_in_at,last_punch_at,status,break_seconds) values('{shift}','{actor}','{job}',clock_timestamp()-interval '1 hour',clock_timestamp()-interval '1 hour','open',300);")
     if kind == 'custom':
@@ -465,7 +482,7 @@ for edit_first in (False,True):
 # cannot recreate a deleted paid shift. Reverse replay/delete admission order.
 for deletion_first in (False,True):
     actor,clock_id=new_uuid(),new_uuid();tap,checked=now_iso(),now_iso()
-    run(f"insert into profiles(id,role,is_test) values('{actor}','installer',false);")
+    seed_profile(actor,'installer')
     clock_sql=f"select to_jsonb(clock_in('{job}'::uuid,null::uuid,null::text,null::double precision,null::double precision,null::text,null::text,'{clock_id}'::uuid,'{tap}'::timestamptz,'{checked}'::timestamptz,0,1));"
     paid=one(client(actor)+clock_sql);shift=paid['id']
     receipt_before=one(client(actor)+f"select work_activity_clock_receipt('{clock_id}');")

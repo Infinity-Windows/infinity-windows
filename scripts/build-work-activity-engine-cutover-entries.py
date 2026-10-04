@@ -127,6 +127,12 @@ for f in selected:
  if lang=='sql':
   newbody='\nselect pg_catalog.pg_advisory_xact_lock(7712,0);\n'+orig
  elif lang=='plpgsql':
+  if name=='complete_summon_help':
+   # Deliberate safety correction to the otherwise preserved 20260818 body:
+   # cancelling must not later become completion minutes via an old client.
+   old='where summon_id = p_summon_id and profile_id = v_uid and completed_at is null'
+   if newbody.count(old)!=1:raise ValueError('summon cancellation guard source drift '+identity)
+   newbody=newbody.replace(old,old+' and canceled_at is null')
   # The paid-time selectors and original arithmetic share one post-G arrival.
   # No rounding or break total expression is changed by this replacement.
   if name in legacy_payroll or name in ('_close_dangling_shift','_end_open_session','_close_stale_sessions','clock_in_for'):
@@ -277,7 +283,8 @@ manifest={
   'originalBodySha256':hashlib.sha256(f['body'].encode()).hexdigest(),
   'securityDefiner':f['installedSecurityDefiner'],'acl':f['installedAcl'],
   'callsInClosure':sorted(f['calls']&closure),'directRelationCandidates':f['directRelations'],
-  'replacement':'manual_lifecycle_callback' if f['name'] in overrides else 'preserved_header_generated_entry'
+  'replacement':'manual_lifecycle_callback' if f['name'] in overrides else 'preserved_header_generated_entry',
+  **({'deliberateSafetyCorrections':['completion excludes cancelled helper rows']} if f['name']=='complete_summon_help' else {})
  } for f in selected],
  'limitations':['Lexical candidate graph requires installed FK/trigger/API review.',
   'Provider auth.users and drained administrator multi-statement maintenance are outside online G-first boundary.',

@@ -1594,7 +1594,10 @@
       "directRelationCandidates": [
         "summon_helpers"
       ],
-      "replacement": "preserved_header_generated_entry"
+      "replacement": "preserved_header_generated_entry",
+      "deliberateSafetyCorrections": [
+        "completion excludes cancelled helper rows"
+      ]
     },
     {
       "identity": "close_summon(uuid)",

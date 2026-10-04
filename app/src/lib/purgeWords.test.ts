@@ -68,6 +68,12 @@ describe("shapeFor", () => {
     expect(shapeFor({ "unit_sessions.profile_id": 2 })).toBe("retired");
     expect(shapeFor({ "daily_logs.filed_by": 1 })).toBe("retired");
   });
+
+  it("retires for a retained unit observation or activity command alone", () => {
+    expect(shapeFor({ "work_unit_fact_revisions.observation_actor_id": 1 })).toBe("retired");
+    expect(shapeFor({ "personal_activity_commands.subject_profile_id": 1 })).toBe("retired");
+    expect(shapeFor({ "work_activity_clock_receipts.profile_id": 1 })).toBe("retired");
+  });
 });
 
 describe("the sentence the owner reads", () => {
@@ -93,6 +99,16 @@ describe("the sentence the owner reads", () => {
     expect(removalSentence("Mia", { "receipts.uploaded_by": 1 })).toContain(
       "1 receipt on file",
     );
+  });
+
+  it("names a retained measurement and clock receipt in plain words", () => {
+    const sentence = removalSentence("Mia", {
+      "work_unit_fact_revisions.observation_actor_id": 1,
+      "work_activity_clock_receipts.profile_id": 2,
+    });
+    expect(sentence).toContain("1 unit measurement observation");
+    expect(sentence).toContain("2 retained clock receipts");
+    expect(sentence).toContain("every record kept under their name");
   });
 
   it("names three things at most and says there is more", () => {

@@ -107,6 +107,36 @@ export const WORK_HISTORY_PROBES: readonly HistoryProbe[] = [
   { table: "custom_work_history", column: "actor_id", one: "custom work record", many: "custom work records" },
   { table: "custom_work_commands", column: "profile_id", one: "custom work record", many: "custom work records" },
 
+  // Retained configuration, unit facts and personal activity history. These
+  // identities are counted before a login may be removed; a former worker's
+  // authored decisions and observations must stay attached to that person.
+  { table: "work_activity_definitions", column: "created_by", one: "activity definition they created", many: "activity definitions they created" },
+  { table: "work_activity_definition_versions", column: "published_by", one: "published activity version", many: "published activity versions" },
+  { table: "work_capture_menus", column: "created_by", one: "activity menu they created", many: "activity menus they created" },
+  { table: "work_capture_menu_versions", column: "published_by", one: "published activity menu version", many: "published activity menu versions" },
+  { table: "work_configuration_draft_revisions", column: "proposed_by", one: "configuration draft", many: "configuration drafts" },
+  { table: "work_configuration_commands", column: "actor_id", one: "configuration decision", many: "configuration decisions" },
+  { table: "work_job_menu_selections", column: "selected_by", one: "job menu selection", many: "job menu selections" },
+  { table: "work_job_management_grants", column: "profile_id", one: "job management grant they held", many: "job management grants they held" },
+  { table: "work_job_management_grants", column: "granted_by", one: "job management grant they made", many: "job management grants they made" },
+  { table: "work_job_management_grants", column: "revoked_by", one: "job management grant they revoked", many: "job management grants they revoked" },
+  { table: "work_unit_fact_revisions", column: "actor_id", one: "unit fact revision", many: "unit fact revisions" },
+  { table: "work_unit_fact_revisions", column: "observation_actor_id", one: "unit measurement observation", many: "unit measurement observations" },
+  { table: "work_unit_fact_revisions", column: "origin_author_id", one: "original unit fact they authored", many: "original unit facts they authored" },
+  { table: "work_activity_observations", column: "actor_id", one: "activity observation", many: "activity observations" },
+  { table: "work_activity_streams", column: "actor_id", one: "activity stream", many: "activity streams" },
+  { table: "personal_activity_state", column: "profile_id", one: "personal activity state", many: "personal activity states" },
+  { table: "personal_activity_commands", column: "actor_id", one: "activity command they sent", many: "activity commands they sent" },
+  { table: "personal_activity_commands", column: "subject_profile_id", one: "activity command about them", many: "activity commands about them" },
+  { table: "personal_activity_transitions", column: "actor_id", one: "activity transition they made", many: "activity transitions they made" },
+  { table: "personal_activity_transitions", column: "profile_id", one: "personal activity transition", many: "personal activity transitions" },
+  { table: "personal_activity_transition_sources", column: "profile_id", one: "activity transition source", many: "activity transition sources" },
+  { table: "work_activity_safety_events", column: "actor_id", one: "activity safety event they recorded", many: "activity safety events they recorded" },
+  { table: "work_activity_safety_events", column: "profile_id", one: "activity safety event about them", many: "activity safety events about them" },
+  { table: "work_session_capture_metadata", column: "profile_id", one: "captured work session", many: "captured work sessions" },
+  { table: "work_setup_sessions", column: "profile_id", one: "paid setup session", many: "paid setup sessions" },
+  { table: "work_activity_clock_receipts", column: "profile_id", one: "retained clock receipt", many: "retained clock receipts" },
+
   // Time and money.
   { table: "time_shifts", column: "profile_id", one: "punch", many: "punches" },
   // The tap time and arrival time behind each punch (20261028000000): payroll
