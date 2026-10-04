@@ -1,0 +1,27 @@
+// @vitest-environment happy-dom
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { QueryClient, QueryClientProvider, onlineManager } from "@tanstack/react-query";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { rememberSignedIn, signInGeneration } from "../signedIn";
+import type { Snapshot } from "./protocol";
+const fetch=vi.fn(),fetchUnit=vi.fn();
+vi.mock("./api",()=>({fetchActivitySnapshot:(...args:unknown[])=>fetch(...args),fetchActivityUnitBasis:(...args:unknown[])=>fetchUnit(...args)}));
+const {useActivitySnapshot,useActivityUnitBasis}=await import("./useActivityReads");
+(globalThis as typeof globalThis & {IS_REACT_ACT_ENVIRONMENT:boolean}).IS_REACT_ACT_ENVIRONMENT=true;
+const OWNER="00000000-0000-4000-8000-000000000001", JOB="00000000-0000-4000-8000-000000000010", UNIT="00000000-0000-4000-8000-000000000020";
+const fact:Snapshot={protocolVersion:1,asOf:"2026-10-04T06:00:00.000000Z",deviceId:UNIT,capability:{mode:"active",reasonCode:null},observation:null,stream:null,state:{revision:12,lastTransitionId:null,integrity:"clean",status:"off_clock",choiceRequired:false,actions:{canEstablishStream:false,canSwitch:false,canFinishSetup:false,canStop:false},shift:null,activity:null}};
+let host:HTMLDivElement,root:Root,qc:QueryClient,connected=true,latest:ReturnType<typeof useActivitySnapshot>;
+function View({enabled=true,unit=UNIT}:{enabled?:boolean;unit?:string}){latest=useActivitySnapshot(unit,enabled);return <div>{latest.state} {latest.data?.value.state?.revision}</div>;}
+async function render(props:Parameters<typeof View>[0]={}){await act(async()=>{root.render(<QueryClientProvider client={qc}><View {...props}/></QueryClientProvider>);await new Promise(r=>setTimeout(r,10));});}
+async function flush(){await act(async()=>{await new Promise(r=>setTimeout(r,10));});}
+beforeEach(()=>{connected=true;onlineManager.setOnline(true);Object.defineProperty(navigator,"onLine",{configurable:true,get:()=>connected});rememberSignedIn({user:{id:OWNER}});fetch.mockReset().mockResolvedValue(fact);fetchUnit.mockReset();qc=new QueryClient({defaultOptions:{queries:{retry:false}}});host=document.createElement("div");document.body.append(host);root=createRoot(host);});
+afterEach(()=>{act(()=>root.unmount());qc.clear();host.remove();rememberSignedIn(null);onlineManager.setOnline(true);delete (navigator as unknown as {onLine?:boolean}).onLine;});
+describe("private activity authority scope",()=>{
+  it("uses the exact unit RPC without treating observations as command authority",async()=>{let value:ReturnType<typeof useActivityUnitBasis>|undefined;fetchUnit.mockResolvedValue({protocolVersion:1,asOf:fact.asOf,availability:"unavailable",unit:null});function UnitView(){value=useActivityUnitBasis(UNIT,true);return null;}await act(async()=>{root.render(<QueryClientProvider client={qc}><UnitView/></QueryClientProvider>);});await flush();expect(fetchUnit).toHaveBeenCalledWith(UNIT,{userId:OWNER,generation:signInGeneration()});expect(value?.data?.value.availability).toBe("unavailable");});
+  it("binds real login generation and erases the scoped cache on navigation",async()=>{await render();await flush();expect(latest.data?.value.state?.revision).toBe(12);expect(fetch).toHaveBeenCalledWith(UNIT,{userId:OWNER,generation:signInGeneration()});expect(qc.getQueryCache().getAll()).toHaveLength(1);await render({unit:JOB});await flush();expect(qc.getQueryCache().getAll().some(q=>q.queryKey.at(-1)===UNIT)).toBe(false);});
+  it("clears private details when disabled and fetches fresh on re-entry",async()=>{await render();await flush();await render({enabled:false});expect(latest.state).toBe("blocked");expect(latest.data).toBeUndefined();expect(qc.getQueryCache().getAll()).toHaveLength(0);fetch.mockResolvedValue({...fact,state:{...fact.state!,revision:15}});await render();await flush();expect(latest.data?.value.state?.revision).toBe(15);});
+  it("hides and erases private evidence offline without interpreting it as no history",async()=>{await render();await flush();await act(async()=>{connected=false;window.dispatchEvent(new Event("offline"));});expect(latest.state).toBe("blocked");expect(latest.data).toBeUndefined();expect(qc.getQueryCache().getAll()).toHaveLength(0);});
+  it("a refused refresh replaces old private cached details with unavailable",async()=>{await render();await flush();fetch.mockRejectedValue(Error("Source now unavailable"));await act(async()=>{await latest.refresh();});await flush();expect(latest.state).toBe("unavailable");expect(latest.data).toBeUndefined();expect(qc.getQueryCache().getAll()[0].state.data).toEqual({status:"unavailable"});});
+  it("does not revive a cancelled late read after same-owner account ABA",async()=>{let resolve!:(value:Snapshot)=>void;fetch.mockImplementationOnce(()=>new Promise<Snapshot>(yes=>{resolve=yes;}));await render();const oldGeneration=signInGeneration();await act(async()=>{rememberSignedIn(null);rememberSignedIn({user:{id:OWNER}});});await flush();expect(signInGeneration()).toBeGreaterThan(oldGeneration);await act(async()=>{resolve({...fact,state:{...fact.state!,revision:999}});});await flush();expect(latest.data?.value.state?.revision).toBe(12);expect(qc.getQueryCache().getAll().some(q=>q.queryKey.includes(oldGeneration))).toBe(false);});
+});

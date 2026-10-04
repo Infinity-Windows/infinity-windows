@@ -15,6 +15,55 @@ async function fixture(page:Page){
   await page.route(/^https:\/\//,route=>route.abort());
   await page.goto('/activity-protocol-fixture');
 }
+test('two native tabs share one committed device identity that survives reload',async({journalPage:page})=>{
+  await fixture(page);const other=await page.context().newPage();await fixture(other);
+  const read=(p:Page)=>p.evaluate(async()=>{
+    // @ts-expect-error Browser Vite module URL.
+    const {getActivityDeviceId}=await import('/src/lib/workActivity/device.ts');return getActivityDeviceId();
+  });
+  try{
+    const [first,second]=await Promise.all([read(page),read(other)]);expect(first).toMatch(/^[0-9a-f-]{36}$/);expect(second).toBe(first);
+    await page.reload();expect(await read(page)).toBe(first);
+  }finally{await other.close();}
+});
+test('the tap adapter saves an exact establishment through the real native journal before reporting saved',async({journalPage:page})=>{
+  await fixture(page);
+  const result=await page.evaluate(async()=>{
+    // @ts-expect-error Browser Vite module URL.
+    const {getActivityDeviceId}=await import('/src/lib/workActivity/device.ts');
+    // @ts-expect-error Browser Vite module URL.
+    const {rememberSignedIn,signInMark}=await import('/src/lib/signedIn.ts');
+    // @ts-expect-error Browser Vite module URL.
+    const {saveActivityTap}=await import('/src/lib/workActivity/saveTap.ts');
+    // @ts-expect-error Browser Vite module URL.
+    const {getCurrentActivityCommand}=await import('/src/lib/workActivity/journal.ts');
+    const id=(n:number)=>`00000000-0000-0000-0000-${String(n).padStart(12,'0')}`,at='2026-10-04T06:00:00.000000Z';
+    const deviceId=await getActivityDeviceId();rememberSignedIn({user:{id:id(1)}});
+    const value={protocolVersion:1,asOf:at,deviceId,capability:{mode:'active',reasonCode:null},observation:{id:id(4),revision:0,lastTransitionId:null,issuedAt:at,expiresAt:'2026-10-04T22:00:00.000000Z',shiftRef:null,currentGeneration:null,currentHeadCommandId:null},stream:null,state:{revision:0,lastTransitionId:null,integrity:'clean',status:'off_clock',choiceRequired:false,actions:{canEstablishStream:true,canSwitch:false,canFinishSetup:false,canStop:false},shift:null,activity:null}};
+    const saved=await saveActivityTap(deviceId,{value,requestStartedAt:performance.now(),login:signInMark()},{kind:'establish_stream'});
+    const row=await getCurrentActivityCommand(id(1),deviceId);rememberSignedIn(null);
+    return {kind:saved.kind,matching:saved.kind==='saved' && JSON.stringify(saved.record)===JSON.stringify(row),sequence:row?.payload.clientSequence,intent:row?.payload.intent,uncertain:row?.uncertain,receipt:row?.receipt};
+  });
+  expect(result).toEqual({kind:'saved',matching:true,sequence:0,intent:{kind:'establish_stream',previousGeneration:null,previousHeadCommandId:null},uncertain:false,receipt:null});
+});
+test('native device late abort rejects persistence and a corrupt saved identity is held without replacement',async({journalPage:page})=>{
+  await fixture(page);
+  const result=await page.evaluate(async()=>{
+    // @ts-expect-error Browser Vite module URL.
+    const {getActivityDeviceId}=await import('/src/lib/workActivity/device.ts');
+    const add=IDBObjectStore.prototype.add;let injected=false;
+    IDBObjectStore.prototype.add=function(...args:Parameters<typeof add>){const r=add.apply(this,args);if(this.name==='identity'){r.addEventListener('success',()=>{injected=true;this.transaction.abort();},{once:true});}return r;};
+    let rejected=false;try{await getActivityDeviceId();}catch{rejected=true;}finally{IDBObjectStore.prototype.add=add;}
+    const db=await new Promise<IDBDatabase>((resolve,reject)=>{const r=indexedDB.open('iw-work-activity-device-v1',1);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
+    const tx=db.transaction('identity','readwrite'),count=tx.objectStore('identity').count();let before=-1;
+    count.onsuccess=()=>{before=count.result;tx.objectStore('identity').put({key:'browser-device',id:'broken'});};await new Promise<void>((resolve,reject)=>{tx.oncomplete=()=>resolve();tx.onabort=()=>reject(tx.error);});
+    let corruptHeld=false;try{await getActivityDeviceId();}catch{corruptHeld=true;}
+    const read=db.transaction('identity','readonly'),r=read.objectStore('identity').get('browser-device');let saved:unknown;
+    r.onsuccess=()=>saved=r.result;await new Promise<void>((resolve,reject)=>{read.oncomplete=()=>resolve();read.onabort=()=>reject(read.error);});db.close();
+    return {injected,rejected,before,corruptHeld,saved};
+  });
+  expect(result).toEqual({injected:true,rejected:true,before:0,corruptHeld:true,saved:{key:'browser-device',id:'broken'}});
+});
 test('native v1 upgrade preserves original rows and payroll/photo bytes, while generations get independent sequence zero',async({journalPage:page})=>{
   await fixture(page);
   const result=await page.evaluate(async()=>{
