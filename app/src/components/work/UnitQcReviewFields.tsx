@@ -32,7 +32,7 @@ export function UnitQcReviewFields({ context, value, delivery, state, defects, a
     <p role="status" aria-live="polite">{t(delivery === "unknown" ? "unknown_delivery" : delivery)}</p>
     {current && <p><strong>{t("qcState")}:</strong> {t(state)}</p>}
     {current && defects.length > 0 && <details open><summary>{t("defects")}</summary><ul style={{ paddingInlineStart: 20 }}>{defects.map(defect => <li key={defect.id} style={{ marginBlock: 12 }}>
-      <span>{defect.summary}</span><p className="muted">{t(defect.resolved ? "resolved" : "unresolved")}</p>
+      <span>{defect.summary}</span><p className="muted">{t(defect.state === "open" ? "defectOpen" : defect.state === "claimed_resolved" ? "defectClaimed" : defect.state === "verified_resolved" ? "defectVerified" : "invalid_defect")}</p>
     </li>)}</ul></details>}
     {owned ? <>
       <fieldset disabled={!editable} style={{ minWidth: 0, margin: 0, padding: 12, border: "1px solid var(--border)", borderRadius: 12 }}>
@@ -41,6 +41,7 @@ export function UnitQcReviewFields({ context, value, delivery, state, defects, a
         <p id={`${id}-note-help`} className="muted">{t("noteHelp")}</p>
         {state === "awaiting_review" && authority.fail && <>
           <h3>{t("newDefects")}</h3>
+          {defects.some(defect => defect.state === "claimed_resolved") && <p>{t("rejectClaimsHint")}</p>}
           {value.newDefects.map((defect, index) => <div key={defect.id} style={{ minWidth: 0, marginBlock: 12 }}>
             <label>{t("defectSummary", { number: index + 1 })}<textarea aria-label={t("defectSummary", { number: index + 1 })} rows={2} style={textareaStyle} value={defect.summary} onChange={e => onChange({ ...value, newDefects: value.newDefects.map(item => item.id === defect.id ? { ...item, summary: e.target.value } : item) })} /></label>
             <button type="button" style={{ minHeight: 44, maxWidth: "100%", whiteSpace: "normal" }} onClick={() => onChange({ ...value, newDefects: value.newDefects.filter(item => item.id !== defect.id) })}>{t("removeDefect", { number: index + 1 })}</button>
@@ -49,7 +50,8 @@ export function UnitQcReviewFields({ context, value, delivery, state, defects, a
         </>}
         {state === "failed" && authority.claim_resolved && <>
           <p>{t("claimHint")}</p>
-          {defects.filter(defect => !defect.resolved).map(defect => <label key={defect.id} style={{ display: "flex", alignItems: "center", gap: 10, minHeight: 44, marginBlock: 8 }}>
+          {defects.some(defect => defect.state === "claimed_resolved") && defects.some(defect => defect.state === "open") && <p>{t("partialClaimsHint")}</p>}
+          {defects.filter(defect => defect.state === "open").map(defect => <label key={defect.id} style={{ display: "flex", alignItems: "center", gap: 10, minHeight: 44, marginBlock: 8 }}>
             <input type="checkbox" style={{ width: 24, height: 24, flexShrink: 0 }} checked={value.resolvedDefectIds.includes(defect.id)} onChange={e => onChange({ ...value, resolvedDefectIds: e.target.checked ? [...value.resolvedDefectIds, defect.id] : value.resolvedDefectIds.filter(item => item !== defect.id) })} /><span style={{ minWidth: 0 }}>{defect.summary}</span>
           </label>)}
         </>}

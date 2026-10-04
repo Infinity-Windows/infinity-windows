@@ -27,7 +27,7 @@ test("independent measured corroboration captures one exact basis and awaits par
   await page.getByRole("button", { name: "Send dimension verification", exact: true }).click();
   await expect(page.getByTestId("intent-count")).toHaveText("1");
   const intents = JSON.parse(await page.getByTestId("intent-json").innerText());
-  expect(intents[0]).toMatchObject({ kind: "verify_dimensions", basis: { unitId: "synthetic-unit-42", factRevision: 4, scopeToken: "opaque-fixture-server-token" }, evidence: { width: 72, height: 96, units: "in", source: "measured" } });
+  expect(intents[0]).toMatchObject({ action: "verify_dimensions", basis: { unitId: "synthetic-unit-42", factRevision: 4, scopeToken: "opaque-fixture-server-token" }, data: { widthDecimal: "72", heightDecimal: "96", unit: "in", source: "measured" } });
   expect(intents[0]).not.toHaveProperty("verified");
   await expect(page.getByRole("button", { name: "Send dimension verification", exact: true })).toBeDisabled();
   await expect(page.getByTestId("unit-verification-fields")).toContainText("Estimated");
@@ -43,12 +43,12 @@ test("final QC permits authorized self review but correction claims never pass",
   await page.getByRole("button", { name: "Self observer", exact: true }).click();
   await page.getByRole("button", { name: "Record final QC pass", exact: true }).click();
   await expect(page.getByTestId("intent-count")).toHaveText("1");
-  expect(JSON.parse(await page.getByTestId("intent-json").innerText())[0].kind).toBe("pass");
+  expect(JSON.parse(await page.getByTestId("intent-json").innerText())[0].action).toBe("pass");
   await page.getByRole("button", { name: "Failed state", exact: true }).click();
-  await page.getByTestId("unit-qc-review-fields").getByRole("checkbox").check();
+  await page.getByTestId("unit-qc-review-fields").getByRole("checkbox").first().check();
   await page.getByRole("button", { name: "Submit corrections for review", exact: true }).click();
   await expect(page.getByTestId("intent-count")).toHaveText("2");
-  expect(JSON.parse(await page.getByTestId("intent-json").innerText())[1]).toMatchObject({ kind: "claim_resolved", defectIds: ["fixture-defect-1"] });
+  expect(JSON.parse(await page.getByTestId("intent-json").innerText())[1]).toMatchObject({ action: "claim_resolved", data: { defectIds: ["fixture-defect-1"] } });
   await expect(page.getByTestId("unit-qc-review-fields")).toContainText("Corrections required");
 });
 test("failure needs stable defects and reopen needs a reason", async ({ page }) => {
@@ -58,7 +58,7 @@ test("failure needs stable defects and reopen needs a reason", async ({ page }) 
   await qc.getByRole("button", { name: "Add defect", exact: true }).click();
   await qc.getByLabel("Defect 1", { exact: true }).fill("Incomplete backer rod");
   await qc.getByRole("button", { name: "Record defects / fail QC", exact: true }).click();
-  const intent = JSON.parse(await page.getByTestId("intent-json").innerText())[0]; expect(intent).toMatchObject({ kind: "fail", defects: [{ summary: "Incomplete backer rod" }] }); expect(intent.defects[0].id).toMatch(/^[0-9a-f-]{36}$/);
+  const intent = JSON.parse(await page.getByTestId("intent-json").innerText())[0]; expect(intent).toMatchObject({ action: "fail", data: { defects: [{ summary: "Incomplete backer rod" }] } }); expect(intent.data.defects[0].id).toMatch(/^[0-9a-f-]{36}$/);
   await page.getByRole("button", { name: "Passed state", exact: true }).click(); await expect(qc.getByRole("button", { name: "Reopen final QC", exact: true })).toBeDisabled();
   await qc.getByLabel("Review note or correction explanation", { exact: true }).fill("More unit work was recorded"); await qc.getByRole("button", { name: "Reopen final QC", exact: true }).click();
   await expect(page.getByTestId("intent-count")).toHaveText("2");
@@ -92,4 +92,49 @@ test("typing and language switches keep controlled evidence without creating a r
   await expect(page.getByTestId("intent-count")).toHaveText("0");
   await page.getByRole("button", { name: "Toggle authority", exact: true }).click();
   await expect(form.getByRole("button", { name: "Enviar verificación de medidas", exact: true })).toBeDisabled();
+});
+
+
+test("precision beyond JavaScript numbers stays exact on screen and in transport", async ({ page }) => {
+  await page.getByRole("button", { name: "Precision observation", exact: true }).click();
+  await fillEvidence(page, "1.00000000000000001");
+  await page.getByRole("button", { name: "Send dimension verification", exact: true }).click();
+  expect(JSON.parse(await page.getByTestId("intent-json").innerText())[0].data.widthDecimal).toBe("1.00000000000000001");
+  await expect(page.getByTestId("unit-verification-fields")).toContainText("1.00000000000000001");
+});
+
+test("partial correction claims await the remaining crew work and a distinct reviewer decision", async ({ page }) => {
+  const qc = page.getByTestId("unit-qc-review-fields");
+  await page.getByRole("button", { name: "Failed state", exact: true }).click();
+  await qc.getByRole("checkbox").first().check();
+  await qc.getByRole("button", { name: "Submit corrections for review", exact: true }).click();
+  await expect(qc).toContainText("Corrections required");
+  await page.getByRole("button", { name: "Confirmed partial claim", exact: true }).click();
+  await expect(qc.getByRole("checkbox")).toHaveCount(1);
+  await expect(qc).toContainText("Claimed corrected — needs review");
+  await expect(qc).toContainText("Some defects still need correction");
+  await qc.getByRole("checkbox").check();
+  await qc.getByRole("button", { name: "Submit corrections for review", exact: true }).click();
+  await page.getByRole("button", { name: "Confirmed all claims", exact: true }).click();
+  await qc.getByRole("button", { name: "Record final QC pass", exact: true }).click();
+  const intents = JSON.parse(await page.getByTestId("intent-json").innerText());
+  expect(intents[2]).toMatchObject({ action: "pass", basis: { generation: 2, submissionId: "synthetic-submission-2" }, data: { note: null } });
+  await expect(qc).toContainText("Claimed corrected — needs review");
+  await expect(qc).not.toContainText("Correction verified");
+  await page.getByRole("button", { name: "Confirmed reviewer pass", exact: true }).click();
+  await expect(qc).toContainText("Correction verified");
+  await qc.getByLabel("Review note or correction explanation", { exact: true }).fill("New work needs review");
+  await qc.getByRole("button", { name: "Reopen final QC", exact: true }).click();
+  await expect(qc).toContainText("Correction verified");
+  expect(JSON.parse(await page.getByTestId("intent-json").innerText())[3].action).toBe("reopen");
+});
+
+test("reviewer can reject real correction claims without fabricating a new defect", async ({ page }) => {
+  const qc = page.getByTestId("unit-qc-review-fields");
+  await page.getByRole("button", { name: "Failed state", exact: true }).click();
+  await page.getByRole("button", { name: "Confirmed all claims", exact: true }).click();
+  await qc.getByLabel("Review note or correction explanation", { exact: true }).fill("The reported correction still leaks");
+  await qc.getByRole("button", { name: "Record defects / fail QC", exact: true }).click();
+  expect(JSON.parse(await page.getByTestId("intent-json").innerText())[0]).toMatchObject({ action: "fail", data: { note: "The reported correction still leaks", defects: [] } });
+  await expect(qc.getByRole("textbox", { name: "Defect 1", exact: true })).toHaveCount(0);
 });

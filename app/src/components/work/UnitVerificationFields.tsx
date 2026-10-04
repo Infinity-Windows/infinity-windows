@@ -33,10 +33,10 @@ export function UnitVerificationFields({ context, value, delivery, allowed, obse
     <p role="status" aria-live="polite">{t(delivery === "unknown" ? "unknown_delivery" : delivery)}</p>
     {source && <details open style={{ minWidth: 0 }}><summary>{t("original")}</summary>
       <dl style={{ minWidth: 0 }}>
-        <dt>{t("width")} / {t("height")}</dt><dd style={{ marginInlineStart: 0 }}>{String(source.width)} × {String(source.height)} {t(source.units)}</dd>
+        <dt>{t("width")} / {t("height")}</dt><dd style={{ marginInlineStart: 0 }}>{source.widthDecimal} × {source.heightDecimal} {t(source.unit)}</dd>
         <dt>{t("originalSource")}</dt><dd style={{ marginInlineStart: 0 }}>{t(source.source)}</dd>
         <dt>{t("originalReference")}</dt><dd style={{ marginInlineStart: 0 }}>{source.sourceReference || t("noReference")}</dd>
-        <dt>{t("observer")}</dt><dd style={{ marginInlineStart: 0 }}>{context.observerId ? observerLabel || context.observerId : t("unknownPerson")}</dd>
+        <dt>{t("observer")}</dt><dd style={{ marginInlineStart: 0 }}>{source.observerId ? observerLabel || source.observerId : t("unknownPerson")}</dd>
       </dl>
     </details>}
     {owned ? <form onSubmit={event => {
