@@ -181,6 +181,15 @@ const RETAINED_ORIGINAL_EVIDENCE: Record<string, string> = {
   work_session_capture_metadata: "Immutable source capture keeps the original job UUID",
 };
 const captureFoundation = readFileSync(join(MIGRATIONS, "20261107020000_work_capture_foundation.sql"), "utf8");
+/** Explicit mapping for retained unit observations. Only revisions have a
+ * direct project scope; that original UUID is nullable for legacy/unassigned
+ * evidence. Current pointers and ABA epochs have their own exact identities. */
+const UNIT_FACT_RETAINED = {
+  work_unit_fact_revisions: { migration: "20261108100000_work_unit_observations.sql", project: "nullable" },
+  work_unit_fact_current: { migration: "20261108100000_work_unit_observations.sql", project: "none" },
+  work_unit_fact_context_epochs: { migration: "20261108100000_work_unit_observations.sql", project: "none" },
+} as const;
+const unitFactMigration = readFileSync(join(MIGRATIONS, UNIT_FACT_RETAINED.work_unit_fact_revisions.migration), "utf8");
 
 /** Any direct DELETE/UPDATE of retained evidence violates its disposition.
  * Match ordinary SQL qualification, aliases, case and multiline whitespace. */
@@ -205,7 +214,7 @@ function purgeBody(): string {
  * on a fabricated table below, not only on today's schema.
  */
 function purgeCovers(table: string, body: string): boolean {
-  if (RETAINED_ORIGINAL_EVIDENCE[table]) return true; // explicit private history disposition
+  if (RETAINED_ORIGINAL_EVIDENCE[table] || table in UNIT_FACT_RETAINED) return true; // reviewed private history disposition
   if (CASCADE_COVERED[table]) return true; // covered by an FK, documented above
   const deleted = new RegExp(`\\bdelete from ${table}\\b`).test(body);
   const detached = new RegExp(`\\bupdate ${table} set\\b`).test(body);
@@ -286,6 +295,52 @@ describe("purge_project handles every project-scoped table", () => {
       ]) expect(retainedEvidenceMutated(table, body + mutation), mutation).toBe(true);
       expect(retainedEvidenceMutated(table, `delete from ${table}_unrelated where true;`)).toBe(false);
     }
+  });
+
+  it("retains unit fact revisions, current pointers, and epochs through project purge", () => {
+    const expected = ["work_unit_fact_revisions", "work_unit_fact_current", "work_unit_fact_context_epochs"] as const;
+    for (const table of expected) {
+      const disposition = UNIT_FACT_RETAINED[table];
+      expect(disposition.migration).toBe("20261108100000_work_unit_observations.sql");
+      expect(retainedEvidenceMutated(table, body)).toBe(false);
+      expect(purgeCovers(table, body)).toBe(true);
+      const definition = unitFactMigration.split(`create table public.${table} (`)[1]?.split("\n);")[0];
+      expect(definition, `${table} must be defined in the reviewed migration`).toBeDefined();
+      const operationalFks = [...(definition?.matchAll(/references\s+public\.([a-z0-9_]+)/gi) ?? [])]
+        .map(match => match[1]).filter(name => name !== "work_unit_fact_revisions");
+      expect(operationalFks, `${table} must not depend on a deletable operational row`).toEqual([]);
+      expect(definition).not.toMatch(/on delete (cascade|set null)/i);
+      expect(unitFactMigration).toContain(`alter table public.${table} enable row level security;`);
+      expect(unitFactMigration).toMatch(new RegExp(`revoke all on table public\\.${table} from public,\\s*anon,\\s*authenticated;`, "i"));
+      if (table === "work_unit_fact_revisions") {
+        expect(definition).toMatch(/\bid uuid primary key/);
+        expect(definition).toMatch(/\bunit_id uuid not null/);
+        expect(definition).toMatch(/\bcommand_id uuid not null/);
+        expect(definition).toMatch(/\borigin_project_id uuid,/);
+        expect(definition).toMatch(/\borigin_opening_id uuid,/);
+      } else if (table === "work_unit_fact_current") {
+        expect(definition).toMatch(/\bunit_id uuid primary key/);
+      } else {
+        expect(definition).toMatch(/\bprimary key \(scope_kind, scope_id\)/);
+      }
+      if (disposition.project === "nullable") {
+        expect(census[table]).toBe("project_id");
+        expect(definition).toMatch(/project_id uuid,/);
+        expect(definition).not.toMatch(/project_id uuid not null/i);
+      } else {
+        expect(census[table]).toBeUndefined();
+        expect(definition).not.toMatch(/\bproject_id\s+uuid\b/i);
+      }
+      // A stale purge definition that starts updating or deleting any of the
+      // retained graph must fail even though the table has a disposition.
+      for (const mutation of [
+        `delete from ${table} where true;`,
+        `DELETE FROM public.${table} AS evidence WHERE true;`,
+        `UPDATE\npublic.${table} evidence\nSET updated_at = now();`,
+      ]) expect(retainedEvidenceMutated(table, body + mutation), mutation).toBe(true);
+      expect(retainedEvidenceMutated(table, `delete from ${table}_unrelated where true;`)).toBe(false);
+    }
+    expect(purgeCovers("zztest_unreviewed_retained_unit_fact", body)).toBe(false);
   });
 
   it("deletes the projects row itself", () => {

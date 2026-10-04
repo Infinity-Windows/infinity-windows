@@ -885,6 +885,13 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     "work_configuration_draft_revisions": ("id",),
     "work_configuration_draft_pointers": ("kind", "code"),
     "work_session_capture_metadata": ('session_id',),
+    # Retained unit-observation graph (20261108100000). These are original
+    # private identities, not rows to reconstruct from a surviving unit/job:
+    # revisions are immutable, current is one pointer per original unit UUID,
+    # and epochs are original scope keys that prevent ABA after source purge.
+    "work_unit_fact_revisions": ("id",),
+    "work_unit_fact_current": ("unit_id",),
+    "work_unit_fact_context_epochs": ("scope_kind", "scope_id"),
 
 }
 
@@ -924,6 +931,12 @@ WORK_CAPTURE_MANUAL_RECONCILIATION_TABLES = frozenset({
     "work_configuration_commands",
     "work_configuration_draft_revisions",
     "work_configuration_draft_pointers",
+    # No generic import, identity remap, epoch reset, or ON CONFLICT DO
+    # NOTHING for the retained unit-fact graph. A reviewer must reconcile
+    # original source UUIDs, revisions, current pointers and scope epochs.
+    "work_unit_fact_revisions",
+    "work_unit_fact_current",
+    "work_unit_fact_context_epochs",
 })
 
 #: Tables where combining two projects' rows is meaningless or actively wrong.

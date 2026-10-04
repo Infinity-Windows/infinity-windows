@@ -210,7 +210,7 @@ class TestSchemaParsing(unittest.TestCase):
         # 20261035000000 to land after the bill-to migrations).
         # +10 monthly-values tables: private policy, immutable reviews and
         # frozen accounting/provenance, plus reserved reminder claims.
-        self.assertEqual(len(SCHEMA.tables), 210)  # includes capture foundation and three private configuration tables
+        self.assertEqual(len(SCHEMA.tables), 213)  # adds three retained unit-fact tables to the prior 210
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 
@@ -767,6 +767,60 @@ class TestPlan(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("personal_activity_commands: private work-capture evidence exists", output.getvalue())
         self.assertNotIn("insert into public.personal_activity_commands", output.getvalue())
+
+    def test_retained_unit_fact_graph_requires_manual_reconciliation_on_every_side(self):
+        identities = {
+            "work_unit_fact_revisions": ("id",),
+            "work_unit_fact_current": ("unit_id",),
+            "work_unit_fact_context_epochs": ("scope_kind", "scope_id"),
+        }
+        for table, key in identities.items():
+            with self.subTest(table=table):
+                self.assertEqual(DEDUP_KEYS[table], key)
+                self.assertIn(table, WORK_CAPTURE_MANUAL_RECONCILIATION_TABLES)
+                # A source row, a target-only row, and an inventory-only count
+                # are all blockers; a missing row payload cannot authorize an
+                # empty-looking generic insert for retained private history.
+                for source, target, source_rows, target_rows in [
+                    ({"tables": {table: {"rows": 1}}}, {}, {table: [{"id": "private-source"}]}, {}),
+                    ({}, {"tables": {table: {"rows": 1}}}, {}, {table: [{"id": "private-target"}]}),
+                    ({"tables": {table: {"rows": 1}}}, {}, {}, {}),
+                    ({}, {"tables": {table: {"rows": 1}}}, {}, {}),
+                ]:
+                    plan = Plan(SCHEMA, {"project_ref": "source", **source}, {"project_ref": "target", **target}, source_rows, target_rows, 0)
+                    self.assertEqual(plan.manual_capture_tables, [table])
+                    self.assertEqual(plan.statements(), [])
+                    text = render(plan, "source", "target")
+                    self.assertIn(table + ": private work-capture evidence exists", text)
+                    self.assertNotIn("insert into public." + table, text)
+                    self.assertNotIn("private-source", text)
+                    self.assertNotIn("private-target", text)
+
+    def test_cli_exits_two_for_source_target_and_count_only_unit_fact_graphs(self):
+        import tempfile
+        for table in ("work_unit_fact_revisions", "work_unit_fact_current", "work_unit_fact_context_epochs"):
+            for mode in ("source-rows", "target-rows", "count-only"):
+                with self.subTest(table=table, mode=mode), tempfile.TemporaryDirectory() as directory:
+                    source = Path(directory) / "source.json"
+                    target = Path(directory) / "target.json"
+                    empty = {"project_ref": "empty", "tables": {}}
+                    if mode == "source-rows":
+                        source.write_text(json.dumps({"project_id": "source", table: [{"id": "private-source"}]}))
+                        target.write_text(json.dumps(empty))
+                    elif mode == "target-rows":
+                        source.write_text(json.dumps(empty))
+                        target.write_text(json.dumps({"project_id": "target", table: [{"id": "private-target"}]}))
+                    else:
+                        source.write_text(json.dumps({"project_ref": "source", "tables": {table: {"rows": 1}}}))
+                        target.write_text(json.dumps({"project_ref": "target", "tables": {table: {"rows": 0}}}))
+                    output = io.StringIO()
+                    with contextlib.redirect_stdout(output):
+                        code = merge_plan_main(["--source", str(source), "--target", str(target)])
+                    self.assertEqual(code, 2)
+                    self.assertIn(table + ": private work-capture evidence exists", output.getvalue())
+                    self.assertNotIn("insert into public." + table, output.getvalue())
+                    self.assertNotIn("private-source", output.getvalue())
+                    self.assertNotIn("private-target", output.getvalue())
 
     def _plan(self, source_raw, target_raw, limit=0):
         import tempfile
