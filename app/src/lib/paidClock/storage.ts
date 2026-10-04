@@ -2,9 +2,10 @@ import { stillSignedInAs, subscribeSignedIn, type SignInMark } from "../signedIn
 import { cloneJson, uuid } from "../workConfiguration/model";
 import { isCurrentClockSafetyBasis, type ConfirmedClockSafetyBasis } from "./api";
 import { parseClockIntent, parseClockReceiptRead, type ClockIntent, type ClockReceipt } from "./protocol";
+import { notifyPaidClockChanges } from "./notifications";
 
 export const PAID_CLOCK_DB = "iw-paid-clock-chain-v1";
-export const PAID_CLOCK_EVENT = "forge:paid-clock-chain";
+export { PAID_CLOCK_EVENT } from "./notifications";
 export type ClockChainOrigin = { kind: "clock_command" | "shift"; id: string };
 export interface PaidClockDelivery {
   status: "queued" | "sending" | "uncertain" | "acknowledged" | "attention";
@@ -118,7 +119,7 @@ async function transaction<T>(login: SignInMark, owner: string, mode: IDBTransac
   }
   finally { unsubscribe(); }
 }
-function notify() { if (typeof window !== "undefined") window.dispatchEvent(new Event(PAID_CLOCK_EVENT)); }
+const notify = notifyPaidClockChanges;
 
 /** Every append, duplicate check and causal-head comparison shares ONE native owner transaction. */
 export async function appendPaidClockIntent(login: SignInMark, deviceId: string, raw: ClockIntent,

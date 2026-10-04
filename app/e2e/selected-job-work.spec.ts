@@ -304,7 +304,9 @@ test("selected-unit dimensions use the canonical durable queue and hold Specific
   await page.getByRole("button", { name: "Retry saved unit requests", exact: true }).click();
   await expect.poll(() => log.unitCommands.length).toBe(2);
   expect(log.unitCommands[1]).toEqual(saved); // same canonical UUID and frozen payload
-  expect(log.unitCommitted).toEqual([true, true]);
+  // The route logs its incoming command before awaiting the native commit
+  // check. Wait for that exact check too, without accepting an uncommitted send.
+  await expect.poll(() => log.unitCommitted).toEqual([true, true]);
   await page.getByRole("button", { name: "Refresh current unit", exact: true }).click();
   await expect(page.getByText("500 × 1000 mm", { exact: false })).toBeVisible();
   await expect(page.getByText("Estimate — not verified", { exact: true })).toBeVisible();

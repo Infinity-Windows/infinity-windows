@@ -21,11 +21,13 @@ const test = base.extend({
   },
 });
 const OWNER = TEST_USER.id, DEVICE = "00000000-0000-4000-8000-000000000401", SHIFT = "00000000-0000-4000-8000-000000000402";
-async function open(page: Page) {
+async function open(page: Page, withStatus=false) {
   await page.addInitScript(({ key, session }) => localStorage.setItem(key, JSON.stringify(session)), { key: FIXTURE_AUTH_KEY, session: FIXTURE_SESSION });
   await page.route("**/*", route => new URL(route.request().url()).hostname === "localhost" ? route.continue() : route.abort());
-  await page.route("**/paid-clock-chain-fixture", route => route.fulfill({ status: 200, contentType: "text/html", body: "<!doctype html><title>Native paid clock chain fixture</title><p>Native paid clock chain fixture</p>" }));
-  await page.goto("/paid-clock-chain-fixture");
+  await page.route("**/paid-clock-chain-fixture", route => route.fulfill({ status: 200, contentType: "text/html", body:
+    "<!doctype html><title>Native paid clock chain fixture</title><p>Native paid clock chain fixture</p>" }));
+  // Let Vite transform the React fixture HTML and install its refresh preamble.
+  await page.goto(withStatus?"/e2e/support/paid-clock-status.html":"/paid-clock-chain-fixture");
   await page.evaluate(async owner => {
     // @ts-expect-error Vite resolves browser module paths.
     const auth = await import("/src/lib/signedIn.ts"); auth.rememberSignedIn({ user: { id: owner } });
@@ -265,4 +267,65 @@ test("a fresh removed-source receipt holds an explicit-shift descendant and pres
   expect(reads).toEqual([{p_client_id:start}]); // no end_break call against the removed source
   expect(result.rows.find((r:PaidClockRecord)=>r.clientId===start)?.delivery.receipt).toEqual(historical);
   expect(result.rows.find((r:PaidClockRecord)=>r.clientId===end)?.delivery).toMatchObject({status:"attention",attentionReason:"source_removed",everAttempted:false});
+});
+
+test("the recovery view wakes current tabs, preserves an unknown original and never claims a current shift from delivery history", async ({ page, context }) => {
+  await open(page,true); const other=await context.newPage(); await open(other,true);
+  await expect(page.getByRole("button",{name:"Remount reader"})).toBeVisible();
+  await expect(other.getByRole("button",{name:"Remount reader"})).toBeVisible();
+  const clientId="00000000-0000-4000-8000-000000000471", calls:Record<string,unknown>[]=[];
+  const stamp={clientId,tappedAt:"2026-10-04T08:00:00.123456-06:00",clockCheckedAt:null,clockSkewMs:null};
+  let receiptReady=false;
+  await other.evaluate(()=>{
+    const channel=new BroadcastChannel("forge-paid-clock-chain-wake-v1");
+    const observed:unknown[]=[]; channel.onmessage=event=>observed.push(event.data);
+    (window as Window & {paidWakeMessages?:unknown[]}).paidWakeMessages=observed;
+  });
+  await page.route("**/rest/v1/rpc/*",route=>{
+    const rpc=new URL(route.request().url()).pathname.split("/").at(-1);
+    if(rpc==="work_activity_clock_receipt") return json(route,receiptReady?{
+      protocolVersion:1,availability:"available",receipt:{...stamp,action:"clock_in",outcome:"clocked_in",shiftId:SHIFT,
+        arrivedAt:"2026-10-04T14:30:01Z",usedTapTime:true,reviewReason:null,receiptProtocol:"setup_v1",retention:"retained",sourcePresent:true,activityTransition:null},
+    }:{protocolVersion:1,availability:"unavailable",receipt:null},null);
+    expect(rpc).toBe("clock_in");calls.push(route.request().postDataJSON());
+    return calls.length===1?route.abort("failed"):route.fulfill({status:403,contentType:"application/json",body:JSON.stringify({code:"42501",message:"fixture first reply was unknown"})});
+  });
+  const submitted=await page.evaluate(async original=>{
+    // @ts-expect-error Vite resolves browser module paths.
+    const c=await import("/src/lib/paidClock/coordinator.ts");
+    // @ts-expect-error Vite resolves browser module paths.
+    const auth=await import("/src/lib/signedIn.ts");
+    return c.submitPaidClockIntent(auth.signInMark(),c.paidSetupIntent(original),null);
+  },stamp);
+  expect(submitted).toEqual({kind:"saved",clientId,dispatch:{kind:"held",reason:"unknown"}});
+  for(const tab of [page,other]) await expect(tab.getByText("Confirmation pending · Forge may already have received this punch",{exact:true})).toBeVisible();
+  const wakeMessages=await other.evaluate(()=>(window as Window & {paidWakeMessages?:unknown[]}).paidWakeMessages);
+  expect(wakeMessages!.length).toBeGreaterThan(0);expect(wakeMessages!.every(value=>value===null)).toBe(true);
+  expect(calls).toHaveLength(1);
+  await page.getByRole("button",{name:"Check confirmation",exact:true}).click();
+  await expect(page.getByText("No new confirmation was found.",{exact:false})).toBeVisible();expect(calls).toHaveLength(1);
+  await page.getByRole("button",{name:"Resend original punch",exact:true}).click();
+  await expect.poll(()=>calls.length).toBe(2);expect(calls[1]).toEqual(calls[0]);
+  expect(calls[0].p_tapped_at).toBe(stamp.tappedAt);expect(calls[0].p_client_id).toBe(clientId);expect(Object.keys(calls[0])).toHaveLength(12);
+  await context.setOffline(true);
+  await expect(page.getByRole("button",{name:"Resend original punch",exact:true})).toBeDisabled();
+  for(const language of ["en","es"]){
+    if(language==="es") await page.getByRole("button",{name:"EN / ES"}).click();
+    for(const viewport of [{width:320,height:844},{width:390,height:844},{width:844,height:390}]){
+      await page.setViewportSize(viewport);
+      await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBe(0);
+      expect(await page.locator(".paid-clock-actions button").evaluateAll(buttons=>buttons.every(button=>button.getBoundingClientRect().height>=44))).toBe(true);
+      if(viewport.width===320) await page.screenshot({path:`e2e/__screenshots__/paid-clock-recovery-${language}-320.png`,fullPage:true});
+    }
+  }
+  await page.getByRole("button",{name:"Remount reader"}).click();
+  await expect(page.getByText("Confirmación pendiente · Forge puede haber recibido esta marcación",{exact:true})).toBeVisible();expect(calls).toHaveLength(2);
+  await context.setOffline(false);await page.getByRole("button",{name:"EN / ES"}).click();
+  await page.reload();await expect(page.getByText("Confirmation pending · Forge may already have received this punch",{exact:true})).toBeVisible();expect(calls).toHaveLength(2);
+  receiptReady=true;await page.getByRole("button",{name:"Check confirmation",exact:true}).click();
+  for(const tab of [page,other]) await expect(tab.getByText("Delivery confirmed · historical receipt",{exact:true})).toBeVisible();
+  await expect(page.getByText("A receipt confirms delivery of that punch.",{exact:false})).toBeVisible();
+  await expect(page.getByText("Start-of-day setup",{exact:false})).toHaveCount(0);expect(calls).toHaveLength(2);
+  await page.getByRole("button",{name:"Logout fixture"}).click();await expect(page.locator("[data-clock-request]")).toHaveCount(0);
+  await page.getByRole("button",{name:"Login fixture"}).click();await expect(page.getByText("Delivery confirmed · historical receipt",{exact:true})).toBeVisible();expect(calls).toHaveLength(2);
 });
