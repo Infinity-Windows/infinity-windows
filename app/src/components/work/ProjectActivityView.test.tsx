@@ -12,12 +12,12 @@ let host: HTMLDivElement;
 let root: Root;
 const basis: FrozenUnitBasis = {
   id: "unit-42", operationalRevision: 7, factId: "fact-9", factRevision: 3,
-  incarnationEpoch: 2, bindingEpoch: 4,
+  incarnationEpoch: 2, bindingEpoch: 4, projectEpoch: 3, openingEpoch: 8, originProjectEpoch: 2, originOpeningEpoch: 7,
 };
 const general: ActivityChoice = {
   selectionId: "selection-1", selectionRevision: 5, menuVersionId: "menu-v3",
   definitionVersionId: "unload-v2", scope: "general", label: { en: "Unload product", es: "Descargar producto" },
-  kind: "activity", personalSeconds: 3660, scopeTotalSeconds: 7200, eligible: true,
+  kind: "activity", fields: [], personalSeconds: 3660, scopeTotalSeconds: 7200, eligible: true,
 };
 const machineGeneral: ActivityChoice = {
   ...general, definitionVersionId: "machine-v1", kind: "machinery",
@@ -89,7 +89,7 @@ describe("selected-job activity view", () => {
     expect(intents).toEqual([{
       projectId: "project-a", selectionId: "selection-1", selectionRevision: 5,
       menuVersionId: "menu-v3", definitionVersionId: "frame-v4", scope: "specific",
-      unit: basis, machineKind: null,
+      unit: basis, machineKind: null, values: {},
     }]);
     expect(Object.isFrozen(intents[0])).toBe(true);
     expect(Object.isFrozen(intents[0].unit)).toBe(true);
@@ -214,4 +214,49 @@ describe("selected-job activity view", () => {
     expect(host.textContent).toContain("Guardado en este teléfono");
     expect((host.querySelector(".pav-tile") as HTMLButtonElement).disabled).toBe(true);
   });
+  it("collects required answers before dispatch, preserving false and zero across language changes", async () => {
+    const choice: ActivityChoice = { ...general, fields: [
+      { id: "count", type: "number", required: true, unit: "count", label_en: "Count", label_es: "Cantidad" },
+      { id: "ready", type: "boolean", required: true, label_en: "Ready", label_es: "Listo" },
+    ] };
+    await render({ catalog: { ...props.catalog, general: [choice] } });
+    await click("Unload product"); expect(intents).toEqual([]);
+    await click("Start activity"); expect(intents).toEqual([]);
+    expect(host.textContent).toContain("Choose or enter an answer");
+    const input = host.querySelector(".paf input") as HTMLInputElement;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "0");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      const select = host.querySelector(".paf select") as HTMLSelectElement;
+      select.value = "false"; select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await render({ locale: "es" });
+    expect((host.querySelector(".paf input") as HTMLInputElement).value).toBe("0");
+    expect((host.querySelector(".paf select") as HTMLSelectElement).value).toBe("false");
+    await click("Iniciar actividad"); await flush();
+    expect(intents).toHaveLength(1); expect(intents[0].values).toEqual({ count: 0, ready: false });
+    expect(Object.isFrozen(intents[0].values)).toBe(true);
+  });
+
+  it("requires machinery and answers together, and discards a stale schema without switching", async () => {
+    const choice: ActivityChoice = { ...machineGeneral, fields: [
+      { id: "note", type: "text", required: true, label_en: "Note", label_es: "Nota" },
+    ] };
+    await render({ catalog: { ...props.catalog, general: [choice] } });
+    await click("Operating Machinery"); await click("Forklift");
+    expect(intents).toEqual([]);
+    await click("Start activity"); expect(intents).toEqual([]);
+    await render({ catalog: { ...props.catalog, general: [{ ...choice, fields: [{ ...choice.fields[0], id: "different" }] }] } });
+    expect(host.querySelector('[role="dialog"]')).toBeNull(); expect(intents).toEqual([]);
+  });
+
+  it("closes a pending Specific choice for every current or origin project/opening epoch change", async () => {
+    for (const key of ["projectEpoch", "openingEpoch", "originProjectEpoch", "originOpeningEpoch"] as const) {
+      await render({ tab: "specific", selectedUnitBasis: basis });
+      await click("Operating Machinery"); expect(host.querySelector('[role="dialog"]')).not.toBeNull();
+      await render({ selectedUnitBasis: { ...basis, [key]: (basis[key] ?? 0) + 1 } });
+      expect(host.querySelector('[role="dialog"]')).toBeNull(); expect(intents).toEqual([]);
+    }
+  });
+
 });

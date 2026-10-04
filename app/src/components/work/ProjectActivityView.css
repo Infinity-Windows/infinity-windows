@@ -59,8 +59,11 @@
 .pav-machine-dialog h2 { margin: 0 0 5px; font-size: 1.2rem; }
 .pav-machine-dialog p { margin: 0 0 14px; color: var(--pav-muted); font-size: .85rem; }
 .pav-machine-options { display: grid; gap: 8px; }
-.pav-machine-options button, .pav-cancel { width: 100%; min-height: 46px; border: 1px solid #a7c3ae; border-radius: 10px; background: #e9f6ec; color: var(--pav-ink); font-weight: 750; }
+.pav-machine-options button, .pav-cancel, .pav-confirm { width: 100%; min-height: 46px; border: 1px solid #a7c3ae; border-radius: 10px; background: #e9f6ec; color: var(--pav-ink); font-weight: 750; }
 .pav-cancel { margin-top: 12px; background: #fff; }
 @media (min-width: 720px) { .pav-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 350px) { .pav { padding-left: 8px; padding-right: 8px; } .pav-actions { gap: 4px; } .pav-actions button { font-size: .74rem; } .pav-clock { padding: 6px 7px; } }
 @media (max-height: 440px) and (orientation: landscape) { .pav-machine-dialog { max-height: calc(100dvh - 24px); } }
+
+.pav-confirm { margin-top: 12px; }
+.pav-machine-options button[aria-pressed="true"] { background: #cce8d3; border-color: #36764b; }

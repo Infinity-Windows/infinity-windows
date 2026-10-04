@@ -13,7 +13,10 @@ function choices(scope:ActivityScope):ActivityChoice[] {
     selectionId:"00000000-0000-4000-8000-000000000003",selectionRevision:2,menuVersionId:"00000000-0000-4000-8000-000000000004",
     definitionVersionId:`00000000-0000-4000-8000-00000000001${index}`,scope,
     label:{en:label,es:index===1?"Mover unidades pesadas con maquinaria":"Comprobar dimensiones de unidades de aluminio muy largas"},
-    kind:index===1?"machinery":"activity",personalSeconds:index===2?null:1800,scopeTotalSeconds:index===2?null:9000,eligible:true,
+    fields:index===2?[
+      {id:"count",type:"number",unit:"count",required:true,label_en:"Count",label_es:"Cantidad"},
+      {id:"ready",type:"boolean",required:true,label_en:"Ready",label_es:"Listo"},
+    ]:[],kind:index===1?"machinery":"activity",personalSeconds:index===2?null:1800,scopeTotalSeconds:index===2?null:9000,eligible:true,
   }));
 }
 const GENERAL=choices("general"),SPECIFIC=choices("specific");
@@ -30,7 +33,7 @@ function Harness(){
       running={{projectId:PROJECT,definitionVersionId:GENERAL[0].definitionVersionId,unitId:null,label:GENERAL[0].label,scope:"general",status:"confirmed"}}
       catalog={{status:unavailable?"unavailable":"ready",capturable:!unavailable,general:GENERAL,specific:SPECIFIC}}
       units={[{id:UNIT,label:"Unit 12 with an unusually long description of an aluminum assembly and components",detail:"Third floor · Plans A12"}]}
-      selectedUnitId={UNIT} selectedUnitState="ready" selectedUnitBasis={{id:UNIT,operationalRevision:5,factId:"00000000-0000-4000-8000-000000000020",factRevision:3,incarnationEpoch:1,bindingEpoch:2}}
+      selectedUnitId={UNIT} selectedUnitState="ready" selectedUnitBasis={{id:UNIT,operationalRevision:5,factId:"00000000-0000-4000-8000-000000000020",factRevision:3,incarnationEpoch:1,bindingEpoch:2,projectEpoch:3,openingEpoch:4,originProjectEpoch:2,originOpeningEpoch:3}}
       onSelectUnit={()=>{}} onAddUnit={control("add")} dimensionsSlot={<DimensionObservationFields value={draft} onChange={setDraft}/>}
       activityPending={pending} onStartActivity={async intent=>{setIntents(old=>[...old,intent]);setPending(true);}}
       onOpenClock={control("clock")} onBreak={control("break")} onClockOut={control("out")} onSchedule={control("schedule")} onAsk={control("ask")}/>

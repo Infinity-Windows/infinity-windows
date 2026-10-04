@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import "./ProjectActivityView.css";
+import { ActivityAnswerFields } from "./ActivityAnswerFields";
+import { cloneJson, typedFields, type TypedField } from "../../lib/workConfiguration/model";
+import { validateActivityAnswers, type AnswerDraft, type AnswerIssue, type AnswerValue } from "../../lib/workConfiguration/answers";
+import type { UnitCommandBasis } from "../../lib/workActivity/protocol";
 
 export type ActivityScope = "general" | "specific";
 export type WorkLocale = "en" | "es";
@@ -14,6 +18,7 @@ export interface ActivityChoice {
   scope: ActivityScope;
   label: { en: string; es: string };
   kind: "activity" | "machinery";
+  fields: readonly TypedField[];
   /** Verified personal accumulated seconds, or null when no trustworthy total is available. */
   personalSeconds: number | null;
   /** Verified total for this activity in its job or selected unit, including live time only if reconciled upstream. */
@@ -29,14 +34,7 @@ export interface WorkUnitChoice {
   detail?: string;
 }
 
-export interface FrozenUnitBasis {
-  id: string;
-  operationalRevision: number;
-  factId: string;
-  factRevision: number;
-  incarnationEpoch: number;
-  bindingEpoch: number;
-}
+export type FrozenUnitBasis = UnitCommandBasis;
 
 export interface ActivityIntent {
   projectId: string;
@@ -47,6 +45,7 @@ export interface ActivityIntent {
   menuVersionId: string;
   definitionVersionId: string;
   machineKind: MachineKind | null;
+  values: Readonly<Record<string, Exclude<AnswerValue, string[]> | readonly string[]>>;
 }
 
 export interface RunningActivity {
@@ -110,7 +109,7 @@ const words = {
     readError: "Published activities are unavailable. Try again from the Work screen.",
     empty: "No published activities are available for this scope.", selectMachine: "Choose machinery",
     machineHelp: "Your current activity keeps running until you choose a machine.",
-    cancel: "Cancel",
+    cancel: "Cancel", details: "Activity details", confirm: "Start activity", detailsHelp: "Your current activity keeps running until you confirm.", detailsUnavailable: "Activity details are unavailable. Choose the activity again.",
     forklift: "Forklift", tele_handler: "Tele-Handler", scissor_lift: "Scissor Lift",
     spider_suction: "Spider suction cup machine",
   },
@@ -126,7 +125,7 @@ const words = {
     readError: "Las actividades publicadas no están disponibles. Inténtalo de nuevo desde Trabajo.",
     empty: "No hay actividades publicadas para este grupo.", selectMachine: "Elige maquinaria",
     machineHelp: "Tu actividad actual continúa hasta que elijas una máquina.",
-    cancel: "Cancelar",
+    cancel: "Cancelar", details: "Detalles de la actividad", confirm: "Iniciar actividad", detailsHelp: "Tu actividad actual continúa hasta que confirmes.", detailsUnavailable: "Los detalles de la actividad no están disponibles. Elige la actividad otra vez.",
     forklift: "Montacargas", tele_handler: "Manipulador telescópico", scissor_lift: "Plataforma de tijera",
     spider_suction: "Máquina de ventosas Spider",
   },
@@ -141,13 +140,22 @@ function duration(seconds: number | null, unavailable: string): string {
 function sameUnitBasis(a: FrozenUnitBasis | null, b: FrozenUnitBasis | null): boolean {
   return a === b || (!!a && !!b && a.id === b.id && a.operationalRevision === b.operationalRevision &&
     a.factId === b.factId && a.factRevision === b.factRevision &&
-    a.incarnationEpoch === b.incarnationEpoch && a.bindingEpoch === b.bindingEpoch);
+    a.incarnationEpoch === b.incarnationEpoch && a.bindingEpoch === b.bindingEpoch &&
+    a.projectEpoch === b.projectEpoch && a.openingEpoch === b.openingEpoch &&
+    a.originProjectEpoch === b.originProjectEpoch && a.originOpeningEpoch === b.originOpeningEpoch);
+}
+
+function schemaSignature(fields: readonly TypedField[]): string | null {
+  try { return JSON.stringify(typedFields(cloneJson(fields))); } catch { return null; }
 }
 
 export function ProjectActivityView(props: ProjectActivityViewProps) {
   const { locale, project, tab, catalog, selectedUnitId, selectedUnitState } = props;
   const t = words[locale];
-  const [machineChoice, setMachineChoice] = useState<{ choice: ActivityChoice; unit: FrozenUnitBasis | null } | null>(null);
+  const [machineChoice, setMachineChoice] = useState<{ choice: ActivityChoice; unit: FrozenUnitBasis | null; machine: MachineKind | null } | null>(null);
+  const [draft, setDraft] = useState<AnswerDraft>({});
+  const [answerErrors, setAnswerErrors] = useState<Record<string, AnswerIssue>>({});
+  const [detailsUnavailable, setDetailsUnavailable] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const inFlight = useRef(false);
   const chosenUnit = props.units.find((unit) => unit.id === selectedUnitId) ?? null;
@@ -158,7 +166,8 @@ export function ProjectActivityView(props: ProjectActivityViewProps) {
   const unitBasis = props.selectedUnitBasis;
   const basisSignature = unitBasis ? JSON.stringify([
     unitBasis.id, unitBasis.operationalRevision, unitBasis.factId, unitBasis.factRevision,
-    unitBasis.incarnationEpoch, unitBasis.bindingEpoch,
+    unitBasis.incarnationEpoch, unitBasis.bindingEpoch, unitBasis.projectEpoch, unitBasis.openingEpoch,
+    unitBasis.originProjectEpoch, unitBasis.originOpeningEpoch,
   ]) : "";
   useEffect(() => { setMachineChoice(null); }, [project.id, tab, selectedUnitId, basisSignature]);
   useEffect(() => {
@@ -169,11 +178,12 @@ export function ProjectActivityView(props: ProjectActivityViewProps) {
       choice.selectionRevision === machineChoice.choice.selectionRevision &&
       choice.menuVersionId === machineChoice.choice.menuVersionId &&
       choice.definitionVersionId === machineChoice.choice.definitionVersionId &&
-      choice.eligible && choice.kind === "machinery"
+      choice.eligible && choice.kind === machineChoice.choice.kind &&
+      schemaSignature(choice.fields) !== null && schemaSignature(choice.fields) === schemaSignature(machineChoice.choice.fields)
     )) setMachineChoice(null);
   }, [catalog, machineChoice]);
 
-  async function start(choice: ActivityChoice, machine: MachineKind | null, unit: FrozenUnitBasis | null) {
+  async function start(choice: ActivityChoice, machine: MachineKind | null, unit: FrozenUnitBasis | null, answers: AnswerDraft = {}) {
     if (inFlight.current || !canStart || !scopeReady || !choice.eligible || choice.scope !== tab) return;
     if (choice.kind === "machinery" && (!machine || !machines[tab].includes(machine))) return;
     if (choice.kind === "activity" && machine !== null) return;
@@ -183,12 +193,16 @@ export function ProjectActivityView(props: ProjectActivityViewProps) {
     if (!liveChoices.some((item) =>
       item.selectionId === choice.selectionId && item.selectionRevision === choice.selectionRevision &&
       item.menuVersionId === choice.menuVersionId && item.definitionVersionId === choice.definitionVersionId &&
-      item.kind === choice.kind && item.eligible
+      item.kind === choice.kind && item.eligible && schemaSignature(item.fields) !== null && schemaSignature(item.fields) === schemaSignature(choice.fields)
     )) return;
+    const validated = validateActivityAnswers(choice.fields, answers);
+    if (!validated.ok) { setAnswerErrors(validated.errors); return; }
+    const values = Object.freeze(Object.fromEntries(Object.entries(validated.values).map(([id, value]) =>
+      [id, Array.isArray(value) ? Object.freeze([...value]) : value])));
     const intent: ActivityIntent = Object.freeze({
       projectId: project.id, unit: unit ? Object.freeze({ ...unit }) : null, scope: tab,
       selectionId: choice.selectionId, selectionRevision: choice.selectionRevision,
-      menuVersionId: choice.menuVersionId, definitionVersionId: choice.definitionVersionId, machineKind: machine,
+      menuVersionId: choice.menuVersionId, definitionVersionId: choice.definitionVersionId, machineKind: machine, values,
     });
     inFlight.current = true;
     setSubmitting(true);
@@ -205,9 +219,14 @@ export function ProjectActivityView(props: ProjectActivityViewProps) {
 
   function choose(choice: ActivityChoice) {
     if (!canStart || !scopeReady || !choice.eligible) return;
-    const unit = tab === "specific" ? props.selectedUnitBasis : null;
-    if (choice.kind === "machinery") setMachineChoice({ choice, unit });
-    else void start(choice, null, unit);
+    setDetailsUnavailable(false);
+    const unit = tab === "specific" && props.selectedUnitBasis ? Object.freeze({ ...props.selectedUnitBasis }) : null;
+    let frozenChoice: ActivityChoice;
+    try { frozenChoice = { ...choice, label: { ...choice.label }, fields: typedFields(cloneJson(choice.fields)) }; }
+    catch { setDetailsUnavailable(true); return; }
+    if (choice.kind === "machinery" || frozenChoice.fields.length > 0) {
+      setDraft({}); setAnswerErrors({}); setMachineChoice({ choice: frozenChoice, unit, machine: null });
+    } else void start(frozenChoice, null, unit);
   }
 
   return (
@@ -267,6 +286,7 @@ export function ProjectActivityView(props: ProjectActivityViewProps) {
           <h2>{tab === "general" ? t.general : t.specific}</h2>
           <span>{tab === "general" ? t.generalTotal : t.specificTotal}: <strong>{duration(props.scopeSeconds[tab], t.unavailable)}</strong></span>
         </div>
+        {detailsUnavailable && <p className="pav-note" role="alert">{t.detailsUnavailable}</p>}
         {props.activityStatus && <p className="pav-note" role={props.activityStatus.kind === "error" ? "alert" : "status"}>{props.activityStatus.message}</p>}
         {catalog.status === "ready" && !catalog.capturable && <p className="pav-note" role="status">{catalog.blockReason ?? t.readError}</p>}
         {catalog.status !== "ready" ? <p className="pav-note" role="status">{catalog.status === "loading" ? t.loading : t.readError}</p>
@@ -290,12 +310,22 @@ export function ProjectActivityView(props: ProjectActivityViewProps) {
       </div>
 
       {machineChoice && <div className="pav-machine-backdrop">
-        <div className="pav-machine-dialog" role="dialog" aria-modal="true" aria-label={t.selectMachine}>
-          <h2>{t.selectMachine}</h2><p>{t.machineHelp}</p>
-          <div className="pav-machine-options">
-            {machines[tab].map((machine) => <button key={machine} type="button"
-              disabled={!canStart || !scopeReady} onClick={() => void start(machineChoice.choice, machine, machineChoice.unit)}>{t[machine]}</button>)}
-          </div>
+        <div className="pav-machine-dialog" role="dialog" aria-modal="true" aria-label={machineChoice.choice.kind === "machinery" ? t.selectMachine : t.details}>
+          <h2>{machineChoice.choice.kind === "machinery" ? t.selectMachine : t.details}</h2>
+          <p>{machineChoice.choice.kind === "machinery" ? t.machineHelp : t.detailsHelp}</p>
+          {machineChoice.choice.kind === "machinery" && <div className="pav-machine-options">
+            {machines[tab].map((machine) => <button key={machine} type="button" aria-pressed={machineChoice.machine === machine}
+              disabled={!canStart || !scopeReady} onClick={() => {
+                if (machineChoice.choice.fields.length === 0) void start(machineChoice.choice, machine, machineChoice.unit);
+                else setMachineChoice({ ...machineChoice, machine });
+              }}>{t[machine]}</button>)}
+          </div>}
+          {machineChoice.choice.fields.length > 0 && <>
+            <ActivityAnswerFields fields={machineChoice.choice.fields} value={draft} onChange={(next) => { setDraft(next); setAnswerErrors({}); }}
+              locale={locale} disabled={!canStart || !scopeReady} invalid={answerErrors} />
+            <button type="button" className="pav-confirm" disabled={!canStart || !scopeReady || (machineChoice.choice.kind === "machinery" && !machineChoice.machine)}
+              onClick={() => void start(machineChoice.choice, machineChoice.machine, machineChoice.unit, draft)}>{t.confirm}</button>
+          </>}
           <button type="button" className="pav-cancel" onClick={() => setMachineChoice(null)}>{t.cancel}</button>
         </div>
       </div>}

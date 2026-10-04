@@ -52,3 +52,16 @@ test("unknown totals stay unavailable and paid controls remain usable under refu
   for(const name of ["Your clock","Break","Clock out","Schedule","Ask"]){const control=page.getByRole("button",{name,exact:true});await expect(control).toBeEnabled();await control.click();}
   await expect(page.getByTestId("controls-json")).toHaveText('["clock","break","out","schedule","ask"]');await expect(page.getByTestId("intent-count")).toHaveText("0");
 });
+
+test("published questions retain zero and false across language change before one confirmed intent",async({page})=>{
+  await page.getByRole("button",{name:"Checking floor and opening dimensions",exact:true}).click();
+  await page.getByRole("button",{name:"Start activity",exact:true}).click();await expect(page.getByTestId("intent-count")).toHaveText("0");
+  await page.getByRole("textbox",{name:"Count",exact:false}).fill("0");await page.getByRole("combobox",{name:"Ready",exact:false}).selectOption("false");
+  // The fixture's outer language control sits behind the modal backdrop.
+  await page.getByRole("button",{name:"Change language",exact:true}).evaluate(button=>(button as HTMLButtonElement).click());
+  await expect(page.getByRole("textbox",{name:"Cantidad",exact:false})).toHaveValue("0");await expect(page.getByRole("combobox",{name:"Listo",exact:false})).toHaveValue("false");
+  await page.setViewportSize({width:320,height:720});await fits(page);
+  await page.screenshot({path:test.info().outputPath("es-answers-320.png"),fullPage:true});
+  await page.getByRole("button",{name:"Iniciar actividad",exact:true}).click();
+  await expect(page.getByTestId("intent-count")).toHaveText("1");const intents=JSON.parse(await page.getByTestId("intent-json").innerText());expect(intents[0].values).toEqual({count:0,ready:false});
+});
