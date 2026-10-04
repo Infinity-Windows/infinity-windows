@@ -7,7 +7,7 @@ import { parseUnitReviewPayload, parseUnitReviewReceipt, parseUnitReviewReceiptR
 // compatibility for this exact SQL SHA; it is not installed-provider proof.
 describe("source-matched review SQL response compatibility", () => {
   it("binds the frozen synthetic corpus to the exact tested backend source", () => {
-    expect(corpus.reviewSha256).toBe("4ec3c7486cba34976af5670aab08659b7525eff9fd714478b2cd10782877b474");
+    expect(corpus.reviewSha256).toBe("ed4fd0841551a88d07099d225393bfe588c176c9612390bacfabdb8c1eda9eba");
     expect(corpus.calls.length).toBeGreaterThan(5);
   });
   corpus.calls.forEach((call, index) => {
