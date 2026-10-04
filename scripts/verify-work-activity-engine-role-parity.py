@@ -16,7 +16,7 @@ from urllib.parse import urlparse, urlunparse
 
 ROOT = Path(__file__).resolve().parent.parent
 DATABASE = 'forge_work_activity_role_test'
-BOOTSTRAP = 'forge_fixture_bootstrap'
+BOOTSTRAP = 'supabase_admin'
 ROLE_FILE = ROOT/'scripts/fixtures/work-activity-engine-role-parity.json'
 EXPECTED_ROLE_SHA = '7df27ee90e2358a7b90eab3104f54b80c24537e736dde4555b101690e57513d2'
 EXPECTED_SCHEMA_SHA = 'ee41a980b19f76baa8637101b62703ecdf798a32eccbb0e9f074fbfd71c62471'
@@ -51,7 +51,7 @@ def attributes(role):
 # are created first, but never made SUPERUSER for convenience during app DDL.
 creation=[]
 for role in metadata['roles']:
-    if role['name'].startswith('pg_'):
+    if role['name'].startswith('pg_') or role['name']==BOOTSTRAP:
         continue # Existing PG17 built-ins must compare exactly below.
     creation.append(f"CREATE ROLE {qi(role['name'])} {attributes(role)};")
 # Database ACL-only roles do not belong to either runtime actor's grant closure.
@@ -64,8 +64,10 @@ for name in ('postgres','authenticator'):
     creation.append(f"ALTER ROLE {qi(name)} PASSWORD 'fixture-only';")
 
 memberships=[]
-# Built-in pg_monitor memberships have the bootstrap role as grantor on a fresh
-# cluster. Replace only this metadata closure and restore actual grantor/options.
+# PostgreSQL attributes superuser membership GRANT to the cluster bootstrap
+# role, even after SET ROLE. Initialize with the actual bootstrap name
+# supabase_admin; postgres remains a separate non-superuser source owner.
+# Replace only this metadata closure and restore actual grantor/options.
 for member in roles:
     memberships.append("DO $$DECLARE m record;BEGIN FOR m IN SELECT r.rolname FROM pg_auth_members a JOIN pg_roles r ON r.oid=a.roleid JOIN pg_roles u ON u.oid=a.member WHERE u.rolname="+ql(member)+" LOOP EXECUTE format('REVOKE %I FROM %I CASCADE',m.rolname,"+ql(member)+");END LOOP;END$$;")
 memberships.append('SET ROLE supabase_admin;')
@@ -123,7 +125,7 @@ try:
 except ValueError:
     raise SystemExit('Refused invalid local fixture URL')
 if parsed.scheme not in ('postgres','postgresql') or parsed.hostname not in ('localhost','127.0.0.1') or port not in (None,5432) or parsed.path!='/'+DATABASE or parsed.username!=BOOTSTRAP or parsed.query or parsed.fragment:
-    raise SystemExit('Refused: exact fresh localhost forge_work_activity_role_test and forge_fixture_bootstrap login required')
+    raise SystemExit('Refused: exact fresh localhost forge_work_activity_role_test and supabase_admin bootstrap login required')
 env={k:v for k,v in os.environ.items() if not k.startswith('PG')};env['PGCONNECT_TIMEOUT']='3'
 checks=0
 
@@ -145,7 +147,7 @@ def check(condition,label):
     checks+=1
 
 check(run('select current_database()')==DATABASE,'Exact fixture database')
-check(run("select (session_user='forge_fixture_bootstrap' and current_user=session_user and (select rolsuper from pg_roles where rolname=session_user))::int")=='1','Separate bootstrap login')
+check(run("select (session_user='supabase_admin' and current_user=session_user and (select rolsuper from pg_roles where rolname=session_user))::int")=='1','Separate bootstrap login')
 check(run("select current_setting('server_version_num')::int/10000")=='17','Installed major version')
 check(run("select (exists(select 1 from pg_namespace where nspname not in ('public','information_schema') and left(nspname,3)<>'pg_') or exists(select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace where left(n.nspname,3)<>'pg_' and n.nspname<>'information_schema') or exists(select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public') or exists(select 1 from pg_type t join pg_namespace n on n.oid=t.typnamespace where n.nspname='public'))::int")=='0','Fresh schema only')
 run('\n'.join(creation))
@@ -159,6 +161,9 @@ for role in metadata['roles']:
     row=json.loads(run("select json_build_object('name',rolname,'superuser',rolsuper,'inherit',rolinherit,'createRole',rolcreaterole,'createDatabase',rolcreatedb,'canLogin',rolcanlogin,'replication',rolreplication,'bypassRls',rolbypassrls,'connectionLimit',rolconnlimit) from pg_roles where rolname="+ql(role['name'])))
     check(row==role,'Exact attributes '+role['name'])
 actual=json.loads(run("select coalesce(json_agg(json_build_object('role',r.rolname,'member',u.rolname,'grantor',g.rolname,'adminOption',a.admin_option,'inheritOption',a.inherit_option,'setOption',a.set_option) order by r.rolname,u.rolname,g.rolname),'[]') from pg_auth_members a join pg_roles r on r.oid=a.roleid join pg_roles u on u.oid=a.member join pg_roles g on g.oid=a.grantor where u.rolname=any(array["+','.join(ql(r) for r in roles)+"])"))
+if actual!=metadata['memberships']:
+    print(json.dumps({'membershipMismatch':{'missing':[m for m in metadata['memberships'] if m not in actual],
+          'extra':[m for m in actual if m not in metadata['memberships']]}}))
 check(actual==metadata['memberships'],'Exact direct grant paths/options/grantors')
 for path in metadata['rolePaths']:
     actual=json.loads(run("select json_build_object('member',pg_has_role("+ql(path['actor'])+','+ql(path['target'])+",'MEMBER'),'usage',pg_has_role("+ql(path['actor'])+','+ql(path['target'])+",'USAGE'),'set',pg_has_role("+ql(path['actor'])+','+ql(path['target'])+",'SET'))"))

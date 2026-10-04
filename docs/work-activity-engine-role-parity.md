@@ -14,7 +14,7 @@ values; it contains no employee rows or passwords.
 
 The harness requires a fresh, exact-name `forge_work_activity_role_test` database
 on localhost port 5432, initialized with the separate
-`forge_fixture_bootstrap` superuser. That role imports the immutable application
+`supabase_admin` superuser (the installed bootstrap role identity). That role imports the immutable application
 schema and prepares the installed roles. The actual cutover DDL runs through a
 new `postgres` login with the installed NOSUPERUSER, BYPASSRLS, CREATEROLE,
 CREATEDB and REPLICATION attributes. It is never temporarily made superuser.
@@ -80,3 +80,15 @@ schema and cutover exports each round-tripped in a fresh PGlite. The coordinator
 reported real PG17 source-matched acceptance at 36f: 30 sequential checks and
 18 concurrent scenarios with 17 observed blocking edges. That older job used
 a superuser bootstrap and does not substitute for the new role-login job.
+
+## First real-role test correction
+
+The first actual PG17 run (37199678152/job111428603040) reached exact membership
+comparison and refused the differing grantors before cutover installation.
+PostgreSQL records a superuser's role grant as issued by the cluster bootstrap
+identity, even after SET ROLE. Naming that initial role forge_fixture_bootstrap
+therefore could not match installed supabase_admin grantors. The corrected
+fixture initializes as supabase_admin and still executes application DDL and
+user calls through the separate NOSUPERUSER postgres/authenticator logins. No
+grantor check was removed, no fake extra membership was added, and no engine SQL
+changed. This follows the official [PostgreSQL17 GRANT semantics](https://www.postgresql.org/docs/17/sql-grant.html).
