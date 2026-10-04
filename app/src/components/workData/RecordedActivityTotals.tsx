@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useReducer, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useLayoutEffect, useReducer, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLanguage, useT } from "../../lib/i18n";
 import "../../lib/i18n/workDataCatalog";
@@ -17,6 +17,8 @@ import { useActivityTotals } from "../../lib/workActivityTotals/useActivityTotal
 import { durationMicros, trustedUnitRate } from "../../lib/workActivityTotals/format";
 import type { TotalsView } from "../../lib/workActivityTotals/protocol";
 import "./RecordedActivityTotals.css";
+
+const Contributors = lazy(async () => ({ default: (await import("../../pages/work/SelectedUnitContributors")).SelectedUnitContributors }));
 
 const exclusionKeys: Record<string, WorkDataKey> = {
   "coverage_incomplete": "wdata.totals.exclusion.coverage_incomplete",
@@ -51,6 +53,7 @@ export function RecordedActivityTotals({ projectId, enabled, registerInvalidatio
   const [, paint] = useReducer(n => n + 1, 0);
   const lifetime = useRef({ epoch: 0, alive: true, proof: null as Proof | null });
   const deadline = useRef<number | null>(null);
+  const humanSelection = useRef(0);
   const selection = useRef({ projectId, scope, unitId, enabled });
   // Reads test the live selection at every await boundary, including before
   // React commits a rapidly changed picker or a same-ID resource refresh.
@@ -128,9 +131,11 @@ export function RecordedActivityTotals({ projectId, enabled, registerInvalidatio
     }
   }
   const selectScope = (next: Scope) => {
+    humanSelection.current++;
     selection.current = { projectId, scope: next, unitId: "", enabled }; setScope(next); setUnitId(""); void check(next, "");
   };
   const selectUnit = (next: string) => {
+    humanSelection.current++;
     selection.current = { projectId, scope, unitId: next, enabled }; setUnitId(next); void check(scope, next);
   };
   const allowed = enabled && !role.isLoading && !role.isPreviewing && roleRank(role.realRole) >= roleRank("supervisor")
@@ -152,6 +157,16 @@ export function RecordedActivityTotals({ projectId, enabled, registerInvalidatio
     {checking && <p role="status">{t("wdata.totals.checking")}</p>}
     {!view && !checking && <p role="status">{scope === "specific" && !unitId && status === "choose" ? t("wdata.totals.choose") : status === "unavailable" || totals.state === "unavailable" ? t("wdata.totals.failed") : t("wdata.totals.held")}</p>}
     {view && <RecordedTotalsResult view={view} language={language} />}
+    <Suspense fallback={<p role="status">{language === "es" ? "Cargando colaboradores…" : "Loading contributors…"}</p>}>
+      <Contributors projectId={projectId} unitId={scope === "specific" ? unitId || null : null} locale={language}
+        enabled={allowed && scope === "specific" && !!unitId} invalidationSource={source}
+        selectionRevision={JSON.stringify([projectId, scope, unitId, humanSelection.current])}
+        admitted={() => {
+          const live = selection.current;
+          return lifetime.current.alive && live.enabled && live.projectId === projectId
+            && live.scope === "specific" && live.unitId === unitId && !!unitId;
+        }} />
+    </Suspense>
   </section>;
 }
 

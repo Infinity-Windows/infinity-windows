@@ -11,7 +11,11 @@ import { RecordedActivityTotals } from "./RecordedActivityTotals";
 import { LanguageContext } from "../../lib/i18n/context";
 import { CATALOG } from "../../lib/i18n/catalog";
 import { translate } from "../../lib/i18n/translate";
-const api = vi.hoisted(() => ({ catalog: vi.fn(), basis: vi.fn(), units: vi.fn(), totals: vi.fn() }));
+import contributorsCorpus from "../../lib/workUnitContributions/__fixtures__/sourceMatchedWire.json";
+import { parseUnitContributorsReply } from "../../lib/workUnitContributions/protocol";
+const api = vi.hoisted(() => ({ contributors: vi.fn(), profile: vi.fn(), catalog: vi.fn(), basis: vi.fn(), units: vi.fn(), totals: vi.fn() }));
+vi.mock("../../lib/workUnitContributions/api", () => ({ fetchUnitContributors: api.contributors }));
+vi.mock("../../lib/install/api", async importOriginal => ({ ...await importOriginal<typeof import("../../lib/install/api")>(), getRealProfile: api.profile }));
 vi.mock("../../lib/workActivity/catalogApi", () => ({ fetchActivityCatalog: api.catalog }));
 vi.mock("../../lib/workActivity/api", () => ({ fetchActivityUnitBasis: api.basis }));
 vi.mock("../../lib/customWork/api", () => ({ listWorkUnits: api.units }));
@@ -51,6 +55,12 @@ beforeEach(() => {
   qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
   qc.setQueryData(["myRealProfile"], { id: OWNER, role: "supervisor", retired_at: null });
   preview = createSensitivePreviewLifetime(() => { const p = qc.getQueryState<{ id: string; role: string }>(["myRealProfile"]); return { stamp: JSON.stringify([p?.dataUpdateCount, p?.status, p?.isInvalidated]), ownerId: p?.data?.id ?? null, role: p?.data?.role ?? null, ready: p?.status === "success" && p.fetchStatus === "idle" && !p.isInvalidated }; }, false);
+  const wire = structuredClone(contributorsCorpus.calls.find(row => row.label === "three_people_3_2_1_hours")!.reply);
+  wire.contributors!.actorId = OWNER; wire.contributors!.projectId = PROJECT;
+  wire.contributors!.unitId = UNIT; wire.contributors!.unitIncarnation = "1";
+  api.contributors.mockReset().mockResolvedValue(parseUnitContributorsReply(wire,
+    { actorId: OWNER, projectId: PROJECT, unitId: UNIT, unitIncarnation: "1" }));
+  api.profile.mockReset().mockResolvedValue({ id: OWNER, role: "supervisor", retired_at: null });
   api.catalog.mockReset().mockImplementation(async (_job: string, selected: string | null) => ({ availability: "available", projectId: PROJECT, unit: selected ? basis : null }));
   api.basis.mockReset().mockResolvedValue({ availability: "available", unit: basis });
   api.units.mockReset().mockResolvedValue([{ id: UNIT, project_id: PROJECT, label: "Unit 42" }]);
@@ -90,4 +100,22 @@ describe("Data's read-only recorded totals", () => {
   });
   it("erases results and unit choices at the shared freshness deadline without polling", async () => { vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"] }); await render(); await tap("Specific"); await unit(); expect(host.querySelector("time")).not.toBeNull(); act(() => vi.advanceTimersByTime(30001)); expect(host.querySelector("time")).toBeNull(); expect(host.querySelectorAll("select option")).toHaveLength(1); expect(api.totals).toHaveBeenCalledOnce(); });
   it("renders Spanish task/reconciliation labels and stays role-restricted", async () => { language = "es"; await render(); await tap("Revisar totales"); expect(host.textContent).toContain("Todo el trabajo conservado"); expect(host.textContent).toContain("Conciliación de turnos relacionados"); act(() => qc.setQueryData(["myRealProfile"], { id: OWNER, role: "foreman", retired_at: null })); expect(host.textContent).toBe(""); });
+  it("checks contributor labor manually without an active clock, dimensions or accepted QC, even when totals are unavailable", async () => {
+    api.totals.mockResolvedValue({ protocolVersion: 1, availability: "unavailable", totals: null });
+    await render(); await tap("Specific"); await unit();
+    expect(api.contributors).not.toHaveBeenCalled();
+    await tap("Check current records");
+    expect(api.contributors).toHaveBeenCalledOnce(); expect(host.textContent).toContain("6:00:00");
+    expect(host.textContent).toContain("50.00%"); expect(host.textContent).toContain("Totals are unavailable");
+    act(() => close()); expect(host.textContent).not.toContain("6:00:00");
+    expect(api.contributors).toHaveBeenCalledOnce();
+  });
+  it("recovers a stale profile inside Data on one contributor Check without reviving old totals", async () => {
+    await render(); await tap("Specific"); await unit();
+    act(() => qc.setQueryData(["myRealProfile"], { id: OWNER, role: "supervisor", retired_at: null }, { updatedAt: Date.now() - 31000 }));
+    await tap("Check current records");
+    expect(api.profile).toHaveBeenCalledOnce(); expect(api.contributors).toHaveBeenCalledOnce();
+    expect(host.textContent).toContain("6:00:00"); expect(api.totals).toHaveBeenCalledOnce();
+  });
+
 });

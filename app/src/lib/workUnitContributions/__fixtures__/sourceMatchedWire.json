@@ -1,0 +1,2662 @@
+{
+  "contributorsSha256": "ae6185e4b390b7cff8f3d7aca837688fda2756792bdf055ef8c3a1f290d438c5",
+  "totalsSha256": "e0e74c2d1985d332af81f95d20d2a6625c40cb5fcf995b4aa6e267d75e092140",
+  "calls": [
+    {
+      "label": "complete_positive_before_review",
+      "request": {
+        "projectId": "00000000-0000-4000-8000-000000250010",
+        "unitId": "00000000-0000-4000-8000-000000250030",
+        "protocolVersion": 1
+      },
+      "reply": {
+        "availability": "available",
+        "contributors": {
+          "asOf": "2026-10-04T22:45:39.729000Z",
+          "people": [
+            {
+              "share": {
+                "state": "available",
+                "numeratorMicros": "301000",
+                "denominatorMicros": "301000"
+              },
+              "retired": false,
+              "complete": true,
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000250001",
+              "activities": [
+                {
+                  "labelEn": "totals_specific",
+                  "labelEs": "totals_specific",
+                  "retired": false,
+                  "knownMicros": "301000",
+                  "definitionId": "ad008a31-6edd-4a8a-808f-0424ed8423b7",
+                  "machineSubsets": [],
+                  "definitionVersion": 1,
+                  "definitionVersionId": "62689f53-2784-45eb-8088-03d62f8756d6"
+                }
+              ],
+              "displayName": "Totals worker",
+              "knownMicros": "301000",
+              "includesLive": false,
+              "measurementState": "recorded",
+              "completenessReasons": []
+            }
+          ],
+          "unitId": "00000000-0000-4000-8000-000000250030",
+          "window": {
+            "from": null,
+            "kind": "all_retained_selected_unit",
+            "until": "2026-10-04T22:45:39.729000Z"
+          },
+          "actorId": "00000000-0000-4000-8000-000000250002",
+          "zeroOnly": [],
+          "projectId": "00000000-0000-4000-8000-000000250010",
+          "includesLive": false,
+          "unitComplete": true,
+          "unitIncarnation": "0",
+          "unitKnownMicros": "301000",
+          "participantCounts": {
+            "timed": 1,
+            "total": 1,
+            "zeroOnly": 0,
+            "untimedOnly": 0,
+            "timingUncertain": 0
+          },
+          "completenessReasons": [],
+          "untimedParticipants": [],
+          "unresolvedAttribution": {
+            "present": false,
+            "reasons": [],
+            "unknownMicros": "0"
+          }
+        },
+        "protocolVersion": 1
+      }
+    },
+    {
+      "request": {
+        "projectId": "00000000-0000-4000-8000-000000250010",
+        "unitId": "00000000-0000-4000-8000-000000250030",
+        "protocolVersion": 1
+      },
+      "reply": {
+        "availability": "available",
+        "contributors": {
+          "asOf": "2026-10-04T22:45:43.136000Z",
+          "people": [
+            {
+              "share": {
+                "state": "unavailable",
+                "reasons": [
+                  "named_unlinked"
+                ]
+              },
+              "retired": false,
+              "complete": false,
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000250001",
+              "activities": [
+                {
+                  "labelEn": "totals_specific",
+                  "labelEs": "totals_specific",
+                  "retired": false,
+                  "knownMicros": "301000",
+                  "definitionId": "ad008a31-6edd-4a8a-808f-0424ed8423b7",
+                  "machineSubsets": [],
+                  "definitionVersion": 1,
+                  "definitionVersionId": "62689f53-2784-45eb-8088-03d62f8756d6"
+                }
+              ],
+              "displayName": "Totals worker",
+              "knownMicros": "301000",
+              "includesLive": false,
+              "measurementState": "recorded",
+              "completenessReasons": [
+                "named_unlinked"
+              ]
+            }
+          ],
+          "unitId": "00000000-0000-4000-8000-000000250030",
+          "window": {
+            "from": null,
+            "kind": "all_retained_selected_unit",
+            "until": "2026-10-04T22:45:43.136000Z"
+          },
+          "actorId": "00000000-0000-4000-8000-000000250002",
+          "zeroOnly": [],
+          "projectId": "00000000-0000-4000-8000-000000250010",
+          "includesLive": false,
+          "unitComplete": false,
+          "unitIncarnation": "0",
+          "unitKnownMicros": "301000",
+          "participantCounts": {
+            "timed": 1,
+            "total": 2,
+            "zeroOnly": 0,
+            "untimedOnly": 1,
+            "timingUncertain": 0
+          },
+          "completenessReasons": [
+            "named_unlinked"
+          ],
+          "untimedParticipants": [
+            {
+              "retired": false,
+              "evidence": [
+                {
+                  "sourceId": "a36e36c7-6b14-42f6-b316-7a440cb1ccfd",
+                  "workDate": "2026-10-04",
+                  "recordedAt": "2026-10-04T22:45:39.938000Z",
+                  "sourceKind": "work_unit_review_events",
+                  "activityLabel": "Quality review",
+                  "evidenceState": "named"
+                }
+              ],
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000250002",
+              "displayName": "Totals reviewer"
+            }
+          ],
+          "unresolvedAttribution": {
+            "present": true,
+            "reasons": [
+              "named_unlinked"
+            ],
+            "unknownMicros": null
+          }
+        },
+        "protocolVersion": 1
+      }
+    },
+    {
+      "label": "complete_empty_zero",
+      "request": {
+        "projectId": "00000000-0000-4000-8000-000000250010",
+        "unitId": "00000000-0000-4000-8000-000000259900",
+        "protocolVersion": 1
+      },
+      "reply": {
+        "availability": "available",
+        "contributors": {
+          "asOf": "2026-10-04T22:45:43.342000Z",
+          "people": [],
+          "unitId": "00000000-0000-4000-8000-000000259900",
+          "window": {
+            "from": null,
+            "kind": "all_retained_selected_unit",
+            "until": "2026-10-04T22:45:43.342000Z"
+          },
+          "actorId": "00000000-0000-4000-8000-000000250002",
+          "zeroOnly": [],
+          "projectId": "00000000-0000-4000-8000-000000250010",
+          "includesLive": false,
+          "unitComplete": true,
+          "unitIncarnation": "0",
+          "unitKnownMicros": "0",
+          "participantCounts": {
+            "timed": 0,
+            "total": 0,
+            "zeroOnly": 0,
+            "untimedOnly": 0,
+            "timingUncertain": 0
+          },
+          "completenessReasons": [
+            "zero"
+          ],
+          "untimedParticipants": [],
+          "unresolvedAttribution": {
+            "present": false,
+            "reasons": [],
+            "unknownMicros": "0"
+          }
+        },
+        "protocolVersion": 1
+      }
+    },
+    {
+      "label": "open_shift_zero_not_a_proven_tap",
+      "request": {
+        "projectId": "00000000-0000-4000-8000-000000250010",
+        "unitId": "00000000-0000-4000-8000-000000259900",
+        "protocolVersion": 1
+      },
+      "reply": {
+        "availability": "available",
+        "contributors": {
+          "asOf": "2026-10-04T22:45:43.479000Z",
+          "people": [
+            {
+              "share": {
+                "state": "unavailable",
+                "reasons": [
+                  "open_shift",
+                  "source_unproven",
+                  "zero"
+                ]
+              },
+              "retired": false,
+              "complete": false,
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000250003",
+              "activities": [],
+              "displayName": "Totals other",
+              "knownMicros": "0",
+              "includesLive": false,
+              "measurementState": "unproven",
+              "completenessReasons": [
+                "open_shift",
+                "source_unproven",
+                "zero"
+              ]
+            }
+          ],
+          "unitId": "00000000-0000-4000-8000-000000259900",
+          "window": {
+            "from": null,
+            "kind": "all_retained_selected_unit",
+            "until": "2026-10-04T22:45:43.479000Z"
+          },
+          "actorId": "00000000-0000-4000-8000-000000250002",
+          "zeroOnly": [],
+          "projectId": "00000000-0000-4000-8000-000000250010",
+          "includesLive": false,
+          "unitComplete": false,
+          "unitIncarnation": "0",
+          "unitKnownMicros": "0",
+          "participantCounts": {
+            "timed": 0,
+            "total": 1,
+            "zeroOnly": 0,
+            "untimedOnly": 0,
+            "timingUncertain": 1
+          },
+          "completenessReasons": [
+            "open_shift",
+            "source_unproven",
+            "zero"
+          ],
+          "untimedParticipants": [],
+          "unresolvedAttribution": {
+            "present": true,
+            "reasons": [
+              "open_shift",
+              "source_unproven"
+            ],
+            "unknownMicros": null
+          }
+        },
+        "protocolVersion": 1
+      }
+    },
+    {
+      "label": "proven_zero_only_tap",
+      "request": {
+        "projectId": "00000000-0000-4000-8000-000000250010",
+        "unitId": "00000000-0000-4000-8000-000000259900",
+        "protocolVersion": 1
+      },
+      "reply": {
+        "availability": "available",
+        "contributors": {
+          "asOf": "2026-10-04T22:45:43.580000Z",
+          "people": [],
+          "unitId": "00000000-0000-4000-8000-000000259900",
+          "window": {
+            "from": null,
+            "kind": "all_retained_selected_unit",
+            "until": "2026-10-04T22:45:43.580000Z"
+          },
+          "actorId": "00000000-0000-4000-8000-000000250002",
+          "zeroOnly": [
+            {
+              "share": {
+                "state": "unavailable",
+                "reasons": [
+                  "zero"
+                ]
+              },
+              "retired": false,
+              "complete": true,
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000250003",
+              "activities": [
+                {
+                  "labelEn": "totals_specific",
+                  "labelEs": "totals_specific",
+                  "retired": false,
+                  "knownMicros": "0",
+                  "definitionId": "ad008a31-6edd-4a8a-808f-0424ed8423b7",
+                  "machineSubsets": [],
+                  "definitionVersion": 1,
+                  "definitionVersionId": "62689f53-2784-45eb-8088-03d62f8756d6"
+                }
+              ],
+              "displayName": "Totals other",
+              "knownMicros": "0",
+              "includesLive": false,
+              "measurementState": "recorded_zero",
+              "completenessReasons": [
+                "zero"
+              ]
+            }
+          ],
+          "projectId": "00000000-0000-4000-8000-000000250010",
+          "includesLive": false,
+          "unitComplete": true,
+          "unitIncarnation": "0",
+          "unitKnownMicros": "0",
+          "participantCounts": {
+            "timed": 0,
+            "total": 0,
+            "zeroOnly": 1,
+            "untimedOnly": 0,
+            "timingUncertain": 0
+          },
+          "completenessReasons": [
+            "zero"
+          ],
+          "untimedParticipants": [],
+          "unresolvedAttribution": {
+            "present": false,
+            "reasons": [],
+            "unknownMicros": "0"
+          }
+        },
+        "protocolVersion": 1
+      }
+    },
+    {
+      "label": "validated_zero_tap_plus_named_work",
+      "request": {
+        "projectId": "00000000-0000-4000-8000-000000250010",
+        "unitId": "00000000-0000-4000-8000-000000259900",
+        "protocolVersion": 1
+      },
+      "reply": {
+        "availability": "available",
+        "contributors": {
+          "asOf": "2026-10-04T22:45:43.676000Z",
+          "people": [
+            {
+              "share": {
+                "state": "unavailable",
+                "reasons": [
+                  "named_unlinked",
+                  "zero"
+                ]
+              },
+              "retired": false,
+              "complete": false,
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000250003",
+              "activities": [],
+              "displayName": "Totals other",
+              "knownMicros": "0",
+              "includesLive": false,
+              "measurementState": "unproven",
+              "completenessReasons": [
+                "named_unlinked",
+                "zero"
+              ]
+            }
+          ],
+          "unitId": "00000000-0000-4000-8000-000000259900",
+          "window": {
+            "from": null,
+            "kind": "all_retained_selected_unit",
+            "until": "2026-10-04T22:45:43.676000Z"
+          },
+          "actorId": "00000000-0000-4000-8000-000000250002",
+          "zeroOnly": [],
+          "projectId": "00000000-0000-4000-8000-000000250010",
+          "includesLive": false,
+          "unitComplete": false,
+          "unitIncarnation": "0",
+          "unitKnownMicros": "0",
+          "participantCounts": {
+            "timed": 0,
+            "total": 1,
+            "zeroOnly": 0,
+            "untimedOnly": 0,
+            "timingUncertain": 1
+          },
+          "completenessReasons": [
+            "named_unlinked",
+            "zero"
+          ],
+          "untimedParticipants": [
+            {
+              "retired": false,
+              "evidence": [
+                {
+                  "sourceId": "00000000-0000-4000-8000-000000259970:00000000-0000-4000-8000-000000250003",
+                  "workDate": "2026-10-04",
+                  "recordedAt": null,
+                  "sourceKind": "crew_work_record_people",
+                  "activityLabel": "install",
+                  "evidenceState": "named"
+                }
+              ],
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000250003",
+              "displayName": "Totals other"
+            }
+          ],
+          "unresolvedAttribution": {
+            "present": true,
+            "reasons": [
+              "named_unlinked"
+            ],
+            "unknownMicros": null
+          }
+        },
+        "protocolVersion": 1
+      }
+    },
+    {
+      "label": "supervisor_without_final_qc",
+      "request": {
+        "projectId": "00000000-0000-4000-8000-000000250010",
+        "unitId": "00000000-0000-4000-8000-000000250030",
+        "protocolVersion": 1
+      },
+      "reply": {
+        "availability": "available",
+        "contributors": {
+          "asOf": "2026-10-04T22:45:43.770000Z",
+          "people": [
+            {
+              "share": {
+                "state": "unavailable",
+                "reasons": [
+                  "named_unlinked"
+                ]
+              },
+              "retired": false,
+              "complete": false,
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000250001",
+              "activities": [
+                {
+                  "labelEn": "totals_specific",
+                  "labelEs": "totals_specific",
+                  "retired": false,
+                  "knownMicros": "301000",
+                  "definitionId": "ad008a31-6edd-4a8a-808f-0424ed8423b7",
+                  "machineSubsets": [],
+                  "definitionVersion": 1,
+                  "definitionVersionId": "62689f53-2784-45eb-8088-03d62f8756d6"
+                }
+              ],
+              "displayName": "Totals worker",
+              "knownMicros": "301000",
+              "includesLive": false,
+              "measurementState": "recorded",
+              "completenessReasons": [
+                "named_unlinked"
+              ]
+            }
+          ],
+          "unitId": "00000000-0000-4000-8000-000000250030",
+          "window": {
+            "from": null,
+            "kind": "all_retained_selected_unit",
+            "until": "2026-10-04T22:45:43.770000Z"
+          },
+          "actorId": "00000000-0000-4000-8000-000000250003",
+          "zeroOnly": [],
+          "projectId": "00000000-0000-4000-8000-000000250010",
+          "includesLive": false,
+          "unitComplete": false,
+          "unitIncarnation": "0",
+          "unitKnownMicros": "301000",
+          "participantCounts": {
+            "timed": 1,
+            "total": 2,
+            "zeroOnly": 0,
+            "untimedOnly": 1,
+            "timingUncertain": 0
+          },
+          "completenessReasons": [
+            "named_unlinked"
+          ],
+          "untimedParticipants": [
+            {
+              "retired": false,
+              "evidence": [
+                {
+                  "sourceId": "a36e36c7-6b14-42f6-b316-7a440cb1ccfd",
+                  "workDate": "2026-10-04",
+                  "recordedAt": "2026-10-04T22:45:39.938000Z",
+                  "sourceKind": "work_unit_review_events",
+                  "activityLabel": "Quality review",
+                  "evidenceState": "named"
+                }
+              ],
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000250002",
+              "displayName": "Totals reviewer"
+            }
+          ],
+          "unresolvedAttribution": {
+            "present": true,
+            "reasons": [
+              "named_unlinked"
+            ],
+            "unknownMicros": null
+          }
+        },
+        "protocolVersion": 1
+      }
+    },
+    {
+      "label": "Hidden selected job discloses no contributor UUID/name/count",
+      "request": {
+        "projectId": "00000000-0000-4000-8000-000000250010",
+        "unitId": "00000000-0000-4000-8000-000000250030",
+        "protocolVersion": 1
+      },
+      "reply": {
+        "availability": "unavailable",
+        "contributors": null,
+        "protocolVersion": 1
+      }
+    },
+    {
+      "label": "Deleted selected unit is generic unavailable",
+      "request": {
+        "projectId": "00000000-0000-4000-8000-000000250010",
+        "unitId": "00000000-0000-4000-8000-000000250030",
+        "protocolVersion": 1
+      },
+      "reply": {
+        "availability": "unavailable",
+        "contributors": null,
+        "protocolVersion": 1
+      }
+    },
+    {
+      "label": "Renamed stable identity preserves exact labor and UUID",
+      "request": {
+        "projectId": "00000000-0000-4000-8000-000000250010",
+        "unitId": "00000000-0000-4000-8000-000000250030",
+        "protocolVersion": 1
+      },
+      "reply": {
+        "availability": "available",
+        "contributors": {
+          "asOf": "2026-10-04T22:45:43.944000Z",
+          "people": [
+            {
+              "share": {
+                "state": "unavailable",
+                "reasons": [
+                  "named_unlinked"
+                ]
+              },
+              "retired": false,
+              "complete": false,
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000250001",
+              "activities": [
+                {
+                  "labelEn": "totals_specific",
+                  "labelEs": "totals_specific",
+                  "retired": false,
+                  "knownMicros": "301000",
+                  "definitionId": "ad008a31-6edd-4a8a-808f-0424ed8423b7",
+                  "machineSubsets": [],
+                  "definitionVersion": 1,
+                  "definitionVersionId": "62689f53-2784-45eb-8088-03d62f8756d6"
+                }
+              ],
+              "displayName": "Renamed worker",
+              "knownMicros": "301000",
+              "includesLive": false,
+              "measurementState": "recorded",
+              "completenessReasons": [
+                "named_unlinked"
+              ]
+            }
+          ],
+          "unitId": "00000000-0000-4000-8000-000000250030",
+          "window": {
+            "from": null,
+            "kind": "all_retained_selected_unit",
+            "until": "2026-10-04T22:45:43.944000Z"
+          },
+          "actorId": "00000000-0000-4000-8000-000000250002",
+          "zeroOnly": [],
+          "projectId": "00000000-0000-4000-8000-000000250010",
+          "includesLive": false,
+          "unitComplete": false,
+          "unitIncarnation": "0",
+          "unitKnownMicros": "301000",
+          "participantCounts": {
+            "timed": 1,
+            "total": 2,
+            "zeroOnly": 0,
+            "untimedOnly": 1,
+            "timingUncertain": 0
+          },
+          "completenessReasons": [
+            "named_unlinked"
+          ],
+          "untimedParticipants": [
+            {
+              "retired": false,
+              "evidence": [
+                {
+                  "sourceId": "a36e36c7-6b14-42f6-b316-7a440cb1ccfd",
+                  "workDate": "2026-10-04",
+                  "recordedAt": "2026-10-04T22:45:39.938000Z",
+                  "sourceKind": "work_unit_review_events",
+                  "activityLabel": "Quality review",
+                  "evidenceState": "named"
+                }
+              ],
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000250002",
+              "displayName": "Totals reviewer"
+            }
+          ],
+          "unresolvedAttribution": {
+            "present": true,
+            "reasons": [
+              "named_unlinked"
+            ],
+            "unknownMicros": null
+          }
+        },
+        "protocolVersion": 1
+      }
+    },
+    {
+      "label": "Retired worker remains in historical attribution",
+      "request": {
+        "projectId": "00000000-0000-4000-8000-000000250010",
+        "unitId": "00000000-0000-4000-8000-000000250030",
+        "protocolVersion": 1
+      },
+      "reply": {
+        "availability": "available",
+        "contributors": {
+          "asOf": "2026-10-04T22:45:44.039000Z",
+          "people": [
+            {
+              "share": {
+                "state": "unavailable",
+                "reasons": [
+                  "named_unlinked"
+                ]
+              },
+              "retired": true,
+              "complete": false,
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000250001",
+              "activities": [
+                {
+                  "labelEn": "totals_specific",
+                  "labelEs": "totals_specific",
+                  "retired": false,
+                  "knownMicros": "301000",
+                  "definitionId": "ad008a31-6edd-4a8a-808f-0424ed8423b7",
+                  "machineSubsets": [],
+                  "definitionVersion": 1,
+                  "definitionVersionId": "62689f53-2784-45eb-8088-03d62f8756d6"
+                }
+              ],
+              "displayName": "Totals worker",
+              "knownMicros": "301000",
+              "includesLive": false,
+              "measurementState": "recorded",
+              "completenessReasons": [
+                "named_unlinked"
+              ]
+            }
+          ],
+          "unitId": "00000000-0000-4000-8000-000000250030",
+          "window": {
+            "from": null,
+            "kind": "all_retained_selected_unit",
+            "until": "2026-10-04T22:45:44.039000Z"
+          },
+          "actorId": "00000000-0000-4000-8000-000000250002",
+          "zeroOnly": [],
+          "projectId": "00000000-0000-4000-8000-000000250010",
+          "includesLive": false,
+          "unitComplete": false,
+          "unitIncarnation": "0",
+          "unitKnownMicros": "301000",
+          "participantCounts": {
+            "timed": 1,
+            "total": 2,
+            "zeroOnly": 0,
+            "untimedOnly": 1,
+            "timingUncertain": 0
+          },
+          "completenessReasons": [
+            "named_unlinked"
+          ],
+          "untimedParticipants": [
+            {
+              "retired": false,
+              "evidence": [
+                {
+                  "sourceId": "a36e36c7-6b14-42f6-b316-7a440cb1ccfd",
+                  "workDate": "2026-10-04",
+                  "recordedAt": "2026-10-04T22:45:39.938000Z",
+                  "sourceKind": "work_unit_review_events",
+                  "activityLabel": "Quality review",
+                  "evidenceState": "named"
+                }
+              ],
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000250002",
+              "displayName": "Totals reviewer"
+            }
+          ],
+          "unresolvedAttribution": {
+            "present": true,
+            "reasons": [
+              "named_unlinked"
+            ],
+            "unknownMicros": null
+          }
+        },
+        "protocolVersion": 1
+      }
+    },
+    {
+      "label": "Unicode name fits exact500 UTF16 wire bound",
+      "request": {
+        "projectId": "00000000-0000-4000-8000-000000250010",
+        "unitId": "00000000-0000-4000-8000-000000250030",
+        "protocolVersion": 1
+      },
+      "reply": {
+        "availability": "available",
+        "contributors": {
+          "asOf": "2026-10-04T22:45:44.133000Z",
+          "people": [
+            {
+              "share": {
+                "state": "unavailable",
+                "reasons": [
+                  "named_unlinked"
+                ]
+              },
+              "retired": false,
+              "complete": false,
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000250001",
+              "activities": [
+                {
+                  "labelEn": "totals_specific",
+                  "labelEs": "totals_specific",
+                  "retired": false,
+                  "knownMicros": "301000",
+                  "definitionId": "ad008a31-6edd-4a8a-808f-0424ed8423b7",
+                  "machineSubsets": [],
+                  "definitionVersion": 1,
+                  "definitionVersionId": "62689f53-2784-45eb-8088-03d62f8756d6"
+                }
+              ],
+              "displayName": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+              "knownMicros": "301000",
+              "includesLive": false,
+              "measurementState": "recorded",
+              "completenessReasons": [
+                "named_unlinked"
+              ]
+            }
+          ],
+          "unitId": "00000000-0000-4000-8000-000000250030",
+          "window": {
+            "from": null,
+            "kind": "all_retained_selected_unit",
+            "until": "2026-10-04T22:45:44.133000Z"
+          },
+          "actorId": "00000000-0000-4000-8000-000000250002",
+          "zeroOnly": [],
+          "projectId": "00000000-0000-4000-8000-000000250010",
+          "includesLive": false,
+          "unitComplete": false,
+          "unitIncarnation": "0",
+          "unitKnownMicros": "301000",
+          "participantCounts": {
+            "timed": 1,
+            "total": 2,
+            "zeroOnly": 0,
+            "untimedOnly": 1,
+            "timingUncertain": 0
+          },
+          "completenessReasons": [
+            "named_unlinked"
+          ],
+          "untimedParticipants": [
+            {
+              "retired": false,
+              "evidence": [
+                {
+                  "sourceId": "a36e36c7-6b14-42f6-b316-7a440cb1ccfd",
+                  "workDate": "2026-10-04",
+                  "recordedAt": "2026-10-04T22:45:39.938000Z",
+                  "sourceKind": "work_unit_review_events",
+                  "activityLabel": "Quality review",
+                  "evidenceState": "named"
+                }
+              ],
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000250002",
+              "displayName": "Totals reviewer"
+            }
+          ],
+          "unresolvedAttribution": {
+            "present": true,
+            "reasons": [
+              "named_unlinked"
+            ],
+            "unknownMicros": null
+          }
+        },
+        "protocolVersion": 1
+      }
+    },
+    {
+      "label": "Overlong UTF16 name refuses rather than emitting malformed wire",
+      "request": {
+        "projectId": "00000000-0000-4000-8000-000000250010",
+        "unitId": "00000000-0000-4000-8000-000000250030",
+        "protocolVersion": 1
+      },
+      "reply": {
+        "availability": "unavailable",
+        "contributors": null,
+        "protocolVersion": 1
+      }
+    },
+    {
+      "label": "Blank existing name is unavailable without inventing missing identity",
+      "request": {
+        "projectId": "00000000-0000-4000-8000-000000250010",
+        "unitId": "00000000-0000-4000-8000-000000250030",
+        "protocolVersion": 1
+      },
+      "reply": {
+        "availability": "available",
+        "contributors": {
+          "asOf": "2026-10-04T22:45:44.322000Z",
+          "people": [
+            {
+              "share": {
+                "state": "unavailable",
+                "reasons": [
+                  "named_unlinked"
+                ]
+              },
+              "retired": false,
+              "complete": false,
+              "nameState": "unavailable",
+              "profileId": "00000000-0000-4000-8000-000000250001",
+              "activities": [
+                {
+                  "labelEn": "totals_specific",
+                  "labelEs": "totals_specific",
+                  "retired": false,
+                  "knownMicros": "301000",
+                  "definitionId": "ad008a31-6edd-4a8a-808f-0424ed8423b7",
+                  "machineSubsets": [],
+                  "definitionVersion": 1,
+                  "definitionVersionId": "62689f53-2784-45eb-8088-03d62f8756d6"
+                }
+              ],
+              "displayName": null,
+              "knownMicros": "301000",
+              "includesLive": false,
+              "measurementState": "recorded",
+              "completenessReasons": [
+                "named_unlinked"
+              ]
+            }
+          ],
+          "unitId": "00000000-0000-4000-8000-000000250030",
+          "window": {
+            "from": null,
+            "kind": "all_retained_selected_unit",
+            "until": "2026-10-04T22:45:44.322000Z"
+          },
+          "actorId": "00000000-0000-4000-8000-000000250002",
+          "zeroOnly": [],
+          "projectId": "00000000-0000-4000-8000-000000250010",
+          "includesLive": false,
+          "unitComplete": false,
+          "unitIncarnation": "0",
+          "unitKnownMicros": "301000",
+          "participantCounts": {
+            "timed": 1,
+            "total": 2,
+            "zeroOnly": 0,
+            "untimedOnly": 1,
+            "timingUncertain": 0
+          },
+          "completenessReasons": [
+            "named_unlinked"
+          ],
+          "untimedParticipants": [
+            {
+              "retired": false,
+              "evidence": [
+                {
+                  "sourceId": "a36e36c7-6b14-42f6-b316-7a440cb1ccfd",
+                  "workDate": "2026-10-04",
+                  "recordedAt": "2026-10-04T22:45:39.938000Z",
+                  "sourceKind": "work_unit_review_events",
+                  "activityLabel": "Quality review",
+                  "evidenceState": "named"
+                }
+              ],
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000250002",
+              "displayName": "Totals reviewer"
+            }
+          ],
+          "unresolvedAttribution": {
+            "present": true,
+            "reasons": [
+              "named_unlinked"
+            ],
+            "unknownMicros": null
+          }
+        },
+        "protocolVersion": 1
+      }
+    },
+    {
+      "label": "Captured source A-to-B-to-A does not revive accepted elapsed",
+      "request": {
+        "projectId": "00000000-0000-4000-8000-000000250010",
+        "unitId": "00000000-0000-4000-8000-000000250030",
+        "protocolVersion": 1
+      },
+      "reply": {
+        "availability": "available",
+        "contributors": {
+          "asOf": "2026-10-04T22:45:44.424000Z",
+          "people": [
+            {
+              "share": {
+                "state": "unavailable",
+                "reasons": [
+                  "named_unlinked",
+                  "source_unproven",
+                  "zero"
+                ]
+              },
+              "retired": false,
+              "complete": false,
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000250001",
+              "activities": [],
+              "displayName": "Totals worker",
+              "knownMicros": "0",
+              "includesLive": false,
+              "measurementState": "unproven",
+              "completenessReasons": [
+                "named_unlinked",
+                "source_unproven",
+                "zero"
+              ]
+            }
+          ],
+          "unitId": "00000000-0000-4000-8000-000000250030",
+          "window": {
+            "from": null,
+            "kind": "all_retained_selected_unit",
+            "until": "2026-10-04T22:45:44.424000Z"
+          },
+          "actorId": "00000000-0000-4000-8000-000000250002",
+          "zeroOnly": [],
+          "projectId": "00000000-0000-4000-8000-000000250010",
+          "includesLive": false,
+          "unitComplete": false,
+          "unitIncarnation": "0",
+          "unitKnownMicros": "0",
+          "participantCounts": {
+            "timed": 0,
+            "total": 2,
+            "zeroOnly": 0,
+            "untimedOnly": 1,
+            "timingUncertain": 1
+          },
+          "completenessReasons": [
+            "named_unlinked",
+            "source_unproven",
+            "zero"
+          ],
+          "untimedParticipants": [
+            {
+              "retired": false,
+              "evidence": [
+                {
+                  "sourceId": "a36e36c7-6b14-42f6-b316-7a440cb1ccfd",
+                  "workDate": "2026-10-04",
+                  "recordedAt": "2026-10-04T22:45:39.938000Z",
+                  "sourceKind": "work_unit_review_events",
+                  "activityLabel": "Quality review",
+                  "evidenceState": "named"
+                }
+              ],
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000250002",
+              "displayName": "Totals reviewer"
+            }
+          ],
+          "unresolvedAttribution": {
+            "present": true,
+            "reasons": [
+              "named_unlinked",
+              "source_unproven"
+            ],
+            "unknownMicros": null
+          }
+        },
+        "protocolVersion": 1
+      }
+    },
+    {
+      "label": "Source capture bypass makes attribution partial",
+      "request": {
+        "projectId": "00000000-0000-4000-8000-000000250010",
+        "unitId": "00000000-0000-4000-8000-000000250030",
+        "protocolVersion": 1
+      },
+      "reply": {
+        "availability": "available",
+        "contributors": {
+          "asOf": "2026-10-04T22:45:44.523000Z",
+          "people": [
+            {
+              "share": {
+                "state": "unavailable",
+                "reasons": [
+                  "named_unlinked",
+                  "source_unproven",
+                  "zero"
+                ]
+              },
+              "retired": false,
+              "complete": false,
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000250001",
+              "activities": [],
+              "displayName": "Totals worker",
+              "knownMicros": "0",
+              "includesLive": false,
+              "measurementState": "unproven",
+              "completenessReasons": [
+                "named_unlinked",
+                "source_unproven",
+                "zero"
+              ]
+            }
+          ],
+          "unitId": "00000000-0000-4000-8000-000000250030",
+          "window": {
+            "from": null,
+            "kind": "all_retained_selected_unit",
+            "until": "2026-10-04T22:45:44.523000Z"
+          },
+          "actorId": "00000000-0000-4000-8000-000000250002",
+          "zeroOnly": [],
+          "projectId": "00000000-0000-4000-8000-000000250010",
+          "includesLive": false,
+          "unitComplete": false,
+          "unitIncarnation": "0",
+          "unitKnownMicros": "0",
+          "participantCounts": {
+            "timed": 0,
+            "total": 2,
+            "zeroOnly": 0,
+            "untimedOnly": 1,
+            "timingUncertain": 1
+          },
+          "completenessReasons": [
+            "named_unlinked",
+            "source_unproven",
+            "zero"
+          ],
+          "untimedParticipants": [
+            {
+              "retired": false,
+              "evidence": [
+                {
+                  "sourceId": "a36e36c7-6b14-42f6-b316-7a440cb1ccfd",
+                  "workDate": "2026-10-04",
+                  "recordedAt": "2026-10-04T22:45:39.938000Z",
+                  "sourceKind": "work_unit_review_events",
+                  "activityLabel": "Quality review",
+                  "evidenceState": "named"
+                }
+              ],
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000250002",
+              "displayName": "Totals reviewer"
+            }
+          ],
+          "unresolvedAttribution": {
+            "present": true,
+            "reasons": [
+              "named_unlinked",
+              "source_unproven"
+            ],
+            "unknownMicros": null
+          }
+        },
+        "protocolVersion": 1
+      }
+    },
+    {
+      "label": "Hidden edited payroll origin refuses before name disclosure",
+      "request": {
+        "projectId": "00000000-0000-4000-8000-000000250010",
+        "unitId": "00000000-0000-4000-8000-000000250030",
+        "protocolVersion": 1
+      },
+      "reply": {
+        "availability": "unavailable",
+        "contributors": null,
+        "protocolVersion": 1
+      }
+    },
+    {
+      "label": "Future named timestamp cannot assert work after this reply asOf",
+      "request": {
+        "projectId": "00000000-0000-4000-8000-000000250010",
+        "unitId": "00000000-0000-4000-8000-000000250030",
+        "protocolVersion": 1
+      },
+      "reply": {
+        "availability": "available",
+        "contributors": {
+          "asOf": "2026-10-04T22:45:44.699000Z",
+          "people": [
+            {
+              "share": {
+                "state": "unavailable",
+                "reasons": [
+                  "named_unlinked",
+                  "source_unproven"
+                ]
+              },
+              "retired": false,
+              "complete": false,
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000250001",
+              "activities": [
+                {
+                  "labelEn": "totals_specific",
+                  "labelEs": "totals_specific",
+                  "retired": false,
+                  "knownMicros": "301000",
+                  "definitionId": "ad008a31-6edd-4a8a-808f-0424ed8423b7",
+                  "machineSubsets": [],
+                  "definitionVersion": 1,
+                  "definitionVersionId": "62689f53-2784-45eb-8088-03d62f8756d6"
+                }
+              ],
+              "displayName": "Totals worker",
+              "knownMicros": "301000",
+              "includesLive": false,
+              "measurementState": "recorded",
+              "completenessReasons": [
+                "named_unlinked",
+                "source_unproven"
+              ]
+            }
+          ],
+          "unitId": "00000000-0000-4000-8000-000000250030",
+          "window": {
+            "from": null,
+            "kind": "all_retained_selected_unit",
+            "until": "2026-10-04T22:45:44.699000Z"
+          },
+          "actorId": "00000000-0000-4000-8000-000000250002",
+          "zeroOnly": [],
+          "projectId": "00000000-0000-4000-8000-000000250010",
+          "includesLive": false,
+          "unitComplete": false,
+          "unitIncarnation": "0",
+          "unitKnownMicros": "301000",
+          "participantCounts": {
+            "timed": 1,
+            "total": 2,
+            "zeroOnly": 0,
+            "untimedOnly": 1,
+            "timingUncertain": 0
+          },
+          "completenessReasons": [
+            "named_unlinked",
+            "source_unproven"
+          ],
+          "untimedParticipants": [
+            {
+              "retired": false,
+              "evidence": [
+                {
+                  "sourceId": "a36e36c7-6b14-42f6-b316-7a440cb1ccfd",
+                  "workDate": "2026-10-04",
+                  "recordedAt": "2026-10-04T22:45:39.938000Z",
+                  "sourceKind": "work_unit_review_events",
+                  "activityLabel": "Quality review",
+                  "evidenceState": "named"
+                }
+              ],
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000250002",
+              "displayName": "Totals reviewer"
+            }
+          ],
+          "unresolvedAttribution": {
+            "present": true,
+            "reasons": [
+              "named_unlinked",
+              "source_unproven"
+            ],
+            "unknownMicros": null
+          }
+        },
+        "protocolVersion": 1
+      }
+    },
+    {
+      "label": "Unmapped legacy timer remains unknown rather than recorded zero",
+      "request": {
+        "projectId": "00000000-0000-4000-8000-000000250010",
+        "unitId": "00000000-0000-4000-8000-000000250030",
+        "protocolVersion": 1
+      },
+      "reply": {
+        "availability": "available",
+        "contributors": {
+          "asOf": "2026-10-04T22:45:44.800000Z",
+          "people": [
+            {
+              "share": {
+                "state": "unavailable",
+                "reasons": [
+                  "legacy_unmapped",
+                  "named_unlinked"
+                ]
+              },
+              "retired": false,
+              "complete": false,
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000250001",
+              "activities": [
+                {
+                  "labelEn": "totals_specific",
+                  "labelEs": "totals_specific",
+                  "retired": false,
+                  "knownMicros": "301000",
+                  "definitionId": "ad008a31-6edd-4a8a-808f-0424ed8423b7",
+                  "machineSubsets": [],
+                  "definitionVersion": 1,
+                  "definitionVersionId": "62689f53-2784-45eb-8088-03d62f8756d6"
+                }
+              ],
+              "displayName": "Totals worker",
+              "knownMicros": "301000",
+              "includesLive": false,
+              "measurementState": "recorded",
+              "completenessReasons": [
+                "legacy_unmapped",
+                "named_unlinked"
+              ]
+            },
+            {
+              "share": {
+                "state": "unavailable",
+                "reasons": [
+                  "legacy_unmapped",
+                  "named_unlinked"
+                ]
+              },
+              "retired": false,
+              "complete": false,
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000250003",
+              "activities": [],
+              "displayName": "Totals other",
+              "knownMicros": "0",
+              "includesLive": false,
+              "measurementState": "unproven",
+              "completenessReasons": [
+                "legacy_unmapped",
+                "named_unlinked",
+                "zero"
+              ]
+            }
+          ],
+          "unitId": "00000000-0000-4000-8000-000000250030",
+          "window": {
+            "from": null,
+            "kind": "all_retained_selected_unit",
+            "until": "2026-10-04T22:45:44.800000Z"
+          },
+          "actorId": "00000000-0000-4000-8000-000000250002",
+          "zeroOnly": [],
+          "projectId": "00000000-0000-4000-8000-000000250010",
+          "includesLive": false,
+          "unitComplete": false,
+          "unitIncarnation": "0",
+          "unitKnownMicros": "301000",
+          "participantCounts": {
+            "timed": 1,
+            "total": 3,
+            "zeroOnly": 0,
+            "untimedOnly": 1,
+            "timingUncertain": 1
+          },
+          "completenessReasons": [
+            "legacy_unmapped",
+            "named_unlinked"
+          ],
+          "untimedParticipants": [
+            {
+              "retired": false,
+              "evidence": [
+                {
+                  "sourceId": "a36e36c7-6b14-42f6-b316-7a440cb1ccfd",
+                  "workDate": "2026-10-04",
+                  "recordedAt": "2026-10-04T22:45:39.938000Z",
+                  "sourceKind": "work_unit_review_events",
+                  "activityLabel": "Quality review",
+                  "evidenceState": "named"
+                }
+              ],
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000250002",
+              "displayName": "Totals reviewer"
+            }
+          ],
+          "unresolvedAttribution": {
+            "present": true,
+            "reasons": [
+              "legacy_unmapped",
+              "named_unlinked"
+            ],
+            "unknownMicros": null
+          }
+        },
+        "protocolVersion": 1
+      }
+    },
+    {
+      "label": "Legacy helper timer has uncertain subject without assigning requester labor",
+      "request": {
+        "projectId": "00000000-0000-4000-8000-000000250010",
+        "unitId": "00000000-0000-4000-8000-000000250030",
+        "protocolVersion": 1
+      },
+      "reply": {
+        "availability": "available",
+        "contributors": {
+          "asOf": "2026-10-04T22:45:44.900000Z",
+          "people": [
+            {
+              "share": {
+                "state": "unavailable",
+                "reasons": [
+                  "legacy_unmapped",
+                  "named_unlinked"
+                ]
+              },
+              "retired": false,
+              "complete": false,
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000250001",
+              "activities": [
+                {
+                  "labelEn": "totals_specific",
+                  "labelEs": "totals_specific",
+                  "retired": false,
+                  "knownMicros": "301000",
+                  "definitionId": "ad008a31-6edd-4a8a-808f-0424ed8423b7",
+                  "machineSubsets": [],
+                  "definitionVersion": 1,
+                  "definitionVersionId": "62689f53-2784-45eb-8088-03d62f8756d6"
+                }
+              ],
+              "displayName": "Totals worker",
+              "knownMicros": "301000",
+              "includesLive": false,
+              "measurementState": "recorded",
+              "completenessReasons": [
+                "legacy_unmapped",
+                "named_unlinked"
+              ]
+            },
+            {
+              "share": {
+                "state": "unavailable",
+                "reasons": [
+                  "legacy_unmapped",
+                  "named_unlinked"
+                ]
+              },
+              "retired": false,
+              "complete": false,
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000250003",
+              "activities": [],
+              "displayName": "Totals other",
+              "knownMicros": "0",
+              "includesLive": false,
+              "measurementState": "unproven",
+              "completenessReasons": [
+                "legacy_unmapped",
+                "named_unlinked",
+                "zero"
+              ]
+            }
+          ],
+          "unitId": "00000000-0000-4000-8000-000000250030",
+          "window": {
+            "from": null,
+            "kind": "all_retained_selected_unit",
+            "until": "2026-10-04T22:45:44.900000Z"
+          },
+          "actorId": "00000000-0000-4000-8000-000000250002",
+          "zeroOnly": [],
+          "projectId": "00000000-0000-4000-8000-000000250010",
+          "includesLive": false,
+          "unitComplete": false,
+          "unitIncarnation": "0",
+          "unitKnownMicros": "301000",
+          "participantCounts": {
+            "timed": 1,
+            "total": 3,
+            "zeroOnly": 0,
+            "untimedOnly": 1,
+            "timingUncertain": 1
+          },
+          "completenessReasons": [
+            "legacy_unmapped",
+            "named_unlinked"
+          ],
+          "untimedParticipants": [
+            {
+              "retired": false,
+              "evidence": [
+                {
+                  "sourceId": "a36e36c7-6b14-42f6-b316-7a440cb1ccfd",
+                  "workDate": "2026-10-04",
+                  "recordedAt": "2026-10-04T22:45:39.938000Z",
+                  "sourceKind": "work_unit_review_events",
+                  "activityLabel": "Quality review",
+                  "evidenceState": "named"
+                }
+              ],
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000250002",
+              "displayName": "Totals reviewer"
+            }
+          ],
+          "unresolvedAttribution": {
+            "present": true,
+            "reasons": [
+              "legacy_unmapped",
+              "named_unlinked"
+            ],
+            "unknownMicros": null
+          }
+        },
+        "protocolVersion": 1
+      }
+    },
+    {
+      "label": "Deleted and reinserted unit UUID cannot inherit old labor identity",
+      "request": {
+        "projectId": "00000000-0000-4000-8000-000000250010",
+        "unitId": "00000000-0000-4000-8000-000000250030",
+        "protocolVersion": 1
+      },
+      "reply": {
+        "availability": "unavailable",
+        "contributors": null,
+        "protocolVersion": 1
+      }
+    },
+    {
+      "label": "Retired task keeps captured version and labor",
+      "request": {
+        "projectId": "00000000-0000-4000-8000-000000250010",
+        "unitId": "00000000-0000-4000-8000-000000250030",
+        "protocolVersion": 1
+      },
+      "reply": {
+        "availability": "available",
+        "contributors": {
+          "asOf": "2026-10-04T22:45:45.072000Z",
+          "people": [
+            {
+              "share": {
+                "state": "unavailable",
+                "reasons": [
+                  "named_unlinked"
+                ]
+              },
+              "retired": false,
+              "complete": false,
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000250001",
+              "activities": [
+                {
+                  "labelEn": "totals_specific",
+                  "labelEs": "totals_specific",
+                  "retired": true,
+                  "knownMicros": "301000",
+                  "definitionId": "ad008a31-6edd-4a8a-808f-0424ed8423b7",
+                  "machineSubsets": [],
+                  "definitionVersion": 1,
+                  "definitionVersionId": "62689f53-2784-45eb-8088-03d62f8756d6"
+                }
+              ],
+              "displayName": "Totals worker",
+              "knownMicros": "301000",
+              "includesLive": false,
+              "measurementState": "recorded",
+              "completenessReasons": [
+                "named_unlinked"
+              ]
+            }
+          ],
+          "unitId": "00000000-0000-4000-8000-000000250030",
+          "window": {
+            "from": null,
+            "kind": "all_retained_selected_unit",
+            "until": "2026-10-04T22:45:45.072000Z"
+          },
+          "actorId": "00000000-0000-4000-8000-000000250002",
+          "zeroOnly": [],
+          "projectId": "00000000-0000-4000-8000-000000250010",
+          "includesLive": false,
+          "unitComplete": false,
+          "unitIncarnation": "0",
+          "unitKnownMicros": "301000",
+          "participantCounts": {
+            "timed": 1,
+            "total": 2,
+            "zeroOnly": 0,
+            "untimedOnly": 1,
+            "timingUncertain": 0
+          },
+          "completenessReasons": [
+            "named_unlinked"
+          ],
+          "untimedParticipants": [
+            {
+              "retired": false,
+              "evidence": [
+                {
+                  "sourceId": "a36e36c7-6b14-42f6-b316-7a440cb1ccfd",
+                  "workDate": "2026-10-04",
+                  "recordedAt": "2026-10-04T22:45:39.938000Z",
+                  "sourceKind": "work_unit_review_events",
+                  "activityLabel": "Quality review",
+                  "evidenceState": "named"
+                }
+              ],
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000250002",
+              "displayName": "Totals reviewer"
+            }
+          ],
+          "unresolvedAttribution": {
+            "present": true,
+            "reasons": [
+              "named_unlinked"
+            ],
+            "unknownMicros": null
+          }
+        },
+        "protocolVersion": 1
+      }
+    },
+    {
+      "label": "New task label/version does not rewrite captured task",
+      "request": {
+        "projectId": "00000000-0000-4000-8000-000000250010",
+        "unitId": "00000000-0000-4000-8000-000000250030",
+        "protocolVersion": 1
+      },
+      "reply": {
+        "availability": "available",
+        "contributors": {
+          "asOf": "2026-10-04T22:45:45.167000Z",
+          "people": [
+            {
+              "share": {
+                "state": "unavailable",
+                "reasons": [
+                  "named_unlinked"
+                ]
+              },
+              "retired": false,
+              "complete": false,
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000250001",
+              "activities": [
+                {
+                  "labelEn": "totals_specific",
+                  "labelEs": "totals_specific",
+                  "retired": false,
+                  "knownMicros": "301000",
+                  "definitionId": "ad008a31-6edd-4a8a-808f-0424ed8423b7",
+                  "machineSubsets": [],
+                  "definitionVersion": 1,
+                  "definitionVersionId": "62689f53-2784-45eb-8088-03d62f8756d6"
+                }
+              ],
+              "displayName": "Totals worker",
+              "knownMicros": "301000",
+              "includesLive": false,
+              "measurementState": "recorded",
+              "completenessReasons": [
+                "named_unlinked"
+              ]
+            }
+          ],
+          "unitId": "00000000-0000-4000-8000-000000250030",
+          "window": {
+            "from": null,
+            "kind": "all_retained_selected_unit",
+            "until": "2026-10-04T22:45:45.167000Z"
+          },
+          "actorId": "00000000-0000-4000-8000-000000250002",
+          "zeroOnly": [],
+          "projectId": "00000000-0000-4000-8000-000000250010",
+          "includesLive": false,
+          "unitComplete": false,
+          "unitIncarnation": "0",
+          "unitKnownMicros": "301000",
+          "participantCounts": {
+            "timed": 1,
+            "total": 2,
+            "zeroOnly": 0,
+            "untimedOnly": 1,
+            "timingUncertain": 0
+          },
+          "completenessReasons": [
+            "named_unlinked"
+          ],
+          "untimedParticipants": [
+            {
+              "retired": false,
+              "evidence": [
+                {
+                  "sourceId": "a36e36c7-6b14-42f6-b316-7a440cb1ccfd",
+                  "workDate": "2026-10-04",
+                  "recordedAt": "2026-10-04T22:45:39.938000Z",
+                  "sourceKind": "work_unit_review_events",
+                  "activityLabel": "Quality review",
+                  "evidenceState": "named"
+                }
+              ],
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000250002",
+              "displayName": "Totals reviewer"
+            }
+          ],
+          "unresolvedAttribution": {
+            "present": true,
+            "reasons": [
+              "named_unlinked"
+            ],
+            "unknownMicros": null
+          }
+        },
+        "protocolVersion": 1
+      }
+    },
+    {
+      "label": "named_crew_not_divided_duration",
+      "request": {
+        "projectId": "00000000-0000-4000-8000-000000250010",
+        "unitId": "00000000-0000-4000-8000-000000250030",
+        "protocolVersion": 1
+      },
+      "reply": {
+        "availability": "available",
+        "contributors": {
+          "asOf": "2026-10-04T22:45:45.261000Z",
+          "people": [
+            {
+              "share": {
+                "state": "unavailable",
+                "reasons": [
+                  "named_unlinked"
+                ]
+              },
+              "retired": false,
+              "complete": false,
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000250001",
+              "activities": [
+                {
+                  "labelEn": "totals_specific",
+                  "labelEs": "totals_specific",
+                  "retired": false,
+                  "knownMicros": "301000",
+                  "definitionId": "ad008a31-6edd-4a8a-808f-0424ed8423b7",
+                  "machineSubsets": [],
+                  "definitionVersion": 1,
+                  "definitionVersionId": "62689f53-2784-45eb-8088-03d62f8756d6"
+                }
+              ],
+              "displayName": "Totals worker",
+              "knownMicros": "301000",
+              "includesLive": false,
+              "measurementState": "recorded",
+              "completenessReasons": [
+                "named_unlinked"
+              ]
+            }
+          ],
+          "unitId": "00000000-0000-4000-8000-000000250030",
+          "window": {
+            "from": null,
+            "kind": "all_retained_selected_unit",
+            "until": "2026-10-04T22:45:45.261000Z"
+          },
+          "actorId": "00000000-0000-4000-8000-000000250002",
+          "zeroOnly": [],
+          "projectId": "00000000-0000-4000-8000-000000250010",
+          "includesLive": false,
+          "unitComplete": false,
+          "unitIncarnation": "0",
+          "unitKnownMicros": "301000",
+          "participantCounts": {
+            "timed": 1,
+            "total": 3,
+            "zeroOnly": 0,
+            "untimedOnly": 2,
+            "timingUncertain": 0
+          },
+          "completenessReasons": [
+            "named_unlinked"
+          ],
+          "untimedParticipants": [
+            {
+              "retired": false,
+              "evidence": [
+                {
+                  "sourceId": "a36e36c7-6b14-42f6-b316-7a440cb1ccfd",
+                  "workDate": "2026-10-04",
+                  "recordedAt": "2026-10-04T22:45:39.938000Z",
+                  "sourceKind": "work_unit_review_events",
+                  "activityLabel": "Quality review",
+                  "evidenceState": "named"
+                }
+              ],
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000250002",
+              "displayName": "Totals reviewer"
+            },
+            {
+              "retired": false,
+              "evidence": [
+                {
+                  "sourceId": "00000000-0000-4000-8000-000000260050:00000000-0000-4000-8000-000000250003",
+                  "workDate": "2026-10-04",
+                  "recordedAt": null,
+                  "sourceKind": "crew_work_record_people",
+                  "activityLabel": "install",
+                  "evidenceState": "named"
+                }
+              ],
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000250003",
+              "displayName": "Totals other"
+            }
+          ],
+          "unresolvedAttribution": {
+            "present": true,
+            "reasons": [
+              "named_unlinked"
+            ],
+            "unknownMicros": null
+          }
+        },
+        "protocolVersion": 1
+      }
+    },
+    {
+      "label": "same_person_unproven_timer_and_named_work",
+      "request": {
+        "projectId": "00000000-0000-4000-8000-000000250010",
+        "unitId": "00000000-0000-4000-8000-000000250030",
+        "protocolVersion": 1
+      },
+      "reply": {
+        "availability": "available",
+        "contributors": {
+          "asOf": "2026-10-04T22:45:45.364000Z",
+          "people": [
+            {
+              "share": {
+                "state": "unavailable",
+                "reasons": [
+                  "legacy_unmapped",
+                  "named_unlinked"
+                ]
+              },
+              "retired": false,
+              "complete": false,
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000250001",
+              "activities": [
+                {
+                  "labelEn": "totals_specific",
+                  "labelEs": "totals_specific",
+                  "retired": false,
+                  "knownMicros": "301000",
+                  "definitionId": "ad008a31-6edd-4a8a-808f-0424ed8423b7",
+                  "machineSubsets": [],
+                  "definitionVersion": 1,
+                  "definitionVersionId": "62689f53-2784-45eb-8088-03d62f8756d6"
+                }
+              ],
+              "displayName": "Totals worker",
+              "knownMicros": "301000",
+              "includesLive": false,
+              "measurementState": "recorded",
+              "completenessReasons": [
+                "legacy_unmapped",
+                "named_unlinked"
+              ]
+            },
+            {
+              "share": {
+                "state": "unavailable",
+                "reasons": [
+                  "legacy_unmapped",
+                  "named_unlinked"
+                ]
+              },
+              "retired": false,
+              "complete": false,
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000250003",
+              "activities": [],
+              "displayName": "Totals other",
+              "knownMicros": "0",
+              "includesLive": false,
+              "measurementState": "unproven",
+              "completenessReasons": [
+                "legacy_unmapped",
+                "named_unlinked",
+                "zero"
+              ]
+            }
+          ],
+          "unitId": "00000000-0000-4000-8000-000000250030",
+          "window": {
+            "from": null,
+            "kind": "all_retained_selected_unit",
+            "until": "2026-10-04T22:45:45.364000Z"
+          },
+          "actorId": "00000000-0000-4000-8000-000000250002",
+          "zeroOnly": [],
+          "projectId": "00000000-0000-4000-8000-000000250010",
+          "includesLive": false,
+          "unitComplete": false,
+          "unitIncarnation": "0",
+          "unitKnownMicros": "301000",
+          "participantCounts": {
+            "timed": 1,
+            "total": 3,
+            "zeroOnly": 0,
+            "untimedOnly": 1,
+            "timingUncertain": 1
+          },
+          "completenessReasons": [
+            "legacy_unmapped",
+            "named_unlinked"
+          ],
+          "untimedParticipants": [
+            {
+              "retired": false,
+              "evidence": [
+                {
+                  "sourceId": "a36e36c7-6b14-42f6-b316-7a440cb1ccfd",
+                  "workDate": "2026-10-04",
+                  "recordedAt": "2026-10-04T22:45:39.938000Z",
+                  "sourceKind": "work_unit_review_events",
+                  "activityLabel": "Quality review",
+                  "evidenceState": "named"
+                }
+              ],
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000250002",
+              "displayName": "Totals reviewer"
+            },
+            {
+              "retired": false,
+              "evidence": [
+                {
+                  "sourceId": "00000000-0000-4000-8000-000000260050:00000000-0000-4000-8000-000000250003",
+                  "workDate": "2026-10-04",
+                  "recordedAt": null,
+                  "sourceKind": "crew_work_record_people",
+                  "activityLabel": "install",
+                  "evidenceState": "named"
+                }
+              ],
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000250003",
+              "displayName": "Totals other"
+            }
+          ],
+          "unresolvedAttribution": {
+            "present": true,
+            "reasons": [
+              "legacy_unmapped",
+              "named_unlinked"
+            ],
+            "unknownMicros": null
+          }
+        },
+        "protocolVersion": 1
+      }
+    },
+    {
+      "label": "Exact contributor source guard rejects grant execute on function _work_unit_contributors_shift(uuid,uuid,timestamptz,jsonb) to authenticated",
+      "request": {
+        "projectId": "00000000-0000-4000-8000-000000250010",
+        "unitId": "00000000-0000-4000-8000-000000250030",
+        "protocolVersion": 1
+      },
+      "reply": {
+        "availability": "unavailable",
+        "contributors": null,
+        "protocolVersion": 1
+      }
+    },
+    {
+      "label": "Exact contributor source guard rejects grant execute on function work_unit_contributors_read(uuid,uuid,integer) to service_role",
+      "request": {
+        "projectId": "00000000-0000-4000-8000-000000250010",
+        "unitId": "00000000-0000-4000-8000-000000250030",
+        "protocolVersion": 1
+      },
+      "reply": {
+        "availability": "unavailable",
+        "contributors": null,
+        "protocolVersion": 1
+      }
+    },
+    {
+      "label": "Exact contributor source guard rejects grant select(profile_id) on work_activity_safety_events to public",
+      "request": {
+        "projectId": "00000000-0000-4000-8000-000000250010",
+        "unitId": "00000000-0000-4000-8000-000000250030",
+        "protocolVersion": 1
+      },
+      "reply": {
+        "availability": "unavailable",
+        "contributors": null,
+        "protocolVersion": 1
+      }
+    },
+    {
+      "label": "Exact contributor source guard rejects create function public._work_unit_contributors_unknown() returns int language sql as 'select 1'",
+      "request": {
+        "projectId": "00000000-0000-4000-8000-000000250010",
+        "unitId": "00000000-0000-4000-8000-000000250030",
+        "protocolVersion": 1
+      },
+      "reply": {
+        "availability": "unavailable",
+        "contributors": null,
+        "protocolVersion": 1
+      }
+    },
+    {
+      "label": "Exact contributor source guard rejects create function public.work_unit_contributors_read(text) returns int language sql as 'select 1'",
+      "request": {
+        "projectId": "00000000-0000-4000-8000-000000250010",
+        "unitId": "00000000-0000-4000-8000-000000250030",
+        "protocolVersion": 1
+      },
+      "reply": {
+        "availability": "unavailable",
+        "contributors": null,
+        "protocolVersion": 1
+      }
+    },
+    {
+      "label": "Exact contributor source guard rejects create table public._work_unit_contributors_unknown(id int)",
+      "request": {
+        "projectId": "00000000-0000-4000-8000-000000250010",
+        "unitId": "00000000-0000-4000-8000-000000250030",
+        "protocolVersion": 1
+      },
+      "reply": {
+        "availability": "unavailable",
+        "contributors": null,
+        "protocolVersion": 1
+      }
+    },
+    {
+      "label": "Exact contributor source guard rejects alter function public._work_unit_contributors_person(uuid,jsonb,text[],numeric,text[]) strict",
+      "request": {
+        "projectId": "00000000-0000-4000-8000-000000250010",
+        "unitId": "00000000-0000-4000-8000-000000250030",
+        "protocolVersion": 1
+      },
+      "reply": {
+        "availability": "unavailable",
+        "contributors": null,
+        "protocolVersion": 1
+      }
+    },
+    {
+      "label": "three_people_3_2_1_hours",
+      "request": {
+        "projectId": "00000000-0000-4000-8000-000000250010",
+        "unitId": "00000000-0000-4000-8000-000000260100",
+        "protocolVersion": 1
+      },
+      "reply": {
+        "availability": "available",
+        "contributors": {
+          "asOf": "2026-10-04T22:45:46.379000Z",
+          "people": [
+            {
+              "share": {
+                "state": "available",
+                "numeratorMicros": "10800000000",
+                "denominatorMicros": "21600000000"
+              },
+              "retired": false,
+              "complete": true,
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000260101",
+              "activities": [
+                {
+                  "labelEn": "totals_specific",
+                  "labelEs": "totals_specific",
+                  "retired": false,
+                  "knownMicros": "10800000000",
+                  "definitionId": "ad008a31-6edd-4a8a-808f-0424ed8423b7",
+                  "machineSubsets": [],
+                  "definitionVersion": 1,
+                  "definitionVersionId": "62689f53-2784-45eb-8088-03d62f8756d6"
+                }
+              ],
+              "displayName": "Same name",
+              "knownMicros": "10800000000",
+              "includesLive": false,
+              "measurementState": "recorded",
+              "completenessReasons": []
+            },
+            {
+              "share": {
+                "state": "available",
+                "numeratorMicros": "7200000000",
+                "denominatorMicros": "21600000000"
+              },
+              "retired": false,
+              "complete": true,
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000260102",
+              "activities": [
+                {
+                  "labelEn": "totals_specific",
+                  "labelEs": "totals_specific",
+                  "retired": false,
+                  "knownMicros": "7200000000",
+                  "definitionId": "ad008a31-6edd-4a8a-808f-0424ed8423b7",
+                  "machineSubsets": [],
+                  "definitionVersion": 1,
+                  "definitionVersionId": "62689f53-2784-45eb-8088-03d62f8756d6"
+                }
+              ],
+              "displayName": "Same name",
+              "knownMicros": "7200000000",
+              "includesLive": false,
+              "measurementState": "recorded",
+              "completenessReasons": []
+            },
+            {
+              "share": {
+                "state": "available",
+                "numeratorMicros": "3600000000",
+                "denominatorMicros": "21600000000"
+              },
+              "retired": false,
+              "complete": true,
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000260103",
+              "activities": [
+                {
+                  "labelEn": "totals_specific",
+                  "labelEs": "totals_specific",
+                  "retired": false,
+                  "knownMicros": "3600000000",
+                  "definitionId": "ad008a31-6edd-4a8a-808f-0424ed8423b7",
+                  "machineSubsets": [],
+                  "definitionVersion": 1,
+                  "definitionVersionId": "62689f53-2784-45eb-8088-03d62f8756d6"
+                }
+              ],
+              "displayName": "Same name",
+              "knownMicros": "3600000000",
+              "includesLive": false,
+              "measurementState": "recorded",
+              "completenessReasons": []
+            }
+          ],
+          "unitId": "00000000-0000-4000-8000-000000260100",
+          "window": {
+            "from": null,
+            "kind": "all_retained_selected_unit",
+            "until": "2026-10-04T22:45:46.379000Z"
+          },
+          "actorId": "00000000-0000-4000-8000-000000250002",
+          "zeroOnly": [],
+          "projectId": "00000000-0000-4000-8000-000000250010",
+          "includesLive": false,
+          "unitComplete": true,
+          "unitIncarnation": "0",
+          "unitKnownMicros": "21600000000",
+          "participantCounts": {
+            "timed": 3,
+            "total": 3,
+            "zeroOnly": 0,
+            "untimedOnly": 0,
+            "timingUncertain": 0
+          },
+          "completenessReasons": [],
+          "untimedParticipants": [],
+          "unresolvedAttribution": {
+            "present": false,
+            "reasons": [],
+            "unknownMicros": "0"
+          }
+        },
+        "protocolVersion": 1
+      }
+    },
+    {
+      "label": "overlapping_two_people_one_hour_each",
+      "request": {
+        "projectId": "00000000-0000-4000-8000-000000250010",
+        "unitId": "00000000-0000-4000-8000-000000260100",
+        "protocolVersion": 1
+      },
+      "reply": {
+        "availability": "available",
+        "contributors": {
+          "asOf": "2026-10-04T22:45:46.598000Z",
+          "people": [
+            {
+              "share": {
+                "state": "available",
+                "numeratorMicros": "3600000000",
+                "denominatorMicros": "7200000000"
+              },
+              "retired": false,
+              "complete": true,
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000260101",
+              "activities": [
+                {
+                  "labelEn": "totals_specific",
+                  "labelEs": "totals_specific",
+                  "retired": false,
+                  "knownMicros": "3600000000",
+                  "definitionId": "ad008a31-6edd-4a8a-808f-0424ed8423b7",
+                  "machineSubsets": [],
+                  "definitionVersion": 1,
+                  "definitionVersionId": "62689f53-2784-45eb-8088-03d62f8756d6"
+                }
+              ],
+              "displayName": "Same name",
+              "knownMicros": "3600000000",
+              "includesLive": false,
+              "measurementState": "recorded",
+              "completenessReasons": []
+            },
+            {
+              "share": {
+                "state": "available",
+                "numeratorMicros": "3600000000",
+                "denominatorMicros": "7200000000"
+              },
+              "retired": false,
+              "complete": true,
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000260102",
+              "activities": [
+                {
+                  "labelEn": "totals_specific",
+                  "labelEs": "totals_specific",
+                  "retired": false,
+                  "knownMicros": "3600000000",
+                  "definitionId": "ad008a31-6edd-4a8a-808f-0424ed8423b7",
+                  "machineSubsets": [],
+                  "definitionVersion": 1,
+                  "definitionVersionId": "62689f53-2784-45eb-8088-03d62f8756d6"
+                }
+              ],
+              "displayName": "Same name",
+              "knownMicros": "3600000000",
+              "includesLive": false,
+              "measurementState": "recorded",
+              "completenessReasons": []
+            }
+          ],
+          "unitId": "00000000-0000-4000-8000-000000260100",
+          "window": {
+            "from": null,
+            "kind": "all_retained_selected_unit",
+            "until": "2026-10-04T22:45:46.598000Z"
+          },
+          "actorId": "00000000-0000-4000-8000-000000250002",
+          "zeroOnly": [],
+          "projectId": "00000000-0000-4000-8000-000000250010",
+          "includesLive": false,
+          "unitComplete": true,
+          "unitIncarnation": "0",
+          "unitKnownMicros": "7200000000",
+          "participantCounts": {
+            "timed": 2,
+            "total": 2,
+            "zeroOnly": 0,
+            "untimedOnly": 0,
+            "timingUncertain": 0
+          },
+          "completenessReasons": [],
+          "untimedParticipants": [],
+          "unresolvedAttribution": {
+            "present": false,
+            "reasons": [],
+            "unknownMicros": "0"
+          }
+        },
+        "protocolVersion": 1
+      }
+    },
+    {
+      "label": "positive_unit_with_zero_only_audit",
+      "request": {
+        "projectId": "00000000-0000-4000-8000-000000250010",
+        "unitId": "00000000-0000-4000-8000-000000260100",
+        "protocolVersion": 1
+      },
+      "reply": {
+        "availability": "available",
+        "contributors": {
+          "asOf": "2026-10-04T22:45:46.749000Z",
+          "people": [
+            {
+              "share": {
+                "state": "available",
+                "numeratorMicros": "3600000000",
+                "denominatorMicros": "7200000000"
+              },
+              "retired": false,
+              "complete": true,
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000260101",
+              "activities": [
+                {
+                  "labelEn": "totals_specific",
+                  "labelEs": "totals_specific",
+                  "retired": false,
+                  "knownMicros": "3600000000",
+                  "definitionId": "ad008a31-6edd-4a8a-808f-0424ed8423b7",
+                  "machineSubsets": [],
+                  "definitionVersion": 1,
+                  "definitionVersionId": "62689f53-2784-45eb-8088-03d62f8756d6"
+                }
+              ],
+              "displayName": "Same name",
+              "knownMicros": "3600000000",
+              "includesLive": false,
+              "measurementState": "recorded",
+              "completenessReasons": []
+            },
+            {
+              "share": {
+                "state": "available",
+                "numeratorMicros": "3600000000",
+                "denominatorMicros": "7200000000"
+              },
+              "retired": false,
+              "complete": true,
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000260102",
+              "activities": [
+                {
+                  "labelEn": "totals_specific",
+                  "labelEs": "totals_specific",
+                  "retired": false,
+                  "knownMicros": "3600000000",
+                  "definitionId": "ad008a31-6edd-4a8a-808f-0424ed8423b7",
+                  "machineSubsets": [],
+                  "definitionVersion": 1,
+                  "definitionVersionId": "62689f53-2784-45eb-8088-03d62f8756d6"
+                }
+              ],
+              "displayName": "Same name",
+              "knownMicros": "3600000000",
+              "includesLive": false,
+              "measurementState": "recorded",
+              "completenessReasons": []
+            }
+          ],
+          "unitId": "00000000-0000-4000-8000-000000260100",
+          "window": {
+            "from": null,
+            "kind": "all_retained_selected_unit",
+            "until": "2026-10-04T22:45:46.749000Z"
+          },
+          "actorId": "00000000-0000-4000-8000-000000250002",
+          "zeroOnly": [
+            {
+              "share": {
+                "state": "unavailable",
+                "reasons": [
+                  "zero"
+                ]
+              },
+              "retired": false,
+              "complete": true,
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000260103",
+              "activities": [
+                {
+                  "labelEn": "totals_specific",
+                  "labelEs": "totals_specific",
+                  "retired": false,
+                  "knownMicros": "0",
+                  "definitionId": "ad008a31-6edd-4a8a-808f-0424ed8423b7",
+                  "machineSubsets": [],
+                  "definitionVersion": 1,
+                  "definitionVersionId": "62689f53-2784-45eb-8088-03d62f8756d6"
+                }
+              ],
+              "displayName": "Same name",
+              "knownMicros": "0",
+              "includesLive": false,
+              "measurementState": "recorded_zero",
+              "completenessReasons": [
+                "zero"
+              ]
+            }
+          ],
+          "projectId": "00000000-0000-4000-8000-000000250010",
+          "includesLive": false,
+          "unitComplete": true,
+          "unitIncarnation": "0",
+          "unitKnownMicros": "7200000000",
+          "participantCounts": {
+            "timed": 2,
+            "total": 2,
+            "zeroOnly": 1,
+            "untimedOnly": 0,
+            "timingUncertain": 0
+          },
+          "completenessReasons": [],
+          "untimedParticipants": [],
+          "unresolvedAttribution": {
+            "present": false,
+            "reasons": [],
+            "unknownMicros": "0"
+          }
+        },
+        "protocolVersion": 1
+      }
+    },
+    {
+      "label": "positive_unit_named_validated_zero_timer",
+      "request": {
+        "projectId": "00000000-0000-4000-8000-000000250010",
+        "unitId": "00000000-0000-4000-8000-000000260100",
+        "protocolVersion": 1
+      },
+      "reply": {
+        "availability": "available",
+        "contributors": {
+          "asOf": "2026-10-04T22:45:46.857000Z",
+          "people": [
+            {
+              "share": {
+                "state": "unavailable",
+                "reasons": [
+                  "named_unlinked"
+                ]
+              },
+              "retired": false,
+              "complete": false,
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000260101",
+              "activities": [
+                {
+                  "labelEn": "totals_specific",
+                  "labelEs": "totals_specific",
+                  "retired": false,
+                  "knownMicros": "3600000000",
+                  "definitionId": "ad008a31-6edd-4a8a-808f-0424ed8423b7",
+                  "machineSubsets": [],
+                  "definitionVersion": 1,
+                  "definitionVersionId": "62689f53-2784-45eb-8088-03d62f8756d6"
+                }
+              ],
+              "displayName": "Same name",
+              "knownMicros": "3600000000",
+              "includesLive": false,
+              "measurementState": "recorded",
+              "completenessReasons": [
+                "named_unlinked"
+              ]
+            },
+            {
+              "share": {
+                "state": "unavailable",
+                "reasons": [
+                  "named_unlinked"
+                ]
+              },
+              "retired": false,
+              "complete": false,
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000260102",
+              "activities": [
+                {
+                  "labelEn": "totals_specific",
+                  "labelEs": "totals_specific",
+                  "retired": false,
+                  "knownMicros": "3600000000",
+                  "definitionId": "ad008a31-6edd-4a8a-808f-0424ed8423b7",
+                  "machineSubsets": [],
+                  "definitionVersion": 1,
+                  "definitionVersionId": "62689f53-2784-45eb-8088-03d62f8756d6"
+                }
+              ],
+              "displayName": "Same name",
+              "knownMicros": "3600000000",
+              "includesLive": false,
+              "measurementState": "recorded",
+              "completenessReasons": [
+                "named_unlinked"
+              ]
+            },
+            {
+              "share": {
+                "state": "unavailable",
+                "reasons": [
+                  "named_unlinked"
+                ]
+              },
+              "retired": false,
+              "complete": false,
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000260103",
+              "activities": [],
+              "displayName": "Same name",
+              "knownMicros": "0",
+              "includesLive": false,
+              "measurementState": "unproven",
+              "completenessReasons": [
+                "named_unlinked",
+                "zero"
+              ]
+            }
+          ],
+          "unitId": "00000000-0000-4000-8000-000000260100",
+          "window": {
+            "from": null,
+            "kind": "all_retained_selected_unit",
+            "until": "2026-10-04T22:45:46.857000Z"
+          },
+          "actorId": "00000000-0000-4000-8000-000000250002",
+          "zeroOnly": [],
+          "projectId": "00000000-0000-4000-8000-000000250010",
+          "includesLive": false,
+          "unitComplete": false,
+          "unitIncarnation": "0",
+          "unitKnownMicros": "7200000000",
+          "participantCounts": {
+            "timed": 2,
+            "total": 3,
+            "zeroOnly": 0,
+            "untimedOnly": 0,
+            "timingUncertain": 1
+          },
+          "completenessReasons": [
+            "named_unlinked"
+          ],
+          "untimedParticipants": [
+            {
+              "retired": false,
+              "evidence": [
+                {
+                  "sourceId": "00000000-0000-4000-8000-000000265090:00000000-0000-4000-8000-000000260103",
+                  "workDate": "2026-10-04",
+                  "recordedAt": null,
+                  "sourceKind": "crew_work_record_people",
+                  "activityLabel": "install",
+                  "evidenceState": "named"
+                }
+              ],
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000260103",
+              "displayName": "Same name"
+            }
+          ],
+          "unresolvedAttribution": {
+            "present": true,
+            "reasons": [
+              "named_unlinked"
+            ],
+            "unknownMicros": null
+          }
+        },
+        "protocolVersion": 1
+      }
+    },
+    {
+      "label": "two_tasks_machine_subset_not_extra_timer",
+      "request": {
+        "projectId": "00000000-0000-4000-8000-000000250010",
+        "unitId": "00000000-0000-4000-8000-000000260100",
+        "protocolVersion": 1
+      },
+      "reply": {
+        "availability": "available",
+        "contributors": {
+          "asOf": "2026-10-04T22:45:47.038000Z",
+          "people": [
+            {
+              "share": {
+                "state": "available",
+                "numeratorMicros": "7200000000",
+                "denominatorMicros": "7200000000"
+              },
+              "retired": false,
+              "complete": true,
+              "nameState": "current",
+              "profileId": "00000000-0000-4000-8000-000000260101",
+              "activities": [
+                {
+                  "labelEn": "Machine unit activity",
+                  "labelEs": "Machine unit activity",
+                  "retired": false,
+                  "knownMicros": "3600000000",
+                  "definitionId": "1dc015ef-ab29-424e-9573-1a1eb52231c0",
+                  "machineSubsets": [
+                    {
+                      "knownMicros": "3600000000",
+                      "machineKind": "forklift"
+                    }
+                  ],
+                  "definitionVersion": 1,
+                  "definitionVersionId": "bb58679f-dfa4-4b07-a578-1e7cc320f80f"
+                },
+                {
+                  "labelEn": "totals_specific",
+                  "labelEs": "totals_specific",
+                  "retired": false,
+                  "knownMicros": "3600000000",
+                  "definitionId": "ad008a31-6edd-4a8a-808f-0424ed8423b7",
+                  "machineSubsets": [],
+                  "definitionVersion": 1,
+                  "definitionVersionId": "62689f53-2784-45eb-8088-03d62f8756d6"
+                }
+              ],
+              "displayName": "Same name",
+              "knownMicros": "7200000000",
+              "includesLive": false,
+              "measurementState": "recorded",
+              "completenessReasons": []
+            }
+          ],
+          "unitId": "00000000-0000-4000-8000-000000260100",
+          "window": {
+            "from": null,
+            "kind": "all_retained_selected_unit",
+            "until": "2026-10-04T22:45:47.038000Z"
+          },
+          "actorId": "00000000-0000-4000-8000-000000250002",
+          "zeroOnly": [],
+          "projectId": "00000000-0000-4000-8000-000000250010",
+          "includesLive": false,
+          "unitComplete": true,
+          "unitIncarnation": "0",
+          "unitKnownMicros": "7200000000",
+          "participantCounts": {
+            "timed": 1,
+            "total": 1,
+            "zeroOnly": 0,
+            "untimedOnly": 0,
+            "timingUncertain": 0
+          },
+          "completenessReasons": [],
+          "untimedParticipants": [],
+          "unresolvedAttribution": {
+            "present": false,
+            "reasons": [],
+            "unknownMicros": "0"
+          }
+        },
+        "protocolVersion": 1
+      }
+    }
+  ]
+}

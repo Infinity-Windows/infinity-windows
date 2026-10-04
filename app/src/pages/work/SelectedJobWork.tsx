@@ -18,6 +18,7 @@ import { choiceTotals, personalScopeSeconds } from "../../lib/workActivityTotals
 import { REVIEW_FRESH_MS } from "../../lib/workUnitReview/coordinator";
 import "./SelectedJobWork.css";
 const UnitReview = lazy(async () => ({ default: (await import("./SelectedUnitReview")).SelectedUnitReview }));
+const Contributors = lazy(async () => ({ default: (await import("./SelectedUnitContributors")).SelectedUnitContributors }));
 const ActivityTotals = lazy(async () => ({ default: (await import("../../components/work/ActivityTotalsPanel")).ActivityTotalsPanel }));
 
 export interface SelectedJobWorkProps {
@@ -114,16 +115,17 @@ function SelectedJobWorkActive(props: SelectedJobWorkProps & { reviewSource: Sel
   const { owner, generation, locale, project } = props;
   const t = copy[locale];
   const reviewSource = props.reviewSource;
+  const [contributorSource] = useState(createUnitReviewSelectionSource);
   const reviewLifetime = useRef(0), selectionLifetime = useRef(0), reviewOpen = useRef(true);
   const [, repaintSelection] = useState(0);
-  const closeReview = () => { reviewLifetime.current++; reviewSource.invalidate(); };
+  const closeReview = () => { reviewLifetime.current++; reviewSource.invalidate(); contributorSource.invalidate(); };
   const leaveReview = (next: () => void) => { selectionLifetime.current++; reviewOpen.current = false; closeReview(); next(); };
   useLayoutEffect(() => {
     reviewOpen.current = true;
-    const close = () => { selectionLifetime.current++; reviewOpen.current = false; reviewLifetime.current++; reviewSource.invalidate(); };
+    const close = () => { selectionLifetime.current++; reviewOpen.current = false; reviewLifetime.current++; reviewSource.invalidate(); contributorSource.invalidate(); };
     window.addEventListener("popstate", close);
     return () => { close(); window.removeEventListener("popstate", close); };
-  }, [reviewSource]);
+  }, [reviewSource, contributorSource]);
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const [deviceError, setDeviceError] = useState(false);
   const [tab, setTab] = useState<ActivityScope>("general");
@@ -195,6 +197,16 @@ function SelectedJobWorkActive(props: SelectedJobWorkProps & { reviewSource: Sel
     tab === "specific" ? basis.state : null, tab === "specific" ? basis.data?.requestStartedAt : null,
     dimensionHeld, refreshingSelection.current === selectionEpoch, catalogReady]);
   const totals = useActivityTotals(project.id, totalsUnitId, reviewSource, totalsAdmitted, totalsAdmissionRevision);
+  // Raw labor is independent of dimensions, QC acceptance and capture
+  // eligibility. This live parent fence only owns the selected job/unit and
+  // navigation lifetime; the manual reader proves its own fresh canonical unit.
+  const contributorAdmitted = () => current() && reviewOpen.current
+    && reviewLifetime.current === reviewEpoch && selectionLifetime.current === selectionEpoch
+    && liveUnitId.current === unitId && reviewLive.current.unitId === unitId
+    && reviewLive.current.tab === "specific" && refreshingSelection.current !== selectionEpoch;
+  const contributorRevision = JSON.stringify([reviewEpoch, selectionEpoch, tab,
+    catalog.state, catalog.data?.requestStartedAt, basis.state, basis.data?.requestStartedAt,
+    unitReply?.availability === "available" ? unitReply.unit : null]);
   let frozenUnit: ReturnType<typeof unitCommandBasis> | null = null;
   if (!dimensionHeld && unitId && basis.state === "ready" && unitReply?.availability === "available" &&
       catalogUnit?.id === unitId && unitReply.unit.projectId === project.id) {
@@ -383,6 +395,11 @@ function SelectedJobWorkActive(props: SelectedJobWorkProps & { reviewSource: Sel
     </Suspense>}
     <Suspense fallback={<p role="status">{locale === "es" ? "Cargando totales…" : "Loading totals…"}</p>}>
       <ActivityTotals totals={totals} onRefresh={() => refreshReads(true)} />
+    </Suspense>
+    <Suspense fallback={<p role="status">{locale === "es" ? "Cargando colaboradores…" : "Loading contributors…"}</p>}>
+      <Contributors projectId={project.id} unitId={unitId} locale={locale}
+        enabled={tab === "specific" && !!unitId} selectionRevision={contributorRevision}
+        admitted={contributorAdmitted} invalidationSource={contributorSource} />
     </Suspense>
     <div className="selected-job-work-controls">
       {canEstablish && <button type="button" disabled={busy} onClick={() => void act({ kind: "establish_stream", previousGeneration: null, previousHeadCommandId: null })}>{t.ready}</button>}

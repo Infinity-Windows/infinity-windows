@@ -7,6 +7,7 @@ import type { ProjectActivityViewProps } from "../../components/work/ProjectActi
 import type { Snapshot } from "../../lib/workActivity/protocol";
 import type { SelectedUnitReviewProps } from "./SelectedUnitReview";
 import { createUnitReviewSelectionSource } from "../../lib/workUnitReview/useUnitReviewCoordinator";
+import type { SelectedUnitContributorsProps } from "./SelectedUnitContributors";
 import type { SelectedJobWorkProps } from "./SelectedJobWork";
 import type { SelectedJobUnitDimensionsProps } from "./SelectedJobUnitDimensions";
 import type { UnitBasis } from "../../lib/workActivity/protocol";
@@ -14,6 +15,8 @@ import type { UnitBasis } from "../../lib/workActivity/protocol";
 const ID = (n: number) => `00000000-0000-0000-0000-${String(n).padStart(12, "0")}`;
 const OWNER = ID(1), DEVICE = ID(2), JOB = ID(3), COMMAND = ID(4);
 const at = "2026-10-04T06:00:00.000000Z";
+let contributorSeen: SelectedUnitContributorsProps | null = null;
+vi.mock("./SelectedUnitContributors", () => ({ SelectedUnitContributors: (p: SelectedUnitContributorsProps) => { contributorSeen = p; return null; } }));
 let reviewSeen: SelectedUnitReviewProps | null = null;
 vi.mock("./SelectedUnitReview", () => ({ SelectedUnitReview: (p: SelectedUnitReviewProps) => { reviewSeen = p; return <div>Review binding</div>; } }));
 let seen: ProjectActivityViewProps | null = null;
@@ -75,6 +78,7 @@ async function render(changes: Partial<SelectedJobWorkProps> = {}) {
 function button(label: string) { return [...host.querySelectorAll("button")].find((b) => b.textContent === label)!; }
 async function click(label: string) { await act(async () => button(label).click()); }
 beforeEach(() => {
+  contributorSeen = null;
   rememberSignedIn({ user: { id: OWNER } }); seen = null; dimensionSeen = null; reviewSeen = null;
   for (const fn of Object.values(m)) fn.mockReset();
   m.totals.mockReturnValue({ state: "held", data: null, liveElapsedMicros: 0n, refresh: vi.fn() });
@@ -331,6 +335,25 @@ describe("dormant selected-job orchestration", () => {
     expect(button("Stop current activity").disabled).toBe(false);
     expect(reviewSource.getSnapshot().selection).toBeNull();
     expect(m.save).toHaveBeenCalledOnce(); expect(m.dispatch).toHaveBeenCalledOnce();
+  });
+
+  it("keeps raw contributor admission independent of dimensions while closing every parent navigation lifetime", async () => {
+    await render({ units: [{ id: ID(6), label: "Unit without current dimensions" }] });
+    await act(async () => { seen!.onTabChange("specific"); seen!.onSelectUnit(ID(6)); });
+    await render();
+    expect(contributorSeen!.enabled).toBe(true);
+    expect(contributorSeen!.unitId).toBe(ID(6));
+    expect(contributorSeen!.admitted()).toBe(true);
+    const old = contributorSeen!, before = old.selectionRevision;
+    await act(async () => seen!.onSelectUnit(ID(6))); await render();
+    expect(old.admitted()).toBe(false); expect(contributorSeen!.selectionRevision).not.toBe(before);
+    const next = contributorSeen!; let closed = false;
+    expect(next.invalidationSource).not.toBe(reviewSeen!.source);
+    reviewSeen!.source.invalidate();
+    expect(next.admitted()).toBe(true);
+    const unsubscribe = next.invalidationSource!.subscribe(() => { closed = true; });
+    await act(async () => seen!.onOpenClock());
+    expect(closed).toBe(true); expect(next.admitted()).toBe(false); unsubscribe();
   });
 
 });

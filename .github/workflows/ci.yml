@@ -303,6 +303,13 @@ jobs:
         run: |
           npm run e2e -- unit-review-panel.spec.ts mounted-unit-review.spec.ts activity-totals.spec.ts mounted-activity-totals.spec.ts data-totals.spec.ts
           npm run e2e -- unit-review-panel.spec.ts mounted-unit-review.spec.ts activity-totals.spec.ts mounted-activity-totals.spec.ts data-totals.spec.ts --browser=webkit
+      - name: Manual selected-unit contributors on phone browsers
+        run: |
+          chromium_status=0
+          npm run e2e -- mounted-unit-contributors.spec.ts || chromium_status=$?
+          webkit_status=0
+          npm run e2e -- mounted-unit-contributors.spec.ts --browser=webkit || webkit_status=$?
+          test "$chromium_status" -eq 0 && test "$webkit_status" -eq 0
       - name: Controlled Work tiles and dimensions on phone browsers
         run: |
           chromium_status=0
