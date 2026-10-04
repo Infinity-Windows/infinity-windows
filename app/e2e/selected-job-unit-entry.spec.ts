@@ -165,7 +165,7 @@ for(const unit of ['in','ft','mm','cm']) test(`new unit retains original ${unit}
  expect(state.unexpected).toEqual([]);
 });
 
-test('required creation fields and Save unit remain usable at320px',async({page},testInfo)=>{
+for (const language of ['en','es'] as const) test(`required creation fields and Save unit remain usable at320px (${language})`,async({page},testInfo)=>{
  await page.setViewportSize({width:320,height:720});
  const state=await fixture(page,`/current-work?job=${PROJECT}&new_unit=1`);
  await page.getByLabel('Unit number / name',{exact:true}).fill('Unit 43');
@@ -173,11 +173,12 @@ test('required creation fields and Save unit remain usable at320px',async({page}
  await page.getByLabel('Width',{exact:true}).fill('10');
  await page.getByLabel('Height',{exact:true}).fill('20');
  await page.getByRole('combobox',{name:'Dimension source',exact:true}).selectOption('measured');
+ if(language==='es')await page.evaluate(()=>window.dispatchEvent(new Event('fixture-language')));
  await expect.poll(async()=>{
   const layout=await page.evaluate(()=>({viewport:innerWidth,scrollWidth:document.documentElement.scrollWidth,
    root:{htmlWidth:document.documentElement.clientWidth,bodyWidth:document.body.clientWidth,bodyScroll:document.body.scrollWidth,activeTag:document.activeElement?.tagName},
    overflow:[...document.querySelectorAll<HTMLElement>("body *")].map(el=>({tag:el.tagName,class:el.className,
-    scrollWidth:el.scrollWidth,clientWidth:el.clientWidth,overflowX:getComputedStyle(el).overflowX,outline:getComputedStyle(el).outline,outlineOffset:getComputedStyle(el).outlineOffset,
+    text:el.tagName==='LABEL'?el.textContent:null,scrollWidth:el.scrollWidth,clientWidth:el.clientWidth,overflowX:getComputedStyle(el).overflowX,outline:getComputedStyle(el).outline,outlineOffset:getComputedStyle(el).outlineOffset,
     before:{content:getComputedStyle(el,"::before").content,width:getComputedStyle(el,"::before").width,position:getComputedStyle(el,"::before").position},
     after:{content:getComputedStyle(el,"::after").content,width:getComputedStyle(el,"::after").width,position:getComputedStyle(el,"::after").position},
     left:el.getBoundingClientRect().left,right:el.getBoundingClientRect().right,width:el.getBoundingClientRect().width,
@@ -186,7 +187,10 @@ test('required creation fields and Save unit remain usable at320px',async({page}
   await testInfo.attach("creation-320-layout",{body:JSON.stringify(layout),contentType:"application/json"});
   return layout.scrollWidth<=layout.viewport+1;
  },{message:"All unit-creation content stays within the320px screen"}).toBe(true);
- await page.getByRole('button',{name:'Save unit',exact:true}).click();
+ await expect(page.getByLabel(language==='es'?'Ancho':'Width',{exact:true})).toHaveValue('10');
+ await expect(page.getByLabel(language==='es'?'Alto':'Height',{exact:true})).toHaveValue('20');
+ await page.screenshot({path:testInfo.outputPath(`UNIT-CREATION-320-${language}.png`),fullPage:true});
+ await page.getByRole('button',{name:language==='es'?'Guardar unidad':'Save unit',exact:true}).click();
  await expect.poll(()=>state.writes.length).toBe(1);
  expect(state.writes[0]).toMatchObject({p_action:'unit'});
 });
