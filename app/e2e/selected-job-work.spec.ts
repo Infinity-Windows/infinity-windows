@@ -162,9 +162,12 @@ async function open(page: Page) {
   await expect(page.getByTestId("project-activity-view")).toBeVisible();
 }
 async function fits(page: Page) {
-  expect(await page.evaluate(() => ({
+  // WebKit can finish setViewportSize before its next layout is committed.
+  // Require the same zero-overflow result after layout; persistent overflow
+  // still fails and reports every offending element, including fixture controls.
+  await expect.poll(() => page.evaluate(() => ({
     overflow: Math.max(0, document.documentElement.scrollWidth - innerWidth),
-    outside: [...document.querySelectorAll<HTMLElement>(".selected-job-work *")]
+    outside: [...document.querySelectorAll<HTMLElement>("body *")]
       .filter((e) => e.getClientRects().length && (e.getBoundingClientRect().left < -.1 ||
         e.getBoundingClientRect().right > innerWidth + .1))
       .map((e) => e.tagName + "." + e.className),
