@@ -21,9 +21,12 @@ const test = base.extend({
   },
 });
 const OWNER = TEST_USER.id, DEVICE = "00000000-0000-4000-8000-000000000401", SHIFT = "00000000-0000-4000-8000-000000000402";
+const startCapability={protocolVersion:1,asOf:"2026-10-04T08:00:00Z",clockProtocol:"setup_v1",receiptProtocol:"retained_v1",
+  mode:"active",canAuthorSetup:true,setupReason:null,canDispatchExistingSetup:true,canReadOwnReceipts:true,canDispatchPayrollSafety:true};
 async function open(page: Page, withStatus=false) {
   await page.addInitScript(({ key, session }) => localStorage.setItem(key, JSON.stringify(session)), { key: FIXTURE_AUTH_KEY, session: FIXTURE_SESSION });
   await page.route("**/*", route => new URL(route.request().url()).hostname === "localhost" ? route.continue() : route.abort());
+  await page.route("**/rest/v1/time_shifts?**",route=>json(route,null,null));
   await page.route("**/paid-clock-chain-fixture", route => route.fulfill({ status: 200, contentType: "text/html", body:
     "<!doctype html><title>Native paid clock chain fixture</title><p>Native paid clock chain fixture</p>" }));
   // Let Vite transform the React fixture HTML and install its refresh preamble.
@@ -159,6 +162,7 @@ test("native dispatch locks retain the original unknown punch through a refusal 
   const barrier = new Promise<void>(done => { release = done; });
   for (const tab of [page, other]) await tab.route("**/rest/v1/rpc/*", async route => {
     const rpc = new URL(route.request().url()).pathname.split("/").at(-1)!;
+    if (rpc === "work_activity_clock_capability") return json(route,startCapability,null);
     const args = route.request().postDataJSON() as Record<string, unknown>;
     if (rpc === "work_activity_clock_receipt") return json(route, receiptReady && args.p_client_id === id ? {
       protocolVersion: 1, availability: "available", receipt: { clientId: id, action: "clock_in", outcome: "clocked_in", shiftId: SHIFT,
@@ -283,6 +287,7 @@ test("the recovery view wakes current tabs, preserves an unknown original and ne
   });
   await page.route("**/rest/v1/rpc/*",route=>{
     const rpc=new URL(route.request().url()).pathname.split("/").at(-1);
+    if(rpc==="work_activity_clock_capability")return json(route,startCapability,null);
     if(rpc==="work_activity_clock_receipt") return json(route,receiptReady?{
       protocolVersion:1,availability:"available",receipt:{...stamp,action:"clock_in",outcome:"clocked_in",shiftId:SHIFT,
         arrivedAt:"2026-10-04T14:30:01Z",usedTapTime:true,reviewReason:null,receiptProtocol:"setup_v1",retention:"retained",sourcePresent:true,activityTransition:null},

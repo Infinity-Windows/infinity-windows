@@ -97,6 +97,28 @@ test("Start day needs no job choice and saves only the original setup clock requ
   await expect(page.locator(".clock-btn.primary.big")).toBeDisabled();
   expect(await page.locator(".clock-project-list,.clock-costcode-list").count()).toBe(0);
 });
+test("the actual clock screen commits its first tap while fresh admission is still waiting",async({page})=>{
+  const writes=await open(page,null);
+  let release!:()=>void;
+  const gate=new Promise<void>(resolve=>{release=resolve;});
+  let waiting=0;
+  await page.route(/\/rest\/v1\/rpc\/work_activity_clock_capability(\?|$)/,async route=>{
+    waiting++;await gate;
+    return json(route,{protocolVersion:1,asOf:new Date().toISOString(),clockProtocol:"setup_v1",receiptProtocol:"retained_v1",
+      mode:"active",canAuthorSetup:true,setupReason:null,canDispatchExistingSetup:true,canReadOwnReceipts:true,canDispatchPayrollSafety:true},null);
+  });
+  await page.locator(".clock-btn.primary.big").click();
+  // UI refreshes also read capability; this barrier holds every such read.
+  // The acceptance is durable storage before delivery, not a read count.
+  await expect.poll(()=>waiting).toBeGreaterThan(0);
+  const saved=await rows(page);expect(saved).toHaveLength(1);
+  expect(saved[0].intent).toMatchObject({action:"clock_in",projectId:null,costCodeId:null,setupVersion:1});
+  expect(saved[0].delivery).toMatchObject({status:"queued",everAttempted:false});expect(writes).toHaveLength(0);
+  await page.reload();
+  const after=await rows(page);expect(after.map(row=>row.intent)).toEqual(saved.map(row=>row.intent));
+  expect(writes).toHaveLength(0);
+  release();
+});
 test("the screen closes after a fresh own off-clock read, while original delivery history stays separate",async({page})=>{
   const writes=await open(page,current(),true);
   await expect(page.getByTestId("screen-closed")).toHaveText("false");

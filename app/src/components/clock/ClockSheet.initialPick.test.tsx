@@ -83,7 +83,7 @@ function todayLocalISO(): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-function mount(initialPick: ClockInPick | null, opts: { talk?: unknown;native?:NativeClockFlow;emptyChoices?:boolean;admissionReady?:boolean } = {}): HTMLElement {
+function mount(initialPick: ClockInPick | null, opts: { talk?: unknown;toolboxDone?:unknown;native?:NativeClockFlow;emptyChoices?:boolean;admissionReady?:boolean } = {}): HTMLElement {
   const qc = new QueryClient({
     defaultOptions: {
       queries: { retry: false, staleTime: Infinity, refetchOnMount: false, gcTime: Infinity },
@@ -101,7 +101,7 @@ function mount(initialPick: ClockInPick | null, opts: { talk?: unknown;native?:N
     { id: "sched1", project_id: "p1", project: { job_code: "BLACK22", name: "Black Desert" } },
   ]);
   qc.setQueryData(["todayTalk", localDateOf(new Date())], opts.talk ?? null);
-  qc.setQueryData(["toolboxToday", "me"], { id: "done1" });
+  qc.setQueryData(["toolboxToday", "me"], opts.toolboxDone===undefined?{ id: "done1" }:opts.toolboxDone);
   qc.setQueryData(["myOpenings", "me"], []);
   if(opts.emptyChoices){qc.setQueryData(["projects"],[]);qc.setQueryData(["clockCostCodes","all"],[]);qc.setQueryData(["recentJobs","me"],[]);}
 
@@ -154,6 +154,21 @@ describe("the same sheet's native Start day",()=>{
     const flow=native({currentRead:"unavailable",current:null,canStartDay:false});const el=mount(null,{native:flow,emptyChoices:true});
     expect(el.textContent).toContain("Current paid time is unavailable");expect(el.querySelector<HTMLButtonElement>(".clock-btn.primary.big")!.disabled).toBe(true);
     expect(flow.authorStart).not.toHaveBeenCalled();
+  });
+  it("saves the native tap before an unsigned toolbox talk instead of minting a punch on its signature",async()=>{
+    const flow=native();const el=mount(null,{native:flow,emptyChoices:true,toolboxDone:null,
+      talk:{id:"t1",title:"Ladders",body:"Three points of contact.",talk_date:todayLocalISO()}});
+    expect(el.querySelector("canvas.sig-canvas")).toBeNull();
+    await act(async()=>el.querySelector<HTMLButtonElement>(".clock-btn.primary.big")!.click());
+    expect(flow.authorStart).toHaveBeenCalledOnce();expect(clockInSpy).not.toHaveBeenCalled();expect(enqueueSpy).not.toHaveBeenCalled();
+  });
+  it("labels unknown-current reservation as a saved request and keeps paid state unknown",async()=>{
+    const flow=native({canStartDay:false,canReserveStart:true,currentRead:"unavailable",current:null});
+    const el=mount(null,{native:flow,emptyChoices:true});
+    expect(el.textContent).toContain("No shift is confirmed yet");
+    const start=el.querySelector<HTMLButtonElement>(".clock-btn.primary.big")!;
+    expect(start.textContent).toContain("Save original clock-in request");expect(start.disabled).toBe(false);
+    await act(async()=>start.click());expect(flow.authorStart).toHaveBeenCalledOnce();expect(flow.current).toBeNull();
   });
 });
 

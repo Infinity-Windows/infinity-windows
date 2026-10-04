@@ -379,7 +379,7 @@ export function ClockInBlock() {
       ? `${shift.projects.job_code} · ${shift.projects.name}`
       : t("clock.status.working");
     return (
-      <section className="clockin-bar" aria-label={t("clockblock.onClock")}>
+      <><section className="clockin-bar" aria-label={t("clockblock.onClock")}>
         <span className="clockin-live-dot" aria-hidden />
         <div className="clockin-bar-job">
           <span className="clockin-bar-label">{t("clockblock.onClock")}</span>
@@ -408,6 +408,9 @@ export function ClockInBlock() {
           </button>
         </div>
       </section>
+      {nativeRoute && todayTalk.data && toolboxDone.isSuccess && !toolboxDone.data &&
+        <ToolboxSignCard profileId={profileId} talk={todayTalk.data} onSigned={()=>nativeFlow?.refresh()}/>}
+      </>
     );
   }
 
@@ -435,7 +438,7 @@ export function ClockInBlock() {
 
   // ---- OFF THE CLOCK: the big, can't-miss block. ----
   const busy = doStart.isPending;
-  const canStart=nativeRoute?nativeFlow!.canStartDay:Boolean(pickProjectId && pickCostCodeId);
+  const canStart=nativeRoute?(nativeFlow!.canReserveStart ?? nativeFlow!.canStartDay):Boolean(pickProjectId && pickCostCodeId);
   canStartRef.current = canStart;
   // The server refuses the first clock-in of the day without today's signed
   // toolbox talk (20260970000000_job_modes.sql, clock_in). Hold the button
@@ -445,7 +448,7 @@ export function ClockInBlock() {
   // right here (the sheet's own ToolboxSignCard, not a second copy of the
   // sign-off), and signing it fires this block's clockIn with the job, cost
   // code, note and mode already picked — one pass through the morning.
-  const toolboxKnownUnsigned =nativeRoute?nativeFlow?.setupReason==="toolbox_required":
+  const toolboxKnownUnsigned =!nativeRoute &&
     todayTalk.isSuccess &&
     todayTalk.data !== null &&
     toolboxDone.isSuccess &&
@@ -457,13 +460,11 @@ export function ClockInBlock() {
 
   if(nativeRoute)return <section className="clockin-block" aria-label={t("clockblock.title")}>
     <h2 className="clockin-block-title">{t("clockblock.title")}</h2>
-    <p>{t("paidClock.startHelp")}</p>
-    {toolboxKnownUnsigned && todayTalk.data && showSign ? <ToolboxSignCard profileId={profileId} talk={todayTalk.data}
-      onSigned={()=>{if(canStartRef.current)doStart.mutate(tapNow());}}/>:
-      <button type="button" className="clock-btn primary big" disabled={busy || !canStart}
-        onClick={()=>{if(toolboxKnownUnsigned)setShowSign(true);else doStart.mutate(tapNow());}}>
-        <Play size={18} aria-hidden/>{toolboxKnownUnsigned?t("clockblock.signAndClockIn"):t("clock.action.startClock")}
-      </button>}
+    <p>{t(nativeFlow?.canStartDay?"paidClock.startHelp":"paidClock.startRequestHelp")}</p>
+    <button type="button" className="clock-btn primary big" disabled={busy || !canStart}
+      onClick={()=>doStart.mutate(tapNow())}>
+      <Play size={18} aria-hidden/>{t(nativeFlow?.canStartDay?"clock.action.startClock":"paidClock.saveStartRequest")}
+    </button>
     <button type="button" className="clock-list-toggle" onClick={()=>openClockGlobally()}>{t("clockblock.moreOptions")}</button>
   </section>;
 

@@ -19,6 +19,7 @@ export interface NativeClockFlow {
   currentRead:"loading"|"ready"|"blocked"|"unavailable"|"stale";
   current:OwnPaidClockCurrent|null;
   canStartDay:boolean;
+  canReserveStart?:boolean;
   canRequestSafety:boolean;
   setupReason?:PaidClockCapability["setupReason"];
   pendingSafetyAction?:ClockIntent["action"]|null;
@@ -50,7 +51,10 @@ export function projectClockFlow(input:ClockFlowInput) {
   const route:ClockFlowRoute=!nativeReady?"activation_blocked":input.releaseAuthorized?
     input.backendReady?"isolated":"activation_blocked":ownsNative?"recovery_only":"legacy";
   const paidOff=currentNeeded?currentReady && input.current?.kind==="off":input.legacyReady && input.legacyShift===null;
+  const knownOpen=(input.currentRead==="ready" || input.currentRead==="stale") && input.current && input.current.kind!=="off";
+  const canReserveStart=input.releaseAuthorized && nativeReady && !knownOpen && !input.legacyShift && !unresolvedStart && !pendingLegacyStart;
   return {route,canStartDay:(route==="legacy" || route==="isolated") && paidOff && !unresolvedStart && !pendingLegacyStart,
+    canReserveStart,
     canRequestSafety:currentNeeded?nativeSafetyAdmitted && (currentReady || input.currentRead==="stale") && input.current?.kind==="open":input.legacyReady && input.legacyShift?.status==="open"};
 }
 export async function authorNativeClockStart(punch:ClockPunch,login:SignInMark,allowed:boolean):Promise<PaidClockSubmission> {

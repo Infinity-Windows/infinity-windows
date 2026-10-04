@@ -40,6 +40,15 @@ describe("shared clock route",()=>{
     records[0].delivery.status="acknowledged";
     expect(flow.projectClockFlow({...source(),records,currentRead:"loading",current:null}).canStartDay).toBe(false);
   });
+  it("allows only an activated readable device to reserve an unknown-clock request without claiming it can start paid time",()=>{
+    const unknown={...source(),currentRead:"unavailable" as const,current:null,backendReady:false};
+    expect(flow.projectClockFlow(unknown)).toMatchObject({route:"activation_blocked",canStartDay:false,canReserveStart:true});
+    for(const change of [{releaseAuthorized:false},{nativeRead:"loading"},{nativeRead:"unavailable"},
+      {legacyPending:{kind:"clock_in",entryId:"old",tappedAt:"today",sending:false}},
+      {records:[{intent:{action:"clock_in"},delivery:{status:"uncertain"}}]}])
+      expect(flow.projectClockFlow({...unknown,...change} as ClockFlowInput).canReserveStart).toBe(false);
+    expect(flow.projectClockFlow({...unknown,currentRead:"stale",current:{kind:"open",shift:{id:SHIFT}}} as ClockFlowInput).canReserveStart).toBe(false);
+  });
   it("keeps independently confirmed own paid safety usable despite capture/native readiness failures",async()=>{
     const current={kind:"open" as const,shift:{id:SHIFT,profile_id:OWNER,status:"open" as const} as NonNullable<ClockFlowInput["legacyShift"]>};
     expect(flow.projectClockFlow({...source(),backendReady:false,nativeRead:"unavailable",current})).toMatchObject({canStartDay:false,canRequestSafety:true});

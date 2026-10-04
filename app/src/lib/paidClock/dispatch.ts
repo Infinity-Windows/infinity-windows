@@ -1,13 +1,48 @@
-import { stillSignedInAs, type SignInMark } from "../signedIn";
-import { ClockRequestRefusedError, readPaidClockReceipt, sendPaidClockIntent } from "./api";
+import { stillSignedInAs, subscribeSignedIn, type SignInMark } from "../signedIn";
+import { ClockPreDispatchVetoError, ClockRequestRefusedError, readPaidClockReceipt, sendPaidClockIntent } from "./api";
 import { ClockProtocolError, type ClockReceipt } from "./protocol";
 import { readPaidClockRecords, updatePaidClockDelivery, type PaidClockRecord } from "./storage";
 import { postgresInstantMicros } from "../workConfiguration/model";
+import { fetchPaidClockCapability } from "./capability";
+import { fetchOwnPaidClockCurrent, readLastObservedPaidClock } from "./current";
 
 export type PaidClockDispatch = { kind: "settled"; record: PaidClockRecord }
   | { kind: "held"; reason: "account_changed" | "offline" | "dispatcher_busy" | "locks_unavailable" | "dependency" | "unknown" | "attention" | "storage" };
 export type PaidClockPolicy = "first_attempt" | "check_only" | "retry_original";
 const current = (login: SignInMark) => !!login.userId && stillSignedInAs(login, login.userId);
+// Negative evidence from THIS login/invocation only. A crashed durable sending
+// row alone never proves no dispatch. Keep this fence if its native repair fails.
+const noSendFences = new Set<string>();
+subscribeSignedIn(() => noSendFences.clear());
+const fenceKey = (login: SignInMark, id: string, token: string) => `${login.userId}:${login.generation}:${id}:${token}`;
+function noSendShape(row: PaidClockRecord): boolean {
+  return row.intent.action === "clock_in" && row.delivery.everAttempted && !row.delivery.everUncertain &&
+    row.delivery.attemptToken !== null && row.delivery.receipt === null && row.delivery.resolvedShiftId === null;
+}
+function knownFirstDeliveryHeld(row: PaidClockRecord, login: SignInMark): boolean {
+  if (!noSendShape(row)) return false;
+  return row.delivery.status === "attention" && row.delivery.attentionReason === "first_delivery_held" ||
+    row.delivery.status === "sending" && row.delivery.attentionReason === null &&
+      noSendFences.has(fenceKey(login, row.clientId, row.delivery.attemptToken!));
+}
+async function retainFirstDeliveryHold(login: SignInMark, clientId: string, token: string): Promise<void> {
+  const key = fenceKey(login, clientId, token);
+  if (!current(login)) return;
+  noSendFences.add(key);
+  try {
+    const rows = await readPaidClockRecords(login);
+    if (!current(login)) return;
+    const row = rows.find(value => value.clientId === clientId);
+    if (!row || row.delivery.attemptToken !== token || !noSendShape(row) || row.delivery.status !== "sending") {
+      noSendFences.delete(key); return;
+    }
+    await updatePaidClockDelivery(login, clientId, token, old => {
+      if (!noSendShape(old) || old.delivery.status !== "sending") throw new ClockProtocolError();
+      return { ...old.delivery, status: "attention", attentionReason: "first_delivery_held" };
+    });
+    noSendFences.delete(key);
+  } catch { /* Durable repair is unconfirmed; this live login retains its fence. */ }
+}
 async function bounded<T>(promise: Promise<T>): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try { return await Promise.race([promise, new Promise<never>((_, reject) => {
@@ -19,7 +54,8 @@ async function settle(row: PaidClockRecord, receipt: ClockReceipt, login: SignIn
   if (row.delivery.receipt && !sameReceiptEvidence(row.delivery.receipt, receipt)) throw new ClockProtocolError();
   const attention = receipt.outcome === "requires_review" ? "requires_review" : !receipt.sourcePresent ? "source_removed" : null;
   return updatePaidClockDelivery(login, row.clientId, row.delivery.attemptToken, old => ({ ...old.delivery,
-    status: attention ? "attention" : "acknowledged", receipt: old.delivery.receipt ?? receipt, resolvedShiftId: receipt.shiftId, attentionReason: attention }));
+    status: attention ? "attention" : "acknowledged", everAttempted: true,
+    receipt: old.delivery.receipt ?? receipt, resolvedShiftId: receipt.shiftId, attentionReason: attention }));
 }
 function sameReceiptEvidence(a: ClockReceipt, b: ClockReceipt): boolean {
   const evidence = (r: ClockReceipt) => ({ ...r, sourcePresent: undefined,
@@ -89,7 +125,10 @@ export async function dispatchPaidClockRequest(clientId: string, login: SignInMa
         resolved = fresh.shiftId;
       }
       const attempted = row.delivery.everAttempted || row.delivery.status === "sending" || row.delivery.status === "uncertain";
-      if (attempted || row.delivery.status === "attention" || policy === "check_only") {
+      const knownHeld = knownFirstDeliveryHeld(row, login);
+      const possiblePriorSend = attempted && !knownHeld;
+      const firstStart = row.intent.action === "clock_in" && (!attempted || knownHeld);
+      if (attempted || row.delivery.status === "attention" || policy === "check_only" || firstStart) {
         try {
           const read = await bounded(readPaidClockReceipt(row.intent, login, resolved));
           if (!current(login)) return { kind: "held", reason: "account_changed" } as const;
@@ -104,21 +143,61 @@ export async function dispatchPaidClockRequest(clientId: string, login: SignInMa
           }
           return { kind: "held", reason: "unknown" } as const;
         }
-        if (row.delivery.status === "attention") return { kind: "held", reason: "attention" } as const;
-        if (policy !== "retry_original") {
+        if (knownHeld && policy !== "retry_original") return { kind: "held", reason: "attention" } as const;
+        if (row.delivery.status === "attention" && !knownHeld) return { kind: "held", reason: "attention" } as const;
+        if (policy === "check_only" || possiblePriorSend && policy !== "retry_original") {
           if (attempted && row.delivery.status !== "uncertain") await updatePaidClockDelivery(login, row.clientId, row.delivery.attemptToken,
             old => ({ ...old.delivery, status: "uncertain", everUncertain: true }));
           return { kind: "held", reason: "unknown" } as const;
         }
       }
+      // A queued start is only a saved intention. Even an explicit retry after
+      // reload needs fresh first-delivery admission UNDER this owner's lock.
+      // First check its own immutable receipt above: a current open shift may
+      // be this original's already-applied result, never a reason to replace it.
+      // Unknown attempted originals retain their separate exact-retry contract.
+      let admission = () => true;
+      if (firstStart) {
+        try {
+          const capability = await bounded(fetchPaidClockCapability(login));
+          if (!current(login)) return { kind: "held", reason: "account_changed" } as const;
+          if (!capability.canAuthorSetup || !capability.canDispatchExistingSetup ||
+            !capability.canReadOwnReceipts || !capability.canDispatchPayrollSafety) return { kind: "held", reason: "dependency" } as const;
+          const observed = await bounded(fetchOwnPaidClockCurrent(login));
+          if (!current(login)) return { kind: "held", reason: "account_changed" } as const;
+          if (observed.kind !== "off") return { kind: "held", reason: "dependency" } as const;
+          admission = () => current(login) && readLastObservedPaidClock(login) === observed;
+        } catch {
+          return { kind: "held", reason: current(login) ? "dependency" : "account_changed" } as const;
+        }
+      }
+      if (navigator.onLine === false) return { kind: "held", reason: "offline" } as const;
+      if (!admission()) return { kind: "held", reason: current(login) ? "dependency" : "account_changed" } as const;
       const token = crypto.randomUUID();
-      row = await updatePaidClockDelivery(login, row.clientId, row.delivery.attemptToken, old => ({ ...old.delivery,
-        status: "sending", attemptToken: token, everAttempted: true, everUncertain: old.delivery.everUncertain || attempted,
-        resolvedShiftId: resolved ?? null, attentionReason: null }));
+      try {
+        row = await updatePaidClockDelivery(login, row.clientId, row.delivery.attemptToken, old => ({ ...old.delivery,
+          status: "sending", attemptToken: token, everAttempted: true, everUncertain: old.delivery.everUncertain || possiblePriorSend,
+          resolvedShiftId: resolved ?? null, attentionReason: null }), admission);
+      } catch {
+        // Native completion may precede the helper's final admission exception.
+        // Re-read THIS token; never reset an earlier/foreign attempt or receipt.
+        if (firstStart) await retainFirstDeliveryHold(login, clientId, token);
+        return { kind: "held", reason: current(login) ? "storage" : "account_changed" } as const;
+      }
       if (!current(login)) return { kind: "held", reason: "account_changed" } as const;
+      if (!admission()) {
+        if (firstStart) await retainFirstDeliveryHold(login, clientId, token);
+        return { kind: "held", reason: "dependency" } as const;
+      }
       let refusal = false;
-      try { await bounded(sendPaidClockIntent(row.intent, login, resolved)); }
-      catch (error) { refusal = error instanceof ClockRequestRefusedError; }
+      try { await bounded(sendPaidClockIntent(row.intent, login, resolved, admission)); }
+      catch (error) {
+        if (firstStart && error instanceof ClockPreDispatchVetoError) {
+          await retainFirstDeliveryHold(login, clientId, token);
+          return { kind: "held", reason: current(login) ? "dependency" : "account_changed" } as const;
+        }
+        refusal = error instanceof ClockRequestRefusedError;
+      }
       if (!current(login)) return { kind: "held", reason: "account_changed" } as const;
       try {
         const read = await bounded(readPaidClockReceipt(row.intent, login, resolved));

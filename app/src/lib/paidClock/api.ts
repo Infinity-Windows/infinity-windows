@@ -9,6 +9,9 @@ import { isPaidClockTransportFailure } from "./readFailure";
 export class ClockAccountChangedError extends Error {
   constructor() { super("Sign back into the account that saved this clock request."); }
 }
+export class ClockPreDispatchVetoError extends Error {
+  constructor() { super("Clock delivery admission changed before dispatch."); }
+}
 export class ClockRequestRefusedError extends Error {
   readonly code: string;
   constructor(code: string) { super("The clock request was refused. Review it before another attempt."); this.code = code; }
@@ -61,13 +64,16 @@ export async function fetchOwnClockSafetyBasis(shiftId: string, login: SignInMar
 }
 
 /** Ignore the mutable shift replay result. Only a matching immutable read can acknowledge delivery. */
-export async function sendPaidClockIntent(raw: ClockIntent, login: SignInMark, resolvedShiftId?: string): Promise<void> {
-  return trackPaidClockOperation(() => sendOriginal(raw, login, resolvedShiftId));
+export async function sendPaidClockIntent(raw: ClockIntent, login: SignInMark, resolvedShiftId?: string, admission: () => boolean = () => true): Promise<void> {
+  return trackPaidClockOperation(() => sendOriginal(raw, login, resolvedShiftId, admission));
 }
-async function sendOriginal(raw: ClockIntent, login: SignInMark, resolvedShiftId?: string): Promise<void> {
+async function sendOriginal(raw: ClockIntent, login: SignInMark, resolvedShiftId: string | undefined, admission: () => boolean): Promise<void> {
   const intent = parseClockIntent(raw), call = clockSqlCall(intent, resolvedShiftId);
   const client = await ownPaidClockClient(login);
   current(login);
+  // No application await between this final predicate and handing off RPC.
+  // Only this branch proves no request was handed to the transport.
+  if (!admission()) throw new ClockPreDispatchVetoError();
   const { error } = await client.rpc(call.rpc, call.args);
   current(login);
   if (error) {

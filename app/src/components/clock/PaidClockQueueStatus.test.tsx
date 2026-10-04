@@ -60,4 +60,15 @@ describe("saved punch recovery view",()=>{
     lang="es";await render();expect(host.textContent).toContain("Confirmación pendiente");expect(host.textContent).toContain("su hora original");
     expect(button("Revisar confirmación")).toBeTruthy();expect(button("Reenviar marcación original")).toBeTruthy();
   });
+  it("offers explicit original retry for a proven first-delivery hold without sending on render or check",async()=>{
+    m.rows=[{...row("attention"),delivery:{status:"attention",attentionReason:"first_delivery_held",everAttempted:true,
+      everUncertain:false,attemptToken:id(3),resolvedShiftId:null,receipt:null}}];
+    await render();expect(host.textContent).toContain("sending was stopped before reaching Forge");
+    expect(host.textContent).toContain("no shift is confirmed");expect(m.recover).not.toHaveBeenCalled();
+    await act(async()=>button("Check confirmation").click());expect(m.recover.mock.calls[0][2]).toBe("check");
+    await act(async()=>button("Resend original punch").click());expect(m.recover.mock.calls[1]).toEqual([CLIENT,expect.any(Object),"retry_original"]);
+    lang="es";await render();expect(host.textContent).toContain("se revisa primero tu reloj actual");
+    m.rows=[{...m.rows[0],delivery:{...m.rows[0].delivery,everUncertain:true}}];await render();
+    expect(button("Reenviar marcación original")).toBeUndefined();expect(host.textContent).not.toContain("el envío se detuvo");
+  });
 });

@@ -48,8 +48,12 @@ export function PaidClockQueueStatus({ profileId, legacyPending=null, legacyRefu
       {records.state==="unavailable" && <><p role="alert">{t("paidClock.unavailable")}</p><button type="button" onClick={()=>void records.refresh()}>{t("paidClock.refresh")}</button></>}
       {ownVisible.map(row=>{
         const status=row.delivery.status;
-        const label=status==="queued"?"queued":status==="acknowledged"?"acknowledged":status==="attention"?"review":"unknown";
-        const retry=(status==="queued" || status==="sending" || status==="uncertain") && !row.delivery.receipt;
+        const firstDeliveryHeld=status==="attention" && row.intent.action==="clock_in" &&
+          row.delivery.attentionReason==="first_delivery_held" && row.delivery.everAttempted &&
+          !row.delivery.everUncertain && row.delivery.attemptToken!==null &&
+          row.delivery.resolvedShiftId===null && row.delivery.receipt===null;
+        const label=firstDeliveryHeld?"firstDeliveryHeld":status==="queued"?"queued":status==="acknowledged"?"acknowledged":status==="attention"?"review":"unknown";
+        const retry=(status==="queued" || status==="sending" || status==="uncertain" || firstDeliveryHeld) && !row.delivery.receipt;
         return <article key={row.clientId} data-clock-request={row.clientId}>
           <p><strong>{t(`paidClock.${row.intent.action}`)}</strong>{" · "}<time dateTime={row.intent.tappedAt}>{tapTimeLabel(row.intent.tappedAt)}</time></p>
           <p role="status">{t(`paidClock.${label}`)}</p>

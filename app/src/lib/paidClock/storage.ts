@@ -137,7 +137,9 @@ const notify = notifyPaidClockChanges;
  * the paid DB's durability/failure boundary, never the activity metadata DB. */
 export async function getPaidClockDeviceId(login: SignInMark): Promise<string> {
   const owner = uuid(login.userId);
-  return transaction(login, owner, "readwrite", async tx => {
+  return transaction(login, owner, "readwrite", tx => deviceInTransaction(tx, login, owner));
+}
+async function deviceInTransaction(tx: IDBTransaction, login: SignInMark, owner: string): Promise<string> {
     const store = tx.objectStore("heads"), raw = await result(store.get(DEVICE_KEY)); assertOwner(login, owner);
     if (raw !== undefined) {
       if (!raw || typeof raw !== "object" || Array.isArray(raw)) fail();
@@ -148,7 +150,44 @@ export async function getPaidClockDeviceId(login: SignInMark): Promise<string> {
     const deviceId = crypto.randomUUID();
     store.add({ key: DEVICE_KEY, version: 1, deviceId });
     return deviceId;
+}
+
+/** Reserve the first deliberate start before any server/readiness work. The
+ * owner index and both stores share one native write transaction, so tabs with
+ * different UUIDs choose one immutable original. This is intention only: no
+ * observed shift, fresh capability or current-login safety lineage is minted.
+ * Existing unresolved originals (including attention) are retained and win;
+ * their caller must check/reconcile them, never send them as a new tap. */
+export async function reservePaidClockStartRecord(login: SignInMark, raw: ClockIntent): Promise<{ record: PaidClockRecord; created: boolean }> {
+  const owner = uuid(login.userId), intent = parseClockIntent(raw);
+  if (intent.action !== "clock_in") fail();
+  let created = false;
+  const saved = await transaction(login, owner, "readwrite", async tx => {
+    const requests = tx.objectStore("requests"), heads = tx.objectStore("heads");
+    const existing = await result(requests.get(intent.clientId)); assertOwner(login, owner);
+    if (existing !== undefined) {
+      const row = parseRecord(existing);
+      if (row.ownerId !== owner || JSON.stringify(row.intent) !== JSON.stringify(intent)) fail();
+      return row;
+    }
+    const rows = (await result(requests.index("by_owner").getAll(owner))).map(parseRecord); assertOwner(login, owner);
+    if (rows.some(row => row.ownerId !== owner)) fail();
+    const unresolved = rows.filter(row => row.intent.action === "clock_in" && row.delivery.status !== "acknowledged");
+    if (unresolved.length > 1) fail(); // do not choose/rewrite corrupt competing history
+    if (unresolved.length === 1) return unresolved[0];
+    const origin: ClockChainOrigin = { kind: "clock_command", id: intent.clientId }, key = chainKey(owner, origin);
+    if (await result(heads.get(key)) !== undefined) fail(); assertOwner(login, owner);
+    const deviceId = await deviceInTransaction(tx, login, owner); assertOwner(login, owner);
+    const row: PaidClockRecord = { version: 1, clientId: intent.clientId, ownerId: owner, deviceId,
+      storageGeneration: crypto.randomUUID(), sequence: 0, origin, predecessorClientId: null, intent,
+      delivery: { status: "queued", attemptToken: null, everAttempted: false, everUncertain: false,
+        resolvedShiftId: null, receipt: null, attentionReason: null } };
+    requests.add(row);
+    heads.add({ key, ownerId: owner, deviceId, storageGeneration: row.storageGeneration, sequence: 0, lastClientId: row.clientId });
+    created = true;
+    return row;
   });
+  notify(); return { record: parseRecord(saved), created };
 }
 
 // Admission is current-login RAM, never a serialized credential or receipt.
@@ -292,7 +331,7 @@ export async function readPaidClockRecords(login: SignInMark): Promise<PaidClock
   return transaction(login, owner, "readonly", async (tx) => (await result(tx.objectStore("requests").index("by_owner").getAll(owner))).map(parseRecord));
 }
 export async function updatePaidClockDelivery(login: SignInMark, clientId: string, expectedAttemptToken: string | null,
-  update: (row: PaidClockRecord) => PaidClockDelivery): Promise<PaidClockRecord> {
+  update: (row: PaidClockRecord) => PaidClockDelivery, admission: () => boolean = () => true): Promise<PaidClockRecord> {
   const owner = uuid(login.userId); uuid(clientId);
   const row = await transaction(login, owner, "readwrite", async (tx) => {
     const store = tx.objectStore("requests"), raw = await result(store.get(clientId)); assertOwner(login, owner);
@@ -311,6 +350,6 @@ export async function updatePaidClockDelivery(login: SignInMark, clientId: strin
       old.delivery.everUncertain && !next.delivery.receipt && next.delivery.status !== "uncertain" && next.delivery.status !== "sending" ||
       next.delivery.status === "queued" && old.delivery.status !== "queued") fail();
     store.put(next); return next;
-  });
+  }, admission);
   notify(); return row;
 }

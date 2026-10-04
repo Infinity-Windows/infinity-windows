@@ -79,6 +79,6 @@ export function useOpenShiftView(
     [query.data, snapshot, profileId, qc],
   );
   if(!opts.legacyOnly && native && native.route!=="legacy")return {...view,query,shift:native.current?.shift ?? null,
-    ready:snapshot.ready && (native.currentRead==="ready" || native.currentRead==="stale")};
+    ready:snapshot.ready && (native.currentRead==="ready" || native.currentRead==="stale" || native.canReserveStart===true)};
   return { ...view, query, ready: snapshot.ready && (opts.legacyOnly || !profileId || native!==null) };
 }

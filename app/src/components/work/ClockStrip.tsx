@@ -152,9 +152,9 @@ export function ClockStrip({ profileId, shift, clockKnown, nativeFlow=null, toda
   const project = useMemo(() => (projects.data ?? []).find((p) => p.id === pick.projectId), [projects.data, pick.projectId]);
   const costCode = (costCodes.data ?? []).find((c) => c.id === pick.costCodeId);
   const nativeRoute=!!nativeFlow && nativeFlow.route!=="legacy";
-  const canStart=nativeRoute?nativeFlow!.canStartDay:Boolean(pick.projectId && pick.costCodeId);
+  const canStart=nativeRoute?(nativeFlow!.canReserveStart ?? nativeFlow!.canStartDay):Boolean(pick.projectId && pick.costCodeId);
   canStartRef.current = canStart;
-  const plan =nativeRoute?nativeFlow?.setupReason==="toolbox_required"?"sign-then-clock-in":startDayPlan({...gate,ruleActive:true}):startDayPlan(gate);
+  const plan =nativeRoute?"clock-in-then-sign":startDayPlan(gate);
 
   /**
    * What one Start day tap carries: its punch and the picks as they stood at
@@ -304,7 +304,7 @@ export function ClockStrip({ profileId, shift, clockKnown, nativeFlow=null, toda
           <section className="ws-card ws-talk" aria-label={t("work.toolbox.finish")} data-testid="ws-finish-talk">
             <h2 className="ws-h2">{t("work.toolbox.finish")}</h2>
             <p className="ws-meta">{t("work.toolbox.finishHelp")}</p>
-            <ToolboxSignCard profileId={profileId} talk={talk} />
+            <ToolboxSignCard profileId={profileId} talk={talk} onSigned={nativeRoute?()=>nativeFlow?.refresh():undefined}/>
           </section>
         )}
       </>
@@ -345,7 +345,7 @@ export function ClockStrip({ profileId, shift, clockKnown, nativeFlow=null, toda
         </button>
       </div>
 
-      {showSign && talk && canStart ? (
+      {!nativeRoute && showSign && talk && canStart ? (
         <div className="ws-talk" data-testid="ws-start-talk">
           <ToolboxSignCard
             profileId={profileId}
@@ -372,7 +372,7 @@ export function ClockStrip({ profileId, shift, clockKnown, nativeFlow=null, toda
             onClick={onStartDay}
             data-testid="ws-start-day"
           >
-            <Play size={22} aria-hidden /> {busy ? t("work.clock.starting") : t("work.clock.startDay")}
+            <Play size={22} aria-hidden /> {busy ? t("work.clock.starting") : t(nativeRoute && !nativeFlow?.canStartDay?"paidClock.saveStartRequest":"work.clock.startDay")}
           </button>
           {canStart && plan === "sign-then-clock-in" && <p className="ws-meta ws-center">{t("work.clock.willOpenTalk")}</p>}
           {canStart && plan === "clock-in-then-sign" && <p className="ws-meta ws-center">{t("work.clock.paidFromTap")}</p>}

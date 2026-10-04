@@ -60,4 +60,17 @@ describe("isolated clock API", () => {
       await expect(api.fetchOwnClockSafetyBasis(SHIFT, signInMark())).rejects.toThrow("unavailable");
     }
   });
+  it("checks admission after awaiting the token and before handing RPC off",async()=>{
+    let resolve!:(v:unknown)=>void,admitted=true;m.session.mockImplementationOnce(()=>new Promise(done=>{resolve=done;}));
+    const request=api.sendPaidClockIntent(intent,signInMark(),undefined,()=>admitted);
+    admitted=false;resolve({data:{session:{access_token:"fixed",user:{id:OWNER}}},error:null});
+    await expect(request).rejects.toBeInstanceOf(api.ClockPreDispatchVetoError);expect(m.rpc).not.toHaveBeenCalled();
+  });
+  it("does not label generic token or transport errors as a known pre-dispatch veto",async()=>{
+    m.session.mockRejectedValueOnce(new TypeError("fetch failed"));
+    await expect(api.sendPaidClockIntent(intent,signInMark(),undefined,()=>true)).rejects.not.toBeInstanceOf(api.ClockPreDispatchVetoError);expect(m.rpc).not.toHaveBeenCalled();
+    m.rpc.mockRejectedValueOnce(new TypeError("reply lost"));
+    await expect(api.sendPaidClockIntent(intent,signInMark(),undefined,()=>true)).rejects.not.toBeInstanceOf(api.ClockPreDispatchVetoError);expect(m.rpc).toHaveBeenCalledOnce();
+  });
+
 });

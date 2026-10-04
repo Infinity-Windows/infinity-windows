@@ -800,13 +800,13 @@ export function ClockSheet({
   // signed, and the server stays the backstop either way. Once-per-day, all
   // jobs: a switch (already on the clock, so already signed today) is never
   // re-gated, which is why this only bites in "pick" mode.
-  const toolboxKnownUnsigned =nativeRoute?nativeFlow?.setupReason==="toolbox_required":
+  const toolboxKnownUnsigned =!nativeRoute &&
     todayTalk.isSuccess &&
     todayTalk.data !== null &&
     toolboxDone.isSuccess &&
     !toolboxDone.data;
   const clockInBlockedByToolbox = mode === "pick" && toolboxKnownUnsigned;
-  const canStart =nativeRoute?mode==="pick" && !!nativeFlow?.canStartDay && !clockInBlockedByToolbox:
+  const canStart =nativeRoute?mode==="pick" && !!(nativeFlow?.canReserveStart ?? nativeFlow?.canStartDay):
     Boolean(pickProjectId && pickCostCodeId) &&
     !(pickedOpening && !toolboxOk) &&
     !clockInBlockedByToolbox;
@@ -893,6 +893,8 @@ export function ClockSheet({
               clockedIn={isOnTheClock(shift)}
               onNavigate={onClose}
             />
+            {nativeRoute && !needsRealFinish && profileId && todayTalk.data && toolboxDone.isSuccess && !toolboxDone.data &&
+              <ToolboxSignCard profileId={profileId} talk={todayTalk.data} onSigned={()=>nativeFlow?.refresh()}/>}
             {needsRealFinish ? (
               /* We stopped counting on purpose. Ask, never guess. */
               <div className="clock-hero-card needs-finish">
@@ -1226,11 +1228,9 @@ export function ClockSheet({
                 <Link to="/" className="button-like" onClick={onClose}>{t("nav.work")}</Link>
                 <button type="button" onClick={()=>setMode("main")}>{t("clock.action.cancel")}</button>
               </>:<>
-                <p>{t("paidClock.startHelp")}</p>
-                {clockInBlockedByToolbox && profileId && todayTalk.data && <ToolboxSignCard profileId={profileId} talk={todayTalk.data}
-                  onSigned={()=>{if(!doStart.isPending)doStart.mutate(mintPunch());}}/>}
+                <p>{t(nativeFlow.canStartDay?"paidClock.startHelp":"paidClock.startRequestHelp")}</p>
                 <button type="button" className="clock-btn primary big" disabled={busy || !canStart} onClick={()=>doStart.mutate(mintPunch())}>
-                  <Play size={18} aria-hidden/>{doStart.isPending?t("clock.action.clockingIn"):t("clock.action.startClock")}
+                  <Play size={18} aria-hidden/>{doStart.isPending?t("clock.action.clockingIn"):t(nativeFlow.canStartDay?"clock.action.startClock":"paidClock.saveStartRequest")}
                 </button>
                 {nativeFlow.currentRead!=="ready" && <p role="status">{t("paidClock.currentUnknownHelp")}</p>}
               </>}

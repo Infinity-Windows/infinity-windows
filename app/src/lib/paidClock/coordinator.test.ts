@@ -2,13 +2,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { rememberSignedIn, signInMark } from "../signedIn";
 import type { ClockIntent } from "./protocol";
-const m = vi.hoisted(() => ({ device: vi.fn(), records: vi.fn(), basis: vi.fn(), append: vi.fn(), pending: vi.fn(), observed: vi.fn(), dispatch: vi.fn() }));
+const m = vi.hoisted(() => ({ device: vi.fn(), records: vi.fn(), basis: vi.fn(), append: vi.fn(), pending: vi.fn(), observed: vi.fn(), dispatch: vi.fn(), reserve: vi.fn() }));
 vi.mock("../workActivity/device", () => ({ getActivityDeviceId: () => { throw Error("Activity metadata unavailable"); } }));
-vi.mock("./storage", () => ({ readPaidClockRecords: m.records, appendPaidClockIntent: m.append, appendPendingPaidClockIntent: m.pending, getPaidClockDeviceId: m.device }));
+vi.mock("./storage", () => ({ readPaidClockRecords: m.records, appendPaidClockIntent: m.append, appendPendingPaidClockIntent: m.pending, getPaidClockDeviceId: m.device, reservePaidClockStartRecord: m.reserve }));
 vi.mock("./api", () => ({ fetchOwnClockSafetyBasis: m.basis, ClockAccountChangedError: class extends Error {} }));
 vi.mock("./current", () => ({ readObservedClockTarget: m.observed }));
 vi.mock("./dispatch", () => ({ dispatchPaidClockRequest: m.dispatch }));
-const { paidSetupIntent, submitPaidClockIntent, recoverPaidClockRequest } = await import("./coordinator");
+const { paidSetupIntent, submitPaidClockIntent, recoverPaidClockRequest, reservePaidClockStart, deliverReservedPaidClockStart } = await import("./coordinator");
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12,"0")}`;
 const OWNER=id(1), DEVICE=id(2), CLIENT=id(3), SHIFT=id(4), PREVIOUS=id(5);
 const punch = { clientId: CLIENT, tappedAt: "2026-10-04T08:00:00.123456-06:00", clockCheckedAt: null, clockSkewMs: null };
@@ -24,6 +24,7 @@ beforeEach(() => {
   m.pending.mockImplementation(async (_login,_device,intent) => ({clientId:intent.clientId}));
   m.observed.mockReturnValue({proof:"current-login-observed"});
   m.dispatch.mockResolvedValue({kind:"held",reason:"unknown"});
+  m.reserve.mockImplementation(async (_login,intent) => {const record={clientId:intent.clientId,intent};m.records.mockResolvedValue([record]);return {record,created:true};});
 });
 describe("original paid clock coordinator", () => {
   it("keeps the original tap before job and toolbox setup without minting a UUID", () => {
@@ -31,23 +32,38 @@ describe("original paid clock coordinator", () => {
     expect(intent).toEqual({...punch,action:"clock_in",projectId:null,costCodeId:null,photo:null,lat:null,lng:null,note:null,mode:"data",setupVersion:1});
     expect(Object.isFrozen(intent)).toBe(true);
   });
-  it("freezes before the first wait and commits before delivery, without fabricating a shift", async () => {
-    let resolve!:(device:string)=>void; m.device.mockImplementationOnce(()=>new Promise<string>(done=>{resolve=done;}));
-    const raw={...clock()}; const login=signInMark(), saving=submitPaidClockIntent(login,raw,null);
-    raw.tappedAt="2026-10-04T11:00:00Z"; await vi.waitFor(()=>expect(m.device).toHaveBeenCalledOnce()); resolve(DEVICE);
-    const result=await saving;
-    expect(m.append.mock.calls[0]).toEqual([login,DEVICE,clock(),null,undefined]);
-    expect(m.append.mock.invocationCallOrder[0]).toBeLessThan(m.dispatch.mock.invocationCallOrder[0]);
-    expect(result).toEqual({kind:"saved",clientId:CLIENT,dispatch:{kind:"held",reason:"unknown"}});
-    expect(result).not.toHaveProperty("shift"); expect(m.basis).not.toHaveBeenCalled();
+  it("freezes before reservation and commits before any delivery read", async () => {
+    let resolve!:(value:unknown)=>void; m.reserve.mockImplementationOnce(()=>new Promise(done=>{resolve=done;}));
+    const raw={...clock()}, login=signInMark(), saving=submitPaidClockIntent(login,raw,null);
+    raw.tappedAt="2026-10-04T11:00:00Z";
+    expect(m.reserve).toHaveBeenCalledWith(login,clock());expect(m.records).not.toHaveBeenCalled();
+    expect(m.dispatch).not.toHaveBeenCalled();expect(m.device).not.toHaveBeenCalled();
+    const record={clientId:CLIENT,intent:clock()};m.records.mockResolvedValue([record]);resolve({record,created:true});
+    expect(await saving).toEqual({kind:"saved",clientId:CLIENT,dispatch:{kind:"held",reason:"unknown"}});
+    expect(m.reserve.mock.invocationCallOrder[0]).toBeLessThan(m.dispatch.mock.invocationCallOrder[0]);
+    expect(m.basis).not.toHaveBeenCalled();expect(m.append).not.toHaveBeenCalled();
   });
-  it("blocks an A→B→A completion before it can save or send", async () => {
-    let resolve!:(device:string)=>void; m.device.mockImplementationOnce(()=>new Promise<string>(done=>{resolve=done;}));
-    const saving=submitPaidClockIntent(signInMark(),clock(),null);
-    await vi.waitFor(()=>expect(m.device).toHaveBeenCalledOnce());
-    rememberSignedIn(null);rememberSignedIn({user:{id:OWNER}});resolve(DEVICE);
+  it("does not publish a reservation completion across A→B→A or send its original", async () => {
+    let resolve!:(value:unknown)=>void; m.reserve.mockImplementationOnce(()=>new Promise(done=>{resolve=done;}));
+    const saving=reservePaidClockStart(signInMark(),clock());
+    rememberSignedIn(null);rememberSignedIn({user:{id:OWNER}});
+    resolve({record:{clientId:CLIENT,intent:clock()},created:true});
     expect(await saving).toEqual({kind:"held",clientId:CLIENT,reason:"account_changed"});
-    expect(m.append).not.toHaveBeenCalled();expect(m.dispatch).not.toHaveBeenCalled();
+    expect(m.records).not.toHaveBeenCalled();expect(m.dispatch).not.toHaveBeenCalled();
+  });
+  it("reserves offline without any readiness, device, history or dispatch read",async()=>{
+    Object.defineProperty(navigator,"onLine",{configurable:true,value:false});
+    const saved=await reservePaidClockStart(signInMark(),clock());
+    expect(saved).toMatchObject({kind:"reserved",clientId:CLIENT,created:true,record:{intent:clock()}});
+    expect(m.records).not.toHaveBeenCalled();expect(m.device).not.toHaveBeenCalled();expect(m.basis).not.toHaveBeenCalled();expect(m.dispatch).not.toHaveBeenCalled();
+    expect(await deliverReservedPaidClockStart(CLIENT,signInMark())).toEqual({kind:"saved",clientId:CLIENT,dispatch:{kind:"held",reason:"offline"}});
+    expect(m.dispatch).not.toHaveBeenCalled();
+  });
+  it("returns a competing unresolved winner without delivering or replacing it",async()=>{
+    const original={...clock(),clientId:PREVIOUS,tappedAt:"2026-10-03T08:00:00Z"};
+    m.reserve.mockResolvedValueOnce({record:{clientId:PREVIOUS,intent:original},created:false});
+    expect(await submitPaidClockIntent(signInMark(),clock(),null)).toEqual({kind:"saved",clientId:PREVIOUS,dispatch:{kind:"held",reason:"dependency"}});
+    expect(m.records).not.toHaveBeenCalled();expect(m.dispatch).not.toHaveBeenCalled();
   });
   it("requires a fresh self-owned shift before a new independent safety head", async () => {
     const login=signInMark(); await submitPaidClockIntent(login,out(),null);
@@ -74,10 +90,10 @@ describe("original paid clock coordinator", () => {
     expect(m.append).not.toHaveBeenCalled();expect(m.dispatch).not.toHaveBeenCalled();
   });
   it("never sends an unsaved request and does not call a post-commit auth change success", async () => {
-    m.append.mockRejectedValueOnce(Error("native unavailable"));
+    m.reserve.mockRejectedValueOnce(Error("native unavailable"));
     expect(await submitPaidClockIntent(signInMark(),clock(),null)).toMatchObject({kind:"held",reason:"storage_unavailable"});
     expect(m.dispatch).not.toHaveBeenCalled();
-    m.append.mockImplementationOnce(async()=>{rememberSignedIn(null);rememberSignedIn({user:{id:OWNER}});return {clientId:CLIENT};});
+    m.reserve.mockImplementationOnce(async()=>{rememberSignedIn(null);rememberSignedIn({user:{id:OWNER}});return {record:{clientId:CLIENT,intent:clock()},created:true};});
     expect(await submitPaidClockIntent(signInMark(),clock(),null)).toMatchObject({kind:"held",reason:"account_changed"});
     expect(m.dispatch).not.toHaveBeenCalled();
   });
@@ -124,10 +140,10 @@ describe("original paid clock coordinator", () => {
     expect(await submitPaidClockIntent(signInMark(),out(),null)).toMatchObject({kind:"held",reason:"basis_unavailable"});
     expect(m.pending).not.toHaveBeenCalled();expect(m.dispatch).not.toHaveBeenCalled();
   });
-  it("refuses unknown offline targets and new offline Start day without admitting saved history",async()=>{
+  it("refuses unknown offline safety targets but saves an original offline Start without authority",async()=>{
     Object.defineProperty(navigator,"onLine",{configurable:true,value:false});m.observed.mockReturnValue(null);
     expect(await submitPaidClockIntent(signInMark(),out(),null)).toMatchObject({kind:"held",reason:"basis_unavailable"});
-    expect(await submitPaidClockIntent(signInMark(),clock(),null)).toMatchObject({kind:"held",reason:"basis_unavailable"});
+    expect(await submitPaidClockIntent(signInMark(),clock(),null)).toMatchObject({kind:"saved",dispatch:{kind:"held",reason:"offline"}});
     expect(m.pending).not.toHaveBeenCalled();expect(m.dispatch).not.toHaveBeenCalled();
   });
   it("routes offline descendants through native lineage admission and preserves a refused head",async()=>{
