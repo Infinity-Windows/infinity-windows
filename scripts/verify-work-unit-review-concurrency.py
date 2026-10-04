@@ -11,7 +11,7 @@ source=SOURCE.read_text();source_hash=hashlib.sha256(source.encode()).hexdigest(
 assert re.search(r'rollback;\s*$',source)
 assert sys.argv[1:] in ([],['--check-plan'])
 if sys.argv[1:]==['--check-plan']:
- print(json.dumps({'result':'PLAN VALIDATED','databaseTests':False,'sourceSha256':source_hash,'predecessor':'verify-work-activity-engine-role-parity.py','plannedObservedWaits':['fact CAS','original source hidden','grant revoked','actor revoked','duplicate receipt','unit row']}));sys.exit(0)
+ print(json.dumps({'result':'PLAN VALIDATED','databaseTests':False,'sourceSha256':source_hash,'predecessor':'verify-work-activity-engine-role-parity.py','plannedObservedWaits':['fact CAS','original source hidden','grant revoked','actor revoked','duplicate receipt','unit row','original wins cancellation','cancellation wins original','cancellation original source hidden','cancellation grant revoked','cancellation actor revoked']}));sys.exit(0)
 url=os.environ.get('WORK_ACTIVITY_ROLE_TEST_DB_URL','');p=urlparse(url)
 try: port=p.port
 except ValueError:raise SystemExit('Invalid local fixture URL')
@@ -39,6 +39,7 @@ def auth(actor):return 'set role authenticated;set request.jwt.claim.sub='+ql(ac
 def read(actor=reviewer):return obj(auth(actor)+'begin read only;select work_unit_review_read('+ql(unit)+');commit;','authenticator')
 def payload(action,data,actor=reviewer):return {'action':action,'basis':read(actor)['review']['basis'],'data':data}
 def sql_command(cid,pay):return 'select work_unit_review_command('+ql(cid)+',1,'+ql(json.dumps(pay))+'::jsonb);'
+def sql_cancel(cid,pay):return 'select work_unit_review_cancel('+ql(cid)+',1,'+ql(json.dumps(pay))+'::jsonb);'
 def command(cid,pay,actor=reviewer):return obj(auth(actor)+sql_command(cid,pay),'authenticator')
 check(run("select (session_user='postgres' and not (select rolsuper from pg_roles where rolname=session_user))::int")=='1','Actual nonsuperuser source owner login')
 check(run("select (session_user='authenticator' and not (select rolsuper from pg_roles where rolname=session_user) and not (select rolinherit from pg_roles where rolname=session_user))::int",'authenticator')=='1','Actual noninheriting caller login')
@@ -121,7 +122,32 @@ try:
  pay=payload('reopen',{'note':None})
  row=race('unit_row','select id from custom_work_units where id='+ql(unit)+' for update;',auth(reviewer)+sql_command(id(129),pay),g=False)
  check(row['outcome']=='applied','Unit row wait completes without parent lock inversion')
- check(edges==6,'Six independent backend waits observed')
+ # Both orders use actual authenticated sessions under the same G/7710 gate.
+ pay=payload('submit',{'note':'Original wins'});cid=id(130)
+ applied=race('original_wins_cancel',auth(reviewer)+sql_command(cid,pay),auth(reviewer)+sql_cancel(cid,pay),holder_user='authenticator',g=False)
+ check(applied['outcome']=='applied' and applied==command(cid,pay),'Cancellation cannot undo a committed original')
+ pay=payload('reopen',{'note':'Cancellation wins'});cid=id(131)
+ before=read()['review'];events_before=run('select count(*) from work_unit_review_events')
+ cancelled=race('cancel_wins_original',auth(reviewer)+sql_cancel(cid,pay),auth(reviewer)+sql_command(cid,pay),holder_user='authenticator',g=False)
+ check(cancelled['outcome']=='cancelled' and cancelled['original']==pay,'Waiting original receives exact permanent cancellation')
+ check(read()['review']==before and run('select count(*) from work_unit_review_events')==events_before,'Cancellation changes neither unit projection nor review events')
+ replacement=command(id(132),payload('reopen',{'note':'New deliberate decision'}))
+ check(replacement['outcome']=='applied' and command(cid,pay)==cancelled,'New original can apply while the old UUID remains permanently cancelled')
+ pay=payload('submit',{'note':'Prior job hidden during cancellation'})
+ race('cancel_original_hidden','update projects set deleted_at=clock_timestamp() where id='+ql(job)+';',auth(reviewer)+sql_cancel(id(133),pay),'42501')
+ run('update projects set deleted_at=null where id='+ql(job)+';')
+ check(run('select count(*) from work_unit_review_commands where command_id='+ql(id(133)))=='0','Hidden original creates no cancellation proof')
+ run(auth(owner)+'select work_grant_job_capability('+ql(id(134))+','+ql(job)+','+ql(foreman)+",'dimensions_edit');",'authenticator')
+ pay=payload('verify_dimensions',{'widthDecimal':'37','heightDecimal':'48','unit':'in','source':'measured','sourceReference':None},foreman)
+ grant=run("select id from work_job_management_grants where profile_id="+ql(foreman)+' and project_id='+ql(job)+" and capability='dimensions_edit' and revoked_at is null")
+ revoke=auth(owner)+'select work_revoke_job_capability('+ql(id(135))+','+ql(job)+','+ql(foreman)+",'dimensions_edit',"+ql(grant)+');'
+ race('cancel_grant',revoke,auth(foreman)+sql_cancel(id(136),pay),'42501',holder_user='authenticator',g=False)
+ check(run('select count(*) from work_unit_review_commands where command_id='+ql(id(136)))=='0','Revoked grant creates no cancellation proof')
+ pay=payload('submit',{'note':'Actor revoked during cancellation'})
+ race('cancel_actor','update profiles set access_revoked_at=clock_timestamp() where id='+ql(reviewer)+';',auth(reviewer)+sql_cancel(id(137),pay),'42501')
+ run('update profiles set access_revoked_at=null where id='+ql(reviewer)+';')
+ check(run('select count(*) from work_unit_review_commands where command_id='+ql(id(137)))=='0','Revoked actor creates no cancellation proof')
+ check(edges==11,'Eleven independent backend waits observed')
 finally:
  for proc in processes:
   if proc.poll() is None:

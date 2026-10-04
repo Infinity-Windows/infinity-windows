@@ -10,7 +10,7 @@ const root=new URL('../',import.meta.url);const read=p=>readFileSync(new URL(p,r
 const schema=read('scripts/fixtures/work-activity-engine-online-schema.sql');const engine=read('supabase/migrations/20261108410000_work_activity_engine_cutover.sql');
 assert.equal(hash(schema),'ee41a980b19f76baa8637101b62703ecdf798a32eccbb0e9f074fbfd71c62471');assert.equal(hash(engine),'aa767e67de301cd0ce5961758cc5afefe89bdf25fe27b3c4156a219c9cb2f648');
 const review=read('supabase/migrations/20261108440000_work_unit_review.sql');
-const wire=[];const db=new PGlite({extensions:{pgcrypto,uuid_ossp}});const q=async(s,a=[])=>{const row=(await db.query(s,a)).rows[0];if(/select work_unit_review_(read|command|command_receipt)\(/.test(s)&&row?.value)wire.push({sql:s,args:a,result:row.value});return row;};
+const wire=[];const db=new PGlite({extensions:{pgcrypto,uuid_ossp}});const q=async(s,a=[])=>{const row=(await db.query(s,a)).rows[0];if(/select work_unit_review_(read|command|command_receipt|cancel)\(/.test(s)&&row?.value)wire.push({sql:s,args:a,result:row.value});return row;};
 // Disposable fixture only: reproduce the provider's inherited function grant.
 // The production migration changes no global/default privileges.
 await db.exec(schema);
@@ -38,7 +38,7 @@ const deniedCount=(await q("select count(*)::int n from unnest($1::text[]) f whe
 assert.equal(deniedCount,18,'Exactly all eighteen inherited entry points are denied after review');
 
 const watchedTables=['time_shifts','personal_activity_state','personal_activity_transition_sources','personal_activity_transitions','work_activity_safety_events','work_unit_fact_revisions','work_unit_fact_current','work_unit_fact_context_epochs','custom_work_units','project_openings','service_visit_units','service_visits','summons','unit_redos','qc_checks','install_events','crew_work_records','crew_work_record_people','work_session_capture_metadata','custom_work_history','custom_work_sessions','unit_sessions','task_sessions','service_time_sessions','opening_phases','summon_helpers','work_activity_source_history','work_unit_review_commands','work_unit_dimension_verifications','work_unit_review_events','work_unit_review_current','work_unit_review_defects','work_unit_review_defect_events'];
-const watchedFunctions=['_work_activity_operation_exit','_work_activity_event','_work_activity_touch','_work_activity_safety_exit','_work_activity_shift_lifecycle','_work_activity_retain_source','_work_activity_parent_source_history','_work_activity_source_material','_work_activity_row_event','_work_activity_gate','_work_activity_parent_gate','_work_activity_statement_begin','_work_activity_statement_end','_work_activity_row_before','_work_activity_read_committed','_work_activity_actor','_work_activity_unit_basis','_work_unit_fact_context_visible','_work_unit_fact_peek_epoch','_work_unit_fact_bump_epoch','_ai_job_visible','_work_config_internal','_work_config_is_supervisor','_work_config_is_foreman','is_test_profile','is_sandbox_project','service_job_access','service_internal','_work_unit_review_scope','_work_unit_review_view','_work_unit_review_authority','_work_unit_review_defect_projection','_work_unit_review_payload','_work_unit_review_decimal','_work_unit_review_text','person_record_counts','_work_activity_evidence','_work_activity_operation','work_capture_immutable_record','_work_activity_no_truncate','_work_activity_uuid','_work_activity_integer','_work_activity_object','work_unit_review_command','work_unit_review_read','work_unit_review_command_receipt'];
+const watchedFunctions=['_work_activity_operation_exit','_work_activity_event','_work_activity_touch','_work_activity_safety_exit','_work_activity_shift_lifecycle','_work_activity_retain_source','_work_activity_parent_source_history','_work_activity_source_material','_work_activity_row_event','_work_activity_gate','_work_activity_parent_gate','_work_activity_statement_begin','_work_activity_statement_end','_work_activity_row_before','_work_activity_read_committed','_work_activity_actor','_work_activity_unit_basis','_work_unit_fact_context_visible','_work_unit_fact_peek_epoch','_work_unit_fact_bump_epoch','_ai_job_visible','_work_config_internal','_work_config_is_supervisor','_work_config_is_foreman','is_test_profile','is_sandbox_project','service_job_access','service_internal','_work_unit_review_scope','_work_unit_review_view','_work_unit_review_authority','_work_unit_review_defect_projection','_work_unit_review_payload','_work_unit_review_decimal','_work_unit_review_text','person_record_counts','_work_activity_evidence','_work_activity_operation','work_capture_immutable_record','_work_activity_no_truncate','_work_activity_uuid','_work_activity_integer','_work_activity_object','work_unit_review_command','work_unit_review_read','work_unit_review_command_receipt','work_unit_review_cancel','_work_unit_review_original_visible'];
 const sqlArray=xs=>'array['+xs.map(x=>"'"+x+"'").join(',')+']';
 const catalogQuery=`select jsonb_build_object(
  'functions',(select jsonb_agg(jsonb_build_object('name',p.proname,'args',pg_get_function_identity_arguments(p.oid),'body',encode(sha256(convert_to(p.prosrc,'UTF8')),'hex'),'config',p.proconfig,'owner',pg_get_userbyid(p.proowner),'definer',p.prosecdef,'volatility',p.provolatile) order by p.proname,pg_get_function_identity_arguments(p.oid)) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname=any(${sqlArray(watchedFunctions)})),
@@ -132,6 +132,39 @@ check(view.review.qc.state==='passed','Explicit submit and reviewer pass retaine
 check(view.review.qc.qcAccepted===true,'Exact source coverage permits honest accepted QC');
 const payrollSql="select jsonb_build_object('shifts',(select coalesce(jsonb_agg(to_jsonb(t) order by id),'[]') from time_shifts t),'custom',(select coalesce(jsonb_agg(to_jsonb(t) order by id),'[]') from custom_work_sessions t),'unit',(select coalesce(jsonb_agg(to_jsonb(t) order by id),'[]') from unit_sessions t),'task',(select coalesce(jsonb_agg(to_jsonb(t) order by id),'[]') from task_sessions t),'service',(select coalesce(jsonb_agg(to_jsonb(t) order by id),'[]') from service_time_sessions t),'actions',(select coalesce(jsonb_agg(to_jsonb(t) order by client_id),'[]') from time_clock_actions t)) value";
 await as(id(2),'postgres');const payrollBefore=(await q(payrollSql)).value;await as(id(2));
+// Permanent cancellation is an explicit UUID fence, including a still-current
+// basis. It has no review event or unit/clock effect, and cannot cancel an
+// already-applied original or somebody else's command.
+const cancelPayload={action:'reopen',basis:(await readView()).review.basis,data:{note:'Original synthetic saved decision'}};
+const cancelId=id(sequence++);const cancelBefore=(await readView()).review;
+await as(id(2),'postgres');const eventsBefore=(await q('select count(*)::int n from work_unit_review_events')).n;await as(id(2));
+const cancelled=(await q('select work_unit_review_cancel($1,1,$2::jsonb) value',[cancelId,JSON.stringify(cancelPayload)])).value;
+assert.deepEqual(cancelled.original,cancelPayload);check(cancelled.outcome==='cancelled','Cancellation retains the complete normalized original');
+check(JSON.stringify((await q('select work_unit_review_cancel($1,1,$2::jsonb) value',[cancelId,JSON.stringify(cancelPayload)])).value)===JSON.stringify(cancelled),'Cancellation replay returns one immutable fence');
+check(JSON.stringify((await q('select work_unit_review_command($1,1,$2::jsonb) value',[cancelId,JSON.stringify(cancelPayload)])).value)===JSON.stringify(cancelled),'Delayed original after cancellation cannot apply even while basis is still current');
+check(JSON.stringify((await readView()).review)===JSON.stringify(cancelBefore),'Cancellation does not alter current unit token, review revision, defects or acceptance');
+check(JSON.stringify((await q('select work_unit_review_command_receipt($1) value',[cancelId])).value.receipt)===JSON.stringify(cancelled),'Fresh cancelled receipt returns the original authorized fence');
+check(JSON.stringify((await q('select work_unit_review_cancel($1,1,$2::jsonb) value',[verification.cid,JSON.stringify(verification.payload)])).value)===JSON.stringify(verification.result),'Applied original wins forever and cancellation returns its applied receipt');
+await refuse('select work_unit_review_cancel($1,1,$2::jsonb)',[cancelId,JSON.stringify({...cancelPayload,data:{note:'Different original'}})],'42501');
+await as(id(1));await refuse('select work_unit_review_cancel($1,1,$2::jsonb)',[cancelId,JSON.stringify(cancelPayload)],'42501');
+check((await q('select work_unit_review_command_receipt($1) value',[cancelId])).value.availability==='unavailable','Foreign cancellation receipt exposes no fields');await as(id(2));
+const staleCancelId=id(sequence++);
+check((await q('select work_unit_review_cancel($1,1,$2::jsonb) value',[staleCancelId,JSON.stringify(verification.payload)])).value.outcome==='cancelled','Stale basis can be permanently closed without rebasing its original');
+await as(id(2),'service_role');
+await refuse('select work_unit_review_cancel($1,1,$2::jsonb)',[id(sequence++),JSON.stringify(cancelPayload)],'42501');
+await refuse('select _work_unit_review_original_visible($1,null,$2::jsonb)',[id(2),JSON.stringify(cancelPayload)],'42501');
+await as(id(2),'anon');await refuse('select work_unit_review_cancel($1,1,$2::jsonb)',[id(sequence++),JSON.stringify(cancelPayload)],'42501');await as(id(2));
+const wrongFact=(await readView(31)).review.basis.factId;
+await refuse('select work_unit_review_cancel($1,1,$2::jsonb)',[id(sequence++),JSON.stringify({...cancelPayload,basis:{...cancelPayload.basis,factId:wrongFact}})],'42501');
+await refuse('select work_unit_review_cancel($1,1,$2::jsonb)',[id(sequence++),JSON.stringify({...cancelPayload,basis:{...cancelPayload.basis,factRevision:999}})],'42501');
+await as(id(2),'postgres');
+check((await q('select count(*)::int n from work_unit_review_events')).n===eventsBefore,'No cancellation creates a review event');
+check(JSON.stringify((await q(payrollSql)).value)===JSON.stringify(payrollBefore),'Cancellation leaves payroll and activity records byte-identical');
+check((await q("select (person_record_counts($1)->>'work_unit_review_commands.actor_id')::int n",[id(2)])).n>0,'Existing actor census retains cancelled decisions');
+await db.exec('savepoint cancelled_original_hidden');await db.query('update projects set deleted_at=clock_timestamp() where id=$1',[id(10)]);await as(id(2));
+check((await q('select work_unit_review_command_receipt($1) value',[cancelId])).value.availability==='unavailable','Hidden original job hides cancelled receipt');
+await refuse('select work_unit_review_cancel($1,1,$2::jsonb)',[id(sequence++),JSON.stringify(cancelPayload)],'42501');
+await as(id(2),'postgres');await db.exec('rollback to savepoint cancelled_original_hidden');await as(id(2));
 for(const [unit,width,height] of [['in','36','48'],['mm','914.4','1219.2'],['cm','91.44','121.92']]){await command('verify_dimensions',{widthDecimal:width,heightDecimal:height,unit,source:'plans',sourceReference:'Exact synthetic plan'});check((await readView()).review.dimensionVerification.state==='verified',unit+' exact rational equality');}
 let basis=(await readView()).review.basis;
 for(const bad of ['0','-1','+1','1e1','.1','1.','NaN','Infinity',' 36','36 ', '1'.repeat(101),36,null,true]) await refuse('select work_unit_review_command($1,1,$2::jsonb)',[id(sequence++),JSON.stringify({action:'verify_dimensions',basis,data:{widthDecimal:bad,heightDecimal:'48',unit:'in',source:'measured',sourceReference:null}})],'23514');
@@ -306,6 +339,14 @@ await as(id(2),'postgres');await db.exec('rollback to savepoint helper_fixture')
 // The authenticated foreman's distinct grant does not make them an independent observer.
 await as(id(2));for(const cap of ['dimensions_edit','final_qc']) await q('select work_grant_job_capability($1,$2,$3,$4)',[id(sequence++),id(10),id(3),cap]);
 await as(id(3));await command('submit',{note:null});await command('pass',{note:null});check((await readView()).review.qc.qcAccepted,'Foreman can submit and finally approve their own work on granted job');
+await as(id(3));const foremanCancelId=id(sequence++),foremanCancelPayload={action:'verify_dimensions',basis:(await readView()).review.basis,data:{widthDecimal:'36',heightDecimal:'48',unit:'in',source:'plans',sourceReference:null}};
+check((await q('select work_unit_review_cancel($1,1,$2::jsonb) value',[foremanCancelId,JSON.stringify(foremanCancelPayload)])).value.outcome==='cancelled','Granted original author can close their own draft');
+await as(id(2),'postgres');await db.exec('savepoint cancelled_grant_revoked');
+const dimensionsGrant=(await q("select id from work_job_management_grants where profile_id=$1 and project_id=$2 and capability='dimensions_edit' and revoked_at is null",[id(3),id(10)])).id;
+await as(id(2));await q('select work_revoke_job_capability($1,$2,$3,$4,$5)',[id(sequence++),id(10),id(3),'dimensions_edit',dimensionsGrant]);await as(id(3));
+check((await q('select work_unit_review_command_receipt($1) value',[foremanCancelId])).value.availability==='unavailable','Revoked original review grant hides cancelled receipt');
+await refuse('select work_unit_review_cancel($1,1,$2::jsonb)',[id(sequence++),JSON.stringify(foremanCancelPayload)],'42501');
+await as(id(2),'postgres');await db.exec('rollback to savepoint cancelled_grant_revoked');await as(id(3));
 // Gated canonical relink retains original source and grant obligations.
 await as(id(1));await db.exec('savepoint original_scope');
 const original=(await readView()).review.basis;
@@ -374,12 +415,15 @@ await as(id(2),'postgres');await db.query('update project_openings set project_i
 await as(id(2));for(const j of [11,12])await q('select work_grant_job_capability($1,$2,$3,$4)',[id(sequence++),id(j),id(3),'dimensions_edit']);
 await as(id(3));check((await readView()).review.capabilities.verifyDimensions,'Original opening moved to third visible granted job remains authorized');
 await as(id(2),'postgres');await db.query('update projects set deleted_at=clock_timestamp() where id=$1',[id(12)]);await as(id(3));check((await readView()).availability==='unavailable','Hidden current job of original opening makes entire scope unavailable');
+await as(id(2));check((await q('select work_unit_review_command_receipt($1) value',[verification.cid])).value.availability==='unavailable','Fresh applied receipt still authorizes retained original opening job');
+check((await q('select work_unit_review_command_receipt($1) value',[cancelId])).value.availability==='unavailable','Fresh cancellation receipt still authorizes retained original opening job');
 await as(id(2),'postgres');await db.exec('rollback to savepoint original_opening_move');
 await db.exec('savepoint changed_fact');await as(id(1));
 const factBasis=(await readView()).review.basis;const existingFacts=(await q('select facts from custom_work_units where id=$1',[id(30)])).facts;
 const changed={id:id(30),revision:factBasis.unitRevision,project_id:id(10),opening_id:id(20),label:'Unit 30',type_label:'Window',facts:{},dimension_observation:{width:37,height:48,unit:'in',source:'measured'},expected_fact_revision:factBasis.factRevision};
 await q("select custom_work_command($1,'unit',$2::jsonb)",[id(sequence++),JSON.stringify(changed)]);await as(id(2));
 view=await readView();check(view.review.dimensionVerification.state==='noncurrent'&&!view.review.qc.qcAccepted,'Replacing observation invalidates old corroboration and old QC independently');
+check((await q('select work_unit_review_cancel($1,1,$2::jsonb) value',[id(sequence++),JSON.stringify(cancelPayload)])).value.outcome==='cancelled','Explicit cancellation authorizes retained superseded original fact instead of rebasing it');
 await as(id(1));const cleared={...changed,revision:view.review.basis.unitRevision,expected_fact_revision:view.review.basis.factRevision,dimension_observation:null,dimension_observation_reason:'Synthetic reset'};
 await q("select custom_work_command($1,'unit',$2::jsonb)",[id(sequence++),JSON.stringify(cleared)]);await as(id(2));view=await readView();check(view.review.observation===null&&Object.values(view.review.capabilities).every(x=>x===false),'Explicit null reset cannot manufacture observation or QC authority');
 await as(id(2),'postgres');await db.exec('rollback to savepoint changed_fact');
@@ -390,8 +434,11 @@ await db.exec('savepoint retained_purge');const originalUnit=(await q('select to
 const retainedBefore=(await q('select count(*)::int n from work_unit_review_events where unit_id=$1',[id(30)])).n;
 await db.query('delete from custom_work_units where id=$1',[id(30)]);await as(id(2));check((await readView()).availability==='unavailable','Purged operational unit exposes no retained private review projection');
 check((await q('select work_unit_review_command_receipt($1) value',[verification.cid])).value.availability==='unavailable','Historical receipt stays unavailable after source purge');
+check((await q('select work_unit_review_command_receipt($1) value',[cancelId])).value.availability==='unavailable','Cancelled receipt stays unavailable after source purge');
 await as(id(2),'postgres');check((await q('select count(*)::int n from work_unit_review_events where unit_id=$1',[id(30)])).n===retainedBefore,'Operational purge preserves all immutable private review events');
 await db.query('insert into custom_work_units select (jsonb_populate_record(null::custom_work_units,$1::jsonb)).*',[JSON.stringify(originalUnit)]);await as(id(2));check((await readView()).availability==='unavailable','Recreated physical UUID never inherits prior fact or approval');
+await refuse('select work_unit_review_cancel($1,1,$2::jsonb)',[id(sequence++),JSON.stringify(cancelPayload)],'42501');
+check((await q('select work_unit_review_command_receipt($1) value',[cancelId])).value.availability==='unavailable','Recreated physical UUID cannot expose original cancelled decision');
 await as(id(2),'postgres');await db.exec('rollback to savepoint retained_purge');
 
 for(const row of (await db.query(read('scripts/verify-work-unit-review-installed.sql'))).rows)check(row.passed,row.check_name);

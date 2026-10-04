@@ -29,9 +29,11 @@ begin
  'scopeToken','ur1:'||repeat('0',64),'reviewRevision',0,'submissionId',null,'generation',0),'data',jsonb_build_object('note',null));
  perform pg_temp.dry_run_expect_error('provider/reviewMissingUnitCommandRefused',
  format('select public.work_unit_review_command(%L::uuid,1,%L::jsonb)',missing_command,payload::text),'Unit review is unavailable.');
+ perform pg_temp.dry_run_expect_error('provider/reviewMissingUnitCancelRefused',
+ format('select public.work_unit_review_cancel(%L::uuid,1,%L::jsonb)',missing_command,payload::text),'Unit review is unavailable.');
  perform pg_temp.dry_run_as_system();
  perform pg_temp.dry_run_check('provider/reviewNoDecisionWritten',
  (select count(*) from public.work_unit_review_commands)=before_commands
  and (select count(*) from public.work_unit_review_events)=before_events,
- 'Read-only checks and a refused missing-unit command preserve review records');
+ 'Read-only checks and refused missing-unit command and cancellation preserve review records');
 end; $review_provider$;

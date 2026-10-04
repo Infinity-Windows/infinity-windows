@@ -19,7 +19,9 @@ with private_tables(name) as (values
  has_function_privilege('authenticated',p.oid,'EXECUTE') and not has_function_privilege('anon',p.oid,'EXECUTE')
  and not has_function_privilege('service_role',p.oid,'EXECUTE') and p.prosecdef)
  from pg_proc p where p.oid in ('public.work_unit_review_read(uuid)'::regprocedure,
- 'public.work_unit_review_command(uuid,integer,jsonb)'::regprocedure,'public.work_unit_review_command_receipt(uuid)'::regprocedure)
+ 'public.work_unit_review_command(uuid,integer,jsonb)'::regprocedure,'public.work_unit_review_command_receipt(uuid)'::regprocedure,
+ 'public.work_unit_review_cancel(uuid,integer,jsonb)'::regprocedure)
+ union all select 'unit_review_cancel_helper_private',bool_and(not has_function_privilege(r.name,'public._work_unit_review_original_visible(uuid,jsonb,jsonb)'::regprocedure,'EXECUTE')) from (values('anon'),('authenticated'),('service_role')) r(name)
  union all select 'unit_review_census_retention',position('work_unit_review_events.original_identities' in p.prosrc)>0
  and position('work_activity_source_history.original_identities' in p.prosrc)>0
  from pg_proc p where p.oid='public.person_record_counts(uuid)'::regprocedure

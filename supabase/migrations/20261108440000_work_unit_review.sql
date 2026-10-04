@@ -671,6 +671,30 @@ begin
  return jsonb_build_object('protocolVersion',1,'asOf',public._work_activity_iso(t),'availability',case when v is null then 'unavailable' else 'available' end,'review',v);
 end; $$;
 
+-- A cancelled draft may name a superseded fact that never entered a review
+-- event. Authorize that immutable origin explicitly; the current scope already
+-- includes all retained unit/source/review job and opening histories.
+create function public._work_unit_review_original_visible(actor uuid,s jsonb,p jsonb) returns boolean
+language plpgsql stable security definer set search_path=public,pg_temp as $$
+declare f public.work_unit_fact_revisions;jobs jsonb;j uuid;cap text;
+begin
+ if s is null or p#>>'{basis,unitId}' is distinct from s#>>'{unit,id}' then return false;end if;
+ select * into f from public.work_unit_fact_revisions where id=(p#>>'{basis,factId}')::uuid;
+ if f.id is null or f.unit_id is distinct from (s#>>'{unit,id}')::uuid
+ or f.unit_incarnation_epoch is distinct from (s#>>'{unit,incarnationEpoch}')::bigint
+ or f.revision is distinct from (p#>>'{basis,factRevision}')::bigint
+ or not public._work_unit_fact_context_visible(actor,f.origin_kind,f.origin_project_id,f.origin_opening_id,f.origin_author_id,f.origin_is_test,true) then return false;end if;
+ jobs:=s->'jobs';
+ if f.origin_project_id is not null then jobs:=jobs||to_jsonb(f.origin_project_id);end if;
+ if f.origin_opening_id is not null then
+ select project_id into j from public.project_openings where id=f.origin_opening_id and removed_at is null;
+ if j is null or not public._ai_job_visible(j,actor) then return false;end if;
+ jobs:=jobs||to_jsonb(j);
+ end if;
+ cap:=case p->>'action' when 'verify_dimensions' then 'dimensions_edit' when 'pass' then 'final_qc' when 'fail' then 'final_qc' when 'reopen' then 'final_qc' end;
+ return cap is null or public._work_unit_review_authority(actor,jobs,cap);
+end; $$;
+
 create function public.work_unit_review_command_receipt(p_command_id uuid) returns jsonb
 language plpgsql volatile security definer set search_path=public,pg_temp as $$
 declare actor uuid;c public.work_unit_review_commands;s jsonb;
@@ -679,7 +703,8 @@ begin
  perform pg_advisory_xact_lock(7710,0);actor:=public._work_activity_actor();
  select * into c from public.work_unit_review_commands where command_id=p_command_id and actor_id=actor;
  if c.command_id is not null then s:=public._work_unit_review_scope(actor,c.unit_id);end if;
- if s is null or (s#>>'{unit,incarnationEpoch}')::bigint is distinct from c.incarnation then
+ if s is null or (s#>>'{unit,incarnationEpoch}')::bigint is distinct from c.incarnation
+ or c.receipt->>'outcome'='cancelled' and (not public._work_unit_review_coverage() or not public._work_unit_review_original_visible(actor,s,c.normalized_request)) then
  return jsonb_build_object('protocolVersion',1,'availability','unavailable','receipt',null);end if;
  return jsonb_build_object('protocolVersion',1,'availability','available','receipt',c.receipt);
 end; $$;
@@ -701,7 +726,8 @@ begin
  if prior.command_id is not null then
  if prior.actor_id<>actor or prior.normalized_request<>p or prior.protocol_version<>p_protocol_version then raise exception using errcode='42501',message='Unit review is unavailable.';end if;
  s:=public._work_unit_review_scope(actor,prior.unit_id);
- if s is null or (s#>>'{unit,incarnationEpoch}')::bigint is distinct from prior.incarnation then raise exception using errcode='42501',message='Unit review is unavailable.';end if;
+ if s is null or (s#>>'{unit,incarnationEpoch}')::bigint is distinct from prior.incarnation
+ or prior.receipt->>'outcome'='cancelled' and (not public._work_unit_review_coverage() or not public._work_unit_review_original_visible(actor,s,prior.normalized_request)) then raise exception using errcode='42501',message='Unit review is unavailable.';end if;
  return prior.receipt;
  end if;
  select * into u from public.custom_work_units where id=(b->>'unitId')::uuid for update;
@@ -775,11 +801,44 @@ begin
  return receipt;
 end; $$;
 
+-- Permanent UUID fence, not an inference from an absent receipt or a changed
+-- basis. G then 7710 serializes this with every command: whichever commits first
+-- determines the immutable outcome. No review event, QC revision, or clock write.
+create function public.work_unit_review_cancel(p_command_id uuid,p_protocol_version integer,p_payload jsonb) returns jsonb
+language plpgsql volatile security definer set search_path=public,pg_temp as $$
+declare actor uuid;p jsonb;s jsonb;prior public.work_unit_review_commands;inc bigint;r jsonb;stamp timestamptz;
+begin
+ if p_command_id is null or p_protocol_version is distinct from 1 then raise exception using errcode='23514',message='Invalid review request.';end if;
+ p:=public._work_unit_review_payload(p_payload);
+ perform public._work_activity_read_committed();perform public._work_activity_gate();actor:=public._work_activity_actor();
+ perform pg_advisory_xact_lock(7710,0);actor:=public._work_activity_actor();
+ select * into prior from public.work_unit_review_commands where command_id=p_command_id;
+ if prior.command_id is not null then
+ if prior.actor_id<>actor or prior.normalized_request<>p or prior.protocol_version<>p_protocol_version then raise exception using errcode='42501',message='Unit review is unavailable.';end if;
+ s:=public._work_unit_review_scope(actor,prior.unit_id);
+ if s is null or (s#>>'{unit,incarnationEpoch}')::bigint is distinct from prior.incarnation
+ or prior.receipt->>'outcome'='cancelled' and (not public._work_unit_review_coverage() or not public._work_unit_review_original_visible(actor,s,p)) then
+ raise exception using errcode='42501',message='Unit review is unavailable.';end if;
+ return prior.receipt;
+ end if;
+ s:=public._work_unit_review_scope(actor,(p#>>'{basis,unitId}')::uuid);
+ if not public._work_unit_review_original_visible(actor,s,p) then raise exception using errcode='42501',message='Unit review is unavailable.';end if;
+ if not public._work_unit_review_coverage() then raise exception using errcode='55000',message='Unit review is unavailable.';end if;
+ inc:=(s#>>'{unit,incarnationEpoch}')::bigint;stamp:=clock_timestamp();
+ r:=jsonb_build_object('protocolVersion',1,'commandId',p_command_id,'action',p->>'action','unitId',p#>>'{basis,unitId}',
+ 'recordedAt',public._work_activity_iso(stamp),'outcome','cancelled','original',p);
+ insert into public.work_unit_review_commands(command_id,actor_id,protocol_version,action,unit_id,incarnation,normalized_request,request_digest,receipt,recorded_at)
+ values(p_command_id,actor,1,p->>'action',(p#>>'{basis,unitId}')::uuid,inc,p,encode(sha256(convert_to(p::text,'UTF8')),'hex'),r,stamp);
+ return r;
+end; $$;
+
 -- All helpers and private projections deny even service_role raw access.
 revoke all on function public._work_unit_review_decimal(jsonb) from public,anon,authenticated,service_role;
 revoke all on function public._work_unit_review_text(jsonb,boolean,integer,boolean) from public,anon,authenticated,service_role;
 revoke all on function public._work_unit_review_payload(jsonb) from public,anon,authenticated,service_role;
 revoke all on function public._work_unit_review_authority(uuid,jsonb,text) from public,anon,authenticated,service_role;
+revoke all on function public._work_unit_review_original_visible(uuid,jsonb,jsonb) from public,anon,authenticated,service_role;
+revoke all on function public.work_unit_review_cancel(uuid,integer,jsonb) from public,anon,authenticated,service_role;
 revoke all on function public._work_unit_review_scope(uuid,uuid) from public,anon,authenticated,service_role;
 revoke all on function public._work_unit_review_coverage() from public,anon,authenticated,service_role;
 revoke all on function public._work_unit_review_defect_projection(uuid,bigint) from public,anon,authenticated,service_role;
@@ -787,6 +846,7 @@ revoke all on function public._work_unit_review_view(uuid,jsonb) from public,ano
 revoke all on function public.work_unit_review_read(uuid) from public,anon,authenticated,service_role;
 revoke all on function public.work_unit_review_command(uuid,integer,jsonb) from public,anon,authenticated,service_role;
 revoke all on function public.work_unit_review_command_receipt(uuid) from public,anon,authenticated,service_role;
+grant execute on function public.work_unit_review_cancel(uuid,integer,jsonb) to authenticated;
 grant execute on function public.work_unit_review_read(uuid) to authenticated;
 grant execute on function public.work_unit_review_command(uuid,integer,jsonb) to authenticated;
 grant execute on function public.work_unit_review_command_receipt(uuid) to authenticated;
@@ -960,11 +1020,11 @@ grant execute on function public.person_record_counts(uuid) to service_role;
 -- Generated exact source/column/trigger coverage; unknown source shape fails closed.
 create or replace function public._work_unit_review_coverage() returns boolean
 language sql stable security definer set search_path=public,pg_temp as $coverage$
- select encode(sha256(convert_to(c.value::text,'UTF8')),'hex')='54a7c09f3cf46835f340b8d662ec8b0af98781c2f8cc193e4e0ed8038ed0b5c2' from (select jsonb_build_object(
- 'functions',(select jsonb_agg(jsonb_build_object('name',p.proname,'args',pg_get_function_identity_arguments(p.oid),'body',encode(sha256(convert_to(p.prosrc,'UTF8')),'hex'),'config',p.proconfig,'owner',pg_get_userbyid(p.proowner),'definer',p.prosecdef,'volatility',p.provolatile) order by p.proname,pg_get_function_identity_arguments(p.oid)) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname=any(array['_work_activity_operation_exit','_work_activity_event','_work_activity_touch','_work_activity_safety_exit','_work_activity_shift_lifecycle','_work_activity_retain_source','_work_activity_parent_source_history','_work_activity_source_material','_work_activity_row_event','_work_activity_gate','_work_activity_parent_gate','_work_activity_statement_begin','_work_activity_statement_end','_work_activity_row_before','_work_activity_read_committed','_work_activity_actor','_work_activity_unit_basis','_work_unit_fact_context_visible','_work_unit_fact_peek_epoch','_work_unit_fact_bump_epoch','_ai_job_visible','_work_config_internal','_work_config_is_supervisor','_work_config_is_foreman','is_test_profile','is_sandbox_project','service_job_access','service_internal','_work_unit_review_scope','_work_unit_review_view','_work_unit_review_authority','_work_unit_review_defect_projection','_work_unit_review_payload','_work_unit_review_decimal','_work_unit_review_text','person_record_counts','_work_activity_evidence','_work_activity_operation','work_capture_immutable_record','_work_activity_no_truncate','_work_activity_uuid','_work_activity_integer','_work_activity_object','work_unit_review_command','work_unit_review_read','work_unit_review_command_receipt'])),
+ select encode(sha256(convert_to(c.value::text,'UTF8')),'hex')='83ee54ddc6502404f374b342ae3d9d60cdc7fe362bd066f0bb27ad4e9fb3fec7' from (select jsonb_build_object(
+ 'functions',(select jsonb_agg(jsonb_build_object('name',p.proname,'args',pg_get_function_identity_arguments(p.oid),'body',encode(sha256(convert_to(p.prosrc,'UTF8')),'hex'),'config',p.proconfig,'owner',pg_get_userbyid(p.proowner),'definer',p.prosecdef,'volatility',p.provolatile) order by p.proname,pg_get_function_identity_arguments(p.oid)) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname=any(array['_work_activity_operation_exit','_work_activity_event','_work_activity_touch','_work_activity_safety_exit','_work_activity_shift_lifecycle','_work_activity_retain_source','_work_activity_parent_source_history','_work_activity_source_material','_work_activity_row_event','_work_activity_gate','_work_activity_parent_gate','_work_activity_statement_begin','_work_activity_statement_end','_work_activity_row_before','_work_activity_read_committed','_work_activity_actor','_work_activity_unit_basis','_work_unit_fact_context_visible','_work_unit_fact_peek_epoch','_work_unit_fact_bump_epoch','_ai_job_visible','_work_config_internal','_work_config_is_supervisor','_work_config_is_foreman','is_test_profile','is_sandbox_project','service_job_access','service_internal','_work_unit_review_scope','_work_unit_review_view','_work_unit_review_authority','_work_unit_review_defect_projection','_work_unit_review_payload','_work_unit_review_decimal','_work_unit_review_text','person_record_counts','_work_activity_evidence','_work_activity_operation','work_capture_immutable_record','_work_activity_no_truncate','_work_activity_uuid','_work_activity_integer','_work_activity_object','work_unit_review_command','work_unit_review_read','work_unit_review_command_receipt','work_unit_review_cancel','_work_unit_review_original_visible'])),
  'triggers',(select jsonb_agg(jsonb_build_object('table',c.relname,'name',t.tgname,'definition',pg_get_triggerdef(t.oid,true),'enabled',t.tgenabled) order by c.relname,t.tgname) from pg_trigger t join pg_class c on c.oid=t.tgrelid join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relname=any(array['time_shifts','personal_activity_state','personal_activity_transition_sources','personal_activity_transitions','work_activity_safety_events','work_unit_fact_revisions','work_unit_fact_current','work_unit_fact_context_epochs','custom_work_units','project_openings','service_visit_units','service_visits','summons','unit_redos','qc_checks','install_events','crew_work_records','crew_work_record_people','work_session_capture_metadata','custom_work_history','custom_work_sessions','unit_sessions','task_sessions','service_time_sessions','opening_phases','summon_helpers','work_activity_source_history','work_unit_review_commands','work_unit_dimension_verifications','work_unit_review_events','work_unit_review_current','work_unit_review_defects','work_unit_review_defect_events']) and not t.tgisinternal),
  'columns',(select jsonb_agg(jsonb_build_object('table',c.relname,'column',a.attname,'type',format_type(a.atttypid,a.atttypmod),'nullable',not a.attnotnull,'generated',a.attgenerated,'identity',a.attidentity) order by c.relname,a.attnum) from pg_class c join pg_namespace n on n.oid=c.relnamespace join pg_attribute a on a.attrelid=c.oid and a.attnum>0 and not a.attisdropped where n.nspname='public' and c.relname=any(array['time_shifts','personal_activity_state','personal_activity_transition_sources','personal_activity_transitions','work_activity_safety_events','work_unit_fact_revisions','work_unit_fact_current','work_unit_fact_context_epochs','custom_work_units','project_openings','service_visit_units','service_visits','summons','unit_redos','qc_checks','install_events','crew_work_records','crew_work_record_people','work_session_capture_metadata','custom_work_history','custom_work_sessions','unit_sessions','task_sessions','service_time_sessions','opening_phases','summon_helpers','work_activity_source_history','work_unit_review_commands','work_unit_dimension_verifications','work_unit_review_events','work_unit_review_current','work_unit_review_defects','work_unit_review_defect_events'])),
- 'functionAccess',(select jsonb_agg(jsonb_build_object('name',p.proname,'args',pg_get_function_identity_arguments(p.oid),'role',r.rolname,'execute',has_function_privilege(r.oid,p.oid,'EXECUTE')) order by p.proname,pg_get_function_identity_arguments(p.oid),r.rolname) from pg_proc p join pg_namespace n on n.oid=p.pronamespace cross join pg_roles r where n.nspname='public' and p.proname=any(array['_work_activity_operation_exit','_work_activity_event','_work_activity_touch','_work_activity_safety_exit','_work_activity_shift_lifecycle','_work_activity_retain_source','_work_activity_parent_source_history','_work_activity_source_material','_work_activity_row_event','_work_activity_gate','_work_activity_parent_gate','_work_activity_statement_begin','_work_activity_statement_end','_work_activity_row_before','_work_activity_read_committed','_work_activity_actor','_work_activity_unit_basis','_work_unit_fact_context_visible','_work_unit_fact_peek_epoch','_work_unit_fact_bump_epoch','_ai_job_visible','_work_config_internal','_work_config_is_supervisor','_work_config_is_foreman','is_test_profile','is_sandbox_project','service_job_access','service_internal','_work_unit_review_scope','_work_unit_review_view','_work_unit_review_authority','_work_unit_review_defect_projection','_work_unit_review_payload','_work_unit_review_decimal','_work_unit_review_text','person_record_counts','_work_activity_evidence','_work_activity_operation','work_capture_immutable_record','_work_activity_no_truncate','_work_activity_uuid','_work_activity_integer','_work_activity_object','work_unit_review_command','work_unit_review_read','work_unit_review_command_receipt','_work_unit_review_coverage']) and r.rolname in('anon','authenticated','service_role')),
+ 'functionAccess',(select jsonb_agg(jsonb_build_object('name',p.proname,'args',pg_get_function_identity_arguments(p.oid),'role',r.rolname,'execute',has_function_privilege(r.oid,p.oid,'EXECUTE')) order by p.proname,pg_get_function_identity_arguments(p.oid),r.rolname) from pg_proc p join pg_namespace n on n.oid=p.pronamespace cross join pg_roles r where n.nspname='public' and p.proname=any(array['_work_activity_operation_exit','_work_activity_event','_work_activity_touch','_work_activity_safety_exit','_work_activity_shift_lifecycle','_work_activity_retain_source','_work_activity_parent_source_history','_work_activity_source_material','_work_activity_row_event','_work_activity_gate','_work_activity_parent_gate','_work_activity_statement_begin','_work_activity_statement_end','_work_activity_row_before','_work_activity_read_committed','_work_activity_actor','_work_activity_unit_basis','_work_unit_fact_context_visible','_work_unit_fact_peek_epoch','_work_unit_fact_bump_epoch','_ai_job_visible','_work_config_internal','_work_config_is_supervisor','_work_config_is_foreman','is_test_profile','is_sandbox_project','service_job_access','service_internal','_work_unit_review_scope','_work_unit_review_view','_work_unit_review_authority','_work_unit_review_defect_projection','_work_unit_review_payload','_work_unit_review_decimal','_work_unit_review_text','person_record_counts','_work_activity_evidence','_work_activity_operation','work_capture_immutable_record','_work_activity_no_truncate','_work_activity_uuid','_work_activity_integer','_work_activity_object','work_unit_review_command','work_unit_review_read','work_unit_review_command_receipt','work_unit_review_cancel','_work_unit_review_original_visible','_work_unit_review_coverage']) and r.rolname in('anon','authenticated','service_role')),
  'privateAccess',(select jsonb_agg(jsonb_build_object('table',c.relname,'role',r.rolname,'privilege',v.name,'allowed',has_table_privilege(r.oid,c.oid,v.name)) order by c.relname,r.rolname,v.name) from pg_class c join pg_namespace n on n.oid=c.relnamespace cross join pg_roles r cross join (values('SELECT'),('INSERT'),('UPDATE'),('DELETE'),('TRUNCATE'),('REFERENCES'),('TRIGGER')) v(name) where n.nspname='public' and c.relname=any(array['work_unit_fact_revisions','work_unit_fact_current','work_unit_fact_context_epochs','work_activity_source_history','work_unit_review_commands','work_unit_dimension_verifications','work_unit_review_events','work_unit_review_current','work_unit_review_defects','work_unit_review_defect_events','_work_unit_review_live_sources']) and r.rolname in('anon','authenticated','service_role')),
  'view',pg_get_viewdef('public._work_unit_review_live_sources'::regclass,true),
  'tables',(select jsonb_agg(jsonb_build_object('table',c.relname,'rls',c.relrowsecurity,'owner',pg_get_userbyid(c.relowner)) order by c.relname) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relname=any(array['time_shifts','personal_activity_state','personal_activity_transition_sources','personal_activity_transitions','work_activity_safety_events','work_unit_fact_revisions','work_unit_fact_current','work_unit_fact_context_epochs','custom_work_units','project_openings','service_visit_units','service_visits','summons','unit_redos','qc_checks','install_events','crew_work_records','crew_work_record_people','work_session_capture_metadata','custom_work_history','custom_work_sessions','unit_sessions','task_sessions','service_time_sessions','opening_phases','summon_helpers','work_activity_source_history','work_unit_review_commands','work_unit_dimension_verifications','work_unit_review_events','work_unit_review_current','work_unit_review_defects','work_unit_review_defect_events']))

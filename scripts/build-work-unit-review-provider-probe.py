@@ -13,9 +13,9 @@ diagnostic = ROOT / 'scripts/dry-run-probes/work-unit-review-coverage-diagnostic
 target = ROOT / 'scripts/dry-run-probes/work-unit-review-current-rehearsal.sql'
 pins = {
     base: 'e5083557889fb1fb58dd0408b3c6d1aa937662f8966ff0f964ac4e231f492f55',
-    review: 'c57c35d4ee4a5351d9e71eeb723f1995973131fc4279f56bfddbc62f756b8203',
-    metadata: 'f84779c3982e3cbe4d11e9c46e85a13ed091c356d6c2f4e9e211192b9cc790ce',
-    diagnostic: '9b9860ed4555475ae5fd13ddd36221f55bc2cb399a3e7afe6a076353fb9f8b3a',
+    review: 'e32122a581bf995857983cc433323bc490381b6eb217c583bf95fd7376b3e53f',
+    metadata: 'f9cb2f80bb8f79ddba2c808f620c21f3393e1b8dde7b28477f9faeca983e2fbc',
+    diagnostic: 'a20d7f914e21f0528b4f1a2e99d05d3abd05382500bc4b47935aa03508cf5a84',
 }
 for path, expected in pins.items():
     assert hashlib.sha256(path.read_bytes()).hexdigest() == expected, path
