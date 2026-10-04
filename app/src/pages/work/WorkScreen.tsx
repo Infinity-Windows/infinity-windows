@@ -19,7 +19,7 @@
 // chunk has a budget and this file's strings register themselves from its
 // own chunk (lib/i18n/workCatalog.ts).
 
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useIsRestoring, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ClockStrip } from "../../components/work/ClockStrip";
@@ -56,6 +56,8 @@ import { chooseNextUp } from "../../lib/work/nextUp";
 import { unitWorkLocked, type StartDayInput } from "../../lib/work/startDay";
 import { pickTodayEntries } from "../../lib/work/today";
 import "./work.css";
+import { useDesign } from "../../lib/design/context";
+const SelectedJobWorkEntry = lazy(() => import("./SelectedJobWorkEntry"));
 
 function todayLocalISO(): string {
   const d = new Date();
@@ -67,6 +69,15 @@ function todayLocalISO(): string {
 export const SCHEDULE_WINDOW_DAYS = 7;
 
 export function WorkScreen() {
+  const { design } = useDesign();
+  // The lazy entry reads the existing release flag; Classic and a disabled
+  // rollout render the unchanged body without mounting native activity reads.
+  return design === "new"
+    ? <Suspense fallback={<div className="page work-screen" role="status">…</div>}><SelectedJobWorkEntry fallback={<LegacyWorkScreen />} /></Suspense>
+    : <LegacyWorkScreen />;
+}
+
+export function LegacyWorkScreen() {
   const t = useT();
   // The Work landing holds nothing unsaved of its own — every sheet on it
   // claims itself — so the automatic update may apply here (safeSurface.ts).

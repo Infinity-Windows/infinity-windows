@@ -450,3 +450,27 @@
 @media (min-width: 860px) {
   .work-screen { max-width: 720px; }
 }
+
+/* Selected-job route: retain the compact activity boxes and clear clock doors. */
+.sjwr { min-width: 0; padding-top: 60px; }
+.sjwr-navigation { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.sjwr-navigation .ws-btn { flex: 1 1 80px; }
+.sjwr .ws-list-item { flex-wrap: wrap; min-height: 48px; }
+.sjwr select { min-height: 48px; width: 100%; max-width: 100%; font-size: 16px; }
+.sjwr .pav-clock { min-height: 44px; }
+.sjwr .pav { --pav-ink: var(--text); --pav-muted: var(--text-secondary); --pav-line: var(--border); --pav-mint: var(--card-raised); }
+.sjwr .pav-project { padding-right: 0; }
+.sjwr .pav-clock, .sjwr .pav-actions button, .sjwr .pav-tile, .sjwr .pav-tabs button, .sjwr .pav-unit-picker button, .sjwr .pav-unit-picker select, .sjwr .pav-unit { color: var(--text); background-color: var(--card-raised); border-color: var(--border); }
+.sjwr .pav-tabs button[aria-selected="true"], .sjwr .pav-tile-running { border-color: var(--accent); background: var(--accent-bg); color: var(--text); }
+
+/* The shell already pins a clock door beside photo sync. A second fixed
+   timer at the same corner covered the upload status on narrow phones. */
+@media (max-width: 859px) {
+  .sjwr .pav-clock { position: static; max-width: 46%; }
+  .app-main:has(.sjwr) .sync-strip .sync-pill { flex-shrink: 0; width: max-content; max-width: 45%; }
+  .app-main:has(.sjwr) .clock-badge-text { white-space: normal; line-height: 1.2; }
+}
+/* Settings can force the phone shell even on a wide display. */
+:root[data-display-layout="phone"] .sjwr .pav-clock { position: static; max-width: 46%; }
+:root[data-display-layout="phone"] .app-main:has(.sjwr) .sync-strip .sync-pill { flex-shrink: 0; width: max-content; max-width: 45%; }
+:root[data-display-layout="phone"] .app-main:has(.sjwr) .clock-badge-text { white-space: normal; line-height: 1.2; }
