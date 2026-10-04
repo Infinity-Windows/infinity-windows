@@ -270,6 +270,13 @@ test("selected-unit dimensions use the canonical durable queue and hold Specific
     if (locale === "es") await page.getByRole("button", { name: "Change language" }).click();
     for (const viewport of [{ width: 320, height: 720 }, { width: 390, height: 844 }, { width: 844, height: 390 }]) {
       await page.setViewportSize(viewport); await fits(page);
+      console.log("[selected-job-layout/picker-fit]", JSON.stringify(await page.evaluate(() => ({
+        viewport:innerWidth, documentScroll:document.documentElement.scrollWidth,
+        picker:[...document.querySelectorAll<HTMLElement>(".pav-unit-picker, .pav-unit-picker select, .pav-unit-picker button")].map(e=>({
+          tag:e.tagName,class:e.className,scroll:e.scrollWidth,client:e.clientWidth,
+          rect:{left:e.getBoundingClientRect().left,right:e.getBoundingClientRect().right},appearance:getComputedStyle(e).appearance,
+        })),
+      }))));
       if (viewport.width === 320) await page.screenshot({ path: `e2e/test-results/selected-unit-dimensions-${locale}-320.png`, fullPage: true });
     }
   }

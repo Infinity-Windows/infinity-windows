@@ -40,7 +40,9 @@
 .pav-unit { min-width: 0; margin-bottom: 14px; padding: 10px; border: 1px solid var(--pav-line); border-radius: 13px; background: #f8fbf8; }
 .pav-unit-picker { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px; align-items: end; }
 .pav-unit-picker label { grid-column: 1 / -1; font-size: .8rem; font-weight: 730; }
-.pav-unit-picker select { width: 100%; min-width: 0; max-width: 100%; min-height: 44px; padding: 8px; border: 1px solid #a8bfb0; border-radius: 9px; background: #fff; color: var(--pav-ink); overflow: hidden; text-overflow: ellipsis; }
+.pav-unit-picker select { appearance: none; width: 100%; min-width: 0; max-width: 100%; min-height: 44px; padding: 8px 28px 8px 8px; border: 1px solid #a8bfb0; border-radius: 9px; background-color: #fff; color: var(--pav-ink); overflow: hidden; text-overflow: ellipsis;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 17px) 50%, calc(100% - 12px) 50%; background-size: 5px 5px; background-repeat: no-repeat; }
 .pav-unit-picker button { min-height: 44px; padding: 6px 9px; border: 1px solid #a8bfb0; border-radius: 9px; background: #fff; color: var(--pav-ink); font-size: .82rem; font-weight: 720; }
 .pav-scope-total { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin: 8px 1px 10px; overflow-wrap: anywhere; }
 .pav-scope-total h2 { margin: 0; font-size: 1.04rem; }

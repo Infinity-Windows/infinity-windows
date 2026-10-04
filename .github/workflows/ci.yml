@@ -282,6 +282,10 @@ jobs:
         run: |
           npm run e2e -- work-configuration.spec.ts
           npm run e2e -- work-configuration.spec.ts --browser=webkit
+      - name: Isolated paid clock chain preserves native storage and truthful recovery
+        run: |
+          npm run e2e -- paid-clock-chain.spec.ts
+          npm run e2e -- paid-clock-chain.spec.ts --browser=webkit
       - name: Controlled Work tiles and dimensions on phone browsers
         run: |
           npm run e2e -- project-activity-view.spec.ts selected-job-work.spec.ts
