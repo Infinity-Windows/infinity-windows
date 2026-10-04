@@ -1,6 +1,6 @@
 import { stillSignedInAs, subscribeSignedIn, type SignInMark } from "../signedIn";
 import { cloneJson, uuid } from "../workConfiguration/model";
-import { parseUnitReviewPayload, parseUnitReviewReceipt, type ReviewPayload, type ReviewReceipt } from "./protocol";
+import { parseUnitReviewPayload, parseUnitReviewStoredReceipt, type ReviewPayload, type ReviewStoredReceipt } from "./protocol";
 
 export const UNIT_REVIEW_DB = "iw-unit-review-decisions-v1";
 export const REVIEW_LEASE_MS = 30_000;
@@ -10,18 +10,18 @@ export class UnitReviewStorageError extends Error {
 const fail = (): never => { throw new UnitReviewStorageError(); };
 export interface ReviewOriginal { commandId: string; payload: ReviewPayload }
 export interface ReviewDeliveryAttempt {
-  token: string; startedAt: number; leaseUntil: number;
-  outcome: "pending" | "held" | "unknown" | "refused" | "recorded";
+  token: string; purpose: "deliver" | "cancel"; startedAt: number; leaseUntil: number;
+  outcome: "pending" | "held" | "unknown" | "refused" | "recorded" | "cancelled";
   sqlState: "23514" | "42501" | null;
 }
 export interface ReviewJournalRecord {
-  version: 1; ownerId: string; unitId: string; commandId: string; sequence: number;
+  version: 1; durability: "strict"; ownerId: string; unitId: string; commandId: string; sequence: number;
   predecessorId: string | null; revision: number; payload: ReviewPayload;
-  attempts: ReviewDeliveryAttempt[]; receipt: ReviewReceipt | null;
+  attempts: ReviewDeliveryAttempt[]; receipt: ReviewStoredReceipt | null;
 }
 interface Head { key: string; ownerId: string; unitId: string; commandId: string; sequence: number }
 export type ReviewSettlement = { kind: "held" | "unknown" } | { kind: "attempt_refused"; sqlState: "23514" | "42501" }
-  | { kind: "applied"; receipt: ReviewReceipt };
+  | { kind: "applied" | "cancelled"; receipt: ReviewStoredReceipt };
 const canonicalId = (value: unknown) => uuid(value).toLowerCase();
 const key = (owner: string, unit: string) => `${owner}:${unit}`;
 const exact = (raw: unknown, names: string[]): Record<string, unknown> => {
@@ -48,8 +48,9 @@ export function freezeReviewOriginal(commandId: string, raw: ReviewPayload): Rev
 }
 /** Bind every field predictable from the frozen basis. A receipt proves a
  * historical event, never the unit's current accepted state. */
-export function bindReviewReceipt(raw: unknown, original: ReviewOriginal): ReviewReceipt {
-  const r = parseUnitReviewReceipt(raw, original.commandId, original.payload), b = original.payload.basis;
+export function bindReviewReceipt(raw: unknown, original: ReviewOriginal): ReviewStoredReceipt {
+  const r = parseUnitReviewStoredReceipt(raw, original.commandId, original.payload), b = original.payload.basis;
+  if (r.outcome === "cancelled") return r;
   if (r.reviewRevision !== b.reviewRevision + 1) fail();
   const unchanged = r.generation === b.generation && r.submissionId === b.submissionId;
   switch (original.payload.action) {
@@ -66,30 +67,31 @@ export function bindReviewReceipt(raw: unknown, original: ReviewOriginal): Revie
 }
 export function parseReviewJournalRecord(raw: unknown): ReviewJournalRecord {
   try {
-    const r = exact(cloneJson(raw), ["version", "ownerId", "unitId", "commandId", "sequence", "predecessorId", "revision", "payload", "attempts", "receipt"]);
+    const r = exact(cloneJson(raw), ["version", "durability", "ownerId", "unitId", "commandId", "sequence", "predecessorId", "revision", "payload", "attempts", "receipt"]);
     const original = freezeReviewOriginal(uuid(r.commandId), parseUnitReviewPayload(r.payload));
-    if (r.version !== 1 || uuid(r.unitId) !== original.payload.basis.unitId || !Array.isArray(r.attempts)) fail();
+    if (r.version !== 1 || r.durability !== "strict" || r.ownerId !== canonicalId(r.ownerId) || uuid(r.unitId) !== original.payload.basis.unitId || !Array.isArray(r.attempts)) fail();
     const attempts = (r.attempts as unknown[]).map(rawAttempt => {
-      const a = exact(rawAttempt, ["token", "startedAt", "leaseUntil", "outcome", "sqlState"]);
+      const a = exact(rawAttempt, ["token", "purpose", "startedAt", "leaseUntil", "outcome", "sqlState"]);
       const startedAt = integer(a.startedAt), leaseUntil = integer(a.leaseUntil);
-      if (leaseUntil !== startedAt + REVIEW_LEASE_MS || !["pending", "held", "unknown", "refused", "recorded"].includes(a.outcome as string)
+      if (!["deliver", "cancel"].includes(a.purpose as string) || leaseUntil !== startedAt + REVIEW_LEASE_MS || !["pending", "held", "unknown", "refused", "recorded", "cancelled"].includes(a.outcome as string)
         || (a.outcome === "refused" ? !["23514", "42501"].includes(a.sqlState as string) : a.sqlState !== null)) fail();
-      return { token: uuid(a.token), startedAt, leaseUntil, outcome: a.outcome as ReviewDeliveryAttempt["outcome"],
+      return { token: uuid(a.token), purpose: a.purpose as ReviewDeliveryAttempt["purpose"], startedAt, leaseUntil, outcome: a.outcome as ReviewDeliveryAttempt["outcome"],
         sqlState: a.sqlState as ReviewDeliveryAttempt["sqlState"] };
     });
     if (new Set(attempts.map(a => a.token)).size !== attempts.length || attempts.some((a, i) => a.outcome === "pending" && i !== attempts.length - 1)) fail();
     const receipt = r.receipt === null ? null : bindReviewReceipt(r.receipt, original);
-    if (attempts.some(a => a.outcome === "recorded") && !receipt) fail();
+    if (attempts.some(a => a.outcome === "recorded") && receipt?.outcome !== "applied"
+      || attempts.some(a => a.outcome === "cancelled") && receipt?.outcome !== "cancelled") fail();
     const sequence = integer(r.sequence), predecessorId = r.predecessorId === null ? null : uuid(r.predecessorId);
     if ((sequence === 0) !== (predecessorId === null) || predecessorId === original.commandId) fail();
-    return { version: 1, ownerId: uuid(r.ownerId), unitId: uuid(r.unitId), commandId: original.commandId,
+    return { version: 1, durability: "strict", ownerId: uuid(r.ownerId), unitId: uuid(r.unitId), commandId: original.commandId,
       sequence, predecessorId, revision: integer(r.revision), payload: original.payload, attempts, receipt };
   } catch { return fail(); }
 }
-export function reviewDeliveryState(row: ReviewJournalRecord): "saved" | "unknown" | "refused" | "recorded" {
-  if (row.receipt) return "recorded";
+export function reviewDeliveryState(row: ReviewJournalRecord): "saved" | "unknown" | "refused" | "recorded" | "cancelled" {
+  if (row.receipt) return row.receipt.outcome === "cancelled" ? "cancelled" : "recorded";
   if (row.attempts.some(a => a.outcome === "pending" || a.outcome === "unknown")) return "unknown";
-  return row.attempts.at(-1)?.outcome === "refused" ? "refused" : "saved";
+  return row.attempts.filter(a => a.purpose === "deliver").at(-1)?.outcome === "refused" ? "refused" : "saved";
 }
 let opening: Promise<IDBDatabase> | null = null;
 function openDb(): Promise<IDBDatabase> {
@@ -118,10 +120,13 @@ const result = <T>(request: IDBRequest<T>): Promise<T> => new Promise((resolve, 
 export type ReviewAdmission = () => boolean;
 async function transaction<T>(login: SignInMark, mode: IDBTransactionMode, admission: ReviewAdmission,
   run: (tx: IDBTransaction, owner: string, check: () => void) => Promise<T>): Promise<T> {
-  const mark = { ...login }, owner = uuid(mark.userId);
-  const check = () => { if (!stillSignedInAs(mark, owner) || !admission()) fail(); };
+  const mark = { ...login }, owner = canonicalId(mark.userId);
+  const check = () => { if (!stillSignedInAs(mark, mark.userId!) || !admission()) fail(); };
   check(); const db = await openDb(); check();
-  const tx = db.transaction(["requests", "heads"], mode);
+  const tx = db.transaction(["requests", "heads"], mode, mode === "readwrite" ? { durability: "strict" } : undefined);
+  // Unsupported browsers may silently ignore the option. A completed relaxed
+  // claim can vanish after dispatch; that would erase evidence of uncertainty.
+  if (mode === "readwrite" && tx.durability !== "strict") { tx.abort(); return fail(); }
   const done = new Promise<void>((resolve, reject) => {
     tx.oncomplete = () => resolve(); tx.onerror = tx.onabort = () => reject(new UnitReviewStorageError());
   });
@@ -132,7 +137,25 @@ async function transaction<T>(login: SignInMark, mode: IDBTransactionMode, admis
   } catch (error) { try { tx.abort(); } catch { /* commit may already be durable */ } await done.catch(() => {}); throw error; }
   finally { unsubscribe(); }
 }
+async function rejectLegacyAliases(index: IDBIndex, owner: string, unitId: string): Promise<void> {
+  // Earlier unmounted records may use noncanonical keys. Scan index keys only,
+  // never another owner's fields; an alias is held, not converted or ignored.
+  await new Promise<void>((resolve, reject) => {
+    const request = index.openKeyCursor();
+    request.onerror = () => reject(new UnitReviewStorageError());
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor) { resolve(); return; }
+      const parts = cursor.key;
+      if (Array.isArray(parts) && typeof parts[0] === "string" && typeof parts[1] === "string"
+        && parts[0].toLowerCase() === owner && parts[1].toLowerCase() === unitId
+        && (parts[0] !== owner || parts[1] !== unitId)) { reject(new UnitReviewStorageError()); return; }
+      cursor.continue();
+    };
+  });
+}
 async function readUnit(tx: IDBTransaction, owner: string, unitId: string, check: () => void) {
+  await rejectLegacyAliases(tx.objectStore("requests").index("owner_unit"), owner, unitId); check();
   const rows = (await result(tx.objectStore("requests").index("owner_unit").getAll([owner, unitId]))).map(parseReviewJournalRecord); check();
   if (rows.some(row => row.ownerId !== owner || row.unitId !== unitId)) fail();
   rows.sort((a, b) => a.sequence - b.sequence);
@@ -141,7 +164,7 @@ async function readUnit(tx: IDBTransaction, owner: string, unitId: string, check
   const h = exact(rawHead, ["key", "ownerId", "unitId", "commandId", "sequence"]), last = rows.at(-1)!;
   if (h.key !== key(owner, unitId) || h.ownerId !== owner || h.unitId !== unitId || h.commandId !== last.commandId || h.sequence !== last.sequence) fail();
   if (rows.some((row, i) => row.sequence !== i || row.predecessorId !== (i ? rows[i - 1].commandId : null)
-    || i < rows.length - 1 && !["recorded", "refused"].includes(reviewDeliveryState(row)))) fail();
+    || i < rows.length - 1 && !["recorded", "refused", "cancelled"].includes(reviewDeliveryState(row)))) fail();
   return { rows, head: last };
 }
 /** Internal journal access, not a UI permission grant. Only the coordinator may
@@ -163,8 +186,8 @@ export async function reserveReviewOriginal(login: SignInMark, raw: ReviewOrigin
       if (JSON.stringify(existing.payload) !== JSON.stringify(original.payload)) fail();
       return { record: existing, created: false };
     }
-    if ((head?.commandId ?? null) !== expectedHeadId || head && !["recorded", "refused"].includes(reviewDeliveryState(head))) fail();
-    const row = parseReviewJournalRecord({ version: 1, ownerId: owner, unitId: original.payload.basis.unitId,
+    if ((head?.commandId ?? null) !== expectedHeadId || head && !["recorded", "refused", "cancelled"].includes(reviewDeliveryState(head))) fail();
+    const row = parseReviewJournalRecord({ version: 1, durability: "strict", ownerId: owner, unitId: original.payload.basis.unitId,
       commandId: original.commandId, sequence: head ? head.sequence + 1 : 0, predecessorId: head?.commandId ?? null,
       revision: 0, payload: original.payload, attempts: [], receipt: null });
     tx.objectStore("requests").add(row);
@@ -186,13 +209,13 @@ async function mutate(login: SignInMark, unitId: string, commandId: string, revi
 /** Acquiring an expired lease marks the previous unresolved attempt unknown.
  * Expiry is permission to coordinate an EXPLICIT retry, not proof of failure. */
 export async function claimReviewAttempt(login: SignInMark, unitId: string, commandId: string, revision: number,
-  token: string, now: number, admission: ReviewAdmission): Promise<ReviewJournalRecord> {
+  token: string, now: number, admission: ReviewAdmission, purpose: ReviewDeliveryAttempt["purpose"] = "deliver"): Promise<ReviewJournalRecord> {
   token = canonicalId(token); integer(now);
   return mutate(login, unitId, commandId, revision, admission, (row, isHead) => {
     const previous = row.attempts.at(-1);
     if (!isHead || row.receipt || row.attempts.some(a => a.token === token) || previous?.outcome === "pending" && now < previous.leaseUntil) fail();
     const attempts = row.attempts.map(a => a.outcome === "pending" ? { ...a, outcome: "unknown" as const } : a);
-    return { ...row, attempts: [...attempts, { token, startedAt: now, leaseUntil: now + REVIEW_LEASE_MS, outcome: "pending", sqlState: null }] };
+    return { ...row, attempts: [...attempts, { token, purpose, startedAt: now, leaseUntil: now + REVIEW_LEASE_MS, outcome: "pending", sqlState: null }] };
   });
 }
 export async function settleReviewAttempt(login: SignInMark, unitId: string, commandId: string, revision: number,
@@ -201,7 +224,7 @@ export async function settleReviewAttempt(login: SignInMark, unitId: string, com
   return mutate(login, unitId, commandId, revision, admission, row => {
     const last = row.attempts.at(-1);
     if (row.receipt || !last || last.token !== token || last.outcome !== "pending") return fail();
-    const receipt = settlement.kind === "applied" ? bindReviewReceipt(settlement.receipt, row) : null;
+    const receipt = (settlement.kind === "applied" || settlement.kind === "cancelled") ? bindReviewReceipt(settlement.receipt, row) : null;
     const attempt: ReviewDeliveryAttempt = { ...last, outcome: settlement.kind === "applied" ? "recorded" :
       settlement.kind === "attempt_refused" ? "refused" : settlement.kind,
       sqlState: settlement.kind === "attempt_refused" ? settlement.sqlState : null };
@@ -211,7 +234,7 @@ export async function settleReviewAttempt(login: SignInMark, unitId: string, com
 /** Receipt-only repair never submits the saved request and never removes its
  * attempt history. CAS prevents a late repair from overwriting another tab. */
 export async function recordReviewReceipt(login: SignInMark, unitId: string, commandId: string, revision: number,
-  receipt: ReviewReceipt, admission: ReviewAdmission): Promise<ReviewJournalRecord> {
+  receipt: ReviewStoredReceipt, admission: ReviewAdmission): Promise<ReviewJournalRecord> {
   return mutate(login, unitId, commandId, revision, admission, row => {
     const bound = bindReviewReceipt(receipt, row);
     if (row.receipt && JSON.stringify(bound) !== JSON.stringify(row.receipt)) fail();

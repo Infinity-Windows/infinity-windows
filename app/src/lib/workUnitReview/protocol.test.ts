@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canonicalReviewDecimal, parseUnitReviewPayload, parseUnitReviewReceipt, parseUnitReviewReceiptReply,
+import { canonicalReviewDecimal, parseUnitReviewPayload, parseUnitReviewReceipt, parseUnitReviewReceiptReply, parseUnitReviewStoredReceipt,
   parseUnitReviewReply, UnitReviewProtocolError } from "./protocol";
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
@@ -123,5 +123,20 @@ describe("exact unit review boundary", () => {
     expect(() => parseUnitReviewReceipt({ ...receipt(), commandId: id(9) }, COMMAND)).toThrow();
     expect(parseUnitReviewReceiptReply({ protocolVersion: 1, availability: "unavailable", receipt: null }, COMMAND)).toEqual({ protocolVersion: 1, availability: "unavailable", receipt: null });
     expect(() => parseUnitReviewReceiptReply({ protocolVersion: 1, availability: "unavailable", receipt: receipt() }, COMMAND)).toThrow();
+  });
+});
+
+
+describe("strict cancellation receipt union", () => {
+  it("binds the complete normalized original and cannot carry an applied event or accepted badge", () => {
+    const original = parseUnitReviewPayload(verify());
+    const cancelled = { protocolVersion: 1, commandId: COMMAND, action: original.action, unitId: UNIT,
+      recordedAt: AT, outcome: "cancelled", original };
+    expect(parseUnitReviewStoredReceipt(cancelled, COMMAND, original)).toEqual(cancelled);
+    expect(parseUnitReviewReceiptReply({ protocolVersion: 1, availability: "available", receipt: cancelled }, COMMAND)).toMatchObject({ receipt: cancelled });
+    for (const extra of [{ eventId: id(8) }, { qcAccepted: true }, { reviewRevision: 1 }]) expect(() => parseUnitReviewStoredReceipt({ ...cancelled, ...extra }, COMMAND, original)).toThrow();
+    expect(() => parseUnitReviewStoredReceipt({ ...cancelled, original: { ...original, basis: { ...original.basis, reviewRevision: 99 } } }, COMMAND, original)).toThrow();
+    expect(() => parseUnitReviewStoredReceipt({ ...cancelled, commandId: id(99) }, COMMAND, original)).toThrow();
+    expect(() => parseUnitReviewReceipt(cancelled, COMMAND, original)).toThrow();
   });
 });

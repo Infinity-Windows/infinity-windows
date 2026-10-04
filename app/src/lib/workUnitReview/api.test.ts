@@ -3,7 +3,7 @@ import { rememberSignedIn, signInMark } from "../signedIn";
 import type { ReviewPayload } from "./protocol";
 const m = vi.hoisted(() => ({ rpc: vi.fn(), session: vi.fn(), client: vi.fn() }));
 vi.mock("../supabase", () => ({ supabase: { auth: { getSession: m.session } }, clientWithToken: m.client }));
-const { fetchUnitReview, fetchUnitReviewReceipt, submitUnitReview, UnitReviewUnavailableError } = await import("./api");
+const { cancelUnitReview, fetchUnitReview, fetchUnitReviewReceipt, submitUnitReview, UnitReviewUnavailableError } = await import("./api");
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const OWNER = id(1), UNIT = id(2), COMMAND = id(3), AT = "2026-10-04T12:00:00.000123Z";
 const payload = (): Extract<ReviewPayload, { action: "verify_dimensions" }> => ({ action: "verify_dimensions", basis: { unitId: UNIT, unitRevision: 2, factId: id(4),
@@ -106,5 +106,39 @@ describe("fresh private unit-review transport", () => {
     await vi.waitFor(() => expect(m.rpc).toHaveBeenCalledOnce()); vi.stubGlobal("navigator", { onLine: false });
     held.resolve({ data: receipt(), error: null }); expect(await attempt).toEqual({ kind: "applied", receipt: receipt() });
     expect(m.rpc).toHaveBeenCalledOnce();
+  });
+});
+
+
+describe("explicit permanent review cancellation transport", () => {
+  it("uses the original UUID and full payload and accepts either race winner", async () => {
+    const original = payload();
+    const cancelled = { protocolVersion: 1, commandId: COMMAND, action: original.action, unitId: UNIT,
+      recordedAt: AT, outcome: "cancelled", original };
+    m.rpc.mockResolvedValueOnce({ data: cancelled, error: null });
+    expect(await cancelUnitReview(COMMAND, original, signInMark(), () => true)).toMatchObject({ kind: "cancelled", receipt: { original: { data: { widthDecimal: "36.000000000000000001" } } } });
+    expect(m.rpc).toHaveBeenCalledWith("work_unit_review_cancel", expect.objectContaining({ p_command_id: COMMAND }));
+    m.rpc.mockResolvedValueOnce({ data: receipt(), error: null });
+    expect(await cancelUnitReview(COMMAND, original, signInMark(), () => true)).toEqual({ kind: "applied", receipt: receipt() });
+    m.rpc.mockResolvedValueOnce({ data: cancelled, error: null });
+    expect(await submitUnitReview(COMMAND, original, signInMark(), () => true)).toMatchObject({ kind: "cancelled" });
+  });
+  it("keeps generic serialization, malformed cancellation and changed original unknown", async () => {
+    m.rpc.mockResolvedValueOnce({ data: null, error: { code: "40001" } });
+    expect(await cancelUnitReview(COMMAND, payload(), signInMark(), () => true)).toEqual({ kind: "unknown" });
+    const original = payload(); original.data.sourceReference = "Another original";
+    m.rpc.mockResolvedValueOnce({ data: { protocolVersion: 1, commandId: COMMAND, action: original.action, unitId: UNIT,
+      recordedAt: AT, outcome: "cancelled", original }, error: null });
+    expect(await cancelUnitReview(COMMAND, payload(), signInMark(), () => true)).toEqual({ kind: "unknown" });
+    expect(m.rpc).toHaveBeenCalledTimes(2);
+  });
+  it("does not send across admission loss and does not confirm across owner ABA", async () => {
+    expect(await cancelUnitReview(COMMAND, payload(), signInMark(), () => false)).toEqual({ kind: "held" });
+    expect(m.rpc).not.toHaveBeenCalled();
+    const wait = deferred<{ data: unknown; error: null }>(); m.rpc.mockReturnValueOnce(wait.promise);
+    const cancelling = cancelUnitReview(COMMAND, payload(), signInMark(), () => true);
+    await vi.waitFor(() => expect(m.rpc).toHaveBeenCalledOnce());
+    rememberSignedIn(null); rememberSignedIn({ user: { id: OWNER } });
+    wait.resolve({ data: receipt(), error: null }); expect(await cancelling).toEqual({ kind: "unknown" });
   });
 });
