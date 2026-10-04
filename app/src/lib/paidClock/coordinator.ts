@@ -1,10 +1,9 @@
 import type { ClockPunch } from "../clockPunch";
 import { stillSignedInAs, type SignInMark } from "../signedIn";
-import { getActivityDeviceId } from "../workActivity/device";
 import { ClockAccountChangedError, fetchOwnClockSafetyBasis } from "./api";
 import { dispatchPaidClockRequest, type PaidClockDispatch } from "./dispatch";
 import { parseClockIntent, type ClockIntent } from "./protocol";
-import { appendPaidClockIntent, readPaidClockRecords } from "./storage";
+import { appendPaidClockIntent, getPaidClockDeviceId, readPaidClockRecords } from "./storage";
 
 export type PaidClockSubmission =
   | { kind: "saved"; clientId: string; dispatch: PaidClockDispatch }
@@ -31,9 +30,10 @@ export async function submitPaidClockIntent(login: SignInMark, raw: ClockIntent,
   if (!current(login)) return { kind: "held", clientId: intent.clientId, reason: "account_changed" };
   let phase: "storage" | "basis" = "storage";
   try {
-    const deviceId = await getActivityDeviceId(); requireCurrent(login);
     const rows = await readPaidClockRecords(login); requireCurrent(login);
     const existing = rows.find(row => row.clientId === intent.clientId);
+    const predecessor = rows.find(row => row.clientId === expectedHeadClientId);
+    const deviceId = existing?.deviceId ?? predecessor?.deviceId ?? await getPaidClockDeviceId(login); requireCurrent(login);
     let basis;
     // A repeated original can already have closed its shift. Native duplicate
     // validation is still exact; it must not require that shift to be open.
@@ -43,7 +43,9 @@ export async function submitPaidClockIntent(login: SignInMark, raw: ClockIntent,
     }
     phase = "storage";
     const saved = await appendPaidClockIntent(login, deviceId, intent, expectedHeadClientId, basis); requireCurrent(login);
-    const dispatch = await dispatchPaidClockRequest(saved.clientId, login, "first_attempt"); requireCurrent(login);
+    // A competing tap may check the winning original, never resend it.
+    const dispatch = await dispatchPaidClockRequest(saved.clientId, login,
+      existing || saved.clientId !== intent.clientId ? "check_only" : "first_attempt"); requireCurrent(login);
     return { kind: "saved", clientId: saved.clientId, dispatch };
   } catch {
     return { kind: "held", clientId: intent.clientId, reason: !current(login) ? "account_changed" :

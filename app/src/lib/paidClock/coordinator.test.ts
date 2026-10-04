@@ -3,8 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { rememberSignedIn, signInMark } from "../signedIn";
 import type { ClockIntent } from "./protocol";
 const m = vi.hoisted(() => ({ device: vi.fn(), records: vi.fn(), basis: vi.fn(), append: vi.fn(), dispatch: vi.fn() }));
-vi.mock("../workActivity/device", () => ({ getActivityDeviceId: m.device }));
-vi.mock("./storage", () => ({ readPaidClockRecords: m.records, appendPaidClockIntent: m.append }));
+vi.mock("../workActivity/device", () => ({ getActivityDeviceId: () => { throw Error("Activity metadata unavailable"); } }));
+vi.mock("./storage", () => ({ readPaidClockRecords: m.records, appendPaidClockIntent: m.append, getPaidClockDeviceId: m.device }));
 vi.mock("./api", () => ({ fetchOwnClockSafetyBasis: m.basis, ClockAccountChangedError: class extends Error {} }));
 vi.mock("./dispatch", () => ({ dispatchPaidClockRequest: m.dispatch }));
 const { paidSetupIntent, submitPaidClockIntent, recoverPaidClockRequest } = await import("./coordinator");
@@ -30,7 +30,7 @@ describe("original paid clock coordinator", () => {
   it("freezes before the first wait and commits before delivery, without fabricating a shift", async () => {
     let resolve!:(device:string)=>void; m.device.mockImplementationOnce(()=>new Promise<string>(done=>{resolve=done;}));
     const raw={...clock()}; const login=signInMark(), saving=submitPaidClockIntent(login,raw,null);
-    raw.tappedAt="2026-10-04T11:00:00Z"; resolve(DEVICE);
+    raw.tappedAt="2026-10-04T11:00:00Z"; await vi.waitFor(()=>expect(m.device).toHaveBeenCalledOnce()); resolve(DEVICE);
     const result=await saving;
     expect(m.append.mock.calls[0]).toEqual([login,DEVICE,clock(),null,undefined]);
     expect(m.append.mock.invocationCallOrder[0]).toBeLessThan(m.dispatch.mock.invocationCallOrder[0]);
@@ -40,6 +40,7 @@ describe("original paid clock coordinator", () => {
   it("blocks an A→B→A completion before it can save or send", async () => {
     let resolve!:(device:string)=>void; m.device.mockImplementationOnce(()=>new Promise<string>(done=>{resolve=done;}));
     const saving=submitPaidClockIntent(signInMark(),clock(),null);
+    await vi.waitFor(()=>expect(m.device).toHaveBeenCalledOnce());
     rememberSignedIn(null);rememberSignedIn({user:{id:OWNER}});resolve(DEVICE);
     expect(await saving).toEqual({kind:"held",clientId:CLIENT,reason:"account_changed"});
     expect(m.append).not.toHaveBeenCalled();expect(m.dispatch).not.toHaveBeenCalled();
@@ -55,7 +56,8 @@ describe("original paid clock coordinator", () => {
   it("does not demand an open shift to recover the same already-saved original", async () => {
     m.records.mockResolvedValue([{clientId:CLIENT}]); await submitPaidClockIntent(signInMark(),out(),null);
     expect(m.basis).not.toHaveBeenCalled(); expect(m.append).toHaveBeenCalledOnce();
-    // Exact owner/device/intent duplicate matching remains the native writer's job.
+    expect(m.dispatch).toHaveBeenLastCalledWith(CLIENT,expect.anything(),"check_only");
+    // Exact owner/intent matching and stored device identity are native rules.
     m.records.mockResolvedValue([]);await submitPaidClockIntent(signInMark(),out(),PREVIOUS);
     expect(m.basis).not.toHaveBeenCalled();
   });
@@ -74,6 +76,28 @@ describe("original paid clock coordinator", () => {
     m.append.mockImplementationOnce(async()=>{rememberSignedIn(null);rememberSignedIn({user:{id:OWNER}});return {clientId:CLIENT};});
     expect(await submitPaidClockIntent(signInMark(),clock(),null)).toMatchObject({kind:"held",reason:"account_changed"});
     expect(m.dispatch).not.toHaveBeenCalled();
+  });
+  it("adopts an original or predecessor device without consulting replacement metadata", async () => {
+    m.device.mockRejectedValue(Error("Replacement metadata unavailable"));
+    m.records.mockResolvedValue([{clientId:CLIENT,deviceId:DEVICE}]);
+    await submitPaidClockIntent(signInMark(),out(),null);
+    expect(m.device).not.toHaveBeenCalled();expect(m.append).toHaveBeenCalledWith(expect.anything(),DEVICE,out(),null,undefined);
+    m.records.mockResolvedValue([{clientId:PREVIOUS,deviceId:DEVICE}]);m.append.mockClear();
+    await submitPaidClockIntent(signInMark(),out(),PREVIOUS);
+    expect(m.device).not.toHaveBeenCalled();expect(m.append).toHaveBeenCalledWith(expect.anything(),DEVICE,out(),PREVIOUS,undefined);
+  });
+  it("checks the winning original after two tabs deduplicate a safety action", async () => {
+    m.append.mockResolvedValueOnce({clientId:PREVIOUS});
+    const login=signInMark(), result=await submitPaidClockIntent(login,out(),null);
+    expect(result).toMatchObject({kind:"saved",clientId:PREVIOUS});
+    expect(m.dispatch).toHaveBeenCalledWith(PREVIOUS,login,"check_only");
+  });
+  it("uses paid metadata despite unavailable activity identity and stops if paid metadata fails", async () => {
+    const login=signInMark(); await submitPaidClockIntent(login,out(),null);
+    expect(m.device).toHaveBeenCalledWith(login);expect(m.append).toHaveBeenCalledOnce();
+    m.device.mockRejectedValueOnce(Error("Paid metadata unavailable"));m.append.mockClear();m.dispatch.mockClear();
+    expect(await submitPaidClockIntent(login,out(),null)).toMatchObject({kind:"held",reason:"storage_unavailable"});
+    expect(m.append).not.toHaveBeenCalled();expect(m.dispatch).not.toHaveBeenCalled();
   });
   it("separates receipt checking from an explicit same-original resend", async () => {
     const login=signInMark();await recoverPaidClockRequest(CLIENT,login,"check");await recoverPaidClockRequest(CLIENT,login,"retry_original");

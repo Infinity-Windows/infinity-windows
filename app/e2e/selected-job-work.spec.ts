@@ -285,7 +285,7 @@ test("selected-unit dimensions use the canonical durable queue and hold Specific
   await expect(page.getByLabel("Width", { exact: true })).toHaveValue("500");
   await page.getByRole("button", { name: "Save dimension request", exact: true }).click();
   await expect.poll(() => log.unitCommands.length).toBe(1);
-  expect(log.unitCommitted).toEqual([true]);
+  await expect.poll(() => log.unitCommitted).toEqual([true]);
   const saved = structuredClone(log.unitCommands[0]);
   expect(saved.p_action).toBe("unit");
   expect(saved.p_data).toMatchObject({ id: UNIT, revision: 5, expected_fact_revision: 2,

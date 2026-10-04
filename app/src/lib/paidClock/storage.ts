@@ -34,6 +34,13 @@ export class PaidClockStorageError extends Error {
 }
 const fail = (): never => { throw new PaidClockStorageError(); };
 const chainKey = (owner: string, origin: ClockChainOrigin) => `${owner}:${origin.kind}:${origin.id}`;
+const generationKey = (owner: string, origin: ClockChainOrigin, generation: string) => `${chainKey(owner, origin)}:generation:${generation}`;
+const DEVICE_KEY = "metadata:paid-clock-device-v1";
+function sameSafetyIntent(a: ClockIntent, b: ClockIntent): boolean {
+  const business = (intent: ClockIntent) => Object.fromEntries(Object.entries(intent)
+    .filter(([key]) => !["clientId", "tappedAt", "clockCheckedAt", "clockSkewMs"].includes(key)));
+  return JSON.stringify(business(a)) === JSON.stringify(business(b));
+}
 function assertOwner(login: SignInMark, owner: string) { if (!stillSignedInAs(login, owner)) fail(); }
 function exact(value: Record<string, unknown>, keys: readonly string[]) {
   if (Object.keys(value).length !== keys.length || keys.some(key => !Object.hasOwn(value, key))) fail();
@@ -121,10 +128,31 @@ async function transaction<T>(login: SignInMark, owner: string, mode: IDBTransac
 }
 const notify = notifyPaidClockChanges;
 
-/** Every append, duplicate check and causal-head comparison shares ONE native owner transaction. */
+/** Paid-clock identity is local metadata, not physical-device proof. It shares
+ * the paid DB's durability/failure boundary, never the activity metadata DB. */
+export async function getPaidClockDeviceId(login: SignInMark): Promise<string> {
+  const owner = uuid(login.userId);
+  return transaction(login, owner, "readwrite", async tx => {
+    const store = tx.objectStore("heads"), raw = await result(store.get(DEVICE_KEY)); assertOwner(login, owner);
+    if (raw !== undefined) {
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) fail();
+      exact(raw, ["key", "version", "deviceId"]);
+      if (raw.key !== DEVICE_KEY || raw.version !== 1) fail();
+      return uuid(raw.deviceId);
+    }
+    const deviceId = crypto.randomUUID();
+    store.add({ key: DEVICE_KEY, version: 1, deviceId });
+    return deviceId;
+  });
+}
+
+/** Every append, duplicate check and causal-head comparison shares ONE native
+ * owner transaction. Null predecessor + fresh branded shift basis explicitly
+ * starts an independent safety generation; it never replaces an older head. */
 export async function appendPaidClockIntent(login: SignInMark, deviceId: string, raw: ClockIntent,
   expectedHeadClientId: string | null, safetyBasis?: ConfirmedClockSafetyBasis): Promise<PaidClockRecord> {
-  const owner = uuid(login.userId), device = uuid(deviceId), intent = parseClockIntent(raw);
+  const owner = uuid(login.userId), defaultDevice = uuid(deviceId), intent = parseClockIntent(raw);
+  if (expectedHeadClientId !== null) uuid(expectedHeadClientId);
   const origin: ClockChainOrigin = intent.action === "clock_in" ? { kind: "clock_command", id: intent.clientId } : { ...intent.shiftRef };
   const generation = crypto.randomUUID();
   const saved = await transaction(login, owner, "readwrite", async (tx) => {
@@ -132,27 +160,51 @@ export async function appendPaidClockIntent(login: SignInMark, deviceId: string,
     const existing = await result(requests.get(intent.clientId)); assertOwner(login, owner);
     if (existing) {
       const row = parseRecord(existing);
-      if (row.ownerId !== owner || row.deviceId !== device || JSON.stringify(row.intent) !== JSON.stringify(intent)) fail();
-      return row; // same UUID cannot create another native request
+      if (row.ownerId !== owner || JSON.stringify(row.intent) !== JSON.stringify(intent)) fail();
+      // Draft originals retain their device identity across new metadata.
+      return row;
     }
     const ownRows = (await result(requests.index("by_owner").getAll(owner))).map(parseRecord); assertOwner(login, owner);
+    if (ownRows.some(row => row.ownerId !== owner)) fail();
     if (intent.action === "clock_in" && ownRows.some(row => row.intent.action === "clock_in" && row.delivery.status !== "acknowledged")) fail();
-    const key = chainKey(owner, origin), head = await result(heads.get(key)) as ChainHead | undefined; assertOwner(login, owner);
-    if ((head?.lastClientId ?? null) !== expectedHeadClientId || (head && head.deviceId !== device)) fail();
-    if (head) {
-      if (head.key !== key || head.ownerId !== owner || !Number.isSafeInteger(head.sequence) || head.sequence < 0) fail();
-      uuid(head.storageGeneration); uuid(head.lastClientId);
-      const predecessor = parseRecord(await result(requests.get(head.lastClientId))); assertOwner(login, owner);
-      if (predecessor.ownerId !== owner || predecessor.deviceId !== device || predecessor.sequence !== head.sequence ||
-        predecessor.storageGeneration !== head.storageGeneration || chainKey(owner, predecessor.origin) !== key) fail();
-      if (predecessor.intent.action === "clock_out" || intent.action === "clock_in" ||
-        intent.action === "break_start" && predecessor.intent.action === "break_start" ||
-        intent.action === "break_end" && predecessor.intent.action !== "break_start") fail();
+    let key = chainKey(owner, origin), head: ChainHead | undefined;
+    if (expectedHeadClientId !== null) {
+      const previous = ownRows.find(row => row.clientId === expectedHeadClientId);
+      if (!previous || chainKey(owner, previous.origin) !== key) return fail();
+      // Prefer this exact generation. Draft base-key heads continue in place.
+      if (origin.kind === "shift") {
+        const qualified = generationKey(owner, origin, previous.storageGeneration);
+        const found = await result(heads.get(qualified)); assertOwner(login, owner);
+        if (found !== undefined) { key = qualified; head = found as ChainHead; }
+      }
+      if (head === undefined) { head = await result(heads.get(key)) as ChainHead | undefined; assertOwner(login, owner); }
+      if (!head || typeof head !== "object" || Array.isArray(head)) return fail();
+      exact(head as unknown as Record<string, unknown>, ["key", "ownerId", "deviceId", "storageGeneration", "sequence", "lastClientId"]);
+      if (head.key !== key || head.ownerId !== owner || head.lastClientId !== expectedHeadClientId ||
+        head.deviceId !== previous.deviceId || head.sequence !== previous.sequence || head.storageGeneration !== previous.storageGeneration) fail();
+      if (previous.intent.action === "clock_out" || intent.action === "clock_in" ||
+        intent.action === "break_start" && previous.intent.action === "break_start" ||
+        intent.action === "break_end" && previous.intent.action !== "break_start") fail();
+    } else if (origin.kind === "shift") {
+      if (!isCurrentClockSafetyBasis(safetyBasis, owner, origin.id, login)) fail();
+      // Competing tabs reuse the first immutable same-action safety original.
+      // Different answers must not overwrite/duplicate an unresolved request.
+      const pending = ownRows.filter(row => row.origin.kind === "shift" && row.origin.id === origin.id &&
+        row.predecessorClientId === null && row.intent.action === intent.action &&
+        ["queued", "sending", "uncertain"].includes(row.delivery.status));
+      if (pending.length > 1) fail();
+      if (pending.length === 1) {
+        if (!sameSafetyIntent(pending[0].intent, intent)) fail();
+        return pending[0];
+      }
+      key = generationKey(owner, origin, generation);
+      if (await result(heads.get(key)) !== undefined) fail(); assertOwner(login, owner);
+    } else {
+      if (intent.action !== "clock_in" || await result(heads.get(key)) !== undefined) fail(); assertOwner(login, owner);
     }
-    if (!head && origin.kind === "shift" && !isCurrentClockSafetyBasis(safetyBasis, owner, origin.id, login)) fail();
-    if (!head && origin.kind === "clock_command" && intent.action !== "clock_in") fail();
     const sequence = head ? head.sequence + 1 : 0;
     if (!Number.isSafeInteger(sequence) || sequence < 0) fail();
+    const device = head?.deviceId ?? defaultDevice;
     const row: PaidClockRecord = { version: 1, clientId: intent.clientId, ownerId: owner, deviceId: device,
       storageGeneration: head?.storageGeneration ?? generation, sequence, origin, predecessorClientId: head?.lastClientId ?? null, intent,
       delivery: { status: "queued", attemptToken: null, everAttempted: false, everUncertain: false, resolvedShiftId: null, receipt: null, attentionReason: null } };

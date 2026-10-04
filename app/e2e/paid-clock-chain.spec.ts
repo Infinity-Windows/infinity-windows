@@ -10,13 +10,13 @@ import type { PaidClockPolicy } from "../src/lib/paidClock/dispatch";
 // Use the same persistent-profile fixture as work-capture-journal.spec.ts;
 // this preserves the real old-outbox Blob and byte-for-byte assertions.
 const test = base.extend({
-  context: async ({ browserName, context: inherited }, use) => {
-    if (browserName !== "webkit") { await use(inherited); return; }
+  context: async ({ browserName, context: inherited }, provideContext) => {
+    if (browserName !== "webkit") { await provideContext(inherited); return; }
     const directory=mkdtempSync(join(tmpdir(),"paid-clock-webkit-"));
     let persistent;
     try {
       persistent=await webkit.launchPersistentContext(directory,{headless:true,viewport:{width:390,height:844},deviceScaleFactor:2});
-      await use(persistent);
+      await provideContext(persistent);
     } finally { try { await persistent?.close(); } finally { rmSync(directory,{recursive:true,force:true}); } }
   },
 });
@@ -328,4 +328,146 @@ test("the recovery view wakes current tabs, preserves an unknown original and ne
   await expect(page.getByText("Start-of-day setup",{exact:false})).toHaveCount(0);expect(calls).toHaveLength(2);
   await page.getByRole("button",{name:"Logout fixture"}).click();await expect(page.locator("[data-clock-request]")).toHaveCount(0);
   await page.getByRole("button",{name:"Login fixture"}).click();await expect(page.getByText("Delivery confirmed · historical receipt",{exact:true})).toBeVisible();expect(calls).toHaveLength(2);
+});
+
+test("fresh same-shift safety generation escapes an unknown break without activity metadata or ancestor sends", async ({ page }) => {
+  await open(page);
+  await page.route("**/rest/v1/time_shifts?**", route => json(route, { id:SHIFT, profile_id:OWNER, status:"open", clock_out_at:null }, null));
+  const sent: Array<{rpc:string;args:Record<string,unknown>}> = [];
+  await page.route("**/rest/v1/rpc/*", route => {
+    const rpc=new URL(route.request().url()).pathname.split("/").at(-1)!;
+    if(rpc==="work_activity_clock_receipt") return json(route,{protocolVersion:1,availability:"unavailable",receipt:null},null);
+    sent.push({rpc,args:route.request().postDataJSON()});return route.abort("failed");
+  });
+  const result=await page.evaluate(async ({device,shift})=>{
+    // @ts-expect-error Vite browser module.
+    const s=await import("/src/lib/paidClock/storage.ts");
+    // @ts-expect-error Vite browser module.
+    const a=await import("/src/lib/signedIn.ts");
+    // @ts-expect-error Vite browser module.
+    const api=await import("/src/lib/paidClock/api.ts");
+    // @ts-expect-error Vite browser module.
+    const c=await import("/src/lib/paidClock/coordinator.ts");
+    const stamp={tappedAt:"2026-10-04T08:00:00Z",clockCheckedAt:null,clockSkewMs:null},oldId=crypto.randomUUID();
+    const basis=await api.fetchOwnClockSafetyBasis(shift,a.signInMark());
+    await s.appendPaidClockIntent(a.signInMark(),device,{...stamp,action:"break_start",clientId:oldId,shiftRef:{kind:"shift",id:shift},breakType:"rest"},null,basis);
+    const token=crypto.randomUUID();
+    await s.updatePaidClockDelivery(a.signInMark(),oldId,null,(r:PaidClockRecord)=>({...r.delivery,status:"sending",everAttempted:true,attemptToken:token,resolvedShiftId:shift}));
+    await s.updatePaidClockDelivery(a.signInMark(),oldId,token,(r:PaidClockRecord)=>({...r.delivery,status:"uncertain",everUncertain:true}));
+    const out={...stamp,tappedAt:"2026-10-04T09:00:00Z",action:"clock_out",clientId:crypto.randomUUID(),shiftRef:{kind:"shift",id:shift},photo:null,injured:false,timeConfirmed:false,breakSeconds:0,lat:null,lng:null,injuryNote:null};
+    // A previously queued out remains behind the unknown break. A fresh
+    // independently authorized out must not adopt that blocked descendant.
+    await s.appendPaidClockIntent(a.signInMark(),device,{...out,clientId:crypto.randomUUID()},oldId);
+    const before=await s.readPaidClockRecords(a.signInMark());
+    const readHeads=async()=>{
+      const db=await new Promise<IDBDatabase>(resolve=>{const r=indexedDB.open(s.PAID_CLOCK_DB,1);r.onsuccess=()=>resolve(r.result);});
+      const tx=db.transaction("heads"),rows=await new Promise<Array<Record<string,unknown>>>(resolve=>{const r=tx.objectStore("heads").getAll();r.onsuccess=()=>resolve(r.result);});db.close();return rows;
+    };
+    const headsBefore=await readHeads();
+    const originalOpen=IDBFactory.prototype.open;
+    IDBFactory.prototype.open=function(name,...args){if(name==="iw-work-activity-device-v1")throw Error("Synthetic corrupt activity metadata");return originalOpen.call(this,name,...args);};
+    let activityFailed=false;
+    try {
+      // @ts-expect-error Vite browser module.
+      const activity=await import("/src/lib/workActivity/device.ts");
+      try{await activity.getActivityDeviceId();}catch{activityFailed=true;}
+      const submission=await c.submitPaidClockIntent(a.signInMark(),out,null);
+      return {activityFailed,before,headsBefore,headsAfter:await readHeads(),submission,rows:await s.readPaidClockRecords(a.signInMark()),out};
+    }finally{IDBFactory.prototype.open=originalOpen;}
+  },{device:DEVICE,shift:SHIFT});
+  expect(result.activityFailed).toBe(true);
+  expect(result.submission).toMatchObject({kind:"saved",clientId:result.out.clientId,dispatch:{kind:"held",reason:"unknown"}});
+  expect(result.rows).toHaveLength(3);
+  for(const old of result.before)expect(result.rows.find((r:PaidClockRecord)=>r.clientId===old.clientId)).toEqual(old);
+  for(const head of result.headsBefore)expect(result.headsAfter.find(h=>h.key===head.key)).toEqual(head);
+  const fresh=result.rows.find((r:PaidClockRecord)=>r.clientId===result.out.clientId)!;
+  expect(fresh).toMatchObject({predecessorClientId:null,sequence:0,origin:{kind:"shift",id:SHIFT}});
+  expect(fresh.storageGeneration).not.toBe(result.before[0].storageGeneration);
+  expect(sent).toEqual([{rpc:"clock_out",args:expect.objectContaining({p_client_id:result.out.clientId,p_shift_id:SHIFT,p_tapped_at:result.out.tappedAt})}]);
+});
+
+test("current tabs atomically deduplicate independent safety taps and refuse different answers", async ({ page, context }) => {
+  await open(page);const other=await context.newPage();await open(other);
+  for(const tab of [page,other])await tab.route("**/rest/v1/time_shifts?**",route=>json(route,{id:SHIFT,profile_id:OWNER,status:"open",clock_out_at:null},null));
+  const append=(tab:Page,injured=false)=>tab.evaluate(async({shift,injured})=>{
+    // @ts-expect-error Vite browser module.
+    const s=await import("/src/lib/paidClock/storage.ts");
+    // @ts-expect-error Vite browser module.
+    const a=await import("/src/lib/signedIn.ts");
+    // @ts-expect-error Vite browser module.
+    const api=await import("/src/lib/paidClock/api.ts");
+    const login=a.signInMark(),device=await s.getPaidClockDeviceId(login),basis=await api.fetchOwnClockSafetyBasis(shift,login);
+    const intent={action:"clock_out",clientId:crypto.randomUUID(),tappedAt:new Date().toISOString(),clockCheckedAt:null,clockSkewMs:null,shiftRef:{kind:"shift",id:shift},photo:null,injured,timeConfirmed:false,breakSeconds:0,lat:null,lng:null,injuryNote:injured?"Different answer":null};
+    try{return {row:await s.appendPaidClockIntent(login,device,intent,null,basis),device};}catch{return {row:null,device};}
+  },{shift:SHIFT,injured});
+  const raced=await Promise.all([append(page),append(other)]);
+  expect(raced[0].row).not.toBeNull();expect(raced[0]).toEqual(raced[1]);
+  expect((await append(other,true)).row).toBeNull();
+  const saved=await page.evaluate(async()=>{
+    // @ts-expect-error Vite browser module.
+    const s=await import("/src/lib/paidClock/storage.ts");
+    // @ts-expect-error Vite browser module.
+    const a=await import("/src/lib/signedIn.ts");
+    const db=await new Promise<IDBDatabase>(resolve=>{const r=indexedDB.open(s.PAID_CLOCK_DB,1);r.onsuccess=()=>resolve(r.result);});
+    const tx=db.transaction("heads"),heads=await new Promise<unknown[]>(resolve=>{const r=tx.objectStore("heads").getAll();r.onsuccess=()=>resolve(r.result);});
+    db.close();return {rows:await s.readPaidClockRecords(a.signInMark()),heads,version:db.version};
+  });
+  expect(saved.rows).toEqual([raced[0].row]);expect(saved.version).toBe(1);expect(saved.heads).toHaveLength(2); // metadata + one independent head
+});
+
+test("draft base-key heads keep their device and exact causal generation beside new independent heads", async ({ page }) => {
+  await open(page);await page.route("**/rest/v1/time_shifts?**",route=>json(route,{id:SHIFT,profile_id:OWNER,status:"open",clock_out_at:null},null));
+  const result=await page.evaluate(async({device,shift,owner})=>{
+    // @ts-expect-error Vite browser module.
+    const s=await import("/src/lib/paidClock/storage.ts");
+    // @ts-expect-error Vite browser module.
+    const a=await import("/src/lib/signedIn.ts");
+    // @ts-expect-error Vite browser module.
+    const api=await import("/src/lib/paidClock/api.ts");
+    const login=a.signInMark(),stamp={tappedAt:"2026-10-04T08:00:00Z",clockCheckedAt:null,clockSkewMs:null};
+    const start={...stamp,action:"break_start",clientId:crypto.randomUUID(),shiftRef:{kind:"shift",id:shift},breakType:"rest"};
+    const first=await s.appendPaidClockIntent(login,device,start,null,await api.fetchOwnClockSafetyBasis(shift,login));
+    // Recreate the exact former draft-v1 base-key layout, without changing row bytes.
+    const db=await new Promise<IDBDatabase>(resolve=>{const r=indexedDB.open(s.PAID_CLOCK_DB,1);r.onsuccess=()=>resolve(r.result);});
+    const oldKey=`${owner}:shift:${shift}`,qualified=`${oldKey}:generation:${first.storageGeneration}`;
+    const tx=db.transaction("heads","readwrite"),store=tx.objectStore("heads");
+    const prior=await new Promise<Record<string,unknown>>(resolve=>{const r=store.get(qualified);r.onsuccess=()=>resolve(r.result);});
+    store.delete(qualified);store.put({...prior,key:oldKey});
+    await new Promise<void>((resolve,reject)=>{tx.oncomplete=()=>resolve();tx.onabort=()=>reject(tx.error);});db.close();
+    const replacement=await s.getPaidClockDeviceId(login);
+    const duplicate=await s.appendPaidClockIntent(login,replacement,start,null);
+    const out={...stamp,action:"clock_out",clientId:crypto.randomUUID(),shiftRef:{kind:"shift",id:shift},photo:null,injured:false,timeConfirmed:false,breakSeconds:0,lat:null,lng:null,injuryNote:null};
+    const independent=await s.appendPaidClockIntent(login,replacement,out,null,await api.fetchOwnClockSafetyBasis(shift,login));
+    const end={...stamp,action:"break_end",clientId:crypto.randomUUID(),shiftRef:{kind:"shift",id:shift}};
+    const child=await s.appendPaidClockIntent(login,replacement,end,first.clientId);
+    let staleRefused=false;try{await s.appendPaidClockIntent(login,replacement,{...end,clientId:crypto.randomUUID()},first.clientId);}catch{staleRefused=true;}
+    const inspect=await new Promise<IDBDatabase>(resolve=>{const r=indexedDB.open(s.PAID_CLOCK_DB,1);r.onsuccess=()=>resolve(r.result);});
+    const htx=inspect.transaction("heads"),heads=await new Promise<Array<Record<string,unknown>>>(resolve=>{const r=htx.objectStore("heads").getAll();r.onsuccess=()=>resolve(r.result);});inspect.close();
+    return {first,duplicate,independent,child,replacement,staleRefused,heads,oldKey,rows:await s.readPaidClockRecords(login)};
+  },{device:DEVICE,shift:SHIFT,owner:OWNER});
+  expect(result.duplicate).toEqual(result.first);expect(result.replacement).not.toBe(DEVICE);
+  expect(result.child).toMatchObject({deviceId:DEVICE,storageGeneration:result.first.storageGeneration,sequence:1,predecessorClientId:result.first.clientId});
+  expect(result.independent.deviceId).toBe(result.replacement);expect(result.independent.storageGeneration).not.toBe(result.first.storageGeneration);
+  expect(result.staleRefused).toBe(true);expect(result.rows).toHaveLength(3);
+  expect(result.heads.find(h=>h.key===result.oldKey)).toMatchObject({lastClientId:result.child.clientId,deviceId:DEVICE,storageGeneration:result.first.storageGeneration});
+});
+
+test("corrupt paid identity fails without replacing it or dispatching a punch", async ({ page }) => {
+  await open(page);const rpc:string[]=[];
+  await page.route("**/rest/v1/rpc/*",route=>{rpc.push(route.request().url());return route.abort("failed");});
+  const result=await page.evaluate(async()=>{
+    // @ts-expect-error Vite browser module.
+    const s=await import("/src/lib/paidClock/storage.ts");
+    // @ts-expect-error Vite browser module.
+    const a=await import("/src/lib/signedIn.ts");
+    // @ts-expect-error Vite browser module.
+    const c=await import("/src/lib/paidClock/coordinator.ts");
+    const login=a.signInMark();await s.getPaidClockDeviceId(login);
+    const db=await new Promise<IDBDatabase>(resolve=>{const r=indexedDB.open(s.PAID_CLOCK_DB,1);r.onsuccess=()=>resolve(r.result);});
+    const tx=db.transaction("heads","readwrite");tx.objectStore("heads").put({key:"metadata:paid-clock-device-v1",version:1,deviceId:"corrupt"});
+    await new Promise<void>(resolve=>{tx.oncomplete=()=>resolve();});db.close();
+    const punch={clientId:crypto.randomUUID(),tappedAt:"2026-10-04T08:00:00Z",clockCheckedAt:null,clockSkewMs:null};
+    return {submission:await c.submitPaidClockIntent(login,c.paidSetupIntent(punch),null),rows:await s.readPaidClockRecords(login)};
+  });
+  expect(result.submission).toMatchObject({kind:"held",reason:"storage_unavailable"});expect(result.rows).toEqual([]);expect(rpc).toEqual([]);
 });
