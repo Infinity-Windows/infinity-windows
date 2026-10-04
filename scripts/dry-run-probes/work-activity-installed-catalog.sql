@@ -20,7 +20,7 @@ begin
       where n.nspname='public'),
     'functions',(select coalesce(jsonb_agg(jsonb_build_object(
       'oid',p.oid,'name',p.proname,'identity',pg_get_function_identity_arguments(p.oid),'securityDefiner',p.prosecdef,
-      'acl',p.proacl,'owner',pg_get_userbyid(p.proowner),'volatility',p.provolatile,'kind',p.prokind,'configuration',p.proconfig) order by p.oid),'[]'::jsonb)
+      'acl',p.proacl,'owner',pg_get_userbyid(p.proowner),'volatility',p.provolatile,'kind',p.prokind) order by p.oid),'[]'::jsonb)
       from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public')) into catalog;
   encoded:=catalog::text; checksum:=encode(sha256(convert_to(encoded,'UTF8')),'hex'); parts:=ceil(length(encoded)/450.0)::integer;
   perform pg_temp.dry_run_check('catalogHeader',true,jsonb_build_object('sha256',checksum,'characters',length(encoded),'parts',parts,
