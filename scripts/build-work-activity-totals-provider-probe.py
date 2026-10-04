@@ -8,6 +8,7 @@ base=ROOT/'scripts/dry-run-probes/work-unit-review-current-rehearsal.sql'
 source_path=ROOT/'supabase/migrations/20261108450000_work_activity_totals.sql'
 metadata=ROOT/'scripts/verify-work-activity-totals-installed.sql'
 calls=ROOT/'scripts/dry-run-probes/work-activity-totals-provider-calls.sql'
+diagnostic=ROOT/'scripts/dry-run-probes/work-activity-totals-coverage-diagnostic.fragment.sql'
 target=ROOT/'scripts/dry-run-probes/work-activity-totals-current-rehearsal.sql'
 # Pins are populated only after the bounded implementation and source closure.
 PINS={
@@ -15,8 +16,9 @@ PINS={
  source_path: '1545a569be66e374c0c01abccf1920a649704d4ce784d8ba1753fa0ebe8189f8',
  metadata: '215399700dfaf630313f00348e190a9aaabf3eef2a926a105ec467c4ef03c077',
  calls: '4f93fdfd6e61abe9e57623da6ad06aaa600bd025b09f7a8fb798e68eb7ea81dc',
+ diagnostic: 'c5543e9bf502c4272b90380efe5b72da8552a644ed1c3abc35b41cb850636e11',
 }
-assert len(PINS)==4, 'Totals provider pins pending source freeze; nothing sent'
+assert len(PINS)==5, 'Totals provider pins pending source freeze; nothing sent'
 for path,sha in PINS.items():
  assert hashlib.sha256(path.read_bytes()).hexdigest()==sha,path
 source=source_path.read_text();statements=split_statements(source);first,last=statements[0],statements[-1]
@@ -27,5 +29,10 @@ sql=base.read_text()+'\n-- Additive held totals, outer forced rollback retained.
 sql+='\ndo $totals_metadata$ declare result record; begin for result in ('+fragment+') loop\n'
 sql+="perform pg_temp.dry_run_check('provider/'||result.check_name,result.passed,'Exact totals source/ACL/capture-off metadata');\n"
 sql+='end loop; end; $totals_metadata$;\n'+calls.read_text()
+diagnostic_sql=diagnostic.read_text().strip().removesuffix(';')
+assert len(split_statements(diagnostic_sql+';'))==1
+sql+='\ndo $totals_diagnostic$ declare result record; begin if not public._work_totals_coverage() then for result in ('+diagnostic_sql+') loop\n'
+sql+="perform pg_temp.dry_run_check('provider/'||result.check_name,result.passed,'category='||result.category||';object='||result.object_name||';attribute='||result.attribute||';'||result.detail);\n"
+sql+='end loop; end if; end; $totals_diagnostic$;\n'
 count=check_probe(str(target),sql);target.write_text(sql)
 print('Pinned totals',PINS[source_path],count,'statements; final forced ROLLBACK owned by db_dry_run.py')

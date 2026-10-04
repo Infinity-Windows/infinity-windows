@@ -41,7 +41,11 @@ check(run("select current_setting('server_version_num')::int/10000")=='17','Actu
 check(run('select _work_unit_review_coverage()')=='t','Frozen review dependency coverage')
 check(run("select to_regprocedure('public.work_activity_totals_read(uuid,uuid)') is null")=='t','Clean totals installation seam')
 run(re.sub(r'rollback;\s*$','commit;',source))
-check(run('select _work_totals_coverage()')=='t','Exact totals installed source guard')
+coverage=run('select _work_totals_coverage()')
+if coverage!='t':
+ diagnostic=(ROOT/'scripts/dry-run-probes/work-activity-totals-coverage-diagnostic.fragment.sql').read_text().strip().removesuffix(';')
+ print('TOTALS_COVERAGE_DIAGNOSTIC',json.dumps(obj('select coalesce(jsonb_agg(to_jsonb(d)),\'[]\'::jsonb) from ('+diagnostic+') d')),flush=True)
+check(coverage=='t','Exact totals installed source guard')
 run('insert into auth.users(id) values('+lit(worker)+'),('+lit(reviewer)+');insert into profiles(id,display_name,role,is_test) values('+lit(worker)+",'Totals PG worker','owner',false),("+lit(reviewer)+",'Totals PG reviewer','owner',false);insert into projects(id,job_code,name) values("+lit(job)+",'TOTALS-PG','Synthetic'),("+lit(other)+",'TOTALS-PG-OTHER','Synthetic');insert into project_openings(id,project_id,opening_code) values("+lit(opening)+','+lit(job)+",'TOTALS-PG-UNIT'),("+lit(ident(21))+','+lit(other)+",'TOTALS-PG-UNRELATED');")
 unit_payload={'id':unit,'revision':0,'project_id':job,'opening_id':opening,'label':'Synthetic PG totals','type_label':'Window','facts':{},'dimension_observation':{'width':36,'height':48,'unit':'in','source':'estimated'},'expected_fact_revision':0}
 rpc('select custom_work_command('+lit(ident(100))+",'unit',"+lit(json.dumps(unit_payload))+'::jsonb);')
