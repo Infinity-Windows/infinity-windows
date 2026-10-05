@@ -1,0 +1,126 @@
+# Dormant native cross-job journal version 3
+
+This module is a storage foundation, not a live work or payroll feature. Nothing in the application imports it. Importing it does not open IndexedDB, generate IDs, stamp time, call an API, or enable protocol 2. The existing `workCapture/storage.ts` stays at native version 2. A future caller must explicitly provide an IndexedDB factory to `openCrossJobJournalV3` before using a handle.
+
+For an installer, the intended benefit is simple: the original tap on job B is saved exactly once, even if two tabs compete. A failed save never says “saved.” Once a send has been claimed, a crash cannot turn that original tap into a new send after reload. This source does not yet connect that behavior to the actual work screen or a server.
+
+## Schema and upgrade boundary
+
+The opener targets only `iw-work-capture-journal-v1`, version 3. It retains the existing stores, key paths and indexes:
+
+| Store | Key | Index |
+| --- | --- | --- |
+| `commands` | `command.requestId` | unique `by_stream`: command owner/device/sequence |
+| `heads` | `streamKey` | none |
+| `protocol_commands` | `commandId` | unique `by_stream_generation`: owner/payload device/generation/sequence |
+| `protocol_heads` | `key` | none |
+
+It adds `cross_job_commands_v2` keyed by `commandId`, with a unique owner/device/generation/sequence index, and `cross_job_heads_v2` keyed by owner/device. Existing rows are never copied, rewritten, normalized, deleted, or interpreted as version 2 commands. Upgrading native version 1 creates the previously absent protocol stores in addition to the new stores. Exact old schema drift is refused, not repaired. Both the settled-v1 handoff and new-stream path validate the old head’s exact fields, UUIDs, owner/device key and nonnegative sequence without rewriting it. Opening an already-version-3 database also validates the expected schema.
+
+An old open connection can block the upgrade. The new opener rejects that attempt and aborts any later upgrade event belonging to the rejected request. A late successful connection is closed. A finite five-second open timeout also aborts an active upgrade when possible. There is no hidden background migration after a blocked rejection. A newly deliberate opener call is required after the old connection closes.
+
+A cached native version 2 opener gets `VersionError` after version 3 exists. This is an explicit activity compatibility hold. Separate paid/photo/review database names do not establish that the old application's clock flow still works: its orchestration, cached bundles, paid unknowns, and device behavior require separate acceptance before any rollout.
+
+## Original and atomic append
+
+The caller generates original command IDs and tap evidence synchronously before any await. `freezeCrossJobOriginal` is synchronous: it strictly validates, JSON clones and deeply freezes the full `AllocationCommand`, typed settled-v1 or predicted-v2 predecessor, original snapshot, login/device/job/authority fences and expected local head. `commandBytes` retains the original JSON serialization, including timestamp spelling and property order. Validators do not replace the saved command with normalized or freshly planned bytes. Malformed values throw; the future adapter must catch them while retaining whatever original IDs/tap it already holds in memory.
+
+`appendCrossJobOriginal` rereads the local head and predecessor and writes the original plus new head in **one** native strict-durability readwrite transaction. Same ID and identical full original returns the existing record without a new send. Changed command or lineage under the same ID aborts. Concurrent successors share the same head compare-and-set; only one can advance it. A settled-v1 handoff rereads the original v1 command/receipt and head in that same transaction without writing either old store. Typed v1 evidence alone is insufficient without those matching retained rows and the supplied registered-shift snapshot. The module does not authenticate that snapshot; future transport/backend checks remain required.
+
+Quota, abort, blocked-open and unsupported/ignored strict durability errors do not promise persistence. Append errors retain the frozen original in memory. `JournalV3Error.committed` distinguishes an operation that completed its transaction before a final context check failed; in that case the original is saved but cannot be sent from that result. If the transaction aborts, command and head both remain unchanged. An unsaved in-memory original does not survive browser closure by promise or by fallback: no paid/photo/review store is used as backup.
+
+## Permanent claim and future authentication obligations
+
+`claimCrossJobOriginal` durably sets `everAttempted` and a supplied attempt token before returning a live claim capability. A competing tab sees that durable state and cannot win another claim. There is no lease, expiry, retry timer, Web Locks authority, or method that resets an attempted row to pending. `crossJobDelivery` classifies a reloaded attempted record without confirmed provenance as `attempted_unknown`; it cannot become a new send.
+
+Claims check the original owner/device/login generation, current local stream generation, predecessor state, original lease, observed physical shift, allocation, revision and the existing pure planner prerequisites. The current UI job is separate from the original job: it must satisfy the existing planner fence before a claim, but it never replaces the original intent or original fences. If tap B is queued and the user selects C or D, trying to claim B returns no capability and leaves all saved rows unchanged. A later correct-context claim can succeed only if the original has never been attempted and every other prerequisite still passes. This does not authorize an adapter to pretend the selected UI job is B or to deliver B while the real context remains C.
+
+The claim boundary distinguishes replaceable admission evidence from permanent original invalidity:
+
+| Condition | Durable effect |
+| --- | --- |
+| Current selected job or authority differs from the original | No write; no claim |
+| Preview/background or unstable/invalid current caller context | Strict context refusal; no claim or attempted write |
+| Malformed admission envelope/snapshot/time, extra fields, or internally inconsistent incoming clock evidence | No write; no claim |
+| Parent remains unattempted and pending | Resolve before snapshot/expiry classification; no write and no claim, including a real pre-parent snapshot |
+| Caller login generation differs in either direction | No write; no claim; the counter is page-local and cannot establish durable retirement |
+| Local stream generation retired | Sticky `retired_generation` |
+| Missing or inconsistent retained head | Sticky `head_conflict`, or corruption refusal without repair |
+| Valid elapsed/time evidence establishes original observation expiry | Sticky `expired_observation` |
+| Minimal/full unavailable snapshot, a valid full reply with observation null, or a capability/action/integrity restriction actually required by the protected planner | No write; no claim |
+| Exact planner-ready allocation stop or stream establishment | Normal one-claim path; no extra active/clean gate |
+| Confirmed parents, coherent fresh source at expected-or-higher revision exposes conflicting shift/revision/allocation/current stream, phase or break | Sticky `needs_reaffirmation` |
+| Lower revision, snapshot older than anchor, snapshot future/out of line with serverNow | No write; no claim |
+| State-present/null-shift reply at any revision | Invalid under protected V2 parser; no write, no invented revision hold |
+| Read precedes corrected original tap or original clockCheckedAt minus 120 seconds | No write; later evidence can enter the trust window |
+| Original missing clock check/skew, excessive skew, or coherent evidence past the original 16-hour tap / 24-hour check limit | Sticky `untrusted_stamp` |
+| Other or future/unrecognized planner failure without proven irreversible cause | No write; no claim |
+
+The full strict parser distinguishes malformed snapshots from valid minimal/full unavailable envelopes. Both refuse dispatch without a permanent hold. Internally loaded predecessors are resolved with the foundation's `predecessorPosition` before incoming snapshot comparisons: held ancestors are sticky and pending ancestors cause no write. Only after parents are confirmed does a coherent fresh snapshot reach the unchanged `checkV2SendPrerequisites`. It owns exact source/stream/prediction comparisons; the journal no longer duplicates those in an independent source checker. A concrete planner conflict remains sticky with a disabled capability. For establish_stream, the protected planner combines disabled canEstablishStream with source mismatch in one reason. A second classification-only planner call changes that single boolean: a ready diagnostic causes **no write and no claim**, never authorization; only a remaining `needs_reaffirmation` establishes the concrete-conflict classification. Other diagnostic outcomes defer without writing. A narrow phase/break distinction retains concrete phase changes while treating capability-only `action_unavailable` as temporary.
+
+Admission accepts exactly `snapshot`, `elapsedMs` and `serverNow`; injected parents/currentFences cannot override loaded lineage or live context. Exceptions in replaceable incoming admission cause no write. Storage failures still abort. Foreign owner/device cannot invalidate another owner's original, and existing durable holds are never automatically released.
+
+The pure planner labels its returned holds permanent. The storage boundary intentionally does not persist replaceable caller, availability or capability results for an unattempted original; it preserves all original data and reruns the same unchanged safety checks on a future claim. It never overrides a genuinely stored hold. An unattempted child waits while its parent is pending. An unknown/refused/conflicting parent produces a durable child hold. A held original stays held even if later evidence or another stream appears. A deliberate new generation creates a distinct original; old descendants are not moved into it.
+
+Checkpoint 3 replaced checkpoint 2's sticky caller-generation/outage policy. Correction 4 fixes checkpoint 3's source-before-parent regression and adds a freshness screen. Correction 5 screens reads before the corrected original tap or its allowed clock-check window, explicitly classifies every planner reason, and preserves exact planner-ready stop/establish behavior; the prior frozen sources and review receipts remain unchanged. Existing stored holds, including `authentication_changed`, `admission_failed` and `action_unavailable`, remain immutable as holds; none are auto-cleared. No outage result dispatches or reassigns work.
+
+`SignInMark.generation` is initialized to zero inside `signedIn.ts`, increments only on user-ID changes within that module instance, and resets on reload. Different tabs can hold either higher or lower incomparable values. Exact generation equality remains a necessary in-process fence, but numeric equality is not proof of the same login across reload/tabs, and numeric ordering is not proof of retirement. An authenticated durable authority/nonce protocol across reload and tabs remains an integration gate; this module creates none and imports no auth runtime. The replacement must cover stored heads, saved-original fences and append admission, not only claims. A reload/new tab with a different counter can currently block new appends for that owner/device; this availability limitation must be resolved before integration. Numeric equality that recurs is still not login proof.
+
+Before recording expiry, `serverNow - original.anchor.asOf` must be nonnegative, no greater than the rounded-up microseconds of `elapsedMs`, and less than one millisecond behind it. The incoming snapshot must also have asOf at/after the saved anchor, no later than serverNow and less than one millisecond behind serverNow; state revision lower than the saved expected revision is always no-write. This permits only millisecond fixture quantization. Large elapsed with stale server time, future server time with small elapsed, and time preceding the anchor refuse without writes. This is input coherence, not independent clock or server authentication. The one-millisecond limits are deliberately conservative fixture coherence, not a usable or tested network-latency budget. Physical elapsed-clock sourcing, authenticated server-read timing and real network tolerance remain an integration gate; this correction does not widen them. Future transport must obtain coherent trusted evidence; arbitrary caller fields cannot prove trust.
+
+
+The revision comparison is scoped to source-shaped personal state, not a global chronology or a per-shift counter. SQL foundation0702:120–123 keys state by profile and initializes revision0; substrate0840:177–184 inserts only absent state. Cutover0841:543–589 refreshes physical shift/activity without resetting revision; K6:579–600 and619–621 retain no-change revisions or increment the captured personal revision once for a transition; command receipt1031–1038 reports before/after and no-op retains it. Shift replacement therefore does not reset revision in these supported paths. This is not proof against administrative deletion/recreation, imports, a different database or fabricated caller input. Lower values—including possible resets—remain conservative no-write; only fresh parsed evidence plus exact unchanged planner checks may persist a conflict. Full source/catalog and authentication coupling remain required before transport. The protected V2 parser rejects state-present/null-shift at protocolV2:99–100, so no revision ordering is inferred from that malformed shape.
+
+A permanent **local claim is not an at-most-once RPC guarantee**. Before transport integration, the future adapter must authenticate the live claim capability and synchronously consume a separate one-use send handoff before any send or authentication await. It must reject copied, forged or reused tickets, while preserving a distinct settlement right for the actual response. Structural `ClaimV3` fields alone prove none of this. This correction adds no adapter or RPC.
+
+The context callback is an explicit caller contract, not live authentication. The module checks it before transactions, at request/write boundaries and before returning completed results. A caller must still recheck real authentication, login generation, owner, device, preview, foreground, selected job and authority **after every await and immediately before a future RPC**, including after claim completion. It must verify fresh time/admission evidence again if time passed while waiting. A claim is necessary local ownership, not backend permission. This module has no network code.
+
+## Historical provenance and failure state
+
+Only the live, in-memory capability returned by a successful claim can call `settleCrossJobClaim`. Copying its fields, reconstructing it from a database row, reloading the module, or using another handle cannot manufacture that capability. Settlement consumes it once. A failed local acknowledgement leaves the original attempted/unknown and does not permit an RPC resend.
+
+The future transport must provide the actual response associated with the exact saved full request. The module checks byte equality and the strict command and lookup envelopes, then uses the foundation's prediction/confirmation checks. This is not cryptographic response authentication. A lookup alone cannot prove project/cost intent and cannot create historical submission provenance. Wrong or malformed evidence leaves the already-durable original intact and unavailable for another claim.
+
+Available original submission evidence and its successful confirmation live in `historical`, separate from mutable `hold`. A later unavailable lookup is represented by a conservative hold through `holdCrossJobOriginal`; it must never be passed in as a replacement successful receipt. Historical evidence is never erased or changed by that operation. A later hold may close admission for descendants while the original successful receipt remains available for review. Refused/conflict responses can also be retained as actual-response-shaped evidence, but they never become confirmation. Unknown originals and descendants cannot be revived by later lookup or manufactured provenance.
+
+Strict storage parsers reject malformed keys, unsafe counters, inconsistent IDs/bytes, invalid lineage, bad schema and invalid historical evidence without repairing rows. These checks detect invalid structure and inconsistent state; they are not protection against malicious same-origin code fabricating an entirely coherent database or dishonest caller evidence.
+
+## Isolated validation and limits
+
+The new native spec uses fresh Playwright contexts and a local-only fixture page. It imports the dormant module only there, uses synthetic actors and snapshots, and blocks non-local requests. It exercises native version 1/2 upgrades, blocked/late upgrades, schema drift, atomic append and claim races, reload uncertainty, exact provenance, persistent holds, expired observations, foreign/login fencing, strict durability refusal and injected write failures. Protected database checks seed opaque synthetic rows in source-matching store/index schemas and compare all retained rows and photo blob bytes; they do not execute paid break/return/out or the existing app's coordination path.
+
+Injected `QuotaExceededError` with actual native rollback proves cleanup under that injected failure. It is not real disk exhaustion, iOS eviction, power-loss persistence, or a physical-device result. Chromium native results and supplemental unit/mock tests are separate evidence. Local WebKit currently fails before test bodies with `Bus error: 10`; WebKit/CI/device proof remains open. No production build or deployment is needed for these unimported modules.
+
+Example checks using existing Node 22 and dependencies:
+
+```sh
+npm run test -- src/lib/workCapture/crossJobStorageV3.test.ts --maxWorkers=2
+npm run test -- src/lib/workActivity src/lib/workCapture src/lib/paidClock src/lib/workUnitReview --maxWorkers=2
+IW_MAP_PORT=5197 npm run e2e -- cross-job-storage-v3-native.spec.ts --workers=2 --browser=chromium --output=/tmp/a-new-isolated-result-directory
+```
+
+The frozen checkpoint records exact final commands, counts, source hashes and results. Independent review is pending for this new journal. All 20 client and 42 kernel cases remain OPEN. API/delivery/UI, actual authenticated protocol 2 backend success, paid version 2 receipt reader, unknown setup recovery, old cached app/paid orchestration, service-job versus physical-job handling, real devices, volume/paid-wait budgets, combined report readers, and owner live-clock policy remain separate gates. No source activation flag was introduced.
+
+
+## Correction 5 classification and action boundaries
+
+The unchanged planner's `permanent: true` describes a result over its inputs. A saved journal hold is stronger: it prevents every future claim. The journal therefore resolves durable parents first, rejects replaceable stale/early/invalid evidence without writing, runs the exact saved plan, and persists only the enumerated irreversible original or concrete source conflicts. Unknown future reasons defer without writing. This is conservative availability, not authorization to send. The frozen correction-5 `CLASSIFICATION-MATRIX.json` covers all eleven `HoldReasonV2` members, each compound cause, authoring-only paths, and the local durable-head/ancestor cases.
+
+Allocation `stop` is not paid `clock_out`. The protected send checker exempts allocation stop from the ordinary observation-expiry and active/clean requirements, while still requiring canStop, no break, exact shift/revision/allocation/stream and the 16-hour elapsed/trust bounds. `establish_stream` follows canEstablishStream and its exact source/observation checks; it has no added active/clean requirement. Switch and finish-setup retain their capability, integrity, phase and break checks. A classification-only boolean diagnostic can never supply a claim; a claim requires the untouched actual planner result to be ready, then a context guard in the same native transaction.
+
+The synthetic time regression keeps the original 09:00 observation and 09:06 tap: a cached 09:05 read leaves every row unchanged; a 09:06:00.173456 read can claim the identical saved request. Another original with clockCheckedAt 09:06 defers until a coherent read enters the allowed 120-second future-check window. Neither test restamps, rebases or changes an ID. Missing/excessive original trust facts and elapsed/age bounds are separately tested as sticky. The original lease is never replaced by the fresh snapshot's observation.
+
+These are source and isolated Chromium IndexedDB checks. Caller-provided clocks/snapshots are not authenticated; the sub-millisecond coherence rule is a finite synthetic-fixture contract, not a tested physical-clock or network tolerance. Actual fresh authentication, durable authority epochs across pages/tabs (including heads, originals and append admission), one-use RPC handoff, integration/device acceptance, and the complete 20/42 gates remain open. No paid-clock request or transport is added.
+
+
+## Correction 6: optional evidence and parser authority
+
+A full snapshot can have current state and no observation. The protected parser requires all action flags to be false in that shape. The journal explicitly defers such a reply before clock/source classification, for all four allocation actions; it writes no hold or attempt. This also covers a missing observation combined with an absent stream or other changed fields. A later complete fresh read can claim the exact saved original if its original lease and all protected checks still pass. If the original lease has truly expired, a complete later read still records expiry; missing observation does not extend or replace it. Proven held ancestors and existing local holds/attempts retain their earlier precedence.
+
+With an observation present, coherent changed generation/head pointers, an explicit stream removal relative to the saved original, and generation collisions remain concrete conflicts, even when establishing is disabled. An originally absent stream with paired null pointers is valid for first establishment and can be ready. Incoherent half-null pointers or mismatched observation/stream fields are malformed replaceable evidence and defer without writes. The parser's distinction between nullable values and omitted/invalid fields remains authoritative.
+
+The actual correction-5 review identified missing-observation classification as a blocker. Full protected-source inspection adds a precise limit to that diagnosis: the old diagnostic flipped canEstablishStream true, which causes the protected snapshot parser to throw when observation is null; the existing catch already deferred that exact branch. The new explicit screen removes reliance on that exception and consistently defers incomplete replies before other classification. Tests execute the protected checker and parser to establish this fact. A separate six-case isolated Chromium comparison executes the exact frozen correction-5 source and correction-6 source: both defer matching and absent-stream null-observation replies and later claim the same original. At original lease expiry, correction 5 stores expiry from the incomplete reply, while correction 6 defers until a complete later read, which then stores the same legitimate expiry. There is no claim that the reviewed permanent-hold scenario was reproduced.
+
+Fractional skew is admitted by the older V1 payload parser, but protected V2 parsing explicitly requires a PostgreSQL integer. The full path is parseCrossJobRecord → original/freezeCrossJobOriginal → allocationCommand → parsePayloadV2, before admission or BigInt conversion. Fractional and out-of-int32 V2 originals are rejected, including an injected stored fractional payload whose serialized bytes were changed to match it. That native claim aborts without changing or repairing any row. The source adds no redundant BigInt guard or protected-parser change because the suspected shape is not admitted. Null or excessive integer skew remains a separate admitted trust failure covered by the earlier tests.
+
+The additional tests are synthetic local input and native storage cases, not a sequence observed from a real backend. Incomplete changed-state replies are deliberately replaceable caller evidence; later valid test replies are not evidence that server revisions can run backward. All authentication, durable epoch, network/physical-clock, one-use handoff, WebKit/device and complete20/42 gates remain open.

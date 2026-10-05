@@ -274,6 +274,10 @@ jobs:
         run: |
           npm run e2e -- work-capture-journal.spec.ts activity-protocol-journal.spec.ts
           npm run e2e -- work-capture-journal.spec.ts activity-protocol-journal.spec.ts --browser=webkit
+      - name: Dormant cross-job originals survive native storage and permanent claims
+        run: |
+          npm run e2e -- cross-job-storage-v3-native.spec.ts
+          npm run e2e -- cross-job-storage-v3-native.spec.ts --browser=webkit
       - name: Original unit decisions survive native storage and explicit recovery
         run: |
           npm run e2e -- unit-review-native.spec.ts
