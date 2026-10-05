@@ -1,0 +1,16 @@
+{
+  "app/src/pages/ProjectDetail.tsx": "1279d76e28149b81cce47a44a6cabb41fbc18c10824de3af5b5d9f7971cf8391",
+  "app/src/App.tsx": "cb699264e3d733c29235e0a9453a7da7c56597a338dc0ef06b1b49c723a2645a",
+  "app/src/components/projects/CrewGoalCard.tsx": "5d4fa752b9ae9683adcaa0c0f8440ae2bf5bf2b17519d20cff624fa5e7a47874",
+  "app/src/components/workConfiguration/WorkJobConfiguration.tsx": "570d93a84983188b552ec484f67a0902ab6eb352618ab503d98720cd0620a8a5",
+  "app/src/components/voice/VoiceTextarea.tsx": "bd8c4cc64800176225be9eeae6b1d9a60b9994db82043d57b384db1b47273f5e",
+  "app/src/lib/useEffectiveRole.ts": "1dc4a90e8bfcae3bdd6a77b00c0e5dd1bb90040c8dfdb2770060d4df729e3fc8",
+  "app/e2e/job-phone-layout.spec.ts": "9b328df7709ce1dc92b5a1ea432734ed997433a0eba344a543f46572016ba12b",
+  "app/e2e/support/supabaseFixtures.ts": "68862e71175480a43d010ec7257f43980bb9dceeac293ff5a6477a8dd85e9a77",
+  "app/e2e/support/specHelpers.ts": "bbbe14aec620d45c2f1ed617c76d8215b7041ae0f12d802e64cf7806083fc68e",
+  "app/playwright.config.ts": "abc477d61632813c943f68e3017c687ef640672be95e1facc492c0e5076087ca",
+  "app/src/components/projects/JobExecutionPanel.tsx": "f0e4b738348684821dde43949b77156edadd2ae3ce07361c6ad94d0023a36da7",
+  "app/src/lib/crewGoal.ts": "22d63348e7f5f5b89ee226f00f933a2656cc892603f8c40ab54862142b6c811b",
+  "app/src/lib/api.ts": "3221c0a63c0492ac50663841ba2bef9fe7fc062c911ad203cfff7e5d833d5a64",
+  "app/package-lock.json": "b73730093a563941c1ead405d43537467a171733d27a14ca358467c41765b663"
+}
