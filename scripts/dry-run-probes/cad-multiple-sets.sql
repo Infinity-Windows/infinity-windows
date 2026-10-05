@@ -36,6 +36,7 @@ declare
   v_updated_open public.project_openings;
   v_imported_type_id uuid;
   v_import_result jsonb;
+  v_view_saved integer;
 begin
   -- Pick every account and the sandbox job before switching JWT identity.
   perform pg_temp.dry_run_as_system();
@@ -275,6 +276,41 @@ begin
       and v_updated_open.assigned_window_id = v_inventory_window_id
       and v_updated_open.window_type_id = v_type_2 and v_updated_open.status = 'assigned',
     coalesce(v_updated_open.id::text, 'no row'));
+
+  -- A cached app's project-wide elevation delete must stop before it removes
+  -- another file's references. The current app replaces only its own file.
+  v_role := pg_temp.dry_run_act_as(v_real_owner);
+  v_view_saved := public.replace_planset_elevation_views(v_job, v_set_a,
+    jsonb_build_array(jsonb_build_object(
+      'mark_code', v_mark_1, 'page_number', 1, 'region_index', 0,
+      'pin_x', 0.2, 'pin_y', 0.3)));
+  perform pg_temp.dry_run_check('first drawing gets one elevation reference',
+    v_view_saved = 1, v_view_saved::text);
+  v_view_saved := public.replace_planset_elevation_views(v_job, v_build_set,
+    jsonb_build_array(jsonb_build_object(
+      'mark_code', v_mark_3, 'page_number', 1, 'region_index', 0,
+      'pin_x', 0.4, 'pin_y', 0.5)));
+  perform pg_temp.dry_run_check('second drawing gets one elevation reference',
+    v_view_saved = 1, v_view_saved::text);
+  v_role := pg_temp.dry_run_act_as(v_foreman);
+  perform pg_temp.dry_run_expect_error('cached app cannot erase project-wide elevation references',
+    format('delete from public.project_mark_elevation_views where project_id = %L::uuid', v_job),
+    'older version');
+  v_role := pg_temp.dry_run_act_as(v_installer);
+  perform pg_temp.dry_run_expect_error('installer cannot replace elevation references',
+    format('select public.replace_planset_elevation_views(%L::uuid,%L::uuid,''[]''::jsonb)',
+      v_job, v_set_a), 'Only a current Forge foreman');
+  v_role := pg_temp.dry_run_act_as(v_real_owner);
+  v_view_saved := public.replace_planset_elevation_views(v_job, v_set_a, '[]'::jsonb);
+  perform pg_temp.dry_run_as_system();
+  perform pg_temp.dry_run_check('re-reading one drawing leaves the other references',
+    v_view_saved = 0
+      and not exists (select 1 from public.project_mark_elevation_views
+                       where project_id = v_job and planset_id = v_set_a)
+      and exists (select 1 from public.project_mark_elevation_views
+                   where project_id = v_job and planset_id = v_build_set
+                     and mark_code = v_mark_3),
+    'only the second drawing keeps its reference');
 
   -- Global catalog writes are blocked for sandbox logins, even inside this
   -- rollback-only probe. The same test uses a real owner for a generated

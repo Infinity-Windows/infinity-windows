@@ -347,6 +347,7 @@ export function PlansetUpload() {
         saved: run.saved,
         pages: run.pages as SpecPageStatus[],
         visionFailed: run.pages.length > 0 && run.pages.every((p) => !p.ok),
+        refusal: run.refusal,
       };
 
       const marks = summarizeDraftMarks(drafts);
@@ -369,6 +370,7 @@ export function PlansetUpload() {
         specs: specsResult.saved,
         specPages: specsResult.pages,
         specsVisionFailed: specsResult.visionFailed,
+        specRefusal: specsResult.refusal,
         converted: true,
         source,
         unreadPages,
@@ -425,6 +427,11 @@ export function PlansetUpload() {
     );
     const detailSheetCount =
       "detailSheets" in result ? (result.detailSheets ?? 0) : 0;
+
+    if ("specRefusal" in result && result.specRefusal) {
+      setSummary(`The schedule was saved, but detailed specs for this file need attention: ${result.specRefusal}`);
+      return;
+    }
 
     if (result.kind === "building") {
       if (!result.converted) {
@@ -674,7 +681,9 @@ export function PlansetUpload() {
         visionFailed: false,
       });
       setRetryNote(
-        result.stopped
+        result.refusal
+          ? result.refusal
+          : result.stopped
           ? "Stopped. Everything read so far is saved — resume any time."
           : stillFailed.length > 0
             ? `Still couldn't read page ${formatPageList(stillFailed)}. Try again in a minute, or fill those marks in by hand on the review screen.`

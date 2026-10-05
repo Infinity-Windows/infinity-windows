@@ -2778,17 +2778,7 @@ export async function saveElevationViews(
 ): Promise<{ saved: number }> {
   if (!projectId || !plansetId) return { saved: 0 };
   try {
-    const { error: delErr } = await supabase
-      .from("project_mark_elevation_views")
-      .delete()
-      .eq("project_id", projectId)
-      .eq("planset_id", plansetId);
-    if (delErr) throw delErr;
-
-    if (appearances.length === 0) return { saved: 0 };
     const rows = appearances.map((a) => ({
-      project_id: projectId,
-      planset_id: plansetId,
       mark_code: a.mark,
       page_number: a.pageNumber,
       region_index: a.regionIndex,
@@ -2799,11 +2789,13 @@ export async function saveElevationViews(
       label_h: a.labelH,
       crop_bbox: a.cropBbox,
     }));
-    const { error } = await supabase
-      .from("project_mark_elevation_views")
-      .insert(rows);
+    const { data, error } = await supabase.rpc("replace_planset_elevation_views", {
+      p_project_id: projectId,
+      p_planset_id: plansetId,
+      p_rows: rows,
+    });
     if (error) throw error;
-    return { saved: rows.length };
+    return { saved: Number(data) || 0 };
   } catch {
     return { saved: 0 };
   }
@@ -3487,6 +3479,8 @@ export interface SpecExtractionRunResult {
   processed: number;
   /** True when the caller aborted part-way; the planset stays resumable. */
   stopped: boolean;
+  /** A file-wide refusal: the caller must show this instead of reporting a successful read. */
+  refusal: string | null;
 }
 
 /**
@@ -3524,7 +3518,7 @@ export async function runSpecExtraction(
 
   if (queue.length === 0) {
     await finishSpecExtraction(projectId, planset, total, stored);
-    return { saved: 0, pages: stored, processed: 0, stopped: false };
+    return { saved: 0, pages: stored, processed: 0, stopped: false, refusal: null };
   }
 
   await updatePlanset(planset.id, { status: "extracting" }).catch(() => {});
@@ -3536,6 +3530,7 @@ export async function runSpecExtraction(
   let processed = 0;
   let stopped = false;
   let refused = false;
+  let refusal: string | null = null;
   // Running merge base so a mark drawn across two pages ends up as one whole
   // row, exactly as the old whole-sheet call produced.
   let carryOver: MarkSpecDraft[] = [];
@@ -3581,6 +3576,7 @@ export async function runSpecExtraction(
       };
     } catch (e) {
       refused = isPlansetRefusal(e);
+      if (refused) refusal = formatApiError(e);
       status = {
         pageNumber,
         ok: false,
@@ -3603,8 +3599,14 @@ export async function runSpecExtraction(
     if (refused) break;
   }
 
-  if (!stopped) await finishSpecExtraction(projectId, planset, total, stored);
-  return { saved, pages: stored, processed, stopped };
+  if (refusal) {
+    // A collision or server-update refusal applies to the entire file. Keep
+    // the stored copy retryable without leaving a misleading "extracting" row.
+    await updatePlanset(planset.id, { status: "uploaded" }).catch(() => {});
+  } else if (!stopped) {
+    await finishSpecExtraction(projectId, planset, total, stored);
+  }
+  return { saved, pages: stored, processed, stopped, refusal };
 }
 
 /**

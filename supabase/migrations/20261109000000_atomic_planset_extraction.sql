@@ -70,8 +70,9 @@
 --   not the function owner. search_path is pinned; EXECUTE is revoked from
 --   PUBLIC and anon and granted to authenticated only.
 --
--- The gate trigger functions are SECURITY INVOKER: they read only auth.uid(),
--- the marker and projects.deleted_at, and need nothing the writer lacks.
+-- The source-opening gate is SECURITY DEFINER so its live-project lookup also
+-- works during owner deletion of a testing job and cannot miss a live project
+-- hidden by RLS. Other gates use the invoker's permissions.
 
 -- ===========================================================================
 -- 1. Shared internals (not callable by clients)
@@ -1004,7 +1005,7 @@ grant execute on function public.commit_planset_mark_specs(uuid, uuid, jsonb) to
 create or replace function public.guard_planset_source_openings()
 returns trigger
 language plpgsql
-security invoker
+security definer
 set search_path = public, pg_temp
 as $$
 begin
@@ -1024,16 +1025,17 @@ begin
   end if;
 
   if tg_op = 'DELETE' then
-    -- Only a job already in the trash may lose source rows outside the
-    -- marker (purge_project). Asked as "is it PROVABLY trashed", so a job row
-    -- the caller cannot see refuses rather than waving the delete through.
+    -- Only a PROVABLY LIVE job is blocked. A trashed job may be purged and a
+    -- testing job may be permanently deleted by its owner: during the latter
+    -- cascade the parent project row has already gone. SECURITY DEFINER makes
+    -- this existence check independent of the caller's project RLS.
     -- Legacy extracted drafts can have no planset_id. The old browser deletes
     -- those before inserting replacements; permitting that first delete would
     -- lose the drafts when the subsequent INSERT hits this gate. No current
     -- client hard-deletes a live opening for manual removal (that is an RPC).
     if (old.planset_id is not null or not coalesce(old.field_added, false))
-       and not exists (select 1 from public.projects p
-                        where p.id = old.project_id and p.deleted_at is not null) then
+       and exists (select 1 from public.projects p
+                    where p.id = old.project_id and p.deleted_at is null) then
       raise exception 'This phone is running an older version of Forge. Close and reopen the app to update it, then read the plan set again. Nothing was changed.'
         using errcode = 'P0001', hint = 'forge.planset.update_required';
     end if;
@@ -1523,6 +1525,115 @@ $$;
 
 revoke all on function public.assign_window_to_opening(uuid, uuid, text) from public, anon;
 grant execute on function public.assign_window_to_opening(uuid, uuid, text) to authenticated, service_role;
+
+-- A cached app replaced ALL elevation references on the job before reading
+-- one building file. Refuse its direct writes, and let the current app replace
+-- only the references owned by the file it just read in one transaction.
+create or replace function public.guard_planset_elevation_views()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_row public.project_mark_elevation_views;
+begin
+  if auth.uid() is null
+     or coalesce(current_setting('app.elevation_save', true), '') = 'on' then
+    return case when tg_op = 'DELETE' then old else new end;
+  end if;
+  v_row := case when tg_op = 'DELETE' then old else new end;
+  -- Keep project/plan-set cascade deletion and trashed-job purge working.
+  -- A live source still on a live job is an old browser write.
+  if exists (select 1 from public.projects p
+              join public.project_plansets ps on ps.project_id = p.id
+             where p.id = v_row.project_id and p.deleted_at is null
+               and ps.id = v_row.planset_id) then
+    raise exception 'This phone is running an older version of Forge. Close and reopen the app to update it, then read the drawing again. Nothing was changed.'
+      using errcode = 'P0001', hint = 'forge.planset.update_required';
+  end if;
+  return case when tg_op = 'DELETE' then old else new end;
+end;
+$$;
+
+drop trigger if exists guard_planset_elevation_views on public.project_mark_elevation_views;
+create trigger guard_planset_elevation_views
+  before insert or update or delete on public.project_mark_elevation_views
+  for each row execute function public.guard_planset_elevation_views();
+revoke all on function public.guard_planset_elevation_views() from public, anon, authenticated;
+
+create or replace function public.replace_planset_elevation_views(
+  p_project_id uuid,
+  p_planset_id uuid,
+  p_rows jsonb
+)
+returns integer
+language plpgsql
+volatile
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_prev_marker text;
+  v_saved integer := 0;
+begin
+  if v_uid is null or public.is_partner_user()
+     or not exists (select 1 from public.profiles p
+                     where p.id = v_uid and p.retired_at is null
+                       and p.access_revoked_at is null)
+     or not public.is_foreman_plus(v_uid) then
+    raise exception 'Only a current Forge foreman or above can save drawing references.'
+      using errcode = '42501';
+  end if;
+  if not public._ai_job_visible(p_project_id, v_uid)
+     or not exists (select 1 from public.project_plansets ps
+                     where ps.id = p_planset_id and ps.project_id = p_project_id) then
+    raise exception 'That drawing is no longer on this job. Reload and try again.'
+      using errcode = 'P0001', hint = 'forge.planset.not_found';
+  end if;
+  if p_rows is null or jsonb_typeof(p_rows) <> 'array'
+     or jsonb_array_length(p_rows) > 10000 then
+    raise exception 'The drawing-reference save was incomplete. Nothing was changed.'
+      using errcode = 'P0001', hint = 'forge.planset.invalid_plan';
+  end if;
+  if exists (
+    select 1 from jsonb_to_recordset(p_rows) as r(
+      mark_code text, page_number integer, region_index integer,
+      pin_x double precision, pin_y double precision)
+     where nullif(trim(r.mark_code), '') is null or r.page_number is null
+        or r.page_number < 1 or r.region_index is null or r.region_index < 0
+        or r.pin_x is null or r.pin_y is null
+  ) then
+    raise exception 'The drawing-reference save was incomplete. Nothing was changed.'
+      using errcode = 'P0001', hint = 'forge.planset.invalid_plan';
+  end if;
+
+  perform pg_advisory_xact_lock(
+    hashtextextended('forge:elevation:' || p_planset_id::text, 0)
+  );
+  v_prev_marker := current_setting('app.elevation_save', true);
+  perform set_config('app.elevation_save', 'on', true);
+  delete from public.project_mark_elevation_views
+   where project_id = p_project_id and planset_id = p_planset_id;
+  insert into public.project_mark_elevation_views (
+    project_id, planset_id, mark_code, page_number, region_index,
+    view_name, pin_x, pin_y, label_w, label_h, crop_bbox
+  )
+  select p_project_id, p_planset_id, r.mark_code, r.page_number,
+         r.region_index, r.view_name, r.pin_x, r.pin_y,
+         r.label_w, r.label_h, r.crop_bbox
+    from jsonb_to_recordset(p_rows) as r(
+      mark_code text, page_number integer, region_index integer,
+      view_name text, pin_x double precision, pin_y double precision,
+      label_w double precision, label_h double precision, crop_bbox jsonb);
+  get diagnostics v_saved = row_count;
+  perform set_config('app.elevation_save', coalesce(v_prev_marker, ''), true);
+  return v_saved;
+end;
+$$;
+revoke all on function public.replace_planset_elevation_views(uuid, uuid, jsonb) from public, anon;
+grant execute on function public.replace_planset_elevation_views(uuid, uuid, jsonb) to authenticated;
 
 comment on function public.guard_planset_source_openings() is
   'Refuses source-attributed draft inserts, hard deletes of source-attributed rows on a live job, and planset_id moves onto a document, unless reconcile_planset_openings set app.planset_extraction for its own transaction. Stops cached old apps writing around the atomic commit.';
