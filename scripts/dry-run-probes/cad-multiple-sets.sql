@@ -255,17 +255,18 @@ begin
     'catalog width and opening type remain unchanged');
 
   -- Assignment may fill a previously blank opening type only through its
-  -- existing RPC marker. Use a generated sandbox inventory unit and manual
-  -- opening, so the ordinary installed/different-type rules are exercised.
+  -- existing RPC marker. Use a generated inventory unit already assigned to
+  -- the sandbox job: QA logins cannot move a unit from an unknown job, even
+  -- within this rolled-back rehearsal. The blank-type fill is still tested.
   v_assignment_open_id := gen_random_uuid();
   v_inventory_window_id := gen_random_uuid();
   perform pg_temp.dry_run_as_system();
   insert into public.project_openings (id, project_id, opening_code, confirmed)
   values (v_assignment_open_id, v_job,
           'CAD-DR-ASG-' || replace(gen_random_uuid()::text, '-', ''), true);
-  insert into public.windows (id, window_id, window_type_id, status)
+  insert into public.windows (id, window_id, window_type_id, project_id, status)
   values (v_inventory_window_id,
-          'CAD-DR-W-' || replace(gen_random_uuid()::text, '-', ''), v_type_2, 'in_warehouse');
+          'CAD-DR-W-' || replace(gen_random_uuid()::text, '-', ''), v_type_2, v_job, 'in_warehouse');
   v_role := pg_temp.dry_run_act_as(v_installer);
   v_updated_open := public.assign_window_to_opening(v_assignment_open_id, v_inventory_window_id, null);
   perform pg_temp.dry_run_check('assign_window_to_opening: installer assignment fills the blank type',
