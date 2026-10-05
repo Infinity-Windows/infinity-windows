@@ -2,6 +2,7 @@ await as(id(2),'postgres');
 let metadataSql=read('supabase/migrations/20261108480000_work_unit_metadata_cohorts.sql');
 const metadataBuild=process.argv.includes('--build-metadata-coverage');
 const metadataTables=['definitions','versions','proposals','revisions','current','floors','floor_current','commands','contract'].map(s=>'_work_unit_metadata_'+s);
+const metadataService=['_work_unit_metadata_person_counts'];
 const metadataPublic=['work_unit_metadata_read','work_unit_metadata_command','work_unit_metadata_receipt','work_unit_cohorts_read'];
 const section=(sql,name,body)=>sql.replace(new RegExp('-- '+name+'_BEGIN[\\s\\S]*?-- '+name+'_END'),'-- '+name+'_BEGIN\n'+body+'-- '+name+'_END');
 const controls=metadataTables.map(t=>`alter table public.${t} enable row level security;\nrevoke all on table public.${t} from public,anon,authenticated,service_role;\ncreate trigger metadata_gate before insert or update or delete or truncate on public.${t} for each statement execute function public._work_unit_metadata_gate();\n`+(['_work_unit_metadata_current','_work_unit_metadata_floor_current'].includes(t)?'':`create trigger metadata_immutable before update or delete or truncate on public.${t} for each statement execute function public._work_unit_metadata_immutable();\n`)).join('');
@@ -23,16 +24,19 @@ for(const ddl of ["create function work_unit_metadata_read(text) returns int lan
 }
 await db.exec('savepoint metadata_base_drift');await db.exec('grant select(profile_id) on work_activity_safety_events to authenticated');await db.exec('savepoint metadata_base_refusal');let mf;try{await db.exec(preflight);}catch(e){mf=e.code;}assert.equal(mf,'55000');await db.exec('rollback to savepoint metadata_base_drift');check(true,'Base column ACL drift refuses metadata DDL');
 const sandboxTriggerQuery="select c.relname as table,t.tgenabled enabled,t.tgargs args,pg_get_triggerdef(t.oid,true) definition from pg_trigger t join pg_class c on c.oid=t.tgrelid join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and t.tgname='guard_test_account_sandbox_only' order by c.relname";
-const allTriggerQuery="select n.nspname,c.relname as table,t.tgname,t.tgenabled,pg_get_triggerdef(t.oid,true) definition from pg_trigger t join pg_class c on c.oid=t.tgrelid join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' order by c.relname,t.tgname";
+const allTriggerQuery="select n.nspname,c.relname as table,t.tgname,t.tgenabled,t.tgisinternal,coalesce(k.conname,'') constraint_name,coalesce(fc.relname,'') constraint_table,pg_get_triggerdef(t.oid,true) definition from pg_trigger t join pg_class c on c.oid=t.tgrelid join pg_namespace n on n.oid=c.relnamespace left join pg_constraint k on k.oid=t.tgconstraint left join pg_class fc on fc.oid=k.conrelid where n.nspname='public' order by c.relname,t.tgname";
 const allTriggersBefore=(await db.query(allTriggerQuery)).rows;
 const sandboxTriggersBefore=(await db.query(sandboxTriggerQuery)).rows;
 await db.exec(metadataSql.replace(/^([\s\S]*?)\bbegin;/,(_,prefix)=>prefix).replace(/rollback;\s*$/,''));
-const allTriggersAfter=(await db.query(allTriggerQuery)).rows;assert.deepEqual(allTriggersAfter.filter(t=>!metadataTables.includes(t.table)),allTriggersBefore,'Every older public trigger remains byte-identical');
+const allTriggersAfter=(await db.query(allTriggerQuery)).rows;const newProfileActorTriggers=allTriggersAfter.filter(t=>t.table==='profiles'&&t.tgisinternal&&t.constraint_name==='metadata_actor_retention'&&metadataTables.includes(t.constraint_table));
+assert.equal(newProfileActorTriggers.length,12,'Exactly two incoming RI triggers per metadata actor FK');
+assert.deepEqual([...new Set(newProfileActorTriggers.map(t=>t.constraint_table))].sort(),['commands','definitions','floors','proposals','revisions','versions'].map(x=>'_work_unit_metadata_'+x));
+assert.deepEqual(allTriggersAfter.filter(t=>!metadataTables.includes(t.table)&&!newProfileActorTriggers.includes(t)),allTriggersBefore,'Every older public trigger remains byte-identical; only explicit incoming RI triggers are additive');
 const sandboxTriggersAfter=(await db.query(sandboxTriggerQuery)).rows;const sandboxNew=sandboxTriggersAfter.filter(t=>metadataTables.includes(t.table));assert.deepEqual(sandboxTriggersAfter.filter(t=>!metadataTables.includes(t.table)),sandboxTriggersBefore);assert.deepEqual(sandboxNew.map(t=>t.table),['_work_unit_metadata_commands','_work_unit_metadata_definitions','_work_unit_metadata_proposals']);for(const t of sandboxNew){assert.equal(t.enabled,'O');assert.ok(t.definition.includes("guard_test_account_sandbox_only('project_id', 'project')"));}check(true,'Exactly three new enabled standard sandbox triggers; every older sandbox trigger unchanged');
 if(process.env.WORK_UNIT_METADATA_SANDBOX_DELTA_OUT)writeFileSync(process.env.WORK_UNIT_METADATA_SANDBOX_DELTA_OUT,JSON.stringify({scope:'Actual source-matched PGlite catalog delta',olderTriggersUnchanged:true,allOlderPublicTriggerCount:allTriggersBefore.length,allOlderPublicTriggersUnchanged:true,before:sandboxTriggersBefore,added:sandboxNew},null,2)+'\n');
 
 const ownFns=(await db.query("select p.proname,pg_get_function_identity_arguments(p.oid) args from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and (starts_with(p.proname,'_work_unit_metadata_') or p.proname=any($1)) order by p.proname",[metadataPublic])).rows;
-const acls=ownFns.map(f=>`revoke all on function public.${f.proname}(${f.args}) from public,anon,${metadataPublic.includes(f.proname)?'':'authenticated,'}service_role;\n`+(metadataPublic.includes(f.proname)?`grant execute on function public.${f.proname}(${f.args}) to authenticated;\n`:'')).join('');if(metadataBuild)await db.exec(acls);else assert.ok(metadataSql.includes(acls));
+const acls=ownFns.map(f=>`revoke all on function public.${f.proname}(${f.args}) from public,anon,${metadataPublic.includes(f.proname)?'':'authenticated,'}service_role;\n`+(metadataPublic.includes(f.proname)?`grant execute on function public.${f.proname}(${f.args}) to authenticated;\n`:metadataService.includes(f.proname)?`grant execute on function public.${f.proname}(${f.args}) to service_role;\n`:'')).join('');if(metadataBuild)await db.exec(acls);else assert.ok(metadataSql.includes(acls));
 const ownNames=ownFns.map(f=>f.proname);
 const functions=[...new Set([...baseFns,...ownNames])].sort(),tables=[...new Set([...contributorTables,...metadataTables])];
 let mq=baseQuery.replaceAll(sqlArray([...baseFns,'_work_unit_contributors_coverage']),sqlArray([...functions,'_work_unit_contributors_coverage','_work_unit_metadata_coverage'])).replaceAll(sqlArray(baseFns),sqlArray(functions))
@@ -41,6 +45,9 @@ let mq=baseQuery.replaceAll(sqlArray([...baseFns,'_work_unit_contributors_covera
 .replaceAll("starts_with(p.proname,'_work_unit_contributors_')","(starts_with(p.proname,'_work_unit_contributors_') or starts_with(p.proname,'_work_unit_metadata_') or starts_with(p.proname,'work_unit_metadata_') or p.proname=any("+sqlArray(metadataPublic)+"))");
 mq=mq.replace("select jsonb_build_object(","select jsonb_build_object('metadataNamespaceTypes',(select coalesce(jsonb_agg(jsonb_build_object('name',t.typname,'kind',t.typtype,'relation',c.relname) order by t.typname),'[]') from pg_type t join pg_namespace n on n.oid=t.typnamespace left join pg_class c on c.oid=t.typrelid where n.nspname='public' and (starts_with(t.typname,'_work_unit_metadata_') or starts_with(t.typname,'work_unit_metadata_'))),");
 mq=mq.replace("select jsonb_build_object(","select jsonb_build_object('metadataIndexes',(select coalesce(jsonb_agg(jsonb_build_object('name',c.relname,'definition',pg_get_indexdef(c.oid),'unique',i.indisunique,'valid',i.indisvalid,'ready',i.indisready) order by c.relname),'[]') from pg_index i join pg_class c on c.oid=i.indexrelid join pg_class t on t.oid=i.indrelid join pg_namespace n on n.oid=t.relnamespace where n.nspname='public' and starts_with(t.relname,'_work_unit_metadata_')),");
+// Internal RI trigger names contain catalog OIDs. Attest their complete stable
+// execution semantics and constraint/table linkage, never those generated IDs.
+mq=mq.replace("select jsonb_build_object(","select jsonb_build_object('metadataActorRetentionTriggers',(select coalesce(jsonb_agg(jsonb_build_object('table',c.relname,'constraintTable',d.relname,'constraint',k.conname,'function',t.tgfoid::regprocedure::text,'type',t.tgtype,'enabled',t.tgenabled,'internal',t.tgisinternal,'deferrable',t.tgdeferrable,'initiallyDeferred',t.tginitdeferred,'attributes',t.tgattr::text,'arguments',encode(t.tgargs,'hex'),'qual',pg_get_expr(t.tgqual,t.tgrelid)) order by d.relname,c.relname,t.tgfoid::regprocedure::text),'[]') from pg_trigger t join pg_constraint k on k.oid=t.tgconstraint join pg_class c on c.oid=t.tgrelid join pg_class d on d.oid=k.conrelid join pg_namespace n on n.oid=d.relnamespace where n.nspname='public' and starts_with(d.relname,'_work_unit_metadata_') and k.conname='metadata_actor_retention'),");
 // Generic attester includes its own complete body. Its expected catalog root
 // lives in a singleton immutable proof row, avoiding a circular self hash.
 const guard="create or replace function public._work_unit_metadata_coverage() returns boolean\nlanguage sql stable security definer set search_path=public,pg_temp as $coverage$\n select coalesce((select encode(sha256(convert_to(c.value::text,'UTF8')),'hex')=p.expected_catalog_sha256 from public._work_unit_metadata_contract p cross join ("+mq+")c where p.proof_key='metadata_v1'),false)\n$coverage$;\nrevoke all on function public._work_unit_metadata_coverage() from public,anon,authenticated,service_role;\n";
@@ -53,7 +60,11 @@ for(const actor of ['a','actor']){
  if(metadataBuild)metadataSql=metadataSql.replace(pattern,()=> '-- METADATA_BOUNDARY_'+actor+'_BEGIN\n'+boundary+' -- METADATA_BOUNDARY_'+actor+'_END');
  else for(const block of metadataSql.matchAll(pattern))assert.equal(block[0],'-- METADATA_BOUNDARY_'+actor+'_BEGIN\n'+boundary+' -- METADATA_BOUNDARY_'+actor+'_END','Independent public boundary pin drift');
 }
-if(metadataBuild){for(const name of metadataPublic){const start=metadataSql.indexOf('create function public.'+name+'('),end=metadataSql.indexOf('end$$;',start)+7;assert.ok(start>0&&end>start);await db.exec(metadataSql.slice(start,end).replace('create function','create or replace function'));}}
+const serviceBoundary=" perform public._work_activity_read_committed();perform public._work_activity_gate();perform pg_advisory_xact_lock(7710,0);\n if not coalesce((select encode(sha256(convert_to(pin.value::text,'UTF8')),'hex')='"+pinDigest+"' from ("+pinQuery+")pin),false) then raise exception using errcode='55000',message='Person history source is unavailable.';\n elsif not public._work_unit_metadata_coverage() or not public._work_unit_review_coverage() or not public._work_totals_coverage() or not public._work_unit_contributors_coverage() then raise exception using errcode='55000',message='Person history source is unavailable.';end if;\n";
+const servicePattern=/-- METADATA_BOUNDARY_service_BEGIN[\s\S]*?-- METADATA_BOUNDARY_service_END/g;assert.equal([...metadataSql.matchAll(servicePattern)].length,1);
+const serviceBlock='-- METADATA_BOUNDARY_service_BEGIN\n'+serviceBoundary+' -- METADATA_BOUNDARY_service_END';
+if(metadataBuild)metadataSql=metadataSql.replace(servicePattern,()=>serviceBlock);else assert.equal(metadataSql.match(servicePattern)[0],serviceBlock,'Independent service census boundary pin drift');
+if(metadataBuild){for(const name of [...metadataPublic,...metadataService]){const start=metadataSql.indexOf('create function public.'+name+'('),end=metadataSql.indexOf('end$$;',start)+7;assert.ok(start>0&&end>start);await db.exec(metadataSql.slice(start,end).replace('create function','create or replace function'));}}
 const md=await digest(mq),mc=(await q(mq)).value;
 const proofSeed="insert into public._work_unit_metadata_contract(proof_key,expected_catalog_sha256) values('metadata_v1','"+md+"');\n";
 if(metadataBuild){metadataSql=section(metadataSql,'METADATA_FUNCTION_ACLS',acls);metadataSql=section(metadataSql,'METADATA_COVERAGE',guard);metadataSql=section(metadataSql,'METADATA_PROOF_SEED',proofSeed);writeFileSync(new URL('supabase/migrations/20261108480000_work_unit_metadata_cohorts.sql',root),metadataSql);await db.exec(proofSeed);}else{assert.ok(metadataSql.includes(acls));assert.ok(metadataSql.includes(guard),'Metadata exact catalog drift');assert.ok(metadataSql.includes(proofSeed),'Immutable source proof drift');}
@@ -398,5 +409,66 @@ await mscenario('Branch-local helper body drift refuses all public authority pat
  assert.equal((await q('select _work_unit_review_coverage() and _work_totals_coverage() and _work_unit_contributors_coverage() ok')).ok,true);
  assert.equal((await q('select _work_unit_metadata_coverage() ok')).ok,false);
  await as(id(2));assert.equal((await mread()).availability,'unavailable');assert.equal((await mbatch()).availability,'unavailable');assert.equal((await mcommand('assign',assignData)).availability,'unavailable');assert.equal((await mrpc('branch_live_guard_receipt_refusal','select work_unit_metadata_receipt($1,1) value',[assignId])).availability,'unavailable');
+});
+if(process.env.WORK_UNIT_METADATA_WIRE_OUT)writeFileSync(process.env.WORK_UNIT_METADATA_WIRE_OUT,JSON.stringify({sourceSha256:hash(metadataSql),calls:metadataWire},null,2)+'\n');
+
+const retentionSuffixes=['definitions','versions','proposals','revisions','floors','commands'];
+const retentionCounts=async who=>(await q('select _work_unit_metadata_person_counts($1,$2) value',[who,id(2)])).value;
+for(const suffix of retentionSuffixes)await mscenario('A lone oldest metadata '+suffix+' actor is counted and cannot be deleted',async()=>{
+ const person=id(mi++),rowId=id(mi++),command=id(mi++),unit=id(mi++);
+ await db.query('insert into auth.users(id) values($1)',[person]);await db.query("insert into profiles(id,display_name,role) values($1,'Retained metadata author','installer')",[person]);
+ const old=(await q('select person_record_counts($1) value',[person])).value;assert.ok(Object.values(old).every(n=>n===0),'No parent history masks this metadata-only actor');
+ if(suffix==='definitions')await db.query("insert into _work_unit_metadata_definitions(id,kind,code,actor_id) values($1,'material',$2,$3)",[rowId,'retention_'+mi,person]);
+ if(suffix==='versions')await db.query("insert into _work_unit_metadata_versions(id,definition_id,version,state,value,actor_id,command_id) values($1,$2,99,'retired','{}',$3,$4)",[rowId,category.definitionId,person,command]);
+ if(suffix==='proposals')await db.query("insert into _work_unit_metadata_proposals(id,actor_id,command_id,value) values($1,$2,$3,'{}')",[rowId,person,command]);
+ if(suffix==='revisions')await db.query("insert into _work_unit_metadata_revisions(id,unit_id,incarnation,revision,binding,origin_jobs,value,actor_id,command_id) values($1,$2,0,1,'{}','[]','{}',$3,$4)",[rowId,unit,person,command]);
+ if(suffix==='floors')await db.query("insert into _work_unit_metadata_floors(id,unit_id,incarnation,revision,basis,origin_jobs,state,shares,reason,actor_id,command_id) values($1,$2,0,1,'{}','[]','unknown','[]','Oldest actor evidence',$3,$4)",[rowId,unit,person,command]);
+ if(suffix==='commands')await db.query("insert into _work_unit_metadata_commands(command_id,actor_id,origin_jobs,request,result) values($1,$2,'[]','{}','{}')",[rowId,person]);
+ await as(null,'service_role');const counts=await retentionCounts(person);assert.equal(counts['_work_unit_metadata_'+suffix+'.actor_id'],1);assert.equal(retentionSuffixes.reduce((n,k)=>n+counts['_work_unit_metadata_'+k+'.actor_id'],0),1);assert.deepEqual(Object.fromEntries(Object.entries(counts).filter(([k])=>!k.startsWith('_work_unit_metadata_'))),old);
+ await as(id(2),'postgres');await merror('delete from profiles where id=$1',[person],'23001');await merror('delete from auth.users where id=$1',[person],'23001');
+ assert.equal((await q('select display_name from profiles where id=$1',[person])).display_name,'Retained metadata author');
+ await db.query('update profiles set retired_at=clock_timestamp(),access_revoked_at=clock_timestamp(),active=false where id=$1',[person]);
+ assert.equal((await retentionCounts(person))['_work_unit_metadata_'+suffix+'.actor_id'],1);assert.equal((await q('select display_name from profiles where id=$1',[person])).display_name,'Retained metadata author');
+ await merror('delete from _work_unit_metadata_'+suffix+' where actor_id=$1',[person]);
+});
+await mscenario('Metadata census preserves parent counts, refuses invalid targets and exposes no client execute',async()=>{
+ const person=id(mi++);await db.query('insert into auth.users(id) values($1)',[person]);await db.query("insert into profiles(id,display_name,role) values($1,'Unused login','installer')",[person]);
+ const counts=await retentionCounts(person);assert.ok(Object.values(counts).every(n=>n===0));assert.equal(Object.keys(counts).filter(k=>k.startsWith('_work_unit_metadata_')).length,6);
+ await merror('select _work_unit_metadata_person_counts(null,$1)',[id(2)]);await merror('select _work_unit_metadata_person_counts($1,$2)',[id(mi++),id(2)],'P0002');
+ for(const role of ['anon','authenticated']){await as(id(2),role);await merror('select _work_unit_metadata_person_counts($1,$2)',[person,id(2)],'42501');}
+ await as(null,'service_role');assert.deepEqual(await retentionCounts(person),counts);assert.deepEqual((await q('select _work_unit_metadata_person_counts($1,null) value',[person])).value,counts);
+ await as(id(2),'postgres');await db.query('delete from auth.users where id=$1',[person]);assert.equal((await q('select count(*)::int n from profiles where id=$1',[person])).n,0);
+});
+await mscenario('Fresh census owner admission and retired metadata writer refusal are independent',async()=>{
+ const person=id(mi++);await db.query('insert into auth.users(id) values($1)',[person]);await db.query("insert into profiles(id,display_name,role) values($1,'Retiring author','owner')",[person]);
+ await as(person);const data={definitionId:id(mi++),expectedVersion:0,projectId:null,definition:{kind:'material',code:'retired_author_'+mi,labelEn:'Old author',labelEs:'Old author'}};
+ assert.equal((await mcommand('publish',data)).receipt.status,'applied');await as(id(2),'postgres');await db.query('update profiles set retired_at=clock_timestamp(),access_revoked_at=clock_timestamp(),active=false where id=$1',[person]);
+ await as(person);await merror(...mrawCommand('publish',{...data,definitionId:id(mi++),definition:{...data.definition,code:'refused_'+mi}}),'42501');
+ await as(null,'service_role');await merror('select _work_unit_metadata_person_counts($1,$2)',[id(2),person],'42501');assert.ok((await retentionCounts(person))['_work_unit_metadata_versions.actor_id']>0);
+});
+for(const suffix of retentionSuffixes)await mscenario('Missing actor retention FK '+suffix+' fails the new census with frozen guards still true',async()=>{
+ await db.exec('alter table _work_unit_metadata_'+suffix+' drop constraint metadata_actor_retention');assert.equal((await q('select _work_unit_review_coverage() and _work_totals_coverage() and _work_unit_contributors_coverage() ok')).ok,true);assert.equal((await q('select _work_unit_metadata_coverage() ok')).ok,false);
+ await as(null,'service_role');await merror('select _work_unit_metadata_person_counts($1,$2)',[id(1),id(2)],'55000');
+});
+await mscenario('Replaced coverage attester cannot admit the service census',async()=>{
+ await db.exec("create or replace function _work_unit_metadata_coverage() returns boolean language sql stable security definer set search_path=public,pg_temp as 'select true'");
+ assert.equal((await q('select _work_unit_review_coverage() and _work_totals_coverage() and _work_unit_contributors_coverage() ok')).ok,true);await as(null,'service_role');await merror('select _work_unit_metadata_person_counts($1,$2)',[id(1),id(2)],'55000');
+});
+if(process.env.WORK_UNIT_METADATA_WIRE_OUT)writeFileSync(process.env.WORK_UNIT_METADATA_WIRE_OUT,JSON.stringify({sourceSha256:hash(metadataSql),calls:metadataWire},null,2)+'\n');
+await mscenario('Deletion-first ordering refuses a later metadata writer rather than orphaning history',async()=>{
+ const person=id(mi++);await db.query('insert into auth.users(id) values($1)',[person]);await db.query("insert into profiles(id,display_name,role) values($1,'Empty departing author','owner')",[person]);
+ assert.ok(Object.values(await retentionCounts(person)).every(n=>n===0));await db.query('delete from auth.users where id=$1',[person]);
+ await as(person);await merror(...mrawCommand('publish',{definitionId:id(mi++),expectedVersion:0,projectId:null,definition:{kind:'material',code:'deleted_actor_'+mi,labelEn:'Refused',labelEs:'Refused'}}),'42501');
+ await as(id(2),'postgres');for(const suffix of retentionSuffixes)assert.equal((await q('select count(*)::int n from _work_unit_metadata_'+suffix+' where actor_id=$1',[person])).n,0);
+});
+
+for(const direction of ['profiles','_work_unit_metadata_commands'])await mscenario('Disabled internal actor FK trigger on '+direction+' is independently refused',async()=>{
+ const trigger=(await q("select t.tgname from pg_trigger t join pg_constraint k on k.oid=t.tgconstraint where k.conrelid='_work_unit_metadata_commands'::regclass and k.conname='metadata_actor_retention' and t.tgrelid=$1::regclass order by t.tgname limit 1",[direction])).tgname;
+ await db.exec('alter table '+direction+' disable trigger "'+trigger+'"');assert.equal((await q('select _work_unit_review_coverage() and _work_totals_coverage() and _work_unit_contributors_coverage() ok')).ok,true);assert.equal((await q('select _work_unit_metadata_coverage() ok')).ok,false);
+ await as(null,'service_role');await merror('select _work_unit_metadata_person_counts($1,$2)',[id(1),id(2)],'55000');await as(id(2));assert.equal((await mread()).availability,'unavailable');assert.equal((await mbatch()).availability,'unavailable');
+});
+await mscenario('Supplemental census body drift independently refuses four public metadata entries',async()=>{
+ await db.exec("create or replace function _work_unit_metadata_person_counts(p_id uuid,p_actor_id uuid default null) returns jsonb language plpgsql volatile security definer set search_path=public,pg_temp as $$begin return '{}';end$$");assert.equal((await q('select _work_unit_review_coverage() and _work_totals_coverage() and _work_unit_contributors_coverage() ok')).ok,true);assert.equal((await q('select _work_unit_metadata_coverage() ok')).ok,false);
+ await as(id(2));assert.equal((await mread()).availability,'unavailable');assert.equal((await mbatch()).availability,'unavailable');assert.equal((await mcommand('assign',assignData)).availability,'unavailable');assert.equal((await mrpc('census_guard_receipt_refusal','select work_unit_metadata_receipt($1,1) value',[assignId])).availability,'unavailable');
 });
 if(process.env.WORK_UNIT_METADATA_WIRE_OUT)writeFileSync(process.env.WORK_UNIT_METADATA_WIRE_OUT,JSON.stringify({sourceSha256:hash(metadataSql),calls:metadataWire},null,2)+'\n');

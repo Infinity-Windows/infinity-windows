@@ -146,6 +146,14 @@ export const WORK_HISTORY_PROBES: readonly HistoryProbe[] = [
   { table: "work_unit_review_defects", column: "creator_id", one: "unit defect they reported", many: "unit defects they reported" },
   { table: "work_unit_review_defect_events", column: "actor_id", one: "unit defect follow-up", many: "unit defect follow-ups" },
 
+  // Immutable unit metadata is counted by the additive service census.
+  { table: "_work_unit_metadata_definitions", column: "actor_id", one: "metadata definition", many: "metadata definitions" },
+  { table: "_work_unit_metadata_versions", column: "actor_id", one: "published metadata version", many: "published metadata versions" },
+  { table: "_work_unit_metadata_proposals", column: "actor_id", one: "metadata proposal", many: "metadata proposals" },
+  { table: "_work_unit_metadata_revisions", column: "actor_id", one: "unit classification decision", many: "unit classification decisions" },
+  { table: "_work_unit_metadata_floors", column: "actor_id", one: "unit floor allocation", many: "unit floor allocations" },
+  { table: "_work_unit_metadata_commands", column: "actor_id", one: "metadata request receipt", many: "metadata request receipts" },
+
   // Time and money.
   { table: "time_shifts", column: "profile_id", one: "punch", many: "punches" },
   // The tap time and arrival time behind each punch (20261028000000): payroll
