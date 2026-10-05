@@ -734,6 +734,8 @@ jobs:
 
       # And the check that keeps this list honest: a test in scripts/ that no
       # step above names is a test nobody runs.
+      - name: Finite metadata transition trial rejects unsafe execution before contact
+        run: python3 scripts/test_work_unit_metadata_transition_trial.py
       - name: Test held metadata retention no-contact fixture controls
         run: python3 scripts/test_work_unit_metadata_retention_postgres.py
 
