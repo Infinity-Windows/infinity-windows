@@ -1,11 +1,13 @@
 {
   "head": "5a54bd12495c4217f8afcb566a7492cedb126b79",
   "pins": {
-    ".github/workflows/ci.yml": "bda028f16ee201fdd54d1ea67534d774721fd87bfdbf9b0b829bc3b84d811eb4",
+    ".github/workflows/ci.yml": "e1376ed2ab25a153b54e68dd2008f11d93c3db3872d6a94a95748b8b3c92321c",
     "app/e2e/activity-protocol-journal.spec.ts": "7492beb15d6efedda560fbb9e4d3273ba7aa739bb9209e96fe9b1fcb5682d951",
+    "app/e2e/cross-job-attempt-evidence-native.spec.ts": "c150a79e257c2bea2ab00dbe754f75156b30cbdb8ce2325ccc291768c37ed0e8",
     "app/e2e/cross-job-storage-v3-native.spec.ts": "4dddca9166dd935ef1b1b29f97f446065585a2e82fcd634736c9f370b53b96cf",
     "app/e2e/paid-clock-chain.spec.ts": "ad0535f4bd08e7b26a8a4af4fdb22f35e5f74f7650afc9179fb93132bb37dbbe",
     "app/e2e/photo-outbox-v1-recovery.spec.ts": "ad6dca7d32068a8ba0770158f2f9c0c5ad99eedfbc963bb6a1d0571b34e60171",
+    "app/e2e/support/crossJobAttemptEvidenceHarness.ts": "646cebf87edf70cf8a3dc916d81781d072eafe73bd3646b116439304be4f0100",
     "app/e2e/support/crossJobStorageV3Harness.ts": "f62cdf8f1b3de71dd956565f15de67ada4013495c045e1635027f4e0e20a6ed0",
     "app/e2e/support/specHelpers.ts": "bbbe14aec620d45c2f1ed617c76d8215b7041ae0f12d802e64cf7806083fc68e",
     "app/e2e/unit-review-native.spec.ts": "653885baa78aceffdb5056b3979090e646243b297c45a858b367fa44675423bd",
@@ -19,6 +21,8 @@
     "app/src/lib/paidClock/storage.ts": "5343d2415d7a705918a7b9de9b0e7f7406bf8dbae55cb492aded28d4a5e3f0b2",
     "app/src/lib/workActivity/allocationPredecessor.test.ts": "3fc5de9e1dcb046ab472db6f3d29d5fd60b81a987ece9222a0333ce207edf78a",
     "app/src/lib/workActivity/allocationPredecessor.ts": "78d5b8ea5cdfb15ca585ceb36bd507077e1bcaac62ba064469942304a8716c5f",
+    "app/src/lib/workActivity/apiV3.test.ts": "1d372ce7c05fa364961e74faa85c223d6c0b26fd71a726749fffad9c1f017d76",
+    "app/src/lib/workActivity/apiV3.ts": "e3813b89a427bf0a488df8acb4c270ec2002edf86528bb751aacdd455a2e1ba1",
     "app/src/lib/workActivity/journal.ts": "4e221e425fa7925cc92342c9b871aa5e65606ec76d26a379ca8867af5d9a839b",
     "app/src/lib/workActivity/plannerV2.test.ts": "5133ba18f9de2650393abffef91a9b3e175cb5ccaa079225a992fb5dc0a48ba5",
     "app/src/lib/workActivity/plannerV2.ts": "f19a7d33c180f877a9c9215ba8ddf53929fd9dbb4f9d5524d46e43ecd75aa6b6",
@@ -28,6 +32,9 @@
     "app/src/lib/workCapture/crossJobStorageV3.fixtures.ts": "86bfdb9dc5af09ec55e897e8232a7fea83d7b92fce4dd00cbaea1a98543fc1fa",
     "app/src/lib/workCapture/crossJobStorageV3.test.ts": "1524d84e3d41117d052992a8c68f34ff30011bf18f0366e8ec4e6c133abd1261",
     "app/src/lib/workCapture/crossJobStorageV3.ts": "da95a94239cc2227573a81bb0d84e2143d9b9c578e8809fb53305e5275b75665",
+    "app/src/lib/workCapture/crossJobStorageV4.fixtures.ts": "7dc64afbc7806249c8103f4ce6c490c1542021881efe8df356ab427869a59ce3",
+    "app/src/lib/workCapture/crossJobStorageV4.test.ts": "2238cee49b5f711a8b6946816569363c244aa599e7ccbae312da4f0a0ce614dc",
+    "app/src/lib/workCapture/crossJobStorageV4.ts": "39369014a66632d3981d9e77fdd981d0dd8fd82931761a8be4beb9ff426ce538",
     "app/src/lib/workCapture/storage.ts": "3d20d5c39589282df54026396dbc47713d340671ba30c6d454bbf69bc9b70c1a",
     "app/src/lib/workUnitReview/storage.ts": "215fecba8347ae86c02035459a5ee40e9e175822b2840749c87ac933a0c91d4d",
     "docs/work-cross-job-native-journal-v3.md": "4f5dcff63cc13edaceba069c3f2e31314912913a56715cc0f800f0a1b21d18fd"
@@ -50,5 +57,21 @@
       "afterSha256": "da95a94239cc2227573a81bb0d84e2143d9b9c578e8809fb53305e5275b75665"
     }
   ],
-  "headMeaning": "Baseline commit plus separately reviewed transport source checkpoint2; this is not a future commit SHA."
+  "headMeaning": "Baseline commit plus separately reviewed transport source checkpoint2; this is not a future commit SHA.",
+  "attemptEvidenceEnrollment": {
+    "baselineHead": "bdb7de2d3cc51b60b6c5ccc008267c5682c38eb5",
+    "sourceCheckpoint2ManifestSha256": "7441a65876ede7a4c14930e59c8e5cccc599e29a0a31ca9fadba349e20cbab02",
+    "meaning": "Reviewed successor source plus proposed separate native CI step; baseline is not a future commit SHA.",
+    "workflowBeforeSha256": "bda028f16ee201fdd54d1ea67534d774721fd87bfdbf9b0b829bc3b84d811eb4",
+    "workflowAfterSha256": "e1376ed2ab25a153b54e68dd2008f11d93c3db3872d6a94a95748b8b3c92321c",
+    "newSourcePins": [
+      "app/e2e/cross-job-attempt-evidence-native.spec.ts",
+      "app/e2e/support/crossJobAttemptEvidenceHarness.ts",
+      "app/src/lib/workActivity/apiV3.test.ts",
+      "app/src/lib/workActivity/apiV3.ts",
+      "app/src/lib/workCapture/crossJobStorageV4.fixtures.ts",
+      "app/src/lib/workCapture/crossJobStorageV4.test.ts",
+      "app/src/lib/workCapture/crossJobStorageV4.ts"
+    ]
+  }
 }

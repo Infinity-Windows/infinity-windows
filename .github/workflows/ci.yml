@@ -278,6 +278,10 @@ jobs:
         run: |
           npm run e2e -- cross-job-storage-v3-native.spec.ts
           npm run e2e -- cross-job-storage-v3-native.spec.ts --browser=webkit
+      - name: Dormant attempt evidence preserves one-use sends and atomic storage
+        run: |
+          npm run e2e -- cross-job-attempt-evidence-native.spec.ts
+          npm run e2e -- cross-job-attempt-evidence-native.spec.ts --browser=webkit
       - name: Original unit decisions survive native storage and explicit recovery
         run: |
           npm run e2e -- unit-review-native.spec.ts
