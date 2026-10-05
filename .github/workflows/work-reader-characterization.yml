@@ -1,0 +1,101 @@
+name: Held Reader characterization PostgreSQL fixture
+
+on:
+  push:
+    branches: [codex/work-cross-job-20261004]
+    paths:
+      - .github/workflows/work-reader-characterization.yml
+      - scripts/work-reader-characterization/**
+
+permissions:
+  contents: read
+
+jobs:
+  reader:
+    name: Reader diagnostic PostgreSQL17 disposable fixture
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: supabase_admin
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: forge_work_activity_role_test
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U supabase_admin -d forge_work_activity_role_test"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      WORK_ACTIVITY_ROLE_TEST_DB_URL: postgresql://supabase_admin:fixture-only@localhost:5432/forge_work_activity_role_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify package and all prerequisite source before database construction
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/work-reader-characterization-prerequisites"
+          echo "e14d8851e8ca8d9f76a4f6f4a3e0beefae02af4c47f79c20f99249f14cd23471  scripts/work-reader-characterization/verify_bundle.py" | sha256sum -c -
+          echo "62ddb12ec4f3d703628c9adbb23c58d449a9d522bd23991aabf3f7801d3f2172  scripts/work-reader-characterization/source-bundle.tar.gz" | sha256sum -c -
+          echo "cd0373e55c199d94384c913e47ca3c8b3a13cc1ad0026e8050cd343961fe7fcc  scripts/work-reader-characterization/verify_prerequisites.py" | sha256sum -c -
+          echo "38b9f3f6ca0e3dfe176457d3f1fde82e62d0e90efa7f221a8c8e52d2183e1652  scripts/work-reader-characterization/prerequisite-pins.json" | sha256sum -c -
+          python3 scripts/work-reader-characterization/verify_prerequisites.py --repository "$GITHUB_WORKSPACE" | tee "$RUNNER_TEMP/work-reader-characterization-prerequisites/source-pins.json"
+          python3 scripts/work-reader-characterization/verify_bundle.py --archive scripts/work-reader-characterization/source-bundle.tar.gz --sha256 62ddb12ec4f3d703628c9adbb23c58d449a9d522bd23991aabf3f7801d3f2172 --destination "$RUNNER_TEMP/work-reader-characterization-reviewed-source" | tee "$RUNNER_TEMP/work-reader-characterization-prerequisites/extraction.json"
+          cp -a "$RUNNER_TEMP/work-reader-characterization-reviewed-source" "$RUNNER_TEMP/work-reader-characterization-offline-copy"
+          python3 "$RUNNER_TEMP/work-reader-characterization-offline-copy/COMBINED-READER-CHARACTERIZATION-SOURCE-CHECKPOINT-4/run_offline_controls.py" 2>&1 | tee "$RUNNER_TEMP/work-reader-characterization-prerequisites/source-tests.log"
+          python3 "$RUNNER_TEMP/work-reader-characterization-offline-copy/COMBINED-GENUINE-EXECUTOR-SOURCE-CHECKPOINT-6/test_combined_executor.py" 2>&1 | tee "$RUNNER_TEMP/work-reader-characterization-prerequisites/source6-tests.log"
+          python3 "$RUNNER_TEMP/work-reader-characterization-offline-copy/COMBINED-READER-CHARACTERIZATION-SOURCE-CHECKPOINT-4/characterization_executor.py" --check-plan | tee "$RUNNER_TEMP/work-reader-characterization-prerequisites/check-plan.json"
+      - name: Unchanged prerequisite 1 of 6
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/verify-work-activity-engine-role-parity.py 2>&1 | tee "$RUNNER_TEMP/work-reader-characterization-prerequisites/1.log"
+      - name: Unchanged prerequisite 2 of 6
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/verify-work-activity-catalog-concurrency.py 2>&1 | tee "$RUNNER_TEMP/work-reader-characterization-prerequisites/2.log"
+      - name: Unchanged prerequisite 3 of 6
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/verify-work-unit-review-concurrency.py 2>&1 | tee "$RUNNER_TEMP/work-reader-characterization-prerequisites/3.log"
+      - name: Unchanged prerequisite 4 of 6
+        shell: bash
+        env:
+          WORK_UNIT_REVIEW_VOLUME_OUT: ${{ runner.temp }}/work-reader-characterization-prerequisites/work-unit-review-volume.json
+        run: |
+          set -euo pipefail
+          python3 scripts/verify-work-unit-review-volume.py 2>&1 | tee "$RUNNER_TEMP/work-reader-characterization-prerequisites/4.log"
+      - name: Unchanged prerequisite 5 of 6
+        shell: bash
+        env:
+          WORK_ACTIVITY_TOTALS_VOLUME_OUT: ${{ runner.temp }}/work-reader-characterization-prerequisites/work-activity-totals-volume.json
+        run: |
+          set -euo pipefail
+          python3 scripts/verify-work-activity-totals-postgres.py 2>&1 | tee "$RUNNER_TEMP/work-reader-characterization-prerequisites/5.log"
+      - name: Unchanged prerequisite 6 of 6
+        shell: bash
+        env:
+          WORK_UNIT_CONTRIBUTORS_VOLUME_OUT: ${{ runner.temp }}/work-reader-characterization-prerequisites/work-unit-contributors-volume.json
+        run: |
+          set -euo pipefail
+          python3 scripts/verify-work-unit-contributors-postgres.py 2>&1 | tee "$RUNNER_TEMP/work-reader-characterization-prerequisites/6.log"
+      - name: Execute held current-fixture reader diagnostic
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 "$RUNNER_TEMP/work-reader-characterization-reviewed-source/COMBINED-READER-CHARACTERIZATION-SOURCE-CHECKPOINT-4/characterization_executor.py" --execute-characterization --output "$RUNNER_TEMP/work-reader-characterization-new/reader-characterization.json" 2>&1 | tee "$RUNNER_TEMP/work-reader-characterization-prerequisites/reader-characterization.log"
+      - name: Preserve complete or partial diagnostic receipts and unchanged prerequisites
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: work-reader-characterization
+          path: |
+            ${{ runner.temp }}/work-reader-characterization-new/
+            ${{ runner.temp }}/work-reader-characterization-prerequisites/
+            ${{ runner.temp }}/work-reader-characterization-offline-copy/COMBINED-READER-CHARACTERIZATION-SOURCE-CHECKPOINT-4/*json
+          if-no-files-found: ignore
