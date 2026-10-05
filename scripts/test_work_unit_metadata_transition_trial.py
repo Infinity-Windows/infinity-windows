@@ -257,14 +257,66 @@ class EvidenceTests(unittest.TestCase):
             def write(self,text):
                 if text=='\\q\n':self.returncode=0;return
                 saved=json.loads(outer.out.read_text());outer.assertEqual(saved['calls'][-1]['status'],'waiting')
-                marker=re.search(r'\\echo (trial_done_\d+)',text)[1];self.kw['stdout'].seek(0,2);self.kw['stdout'].write('true\n'+marker+'\n');self.kw['stdout'].flush()
+                marker=re.search(r'\\echo (trial_done_\d+)',text)[1];self.kw['stdout'].seek(0,2);self.kw['stdout'].write(('true' if 'to_jsonb(true)' in text else 't')+'\n'+marker+'\n');self.kw['stdout'].flush()
             def flush(self):pass
             def poll(self):return self.returncode
             def wait(self,timeout):return self.returncode
         def launch(args,**kw):launched.append((args,kw));return Process(**kw)
         with patch.dict(os.environ,{'PGHOST':'unsafe','PGOPTIONS':'-c role=authenticated'}):s=m.Session(m.validate_url(TARGET),self.report,launch=launch)
-        self.assertTrue(s.json('select true','first'));self.assertTrue(s.json('select true','second'));s.close()
+        self.assertTrue(s.json('select to_jsonb(true)','first'));self.assertTrue(s.json('select to_jsonb(true)','second'));s.close()
         self.assertEqual(len(launched),1);self.assertNotIn('PGHOST',launched[0][1]['env']);self.assertNotIn('PGOPTIONS',launched[0][1]['env']);self.assertEqual(len(self.report.data['calls']),2)
+    def scalar_wire_session(self,values):
+        # Model the exact psql scalar text boundary, not SQL evaluation. The
+        # actual Session.query marker/collection and Session.json decoder run.
+        outer=self
+        class Process:
+            def __init__(self,**kw):self.kw=kw;self.returncode=None;self.stdin=self
+            def write(self,text):
+                if text=='\\q\n':self.returncode=0;return
+                label=outer.report.data['calls'][-1]['label'];value=values.get(label,'')
+                if callable(value):raw=value(text)
+                elif type(value) is bool:raw=json.dumps(value) if text.lstrip().startswith('select to_jsonb(') else ('t' if value else 'f')
+                elif isinstance(value,(dict,list)):raw=json.dumps(value)
+                elif label=='fresh_synthetic_actor':raw='' if value is None else (json.dumps(value) if text.lstrip().startswith('select to_jsonb(') else value)
+                else:raw=value
+                marker=re.search(r'\\echo (trial_done_\d+)',text)[1]
+                self.kw['stdout'].seek(0,2);self.kw['stdout'].write(raw+'\n'+marker+'\n');self.kw['stdout'].flush()
+            def flush(self):pass
+            def poll(self):return self.returncode
+            def wait(self,timeout):return self.returncode
+        session=m.Session(m.validate_url(TARGET),self.report,launch=lambda args,**kw:Process(**kw))
+        self.addCleanup(session.close);return session
+    def test_real_decoder_accepts_serialized_scalars_and_rejects_raw_psql_text(self):
+        uid=m.ident(1);s=self.scalar_wire_session({'json_bool':True,'raw_bool':True,'json_uuid':lambda text:json.dumps(uid),'raw_uuid':lambda text:uid})
+        self.assertIs(s.json('select to_jsonb(true)','json_bool'),True)
+        with self.assertRaises(json.JSONDecodeError):s.json('select true','raw_bool')
+        self.assertEqual(s.json("select to_jsonb('"+uid+"'::uuid)",'json_uuid'),uid)
+        with self.assertRaises(json.JSONDecodeError):s.json("select '"+uid+"'::uuid",'raw_uuid')
+        self.assertTrue(all(c['status']=='returned' for c in self.report.data['calls']))
+    def test_predecessor_admission_uses_serialized_boolean_and_false_still_refuses(self):
+        values={'instance_before_main':INSTANCE,'main_not_preinstalled':True};s=self.scalar_wire_session(values);calls=[]
+        def launch(*args,**kwargs):calls.append(args);raise RuntimeError('process boundary reached')
+        with self.assertRaisesRegex(RuntimeError,'process boundary reached'):m.run_predecessor(m.validate_url(TARGET),self.report,self.p,s,launch)
+        self.assertEqual(len(calls),1)
+        values['main_not_preinstalled']=False
+        with self.assertRaisesRegex(RuntimeError,'0848 absent'):m.run_predecessor(m.validate_url(TARGET),self.report,self.p,s,lambda *a,**k:self.fail('must not launch'))
+    def test_fresh_actor_serialization_retains_exact_actor_refusal(self):
+        actor=m.ident(1);identity={**INSTANCE,'pid':1,'backendStart':'789','sessionUser':'postgres','currentUser':'postgres','superuser':False,'statementTimeout':'20s','lockTimeout':'12s','isolation':'read committed','planCacheMode':'auto','standardConformingStrings':'on','actor':actor}
+        values={'owner_identity_before':identity,'fresh_synthetic_actor':actor}
+        for name,body in [('_work_unit_metadata_scope','old-scope-body.sql'),('_work_unit_metadata_members','members-body.sql'),('_work_unit_metadata_coverage','coverage-body.sql')]:values['authored_attributes_'+name]=m.expected_metadata(name,self.b[body])
+        s=self.scalar_wire_session(values);t=m.Trial(s,self.report,self.p,self.b,INSTANCE)
+        with patch.object(t,'guard',side_effect=RuntimeError('actor boundary passed')),self.assertRaisesRegex(RuntimeError,'actor boundary passed'):t.admit()
+        for wrong in [m.ident(2),'']:
+            values['fresh_synthetic_actor']=wrong
+            with self.subTest(actor=wrong),patch.object(t,'guard',side_effect=AssertionError('must not pass')),self.assertRaisesRegex(RuntimeError,'Eligible synthetic actor'):t.admit()
+        # SQL NULL through to_jsonb is still a null/blank psql cell, not JSON null.
+        values['fresh_synthetic_actor']=None
+        with patch.object(t,'guard',side_effect=AssertionError('must not pass')),self.assertRaises(json.JSONDecodeError):t.admit()
+    def test_cleanup_serialized_true_passes_and_false_remains_fatal(self):
+        values={'temp_cleanup_check':True};s=self.scalar_wire_session(values);t=m.Trial(s,self.report,self.p,self.b,INSTANCE);t.cleanup()
+        self.assertTrue(self.report.data['cleanup']['temporaryObjectsAbsent']);values['temp_cleanup_check']=False;self.report.data['cleanup']={}
+        with self.assertRaisesRegex(RuntimeError,'Temporary objects survived rollback'):t.cleanup()
+        self.assertTrue(self.report.data['cleanup']['rollbackConfirmed']);self.assertNotIn('temporaryObjectsAbsent',self.report.data['cleanup']);self.assertTrue(self.report.data['cleanup']['errors'])
     def test_transport_timeout_is_bounded_and_partial_survives(self):
         class P:
             returncode=None

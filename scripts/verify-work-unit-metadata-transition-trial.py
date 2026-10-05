@@ -97,7 +97,7 @@ def validate_instance(instance):
 def run_predecessor(target,report,profile,admin,launch=subprocess.Popen):
     instance=validate_instance(admin.json(INSTANCE_SQL,'instance_before_main'))
     report.data['instanceBeforePredecessor']=instance;report.persist('before_main_admission')
-    require(admin.json("select to_regclass('public._work_unit_metadata_contract') is null and to_regprocedure('public._work_unit_metadata_scope(uuid,uuid,jsonb)') is null",'main_not_preinstalled') is True,'Start after0846 with0848 absent; existing main owns its exact installation')
+    require(admin.json("select to_jsonb(to_regclass('public._work_unit_metadata_contract') is null and to_regprocedure('public._work_unit_metadata_scope(uuid,uuid,jsonb)') is null)",'main_not_preinstalled') is True,'Start after0846 with0848 absent; existing main owns its exact installation')
     path=report.path.parent/'main-predecessor.json';require(not path.exists(),'Fresh predecessor output required')
     env={k:v for k,v in os.environ.items() if not k.startswith('PG')};env.update(PGCONNECT_TIMEOUT='3',WORK_ACTIVITY_ROLE_TEST_DB_URL=urlunparse(target),WORK_UNIT_METADATA_COHORTS_PG_OUT=str(path))
     deadline=time.monotonic()+1200;process=None;primary=None
@@ -251,7 +251,7 @@ class Trial:
         for name,signature,body in [('_work_unit_metadata_scope','uuid,uuid,jsonb','old-scope-body.sql'),('_work_unit_metadata_members','uuid[]','members-body.sql'),('_work_unit_metadata_coverage','','coverage-body.sql')]:
             actual=self.query(metadata_sql(name,signature),'authored_attributes_'+name)
             self.report.check(actual==expected_metadata(name,self.b[body]),'Exact authored body/attributes/owner/ACL '+name)
-        self.report.check(self.query('select public._work_activity_actor()','fresh_synthetic_actor')==self.actor,'Eligible synthetic actor recaptured after G/A')
+        self.report.check(self.query('select to_jsonb(public._work_activity_actor())','fresh_synthetic_actor')==self.actor,'Eligible synthetic actor recaptured after G/A')
         self.guard();self.report.data['baselineCensus']=self.query(CENSUS_SQL,'baseline_census');self.report.persist()
         clone="create temporary table metadata_trial_result(value jsonb);create function pg_temp.metadata_scope_transition_probe(actor uuid,unit_id uuid,p_sourceids jsonb) returns jsonb language plpgsql volatile security invoker set search_path=public,pg_temp as $probe$"+self.b['candidate-scope-body.sql']+"$probe$;revoke all on function pg_temp.metadata_scope_transition_probe(uuid,uuid,jsonb) from public,anon,authenticated,service_role;"
         self.s.query(clone,'temporary_invoker_clone')
@@ -349,7 +349,7 @@ class Trial:
                 try:self.s.query('deallocate '+name,'deallocate_'+name)
                 except BaseException as error:failures.append(error_info(error))
             try:
-                absent=self.query("select to_regprocedure('pg_temp.metadata_scope_transition_probe(uuid,uuid,jsonb)') is null and to_regclass('pg_temp.metadata_trial_result') is null",'temp_cleanup_check');require(absent is True,'Temporary objects survived rollback');self.report.data['cleanup']['temporaryObjectsAbsent']=True
+                absent=self.query("select to_jsonb(to_regprocedure('pg_temp.metadata_scope_transition_probe(uuid,uuid,jsonb)') is null and to_regclass('pg_temp.metadata_trial_result') is null)",'temp_cleanup_check');require(absent is True,'Temporary objects survived rollback');self.report.data['cleanup']['temporaryObjectsAbsent']=True
             except BaseException as error:failures.append(error_info(error))
         self.report.data['cleanup']['errors']=failures;self.report.persist('cleanup_complete' if not failures else 'cleanup_failed')
         require(not failures,'Trial cleanup failed: '+encoded(failures))

@@ -1,6 +1,6 @@
 # Limited metadata transition-selector trial
 
-This is source-only fixture code awaiting independent review and a separately reviewed workflow. It has not run against PostgreSQL. The candidate changes only the transition selector inside a temporary clone of the existing metadata scope helper. Its purpose is to find out whether that selector avoids repeated scans while returning exactly the same complete scope and review results.
+This is limited fixture code. Genuine run `37288531456` at `9624e6ec` reached PostgreSQL but failed while decoding its pre-installation boolean, before starting the owned metadata baseline or candidate characterization. The scalar correction requires independent review and a new genuine run. The candidate changes only the transition selector inside a temporary clone of the existing metadata scope helper. Its purpose is to find out whether that selector avoids repeated scans while returning exactly the same complete scope and review results.
 
 The approved prototype body is `9f39e62075a8e002c438c0fd2e80ca7b0a8cb7eca45b221d3f59d1088814c34a`; original scope body is `a3b8d9aa96b41c2a9bc29c0c56a6fcb69028cf5dbe04cb411be0b26552d55800`. Both are independently saved inputs. Validation extracts the original body from pinned d083 SQL, requires exact bytes, and proves that replacing the candidate transition block with the original reproduces every original byte. Expected bodies and catalog digest never come from the database.
 
@@ -12,6 +12,8 @@ python3 scripts/verify-work-unit-metadata-transition-trial.py --check-plan
 python3 -m unittest discover -s scripts -p 'test_work_unit_metadata_transition_trial.py' -v
 python3 -m py_compile scripts/verify-work-unit-metadata-transition-trial.py scripts/test_work_unit_metadata_transition_trial.py
 ```
+
+The persistent psql transport uses unaligned text output. Every value read through `Session.json` must therefore be explicitly JSON-valued SQL; decoding remains strict. The pre-installation boolean, fresh actor UUID and temporary-cleanup boolean use `to_jsonb`. Bare PostgreSQL `t`/`f` or unquoted UUID text is refused, not coerced. False cleanup and foreign/empty/null actor values still fail their existing exact assertions. No-contact tests drive the real transport collector/decoder with synthetic raw psql text; they are not database execution evidence.
 
 Default and check-plan read local pinned source only: no process, database connection, or output mutation. Standard-library tests exercise synthetic transport and control flow. They are not measured PostgreSQL timings or genuine parity cases.
 
