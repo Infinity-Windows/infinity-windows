@@ -29,6 +29,7 @@ from supabase_merge_lib import (  # noqa: E402
     SURROGATE_ONLY,
     VALUES_MANUAL_RECONCILIATION_TABLES,
     WORK_CAPTURE_MANUAL_RECONCILIATION_TABLES,
+    WORK_UNIT_METADATA_IDENTITIES,
     IdRemapper,
     Schema,
     dedup_key,
@@ -40,6 +41,84 @@ from supabase_merge_lib import (  # noqa: E402
 )
 
 
+# Run this read-only query separately on both projects as a superuser or
+# BYPASSRLS role with SELECT on every installed relation. A failed query is no
+# evidence. The offline JSON result is not a live freshness or write fence.
+METADATA_CENSUS_SQL = """with names(name) as (values %s), privilege as (
+ select coalesce((select rolsuper or rolbypassrls from pg_catalog.pg_roles
+                  where rolname=current_user), false) as bypass
+), census as (
+ select name, pg_catalog.to_regclass('public.' || name) as rel from names
+), visible as (
+ select c.name, c.rel, p.bypass,
+        c.rel is null or pg_catalog.has_table_privilege(c.rel, 'SELECT') as can_select
+ from census c cross join privilege p
+)
+select pg_catalog.jsonb_build_object('version', 1,
+ 'complete', coalesce(bool_and(bypass and can_select), false),
+ 'tables', pg_catalog.jsonb_object_agg(name, case
+   when not bypass or not can_select or rel is null then null
+   else coalesce(((pg_catalog.xpath('/row/n/text()', pg_catalog.query_to_xml(
+     pg_catalog.format('select pg_catalog.count(*) as n from public.%%I', name),
+     false, true, '')))[1]::text)::bigint, -1) end)) as metadata_census
+from visible;""" % ", ".join("('%s')" % name for name in sorted(WORK_UNIT_METADATA_IDENTITIES))
+
+
+def metadata_refusals(inventory: Mapping[str, Any], rows: Mapping[str, Any]) -> list[str]:
+    """Require exact privileged absence proof; omitted export rows prove nothing."""
+    names = set(WORK_UNIT_METADATA_IDENTITIES)
+    census = inventory.get("metadata_census")
+    reasons: list[str] = []
+    valid = (isinstance(census, dict)
+             and set(census) == {"version", "complete", "tables"}
+             and type(census.get("version")) is int and census["version"] == 1
+             and census.get("complete") is True
+             and isinstance(census.get("tables"), dict)
+             and set(census["tables"]) == names)
+    if not valid:
+        reasons.append("complete privileged nine-table metadata census required")
+        counts: Mapping[str, Any] = {}
+    else:
+        counts = census["tables"]
+        absent = 0
+        for name, count in counts.items():
+            if count is None:
+                absent += 1
+            elif type(count) is not int or count < 0:
+                reasons.append(name + ": invalid census count")
+            elif count > 0:
+                reasons.append(name + ": retained metadata evidence exists")
+        if absent == 0:
+            reasons.append("installed metadata authority requires reviewed reconciliation")
+        elif absent != len(names):
+            reasons.append("partial metadata schema cannot prove absence")
+    tables = inventory.get("tables")
+    if not isinstance(tables, dict):
+        reasons.append("inventory table map invalid")
+        tables = {}
+    elif any(not isinstance(name, str) or not isinstance(entry, dict)
+             or type(entry.get("rows")) is not int or entry["rows"] < 0
+             or bool(entry.get("error")) for name, entry in tables.items()):
+        # Validate every table, not only the nine private relations. The name
+        # or value of an unrelated malformed entry may itself be private.
+        reasons.append("inventory table entry or row count invalid")
+    for name in sorted(names):
+        if name in tables:
+            entry = tables[name]
+            value = entry.get("rows") if isinstance(entry, dict) else None
+            if (type(value) is not int or value < 0 or value != counts.get(name)
+                    or (isinstance(entry, dict) and entry.get("error"))):
+                reasons.append(name + ": inventory contradicts or cannot confirm census")
+        if name in rows:
+            exported = rows[name]
+            if (not isinstance(exported, list)
+                    or any(not isinstance(row, Mapping) for row in exported)):
+                reasons.append(name + ": malformed metadata export")
+            elif counts.get(name) is None or len(exported) > 0:
+                reasons.append(name + ": exported metadata relation or evidence exists")
+    return sorted(set(reasons))
+
+
 # --------------------------------------------------------------------------
 # Loading
 # --------------------------------------------------------------------------
@@ -49,8 +128,10 @@ def load_side(path: str) -> tuple[dict[str, Any], dict[str, list[dict[str, Any]]
     """Return (inventory, rows-by-table). `rows` is empty for count-only inventories."""
     raw = json.loads(Path(path).read_text())
     if "project_ref" in raw:
-        return raw, {}
-    rows = {k: v for k, v in raw.items() if isinstance(v, list)}
+        # A mixed inventory/export must not hide malformed private payloads.
+        return raw, {k: raw[k] for k in WORK_UNIT_METADATA_IDENTITIES if k in raw}
+    rows = {k: v for k, v in raw.items()
+            if isinstance(v, list) or k in WORK_UNIT_METADATA_IDENTITIES}
     return inventory_from_backup(path), rows
 
 
@@ -113,6 +194,14 @@ class Plan:
         self.remapper = IdRemapper(schema)
         self.notes: list[str] = []
         self.blockers: list[str] = []
+        self.metadata_blockers = [
+            f"{side}: {reason}; no mutation SQL generated. Reviewed metadata "
+            "history and current-pointer reconciliation required."
+            for side, inventory, rows in (("source", source, source_rows),
+                                          ("target", target, target_rows))
+            for reason in metadata_refusals(inventory, rows)
+        ]
+        self.blockers.extend(self.metadata_blockers)
         self.manual_values_tables = sorted(
             table for table in VALUES_MANUAL_RECONCILIATION_TABLES
             if (self.source_count(table) or 0) > 0
@@ -146,15 +235,21 @@ class Plan:
     # -- helpers ---------------------------------------------------------
 
     def source_count(self, table: str) -> int | None:
-        entry = self.source.get("tables", {}).get(table)
-        return None if entry is None else entry.get("rows")
+        tables = self.source.get("tables")
+        entry = tables.get(table) if isinstance(tables, dict) else None
+        count = entry.get("rows") if isinstance(entry, dict) else None
+        return count if type(count) is int and count >= 0 else None
 
     def target_count(self, table: str) -> int | None:
-        entry = self.target.get("tables", {}).get(table)
-        return None if entry is None else entry.get("rows")
+        tables = self.target.get("tables")
+        entry = tables.get(table) if isinstance(tables, dict) else None
+        count = entry.get("rows") if isinstance(entry, dict) else None
+        return count if type(count) is int and count >= 0 else None
 
     def tables_to_move(self) -> list[str]:
         """Tables with rows on the source side, in dependency order."""
+        if self.metadata_blockers:
+            return []
         candidates = [
             t
             for t in self.schema.names()
@@ -170,6 +265,8 @@ class Plan:
     def preflight(self) -> list[str]:
         """SELECTs a human runs on both projects before anything is written."""
         checks = [
+            "-- Privileged metadata census on BOTH projects; attach each result "
+            "to that side's inventory or raw backup:\n" + METADATA_CENSUS_SQL,
             "-- 1. Both projects must be at the same migration version, or the\n"
             "--    target is missing columns the source rows carry.\n"
             "select count(*) as applied, max(version) as latest\n"
@@ -271,6 +368,8 @@ class Plan:
 
     def deferred_updates(self) -> list[str]:
         """Phase 3: fill in the FK edges that had to be inserted as NULL."""
+        if self.metadata_blockers:
+            return []
         stmts: list[str] = []
         for table, column in DEFERRED_FK_EDGES:
             rows = self.source_rows.get(table, [])
@@ -313,16 +412,31 @@ class Plan:
         return lines
 
     def verification(self) -> list[str]:
-        src_total = sum(
-            (t.get("rows") or 0) for t in self.source.get("tables", {}).values()
-        )
-        tgt_total = sum(
-            (t.get("rows") or 0) for t in self.target.get("tables", {}).values()
-        )
+        # Exclude these nine only after complete absence proof on BOTH sides.
+        absent = set(WORK_UNIT_METADATA_IDENTITIES) if not self.metadata_blockers else set()
+        def total(inventory: Mapping[str, Any]) -> int | None:
+            tables = inventory.get("tables")
+            if not isinstance(tables, dict):
+                return None
+            if any(not isinstance(entry, dict) or bool(entry.get("error"))
+                   for entry in tables.values()):
+                return None
+            counts = [entry.get("rows") for entry in tables.values()]
+            if any(type(count) is not int or count < 0 for count in counts):
+                return None
+            return sum(counts)
+
+        src_total, tgt_total = total(self.source), total(self.target)
+        if src_total is None or tgt_total is None:
+            upper_bound = "-- Expected upper bound unavailable: inventory row counts invalid."
+        else:
+            upper_bound = (
+                f"-- Expected upper bound after the merge: {src_total} + {tgt_total} = "
+                f"{src_total + tgt_total} rows, minus one row for every source row that "
+                f"deduped onto an existing target row."
+            )
         lines = [
-            f"-- Expected upper bound after the merge: {src_total} + {tgt_total} = "
-            f"{src_total + tgt_total} rows, minus one row for every source row that "
-            f"deduped onto an existing target row.",
+            upper_bound,
             "",
             "-- Nothing lost: every table's count must be >= the pre-merge target count.",
             "select relname, n_live_tup from pg_stat_user_tables where schemaname='public' order by relname;",
@@ -339,7 +453,7 @@ class Plan:
             "-- No duplicates created on any natural key. Every one of these must\n"
             "-- return zero rows.",
         ]
-        for table in sorted(self.schema.names()):
+        for table in sorted(set(self.schema.names()) - absent):
             key = dedup_key(table)
             if not key:
                 continue
@@ -352,9 +466,9 @@ class Plan:
             "",
             "-- No orphaned foreign keys. Every one of these must return zero rows.",
         ]
-        for table in sorted(self.schema.names()):
+        for table in sorted(set(self.schema.names()) - absent):
             for fk in self.schema[table].foreign_keys:
-                if fk.is_auth or len(fk.columns) != 1:
+                if fk.is_auth or len(fk.columns) != 1 or fk.ref_table in absent:
                     continue
                 col, ref_col = fk.columns[0], fk.ref_columns[0]
                 lines.append(
@@ -514,7 +628,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         Path(args.out).parent.mkdir(parents=True, exist_ok=True)
         Path(args.out).write_text(text + "\n")
         print(f"\n-> {args.out}")
-    return 2 if plan.manual_values_tables or plan.manual_capture_tables else 0
+    return 2 if plan.metadata_blockers or plan.manual_values_tables or plan.manual_capture_tables else 0
 
 
 if __name__ == "__main__":

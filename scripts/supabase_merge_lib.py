@@ -920,6 +920,21 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
 
 }
 
+# Retained metadata identities for inventory comparison only. These do not
+# authorize generic id remapping, ON CONFLICT, or a merge of private history.
+WORK_UNIT_METADATA_IDENTITIES = {
+    "_work_unit_metadata_commands": ("command_id",),
+    "_work_unit_metadata_contract": ("proof_key",),
+    "_work_unit_metadata_current": ("unit_id",),
+    "_work_unit_metadata_floor_current": ("unit_id",),
+    "_work_unit_metadata_definitions": ("id",),
+    "_work_unit_metadata_versions": ("id",),
+    "_work_unit_metadata_proposals": ("id",),
+    "_work_unit_metadata_revisions": ("id",),
+    "_work_unit_metadata_floors": ("id",),
+}
+DEDUP_KEYS.update(WORK_UNIT_METADATA_IDENTITIES)
+
 #: The monthly-values graph contains private policy snapshots, immutable
 #: reviews/scores, frozen accounting, and provenance. A dedup key describes
 #: identity for inventory and comparison, but the generic merge planner's
@@ -986,6 +1001,7 @@ WORK_CAPTURE_MANUAL_RECONCILIATION_TABLES = frozenset({
     "work_activity_operation_events",
     "work_activity_statement_frames",
 })
+WORK_CAPTURE_MANUAL_RECONCILIATION_TABLES |= frozenset(WORK_UNIT_METADATA_IDENTITIES)
 
 #: Tables where combining two projects' rows is meaningless or actively wrong.
 #: The merge must choose one project's rows wholesale, or recompute from the
@@ -1307,12 +1323,15 @@ def inventory_from_backup(path: Path | str) -> dict[str, Any]:
         name: {"rows": len(rows), "columns": _columns_of(rows)}
         for name, rows in raw.items()
         if isinstance(rows, list)
+        and (name not in WORK_UNIT_METADATA_IDENTITIES
+             or all(isinstance(row, Mapping) for row in rows))
     }
     return {
         "project_ref": raw.get("project_id", "unknown"),
         "name": f"backup {raw.get('exported_at', '')}".strip(),
         "captured_at": raw.get("exported_at"),
         "source": "backup",
+        "metadata_census": raw.get("metadata_census"),
         "tables": tables,
         "migrations": {"count": None, "latest": None},
         "auth": {"users": None},

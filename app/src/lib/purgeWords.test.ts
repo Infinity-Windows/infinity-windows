@@ -1,13 +1,16 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { runInNewContext } from "node:vm";
+import ts from "typescript";
 import {
   hasWorkHistory,
   isTombstoneEmail,
   shapeFor,
   tombstoneEmail,
   UNKNOWN_RECORDS,
+  PURGE_CANNOT_RECORD,
 } from "../../../supabase/functions/_shared/purgeLogin";
 import {
   historyHighlights,
@@ -81,6 +84,9 @@ describe("shapeFor", () => {
     "work_unit_dimension_verifications.observation_actor_id", "work_unit_review_events.actor_id",
     "work_unit_review_events.original_identities", "work_unit_review_defects.creator_id",
     "work_unit_review_defect_events.actor_id",
+    "_work_unit_metadata_definitions.actor_id", "_work_unit_metadata_versions.actor_id",
+    "_work_unit_metadata_proposals.actor_id", "_work_unit_metadata_revisions.actor_id",
+    "_work_unit_metadata_floors.actor_id", "_work_unit_metadata_commands.actor_id",
   ])("keeps the person's history and names a lone retained %s record", key => {
     const counts = { ...NOTHING, [key]: 1 };
     expect(shapeFor(counts)).toBe("retired");
@@ -389,6 +395,14 @@ describe("the SQL and the probe list agree", () => {
       object = parts[parts.length - 1].split("$$;")[0];
     }
     if (!object) throw new Error("person_record_counts is in no migration");
+    // The frozen old census stays byte-identical; the removal endpoint calls
+    // its separately attested service-only extension, whose own six keys count.
+    const metadata = readFileSync(join(MIGRATIONS, "20261108480000_work_unit_metadata_cohorts.sql"), "utf8");
+    const extension = metadata.split("create function public._work_unit_metadata_person_counts(")[1]?.split("end$$;")[0];
+    expect(extension).toBeDefined();
+    expect(extension).toContain("return public.person_record_counts(p_id)||jsonb_build_object(");
+    expect(metadata).toContain("grant execute on function public._work_unit_metadata_person_counts(p_id uuid, p_actor_id uuid) to service_role;");
+    object += extension;
     return [...object.matchAll(/'([a-z_]+\.[a-z_]+)'\s*,/g)].map((m) => m[1]);
   }
 
@@ -407,5 +421,87 @@ describe("the SQL and the probe list agree", () => {
     // fails because pay_rates left the SQL, the probe list is now lying about
     // what gets checked before an account is deleted.
     expect(sqlKeys()).toContain("pay_rates.profile_id");
+  });
+});
+
+
+describe("metadata-aware removal census and deletion race", () => {
+  const endpoint = readFileSync(new URL("../../../supabase/functions/manage-crew-access/index.ts", import.meta.url), "utf8");
+  const parsed = ts.createSourceFile("endpoint.ts", endpoint, ts.ScriptTarget.ES2022, true);
+  const exactFunctions = parsed.statements.filter(node => ts.isFunctionDeclaration(node) && ["countHistory", "deleteEmptyLogin"].includes(node.name?.text ?? ""));
+  expect(exactFunctions).toHaveLength(2);
+  // Execute the actual two endpoint functions with dependency fakes; importing
+  // the Deno server module would start a server and load remote dependencies.
+  const code = ts.transpileModule(exactFunctions.map(node => node.getText(parsed)).join("\n") + "\nglobalThis.retentionFns={countHistory,deleteEmptyLogin};", { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
+  const context: Record<string, unknown> = { PURGE_CANNOT_RECORD, shapeFor };
+  runInNewContext(code, context);
+  const { countHistory, deleteEmptyLogin } = context.retentionFns as {
+    countHistory: (client: unknown, userId: string, actorId: string | null) => Promise<Record<string, number>>;
+    deleteEmptyLogin: (client: unknown, userId: string, actorId: string | null) => Promise<boolean>;
+  };
+  const client = (data: unknown, error: unknown = null) => ({ rpc: vi.fn().mockResolvedValue({ data, error }), auth: { admin: { deleteUser: vi.fn().mockResolvedValue({ error: null }) } } });
+
+  it("calls only the attested service extension and forwards the owner identity", async () => {
+    const api = client({ "_work_unit_metadata_versions.actor_id": 1 });
+    expect(await countHistory(api, "person", "owner")).toEqual({ "_work_unit_metadata_versions.actor_id": 1 });
+    expect(api.rpc).toHaveBeenCalledWith("_work_unit_metadata_person_counts", { p_id: "person", p_actor_id: "owner" });
+  });
+  it("maps the actual trusted service caller to a null census requester", async () => {
+    const declarations: ts.VariableDeclaration[] = [];
+    const visit = (node: ts.Node) => {
+      if (ts.isVariableDeclaration(node) && node.name.getText(parsed) === "invitedBy") declarations.push(node);
+      ts.forEachChild(node, visit);
+    };
+    visit(parsed);
+    expect(declarations).toHaveLength(1);
+    const initializer = declarations[0].initializer!.getText(parsed);
+    const serviceContext = { callerIsService: true, callerId: "service_role", value: undefined as unknown };
+    runInNewContext(`value = (${initializer});`, serviceContext);
+    expect(serviceContext.value).toBeNull();
+    const ownerContext = { callerIsService: false, callerId: "00000000-0000-4000-8000-000000000001", value: undefined as unknown };
+    runInNewContext(`value = (${initializer});`, ownerContext);
+    expect(ownerContext.value).toBe(ownerContext.callerId);
+    const api = client({ "_work_unit_metadata_versions.actor_id": 0 });
+    expect(await countHistory(api, "person", serviceContext.value as null)).toEqual({ "_work_unit_metadata_versions.actor_id": 0 });
+    expect(api.rpc).toHaveBeenCalledWith("_work_unit_metadata_person_counts", { p_id: "person", p_actor_id: null });
+    expect(endpoint.match(/countHistory\(supabase, userId, invitedBy\)/g)).toHaveLength(2);
+    expect(endpoint).toContain("deleteEmptyLogin(supabase, userId, invitedBy)");
+  });
+  it.each([null, [], {}, { row: null }, { row: "0" }, { row: true }, { row: -1 }, { row: 0.5 }, { row: Infinity }])("blocks malformed or unknown census %j", async data => {
+    const api = client(data);
+    await expect(countHistory(api, "person", "owner")).rejects.toThrow(PURGE_CANNOT_RECORD);
+    expect(api.auth.admin.deleteUser).not.toHaveBeenCalled();
+  });
+  it("blocks a missing, drifted or denied census before any delete", async () => {
+    const api = client(null, { code: "55000" });
+    await expect(countHistory(api, "person", "owner")).rejects.toThrow(PURGE_CANNOT_RECORD);
+    expect(api.auth.admin.deleteUser).not.toHaveBeenCalled();
+  });
+  it("a successful empty deletion needs no recount", async () => {
+    const api = client({ row: 0 });
+    expect(await deleteEmptyLogin(api, "person", "owner")).toBe(true);
+    expect(api.rpc).not.toHaveBeenCalled();
+    expect(api.auth.admin.deleteUser).toHaveBeenCalledTimes(1);
+  });
+  it("retains a writer that wins the count/delete gap and never forces a retry", async () => {
+    const api = client({ "_work_unit_metadata_proposals.actor_id": 1 });
+    api.auth.admin.deleteUser.mockResolvedValue({ error: { message: "retained actor FK" } });
+    expect(await deleteEmptyLogin(api, "person", "owner")).toBe(false);
+    expect(api.rpc).toHaveBeenCalledWith("_work_unit_metadata_person_counts", { p_id: "person", p_actor_id: "owner" });
+    expect(api.auth.admin.deleteUser).toHaveBeenCalledTimes(1);
+  });
+  it("does not convert an unexplained delete failure or failed recount into success", async () => {
+    const api = client({ row: 0 });
+    api.auth.admin.deleteUser.mockResolvedValue({ error: { message: "unrelated failure" } });
+    await expect(deleteEmptyLogin(api, "person", "owner")).rejects.toThrow("unrelated failure");
+    api.rpc.mockResolvedValue({ data: null, error: { code: "42501" } });
+    await expect(deleteEmptyLogin(api, "person", "owner")).rejects.toThrow(PURGE_CANNOT_RECORD);
+  });
+  it("gates side effects on the count and sends the race disposition through retirement", () => {
+    const body = endpoint.slice(endpoint.indexOf('case "purge_login":'));
+    expect(body.indexOf("await countHistory")).toBeGreaterThanOrEqual(0);
+    expect(body.indexOf("await countHistory")).toBeLessThan(body.indexOf('.from("crew_invites")'));
+    expect(body).toContain('if (await deleteEmptyLogin(supabase, userId, invitedBy))');
+    expect(body.indexOf('shape = "retired"')).toBeLessThan(body.indexOf("ban_duration: FOREVER"));
   });
 });
