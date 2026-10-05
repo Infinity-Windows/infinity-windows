@@ -39,13 +39,13 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/work-combined-prerequisites"
-          echo "c52d05a6710109d99cac76ba271a14e86b96afa16fa151a1f65c4b6c7496d737  scripts/work-combined/verify_bundle.py" | sha256sum -c -
+          echo "55e93d7f20236cd50cf30434d0f1849e536d02fbbecf601d7fa4ed20d9d05486  scripts/work-combined/verify_bundle.py" | sha256sum -c -
           echo "cd0373e55c199d94384c913e47ca3c8b3a13cc1ad0026e8050cd343961fe7fcc  scripts/work-combined/verify_prerequisites.py" | sha256sum -c -
           echo "38b9f3f6ca0e3dfe176457d3f1fde82e62d0e90efa7f221a8c8e52d2183e1652  scripts/work-combined/prerequisite-pins.json" | sha256sum -c -
           python3 scripts/work-combined/verify_prerequisites.py --repository "$GITHUB_WORKSPACE" | tee "$RUNNER_TEMP/work-combined-prerequisites/source-pins.json"
-          python3 scripts/work-combined/verify_bundle.py --archive scripts/work-combined/source-bundle.tar.gz --sha256 a2959a6745a40ad2bd10e82fa37e495b9f4b196b66073cdeceb77071d3dc5cde --destination "$RUNNER_TEMP/work-combined-reviewed-source" | tee "$RUNNER_TEMP/work-combined-prerequisites/extraction.json"
-          python3 "$RUNNER_TEMP/work-combined-reviewed-source/COMBINED-GENUINE-EXECUTOR-SOURCE-CHECKPOINT-3/test_combined_executor.py" 2>&1 | tee "$RUNNER_TEMP/work-combined-prerequisites/source-tests.log"
-          python3 "$RUNNER_TEMP/work-combined-reviewed-source/COMBINED-GENUINE-EXECUTOR-SOURCE-CHECKPOINT-3/combined_executor.py" --check-plan | tee "$RUNNER_TEMP/work-combined-prerequisites/check-plan.json"
+          python3 scripts/work-combined/verify_bundle.py --archive scripts/work-combined/source-bundle.tar.gz --sha256 5fa6ef3f81467cffec433457cff0e23006bae68f2b99f28db4d52a4883a922c6 --destination "$RUNNER_TEMP/work-combined-reviewed-source" | tee "$RUNNER_TEMP/work-combined-prerequisites/extraction.json"
+          python3 "$RUNNER_TEMP/work-combined-reviewed-source/COMBINED-GENUINE-EXECUTOR-SOURCE-CHECKPOINT-4/test_combined_executor.py" 2>&1 | tee "$RUNNER_TEMP/work-combined-prerequisites/source-tests.log"
+          python3 "$RUNNER_TEMP/work-combined-reviewed-source/COMBINED-GENUINE-EXECUTOR-SOURCE-CHECKPOINT-4/combined_executor.py" --check-plan | tee "$RUNNER_TEMP/work-combined-prerequisites/check-plan.json"
       - name: Unchanged prerequisite 1 of 6
         shell: bash
         run: |
@@ -86,7 +86,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 "$RUNNER_TEMP/work-combined-reviewed-source/COMBINED-GENUINE-EXECUTOR-SOURCE-CHECKPOINT-3/combined_executor.py" --execute-fixture --output "$RUNNER_TEMP/work-combined-genuine-new/combined-executor.json" 2>&1 | tee "$RUNNER_TEMP/work-combined-prerequisites/combined-executor.log"
+          python3 "$RUNNER_TEMP/work-combined-reviewed-source/COMBINED-GENUINE-EXECUTOR-SOURCE-CHECKPOINT-4/combined_executor.py" --execute-fixture --output "$RUNNER_TEMP/work-combined-genuine-new/combined-executor.json" 2>&1 | tee "$RUNNER_TEMP/work-combined-prerequisites/combined-executor.log"
       - name: Preserve complete or partial genuine receipts and unchanged prerequisites
         if: always()
         uses: actions/upload-artifact@v4
