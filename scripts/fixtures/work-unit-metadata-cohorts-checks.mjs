@@ -379,3 +379,24 @@ for(const table of ['commands','definitions','proposals'])await mscenario('Wrong
  await db.exec("drop trigger guard_test_account_sandbox_only on _work_unit_metadata_"+table+";create trigger guard_test_account_sandbox_only before insert or update or delete on _work_unit_metadata_"+table+" for each row execute function guard_test_account_sandbox_only('project_id','opening')");assert.equal((await q('select _work_unit_review_coverage() and _work_totals_coverage() and _work_unit_contributors_coverage() ok')).ok,true);assert.equal((await q('select _work_unit_metadata_coverage() ok')).ok,false);await as(id(2));assert.equal((await mbatch()).availability,'unavailable');
 });
 if(process.env.WORK_UNIT_METADATA_WIRE_OUT)writeFileSync(process.env.WORK_UNIT_METADATA_WIRE_OUT,JSON.stringify({sourceSha256:hash(metadataSql),calls:metadataWire},null,2)+'\n');
+
+await mscenario('Branch-local live selection preserves exact full current source material',async()=>{
+ const identities=(await q("select jsonb_agg(jsonb_build_object('kind',kind,'id',source_id) order by kind,source_id) value from _work_unit_review_live_sources")).value;
+ const old=(await q("select jsonb_agg(to_jsonb(s) order by kind,source_id) value from _work_unit_review_live_sources s")).value;
+ const fresh=(await q("select jsonb_agg(to_jsonb(s) order by kind,source_id) value from _work_unit_metadata_live($1) s",[JSON.stringify(identities)])).value;
+ assert.deepEqual(fresh,old);
+});
+await mscenario('Branch-local live selection is a semijoin for duplicate and missing identities',async()=>{
+ const member=(await q("select jsonb_build_object('kind',kind,'id',source_id) value from _work_unit_review_live_sources where kind='custom_work_units' order by source_id limit 1")).value;
+ const identities=[member,member,{kind:'custom_work_units',id:id(987654)},{kind:'unknown',id:member.id}];
+ const rows=(await db.query('select * from _work_unit_metadata_live($1)',[JSON.stringify(identities)])).rows;
+ assert.equal(rows.length,1);assert.equal(rows[0].source_id,member.id);
+ assert.deepEqual((await db.query("select * from _work_unit_metadata_live('[]')")).rows,[]);
+});
+await mscenario('Branch-local helper body drift refuses all public authority paths independently',async()=>{
+ await db.exec("create or replace function _work_unit_metadata_live(p_sourceids jsonb) returns table(kind text,source_id text,value jsonb) language sql stable security definer set search_path=public,pg_temp as $$select kind,source_id,value from _work_unit_review_live_sources$$");
+ assert.equal((await q('select _work_unit_review_coverage() and _work_totals_coverage() and _work_unit_contributors_coverage() ok')).ok,true);
+ assert.equal((await q('select _work_unit_metadata_coverage() ok')).ok,false);
+ await as(id(2));assert.equal((await mread()).availability,'unavailable');assert.equal((await mbatch()).availability,'unavailable');assert.equal((await mcommand('assign',assignData)).availability,'unavailable');assert.equal((await mrpc('branch_live_guard_receipt_refusal','select work_unit_metadata_receipt($1,1) value',[assignId])).availability,'unavailable');
+});
+if(process.env.WORK_UNIT_METADATA_WIRE_OUT)writeFileSync(process.env.WORK_UNIT_METADATA_WIRE_OUT,JSON.stringify({sourceSha256:hash(metadataSql),calls:metadataWire},null,2)+'\n');

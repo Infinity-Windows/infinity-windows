@@ -10,12 +10,12 @@ from urllib.parse import urlparse,urlunparse
 ROOT=Path(__file__).resolve().parent.parent
 SOURCE=ROOT/'supabase/migrations/20261108480000_work_unit_metadata_cohorts.sql'
 source=SOURCE.read_text();sha=hashlib.sha256(source.encode()).hexdigest()
-assert sha=='0af8c571d6d571dff926a0ecff8bb29db55fd72f8498e85146243ab7a5850997','Refused: unreviewed metadata candidate source'
+assert sha=='229f08b22269e7de897ad7aa492e3f4b763a8a07d6514017f9e846627905f65c','Refused: unreviewed metadata candidate source'
 assert re.search(r'rollback;\s*$',source)
 PINS={'20261108410000_work_activity_engine_cutover.sql':'aa767e67de301cd0ce5961758cc5afefe89bdf25fe27b3c4156a219c9cb2f648','20261108440000_work_unit_review.sql':'e32122a581bf995857983cc433323bc490381b6eb217c583bf95fd7376b3e53f','20261108450000_work_activity_totals.sql':'e0e74c2d1985d332af81f95d20d2a6625c40cb5fcf995b4aa6e267d75e092140','20261108460000_work_unit_contributors.sql':'ae6185e4b390b7cff8f3d7aca837688fda2756792bdf055ef8c3a1f290d438c5'}
 for file,digest in PINS.items():assert hashlib.sha256((ROOT/'supabase/migrations'/file).read_bytes()).hexdigest()==digest,file
 assert sys.argv[1:] in ([],['--check-plan'])
-PLAN={'result':'PLAN VALIDATED','databaseTests':False,'sourceSha256':sha,'matrix':[[r,u] for r in (0,1000,10000) for u in (1,10,100)],'samplesPerTier':20,'seedBatchSize':100,'timeoutsSeconds':{'statement':20,'lock':12},'baseline':'Existing full source census retained separately; tier rows are additional verified unrelated sources, not a claim existing database has zero history','actualRoleTests':['nonsuperuser postgres and noninheriting authenticator','anon/service deny RPC and private rows','column/function/namespace drift refusal','author role, revoked actor and current/original scope after actual G waits'],'waits':['two same-CAS commands serialize: one applied, one stale','actual project hide then blocked read generic unavailable','actual actor revoke then blocked read rejected','moved A-to-B unit: actual retained original metadata job A hidden while read waits on G; current B remains visible','active cohort RPC versus actual start_break, then end_break/out; max2 attempts, no artificial idle hold'],'ledger':'single invocation per distinct shift is source-structural only; no runtime call count is measured','evidence':['exact source/harness/guard hashes','verified live/history/transition seed counts','20 latency samples median/p95/max','top-level RPC EXPLAIN ANALYZE BUFFERS only; no nested plan evidence','pg_blocking_pids plus active holder','partial persisted phase/failure']}
+PLAN={'result':'PLAN VALIDATED','databaseTests':False,'sourceSha256':sha,'matrix':[[r,u] for r in (0,1000,10000) for u in (1,10,100)],'samplesPerTier':20,'seedBatchSize':100,'timeoutsSeconds':{'statement':20,'lock':12},'baseline':'Existing full source census retained separately; tier rows are additional verified unrelated sources, not a claim existing database has zero history','actualRoleTests':['nonsuperuser postgres and noninheriting authenticator','anon/service deny RPC and private rows','column/function/namespace drift refusal','author role, revoked actor and current/original scope after actual G waits'],'waits':['two same-CAS commands serialize: one applied, one stale','actual project hide then blocked read generic unavailable','actual actor revoke then blocked read rejected','moved A-to-B unit: actual retained original metadata job A hidden while read waits on G; current B remains visible','active cohort RPC versus actual start_break, then end_break/out; max2 attempts, no artificial idle hold'],'ledger':'single invocation per distinct shift is source-structural only; no runtime call count is measured','evidence':['exact source/harness/guard hashes','verified live/history/transition seed counts','20 latency samples median/p95/max','Targeted privileged history/live/transition plans plus authored live-helper expanded body before the active paid edge; each tier RPC EXPLAIN remains top-level only','pg_blocking_pids plus active holder','partial persisted phase/failure']}
 if sys.argv[1:]:print(json.dumps(PLAN));sys.exit()
 p=urlparse(os.environ.get('WORK_ACTIVITY_ROLE_TEST_DB_URL',''))
 if p.scheme not in ('postgres','postgresql') or p.hostname not in ('localhost','127.0.0.1') or p.port not in (None,5432) or p.path!='/forge_work_activity_role_test' or p.username!='supabase_admin' or p.query or p.fragment:raise SystemExit('Refused: exact disposable localhost database required')
@@ -221,6 +221,56 @@ for size in (10,100):
   uid=ident(20000+size*100+n);units_by_job[size].append(uid);payload={'id':uid,'revision':0,'project_id':target,'opening_id':None,'label':'Cohort '+str(n),'type_label':'Unknown','facts':{}}
   assert rpc('select to_jsonb(custom_work_command('+lit(ident(40000+size*100+n))+",'unit',"+lit(json.dumps(payload))+'::jsonb));')==uid
  check(int(run('select count(*) from custom_work_units where project_id='+lit(target)))==size,'Exact'+str(size)+' current units')
+# Fixture-owner profiling is distinct from authenticated public-RPC proof.
+# Each probe commits before the active paid edge; probes warm this fixture.
+report['helperProfile']={'scope':'Nonsuperuser fixture-owner readonly probes; separate transactions, no single frozen report asOf or ledger-call count','warmsFixtureBeforePaidEdge':True,'timings':[],'plans':[],'status':'running'}
+persist('helper_profile_before_active_paid_edge')
+def profile_probe(label,sql,plan=False):
+ record={'label':label,'sql':sql,'status':'running','callerWallMsIncludesPsqlStartup':True}
+ report['helperProfile']['plans' if plan else 'timings'].append(record);persist()
+ started=time.monotonic()
+ prefix="begin;set local request.jwt.claim.sub="+lit(worker)+";do $profile_lock$ begin perform pg_advisory_xact_lock(7712,0);perform pg_advisory_xact_lock(7710,0);end $profile_lock$;"
+ value=json.loads(run(prefix+sql+';commit;'))
+ record.update({'status':'passed','callerWallMs':(time.monotonic()-started)*1000,'result':value});persist()
+ return value
+report['helperProfile']['census']=obj("select jsonb_build_object('history',(select count(*) from work_activity_source_history),'live',(select count(*) from _work_unit_review_live_sources),'transitions',(select count(*) from personal_activity_transition_sources),'units',(select count(*) from custom_work_units))")
+persist()
+for name in ('_work_unit_metadata_coverage','_work_unit_review_coverage','_work_totals_coverage','_work_unit_contributors_coverage'):
+ assert profile_probe(name,'select to_jsonb('+name+'())') is True
+profile_units=[unit,units_by_job[100][0]]
+member_sql='select _work_unit_metadata_members('+lit('{'+','.join(profile_units)+'}')+'::uuid[])'
+profile_members=profile_probe('shared_members_two_units',member_sql)
+assert isinstance(profile_members,dict) and set(profile_members)==set(profile_units)
+live_body_matches=re.findall(r'^create function public\._work_unit_metadata_live\(p_sourceids jsonb\).*?as \$\$(.*?)\$\$;',source,re.M|re.S)
+assert len(live_body_matches)==1
+live_body=live_body_matches[0]
+assert run("select prosrc from pg_proc where oid='_work_unit_metadata_live(jsonb)'::regprocedure")==live_body.strip()
+assert live_body.count('p_sourceids')==1
+for uid in profile_units:
+ identities=profile_members[uid];assert isinstance(identities,list)
+ source_literal=lit(json.dumps(identities))+'::jsonb'
+ scope=profile_probe('scope '+uid,'select _work_unit_metadata_scope('+lit(worker)+','+lit(uid)+','+source_literal+')')
+ assert isinstance(scope,dict)
+ review=profile_probe('review '+uid,'select _work_unit_metadata_review('+lit(worker)+','+lit(json.dumps(scope))+'::jsonb)')
+ assert isinstance(review,dict)
+ profile_probe('state '+uid,'select _work_unit_metadata_state('+lit(worker)+','+lit(json.dumps(scope))+'::jsonb,'+lit(json.dumps(review))+'::jsonb)')
+ project=job if uid==unit else jobs[100]
+ profile_probe('shift_ids '+uid,"select coalesce(to_jsonb(_work_unit_metadata_shift_ids("+lit(project)+','+lit(uid)+','+lit(json.dumps(scope))+"::jsonb)),'null'::jsonb)")
+ statements={
+  'history':"select coalesce(jsonb_agg(to_jsonb(h) order by h.id),'[]') from work_activity_source_history h where exists(select 1 from jsonb_array_elements("+source_literal+")x where x->>'kind'=h.source_kind and x->>'id'=h.source_id)",
+  'old_live_same_database_control':"select coalesce(jsonb_agg(jsonb_build_object('kind',s.kind,'id',s.source_id,'value',s.value) order by s.kind,s.source_id),'[]') from _work_unit_review_live_sources s where exists(select 1 from jsonb_array_elements("+source_literal+")x where x->>'kind'=s.kind and x->>'id'=s.source_id)",
+  'selected_live':"select coalesce(jsonb_agg(jsonb_build_object('kind',s.kind,'id',s.source_id,'value',s.value) order by s.kind,s.source_id),'[]') from _work_unit_metadata_live("+source_literal+")s",
+  'selected_live_expanded_body':live_body.replace('p_sourceids',source_literal),
+  'transitions':"select coalesce(jsonb_agg(jsonb_build_object('source',to_jsonb(e),'actor',t.actor_id,'recordedAt',t.received_at,'selectedAt',t.selected_effective_at,'timeReason',t.time_selection_reason,'commandId',t.command_id,'requestId',t.source_request_id) order by e.id),'[]') from personal_activity_transition_sources e join personal_activity_transitions t on t.id=e.transition_id where exists(select 1 from jsonb_array_elements("+source_literal+")x where x->>'id'=e.source_id::text and x->>'kind'=case e.source_kind when 'custom' then 'custom_work_sessions' when 'unit' then 'unit_sessions' when 'task' then 'task_sessions' when 'service' then 'service_time_sessions' when 'phase' then 'opening_phases' when 'helper' then 'summon_helpers' end)"
+ }
+ for label,statement in statements.items():
+  record=profile_probe(label+' '+uid,'explain(analyze,buffers,verbose,format json) '+statement,plan=True)
+  assert isinstance(record,list) and len(record)==1 and 'Plan' in record[0]
+report['helperProfile']['status']='passed'
+report['coverageLimits']['nestedPlansMeasured']=True
+report['coverageLimits']['nestedPlansScope']='Only the saved history/live/transition selection plans and expanded authored live helper; no actual function-call counter or every nested helper plan'
+persist('helper_profile_complete')
+
 # Exercise the actual active-reader paid edge before expensive volume tiers,
 # so a later honest statement timeout does not discard this independent gate.
 # Observe a real batch executing, then actual payroll. No pg_sleep or idle

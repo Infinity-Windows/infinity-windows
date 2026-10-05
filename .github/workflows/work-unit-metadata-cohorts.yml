@@ -41,8 +41,8 @@ jobs:
           from pathlib import Path
           import hashlib
           pins = {
-              'supabase/migrations/20261108480000_work_unit_metadata_cohorts.sql': '0af8c571d6d571dff926a0ecff8bb29db55fd72f8498e85146243ab7a5850997',
-              'scripts/verify-work-unit-metadata-cohorts-postgres.py': '08c32edb80d6ebbf2dd9416d02357ed0ea2889e306a123eb2e62918fbf70ebbc',
+              'supabase/migrations/20261108480000_work_unit_metadata_cohorts.sql': '229f08b22269e7de897ad7aa492e3f4b763a8a07d6514017f9e846627905f65c',
+              'scripts/verify-work-unit-metadata-cohorts-postgres.py': '09521db708dc46f672c36777b7d12822efa94f48d93173fe89e582d57d255c69',
           }
           for name, expected in pins.items():
               assert hashlib.sha256(Path(name).read_bytes()).hexdigest() == expected, name
