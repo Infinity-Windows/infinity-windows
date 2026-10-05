@@ -9,6 +9,8 @@ import json
 import os
 from pathlib import Path
 import re
+import select
+import sys
 import subprocess
 import tempfile
 import unittest
@@ -326,7 +328,134 @@ class EvidenceTests(unittest.TestCase):
             def poll(self):return None
         s=m.Session(m.validate_url(TARGET),self.report,launch=lambda *a,**k:P())
         with patch.object(m.time,'monotonic',side_effect=[0,36,37]),self.assertRaisesRegex(RuntimeError,'35 seconds'):s.query('select true','blocked')
-        self.assertEqual(json.loads(self.out.read_text())['calls'][-1]['status'],'waiting');s.out.close();s.err.close()
+        self.assertEqual(json.loads(self.out.read_text())['calls'][-1]['status'],'waiting');getattr(s,'reader',s.out).close();s.out.close();s.err.close()
+
+
+class NativeTransportTests(unittest.TestCase):
+    """Actual Python children/file descriptors; never a database or psql result."""
+    CHILD = r"""
+import json,os,sys,time
+mode=sys.argv[1]
+def write(data):
+    while data:
+        n=os.write(1,data);data=data[n:]
+for line in sys.stdin:
+    if line=='\\q\n':
+        if mode=='linger':time.sleep(30)
+        break
+    if not line.startswith('\\echo '):continue
+    marker=line[6:].strip().encode()
+    value={'value':'x'*2423450+'é🙂','literal':'trial_done_1','order':[3,2,1]}
+    data=json.dumps(value,ensure_ascii=False,separators=(',',':')).encode()+b'\n'
+    if mode=='race':
+        write(data);os.write(int(sys.argv[2]),b'R')
+        assert os.read(int(sys.argv[3]),1)==b'G'
+        write(marker+b'\n');os.write(int(sys.argv[2]),b'D')
+    elif mode=='partial':
+        split=data.index('é'.encode())+1
+        write(data[:split]);time.sleep(.04);write(data[split:])
+        write(marker[:5]);time.sleep(.04);write(marker[5:]);time.sleep(.04);write(b'\n')
+    elif mode=='trailing':write(data+marker+b'\nUNEXPECTED\n')
+    elif mode=='duplicate':write(data+marker+b'\n'+marker+b'\n')
+    elif mode=='unterminated':write(data+marker);sys.exit(0)
+    elif mode=='wrong':write(data+b'trial_done_999\n');sys.exit(0)
+    elif mode=='stderr':
+        os.write(2,b'ERROR: controlled child failure\n');sys.exit(7)
+    elif mode=='invalid_utf8':write(b'\xff\n'+marker+b'\n')
+    else:write(data+marker+b'\n')
+"""
+    def setUp(self):
+        self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
+        self.report=m.Report(Path(self.temp.name)/'new'/m.NAME)
+    def start(self,mode,pass_fds=(),extra=()):
+        launched=[]
+        def launch(args,**kwargs):
+            self.assertEqual(args[0],'psql')
+            saved=json.loads(self.report.path.read_text());self.assertEqual(saved['stage'],'before_postgres_connection')
+            proc=subprocess.Popen([sys.executable,'-u','-c',self.CHILD,mode,*map(str,extra)],pass_fds=pass_fds,**kwargs)
+            launched.append(proc);return proc
+        s=m.Session(m.validate_url(TARGET),self.report,launch=launch)
+        def cleanup():
+            try:s.close()
+            except (RuntimeError,BrokenPipeError):pass
+            if s.proc.poll() is None:s.proc.kill();s.proc.wait(timeout=5)
+            if s.proc.stdin is not None:s.proc.stdin.close()
+        self.addCleanup(cleanup)
+        return s,launched
+    def expected(self):return {'value':'x'*2423450+'é🙂','literal':'trial_done_1','order':[3,2,1]}
+    def test_real_child_shared_offset_interleaving_preserves_entire_large_result(self):
+        ready_r,ready_w=os.pipe();resume_r,resume_w=os.pipe()
+        for fd in [ready_r,ready_w,resume_r,resume_w]:self.addCleanup(os.close,fd)
+        s,_=self.start('race',(ready_w,resume_r),(ready_w,resume_r))
+        # Force exactly the shared-offset failure schedule after the child writes
+        # the full result, before it writes the completion marker. This wraps
+        # the collector used by Session itself, not a reimplementation of query.
+        outer=self;name='reader' if hasattr(s,'reader') else 'out';handle=getattr(s,name)
+        class Reader:
+            first=True
+            def seek(self,offset):
+                if self.first:
+                    self.first=False
+                    outer.assertTrue(select.select([ready_r],[],[],5)[0]);outer.assertEqual(os.read(ready_r,1),b'R')
+                    handle.seek(offset);os.write(resume_w,b'G')
+                    outer.assertTrue(select.select([ready_r],[],[],5)[0]);outer.assertEqual(os.read(ready_r,1),b'D')
+                else:handle.seek(offset)
+            def __getattr__(self,name):return getattr(handle,name)
+        setattr(s,name,Reader())
+        self.assertEqual(s.json('select fixture_value','large_race'),self.expected())
+        raw=s.out_path.read_bytes();self.assertTrue(raw.startswith(b'{"value":'));self.assertTrue(raw.endswith(b'\ntrial_done_1\n'))
+        self.assertEqual(json.loads(raw.splitlines()[0]),self.expected());s.close()
+        self.assertTrue(s.reader.closed and s.out.closed and s.err.closed)
+    def test_real_child_partial_unicode_and_marker_need_complete_newline(self):
+        s,_=self.start('partial');self.assertEqual(s.json('select fixture_value','partial'),self.expected())
+        self.assertTrue(s.out_path.read_bytes().endswith(b'trial_done_1\n'))
+    def test_real_child_one_process_two_large_responses_preserves_history(self):
+        s,launched=self.start('normal')
+        self.assertEqual(s.json('select fixture_value','first'),self.expected());first=s.out_path.read_bytes()
+        self.assertEqual(s.json('select fixture_value','second'),self.expected());raw=s.out_path.read_bytes()
+        self.assertTrue(raw.startswith(first));self.assertEqual(raw.count(b'\ntrial_done_'),2);self.assertEqual(len(launched),1)
+        self.assertEqual([c['status'] for c in self.report.data['calls']],['returned','returned'])
+    def test_real_child_trailing_output_refuses_and_retains_raw_evidence(self):
+        s,_=self.start('trailing')
+        with self.assertRaisesRegex(RuntimeError,'Unexpected trailing'):s.query('select fixture_value','trailing')
+        self.assertTrue(s.out_path.read_bytes().endswith(b'UNEXPECTED\n'));self.assertEqual(self.report.data['calls'][-1]['status'],'waiting')
+    def test_real_child_duplicate_marker_refuses(self):
+        s,_=self.start('duplicate')
+        with self.assertRaisesRegex(RuntimeError,'Unexpected trailing'):s.query('select fixture_value','duplicate')
+    def test_real_child_unterminated_marker_does_not_return_on_exit(self):
+        s,_=self.start('unterminated')
+        with self.assertRaisesRegex(RuntimeError,'Persistent psql exited'):s.query('select fixture_value','unterminated')
+        self.assertEqual(self.report.data['calls'][-1]['status'],'waiting')
+    def test_real_child_wrong_marker_is_not_completion(self):
+        s,_=self.start('wrong')
+        with self.assertRaisesRegex(RuntimeError,'Persistent psql exited'):s.query('select fixture_value','wrong')
+    def test_real_child_error_retains_stderr_and_close_refuses(self):
+        s,_=self.start('stderr')
+        with self.assertRaisesRegex(RuntimeError,'controlled child failure'):s.query('select fixture_value','error')
+        with self.assertRaisesRegex(RuntimeError,'psql failure'):s.close()
+        self.assertTrue(s.reader.closed and s.out.closed and s.err.closed);self.assertIn('controlled child failure',s.err_path.read_text())
+    def test_real_child_invalid_utf8_is_not_repaired(self):
+        s,_=self.start('invalid_utf8')
+        with self.assertRaises(UnicodeDecodeError):s.json('select fixture_value','invalid_utf8')
+        self.assertTrue(s.out_path.read_bytes().startswith(b'\xff'))
+    def test_real_child_forced_close_is_failure_and_releases_handles(self):
+        s,_=self.start('linger');wait=s.proc.wait;calls=[]
+        def bounded_wait(timeout):
+            calls.append(timeout)
+            if len(calls)==1:raise subprocess.TimeoutExpired('controlled child',timeout)
+            return wait(timeout=timeout)
+        with patch.object(s.proc,'wait',side_effect=bounded_wait),self.assertRaisesRegex(RuntimeError,'forced termination'):s.close()
+        self.assertIsNotNone(s.proc.poll());self.assertTrue(s.reader.closed and s.out.closed and s.err.closed)
+        self.assertEqual(calls,[5,5])
+    def test_failed_launch_closes_separate_handles_and_retains_partial(self):
+        handles=[]
+        def launch(*args,**kwargs):handles.extend([kwargs['stdout'],kwargs['stderr']]);raise OSError('controlled launch failure')
+        with self.assertRaisesRegex(OSError,'controlled launch failure'):m.Session(m.validate_url(TARGET),self.report,launch=launch)
+        self.assertTrue(all(h.closed for h in handles));self.assertEqual(json.loads(self.report.path.read_text())['stage'],'before_postgres_connection')
+    def test_source_never_repositions_inherited_output_descriptor(self):
+        src=ast.get_source_segment(SCRIPT.read_text(),next(x for x in ast.parse(SCRIPT.read_text()).body if isinstance(x,ast.ClassDef) and x.name=='Session'))
+        self.assertNotIn('self.out.seek',src);self.assertNotIn('self.out.read',src);self.assertNotIn('self.err.seek',src);self.assertNotIn('os.dup(',src)
+        self.assertIn("self.out_path.open('rb')",src)
 
 
 if __name__=='__main__':unittest.main(verbosity=2)

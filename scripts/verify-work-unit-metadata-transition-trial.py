@@ -172,10 +172,19 @@ class Session:
         uri=urlunparse((target.scheme,f'{user}:fixture-only@{target.hostname}:5432',target.path,'','',''))
         env={k:v for k,v in os.environ.items() if not k.startswith('PG')};env['PGCONNECT_TIMEOUT']='3'
         self.out_path=report.path.parent/(user+'-session.stdout');self.err_path=report.path.parent/(user+'-session.stderr')
-        self.out=self.out_path.open('x+');self.err=self.err_path.open('x+');self.offset=0
-        report.data['databaseContacted']=True;report.persist('before_'+user+'_connection')
-        try:self.proc=launch(['psql',uri,'-X','-q','-t','-A','-v','ON_ERROR_STOP=1'],stdin=subprocess.PIPE,stdout=self.out,stderr=self.err,text=True,env=env)
-        except BaseException:self.out.close();self.err.close();raise
+        # Popen inherits the writer's open-file description. Never seek/read that
+        # handle (or os.dup it): doing so changes the child's output position.
+        # A separately opened binary reader has its own byte cursor, while the
+        # original files retain every child byte for incomplete-run evidence.
+        self.out=self.out_path.open('x');self.reader=None;self.err=None;self.offset=0
+        try:
+            self.reader=self.out_path.open('rb');self.err=self.err_path.open('x')
+            report.data['databaseContacted']=True;report.persist('before_'+user+'_connection')
+            self.proc=launch(['psql',uri,'-X','-q','-t','-A','-v','ON_ERROR_STOP=1'],stdin=subprocess.PIPE,stdout=self.out,stderr=self.err,text=True,env=env)
+        except BaseException:
+            for handle in (self.reader,self.out,self.err):
+                if handle is not None:handle.close()
+            raise
     def query(self,sql,label):
         require(not self.closed,'Session already closed');self.sequence+=1;marker='trial_done_'+str(self.sequence)
         call={'session':self.user,'sequence':self.sequence,'label':label,'sqlSha256':digest(sql),'status':'waiting'}
@@ -184,13 +193,16 @@ class Session:
         try:
             self.proc.stdin.write(sql.rstrip().removesuffix(';')+';\n\\echo '+marker+'\n');self.proc.stdin.flush()
             while True:
-                self.out.seek(self.offset);text=self.out.read()
-                lines=text.splitlines()
-                if marker in lines:
-                    require(lines[-1]==marker,'Unexpected trailing response after marker')
-                    self.offset=self.out.tell();call['status']='returned';return '\n'.join(lines[:-1]).strip()
+                self.reader.seek(self.offset);raw=self.reader.read()
+                # A partial marker (or partial UTF-8 value) is not a response.
+                # Only the exact complete LF-terminated marker line may end it.
+                lines=raw.split(b'\n');mark=marker.encode('ascii')
+                if mark in lines[:-1]:
+                    require(lines.count(mark)==1 and lines[-2]==mark and lines[-1]==b'','Unexpected trailing response after marker')
+                    value=b'\n'.join(lines[:-2]).decode('utf-8').strip()
+                    self.offset=self.reader.tell();call['status']='returned';return value
                 if self.proc.poll() is not None:
-                    self.err.seek(0);raise RuntimeError('Persistent psql exited: '+self.err.read()[-2500:])
+                    raise RuntimeError('Persistent psql exited: '+self.err_path.read_text(errors='replace')[-2500:])
                 require(time.monotonic()<deadline,'Persistent psql response exceeded 35 seconds')
                 time.sleep(.025)
         finally:call['callerWallMsIncludingTransportAndCollection']=(time.monotonic()-began)*1000;self.report.persist()
@@ -204,7 +216,7 @@ class Session:
                 try:self.proc.wait(timeout=5)
                 except subprocess.TimeoutExpired:self.proc.kill();self.proc.wait(timeout=5);raise RuntimeError('Session required forced termination')
             require(self.proc.returncode==0,'Session closed with psql failure')
-        finally:self.closed=True;self.out.close();self.err.close()
+        finally:self.closed=True;self.reader.close();self.out.close();self.err.close()
 
 
 def identity_valid(value,instance,actor):

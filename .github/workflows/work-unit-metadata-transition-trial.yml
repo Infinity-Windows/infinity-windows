@@ -40,19 +40,19 @@ jobs:
           python-version: '3.12'
       - name: Pin exact reviewed source and no-contact checks before construction
         run: |
-          echo "700db293654ffc52e9c42a06524c18d094f6a38f5b5803dd1f983654fb9363c5  docs/work-unit-metadata-transition-trial.md" | sha256sum -c -
+          echo "5d03870242af5022482a060d1488328c73e9456c3323ce7f83868fd51fe4dbe6  docs/work-unit-metadata-transition-trial.md" | sha256sum -c -
           echo "9f39e62075a8e002c438c0fd2e80ca7b0a8cb7eca45b221d3f59d1088814c34a  scripts/fixtures/metadata-transition-trial/candidate-scope-body.sql" | sha256sum -c -
           echo "7b55de59ce5141a832cdff19e7e3c20f1a3f78fbfd998da540af1c8fd92eca9f  scripts/fixtures/metadata-transition-trial/candidate-transition-block.sql" | sha256sum -c -
           echo "43526ea1800de87a0b4934843a8b953df2aae37285a13594aa49e55292b6adc8  scripts/fixtures/metadata-transition-trial/coverage-body.sql" | sha256sum -c -
           echo "30681deef8c5ae91d8f8487da30b494bb9df359ba99eaf89482982e96851b4c7  scripts/fixtures/metadata-transition-trial/members-body.sql" | sha256sum -c -
           echo "a3b8d9aa96b41c2a9bc29c0c56a6fcb69028cf5dbe04cb411be0b26552d55800  scripts/fixtures/metadata-transition-trial/old-scope-body.sql" | sha256sum -c -
           echo "21bff44d2fc7741a0b1326dafc5ac43107b0efd441bfd0ec346b1c16e18f0760  scripts/fixtures/metadata-transition-trial/old-transition-block.sql" | sha256sum -c -
-          echo "1b5967dabae4664ddedd1a2df2a0403b1e4ddda004867b8e86e269cfbefb5db5  scripts/test_work_unit_metadata_transition_trial.py" | sha256sum -c -
+          echo "d293361ab966c7fdba8db623008ae6918ab8d5c58de44777f217195b175dba0b  scripts/test_work_unit_metadata_transition_trial.py" | sha256sum -c -
           echo "2cb1d6303476749c556e76ad0de9fa0c771b6ea347c7913409768988ba7a1012  scripts/verify-work-unit-metadata-cohorts-payroll.mjs" | sha256sum -c -
           echo "63540e422154972cf0fbf7867c74cd2290eae5013ceaba79f91dde98abb7f294  scripts/verify-work-unit-metadata-cohorts-postgres.py" | sha256sum -c -
           echo "854f4065908e3e64a259f2f760021aa44a5c1767c8cf213da959c8fa9608c850  scripts/verify-work-unit-metadata-cohorts-review-parity.mjs" | sha256sum -c -
           echo "d7b5090f10959b108ae6246b43bca3595be3b156bf104fe85f00a099b0cda694  scripts/verify-work-unit-metadata-membership-parity.mjs" | sha256sum -c -
-          echo "16d9337e674a163fb983be9e3e592fb3d923b24ee0a64f63f1e93d87ea4a261a  scripts/verify-work-unit-metadata-transition-trial.py" | sha256sum -c -
+          echo "33292dadcf228cbf5cbb7ef01701cbf3968d3bee2cba3deea0458f24122adbbe  scripts/verify-work-unit-metadata-transition-trial.py" | sha256sum -c -
           echo "79e58b251b0d9c953eaecad7231810109c64a43a6d3d7ac06d1f20c802e7e535  scripts/work-unit-metadata-transition-trial-profile.json" | sha256sum -c -
           echo "aa767e67de301cd0ce5961758cc5afefe89bdf25fe27b3c4156a219c9cb2f648  supabase/migrations/20261108410000_work_activity_engine_cutover.sql" | sha256sum -c -
           echo "e32122a581bf995857983cc433323bc490381b6eb217c583bf95fd7376b3e53f  supabase/migrations/20261108440000_work_unit_review.sql" | sha256sum -c -
