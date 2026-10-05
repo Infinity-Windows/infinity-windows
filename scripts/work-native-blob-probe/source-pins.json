@@ -3,7 +3,7 @@
   "pins": {
     ".github/workflows/ci.yml": "e1376ed2ab25a153b54e68dd2008f11d93c3db3872d6a94a95748b8b3c92321c",
     "app/e2e/activity-protocol-journal.spec.ts": "7492beb15d6efedda560fbb9e4d3273ba7aa739bb9209e96fe9b1fcb5682d951",
-    "app/e2e/cross-job-attempt-evidence-native.spec.ts": "c150a79e257c2bea2ab00dbe754f75156b30cbdb8ce2325ccc291768c37ed0e8",
+    "app/e2e/cross-job-attempt-evidence-native.spec.ts": "42fb44b100080721441f257dd402a64ef638db2760164fa5724d5bb134df1a57",
     "app/e2e/cross-job-storage-v3-native.spec.ts": "4dddca9166dd935ef1b1b29f97f446065585a2e82fcd634736c9f370b53b96cf",
     "app/e2e/paid-clock-chain.spec.ts": "ad0535f4bd08e7b26a8a4af4fdb22f35e5f74f7650afc9179fb93132bb37dbbe",
     "app/e2e/photo-outbox-v1-recovery.spec.ts": "ad6dca7d32068a8ba0770158f2f9c0c5ad99eedfbc963bb6a1d0571b34e60171",
@@ -61,7 +61,7 @@
   "attemptEvidenceEnrollment": {
     "baselineHead": "bdb7de2d3cc51b60b6c5ccc008267c5682c38eb5",
     "sourceCheckpoint2ManifestSha256": "7441a65876ede7a4c14930e59c8e5cccc599e29a0a31ca9fadba349e20cbab02",
-    "meaning": "Reviewed successor source plus proposed separate native CI step; baseline is not a future commit SHA.",
+    "meaning": "Reviewed successor source checkpoint2 plus appended native test checkpoint3; baseline is not a future commit SHA.",
     "workflowBeforeSha256": "bda028f16ee201fdd54d1ea67534d774721fd87bfdbf9b0b829bc3b84d811eb4",
     "workflowAfterSha256": "e1376ed2ab25a153b54e68dd2008f11d93c3db3872d6a94a95748b8b3c92321c",
     "newSourcePins": [
@@ -72,6 +72,16 @@
       "app/src/lib/workCapture/crossJobStorageV4.fixtures.ts",
       "app/src/lib/workCapture/crossJobStorageV4.test.ts",
       "app/src/lib/workCapture/crossJobStorageV4.ts"
-    ]
+    ],
+    "nativeTestCheckpoint3": {
+      "baselineHead": "5b61796c82904dae03094b443a586fbe4a18dc8b",
+      "manifestSha256": "05e2399f3f4b364522449923a67629cff03db48b7d56f30f78cfccc6ebf939dc",
+      "path": "app/e2e/cross-job-attempt-evidence-native.spec.ts",
+      "beforeSha256": "c150a79e257c2bea2ab00dbe754f75156b30cbdb8ce2325ccc291768c37ed0e8",
+      "afterSha256": "42fb44b100080721441f257dd402a64ef638db2760164fa5724d5bb134df1a57",
+      "preservedPrefixBytes": 25725,
+      "localNativeCases": 42,
+      "linuxWebkitAdditional9Cases": "pending"
+    }
   }
 }
