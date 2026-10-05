@@ -45,8 +45,8 @@ jobs:
           pins = {
               'supabase/migrations/20261108480000_work_unit_metadata_cohorts.sql': 'd083b38b07bb51f9f34d7b6c114fcdfcaf4c16b91a1541b7c51f2f11d5459c44',
               'scripts/verify-work-unit-metadata-cohorts-postgres.py': '63540e422154972cf0fbf7867c74cd2290eae5013ceaba79f91dde98abb7f294',
-              'scripts/verify-work-unit-metadata-retention-postgres.py': 'e99e13acc43d49827d68e1f70049a50152e0002f781affda8fa2d167b590b292',
-              'scripts/test_work_unit_metadata_retention_postgres.py': 'c5f7f86c740d0748db95368a78c58dab63a6a4dc228cef9a749ed713a15e2d7b',
+              'scripts/verify-work-unit-metadata-retention-postgres.py': '5e7bd750f61b1d9a27213e3ee38a853a9365dbcf1fb245557f48acaccf02b473',
+              'scripts/test_work_unit_metadata_retention_postgres.py': 'a68c5788dbf555f1732c24214734a52d5e367a679aa7e024ac0ef3242dc07ee3',
           }
           for name, expected in pins.items():
               assert hashlib.sha256(Path(name).read_bytes()).hexdigest() == expected, name

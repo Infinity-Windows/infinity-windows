@@ -619,10 +619,13 @@ def performance(db, evidence, owner, target):
                 observation = capture_wait(db, evidence, record, reader, paid, active=True)
                 answers = reader.finish()
                 paid_result = paid.finish()[-1]
+                record.update({'paidResponseWallMs': (time.monotonic() - started) * 1000,
+                               'paidResponseTimingMeaning': 'Caller upper bound from paid process startup through wait observation and reader/paid result collection; excludes subsequent legacy census validation; not isolated server execution or lock duration'})
+                evidence.persist()
                 validate_counts(answers[-1], db.obj('select person_record_counts(' + lit(target) + ');'))
                 require(paid_result['break_started_at'] is not None, 'Supported start_break did not succeed')
                 record.update({'censusResults': answers, 'paidResult': paid_result, 'requestWallMs': (time.monotonic() - started) * 1000,
-                               'timingMeaning': 'Upper bound includes process startup and collecting both results; not isolated lock duration',
+                               'timingMeaning': 'Verified census/start_break case upper bound includes paid process startup, wait observation, reader/paid result collection and post-response legacy census validation; not isolated server execution or lock duration; excludes later end_break and clock_out',
                                'stage': 'census_and_paid_completed'})
                 returned = rpc('select to_jsonb(end_break(' + lit(shift) + '::uuid));')
                 require(returned['break_started_at'] is None, 'Supported end_break did not succeed')

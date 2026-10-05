@@ -141,6 +141,155 @@ class NoContactTests(unittest.TestCase):
             self.assertFalse(json.loads(e.path.read_text())['waits'][0]['observed'])
 
 
+    def run_mock_performance(self, fail_post_response_validation=False):
+        """Run the real performance orchestration with a simulated clock and DB.
+
+        These durations exercise timer boundaries; none is a PG measurement.
+        Reader/paid completion consumes 200 ms; later legacy validation 750 ms.
+        """
+        clock = {'now': 100.0}
+        complete = {'legacy': 0, **dict.fromkeys(m.KEYS, 0)}
+        calls = []
+
+        class FakeDB:
+            sample_calls = 0
+            sample_validations = 0
+            post_response_validations = 0
+            paid_finished = False
+
+            def person(self, n):
+                calls.append('person')
+                return m.uid(n)
+
+            def run(self, sql):
+                if sql != 'select capture_enabled from work_activity_authority_generation':
+                    raise AssertionError('Unexpected mock SQL: ' + sql)
+                return 't'
+
+            def obj(self, sql, user='postgres'):
+                if 'create temp table retention_measure' in sql:
+                    self.sample_calls += 1
+                    clock['now'] += .010
+                    return {'serverMs': 12.5, 'value': complete.copy()}
+                if sql.startswith('select person_record_counts('):
+                    if self.paid_finished:
+                        self.post_response_validations += 1
+                        clock['now'] += .750
+                        calls.append('post_response_validation')
+                        return {'legacy': int(fail_post_response_validation)}
+                    self.sample_validations += 1
+                    clock['now'] += .005
+                    return {'legacy': 0}
+                if 'sign_toolbox_talk(' in sql:
+                    calls.append('sign_toolbox_talk')
+                    return {'profile_id': m.uid(50)}
+                if 'clock_in(' in sql:
+                    calls.append('clock_in')
+                    return {'id': m.uid(501)}
+                if 'end_break(' in sql:
+                    calls.append('end_break')
+                    return {'break_started_at': None}
+                if 'clock_out(' in sql:
+                    calls.append('clock_out')
+                    return {'clock_out_at': 'mock-clock-out'}
+                raise AssertionError('Unexpected mock SQL: ' + sql)
+
+            def until(self, query, seconds):
+                return [{'pid': 101, 'state': 'active'}]
+
+            def wait_snapshot(self, holder, waiter, active):
+                if active is not True:
+                    raise AssertionError('Expected ACTIVE observation')
+                clock['now'] += .030
+                return [{'holderPid': holder.pid, 'waiterPid': waiter.pid,
+                         'holderLogin': holder.login, 'waiterLogin': waiter.login,
+                         'holderState': 'active', 'blockingPids': [holder.pid],
+                         'gateClass': 7712, 'gateObject': 0}]
+
+        class FakeSession:
+            def __init__(self, db, label, sql, user='authenticator', role_sql=''):
+                self.db, self.label, self.login = db, label, user
+                self.is_paid = label == 'retention_paid_waiter'
+                self.pid = 102 if self.is_paid else 101
+                self.expected_role = 'authenticated' if self.is_paid else 'service_role'
+                self.expected_actor = m.uid(50) if self.is_paid else None
+                if self.is_paid:
+                    if 'start_break(' not in sql or role_sql != m.auth(m.uid(50)):
+                        raise AssertionError('Supported paid request/actor changed')
+                    calls.append('start_break')
+                    clock['now'] += .020
+                elif role_sql != 'set role service_role;':
+                    raise AssertionError('Expected service reader')
+
+            def identity(self):
+                return {'pid': self.pid, 'sessionUser': self.login,
+                        'currentRole': self.expected_role, 'actor': self.expected_actor,
+                        'statementTimeout': '20s', 'lockTimeout': '12s'}
+
+            def finish(self):
+                if self.is_paid:
+                    clock['now'] += .050
+                    self.db.paid_finished = True
+                    calls.append('paid_response')
+                    return [{'break_started_at': 'mock-break-start'}]
+                clock['now'] += .100
+                calls.append('reader_response')
+                return [complete.copy()]
+
+            def stop(self):
+                calls.append('stop_' + self.label)
+
+        with tempfile.TemporaryDirectory() as d:
+            evidence = m.Evidence(Path(d) / 'mock-performance.json')
+            db = FakeDB()
+            with patch.object(m, 'Session', FakeSession), patch.object(m.time, 'monotonic', side_effect=lambda: clock['now']), contextlib.redirect_stdout(io.StringIO()):
+                if fail_post_response_validation:
+                    with self.assertRaisesRegex(AssertionError, 'Old census changed'):
+                        m.performance(db, evidence, m.uid(1), m.uid(2))
+                else:
+                    m.performance(db, evidence, m.uid(1), m.uid(2))
+            saved = json.loads(evidence.path.read_text())
+        self.run_mock.assert_not_called()
+        self.popen_mock.assert_not_called()
+        self.assertEqual(db.sample_calls, 20)
+        self.assertEqual(db.sample_validations, 20)
+        self.assertEqual(db.post_response_validations, 1)
+        self.assertEqual(len(saved['timings']), 20)
+        self.assertTrue(all(t['status'] == 'passed' for t in saved['timings']))
+        self.assertEqual(saved['timingSummary']['samples'], 20)
+        self.assertIs(saved['timingSummary']['budgetApproved'], False)
+        return saved, calls
+
+    def test_paid_response_timer_excludes_later_legacy_validation(self):
+        saved, calls = self.run_mock_performance()
+        record = saved['waits'][0]
+        self.assertAlmostEqual(record['paidResponseWallMs'], 200.0, places=6)
+        self.assertAlmostEqual(record['requestWallMs'], 950.0, places=6)
+        self.assertAlmostEqual(record['requestWallMs'] - record['paidResponseWallMs'], 750.0, places=6)
+        self.assertLess(record['paidResponseWallMs'], record['requestWallMs'])
+        self.assertIn('not isolated server execution or lock duration', record['paidResponseTimingMeaning'])
+        self.assertIn('post-response legacy census validation', record['timingMeaning'])
+        self.assertEqual(record['stage'], 'census_and_paid_completed')
+        self.assertIs(record['observed'], True)
+        self.assertIsNone(record['returnResult']['break_started_at'])
+        self.assertEqual(saved['paidClockOut']['clock_out_at'], 'mock-clock-out')
+        for name in ('sign_toolbox_talk', 'clock_in', 'start_break', 'end_break', 'clock_out'):
+            self.assertEqual(calls.count(name), 1)
+        self.assertLess(calls.index('paid_response'), calls.index('post_response_validation'))
+        self.assertLess(calls.index('post_response_validation'), calls.index('end_break'))
+        self.assertLess(calls.index('end_break'), calls.index('clock_out'))
+
+    def test_paid_response_timer_survives_failed_later_validation_and_safety_out(self):
+        saved, calls = self.run_mock_performance(fail_post_response_validation=True)
+        record = saved['waits'][0]
+        self.assertAlmostEqual(record['paidResponseWallMs'], 200.0, places=6)
+        self.assertNotIn('requestWallMs', record)
+        self.assertNotEqual(record['stage'], 'census_and_paid_completed')
+        self.assertNotIn('end_break', calls)
+        self.assertEqual(calls.count('clock_out'), 1)
+        self.assertEqual(saved['paidClockOut']['clock_out_at'], 'mock-clock-out')
+
+
 class ValidationTests(unittest.TestCase):
     def test_exact_urls_only(self):
         for scheme in ('postgresql', 'postgres'):
