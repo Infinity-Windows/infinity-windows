@@ -419,7 +419,7 @@ jobs:
           retention-days: 7
 
   pwa-causal-original:
-    name: Trace exact 300fd returning-phone sequence on Linux
+    name: Trace exact f9 interrupted-download sequence on Linux
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
@@ -444,15 +444,15 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - uses: actions/download-artifact@v4
         with:
-          name: pwa-older-builds-and-results
-          run-id: 37245259066
+          name: pwa-current-builds-and-results
+          run-id: 37246658287
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/pwa-original
       - name: Refuse missing or changed archived bundles before the harness can rebuild
-        run: python3 ../scripts/verify-pwa-archived-bundles.py "$RUNNER_TEMP/pwa-original/_temp/pwa-older" "$RUNNER_TEMP/pwa-archive-receipt.json" retained-300fd
+        run: python3 ../scripts/verify-pwa-archived-bundles.py "$RUNNER_TEMP/pwa-original/_temp/pwa-current" "$RUNNER_TEMP/pwa-archive-receipt.json" current-f9
       - name: Replay the original complete sequence once with causal document timeline
         env:
-          IW_PWA_CACHE: ${{ runner.temp }}/pwa-original/_temp/pwa-older
+          IW_PWA_CACHE: ${{ runner.temp }}/pwa-original/_temp/pwa-current
           IW_PWA_ENGINE_TRACE: "1"
           IW_PWA_SLOW_SHELL_TRACE: "1"
           IW_PWA_CAUSAL_TRACE: "1"
@@ -460,7 +460,7 @@ jobs:
         run: npx playwright test --config playwright.pwa.config.ts --max-failures=1
       - name: Verify archived bundles remain unchanged after the sequence
         if: always()
-        run: python3 ../scripts/verify-pwa-archived-bundles.py "$RUNNER_TEMP/pwa-original/_temp/pwa-older" "$RUNNER_TEMP/pwa-archive-after-receipt.json" retained-300fd
+        run: python3 ../scripts/verify-pwa-archived-bundles.py "$RUNNER_TEMP/pwa-original/_temp/pwa-current" "$RUNNER_TEMP/pwa-archive-after-receipt.json" current-f9
       - uses: actions/upload-artifact@v4
         if: always()
         with:
