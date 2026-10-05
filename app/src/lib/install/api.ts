@@ -7,7 +7,12 @@ import { isOwner } from "./types";
 import { isMissingColumn, isMissingFunction as isMissingSchemaFunction, isMissingTable } from "../schemaErrors";
 import type { Project, WindowType } from "../types";
 import type { DraftOpening, ExistingOpeningLite, PlansetKindLike } from "./extract";
-import { markBase, planDraftPersistence } from "./extract";
+import {
+  CrossDocumentMarkCollisionError,
+  findCrossDocumentMarkCollisions,
+  markBase,
+  planDraftPersistence,
+} from "./extract";
 import type { MarkSpecDraft, ProjectMarkSpec } from "./specs";
 import { mergeSpecsByMark, parseSpecRow } from "./specs";
 import { dropCropsForPlanset } from "./cropCache";
@@ -1939,6 +1944,137 @@ interface ExistingOpeningRow {
   field_added?: boolean | null;
 }
 
+/** What the draft planners need to know about each planset: its kind, and a
+ *  file name to put in front of a person when two sets clash. */
+const PLANSET_IDENTITY_COLS = "id, kind, storage_path";
+
+export interface PlansetIdentityRow {
+  id: string;
+  kind: unknown;
+  storage_path?: string | null;
+}
+
+function plansetKindById(
+  plansets: PlansetIdentityRow[],
+): Map<string, PlansetKindLike> {
+  return new Map(
+    plansets.map((p) => [p.id, p.kind === "specs" ? "specs" : "building"]),
+  );
+}
+
+/** The file name a crew member would recognise, never a uuid. */
+function plansetFileName(p: PlansetIdentityRow | undefined): string | null {
+  const path = p?.storage_path?.trim();
+  if (!path) return null;
+  return path.split("/").pop() || null;
+}
+
+/**
+ * The refusal for a read that shares marks with a different same-kind
+ * document, naming that document's file — or null when the read is safe. See
+ * `findCrossDocumentMarkCollisions` for what does and does not count.
+ */
+function crossDocumentRefusal(
+  existing: Pick<ExistingOpeningLite, "opening_code" | "planset_kind" | "planset_id">[],
+  drafts: Pick<DraftOpening, "opening_code">[],
+  incomingKind: PlansetKindLike,
+  plansetId: string,
+  plansets: PlansetIdentityRow[],
+): CrossDocumentMarkCollisionError | null {
+  const collision = findCrossDocumentMarkCollisions(
+    existing,
+    drafts,
+    incomingKind,
+    plansetId,
+  );
+  if (collision.marks.length === 0) return null;
+  const byId = new Map(plansets.map((p) => [p.id, p]));
+  const names = collision.plansetIds
+    .map((id) => plansetFileName(byId.get(id)))
+    .filter((n): n is string => Boolean(n));
+  return new CrossDocumentMarkCollisionError(
+    collision.marks,
+    collision.plansetIds,
+    [...new Set(names)],
+  );
+}
+
+/**
+ * Refuse a read whose marks another plan set on this job already uses —
+ * BEFORE anything is written, naming the other file. Since PV 40
+ * (2026-10-05) every extraction write — openings, catalog types, type links,
+ * spec rows — is made inside the two database functions, which refuse the
+ * same clash again under the per-project lock; this read alone can go stale,
+ * so it is the friendly early answer, not the guard.
+ *
+ * Reads only `id, opening_code, planset_id`, which every server has, so a
+ * phone ahead of a migration cannot be stopped by it.
+ */
+export async function assertNoCrossDocumentMarkCollision(
+  projectId: string,
+  plansetId: string,
+  drafts: Pick<DraftOpening, "opening_code">[],
+): Promise<void> {
+  if (drafts.length === 0) return;
+  const [
+    { data: plansets, error: psErr },
+    { data: openings, error: opErr },
+    { data: storedSpecs, error: specsErr },
+  ] =
+    await Promise.all([
+      supabase
+        .from("project_plansets")
+        .select(PLANSET_IDENTITY_COLS)
+        .eq("project_id", projectId),
+      supabase
+        .from("project_openings")
+        .select("id, opening_code, planset_id")
+        .eq("project_id", projectId),
+      supabase
+        .from("project_mark_specs")
+        .select("mark_code, planset_id")
+        .eq("project_id", projectId),
+    ]);
+  if (psErr) throw psErr;
+  if (opErr) throw opErr;
+  // A missing specs table has no rows to protect. A missing provenance column
+  // is different: we cannot prove which CAD owns an existing mark, so refuse
+  // extraction rather than silently overwriting another material set.
+  if (specsErr && !isMissingTable(specsErr)) {
+    if (isMissingColumn(specsErr, "planset_id")) {
+      throw new Error("CAD extraction needs the planset provenance update before shared mark numbers can be checked safely.");
+    }
+    throw specsErr;
+  }
+  const kindById = plansetKindById(plansets ?? []);
+  const incomingKind = kindById.get(plansetId) ?? "building";
+  const existing = (openings ?? []).map((o) => ({
+    opening_code: o.opening_code as string,
+    planset_id: (o.planset_id as string | null) ?? null,
+    planset_kind: o.planset_id
+      ? (kindById.get(o.planset_id as string) ?? "building")
+      : ("building" as PlansetKindLike),
+  }));
+  if (incomingKind === "specs") {
+    for (const spec of storedSpecs ?? []) {
+      if (!spec.planset_id) continue;
+      existing.push({
+        opening_code: spec.mark_code as string,
+        planset_id: spec.planset_id as string,
+        planset_kind: "specs",
+      });
+    }
+  }
+  const refusal = crossDocumentRefusal(
+    existing,
+    drafts,
+    incomingKind,
+    plansetId,
+    plansets ?? [],
+  );
+  if (refusal) throw refusal;
+}
+
 /**
  * Save a fresh extract as unconfirmed drafts. Guardrail (same philosophy as
  * the Horizon BOM rule): confirmed openings are never deleted or overwritten
@@ -1949,20 +2085,30 @@ interface ExistingOpeningRow {
  * Smith Residence from ~105 openings down to 6). The building plan is the
  * authoritative source of openings; specs enriches types. Manually placed pins
  * are preserved across a same-kind re-extract. See `planDraftPersistence`.
+ *
+ * Within a kind, `plansetId` alone decides what is a re-read: only this
+ * document's own drafts are replaced, and a read sharing a mark with another
+ * same-kind document is refused before anything is deleted or inserted.
  */
 export async function saveDraftOpenings(
   projectId: string,
   plansetId: string,
   drafts: DraftOpening[],
   opts?: { specsAuthoritative?: boolean },
-): Promise<{ inserted: number; skipped: number; unmatchedPlanMarks: string[] }> {
+): Promise<{
+  inserted: number;
+  skipped: number;
+  unmatchedPlanMarks: string[];
+  /** Existing openings this commit re-typed (the old linkSpecsToOpenings count). */
+  linked: number;
+}> {
   if (drafts.length === 0)
-    return { inserted: 0, skipped: 0, unmatchedPlanMarks: [] };
+    return { inserted: 0, skipped: 0, unmatchedPlanMarks: [], linked: 0 };
 
   const [{ data: plansets, error: psErr }, first] = await Promise.all([
     supabase
       .from("project_plansets")
-      .select("id, kind")
+      .select(PLANSET_IDENTITY_COLS)
       .eq("project_id", projectId),
     supabase
       .from("project_openings")
@@ -2013,11 +2159,7 @@ export async function saveDraftOpenings(
     (existing ?? []).map((o) => o.id as string),
   );
 
-  const normalizeKind = (kind: unknown): PlansetKindLike =>
-    kind === "specs" ? "specs" : "building";
-  const kindById = new Map(
-    (plansets ?? []).map((p) => [p.id, normalizeKind(p.kind)]),
-  );
+  const kindById = plansetKindById(plansets ?? []);
   const incomingKind = kindById.get(plansetId) ?? "building";
 
   const existingLite: ExistingOpeningLite[] = (existing ?? []).map((o) => ({
@@ -2042,33 +2184,50 @@ export async function saveDraftOpenings(
     referenced: referenced.has(o.id),
   }));
 
+  // Refused here, with the other file named, before the planner (which would
+  // refuse too, anonymously) and before a single delete or insert.
+  const refusal = crossDocumentRefusal(
+    existingLite,
+    drafts,
+    incomingKind,
+    plansetId,
+    plansets ?? [],
+  );
+  if (refusal) throw refusal;
+
   const plan = planDraftPersistence(
     existingLite,
     drafts,
     incomingKind,
     opts?.specsAuthoritative ?? false,
+    plansetId,
   );
 
-  if (plan.deleteIds.length > 0) {
-    const { error: delErr } = await supabase
-      .from("project_openings")
-      .delete()
-      .in("id", plan.deleteIds);
-    if (delErr) throw refusalOrError(delErr);
-  }
-
-  if (plan.inserts.length === 0)
-    return {
-      inserted: 0,
-      skipped: plan.skipped,
-      unmatchedPlanMarks: plan.unmatchedPlanMarks,
-    };
-
-  const { error } = await supabase.from("project_openings").insert(
-    plan.inserts.map((d) => ({
-      project_id: projectId,
-      planset_id: plansetId,
+  // The plan is committed by the database in ONE transaction, never as a
+  // delete here and an insert there. Two requests let a second device land
+  // its own save in between (Fable, 2026-10-05): one set's drafts deleted,
+  // the other's inserted, nothing refused. The function re-checks this plan
+  // against the job as it is NOW — the snapshot below is what it was planned
+  // against — under the per-project extraction lock; see
+  // outputs/CAD-Multi-Set-2026-10-05/atomic_planset_extraction.draft.sql.
+  //
+  // The catalog types each mark needs and the type links onto openings already
+  // on the job ride in the SAME call (p_types). They used to be two browser
+  // passes — ensureTypesFromSpecs, then linkSpecsToOpenings — so a read the
+  // commit then refused (or one an old cached app sent) had already written
+  // the global catalog and re-typed another source's openings. Now a refused
+  // read changes nothing anywhere. This call runs even when the plan adds and
+  // removes nothing: a no-op re-read still owes its links, and the function
+  // writes only what actually differs.
+  const { data, error } = await supabase.rpc(RECONCILE_OPENINGS_RPC, {
+    p_project_id: projectId,
+    p_planset_id: plansetId,
+    p_snapshot: existing ?? [],
+    p_incoming_marks: [...new Set(drafts.map((d) => markBase(d.opening_code)))],
+    p_delete_ids: plan.deleteIds,
+    p_inserts: plan.inserts.map((d) => ({
       opening_code: d.opening_code,
+      mark_code: d.mark_code,
       window_type_id: d.window_type_id,
       label: d.label,
       page_number: d.page_number,
@@ -2076,16 +2235,193 @@ export async function saveDraftOpenings(
       pin_y: d.pin_y ?? null,
       origin_pin_x: d.origin_pin_x ?? d.pin_x ?? null,
       origin_pin_y: d.origin_pin_y ?? d.pin_y ?? null,
-      origin_page_number: d.page_number,
-      confirmed: false,
     })),
-  );
-  if (error) throw refusalOrError(error);
+    p_specs_authoritative: opts?.specsAuthoritative ?? false,
+    p_types: catalogSamplesFromDrafts(drafts),
+  });
+  if (error) throw plansetCommitError(error, plansets ?? []);
+  const outcome = (data ?? {}) as { linked?: unknown };
+  const linked = Number(outcome.linked ?? 0) || 0;
+  lastCommitLinks.set(commitKey(projectId, plansetId), linked);
   return {
     inserted: plan.inserts.length,
     skipped: plan.skipped,
     unmatchedPlanMarks: plan.unmatchedPlanMarks,
+    linked,
   };
+}
+
+/**
+ * How many existing openings the last committed read of each plan set
+ * re-typed, so {@link linkSpecsToOpenings} can report it without writing.
+ * Consumed once; a page reload simply reports 0 links for an old read.
+ */
+const lastCommitLinks = new Map<string, number>();
+const commitKey = (projectId: string, plansetId: string) =>
+  `${projectId}:${plansetId}`;
+
+/** One mark's catalog entry and type link, as reconcile_planset_openings takes it. */
+export interface CatalogSample {
+  /** The draft's mark, as ensureTypesFromSpecs always keyed it. */
+  mark_code: string;
+  /** The global window_types.type_code this mark resolves to (upper-cased). */
+  type_code: string;
+  name: string;
+  category: "window" | "door" | null;
+  width_in: number | null;
+  height_in: number | null;
+  notes: string | null;
+  /** A catalog product the read MATCHED for this mark, if any; it wins over
+   *  the mark's own provisional type, exactly as `d.window_type_id ??` did. */
+  window_type_id: string | null;
+}
+
+/**
+ * The per-mark catalog samples the commit needs — the same derivation
+ * ensureTypesFromSpecs always did (first draft per mark names the type; code
+ * is the upper-cased mark; a matched catalog product wins the link), moved so
+ * the database can apply it inside the commit. PURE.
+ */
+export function catalogSamplesFromDrafts(drafts: DraftOpening[]): CatalogSample[] {
+  const byMark = new Map<string, CatalogSample>();
+  for (const d of drafts) {
+    const mark = d.mark_code;
+    if (!mark || !mark.trim()) continue;
+    const existing = byMark.get(mark);
+    if (existing) {
+      // linkSpecsToOpenings let the last matched type for a mark win.
+      if (d.window_type_id) existing.window_type_id = d.window_type_id;
+      continue;
+    }
+    const code = mark.toUpperCase();
+    const notes = [
+      d.color ? `Color: ${d.color}` : null,
+      d.type_text && d.type_text !== code ? `Spec: ${d.type_text}` : null,
+    ].filter(Boolean) as string[];
+    byMark.set(mark, {
+      mark_code: mark,
+      type_code: code,
+      name:
+        d.type_text && d.type_text !== code ? `${d.type_text} (#${mark})` : `Mark #${mark}`,
+      category: d.kind === "door" ? "door" : "window",
+      width_in: d.width_in ?? null,
+      height_in: d.height_in ?? null,
+      notes: notes.length ? notes.join(" · ") : null,
+      window_type_id: d.window_type_id ?? null,
+    });
+  }
+  return [...byMark.values()];
+}
+
+/** The two database functions every extraction write goes through. */
+export const RECONCILE_OPENINGS_RPC = "reconcile_planset_openings";
+export const COMMIT_MARK_SPECS_RPC = "commit_planset_mark_specs";
+
+/**
+ * The stable refusal codes those functions raise, carried in PostgREST's
+ * `hint`. The message beside each is written for the crew; the code is what
+ * the app branches on. Keep in step with the ERROR CONTRACT block of the SQL.
+ */
+export const PLANSET_REFUSAL_CODES = [
+  "forge.planset.auth",
+  "forge.planset.not_found",
+  "forge.planset.stale_snapshot",
+  "forge.planset.mark_collision",
+  "forge.planset.not_owned",
+  "forge.planset.protected",
+  "forge.planset.invalid_plan",
+  "forge.planset.code_conflict",
+  "forge.planset.update_required",
+] as const;
+
+export type PlansetRefusalCode = (typeof PLANSET_REFUSAL_CODES)[number];
+
+/** A plan-set write the database refused on purpose, with nothing changed. */
+export class PlansetExtractionRefusal extends Error {
+  readonly code: PlansetRefusalCode;
+  constructor(code: PlansetRefusalCode, message: string) {
+    super(message);
+    this.name = "PlansetExtractionRefusal";
+    this.code = code;
+  }
+}
+
+/** True for a deliberate refusal (nothing written), as opposed to a fault. */
+export function isPlansetRefusal(error: unknown): boolean {
+  return (
+    error instanceof PlansetExtractionRefusal ||
+    error instanceof CrossDocumentMarkCollisionError
+  );
+}
+
+/**
+ * Said when the server has not got the atomic functions yet. There is no
+ * fallback to the old browser-side writes on purpose: those are exactly the
+ * check-then-write races the functions exist to close, so a phone ahead of
+ * the server refuses instead of quietly reopening them.
+ */
+export const PLANSET_SERVER_UPDATE_NEEDED =
+  "Reading plan sets needs a server update that hasn't been installed yet. Nothing was changed — ask the office to finish the update, then try again.";
+
+/**
+ * Turn a failed extraction commit into something a person can act on.
+ * PURE; exported so the contract is tested without a database.
+ *
+ *  - The function missing on the server: fail closed, update needed.
+ *  - A shared mark: the same CrossDocumentMarkCollisionError the browser's
+ *    own check throws, so every caller handles one type, with the other
+ *    file's name when we know it.
+ *  - Any other coded refusal: its own sentence, already written for the crew.
+ *  - Anything else: untouched (or the foreman-only sentence), for
+ *    formatApiError to deal with as it always has.
+ */
+export function plansetCommitError(
+  error: unknown,
+  plansets: PlansetIdentityRow[] = [],
+): unknown {
+  if (isMissingSchemaFunction(error)) {
+    return new PlansetExtractionRefusal(
+      "forge.planset.update_required",
+      PLANSET_SERVER_UPDATE_NEEDED,
+    );
+  }
+  const e = (error ?? {}) as { hint?: unknown; message?: unknown; details?: unknown };
+  const code = typeof e.hint === "string" ? e.hint.trim() : "";
+  if (!(PLANSET_REFUSAL_CODES as readonly string[]).includes(code)) {
+    return refusalOrError(error);
+  }
+  if (code === "forge.planset.mark_collision") {
+    let marks: string[] = [];
+    let plansetIds: string[] = [];
+    try {
+      const parsed = JSON.parse(String(e.details ?? "{}")) as {
+        marks?: unknown;
+        planset_ids?: unknown;
+      };
+      if (Array.isArray(parsed.marks)) marks = parsed.marks.map(String);
+      if (Array.isArray(parsed.planset_ids)) plansetIds = parsed.planset_ids.map(String);
+    } catch {
+      // A refusal without its detail is still a refusal; said plainly below.
+    }
+    if (marks.length === 0) {
+      return new PlansetExtractionRefusal(
+        "forge.planset.mark_collision",
+        typeof e.message === "string" && e.message.trim()
+          ? e.message.trim()
+          : "This file shares mark numbers with another plan set on this job. Nothing was changed.",
+      );
+    }
+    const byId = new Map(plansets.map((p) => [p.id, p]));
+    const names = plansetIds
+      .map((id) => plansetFileName(byId.get(id)))
+      .filter((n): n is string => Boolean(n));
+    return new CrossDocumentMarkCollisionError(marks, plansetIds, [...new Set(names)]);
+  }
+  const message =
+    typeof e.message === "string" && e.message.trim()
+      ? e.message.trim()
+      : "The plan set could not be saved. Nothing was changed.";
+  return new PlansetExtractionRefusal(code as PlansetRefusalCode, message);
 }
 
 /**
@@ -2099,139 +2435,72 @@ function refusalOrError(error: unknown): unknown {
 }
 
 /**
- * Upsert catalog types from a specs extract so mark #14 becomes a real
- * window_types row (type_code = 14) with size/color/category when known.
- * Then patch drafts that still lack a window_type_id.
+ * Fill each draft's window_type_id from the catalog, READING ONLY.
+ *
+ * This used to create provisional catalog types and fill gaps in existing
+ * ones straight from the browser — so a read the save then refused (PV 40: a
+ * second CAD set sharing mark 1), or one an old cached app sent, had already
+ * written the GLOBAL catalog. Those writes now happen inside
+ * `reconcile_planset_openings`, in the same transaction as the openings, from
+ * {@link catalogSamplesFromDrafts} — so they happen only when the save itself
+ * lands. Callers that still call this after the save get the resolved ids for
+ * their summary and nothing else.
+ *
+ * Best-effort on purpose: it runs AFTER a committed save, and failing here
+ * would tell a person their upload failed when it did not. `_scope` is kept
+ * for the callers' signature and no longer triggers a check — there is
+ * nothing left here to protect.
  */
 export async function ensureTypesFromSpecs(
   drafts: DraftOpening[],
+  _scope?: { projectId: string; plansetId: string },
 ): Promise<DraftOpening[]> {
   if (drafts.length === 0) return drafts;
-
-  const byMark = new Map<string, DraftOpening>();
-  for (const d of drafts) {
-    if (!byMark.has(d.mark_code)) byMark.set(d.mark_code, d);
+  const codes = [...new Set(drafts.map((d) => d.mark_code.toUpperCase()))];
+  try {
+    const { data, error } = await supabase
+      .from("window_types")
+      .select("id, type_code")
+      .in("type_code", codes);
+    if (error) return drafts;
+    const byCode = new Map(
+      ((data ?? []) as { id: string; type_code: string }[]).map((t) => [
+        t.type_code.toUpperCase(),
+        t.id,
+      ]),
+    );
+    return drafts.map((d) => ({
+      ...d,
+      window_type_id: d.window_type_id ?? byCode.get(d.mark_code.toUpperCase()) ?? null,
+    }));
+  } catch {
+    return drafts;
   }
-
-  const { data: existing, error: listErr } = await supabase
-    .from("window_types")
-    .select("id, type_code, name, category, width_in, height_in, notes");
-  if (listErr) throw listErr;
-
-  const byCode = new Map(
-    (existing ?? []).map((t) => [t.type_code.toUpperCase(), t]),
-  );
-  const markToTypeId = new Map<string, string>();
-
-  for (const [mark, sample] of byMark) {
-    const code = mark.toUpperCase();
-    let row = byCode.get(code);
-    const category =
-      sample.kind === "door" ? "door" : sample.kind === "window" ? "window" : null;
-    const notesParts = [
-      sample.color ? `Color: ${sample.color}` : null,
-      sample.type_text && sample.type_text !== code
-        ? `Spec: ${sample.type_text}`
-        : null,
-    ].filter(Boolean);
-    const notes = notesParts.length ? notesParts.join(" · ") : null;
-    const name =
-      sample.type_text && sample.type_text !== code
-        ? `${sample.type_text} (#${mark})`
-        : `Mark #${mark}`;
-
-    if (!row) {
-      const { data: created, error: insErr } = await supabase
-        .from("window_types")
-        .insert({
-          type_code: code,
-          name,
-          category,
-          width_in: sample.width_in,
-          height_in: sample.height_in,
-          notes,
-          // Not part of the closed ~100 catalog. Flag it so it never
-          // silently masquerades as a real catalog product in the brain.
-          provisional: true,
-        })
-        .select("id, type_code")
-        .single();
-      if (insErr) throw insErr;
-      row = {
-        id: created.id,
-        type_code: created.type_code,
-        name,
-        category,
-        width_in: sample.width_in,
-        height_in: sample.height_in,
-        notes,
-      };
-      byCode.set(code, row);
-    } else {
-      // Fill gaps only — never overwrite a catalog product's known dims.
-      const patch: Record<string, unknown> = {};
-      if (row.width_in == null && sample.width_in != null) {
-        patch.width_in = sample.width_in;
-      }
-      if (row.height_in == null && sample.height_in != null) {
-        patch.height_in = sample.height_in;
-      }
-      if (!row.category && category) patch.category = category;
-      if (notes && !(row as { notes?: string | null }).notes) patch.notes = notes;
-      if (Object.keys(patch).length > 0) {
-        const { error: upErr } = await supabase
-          .from("window_types")
-          .update(patch)
-          .eq("id", row.id);
-        if (upErr) throw upErr;
-      }
-    }
-    markToTypeId.set(mark, row.id);
-  }
-
-  return drafts.map((d) => ({
-    ...d,
-    window_type_id: d.window_type_id ?? markToTypeId.get(d.mark_code) ?? null,
-  }));
 }
 
 /**
- * Link a specs extract onto openings already on the job (by base mark).
- * Only updates unconfirmed / planned drafts' window_type_id when empty or
- * when force-linking from a fresh specs upload.
+ * How many existing openings the save of this plan set re-typed. WRITES
+ * NOTHING.
+ *
+ * Linking used to be a browser pass over every planned opening on the job,
+ * run apart from the save — so a refused or old-client read could re-type
+ * another source's windows. The link is now part of
+ * `reconcile_planset_openings`: same transaction, same per-project lock, only
+ * this document's rows, legacy rows and the other kind's rows (a plan callout
+ * of the same window), never a confirmed, started or field-added unit, and
+ * never over a real catalog product someone may have picked by hand. The
+ * count comes back with the save; this reports it once for callers that
+ * still ask here.
  */
 export async function linkSpecsToOpenings(
   projectId: string,
   drafts: DraftOpening[],
+  opts?: { plansetId?: string },
 ): Promise<{ linked: number }> {
-  if (drafts.length === 0) return { linked: 0 };
-
-  const markToType = new Map<string, string>();
-  for (const d of drafts) {
-    if (d.window_type_id) markToType.set(d.mark_code, d.window_type_id);
-  }
-  if (markToType.size === 0) return { linked: 0 };
-
-  const { data: openings, error } = await supabase
-    .from("project_openings")
-    .select("id, opening_code, window_type_id, confirmed, status")
-    .eq("project_id", projectId);
-  if (error) throw error;
-
-  let linked = 0;
-  for (const o of openings ?? []) {
-    if (o.confirmed || o.status !== "planned") continue;
-    const mark = markBase(o.opening_code);
-    const typeId = markToType.get(mark);
-    if (!typeId) continue;
-    if (o.window_type_id === typeId) continue;
-    const { error: upErr } = await supabase
-      .from("project_openings")
-      .update({ window_type_id: typeId })
-      .eq("id", o.id);
-    if (upErr) throw upErr;
-    linked += 1;
-  }
+  if (drafts.length === 0 || !opts?.plansetId) return { linked: 0 };
+  const key = commitKey(projectId, opts.plansetId);
+  const linked = lastCommitLinks.get(key) ?? 0;
+  lastCommitLinks.delete(key);
   return { linked };
 }
 
@@ -2240,8 +2509,9 @@ export async function updateOpening(
   patch: Partial<
     Pick<
       ProjectOpening,
+      // window_type_id is deliberately NOT here: a type change goes through
+      // setOpeningType, and the database refuses it any other way.
       | "opening_code"
-      | "window_type_id"
       | "label"
       | "page_number"
       | "pin_x"
@@ -2270,6 +2540,60 @@ export async function updateOpening(
   // sentence reaches the crew on its own, without PostgREST's trailing code.
   if (isPinMoveDenied(error)) throw new Error(PIN_MOVE_DENIED);
   throw error;
+}
+
+/** The refusals set_opening_type raises, carried in PostgREST's `hint`. */
+export const OPENING_TYPE_REFUSAL_CODES = [
+  "forge.opening_type.auth",
+  "forge.opening_type.not_found",
+  "forge.opening_type.installed",
+  "forge.opening_type.stale",
+  "forge.opening_type.unknown_type",
+  "forge.opening_type.unit_mismatch",
+  "forge.opening_type.update_required",
+] as const;
+
+export const OPENING_TYPE_SERVER_UPDATE_NEEDED =
+  "Changing a window's type needs a server update that hasn't been installed yet. Nothing was changed — ask the office to finish the update, then try again.";
+
+/**
+ * Turn a failed type change into one sentence a foreman can act on. PURE.
+ * A coded refusal already carries the crew's sentence; a server without the
+ * function fails closed (the old direct update is exactly the write the
+ * database now refuses from cached apps); anything else is left for
+ * formatApiError.
+ */
+export function openingTypeError(error: unknown): unknown {
+  if (isMissingSchemaFunction(error)) return new Error(OPENING_TYPE_SERVER_UPDATE_NEEDED);
+  const e = (error ?? {}) as { hint?: unknown; message?: unknown };
+  const code = typeof e.hint === "string" ? e.hint.trim() : "";
+  if ((OPENING_TYPE_REFUSAL_CODES as readonly string[]).includes(code)) {
+    const message = typeof e.message === "string" ? e.message.trim() : "";
+    return new Error(message || "The window's type could not be changed. Nothing was changed.");
+  }
+  return error;
+}
+
+/**
+ * The review screen's type picker. Goes through `set_opening_type`, which
+ * checks the caller (foreman+, not a partner, job visible), locks the row,
+ * and refuses when the type on file is no longer `expectedTypeId` — so two
+ * people picking at once cannot silently overwrite each other — or when the
+ * opening is installed or holds an assigned unit of another type. A direct
+ * PATCH of window_type_id is refused by the database (old cached apps used
+ * that write to re-type other plan sets' windows).
+ */
+export async function setOpeningType(
+  openingId: string,
+  typeId: string | null,
+  expectedTypeId: string | null,
+): Promise<void> {
+  const { error } = await supabase.rpc("set_opening_type", {
+    p_opening_id: openingId,
+    p_window_type_id: typeId,
+    p_expected_type_id: expectedTypeId,
+  });
+  if (error) throw openingTypeError(error);
 }
 
 /**
@@ -2439,12 +2763,9 @@ export async function listElevationViews(
  * Replace a building planset's elevation references with what a fresh read of
  * that planset found.
  *
- * Deletes the project's rows and re-inserts, so re-reading the same plans can
- * only ever restate the same rows — it cannot pile up duplicates, and it cannot
- * touch openings, which live in a different table entirely. Clearing the whole
- * project rather than just this planset is deliberate: a job has one building
- * plan, and rows measured against a superseded one describe a file the crew is
- * no longer working from.
+ * Replaces only this building planset's rows. A job can retain several drawing
+ * sets, so re-reading one must not erase the elevation references measured
+ * against another file. Openings live in a different table entirely.
  *
  * Best-effort by design. This is reference material; a project whose migration
  * hasn't been applied, or a crew member without write permission, simply sees
@@ -2460,7 +2781,8 @@ export async function saveElevationViews(
     const { error: delErr } = await supabase
       .from("project_mark_elevation_views")
       .delete()
-      .eq("project_id", projectId);
+      .eq("project_id", projectId)
+      .eq("planset_id", plansetId);
     if (delErr) throw delErr;
 
     if (appearances.length === 0) return { saved: 0 };
@@ -2706,6 +3028,10 @@ function withoutColumns(
  * replace a grid a foreman may already be relying on. `existingPaneGrid` is
  * whatever `extra.pane_grid` currently sits on that mark_code's row (from
  * `listMarkSpecs`), or undefined/null when there is none yet. PURE.
+ *
+ * Since PV 40 (2026-10-05) the WRITE is `commit_planset_mark_specs`, which
+ * applies this same rule in SQL against the locked row; this function is the
+ * rule's statement and its test, and the two must agree.
  */
 export function preservePaneGrid(
   draftExtra: Record<string, unknown> | null,
@@ -2757,6 +3083,10 @@ export interface AdoptedDrawingCoords {
  * permanent loss this whole change exists to undo. Nothing is adopted unless we
  * know which planset THIS run read, because a box saved with a null planset is
  * unplaceable. PURE.
+ *
+ * Since PV 40 (2026-10-05) the adoption itself is done by
+ * `commit_planset_mark_specs` in the same transaction as the text write; this
+ * is the rule's statement and its test, and the two must agree.
  */
 export function adoptableDrawingCoords(
   existing: StoredDrawingCoords[],
@@ -2797,44 +3127,15 @@ export function adoptableDrawingCoords(
 }
 
 /**
- * Write what {@link adoptableDrawingCoords} decided, one row at a time and
- * touching only the three drawing columns, so a confirmed mark's text is never
- * in the payload at all. Best-effort: an un-migrated column or a refused write
- * leaves the row exactly as it was and the extraction carries on.
- */
-async function adoptDrawingCoords(
-  adopted: AdoptedDrawingCoords[],
-): Promise<number> {
-  let filled = 0;
-  try {
-    for (const row of adopted) {
-      const { error } = await supabase
-        .from("project_mark_specs")
-        .update({
-          image_page: row.image_page,
-          image_bbox: row.image_bbox,
-          planset_id: row.planset_id,
-        })
-        .eq("id", row.id);
-      // One refusal means every row will be refused the same way (a missing
-      // column, no write permission) — stop rather than issue N doomed writes.
-      if (error) break;
-      filled += 1;
-    }
-  } catch {
-    // Offline mid-run. The rows that landed keep their drawings; the rest are
-    // still eligible next time the sheet is read.
-  }
-  return filled;
-}
-
-/**
  * Extract rich specs from the specs-planset page text and upsert them as
  * unconfirmed drafts keyed by (project_id, mark_code). Guardrail: a mark whose
  * spec is already CONFIRMED is never clobbered by a re-extract (same philosophy
  * as saveDraftOpenings), and `extra.pane_grid` specifically is never clobbered
- * even on an unconfirmed mark (see {@link preservePaneGrid}). Best-effort: a
- * missing table degrades to { saved: 0 } instead of blowing up the upload flow.
+ * even on an unconfirmed mark (see {@link preservePaneGrid}). Those rules are
+ * enforced by `commit_planset_mark_specs` in one transaction (PV 40,
+ * 2026-10-05); this function reads the page and hands the drafts over. It no
+ * longer degrades silently: a server without the function, or a page that
+ * shares a mark with another plan set, refuses with nothing written.
  *
  * Two extractors run and are MERGED (never one replacing the other):
  *   1. Claude VISION (`extract-specs`) reads the rich line-item — style, glass,
@@ -2879,6 +3180,17 @@ export async function extractAndSaveMarkSpecs(
   };
   if (!projectId || pages.length === 0) return empty;
 
+  // Every saved spec names the document it was read from: that provenance is
+  // what tells a second CAD set apart from a re-read of the first. A write
+  // that cannot name its document is refused — before the AI read is paid
+  // for — rather than saved as rows nobody can later attribute.
+  if (!plansetId) {
+    throw new PlansetExtractionRefusal(
+      "forge.planset.invalid_plan",
+      "These specs can't be saved without knowing which plan set they came from. Nothing was changed.",
+    );
+  }
+
   let aiDrafts: MarkSpecDraft[] = [];
   let pageStatuses: SpecPageStatus[] = [];
   let visionFailed = false;
@@ -2904,79 +3216,35 @@ export async function extractAndSaveMarkSpecs(
   const status = { pages: pageStatuses, visionFailed, drafts };
   if (drafts.length === 0) return { saved: 0, skipped: 0, ...status };
 
-  // Which marks are already confirmed? Never overwrite those. Separately —
-  // pane_grid rescan law (receipts precedent, wave G): whatever pane_grid is
-  // already on file for a mark_code is kept forever, confirmed row or not.
-  // See preservePaneGrid above for why this needs its own map instead of
-  // riding on confirmedMarks.
-  let confirmedMarks = new Set<string>();
-  const existingPaneGridByMark = new Map<string, unknown>();
-  let existingRows: ProjectMarkSpec[] = [];
-  try {
-    existingRows = await listMarkSpecs(projectId);
-    confirmedMarks = new Set(
-      existingRows.filter((s) => s.confirmed).map((s) => s.mark_code.toUpperCase()),
-    );
-    for (const s of existingRows) {
-      const grid = s.extra?.pane_grid;
-      if (grid != null) {
-        existingPaneGridByMark.set(s.mark_code.toUpperCase(), grid);
-      }
-    }
-  } catch {
-    // If we can't read existing rows we simply won't skip any, and there's
-    // nothing on file to protect either — a fresh extraction proceeds
-    // exactly as it always has.
-  }
-
-  // A confirmed mark with no picture at all can take the one this run located,
-  // even though its text is untouchable — see adoptableDrawingCoords. Fire and
-  // forget: a spec row that gains its drawing a second later is a bonus, and
-  // failing the whole extraction over it would be a bad trade.
-  await adoptDrawingCoords(
-    adoptableDrawingCoords(existingRows, drafts, plansetId),
+  // A sheet can contain rich detail marks even when its schedule produced no
+  // opening rows. Refuse a shared mark here, by file name, before the commit
+  // (which refuses it again under the lock — this read alone can go stale).
+  await assertNoCrossDocumentMarkCollision(
+    projectId,
+    plansetId,
+    drafts.map((draft) => ({ opening_code: draft.mark_code })),
   );
 
-  const toSave = drafts.filter(
-    (d) => !confirmedMarks.has(d.mark_code.toUpperCase()),
-  );
-  const skipped = drafts.length - toSave.length;
-  if (toSave.length === 0) return { saved: 0, skipped, ...status };
-
-  const rows = toSave.map((d) =>
-    specDraftColumns(
-      projectId,
-      {
-        ...d,
-        extra: preservePaneGrid(
-          d.extra,
-          existingPaneGridByMark.get(d.mark_code.toUpperCase()),
-        ),
-      },
-      plansetId,
-    ),
-  );
-  const upsert = (payload: Record<string, unknown>[]) =>
-    supabase
-      .from("project_mark_specs")
-      .upsert(payload, { onConflict: "project_id,mark_code" });
-
-  // Drop whichever optional column an un-migrated environment rejects and try
-  // again, one complaint at a time, rather than losing the whole extraction. Two
-  // retries covers both migrations being absent.
-  let { error } = await upsert(rows);
-  const dropped = new Set<string>();
-  for (let attempt = 0; attempt < OPTIONAL_SPEC_COLUMNS.length && error; attempt++) {
-    const missing = missingOptionalSpecColumns(error).filter((c) => !dropped.has(c));
-    if (missing.length === 0) break;
-    for (const c of missing) dropped.add(c);
-    ({ error } = await upsert(rows.map((r) => withoutColumns(r, dropped))));
-  }
-  if (error) {
-    if (isMissingSpecsTable(error)) return { saved: 0, skipped, ...status };
-    throw error;
-  }
-  return { saved: toSave.length, skipped, ...status };
+  // One transaction decides and writes the whole page: the shared-mark
+  // refusal, confirmed / manual / field text kept, pane_grid kept
+  // (preservePaneGrid), a picture-less protected row taking this run's
+  // drawing (adoptableDrawingCoords) — all against rows locked for the
+  // commit. This replaces a collision read, a drawing adoption and a
+  // per-mark upsert that each saw a different moment of the job. There is no
+  // drop-a-column fallback any more: a server without the function refuses
+  // with an update-needed message instead of writing around it.
+  const { data, error } = await supabase.rpc(COMMIT_MARK_SPECS_RPC, {
+    p_project_id: projectId,
+    p_planset_id: plansetId,
+    p_specs: drafts.map((d) => specDraftColumns(projectId, d, plansetId)),
+  });
+  if (error) throw plansetCommitError(error);
+  const outcome = (data ?? {}) as { saved?: unknown; skipped?: unknown };
+  return {
+    saved: Number(outcome.saved ?? 0) || 0,
+    skipped: Number(outcome.skipped ?? 0) || 0,
+    ...status,
+  };
 }
 
 /**
@@ -3267,6 +3535,7 @@ export async function runSpecExtraction(
   let saved = 0;
   let processed = 0;
   let stopped = false;
+  let refused = false;
   // Running merge base so a mark drawn across two pages ends up as one whole
   // row, exactly as the old whole-sheet call produced.
   let carryOver: MarkSpecDraft[] = [];
@@ -3311,6 +3580,7 @@ export async function runSpecExtraction(
         error: null,
       };
     } catch (e) {
+      refused = isPlansetRefusal(e);
       status = {
         pageNumber,
         ok: false,
@@ -3327,6 +3597,10 @@ export async function runSpecExtraction(
       { ...status, updatedAt: new Date().toISOString() },
     ].sort((a, b) => a.pageNumber - b.pageNumber);
     opts.onTick?.({ pageNumber, status, progress: stored });
+    // A refusal (shared mark, server update needed, wrong role) is about the
+    // whole file, not this page: every later page would pay for an AI read
+    // only to be refused the same way. The unread pages stay resumable.
+    if (refused) break;
   }
 
   if (!stopped) await finishSpecExtraction(projectId, planset, total, stored);

@@ -15,6 +15,7 @@ import {
   openingsReferencedElsewhere,
   removeOpening,
   restoreOpening,
+  setOpeningType,
   updateOpening,
 } from "../../lib/install/api";
 import { describeOpeningDeletion } from "../../lib/install/openingAccess";
@@ -71,6 +72,20 @@ export function OpeningReview() {
       updateOpening(args.id, args.patch),
     onSuccess: refresh,
     onError: (e) => setMessage(formatApiError(e)),
+  });
+
+  // The type picker has its own door (set_opening_type): it says which type
+  // the screen showed, so a pick made against an out-of-date screen is
+  // refused instead of overwriting someone else's. On any refusal the list
+  // reloads, so the picker shows what is really on file.
+  const setType = useMutation({
+    mutationFn: (args: { id: string; typeId: string | null; expected: string | null }) =>
+      setOpeningType(args.id, args.typeId, args.expected),
+    onSuccess: refresh,
+    onError: (e) => {
+      setMessage(formatApiError(e));
+      refresh();
+    },
   });
 
   const remove = useMutation({
@@ -225,9 +240,10 @@ export function OpeningReview() {
         variant="select"
         value={o.window_type_id ?? null}
         onChange={(id) =>
-          patch.mutate({
+          setType.mutate({
             id: o.id,
-            patch: { window_type_id: id || null },
+            typeId: id || null,
+            expected: o.window_type_id ?? null,
           })
         }
       />

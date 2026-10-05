@@ -18,6 +18,8 @@ const db = vi.hoisted(() => ({
   fieldAddedColumnMissing: false,
   /** Any other failure the openings read should return instead of rows. */
   openingsError: null as unknown,
+  /** Every atomic commit (reconcile_planset_openings) and what it was sent. */
+  commits: [] as Record<string, unknown>[],
 }));
 
 vi.mock("../supabase", () => {
@@ -72,7 +74,13 @@ vi.mock("../supabase", () => {
   };
 
   return {
-    supabase: { from: (table: string) => make(table) },
+    supabase: {
+      from: (table: string) => make(table),
+      rpc: (_name: string, args: Record<string, unknown>) => {
+        db.commits.push(args);
+        return Promise.resolve({ data: { inserted: 0 }, error: null });
+      },
+    },
     supabaseConfigured: true,
   };
 });
@@ -109,6 +117,7 @@ beforeEach(() => {
   db.quickOkColumnMissing = false;
   db.fieldAddedColumnMissing = false;
   db.openingsError = null;
+  db.commits = [];
   db.openings = [
     {
       id: "op-1",
@@ -157,7 +166,11 @@ describe("reading existing openings before a re-extract", () => {
       `project_openings:${EXISTING_OPENING_COLS_NO_QUICK_OK}`,
     ]);
     expect(result.inserted).toBe(1);
-    expect(db.inserted.map((r) => r.opening_code)).toEqual(["7-1"]);
+    const inserts = db.commits[0].p_inserts as { opening_code: string }[];
+    expect(inserts.map((r) => r.opening_code)).toEqual(["7-1"]);
+    // Nothing is written around the atomic commit.
+    expect(db.inserted).toHaveLength(0);
+    expect(db.deletedIds).toHaveLength(0);
   });
 
   // The rungs are separate for this exact case: the two migrations can land
@@ -178,7 +191,7 @@ describe("reading existing openings before a re-extract", () => {
   it("keeps a quick-checked opening a re-extract would otherwise delete", async () => {
     await saveDraftOpenings("proj-1", "ps-1", [draft("7-1")]);
 
-    expect(db.deletedIds).not.toContain("op-1");
+    expect(db.commits[0].p_delete_ids).not.toContain("op-1");
   });
 
   it("does not swallow a read that failed for any other reason", async () => {
@@ -195,6 +208,7 @@ describe("reading existing openings before a re-extract", () => {
     ).rejects.toMatchObject({ code: "42501" });
     expect(openingsSelects()).toHaveLength(1);
     expect(db.inserted).toHaveLength(0);
+    expect(db.commits).toHaveLength(0);
   });
 });
 

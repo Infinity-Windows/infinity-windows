@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { listProjects, listWindowTypes } from "../../lib/api";
 import {
+  assertNoCrossDocumentMarkCollision,
   ensureTypesFromSpecs,
   getPlansetSignedUrl,
   linkSpecsToOpenings,
@@ -88,6 +89,9 @@ export function PlansetUpload() {
     visionFailed: boolean;
   } | null>(null);
   const [retryNote, setRetryNote] = useState<string | null>(null);
+  // More than one material set may live on a job. Keep progress and re-read
+  // controls tied to the file the foreman chose, not simply the newest upload.
+  const [selectedSpecsId, setSelectedSpecsId] = useState<string | null>(null);
   // Which planset this tab is actively reading, and where it has got to. The
   // durable copy lives in `project_planset_pages`; this is just what's on
   // screen between saves.
@@ -151,8 +155,8 @@ export function PlansetUpload() {
     (p) => (p.kind ?? "building") === "building",
   );
   const specs = (plansets.data ?? []).filter((p) => p.kind === "specs");
-  // Newest specs planset — the one a progress bar or resume applies to.
-  const currentSpecs = specs[0] ?? null;
+  const currentSpecs =
+    specs.find((ps) => ps.id === selectedSpecsId) ?? specs[0] ?? null;
 
   const storedProgress = useQuery({
     queryKey: ["plansetProgress", currentSpecs?.id],
@@ -162,11 +166,15 @@ export function PlansetUpload() {
     refetchInterval: currentSpecs?.status === "extracting" ? 5000 : false,
   });
 
-  const pagesForBar = livePages ?? storedProgress.data ?? [];
+  const pagesForBar =
+    (runningPlansetId === currentSpecs?.id ? livePages : null) ??
+    storedProgress.data ??
+    [];
   const progressTotal = currentSpecs?.page_count ?? 0;
   const barProgress = summarizeProgress(progressTotal, pagesForBar);
   const resumable =
     !!currentSpecs &&
+    !runningPlansetId &&
     canResumeExtraction(currentSpecs, runningPlansetId, currentSpecs.id);
 
   /**
@@ -240,16 +248,16 @@ export function PlansetUpload() {
         "../../lib/install/pdf"
       );
       const doc = await loadPdf(bytes);
-      await updatePlanset(planset.id, {
-        status: kind === "specs" ? "extracting" : "ready",
-        page_count: doc.numPages,
-      });
 
       // Marked building plans carry FreeText callouts (#6 ×12, etc.).
       if (kind === "building") {
         setProgress("Reading mark callouts on the building plan…");
         const callouts = await extractPlanMarkCallouts(doc);
         if (callouts.length === 0) {
+          await updatePlanset(planset.id, {
+            status: "ready",
+            page_count: doc.numPages,
+          });
           return {
             planset,
             kind,
@@ -267,15 +275,23 @@ export function PlansetUpload() {
           callouts,
           await extractAllText(doc),
         );
+        let drafts = calloutsToDraftOpenings(planCallouts, [], types.data ?? []);
+        await assertNoCrossDocumentMarkCollision(projectId, planset.id, drafts);
+        const result = await saveDraftOpenings(projectId, planset.id, drafts);
+        // Commit the marks first. A competing upload can pass the browser
+        // preflight before this one reaches the database; catalog and links
+        // must not change until the atomic commit accepts this file.
+        drafts = await ensureTypesFromSpecs(drafts, { projectId, plansetId: planset.id });
+        const linked = await linkSpecsToOpenings(projectId, drafts, { plansetId: planset.id });
         const elevationViews = await saveElevationViews(
           projectId,
           planset.id,
           await elevationAppearancesFromDoc(doc),
         );
-        let drafts = calloutsToDraftOpenings(planCallouts, [], types.data ?? []);
-        drafts = await ensureTypesFromSpecs(drafts);
-        const linked = await linkSpecsToOpenings(projectId, drafts);
-        const result = await saveDraftOpenings(projectId, planset.id, drafts);
+        await updatePlanset(planset.id, {
+          status: "ready",
+          page_count: doc.numPages,
+        });
         const marks = summarizeDraftMarks(drafts);
         return {
           planset,
@@ -302,10 +318,15 @@ export function PlansetUpload() {
       const { rows, source, unreadPages } = read;
 
       let drafts = rowsToDraftOpenings(rows, types.data ?? []);
+      await assertNoCrossDocumentMarkCollision(projectId, planset.id, drafts);
       setProgress("Linking marks to types…");
-      drafts = await ensureTypesFromSpecs(drafts);
-      const linked = await linkSpecsToOpenings(projectId, drafts);
       const result = await saveDraftOpenings(projectId, planset.id, drafts, { specsAuthoritative: ["vision", "deterministic", "ai"].includes(source) });
+      drafts = await ensureTypesFromSpecs(drafts, { projectId, plansetId: planset.id });
+      const linked = await linkSpecsToOpenings(projectId, drafts, { plansetId: planset.id });
+      await updatePlanset(planset.id, {
+        status: "extracting",
+        page_count: doc.numPages,
+      });
 
       // Pull the FULL per-mark line-item specs (style/glass/color/…) via Claude
       // VISION off the rendered page images — manufacturer shop drawings draw
@@ -386,6 +407,7 @@ export function PlansetUpload() {
    * exactly the code a hand upload is read by.
    */
   const reportReadResult = (result: ReadOutcome) => {
+    if (result.kind === "specs") setSelectedSpecsId(result.planset.id);
     queryClient.invalidateQueries({ queryKey: ["plansets", projectId] });
     queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
     queryClient.invalidateQueries({ queryKey: ["windowTypes"] });
@@ -531,10 +553,18 @@ export function PlansetUpload() {
         };
       }
 
-      return readPlanset(planset, kind, await file.arrayBuffer());
+      try {
+        return await readPlanset(planset, kind, await file.arrayBuffer());
+      } catch (error) {
+        throw new Error(`File saved on this job, but reading it did not finish. Open it from the list and try again. ${formatApiError(error)}`);
+      }
     },
     onSuccess: reportReadResult,
-    onError: (e) => setProgress(formatApiError(e)),
+    onError: (e) => {
+      setProgress(null);
+      setSummary(formatApiError(e));
+      void queryClient.invalidateQueries({ queryKey: ["plansets", projectId] });
+    },
   });
 
   /**
@@ -696,12 +726,13 @@ export function PlansetUpload() {
       }));
       const read = await readScheduleFromDoc(doc, pages, catalog, setProgress);
       let drafts = rowsToDraftOpenings(read.rows, types.data ?? []);
+      await assertNoCrossDocumentMarkCollision(projectId, ps.id, drafts);
       setProgress("Linking marks to types…");
-      drafts = await ensureTypesFromSpecs(drafts);
-      const linked = await linkSpecsToOpenings(projectId, drafts);
       const result = await saveDraftOpenings(projectId, ps.id, drafts, {
         specsAuthoritative: ["vision", "deterministic", "ai"].includes(read.source),
       });
+      drafts = await ensureTypesFromSpecs(drafts, { projectId, plansetId: ps.id });
+      const linked = await linkSpecsToOpenings(projectId, drafts, { plansetId: ps.id });
       return {
         inserted: result.inserted,
         skipped: result.skipped,
@@ -732,11 +763,12 @@ export function PlansetUpload() {
     },
   });
 
-  const specPageNote = specPages
-    ? specPages.visionFailed
-      ? "We couldn't read the detailed specs off this sheet at all — only the basics were saved."
-      : describeSpecPages(specPages.pages)
-    : null;
+  const specPageNote =
+    specPages && currentSpecs && specPages.plansetId === currentSpecs.id
+      ? specPages.visionFailed
+        ? "We couldn't read the detailed specs off this sheet at all — only the basics were saved."
+        : describeSpecPages(specPages.pages)
+      : null;
 
   // Show the bar whenever there is something real to report: a live run, a
   // planset parked mid-extraction, or stored progress from a previous run.
@@ -798,7 +830,9 @@ export function PlansetUpload() {
       <h2>{title}</h2>
       <p className="muted">{blurb}</p>
       <label className="action-btn primary" style={{ cursor: "pointer" }}>
-        {upload.isPending ? "Working…" : `Upload ${kind === "building" ? "building plan" : "specs"}`}
+        {upload.isPending
+          ? "Working…"
+          : `${list.length > 0 ? "Add another" : "Add"} ${kind === "building" ? "building plan" : "CAD/specs file"}`}
         <input
           type="file"
           accept=".pdf,.dwg,.dxf,application/pdf"
@@ -843,6 +877,28 @@ export function PlansetUpload() {
               <span className="muted" style={{ fontSize: 11 }} data-testid="from-monday">
                 {t("mondayFiles.fromMonday")}
               </span>
+            )}
+            {kind === "specs" && (
+              <button
+                type="button"
+                className="link"
+                aria-label={`Show extraction status for ${fileName(ps)}`}
+                aria-pressed={currentSpecs?.id === ps.id}
+                disabled={
+                  runningPlansetId !== null ||
+                  upload.isPending ||
+                  readNow.isPending ||
+                  rereadList.isPending ||
+                  resumeExtraction.isPending ||
+                  rereadSpecs.isPending
+                }
+                onClick={() => {
+                  setSelectedSpecsId(ps.id);
+                  setRetryNote(null);
+                }}
+              >
+                {currentSpecs?.id === ps.id ? "Showing this file's status" : "Show this file's status"}
+              </button>
             )}
             {/* A file the server put here has never been opened by a browser,
                 so it is still 'uploaded' and nothing has been read off it. */}
@@ -889,9 +945,11 @@ export function PlansetUpload() {
       </header>
 
       <p className="muted">
-        Two slots per job: the building plan for the map, and the specs/schedule
-        that defines each mark (#14 → size, color, type). Tap a file to view it.
-        Confirm drafts before they drive inventory.
+        Store separate building plans and CAD/specs files for this job, including
+        vinyl and aluminum sets. Name each file clearly before upload so the
+        crew can tell them apart. If two files use the same unit mark, Forge
+        will hold the second extraction for review. Confirm drafts before they
+        drive inventory.
       </p>
 
       {slot(
@@ -1006,27 +1064,33 @@ export function PlansetUpload() {
       {viewError && <p className="error">{viewError}</p>}
 
       {showProgressBar && (
-        <ExtractionProgress
-          progress={barProgress}
-          activePage={activePage}
-          onStop={
-            runningPlansetId ? () => { cancelRun.current = true; } : undefined
-          }
-          onResume={
-            resumable && !resumeExtraction.isPending
-              ? () => resumeExtraction.mutate()
-              : undefined
-          }
-          resuming={resumeExtraction.isPending}
-          note={[specPageNote, retryNote].filter(Boolean).join(" ") || null}
-        />
+        <div>
+          <p className="muted">Extraction status: {currentSpecs ? fileName(currentSpecs) : ""}</p>
+          <ExtractionProgress
+            progress={barProgress}
+            activePage={runningPlansetId === currentSpecs?.id ? activePage : null}
+            onStop={
+              runningPlansetId === currentSpecs?.id
+                ? () => { cancelRun.current = true; }
+                : undefined
+            }
+            onResume={
+              resumable && !resumeExtraction.isPending
+                ? () => resumeExtraction.mutate()
+                : undefined
+            }
+            resuming={resumeExtraction.isPending}
+            note={[specPageNote, retryNote].filter(Boolean).join(" ") || null}
+          />
+        </div>
       )}
 
-      {currentSpecs && currentSpecs.status !== "extracting" && (
+      {currentSpecs?.status === "ready" && (
         <div className="row-gap" style={{ marginTop: 12 }}>
+          <p className="muted">Re-read: {fileName(currentSpecs)}</p>
           <button
             className="button-like"
-            disabled={rereadSpecs.isPending}
+            disabled={rereadSpecs.isPending || upload.isPending || readNow.isPending}
             title="Re-read every specs page with the current extractor — picks up per-panel widths and 90° corners. Confirmed marks are never touched; unconfirmed edits are replaced."
             onClick={() => {
               if (
