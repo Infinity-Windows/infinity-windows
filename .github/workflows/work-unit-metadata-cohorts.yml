@@ -6,6 +6,8 @@ on:
     paths:
       - .github/workflows/work-unit-metadata-cohorts.yml
       - scripts/verify-work-unit-metadata-cohorts-postgres.py
+      - scripts/test_work_unit_metadata_retention_postgres.py
+      - scripts/verify-work-unit-metadata-retention-postgres.py
       - supabase/migrations/20261108480000_work_unit_metadata_cohorts.sql
   workflow_dispatch:
 
@@ -43,11 +45,15 @@ jobs:
           pins = {
               'supabase/migrations/20261108480000_work_unit_metadata_cohorts.sql': 'd083b38b07bb51f9f34d7b6c114fcdfcaf4c16b91a1541b7c51f2f11d5459c44',
               'scripts/verify-work-unit-metadata-cohorts-postgres.py': '63540e422154972cf0fbf7867c74cd2290eae5013ceaba79f91dde98abb7f294',
+              'scripts/verify-work-unit-metadata-retention-postgres.py': 'e99e13acc43d49827d68e1f70049a50152e0002f781affda8fa2d167b590b292',
+              'scripts/test_work_unit_metadata_retention_postgres.py': 'c5f7f86c740d0748db95368a78c58dab63a6a4dc228cef9a749ed713a15e2d7b',
           }
           for name, expected in pins.items():
               assert hashlib.sha256(Path(name).read_bytes()).hexdigest() == expected, name
           PY
           python3 scripts/verify-work-unit-metadata-cohorts-postgres.py --check-plan
+          python3 scripts/test_work_unit_metadata_retention_postgres.py
+          python3 scripts/verify-work-unit-metadata-retention-postgres.py --check-plan
       - name: Build unchanged genuine role and source fixture
         run: python3 scripts/verify-work-activity-engine-role-parity.py
       - name: Verify unchanged authority and source concurrency
@@ -70,6 +76,12 @@ jobs:
         env:
           WORK_UNIT_METADATA_COHORTS_PG_OUT: ${{ runner.temp }}/work-unit-metadata-cohorts-postgres.json
         run: python3 scripts/verify-work-unit-metadata-cohorts-postgres.py
+      - name: Extend same disposable database with held person retention and active census checks
+        run: >-
+          python3 scripts/verify-work-unit-metadata-retention-postgres.py
+          --execute-fixture
+          --predecessor ${{ runner.temp }}/work-unit-metadata-cohorts-postgres.json
+          --out ${{ runner.temp }}/work-unit-metadata-retention-postgres.json
       - name: Preserve complete or partial genuine receipts
         if: always()
         uses: actions/upload-artifact@v4
@@ -77,6 +89,7 @@ jobs:
           name: work-unit-metadata-cohorts-postgres
           path: |
             ${{ runner.temp }}/work-unit-metadata-cohorts-postgres.json
+            ${{ runner.temp }}/work-unit-metadata-retention-postgres.json
             ${{ runner.temp }}/work-unit-review-volume.json
             ${{ runner.temp }}/work-activity-totals-volume.json
             ${{ runner.temp }}/work-unit-contributors-volume.json
