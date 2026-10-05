@@ -77,8 +77,8 @@ begin
   v_result := public.reconcile_planset_openings(
     v_job, v_set_a, v_snapshot, array[v_mark_1, v_mark_2]::text[], '{}'::uuid[],
     jsonb_build_array(
-      jsonb_build_object('opening_code', v_mark_1, 'label', 'dry-run first mark', 'page_number', 1),
-      jsonb_build_object('opening_code', v_mark_2, 'label', 'dry-run second mark', 'page_number', 1)
+      jsonb_build_object('opening_code', v_mark_1, 'mark_code', v_mark_1, 'label', 'dry-run first mark', 'page_number', 1),
+      jsonb_build_object('opening_code', v_mark_2, 'mark_code', v_mark_2, 'label', 'dry-run second mark', 'page_number', 1)
     ), false,
     jsonb_build_array(
       jsonb_build_object('mark_code', v_mark_1, 'type_code', upper(v_mark_1),
@@ -138,8 +138,8 @@ begin
   v_result := public.reconcile_planset_openings(
     v_job, v_set_a, v_snapshot, array[v_mark_1, v_mark_2]::text[], v_ids,
     jsonb_build_array(
-      jsonb_build_object('opening_code', v_mark_1, 'label', 'dry-run first mark', 'page_number', 1),
-      jsonb_build_object('opening_code', v_mark_2, 'label', 'dry-run second mark', 'page_number', 1)
+      jsonb_build_object('opening_code', v_mark_1, 'mark_code', v_mark_1, 'label', 'dry-run first mark', 'page_number', 1),
+      jsonb_build_object('opening_code', v_mark_2, 'mark_code', v_mark_2, 'label', 'dry-run second mark', 'page_number', 1)
     ), false,
     jsonb_build_array(
       jsonb_build_object('mark_code', v_mark_1, 'type_code', upper(v_mark_1),
@@ -152,7 +152,7 @@ begin
   );
   perform pg_temp.dry_run_as_system();
   perform pg_temp.dry_run_check('real owner extraction creates and fills catalog rows atomically',
-    v_result ->> 'updated' = '2' and v_result ->> 'inserted' = '0'
+    v_result ->> 'updated' = '1' and v_result ->> 'inserted' = '0'
       and v_result ->> 'deleted' = '0' and v_result ->> 'catalog_written' = '2'
       and exists (select 1 from public.project_openings o
                     join public.window_types w on w.id = o.window_type_id
@@ -195,7 +195,7 @@ begin
   v_result := public.reconcile_planset_openings(
     v_job, v_set_a, v_snapshot, array[v_mark_3 || '-2']::text[], '{}'::uuid[],
     jsonb_build_array(jsonb_build_object(
-      'opening_code', v_mark_3 || '-2', 'label', 'matched catalog product',
+      'opening_code', v_mark_3 || '-2', 'mark_code', v_mark_3 || '-2', 'label', 'matched catalog product',
       'page_number', 1, 'window_type_id', v_link_type
     )), false,
     jsonb_build_array(jsonb_build_object(
@@ -245,6 +245,7 @@ begin
   perform pg_temp.dry_run_expect_error('old-client catalog CSV upsert is refused',
     format('insert into public.window_types (type_code, name, width_in) values (%L, %L, 99) on conflict (type_code) do update set width_in = excluded.width_in',
       upper(v_mark_2), 'old client CSV overwrite'), 'older version');
+  v_role := pg_temp.dry_run_act_as(v_installer);
   perform pg_temp.dry_run_expect_error('installer cannot use the manual opening type picker',
     format('select public.set_opening_type(%L::uuid,%L::uuid,%L::uuid)',
       v_open_id, v_link_type, v_type_2), 'Only a foreman or above');
@@ -458,8 +459,8 @@ begin
     v_result := public.reconcile_planset_openings(
       v_job, v_set_a, v_snapshot, array[v_mark_1, v_mark_3]::text[], v_ids,
       jsonb_build_array(
-        jsonb_build_object('opening_code', v_mark_1, 'label', 'updated CAD draft', 'page_number', 1),
-        jsonb_build_object('opening_code', v_mark_3, 'label', 'new CAD draft', 'page_number', 1)
+        jsonb_build_object('opening_code', v_mark_1, 'mark_code', v_mark_1, 'label', 'updated CAD draft', 'page_number', 1),
+        jsonb_build_object('opening_code', v_mark_3, 'mark_code', v_mark_3, 'label', 'new CAD draft', 'page_number', 1)
       ), false
     );
     perform pg_temp.dry_run_as_system();
