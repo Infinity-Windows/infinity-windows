@@ -1,0 +1,20 @@
+{
+  "status": "REVIEWED_PLAN2_SOURCE_DECLARED_PROFILE",
+  "name": "genuine-pg17-fixture-v1",
+  "expectedOldCatalogSha256": "18f1f9048e57087987020441e0aff395c5094ec8f677643078f551aa4d705950",
+  "compositeOwners": {
+    "clock_time_pick": "supabase_admin",
+    "crew_clock_result": "supabase_admin"
+  },
+  "serviceExecuteAbsent": [
+    "_clock_pick_time_at",
+    "work_activity_clock_receipt",
+    "work_activity_command_receipt",
+    "work_activity_unit_basis"
+  ],
+  "predecessorsAdded": [
+    "20261108430000_work_activity_clock_capability.sql",
+    "20261108420000_work_activity_catalog.sql"
+  ],
+  "authority": "Source-declared approved plan2 profile; not a runtime observed-catalog refresh or provider attestation"
+}

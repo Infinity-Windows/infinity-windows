@@ -1,0 +1,81 @@
+name: Held cross-job protocol 2 PostgreSQL fixture
+
+on:
+  push:
+    branches: [codex/work-cross-job-20261004]
+    paths:
+      - .github/workflows/work-cross-job-v2.yml
+      - scripts/verify-work-cross-job-v2-postgres.py
+      - scripts/test_work_cross_job_v2_postgres.py
+      - scripts/work-cross-job-v2-*.json
+      - docs/work-cross-job-v2-postgres.md
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  genuine-v2:
+    name: Genuine PostgreSQL17 disposable protocol 2 fixture
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: supabase_admin
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: forge_work_activity_role_test
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U supabase_admin -d forge_work_activity_role_test"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      WORK_ACTIVITY_ROLE_TEST_DB_URL: postgresql://supabase_admin:fixture-only@localhost:5432/forge_work_activity_role_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify reviewed source and no-contact controls before construction
+        run: |
+          echo "3511e001f80cbb341ce991b9f6de4bae76135ab05a97acea601abcb1d17b0e49  scripts/verify-work-cross-job-v2-postgres.py" | sha256sum -c -
+          echo "1be1b172a55e61a40f87c5f3a9bf392846e72ed6e544c06abbf0f356d63a7c79  scripts/test_work_cross_job_v2_postgres.py" | sha256sum -c -
+          echo "017b0f73cd252987d464e8917f8b892de98fdabcefd6ce3411b4dd480a6223ae  docs/work-cross-job-v2-postgres.md" | sha256sum -c -
+          echo "758eabd8ee539a25696d0d39576fe3721671b3baa8bec2206f1d85a83f3864d5  scripts/work-cross-job-v2-authored-inert-catalog.json" | sha256sum -c -
+          echo "763ff370f8c0e6c0733856e6bbd3e20ca3a63f84ae55bf5270f5145caf60ce13  scripts/work-cross-job-v2-authored-active-catalog.json" | sha256sum -c -
+          echo "c32aa60337e3f55ba334c2e91f7692281458a2e0e896685ec6cb9d86b480096f  scripts/work-cross-job-v2-profile.json" | sha256sum -c -
+          python3 scripts/test_work_cross_job_v2_postgres.py
+          python3 scripts/verify-work-cross-job-v2-postgres.py --check-plan
+      - name: Build unchanged genuine role and source fixture
+        run: python3 scripts/verify-work-activity-engine-role-parity.py
+      - name: Verify unchanged authority/source concurrency
+        run: python3 scripts/verify-work-activity-catalog-concurrency.py
+      - name: Build unchanged review proof fixture
+        run: python3 scripts/verify-work-unit-review-concurrency.py
+      - name: Preserve unchanged review volume and active payroll baseline
+        env:
+          WORK_UNIT_REVIEW_VOLUME_OUT: ${{ runner.temp }}/work-unit-review-volume.json
+        run: python3 scripts/verify-work-unit-review-volume.py
+      - name: Build unchanged totals proof fixture
+        env:
+          WORK_ACTIVITY_TOTALS_VOLUME_OUT: ${{ runner.temp }}/work-activity-totals-volume.json
+        run: python3 scripts/verify-work-activity-totals-postgres.py
+      - name: Build unchanged contributor proof fixture
+        env:
+          WORK_UNIT_CONTRIBUTORS_VOLUME_OUT: ${{ runner.temp }}/work-unit-contributors-volume.json
+        run: python3 scripts/verify-work-unit-contributors-postgres.py
+      - name: Run exact predecessors and first finite disposable protocol 2 cases
+        run: |
+          python3 scripts/verify-work-cross-job-v2-postgres.py --execute-fixture --output "$RUNNER_TEMP/work-cross-job-v2-new/work-cross-job-v2.json"
+      - name: Preserve complete or partial receipts and predecessor logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: work-cross-job-v2-postgres
+          path: |
+            ${{ runner.temp }}/work-cross-job-v2-new/
+            ${{ runner.temp }}/work-unit-review-volume.json
+            ${{ runner.temp }}/work-activity-totals-volume.json
+            ${{ runner.temp }}/work-unit-contributors-volume.json
+          if-no-files-found: ignore

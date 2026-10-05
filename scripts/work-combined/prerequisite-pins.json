@@ -1,0 +1,41 @@
+{
+  "baseHead": "13d9479ccee18ce52080ebdad98375a9fe1d505b",
+  "files": {
+    "supabase/migrations/20261108410000_work_activity_engine_cutover.sql": "aa767e67de301cd0ce5961758cc5afefe89bdf25fe27b3c4156a219c9cb2f648",
+    "supabase/migrations/20261108420000_work_activity_catalog.sql": "a97e733bd06c4ea8632ed330b02ffb14d90cad748395dcbc7a3cfafbf178d002",
+    "supabase/migrations/20261108430000_work_activity_clock_capability.sql": "1e77a1c2ab09df91f16fe160ca640de4e9c825be6cec4fe7b46a1f941c255e61",
+    "supabase/migrations/20261108440000_work_unit_review.sql": "e32122a581bf995857983cc433323bc490381b6eb217c583bf95fd7376b3e53f",
+    "supabase/migrations/20261108450000_work_activity_totals.sql": "e0e74c2d1985d332af81f95d20d2a6625c40cb5fcf995b4aa6e267d75e092140",
+    "supabase/migrations/20261108460000_work_unit_contributors.sql": "ae6185e4b390b7cff8f3d7aca837688fda2756792bdf055ef8c3a1f290d438c5",
+    "supabase/migrations/20261108470000_work_cross_job_capture.sql": "c0eaccc11ca212853a3950bb64d47805990a2b4af824755a04d92b3fdf170c07",
+    "scripts/verify-work-cross-job-postgres.py": "eb7f48d2c18d62da5d4b44659968c20de9a6ec8f7c2e1deb099a8576cb4a0ab3",
+    "scripts/verify-work-cross-job-fresh-sessions.py": "2319b7f252cb65aeb1589c109526e24ea5287f5ec0f61e79430c3996d94296da",
+    "scripts/verify-work-unit-contributors-postgres.py": "f04bf3d6522ac98f1614236a530b26172101a53c6cdde52327aab735cbf02513",
+    "scripts/work-cross-job-contract.json": "413cc4f8b7d208725d636645e7683bdf39933e7e5a7d850c5479a4a7afd533e7",
+    "scripts/work-cross-job-catalog.sql": "6822b8642484030e1853e8a629749ec07515c02e5eafc1739c47cdfed9328435",
+    "scripts/work-cross-job-profile.json": "1136e2abd04020a0446a94c1a3077217972eefad03048bd97cb03dacfd47bfe2",
+    "scripts/work-cross-job-new-catalog.json": "afa15ad342c8fdc9b2a7aa7e266ab1d2ee41c54eb9094fc7dc523f0d7da6e1b4",
+    "scripts/work-cross-job-old-catalog.json": "b3a903bb98304b11c974dd9c0d132810c8ae4b32e161e41aa8009773b0375014",
+    "scripts/fixtures/work-activity-engine-role-parity.json": "7df27ee90e2358a7b90eab3104f54b80c24537e736dde4555b101690e57513d2",
+    "scripts/work-cross-job-v2-authored-inert-catalog.json": "758eabd8ee539a25696d0d39576fe3721671b3baa8bec2206f1d85a83f3864d5",
+    "scripts/work-cross-job-v2-authored-active-catalog.json": "763ff370f8c0e6c0733856e6bbd3e20ca3a63f84ae55bf5270f5145caf60ce13",
+    "scripts/verify-work-cross-job-v2-postgres.py": "3511e001f80cbb341ce991b9f6de4bae76135ab05a97acea601abcb1d17b0e49",
+    "scripts/work-cross-job-v2-profile.json": "c32aa60337e3f55ba334c2e91f7692281458a2e0e896685ec6cb9d86b480096f",
+    "scripts/verify-work-activity-engine-role-parity.py": "e2f89f30ff94d5fd59488b4f4302201296091af63f4a4d537ee7354db7729e3a",
+    "scripts/verify-work-activity-catalog-concurrency.py": "ad570b22903823cdcd4df6d493c6b34ccfdd3a49fdd3beaf3110e87123d2be60",
+    "scripts/verify-work-unit-review-concurrency.py": "fc0178415ed60235bea0eed09d257c012931d318d696fb57ee49755228dfc843",
+    "scripts/verify-work-unit-review-volume.py": "505d78cea1a15083f65c8ced7492b896adcc9b1215fb12f22f0758a5fda8cff7",
+    "scripts/verify-work-activity-totals-postgres.py": "56aad36c448a5cecc81faece81b77b8f339e1bc29ff736bec1edf1677627b3c0",
+    "scripts/fixtures/work-activity-engine-online-schema.sql": "ee41a980b19f76baa8637101b62703ecdf798a32eccbb0e9f074fbfd71c62471",
+    "scripts/dry-run-probes/work-activity-totals-coverage-diagnostic.fragment.sql": "04835cac7d8d742f6b9d91c68e15a4b3345027c558ef43cb64577b9d53fbcb18"
+  },
+  "executedDrivers": [
+    "scripts/verify-work-activity-engine-role-parity.py",
+    "scripts/verify-work-activity-catalog-concurrency.py",
+    "scripts/verify-work-unit-review-concurrency.py",
+    "scripts/verify-work-unit-review-volume.py",
+    "scripts/verify-work-activity-totals-postgres.py",
+    "scripts/verify-work-unit-contributors-postgres.py"
+  ],
+  "scope": "six unchanged prerequisite builders stop at0846; old V2/47/66 not executed by this workflow before clones"
+}

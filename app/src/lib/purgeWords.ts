@@ -146,6 +146,14 @@ export const WORK_HISTORY_PROBES: readonly HistoryProbe[] = [
   { table: "work_unit_review_defects", column: "creator_id", one: "unit defect they reported", many: "unit defects they reported" },
   { table: "work_unit_review_defect_events", column: "actor_id", one: "unit defect follow-up", many: "unit defect follow-ups" },
 
+  // Cross-job UUID evidence outlives a removed login. Counted by the held
+  // 0847 person_record_counts; these are history labels, not live access grants.
+  { table: "work_cross_job_shifts", column: "profile_id", one: "cross-job paid shift", many: "cross-job paid shifts" },
+  { table: "work_cross_job_allocations", column: "profile_id", one: "job allocation boundary", many: "job allocation boundaries" },
+  { table: "work_cross_job_bindings", column: "profile_id", one: "cross-job work source", many: "cross-job work sources" },
+  { table: "work_cross_job_resume", column: "profile_id", one: "cross-job break return record", many: "cross-job break return records" },
+  { table: "work_cross_job_clock_requests", column: "profile_id", one: "original clock-in request", many: "original clock-in requests" },
+
   // Time and money.
   { table: "time_shifts", column: "profile_id", one: "punch", many: "punches" },
   // The tap time and arrival time behind each punch (20261028000000): payroll
