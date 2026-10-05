@@ -797,6 +797,8 @@ jobs:
 
       - name: Verify the exact reveal inventory without changing frozen validators
         run: node --test scripts/work-activity-reveal-inventory.test.mjs
+      - name: Verify synthetic staging evidence preserves original labor
+        run: node --test scripts/design-prototypes/staging-evidence/model.test.mjs
       - name: Test that CI runs every script test
         run: node scripts/ci-runs-script-tests.test.mjs
 
