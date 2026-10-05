@@ -283,7 +283,7 @@ class Trial:
         function='public._work_unit_metadata_scope' if variant=='old' else 'pg_temp.metadata_scope_transition_probe'
         calls=[function+'('+lit(self.actor)+'::uuid,'+lit(u)+'::uuid,'+json_literal(members[u])+')' for u in units]
         if len(calls)==1:return calls[0]
-        return '(select jsonb_agg(v order by n) from (values '+','.join('('+str(n)+','+call+')' for n,call in enumerate(calls))+') q(n,v))'
+        return '(select jsonb_agg(q.v order by q.n) from (values '+','.join('('+str(n)+','+call+')' for n,call in enumerate(calls))+') q(n,v))'
     def scopes(self,cases):
         for name,units,members in cases:
             case={'caseId':name,'units':units,'memberInputSha256':digest(encoded(members)),'warmups':[],'pairs':[],'populatedBranchUnits':[u for u in units if keys(members[u])],'status':'running'}

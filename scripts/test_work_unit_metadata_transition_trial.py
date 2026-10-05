@@ -457,5 +457,103 @@ for line in sys.stdin:
         self.assertNotIn('self.out.seek',src);self.assertNotIn('self.out.read',src);self.assertNotIn('self.err.seek',src);self.assertNotIn('os.dup(',src)
         self.assertIn("self.out_path.open('rb')",src)
 
+class BatchSQLTests(unittest.TestCase):
+    """Inspect complete generated SQL and driver invariants; never execute SQL."""
+    def setUp(self):
+        self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
+        self.report=m.Report(Path(self.temp.name)/'new'/m.NAME);self.p,self.b=m.validate_source()
+    def inputs(self,size):
+        units=[m.ident(21000+n if size==10 else 30000+n) for n in range(size)]
+        # Distinct lists prove that neither array order nor per-unit membership
+        # can be replaced with one repeated literal by the expression builder.
+        members={u:[{'kind':'custom_work_units','id':u},{'kind':'custom_work_sessions','id':m.ident(50000+n),'note':"original ' note"}] for n,u in enumerate(units)}
+        return units,members
+    def generated(self,size,variant,review='batch'):
+        captured=[]
+        class T(m.Trial):
+            def query(inner,sql,label):captured.append((sql,label));return {'ms':.5,'value':None,'valueText':None}
+        t=T(None,self.report,self.p,self.b,INSTANCE);units,members=self.inputs(size)
+        expression=t.expression(variant,units,members);t.timed(expression,'generated_only',review=review)
+        sql=captured[0][0];prefix="truncate pg_temp.metadata_trial_result;do '";suffix="';select value from pg_temp.metadata_trial_result"
+        self.assertTrue(sql.startswith(prefix) and sql.endswith(suffix))
+        body=sql[len(prefix):-len(suffix)].replace("''", "'")
+        return units,members,expression,body,sql
+    def assert_qualified_batch(self,size):
+        for variant in ('old','candidate'):
+            with self.subTest(size=size,variant=variant):
+                _,_,expression,body,_=self.generated(size,variant)
+                self.assertIn('declare t timestamptz;v jsonb;r jsonb;ms double precision;',body)
+                self.assertIn('v:='+expression+';ms:=',body)
+                self.assertIn('(select jsonb_agg(q.v order by q.n) from (values ',expression)
+                self.assertTrue(expression.endswith(') q(n,v))'))
+                self.assertNotRegex(expression,r'jsonb_agg\(\s*v\b|order by\s+n\b')
+    def test_complete_ten_batch_qualifies_column_references_in_timed_block(self):self.assert_qualified_batch(10)
+    def test_complete_hundred_batch_qualifies_column_references_in_timed_block(self):self.assert_qualified_batch(100)
+    def test_batch_scope_calls_memberships_and_order_are_exact(self):
+        for size in (10,100):
+            for variant in ('old','candidate'):
+                with self.subTest(size=size,variant=variant):
+                    units,members,expression,_,_=self.generated(size,variant)
+                    function='public._work_unit_metadata_scope' if variant=='old' else 'pg_temp.metadata_scope_transition_probe'
+                    tuples=re.findall(r'\((\d+),'+re.escape(function)+r'\(',expression)
+                    self.assertEqual(tuples,[str(n) for n in range(size)])
+                    self.assertEqual(expression.count(function+'('),size)
+                    positions=[]
+                    for n,u in enumerate(units):
+                        expected=function+'('+m.lit(m.ident(1))+'::uuid,'+m.lit(u)+'::uuid,'+m.json_literal(members[u])+')'
+                        self.assertEqual(expression.count(expected),1);positions.append(expression.index(expected))
+                    self.assertEqual(positions,sorted(positions))
+    def test_batch_timer_stops_before_review_and_result_collection(self):
+        for size in (10,100):
+            for variant in ('old','candidate'):
+                _,_,expression,body,sql=self.generated(size,variant)
+                start='begin t:=clock_timestamp();v:=';stop=';ms:=extract(epoch from clock_timestamp()-t)*1000;'
+                self.assertIn(start+expression+stop,body)
+                review="select jsonb_agg(public._work_unit_metadata_review("+m.lit(m.ident(1))+"::uuid,x) order by n) into r from jsonb_array_elements(v) with ordinality q(x,n);"
+                self.assertIn(stop+review+'insert into pg_temp.metadata_trial_result',body)
+                self.assertIn("'review',r,'reviewText',r::text,'value',v,'valueText',v::text",body)
+                self.assertNotIn('variable_conflict',sql);self.assertEqual(body.count('clock_timestamp()'),2)
+    def test_single_unit_expression_keeps_direct_scope_and_review(self):
+        units,members=self.inputs(10);t=m.Trial(None,self.report,self.p,self.b,INSTANCE)
+        for variant in ('old','candidate'):
+            expression=t.expression(variant,units[:1],members)
+            self.assertNotIn('jsonb_agg',expression);self.assertNotIn('values ',expression)
+            function='public._work_unit_metadata_scope' if variant=='old' else 'pg_temp.metadata_scope_transition_probe'
+            self.assertEqual(expression,function+'('+m.lit(t.actor)+'::uuid,'+m.lit(units[0])+'::uuid,'+m.json_literal(members[units[0]])+')')
+    def test_batches_keep_six_warmups_twenty_pairs_and_full_results(self):
+        for size in (10,100):
+            with self.subTest(size=size):
+                units,members=self.inputs(size);calls=[]
+                class T(m.Trial):
+                    def timed(inner,expression,label,review=False):
+                        calls.append((expression,label,review))
+                        value=[{'unit':{'id':u},'manifest':{'transitions':[]},'retained':{'null':None,'ordered':[n,0]}} for n,u in enumerate(units)]
+                        review_value=[{'unitId':u,'ordinal':n} for n,u in enumerate(units)]
+                        return {'ms':999 if '_warmups_' in label else 2,'value':value,'valueText':m.encoded(value),'review':review_value,'reviewText':m.encoded(review_value)}
+                t=T(object(),self.report,self.p,self.b,INSTANCE);case_id='existing_'+str(size)+'_light_units';t.scopes([(case_id,units,members)])
+                case=self.report.data['cases'][-1];self.assertEqual(case['completedTimedRequestsPerVariant'],{'warmups':6,'measurements':20})
+                self.assertEqual(len(calls),52);self.assertTrue(all(call[2]=='batch' for call in calls));self.assertEqual(case['scopeCallsPerRequestFromAuthoredExpression'],size)
+                self.assertEqual(case['summary']['old'],{'medianMs':2.0,'p95Ms':2,'maxMs':2});self.assertFalse(case['runtimeFunctionInvocationCounterMeasured'])
+                self.assertEqual([entry['order'] for entry in case['pairs']],([['old','candidate'],['candidate','old']]*10))
+                for phase in ('warmups','pairs'):
+                    for entry in case[phase]:
+                        pair=json.loads(Path(entry['fullResults']['path']).read_text());m.result_equal(pair['old'],pair['candidate'])
+                        self.assertEqual([x['unit']['id'] for x in pair['old']['value']],units)
+                        self.assertEqual(entry['equality'],'passed')
+    def test_batch_missing_or_reordered_units_refuse_with_full_evidence(self):
+        for size in (10,100):
+            for failure in ('missing','reordered'):
+                with self.subTest(size=size,failure=failure):
+                    units,members=self.inputs(size);wrong=units[:-1] if failure=='missing' else list(reversed(units))
+                    class T(m.Trial):
+                        def timed(inner,expression,label,review=False):
+                            value=[{'unit':{'id':u}} for u in wrong]
+                            return {'ms':1,'value':value,'valueText':m.encoded(value),'review':[],'reviewText':'[]'}
+                    t=T(None,self.report,self.p,self.b,INSTANCE);name='negative_'+str(size)+'_'+failure
+                    with self.assertRaisesRegex(RuntimeError,'Every timed existing unit'):t.scopes([(name,units,members)])
+                    case=self.report.data['cases'][-1];self.assertEqual(case['warmups'][0]['equality'],'pending')
+                    pair=json.loads(Path(case['warmups'][0]['fullResults']['path']).read_text());self.assertEqual([x['unit']['id'] for x in pair['old']['value']],wrong)
+                    self.assertEqual(case['pairs'],[])
+
 
 if __name__=='__main__':unittest.main(verbosity=2)
