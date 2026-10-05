@@ -81,6 +81,8 @@ describe("shapeFor", () => {
     "work_unit_dimension_verifications.observation_actor_id", "work_unit_review_events.actor_id",
     "work_unit_review_events.original_identities", "work_unit_review_defects.creator_id",
     "work_unit_review_defect_events.actor_id",
+    "work_cross_job_shifts.profile_id", "work_cross_job_allocations.profile_id",
+    "work_cross_job_bindings.profile_id", "work_cross_job_resume.profile_id",
   ])("keeps the person's history and names a lone retained %s record", key => {
     const counts = { ...NOTHING, [key]: 1 };
     expect(shapeFor(counts)).toBe("retired");

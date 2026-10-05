@@ -920,6 +920,22 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
 
 }
 
+
+# Exact retained identities, NOT permission to generically remap/import them.
+# The contract is deployment proof; write frames are transaction-local authority;
+# the remaining rows retain physical/source/allocation identities without profile
+# FKs deliberately. All seven require whole-plan refusal when nonempty.
+WORK_CROSS_JOB_IDENTITIES = {
+    "work_cross_job_shifts": ("shift_id",),
+    "work_cross_job_allocations": ("id",),
+    "work_cross_job_heads": ("shift_id",),
+    "work_cross_job_bindings": ("source_kind", "source_id", "birth_history_id"),
+    "work_cross_job_resume": ("profile_id",),
+    "work_cross_job_write_frames": ("operation_id", "source_kind", "source_id"),
+    "work_cross_job_contract": ("proof_key",),
+}
+DEDUP_KEYS.update(WORK_CROSS_JOB_IDENTITIES)
+
 #: The monthly-values graph contains private policy snapshots, immutable
 #: reviews/scores, frozen accounting, and provenance. A dedup key describes
 #: identity for inventory and comparison, but the generic merge planner's
@@ -986,6 +1002,8 @@ WORK_CAPTURE_MANUAL_RECONCILIATION_TABLES = frozenset({
     "work_activity_operation_events",
     "work_activity_statement_frames",
 })
+
+WORK_CAPTURE_MANUAL_RECONCILIATION_TABLES |= frozenset(WORK_CROSS_JOB_IDENTITIES)
 
 #: Tables where combining two projects' rows is meaningless or actively wrong.
 #: The merge must choose one project's rows wholesale, or recompute from the
@@ -1313,6 +1331,7 @@ def inventory_from_backup(path: Path | str) -> dict[str, Any]:
         "name": f"backup {raw.get('exported_at', '')}".strip(),
         "captured_at": raw.get("exported_at"),
         "source": "backup",
+        "cross_job_census": raw.get("cross_job_census"),
         "tables": tables,
         "migrations": {"count": None, "latest": None},
         "auth": {"users": None},

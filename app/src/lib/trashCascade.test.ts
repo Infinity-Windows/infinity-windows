@@ -195,6 +195,15 @@ const engineCutover = readFileSync(join(MIGRATIONS, "20261108410000_work_activit
 const ENGINE_RETAINED = ["work_activity_observations", "work_activity_streams", "work_setup_sessions", "personal_activity_transition_sources"] as const;
 const ENGINE_EPHEMERAL = ["work_activity_transaction_context", "work_activity_expected_mutations"] as const;
 
+// Original project UUIDs survive job removal; these private records have no
+// operational project FK and never authorize access to a removed job. Heads
+// and resume are private pointers/cache; frames are transient authority; the
+// contract is immutable deployment proof. None is disposable job content.
+const CROSS_JOB_SCOPED_RETAINED = ["work_cross_job_allocations", "work_cross_job_bindings"] as const;
+const CROSS_JOB_PRIVATE = ["work_cross_job_shifts", ...CROSS_JOB_SCOPED_RETAINED,
+  "work_cross_job_heads", "work_cross_job_resume", "work_cross_job_write_frames", "work_cross_job_contract"] as const;
+const crossJobMigration = readFileSync(join(MIGRATIONS, "20261108470000_work_cross_job_capture.sql"), "utf8");
+
 /** Any direct DELETE/UPDATE of retained evidence violates its disposition.
  * Match ordinary SQL qualification, aliases, case and multiline whitespace. */
 function retainedEvidenceMutated(table: string, sql: string): boolean {
@@ -218,7 +227,7 @@ function purgeBody(): string {
  * on a fabricated table below, not only on today's schema.
  */
 function purgeCovers(table: string, body: string): boolean {
-  if (RETAINED_ORIGINAL_EVIDENCE[table] || table in UNIT_FACT_RETAINED) return true; // reviewed private history disposition
+  if (RETAINED_ORIGINAL_EVIDENCE[table] || table in UNIT_FACT_RETAINED || (CROSS_JOB_SCOPED_RETAINED as readonly string[]).includes(table)) return true; // reviewed private history disposition
   if (CASCADE_COVERED[table]) return true; // covered by an FK, documented above
   const deleted = new RegExp(`\\bdelete from ${table}\\b`).test(body);
   const detached = new RegExp(`\\bupdate ${table} set\\b`).test(body);
@@ -390,6 +399,34 @@ describe("purge_project handles every project-scoped table", () => {
       expect(retainedEvidenceMutated(table, `delete from ${table}_unrelated where true;`)).toBe(false);
     }
     expect(purgeCovers("zztest_unreviewed_retained_unit_fact", body)).toBe(false);
+  });
+
+  it("preserves the private cross-job graph through job purge without operational cascades", () => {
+    for (const table of CROSS_JOB_PRIVATE) {
+      const definition = crossJobMigration.split(`create table public.${table} (`)[1]?.split("\n);")[0];
+      expect(definition, table).toBeDefined();
+      const parents = [...definition!.matchAll(/references\s+public\.([a-z0-9_]+)/gi)].map(match => match[1]);
+      expect(parents.every(parent => (CROSS_JOB_PRIVATE as readonly string[]).includes(parent)), `${table} has no deletable operational parent`).toBe(true);
+      expect(definition).not.toMatch(/on delete (cascade|set null)/i);
+      expect(retainedEvidenceMutated(table, body), table).toBe(false);
+      expect(crossJobMigration).toContain(`alter table public.${table} enable row level security;`);
+      expect(crossJobMigration).toContain(`revoke all on table public.${table} from public,anon,authenticated,service_role;`);
+      if ((CROSS_JOB_SCOPED_RETAINED as readonly string[]).includes(table)) {
+        expect(census[table], table).toBe("project_id");
+        expect(purgeCovers(table, body)).toBe(true);
+      } else {
+        expect(census[table], table).toBeUndefined();
+      }
+      for (const mutation of [`DELETE FROM public.${table} WHERE true;`, `UPDATE\npublic.${table} evidence SET profile_id=NULL;`]) {
+        expect(retainedEvidenceMutated(table, body + mutation), mutation).toBe(true);
+      }
+      expect(retainedEvidenceMutated(table, `delete from ${table}_unrelated where true;`)).toBe(false);
+    }
+    for (const table of ["work_cross_job_shifts", ...CROSS_JOB_SCOPED_RETAINED]) {
+      expect(crossJobMigration).toContain(`create trigger ${table}_immutable before update or delete`);
+      expect(crossJobMigration).toContain(`create trigger ${table}_no_truncate before truncate`);
+    }
+    expect(purgeCovers("zztest_unreviewed_cross_job", body)).toBe(false);
   });
 
   it("deletes the projects row itself", () => {
