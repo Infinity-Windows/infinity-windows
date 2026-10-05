@@ -256,7 +256,10 @@ test("Specific uses the exact current ten-token basis and refuses catalog/basis 
 test("selected-unit dimensions use the canonical durable queue and hold Specific through a lost reply and remount", async ({ page, context }) => {
   const log = await setup(page); await open(page);
   await page.getByRole("button", { name: "Reaffirm activity stream" }).click();
-  await page.getByRole("tab", { name: "Specific" }).click();
+  await expect(page.getByRole("button", { name: "Framing a deliberately long aluminum assembly" })).toBeEnabled();
+  const specific = page.getByRole("tab", { name: "Specific" });
+  await specific.click();
+  await expect(specific).toHaveAttribute("aria-selected", "true");
   await page.getByRole("combobox", { name: "Choose a unit" }).selectOption(UNIT);
   const tile = page.getByRole("button", { name: "Set this unit in the opening" });
   await expect(tile).toBeEnabled();

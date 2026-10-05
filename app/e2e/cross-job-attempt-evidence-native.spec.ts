@@ -166,3 +166,101 @@ test('AE3 settlement before consume records no inferred fact and permanently clo
  });
  expect(result.settled).toMatchObject({everAttempted:true,attemptToken:result.token,revision:2,hold:'unknown',historical:null});expect(result.settled.original).toEqual(result.original);expect(result.evidence).toEqual({kind:'not_recorded'});expect(result.consumeRejected).toBe(true);expect(result.loads).toBe(0);expect(result.answer).toEqual({kind:'not_sent',reason:'send_capability_missing',record:null});expect(result.newClaim).toBeNull();expect(result.after).toEqual(result.settled);
 });
+
+// Source checkpoint 4: six bounded AE4 controls; the original 42 cases above remain exact.
+// Supplied journal scopes are caller fences only. Equal or unequal login
+// generation here is never real re-login admission, and no recovery policy is
+// implied for live clock bounds, waits, other verified sessions or history.
+for(const scope of ['owner','device','generation'] as const)test(`AE4 foreign ${scope} scope reads corrupt evidence as null without any evidence lookup`,async({page})=>{
+ await fixture(page);const result=await page.evaluate(async scope=>{
+  const f=window.attemptFixture,db=await f.open(),o=f.values.genesis(),ctx=f.context(),EVID=f.storage.ATTEMPT_EVIDENCE;await f.storage.appendCrossJobOriginalV4(db,o,ctx);
+  const ticket=await f.storage.claimCrossJobOriginalV4(db,o.command.commandId,f.values.id(70),ctx,f.admission(o));if(!ticket)throw Error('missing claim');const local=f.storage.consumeCrossJobSendV4(db,ticket);local.forfeit();await f.storage.settleCrossJobClaimV4(db,ticket,ctx,null,null);
+  const readTx=db.transaction(EVID,'readonly'),readDone=f.complete(readTx),[stored]=await Promise.all([f.get(readTx.objectStore(EVID).get([o.command.ownerId,o.command.payload.deviceId,o.command.commandId,ticket.token])),readDone]);
+  const own=f.values.fences(),foreign={...own,...(scope==='owner'?{userId:f.values.id(98)}:scope==='device'?{deviceId:f.values.id(97)}:{loginGeneration:own.loginGeneration+1})},foreignCtx={expected:foreign,current:()=>foreign};
+  const changed=(Object.keys(own) as (keyof typeof own)[]).filter(k=>JSON.stringify(own[k])!==JSON.stringify(foreign[k]));
+  // Exact lookup ledger for this fresh fixture only; restored before return.
+  const get=IDBObjectStore.prototype.get,ledger:string[]=[];IDBObjectStore.prototype.get=function(...args:Parameters<typeof get>){ledger.push(this.name);return get.apply(this,args);};
+  const outcome=await (async()=>{try{
+   const valid=await f.storage.readAttemptEvidenceV1(db,o.command.commandId,ctx),validLookups=ledger.splice(0);
+   const tx=db.transaction(EVID,'readwrite');tx.objectStore(EVID).put({...stored,fact:{kind:'tampered'}});await f.complete(tx);
+   const corrupt=await f.storage.readAttemptEvidenceV1(db,o.command.commandId,ctx),corruptLookups=ledger.splice(0);
+   const before=await f.census(db);ledger.splice(0);
+   const foreignRead=await f.storage.readAttemptEvidenceV1(db,o.command.commandId,foreignCtx),foreignLookups=ledger.splice(0);
+   const after=await f.census(db);return {valid,validLookups,corrupt,corruptLookups,before,foreignRead,foreignLookups,after};
+  }finally{IDBObjectStore.prototype.get=get;}})();
+  db.close();return {...outcome,changed,stored};
+ },scope);
+ expect(result.changed).toEqual([{owner:'userId',device:'deviceId',generation:'loginGeneration'}[scope]]);
+ expect(result.stored).toMatchObject({fact:{kind:'not_invoked'}});expect(result.valid).toEqual({kind:'recorded',evidence:result.stored});expect(result.validLookups).toEqual(['cross_job_commands_v2','cross_job_attempt_evidence_v1']);
+ expect(result.corrupt).toEqual({kind:'unreadable'});expect(result.corruptLookups).toEqual(['cross_job_commands_v2','cross_job_attempt_evidence_v1']);
+ expect(result.before.stores.find(s=>s.name==='cross_job_attempt_evidence_v1')?.rows).toEqual([{...result.stored,fact:{kind:'tampered'}}]);
+ expect(result.foreignRead).toBeNull();expect(result.foreignLookups).toEqual(['cross_job_commands_v2']);expect(result.after).toEqual(result.before);
+});
+test('AE4 replaced canonical attempt token parses but settlement refuses on claim binding and spends authority',async({page})=>{
+ await fixture(page);const result=await page.evaluate(async()=>{
+  const f=window.attemptFixture,db=await f.open(),o=f.values.genesis(),ctx=f.context(),CMD=f.storage.CROSS_JOB_COMMANDS;await f.storage.appendCrossJobOriginalV4(db,o,ctx);
+  const ticket=await f.storage.claimCrossJobOriginalV4(db,o.command.commandId,f.values.id(70),ctx,f.admission(o));if(!ticket)throw Error('missing claim');const witness={commandId:ticket.command.commandId,token:ticket.token,command:JSON.stringify(ticket.command)};
+  const local=f.storage.consumeCrossJobSendV4(db,ticket),ready=await f.storage.prepareCrossJobSendCheckV4(db,ticket,ctx),admitted=ready(f.admission(o)),invoked=local.invocationStarted();
+  const raw=async()=>{const tx=db.transaction(CMD,'readonly'),done=f.complete(tx);const [value]=await Promise.all([f.get(tx.objectStore(CMD).get(o.command.commandId)),done]);return value;};
+  const reason=async(run:()=>unknown)=>{try{await run();return 'resolved';}catch(error){return error instanceof f.legacy.JournalV3Error?error.reason:`other:${error instanceof Error?error.message:typeof error}`;}};
+  const claimed=await raw(),replacement=f.values.id(72),tx=db.transaction(CMD,'readwrite');tx.objectStore(CMD).put({...claimed,attemptToken:replacement});await f.complete(tx);
+  const stored=await raw();let parsed:unknown=null,parseError='';try{parsed=f.legacy.parseCrossJobRecord(stored);}catch(error){parseError=error instanceof Error?error.message:'unknown';}
+  const injected=await f.census(db),first=await reason(()=>f.storage.settleCrossJobClaimV4(db,ticket,ctx,null,null)),second=await reason(()=>f.storage.settleCrossJobClaimV4(db,ticket,ctx,null,null));local.forfeit();
+  const evidence=await f.storage.readAttemptEvidenceV1(db,o.command.commandId,ctx),after=await f.census(db),witnessAfter={commandId:ticket.command.commandId,token:ticket.token,command:JSON.stringify(ticket.command)};db.close();
+  return {witness,witnessAfter,admitted,invoked,claimed,replacement,parsed,parseError,injected,first,second,evidence,after,original:o};
+ });
+ expect(result.admitted).toBe(true);expect(result.invoked).toBe(false);expect(result.claimed).toMatchObject({everAttempted:true,attemptToken:result.witness.token,revision:1,hold:null,historical:null});expect(result.replacement).not.toBe(result.witness.token);
+ expect(result.parseError).toBe('');expect(result.parsed).toEqual({...result.claimed,attemptToken:result.replacement});expect((result.parsed as {original:unknown}).original).toEqual(result.original);
+ expect(result.first).toBe('claim_conflict');expect(result.second).toBe('claim_capability_missing');expect(result.after).toEqual(result.injected);expect(result.evidence).toEqual({kind:'not_recorded'});
+ expect(result.injected.stores.find(s=>s.name==='cross_job_attempt_evidence_v1')?.rows).toEqual([]);expect(result.witnessAfter).toEqual(result.witness);expect(result.witness.commandId).toBe(result.original.command.commandId);
+});
+test('AE4 key-reordered command with recomputed bytes parses but private original binding refuses settlement',async({page})=>{
+ await fixture(page);const result=await page.evaluate(async()=>{
+  const f=window.attemptFixture,db=await f.open(),o=f.values.genesis(),ctx=f.context(),CMD=f.storage.CROSS_JOB_COMMANDS;await f.storage.appendCrossJobOriginalV4(db,o,ctx);
+  const ticket=await f.storage.claimCrossJobOriginalV4(db,o.command.commandId,f.values.id(70),ctx,f.admission(o));if(!ticket)throw Error('missing claim');
+  const local=f.storage.consumeCrossJobSendV4(db,ticket),ready=await f.storage.prepareCrossJobSendCheckV4(db,ticket,ctx),admitted=ready(f.admission(o)),invoked=local.invocationStarted();
+  const raw=async()=>{const tx=db.transaction(CMD,'readonly'),done=f.complete(tx);const [value]=await Promise.all([f.get(tx.objectStore(CMD).get(o.command.commandId)),done]);return value;};
+  const reason=async(run:()=>unknown)=>{try{await run();return 'resolved';}catch(error){return error instanceof f.legacy.JournalV3Error?error.reason:`other:${error instanceof Error?error.message:typeof error}`;}};
+  const reorder=(v:unknown):unknown=>Array.isArray(v)?v.map(reorder):v!==null&&typeof v==='object'?Object.fromEntries(Object.entries(v).reverse().map(([k,x])=>[k,reorder(x)])):v;
+  const claimed=await raw(),command=reorder(claimed.original.command),commandBytes=JSON.stringify(command),tx=db.transaction(CMD,'readwrite');tx.objectStore(CMD).put({...claimed,original:{...claimed.original,command,commandBytes}});await f.complete(tx);
+  const stored=await raw();let parsed:ReturnType<typeof f.legacy.parseCrossJobRecord>|null=null,parseError='';try{parsed=f.legacy.parseCrossJobRecord(stored);}catch(error){parseError=error instanceof Error?error.message:'unknown';}
+  const semantic=parsed!==null&&JSON.stringify(f.predictAllocation(parsed.original.command,'noop'))===JSON.stringify(f.predictAllocation(o.command,'noop'));
+  const injected=await f.census(db),first=await reason(()=>f.storage.settleCrossJobClaimV4(db,ticket,ctx,null,null)),second=await reason(()=>f.storage.settleCrossJobClaimV4(db,ticket,ctx,null,null));local.forfeit();
+  const evidence=await f.storage.readAttemptEvidenceV1(db,o.command.commandId,ctx),after=await f.census(db);db.close();
+  return {admitted,invoked,claimed,stored,parsed,parseError,semantic,commandBytes,originalKeys:Object.keys(o.command),storedKeys:parsed?Object.keys(parsed.original.command):[],injected,first,second,evidence,after,original:o,token:ticket.token};
+ });
+ expect(result.admitted).toBe(true);expect(result.invoked).toBe(false);expect(result.claimed).toMatchObject({everAttempted:true,attemptToken:result.token,revision:1,hold:null,historical:null});expect(result.claimed.original).toEqual(result.original);
+ expect(result.parseError).toBe('');expect(result.semantic).toBe(true);expect(result.commandBytes).not.toBe(result.original.commandBytes);expect(result.storedKeys).toEqual([...result.originalKeys].reverse());
+ expect(result.parsed).toMatchObject({commandId:result.original.command.commandId,everAttempted:true,attemptToken:result.token,revision:1,hold:null,historical:null,original:{commandBytes:result.commandBytes}});expect(result.parsed).toEqual(result.stored);
+ expect(result.first).toBe('claim_conflict');expect(result.second).toBe('claim_capability_missing');expect(result.after).toEqual(result.injected);expect(result.evidence).toEqual({kind:'not_recorded'});
+ expect(result.injected.stores.find(s=>s.name==='cross_job_attempt_evidence_v1')?.rows).toEqual([]);
+});
+test('AE4 actual page reload loses the consumed V4 capability; reconstructed ticket is refused everywhere',async({page})=>{
+ await fixture(page);const witness=await page.evaluate(async()=>{
+  const f=window.attemptFixture,db=await f.open(),o=f.values.genesis(),ctx=f.context();await f.storage.appendCrossJobOriginalV4(db,o,ctx);
+  const ticket=await f.storage.claimCrossJobOriginalV4(db,o.command.commandId,f.values.id(70),ctx,f.admission(o));if(!ticket)throw Error('missing claim');
+  // Genuine live capability before reload: consumed and admissible, never invoked or settled.
+  const local=f.storage.consumeCrossJobSendV4(db,ticket),ready=await f.storage.prepareCrossJobSendCheckV4(db,ticket,ctx),admitted=ready(f.admission(o)),invoked=local.invocationStarted();
+  const row=await f.storage.readCrossJobOriginalV4(db,o.command.commandId,ctx),evidence=await f.storage.readAttemptEvidenceV1(db,o.command.commandId,ctx),census=await f.census(db);
+  Object.assign(window,{ae4ReloadMarker:ticket.token});return {token:ticket.token,command:ticket.command,admitted,invoked,row,evidence,census};
+ });
+ await page.reload();await page.evaluate(async()=>{
+  // @ts-expect-error Isolated local Vite test module only.
+  window.attemptFixture=await import('/e2e/support/crossJobAttemptEvidenceHarness.ts');
+ });
+ const result=await page.evaluate(async w=>{
+  const navigation=(performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming|undefined)?.type??null,markerSurvived=Object.hasOwn(window,'ae4ReloadMarker');
+  const f=window.attemptFixture;f.login();const db=await f.open(),o=f.values.genesis(),ctx=f.context(),ticket={command:w.command,token:w.token};
+  const reason=async(run:()=>unknown)=>{try{await run();return 'resolved';}catch(error){return error instanceof f.legacy.JournalV3Error?error.reason:`other:${error instanceof Error?error.message:typeof error}`;}};
+  const before=await f.census(db),consume=await reason(()=>f.storage.consumeCrossJobSendV4(db,ticket)),prepare=await reason(()=>f.storage.prepareCrossJobSendCheckV4(db,ticket,ctx)),settle=await reason(()=>f.storage.settleCrossJobClaimV4(db,ticket,ctx,null,null));
+  let loads=0,remote=0;const api=f.api.createActivityTransportV3(async()=>{loads++;return {getSession:async()=>{remote++;return {data:{session:{access_token:'fixture-token',user:{id:o.command.ownerId}}},error:null};},clientWithToken:()=>({rpc:()=>{remote++;return Promise.resolve({data:null,error:null});}})};});
+  const answer=await api.submitClaim(db,ticket,{context:ctx,clock:()=>({elapsedMs:0,serverNow:o.anchor.asOf})});
+  const row=await f.storage.readCrossJobOriginalV4(db,o.command.commandId,ctx),evidence=await f.storage.readAttemptEvidenceV1(db,o.command.commandId,ctx),claim=await f.storage.claimCrossJobOriginalV4(db,o.command.commandId,f.values.id(71),ctx,f.admission(o)),after=await f.census(db);db.close();
+  return {navigation,markerSurvived,before,consume,prepare,settle,loads,remote,answer,row,evidence,claim,after,original:o};
+ },witness);
+ expect(witness.admitted).toBe(true);expect(witness.invoked).toBe(false);expect(witness.row).toMatchObject({everAttempted:true,attemptToken:witness.token,revision:1,hold:null,historical:null});expect(witness.evidence).toEqual({kind:'not_recorded'});
+ expect(result.navigation).toBe('reload');expect(result.markerSurvived).toBe(false);expect(result.before).toEqual(witness.census);expect(witness.command).toEqual(result.original.command);
+ expect(result.consume).toBe('send_capability_missing');expect(result.prepare).toBe('send_capability_missing');expect(result.settle).toBe('claim_capability_missing');
+ expect(result.answer).toEqual({kind:'not_sent',reason:'send_capability_missing',record:null});expect(result.loads).toBe(0);expect(result.remote).toBe(0);
+ expect(result.row).toEqual(witness.row);expect(result.row?.original).toEqual(result.original);expect(result.evidence).toEqual({kind:'not_recorded'});expect(result.claim).toBeNull();expect(result.after).toEqual(result.before);
+});
