@@ -32,10 +32,6 @@ jobs:
           --health-interval 5s --health-timeout 5s --health-retries 12
     env:
       WORK_ACTIVITY_ROLE_TEST_DB_URL: postgresql://supabase_admin:fixture-only@localhost:5432/forge_work_activity_role_test
-      WORK_UNIT_REVIEW_VOLUME_OUT: ${{ runner.temp }}/work-unit-review-volume.json
-      WORK_ACTIVITY_TOTALS_VOLUME_OUT: ${{ runner.temp }}/work-activity-totals-volume.json
-      WORK_UNIT_CONTRIBUTORS_VOLUME_OUT: ${{ runner.temp }}/work-unit-contributors-volume.json
-      WORK_CROSS_JOB_POSTGRES_OUT: ${{ runner.temp }}/work-cross-job-kernel-postgres.json
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -50,12 +46,20 @@ jobs:
       - name: Build unchanged review proof fixture
         run: python3 scripts/verify-work-unit-review-concurrency.py
       - name: Preserve unchanged review volume and active payroll baseline
+        env:
+          WORK_UNIT_REVIEW_VOLUME_OUT: ${{ runner.temp }}/work-unit-review-volume.json
         run: python3 scripts/verify-work-unit-review-volume.py
       - name: Build unchanged totals proof fixture
+        env:
+          WORK_ACTIVITY_TOTALS_VOLUME_OUT: ${{ runner.temp }}/work-activity-totals-volume.json
         run: python3 scripts/verify-work-activity-totals-postgres.py
       - name: Build unchanged contributor proof fixture
+        env:
+          WORK_UNIT_CONTRIBUTORS_VOLUME_OUT: ${{ runner.temp }}/work-unit-contributors-volume.json
         run: python3 scripts/verify-work-unit-contributors-postgres.py
       - name: Test exact inactive kernel catalog and genuine roles
+        env:
+          WORK_CROSS_JOB_POSTGRES_OUT: ${{ runner.temp }}/work-cross-job-kernel-postgres.json
         run: python3 scripts/verify-work-cross-job-postgres.py
       - name: Preserve complete or partial genuine receipts
         if: always()
