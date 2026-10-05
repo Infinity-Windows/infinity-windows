@@ -1,0 +1,60 @@
+name: Native Blob context characterization
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/work-native-blob-characterization.yml'
+      - 'scripts/work-native-blob-probe/**'
+
+permissions:
+  contents: read
+
+jobs:
+  characterize:
+    name: Finite Linux WebKit Blob context matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+      - name: Install browser dependencies
+        timeout-minutes: 10
+        run: |
+          for source in /etc/apt/apt-mirrors.txt /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
+            if [ -f "$source" ]; then
+              sudo sed -i -E 's|https?://azure.archive.ubuntu.com/ubuntu/?|https://archive.ubuntu.com/ubuntu/|g' "$source"
+              if sudo grep -q 'azure.archive.ubuntu.com' "$source"; then
+                echo "The failing Ubuntu mirror is still configured in $source" >&2
+                exit 1
+              fi
+            fi
+          done
+          printf 'Acquire::Retries "1";\nAcquire::http::Timeout "20";\nAcquire::https::Timeout "20";\n' | sudo tee /etc/apt/apt.conf.d/99forge-browser-downloads >/dev/null
+          npx playwright install --with-deps chromium webkit
+      - name: Validate source-only probe
+        working-directory: .
+        run: |
+          node --test scripts/work-native-blob-probe/probe.test.mjs
+          node scripts/work-native-blob-probe/probe.mjs --check-plan
+      - name: Characterize both fresh browser contexts
+        timeout-minutes: 10
+        working-directory: .
+        run: node scripts/work-native-blob-probe/probe.mjs --execute-linux-probe --checkout "$GITHUB_WORKSPACE" --output "$RUNNER_TEMP/native-blob-probe"
+      - name: Preserve finite probe and partial evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-blob-context-characterization
+          path: |
+            ${{ runner.temp }}/native-blob-probe/result.json
+            scripts/work-native-blob-probe/source-pins.json
+          if-no-files-found: error
+          retention-days: 7
