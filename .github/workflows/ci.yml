@@ -711,6 +711,9 @@ jobs:
 
       # And the check that keeps this list honest: a test in scripts/ that no
       # step above names is a test nobody runs.
+      - name: Test held cross-job fresh-session no-contact fixture controls
+        run: python3 scripts/test_work_cross_job_fresh_sessions.py
+
       - name: Test that CI runs every script test
         run: node scripts/ci-runs-script-tests.test.mjs
 
