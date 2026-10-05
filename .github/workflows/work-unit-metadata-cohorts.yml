@@ -1,0 +1,96 @@
+name: Held unit metadata PostgreSQL proof
+
+on:
+  push:
+    branches: [codex/work-cohort-20261004]
+    paths:
+      - .github/workflows/work-unit-metadata-cohorts.yml
+      - scripts/verify-work-unit-metadata-cohorts-postgres.py
+      - scripts/test_work_unit_metadata_retention_postgres.py
+      - scripts/verify-work-unit-metadata-retention-postgres.py
+      - supabase/migrations/20261108480000_work_unit_metadata_cohorts.sql
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  genuine-metadata:
+    name: Genuine PostgreSQL17 held metadata roles and volume
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: supabase_admin
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: forge_work_activity_role_test
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U supabase_admin -d forge_work_activity_role_test"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      WORK_ACTIVITY_ROLE_TEST_DB_URL: postgresql://supabase_admin:fixture-only@localhost:5432/forge_work_activity_role_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Pin the reviewed candidate before any fixture construction
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+          pins = {
+              'supabase/migrations/20261108480000_work_unit_metadata_cohorts.sql': 'd083b38b07bb51f9f34d7b6c114fcdfcaf4c16b91a1541b7c51f2f11d5459c44',
+              'scripts/verify-work-unit-metadata-cohorts-postgres.py': '63540e422154972cf0fbf7867c74cd2290eae5013ceaba79f91dde98abb7f294',
+              'scripts/verify-work-unit-metadata-retention-postgres.py': '5e7bd750f61b1d9a27213e3ee38a853a9365dbcf1fb245557f48acaccf02b473',
+              'scripts/test_work_unit_metadata_retention_postgres.py': 'a68c5788dbf555f1732c24214734a52d5e367a679aa7e024ac0ef3242dc07ee3',
+          }
+          for name, expected in pins.items():
+              assert hashlib.sha256(Path(name).read_bytes()).hexdigest() == expected, name
+          PY
+          python3 scripts/verify-work-unit-metadata-cohorts-postgres.py --check-plan
+          python3 scripts/test_work_unit_metadata_retention_postgres.py
+          python3 scripts/verify-work-unit-metadata-retention-postgres.py --check-plan
+      - name: Build unchanged genuine role and source fixture
+        run: python3 scripts/verify-work-activity-engine-role-parity.py
+      - name: Verify unchanged authority and source concurrency
+        run: python3 scripts/verify-work-activity-catalog-concurrency.py
+      - name: Build unchanged review proof fixture
+        run: python3 scripts/verify-work-unit-review-concurrency.py
+      - name: Preserve unchanged review volume and payroll baseline
+        env:
+          WORK_UNIT_REVIEW_VOLUME_OUT: ${{ runner.temp }}/work-unit-review-volume.json
+        run: python3 scripts/verify-work-unit-review-volume.py
+      - name: Build unchanged totals proof fixture
+        env:
+          WORK_ACTIVITY_TOTALS_VOLUME_OUT: ${{ runner.temp }}/work-activity-totals-volume.json
+        run: python3 scripts/verify-work-activity-totals-postgres.py
+      - name: Build unchanged contributor proof fixture
+        env:
+          WORK_UNIT_CONTRIBUTORS_VOLUME_OUT: ${{ runner.temp }}/work-unit-contributors-volume.json
+        run: python3 scripts/verify-work-unit-contributors-postgres.py
+      - name: Test held metadata roles races active payroll wait and bounded volume
+        env:
+          WORK_UNIT_METADATA_COHORTS_PG_OUT: ${{ runner.temp }}/work-unit-metadata-cohorts-postgres.json
+        run: python3 scripts/verify-work-unit-metadata-cohorts-postgres.py
+      - name: Extend same disposable database with held person retention and active census checks
+        run: >-
+          python3 scripts/verify-work-unit-metadata-retention-postgres.py
+          --execute-fixture
+          --predecessor ${{ runner.temp }}/work-unit-metadata-cohorts-postgres.json
+          --out ${{ runner.temp }}/work-unit-metadata-retention-postgres.json
+      - name: Preserve complete or partial genuine receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: work-unit-metadata-cohorts-postgres
+          path: |
+            ${{ runner.temp }}/work-unit-metadata-cohorts-postgres.json
+            ${{ runner.temp }}/work-unit-metadata-retention-postgres.json
+            ${{ runner.temp }}/work-unit-review-volume.json
+            ${{ runner.temp }}/work-activity-totals-volume.json
+            ${{ runner.temp }}/work-unit-contributors-volume.json
+          if-no-files-found: ignore

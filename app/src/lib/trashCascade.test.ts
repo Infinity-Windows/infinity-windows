@@ -190,6 +190,34 @@ const UNIT_FACT_RETAINED = {
   work_unit_fact_context_epochs: { migration: "20261108300000_work_unit_observations.sql", project: "none" },
 } as const;
 const unitFactMigration = readFileSync(join(MIGRATIONS, UNIT_FACT_RETAINED.work_unit_fact_revisions.migration), "utf8");
+/** Exact metadata graph retained as evidence: three nullable original job
+ * scopes, six actor histories, two current pointers and the proof singleton.
+ * The actor FKs RESTRICT deletion of a named person; none cascades evidence. */
+const UNIT_METADATA_RETAINED = {
+  _work_unit_metadata_definitions: { project: true, actor: true, mutablePointer: false },
+  _work_unit_metadata_versions: { project: false, actor: true, mutablePointer: false },
+  _work_unit_metadata_proposals: { project: true, actor: true, mutablePointer: false },
+  _work_unit_metadata_revisions: { project: false, actor: true, mutablePointer: false },
+  _work_unit_metadata_current: { project: false, actor: false, mutablePointer: true },
+  _work_unit_metadata_floors: { project: false, actor: true, mutablePointer: false },
+  _work_unit_metadata_floor_current: { project: false, actor: false, mutablePointer: true },
+  _work_unit_metadata_commands: { project: true, actor: true, mutablePointer: false },
+  _work_unit_metadata_contract: { project: false, actor: false, mutablePointer: false },
+} as const;
+const metadataMigration = readFileSync(join(MIGRATIONS, "20261108480000_work_unit_metadata_cohorts.sql"), "utf8");
+const engineSubstrate = readFileSync(join(MIGRATIONS, "20261108400000_work_activity_engine_substrate.sql"), "utf8");
+const engineCutover = readFileSync(join(MIGRATIONS, "20261108410000_work_activity_engine_cutover.sql"), "utf8");
+const ENGINE_RETAINED = ["work_activity_observations", "work_activity_streams", "work_setup_sessions", "personal_activity_transition_sources"] as const;
+const ENGINE_EPHEMERAL = ["work_activity_transaction_context", "work_activity_expected_mutations"] as const;
+
+// Original project UUIDs survive job removal; these private records have no
+// operational project FK and never authorize access to a removed job. Heads
+// and resume are private pointers/cache; frames are transient authority; the
+// contract is immutable deployment proof. None is disposable job content.
+const CROSS_JOB_SCOPED_RETAINED = ["work_cross_job_allocations", "work_cross_job_bindings"] as const;
+const CROSS_JOB_PRIVATE = ["work_cross_job_shifts", ...CROSS_JOB_SCOPED_RETAINED,
+  "work_cross_job_heads", "work_cross_job_resume", "work_cross_job_write_frames", "work_cross_job_contract", "work_cross_job_clock_requests"] as const;
+const crossJobMigration = readFileSync(join(MIGRATIONS, "20261108470000_work_cross_job_capture.sql"), "utf8");
 
 /** Any direct DELETE/UPDATE of retained evidence violates its disposition.
  * Match ordinary SQL qualification, aliases, case and multiline whitespace. */
@@ -214,7 +242,7 @@ function purgeBody(): string {
  * on a fabricated table below, not only on today's schema.
  */
 function purgeCovers(table: string, body: string): boolean {
-  if (RETAINED_ORIGINAL_EVIDENCE[table] || table in UNIT_FACT_RETAINED) return true; // reviewed private history disposition
+  if (RETAINED_ORIGINAL_EVIDENCE[table] || table in UNIT_FACT_RETAINED || table in UNIT_METADATA_RETAINED || (CROSS_JOB_SCOPED_RETAINED as readonly string[]).includes(table)) return true; // reviewed private history disposition
   if (CASCADE_COVERED[table]) return true; // covered by an FK, documented above
   const deleted = new RegExp(`\\bdelete from ${table}\\b`).test(body);
   const detached = new RegExp(`\\bupdate ${table} set\\b`).test(body);
@@ -257,6 +285,51 @@ describe("purge_project handles every project-scoped table", () => {
     expect(purgeCovers("zztest_new_unhandled_scoped_table", body)).toBe(false);
     expect(purgeCovers("project_openings", body)).toBe(true);
     expect(purgeCovers("movements", body)).toBe(true); // detached, not deleted
+  });
+
+  it("keeps private engine identities separate from job purge and transient backend frames", () => {
+    const privateParents = new Set(["personal_activity_commands", "personal_activity_transitions", "work_activity_observations", "work_setup_sessions"]);
+    for (const table of ENGINE_RETAINED) {
+      const definition = engineSubstrate.split(`create table public.${table} (`)[1]?.split("\n);")[0];
+      expect(definition, table).toBeDefined();
+      expect(definition).not.toMatch(/on delete (cascade|set null)/i);
+      expect(retainedEvidenceMutated(table, body), table).toBe(false);
+      const parents = [...(definition!.matchAll(/references\s+public\.([a-z0-9_]+)/gi) ?? [])].map(m => m[1]);
+      expect(parents.every(name => privateParents.has(name)), `${table} has no operational parent cascade`).toBe(true);
+      expect(census[table]).toBeUndefined();
+      expect(engineSubstrate).toContain(`alter table public.${table} enable row level security;`);
+      expect(engineSubstrate).toContain(`revoke all on table public.${table} from public,anon,authenticated;`);
+      expect(retainedEvidenceMutated(table, body + `\nDELETE FROM public.${table} WHERE true;`)).toBe(true);
+    }
+    for (const table of ENGINE_EPHEMERAL) {
+      expect(census[table]).toBeUndefined();
+      expect(retainedEvidenceMutated(table, body)).toBe(false);
+      expect(ENGINE_RETAINED as readonly string[]).not.toContain(table);
+    }
+    expect(engineSubstrate).toContain("Deferred guard rejects commit unless every frame is closed");
+  });
+
+  it("retains authority and payroll safety evidence while cutover frames stay private and transient", () => {
+    const retained=["work_activity_authority_generation","work_activity_safety_events","work_activity_clock_receipts"];
+    const ephemeral=["work_activity_operations","work_activity_operation_people","work_activity_operation_events","work_activity_statement_frames"];
+    for(const table of [...retained,...ephemeral]){
+      const definition=engineCutover.split(`create table public.${table} (`)[1]?.split("\n);")[0];
+      expect(definition,table).toBeDefined();
+      expect(census[table],table).toBeUndefined();
+      expect(retainedEvidenceMutated(table,body),table).toBe(false);
+      expect(engineCutover).toContain(`alter table public.${table} enable row level security;`);
+      expect(engineCutover).toContain(`revoke all on table public.${table} from public,anon,authenticated;`);
+      expect(definition).not.toMatch(/references\s+public\.(projects|profiles|shifts|custom_work_units|project_openings)\b|on delete (cascade|set null)/i);
+      for(const mutation of [`DELETE FROM public.${table} WHERE true;`,`UPDATE public.${table} SET id=NULL;`]){
+        expect(retainedEvidenceMutated(table,body+mutation),table).toBe(true);
+      }
+    }
+    expect(retained).not.toContain(ephemeral[0]);
+    const safety=engineCutover.split("create table public.work_activity_safety_events (")[1]?.split("\n);")[0];
+    expect(safety).toMatch(/\bid uuid primary key/);
+    expect(safety).toMatch(/\bprofile_id uuid not null/);
+    expect(safety).toMatch(/\bactor_id uuid/);
+    expect(engineCutover).toContain("create trigger work_activity_safety_immutable before update or delete");
   });
 
   it("only claims a cascade for a table that is actually project-scoped", () => {
@@ -341,6 +414,77 @@ describe("purge_project handles every project-scoped table", () => {
       expect(retainedEvidenceMutated(table, `delete from ${table}_unrelated where true;`)).toBe(false);
     }
     expect(purgeCovers("zztest_unreviewed_retained_unit_fact", body)).toBe(false);
+  });
+
+  it("preserves the private cross-job graph through job purge without operational cascades", () => {
+    for (const table of CROSS_JOB_PRIVATE) {
+      const definition = crossJobMigration.split(`create table public.${table} (`)[1]?.split("\n);")[0];
+      expect(definition, table).toBeDefined();
+      const parents = [...definition!.matchAll(/references\s+public\.([a-z0-9_]+)/gi)].map(match => match[1]);
+      expect(parents.every(parent => (CROSS_JOB_PRIVATE as readonly string[]).includes(parent)), `${table} has no deletable operational parent`).toBe(true);
+      expect(definition).not.toMatch(/on delete (cascade|set null)/i);
+      expect(retainedEvidenceMutated(table, body), table).toBe(false);
+      expect(crossJobMigration).toContain(`alter table public.${table} enable row level security;`);
+      expect(crossJobMigration).toContain(`revoke all on table public.${table} from public,anon,authenticated,service_role;`);
+      if ((CROSS_JOB_SCOPED_RETAINED as readonly string[]).includes(table)) {
+        expect(census[table], table).toBe("project_id");
+        expect(purgeCovers(table, body)).toBe(true);
+      } else {
+        expect(census[table], table).toBeUndefined();
+      }
+      for (const mutation of [`DELETE FROM public.${table} WHERE true;`, `UPDATE\npublic.${table} evidence SET profile_id=NULL;`]) {
+        expect(retainedEvidenceMutated(table, body + mutation), mutation).toBe(true);
+      }
+      expect(retainedEvidenceMutated(table, `delete from ${table}_unrelated where true;`)).toBe(false);
+    }
+    for (const table of ["work_cross_job_shifts", ...CROSS_JOB_SCOPED_RETAINED, "work_cross_job_clock_requests"]) {
+      expect(crossJobMigration).toContain(`create trigger ${table}_immutable before update or delete`);
+      expect(crossJobMigration).toContain(`create trigger ${table}_no_truncate before truncate`);
+    }
+    expect(purgeCovers("zztest_unreviewed_cross_job", body)).toBe(false);
+  });
+
+  it("retains only the exact metadata graph without operational cascade or purge mutation", () => {
+    expect(Object.keys(UNIT_METADATA_RETAINED).length).toBe(9);
+    expect(Object.entries(UNIT_METADATA_RETAINED).filter(([, item]) => item.project).map(([table]) => table).sort())
+      .toEqual(["_work_unit_metadata_commands", "_work_unit_metadata_definitions", "_work_unit_metadata_proposals"]);
+    for (const [table, disposition] of Object.entries(UNIT_METADATA_RETAINED)) {
+      const definition = metadataMigration.split(`create table public.${table}(`)[1]?.split(");")[0];
+      expect(definition, table).toBeDefined();
+      const alters = [...metadataMigration.matchAll(new RegExp(`alter table public\\.${table}\\s+[^;]+;`, "g"))].map(match => match[0]).join("\n");
+      const graph = (definition ?? "") + "\n" + alters;
+      const allowedLinks: Record<string, string[]> = {
+        _work_unit_metadata_definitions: ["profiles"],
+        _work_unit_metadata_versions: ["_work_unit_metadata_definitions", "_work_unit_metadata_versions", "profiles"],
+        _work_unit_metadata_proposals: ["profiles"],
+        _work_unit_metadata_revisions: ["_work_unit_metadata_revisions", "profiles"],
+        _work_unit_metadata_current: ["_work_unit_metadata_revisions"],
+        _work_unit_metadata_floors: ["_work_unit_metadata_floors", "profiles"],
+        _work_unit_metadata_floor_current: ["_work_unit_metadata_floors"],
+        _work_unit_metadata_commands: ["profiles"],
+        _work_unit_metadata_contract: [],
+      };
+      expect([...graph.matchAll(/references\s+public\.([a-z_]+)/gi)].map(match => match[1]).sort(), table).toEqual(allowedLinks[table].sort());
+      expect(graph).not.toMatch(/on delete (cascade|set null)/i);
+      expect(metadataMigration).toContain(`alter table public.${table} enable row level security;`);
+      expect(metadataMigration).toContain(`revoke all on table public.${table} from public,anon,authenticated,service_role;`);
+      if (disposition.project) {
+        expect(census[table]).toBe("project_id");
+        expect(definition).toMatch(/\bproject_id uuid(?:,|\s)/);
+        expect(definition).not.toMatch(/\bproject_id uuid not null/);
+      } else expect(census[table]).toBeUndefined();
+      if (disposition.actor) {
+        expect(definition).toContain("actor_id uuid not null");
+        expect(metadataMigration).toContain(`alter table public.${table} add constraint metadata_actor_retention foreign key(actor_id) references public.profiles(id) on delete restrict not deferrable;`);
+      }
+      if (!disposition.mutablePointer) expect(metadataMigration).toContain(`create trigger metadata_immutable before update or delete or truncate on public.${table}`);
+      expect(purgeCovers(table, body)).toBe(true);
+      expect(retainedEvidenceMutated(table, body)).toBe(false);
+      for (const mutation of [`DELETE FROM public.${table} AS evidence WHERE true;`, `UPDATE public."${table}" SET actor_id = null;`, `delete from only public."${table}";`]) {
+        expect(retainedEvidenceMutated(table, body + mutation), mutation).toBe(true);
+      }
+    }
+    expect(purgeCovers("_work_unit_metadata_future_unreviewed", body)).toBe(false);
   });
 
   it("deletes the projects row itself", () => {

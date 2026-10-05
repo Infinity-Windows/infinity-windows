@@ -1,0 +1,519 @@
+{
+  "marker": "2ac3aad6d095d5bf9584bb656ce7123392884b946b0df46e2c6d84beeba3d32a",
+  "protocol": [
+    {
+      "name": "_toolbox_gate_open",
+      "args": "p_uid uuid",
+      "value": {
+        "anon": false,
+        "body": "ed3ecd2fafe012b9cd7a03da6dea485e29f20d591b9dd13960d7d37088f92f8f",
+        "kind": "f",
+        "owner": "postgres",
+        "config": [
+          "search_path=public, pg_temp"
+        ],
+        "public": false,
+        "definer": false,
+        "returns": "boolean",
+        "language": "sql",
+        "volatility": "s",
+        "authenticated": true
+      }
+    },
+    {
+      "name": "_toolbox_signed_today",
+      "args": "p_uid uuid",
+      "value": {
+        "anon": false,
+        "body": "c6afbff1f69461549975380dfcc9dd3c8b345df37affa2359f087aa16d1b4ca0",
+        "kind": "f",
+        "owner": "postgres",
+        "config": [
+          "search_path=public, pg_temp"
+        ],
+        "public": false,
+        "definer": false,
+        "returns": "boolean",
+        "language": "sql",
+        "volatility": "s",
+        "authenticated": true
+      }
+    },
+    {
+      "name": "_work_activity_actor",
+      "args": "",
+      "value": {
+        "anon": false,
+        "body": "7890c48b8af43f142610895f8da5d8361178470db58d384bf1ff2f48c52f8122",
+        "kind": "f",
+        "owner": "postgres",
+        "config": [
+          "search_path=public, pg_temp"
+        ],
+        "public": false,
+        "definer": true,
+        "returns": "uuid",
+        "language": "plpgsql",
+        "volatility": "v",
+        "authenticated": false
+      }
+    },
+    {
+      "name": "_work_activity_claim_clock_setup",
+      "args": "p_project_id uuid, p_cost_code_id uuid, p_photo text, p_lat double precision, p_lng double precision, p_note text, p_mode text, p_client_id uuid, p_tapped_at timestamp with time zone, p_clock_checked_at timestamp with time zone, p_clock_skew_ms integer",
+      "value": {
+        "anon": false,
+        "body": "8c600c462e2825683cc474a648a85b217f3d04eca74c9a789ada1b612837c809",
+        "kind": "f",
+        "owner": "postgres",
+        "config": [
+          "search_path=public, pg_temp"
+        ],
+        "public": false,
+        "definer": true,
+        "returns": "boolean",
+        "language": "plpgsql",
+        "volatility": "v",
+        "authenticated": false
+      }
+    },
+    {
+      "name": "_work_activity_clock_replay_guard",
+      "args": "p_client uuid, p_action text, p_shift uuid",
+      "value": {
+        "anon": false,
+        "body": "34a7483501a87bacd451d9ba6671b78edc48b526520f73ba2b70906b604e00ec",
+        "kind": "f",
+        "owner": "postgres",
+        "config": [
+          "search_path=public, pg_temp"
+        ],
+        "public": false,
+        "definer": true,
+        "returns": "void",
+        "language": "plpgsql",
+        "volatility": "v",
+        "authenticated": false
+      }
+    },
+    {
+      "name": "_work_activity_clock_setup_digest",
+      "args": "p_project_id uuid, p_cost_code_id uuid, p_photo text, p_lat double precision, p_lng double precision, p_note text, p_mode text, p_client_id uuid, p_tapped_at timestamp with time zone, p_clock_checked_at timestamp with time zone, p_clock_skew_ms integer",
+      "value": {
+        "anon": false,
+        "body": "7cbf137bffb2f5134b3cd66a35bc7e207ea5c39a58cfed03acad2cbc017211d3",
+        "kind": "f",
+        "owner": "postgres",
+        "config": [
+          "search_path=public, pg_temp"
+        ],
+        "public": false,
+        "definer": false,
+        "returns": "text",
+        "language": "sql",
+        "volatility": "s",
+        "authenticated": false
+      }
+    },
+    {
+      "name": "_work_activity_gate",
+      "args": "",
+      "value": {
+        "anon": false,
+        "body": "24e3624af1c057c5048b5e5e06206e802d17bb5a4aae1fdf5de9e48b87f4b6e8",
+        "kind": "f",
+        "owner": "postgres",
+        "config": [
+          "search_path=public, pg_temp"
+        ],
+        "public": false,
+        "definer": true,
+        "returns": "void",
+        "language": "plpgsql",
+        "volatility": "v",
+        "authenticated": false
+      }
+    },
+    {
+      "name": "_work_activity_keep_clock_receipt",
+      "args": "",
+      "value": {
+        "anon": false,
+        "body": "0adc5b1eac8c882ea941c5c6bceea3242db7f9a66de8ded254bd96e8ad0a0291",
+        "kind": "f",
+        "owner": "postgres",
+        "config": [
+          "search_path=public, pg_temp"
+        ],
+        "public": false,
+        "definer": true,
+        "returns": "trigger",
+        "language": "plpgsql",
+        "volatility": "v",
+        "authenticated": false
+      }
+    },
+    {
+      "name": "_work_activity_read_committed",
+      "args": "",
+      "value": {
+        "anon": false,
+        "body": "5c692d2459dd18fad5e0f49e698a619b1c26097e7ee335a69c460d44c4611b2a",
+        "kind": "f",
+        "owner": "postgres",
+        "config": [
+          "search_path=public, pg_temp"
+        ],
+        "public": false,
+        "definer": true,
+        "returns": "void",
+        "language": "plpgsql",
+        "volatility": "v",
+        "authenticated": false
+      }
+    },
+    {
+      "name": "_work_config_internal",
+      "args": "p_uid uuid",
+      "value": {
+        "anon": false,
+        "body": "40350856480c2e8dc1c84247091981d9e70e9d766f7bb47b56fde7847a673407",
+        "kind": "f",
+        "owner": "postgres",
+        "config": [
+          "search_path=public, pg_temp"
+        ],
+        "public": false,
+        "definer": true,
+        "returns": "boolean",
+        "language": "sql",
+        "volatility": "s",
+        "authenticated": false
+      }
+    },
+    {
+      "name": "clock_in",
+      "args": "p_project_id uuid, p_cost_code_id uuid, p_photo text, p_lat double precision, p_lng double precision",
+      "value": {
+        "anon": false,
+        "body": "c062f0c38a76f236bd2e4e459b2cdb39b99547865599717261334092d18d01e8",
+        "kind": "f",
+        "owner": "postgres",
+        "config": [
+          "search_path=public, pg_temp"
+        ],
+        "public": false,
+        "definer": true,
+        "returns": "time_shifts",
+        "language": "plpgsql",
+        "volatility": "v",
+        "authenticated": true
+      }
+    },
+    {
+      "name": "clock_in",
+      "args": "p_project_id uuid, p_cost_code_id uuid, p_photo text, p_lat double precision, p_lng double precision, p_client_id uuid",
+      "value": {
+        "anon": false,
+        "body": "ee48d7b0c3fefd68678b570424c1cc2822f264a52f3099f5c0c98837c3dc9cb6",
+        "kind": "f",
+        "owner": "postgres",
+        "config": [
+          "search_path=public, pg_temp"
+        ],
+        "public": false,
+        "definer": true,
+        "returns": "time_shifts",
+        "language": "plpgsql",
+        "volatility": "v",
+        "authenticated": true
+      }
+    },
+    {
+      "name": "clock_in",
+      "args": "p_project_id uuid, p_cost_code_id uuid, p_photo text, p_lat double precision, p_lng double precision, p_client_id uuid, p_note text",
+      "value": {
+        "anon": false,
+        "body": "4413958dd1c2e33a3e1bb5690dc33333bee29d57ca633610c444baf9547e439f",
+        "kind": "f",
+        "owner": "postgres",
+        "config": [
+          "search_path=public, pg_temp"
+        ],
+        "public": false,
+        "definer": true,
+        "returns": "time_shifts",
+        "language": "plpgsql",
+        "volatility": "v",
+        "authenticated": true
+      }
+    },
+    {
+      "name": "clock_in",
+      "args": "p_project_id uuid, p_cost_code_id uuid, p_photo text, p_lat double precision, p_lng double precision, p_note text",
+      "value": {
+        "anon": false,
+        "body": "b1d566d9758bcab88df16b138f795c3792eff2a0a0c55750d089d2608c4a598b",
+        "kind": "f",
+        "owner": "postgres",
+        "config": [
+          "search_path=public, pg_temp"
+        ],
+        "public": false,
+        "definer": true,
+        "returns": "time_shifts",
+        "language": "plpgsql",
+        "volatility": "v",
+        "authenticated": true
+      }
+    },
+    {
+      "name": "clock_in",
+      "args": "p_project_id uuid, p_cost_code_id uuid, p_photo text, p_lat double precision, p_lng double precision, p_note text, p_mode text",
+      "value": {
+        "anon": false,
+        "body": "c3fe0f2a5111f4d21bf5ef5149c79846ea53ec904f977765d75e5e7117fd5f09",
+        "kind": "f",
+        "owner": "postgres",
+        "config": [
+          "search_path=public, pg_temp"
+        ],
+        "public": false,
+        "definer": true,
+        "returns": "time_shifts",
+        "language": "plpgsql",
+        "volatility": "v",
+        "authenticated": true
+      }
+    },
+    {
+      "name": "clock_in",
+      "args": "p_project_id uuid, p_cost_code_id uuid, p_photo text, p_lat double precision, p_lng double precision, p_note text, p_mode text, p_client_id uuid, p_tapped_at timestamp with time zone, p_clock_checked_at timestamp with time zone, p_clock_skew_ms integer",
+      "value": {
+        "anon": false,
+        "body": "ad7268b517980f7a4fc9f8cf7949bda734b127ccd2ee7eeec04119bffaf1c7e5",
+        "kind": "f",
+        "owner": "postgres",
+        "config": [
+          "search_path=public, pg_temp"
+        ],
+        "public": false,
+        "definer": true,
+        "returns": "time_shifts",
+        "language": "plpgsql",
+        "volatility": "v",
+        "authenticated": true
+      }
+    },
+    {
+      "name": "clock_in",
+      "args": "p_project_id uuid, p_cost_code_id uuid, p_photo text, p_lat double precision, p_lng double precision, p_note text, p_mode text, p_client_id uuid, p_tapped_at timestamp with time zone, p_clock_checked_at timestamp with time zone, p_clock_skew_ms integer, p_setup_version integer",
+      "value": {
+        "anon": false,
+        "body": "bd9526a7263431db3d280f379f7af4641f4d97988e0ed4c36371b0b0c362ebcb",
+        "kind": "f",
+        "owner": "postgres",
+        "config": [
+          "search_path=public, pg_temp"
+        ],
+        "public": false,
+        "definer": true,
+        "returns": "time_shifts",
+        "language": "plpgsql",
+        "volatility": "v",
+        "authenticated": true
+      }
+    },
+    {
+      "name": "clock_out",
+      "args": "p_shift_id uuid, p_photo text, p_injured boolean, p_time_confirmed boolean, p_break_seconds integer, p_lat double precision, p_lng double precision, p_injury_note text",
+      "value": {
+        "anon": false,
+        "body": "085e2e0382392ee105bf5dfb1322e786cb464f3dad2a43d981f1359ec562d1b4",
+        "kind": "f",
+        "owner": "postgres",
+        "config": [
+          "search_path=public, pg_temp"
+        ],
+        "public": false,
+        "definer": true,
+        "returns": "time_shifts",
+        "language": "plpgsql",
+        "volatility": "v",
+        "authenticated": true
+      }
+    },
+    {
+      "name": "clock_out",
+      "args": "p_shift_id uuid, p_photo text, p_injured boolean, p_time_confirmed boolean, p_break_seconds integer, p_lat double precision, p_lng double precision, p_injury_note text, p_client_id uuid, p_tapped_at timestamp with time zone, p_clock_checked_at timestamp with time zone, p_clock_skew_ms integer",
+      "value": {
+        "anon": false,
+        "body": "2ddaca78ba00333dde9100492716df17f279c6ab1fc99d3b17ce20f77c0bb636",
+        "kind": "f",
+        "owner": "postgres",
+        "config": [
+          "search_path=public, pg_temp"
+        ],
+        "public": false,
+        "definer": true,
+        "returns": "time_shifts",
+        "language": "plpgsql",
+        "volatility": "v",
+        "authenticated": true
+      }
+    },
+    {
+      "name": "end_break",
+      "args": "p_shift_id uuid",
+      "value": {
+        "anon": false,
+        "body": "f930e2e95a4d59e547eea6e7ee30135bfe39a13b002c76abfe6f72d1451c1ada",
+        "kind": "f",
+        "owner": "postgres",
+        "config": [
+          "search_path=public, pg_temp"
+        ],
+        "public": false,
+        "definer": true,
+        "returns": "time_shifts",
+        "language": "plpgsql",
+        "volatility": "v",
+        "authenticated": true
+      }
+    },
+    {
+      "name": "end_break",
+      "args": "p_shift_id uuid, p_client_id uuid, p_tapped_at timestamp with time zone, p_clock_checked_at timestamp with time zone, p_clock_skew_ms integer",
+      "value": {
+        "anon": false,
+        "body": "470a0539693065c6cbd7ff51d8033fd74500570db13cdc2b990719a0eb2f7fc4",
+        "kind": "f",
+        "owner": "postgres",
+        "config": [
+          "search_path=public, pg_temp"
+        ],
+        "public": false,
+        "definer": true,
+        "returns": "jsonb",
+        "language": "plpgsql",
+        "volatility": "v",
+        "authenticated": true
+      }
+    },
+    {
+      "name": "start_break",
+      "args": "p_shift_id uuid, p_break_type text",
+      "value": {
+        "anon": false,
+        "body": "4f12f25fc5d7060f59ad7cbe9d717c6a23de4a6ba860301200815063a1d24b06",
+        "kind": "f",
+        "owner": "postgres",
+        "config": [
+          "search_path=public, pg_temp"
+        ],
+        "public": false,
+        "definer": true,
+        "returns": "time_shifts",
+        "language": "plpgsql",
+        "volatility": "v",
+        "authenticated": true
+      }
+    },
+    {
+      "name": "start_break",
+      "args": "p_shift_id uuid, p_break_type text, p_client_id uuid, p_tapped_at timestamp with time zone, p_clock_checked_at timestamp with time zone, p_clock_skew_ms integer",
+      "value": {
+        "anon": false,
+        "body": "02f00615f0264ad7f3b0b21a949df2c5e8a9257b9b66f714ef866df913d84cbc",
+        "kind": "f",
+        "owner": "postgres",
+        "config": [
+          "search_path=public, pg_temp"
+        ],
+        "public": false,
+        "definer": true,
+        "returns": "time_shifts",
+        "language": "plpgsql",
+        "volatility": "v",
+        "authenticated": true
+      }
+    },
+    {
+      "name": "work_activity_clock_receipt",
+      "args": "p_client_id uuid",
+      "value": {
+        "anon": false,
+        "body": "e031a0d945fda344cafbdee6c5a2d228c368488d8cafdb0c75da60fcea7320b1",
+        "kind": "f",
+        "owner": "postgres",
+        "config": [
+          "search_path=public, pg_temp"
+        ],
+        "public": false,
+        "definer": true,
+        "returns": "jsonb",
+        "language": "plpgsql",
+        "volatility": "v",
+        "authenticated": true
+      }
+    },
+    {
+      "name": "_work_cross_job_clock_request_admit",
+      "args": "",
+      "value": {
+        "anon": false,
+        "body": "acd71517a152215a32812a572df400ec9d3756d737e9ad8d4298a1fa035df836",
+        "kind": "f",
+        "owner": "postgres",
+        "config": [
+          "search_path=public, pg_temp"
+        ],
+        "public": false,
+        "definer": true,
+        "returns": "trigger",
+        "language": "plpgsql",
+        "volatility": "v",
+        "authenticated": false
+      }
+    },
+    {
+      "name": "_work_cross_job_clock_request_stamp",
+      "args": "",
+      "value": {
+        "anon": false,
+        "body": "1cc06ac928c2a0a4c0cfd5244febac56eb275384f92dc8b57235bf98b3c4240c",
+        "kind": "f",
+        "owner": "postgres",
+        "config": [
+          "search_path=public, pg_temp"
+        ],
+        "public": false,
+        "definer": true,
+        "returns": "trigger",
+        "language": "plpgsql",
+        "volatility": "v",
+        "authenticated": false
+      }
+    },
+    {
+      "name": "_work_cross_job_clock_receipt_fingerprint",
+      "args": "p_receipt work_activity_clock_receipts",
+      "value": {
+        "anon": false,
+        "body": "3f4d03d090a1428ce0dd8b410a285029903d156576da41a86237daa30e0e1d25",
+        "kind": "f",
+        "owner": "postgres",
+        "config": [
+          "search_path=public, pg_temp"
+        ],
+        "public": false,
+        "definer": true,
+        "returns": "text",
+        "language": "sql",
+        "volatility": "i",
+        "authenticated": false
+      }
+    }
+  ],
+  "profile": "genuine-pg17-fixture-v1"
+}

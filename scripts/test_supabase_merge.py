@@ -24,6 +24,7 @@ import random
 import sys
 import unittest
 import uuid
+from unittest import mock
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -40,6 +41,8 @@ from supabase_merge_lib import (
     SURROGATE_ONLY,
     VALUES_MANUAL_RECONCILIATION_TABLES,
     WORK_CAPTURE_MANUAL_RECONCILIATION_TABLES,
+    WORK_CROSS_JOB_IDENTITIES,
+    WORK_UNIT_METADATA_IDENTITIES,
     IdRemapper,
     compare_inventories,
     dedup_key_enforcement,
@@ -52,7 +55,12 @@ from supabase_merge_lib import (
     parse_migrations,
     total_rows,
 )
-from supabase_merge_plan import Plan, insert_statement, main as merge_plan_main, render, sql_literal
+from supabase_merge_plan import (
+    CROSS_JOB_CENSUS_SQL, METADATA_CENSUS_SQL, Plan, insert_statement,
+    load_side, main as merge_plan_main, metadata_refusals, render, sql_literal,
+)
+
+RealPlan = Plan  # Safety tests always call the production class directly.
 
 # supabase-compare.py is not an importable module name, so load it by path.
 _compare_spec = importlib.util.spec_from_file_location(
@@ -210,7 +218,7 @@ class TestSchemaParsing(unittest.TestCase):
         # 20261035000000 to land after the bill-to migrations).
         # +10 monthly-values tables: private policy, immutable reviews and
         # frozen accounting/provenance, plus reserved reminder claims.
-        self.assertEqual(len(SCHEMA.tables), 213)  # adds three retained unit-fact tables to the prior 210
+        self.assertEqual(len(SCHEMA.tables), 250)  # eight cross-job plus nine metadata relations
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 
@@ -671,6 +679,306 @@ class TestSqlRendering(unittest.TestCase):
         self.assertIn("on conflict (zone, rack, slot) do nothing", stmt)
 
 
+
+
+def legacy_census():
+    # Synthetic pre-0847 privileged catalog result, not inferred from omission.
+    return {"version": 1, "complete": True,
+            "tables": {name: None for name in WORK_CROSS_JOB_IDENTITIES}}
+
+
+def legacy_metadata_census():
+    # Synthetic pre-metadata result, supplied independently of cross-job proof.
+    return {"version": 1, "complete": True,
+            "tables": {name: None for name in WORK_UNIT_METADATA_IDENTITIES}}
+
+
+def with_legacy_censuses(inventory):
+    """Fixture-only explicit absence claims; never used by production loading."""
+    inventory = copy.deepcopy(inventory)
+    inventory["cross_job_census"] = legacy_census()
+    inventory["metadata_census"] = legacy_metadata_census()
+    return inventory
+
+
+def legacy_plan(schema, source, target, source_rows, target_rows, limit):
+    source = with_legacy_censuses(source)
+    target = with_legacy_censuses(target)
+    source.setdefault("tables", {})
+    target.setdefault("tables", {})
+    return Plan(schema, source, target, source_rows, target_rows, limit)
+
+
+class TestCrossJobMergeSafety(unittest.TestCase):
+    def sides(self):
+        # Include both parent inserts and a real deferred-FK update candidate.
+        source = {"project_ref": "source", "cross_job_census": legacy_census(),
+                  "metadata_census": legacy_metadata_census(),
+                  "tables": {"profiles": {"rows": 1}, "time_shifts": {"rows": 1},
+                             "locations": {"rows": 1}}}
+        target = {"project_ref": "target", "cross_job_census": legacy_census(),
+                  "metadata_census": legacy_metadata_census(),
+                  "tables": {name: {"rows": 0} for name in source["tables"]}}
+        rows = {"profiles": [{"id": "private-person"}],
+                "time_shifts": [{"id": "private-shift", "profile_id": "private-person"}],
+                "locations": [{"id": "private-location", "parent_id": "private-parent"}]}
+        return source, target, rows
+
+    def assert_refused(self, source, target, rows, target_rows=None):
+        from unittest.mock import patch
+        before = copy.deepcopy((source, target, rows, target_rows))
+        plan = Plan(SCHEMA, source, target, rows, target_rows or {}, 0)
+        self.assertTrue(plan.cross_job_blockers)
+        # Only malformed shared inventory maps may also trip the other gate.
+        self.assertTrue(all("inventory table" in b for b in plan.metadata_blockers),
+                        plan.metadata_blockers)
+        with patch.object(plan.remapper, "learn", side_effect=AssertionError("remap ran")):
+            self.assertEqual(plan.tables_to_move(), [])
+            self.assertEqual(plan.statements(), [])
+            self.assertEqual(plan.deferred_updates(), [])
+            text = render(plan, "source", "target")
+        for verb in ("insert into public.", "update public.", "delete from public."):
+            self.assertNotIn(verb, text.lower())
+        self.assertNotIn("private-person", text)
+        self.assertNotIn("private-shift", text)
+        self.assertEqual(before, (source, target, rows, target_rows))
+        return plan
+
+    def test_census_sql_distinguishes_absence_from_failed_existing_count(self):
+        # Source regression only; no database/provider SQL execution here.
+        self.assertIn("when not p.ok then null", CROSS_JOB_CENSUS_SQL)
+        self.assertIn("when c.rel is null then null", CROSS_JOB_CENSUS_SQL)
+        self.assertIn("else coalesce(((pg_catalog.xpath", CROSS_JOB_CENSUS_SQL)
+        self.assertIn("::bigint, -1) end", CROSS_JOB_CENSUS_SQL)
+        self.assertLess(CROSS_JOB_CENSUS_SQL.index("when c.rel is null"),
+                        CROSS_JOB_CENSUS_SQL.index("pg_catalog.query_to_xml"))
+        self.assertIn("rolsuper or rolbypassrls from pg_catalog.pg_roles", CROSS_JOB_CENSUS_SQL)
+        self.assertIn("pg_catalog.to_regclass('public.' || name)", CROSS_JOB_CENSUS_SQL)
+        self.assertIn("pg_catalog.format('select pg_catalog.count(*) as n", CROSS_JOB_CENSUS_SQL)
+        for name in WORK_CROSS_JOB_IDENTITIES:
+            self.assertEqual(CROSS_JOB_CENSUS_SQL.count("('" + name + "')"), 1)
+            source, target, rows = self.sides()
+            source["cross_job_census"]["tables"][name] = -1
+            plan = self.assert_refused(source, target, rows)
+            self.assertTrue(any(name + ": invalid census count" in b for b in plan.cross_job_blockers))
+
+    def test_verification_omits_only_proven_absent_cross_job_relations(self):
+        source, target, rows = self.sides()
+        admitted = Plan(SCHEMA, source, target, rows, {}, 0)
+        text = "\n".join(admitted.verification())
+        for name in WORK_CROSS_JOB_IDENTITIES:
+            self.assertNotIn("public." + name, text)
+        # Every existing legacy duplicate/FK query must survive unchanged.
+        source.pop("cross_job_census")
+        unproved = Plan(SCHEMA, source, target, rows, {}, 0)
+        original = unproved.verification()
+        expected = [q for q in original if not any("public." + n in q for n in WORK_CROSS_JOB_IDENTITIES)]
+        self.assertEqual(admitted.verification(), expected)
+        for name in WORK_CROSS_JOB_IDENTITIES:
+            self.assertIn("from public." + name, "\n".join(original))
+        source["cross_job_census"] = {"version": 1, "complete": True,
+            "tables": {n: 0 for n in WORK_CROSS_JOB_IDENTITIES}}
+        installed = Plan(SCHEMA, source, target, rows, {}, 0)
+        self.assertTrue(installed.cross_job_blockers)
+        self.assertEqual(installed.statements(), [])
+        for name in WORK_CROSS_JOB_IDENTITIES:
+            self.assertIn("from public." + name, "\n".join(installed.verification()))
+
+    def test_malformed_command_transition_rows_refuse_without_payload_output(self):
+        for name in ("personal_activity_commands", "personal_activity_transitions"):
+            for malformed in (None, {}, [None], ["private-value"], [2]):
+                source, target, rows = self.sides()
+                rows[name] = malformed
+                self.assert_refused(source, target, rows)
+
+    def test_exact_eight_primary_keys_and_non_fk_person_identity(self):
+        expected = {
+            "work_cross_job_shifts": ("shift_id",),
+            "work_cross_job_allocations": ("id",),
+            "work_cross_job_heads": ("shift_id",),
+            "work_cross_job_bindings": ("source_kind", "source_id", "birth_history_id"),
+            "work_cross_job_resume": ("profile_id",),
+            "work_cross_job_write_frames": ("operation_id", "source_kind", "source_id"),
+            "work_cross_job_contract": ("proof_key",),
+            "work_cross_job_clock_requests": ("client_id",),
+        }
+        self.assertEqual(WORK_CROSS_JOB_IDENTITIES, expected)
+        self.assertEqual({n for n in SCHEMA.tables if n.startswith("work_cross_job_")}, set(expected))
+        for name, key in expected.items():
+            self.assertEqual(DEDUP_KEYS[name], key)
+            self.assertEqual(SCHEMA[name].primary_key, key)
+            self.assertIn(name, WORK_CAPTURE_MANUAL_RECONCILIATION_TABLES)
+            self.assertFalse(any("profile_id" in fk.columns for fk in SCHEMA[name].foreign_keys))
+
+    def test_previous_seven_table_absence_proof_cannot_hide_retry_identity(self):
+        for side in ("source", "target"):
+            with self.subTest(side=side):
+                source, target, rows = self.sides()
+                selected = source if side == "source" else target
+                selected["cross_job_census"]["tables"].pop("work_cross_job_clock_requests")
+                plan = self.assert_refused(source, target, rows)
+                self.assertTrue(any("eight-table" in b for b in plan.cross_job_blockers))
+
+    def test_each_table_each_side_rows_and_count_only_refuse_entire_plan(self):
+        for name in WORK_CROSS_JOB_IDENTITIES:
+            for side in ("source", "target"):
+                for mode in ("rows", "count", "census-only"):
+                    with self.subTest(name=name, side=side, mode=mode):
+                        source, target, rows = self.sides()
+                        selected = source if side == "source" else target
+                        selected["cross_job_census"]["tables"] = {n: 0 for n in WORK_CROSS_JOB_IDENTITIES}
+                        selected["cross_job_census"]["tables"][name] = 1
+                        other_rows = {}
+                        if mode == "count":
+                            selected["tables"][name] = {"rows": 1}
+                        elif mode == "rows":
+                            (rows if side == "source" else other_rows)[name] = [{"id": "private-evidence"}]
+                        self.assert_refused(source, target, rows, other_rows)
+
+    def test_missing_partial_permission_error_and_malformed_census_refuse(self):
+        variants = [None, {}, {"version": 1, "complete": False, "tables": legacy_census()["tables"]}]
+        for name in WORK_CROSS_JOB_IDENTITIES:
+            partial = legacy_census(); del partial["tables"][name]; variants.append(partial)
+            for value in ("0", False, -1, {}, 0):
+                malformed = legacy_census(); malformed["tables"][name] = value; variants.append(malformed)
+        extra = legacy_census(); extra["tables"]["unknown"] = None; variants.append(extra)
+        error = legacy_census(); error["error"] = "permission denied"; variants.append(error)
+        for version in (True, "1", 2):
+            wrong = legacy_census(); wrong["version"] = version; variants.append(wrong)
+        variants.append({"version": 1, "complete": True,
+                         "tables": {name: 0 for name in WORK_CROSS_JOB_IDENTITIES}})
+        for side in ("source", "target"):
+            for census in variants:
+                with self.subTest(side=side, census=census):
+                    source, target, rows = self.sides()
+                    (source if side == "source" else target)["cross_job_census"] = census
+                    self.assert_refused(source, target, rows)
+
+    def test_omitted_non_fk_export_and_conflicting_absence_proof_refuse(self):
+        for side in ("source", "target"):
+            for mode in ("row", "count", "unknown-count", "v2-command", "v2-transition"):
+                source, target, rows = self.sides(); other_rows = {}
+                selected = source if side == "source" else target
+                selected_rows = rows if side == "source" else other_rows
+                if mode in ("v2-command", "v2-transition"):
+                    name = "personal_activity_commands" if mode == "v2-command" else "personal_activity_transitions"
+                    selected_rows[name] = [{"protocol_version": 2, "actor_id": "private-person"}]
+                elif mode == "row":
+                    selected_rows["work_cross_job_bindings"] = [{"profile_id": "private-person"}]
+                else:
+                    selected["tables"]["work_cross_job_shifts"] = {"rows": 1 if mode == "count" else None}
+                self.assert_refused(source, target, rows, other_rows)
+
+    def test_legacy_explicit_absence_preserves_parent_and_deferred_statements(self):
+        source, target, rows = self.sides()
+        # The genuine deferred edge is windows.project_window_id.
+        table, column = next(iter(DEFERRED_FK_EDGES))
+        source["tables"][table] = {"rows": 1}; target["tables"][table] = {"rows": 0}
+        rows[table] = [{"id": "source-id", column: "target-id"}]
+        plan = Plan(SCHEMA, source, target, rows, {}, 0)
+        self.assertEqual(plan.cross_job_blockers, [])
+        self.assertEqual(plan.metadata_blockers, [])
+        text = render(plan, "source", "target")
+        self.assertIn("insert into public.profiles", text)
+        self.assertIn("insert into public.time_shifts", text)
+        self.assertIn("update public." + table, text)
+
+    def test_malformed_inventory_maps_entries_counts_and_errors_refuse_without_crash(self):
+        malformed = [
+            None, ["private-payload"], {"window_types": "private-payload"},
+            {"window_types": ["private-payload"]},
+            *({"window_types": {"rows": value}} for value in
+              ("private-payload", True, 1.5, None, -1)),
+            {"window_types": {"rows": 0, "error": "private-payload"}},
+        ]
+        for side in ("source", "target"):
+            for tables in malformed:
+                with self.subTest(side=side, tables=tables):
+                    source, target, rows = self.sides()
+                    (source if side == "source" else target)["tables"] = tables
+                    plan = self.assert_refused(source, target, rows)
+                    text = render(plan, "source", "target")
+                    self.assertIn("Expected upper bound unavailable", text)
+                    self.assertNotIn("private-payload", text)
+
+    def test_cli_malformed_inventory_exits_two_on_both_sides(self):
+        import tempfile
+        malformed = [None, ["private-payload"], {"window_types": "private-payload"},
+                     *({"window_types": {"rows": value}} for value in
+                       ("private-payload", True, 1.5, None, -1)),
+                     {"window_types": {"rows": 0, "error": "private-payload"}}]
+        with tempfile.TemporaryDirectory() as directory:
+            paths = [Path(directory) / "source.json", Path(directory) / "target.json"]
+            for side in (0, 1):
+                for tables in malformed:
+                    with self.subTest(side=side, tables=tables):
+                        inventories = [{"project_ref": name, "tables": {},
+                                        "cross_job_census": legacy_census(),
+                  "metadata_census": legacy_metadata_census()}
+                                       for name in ("source", "target")]
+                        inventories[side]["tables"] = tables
+                        for path, inventory in zip(paths, inventories):
+                            path.write_text(json.dumps(inventory))
+                        output = io.StringIO()
+                        with contextlib.redirect_stdout(output):
+                            code = merge_plan_main(["--source", str(paths[0]), "--target", str(paths[1])])
+                        self.assertEqual(code, 2)
+                        self.assertIn("Expected upper bound unavailable", output.getvalue())
+                        for forbidden in ("private-payload", "insert into public.", "update public.", "delete from public."):
+                            self.assertNotIn(forbidden, output.getvalue().lower())
+
+    def test_private_raw_malformed_collections_cannot_disappear_in_loader(self):
+        import tempfile
+        tables = [*WORK_CROSS_JOB_IDENTITIES, "personal_activity_commands", "personal_activity_transitions"]
+        with tempfile.TemporaryDirectory() as directory:
+            paths = [Path(directory) / "source.json", Path(directory) / "target.json"]
+            for side in (0, 1):
+                for table in tables:
+                    for value in (None, {}, "private-payload", ["private-payload"], [None]):
+                        with self.subTest(side=side, table=table, value=value):
+                            raw = [{"project_id": name, "cross_job_census": legacy_census(),
+                  "metadata_census": legacy_metadata_census()}
+                                   for name in ("source", "target")]
+                            raw[side][table] = value
+                            for path, inventory in zip(paths, raw):
+                                path.write_text(json.dumps(inventory))
+                            output = io.StringIO()
+                            with contextlib.redirect_stdout(output):
+                                code = merge_plan_main(["--source", str(paths[0]), "--target", str(paths[1])])
+                            self.assertEqual(code, 2)
+                            for forbidden in ("private-payload", "insert into public.", "update public.", "delete from public."):
+                                self.assertNotIn(forbidden, output.getvalue().lower())
+
+    def test_cli_raw_exports_preserve_census_and_refuse_missing_on_either_side(self):
+        import tempfile
+        for side in ("source", "target"):
+            for mode in ("missing", "evidence", "permission", "legacy"):
+                with self.subTest(side=side, mode=mode), tempfile.TemporaryDirectory() as directory:
+                    source, target, rows = self.sides()
+                    # Raw backup path, not inventory path: proves census survives loader.
+                    raw = {"project_id": "source", "cross_job_census": legacy_census(),
+                  "metadata_census": legacy_metadata_census(), **rows}
+                    other = {"project_id": "target", "cross_job_census": legacy_census(),
+                  "metadata_census": legacy_metadata_census(),
+                             **{name: [] for name in rows}}
+                    selected = raw if side == "source" else other
+                    if mode == "missing": selected.pop("cross_job_census")
+                    elif mode == "permission": selected["cross_job_census"]["complete"] = False
+                    elif mode == "evidence": selected["work_cross_job_shifts"] = [{"profile_id": "private-person"}]
+                    a = Path(directory) / "source.json"; b = Path(directory) / "target.json"
+                    out = Path(directory) / "plan.txt"
+                    a.write_text(json.dumps(raw)); b.write_text(json.dumps(other))
+                    stdout = io.StringIO()
+                    with contextlib.redirect_stdout(stdout):
+                        code = merge_plan_main(["--source", str(a), "--target", str(b), "--out", str(out)])
+                    self.assertEqual(code, 0 if mode == "legacy" else 2)
+                    if mode != "legacy":
+                        for text in (stdout.getvalue(), out.read_text()):
+                            self.assertNotIn("insert into public.", text)
+                            self.assertNotIn("update public.", text)
+                            self.assertNotIn("private-person", text)
+
+
 class TestPlan(unittest.TestCase):
     def test_monthly_values_full_rows_are_blocked_without_private_insert_sql(self):
         tables = sorted(VALUES_MANUAL_RECONCILIATION_TABLES)
@@ -681,7 +989,7 @@ class TestPlan(unittest.TestCase):
         private = "private review comment and score"
         rows = {name: [{"id": name, "comment": private, "score": 9}] for name in tables}
         rows["window_types"] = [{"id": "ordinary", "type_code": "TEST"}]
-        plan = Plan(SCHEMA, source, target, rows, {}, 0)
+        plan = legacy_plan(SCHEMA, source, target, rows, {}, 0)
         statements = dict(plan.statements())
         self.assertEqual(plan.manual_values_tables, tables)
         self.assertTrue(all(any(b.startswith(name + ":") for b in plan.blockers) for name in tables))
@@ -695,7 +1003,7 @@ class TestPlan(unittest.TestCase):
     def test_count_only_and_target_only_monthly_values_are_also_blocked(self):
         source = {"tables": {"values_submissions": {"rows": 2}}}
         target = {"tables": {"values_submissions": {"rows": 0}, "values_periods": {"rows": 1}}}
-        plan = Plan(SCHEMA, source, target, {}, {}, 0)
+        plan = legacy_plan(SCHEMA, source, target, {}, {}, 0)
         self.assertEqual(plan.manual_values_tables, ["values_periods", "values_submissions"])
         self.assertEqual(plan.statements(), [])
         self.assertEqual(len(plan.blockers), 2)
@@ -703,7 +1011,7 @@ class TestPlan(unittest.TestCase):
     def test_empty_monthly_values_do_not_block_ordinary_planning(self):
         source = {"tables": {"values_scores": {"rows": 0}, "window_types": {"rows": 1}}}
         target = {"tables": {"values_scores": {"rows": 0}, "window_types": {"rows": 0}}}
-        plan = Plan(SCHEMA, source, target, {"window_types": [{"id": "ordinary", "type_code": "TEST"}]}, {}, 0)
+        plan = legacy_plan(SCHEMA, source, target, {"window_types": [{"id": "ordinary", "type_code": "TEST"}]}, {}, 0)
         self.assertEqual(plan.manual_values_tables, [])
         self.assertEqual(plan.blockers, [])
         self.assertIn("window_types", dict(plan.statements()))
@@ -714,8 +1022,8 @@ class TestPlan(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             source = Path(directory) / "source.json"
             target = Path(directory) / "target.json"
-            source.write_text(json.dumps({"project_ref": "source", "tables": {"values_periods": {"rows": 1}}}))
-            target.write_text(json.dumps({"project_ref": "target", "tables": {"values_periods": {"rows": 0}}}))
+            source.write_text(json.dumps(with_legacy_censuses({"project_ref": "source", "tables": {"values_periods": {"rows": 1}}})))
+            target.write_text(json.dumps(with_legacy_censuses({"project_ref": "target", "tables": {"values_periods": {"rows": 0}}})))
             output = io.StringIO()
             with contextlib.redirect_stdout(output):
                 code = merge_plan_main(["--source", str(source), "--target", str(target)])
@@ -731,13 +1039,40 @@ class TestPlan(unittest.TestCase):
         source = {"project_ref": "source", "tables": {name: {"rows": 1} for name in tables}}
         target = {"project_ref": "target", "tables": {name: {"rows": 0} for name in tables}}
         rows = {name: [{"id": name, "normalized_payload": private}] for name in tables}
-        plan = Plan(SCHEMA, source, target, rows, {}, 0)
+        plan = legacy_plan(SCHEMA, source, target, rows, {}, 0)
         self.assertEqual(plan.manual_capture_tables, tables)
         self.assertEqual(plan.statements(), [])
-        self.assertEqual(len(plan.blockers), len(tables))
+        self.assertEqual(len(plan.blockers) - len(plan.cross_job_blockers)
+                         - len(plan.metadata_blockers), len(tables))
         self.assertNotIn(private, render(plan, "source", "target"))
         for name in tables:
             self.assertTrue(any(b.startswith(name + ":") for b in plan.blockers))
+
+    def test_engine_retained_and_ephemeral_tables_refuse_every_generic_merge_side(self):
+        names = ("work_activity_observations", "work_activity_streams", "work_setup_sessions",
+                 "personal_activity_transition_sources", "work_activity_transaction_context", "work_activity_expected_mutations",
+                 "work_activity_operations", "work_activity_operation_people", "work_activity_operation_events", "work_activity_statement_frames", "work_activity_safety_events", "work_activity_clock_receipts")
+        identities = {table: ("id",) for table in names}
+        identities["work_activity_clock_receipts"] = ("client_id",)
+        identities["work_activity_authority_generation"] = ("singleton",)
+        for table, identity in identities.items():
+            self.assertEqual(DEDUP_KEYS[table], identity)
+            self.assertIn(table, WORK_CAPTURE_MANUAL_RECONCILIATION_TABLES)
+            for source, target, source_rows, target_rows in [
+                ({"tables": {table: {"rows": 1}}}, {}, {table: [{"id": "private-source"}]}, {}),
+                ({}, {"tables": {table: {"rows": 1}}}, {}, {table: [{"id": "private-target"}]}),
+                ({"tables": {table: {"rows": 1}}}, {}, {}, {}),
+                ({}, {"tables": {table: {"rows": 1}}}, {}, {},),
+            ]:
+                with self.subTest(table=table, source=source, target=target):
+                    plan = legacy_plan(SCHEMA, {"project_ref": "source", **source}, {"project_ref": "target", **target}, source_rows, target_rows, 0)
+                    self.assertEqual(plan.manual_capture_tables, [table])
+                    self.assertEqual(plan.statements(), [])
+                    self.assertNotIn("private-source", render(plan, "source", "target"))
+                    self.assertNotIn("private-target", render(plan, "source", "target"))
+            empty = legacy_plan(SCHEMA, {"tables": {table: {"rows": 0}}}, {}, {}, {}, 0)
+            self.assertEqual(empty.statements(), [])
+            self.assertEqual(empty.blockers, [])
 
     def test_capture_count_target_and_empty_inventory(self):
         for source, target, source_rows, target_rows in [
@@ -746,11 +1081,11 @@ class TestPlan(unittest.TestCase):
             ({}, {}, {"work_capture_menus": [{"id": "private"}]}, {}),
             ({}, {}, {}, {"work_capture_menus": [{"id": "private"}]}),
         ]:
-            plan = Plan(SCHEMA, source, target, source_rows, target_rows, 0)
+            plan = legacy_plan(SCHEMA, source, target, source_rows, target_rows, 0)
             self.assertEqual(len(plan.manual_capture_tables), 1)
             self.assertEqual(plan.statements(), [])
             self.assertEqual(len(plan.blockers), 1)
-        plan = Plan(SCHEMA, {"tables": {"personal_activity_commands": {"rows": 0}}}, {}, {}, {}, 0)
+        plan = legacy_plan(SCHEMA, {"tables": {"personal_activity_commands": {"rows": 0}}}, {}, {}, {}, 0)
         self.assertEqual(plan.manual_capture_tables, [])
         self.assertEqual(plan.blockers, [])
 
@@ -759,8 +1094,8 @@ class TestPlan(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             source = Path(directory) / "source.json"
             target = Path(directory) / "target.json"
-            source.write_text(json.dumps({"project_ref": "source", "tables": {"personal_activity_commands": {"rows": 1}}}))
-            target.write_text(json.dumps({"project_ref": "target", "tables": {"personal_activity_commands": {"rows": 0}}}))
+            source.write_text(json.dumps(with_legacy_censuses({"project_ref": "source", "tables": {"personal_activity_commands": {"rows": 1}}})))
+            target.write_text(json.dumps(with_legacy_censuses({"project_ref": "target", "tables": {"personal_activity_commands": {"rows": 0}}})))
             output = io.StringIO()
             with contextlib.redirect_stdout(output):
                 code = merge_plan_main(["--source", str(source), "--target", str(target)])
@@ -773,6 +1108,14 @@ class TestPlan(unittest.TestCase):
             "work_unit_fact_revisions": ("id",),
             "work_unit_fact_current": ("unit_id",),
             "work_unit_fact_context_epochs": ("scope_kind", "scope_id"),
+            'work_activity_source_history': ('id',),
+            'work_unit_review_commands': ('command_id',),
+            'work_unit_dimension_verifications': ('id',),
+            'work_unit_review_events': ('id',),
+            'work_unit_review_current': ('unit_id', 'incarnation'),
+            'work_unit_review_defects': ('id',),
+            'work_unit_review_defect_events': ('id',),
+
         }
         for table, key in identities.items():
             with self.subTest(table=table):
@@ -786,8 +1129,11 @@ class TestPlan(unittest.TestCase):
                     ({}, {"tables": {table: {"rows": 1}}}, {}, {table: [{"id": "private-target"}]}),
                     ({"tables": {table: {"rows": 1}}}, {}, {}, {}),
                     ({}, {"tables": {table: {"rows": 1}}}, {}, {}),
+                    ({"tables": {table: {"rows": 1}}}, {"tables": {table: {"rows": 1}}},
+                     {table: [{"id": "same-private-id", "note": "private-source"}]},
+                     {table: [{"id": "same-private-id", "note": "private-target"}]}),
                 ]:
-                    plan = Plan(SCHEMA, {"project_ref": "source", **source}, {"project_ref": "target", **target}, source_rows, target_rows, 0)
+                    plan = legacy_plan(SCHEMA, {"project_ref": "source", **source}, {"project_ref": "target", **target}, source_rows, target_rows, 0)
                     self.assertEqual(plan.manual_capture_tables, [table])
                     self.assertEqual(plan.statements(), [])
                     text = render(plan, "source", "target")
@@ -805,14 +1151,14 @@ class TestPlan(unittest.TestCase):
                     target = Path(directory) / "target.json"
                     empty = {"project_ref": "empty", "tables": {}}
                     if mode == "source-rows":
-                        source.write_text(json.dumps({"project_id": "source", table: [{"id": "private-source"}]}))
-                        target.write_text(json.dumps(empty))
+                        source.write_text(json.dumps(with_legacy_censuses({"project_id": "source", table: [{"id": "private-source"}]})))
+                        target.write_text(json.dumps(with_legacy_censuses(empty)))
                     elif mode == "target-rows":
-                        source.write_text(json.dumps(empty))
-                        target.write_text(json.dumps({"project_id": "target", table: [{"id": "private-target"}]}))
+                        source.write_text(json.dumps(with_legacy_censuses(empty)))
+                        target.write_text(json.dumps(with_legacy_censuses({"project_id": "target", table: [{"id": "private-target"}]})))
                     else:
-                        source.write_text(json.dumps({"project_ref": "source", "tables": {table: {"rows": 1}}}))
-                        target.write_text(json.dumps({"project_ref": "target", "tables": {table: {"rows": 0}}}))
+                        source.write_text(json.dumps(with_legacy_censuses({"project_ref": "source", "tables": {table: {"rows": 1}}})))
+                        target.write_text(json.dumps(with_legacy_censuses({"project_ref": "target", "tables": {table: {"rows": 0}}})))
                     output = io.StringIO()
                     with contextlib.redirect_stdout(output):
                         code = merge_plan_main(["--source", str(source), "--target", str(target)])
@@ -831,7 +1177,7 @@ class TestPlan(unittest.TestCase):
         t = Path(tmp.name) / "t.json"
         s.write_text(json.dumps(source_raw))
         t.write_text(json.dumps(target_raw))
-        return Plan(
+        return legacy_plan(
             SCHEMA,
             inventory_from_backup(s),
             inventory_from_backup(t),
@@ -872,7 +1218,8 @@ class TestPlan(unittest.TestCase):
         plan = self._plan(other_project(), RAW_BACKUP)
         text = "\n".join(plan.verification())
         for table, key in DEDUP_KEYS.items():
-            if key:
+            if key and table not in (set(WORK_CROSS_JOB_IDENTITIES)
+                                     | set(WORK_UNIT_METADATA_IDENTITIES)):
                 self.assertIn(f"from public.{table}\n", text)
 
     def test_preflight_asks_about_advisory_keys_and_auth(self):
@@ -881,6 +1228,433 @@ class TestPlan(unittest.TestCase):
         self.assertIn("from public.cost_codes", text)
         self.assertIn("auth.users", text)
         self.assertIn("SLOT-", text)
+
+
+class TestMetadataMergeCensus(unittest.TestCase):
+    def inventory(self, project, census=None, tables=None):
+        return {"project_ref": project, "tables": tables or {},
+                "cross_job_census": legacy_census(), "metadata_census": census}
+
+    def census(self, **counts):
+        result = {name: None for name in WORK_UNIT_METADATA_IDENTITIES}
+        result.update(counts)
+        return {"version": 1, "complete": True, "tables": result}
+
+    def plan(self, source=None, target=None, source_rows=None, target_rows=None):
+        source = source or self.inventory("source", self.census())
+        target = target or self.inventory("target", self.census())
+        return RealPlan(SCHEMA, source, target, source_rows or {}, target_rows or {}, 0)
+
+    def assert_refused_without_learning(self, plan):
+        with mock.patch.object(IdRemapper, "learn", side_effect=AssertionError("learn called")):
+            self.assertEqual(plan.statements(), [])
+            self.assertEqual(plan.deferred_updates(), [])
+            self.assertEqual(plan.remapper._map, {})
+            self.assertEqual(plan.remapper.collisions, [])
+            output = render(plan, "source.json", "target.json")
+        self.assertTrue(plan.metadata_blockers)
+        # Shared malformed inventory may fail both; missing opposite proof may not.
+        self.assertTrue(all("inventory table" in b for b in plan.cross_job_blockers),
+                        plan.cross_job_blockers)
+        self.assertNotIn("insert into public.", output)
+        self.assertNotIn("update public.", output)
+        self.assertNotIn("private-payload", output)
+
+    def test_exact_names_identities_and_privileged_query(self):
+        expected = {
+            "_work_unit_metadata_commands": ("command_id",),
+            "_work_unit_metadata_contract": ("proof_key",),
+            "_work_unit_metadata_current": ("unit_id",),
+            "_work_unit_metadata_floor_current": ("unit_id",),
+            "_work_unit_metadata_definitions": ("id",),
+            "_work_unit_metadata_versions": ("id",),
+            "_work_unit_metadata_proposals": ("id",),
+            "_work_unit_metadata_revisions": ("id",),
+            "_work_unit_metadata_floors": ("id",),
+        }
+        self.assertEqual(WORK_UNIT_METADATA_IDENTITIES, expected)
+        for name, key in expected.items():
+            self.assertEqual(DEDUP_KEYS[name], key)
+            self.assertIn(name, WORK_CAPTURE_MANUAL_RECONCILIATION_TABLES)
+            self.assertIn("('%s')" % name, METADATA_CENSUS_SQL)
+        self.assertIn("rolbypassrls", METADATA_CENSUS_SQL)
+        self.assertIn("has_table_privilege", METADATA_CENSUS_SQL)
+        self.assertIn("query_to_xml", METADATA_CENSUS_SQL)
+        self.assertNotIn("work_cross_job", METADATA_CENSUS_SQL)
+
+    def test_each_relation_blocks_on_both_sides_with_non_fk_payload_hidden(self):
+        for name in WORK_UNIT_METADATA_IDENTITIES:
+            for side in ("source", "target"):
+                for count in (0, 1):
+                    with self.subTest(name=name, side=side, count=count):
+                        census = self.census(**{name: count})
+                        inv = self.inventory(side, census)
+                        kwargs = {side: inv}
+                        plan = self.plan(**kwargs)
+                        self.assert_refused_without_learning(plan)
+                        self.assertIn(name, " ".join(plan.metadata_blockers) if count else name)
+
+    def test_missing_partial_malformed_error_and_contradictory_proofs(self):
+        name = "_work_unit_metadata_commands"
+        malformed = [None, {}, {"version": True, "complete": True, "tables": self.census()["tables"]},
+                     {"version": 1, "complete": False, "tables": self.census()["tables"]},
+                     {"version": 1, "complete": True, "tables": {}},
+                     {"version": 1, "complete": True, "tables": self.census()["tables"], "error": "denied"}]
+        for census in malformed:
+            for side in ("source", "target"):
+                with self.subTest(census=census, side=side):
+                    self.assert_refused_without_learning(self.plan(**{side: self.inventory(side, census)}))
+        for bad in (-1, True, "0", 1.0):
+            with self.subTest(bad=bad):
+                self.assert_refused_without_learning(self.plan(source=self.inventory("source", self.census(**{name: bad}))))
+        for entry in ({"rows": 0}, {"rows": None}, {"rows": -1}, {"rows": 1},
+                      {"rows": 0, "error": "denied"}):
+            with self.subTest(entry=entry):
+                self.assert_refused_without_learning(self.plan(source=self.inventory("source", self.census(), {name: entry})))
+        all_zero = self.census()
+        all_zero["tables"] = {n: 0 for n in WORK_UNIT_METADATA_IDENTITIES}
+        self.assert_refused_without_learning(self.plan(target=self.inventory("target", all_zero)))
+
+    def test_raw_backup_loader_preserves_census_and_malformed_export_refuses(self):
+        import tempfile
+        name = "_work_unit_metadata_contract"
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "source.json"
+            for export in ([], [{"proof_key": "private-payload"}], ["private-payload"],
+                           {"error": "denied"}, "bad"):
+                with self.subTest(export=export):
+                    path.write_text(json.dumps({"project_id": "source", "cross_job_census": legacy_census(), "metadata_census": self.census(), name: export}))
+                    inventory, rows = load_side(str(path))
+                    self.assertEqual(inventory["metadata_census"], self.census())
+                    self.assertIn(name, rows)
+                    self.assert_refused_without_learning(self.plan(source=inventory, source_rows=rows))
+            path.write_text(json.dumps({"project_ref": "source", "tables": {},
+                                        "cross_job_census": legacy_census(), "metadata_census": self.census(),
+                                        name: ["private-payload"]}))
+            inventory, rows = load_side(str(path))
+            self.assertIn(name, rows)
+            self.assert_refused_without_learning(self.plan(source=inventory, source_rows=rows))
+
+    def test_absent_proof_keeps_legacy_plans_and_skips_only_nine_queries(self):
+        plan = self.plan()
+        self.assertEqual(plan.metadata_blockers, [])
+        self.assertEqual(plan.cross_job_blockers, [])
+        text = "\n".join(plan.verification())
+        for name in WORK_UNIT_METADATA_IDENTITIES:
+            self.assertNotIn("from public." + name, text)
+            self.assertNotIn("join public." + name, text)
+        self.assertIn("from public.window_types", text)
+
+    def test_cli_missing_proof_refuses_without_payload_or_mutation_sql(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "source.json"
+            target = Path(directory) / "target.json"
+            source.write_text(json.dumps({"project_id": "source", "cross_job_census": legacy_census(), "window_types": [
+                {"id": "private-payload", "type_code": "PRIVATE"}]}))
+            target.write_text(json.dumps({"project_ref": "target", "tables": {}, "cross_job_census": legacy_census()}))
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                code = merge_plan_main(["--source", str(source), "--target", str(target)])
+        self.assertEqual(code, 2)
+        self.assertIn("complete privileged nine-table metadata census required", output.getvalue())
+        self.assertNotIn("private-payload", output.getvalue())
+        self.assertNotIn("insert into public.", output.getvalue())
+        self.assertNotIn("update public.", output.getvalue())
+
+    def test_malformed_inventory_maps_entries_and_counts_render_without_writes(self):
+        malformed = [
+            ["private-payload"],
+            {"window_types": "private-payload"},
+            {"window_types": ["private-payload"]},
+            {"window_types": {"rows": "private-payload"}},
+            {"window_types": {"rows": True}},
+            {"window_types": {"rows": 1.5}},
+            {"window_types": {"rows": None}},
+            {"window_types": {"rows": -1}},
+            {"window_types": {"rows": 0, "error": "private-payload"}},
+        ]
+        for side in ("source", "target"):
+            for tables in malformed:
+                with self.subTest(side=side, tables=tables):
+                    inventory = {"project_ref": side, "tables": tables,
+                                 "cross_job_census": legacy_census(), "metadata_census": self.census()}
+                    plan = self.plan(**{side: inventory})
+                    self.assert_refused_without_learning(plan)
+                    self.assertIn("inventory table", " ".join(plan.metadata_blockers))
+                    rendered = render(plan, "source.json", "target.json")
+                    self.assertIn("Expected upper bound unavailable", rendered)
+
+    def test_cli_malformed_inventory_and_raw_backup_exit_two(self):
+        import tempfile
+        malformed = [
+            ["private-payload"],
+            {"window_types": "private-payload"},
+            {"window_types": {"rows": "private-payload"}},
+            {"window_types": {"rows": True}},
+            {"window_types": {"rows": -1}},
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "source.json"
+            target = Path(directory) / "target.json"
+            for side in ("source", "target"):
+                for tables in malformed:
+                    with self.subTest(side=side, tables=tables):
+                        good = {"project_ref": "target" if side == "source" else "source",
+                                "tables": {}, "cross_job_census": legacy_census(), "metadata_census": self.census()}
+                        bad = {"project_ref": side, "tables": tables,
+                               "cross_job_census": legacy_census(), "metadata_census": self.census()}
+                        source.write_text(json.dumps(bad if side == "source" else good))
+                        target.write_text(json.dumps(bad if side == "target" else good))
+                        output = io.StringIO()
+                        with contextlib.redirect_stdout(output):
+                            code = merge_plan_main(["--source", str(source), "--target", str(target)])
+                        self.assertEqual(code, 2)
+                        self.assertIn("inventory table", output.getvalue())
+                        self.assertIn("Expected upper bound unavailable", output.getvalue())
+                        self.assertNotIn("private-payload", output.getvalue())
+                        self.assertNotIn("insert into public.", output.getvalue())
+                        self.assertNotIn("update public.", output.getvalue())
+            for side in ("source", "target"):
+                raw = {"project_id": side, "cross_job_census": legacy_census(), "metadata_census": self.census(),
+                       "_work_unit_metadata_commands": ["private-payload"]}
+                good = {"project_ref": "target" if side == "source" else "source",
+                        "tables": {}, "cross_job_census": legacy_census(), "metadata_census": self.census()}
+                source.write_text(json.dumps(raw if side == "source" else good))
+                target.write_text(json.dumps(raw if side == "target" else good))
+                output = io.StringIO()
+                with contextlib.redirect_stdout(output):
+                    code = merge_plan_main(["--source", str(source), "--target", str(target)])
+                self.assertEqual(code, 2)
+                self.assertIn("malformed metadata export", output.getvalue())
+                self.assertNotIn("private-payload", output.getvalue())
+                self.assertNotIn("insert into public.", output.getvalue())
+                self.assertNotIn("update public.", output.getvalue())
+
+
+class TestCombinedMergeSafety(unittest.TestCase):
+    private = "integration-private-payload"
+    families = (
+        ("cross_job", WORK_CROSS_JOB_IDENTITIES),
+        ("metadata", WORK_UNIT_METADATA_IDENTITIES),
+    )
+
+    def sides(self):
+        rows = {
+            "window_types": [{"id": "ordinary-type", "type_code": "ORDINARY"}],
+            "windows": [{"id": self.private}],
+        }
+        table, column = DEFERRED_FK_EDGES[0]
+        rows.setdefault(table, [{"id": self.private}])[0][column] = "retained-parent"
+        source = with_legacy_censuses({
+            "project_ref": "source", "tables": {name: {"rows": len(value)}
+                                                    for name, value in rows.items()},
+        })
+        target = with_legacy_censuses({
+            "project_ref": "target", "tables": {name: {"rows": 0} for name in rows},
+        })
+        return source, target, rows
+
+    def deferred_sql(self):
+        table, column = DEFERRED_FK_EDGES[0]
+        return f"update public.{table} set {column}"
+
+    def payload(self, inventory, rows, form):
+        if form == "inventory":
+            return copy.deepcopy(inventory)
+        return {
+            "project_id": inventory["project_ref"],
+            "cross_job_census": copy.deepcopy(inventory["cross_job_census"]),
+            "metadata_census": copy.deepcopy(inventory["metadata_census"]),
+            **copy.deepcopy(rows),
+        }
+
+    def load(self, payload):
+        # Exercise both real loaders without writing files or collecting a census.
+        with mock.patch.object(Path, "read_text", return_value=json.dumps(payload)):
+            return load_side("fixture-only.json")
+
+    def assert_refused(self, plan, family=None):
+        if family is not None:
+            other = "metadata" if family == "cross_job" else "cross_job"
+            self.assertTrue(getattr(plan, family + "_blockers"))
+            self.assertEqual(getattr(plan, other + "_blockers"), [])
+        with mock.patch.object(IdRemapper, "learn", side_effect=AssertionError("learn called")):
+            self.assertEqual(plan.tables_to_move(), [])
+            self.assertEqual(plan.statements(), [])
+            self.assertEqual(plan.deferred_updates(), [])
+            output = render(plan, "source", "target")
+        self.assertEqual(plan.remapper._map, {})
+        self.assertEqual(plan.remapper.collisions, [])
+        for verb in ("insert into public.", "update public.", "delete from public."):
+            self.assertNotIn(verb, output.lower())
+        self.assertNotIn(self.private, output)
+
+    def test_both_absence_proofs_allow_ordinary_and_deferred_sql(self):
+        source, target, rows = self.sides()
+        before = copy.deepcopy((source, target, rows))
+        plan = Plan(SCHEMA, source, target, rows, {}, 0)
+        self.assertEqual(plan.cross_job_blockers, [])
+        self.assertEqual(plan.metadata_blockers, [])
+        output = render(plan, "source", "target")
+        self.assertIn("insert into public.window_types", output)
+        self.assertIn("insert into public.windows", output)
+        self.assertIn(self.deferred_sql(), output)
+        self.assertEqual((source, target, rows), before)
+        preflight = "\n".join(plan.preflight())
+        self.assertIn(CROSS_JOB_CENSUS_SQL, preflight)
+        self.assertIn(METADATA_CENSUS_SQL, preflight)
+
+    def test_either_family_blocks_independently_on_each_side(self):
+        for family, identities in self.families:
+            for side in ("source", "target"):
+                for mode in ("missing", "incomplete", "installed-empty", "partial"):
+                    with self.subTest(family=family, side=side, mode=mode):
+                        source, target, rows = self.sides()
+                        inventory = source if side == "source" else target
+                        key = family + "_census"
+                        if mode == "missing":
+                            del inventory[key]
+                        elif mode == "incomplete":
+                            inventory[key]["complete"] = False
+                        elif mode == "installed-empty":
+                            inventory[key]["tables"] = dict.fromkeys(identities, 0)
+                        else:
+                            inventory[key]["tables"][next(iter(identities))] = 0
+                        self.assert_refused(Plan(SCHEMA, source, target, rows, {}, 0), family)
+
+    def test_both_families_refuse_when_both_proofs_missing(self):
+        for side in ("source", "target"):
+            with self.subTest(side=side):
+                source, target, rows = self.sides()
+                inventory = source if side == "source" else target
+                del inventory["cross_job_census"]
+                del inventory["metadata_census"]
+                plan = Plan(SCHEMA, source, target, rows, {}, 0)
+                self.assertTrue(plan.cross_job_blockers)
+                self.assertTrue(plan.metadata_blockers)
+                self.assert_refused(plan)
+
+    def test_loaders_keep_both_censuses_and_all_protected_payloads(self):
+        families = dict(self.families)
+        protected = {name: family for family, names in self.families for name in names}
+        protected.update({"personal_activity_commands": "cross_job",
+                          "personal_activity_transitions": "cross_job"})
+        for form in ("raw", "inventory"):
+            for side in ("source", "target"):
+                for name, family in protected.items():
+                    exports = [None, {}, self.private, [self.private], [None],
+                               [{"id": self.private, "protocol_version": 2}]]
+                    if name in families[family]:
+                        exports.append([])  # Even empty exports contradict claimed absence.
+                    for exported in exports:
+                        with self.subTest(form=form, side=side, name=name, exported=exported):
+                            source, target, rows = self.sides()
+                            incoming = source if side == "source" else target
+                            ordinary = rows if side == "source" else {n: [] for n in rows}
+                            payload = self.payload(incoming, ordinary, form)
+                            payload[name] = exported
+                            before = copy.deepcopy(payload)
+                            inventory, loaded_rows = self.load(payload)
+                            for key in ("cross_job_census", "metadata_census"):
+                                self.assertEqual(inventory[key], incoming[key])
+                            self.assertIn(name, loaded_rows)
+                            self.assertEqual(loaded_rows[name], exported)
+                            # Keep the ordinary source canary present for both input forms.
+                            if side == "source":
+                                source = inventory
+                                rows.update(loaded_rows)
+                                other_rows = {}
+                            else:
+                                target = inventory
+                                other_rows = loaded_rows
+                            self.assert_refused(Plan(SCHEMA, source, target, rows, other_rows, 0), family)
+                            self.assertEqual(payload, before)
+
+    def test_hybrid_v2_evidence_refuses_on_each_side(self):
+        for side in ("source", "target"):
+            for name in ("personal_activity_commands", "personal_activity_transitions"):
+                for version in (2, "2"):
+                    with self.subTest(side=side, name=name, version=version):
+                        source, target, rows = self.sides()
+                        incoming = source if side == "source" else target
+                        payload = copy.deepcopy(incoming)
+                        payload[name] = [{"protocol_version": version, "actor_id": self.private}]
+                        inventory, exported = self.load(payload)
+                        if side == "source":
+                            source = inventory
+                            rows.update(exported)
+                            other_rows = {}
+                        else:
+                            target = inventory
+                            other_rows = exported
+                        plan = Plan(SCHEMA, source, target, rows, other_rows, 0)
+                        self.assert_refused(plan, "cross_job")
+                        self.assertTrue(any("version 2 evidence exists" in b
+                                            for b in plan.cross_job_blockers))
+
+    def test_verification_excludes_only_independently_absent_families(self):
+        for absent_cross in (False, True):
+            for absent_metadata in (False, True):
+                with self.subTest(cross_job=absent_cross, metadata=absent_metadata):
+                    source, target, rows = self.sides()
+                    flags = {"cross_job": absent_cross, "metadata": absent_metadata}
+                    for family, identities in self.families:
+                        if not flags[family]:
+                            source[family + "_census"]["tables"] = dict.fromkeys(identities, 0)
+                    plan = Plan(SCHEMA, source, target, rows, {}, 0)
+                    output = "\n".join(plan.verification())
+                    for family, identities in self.families:
+                        self.assertEqual(bool(getattr(plan, family + "_blockers")), not flags[family])
+                        for name in identities:
+                            if flags[family]:
+                                self.assertNotIn("from public." + name, output)
+                                self.assertNotIn("join public." + name, output)
+                            else:
+                                self.assertIn("from public." + name, output)
+                    self.assertIn("from public.window_types", output)
+
+    def test_cli_requires_both_proofs_and_preserves_raw_admission(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            paths = [Path(directory) / "source.json", Path(directory) / "target.json"]
+            for form in ("raw", "inventory"):
+                for family, identities in self.families:
+                    for side in (0, 1):
+                        for mode in ("legacy", "missing", "installed-empty", "payload"):
+                            with self.subTest(form=form, family=family, side=side, mode=mode):
+                                source, target, rows = self.sides()
+                                payloads = [self.payload(source, rows, "raw"),
+                                            self.payload(target, {n: [] for n in rows}, "raw")]
+                                if form == "inventory":
+                                    payloads[side] = self.payload(source if side == 0 else target, {}, form)
+                                key = family + "_census"
+                                if mode == "missing":
+                                    del payloads[side][key]
+                                elif mode == "installed-empty":
+                                    payloads[side][key]["tables"] = dict.fromkeys(identities, 0)
+                                elif mode == "payload":
+                                    payloads[side][next(iter(identities))] = [{"id": self.private}]
+                                for path, payload in zip(paths, payloads):
+                                    path.write_text(json.dumps(payload))
+                                loaded = [load_side(str(path)) for path in paths]
+                                plan = Plan(SCHEMA, loaded[0][0], loaded[1][0],
+                                            loaded[0][1], loaded[1][1], 0)
+                                other = "metadata" if family == "cross_job" else "cross_job"
+                                self.assertEqual(getattr(plan, other + "_blockers"), [])
+                                self.assertEqual(bool(getattr(plan, family + "_blockers")), mode != "legacy")
+                                output = io.StringIO()
+                                with contextlib.redirect_stdout(output):
+                                    code = merge_plan_main(["--source", str(paths[0]), "--target", str(paths[1])])
+                                self.assertEqual(code, 0 if mode == "legacy" else 2)
+                                if mode == "legacy":
+                                    if form == "raw" or side == 1:
+                                        self.assertIn("insert into public.window_types", output.getvalue())
+                                        self.assertIn(self.deferred_sql(), output.getvalue())
+                                else:
+                                    for verb in ("insert into public.", "update public.", "delete from public."):
+                                        self.assertNotIn(verb, output.getvalue().lower())
+                                    self.assertNotIn(self.private, output.getvalue())
 
 
 if __name__ == "__main__":

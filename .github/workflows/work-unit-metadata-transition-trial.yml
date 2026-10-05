@@ -1,0 +1,98 @@
+name: Held metadata transition selector trial
+
+on:
+  push:
+    branches: [codex/work-cohort-20261004]
+    paths:
+      - .github/workflows/work-unit-metadata-transition-trial.yml
+      - scripts/verify-work-unit-metadata-transition-trial.py
+      - scripts/test_work_unit_metadata_transition_trial.py
+      - scripts/work-unit-metadata-transition-trial-profile.json
+      - scripts/fixtures/metadata-transition-trial/**
+      - docs/work-unit-metadata-transition-trial.md
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  transition-trial:
+    name: Genuine PostgreSQL17 bounded transition characterization
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: supabase_admin
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: forge_work_activity_role_test
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U supabase_admin -d forge_work_activity_role_test"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      WORK_ACTIVITY_ROLE_TEST_DB_URL: postgresql://supabase_admin:fixture-only@localhost:5432/forge_work_activity_role_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Pin exact reviewed source and no-contact checks before construction
+        run: |
+          echo "916c0955badd5dacb4b44480716af2078074d6b8effdb90ad9e5ed07ecc25b33  docs/work-unit-metadata-transition-trial.md" | sha256sum -c -
+          echo "9f39e62075a8e002c438c0fd2e80ca7b0a8cb7eca45b221d3f59d1088814c34a  scripts/fixtures/metadata-transition-trial/candidate-scope-body.sql" | sha256sum -c -
+          echo "7b55de59ce5141a832cdff19e7e3c20f1a3f78fbfd998da540af1c8fd92eca9f  scripts/fixtures/metadata-transition-trial/candidate-transition-block.sql" | sha256sum -c -
+          echo "43526ea1800de87a0b4934843a8b953df2aae37285a13594aa49e55292b6adc8  scripts/fixtures/metadata-transition-trial/coverage-body.sql" | sha256sum -c -
+          echo "30681deef8c5ae91d8f8487da30b494bb9df359ba99eaf89482982e96851b4c7  scripts/fixtures/metadata-transition-trial/members-body.sql" | sha256sum -c -
+          echo "a3b8d9aa96b41c2a9bc29c0c56a6fcb69028cf5dbe04cb411be0b26552d55800  scripts/fixtures/metadata-transition-trial/old-scope-body.sql" | sha256sum -c -
+          echo "21bff44d2fc7741a0b1326dafc5ac43107b0efd441bfd0ec346b1c16e18f0760  scripts/fixtures/metadata-transition-trial/old-transition-block.sql" | sha256sum -c -
+          echo "d37e85067806062e39c20bdba00f0a7a23e8644143a2282f134e1be2a3795ad6  scripts/test_work_unit_metadata_transition_trial.py" | sha256sum -c -
+          echo "2cb1d6303476749c556e76ad0de9fa0c771b6ea347c7913409768988ba7a1012  scripts/verify-work-unit-metadata-cohorts-payroll.mjs" | sha256sum -c -
+          echo "63540e422154972cf0fbf7867c74cd2290eae5013ceaba79f91dde98abb7f294  scripts/verify-work-unit-metadata-cohorts-postgres.py" | sha256sum -c -
+          echo "854f4065908e3e64a259f2f760021aa44a5c1767c8cf213da959c8fa9608c850  scripts/verify-work-unit-metadata-cohorts-review-parity.mjs" | sha256sum -c -
+          echo "d7b5090f10959b108ae6246b43bca3595be3b156bf104fe85f00a099b0cda694  scripts/verify-work-unit-metadata-membership-parity.mjs" | sha256sum -c -
+          echo "4d547a3987e2cc2eef309b962550fd79e8dc872cdf98256eaf32ee8699a3e660  scripts/verify-work-unit-metadata-transition-trial.py" | sha256sum -c -
+          echo "79e58b251b0d9c953eaecad7231810109c64a43a6d3d7ac06d1f20c802e7e535  scripts/work-unit-metadata-transition-trial-profile.json" | sha256sum -c -
+          echo "aa767e67de301cd0ce5961758cc5afefe89bdf25fe27b3c4156a219c9cb2f648  supabase/migrations/20261108410000_work_activity_engine_cutover.sql" | sha256sum -c -
+          echo "e32122a581bf995857983cc433323bc490381b6eb217c583bf95fd7376b3e53f  supabase/migrations/20261108440000_work_unit_review.sql" | sha256sum -c -
+          echo "e0e74c2d1985d332af81f95d20d2a6625c40cb5fcf995b4aa6e267d75e092140  supabase/migrations/20261108450000_work_activity_totals.sql" | sha256sum -c -
+          echo "ae6185e4b390b7cff8f3d7aca837688fda2756792bdf055ef8c3a1f290d438c5  supabase/migrations/20261108460000_work_unit_contributors.sql" | sha256sum -c -
+          echo "d083b38b07bb51f9f34d7b6c114fcdfcaf4c16b91a1541b7c51f2f11d5459c44  supabase/migrations/20261108480000_work_unit_metadata_cohorts.sql" | sha256sum -c -
+          python3 scripts/test_work_unit_metadata_transition_trial.py
+          python3 scripts/verify-work-unit-metadata-transition-trial.py --check-plan
+      - name: Build unchanged genuine role and source fixture
+        run: python3 scripts/verify-work-activity-engine-role-parity.py
+      - name: Verify unchanged authority and source concurrency
+        run: python3 scripts/verify-work-activity-catalog-concurrency.py
+      - name: Build unchanged review proof fixture
+        run: python3 scripts/verify-work-unit-review-concurrency.py
+      - name: Preserve unchanged review volume and payroll baseline
+        env:
+          WORK_UNIT_REVIEW_VOLUME_OUT: ${{ runner.temp }}/work-unit-review-volume.json
+        run: python3 scripts/verify-work-unit-review-volume.py
+      - name: Build unchanged totals proof fixture
+        env:
+          WORK_ACTIVITY_TOTALS_VOLUME_OUT: ${{ runner.temp }}/work-activity-totals-volume.json
+        run: python3 scripts/verify-work-activity-totals-postgres.py
+      - name: Build unchanged contributor proof fixture
+        env:
+          WORK_UNIT_CONTRIBUTORS_VOLUME_OUT: ${{ runner.temp }}/work-unit-contributors-volume.json
+        run: python3 scripts/verify-work-unit-contributors-postgres.py
+      - name: Run owned baseline then same-session finite temporary trial
+        timeout-minutes: 25
+        run: >-
+          python3 scripts/verify-work-unit-metadata-transition-trial.py
+          --execute-fixture
+          --output "${{ runner.temp }}/metadata-transition-trial-new/work-unit-metadata-transition-trial.json"
+      - name: Preserve whole complete or partial trial directory
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: work-unit-metadata-transition-trial
+          path: |
+            ${{ runner.temp }}/metadata-transition-trial-new/
+            ${{ runner.temp }}/work-unit-review-volume.json
+            ${{ runner.temp }}/work-activity-totals-volume.json
+            ${{ runner.temp }}/work-unit-contributors-volume.json
+          if-no-files-found: ignore

@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "sourcePins": {
+    "supabase/migrations/20261108480000_work_unit_metadata_cohorts.sql": "d083b38b07bb51f9f34d7b6c114fcdfcaf4c16b91a1541b7c51f2f11d5459c44",
+    "scripts/verify-work-unit-metadata-cohorts-postgres.py": "63540e422154972cf0fbf7867c74cd2290eae5013ceaba79f91dde98abb7f294",
+    "supabase/migrations/20261108410000_work_activity_engine_cutover.sql": "aa767e67de301cd0ce5961758cc5afefe89bdf25fe27b3c4156a219c9cb2f648",
+    "supabase/migrations/20261108440000_work_unit_review.sql": "e32122a581bf995857983cc433323bc490381b6eb217c583bf95fd7376b3e53f",
+    "supabase/migrations/20261108450000_work_activity_totals.sql": "e0e74c2d1985d332af81f95d20d2a6625c40cb5fcf995b4aa6e267d75e092140",
+    "supabase/migrations/20261108460000_work_unit_contributors.sql": "ae6185e4b390b7cff8f3d7aca837688fda2756792bdf055ef8c3a1f290d438c5",
+    "scripts/verify-work-unit-metadata-membership-parity.mjs": "d7b5090f10959b108ae6246b43bca3595be3b156bf104fe85f00a099b0cda694",
+    "scripts/verify-work-unit-metadata-cohorts-review-parity.mjs": "854f4065908e3e64a259f2f760021aa44a5c1767c8cf213da959c8fa9608c850",
+    "scripts/verify-work-unit-metadata-cohorts-payroll.mjs": "2cb1d6303476749c556e76ad0de9fa0c771b6ea347c7913409768988ba7a1012",
+    "scripts/fixtures/metadata-transition-trial/candidate-scope-body.sql": "9f39e62075a8e002c438c0fd2e80ca7b0a8cb7eca45b221d3f59d1088814c34a",
+    "scripts/fixtures/metadata-transition-trial/candidate-transition-block.sql": "7b55de59ce5141a832cdff19e7e3c20f1a3f78fbfd998da540af1c8fd92eca9f",
+    "scripts/fixtures/metadata-transition-trial/coverage-body.sql": "43526ea1800de87a0b4934843a8b953df2aae37285a13594aa49e55292b6adc8",
+    "scripts/fixtures/metadata-transition-trial/members-body.sql": "30681deef8c5ae91d8f8487da30b494bb9df359ba99eaf89482982e96851b4c7",
+    "scripts/fixtures/metadata-transition-trial/old-scope-body.sql": "a3b8d9aa96b41c2a9bc29c0c56a6fcb69028cf5dbe04cb411be0b26552d55800",
+    "scripts/fixtures/metadata-transition-trial/old-transition-block.sql": "21bff44d2fc7741a0b1326dafc5ac43107b0efd441bfd0ec346b1c16e18f0760"
+  },
+  "sourceSha256": "d083b38b07bb51f9f34d7b6c114fcdfcaf4c16b91a1541b7c51f2f11d5459c44",
+  "mainHarnessSha256": "63540e422154972cf0fbf7867c74cd2290eae5013ceaba79f91dde98abb7f294",
+  "oldBodySha256": "a3b8d9aa96b41c2a9bc29c0c56a6fcb69028cf5dbe04cb411be0b26552d55800",
+  "candidateBodySha256": "9f39e62075a8e002c438c0fd2e80ca7b0a8cb7eca45b221d3f59d1088814c34a",
+  "warmupsPerVariant": 6,
+  "pairedMeasurementsPerCase": 20,
+  "scopeCases": [
+    "supported_populated_unit",
+    "existing_empty_key_unit",
+    "existing_10_light_units",
+    "existing_100_light_units"
+  ],
+  "selectorPlanCases": [
+    "supported_populated_unit",
+    "existing_empty_key_unit"
+  ],
+  "membershipSizes": [
+    1,
+    10,
+    100
+  ],
+  "baseline": "Existing final source-matched predecessor baseline only; no tier reseeding",
+  "held": [
+    "Full genuine original184 ordered-review cases",
+    "Full genuine original168 ordered-membership cases",
+    "All18 membership categories on candidate PG17",
+    "Positive transitions for each supported mapped kind; setup excluded, helper rows unsupported",
+    "Historical-only/tombstoned/transferred/shared/duplicate/malformed identity genuine controls",
+    "Separate +0/+1000/+10000 trial tiers (existing final baseline only)",
+    "Dense shared/distinct-shift workload",
+    "Candidate public authenticated RPC/payroll52/retention/census/24RI revalidation",
+    "PLpgSQL internal cached-plan observation",
+    "Active paid wait/latency acceptance",
+    "Provider/device/production integration"
+  ]
+}

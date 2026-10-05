@@ -1,0 +1,75 @@
+name: Isolated PostgreSQL 17 fingerprint smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - codex/work-cross-job-20261004
+    paths:
+      - .github/workflows/work-fingerprint-smoke.yml
+      - scripts/fixtures/combined-fingerprint-smoke-source-1.tar.gz
+
+permissions:
+  contents: read
+
+concurrency:
+  group: isolated-fingerprint-smoke-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  fingerprint-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: supabase_admin
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: forge_work_activity_role_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U supabase_admin -d forge_work_activity_role_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify exact reviewed package before executing its source
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s  %s\n' '49b70ef7883113c38879af00de5b9779c9845af7ab17c5fb8ca56a7dd0a93014' 'scripts/fixtures/combined-fingerprint-smoke-source-1.tar.gz' | sha256sum --check --strict
+          mkdir "$RUNNER_TEMP/fingerprint-smoke-source"
+          tar --extract --gzip --file scripts/fixtures/combined-fingerprint-smoke-source-1.tar.gz --directory "$RUNNER_TEMP/fingerprint-smoke-source" --no-same-owner
+          command -v psql
+          psql --version > "$RUNNER_TEMP/fingerprint-smoke-client-version.txt"
+      - name: Run portable no-contact controls and validate plan
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/fingerprint-smoke-source"
+          python3 test_fingerprint_smoke.py > "$RUNNER_TEMP/fingerprint-smoke-tests.log" 2>&1
+          python3 run_fingerprint_smoke.py > "$RUNNER_TEMP/fingerprint-smoke-default.json"
+          python3 run_fingerprint_smoke.py --check-plan > "$RUNNER_TEMP/fingerprint-smoke-plan.json"
+      - name: Execute approved SQL only in this independent disposable service
+        shell: bash
+        env:
+          FINGERPRINT_SMOKE_DATABASE_URL: postgresql://supabase_admin:fixture-only@localhost:5432/forge_work_activity_role_test
+        run: |
+          set -euo pipefail
+          python3 "$RUNNER_TEMP/fingerprint-smoke-source/run_fingerprint_smoke.py" --execute-smoke --output "$RUNNER_TEMP/fingerprint-smoke-output/fingerprint-smoke.json" > "$RUNNER_TEMP/fingerprint-smoke-runner.log" 2>&1
+      - name: Retain success or failure evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: isolated-fingerprint-smoke-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: warn
+          path: |
+            ${{ runner.temp }}/fingerprint-smoke-output
+            ${{ runner.temp }}/fingerprint-smoke-tests.log
+            ${{ runner.temp }}/fingerprint-smoke-default.json
+            ${{ runner.temp }}/fingerprint-smoke-plan.json
+            ${{ runner.temp }}/fingerprint-smoke-runner.log
+            ${{ runner.temp }}/fingerprint-smoke-client-version.txt
