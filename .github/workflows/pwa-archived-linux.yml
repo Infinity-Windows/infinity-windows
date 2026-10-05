@@ -1,6 +1,9 @@
 # SOURCE ONLY. Store outside .github/workflows until exact root/peer approval and publication.
 name: PWA exact archived Linux rehearsal
 on:
+  push:
+    branches: [codex/work-pwa-diagnostic-20261004]
+    paths: [.github/workflows/pwa-archived-linux.yml]
   workflow_dispatch:
     inputs:
       sourceCommit:
@@ -19,14 +22,14 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 70
     env:
-      SOURCE_COMMIT: ${{ inputs.sourceCommit }}
-      REVIEWED_MANIFEST: ${{ inputs.reviewedManifest }}
+      SOURCE_COMMIT: ${{ github.event_name == 'push' && github.sha || inputs.sourceCommit }}
+      REVIEWED_MANIFEST: ${{ github.event_name == 'push' && '9cab38dce05a4fe613c3cc2275f25936497f0c76df73f5e90c85da9da947bde5' || inputs.reviewedManifest }}
       PYTHONDONTWRITEBYTECODE: '1'
     steps:
       - name: Checkout exact supplied source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          ref: ${{ inputs.sourceCommit }}
+          ref: ${{ env.SOURCE_COMMIT }}
           persist-credentials: false
       - name: Root verification and bounded cloud setup
         id: setup
