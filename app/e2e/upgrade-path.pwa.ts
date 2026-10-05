@@ -82,6 +82,31 @@ test("a phone on the previous build opens the app after a deploy, then switches 
   request,
 }) => {
   const bootErrors: string[] = [];
+  const passiveReturningTrace = process.env.IW_PWA_RETURNING_PHONE_TRACE === '1';
+  const returningCdp = passiveReturningTrace ? await context.newCDPSession(page) : null;
+  const returningEngine = returningCdp ? await preparePwaEngineTrace(page, returningCdp, test.info()) : null;
+  const returningNetwork: unknown[] = [];
+  if (returningCdp) {
+    await returningCdp.send('Network.enable');
+    returningCdp.on('Network.requestWillBeSent', event => returningNetwork.push({
+      event: 'request', at: Date.now(), timestamp: event.timestamp, requestId: event.requestId,
+      loaderId: event.loaderId, url: event.request.url, type: event.type,
+      initiator: { type: event.initiator.type, url: event.initiator.url, line: event.initiator.lineNumber,
+        stack: event.initiator.stack?.callFrames.slice(0, 5) },
+    }));
+    returningCdp.on('Network.responseReceived', event => returningNetwork.push({
+      event: 'response', at: Date.now(), timestamp: event.timestamp, requestId: event.requestId,
+      status: event.response.status, fromServiceWorker: event.response.fromServiceWorker,
+    }));
+    returningCdp.on('Network.loadingFinished', event => returningNetwork.push({
+      event: 'finished', at: Date.now(), timestamp: event.timestamp, requestId: event.requestId,
+    }));
+    returningCdp.on('Network.loadingFailed', event => returningNetwork.push({
+      event: 'failed', at: Date.now(), timestamp: event.timestamp, requestId: event.requestId,
+      error: event.errorText, canceled: event.canceled, type: event.type,
+    }));
+  }
+  try {
   await page.addInitScript(() => {
     (window as Window & { __emptyBootRecoveryAtNavigation?: string | null }).__emptyBootRecoveryAtNavigation =
       sessionStorage.getItem("wops-empty-boot-diagnostic");
@@ -144,6 +169,7 @@ test("a phone on the previous build opens the app after a deploy, then switches 
   await page.goto("about:blank");
   await serveBuild(request, "new");
   await expireBrowserCache(page, context);
+  await returningEngine?.start();
 
   // Today: the phone opens the app. The old worker answers with the old
   // shell, and the old shell has to be able to start.
@@ -237,6 +263,18 @@ test("a phone on the previous build opens the app after a deploy, then switches 
   await expect(signInButton(page)).toBeVisible();
   expect(offlineFailed, "files the new build needed offline that its worker did not have").toEqual([]);
   expect(await runningEntry(page)).toBe(builds.new.entry);
+  } finally {
+    if (passiveReturningTrace) {
+      const browserTimeline = await page.evaluate(() =>
+        JSON.parse(sessionStorage.getItem('wops-e2e-upgrade-timeline') || '[]'),
+      ).catch(error => ({ readError: String(error) }));
+      await test.info().attach('returning-phone-causal', {
+        body: Buffer.from(JSON.stringify({ browserTimeline, network: returningNetwork, bootErrors }, null, 2)),
+        contentType: 'application/json',
+      });
+    }
+    try { await returningEngine?.finish(); } finally { await returningCdp?.detach(); }
+  }
 });
 
 test("a phone whose very first session sees a deploy switches over, instead of offering Refresh for ever", async ({
