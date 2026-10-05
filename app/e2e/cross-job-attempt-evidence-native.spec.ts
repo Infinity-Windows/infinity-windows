@@ -264,3 +264,47 @@ test('AE4 actual page reload loses the consumed V4 capability; reconstructed tic
  expect(result.answer).toEqual({kind:'not_sent',reason:'send_capability_missing',record:null});expect(result.loads).toBe(0);expect(result.remote).toBe(0);
  expect(result.row).toEqual(witness.row);expect(result.row?.original).toEqual(result.original);expect(result.evidence).toEqual({kind:'not_recorded'});expect(result.claim).toBeNull();expect(result.after).toEqual(result.before);
 });
+
+// Source checkpoint 5: three bounded AE5 controls; the original 48 cases above remain exact.
+// One V4 lifetime and a synthetic same-store version5 upgrade only: no old V3,
+// released client, authentication, provider or future V5 schema claim. A late
+// caller-visible reply is permitted; settlement and evidence cannot follow it.
+for(const mode of ['receipt','23514','42501'] as const)test(`AE5 late ${mode} reply after real versionchange cannot settle or mint evidence`,async({page})=>{
+ await fixture(page);const result=await page.evaluate(async mode=>{
+  const f=window.attemptFixture;f.login();const db=await f.open(),o=f.values.genesis(),ctx=f.context(),CMD=f.storage.CROSS_JOB_COMMANDS;await f.storage.appendCrossJobOriginalV4(db,o,ctx);
+  const ticket=await f.storage.claimCrossJobOriginalV4(db,o.command.commandId,f.values.id(70),ctx,f.admission(o));if(!ticket)throw Error('missing claim');
+  const claimed=await f.storage.readCrossJobOriginalV4(db,o.command.commandId,ctx),predicted=f.predictAllocation(o.command,o.prediction.status),proof=f.values.submission(predicted);
+  type Reply={data:unknown;error:{code:string}|null};
+  const events:string[]=[],calls:string[]=[],expectedWire=JSON.stringify({p_command_id:o.command.commandId,p_protocol_version:2,p_payload:o.command.payload});
+  let loads=0,authCalls=0,wire='',commandsAtEntry=-1,started!:()=>void,release!:(value:Reply)=>void;
+  const entered=new Promise<void>(resolve=>{started=resolve;}),pending=new Promise<Reply>(resolve=>{release=resolve;});
+  const api=f.api.createActivityTransportV3(async()=>{loads++;return {getSession:async()=>{authCalls++;return {data:{session:{access_token:'fixture-token',user:{id:o.command.ownerId}}},error:null};},clientWithToken:()=>({rpc:(name,args)=>{
+   calls.push(name);if(name==='work_cross_job_snapshot')return Promise.resolve({data:o.anchor,error:null});
+   // The success path's existing read-only receipt lookup is allowed after the upgrade.
+   if(name==='work_cross_job_receipt')return Promise.resolve({data:f.values.lookup(predicted),error:null});
+   if(name!=='work_activity_command')throw Error('unexpected RPC');wire=JSON.stringify(args);commandsAtEntry=calls.filter(c=>c===name).length;events.push('command-entered');started();return pending;
+  }})};});
+  const env={context:ctx,clock:()=>({elapsedMs:0,serverNow:o.anchor.asOf})};
+  const submitted=api.submitClaim(db,ticket,env).then(answer=>{events.push('adapter-resolved');return answer;});
+  await entered;const before=await f.census(db);
+  // Observe without replacing the production onversionchange handler.
+  const productionHandlerRetained=typeof db.onversionchange==='function';db.addEventListener('versionchange',()=>events.push('versionchange'));
+  const newer=await new Promise<IDBDatabase>((resolve,reject)=>{const r=indexedDB.open(f.storage.CROSS_JOB_DB_NAME,5);r.onblocked=()=>events.push('blocked');r.onsuccess=()=>{events.push('upgrade-complete');resolve(r.result);};r.onerror=()=>reject(r.error);});
+  let oldRefuses=false;try{db.transaction(CMD,'readonly');}catch{oldRefuses=true;}
+  events.push('reply-released');release(mode==='receipt'?{data:proof.reply,error:null}:{data:null,error:{code:mode}});const answer=await submitted;
+  const late={calls:[...calls],loads,authCalls};
+  const reason=async(run:()=>unknown)=>{try{await run();return 'resolved';}catch(error){return error instanceof f.legacy.JournalV3Error?error.reason:`other:${error instanceof Error?error.message:typeof error}`;}};
+  const consume=await reason(()=>f.storage.consumeCrossJobSendV4(db,ticket)),prepare=await reason(()=>f.storage.prepareCrossJobSendCheckV4(db,ticket,ctx)),settle=await reason(()=>f.storage.settleCrossJobClaimV4(db,ticket,ctx,null,null)),again=await api.submitClaim(db,ticket,env);
+  const after=await f.census(newer),row=after.stores.find(s=>s.name===CMD)?.rows.find(r=>r.commandId===o.command.commandId);newer.close();
+  return {events,productionHandlerRetained,oldRefuses,wire,expectedWire,commandsAtEntry,answer,late,repeat:{calls:[...calls],loads,authCalls},consume,prepare,settle,again,before,after,row,claimed,reply:proof.reply,original:o,token:ticket.token};
+ },mode);
+ expect(result.events).toEqual(['command-entered','versionchange','upgrade-complete','reply-released','adapter-resolved']);expect(result.productionHandlerRetained).toBe(true);expect(result.oldRefuses).toBe(true);
+ expect(result.commandsAtEntry).toBe(1);expect(result.wire).toBe(result.expectedWire);
+ expect(result.late).toEqual({calls:mode==='receipt'?['work_cross_job_snapshot','work_activity_command','work_cross_job_receipt']:['work_cross_job_snapshot','work_activity_command'],loads:1,authCalls:1});
+ expect(result.answer).toEqual(mode==='receipt'?{kind:'receipt',reply:result.reply,record:null}:{kind:'unknown',record:null,sqlState:mode});
+ expect(result.consume).toBe('send_capability_missing');expect(result.prepare).toBe('send_capability_missing');expect(result.settle).toBe('claim_capability_missing');
+ expect(result.again).toEqual({kind:'not_sent',reason:'send_capability_missing',record:null});expect(result.repeat).toEqual(result.late);
+ expect(result.claimed).toMatchObject({everAttempted:true,attemptToken:result.token,revision:1,hold:null,historical:null});expect(result.claimed?.original).toEqual(result.original);
+ expect(result.before.version).toBe(4);expect(result.after.version).toBe(5);expect(result.after.stores).toEqual(result.before.stores);expect(result.row).toEqual(result.claimed);
+ expect(result.after.stores.find(s=>s.name==='cross_job_attempt_evidence_v1')?.rows).toEqual([]);
+});
