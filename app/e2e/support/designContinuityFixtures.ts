@@ -42,6 +42,7 @@ type Row = Record<string, unknown>;
 
 /** Explicit read-only RPCs used by these existing screens. Unknown RPCs fail. */
 const READ_ONLY_RPCS = new Set([
+  "foreman_contacts_for_me", // stable address-book SELECT; shown by classic off-clock UI
   "can_read_app_update", "crew_goal_summary", "is_partner_user", "list_issues",
   "live_project_ids", "my_pin_status", "server_now", "values_my_owed_count",
   "work_activity_clock_capability", "work_data_snapshot", "work_configuration_snapshot",
@@ -64,7 +65,7 @@ export interface ContinuityServer {
   profile: { ui_design: Design };
   /** The saved company row. */
   company: Row;
-  /** The saved open shift — mutated only by start_break / end_break handlers. */
+  /** The saved shift — mutated only by the start_break / end_break / clock_out handlers. */
   shift: Row;
   /** Snapshot of the shift as it was seeded, for "unchanged" assertions. */
   readonly seededShift: Readonly<Row>;
@@ -81,6 +82,11 @@ export interface ContinuityServer {
     /** Answers start_break / end_break actually returned. */
     breakAnswers: Row[];
     shiftReads: ServedShiftRead[];
+    /** Every intercepted current-shift query, open or not: the cloned row served, or null. */
+    currentShiftAnswers: { session: string; row: Row | null }[];
+    /** clock_out bodies as sent, and the rows the handler answered. */
+    clockOuts: Row[];
+    clockOutAnswers: Row[];
     profileReads: { session: string; ui_design: Design }[];
     companyReads: { session: string; new_design_r1_enabled: unknown }[];
     scheduleReads: { session: string; rows: Row[] }[];
@@ -181,6 +187,9 @@ export function createContinuityServer(init: { uiDesign: Design; masterOn?: bool
       foregroundTouches: [],
       breakAnswers: [],
       shiftReads: [],
+      currentShiftAnswers: [],
+      clockOuts: [],
+      clockOutAnswers: [],
       profileReads: [],
       companyReads: [],
       scheduleReads: [],
@@ -263,6 +272,9 @@ export async function installContinuityRoutes(page: Page, server: ContinuityServ
       });
     }
     const row = open ? structuredClone(s) : null;
+    // Absence is a served answer too: a closed shift is never replaced by
+    // morningFixtures' seeded open one, because this handler never falls back.
+    server.log.currentShiftAnswers.push({ session, row: row ? structuredClone(row) : null });
     // The legacy reader asks for a list; the paid-clock reader asks maybeSingle.
     if (wantsObject(route)) return json(route, row, row ? 1 : 0);
     return json(route, row ? [row] : [], row ? 1 : 0);
@@ -349,6 +361,58 @@ export async function installContinuityRoutes(page: Page, server: ContinuityServ
     server.shift.break_type = null;
     const answer = { outcome: "ended", shift: structuredClone(server.shift) };
     server.log.breakAnswers.push({ rpc: "end_break", ...answer.shift });
+    return json(route, answer, null);
+  });
+
+  // Clock-out on the ONE saved shift: the keyed overload of clock_out
+  // (20261028000000_clock_integrity.sql 5b), which is what timeclock.clockOut
+  // sends. Strict body; anything else is refused, not repaired. Same client id
+  // twice answers the first result unchanged; a shift that is no longer open
+  // refuses with the migration's message. Pay time: this fixture stamps the
+  // arrival instant and does NOT model _clock_pick_time's tap-trust rule —
+  // which instant is paid is server policy, outside these continuity specs.
+  const CLOCK_OUT_KEYS = ["p_break_seconds", "p_client_id", "p_clock_checked_at", "p_clock_skew_ms", "p_injured",
+    "p_injury_note", "p_lat", "p_lng", "p_photo", "p_shift_id", "p_tapped_at", "p_time_confirmed"].join(",");
+  const nullable = (v: unknown, type: "string" | "number") => v === null || typeof v === type;
+  const outByClient = new Map<string, Row>();
+  await page.route(rpcMatcher("clock_out"), (route) => {
+    const b = body(route);
+    server.log.clockOuts.push(b);
+    if (!server.expected.has("clock_out")) return refuse(route, server, "rpc/clock_out");
+    const valid = Object.keys(b).sort().join(",") === CLOCK_OUT_KEYS &&
+      typeof b.p_client_id === "string" && b.p_client_id.length > 0 && b.p_photo === null &&
+      typeof b.p_injured === "boolean" && typeof b.p_time_confirmed === "boolean" &&
+      nullable(b.p_injury_note, "string") && nullable(b.p_lat, "number") && nullable(b.p_lng, "number") &&
+      nullable(b.p_tapped_at, "string") && nullable(b.p_clock_checked_at, "string") &&
+      (b.p_clock_skew_ms === null || Number.isSafeInteger(b.p_clock_skew_ms)) &&
+      (b.p_break_seconds === null || (Number.isSafeInteger(b.p_break_seconds) && (b.p_break_seconds as number) >= 0));
+    if (!valid) return refuse(route, server, "rpc/clock_out unexpected payload");
+    if (b.p_shift_id !== server.shift.id) return refuse(route, server, `rpc/clock_out on ${String(b.p_shift_id)}`);
+    const seen = outByClient.get(b.p_client_id as string);
+    if (seen) return json(route, structuredClone(seen), null);
+    const s = server.shift;
+    if (s.status !== "open" || s.clock_out_at !== null) {
+      return route.fulfill({ status: 400, contentType: "application/json",
+        body: JSON.stringify({ code: "P0001", message: "This shift was already clocked out. Nothing was changed." }) });
+    }
+    const arrived = new Date().toISOString();
+    const running = typeof s.break_started_at === "string"
+      ? Math.max(0, Math.floor((Date.parse(arrived) - Date.parse(s.break_started_at)) / 1000)) : 0;
+    s.clock_out_at = arrived;
+    s.last_punch_at = arrived;
+    s.injured = b.p_injured;
+    s.injury_note = b.p_injured && typeof b.p_injury_note === "string" && b.p_injury_note.trim() ? b.p_injury_note.trim() : null;
+    s.time_confirmed = b.p_time_confirmed;
+    s.break_seconds = b.p_break_seconds ?? Number(s.break_seconds ?? 0) + running;
+    s.break_started_at = null;
+    s.break_type = null;
+    if (b.p_lat !== null) s.clock_out_lat = b.p_lat;
+    if (b.p_lng !== null) s.clock_out_lng = b.p_lng;
+    s.signed_at = arrived;
+    s.status = "submitted";
+    const answer = structuredClone(s);
+    outByClient.set(b.p_client_id as string, answer);
+    server.log.clockOutAnswers.push(structuredClone(answer));
     return json(route, answer, null);
   });
 

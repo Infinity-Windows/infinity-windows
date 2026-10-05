@@ -294,3 +294,77 @@ test("owner master switch off then on: a second session follows on its next fres
     await other.close();
   }
 });
+
+/** A fresh load after clock-out: at least one current-shift answer served, every one empty. */
+async function reloadOffClock(page: Page, server: ContinuityServer, session: string) {
+  const answerMark = server.log.currentShiftAnswers.length;
+  const openMark = readMark(server);
+  await page.goto("/");
+  await page.reload();
+  await expect.poll(() => server.log.currentShiftAnswers.slice(answerMark).filter((a) => a.session === session).length).toBeGreaterThan(0);
+  for (const a of server.log.currentShiftAnswers.slice(answerMark)) expect(a.row).toBeNull();
+  expect(shiftReadsSince(server, openMark)).toEqual([]);
+}
+
+test("Clock out on Work closes the one saved shift; new → classic → new reads it closed and shows off the clock", async ({ page }) => {
+  // Limit: this does not cover the master switch with an already-closed shift.
+  const server = createContinuityServer({ uiDesign: "new" });
+  server.expected.add("clock_out");
+  await openContinuityPage(page, server, { session: "phone", role: "installer" });
+
+  const reads = await reloadLanding(page, server, "phone");
+  expectSameSavedShift(reads, server);
+  await expectNewWork(page, "Clocked in");
+
+  // The real path: badge → clock sheet → Clock out. Leaving "time is wrong"
+  // unchecked is the existing confirmation (time_confirmed = true).
+  await page.getByTestId("clock-badge").click();
+  const sheet = page.locator(".clock-sheet");
+  await expect(sheet).toBeVisible();
+  await sheet.getByRole("button", { name: "Clock out", exact: true }).click();
+  await expect.poll(() => server.log.clockOutAnswers.length).toBe(1);
+  expect(server.log.clockOuts).toHaveLength(1);
+  const sent = server.log.clockOuts[0];
+  expect(sent).toMatchObject({
+    p_shift_id: CONTINUITY_SHIFT_ID, p_photo: null, p_injured: false, p_injury_note: null,
+    p_time_confirmed: true, p_break_seconds: PRIOR_BREAK_SECONDS, p_lat: null, p_lng: null,
+  });
+  expect(typeof sent.p_client_id).toBe("string");
+  expect(typeof sent.p_tapped_at).toBe("string");
+  // Closed by the handler; original identity and earlier break untouched.
+  const answer = server.log.clockOutAnswers[0];
+  expect(answer).toMatchObject({
+    id: CONTINUITY_SHIFT_ID, profile_id: server.seededShift.profile_id, project_id: OAKRIDGE, cost_code_id: INSTALL,
+    clock_in_at: server.seededShift.clock_in_at, break_seconds: PRIOR_BREAK_SECONDS,
+    break_started_at: null, break_type: null, status: "submitted", time_confirmed: true,
+  });
+  const closedAt = answer.clock_out_at as string;
+  expect(typeof closedAt).toBe("string");
+  expect(Date.parse(closedAt)).toBeGreaterThanOrEqual(Date.parse(server.seededShift.clock_in_at as string));
+  await expect(sheet).toBeHidden();
+
+  // Classic, fresh: no current shift served, and the off-clock block shows.
+  await chooseDesign(page, server, "classic");
+  await reloadOffClock(page, server, "phone");
+  await expect(page.locator(".clockin-block")).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Main", exact: true }).getByRole("button", { name: "On the clock", exact: true })).toHaveCount(0);
+  await expect(page.getByTestId("work-screen")).toHaveCount(0);
+
+  // New, fresh: Work renders Start day, not a running clock.
+  await chooseDesign(page, server, "new");
+  await reloadOffClock(page, server, "phone");
+  await expect(page.getByTestId("work-screen")).toBeVisible();
+  await expect(page.getByTestId("ws-clock")).toHaveClass(/ws-clock--off/);
+  await expect(page.getByTestId("ws-start-day")).toBeVisible();
+  await expect(page.getByTestId("clock-badge").filter({ hasText: "Clocked in" })).toHaveCount(0);
+
+  // One clock-out, no clock-in, break or other operational write; the saved
+  // row is the handler's closed answer and nothing moved it since.
+  expect(server.log.clockOuts).toHaveLength(1);
+  expect(server.log.unexpectedWrites).toEqual([]);
+  expect(server.log.otherWrites).toEqual([]);
+  expect(server.log.breakStarts).toEqual([]);
+  expect(server.log.breakEnds).toEqual([]);
+  expect(server.log.designRpc).toEqual([{ p_design: "classic" }, { p_design: "new" }]);
+  expect(shiftIdentity(server.shift)).toEqual({ ...shiftIdentity(server.seededShift), clock_out_at: closedAt, status: "submitted" });
+});
