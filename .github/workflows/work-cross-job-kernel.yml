@@ -6,6 +6,8 @@ on:
     paths:
       - .github/workflows/work-cross-job-kernel.yml
       - scripts/verify-work-cross-job-postgres.py
+      - scripts/verify-work-cross-job-fresh-sessions.py
+      - scripts/test_work_cross_job_fresh_sessions.py
       - supabase/migrations/20261108470000_work_cross_job_capture.sql
       - scripts/work-cross-job-*
       - scripts/build-work-cross-job-capture.py
@@ -42,6 +44,10 @@ jobs:
           echo "c0eaccc11ca212853a3950bb64d47805990a2b4af824755a04d92b3fdf170c07  supabase/migrations/20261108470000_work_cross_job_capture.sql" | sha256sum -c -
           echo "eb7f48d2c18d62da5d4b44659968c20de9a6ec8f7c2e1deb099a8576cb4a0ab3  scripts/verify-work-cross-job-postgres.py" | sha256sum -c -
           python3 scripts/verify-work-cross-job-postgres.py --check-plan
+          echo "2319b7f252cb65aeb1589c109526e24ea5287f5ec0f61e79430c3996d94296da  scripts/verify-work-cross-job-fresh-sessions.py" | sha256sum -c -
+          echo "771041bb72c2fc28951cb24698ff4727bc8d5807a293457119e8364e6ad12dbd  scripts/test_work_cross_job_fresh_sessions.py" | sha256sum -c -
+          python3 scripts/test_work_cross_job_fresh_sessions.py
+          python3 scripts/verify-work-cross-job-fresh-sessions.py --check-plan
       - name: Build unchanged genuine role and source fixture
         run: python3 scripts/verify-work-activity-engine-role-parity.py
       - name: Verify unchanged authority/source concurrency
@@ -64,6 +70,11 @@ jobs:
         env:
           WORK_CROSS_JOB_POSTGRES_OUT: ${{ runner.temp }}/work-cross-job-kernel-postgres.json
         run: python3 scripts/verify-work-cross-job-postgres.py
+      - name: Test held K6 v1 through genuine fresh authenticator logins
+        env:
+          WORK_CROSS_JOB_POSTGRES_OUT: ${{ runner.temp }}/work-cross-job-kernel-postgres.json
+          WORK_CROSS_JOB_FRESH_SESSIONS_OUT: ${{ runner.temp }}/work-cross-job-fresh-sessions.json
+        run: python3 scripts/verify-work-cross-job-fresh-sessions.py --execute-fixture
       - name: Preserve complete or partial genuine receipts
         if: always()
         uses: actions/upload-artifact@v4
@@ -71,6 +82,7 @@ jobs:
           name: work-cross-job-kernel-postgres
           path: |
             ${{ runner.temp }}/work-cross-job-kernel-postgres.json
+            ${{ runner.temp }}/work-cross-job-fresh-sessions.json
             ${{ runner.temp }}/work-unit-review-volume.json
             ${{ runner.temp }}/work-activity-totals-volume.json
             ${{ runner.temp }}/work-unit-contributors-volume.json
