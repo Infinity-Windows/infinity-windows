@@ -346,6 +346,13 @@ jobs:
       # release paths for the crew; keep them in the PR browser gate.
       - run: npm run e2e -- new-design-work.spec.ts
       - run: npx playwright test --browser webkit new-design-work.spec.ts -g "New unit stays within the phone"
+      - name: Saved work survives design switches and owner rollback on phone browsers
+        run: |
+          chromium_status=0
+          npm run e2e -- new-design-continuity.spec.ts || chromium_status=$?
+          webkit_status=0
+          npm run e2e -- new-design-continuity.spec.ts --browser=webkit || webkit_status=$?
+          test "$chromium_status" -eq 0 && test "$webkit_status" -eq 0
       # Expired sign-ins and shared-phone queues need their own browser gate:
       # they can lose a saved punch or send it as the next person even while
       # the ordinary clock screen tests remain green.
