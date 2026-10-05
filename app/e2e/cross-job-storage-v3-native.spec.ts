@@ -304,3 +304,106 @@ test('native fixture request error retains source and DOMException while preserv
 test('native fixture census waits for transaction complete before returning for close and upgrade',async({page})=>{
   await fixture(page);const result=await page.evaluate(async()=>{const f=window.crossJobV3Fixture,db=await f.open(),transaction=IDBDatabase.prototype.transaction;let completed=false;IDBDatabase.prototype.transaction=function(...args:Parameters<typeof transaction>){const tx=transaction.apply(this,args);tx.addEventListener('complete',()=>{completed=true;});return tx;};try{await f.census(db);return {completed};}finally{IDBDatabase.prototype.transaction=transaction;db.close();}});expect(result.completed).toBe(true);
 });
+
+
+// Explicitly synthetic transport ports over actual native IndexedDB claims.
+// These exercise local authority and persistence, never provider authentication.
+for(const mode of ['race','copies','auth-failure','storage-conflict','history-job-change','settlement-quota','lease-expired','shift-changed','revision-changed','allocation-changed','source-changed'] as const)test(`native V2 one-send boundary ${mode}`,async({page})=>{
+  await fixture(page);
+  const result=await page.evaluate(async mode=>{
+    const f=window.crossJobV3Fixture;
+    // @ts-expect-error Isolated browser module, no production SDK is loaded.
+    const api=await import('/src/lib/workActivity/apiV2.ts');
+    // @ts-expect-error Real page-local memory module, synthetic fixture login.
+    const auth=await import('/src/lib/signedIn.ts');
+    auth.rememberSignedIn({user:{id:f.values.id(99)}});auth.rememberSignedIn({user:{id:f.values.id(1)}});
+    const db=await f.open(),o=f.values.genesis(),ctx=f.context();await f.storage.appendCrossJobOriginal(db,o,ctx);
+    const claims=await Promise.all([f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(70),ctx,f.admission(o)),f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(71),ctx,f.admission(o))]);const ticket=claims.find(Boolean);if(!ticket||claims.filter(Boolean).length!==1)throw Error('native_claim_winner_missing');
+    const before=await f.storage.readCrossJobOriginal(db,o.command.commandId,ctx);let authCalls=0,mutationCalls=0,readCalls=0;
+    // @ts-expect-error Pure protected prediction fixture.
+    const {predictAllocation}=await import('/src/lib/workActivity/allocationPredecessor.ts');
+    const predicted=predictAllocation(o.command,o.prediction.status),submission=f.values.submission(predicted),lookup=f.values.lookup(predicted);
+    const admission=mode==='lease-expired'?f.values.admissionAt(o,undefined,10001):{snapshot:structuredClone(o.anchor),elapsedMs:0,serverNow:o.anchor.asOf};
+    if(mode==='shift-changed'){admission.snapshot.state!.shift!.id=f.values.id(99);admission.snapshot.observation!.shiftRef={kind:'shift',id:f.values.id(99)};}
+    if(mode==='revision-changed'){admission.snapshot.state!.revision=2;admission.snapshot.observation!.revision=2;admission.snapshot.stream!.headAfterRevision=2;}
+    if(mode==='allocation-changed')admission.snapshot.state!.shift!.allocationId=f.values.id(99);
+    if(mode==='source-changed'){admission.snapshot.stream!.headCommandId=f.values.id(99);admission.snapshot.observation!.currentHeadCommandId=f.values.id(99);}
+
+    const ports={getSession:async()=>{authCalls++;if(mode==='auth-failure')throw Error('synthetic auth rejection');return {data:{session:{access_token:'fixture-bound-token',user:{id:f.values.id(1)}}},error:null};},clientWithToken:(token:string)=>({rpc:async(name:string,args:Record<string,unknown>)=>{
+      if(token!=='fixture-bound-token')throw Error('wrong_bound_token');
+      if(name==='work_cross_job_snapshot'){readCalls++;if(mode==='storage-conflict')await f.storage.holdCrossJobOriginal(db,o.command.commandId,ctx,'unknown');return {data:admission.snapshot,error:null};}
+      if(name==='work_cross_job_receipt'){readCalls++;return {data:lookup,error:null};}
+      if(name!=='work_activity_command'||JSON.stringify(args)!==JSON.stringify({p_command_id:o.command.commandId,p_protocol_version:2,p_payload:o.command.payload}))throw Error('wrong_full_original_wire');
+      mutationCalls++;if(mode==='history-job-change')f.setContext({selectedJobId:f.values.id(99)});return {data:submission.reply,error:null};
+    }})};
+    const transport=api.createActivityTransportV2(async()=>ports),environment={context:ctx,clock:()=>({elapsedMs:admission.elapsedMs,serverNow:admission.serverNow})};
+    const forged=[];
+    if(mode==='copies'){
+      for(const value of [{...ticket},JSON.parse(JSON.stringify(ticket)),{command:o.command,token:f.values.id(71)}])forged.push(await transport.submitClaim(db,value,environment));
+      const wrongHandle=await f.open();try{forged.push(await transport.submitClaim(wrongHandle,ticket,environment));}finally{wrongHandle.close();}
+      if(authCalls||readCalls||mutationCalls)throw Error('forged_ticket_did_work');
+    }
+    const put=IDBObjectStore.prototype.put;
+    if(mode==='settlement-quota')IDBObjectStore.prototype.put=function(...args:Parameters<typeof put>){if(this.name===f.storage.CROSS_JOB_COMMANDS&&(args[0] as {historical?:unknown}).historical)throw new DOMException('synthetic settlement quota','QuotaExceededError');return put.apply(this,args);};
+    let results;
+    try{results=await Promise.all([transport.submitClaim(db,ticket,environment),transport.submitClaim(db,ticket,environment)]);}finally{IDBObjectStore.prototype.put=put;}
+    f.setContext(o.fences);
+    const after=await f.storage.readCrossJobOriginal(db,o.command.commandId,ctx),again=await transport.submitClaim(db,ticket,environment);db.close();
+    return {mode,authCalls,readCalls,mutationCalls,results:results.map(x=>({kind:x.kind,recordPresent:x.record!==null})),forged:forged.map(x=>x.kind),again:again.kind,attemptedBefore:before?.everAttempted,attemptedAfter:after?.everAttempted,bytesSame:after?.original.commandBytes===o.commandBytes,historical:after?.historical?.submission??null,expectedSubmission:submission};
+  },mode);
+  expect(result.attemptedBefore).toBe(true);expect(result.attemptedAfter).toBe(true);expect(result.bytesSame).toBe(true);expect(result.again).toBe('not_sent');expect(result.authCalls).toBe(1);
+  expect(result.mutationCalls).toBe(['auth-failure','storage-conflict','lease-expired','shift-changed','revision-changed','allocation-changed','source-changed'].includes(mode)?0:1);
+  if(mode==='copies')expect(result.forged).toEqual(['not_sent','not_sent','not_sent','not_sent']);
+  if(['race','copies','history-job-change'].includes(mode))expect(result.historical).toEqual(result.expectedSubmission);else expect(result.historical).toBeNull();
+  if(mode==='settlement-quota')expect(result.results).toContainEqual({kind:'receipt',recordPresent:false});
+});
+
+test('native consumed send and settlement are independent, and a reloaded structural claim has no send authority',async({page})=>{
+  await fixture(page);
+  const saved=await page.evaluate(async()=>{const f=window.crossJobV3Fixture,db=await f.open(),o=f.values.genesis();await f.storage.appendCrossJobOriginal(db,o,f.context());const ticket=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(70),f.context(),f.admission(o));if(!ticket)throw Error();const original=f.storage.consumeCrossJobSend(db,ticket);let second=false;try{f.storage.consumeCrossJobSend(db,ticket);}catch{second=true;}const record=await f.settle(db,ticket);db.close();return {ticket,second,bytes:original.commandBytes,history:record.historical!==null};});
+  expect(saved.second).toBe(true);expect(saved.history).toBe(true);
+  await page.reload();await fixture(page);
+  const result=await page.evaluate(async ticket=>{const f=window.crossJobV3Fixture,db=await f.open();let rejected=false;try{f.storage.consumeCrossJobSend(db,ticket);}catch{rejected=true;}const row=await f.storage.readCrossJobOriginal(db,ticket.command.commandId,f.context());db.close();return {rejected,attempted:row?.everAttempted,bytes:row?.original.commandBytes};},saved.ticket);
+  expect(result).toEqual({rejected:true,attempted:true,bytes:saved.bytes});
+});
+
+
+test('native no-send settlement consumes settlement authority without creating or reopening a send right',async({page})=>{
+  await fixture(page);
+  const result=await page.evaluate(async()=>{const f=window.crossJobV3Fixture,db=await f.open(),o=f.values.genesis();await f.storage.appendCrossJobOriginal(db,o,f.context());const ticket=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(70),f.context(),f.admission(o));if(!ticket)throw Error();const saved=await f.storage.settleCrossJobClaim(db,ticket,f.context(),null,null);let rejected=false;try{f.storage.consumeCrossJobSend(db,ticket);}catch{rejected=true;}db.close();return {rejected,hold:saved.hold,attempted:saved.everAttempted,history:saved.historical,bytes:saved.original.commandBytes===o.commandBytes};});
+  expect(result).toEqual({rejected:true,hold:'unknown',attempted:true,history:null,bytes:true});
+});
+
+
+test('native settlement during awaited snapshot invalidates the live final send check and prevents command RPC',async({page})=>{
+  await fixture(page);
+  const result=await page.evaluate(async()=>{
+    const f=window.crossJobV3Fixture;
+    // @ts-expect-error Isolated browser module; synthetic ports, no SDK import.
+    const api=await import('/src/lib/workActivity/apiV2.ts');
+    // @ts-expect-error Real page-local memory module, synthetic fixture login.
+    const auth=await import('/src/lib/signedIn.ts');
+    auth.rememberSignedIn({user:{id:f.values.id(99)}});auth.rememberSignedIn({user:{id:f.values.id(1)}});
+    const db=await f.open(),o=f.values.genesis(),ctx=f.context();await f.storage.appendCrossJobOriginal(db,o,ctx);
+    const ticket=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(70),ctx,f.admission(o));if(!ticket)throw Error('missing_claim');
+    let authCalls=0,snapshotCalls=0,commandCalls=0,readyBefore=false,readyAfter=true;
+    const admission={snapshot:o.anchor,elapsedMs:0,serverNow:o.anchor.asOf};
+    const transport=api.createActivityTransportV2(async()=>({getSession:async()=>{authCalls++;return {data:{session:{access_token:'fixture-bound-token',user:{id:f.values.id(1)}}},error:null};},clientWithToken:(token:string)=>({rpc:async(name:string)=>{
+      if(token!=='fixture-bound-token')throw Error('wrong_token');
+      if(name==='work_cross_job_snapshot'){
+        snapshotCalls++;
+        // The API is awaiting this callback with its send already consumed.
+        // Capture the real predicate, then settle using the same live ticket.
+        const ready=await f.storage.prepareCrossJobSendCheck(db,ticket,ctx);readyBefore=ready(admission);
+        await f.storage.settleCrossJobClaim(db,ticket,ctx,null,null);readyAfter=ready(admission);
+        return {data:o.anchor,error:null};
+      }
+      commandCalls++;throw Error('unexpected_rpc_after_settlement');
+    }})}));
+    const environment={context:ctx,clock:()=>({elapsedMs:0,serverNow:o.anchor.asOf})};
+    const first=await transport.submitClaim(db,ticket,environment),again=await transport.submitClaim(db,ticket,environment);
+    const saved=await f.storage.readCrossJobOriginal(db,o.command.commandId,ctx);db.close();
+    return {authCalls,snapshotCalls,commandCalls,readyBefore,readyAfter,first,again,hold:saved?.hold,attempted:saved?.everAttempted,history:saved?.historical,bytes:saved?.original.commandBytes===o.commandBytes};
+  });
+  expect(result).toEqual({authCalls:1,snapshotCalls:1,commandCalls:0,readyBefore:true,readyAfter:false,first:{kind:'not_sent',reason:'admission_or_auth_unavailable',record:null},again:{kind:'not_sent',reason:'send_capability_missing',record:null},hold:'unknown',attempted:true,history:null,bytes:true});
+});

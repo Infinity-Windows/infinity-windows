@@ -35,7 +35,7 @@ const equal=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
 const safe=(n:unknown)=>typeof n==='number'&&Number.isSafeInteger(n)&&n>=0;
 const key=(owner:string,device:string)=>`${owner}:${device}`;
 const holds:readonly HoldV3[]=['unknown','refused','conflict','context_changed','ancestor_held','admission_failed','intent_unproven','receipt_mismatch','authentication_changed','expired_observation','untrusted_stamp','unavailable','action_unavailable','predecessor_unknown','original_already_observed','needs_reaffirmation','retired_generation','head_conflict'];
-const tickets=new WeakMap<ClaimV3,{db:IDBDatabase;original:OriginalV3}>();
+const tickets=new WeakMap<ClaimV3,{db:IDBDatabase;original:OriginalV3;sendConsumed:boolean}>();
 function fences(value:PlannerFencesV2):PlannerFencesV2 {
   const v=freezeV2(value);exactV2(v,['userId','loginGeneration','deviceId','preview','foreground','selectedJobId','authorityToken']);
   if(v.userId===null||!safe(v.loginGeneration)||v.preview!==false||v.foreground!==true||typeof v.authorityToken!=='string'||!v.authorityToken)fail('context_changed');
@@ -342,7 +342,51 @@ export async function claimCrossJobOriginal(db:IDBDatabase,commandId:string,toke
       });
     });
   });
-  if(!record)return null;try{checkContext(context,context.expected);}catch{throw new JournalV3Error('context_changed_after_commit',true,record.original);}const ticket=freezeV2({command:record.original.command,token});tickets.set(ticket,{db,original:record.original});return ticket;
+  if(!record)return null;try{checkContext(context,context.expected);}catch{throw new JournalV3Error('context_changed_after_commit',true,record.original);}const ticket=freezeV2({command:record.original.command,token});tickets.set(ticket,{db,original:record.original,sendConsumed:false});return ticket;
+}
+/** Consume before the first transport/authentication await. The native claim
+ * is private and DB-handle-bound; copies/reloads cannot reconstruct this right.
+ * Consumption is permanent and independent of the one settlement permission. */
+export function consumeCrossJobSend(db:IDBDatabase,ticket:ClaimV3):OriginalV3 {
+  const active=tickets.get(ticket);
+  if(!active||active.db!==db||active.sendConsumed)fail('send_capability_missing');
+  active.sendConsumed=true;return active.original;
+}
+/** Read-only final lineage capture. No new claim, hold, retry or permission.
+ * The returned synchronous predicate reuses the protected planner and original
+ * lease after the read await. It cannot make the DB snapshot atomic with a
+ * later RPC; the backend still enforces revision/lineage and authorization. */
+export async function prepareCrossJobSendCheck(db:IDBDatabase,ticket:ClaimV3,context:JournalContextV3):Promise<(admission:AdmissionV3)=>boolean> {
+  context=lockContext(context);const active=tickets.get(ticket);
+  if(!active||active.db!==db||!active.sendConsumed)fail('send_capability_missing');
+  const captured=await transaction<{record:RecordV3;parents:AllocationPredecessor[]}>(db,context,'readonly',(tx,done,abort)=>{
+    const commands=tx.objectStore(CROSS_JOB_COMMANDS);
+    request(commands.get(ticket.command.commandId),abort,raw=>{
+      const r=parseCrossJobRecord(raw);
+      if(!scoped(r,context.expected)||!r.everAttempted||r.attemptToken!==ticket.token||r.hold!==null||r.historical!==null||!equal(r.original,active.original))fail('claim_conflict');
+      request(tx.objectStore(CROSS_JOB_HEADS).get(key(r.ownerId,r.deviceId)),abort,rawHead=>{
+        const h=parseHead(rawHead);if(!h||h.generation!==r.generation||h.loginGeneration!==r.original.fences.loginGeneration)fail('head_conflict');
+        request(commands.get(h.commandId),abort,tail=>{
+          if(!equal(crossJobHead(parseCrossJobRecord(tail)),h))fail('head_conflict');
+          const p=r.original.predecessor;
+          if(p?.protocol===2)request(commands.get(p.command.commandId),abort,rawParent=>{
+            const saved=parseCrossJobRecord(rawParent);if(!scoped(saved,context.expected)||!equal(saved.original.command,p.command))fail('lineage_conflict');done({record:r,parents:[currentParent(saved)]});
+          });
+          else if(p?.protocol===1)oldParent(tx,p,abort,()=>done({record:r,parents:[p]}));
+          else done({record:r,parents:[]});
+        });
+      });
+    });
+  });
+  return admission=>{
+    try{
+      if(tickets.get(ticket)!==active)return false;
+      checkContext(context,context.expected);
+      const a=admissionInput(admission,context.expected.deviceId);if(!a)return false;
+      const snapshot=freshAdmission(captured.record,a);if(!snapshot)return false;
+      return checkV2SendPrerequisites(plan(captured.record),{parents:captured.parents,currentFences:context.current(),snapshot,elapsedMs:a.elapsedMs,serverNow:a.serverNow}).kind==='ready';
+    }catch{return false;}
+  };
 }
 /** One live in-memory claim may append actual request/reply provenance once.
  * It is a caller/transport obligation; this module cannot authenticate a reply. */

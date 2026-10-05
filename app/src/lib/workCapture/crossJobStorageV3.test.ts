@@ -1,6 +1,6 @@
 import { complete as fixtureComplete, census as fixtureCensus, diagnostics as fixtureDiagnostics } from '../../../e2e/support/crossJobStorageV3Harness';
 import { describe, expect, it, vi } from 'vitest';
-import { freezeCrossJobOriginal, parseCrossJobRecord, openCrossJobJournalV3, settleCrossJobClaim, claimCrossJobOriginal, type AdmissionV3 } from './crossJobStorageV3';
+import { freezeCrossJobOriginal, parseCrossJobRecord, openCrossJobJournalV3, settleCrossJobClaim, claimCrossJobOriginal, consumeCrossJobSend, prepareCrossJobSendCheck, type AdmissionV3 } from './crossJobStorageV3';
 import { genesis, handoff, row, id, child, queuedChild, admissionAt, timedGenesis, actionHandoff, virginGenesis, withoutObservation, fences, snapshot } from './crossJobStorageV3.fixtures';
 import { planActivityV2, checkV2SendPrerequisites } from '../workActivity/plannerV2';
 import { parsePayload } from '../workActivity/protocol';
@@ -106,5 +106,18 @@ describe('fixture transaction evidence and terminal boundaries',()=>{
     const store={keyPath:'id',indexNames:[],getAll:()=>request};const tx={db:{name:'synthetic',version:2},mode:'readonly',durability:'default',error:null,objectStore:()=>store,onerror:null,onabort:null,oncomplete:null} as unknown as IDBTransaction;
     const db={name:'synthetic',version:2,objectStoreNames:['commands'],transaction:()=>tx} as unknown as IDBDatabase;
     let returned=false;const promise=fixtureCensus(db).then(value=>{returned=true;return value;});request.onsuccess!.call(request,{} as Event);await Promise.resolve();await Promise.resolve();expect(returned).toBe(false);tx.oncomplete!.call(tx,{} as Event);expect(await promise).toMatchObject({version:2,stores:[{name:'commands',rows:[]}]});expect(returned).toBe(true);
+  });
+});
+
+
+describe('V2 private send capability refusal without native authority',()=>{
+  it('rejects structural and deserialized claims synchronously before any database transaction',()=>{
+    const db={transaction:vi.fn()} as unknown as IDBDatabase,ticket={command:genesis().command,token:id(70)};
+    for(const value of [ticket,{...ticket},JSON.parse(JSON.stringify(ticket))])expect(()=>consumeCrossJobSend(db,value)).toThrow('send_capability_missing');
+    expect(db.transaction).not.toHaveBeenCalled();
+  });
+  it('cannot prepare a send checker from a forged claim',async()=>{
+    const db={transaction:vi.fn()} as unknown as IDBDatabase;
+    await expect(prepareCrossJobSendCheck(db,{command:genesis().command,token:id(70)},{expected:fences(),current:()=>fences()})).rejects.toThrow('send_capability_missing');expect(db.transaction).not.toHaveBeenCalled();
   });
 });
