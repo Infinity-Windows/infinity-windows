@@ -1,3 +1,5 @@
+> Checkpoint5 correction: see [work-cross-job-profile.md](work-cross-job-profile.md) for the declared genuine-fixture profile, capability/replay compatibility, sandbox dispositions, lossless catalogs, and current checks. See also [work-cross-job-request-version.md](work-cross-job-request-version.md) for receipt-bound original request identity and bounded legacy readiness. Historical checkpoint counts/profile hashes below remain checkpoint-specific. Capture remains held.
+
 # Held cross-job capture kernel
 
 This is a construction and review checkpoint on base `7016866e35e0b0c8f3a9de5735df4a736559665f`. It is not a completed cross-job rollout. Migration `20261108470000_work_cross_job_capture.sql` ends in `ROLLBACK`, and its private admission function is literal `false`. There is no activation RPC. No provider, operational records, old migrations, app code, CI, commits or branches were changed by this slice.

@@ -1,0 +1,6455 @@
+[
+  {
+    "name": "_ai_bump_clock_epoch",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_ai_clock_state",
+    "arguments": "p_uid uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_ai_field_actor",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_ai_field_apply",
+    "arguments": "p_action uuid, p_choice text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_ai_job_visible",
+    "arguments": "p_job uuid, p_uid uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_ai_norm",
+    "arguments": "t text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_ai_one_unit_owner",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_ai_plan_facts",
+    "arguments": "p_opening uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_ai_plan_seed",
+    "arguments": "p_plan jsonb",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_ai_stale",
+    "arguments": "p_message text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_ai_unit_json",
+    "arguments": "u custom_work_units",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_ai_waiting",
+    "arguments": "p_result jsonb",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_attachments_daily_log_guard",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_clock_pick_time",
+    "arguments": "p_tapped_at timestamp with time zone, p_clock_checked_at timestamp with time zone, p_clock_skew_ms integer, p_not_before timestamp with time zone",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_clock_pick_time_at",
+    "arguments": "p_tapped_at timestamp with time zone, p_clock_checked_at timestamp with time zone, p_clock_skew_ms integer, p_not_before timestamp with time zone, p_arrived_at timestamp with time zone",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_clock_review_sentence",
+    "arguments": "p_reason text, p_tapped_at timestamp with time zone, p_arrived_at timestamp with time zone, p_not_before timestamp with time zone",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_close_dangling_shift",
+    "arguments": "p_profile uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "_close_stale_sessions",
+    "arguments": "p_profile uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "_daily_log_actor",
+    "arguments": "p_actor uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_daily_log_contributor",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_daily_log_photo_actor",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "_daily_log_photo_metadata_valid",
+    "arguments": "p_metadata jsonb",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "_daily_log_photo_storage_guard",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_daily_log_photo_upload_allowed",
+    "arguments": "p_name text, p_owner_id text, p_metadata jsonb",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "_daily_log_receipt",
+    "arguments": "p_c daily_log_contributions, p_status text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_daily_log_revision",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_daily_log_snapshot",
+    "arguments": "p_log daily_logs",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_daily_log_sources",
+    "arguments": "p_actor uuid, p_ids uuid[]",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_end_open_session",
+    "arguments": "p_profile uuid, p_reason text, p_block_reason text, p_block_issue uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "_file_group_toolbox_signin",
+    "arguments": "p_profile_id uuid, p_by uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_flag_shift_for_review",
+    "arguments": "p_shift_id uuid, p_reason text, p_sentence text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_flashing_outstanding",
+    "arguments": "p_opening_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "_gc_link_for_write",
+    "arguments": "p_token_hash text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_has_open_redo",
+    "arguments": "p_opening uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "_hex_learning_actor",
+    "arguments": "p_actor uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_hex_learning_approval_current",
+    "arguments": "r hex_learning_reviews",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_hex_learning_approver_ok",
+    "arguments": "p_uid uuid, p_author uuid, p_project uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_hex_learning_caller",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_hex_learning_can_read",
+    "arguments": "r hex_learning_reviews, p_uid uuid, p_rank integer",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_hex_learning_content",
+    "arguments": "p jsonb",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_hex_learning_content_of",
+    "arguments": "r hex_learning_reviews",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_hex_learning_event",
+    "arguments": "r hex_learning_reviews, p_action uuid, p_hash text, p_kind text, p_oversight boolean, p_note text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_hex_learning_fingerprint",
+    "arguments": "p_review uuid, p_revision integer",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_hex_learning_forwarded_by",
+    "arguments": "r hex_learning_reviews, p_uid uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_hex_learning_json",
+    "arguments": "r hex_learning_reviews, p_detail boolean",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_hex_learning_may_deliver",
+    "arguments": "r hex_learning_reviews, p_uid uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_hex_learning_missing",
+    "arguments": "c jsonb",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_hex_learning_packet",
+    "arguments": "r hex_learning_reviews",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_hex_learning_person",
+    "arguments": "p_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_hex_learning_rank",
+    "arguments": "p_uid uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_hex_learning_replay",
+    "arguments": "p_action uuid, p_review uuid, p_hash text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_hex_learning_reviewer_ok",
+    "arguments": "p_reviewer uuid, p_author uuid, p_project uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_hex_learning_role_name",
+    "arguments": "p_uid uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_hex_learning_sections",
+    "arguments": "c jsonb",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_hex_learning_sources",
+    "arguments": "p_author uuid, p_existing uuid[], p_new uuid[]",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_hex_learning_stale",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_is_daily_log_photo_name",
+    "arguments": "p_name text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "_is_lead",
+    "arguments": "p_uid uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "_is_supervisor",
+    "arguments": "p_uid uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "_post_receipt_job_cost",
+    "arguments": "p_receipt_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_prep_time_gate",
+    "arguments": "p_uid uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "_stage_contributor_digest",
+    "arguments": "p_unit uuid, p_stage text, p_work_date date",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_stage_contributor_sources_visible",
+    "arguments": "p_unit uuid, p_stage text, p_work_date date",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_toolbox_gate_open",
+    "arguments": "p_uid uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "_toolbox_library_for_date",
+    "arguments": "p_date date",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "_toolbox_signed_today",
+    "arguments": "p_uid uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "_unit_work_gate",
+    "arguments": "p_uid uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "_values_active_period",
+    "arguments": "p_at timestamp with time zone",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_values_caller_eligible",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "_values_caller_is_owner",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "_values_day",
+    "arguments": "p_at timestamp with time zone",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_values_days_in_period",
+    "arguments": "p_period date",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_values_deal_period",
+    "arguments": "p_period date",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_values_eligible",
+    "arguments": "p_uid uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_values_ensure_period",
+    "arguments": "p_period date",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_values_freeze_quarter",
+    "arguments": "p_quarter date",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_values_is_owner",
+    "arguments": "p_uid uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_values_launch",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_values_mirror",
+    "arguments": "p_subject uuid, p_since date, p_until date, p_min_raters integer, p_cutoff timestamp with time zone",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_values_period_of",
+    "arguments": "p_day date",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_values_period_scorable",
+    "arguments": "p_period date",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_values_quarter_closed",
+    "arguments": "p_quarter date, p_at timestamp with time zone",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_values_quarter_cutoff_at",
+    "arguments": "p_quarter date",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_values_quarter_end_exclusive",
+    "arguments": "p_quarter date",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_values_quarter_of",
+    "arguments": "p_period date",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_values_recent_coworkers",
+    "arguments": "p_user uuid, p_period date",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_values_role_class",
+    "arguments": "p_role text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_values_slugs",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_values_tz",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_values_window_open",
+    "arguments": "p_at timestamp with time zone",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_values_window_opens_on",
+    "arguments": "p_period date",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_actor",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_answers",
+    "arguments": "p_schema jsonb, p_values jsonb",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_authority_changed",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_authority_guard",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_authority_revision",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_bookkeeping_guard",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_claim_clock_setup",
+    "arguments": "p_project_id uuid, p_cost_code_id uuid, p_photo text, p_lat double precision, p_lng double precision, p_note text, p_mode text, p_client_id uuid, p_tapped_at timestamp with time zone, p_clock_checked_at timestamp with time zone, p_clock_skew_ms integer",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_clock_replay_guard",
+    "arguments": "p_client uuid, p_action text, p_shift uuid",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_clock_review",
+    "arguments": "p_shift_id uuid, p_client_id uuid, p_action text, p_tapped_at timestamp with time zone, p_checked_at timestamp with time zone, p_skew integer",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_clock_setup_digest",
+    "arguments": "p_project_id uuid, p_cost_code_id uuid, p_photo text, p_lat double precision, p_lng double precision, p_note text, p_mode text, p_client_id uuid, p_tapped_at timestamp with time zone, p_clock_checked_at timestamp with time zone, p_clock_skew_ms integer",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_close_all",
+    "arguments": "p_profile uuid, p_at timestamp with time zone, p_cause text, p_except_kind text, p_except_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_close_source",
+    "arguments": "p_profile uuid, p_kind text, p_id uuid, p_at timestamp with time zone, p_cause text",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_command_basis",
+    "arguments": "p_basis jsonb",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_consume",
+    "arguments": "p_expectation_id uuid, p_table regclass, p_operation text, p_before jsonb, p_after jsonb",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_context_assert",
+    "arguments": "p_frame_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_context_close",
+    "arguments": "p_frame_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_context_commit_guard",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_context_for",
+    "arguments": "p_profile uuid, p_cause text, p_selected_at timestamp with time zone",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_context_guard",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_context_open",
+    "arguments": "p_route text, p_cause text, p_selected_at timestamp with time zone, p_parent_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_ensure_state",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_ephemeral_commit_guard",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_establish_payload",
+    "arguments": "p_data jsonb",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_establish_stream",
+    "arguments": "p_command_id uuid, p_data jsonb",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_event",
+    "arguments": "p_profile uuid, p_kind text, p_id uuid, p_operation text, p_selected_at timestamp with time zone, p_cause text, p_before jsonb, p_after jsonb",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_evidence",
+    "arguments": "p_table text, p_row jsonb",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_expect",
+    "arguments": "p_frame_id uuid, p_table regclass, p_operation text, p_source_id uuid, p_columns text[], p_before jsonb, p_after jsonb",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_expected_guard",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_fact_snapshot",
+    "arguments": "p_unit uuid",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_finish",
+    "arguments": "p_operation uuid, p_value anyelement",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_gate",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_insert_source",
+    "arguments": "p_profile uuid, p_kind text, p_data jsonb, p_at timestamp with time zone, p_cause text",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_instant",
+    "arguments": "p_value jsonb, p_nullable boolean",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_integer",
+    "arguments": "p_value jsonb, p_min bigint, p_max bigint",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_iso",
+    "arguments": "p_value timestamp with time zone",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_keep_clock_receipt",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_live_sources",
+    "arguments": "p_profile uuid",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_no_truncate",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_object",
+    "arguments": "p_value jsonb, p_keys text[]",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_observe",
+    "arguments": "p_device_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_operation",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_operation_enter",
+    "arguments": "p_route text, p_arguments jsonb, p_request_id uuid, p_command_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_operation_exit",
+    "arguments": "p_operation uuid",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_parent_gate",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_parent_source_history",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_payload",
+    "arguments": "p_data jsonb",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_profile_delete_guard",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_project_view",
+    "arguments": "p_project uuid, p_actor uuid",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_read_committed",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_refresh_state",
+    "arguments": "p_profile uuid",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_resume",
+    "arguments": "p_state personal_activity_state, p_shift time_shifts, p_at timestamp with time zone",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_retain_source",
+    "arguments": "p_kind text, p_id text, p_before jsonb, p_after jsonb",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_review_visit",
+    "arguments": "p_visit uuid, p_at timestamp with time zone, p_cause text",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_row_allowance",
+    "arguments": "p_table oid, p_operation text, p_before jsonb, p_after jsonb",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_row_before",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_row_event",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_safety_exit",
+    "arguments": "p_operation uuid, p_profile uuid, p_reason text",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_safety_guard",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_setup_guard",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_setup_ledger_guard",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_shift_lifecycle",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_source_material",
+    "arguments": "p_kind text, p_row jsonb",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_source_view",
+    "arguments": "p_state personal_activity_state",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_start_setup",
+    "arguments": "p_shift time_shifts, p_clock_client uuid, p_prior uuid",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_statement_begin",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_statement_end",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_stream_guard",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_touch",
+    "arguments": "p_profile uuid",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_transition_source_guard",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_unit_basis",
+    "arguments": "p_unit_id uuid, p_actor uuid",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_uuid",
+    "arguments": "p_value jsonb, p_nullable boolean",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_validate_switch",
+    "arguments": "p_intent jsonb, p_actor uuid",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_config_can_manage_menu",
+    "arguments": "p_project_id uuid, p_uid uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_config_internal",
+    "arguments": "p_uid uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_config_is_foreman",
+    "arguments": "p_uid uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_config_is_owner",
+    "arguments": "p_uid uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_config_is_supervisor",
+    "arguments": "p_uid uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_config_replay",
+    "arguments": "p_command_id uuid, p_actor uuid, p_action text, p_payload_hash text, p_payload jsonb",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_config_store_receipt",
+    "arguments": "p_command_id uuid, p_actor uuid, p_action text, p_payload jsonb, p_payload_hash text, p_result jsonb",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_config_validate_menu_draft_items",
+    "arguments": "p_items jsonb",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_config_validate_typed_fields",
+    "arguments": "p_fields jsonb",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_cross_job_allocation_guard",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_cross_job_bind",
+    "arguments": "p_kind text, p_id uuid, p_shift uuid, p_allocation uuid, p_started timestamp with time zone, p_prior uuid",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_cross_job_birth_guard",
+    "arguments": "p_kind text, p_before jsonb, p_after jsonb",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_cross_job_coverage",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_cross_job_custom",
+    "arguments": "p_profile uuid, p_shift time_shifts, p_allocation uuid, p_intent jsonb, p_at timestamp with time zone, p_cause text, p_prior uuid",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_cross_job_enabled",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_cross_job_head_valid",
+    "arguments": "p_shift uuid",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_cross_job_history",
+    "arguments": "p_kind text, p_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_cross_job_local_valid",
+    "arguments": "p_kind text, p_row jsonb, p_shift time_shifts",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_cross_job_register",
+    "arguments": "p_shift time_shifts, p_request uuid",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_cross_job_resume_basis",
+    "arguments": "p_state personal_activity_state, p_shift time_shifts, p_at timestamp with time zone",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_cross_job_save",
+    "arguments": "p_state personal_activity_state, p_shift uuid, p_break timestamp with time zone, p_transition uuid",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_cross_job_scope",
+    "arguments": "p_shift uuid, p_actor uuid, p_full boolean",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_cross_job_source",
+    "arguments": "p_profile uuid, p_shift time_shifts, p_allocation uuid, p_kind text, p_data jsonb, p_at timestamp with time zone, p_cause text, p_prior uuid",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_cross_job_table",
+    "arguments": "p_kind text",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_record_unit_fact",
+    "arguments": "p_command_id uuid, p_applied_unit_intent jsonb, p_before jsonb, p_unit_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_totals_capture",
+    "arguments": "p_meta work_session_capture_metadata, p_shift uuid",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_totals_coverage",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_totals_shift",
+    "arguments": "actor uuid, shift_id uuid, as_of timestamp with time zone",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_totals_source",
+    "arguments": "p_kind text, p_id text",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_totals_visible",
+    "arguments": "actor uuid, kind text, evidence jsonb, depth integer, p_final_qc boolean",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_unit_contributors_coverage",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_unit_contributors_person",
+    "arguments": "p_profile uuid, p_claims jsonb, p_reasons text[], p_unit_micros numeric, p_unit_reasons text[]",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_unit_contributors_shift",
+    "arguments": "actor uuid, shift_id uuid, as_of timestamp with time zone, p_cache jsonb",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_unit_fact_bump_epoch",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_unit_fact_can_edit_dimensions",
+    "arguments": "p_uid uuid, p_author uuid, p_project_ids uuid[]",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_unit_fact_context_visible",
+    "arguments": "p_uid uuid, p_kind text, p_project uuid, p_opening uuid, p_author uuid, p_is_test boolean, p_origin boolean",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_unit_fact_legacy_source",
+    "arguments": "p_text text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_unit_fact_peek_epoch",
+    "arguments": "p_kind text, p_scope_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_unit_normalize_observation",
+    "arguments": "p_observation jsonb",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_unit_review_authority",
+    "arguments": "actor uuid, jobs jsonb, capability_name text",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_unit_review_coverage",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_unit_review_decimal",
+    "arguments": "p_value jsonb",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_unit_review_defect_projection",
+    "arguments": "p_unit uuid, p_inc bigint",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_unit_review_original_visible",
+    "arguments": "actor uuid, s jsonb, p jsonb",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_unit_review_payload",
+    "arguments": "p jsonb",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_unit_review_scope",
+    "arguments": "actor uuid, unit_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_unit_review_text",
+    "arguments": "v jsonb, nullable boolean, maximum integer, nonblank boolean",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_unit_review_view",
+    "arguments": "actor uuid, s jsonb",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "acknowledge_spec_discrepancy",
+    "arguments": "p_project uuid, p_mark text, p_kind text, p_note text, p_issue_note text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "acknowledge_takeoff",
+    "arguments": "p_takeoff uuid, p_eta text, p_eta_note text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "activate_preissued_unit",
+    "arguments": "p_code text, p_location_id uuid, p_damaged boolean, p_actor text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "add_crate_supplies",
+    "arguments": "p_project uuid, p_job_name text, p_part_type text, p_pieces integer",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "add_delivery_set",
+    "arguments": "p_delivery uuid, p_project uuid, p_job_name text, p_mark text, p_kind text, p_package_count integer, p_crate_name text, p_crate_pieces integer, p_crate_part_type text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "add_field_unit",
+    "arguments": "p_project_id uuid, p_kind text, p_width_in numeric, p_height_in numeric, p_photo_path text, p_pin_x numeric, p_pin_y numeric, p_note text, p_page_number integer",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "add_job_crate",
+    "arguments": "p_project uuid, p_name text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "add_job_note",
+    "arguments": "p_project_id uuid, p_note text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "add_part_type_option",
+    "arguments": "p_name text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "add_partner_invite",
+    "arguments": "p_email text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "add_project_cost_code",
+    "arguments": "p_project_id uuid, p_cost_code_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "add_project_mark",
+    "arguments": "p_project uuid, p_mark text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "add_supply",
+    "arguments": "p_name text, p_unit text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "ai_field_begin",
+    "arguments": "p_id uuid, p_input_kind text, p_transcript text, p_sent_at timestamp with time zone, p_expected_epoch bigint, p_audio_path text, p_client jsonb",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "ai_field_claim_orphan_memos",
+    "arguments": "p_lease uuid, p_limit integer",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "ai_field_clock_version",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "ai_field_command",
+    "arguments": "p_request uuid, p_key text, p_action text, p_data jsonb",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "ai_field_context",
+    "arguments": "p_job uuid, p_search text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "ai_field_draft",
+    "arguments": "p_conversation uuid, p_exclude uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "ai_field_finish",
+    "arguments": "p_id uuid, p_reply jsonb, p_captured jsonb",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "ai_field_finish_memo_cleanup",
+    "arguments": "p_lease uuid, p_failed jsonb",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "ai_field_guard_memo_upload",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "ai_field_resolve",
+    "arguments": "p_action uuid, p_choice text, p_preview_hash text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "ai_field_save_draft",
+    "arguments": "p_id uuid, p_captured jsonb",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "ai_role_rank",
+    "arguments": "p_uid uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "ai_spend_overview",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "ai_spend_release",
+    "arguments": "p_event_id uuid, p_reason text, p_refund_call boolean",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "ai_spend_reserve",
+    "arguments": "p_user_id uuid, p_function text, p_kind text, p_estimate_micros bigint, p_provider text, p_model text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "ai_spend_set_limits",
+    "arguments": "p_per_user_daily_calls integer, p_monthly_cap_cents integer, p_min_role text, p_enforced boolean",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "ai_spend_settle",
+    "arguments": "p_event_id uuid, p_input_tokens integer, p_output_tokens integer, p_cost_micros bigint, p_model text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "answer_summon",
+    "arguments": "p_summon_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "app_training_chapters_valid",
+    "arguments": "p_chapters jsonb, p_duration integer",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "app_training_import_asset",
+    "arguments": "p_obj jsonb, p_key text, p_max_bytes bigint, p_mimes text[]",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "app_training_import_cancel",
+    "arguments": "p_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "app_training_import_chapters_ok",
+    "arguments": "p_chapters jsonb, p_duration integer",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "app_training_import_int",
+    "arguments": "p_obj jsonb, p_key text, p_min numeric, p_max numeric",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "app_training_import_json",
+    "arguments": "i app_training_imports",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "app_training_import_lock",
+    "arguments": "p_slug text, p_language text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "app_training_import_publish",
+    "arguments": "p_ids uuid[]",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "app_training_import_reserve",
+    "arguments": "p_request_id uuid, p_entry jsonb",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "app_training_import_status",
+    "arguments": "p_ids uuid[]",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "app_training_import_text",
+    "arguments": "p_obj jsonb, p_key text, p_max integer",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "app_training_importer_ok",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "app_training_videos_guard",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "append_daily_log_contribution",
+    "arguments": "p_id uuid, p_actor uuid, p_project_id uuid, p_log_date date, p_expected_revision bigint, p_answers jsonb, p_body text, p_photo_ids uuid[], p_source_request_ids uuid[]",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "apply_placement_suggestions",
+    "arguments": "p_project_id uuid, p_suggestions jsonb",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "apply_receipt_extraction",
+    "arguments": "p_id uuid, p_amount_cents integer, p_vendor text, p_purchased_on date, p_category text, p_ocr jsonb",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "approve_shift",
+    "arguments": "p_shift_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "approve_timecard_week",
+    "arguments": "p_profile_id uuid, p_start timestamp with time zone, p_end timestamp with time zone, p_expected jsonb",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "approve_video_quiz",
+    "arguments": "p_video_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "arrive_packages",
+    "arguments": "p_ok uuid[], p_damaged uuid[], p_project uuid, p_note text, p_photos jsonb",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "assign_flash_runner",
+    "arguments": "p_project_id uuid, p_profile_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "assign_issue",
+    "arguments": "p_id uuid, p_assignee uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "assign_opening_to_installer",
+    "arguments": "p_opening_id uuid, p_profile_id uuid, p_actor_id uuid, p_sequence integer, p_via text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "assign_package_to_job",
+    "arguments": "p_package uuid, p_project uuid, p_mark text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "assign_window_to_opening",
+    "arguments": "p_opening_id uuid, p_window_id uuid, p_actor text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "attach_sandbox_guards",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "attachment_project_ids",
+    "arguments": "p_project_id uuid, p_window_id uuid, p_install_event_id uuid, p_project_opening_id uuid, p_package_id uuid, p_service_case_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "award_education_quiz",
+    "arguments": "p_items jsonb",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "award_install_points",
+    "arguments": "p_ref text, p_entries jsonb, p_status text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "bind_package",
+    "arguments": "p_package uuid, p_project uuid, p_category text, p_note text, p_marks text[], p_delivery uuid, p_part_index integer, p_part_total integer, p_part_type text, p_mfr_mark text, p_boneyard boolean",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "block_unit",
+    "arguments": "p_opening_id uuid, p_reason text, p_issue_id uuid, p_next_opening_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "boneyard_job_leftovers",
+    "arguments": "p_project uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "burn_packages",
+    "arguments": "p_packages uuid[]",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "can_access_project_chat",
+    "arguments": "p_project_id uuid, p_uid uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "can_approve_timecard",
+    "arguments": "p_profile_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "can_edit_timecard",
+    "arguments": "p_profile_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "can_file_daily_log",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "can_manage_bill_to",
+    "arguments": "p_uid uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "can_read_app_training_object",
+    "arguments": "p_name text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "can_read_app_update",
+    "arguments": "p_audience integer[]",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "can_read_ask_log",
+    "arguments": "p_uid uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "can_see_bill_to",
+    "arguments": "p_uid uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "can_see_costs",
+    "arguments": "p_uid uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "can_see_pay",
+    "arguments": "p_uid uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "can_see_staged_app_training_object",
+    "arguments": "p_name text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "can_upload_app_training_object",
+    "arguments": "p_name text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "can_watch_app_training",
+    "arguments": "p_min_role text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "cancel_opening_phase",
+    "arguments": "p_opening_id uuid, p_kind text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "cancel_summon_help",
+    "arguments": "p_summon_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "canonical_jsonb",
+    "arguments": "j jsonb",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "check_my_pin",
+    "arguments": "p_pin text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "checkout_packages",
+    "arguments": "p_packages uuid[], p_reason text, p_project uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "claim_credential_nudges",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "claim_crew_reminders",
+    "arguments": "p_lease uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "claim_description_dictation",
+    "arguments": "p_user_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "claim_owner_bootstrap",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "claim_pipeline_nudges",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "claim_still_on_the_job_nudges",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "clear_opening_flag",
+    "arguments": "p_opening_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "clock_in",
+    "arguments": "p_project_id uuid, p_cost_code_id uuid, p_photo text, p_lat double precision, p_lng double precision",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "clock_in",
+    "arguments": "p_project_id uuid, p_cost_code_id uuid, p_photo text, p_lat double precision, p_lng double precision, p_client_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "clock_in",
+    "arguments": "p_project_id uuid, p_cost_code_id uuid, p_photo text, p_lat double precision, p_lng double precision, p_client_id uuid, p_note text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "clock_in",
+    "arguments": "p_project_id uuid, p_cost_code_id uuid, p_photo text, p_lat double precision, p_lng double precision, p_note text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "clock_in",
+    "arguments": "p_project_id uuid, p_cost_code_id uuid, p_photo text, p_lat double precision, p_lng double precision, p_note text, p_mode text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "clock_in",
+    "arguments": "p_project_id uuid, p_cost_code_id uuid, p_photo text, p_lat double precision, p_lng double precision, p_note text, p_mode text, p_client_id uuid, p_tapped_at timestamp with time zone, p_clock_checked_at timestamp with time zone, p_clock_skew_ms integer",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "clock_in",
+    "arguments": "p_project_id uuid, p_cost_code_id uuid, p_photo text, p_lat double precision, p_lng double precision, p_note text, p_mode text, p_client_id uuid, p_tapped_at timestamp with time zone, p_clock_checked_at timestamp with time zone, p_clock_skew_ms integer, p_setup_version integer",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "clock_in_for",
+    "arguments": "p_profile_id uuid, p_project_id uuid, p_cost_code_id uuid, p_note text, p_mode text, p_talk_attested boolean, p_move_if_elsewhere boolean",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "clock_in_many",
+    "arguments": "p_profile_ids uuid[], p_project_id uuid, p_cost_code_id uuid, p_note text, p_mode text, p_talk_attested boolean, p_move_if_elsewhere boolean",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "clock_out",
+    "arguments": "p_shift_id uuid, p_photo text, p_injured boolean, p_time_confirmed boolean, p_break_seconds integer, p_lat double precision, p_lng double precision, p_injury_note text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "clock_out",
+    "arguments": "p_shift_id uuid, p_photo text, p_injured boolean, p_time_confirmed boolean, p_break_seconds integer, p_lat double precision, p_lng double precision, p_injury_note text, p_client_id uuid, p_tapped_at timestamp with time zone, p_clock_checked_at timestamp with time zone, p_clock_skew_ms integer",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "clock_out_for",
+    "arguments": "p_profile_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "clock_out_many",
+    "arguments": "p_profile_ids uuid[]",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "close_open_task_sessions",
+    "arguments": "p_profile uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "close_shift_as_no_work",
+    "arguments": "p_shift_id uuid, p_reason text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "close_summon",
+    "arguments": "p_summon_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "complete_summon_help",
+    "arguments": "p_summon_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "copy_unit",
+    "arguments": "p_project uuid, p_mark text, p_times integer, p_pooled boolean",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "correct_stage_contributors",
+    "arguments": "p_id uuid, p_data jsonb",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "count_supply",
+    "arguments": "p_supply uuid, p_counted numeric",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "countersign_semimonthly_timecard",
+    "arguments": "p_profile_id uuid, p_period_start timestamp with time zone",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "countersign_timecard",
+    "arguments": "p_profile_id uuid, p_period_start timestamp with time zone",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "create_calendar_feed_token",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "create_delivery_set",
+    "arguments": "p_delivery uuid, p_project uuid, p_mark text, p_kind text, p_package_count integer, p_crate_name text, p_crate_pieces integer, p_crate_part_type text, p_quantity integer, p_job_name text, p_issue uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "create_gc_link",
+    "arguments": "p_project_id uuid, p_email text, p_brand text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "create_issue",
+    "arguments": "p_project uuid, p_opening uuid, p_kind text, p_urgency text, p_note text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "create_job_summon",
+    "arguments": "p_project_id uuid, p_needed integer, p_lead_minutes integer, p_note text, p_where_note text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "create_manual_delivery",
+    "arguments": "p_label text, p_entries jsonb",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "create_placeholder_job",
+    "arguments": "p_name text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "create_staging_bays",
+    "arguments": "p_job_code text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "create_summon",
+    "arguments": "p_opening_id uuid, p_needed integer, p_lead_minutes integer, p_note text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "create_takeoff",
+    "arguments": "p_project uuid, p_for uuid, p_items jsonb, p_note text, p_ready boolean",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "credential_nudge_audience",
+    "arguments": "p_profile_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "credit_refusal",
+    "arguments": "p_opening_id uuid, p_credited_to uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "crew_goal_summary",
+    "arguments": "p_project_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "crew_work_project_visible",
+    "arguments": "p_project uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "custom_checkin",
+    "arguments": "p_container uuid, p_project uuid, p_mark text, p_part_type text, p_note text, p_count integer",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "custom_work_command",
+    "arguments": "p_id uuid, p_action text, p_data jsonb",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "custom_work_follow_legacy",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "custom_work_follow_phase",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "custom_work_follow_shift",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "custom_work_internal",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "daily_log_contribution_photo_status",
+    "arguments": "p_contribution uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "decide_access_request",
+    "arguments": "p_id uuid, p_status text, p_note text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "decline_summon",
+    "arguments": "p_summon_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "delete_crew",
+    "arguments": "p_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "delete_delivery",
+    "arguments": "p_delivery uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "delete_packages",
+    "arguments": "p_package_ids uuid[]",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "delete_project",
+    "arguments": "p_project uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "delete_test_project",
+    "arguments": "p_project uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "edit_shift",
+    "arguments": "p_shift_id uuid, p_project_id uuid, p_cost_code_id uuid, p_clock_in_at timestamp with time zone, p_clock_out_at timestamp with time zone, p_break_seconds integer, p_note text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "edit_shift_with_description",
+    "arguments": "p_shift_id uuid, p_project_id uuid, p_cost_code_id uuid, p_clock_in_at timestamp with time zone, p_clock_out_at timestamp with time zone, p_break_seconds integer, p_note text, p_description text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "end_break",
+    "arguments": "p_shift_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "end_break",
+    "arguments": "p_shift_id uuid, p_client_id uuid, p_tapped_at timestamp with time zone, p_clock_checked_at timestamp with time zone, p_clock_skew_ms integer",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "enforce_container_depth",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "ensure_package_delivery",
+    "arguments": "p_label text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "ensure_project_staging_bays",
+    "arguments": "p_project_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "expire_summons",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "field_unit_has_work",
+    "arguments": "p_opening_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "file_daily_log",
+    "arguments": "p_project_id uuid, p_log_date date, p_headline text, p_notes text, p_day_flow text, p_reflection jsonb, p_weather text, p_expected_revision bigint, p_progress_provided boolean, p_work_stages text[], p_stage_progress jsonb, p_covers text, p_delays jsonb, p_safety_status text, p_weather_impact text, p_missing_tomorrow jsonb, p_tomorrow_stages text[], p_tomorrow_crew_expected integer, p_tomorrow_plan text, p_units_today integer, p_units_to_date integer, p_units_remaining integer, p_units_remaining_detail text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "file_pending_packages",
+    "arguments": "p_package_ids uuid[], p_project uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "file_receipt",
+    "arguments": "p_id uuid, p_photo_path text, p_project_id uuid, p_pending_job_name text, p_note text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "finalize_job_materials",
+    "arguments": "p_project uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "find_window_by_code",
+    "arguments": "p_code text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "finish_crew_reminder",
+    "arguments": "p_id uuid, p_lease uuid, p_sent boolean",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "finish_shift_at",
+    "arguments": "p_shift_id uuid, p_clock_out_at timestamp with time zone, p_injured boolean, p_break_seconds integer",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "finish_unit",
+    "arguments": "p_opening_id uuid, p_next_opening_id uuid, p_installer text, p_quality_grade integer, p_difficulty text, p_went_well text, p_went_poorly text, p_obstacles text, p_tools_helped text, p_time_vs_estimate text, p_safety_notes text, p_do_again text, p_transcript_raw text, p_installer_id uuid, p_estimate_minutes integer",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "finish_unit",
+    "arguments": "p_opening_id uuid, p_next_opening_id uuid, p_installer text, p_quality_grade integer, p_difficulty text, p_went_well text, p_went_poorly text, p_obstacles text, p_tools_helped text, p_time_vs_estimate text, p_safety_notes text, p_do_again text, p_transcript_raw text, p_installer_id uuid, p_estimate_minutes integer, p_credited_to uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "flag_opening",
+    "arguments": "p_opening_id uuid, p_note text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "flag_opening",
+    "arguments": "p_opening_id uuid, p_note text, p_kind text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "foreman_contacts_for_me",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "forget_job_document_bytes",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "gc_link_answer",
+    "arguments": "p_token_hash text, p_expected_end_date date, p_roof_on_date date, p_framing_checked boolean, p_set_preference text, p_exterior_material text, p_interior_material text, p_contact_name text, p_notes text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "gc_link_open",
+    "arguments": "p_token_hash text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "gc_link_say",
+    "arguments": "p_token_hash text, p_body text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "gen_short_code",
+    "arguments": "p_len integer",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "get_or_create_toolbox_talk_for_date",
+    "arguments": "p_date date",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "grant_partner_job",
+    "arguments": "p_partner uuid, p_project uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "green_light_items",
+    "arguments": "p_project_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "guard_install_credit",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "guard_opening_create_delete",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "guard_opening_flag_clear",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "guard_opening_pin_move",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "guard_opening_removal",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "guard_test_account_cannot_invite",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "guard_test_account_profile_writes",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "guard_test_account_sandbox_only",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "guard_time_entry_import_source",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "guard_timecard_role_boundary",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "hex_learning_decide",
+    "arguments": "p_review uuid, p_action uuid, p_expected_revision integer, p_decision text, p_note text, p_oversight boolean, p_forward_to uuid, p_actor uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "hex_learning_get",
+    "arguments": "p_review uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "hex_learning_list",
+    "arguments": "p_scope text, p_project uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "hex_learning_memo_readable",
+    "arguments": "p_name text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "hex_learning_reassign",
+    "arguments": "p_review uuid, p_action uuid, p_expected_revision integer, p_reviewer uuid, p_reason text, p_actor uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "hex_learning_record_delivery",
+    "arguments": "p_case_id uuid, p_revision integer, p_approval_event_id uuid, p_fingerprint text, p_caller uuid, p_outcome text, p_receipt_id text, p_received_at timestamp with time zone, p_error text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "hex_learning_record_withdrawal",
+    "arguments": "p_case_id uuid, p_withdrawal_event_id uuid, p_caller uuid, p_outcome text, p_receipt_id text, p_received_at timestamp with time zone, p_error text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "hex_learning_reviewers",
+    "arguments": "p_project uuid, p_name text, p_review uuid, p_purpose text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "hex_learning_save_draft",
+    "arguments": "p_review uuid, p_action uuid, p_case uuid, p_expected_revision integer, p_content jsonb, p_request uuid, p_unit uuid, p_via text, p_actor uuid, p_sources uuid[]",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "hex_learning_submit",
+    "arguments": "p_review uuid, p_action uuid, p_expected_revision integer, p_reviewer uuid, p_actor uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "hex_learning_waiting",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "hex_learning_withdraw",
+    "arguments": "p_review uuid, p_action uuid, p_expected_revision integer, p_reason text, p_actor uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "hex_portal_approved_cases",
+    "arguments": "p_project_id uuid, p_after uuid, p_case_id uuid, p_limit integer",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "hex_portal_crew",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "hex_portal_identity",
+    "arguments": "p_project_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "hex_portal_review_packet",
+    "arguments": "p_case_id uuid, p_revision integer, p_approval_event_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "hex_portal_save_case",
+    "arguments": "p_id uuid, p_project_id uuid, p_unit_label text, p_question text, p_answer text, p_sources jsonb",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "hex_portal_save_outcome",
+    "arguments": "p_id uuid, p_case_id uuid, p_outcome text, p_explanation text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "hex_portal_withdrawal_packet",
+    "arguments": "p_case_id uuid, p_withdrawal_event_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "ignore_bank_transaction",
+    "arguments": "p_txn_id uuid, p_ignored boolean",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "import_bank_transactions",
+    "arguments": "p_rows jsonb, p_filename text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "install_timer_cap_minutes",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "install_window",
+    "arguments": "p_window_id uuid, p_actor text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "is_foreman_plus",
+    "arguments": "p_uid uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "is_my_upload_name",
+    "arguments": "p_created_by text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "is_partner_user",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "is_sandbox_project",
+    "arguments": "p_project_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "is_sandbox_storage_path",
+    "arguments": "p_name text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "is_test_profile",
+    "arguments": "p_uid uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "issue_package_short_code",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "issue_window_id",
+    "arguments": "p_type_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "issue_window_short_code",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "job_bay_box",
+    "arguments": "p_project uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "job_leftovers_line",
+    "arguments": "p_project uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "job_staging_bay",
+    "arguments": "p_project uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "label_packages",
+    "arguments": "p_packages uuid[], p_part_type text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "lead_add_shift",
+    "arguments": "p_profile_id uuid, p_project_id uuid, p_cost_code_id uuid, p_clock_in_at timestamp with time zone, p_clock_out_at timestamp with time zone, p_break_seconds integer, p_note text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "lead_edit_shift",
+    "arguments": "p_shift_id uuid, p_project_id uuid, p_cost_code_id uuid, p_clock_in_at timestamp with time zone, p_clock_out_at timestamp with time zone, p_break_seconds integer, p_note text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "lead_unapprove_shift",
+    "arguments": "p_shift_id uuid, p_note text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "lead_void_shift",
+    "arguments": "p_shift_id uuid, p_note text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "learning_heartbeat",
+    "arguments": "p_session_id uuid, p_item_kind text, p_item_key text, p_seconds integer",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "learning_time_report",
+    "arguments": "p_from timestamp with time zone, p_to timestamp with time zone",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "learning_video_heartbeat",
+    "arguments": "p_video_id uuid, p_session_id uuid, p_position_s numeric, p_duration_s numeric, p_playing boolean",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "learning_video_report",
+    "arguments": "p_from timestamp with time zone, p_to timestamp with time zone",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "list_issues",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "list_my_worked_jobs",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "list_removed_openings",
+    "arguments": "p_project_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "list_reorder_needs",
+    "arguments": "p_project_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "list_service_cases",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "list_video_quiz",
+    "arguments": "p_video_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "live_project_ids",
+    "arguments": "p_ids uuid[]",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "load_units",
+    "arguments": "p_window_ids uuid[], p_project_id uuid, p_actor text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "load_window",
+    "arguments": "p_window_id uuid, p_actor text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "locations_staging_bay_exists",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "lock_serial",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "log_gc_checkin",
+    "arguments": "p_project_id uuid, p_expected_end_date date, p_roof_on_date date, p_framing_checked boolean, p_set_preference text, p_exterior_material text, p_interior_material text, p_channel text, p_contact_name text, p_notes text, p_contacted_at timestamp with time zone",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "mark_base",
+    "arguments": "p_code text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "match_bank_transaction",
+    "arguments": "p_txn_id uuid, p_receipt_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "merge_field_unit",
+    "arguments": "p_opening_id uuid, p_into_code text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "merge_mark_spec_extra",
+    "arguments": "p_id uuid, p_patch jsonb, p_drop text[]",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "merge_watch_ranges",
+    "arguments": "p_ranges jsonb, p_start integer, p_end integer",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "mint_mark_packages",
+    "arguments": "p_project uuid, p_mark text, p_total integer, p_category text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "mint_packages",
+    "arguments": "p_count integer",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "move_container",
+    "arguments": "p_container uuid, p_parent uuid, p_location uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "move_window",
+    "arguments": "p_window_id uuid, p_location_id uuid, p_actor text, p_reason text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "my_education_progress",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "my_pin_status",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "my_role_rank",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "my_worked_project_ids",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "open_service_case",
+    "arguments": "p_window_id uuid, p_reason text, p_fail_point text, p_description text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "packages_clear_area_on_move",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "partner_has_job_grant",
+    "arguments": "p_project_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "pause_opening_phase",
+    "arguments": "p_opening_id uuid, p_kind text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "person_record_counts",
+    "arguments": "p_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "pick_golden_install",
+    "arguments": "p_type_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "pickup_takeoff",
+    "arguments": "p_takeoff uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "pipeline_nudge_audience",
+    "arguments": "p_project_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "post_gc_message",
+    "arguments": "p_project_id uuid, p_body text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "preissue_project_units",
+    "arguments": "p_project_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "press_redo",
+    "arguments": "p_opening_id uuid, p_reason text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "project_bill_to_default",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "projects_create_staging_bays",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "promote_project_to_data",
+    "arguments": "p_project_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "publish_learning_video",
+    "arguments": "p_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "purge_expired_job_photos",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "purge_expired_projects",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "purge_project",
+    "arguments": "p_project_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "qc_actor_can_review",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "qc_archive_legacy_decision",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "qc_stamp_legacy_reviewer",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "quick_check_rough_opening",
+    "arguments": "p_opening_id uuid, p_actor text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "ready_takeoff",
+    "arguments": "p_takeoff uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "reassign_package",
+    "arguments": "p_package uuid, p_project uuid, p_mark text, p_reason text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "reattribute_session",
+    "arguments": "p_opening_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "receive_minted_packages",
+    "arguments": "p_packages uuid[]",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "receive_window",
+    "arguments": "p_type_id uuid, p_project_id uuid, p_actor text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "recompute_window_type_rollups",
+    "arguments": "p_type_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "reconcile_project_deliveries",
+    "arguments": "p_project_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "record_crew_work",
+    "arguments": "p_id uuid, p_data jsonb",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "record_opening_pin_move",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "record_qc_decision",
+    "arguments": "p_decision_id uuid, p_opening_id uuid, p_status text, p_note text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "record_stage_contributors",
+    "arguments": "p_id uuid, p_data jsonb",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "reject_shift",
+    "arguments": "p_shift_id uuid, p_reason text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "remove_field_unit",
+    "arguments": "p_opening_id uuid, p_reason text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "remove_opening",
+    "arguments": "p_opening_id uuid, p_reason text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "remove_partner_invite",
+    "arguments": "p_email text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "remove_project_cost_code",
+    "arguments": "p_project_id uuid, p_cost_code_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "rename_field_unit",
+    "arguments": "p_opening_id uuid, p_code text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "rename_package",
+    "arguments": "p_package uuid, p_pending_job_name text, p_mark text, p_category text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "reopen_job_materials",
+    "arguments": "p_project uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "report_maker_count",
+    "arguments": "p_package uuid, p_total integer",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "request_time_off",
+    "arguments": "p_id uuid, p_kind text, p_start date, p_end date",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "reset_opening_pin_to_extracted",
+    "arguments": "p_opening_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "reset_project_pins_to_extracted",
+    "arguments": "p_project_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "resolve_install_points",
+    "arguments": "p_ref text, p_status text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "resolve_issue",
+    "arguments": "p_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "resolve_service_case",
+    "arguments": "p_id uuid, p_note text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "restore_job_photo",
+    "arguments": "p_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "restore_opening",
+    "arguments": "p_opening_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "restore_project",
+    "arguments": "p_project_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "restore_shift",
+    "arguments": "p_shift_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "resume_opening_phase",
+    "arguments": "p_opening_id uuid, p_kind text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "review_receipt",
+    "arguments": "p_id uuid, p_reviewed boolean",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "review_time_off",
+    "arguments": "p_id uuid, p_status text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "revoke_calendar_feed_token",
+    "arguments": "p_token text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "revoke_gc_link",
+    "arguments": "p_link_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "revoke_partner_job",
+    "arguments": "p_partner uuid, p_project uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "rewrite_set",
+    "arguments": "p_project_id uuid, p_pending_job_name text, p_mark text, p_lines jsonb, p_kind text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "role_rank",
+    "arguments": "p_role text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "row_project_id",
+    "arguments": "p_kind text, p_value text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "sandbox_guard_census",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "sandbox_scoped_tables",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "save_bill_to_customer",
+    "arguments": "p_id uuid, p_name text, p_billing_email text, p_quickbooks_customer_id text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "save_checkout_reason",
+    "arguments": "p_id uuid, p_label text, p_sort integer, p_active boolean",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "save_crew",
+    "arguments": "p_id uuid, p_name text, p_members uuid[], p_note text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "save_learning_video",
+    "arguments": "p_id uuid, p_title text, p_window_type uuid, p_topic text, p_video_path text, p_youtube_url text, p_summary text, p_transcript text, p_active boolean, p_grants_clearance uuid, p_status text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "save_storage_container",
+    "arguments": "p_id uuid, p_name text, p_address text, p_access_code text, p_notes text, p_active boolean, p_kind text, p_length_cm numeric, p_width_cm numeric, p_height_cm numeric, p_weight_kg numeric",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "save_studio_project",
+    "arguments": "p_id uuid, p_name text, p_project uuid, p_model jsonb, p_archived boolean",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "save_video_quiz_draft",
+    "arguments": "p_video_id uuid, p_summary text, p_questions jsonb",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "schedule_ai_reasons_active_supervisor",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "schedule_delivery",
+    "arguments": "p_delivery uuid, p_when timestamp with time zone, p_member_ids uuid[]",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "schedule_remove_day",
+    "arguments": "p_assignment_id uuid, p_day date, p_expected_updated_at timestamp with time zone",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "schedule_service_case",
+    "arguments": "p_id uuid, p_when timestamp with time zone",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "seed_opening_origin_pin",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "server_now",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "service_command",
+    "arguments": "p_id uuid, p_action text, p_data jsonb",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "service_follow_shift",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "service_follow_work",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "service_internal",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "service_job_access",
+    "arguments": "j uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "service_notify_lodging",
+    "arguments": "target uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "service_shift_bounds",
+    "arguments": "p_visit uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "service_supervisor",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "service_validate_details",
+    "arguments": "d jsonb",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "set_bill_to_customer_retired",
+    "arguments": "p_id uuid, p_retired boolean",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_capability_badge",
+    "arguments": "p_installer_id uuid, p_capability text, p_granted boolean",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_certification",
+    "arguments": "p_id uuid, p_profile_id uuid, p_kind text, p_other_label text, p_issued_on date, p_expires_on date, p_document_path text, p_verified boolean, p_voided boolean, p_clear_issued boolean, p_clear_expires boolean",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_clearance",
+    "arguments": "p_installer_id uuid, p_window_type_id uuid, p_cleared boolean",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_compensation",
+    "arguments": "p_profile_id uuid, p_pay_basis text, p_amount_cents integer, p_effective_from date",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_container_model",
+    "arguments": "p_container uuid, p_studio uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_cost_codes_updated_at",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_evening_nudge_time",
+    "arguments": "p_local_time text, p_enabled boolean",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_golden_install",
+    "arguments": "p_type_id uuid, p_event_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_issue_fault",
+    "arguments": "p_id uuid, p_fault_by uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_issue_fault_trade",
+    "arguments": "p_id uuid, p_trade text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_knowledge_docs_updated_at",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_log_customer_visible",
+    "arguments": "p_log uuid, p_visible boolean",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_mark_kind",
+    "arguments": "p_project uuid, p_mark text, p_kind text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_mark_part_total",
+    "arguments": "p_project uuid, p_mark text, p_total integer",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_my_language",
+    "arguments": "p_lang text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_my_pin",
+    "arguments": "p_pin text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_my_ui_design",
+    "arguments": "p_design text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_new_design_switch",
+    "arguments": "p_release text, p_enabled boolean",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_opening_condition",
+    "arguments": "p_opening_id uuid, p_condition text, p_note text, p_actor text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_opening_needs_flashing",
+    "arguments": "p_opening_id uuid, p_needs boolean",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_opening_rough_opening",
+    "arguments": "p_opening_id uuid, p_width_in numeric, p_height_in numeric, p_actor text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_opening_rough_opening",
+    "arguments": "p_opening_id uuid, p_width_in numeric, p_height_in numeric, p_actor text, p_check jsonb",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_openings_sequence",
+    "arguments": "p_opening_ids uuid[]",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_package_area",
+    "arguments": "p_package uuid, p_area text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_package_note",
+    "arguments": "p_package uuid, p_note text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_package_part",
+    "arguments": "p_package uuid, p_part_index integer, p_part_total integer, p_part_type text, p_apply_to_siblings boolean",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_package_window",
+    "arguments": "p_package uuid, p_mark text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_paid_time_rule_date",
+    "arguments": "p_on date",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_pay_rate",
+    "arguments": "p_profile_id uuid, p_hourly_cents integer, p_effective_from date",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_piece_count",
+    "arguments": "p_package uuid, p_count integer",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_profile_grants",
+    "arguments": "p_profile_id uuid, p_costs boolean, p_pay boolean",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_profile_role",
+    "arguments": "p_target uuid, p_role text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_project_bill_to",
+    "arguments": "p_project_id uuid, p_bill_to_customer_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_project_cost_codes",
+    "arguments": "p_project_id uuid, p_cost_code_ids uuid[]",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_project_gc_brand",
+    "arguments": "p_project_id uuid, p_brand text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_project_green_light",
+    "arguments": "p_project uuid, p_on boolean, p_note text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_project_labor_targets",
+    "arguments": "p_project_id uuid, p_projected_hours numeric, p_goal_hours numeric, p_square_feet numeric, p_revision integer, p_reason text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_project_materials",
+    "arguments": "p_project_id uuid, p_materials_eta date, p_clear_eta boolean, p_arrived boolean",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_project_modes",
+    "arguments": "p_project_id uuid, p_modes text[]",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_project_needs_flashing",
+    "arguments": "p_project_id uuid, p_needs boolean",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_project_readiness",
+    "arguments": "p_project_id uuid, p_ready_state text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_project_stage",
+    "arguments": "p_project_id uuid, p_stage_key text, p_completed boolean, p_note text, p_revision integer",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_project_status",
+    "arguments": "p_project uuid, p_status text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_project_test",
+    "arguments": "p_project uuid, p_is_test boolean",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_projects_order",
+    "arguments": "p_ids uuid[]",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_receipt_cost_code",
+    "arguments": "p_id uuid, p_cost_code_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_receipt_document",
+    "arguments": "p_id uuid, p_document_path text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_supply_home",
+    "arguments": "p_supply uuid, p_location uuid, p_container uuid, p_note text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_unit_signature",
+    "arguments": "p_opening_id uuid, p_signature jsonb",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_values_scheduler_enabled",
+    "arguments": "p_enabled boolean",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "set_vault_config_updated_at",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "shift_cap_hours",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "sign_my_semimonthly_timecard",
+    "arguments": "p_period_start timestamp with time zone, p_timezone text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "sign_my_timecard",
+    "arguments": "p_period_start timestamp with time zone",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "sign_toolbox_talk",
+    "arguments": "p_client_id uuid, p_profile_id uuid, p_talk_id uuid, p_typed_name text, p_signature_path text, p_pdf_path text, p_talk_snapshot text, p_signed_at timestamp with time zone",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "soft_delete_job_photo",
+    "arguments": "p_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "stage_contributor_summary",
+    "arguments": "p_unit uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "stage_packages",
+    "arguments": "p_packages uuid[], p_project uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "stage_packages",
+    "arguments": "p_packages uuid[], p_project uuid, p_expected jsonb",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "start_break",
+    "arguments": "p_shift_id uuid, p_break_type text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "start_break",
+    "arguments": "p_shift_id uuid, p_break_type text, p_client_id uuid, p_tapped_at timestamp with time zone, p_clock_checked_at timestamp with time zone, p_clock_skew_ms integer",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "start_off_task",
+    "arguments": "p_project uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "start_opening_phase",
+    "arguments": "p_opening_id uuid, p_kind text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "start_opening_work",
+    "arguments": "p_opening_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "start_unit_session",
+    "arguments": "p_opening_id uuid, p_role text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "stg_calendar",
+    "arguments": "p_from date, p_to date",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "stg_day",
+    "arguments": "p_project uuid, p_date date",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "stg_job_list",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "store_packages",
+    "arguments": "p_packages uuid[], p_container uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "store_packages",
+    "arguments": "p_packages uuid[], p_container uuid, p_expected jsonb",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "submit_install_event",
+    "arguments": "p_opening_id uuid, p_installer text, p_minutes integer, p_quality_grade integer, p_difficulty text, p_went_well text, p_went_poorly text, p_obstacles text, p_tools_helped text, p_time_vs_estimate text, p_safety_notes text, p_do_again text, p_transcript_raw text, p_started_at timestamp with time zone, p_installer_id uuid, p_estimate_minutes integer",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "submit_install_event",
+    "arguments": "p_opening_id uuid, p_installer text, p_minutes integer, p_quality_grade integer, p_difficulty text, p_went_well text, p_went_poorly text, p_obstacles text, p_tools_helped text, p_time_vs_estimate text, p_safety_notes text, p_do_again text, p_transcript_raw text, p_started_at timestamp with time zone, p_installer_id uuid, p_estimate_minutes integer, p_credited_to uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "submit_opening_phase",
+    "arguments": "p_opening_id uuid, p_kind text, p_photo_path text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "submit_video_quiz",
+    "arguments": "p_video_id uuid, p_answers jsonb",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "suggest_location",
+    "arguments": "p_window_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "sync_project_mark",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "sync_project_windows_from_openings",
+    "arguments": "p_project_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "sync_receipt_job_cost",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "take_supply",
+    "arguments": "p_supply uuid, p_project uuid, p_qty numeric, p_client_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "test_account_write_scope",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "time_off_internal",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "time_off_manager",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "time_off_notify",
+    "arguments": "p_request uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "touch_shift_location",
+    "arguments": "p_lat double precision, p_lng double precision, p_accuracy_m double precision",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "trash_project",
+    "arguments": "p_project_id uuid, p_reason text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "travel_can_read_attachment",
+    "arguments": "p_attachment uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "travel_can_read_trip",
+    "arguments": "p_trip uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "travel_is_supervisor",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "travel_is_trip_member",
+    "arguments": "p_trip uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "trg_guard_crew_invite_rank",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "trg_guard_profile_insert",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "trg_guard_profile_role_change",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "trg_opening_assignment_event",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "trg_project_mark_specs_updated",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "trg_project_spec_discrepancies_updated",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "trg_qc_recompute",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "trg_recompute_rollups",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "trg_sync_project_windows_from_openings",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "unassign_flash_runner",
+    "arguments": "p_project_id uuid, p_profile_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "unassign_opening",
+    "arguments": "p_opening_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "undo_bank_import",
+    "arguments": "p_import_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "undo_install",
+    "arguments": "p_opening_id uuid, p_reason text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "undo_movement",
+    "arguments": "p_movement uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "undo_opening_pin_move",
+    "arguments": "p_move_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "unit_sessions_follow_shift",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "unit_sessions_follow_summon_helpers",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "unit_sessions_on_clock_in",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "unload_units",
+    "arguments": "p_ok_ids uuid[], p_damaged_ids uuid[], p_project_id uuid, p_location_note text, p_actor text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "unmatch_bank_transaction",
+    "arguments": "p_txn_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "unreceive_packages",
+    "arguments": "p_packages uuid[]",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "unstore_packages",
+    "arguments": "p_packages uuid[]",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "update_delivery",
+    "arguments": "p_delivery uuid, p_label text, p_expected_at timestamp with time zone",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "update_receipt",
+    "arguments": "p_id uuid, p_project_id uuid, p_pending_job_name text, p_amount_cents integer, p_vendor text, p_purchased_on date, p_category text, p_is_passthrough boolean, p_note text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "upsert_build_facts",
+    "arguments": "p_project_id uuid, p_patch jsonb",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "validate_custom_work_facts",
+    "arguments": "f jsonb",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "values_my_owed_count",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "values_my_summary",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "values_my_tasks",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "values_owner_report",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "values_run_due",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "values_submit",
+    "arguments": "p_assignment_id uuid, p_request_id uuid, p_rubric_version integer, p_scores jsonb, p_comment text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "vault_pin_is_set",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "void_shift",
+    "arguments": "p_shift_id uuid, p_reason text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "withdraw_spec_discrepancy",
+    "arguments": "p_project uuid, p_mark text, p_kind text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "work_activity_clock_receipt",
+    "arguments": "p_client_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "work_activity_command",
+    "arguments": "p_command_id uuid, p_protocol_version integer, p_payload jsonb",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "work_activity_command_receipt",
+    "arguments": "p_command_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "work_activity_snapshot",
+    "arguments": "p_device_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "work_activity_totals_read",
+    "arguments": "p_project_id uuid, p_unit_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "work_activity_unit_basis",
+    "arguments": "p_unit_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "work_capture_immutable_record",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "work_capture_validate_menu",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "work_configuration_snapshot",
+    "arguments": "p_project_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "work_cross_job_receipt",
+    "arguments": "p_command_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "work_cross_job_snapshot",
+    "arguments": "p_device_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "work_data_snapshot",
+    "arguments": "p_project_id uuid, p_from timestamp with time zone, p_until timestamp with time zone",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "work_grant_job_capability",
+    "arguments": "p_command_id uuid, p_project_id uuid, p_profile_id uuid, p_capability text",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "work_job_capability_grants",
+    "arguments": "p_project_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "work_job_menu_choices",
+    "arguments": "p_project_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "work_propose_activity_draft",
+    "arguments": "p_command_id uuid, p_code text, p_expected_revision bigint, p_scope text, p_label_en text, p_label_es text, p_machine_selection boolean, p_typed_fields jsonb",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "work_propose_menu_draft",
+    "arguments": "p_command_id uuid, p_code text, p_expected_revision bigint, p_label_en text, p_label_es text, p_items jsonb",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "work_publish_activity_version",
+    "arguments": "p_command_id uuid, p_code text, p_expected_latest_version integer, p_scope text, p_label_en text, p_label_es text, p_machine_selection boolean, p_typed_fields jsonb, p_effective_from timestamp with time zone",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "work_publish_menu_version",
+    "arguments": "p_command_id uuid, p_code text, p_expected_latest_version integer, p_label_en text, p_label_es text, p_items jsonb, p_effective_from timestamp with time zone",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "work_retire_activity",
+    "arguments": "p_command_id uuid, p_code text, p_expected_latest_version integer",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "work_retire_menu",
+    "arguments": "p_command_id uuid, p_code text, p_expected_latest_version integer",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "work_revoke_job_capability",
+    "arguments": "p_command_id uuid, p_project_id uuid, p_profile_id uuid, p_capability text, p_expected_grant_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "work_select_job_menu",
+    "arguments": "p_command_id uuid, p_project_id uuid, p_menu_version_id uuid, p_expected_current_revision bigint",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "work_unit_contributors_read",
+    "arguments": "p_project_id uuid, p_unit_id uuid, p_protocol_version integer",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "work_unit_fact_current_read",
+    "arguments": "p_unit_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "work_unit_review_cancel",
+    "arguments": "p_command_id uuid, p_protocol_version integer, p_payload jsonb",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "work_unit_review_command",
+    "arguments": "p_command_id uuid, p_protocol_version integer, p_payload jsonb",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "work_unit_review_command_receipt",
+    "arguments": "p_command_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "work_unit_review_read",
+    "arguments": "p_unit_id uuid",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "workflow_claim_notices",
+    "arguments": "p_plan uuid, p_lease uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "workflow_conflicts",
+    "arguments": "p_plan uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "workflow_create_plan",
+    "arguments": "p_id uuid, p_name text, p_assignments uuid[], p_trips uuid[]",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "workflow_discard_plan",
+    "arguments": "p_plan uuid, p_expected bigint",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "workflow_finish_notice",
+    "arguments": "p_id uuid, p_lease uuid, p_sent boolean",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "workflow_guard_linked_record",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "workflow_guard_linked_storage",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "workflow_lock_writes",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "workflow_my_trip_links",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "workflow_publish_plan",
+    "arguments": "p_plan uuid, p_expected bigint, p_request uuid, p_review_token text, p_allow_crew_conflicts boolean, p_cancel boolean",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "workflow_require_manager",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "workflow_review_plan",
+    "arguments": "p_plan uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "workflow_save_draft",
+    "arguments": "p_plan uuid, p_expected bigint, p_draft jsonb",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "workflow_snapshot",
+    "arguments": "p_plan uuid",
+    "access": {
+      "anon": false,
+      "service_role": true,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_activity_clock_contract_marker",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "work_activity_clock_capability",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": true
+    }
+  },
+  {
+    "name": "_work_cross_job_clock_request_admit",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_cross_job_clock_request_stamp",
+    "arguments": "",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  },
+  {
+    "name": "_work_cross_job_clock_receipt_fingerprint",
+    "arguments": "p_receipt work_activity_clock_receipts",
+    "access": {
+      "anon": false,
+      "service_role": false,
+      "authenticated": false
+    }
+  }
+]

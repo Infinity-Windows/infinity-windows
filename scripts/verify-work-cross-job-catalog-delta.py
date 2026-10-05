@@ -30,7 +30,8 @@ for e in inventory['entries']:
 assert len(entries) == 220
 assert sum(e['directTimingCandidate'] for e in entries) == 60
 tables = {'time_shifts', 'custom_work_sessions', 'unit_sessions', 'task_sessions',
-          'service_time_sessions', 'opening_phases', 'work_setup_sessions'}
+          'service_time_sessions', 'opening_phases', 'work_setup_sessions',
+          'work_cross_job_allocations', 'work_cross_job_bindings'}
 triggers = sorted((t for t in new['metadata']['triggers'] if t['table'] in tables),
                   key=lambda t: (t['table'], t['name']))
 result = {'scope': 'Exact frozen disposable catalog delta; no genuine provider evidence',

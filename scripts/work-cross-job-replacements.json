@@ -38,5 +38,15 @@
     "name": "work_activity_snapshot",
     "oldCreateSha256": "3505cf379d94c6d6013f8fca9d2ab2c550c785a8544cb52d36cd07ee7555ffee",
     "newCreateSha256": "8357a77dd7dff6f093b246b1670729a9cf47e694885d1bc33008716bfad6f738"
+  },
+  {
+    "name": "_work_activity_clock_replay_guard",
+    "oldCreateSha256": "7c14eaf6d1954dbc3d33d5617434a4413777a07610f5f34d14f95c74c0223b19",
+    "newCreateSha256": "083bf37c17ac1170036fbaa367cefda8ea854e9dd4b1cad6c634f9cd24ec461b"
+  },
+  {
+    "name": "work_activity_clock_receipt",
+    "oldCreateSha256": "75abebc05e94e15d5feb430604087764058f5cdcc4a333c645ad47afba490c77",
+    "newCreateSha256": "64b0d81f0e8b5bc7d070efe584abed0d6e2fa3cb07e5f4fcb199187955be03cb"
   }
 ]

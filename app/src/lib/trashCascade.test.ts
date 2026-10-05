@@ -201,7 +201,7 @@ const ENGINE_EPHEMERAL = ["work_activity_transaction_context", "work_activity_ex
 // contract is immutable deployment proof. None is disposable job content.
 const CROSS_JOB_SCOPED_RETAINED = ["work_cross_job_allocations", "work_cross_job_bindings"] as const;
 const CROSS_JOB_PRIVATE = ["work_cross_job_shifts", ...CROSS_JOB_SCOPED_RETAINED,
-  "work_cross_job_heads", "work_cross_job_resume", "work_cross_job_write_frames", "work_cross_job_contract"] as const;
+  "work_cross_job_heads", "work_cross_job_resume", "work_cross_job_write_frames", "work_cross_job_contract", "work_cross_job_clock_requests"] as const;
 const crossJobMigration = readFileSync(join(MIGRATIONS, "20261108470000_work_cross_job_capture.sql"), "utf8");
 
 /** Any direct DELETE/UPDATE of retained evidence violates its disposition.
@@ -422,7 +422,7 @@ describe("purge_project handles every project-scoped table", () => {
       }
       expect(retainedEvidenceMutated(table, `delete from ${table}_unrelated where true;`)).toBe(false);
     }
-    for (const table of ["work_cross_job_shifts", ...CROSS_JOB_SCOPED_RETAINED]) {
+    for (const table of ["work_cross_job_shifts", ...CROSS_JOB_SCOPED_RETAINED, "work_cross_job_clock_requests"]) {
       expect(crossJobMigration).toContain(`create trigger ${table}_immutable before update or delete`);
       expect(crossJobMigration).toContain(`create trigger ${table}_no_truncate before truncate`);
     }

@@ -26,7 +26,7 @@ select jsonb_build_object(
 )c
 $coverage$;
 revoke all on function public._work_cross_job_coverage() from public,anon,authenticated,service_role;
-insert into public.work_cross_job_contract values('cross_job_kernel_2','2e8a37151eba719e6c5e17664dee7859fc74a08ce9711b2783f63a0395c9356d');
+insert into public.work_cross_job_contract values('cross_job_kernel_2','00db48aa715a066d2c3cd0ec73423a8af14e7338fa2c13e36ab2ff68b49f307e');
 create trigger work_cross_job_contract_immutable before insert or update or delete on public.work_cross_job_contract for each row execute function public.work_capture_immutable_record();
 create trigger work_cross_job_contract_no_truncate before truncate on public.work_cross_job_contract for each statement execute function public.work_capture_immutable_record();
 create or replace function public._work_unit_review_coverage() returns boolean language sql stable security definer set search_path=public,pg_temp as $$

@@ -161,7 +161,24 @@ export async function run(db,q,assert,catalogSql){
  const tableDefinition=(await q("select pg_get_functiondef('_work_cross_job_table(text)'::regprocedure) definition")).definition;
  const tableBody=(await q("select prosrc from pg_proc where oid='_work_cross_job_table(text)'::regprocedure")).prosrc;
  const corruptContract=sql=>'alter table work_cross_job_contract disable trigger work_cross_job_contract_immutable;'+sql+';alter table work_cross_job_contract enable trigger work_cross_job_contract_immutable';
+ const capabilityDefinition=(await q("select pg_get_functiondef('work_activity_clock_capability()'::regprocedure) definition")).definition;
+ const capabilityBody=(await q("select prosrc from pg_proc where oid='work_activity_clock_capability()'::regprocedure")).prosrc;
  const guardMutations=[
+  ['request_ledger_relation','alter table work_cross_job_clock_requests rename to work_cross_job_clock_requests_displaced'],
+  ['request_ledger_trigger','alter table work_cross_job_clock_requests disable trigger work_cross_job_clock_requests_admit'],
+  ['request_stamp_body',"create or replace function _work_cross_job_clock_request_stamp() returns trigger language plpgsql volatile security definer set search_path=public,pg_temp as $$begin return new;end$$"],
+  ['fingerprint_body',"create or replace function _work_cross_job_clock_receipt_fingerprint(p_receipt work_activity_clock_receipts) returns text language plpgsql immutable strict security definer set search_path=public,pg_temp as $$begin raise exception 'Fingerprint must not run on paid close actions';end$$"],
+  ['fingerprint_metadata','alter function _work_cross_job_clock_receipt_fingerprint(work_activity_clock_receipts) cost 101'],
+  ['fingerprint_acl','grant execute on function _work_cross_job_clock_receipt_fingerprint(work_activity_clock_receipts) to authenticated'],
+  ['request_ledger_acl','grant select on work_cross_job_clock_requests to authenticated'],
+  ['profile_type_owner','alter type clock_time_pick owner to postgres'],
+  ['profile_service_acl','grant execute on function work_activity_clock_receipt(uuid) to service_role'],
+  ['capability_body',capabilityDefinition.replace(capabilityBody,capabilityBody+'\n-- Unreviewed capability drift\n')],
+  ['capability_marker',"create or replace function _work_activity_clock_contract_marker() returns text language sql immutable security definer set search_path=public,pg_temp as $$select 'unreviewed'::text$$"],
+  ['sandbox_trigger_enabled','alter table work_cross_job_allocations disable trigger guard_test_account_sandbox_only'],
+  ['sandbox_trigger_ordinal','alter trigger guard_test_account_sandbox_only on work_cross_job_bindings rename to zzz_unreviewed_sandbox_guard'],
+  ['allocation_rls','alter table work_cross_job_allocations disable row level security'],
+  ['immutable_trigger','alter table work_cross_job_bindings disable trigger work_cross_job_bindings_immutable'],
   ['coverage_body',"create or replace function _work_cross_job_coverage() returns boolean language sql stable security definer set search_path=public,pg_temp as $$select true$$"],
   ['coverage_metadata','alter function _work_cross_job_coverage() cost 101'],
   ['dependency_body',tableDefinition.replace(tableBody,tableBody+'\n-- Unreviewed source drift\n')],
@@ -181,6 +198,7 @@ export async function run(db,q,assert,catalogSql){
   check((await q('select work_activity_command($1,2,$2::jsonb) value',[latest.commandId,JSON.stringify(latest.payload)])).value.availability==='unavailable',name+' rejects public v2 command replay while enabled');
   check((await snapshot()).availability==='unavailable',name+' rejects public v2 snapshot while enabled');
   check((await q('select work_cross_job_receipt($1) value',[latest.commandId])).value.availability==='unavailable',name+' rejects public v2 receipt while enabled');
+  await db.exec('savepoint rejected_capability');let capError;try{await q('select work_activity_clock_capability()')}catch(e){capError=e}await db.exec('rollback to savepoint rejected_capability');check(['capability_marker','request_stamp_body','fingerprint_body','fingerprint_metadata','fingerprint_acl'].includes(name)?capError?.code==='55000':capError===undefined,name+' preserves exact bounded legacy capability dependency disposition');
   await db.exec('savepoint rejected_start');let refused;
   try{await q('select clock_in($1::uuid,null::uuid,null::text,null::double precision,null::double precision,null::text,null::text,$2::uuid,$3::timestamptz,clock_timestamp(),0,2)',[id(10),id(seq++),times.clock]);}catch(e){refused=e;}
   await db.exec('rollback to savepoint rejected_start');check(refused?.code==='23514',name+' rejects public v2 physical start while enabled');
@@ -299,6 +317,29 @@ export async function run(db,q,assert,catalogSql){
  await db.query('update projects set deleted_at=clock_timestamp() where id=$1',[id(11)]);await as(id(1));
  const hidden=(await q('select work_cross_job_receipt($1) value',[secondId])).value;
  check(hidden.availability==='unavailable'&&hidden.receipt===null&&hidden.allocation===null,'Hidden original B dependency conceals later A receipt');
+
+ // Checkpoint4 sandbox controls use actual command and paid lifecycle paths.
+ await as(id(1),'postgres');await db.exec('rollback to savepoint scenarios');
+ await setup(id(10));await act(intent(id(11)),times.b);await as(id(1),'postgres');const retainedBeforeQueued=(await q('select jsonb_agg(to_jsonb(a) order by id) value from work_cross_job_allocations a where shift_id=$1',[shift.id])).value;assert.ok(retainedBeforeQueued.length>=3);const queuedKey=id(seq++);await as(id(1));await q('select clock_in($1::uuid,null::uuid,null::text,null::double precision,null::double precision,null::text,null::text,$2::uuid,$3::timestamptz,clock_timestamp(),0,1)',[id(10),queuedKey,times.clock]);await as(id(1),'postgres');assert.deepEqual((await q('select jsonb_agg(to_jsonb(a) order by id) value from work_cross_job_allocations a where shift_id=$1',[shift.id])).value,retainedBeforeQueued);check(true,'Queued v1 setup preserves nonempty retained v2 allocation history byte-for-byte');check((await q('select s.clock_out_at=a.arrived_at same from time_shifts s join time_clock_actions a on a.client_id=$2 where s.id=$1',[shift.id,queuedKey])).same,'Queued v1 setup closes active v2 at original paid arrival boundary');await db.exec('rollback to savepoint scenarios');
+ const sandboxTally=async()=>(await q("select jsonb_build_object('requests',(select jsonb_agg(to_jsonb(t) order by client_id) from work_cross_job_clock_requests t),'paid',(select jsonb_agg(to_jsonb(t) order by id) from time_shifts t),'commands',(select jsonb_agg(to_jsonb(t) order by command_id) from personal_activity_commands t),'allocations',(select jsonb_agg(to_jsonb(t) order by id) from work_cross_job_allocations t),'bindings',(select jsonb_agg(to_jsonb(t) order by source_kind,source_id) from work_cross_job_bindings t),'history',(select jsonb_agg(to_jsonb(t) order by id) from work_activity_source_history t),'sources',(select jsonb_agg(to_jsonb(t) order by id) from custom_work_sessions t),'state',(select jsonb_agg(to_jsonb(t) order by profile_id) from personal_activity_state t),'operations',(select jsonb_agg(to_jsonb(t) order by id) from work_activity_operations t),'frames',(select jsonb_agg(to_jsonb(t) order by operation_id) from work_cross_job_write_frames t)) value")).value;
+ for(const originB of [false,true]){
+  await setup(id(10));if(originB)await act(intent(id(11)),times.b);
+  await as(id(1));const snap=await snapshot();await as(id(1),'postgres');await db.query('update profiles set is_test=true where id=$1',[id(1)]);await db.query("insert into sandbox_projects(project_id,note) values($1,'Synthetic QA')",[id(10)]);
+  const commandId=id(seq++);const payload={deviceId:device,clientGeneration:generation,clientSequence:sequence,predecessorCommandId:head,expectedRevision:snap.state.revision,basis:{observationId:snap.observation.id},shiftRef:snap.observation.shiftRef,tappedAt:times.normal,clockCheckedAt:new Date().toISOString(),clockSkewMs:0,intent:intent(originB?id(10):id(11)),expectedAllocationId:snap.state.shift.allocationId,boundaryMode:'trusted_original_tap'};
+  await as(id(1),'postgres');const before=await sandboxTally();await db.exec('savepoint sandbox_refusal');await as(id(1));let error,result;try{result=(await q('select work_activity_command($1,2,$2::jsonb) value',[commandId,JSON.stringify(payload)])).value}catch(e){error=e}
+  assert.equal(error,undefined);await as(id(1),'postgres');const after=await sandboxTally();
+  if(originB){check(result.availability==='unavailable'&&result.receipt===null,'QA live to sandbox refuses hidden retained origin before command admission');assert.deepEqual(after,before)}
+  else {check(result.receipt?.status==='refused'&&result.receipt.reasonCode==='source_unavailable','QA sandbox to live preserves existing permission refusal receipt');assert.equal(after.commands.length,(before.commands?.length??0)+1);delete before.commands;delete after.commands;assert.deepEqual(after,before)}
+  check(true,`QA ${originB?'live to sandbox':'sandbox to live'} refusal preserves exact paid/source/allocation/frame state`);
+  await db.exec('rollback to savepoint scenarios');
+ }
+ await setup(id(10));await as(id(1),'postgres');await db.query('update profiles set is_test=true where id=$1',[id(1)]);await db.query("insert into sandbox_projects(project_id,note) values($1,'Synthetic QA'),($2,'Synthetic QA')",[id(10),id(11)]);await as(id(1));await act(intent(id(11)),times.b);check(true,'QA sandbox to sandbox allocation command remains admitted');
+ await as(id(1));await q("select start_break($1::uuid,'rest'::text,$2::uuid,$3::timestamptz,clock_timestamp(),0)",[shift.id,id(seq++),times.normal]);
+ await as(id(1),'postgres');const retained=(await q('select jsonb_agg(to_jsonb(a) order by id) value from work_cross_job_allocations a')).value;await db.query('delete from sandbox_projects where project_id=$1',[id(11)]);assert.deepEqual((await q('select jsonb_agg(to_jsonb(a) order by id) value from work_cross_job_allocations a')).value,retained);check(true,'Sandbox reclassification preserves retained allocation history');
+ await as(id(1));await q('select end_break($1::uuid,$2::uuid,$3::timestamptz,clock_timestamp(),0)',[shift.id,id(seq++),times.returned]);
+ await as(id(1),'postgres');const refusedResume=await q('select p.active_source_id,p.choice_required,p.resume_token,s.break_started_at,_work_activity_iso(s.last_punch_at) stamp,(select count(*) from work_cross_job_resume r where r.profile_id=p.profile_id)::int cached from personal_activity_state p join time_shifts s on s.id=p.shift_id where p.profile_id=$1',[id(1)]);
+ check(refusedResume.active_source_id===null&&refusedResume.choice_required&&refusedResume.resume_token===null&&refusedResume.cached===0,'Sandbox-refused protected resume clears all cached source state and requires choice');
+ check(refusedResume.break_started_at===null&&refusedResume.stamp===times.returned,'Sandbox-refused protected resume still completes original paid return');
  await as(id(1),'postgres');await db.exec('rollback');
  return {checks,labels,wire,scope:'held functional construction',remaining:['all-six public entry and expanded domain-negative closure','genuine roles/races/volume','reader/export/cached-client fences','all42 acceptance closure']};
 }

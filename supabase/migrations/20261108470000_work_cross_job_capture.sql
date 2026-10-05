@@ -28,7 +28,7 @@ select jsonb_build_object(
  'policies',(select jsonb_agg(to_jsonb(p) order by p.tablename,p.policyname) from pg_policies p where schemaname='public'),
  'views',(select jsonb_agg(jsonb_build_object('name',c.relname,'definition',pg_get_viewdef(c.oid,true)) order by c.relname) from pg_class c where c.relnamespace='public'::regnamespace and c.relkind in('v','m'))
 ) value
- )c) is distinct from 'c965474d047f4812c13311dd2ae62d909462c86a2002d1b01d141d7e91251124' then
+ )c) is distinct from '18f1f9048e57087987020441e0aff395c5094ec8f677643078f551aa4d705950' then
   raise exception using errcode='55000',message='Cross-job old source contract differs; installation refused before DDL.';
  end if;
 end $preflight$;
@@ -446,6 +446,77 @@ create index work_cross_job_source_incarnations on public.work_activity_source_h
 -- Callback predicates are same-shift lookups, including historical closed visits.
 create index work_cross_job_custom_shift on public.custom_work_sessions(shift_id,started_at,ended_at);
 create index work_cross_job_service_shift on public.service_time_sessions(shift_id,started_at,ended_at,visit_id);
+
+-- Original successful keyed setup request identity, including paid-only fallback.
+-- Deliberately retained without profile/shift/operation FKs or cascade rewriting.
+create table public.work_cross_job_clock_requests (
+ client_id uuid primary key,
+ profile_id uuid not null,
+ shift_id uuid not null,
+ operation_id uuid not null,
+ setup_version integer not null check(setup_version in(1,2)),
+ receipt_sha256 text not null check(receipt_sha256 ~ '^[0-9a-f]{64}$')
+);
+create index work_cross_job_clock_requests_profile on public.work_cross_job_clock_requests(profile_id);
+revoke all on table public.work_cross_job_clock_requests from public,anon,authenticated,service_role;
+alter table public.work_cross_job_clock_requests enable row level security;
+-- Canonical receipt fingerprint v1. All 15 retained fields in fixed order;
+-- timestamptz values are exact numeric epoch microseconds, never session text.
+create function public._work_cross_job_clock_receipt_fingerprint(p_receipt public.work_activity_clock_receipts) returns text
+language sql immutable strict security definer set search_path=public,pg_temp as $$
+ select pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(pg_catalog.jsonb_build_array(
+  'work_clock_receipt_fingerprint_v1'::text,
+  p_receipt.client_id,p_receipt.profile_id,p_receipt.shift_id,p_receipt.action,p_receipt.outcome,
+  extract(epoch from p_receipt.tapped_at)*1000000::numeric,
+  extract(epoch from p_receipt.arrived_at)*1000000::numeric,
+  extract(epoch from p_receipt.clock_checked_at)*1000000::numeric,
+  p_receipt.clock_skew_ms,p_receipt.used_tap_time,p_receipt.review_reason,
+  extract(epoch from p_receipt.source_created_at)*1000000::numeric,
+  p_receipt.receipt_protocol,p_receipt.setup_payload_digest,
+  extract(epoch from p_receipt.recorded_at)*1000000::numeric
+ )::text,'UTF8')),'hex')
+$$;
+revoke all on function public._work_cross_job_clock_receipt_fingerprint(public.work_activity_clock_receipts) from public,anon,authenticated,service_role;
+create function public._work_cross_job_clock_request_admit() returns trigger
+language plpgsql volatile security definer set search_path=public,pg_temp as $$
+declare o public.work_activity_operations;r public.work_activity_clock_receipts;
+begin
+ perform pg_catalog.pg_advisory_xact_lock(7712,0);
+ o:=public._work_activity_operation();
+ select * into r from public.work_activity_clock_receipts where client_id=new.client_id;
+ if o.id is null or o.route is distinct from 'clock_in_setup' or not o.clock_entry_claimed
+  or o.actor_id is null or o.actor_id is distinct from auth.uid() or o.actor_id is distinct from new.profile_id
+  or o.request_id is distinct from new.client_id or o.id is distinct from new.operation_id
+  or o.top_xid is distinct from pg_current_xact_id() or o.backend_pid is distinct from pg_backend_pid() or o.command_id is not null
+  or o.arguments->>'setupVersion' is distinct from new.setup_version::text
+  or r.client_id is null or r.profile_id is distinct from new.profile_id or r.shift_id is distinct from new.shift_id
+  or r.action is distinct from 'clock_in' or r.receipt_protocol is distinct from 'setup_v1'
+  or r.setup_payload_digest is distinct from o.arguments->>'clockPayloadDigest'
+  or new.receipt_sha256 is distinct from public._work_cross_job_clock_receipt_fingerprint(r) then
+   raise exception using errcode='42501',message='Clock receipt unavailable.';
+ end if;
+ return new;
+end$$;
+create function public._work_cross_job_clock_request_stamp() returns trigger
+language plpgsql volatile security definer set search_path=public,pg_temp as $$
+declare o public.work_activity_operations;
+begin
+ if new.action<>'clock_in' or new.receipt_protocol<>'setup_v1' then return new;end if;
+ o:=public._work_activity_operation();
+ if o.id is null or o.route is distinct from 'clock_in_setup'
+  or o.arguments->>'setupVersion' is null or o.arguments->>'setupVersion' not in('1','2') then
+  raise exception using errcode='42501',message='Clock receipt unavailable.';
+ end if;
+ insert into public.work_cross_job_clock_requests(client_id,profile_id,shift_id,operation_id,setup_version,receipt_sha256)
+ values(new.client_id,new.profile_id,new.shift_id,o.id,(o.arguments->>'setupVersion')::integer,public._work_cross_job_clock_receipt_fingerprint(new));
+ return new;
+end$$;
+revoke all on function public._work_cross_job_clock_request_admit() from public,anon,authenticated,service_role;
+revoke all on function public._work_cross_job_clock_request_stamp() from public,anon,authenticated,service_role;
+create trigger work_cross_job_clock_requests_admit before insert on public.work_cross_job_clock_requests for each row execute function public._work_cross_job_clock_request_admit();
+create trigger work_cross_job_clock_requests_immutable before update or delete on public.work_cross_job_clock_requests for each row execute function public.work_capture_immutable_record();
+create trigger work_cross_job_clock_requests_no_truncate before truncate on public.work_cross_job_clock_requests for each statement execute function public.work_capture_immutable_record();
+create trigger work_cross_job_clock_request_stamp after insert on public.work_activity_clock_receipts for each row execute function public._work_cross_job_clock_request_stamp();
 
 create or replace function public._work_activity_row_before() returns trigger
 language plpgsql security definer set search_path=public,pg_temp as $$
@@ -1083,6 +1154,125 @@ begin
  return jsonb_build_object('protocolVersion',2,'availability','available','receipt',c.result,'allocation',case when a.id is not null then jsonb_build_object('id',a.id,'predecessorId',a.predecessor_id,'boundaryMode',a.boundary_mode,'originalTappedAt',public._work_activity_iso(a.original_tapped_at),'effectiveAt',public._work_activity_iso(a.effective_at),'shiftId',a.shift_id,'transitionId',a.transition_id) end);
 end$$;
 
+create or replace function public._work_activity_clock_replay_guard(p_client uuid,p_action text,p_shift uuid default null) returns void
+language plpgsql volatile security definer set search_path=public,pg_temp as $$
+declare r public.work_activity_clock_receipts;o public.work_activity_operations;v record;
+begin
+ if p_client is null then return;end if;
+ o:=public._work_activity_operation();
+ if o.id is null or o.actor_id is null or o.actor_id is distinct from auth.uid() then raise exception using errcode='42501',message='Clock receipt unavailable.';end if;
+ select * into r from public.work_activity_clock_receipts where client_id=p_client;
+ if r.client_id is null then
+  if p_action='clock_in' and o.route in('clock_in','clock_in_setup') then
+   if exists(select 1 from public.work_cross_job_clock_requests where client_id=p_client)
+    or exists(select 1 from public.time_clock_actions where client_id=p_client and profile_id is distinct from o.actor_id)
+    or exists(select 1 from public.time_shifts where client_id=p_client and profile_id is distinct from o.actor_id) then
+    raise exception using errcode='42501',message='Clock receipt unavailable.';
+   end if;
+   if o.route='clock_in_setup' and o.arguments->>'setupVersion'='2'
+    and (exists(select 1 from public.time_clock_actions where client_id=p_client and profile_id=o.actor_id)
+      or exists(select 1 from public.time_shifts where client_id=p_client and profile_id=o.actor_id)) then
+    raise exception using errcode='23514',message='Clock command identity conflicts.';
+   end if;
+  end if;
+  return;
+ end if;
+ if r.profile_id is distinct from o.actor_id then raise exception using errcode='42501',message='Clock receipt unavailable.';end if;
+ if r.action is distinct from p_action or (p_shift is not null and r.shift_id is distinct from p_shift) then raise exception using errcode='23514',message='Clock command identity conflicts.';end if;
+ if o.route='clock_in_setup' and (r.receipt_protocol<>'setup_v1' or r.setup_payload_digest is distinct from o.arguments->>'clockPayloadDigest') then
+   raise exception using errcode='23514',message='Clock command identity conflicts.';end if;
+ if p_action='clock_in' and o.route in('clock_in','clock_in_setup') then
+  select * into v from public.work_cross_job_clock_requests where client_id=r.client_id;
+  if v.client_id is not null and (v.profile_id is distinct from r.profile_id or v.shift_id is distinct from r.shift_id or v.receipt_sha256 is distinct from public._work_cross_job_clock_receipt_fingerprint(r)) then raise exception using errcode='42501',message='Clock receipt unavailable.';end if;
+  if (o.route='clock_in_setup' and coalesce(o.arguments->>'setupVersion','')='2') is distinct from coalesce(v.setup_version=2,false) then
+   raise exception using errcode='23514',message='Clock command identity conflicts.';
+  end if;
+ end if;
+ -- A retained acknowledgement survives source deletion. Never reapply the
+ -- original command after its mutable/cascading legacy lookup disappeared.
+ if not exists(select 1 from public.time_clock_actions where client_id=r.client_id and profile_id=r.profile_id and shift_id=r.shift_id and action=r.action)
+    or not exists(select 1 from public.time_shifts where id=r.shift_id and profile_id=r.profile_id) then
+   raise exception using errcode='42501',message='Clock receipt unavailable.';
+ end if;
+end; $$;
+
+create or replace function public.work_activity_clock_receipt(p_client_id uuid) returns jsonb
+language plpgsql volatile security definer set search_path=public,pg_temp as $$
+declare actor uuid;r record;t record;retention text;protocol text;present boolean;
+ missing constant jsonb:='{"protocolVersion":1,"availability":"unavailable","receipt":null}'::jsonb;
+begin
+ perform public._work_activity_read_committed();perform public._work_activity_gate();actor:=public._work_activity_actor();
+ if p_client_id is null then raise exception using errcode='23514',message='A clock command identity is required.';end if;
+ select x.client_id,x.profile_id,x.shift_id,x.action,x.outcome,x.tapped_at,x.arrived_at,x.clock_checked_at,x.clock_skew_ms,x.used_tap_time,x.review_reason,x.receipt_protocol
+ into r from public.work_activity_clock_receipts x where x.client_id=p_client_id and x.profile_id=actor;
+ if found then retention:='retained';protocol:=r.receipt_protocol;
+ else
+  select x.client_id,x.profile_id,x.shift_id,x.action,x.outcome,x.tapped_at,x.arrived_at,x.clock_checked_at,x.clock_skew_ms,x.used_tap_time,x.review_reason,'legacy'::text receipt_protocol
+  into r from public.time_clock_actions x where x.client_id=p_client_id and x.profile_id=actor;
+  if not found then return missing;end if;retention:='legacy';protocol:='legacy';
+ end if;
+ if r.action='clock_in' and r.receipt_protocol='setup_v1'
+  and exists(select 1 from public.work_cross_job_shifts where shift_id=r.shift_id) then return missing;end if;
+ -- Unsupported historical evidence remains unavailable rather than coercing
+ -- a nonfinite time or an unknown disposition into a truthful completion.
+ if (r.review_reason is not null and length(r.review_reason)>80) or not isfinite(r.arrived_at) or (r.tapped_at is not null and not isfinite(r.tapped_at))
+   or (r.clock_checked_at is not null and not isfinite(r.clock_checked_at))
+   or r.outcome<>all(case r.action when 'clock_in' then array['clocked_in'] when 'clock_out' then array['clocked_out','requires_review']
+      when 'break_start' then array['started','already_on_break','requires_review'] when 'break_end' then array['ended','no_break_running','shift_closed','requires_review'] else array[]::text[] end)
+ then return missing;end if;
+ select x.id,x.revision_before,x.revision_after into t from public.personal_activity_transitions x
+ where x.profile_id=actor and x.source_request_id=p_client_id and x.actor_id=actor and x.source_shift_id=r.shift_id;
+ present:=exists(select 1 from public.time_shifts where id=r.shift_id and profile_id=actor)
+   and exists(select 1 from public.time_clock_actions where client_id=p_client_id and profile_id=actor and shift_id=r.shift_id);
+ return jsonb_build_object('protocolVersion',1,'availability','available','receipt',jsonb_build_object(
+  'clientId',r.client_id,'action',r.action,'outcome',r.outcome,'shiftId',r.shift_id,'tappedAt',public._work_activity_iso(r.tapped_at),
+  'arrivedAt',public._work_activity_iso(r.arrived_at),'clockCheckedAt',public._work_activity_iso(r.clock_checked_at),'clockSkewMs',r.clock_skew_ms,
+  'usedTapTime',r.used_tap_time,'reviewReason',r.review_reason,'receiptProtocol',protocol,'retention',retention,'sourcePresent',present,
+  'activityTransition',case when t.id is not null then jsonb_build_object('id',t.id,'beforeRevision',t.revision_before,'afterRevision',t.revision_after) else 'null'::jsonb end));
+end; $$;
+
+create or replace function public._work_activity_clock_contract_marker() returns text
+language sql immutable security definer set search_path=public,pg_temp as $marker$
+ select '2ac3aad6d095d5bf9584bb656ce7123392884b946b0df46e2c6d84beeba3d32a'::text
+$marker$;
+
+create or replace function public.work_activity_clock_capability() returns jsonb
+language plpgsql volatile security definer set search_path=public,pg_temp as $capability$
+declare actor uuid;as_of timestamptz;enabled boolean;generation bigint;s public.personal_activity_state;
+ mode text;reason text;author_setup boolean:=false;e jsonb;actual jsonb;
+begin
+ perform public._work_activity_read_committed();
+ perform public._work_activity_gate();actor:=public._work_activity_actor();as_of:=clock_timestamp();
+ if not coalesce((select p.prosrc is not null and encode(sha256(convert_to(p.prosrc,'UTF8')),'hex')='3f4d03d090a1428ce0dd8b410a285029903d156576da41a86237daa30e0e1d25' and pg_get_userbyid(p.proowner)='postgres' and p.proacl::text='{postgres=X/postgres}' and p.prosecdef and p.proconfig=array['search_path=public, pg_temp']::text[] and p.provolatile='i' and p.proisstrict and not p.proleakproof and p.proparallel='u' and p.prokind='f' and not p.proretset and p.prorettype='text'::regtype and p.pronargs=1 and p.pronargdefaults=0 and p.procost=100 and p.prorows=0 and p.prosupport=0 and p.prolang=(select oid from pg_language where lanname='sql') from pg_proc p where p.oid=to_regprocedure('public._work_cross_job_clock_receipt_fingerprint(public.work_activity_clock_receipts)')),false) or not coalesce((select p.prosrc is not null and encode(sha256(convert_to(p.prosrc,'UTF8')),'hex')='c3a7df2b8818e95a0962e6a6a2e87de398371a5e4d2a8812044324d001debd66' and pg_get_userbyid(p.proowner)='postgres' and p.proacl::text='{postgres=X/postgres}' and p.prosecdef and p.proconfig=array['search_path=public, pg_temp']::text[] and p.provolatile='i' and not p.proisstrict and not p.proleakproof and p.proparallel='u' and p.prokind='f' and not p.proretset and p.prorettype='text'::regtype and p.pronargs=0 and p.pronargdefaults=0 and p.procost=100 and p.prorows=0 and p.prosupport=0 and p.prolang=(select oid from pg_language where lanname='sql') from pg_proc p where p.oid=to_regprocedure('public._work_activity_clock_contract_marker()')),false) or public._work_activity_clock_contract_marker() is distinct from '2ac3aad6d095d5bf9584bb656ce7123392884b946b0df46e2c6d84beeba3d32a' then
+ raise exception using errcode='55000',message='Clock protocol is unavailable.';end if;
+ -- Bounded cheap runtime drift check, after caller permission. The complete
+ -- installation contract above covers every transformed entry and callback.
+ for e in select value from jsonb_array_elements($protocol$[{"name":"_toolbox_gate_open","args":"p_uid uuid","value":{"anon":false,"body":"ed3ecd2fafe012b9cd7a03da6dea485e29f20d591b9dd13960d7d37088f92f8f","kind":"f","owner":"postgres","config":["search_path=public, pg_temp"],"public":false,"definer":false,"returns":"boolean","language":"sql","volatility":"s","authenticated":true}},{"name":"_toolbox_signed_today","args":"p_uid uuid","value":{"anon":false,"body":"c6afbff1f69461549975380dfcc9dd3c8b345df37affa2359f087aa16d1b4ca0","kind":"f","owner":"postgres","config":["search_path=public, pg_temp"],"public":false,"definer":false,"returns":"boolean","language":"sql","volatility":"s","authenticated":true}},{"name":"_work_activity_actor","args":"","value":{"anon":false,"body":"7890c48b8af43f142610895f8da5d8361178470db58d384bf1ff2f48c52f8122","kind":"f","owner":"postgres","config":["search_path=public, pg_temp"],"public":false,"definer":true,"returns":"uuid","language":"plpgsql","volatility":"v","authenticated":false}},{"name":"_work_activity_claim_clock_setup","args":"p_project_id uuid, p_cost_code_id uuid, p_photo text, p_lat double precision, p_lng double precision, p_note text, p_mode text, p_client_id uuid, p_tapped_at timestamp with time zone, p_clock_checked_at timestamp with time zone, p_clock_skew_ms integer","value":{"anon":false,"body":"8c600c462e2825683cc474a648a85b217f3d04eca74c9a789ada1b612837c809","kind":"f","owner":"postgres","config":["search_path=public, pg_temp"],"public":false,"definer":true,"returns":"boolean","language":"plpgsql","volatility":"v","authenticated":false}},{"name":"_work_activity_clock_replay_guard","args":"p_client uuid, p_action text, p_shift uuid","value":{"anon":false,"body":"34a7483501a87bacd451d9ba6671b78edc48b526520f73ba2b70906b604e00ec","kind":"f","owner":"postgres","config":["search_path=public, pg_temp"],"public":false,"definer":true,"returns":"void","language":"plpgsql","volatility":"v","authenticated":false}},{"name":"_work_activity_clock_setup_digest","args":"p_project_id uuid, p_cost_code_id uuid, p_photo text, p_lat double precision, p_lng double precision, p_note text, p_mode text, p_client_id uuid, p_tapped_at timestamp with time zone, p_clock_checked_at timestamp with time zone, p_clock_skew_ms integer","value":{"anon":false,"body":"7cbf137bffb2f5134b3cd66a35bc7e207ea5c39a58cfed03acad2cbc017211d3","kind":"f","owner":"postgres","config":["search_path=public, pg_temp"],"public":false,"definer":false,"returns":"text","language":"sql","volatility":"s","authenticated":false}},{"name":"_work_activity_gate","args":"","value":{"anon":false,"body":"24e3624af1c057c5048b5e5e06206e802d17bb5a4aae1fdf5de9e48b87f4b6e8","kind":"f","owner":"postgres","config":["search_path=public, pg_temp"],"public":false,"definer":true,"returns":"void","language":"plpgsql","volatility":"v","authenticated":false}},{"name":"_work_activity_keep_clock_receipt","args":"","value":{"anon":false,"body":"0adc5b1eac8c882ea941c5c6bceea3242db7f9a66de8ded254bd96e8ad0a0291","kind":"f","owner":"postgres","config":["search_path=public, pg_temp"],"public":false,"definer":true,"returns":"trigger","language":"plpgsql","volatility":"v","authenticated":false}},{"name":"_work_activity_read_committed","args":"","value":{"anon":false,"body":"5c692d2459dd18fad5e0f49e698a619b1c26097e7ee335a69c460d44c4611b2a","kind":"f","owner":"postgres","config":["search_path=public, pg_temp"],"public":false,"definer":true,"returns":"void","language":"plpgsql","volatility":"v","authenticated":false}},{"name":"_work_config_internal","args":"p_uid uuid","value":{"anon":false,"body":"40350856480c2e8dc1c84247091981d9e70e9d766f7bb47b56fde7847a673407","kind":"f","owner":"postgres","config":["search_path=public, pg_temp"],"public":false,"definer":true,"returns":"boolean","language":"sql","volatility":"s","authenticated":false}},{"name":"clock_in","args":"p_project_id uuid, p_cost_code_id uuid, p_photo text, p_lat double precision, p_lng double precision","value":{"anon":false,"body":"c062f0c38a76f236bd2e4e459b2cdb39b99547865599717261334092d18d01e8","kind":"f","owner":"postgres","config":["search_path=public, pg_temp"],"public":false,"definer":true,"returns":"time_shifts","language":"plpgsql","volatility":"v","authenticated":true}},{"name":"clock_in","args":"p_project_id uuid, p_cost_code_id uuid, p_photo text, p_lat double precision, p_lng double precision, p_client_id uuid","value":{"anon":false,"body":"ee48d7b0c3fefd68678b570424c1cc2822f264a52f3099f5c0c98837c3dc9cb6","kind":"f","owner":"postgres","config":["search_path=public, pg_temp"],"public":false,"definer":true,"returns":"time_shifts","language":"plpgsql","volatility":"v","authenticated":true}},{"name":"clock_in","args":"p_project_id uuid, p_cost_code_id uuid, p_photo text, p_lat double precision, p_lng double precision, p_client_id uuid, p_note text","value":{"anon":false,"body":"4413958dd1c2e33a3e1bb5690dc33333bee29d57ca633610c444baf9547e439f","kind":"f","owner":"postgres","config":["search_path=public, pg_temp"],"public":false,"definer":true,"returns":"time_shifts","language":"plpgsql","volatility":"v","authenticated":true}},{"name":"clock_in","args":"p_project_id uuid, p_cost_code_id uuid, p_photo text, p_lat double precision, p_lng double precision, p_note text","value":{"anon":false,"body":"b1d566d9758bcab88df16b138f795c3792eff2a0a0c55750d089d2608c4a598b","kind":"f","owner":"postgres","config":["search_path=public, pg_temp"],"public":false,"definer":true,"returns":"time_shifts","language":"plpgsql","volatility":"v","authenticated":true}},{"name":"clock_in","args":"p_project_id uuid, p_cost_code_id uuid, p_photo text, p_lat double precision, p_lng double precision, p_note text, p_mode text","value":{"anon":false,"body":"c3fe0f2a5111f4d21bf5ef5149c79846ea53ec904f977765d75e5e7117fd5f09","kind":"f","owner":"postgres","config":["search_path=public, pg_temp"],"public":false,"definer":true,"returns":"time_shifts","language":"plpgsql","volatility":"v","authenticated":true}},{"name":"clock_in","args":"p_project_id uuid, p_cost_code_id uuid, p_photo text, p_lat double precision, p_lng double precision, p_note text, p_mode text, p_client_id uuid, p_tapped_at timestamp with time zone, p_clock_checked_at timestamp with time zone, p_clock_skew_ms integer","value":{"anon":false,"body":"ad7268b517980f7a4fc9f8cf7949bda734b127ccd2ee7eeec04119bffaf1c7e5","kind":"f","owner":"postgres","config":["search_path=public, pg_temp"],"public":false,"definer":true,"returns":"time_shifts","language":"plpgsql","volatility":"v","authenticated":true}},{"name":"clock_in","args":"p_project_id uuid, p_cost_code_id uuid, p_photo text, p_lat double precision, p_lng double precision, p_note text, p_mode text, p_client_id uuid, p_tapped_at timestamp with time zone, p_clock_checked_at timestamp with time zone, p_clock_skew_ms integer, p_setup_version integer","value":{"anon":false,"body":"bd9526a7263431db3d280f379f7af4641f4d97988e0ed4c36371b0b0c362ebcb","kind":"f","owner":"postgres","config":["search_path=public, pg_temp"],"public":false,"definer":true,"returns":"time_shifts","language":"plpgsql","volatility":"v","authenticated":true}},{"name":"clock_out","args":"p_shift_id uuid, p_photo text, p_injured boolean, p_time_confirmed boolean, p_break_seconds integer, p_lat double precision, p_lng double precision, p_injury_note text","value":{"anon":false,"body":"085e2e0382392ee105bf5dfb1322e786cb464f3dad2a43d981f1359ec562d1b4","kind":"f","owner":"postgres","config":["search_path=public, pg_temp"],"public":false,"definer":true,"returns":"time_shifts","language":"plpgsql","volatility":"v","authenticated":true}},{"name":"clock_out","args":"p_shift_id uuid, p_photo text, p_injured boolean, p_time_confirmed boolean, p_break_seconds integer, p_lat double precision, p_lng double precision, p_injury_note text, p_client_id uuid, p_tapped_at timestamp with time zone, p_clock_checked_at timestamp with time zone, p_clock_skew_ms integer","value":{"anon":false,"body":"2ddaca78ba00333dde9100492716df17f279c6ab1fc99d3b17ce20f77c0bb636","kind":"f","owner":"postgres","config":["search_path=public, pg_temp"],"public":false,"definer":true,"returns":"time_shifts","language":"plpgsql","volatility":"v","authenticated":true}},{"name":"end_break","args":"p_shift_id uuid","value":{"anon":false,"body":"f930e2e95a4d59e547eea6e7ee30135bfe39a13b002c76abfe6f72d1451c1ada","kind":"f","owner":"postgres","config":["search_path=public, pg_temp"],"public":false,"definer":true,"returns":"time_shifts","language":"plpgsql","volatility":"v","authenticated":true}},{"name":"end_break","args":"p_shift_id uuid, p_client_id uuid, p_tapped_at timestamp with time zone, p_clock_checked_at timestamp with time zone, p_clock_skew_ms integer","value":{"anon":false,"body":"470a0539693065c6cbd7ff51d8033fd74500570db13cdc2b990719a0eb2f7fc4","kind":"f","owner":"postgres","config":["search_path=public, pg_temp"],"public":false,"definer":true,"returns":"jsonb","language":"plpgsql","volatility":"v","authenticated":true}},{"name":"start_break","args":"p_shift_id uuid, p_break_type text","value":{"anon":false,"body":"4f12f25fc5d7060f59ad7cbe9d717c6a23de4a6ba860301200815063a1d24b06","kind":"f","owner":"postgres","config":["search_path=public, pg_temp"],"public":false,"definer":true,"returns":"time_shifts","language":"plpgsql","volatility":"v","authenticated":true}},{"name":"start_break","args":"p_shift_id uuid, p_break_type text, p_client_id uuid, p_tapped_at timestamp with time zone, p_clock_checked_at timestamp with time zone, p_clock_skew_ms integer","value":{"anon":false,"body":"02f00615f0264ad7f3b0b21a949df2c5e8a9257b9b66f714ef866df913d84cbc","kind":"f","owner":"postgres","config":["search_path=public, pg_temp"],"public":false,"definer":true,"returns":"time_shifts","language":"plpgsql","volatility":"v","authenticated":true}},{"name":"work_activity_clock_receipt","args":"p_client_id uuid","value":{"anon":false,"body":"e031a0d945fda344cafbdee6c5a2d228c368488d8cafdb0c75da60fcea7320b1","kind":"f","owner":"postgres","config":["search_path=public, pg_temp"],"public":false,"definer":true,"returns":"jsonb","language":"plpgsql","volatility":"v","authenticated":true}},{"name":"_work_cross_job_clock_request_admit","args":"","value":{"anon":false,"body":"acd71517a152215a32812a572df400ec9d3756d737e9ad8d4298a1fa035df836","kind":"f","owner":"postgres","config":["search_path=public, pg_temp"],"public":false,"definer":true,"returns":"trigger","language":"plpgsql","volatility":"v","authenticated":false}},{"name":"_work_cross_job_clock_request_stamp","args":"","value":{"anon":false,"body":"1cc06ac928c2a0a4c0cfd5244febac56eb275384f92dc8b57235bf98b3c4240c","kind":"f","owner":"postgres","config":["search_path=public, pg_temp"],"public":false,"definer":true,"returns":"trigger","language":"plpgsql","volatility":"v","authenticated":false}},{"name":"_work_cross_job_clock_receipt_fingerprint","args":"p_receipt work_activity_clock_receipts","value":{"anon":false,"body":"3f4d03d090a1428ce0dd8b410a285029903d156576da41a86237daa30e0e1d25","kind":"f","owner":"postgres","config":["search_path=public, pg_temp"],"public":false,"definer":true,"returns":"text","language":"sql","volatility":"i","authenticated":false}}]$protocol$::jsonb) loop
+ select jsonb_build_object('body',encode(sha256(convert_to(p.prosrc,'UTF8')),'hex'),'owner',pg_get_userbyid(p.proowner),'definer',p.prosecdef,'volatility',p.provolatile,'kind',p.prokind,'language',l.lanname,'returns',pg_get_function_result(p.oid),'config',p.proconfig,'public',exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a where a.grantee=0 and a.privilege_type='EXECUTE'),'anon',has_function_privilege('anon',p.oid,'EXECUTE'),'authenticated',has_function_privilege('authenticated',p.oid,'EXECUTE')) into actual from pg_proc p join pg_namespace n on n.oid=p.pronamespace join pg_language l on l.oid=p.prolang
+ where n.nspname='public' and p.proname=e->>'name' and pg_get_function_identity_arguments(p.oid)=e->>'args';
+ if actual is distinct from e->'value' then raise exception using errcode='55000',message='Clock protocol is unavailable.';end if;
+ end loop;
+ select capture_enabled,revision into enabled,generation from public.work_activity_authority_generation where singleton;
+ select * into s from public.personal_activity_state where profile_id=actor;
+ if enabled is null or generation is null or generation>=9007199254740991
+  or (s.profile_id is not null and (s.integrity_state<>'clean' or s.revision>=9007199254740991))
+  or exists(select 1 from public.work_activity_safety_events where profile_id=actor) then
+ mode:='unavailable';reason:='not_ready';
+ elsif exists(select 1 from public.work_cross_job_shifts x join public.time_shifts h on h.id=x.shift_id where x.profile_id=actor and h.profile_id=actor and h.status='open' and h.clock_out_at is null) then
+ mode:='unavailable';reason:='not_ready';
+ elsif not enabled then mode:='closing_only';reason:='starts_disabled';
+ else
+ -- The exact setup_v1 root may start paid setup before signing. Ordinary
+ -- overloads keep their existing toolbox/company-date policy.
+ mode:='active';author_setup:=true;
+ end if;
+ return jsonb_build_object('protocolVersion',1,'asOf',public._work_activity_iso(as_of),
+ 'clockProtocol','setup_v1','receiptProtocol','retained_v1','mode',mode,'canAuthorSetup',author_setup,'setupReason',reason,
+ 'canDispatchExistingSetup',true,'canReadOwnReceipts',true,'canDispatchPayrollSafety',true);
+exception when undefined_function or undefined_table or undefined_column then
+ raise exception using errcode='55000',message='Clock protocol is unavailable.';
+end;$capability$;
+
 create or replace function public.person_record_counts(p_id uuid)
 returns jsonb
 language sql
@@ -1227,6 +1417,7 @@ as $$
     'work_activity_safety_events.actor_id',(select count(*) from public.work_activity_safety_events where actor_id=p_id),
     'work_activity_clock_receipts.profile_id',(select count(*) from public.work_activity_clock_receipts where profile_id=p_id)
   ) || jsonb_build_object(
+'work_cross_job_clock_requests.profile_id',(select count(*) from public.work_cross_job_clock_requests where profile_id=p_id),
 'work_cross_job_shifts.profile_id',(select count(*) from public.work_cross_job_shifts where profile_id=p_id),
 'work_cross_job_allocations.profile_id',(select count(*) from public.work_cross_job_allocations where profile_id=p_id),
 'work_cross_job_bindings.profile_id',(select count(*) from public.work_cross_job_bindings where profile_id=p_id),
@@ -1249,6 +1440,7 @@ do $acl$ declare f record;begin
  end loop;end $acl$;
 grant execute on function public.work_cross_job_snapshot(uuid),public.work_cross_job_receipt(uuid) to authenticated;
 -- CROSS_JOB_RUNTIME_END
+select public.attach_sandbox_guards();
 -- Exact revision2 contract. Seed is a reviewed assembly constant, not live drift.
 create table public.work_cross_job_contract (
  proof_key text primary key check(proof_key='cross_job_kernel_2'),
@@ -1277,7 +1469,7 @@ select jsonb_build_object(
 )c
 $coverage$;
 revoke all on function public._work_cross_job_coverage() from public,anon,authenticated,service_role;
-insert into public.work_cross_job_contract values('cross_job_kernel_2','2e8a37151eba719e6c5e17664dee7859fc74a08ce9711b2783f63a0395c9356d');
+insert into public.work_cross_job_contract values('cross_job_kernel_2','00db48aa715a066d2c3cd0ec73423a8af14e7338fa2c13e36ab2ff68b49f307e');
 create trigger work_cross_job_contract_immutable before insert or update or delete on public.work_cross_job_contract for each row execute function public.work_capture_immutable_record();
 create trigger work_cross_job_contract_no_truncate before truncate on public.work_cross_job_contract for each statement execute function public.work_capture_immutable_record();
 create or replace function public._work_unit_review_coverage() returns boolean language sql stable security definer set search_path=public,pg_temp as $$
@@ -1312,6 +1504,9 @@ grant execute on function public.service_follow_shift() to service_role;
 revoke all on function public._work_cross_job_source(uuid, time_shifts, uuid, text, jsonb, timestamp with time zone, text, uuid) from public, anon, authenticated, service_role;
 revoke all on function public._work_cross_job_head_valid(uuid) from public, anon, authenticated, service_role;
 revoke all on function public._work_cross_job_allocation_guard() from public, anon, authenticated, service_role;
+revoke all on function public._work_cross_job_clock_receipt_fingerprint(work_activity_clock_receipts) from public, anon, authenticated, service_role;
+revoke all on function public._work_cross_job_clock_request_admit() from public, anon, authenticated, service_role;
+revoke all on function public._work_cross_job_clock_request_stamp() from public, anon, authenticated, service_role;
 revoke all on function public._work_activity_row_before() from public, anon, authenticated, service_role;
 revoke all on function public._work_activity_operation_exit(uuid) from public, anon, authenticated, service_role;
 revoke all on function public._work_activity_start_setup(time_shifts, uuid, uuid) from public, anon, authenticated, service_role;
@@ -1326,11 +1521,16 @@ revoke all on function public.work_activity_snapshot(uuid) from public, anon, se
 grant execute on function public.work_activity_snapshot(uuid) to authenticated;
 revoke all on function public.work_cross_job_snapshot(uuid) from public, anon, service_role;
 grant execute on function public.work_cross_job_snapshot(uuid) to authenticated;
-revoke all on function public.work_activity_command_receipt(uuid) from public, anon;
+revoke all on function public.work_activity_command_receipt(uuid) from public, anon, service_role;
 grant execute on function public.work_activity_command_receipt(uuid) to authenticated;
-grant execute on function public.work_activity_command_receipt(uuid) to service_role;
 revoke all on function public.work_cross_job_receipt(uuid) from public, anon, service_role;
 grant execute on function public.work_cross_job_receipt(uuid) to authenticated;
+revoke all on function public._work_activity_clock_replay_guard(uuid, text, uuid) from public, anon, authenticated, service_role;
+revoke all on function public.work_activity_clock_receipt(uuid) from public, anon, service_role;
+grant execute on function public.work_activity_clock_receipt(uuid) to authenticated;
+revoke all on function public._work_activity_clock_contract_marker() from public, anon, authenticated, service_role;
+revoke all on function public.work_activity_clock_capability() from public, anon, service_role;
+grant execute on function public.work_activity_clock_capability() to authenticated;
 revoke all on function public.person_record_counts(uuid) from public, anon, authenticated;
 grant execute on function public.person_record_counts(uuid) to service_role;
 revoke all on function public._work_cross_job_coverage() from public, anon, authenticated, service_role;

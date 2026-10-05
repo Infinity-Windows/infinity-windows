@@ -211,7 +211,7 @@ class TestSchemaParsing(unittest.TestCase):
         # 20261035000000 to land after the bill-to migrations).
         # +10 monthly-values tables: private policy, immutable reviews and
         # frozen accounting/provenance, plus reserved reminder claims.
-        self.assertEqual(len(SCHEMA.tables), 240)  # plus seven retained cross-job tables
+        self.assertEqual(len(SCHEMA.tables), 241)  # plus eight retained cross-job tables
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 
@@ -763,7 +763,7 @@ class TestCrossJobMergeSafety(unittest.TestCase):
                 rows[name] = malformed
                 self.assert_refused(source, target, rows)
 
-    def test_exact_seven_primary_keys_and_non_fk_person_identity(self):
+    def test_exact_eight_primary_keys_and_non_fk_person_identity(self):
         expected = {
             "work_cross_job_shifts": ("shift_id",),
             "work_cross_job_allocations": ("id",),
@@ -772,6 +772,7 @@ class TestCrossJobMergeSafety(unittest.TestCase):
             "work_cross_job_resume": ("profile_id",),
             "work_cross_job_write_frames": ("operation_id", "source_kind", "source_id"),
             "work_cross_job_contract": ("proof_key",),
+            "work_cross_job_clock_requests": ("client_id",),
         }
         self.assertEqual(WORK_CROSS_JOB_IDENTITIES, expected)
         self.assertEqual({n for n in SCHEMA.tables if n.startswith("work_cross_job_")}, set(expected))
@@ -780,6 +781,15 @@ class TestCrossJobMergeSafety(unittest.TestCase):
             self.assertEqual(SCHEMA[name].primary_key, key)
             self.assertIn(name, WORK_CAPTURE_MANUAL_RECONCILIATION_TABLES)
             self.assertFalse(any("profile_id" in fk.columns for fk in SCHEMA[name].foreign_keys))
+
+    def test_previous_seven_table_absence_proof_cannot_hide_retry_identity(self):
+        for side in ("source", "target"):
+            with self.subTest(side=side):
+                source, target, rows = self.sides()
+                selected = source if side == "source" else target
+                selected["cross_job_census"]["tables"].pop("work_cross_job_clock_requests")
+                plan = self.assert_refused(source, target, rows)
+                self.assertTrue(any("eight-table" in b for b in plan.cross_job_blockers))
 
     def test_each_table_each_side_rows_and_count_only_refuse_entire_plan(self):
         for name in WORK_CROSS_JOB_IDENTITIES:
@@ -843,6 +853,70 @@ class TestCrossJobMergeSafety(unittest.TestCase):
         self.assertIn("insert into public.profiles", text)
         self.assertIn("insert into public.time_shifts", text)
         self.assertIn("update public." + table, text)
+
+    def test_malformed_inventory_maps_entries_counts_and_errors_refuse_without_crash(self):
+        malformed = [
+            None, ["private-payload"], {"window_types": "private-payload"},
+            {"window_types": ["private-payload"]},
+            *({"window_types": {"rows": value}} for value in
+              ("private-payload", True, 1.5, None, -1)),
+            {"window_types": {"rows": 0, "error": "private-payload"}},
+        ]
+        for side in ("source", "target"):
+            for tables in malformed:
+                with self.subTest(side=side, tables=tables):
+                    source, target, rows = self.sides()
+                    (source if side == "source" else target)["tables"] = tables
+                    plan = self.assert_refused(source, target, rows)
+                    text = render(plan, "source", "target")
+                    self.assertIn("Expected upper bound unavailable", text)
+                    self.assertNotIn("private-payload", text)
+
+    def test_cli_malformed_inventory_exits_two_on_both_sides(self):
+        import tempfile
+        malformed = [None, ["private-payload"], {"window_types": "private-payload"},
+                     *({"window_types": {"rows": value}} for value in
+                       ("private-payload", True, 1.5, None, -1)),
+                     {"window_types": {"rows": 0, "error": "private-payload"}}]
+        with tempfile.TemporaryDirectory() as directory:
+            paths = [Path(directory) / "source.json", Path(directory) / "target.json"]
+            for side in (0, 1):
+                for tables in malformed:
+                    with self.subTest(side=side, tables=tables):
+                        inventories = [{"project_ref": name, "tables": {},
+                                        "cross_job_census": legacy_census()}
+                                       for name in ("source", "target")]
+                        inventories[side]["tables"] = tables
+                        for path, inventory in zip(paths, inventories):
+                            path.write_text(json.dumps(inventory))
+                        output = io.StringIO()
+                        with contextlib.redirect_stdout(output):
+                            code = merge_plan_main(["--source", str(paths[0]), "--target", str(paths[1])])
+                        self.assertEqual(code, 2)
+                        self.assertIn("Expected upper bound unavailable", output.getvalue())
+                        for forbidden in ("private-payload", "insert into public.", "update public.", "delete from public."):
+                            self.assertNotIn(forbidden, output.getvalue().lower())
+
+    def test_private_raw_malformed_collections_cannot_disappear_in_loader(self):
+        import tempfile
+        tables = [*WORK_CROSS_JOB_IDENTITIES, "personal_activity_commands", "personal_activity_transitions"]
+        with tempfile.TemporaryDirectory() as directory:
+            paths = [Path(directory) / "source.json", Path(directory) / "target.json"]
+            for side in (0, 1):
+                for table in tables:
+                    for value in (None, {}, "private-payload", ["private-payload"], [None]):
+                        with self.subTest(side=side, table=table, value=value):
+                            raw = [{"project_id": name, "cross_job_census": legacy_census()}
+                                   for name in ("source", "target")]
+                            raw[side][table] = value
+                            for path, inventory in zip(paths, raw):
+                                path.write_text(json.dumps(inventory))
+                            output = io.StringIO()
+                            with contextlib.redirect_stdout(output):
+                                code = merge_plan_main(["--source", str(paths[0]), "--target", str(paths[1])])
+                            self.assertEqual(code, 2)
+                            for forbidden in ("private-payload", "insert into public.", "update public.", "delete from public."):
+                                self.assertNotIn(forbidden, output.getvalue().lower())
 
     def test_cli_raw_exports_preserve_census_and_refuse_missing_on_either_side(self):
         import tempfile

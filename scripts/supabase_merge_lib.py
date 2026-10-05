@@ -924,7 +924,7 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
 # Exact retained identities, NOT permission to generically remap/import them.
 # The contract is deployment proof; write frames are transaction-local authority;
 # the remaining rows retain physical/source/allocation identities without profile
-# FKs deliberately. All seven require whole-plan refusal when nonempty.
+# FKs deliberately. All eight require whole-plan refusal when nonempty.
 WORK_CROSS_JOB_IDENTITIES = {
     "work_cross_job_shifts": ("shift_id",),
     "work_cross_job_allocations": ("id",),
@@ -933,6 +933,7 @@ WORK_CROSS_JOB_IDENTITIES = {
     "work_cross_job_resume": ("profile_id",),
     "work_cross_job_write_frames": ("operation_id", "source_kind", "source_id"),
     "work_cross_job_contract": ("proof_key",),
+    "work_cross_job_clock_requests": ("client_id",),
 }
 DEDUP_KEYS.update(WORK_CROSS_JOB_IDENTITIES)
 
@@ -1322,7 +1323,8 @@ def inventory_from_backup(path: Path | str) -> dict[str, Any]:
     """
     raw = json.loads(Path(path).read_text())
     tables = {
-        name: {"rows": len(rows), "columns": _columns_of(rows)}
+        name: {"rows": len(rows), "columns": _columns_of(rows)
+               if all(isinstance(row, Mapping) for row in rows) else {}}
         for name, rows in raw.items()
         if isinstance(rows, list)
     }

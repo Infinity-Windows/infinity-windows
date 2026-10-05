@@ -38,7 +38,10 @@ jobs:
         with:
           python-version: '3.12'
       - name: Verify reviewed source and static plan before fixture construction
-        run: python3 scripts/verify-work-cross-job-postgres.py --check-plan
+        run: |
+          echo "c0eaccc11ca212853a3950bb64d47805990a2b4af824755a04d92b3fdf170c07  supabase/migrations/20261108470000_work_cross_job_capture.sql" | sha256sum -c -
+          echo "eb7f48d2c18d62da5d4b44659968c20de9a6ec8f7c2e1deb099a8576cb4a0ab3  scripts/verify-work-cross-job-postgres.py" | sha256sum -c -
+          python3 scripts/verify-work-cross-job-postgres.py --check-plan
       - name: Build unchanged genuine role and source fixture
         run: python3 scripts/verify-work-activity-engine-role-parity.py
       - name: Verify unchanged authority/source concurrency

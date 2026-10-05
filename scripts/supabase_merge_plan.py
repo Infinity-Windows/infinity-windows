@@ -74,7 +74,7 @@ def cross_job_refusals(inventory: Mapping[str, Any], rows: Mapping[str, Any]) ->
             or census.get("version") != 1 or census.get("complete") is not True
             or not isinstance(census.get("tables"), dict)
             or set(census["tables"]) != names):
-        reasons.append("complete privileged seven-table cross-job census required")
+        reasons.append("complete privileged eight-table cross-job census required")
         counts = {}
     else:
         counts = census["tables"]
@@ -90,18 +90,30 @@ def cross_job_refusals(inventory: Mapping[str, Any], rows: Mapping[str, Any]) ->
             reasons.append("installed cross-job authority requires reviewed reconciliation")
         if absent not in (0, len(names)):
             reasons.append("partial cross-job schema cannot prove absence")
+    tables = inventory.get("tables", {})
+    if not isinstance(tables, dict):
+        reasons.append("inventory table map invalid")
+        tables = {}
+    elif any(not isinstance(name, str) or not isinstance(entry, dict)
+             or type(entry.get("rows")) is not int or entry["rows"] < 0
+             or bool(entry.get("error")) for name, entry in tables.items()):
+        reasons.append("inventory table entry or row count invalid")
     for name in sorted(names):
-        entry = inventory.get("tables", {}).get(name)
-        if name in inventory.get("tables", {}):
+        entry = tables.get(name)
+        if name in tables:
             value = entry.get("rows") if isinstance(entry, dict) else None
             if (type(value) is not int or value < 0 or value != counts.get(name)
                     or (isinstance(entry, dict) and entry.get("error"))):
                 reasons.append(name + ": inventory contradicts or cannot confirm census")
             elif value > 0:
                 reasons.append(name + ": nonempty inventory")
-        if rows.get(name):
-            reasons.append(name + ": exported evidence or authority exists")
-    # Refuse recognizable v2 artifacts even when someone removed all seven
+        if name in rows:
+            exported = rows[name]
+            if not isinstance(exported, list) or any(not isinstance(row, Mapping) for row in exported):
+                reasons.append(name + ": malformed cross-job export")
+            elif exported or counts.get(name) is None:
+                reasons.append(name + ": exported evidence or authority exists")
+    # Refuse recognizable v2 artifacts even when someone removed all eight
     # non-FK evidence tables from the export and supplied an absence claim.
     for name in ("personal_activity_commands", "personal_activity_transitions"):
         exported = rows.get(name, [])
@@ -123,7 +135,9 @@ def load_side(path: str) -> tuple[dict[str, Any], dict[str, list[dict[str, Any]]
     raw = json.loads(Path(path).read_text())
     if "project_ref" in raw:
         return raw, {}
-    rows = {k: v for k, v in raw.items() if isinstance(v, list)}
+    rows = {k: v for k, v in raw.items() if isinstance(v, list)
+            or k in WORK_CROSS_JOB_IDENTITIES
+            or k in ("personal_activity_commands", "personal_activity_transitions")}
     return inventory_from_backup(path), rows
 
 
@@ -226,12 +240,16 @@ class Plan:
     # -- helpers ---------------------------------------------------------
 
     def source_count(self, table: str) -> int | None:
-        entry = self.source.get("tables", {}).get(table)
-        return None if entry is None else entry.get("rows")
+        tables = self.source.get("tables")
+        entry = tables.get(table) if isinstance(tables, dict) else None
+        count = entry.get("rows") if isinstance(entry, dict) else None
+        return count if type(count) is int and count >= 0 else None
 
     def target_count(self, table: str) -> int | None:
-        entry = self.target.get("tables", {}).get(table)
-        return None if entry is None else entry.get("rows")
+        tables = self.target.get("tables")
+        entry = tables.get(table) if isinstance(tables, dict) else None
+        count = entry.get("rows") if isinstance(entry, dict) else None
+        return count if type(count) is int and count >= 0 else None
 
     def tables_to_move(self) -> list[str]:
         """Tables with rows on the source side, in dependency order."""
@@ -402,16 +420,29 @@ class Plan:
         # Only a fully admitted legacy census proves these relations absent on
         # both sides. Never hide verification merely because rows were omitted.
         absent = set(WORK_CROSS_JOB_IDENTITIES) if not self.cross_job_blockers else set()
-        src_total = sum(
-            (t.get("rows") or 0) for t in self.source.get("tables", {}).values()
-        )
-        tgt_total = sum(
-            (t.get("rows") or 0) for t in self.target.get("tables", {}).values()
-        )
+        def total(inventory: Mapping[str, Any]) -> int | None:
+            tables = inventory.get("tables", {})
+            if not isinstance(tables, dict):
+                return None
+            if any(not isinstance(entry, dict) or bool(entry.get("error"))
+                   for entry in tables.values()):
+                return None
+            counts = [entry.get("rows") for entry in tables.values()]
+            if any(type(count) is not int or count < 0 for count in counts):
+                return None
+            return sum(counts)
+
+        src_total, tgt_total = total(self.source), total(self.target)
+        if src_total is None or tgt_total is None:
+            upper_bound = "-- Expected upper bound unavailable: inventory row counts invalid."
+        else:
+            upper_bound = (
+                f"-- Expected upper bound after the merge: {src_total} + {tgt_total} = "
+                f"{src_total + tgt_total} rows, minus one row for every source row that "
+                f"deduped onto an existing target row."
+            )
         lines = [
-            f"-- Expected upper bound after the merge: {src_total} + {tgt_total} = "
-            f"{src_total + tgt_total} rows, minus one row for every source row that "
-            f"deduped onto an existing target row.",
+            upper_bound,
             "",
             "-- Nothing lost: every table's count must be >= the pre-merge target count.",
             "select relname, n_live_tup from pg_stat_user_tables where schemaname='public' order by relname;",

@@ -1,6 +1,6 @@
 {
-  "status": "FROZEN_REVIEWED_REVISION_2_ASSEMBLY",
+  "status": "FROZEN_REVIEWED_REVISION_6_ASSEMBLY",
   "key": "cross_job_kernel_2",
-  "expectedCatalogSha256": "2e8a37151eba719e6c5e17664dee7859fc74a08ce9711b2783f63a0395c9356d",
-  "reason": "Explicit revision2 correction: full self-body attestation; immutable expected proof; public type/enum/domain/composite/sequence/foreign table semantics and access; function leakproof/cost/rows/planner-support metadata; peer runtime corrections. No installed provider drift accepted."
+  "expectedCatalogSha256": "00db48aa715a066d2c3cd0ec73423a8af14e7338fa2c13e36ab2ff68b49f307e",
+  "reason": "K5 actual peer timestamp serialization blocker: source-declared canonical receipt fingerprint; root-authorized checkpoint6 construction."
 }

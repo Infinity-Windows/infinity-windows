@@ -125,11 +125,75 @@ begin
  select * into a from public.work_cross_job_allocations where command_id=c.command_id;
  return jsonb_build_object('protocolVersion',2,'availability','available','receipt',c.result,'allocation',case when a.id is not null then jsonb_build_object('id',a.id,'predecessorId',a.predecessor_id,'boundaryMode',a.boundary_mode,'originalTappedAt',public._work_activity_iso(a.original_tapped_at),'effectiveAt',public._work_activity_iso(a.effective_at),'shiftId',a.shift_id,'transitionId',a.transition_id) end);
 end$$;""")
+# Plan2: requested version comes from the existing operation, never a wire arg.
+def replay(s):
+ s=once(s,'declare r public.work_activity_clock_receipts;o public.work_activity_operations;','declare r public.work_activity_clock_receipts;o public.work_activity_operations;v record;')
+ s=once(s,' if r.client_id is null then return;end if;',""" if r.client_id is null then
+  if p_action='clock_in' and o.route in('clock_in','clock_in_setup') then
+   if exists(select 1 from public.work_cross_job_clock_requests where client_id=p_client)
+    or exists(select 1 from public.time_clock_actions where client_id=p_client and profile_id is distinct from o.actor_id)
+    or exists(select 1 from public.time_shifts where client_id=p_client and profile_id is distinct from o.actor_id) then
+    raise exception using errcode='42501',message='Clock receipt unavailable.';
+   end if;
+   if o.route='clock_in_setup' and o.arguments->>'setupVersion'='2'
+    and (exists(select 1 from public.time_clock_actions where client_id=p_client and profile_id=o.actor_id)
+      or exists(select 1 from public.time_shifts where client_id=p_client and profile_id=o.actor_id)) then
+    raise exception using errcode='23514',message='Clock command identity conflicts.';
+   end if;
+  end if;
+  return;
+ end if;""")
+ return once(s," -- A retained acknowledgement survives source deletion.",""" if p_action='clock_in' and o.route in('clock_in','clock_in_setup') then
+  select * into v from public.work_cross_job_clock_requests where client_id=r.client_id;
+  if v.client_id is not null and (v.profile_id is distinct from r.profile_id or v.shift_id is distinct from r.shift_id or v.receipt_sha256 is distinct from public._work_cross_job_clock_receipt_fingerprint(r)) then raise exception using errcode='42501',message='Clock receipt unavailable.';end if;
+  if (o.route='clock_in_setup' and coalesce(o.arguments->>'setupVersion','')='2') is distinct from coalesce(v.setup_version=2,false) then
+   raise exception using errcode='23514',message='Clock command identity conflicts.';
+  end if;
+ end if;
+ -- A retained acknowledgement survives source deletion.""")
+out.append(add('_work_activity_clock_replay_guard',replay))
+def receipt(s):
+ return once(s," -- Unsupported historical evidence remains unavailable", " if r.action='clock_in' and r.receipt_protocol='setup_v1'\n  and exists(select 1 from public.work_cross_job_shifts where shift_id=r.shift_id) then return missing;end if;\n -- Unsupported historical evidence remains unavailable")
+out.append(add('work_activity_clock_receipt',receipt))
+cap_source=(root/'supabase/migrations/20261108430000_work_activity_clock_capability.sql').read_text()
+assert hashlib.sha256(cap_source.encode()).hexdigest()=='1e77a1c2ab09df91f16fe160ca640de4e9c825be6cec4fe7b46a1f941c255e61'
+cap=extract('work_activity_clock_capability',cap_source)
+protocol=json.loads(re.search(r'\$protocol\$(.*?)\$protocol\$',cap,re.S)[1])
+# All metadata remains authored0843, except exact reviewed new prosrc bodies.
+def body(sql):
+ m=re.search(r'\bas\s+(\$[a-z0-9_]*\$)(.*?)\1',sql,re.I|re.S);assert m;return m[2]
+for entry in protocol:
+ authored=next((sql for sql in out if re.match(r'create or replace function public\.'+entry['name']+r'\(',sql)),None)
+ if entry['name']=='clock_in' and 'p_setup_version integer' not in entry['args']:authored=None
+ if authored:entry['value']['body']=hashlib.sha256(body(authored.replace('public._work_cross_job_coverage()',admitted_coverage)).encode()).hexdigest()
+assert sum(e['name']=='_work_activity_clock_replay_guard' for e in protocol)==1
+request_source=(root/'scripts/work-cross-job-request-version.sql').read_text()
+for name in ['_work_cross_job_clock_request_admit','_work_cross_job_clock_request_stamp']:
+ authored=extract(name,request_source)
+ protocol.append({'name':name,'args':'','value':{'anon':False,'body':hashlib.sha256(body(authored).encode()).hexdigest(),'kind':'f','owner':'postgres','config':['search_path=public, pg_temp'],'public':False,'definer':True,'returns':'trigger','language':'plpgsql','volatility':'v','authenticated':False}})
+fingerprint_name='_work_cross_job_clock_receipt_fingerprint'
+fingerprint_sql=extract(fingerprint_name,request_source)
+fingerprint_hash=hashlib.sha256(body(fingerprint_sql).encode()).hexdigest()
+protocol.append({'name':fingerprint_name,'args':'p_receipt work_activity_clock_receipts','value':{'anon':False,'body':fingerprint_hash,'kind':'f','owner':'postgres','config':['search_path=public, pg_temp'],'public':False,'definer':True,'returns':'text','language':'sql','volatility':'i','authenticated':False}})
+# Exact metadata/ACL pin complements the inherited bounded0843 protocol shape.
+# No whole-catalog evaluation enters legacy capability or paid receipt writes.
+fingerprint_pin=coverage_pin.replace(coverage_hash,fingerprint_hash).replace("p.provolatile='s'","p.provolatile='i'").replace('not p.proisstrict','p.proisstrict').replace("p.prorettype='boolean'::regtype","p.prorettype='text'::regtype").replace('p.pronargs=0','p.pronargs=1').replace('public._work_cross_job_coverage()','public._work_cross_job_clock_receipt_fingerprint(public.work_activity_clock_receipts)')
+protocol_text=json.dumps(protocol,separators=(',',':'))
+marker_digest=hashlib.sha256(protocol_text.encode()).hexdigest()
+cap=re.sub(r'\$protocol\$.*?\$protocol\$',lambda m:'$protocol$'+protocol_text+'$protocol$',cap,flags=re.S)
+cap=cap.replace('cbbcc3cd5515034ace3d2c2dc6378480a16ae51d6ad99823f1a492728580bf25',marker_digest)
+cap=once(cap," elsif not enabled then", " elsif exists(select 1 from public.work_cross_job_shifts x join public.time_shifts h on h.id=x.shift_id where x.profile_id=actor and h.profile_id=actor and h.status='open' and h.clock_out_at is null) then\n mode:='unavailable';reason:='not_ready';\n elsif not enabled then")
+mark=extract('_work_activity_clock_contract_marker',cap_source).replace('cbbcc3cd5515034ace3d2c2dc6378480a16ae51d6ad99823f1a492728580bf25',marker_digest)
+marker_pin=coverage_pin.replace(coverage_hash,hashlib.sha256(body(mark).encode()).hexdigest()).replace("p.provolatile='s'","p.provolatile='i'").replace("p.prorettype='boolean'::regtype","p.prorettype='text'::regtype").replace("public._work_cross_job_coverage()","public._work_activity_clock_contract_marker()")
+cap=once(cap," if public._work_activity_clock_contract_marker()", " if not "+fingerprint_pin+" or not "+marker_pin+" or public._work_activity_clock_contract_marker()")
+out.extend([mark,cap])
+(root/'scripts/work-cross-job-capability-contract.json').write_text(json.dumps({'marker':marker_digest,'protocol':protocol,'profile':'genuine-pg17-fixture-v1'},indent=2)+'\n')
+
 # Extend the exact current retained-person census; operational purge cannot
 # remove or forget the new allocation identities.
 review=(root/'supabase/migrations/20261108440000_work_unit_review.sql').read_text()
 census=extract('person_record_counts',review)
-census=once(census,"'work_activity_source_history.actor_id',", "'work_cross_job_shifts.profile_id',(select count(*) from public.work_cross_job_shifts where profile_id=p_id),\n'work_cross_job_allocations.profile_id',(select count(*) from public.work_cross_job_allocations where profile_id=p_id),\n'work_cross_job_bindings.profile_id',(select count(*) from public.work_cross_job_bindings where profile_id=p_id),\n'work_cross_job_resume.profile_id',(select count(*) from public.work_cross_job_resume where profile_id=p_id),\n'work_activity_source_history.actor_id',")
+census=once(census,"'work_activity_source_history.actor_id',", "'work_cross_job_clock_requests.profile_id',(select count(*) from public.work_cross_job_clock_requests where profile_id=p_id),\n'work_cross_job_shifts.profile_id',(select count(*) from public.work_cross_job_shifts where profile_id=p_id),\n'work_cross_job_allocations.profile_id',(select count(*) from public.work_cross_job_allocations where profile_id=p_id),\n'work_cross_job_bindings.profile_id',(select count(*) from public.work_cross_job_bindings where profile_id=p_id),\n'work_cross_job_resume.profile_id',(select count(*) from public.work_cross_job_resume where profile_id=p_id),\n'work_activity_source_history.actor_id',")
 out.append(census)
 # Explicit ACL closure; replacements retain existing ACLs, new helpers are private.
 for name in re.findall(r'create (?:or replace )?function public\.([a-z_]+)\(', (root/'scripts/work-cross-job-runtime.sql').read_text()+'\n'.join(out)):
@@ -147,19 +211,18 @@ base=once(base,'revoke all on table public.work_cross_job_shifts,public.work_cro
  '\n'.join('revoke all on table public.'+n+' from public,anon,authenticated,service_role;' for n in ['work_cross_job_shifts','work_cross_job_allocations','work_cross_job_heads','work_cross_job_bindings','work_cross_job_resume'])) if 'revoke all on table public.work_cross_job_shifts,public.work_cross_job_allocations,' in base else base
 runtime=(root/'scripts/work-cross-job-runtime.sql').read_text()
 out=[s.replace('public._work_cross_job_coverage()',admitted_coverage) for s in out]
-assembled=base+'-- CROSS_JOB_RUNTIME_BEGIN\n'+runtime+'\n'+'\n\n'.join(out)+'\n-- CROSS_JOB_RUNTIME_END\n'+coverage
+assembled=base+'-- CROSS_JOB_RUNTIME_BEGIN\n'+runtime+'\n'+request_source+'\n'+'\n\n'.join(out)+'\n-- CROSS_JOB_RUNTIME_END\nselect public.attach_sandbox_guards();\n'+coverage
 # The dynamic private-namespace closure above remains authoritative. Also spell
 # out every authored function's exact signature and preserved ACL so a static
 # reader need not interpret dynamic SQL or rely on unmerged earlier migrations.
 # This is the frozen kernel2 catalog, never an observed installed ACL refresh.
-acl_path=root/'scripts/work-cross-job-new-catalog.json'
-assert hashlib.sha256(acl_path.read_bytes()).hexdigest()=='b9af5575fb676a37b6be126b254f0a1571807ffaed90d14549bd69e86376e268', 'Kernel2 ACL artifact changed; explicit reviewed promotion required'
-acl_catalog=json.loads(acl_path.read_text())
-assert acl_catalog['catalogSha256']=='2e8a37151eba719e6c5e17664dee7859fc74a08ce9711b2783f63a0395c9356d'
+acl_path=root/'scripts/work-cross-job-acl-profile.json'
+assert hashlib.sha256(acl_path.read_bytes()).hexdigest()=='d0ad962b29b8239cc22975d82fadcddd8b526e8044afb5ebbe037b4e47fda828', 'Reviewed source ACL profile changed'
+acl_functions=json.loads(acl_path.read_text())
 explicit_acl=['-- Explicit frozen function ACLs for static review; no privilege expansion.']
 for match in re.finditer(r'create (?:or replace )?function public\.([a-z_]+)\((.*?)\)\s*returns',assembled,re.I|re.S):
  name,arguments=match.groups();arity=0 if not arguments.strip() else len(arguments.split(','))
- functions=[f for f in acl_catalog['metadata']['functions'] if f['name']==name and (0 if not f['arguments'] else len(f['arguments'].split(',')))==arity]
+ functions=[f for f in acl_functions if f['name']==name and (0 if not f['arguments'] else len(f['arguments'].split(',')))==arity]
  assert len(functions)==1,(name,arity)
  f=functions[0]
  # Input names are not part of a GRANT signature. The catalog retains complete

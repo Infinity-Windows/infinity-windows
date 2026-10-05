@@ -152,6 +152,7 @@ export const WORK_HISTORY_PROBES: readonly HistoryProbe[] = [
   { table: "work_cross_job_allocations", column: "profile_id", one: "job allocation boundary", many: "job allocation boundaries" },
   { table: "work_cross_job_bindings", column: "profile_id", one: "cross-job work source", many: "cross-job work sources" },
   { table: "work_cross_job_resume", column: "profile_id", one: "cross-job break return record", many: "cross-job break return records" },
+  { table: "work_cross_job_clock_requests", column: "profile_id", one: "original clock-in request", many: "original clock-in requests" },
 
   // Time and money.
   { table: "time_shifts", column: "profile_id", one: "punch", many: "punches" },

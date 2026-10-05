@@ -1,10 +1,10 @@
 {
   "scope": "Exact frozen disposable catalog delta; no genuine provider evidence",
-  "oldCatalogSha256": "c965474d047f4812c13311dd2ae62d909462c86a2002d1b01d141d7e91251124",
-  "newCatalogSha256": "2e8a37151eba719e6c5e17664dee7859fc74a08ce9711b2783f63a0395c9356d",
-  "migrationSha256": "01be84b1eed87a273c27f007c78b80e3163b795912021688ba7234b462c9fe1e",
-  "oldFunctionCount": 695,
-  "newFunctionCount": 712,
+  "oldCatalogSha256": "18f1f9048e57087987020441e0aff395c5094ec8f677643078f551aa4d705950",
+  "newCatalogSha256": "00db48aa715a066d2c3cd0ec73423a8af14e7338fa2c13e36ab2ff68b49f307e",
+  "migrationSha256": "c0eaccc11ca212853a3950bb64d47805990a2b4af824755a04d92b3fdf170c07",
+  "oldFunctionCount": 698,
+  "newFunctionCount": 718,
   "replacedFunctions": [
     {
       "identity": "_work_activity_claim_clock_setup(p_project_id uuid, p_cost_code_id uuid, p_photo text, p_lat double precision, p_lng double precision, p_note text, p_mode text, p_client_id uuid, p_tapped_at timestamp with time zone, p_clock_checked_at timestamp with time zone, p_clock_skew_ms integer)",
@@ -59,6 +59,120 @@
         "language": "plpgsql",
         "parallel": "u",
         "arguments": "p_project_id uuid, p_cost_code_id uuid, p_photo text, p_lat double precision, p_lng double precision, p_note text, p_mode text, p_client_id uuid, p_tapped_at timestamp with time zone, p_clock_checked_at timestamp with time zone, p_clock_skew_ms integer",
+        "leakproof": false,
+        "volatility": "v"
+      }
+    },
+    {
+      "identity": "_work_activity_clock_contract_marker()",
+      "before": {
+        "acl": "{postgres=X/postgres}",
+        "body": "95023aba47ddafa26dee3c8ec3ca5e88a80307b50db285b30ff15ebd24ef9703",
+        "cost": 100,
+        "kind": "f",
+        "name": "_work_activity_clock_contract_marker",
+        "rows": 0,
+        "owner": "postgres",
+        "access": {
+          "anon": false,
+          "service_role": false,
+          "authenticated": false
+        },
+        "config": [
+          "search_path=public, pg_temp"
+        ],
+        "result": "text",
+        "strict": false,
+        "definer": true,
+        "support": "-",
+        "defaults": null,
+        "language": "sql",
+        "parallel": "u",
+        "arguments": "",
+        "leakproof": false,
+        "volatility": "i"
+      },
+      "after": {
+        "acl": "{postgres=X/postgres}",
+        "body": "c3a7df2b8818e95a0962e6a6a2e87de398371a5e4d2a8812044324d001debd66",
+        "cost": 100,
+        "kind": "f",
+        "name": "_work_activity_clock_contract_marker",
+        "rows": 0,
+        "owner": "postgres",
+        "access": {
+          "anon": false,
+          "service_role": false,
+          "authenticated": false
+        },
+        "config": [
+          "search_path=public, pg_temp"
+        ],
+        "result": "text",
+        "strict": false,
+        "definer": true,
+        "support": "-",
+        "defaults": null,
+        "language": "sql",
+        "parallel": "u",
+        "arguments": "",
+        "leakproof": false,
+        "volatility": "i"
+      }
+    },
+    {
+      "identity": "_work_activity_clock_replay_guard(p_client uuid, p_action text, p_shift uuid)",
+      "before": {
+        "acl": "{postgres=X/postgres}",
+        "body": "37f258b49cfe30d9a06d09afac429744ba0f0a3cd7a89d26d6a21720dd5a3bec",
+        "cost": 100,
+        "kind": "f",
+        "name": "_work_activity_clock_replay_guard",
+        "rows": 0,
+        "owner": "postgres",
+        "access": {
+          "anon": false,
+          "service_role": false,
+          "authenticated": false
+        },
+        "config": [
+          "search_path=public, pg_temp"
+        ],
+        "result": "void",
+        "strict": false,
+        "definer": true,
+        "support": "-",
+        "defaults": "NULL::uuid",
+        "language": "plpgsql",
+        "parallel": "u",
+        "arguments": "p_client uuid, p_action text, p_shift uuid",
+        "leakproof": false,
+        "volatility": "v"
+      },
+      "after": {
+        "acl": "{postgres=X/postgres}",
+        "body": "34a7483501a87bacd451d9ba6671b78edc48b526520f73ba2b70906b604e00ec",
+        "cost": 100,
+        "kind": "f",
+        "name": "_work_activity_clock_replay_guard",
+        "rows": 0,
+        "owner": "postgres",
+        "access": {
+          "anon": false,
+          "service_role": false,
+          "authenticated": false
+        },
+        "config": [
+          "search_path=public, pg_temp"
+        ],
+        "result": "void",
+        "strict": false,
+        "definer": true,
+        "support": "-",
+        "defaults": "NULL::uuid",
+        "language": "plpgsql",
+        "parallel": "u",
+        "arguments": "p_client uuid, p_action text, p_shift uuid",
         "leakproof": false,
         "volatility": "v"
       }
@@ -664,7 +778,7 @@
       },
       "after": {
         "acl": "{postgres=X/postgres,service_role=X/postgres}",
-        "body": "3b9c3781c4997ddb3a3a774aa87379ef4581fcf8b47d5119bfdbf6124413846a",
+        "body": "cfcf2694094d26cf7a134d9c7a6b60ff64501c789c5eaaa200c514fe7e2a08ab",
         "cost": 100,
         "kind": "f",
         "name": "person_record_counts",
@@ -748,6 +862,120 @@
       }
     },
     {
+      "identity": "work_activity_clock_capability()",
+      "before": {
+        "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+        "body": "f4fac0aeab7d98fa044cda5d112bb8344827c829a370aa5f5766d486c3cc1c6d",
+        "cost": 100,
+        "kind": "f",
+        "name": "work_activity_clock_capability",
+        "rows": 0,
+        "owner": "postgres",
+        "access": {
+          "anon": false,
+          "service_role": false,
+          "authenticated": true
+        },
+        "config": [
+          "search_path=public, pg_temp"
+        ],
+        "result": "jsonb",
+        "strict": false,
+        "definer": true,
+        "support": "-",
+        "defaults": null,
+        "language": "plpgsql",
+        "parallel": "u",
+        "arguments": "",
+        "leakproof": false,
+        "volatility": "v"
+      },
+      "after": {
+        "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+        "body": "cc10c069076eb6302a7a8b5732706423b92661e5f5f4cb94c5f27d8607f6247f",
+        "cost": 100,
+        "kind": "f",
+        "name": "work_activity_clock_capability",
+        "rows": 0,
+        "owner": "postgres",
+        "access": {
+          "anon": false,
+          "service_role": false,
+          "authenticated": true
+        },
+        "config": [
+          "search_path=public, pg_temp"
+        ],
+        "result": "jsonb",
+        "strict": false,
+        "definer": true,
+        "support": "-",
+        "defaults": null,
+        "language": "plpgsql",
+        "parallel": "u",
+        "arguments": "",
+        "leakproof": false,
+        "volatility": "v"
+      }
+    },
+    {
+      "identity": "work_activity_clock_receipt(p_client_id uuid)",
+      "before": {
+        "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+        "body": "a358ce5c481147aad9376a8cd46de84122bac9e8b5a6b9875f9234c796a9720f",
+        "cost": 100,
+        "kind": "f",
+        "name": "work_activity_clock_receipt",
+        "rows": 0,
+        "owner": "postgres",
+        "access": {
+          "anon": false,
+          "service_role": false,
+          "authenticated": true
+        },
+        "config": [
+          "search_path=public, pg_temp"
+        ],
+        "result": "jsonb",
+        "strict": false,
+        "definer": true,
+        "support": "-",
+        "defaults": null,
+        "language": "plpgsql",
+        "parallel": "u",
+        "arguments": "p_client_id uuid",
+        "leakproof": false,
+        "volatility": "v"
+      },
+      "after": {
+        "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+        "body": "e031a0d945fda344cafbdee6c5a2d228c368488d8cafdb0c75da60fcea7320b1",
+        "cost": 100,
+        "kind": "f",
+        "name": "work_activity_clock_receipt",
+        "rows": 0,
+        "owner": "postgres",
+        "access": {
+          "anon": false,
+          "service_role": false,
+          "authenticated": true
+        },
+        "config": [
+          "search_path=public, pg_temp"
+        ],
+        "result": "jsonb",
+        "strict": false,
+        "definer": true,
+        "support": "-",
+        "defaults": null,
+        "language": "plpgsql",
+        "parallel": "u",
+        "arguments": "p_client_id uuid",
+        "leakproof": false,
+        "volatility": "v"
+      }
+    },
+    {
       "identity": "work_activity_command(p_command_id uuid, p_protocol_version integer, p_payload jsonb)",
       "before": {
         "acl": "{postgres=X/postgres,authenticated=X/postgres}",
@@ -807,7 +1035,7 @@
     {
       "identity": "work_activity_command_receipt(p_command_id uuid)",
       "before": {
-        "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+        "acl": "{postgres=X/postgres,authenticated=X/postgres}",
         "body": "ac7103cd7c58f1d319de17a3e1ee45518810efd12cec0390ff136e0e2cfe7fbf",
         "cost": 100,
         "kind": "f",
@@ -816,7 +1044,7 @@
         "owner": "postgres",
         "access": {
           "anon": false,
-          "service_role": true,
+          "service_role": false,
           "authenticated": true
         },
         "config": [
@@ -834,7 +1062,7 @@
         "volatility": "v"
       },
       "after": {
-        "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+        "acl": "{postgres=X/postgres,authenticated=X/postgres}",
         "body": "0082a84bf1234cc9cd691151625fdf5f692e07979dc169773913e9438fdd466b",
         "cost": 100,
         "kind": "f",
@@ -843,7 +1071,7 @@
         "owner": "postgres",
         "access": {
           "anon": false,
-          "service_role": true,
+          "service_role": false,
           "authenticated": true
         },
         "config": [
@@ -1006,6 +1234,96 @@
         "language": "plpgsql",
         "parallel": "u",
         "arguments": "p_kind text, p_before jsonb, p_after jsonb",
+        "leakproof": false,
+        "volatility": "v"
+      }
+    },
+    {
+      "identity": "_work_cross_job_clock_receipt_fingerprint(p_receipt work_activity_clock_receipts)",
+      "after": {
+        "acl": "{postgres=X/postgres}",
+        "body": "3f4d03d090a1428ce0dd8b410a285029903d156576da41a86237daa30e0e1d25",
+        "cost": 100,
+        "kind": "f",
+        "name": "_work_cross_job_clock_receipt_fingerprint",
+        "rows": 0,
+        "owner": "postgres",
+        "access": {
+          "anon": false,
+          "service_role": false,
+          "authenticated": false
+        },
+        "config": [
+          "search_path=public, pg_temp"
+        ],
+        "result": "text",
+        "strict": true,
+        "definer": true,
+        "support": "-",
+        "defaults": null,
+        "language": "sql",
+        "parallel": "u",
+        "arguments": "p_receipt work_activity_clock_receipts",
+        "leakproof": false,
+        "volatility": "i"
+      }
+    },
+    {
+      "identity": "_work_cross_job_clock_request_admit()",
+      "after": {
+        "acl": "{postgres=X/postgres}",
+        "body": "acd71517a152215a32812a572df400ec9d3756d737e9ad8d4298a1fa035df836",
+        "cost": 100,
+        "kind": "f",
+        "name": "_work_cross_job_clock_request_admit",
+        "rows": 0,
+        "owner": "postgres",
+        "access": {
+          "anon": false,
+          "service_role": false,
+          "authenticated": false
+        },
+        "config": [
+          "search_path=public, pg_temp"
+        ],
+        "result": "trigger",
+        "strict": false,
+        "definer": true,
+        "support": "-",
+        "defaults": null,
+        "language": "plpgsql",
+        "parallel": "u",
+        "arguments": "",
+        "leakproof": false,
+        "volatility": "v"
+      }
+    },
+    {
+      "identity": "_work_cross_job_clock_request_stamp()",
+      "after": {
+        "acl": "{postgres=X/postgres}",
+        "body": "1cc06ac928c2a0a4c0cfd5244febac56eb275384f92dc8b57235bf98b3c4240c",
+        "cost": 100,
+        "kind": "f",
+        "name": "_work_cross_job_clock_request_stamp",
+        "rows": 0,
+        "owner": "postgres",
+        "access": {
+          "anon": false,
+          "service_role": false,
+          "authenticated": false
+        },
+        "config": [
+          "search_path=public, pg_temp"
+        ],
+        "result": "trigger",
+        "strict": false,
+        "definer": true,
+        "support": "-",
+        "defaults": null,
+        "language": "plpgsql",
+        "parallel": "u",
+        "arguments": "",
         "leakproof": false,
         "volatility": "v"
       }
@@ -14978,6 +15296,48 @@
       "table": "unit_sessions",
       "enabled": "O",
       "definition": "CREATE TRIGGER zzz_work_activity_statement AFTER INSERT OR DELETE OR UPDATE ON unit_sessions FOR EACH STATEMENT EXECUTE FUNCTION _work_activity_statement_end()"
+    },
+    {
+      "name": "guard_test_account_sandbox_only",
+      "table": "work_cross_job_allocations",
+      "enabled": "O",
+      "definition": "CREATE TRIGGER guard_test_account_sandbox_only BEFORE INSERT OR DELETE OR UPDATE ON work_cross_job_allocations FOR EACH ROW EXECUTE FUNCTION guard_test_account_sandbox_only('project_id', 'project')"
+    },
+    {
+      "name": "work_cross_job_allocation_admission",
+      "table": "work_cross_job_allocations",
+      "enabled": "O",
+      "definition": "CREATE TRIGGER work_cross_job_allocation_admission BEFORE INSERT ON work_cross_job_allocations FOR EACH ROW EXECUTE FUNCTION _work_cross_job_allocation_guard()"
+    },
+    {
+      "name": "work_cross_job_allocations_immutable",
+      "table": "work_cross_job_allocations",
+      "enabled": "O",
+      "definition": "CREATE TRIGGER work_cross_job_allocations_immutable BEFORE DELETE OR UPDATE ON work_cross_job_allocations FOR EACH ROW EXECUTE FUNCTION work_capture_immutable_record()"
+    },
+    {
+      "name": "work_cross_job_allocations_no_truncate",
+      "table": "work_cross_job_allocations",
+      "enabled": "O",
+      "definition": "CREATE TRIGGER work_cross_job_allocations_no_truncate BEFORE TRUNCATE ON work_cross_job_allocations FOR EACH STATEMENT EXECUTE FUNCTION work_capture_immutable_record()"
+    },
+    {
+      "name": "guard_test_account_sandbox_only",
+      "table": "work_cross_job_bindings",
+      "enabled": "O",
+      "definition": "CREATE TRIGGER guard_test_account_sandbox_only BEFORE INSERT OR DELETE OR UPDATE ON work_cross_job_bindings FOR EACH ROW EXECUTE FUNCTION guard_test_account_sandbox_only('project_id', 'project')"
+    },
+    {
+      "name": "work_cross_job_bindings_immutable",
+      "table": "work_cross_job_bindings",
+      "enabled": "O",
+      "definition": "CREATE TRIGGER work_cross_job_bindings_immutable BEFORE DELETE OR UPDATE ON work_cross_job_bindings FOR EACH ROW EXECUTE FUNCTION work_capture_immutable_record()"
+    },
+    {
+      "name": "work_cross_job_bindings_no_truncate",
+      "table": "work_cross_job_bindings",
+      "enabled": "O",
+      "definition": "CREATE TRIGGER work_cross_job_bindings_no_truncate BEFORE TRUNCATE ON work_cross_job_bindings FOR EACH STATEMENT EXECUTE FUNCTION work_capture_immutable_record()"
     },
     {
       "name": "000_work_activity_gate",
