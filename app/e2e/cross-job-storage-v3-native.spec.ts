@@ -1,6 +1,23 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test as base, webkit, type BrowserContext, type Page } from '@playwright/test';
 import { createHash } from 'node:crypto';
-import { writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+// The controlled Linux probe retains the ephemeral Blob failures separately.
+// These native journal cases exercise a fresh ordinary durable profile per test.
+const test=base.extend({
+  context:async({browserName,context:inherited,baseURL,viewport,deviceScaleFactor},provideContext)=>{
+    if(browserName!=='webkit'){await provideContext(inherited);return;}
+    const directory=mkdtempSync(join(tmpdir(),'cross-job-v3-webkit-'));
+    let persistent:BrowserContext|undefined;
+    try{
+      persistent=await webkit.launchPersistentContext(directory,{headless:true,baseURL,viewport,deviceScaleFactor});
+      await provideContext(persistent);
+    }finally{
+      try{await persistent?.close();}finally{rmSync(directory,{recursive:true,force:true});}
+    }
+  },
+});
 async function retain(name:string,value:unknown){const path=test.info().outputPath(name);writeFileSync(path,JSON.stringify(value,null,2));await test.info().attach(name,{path,contentType:'application/json'});}
 const digest=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 import type * as Harness from './support/crossJobStorageV3Harness';
