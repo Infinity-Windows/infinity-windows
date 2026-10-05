@@ -333,6 +333,13 @@ jobs:
           curl --fail --show-error --silent --connect-timeout 10 --max-time 20 --header "Cache-Control: no-cache" "https://app.forgewd.com/version.json?ci-release=$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-before-upgrade" -o "$RUNNER_TEMP/production-version-before-upgrade.json"
           python3 ../scripts/pwa-release-baseline.py "$RUNNER_TEMP/production-version-before-upgrade.json" --expect "$IW_PWA_OLD_REF"
       - name: Full installed-app suite from pinned deployed build
+        env:
+          IW_PWA_ENGINE_TRACE: "1"
+          IW_PWA_SLOW_SHELL_TRACE: "1"
+          IW_PWA_CAUSAL_TRACE: "1"
+          IW_PWA_RETURNING_PHONE_TRACE: "1"
+          IW_PWA_ACTIVATION_GATE_COMPARE: "0"
+          IW_PWA_NO_HTML_MODULEPRELOAD: "0"
         run: npx playwright test --config playwright.pwa.config.ts
       - name: Preserve current-baseline upgrade evidence
         uses: actions/upload-artifact@v4
