@@ -5,7 +5,7 @@ do $$
 declare
   v_foreman uuid;
   v_installer uuid;
-  v_real_supervisor uuid;
+  v_real_owner uuid;
   v_job uuid;
   v_set_a uuid := gen_random_uuid();
   v_set_b uuid := gen_random_uuid();
@@ -41,7 +41,7 @@ begin
   perform pg_temp.dry_run_as_system();
   v_foreman := pg_temp.dry_run_pick('foreman');
   v_installer := pg_temp.dry_run_pick('installer');
-  v_real_supervisor := pg_temp.dry_run_pick_real('supervisor');
+  v_real_owner := pg_temp.dry_run_pick_real('owner');
   v_job := pg_temp.dry_run_sandbox_job();
 
   -- Isolated specs-kind source documents for this transaction only.
@@ -116,7 +116,7 @@ begin
     v_result ->> 'saved' = '2' and v_result ->> 'skipped' = '0',
     coalesce(v_result::text, 'no result'));
 
-  -- A real supervisor can see the testing job, so use that JWT to exercise
+  -- A real owner can see the testing job, so use that JWT to exercise
   -- global catalog creation and provisional blank-filling. The QA foreman
   -- above proved that the ordinary sandbox extraction leaves global rows
   -- untouched and still commits its openings.
@@ -134,7 +134,7 @@ begin
   select coalesce(array_agg(o.id order by o.opening_code), '{}'::uuid[])
     into v_ids from public.project_openings o
    where o.project_id = v_job and o.planset_id = v_set_a and o.removed_at is null;
-  v_role := pg_temp.dry_run_act_as(v_real_supervisor);
+  v_role := pg_temp.dry_run_act_as(v_real_owner);
   v_result := public.reconcile_planset_openings(
     v_job, v_set_a, v_snapshot, array[v_mark_1, v_mark_2]::text[], v_ids,
     jsonb_build_array(
@@ -151,7 +151,7 @@ begin
     )
   );
   perform pg_temp.dry_run_as_system();
-  perform pg_temp.dry_run_check('real supervisor extraction creates and fills catalog rows atomically',
+  perform pg_temp.dry_run_check('real owner extraction creates and fills catalog rows atomically',
     v_result ->> 'updated' = '2' and v_result ->> 'inserted' = '0'
       and v_result ->> 'deleted' = '0' and v_result ->> 'catalog_written' = '2'
       and exists (select 1 from public.project_openings o
@@ -191,7 +191,7 @@ begin
     into v_snapshot from public.project_openings o
    where o.project_id = v_job and o.removed_at is null;
 
-  v_role := pg_temp.dry_run_act_as(v_real_supervisor);
+  v_role := pg_temp.dry_run_act_as(v_real_owner);
   v_result := public.reconcile_planset_openings(
     v_job, v_set_a, v_snapshot, array[v_mark_3 || '-2']::text[], '{}'::uuid[],
     jsonb_build_array(jsonb_build_object(
@@ -275,7 +275,7 @@ begin
     coalesce(v_updated_open.id::text, 'no row'));
 
   -- Global catalog writes are blocked for sandbox logins, even inside this
-  -- rollback-only probe. The same test uses a real supervisor for a generated
+  -- rollback-only probe. The same test uses a real owner for a generated
   -- row; both import calls are still rolled back by the outer harness.
   v_role := pg_temp.dry_run_act_as(v_foreman);
   perform pg_temp.dry_run_expect_error('sandbox foreman cannot import the global catalog',
@@ -291,7 +291,7 @@ begin
         'type_code', 'CAD-DR-INST-' || replace(gen_random_uuid()::text, '-', ''),
         'name', 'installer catalog row'
       ))::text), 'Only a foreman or above');
-  v_role := pg_temp.dry_run_act_as(v_real_supervisor);
+  v_role := pg_temp.dry_run_act_as(v_real_owner);
   v_import_code := 'CAD-DR-IMPORT-' || replace(gen_random_uuid()::text, '-', '');
   v_import_result := public.import_window_types(jsonb_build_array(jsonb_build_object(
     'type_code', v_import_code,
