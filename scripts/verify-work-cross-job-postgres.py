@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parent.parent
 CANDIDATE = ROOT / "supabase/migrations/20261108470000_work_cross_job_capture.sql"
 SOURCE = CANDIDATE.read_text()
 SOURCE_SHA = hashlib.sha256(CANDIDATE.read_bytes()).hexdigest()
-assert SOURCE_SHA == "01be84b1eed87a273c27f007c78b80e3163b795912021688ba7234b462c9fe1e"
+assert SOURCE_SHA == "7593ab4681dfdb1d4233f037c46939d84cfdae350bc46918e6ae64937744b632"
 assert re.search(r"rollback;\s*$", SOURCE, re.I)
 assert sys.argv[1:] in ([], ["--check-plan"])
 CATALOG_SQL = (ROOT / "scripts/work-cross-job-catalog.sql").read_text().strip().removesuffix(";")

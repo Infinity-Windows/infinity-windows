@@ -141,8 +141,35 @@ out.append("""do $acl$ declare f record;begin
 grant execute on function public.work_cross_job_snapshot(uuid),public.work_cross_job_receipt(uuid) to authenticated;""")
 path=root/'supabase/migrations/20261108470000_work_cross_job_capture.sql'
 base=path.read_text().split('-- CROSS_JOB_RUNTIME_PENDING')[0].split('-- CROSS_JOB_RUNTIME_BEGIN')[0]
+# Separate relation statements are visible to the documented private-table
+# house-rule escape hatch. This does not change any role or privilege.
+base=once(base,'revoke all on table public.work_cross_job_shifts,public.work_cross_job_allocations,public.work_cross_job_heads,public.work_cross_job_bindings,public.work_cross_job_resume from public,anon,authenticated,service_role;',
+ '\n'.join('revoke all on table public.'+n+' from public,anon,authenticated,service_role;' for n in ['work_cross_job_shifts','work_cross_job_allocations','work_cross_job_heads','work_cross_job_bindings','work_cross_job_resume'])) if 'revoke all on table public.work_cross_job_shifts,public.work_cross_job_allocations,' in base else base
 runtime=(root/'scripts/work-cross-job-runtime.sql').read_text()
 out=[s.replace('public._work_cross_job_coverage()',admitted_coverage) for s in out]
-path.write_text(base+'-- CROSS_JOB_RUNTIME_BEGIN\n'+runtime+'\n'+'\n\n'.join(out)+'\n-- CROSS_JOB_RUNTIME_END\n'+coverage+'\nrollback;\n')
+assembled=base+'-- CROSS_JOB_RUNTIME_BEGIN\n'+runtime+'\n'+'\n\n'.join(out)+'\n-- CROSS_JOB_RUNTIME_END\n'+coverage
+# The dynamic private-namespace closure above remains authoritative. Also spell
+# out every authored function's exact signature and preserved ACL so a static
+# reader need not interpret dynamic SQL or rely on unmerged earlier migrations.
+# This is the frozen kernel2 catalog, never an observed installed ACL refresh.
+acl_path=root/'scripts/work-cross-job-new-catalog.json'
+assert hashlib.sha256(acl_path.read_bytes()).hexdigest()=='b9af5575fb676a37b6be126b254f0a1571807ffaed90d14549bd69e86376e268', 'Kernel2 ACL artifact changed; explicit reviewed promotion required'
+acl_catalog=json.loads(acl_path.read_text())
+assert acl_catalog['catalogSha256']=='2e8a37151eba719e6c5e17664dee7859fc74a08ce9711b2783f63a0395c9356d'
+explicit_acl=['-- Explicit frozen function ACLs for static review; no privilege expansion.']
+for match in re.finditer(r'create (?:or replace )?function public\.([a-z_]+)\((.*?)\)\s*returns',assembled,re.I|re.S):
+ name,arguments=match.groups();arity=0 if not arguments.strip() else len(arguments.split(','))
+ functions=[f for f in acl_catalog['metadata']['functions'] if f['name']==name and (0 if not f['arguments'] else len(f['arguments'].split(',')))==arity]
+ assert len(functions)==1,(name,arity)
+ f=functions[0]
+ # Input names are not part of a GRANT signature. The catalog retains complete
+ # multiword types; every authored argument has one explicit parameter name.
+ types=', '.join(a.strip().split(' ',1)[1] for a in f['arguments'].split(',')) if f['arguments'] else ''
+ signature='public.'+name+'('+types+')'
+ forbidden=['public']+[role for role in ['anon','authenticated','service_role'] if not f['access'][role]]
+ explicit_acl.append('revoke all on function '+signature+' from '+', '.join(forbidden)+';')
+ for role in ['authenticated','service_role']:
+  if f['access'][role]:explicit_acl.append('grant execute on function '+signature+' to '+role+';')
+path.write_text(assembled+'\n'+'\n'.join(explicit_acl)+'\nrollback;\n')
 (root/'scripts/work-cross-job-replacements.json').write_text(json.dumps([{'name':n,'oldCreateSha256':hashlib.sha256(o.encode()).hexdigest(),'newCreateSha256':hashlib.sha256(s.replace('public._work_cross_job_coverage()',admitted_coverage).encode()).hexdigest()} for n,o,s in replacements],indent=2)+'\n')
 print('Generated held replacements',len(replacements))
