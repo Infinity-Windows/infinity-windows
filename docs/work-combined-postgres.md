@@ -1,0 +1,11 @@
+# Held combined Work PostgreSQL fixture
+
+This workflow runs only on the held cross-job branch when its own files change. It creates a fresh PostgreSQL17 service with fixture-only credentials, verifies27 prerequisite files and all228 packaged source files before executing SQL, and runs the same six prerequisite builders up to0846. The new executor then creates three0846 clones before running the exact47/66 predecessors in the original database. It does not run the old V2 executor first.
+
+The three immutable source checkpoints remain sibling directories. Runtime uses source3 and source1; source2 is retained for the actual-code counterexample tests. The archive, all three manifests and the helper code are externally pinned in the workflow. The extractor checks every name, type, byte count and SHA before it writes any file. It does not overlay a checkpoint or use tar.extractall.
+
+Every explicit executor call has a distinct startup tag. Final state claims wait for uncertain sessions to disappear; unknown or live sessions and failed untagged predecessor scripts leave restoration unproved and cause failure. The unchanged prerequisite scripts retain their original failure behavior. If the workflow stops before the combined executor, no combined restoration claim exists. Cancellation, runner loss or job timeout can stop receipt collection; disappearance of the disposable service is not restoration evidence.
+
+Active catalog remains literaltrue with authority disabled on cleanup; that is not inactive catalog restoration. The inactive-root registered history, registered2 report/census support, provider behavior, all20/42/65 cases, paid-wait budget, physical devices, old clients and owner policies remain required open gates. No production activation, release or deployment is authorized by this workflow. Artifacts preserve partial receipts and all six prerequisite logs; extracted151MB source is not uploaded.
+
+Local portable verification passed69 no-contact controls and both default/check-plan modes. This is not genuine PostgreSQL execution evidence. Source3 received actual Claude Opus held source approval,8 actual review turns, read limits preserved. Exact packaging/workflow review is pending.
