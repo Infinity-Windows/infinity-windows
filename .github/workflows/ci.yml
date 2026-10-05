@@ -298,10 +298,33 @@ jobs:
         env:
           WORK_ACTIVITY_MATCHED_SCHEMA: scripts/fixtures/work-activity-engine-online-schema.sql
         run: PGLITE_MODULE="$RUNNER_TEMP/work-cutover-matched-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-work-unit-contributors-payroll.mjs
+      - name: Verify held unit metadata source and retention contracts
+        env:
+          WORK_UNIT_METADATA_CATALOG_OUT: ${{ runner.temp }}/membership-implementation-ci/catalog.json
+          WORK_UNIT_METADATA_WIRE_OUT: ${{ runner.temp }}/membership-implementation-ci/wire.json
+          WORK_UNIT_METADATA_MEMBERSHIP_WIRE_OUT: ${{ runner.temp }}/membership-implementation-ci/membership-wire.json
+        run: |
+          mkdir -p "$RUNNER_TEMP/membership-implementation-ci"
+          PGLITE_MODULE="$RUNNER_TEMP/work-cutover-matched-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-work-unit-metadata-cohorts.mjs
+      - name: Preserve complete ordered review scope with metadata installed
+        run: PGLITE_MODULE="$RUNNER_TEMP/work-cutover-matched-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-work-unit-metadata-cohorts-review-parity.mjs
+      - name: Verify complete historical and live membership parity
+        run: PGLITE_MODULE="$RUNNER_TEMP/work-cutover-matched-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-work-unit-metadata-membership-parity.mjs
+      - name: Preserve complete payroll with metadata installed
+        env:
+          WORK_ACTIVITY_MATCHED_SCHEMA: scripts/fixtures/work-activity-engine-online-schema.sql
+        run: PGLITE_MODULE="$RUNNER_TEMP/work-cutover-matched-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-work-unit-metadata-cohorts-payroll.mjs
       - name: Verify independent backends on the source-matched application schema
         env:
           WORK_ACTIVITY_CUTOVER_TEST_DB_URL: postgresql://postgres:fixture-only@localhost:5432/forge_work_activity_cutover_test
         run: PGLITE_MODULE="$RUNNER_TEMP/work-cutover-matched-db/node_modules/@electric-sql/pglite/dist/index.js" python3 scripts/verify-work-activity-engine-cutover-concurrency.py --source-matched
+      - name: Preserve complete or partial membership fixture evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: held-metadata-membership-ci
+          path: ${{ runner.temp }}/membership-implementation-ci
+          if-no-files-found: ignore
 
   work-activity-cutover-role-parity:
     name: Activity actual source-role fixture (release held)

@@ -10,7 +10,7 @@ from urllib.parse import urlparse,urlunparse
 ROOT=Path(__file__).resolve().parent.parent
 SOURCE=ROOT/'supabase/migrations/20261108480000_work_unit_metadata_cohorts.sql'
 source=SOURCE.read_text();sha=hashlib.sha256(source.encode()).hexdigest()
-assert sha=='d064823cd81ae55220568d5d02cd2abb84251449bde86c9b3b6e75fc0521e143','Refused: unreviewed metadata candidate source'
+assert sha=='d083b38b07bb51f9f34d7b6c114fcdfcaf4c16b91a1541b7c51f2f11d5459c44','Refused: unreviewed metadata candidate source'
 assert re.search(r'rollback;\s*$',source)
 PINS={'20261108410000_work_activity_engine_cutover.sql':'aa767e67de301cd0ce5961758cc5afefe89bdf25fe27b3c4156a219c9cb2f648','20261108440000_work_unit_review.sql':'e32122a581bf995857983cc433323bc490381b6eb217c583bf95fd7376b3e53f','20261108450000_work_activity_totals.sql':'e0e74c2d1985d332af81f95d20d2a6625c40cb5fcf995b4aa6e267d75e092140','20261108460000_work_unit_contributors.sql':'ae6185e4b390b7cff8f3d7aca837688fda2756792bdf055ef8c3a1f290d438c5'}
 for file,digest in PINS.items():assert hashlib.sha256((ROOT/'supabase/migrations'/file).read_bytes()).hexdigest()==digest,file

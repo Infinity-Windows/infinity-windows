@@ -472,3 +472,80 @@ await mscenario('Supplemental census body drift independently refuses four publi
  await as(id(2));assert.equal((await mread()).availability,'unavailable');assert.equal((await mbatch()).availability,'unavailable');assert.equal((await mcommand('assign',assignData)).availability,'unavailable');assert.equal((await mrpc('census_guard_receipt_refusal','select work_unit_metadata_receipt($1,1) value',[assignId])).availability,'unavailable');
 });
 if(process.env.WORK_UNIT_METADATA_WIRE_OUT)writeFileSync(process.env.WORK_UNIT_METADATA_WIRE_OUT,JSON.stringify({sourceSha256:hash(metadataSql),calls:metadataWire},null,2)+'\n');
+
+// The independent oracle is the frozen cb6 full-live-projection algorithm.
+// It remains a temporary private test helper outside the public exact catalog.
+const membershipReferenceBody=read('scripts/verify-work-unit-metadata-membership-parity.mjs').match(/const membershipReferenceBody=String.raw`([\s\S]*?)`;/)?.[1];
+assert.equal(hash(membershipReferenceBody),'ecccbdd660ed6b0ca2582b4e607b4447ed2f480ba8424c8e07baa8121cc697fc');
+await as(id(2),'postgres');
+await db.exec('create function pg_temp.metadata_members_reference(p_units uuid[]) returns jsonb language sql stable set search_path=public,pg_temp as $$'+membershipReferenceBody+'$$;revoke all on function pg_temp.metadata_members_reference(uuid[]) from public,anon,authenticated,service_role;');
+const membershipParityWire=[];
+const membershipParity=async(label,units)=>{
+ const old=(await q('select pg_temp.metadata_members_reference($1::uuid[]) value',[units])).value;
+ const current=(await q('select _work_unit_metadata_members($1::uuid[]) value',[units])).value;
+ assert.deepEqual(current,old,label);membershipParityWire.push({label,units,old,current});return current;
+};
+await mscenario('Raw membership dependencies are exact admitted source-material fields across all eighteen categories',async()=>{
+ const fields={custom_work_units:['id','opening_id'],project_openings:['id','assigned_window_id'],service_visit_units:['id','work_unit_id','opening_id','window_id','visit_id'],service_visits:['id'],summons:['id','opening_id'],unit_redos:['id','opening_id'],qc_checks:['id','project_opening_id'],install_events:['id','project_opening_id'],crew_work_records:['id','unit_id'],crew_work_record_people:['record_id','profile_id'],work_session_capture_metadata:['session_id','unit_id'],custom_work_history:['id','entity_id','action','before_value','after_value'],custom_work_sessions:['id','unit_id'],unit_sessions:['id','opening_id'],task_sessions:['id','opening_id'],service_time_sessions:['id','unit_id'],opening_phases:['id','opening_id'],summon_helpers:['id','summon_id']};
+ const reviewSource=read('supabase/migrations/20261108440000_work_unit_review.sql'),engineSource=read('supabase/migrations/20261108410000_work_activity_engine_cutover.sql');
+ const view=reviewSource.slice(reviewSource.indexOf('create view public._work_unit_review_live_sources as')).split(';')[0];
+ const kinds=[...view.matchAll(/select '([^']+)'::text kind/g)].map(m=>m[1]);assert.equal(kinds.length,18);assert.deepEqual(kinds.sort(),Object.keys(fields).sort());
+ const material=reviewSource.match(/create function public\._work_activity_source_material\([\s\S]*?\$\$;/)[0],evidence=engineSource.match(/create function public\._work_activity_evidence\([\s\S]*?\$\$;/)[0];
+ assert.ok(material.includes('jsonb_object_agg(key,value) from jsonb_each(p_row) where key=any(fields)'));assert.ok(evidence.includes('jsonb_object_agg(key,value) from jsonb_each(p_row) where key=any(columns)'));
+ for(const [table,columns]of Object.entries(fields)){
+  assert.ok(mc.tables.some(t=>t.table===table),'Admitted raw table '+table);
+  const expression=new RegExp("when '"+table+"' then array\\[([^\\]]+)\\]");
+  const sourceFields=[...(material.match(expression)??evidence.match(expression))[1].matchAll(/'([^']+)'/g)].map(m=>m[1]);
+  for(const column of columns){assert.ok(sourceFields.includes(column),table+'.'+column+' is untransformed source material');assert.ok(mc.columns.some(c=>c.table===table&&c.column===column),'Admitted raw column '+table+'.'+column);}
+ }
+});
+await mscenario('Staged membership has full ordered parity for every current fixture unit',async()=>{
+ const units=(await q('select array_agg(id order by id) ids from custom_work_units')).ids;
+ await membershipParity('all current fixture units',units);
+});
+await mscenario('Staged membership preserves empty null duplicate and nonexistent input semantics',async()=>{
+ assert.deepEqual(await membershipParity('empty input',[]),{});assert.deepEqual(await membershipParity('null input',null),{});
+ const duplicate=await membershipParity('duplicate/null/missing input',[id(30),id(30),null,id(999999)]);
+ assert.deepEqual(Object.keys(duplicate),[id(30)]);assert.deepEqual(duplicate,await membershipParity('single equivalent input',[id(30)]));
+});
+await mscenario('Staged membership retains exact eighteen-category historical graph including remaps and capture-only sessions',async()=>{
+ const gu=id(mi++),otherUnit=id(mi++),op=id(mi++),oldWindow=id(mi++),newWindow=id(mi++),su=id(mi++),visit1=id(mi++),visit2=id(mi++),sess=id(mi++),summon=id(mi++),crew=id(mi++);
+ for(const uid of [gu,otherUnit])await q("select to_jsonb(custom_work_command($1,'unit',$2::jsonb)) value",[id(mi++),JSON.stringify({id:uid,revision:0,project_id:id(10),opening_id:null,label:'Membership retained graph',type_label:'Unknown',facts:{}})]);
+ const h=async(kind,sid,b,a)=>db.query('insert into work_activity_source_history(id,source_kind,source_id,transaction_id,tx_order,before_value,after_value) values($1,$2,$3,pg_current_xact_id(),0,$4::jsonb,$5::jsonb)',[id(mi++),kind,sid,JSON.stringify(b),JSON.stringify(a)]);
+ const expected=[];const add=(kind,sid)=>expected.push({kind,id:sid});
+ await h('custom_work_units',gu,{opening_id:op},{opening_id:null});add('custom_work_units',gu);
+ await h('custom_work_units',otherUnit,{}, {opening_id:op});
+ await h('project_openings',op,{assigned_window_id:oldWindow},{assigned_window_id:newWindow});add('project_openings',op);
+ await h('service_visit_units',su,{window_id:oldWindow,visit_id:visit1},{window_id:id(999997),opening_id:id(999998),work_unit_id:id(999999),visit_id:visit2});add('service_visit_units',su);
+ for(const vid of [visit1,visit2]){await h('service_visits',vid,{project_id:id(11)},{});add('service_visits',vid);}
+ await h('summons',summon,{opening_id:op},{});add('summons',summon);
+ await h('crew_work_records',crew,{unit_id:gu},{});add('crew_work_records',crew);
+ await h('custom_work_sessions',sess,{unit_id:otherUnit},{unit_id:null});add('custom_work_sessions',sess);
+ await h('work_session_capture_metadata',sess,{session_id:sess,unit_id:gu,machine_kind:'boom_lift'},{});add('work_session_capture_metadata',sess);
+ for(const kind of ['unit_sessions','task_sessions','opening_phases','unit_redos','qc_checks','install_events','service_time_sessions','summon_helpers','crew_work_record_people']){
+  const sid=kind==='crew_work_record_people'?crew+':'+id(1):id(mi++);
+  const key=['qc_checks','install_events'].includes(kind)?'project_opening_id':kind==='service_time_sessions'?'unit_id':kind==='summon_helpers'?'summon_id':kind==='crew_work_record_people'?'record_id':'opening_id';
+  const value=kind==='service_time_sessions'?su:kind==='summon_helpers'?summon:kind==='crew_work_record_people'?crew:op;
+  await h(kind,sid,{[key]:value},{});add(kind,sid);
+ }
+ const sessionHistory=String(mi++),changedHistory=String(mi++),unchangedHistory=String(mi++);
+ await h('custom_work_history',sessionHistory,{entity_id:sess,action:'unit'},{});add('custom_work_history',sessionHistory);
+ await h('custom_work_history',changedHistory,{entity_id:gu,action:'unit',before_value:{facts:{installation_complete:false}},after_value:{facts:{installation_complete:true}}},{});add('custom_work_history',changedHistory);
+ await h('custom_work_history',unchangedHistory,{}, {entity_id:gu,action:'link',before_value:{facts:{installation_complete:false}},after_value:{facts:{installation_complete:false}}});
+ await h('unknown_future_kind','unrelated',{unit_id:gu},{});await h('opening_phases','missing-or-malformed-opening',{opening_id:'not-a-uuid'},{});
+ const graph=await membershipParity('all eighteen retained categories',[gu,otherUnit]);assert.equal(new Set(expected.map(x=>x.kind)).size,18);
+ expected.sort((a,b)=>a.kind<b.kind?-1:a.kind>b.kind?1:a.id<b.id?-1:a.id>b.id?1:0);assert.deepEqual(graph[gu],expected,'Independent exact expected identities and ordering, not only old/new agreement');
+ assert.ok(graph[otherUnit].some(x=>x.kind==='project_openings'&&x.id===op),'Historical opening remains shared');
+ assert.ok(!graph[gu].some(x=>x.id===unchangedHistory||x.kind==='unknown_future_kind'||x.id==='missing-or-malformed-opening'));
+ await h('project_openings',op,{assigned_window_id:oldWindow},{assigned_window_id:newWindow});assert.deepEqual(await membershipParity('duplicate retained evidence',[gu,otherUnit]),graph);check(true,'Duplicate retained membership evidence does not change exact ordered output');
+});
+for(const forgedAttester of [false,true])await mscenario('Membership own-body drift refuses four public entries and service census'+(forgedAttester?' despite select-true attester':''),async()=>{
+ await as(id(2));assert.equal((await mread()).availability,'available');assert.equal((await mbatch()).availability,'available');
+ await as(id(2),'postgres');await db.exec("create or replace function _work_unit_metadata_members(p_units uuid[]) returns jsonb language sql stable security definer set search_path=public,pg_temp as $$select '{}'::jsonb$$");
+ assert.equal((await q('select _work_unit_review_coverage() and _work_totals_coverage() and _work_unit_contributors_coverage() ok')).ok,true);assert.equal((await q('select _work_unit_metadata_coverage() ok')).ok,false);
+ if(forgedAttester)await db.exec("create or replace function _work_unit_metadata_coverage() returns boolean language sql stable security definer set search_path=public,pg_temp as $$select true$$");
+ await as(id(2));assert.equal((await mread()).availability,'unavailable');assert.equal((await mbatch()).availability,'unavailable');assert.equal((await mcommand('assign',assignData)).availability,'unavailable');assert.equal((await mrpc('membership_body_receipt_refusal','select work_unit_metadata_receipt($1,1) value',[assignId])).availability,'unavailable');
+ await as(null,'service_role');await merror('select _work_unit_metadata_person_counts($1,$2)',[id(1),id(2)],'55000');
+});
+if(process.env.WORK_UNIT_METADATA_MEMBERSHIP_WIRE_OUT)writeFileSync(process.env.WORK_UNIT_METADATA_MEMBERSHIP_WIRE_OUT,JSON.stringify({sourceSha256:hash(metadataSql),calls:membershipParityWire},null,2)+'\n');
+if(process.env.WORK_UNIT_METADATA_WIRE_OUT)writeFileSync(process.env.WORK_UNIT_METADATA_WIRE_OUT,JSON.stringify({sourceSha256:hash(metadataSql),calls:metadataWire},null,2)+'\n');
