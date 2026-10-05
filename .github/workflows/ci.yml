@@ -714,6 +714,9 @@ jobs:
       - name: Test held cross-job fresh-session no-contact fixture controls
         run: python3 scripts/test_work_cross_job_fresh_sessions.py
 
+      - name: Test held cross-job protocol 2 no-contact fixture controls
+        run: python3 scripts/test_work_cross_job_v2_postgres.py
+
       - name: Test that CI runs every script test
         run: node scripts/ci-runs-script-tests.test.mjs
 
